@@ -70,6 +70,8 @@ export type MockScenario = {
   appOps?: Record<string, MockOp>;
   /** 0 = settle scripts instantly (default); otherwise playback speed multiplier. */
   speed?: number;
+  /** Capture only: runs in `boot.ts` after storage is cleared (seed prefs, plug stand-in pane views). */
+  setup?: () => void;
 };
 
 export type MockLogEntry = { host: string; kind: 'request' | 'cmd' | 'open'; op: string; args?: unknown; unhandled?: true; at: number };

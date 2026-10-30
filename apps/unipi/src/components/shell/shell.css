@@ -1,6 +1,6 @@
-/* ══ UNI-117 platform notices + desktop shell ═══════════════════════════
+/* ══ UNI-117 platform notices + desktop shell (WP-A3 frame) ════════════
    Everything desktop-specific is scoped under html[data-shell=desktop]
-   (set by DesktopChrome at ≥ 900px outside the phone app), so the phone
+   (set by AppShell at ≥ 900px outside the phone app), so the phone
    layout is untouched. Shared pieces (the platform notice, kbd) are new
    classes that only exist where they're used. */
 
@@ -22,76 +22,86 @@
 
 .kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 5px; background: var(--color-surface-3); box-shadow: inset 0 -1px 0 rgb(0 0 0 / 40%), inset 0 0 0 1px var(--color-line); color: var(--color-text-muted); font: 500 11px/1 var(--font-sans); }
 
-/* ── Desktop layout ──────────────────────────────────────────────────── */
-html[data-shell=desktop] { --sidebar-w: 224px; }
+/* ── App shell frame (WP-A3, app spec §3.7) ────────────────────────────
+   sidebar (--sb-w) | handle | main. Flush warm surfaces with 1 px rules
+   (Z-4, unipi look); resize handles: 4 px hit area, 2 px shell line on
+   hover / focus / drag. The workspace (conversation | side pane, bottom
+   panel) is in components/panes/panes.css. */
+html[data-shell=desktop] { --shell-rule: rgb(46 40 37 / 70%); }
 html[data-shell=desktop] body { overflow: hidden; }
-html[data-shell=desktop] .app-shell { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); padding: 0; background: radial-gradient(circle at 0 0, rgb(240 48 24 / 5%), transparent 520px); }
-html[data-shell=desktop] .shell-sidebar { grid-row: 1 / -1; grid-column: 1; }
-html[data-shell=desktop] .app-shell > .app-content { grid-column: 2; grid-row: 2; }
-/* No AppHeader (screens with their own head): the content takes both rows. */
-html[data-shell=desktop] .app-shell > .shell-sidebar + .app-content { grid-row: 1 / -1; }
-/* The list column: narrowed to --list-w while a detail/placeholder shows. */
-html[data-shell=desktop][data-detail] .app-shell { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0, 1fr); }
-html[data-shell=desktop][data-detail] .app-shell > .page-head,
-html[data-shell=desktop][data-detail] .app-shell > .app-content { grid-column: 2; }
+.ashell { display: flex; height: 100dvh; min-height: 0; background: radial-gradient(circle at 0 0, rgb(240 48 24 / 5%), transparent 520px); }
+.ashell-main { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+html[data-shell=desktop] .ashell-page { flex: 1; height: auto; min-height: 0; padding: 0; background: none; }
+html[data-shell=desktop] .ashell-page > .app-content { padding-left: var(--page-gutter); padding-right: var(--page-gutter); }
 
 /* Readable column width for single-pane screens. */
 html[data-shell=desktop] .app-content:has(.settings-group) > div,
 html[data-shell=desktop] .app-content > .platform-notice { max-width: 760px; }
 html[data-shell=desktop] .app-content:has(.settings-group) > div { margin: 0; }
 
-/* ── Sidebar ─────────────────────────────────────────────────────────── */
-.shell-sidebar { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 14px 10px 12px; box-sizing: border-box; border-right: 1px solid rgb(46 40 37 / 70%); background: rgb(20 18 17 / 72%); }
-.shell-brand { display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 8px 8px; }
-.shell-brand-crab { width: 26px; height: 26px; image-rendering: pixelated; }
-.shell-brand-word { font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
-.shell-brand-badge { margin-left: auto; padding: 1px 7px; border-radius: 9999px; font-size: 11px; font-weight: 600; color: var(--color-wm-cyan); background: rgb(40 190 240 / 12%); box-shadow: inset 0 0 0 1px rgb(40 190 240 / 30%); }
-.shell-search { display: flex; align-items: center; gap: 8px; height: 36px; min-height: 36px; margin: 0 0 10px; padding: 0 8px 0 10px; border-radius: 10px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-dim); font-size: 13px; text-align: left; }
-.shell-search > span:nth-child(2) { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.shell-search-keys { display: flex; gap: 3px; }
-.shell-search:hover { color: var(--color-text-muted); background: var(--color-surface-3); }
-.shell-search:active:not(:disabled) { transform: none; }
-.shell-nav { display: flex; flex-direction: column; gap: 2px; }
-.shell-nav-item { display: flex; align-items: center; gap: 11px; height: 38px; min-height: 38px; padding: 0 10px; border-radius: 10px; color: var(--color-text-muted); text-decoration: none; font-size: 14px; font-weight: 500; transition: background-color 120ms ease-out, color 120ms ease-out; }
-.shell-nav-item:hover { background: var(--color-surface-2); color: var(--color-text); }
-.shell-nav-item[aria-current=page] { background: rgb(240 48 24 / 13%); color: var(--color-text); box-shadow: inset 0 0 0 1px rgb(240 48 24 / 22%); }
-.shell-nav-item[aria-current=page] svg { color: var(--color-shell); }
-.shell-nav-item.unavailable { color: var(--color-text-dim); }
-.shell-nav-label { flex: 1; min-width: 0; }
-.shell-nav-key { font-size: 11px; color: var(--color-text-dim); opacity: 0; transition: opacity 120ms ease-out; }
-.shell-nav-item:hover .shell-nav-key, .shell-sidebar:focus-within .shell-nav-key { opacity: 1; }
-.shell-nav-app { padding: 0 6px; border-radius: 9999px; font-size: 10.5px; line-height: 16px; font-weight: 600; color: var(--color-wm-cyan); background: rgb(40 190 240 / 10%); }
-.shell-sidebar-foot { margin-top: auto; }
+/* ── Sidebar (Z-1, Z-3) ──────────────────────────────────────────────── */
+.sb { flex: none; width: var(--sb-w, 264px); display: flex; flex-direction: column; min-height: 0; box-sizing: border-box; border-right: 1px solid var(--shell-rule); background: rgb(20 18 17 / 72%); }
+.sb-top { flex: none; display: flex; align-items: center; gap: 9px; height: 52px; padding: 0 8px 0 16px; }
+.sb-crab { width: 24px; height: 24px; image-rendering: pixelated; }
+.sb-word { font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+.sb-badge { padding: 1px 7px; border-radius: 9999px; font-size: 11px; font-weight: 600; color: var(--color-wm-cyan); background: rgb(40 190 240 / 12%); box-shadow: inset 0 0 0 1px rgb(40 190 240 / 30%); }
+.sb-collapse { margin-left: auto; }
+.sb-actions { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 0 10px 8px; }
+.sb-action { display: flex; align-items: center; gap: 10px; height: 34px; min-height: 34px; padding: 0 10px; border-radius: 9px; background: transparent; color: var(--color-text-muted); font-size: 13.5px; font-weight: 500; text-align: left; }
+.sb-action:hover { background: var(--color-surface-2); color: var(--color-text); }
+.sb-action:active:not(:disabled) { transform: none; }
+.sb-action:focus-visible, .rail-item:focus-visible, .sb-row:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
+.sb-keys { margin-left: auto; display: flex; gap: 3px; }
+.sb-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 10px 12px; scrollbar-width: thin; scrollbar-color: transparent transparent; mask-image: linear-gradient(180deg, #000 calc(100% - 16px), transparent); }
+.sb-scroll:hover { scrollbar-color: var(--color-surface-3) transparent; }
+.sb-host + .sb-host { margin-top: 10px; }
+.sb-host-head { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-dim); }
+.sb-host-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sb-project-head { padding: 8px 10px 3px; font-size: 12.5px; font-weight: 600; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-row { display: flex; align-items: center; gap: 9px; height: 32px; min-height: 32px; padding: 0 10px; border-radius: 8px; color: var(--color-text-muted); font-size: 13.5px; text-decoration: none; }
+.sb-row:hover { background: var(--color-surface-2); color: var(--color-text); }
+.sb-row[aria-current=page] { background: rgb(240 48 24 / 12%); color: var(--color-text); box-shadow: inset 0 0 0 1px rgb(240 48 24 / 20%); }
+.sb-row-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-dim); opacity: .55; }
+.sb-row[data-state=working] .sb-row-dot { background: var(--color-amber); opacity: 1; }
+.sb-row[data-state=needs-you] .sb-row-dot { background: var(--color-claw); opacity: 1; }
+.sb-row[data-state=crashed] .sb-row-dot { background: var(--color-wm-red); opacity: 1; }
+.sb-row-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+.sb-empty { margin: 0; padding: 4px 10px 6px; font-size: 12.5px; color: var(--color-text-dim); }
 
-/* ── Detail pane: the phone's full-screen overlays, placed right of the list ── */
-html[data-shell=desktop][data-detail=open] :is(.chat-layer, .board-page, .editor-screen, .term-layer, .preview-viewer, .shell-detail) {
-  left: var(--detail-left); right: 0; top: 0; bottom: 0; width: auto; padding-top: 0;
-  border-left: 1px solid rgb(46 40 37 / 70%); box-shadow: -12px 0 32px rgb(0 0 0 / 22%);
-  animation: none;
-}
-/* Pages pushed over the board (task, reader) slide in the pane, not the screen. */
-html[data-shell=desktop][data-detail=open] .board-page { animation: pane-in 180ms ease-out both; }
-@keyframes pane-in { from { opacity: 0; transform: translateX(16px); } }
-/* Full-width overlays with no list (e.g. a detail opened on a screen with
-   no pane spec) still clear the sidebar. */
-html[data-shell=desktop]:not([data-detail]) :is(.chat-layer, .board-page, .editor-screen, .term-layer, .preview-viewer) { left: var(--sidebar-w); }
-html[data-shell=desktop] .term-screen { border-radius: 0; }
-html[data-shell=desktop] .term-chrome-knob { display: none; }
-/* The detail's own back button is redundant next to the list, but kept:
-   it's the keyboard-free way to close. */
+/* ── Rail (Z-1): Board · Cron · ext pages · Settings ─────────────────── */
+.rail { flex: none; display: flex; flex-direction: column; gap: 1px; padding: 8px 10px 12px; border-top: 1px solid var(--shell-rule); }
+.rail-item { display: flex; align-items: center; gap: 10px; height: 34px; min-height: 34px; padding: 0 10px; border-radius: 9px; color: var(--color-text-muted); text-decoration: none; font-size: 13.5px; font-weight: 500; transition: background-color 120ms ease-out, color 120ms ease-out; }
+.rail-item:hover { background: var(--color-surface-2); color: var(--color-text); }
+.rail-item[aria-current=page] { background: rgb(240 48 24 / 13%); color: var(--color-text); box-shadow: inset 0 0 0 1px rgb(240 48 24 / 22%); }
+.rail-item[aria-current=page] svg { color: var(--color-shell); }
+.rail-item.unavailable { color: var(--color-text-dim); }
+.rail-label { flex: 1; min-width: 0; }
+.rail-badge { padding: 0 6px; border-radius: 9999px; font-size: 10.5px; line-height: 16px; font-weight: 600; color: var(--color-wm-cyan); background: rgb(40 190 240 / 10%); }
 
-.shell-splitter { position: fixed; z-index: 16; top: 0; bottom: 0; left: calc(var(--detail-left) - 4px); width: 8px; cursor: col-resize; touch-action: none; }
-.shell-splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background-color 120ms ease-out; }
-.shell-splitter:hover::after, .shell-splitter:focus-visible::after, html[data-resizing] .shell-splitter::after { background: rgb(240 48 24 / 55%); }
-.shell-splitter:focus-visible { outline: none; }
-html[data-resizing], html[data-resizing] * { cursor: col-resize !important; user-select: none !important; }
+/* ── Icon buttons of the shell chrome ────────────────────────────────── */
+.shell-icon-btn { flex: none; display: grid; place-items: center; width: 32px; height: 32px; min-height: 32px; border-radius: 8px; background: transparent; color: var(--color-text-muted); transition: background-color 120ms ease-out, color 120ms ease-out; }
+.shell-icon-btn:hover { background: var(--color-surface-2); color: var(--color-text); }
+.shell-icon-btn:active:not(:disabled) { transform: none; }
+.shell-icon-btn[aria-pressed=true] { color: var(--color-text); background: var(--color-surface-2); }
+.shell-icon-btn:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
+
+/* ── Resize handles (Z-4) ────────────────────────────────────────────── */
+.resize-handle { position: relative; z-index: 6; flex: none; touch-action: none; outline: none; }
+.resize-handle[data-axis=x] { width: 4px; margin: 0 -2px; cursor: col-resize; }
+.resize-handle[data-axis=y] { height: 4px; margin: -2px 0; cursor: row-resize; }
+.resize-handle::after { content: ''; position: absolute; background: transparent; transition: background-color 120ms ease-out; }
+.resize-handle[data-axis=x]::after { top: 0; bottom: 0; left: 1px; width: 2px; }
+.resize-handle[data-axis=y]::after { left: 0; right: 0; top: 1px; height: 2px; }
+.resize-handle:hover::after, .resize-handle:focus-visible::after, html[data-resizing] .resize-handle:active::after { background: rgb(240 48 24 / 55%); }
+html[data-resizing=x], html[data-resizing=x] * { cursor: col-resize !important; user-select: none !important; }
+html[data-resizing=y], html[data-resizing=y] * { cursor: row-resize !important; user-select: none !important; }
 html[data-resizing] iframe { pointer-events: none; }
 
-.shell-placeholder { position: fixed; z-index: 1; top: 0; bottom: 0; right: 0; left: var(--detail-left); display: grid; place-items: center; border-left: 1px solid rgb(46 40 37 / 70%); background: rgb(20 18 17 / 45%); }
-.pane-placeholder { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 320px; text-align: center; color: var(--color-text-dim); }
-.pane-placeholder-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--color-surface-2); color: var(--color-text-muted); margin-bottom: 4px; }
-.pane-placeholder-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--color-text-muted); }
-.pane-placeholder-hint { margin: 0; font-size: 13px; line-height: 19px; }
+/* Legacy full-screen layers (board task page, phone-era viewers) clear the sidebar. */
+html[data-shell=desktop] :is(.chat-layer, .board-page, .editor-screen, .term-layer, .preview-viewer:not([data-embedded])) { left: var(--sidebar-w, 0px); }
+html[data-shell=desktop] .term-screen { border-radius: 0; }
+html[data-shell=desktop] .term-chrome-knob { display: none; }
+@keyframes pane-in { from { opacity: 0; transform: translateX(16px); } }
 
 /* ── Bottom sheets → centred dialogs ─────────────────────────────────── */
 html[data-shell=desktop] .sheet, html[data-shell=desktop] .picker-sheet {

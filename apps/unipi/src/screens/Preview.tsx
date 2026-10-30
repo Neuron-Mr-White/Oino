@@ -17,6 +17,10 @@
  * browser on the PC over CDP — see `BrowserView.tsx`.
  *
  * Desktop streaming (UNI-216) is deferred (D-15, WP-A1 removed it).
+ *
+ * WP-A3 (Z-104): this screen is the phone's. On the desktop shell the ports
+ * list is "Local ports" in the side pane `+` launcher and a port opens as a
+ * `forward` tab (`ForwardViewer` embedded, components/panes/ForwardTab.tsx).
  */
 import { createEffect, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
 import { useNavigate, useSearchParams } from '@solidjs/router';
@@ -90,8 +94,8 @@ export default function Preview() {
   );
 }
 
-/** Preview's page header: the shared PageHeader (UNI-218 F1). On the phone Preview is
- * pushed from the session list, so it gets a back arrow; on the desktop it's a sidebar screen. */
+/** Preview's page header: the shared PageHeader (UNI-218 F1). Preview is a phone-only
+ * screen now (Z-104): pushed over the session list, so it gets a back arrow. */
 function PreviewHead(props: { onBack: () => void; chip?: JSX.Element; children?: JSX.Element }) {
   return (
     <PageHeader
@@ -531,7 +535,12 @@ function PortList(props: { ports: ListeningPort[]; starting: number | undefined;
   );
 }
 
-function Viewer(props: { forward: ForwardInfo; hostName: string; onClose: () => void; onStop: () => void }) {
+/** The forward viewer. `embedded` (a side-pane tab, Z-104): no back arrow and no Back/Esc handler — the tab's ✕ closes it. */
+export function ForwardViewer(props: { forward: ForwardInfo; hostName: string; onClose: () => void; onStop: () => void; embedded?: boolean }) {
+  return <Viewer {...props} />;
+}
+
+function Viewer(props: { forward: ForwardInfo; hostName: string; onClose: () => void; onStop: () => void; embedded?: boolean }) {
   const [src, setSrc] = createSignal(props.forward.url);
   const [address, setAddress] = createSignal(urlPath(props.forward.url));
   const [generation, setGeneration] = createSignal(0);
@@ -539,10 +548,14 @@ function Viewer(props: { forward: ForwardInfo; hostName: string; onClose: () => 
   const [stopped, setStopped] = createSignal(false);
   const [loading, setLoading] = createSignal(true);
 
-  createEffect(() => onCleanup(pushBack(() => props.onClose())));
+  createEffect(() => {
+    if (!props.embedded) onCleanup(pushBack(() => props.onClose()));
+  });
 
   // Watch the forward for failed connections (port closed / PC gone).
+  // This computer's own ports (`local-…`) have no forward to watch.
   const timer = setInterval(async () => {
+    if (props.forward.id.startsWith('local-')) return;
     const result = await forwardList();
     if (!result.ok) return;
     const mine = result.value.find((f) => f.id === props.forward.id);
@@ -573,11 +586,13 @@ function Viewer(props: { forward: ForwardInfo; hostName: string; onClose: () => 
   };
 
   return (
-    <div class="preview-viewer" data-testid="preview-viewer">
+    <div class="preview-viewer" data-testid="preview-viewer" data-embedded={props.embedded ? '' : undefined}>
       <header class="preview-viewer-head detail-head">
-        <button type="button" class="ghost-icon-button" aria-label="Back to ports" onClick={props.onClose}>
-          <ArrowLeft size={20} />
-        </button>
+        <Show when={!props.embedded}>
+          <button type="button" class="ghost-icon-button" aria-label="Back to ports" onClick={props.onClose}>
+            <ArrowLeft size={20} />
+          </button>
+        </Show>
         <form class="preview-urlbar" onSubmit={go}>
           <span class="preview-url-origin" title={`${props.hostName} port ${props.forward.remotePort}`}>
             {props.hostName}:{props.forward.remotePort}
@@ -611,13 +626,13 @@ function Viewer(props: { forward: ForwardInfo; hostName: string; onClose: () => 
               {b().message}
               <Show when={b().kind === 'closed'}> Start it again on the PC, then reload.</Show>
               <Show when={b().kind === 'lost' && !stopped()}> Reload to reconnect.</Show>
-              <Show when={stopped()}> Go back to the ports to start it again.</Show>
+              <Show when={stopped()}>{props.embedded ? ' Open it again from + › Local ports.' : ' Go back to the ports to start it again.'}</Show>
             </span>
             <Show
               when={!stopped()}
               fallback={
                 <button type="button" class="preview-banner-btn" onClick={props.onClose}>
-                  Ports
+                  {props.embedded ? 'Close' : 'Ports'}
                 </button>
               }
             >

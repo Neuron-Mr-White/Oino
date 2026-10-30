@@ -247,7 +247,11 @@ export function shortcuts(m = 'Ctrl'): ShortcutGroup[] {
       title: 'Anywhere',
       items: [
         { keys: `${m} K`, what: 'Command palette' },
-        { keys: `${m} 1 … 6`, what: 'Sessions, Chat, Board, Files, Preview, Settings' },
+        { keys: `${m} B`, what: 'Show / hide the sidebar' },
+        { keys: `${m} Alt B`, what: 'Show / hide the side pane' },
+        { keys: `${m} J`, what: 'Show / hide the terminal panel' },
+        { keys: `${m} Shift F`, what: 'Side pane full view (Esc leaves it)' },
+        { keys: `${m} Shift T`, what: 'Reopen the last closed tab' },
         { keys: `${m} /`, what: 'This list' },
         { keys: 'Esc', what: 'Back: close the menu, dialog or pane' },
         { keys: 'Right-click', what: 'The same menu a long-press opens on the phone' },

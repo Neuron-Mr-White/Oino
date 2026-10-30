@@ -6,6 +6,7 @@ import { offline } from './offline';
 import { streamBasic } from './stream-basic';
 import { streamReconnect } from './stream-reconnect';
 import { streamSteer } from './stream-steer';
+import { shellDesktop, shellFullview, shellNarrow, shellSidepaneTabs } from './shell';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -14,4 +15,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'stream-basic': streamBasic,
   'stream-steer': streamSteer,
   'stream-reconnect': streamReconnect,
+  'shell-desktop': shellDesktop,
+  'shell-narrow': shellNarrow,
+  'shell-sidepane-tabs': shellSidepaneTabs,
+  'shell-fullview': shellFullview,
 };

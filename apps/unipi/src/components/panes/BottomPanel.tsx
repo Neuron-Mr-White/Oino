@@ -1,0 +1,88 @@
+/**
+ * The bottom panel (§3.8, WP-A3): the same tab model as the side pane for
+ * `bottomPane` slot entries (U10) and terminal tabs (wave 3, A31), under the
+ * conversation. Cmd/Ctrl+J toggles it; closing the last tab hides it; its
+ * height is remembered (resize handle on its top edge, in AppShell).
+ */
+import { createSignal, Show } from 'solid-js';
+import { PanelBottomClose } from 'lucide-solid';
+import { layout } from '../../lib/layout';
+import { panes, type PaneScope, type PaneView } from '../../lib/panes';
+import { modKey } from '../../lib/shell';
+import { PaneBody } from './PaneBody';
+import { LauncherList, PaneLauncher, type LaunchSpec } from './PaneLauncher';
+import { TabOverview } from './TabOverview';
+import { TabStrip } from './TabStrip';
+
+export function BottomPanel(props: { scope: PaneScope; view: PaneView; localHost: boolean }) {
+  const store = panes();
+  const tabs = () => store.visible(props.scope, 'bottom', props.view);
+  const active = () => store.active(props.scope, 'bottom', props.view);
+  const [launcher, setLauncher] = createSignal<DOMRect | undefined>();
+  const [overview, setOverview] = createSignal<DOMRect | undefined>();
+  const close = (id: string) => {
+    store.close(props.scope, 'bottom', props.view, id);
+    if (tabs().length === 0) layout().toggleBottom(false);
+  };
+  const pick = (spec: LaunchSpec) => void store.open(props.scope, 'bottom', props.view, spec);
+  return (
+    <section class="bottom-panel" aria-label="Bottom panel" data-testid="bottom-panel">
+      <TabStrip
+        label="Bottom panel tabs"
+        testId="bottom-strip"
+        tabs={tabs()}
+        activeId={active()?.id}
+        onActivate={(id) => store.activate(props.scope, 'bottom', props.view, id)}
+        onClose={close}
+        onMove={(id, before) => store.move(props.scope, 'bottom', id, before)}
+        onLauncher={setLauncher}
+        onOverview={setOverview}
+        tools={
+          <button type="button" class="shell-icon-btn tab-strip-btn" aria-label="Hide panel" title={`Hide panel (${modKey()} J)`} onClick={() => layout().toggleBottom(false)} data-testid="hide-bottom">
+            <PanelBottomClose size={16} />
+          </button>
+        }
+      />
+      <Show
+        when={tabs().length > 0}
+        fallback={
+          <div class="pane-empty" data-testid="bottom-empty">
+            <LauncherList inline area="bottom" emptyText="Terminals and extension panels open here." hasSession={!!props.view.sessionId} localHost={props.localHost} onPick={pick} />
+          </div>
+        }
+      >
+        <PaneBody
+          area="bottom"
+          scope={props.scope}
+          sessionId={props.view.sessionId}
+          tabs={tabs()}
+          activeId={active()?.id}
+          onClose={close}
+          onTitle={(id, title) => store.retitle(props.scope, 'bottom', id, title)}
+        />
+      </Show>
+      <Show when={launcher()}>
+        {(a) => <PaneLauncher anchor={a()} area="bottom" hasSession={!!props.view.sessionId} localHost={props.localHost} onPick={pick} onDismiss={() => setLauncher(undefined)} />}
+      </Show>
+      <Show when={overview()}>
+        {(a) => (
+          <TabOverview
+            anchor={a()}
+            tabs={tabs()}
+            activeId={active()?.id}
+            closed={store.recentlyClosed(props.scope, 'bottom', props.view)}
+            onActivate={(id) => store.activate(props.scope, 'bottom', props.view, id)}
+            onClose={close}
+            onCloseOthers={(id) => store.closeOthers(props.scope, 'bottom', props.view, id)}
+            onCloseAll={() => {
+              store.closeAll(props.scope, 'bottom', props.view);
+              layout().toggleBottom(false);
+            }}
+            onReopen={(id) => store.reopen(props.scope, 'bottom', props.view, id)}
+            onDismiss={() => setOverview(undefined)}
+          />
+        )}
+      </Show>
+    </section>
+  );
+}

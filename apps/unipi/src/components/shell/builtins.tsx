@@ -1,39 +1,24 @@
 /**
- * The built-in screens' pane specs and palette commands (UNI-117). Kept
- * here, outside the screen files, because the screens' detail views are
- * global singletons (chat layer, board ui store, editor route): the shell
- * can read their open state without touching the screens. A new screen
- * declares its own in its component instead (see lib/shell.ts).
+ * The built-in screens' palette commands (UNI-117). Kept here, outside the
+ * screen files, because their state lives in global singletons (board ui
+ * store, chat layer). The shell's own commands (Go to, View) are in
+ * AppShell (WP-A3).
  */
 import { onCleanup } from 'solid-js';
-import { useLocation, useNavigate } from '@solidjs/router';
+import { useLocation } from '@solidjs/router';
 import { MessagesSquare, Plus, Search, SlidersHorizontal, LayoutGrid, List, Monitor, FolderOpen, RefreshCw, X, Server, LayoutDashboard, Keyboard, Network, QrCode } from 'lucide-solid';
 import { setProgressSheetOpen } from '../status/lhProgress';
 import { chatVisible, hideChat } from '../../lib/session/open';
-import { setNewChatOpen } from '../../lib/session/newSession';
 import { boardUi } from '../../lib/board/ui';
-import { registerCommands, registerPane, screenOf } from '../../lib/shell';
+import { registerCommands } from '../../lib/shell';
 import { can, isTauri } from '../../lib/platform';
 import { setAddHostOpen } from '../Pairing';
 import { openPairPhone } from '../../lib/pairPhone';
-import { PanePlaceholder } from './DesktopShell';
 
 export function BuiltinPanes() {
   const location = useLocation();
-  const on = (screen: string) => () => screenOf(location.pathname) === screen;
   const ui = boardUi();
-  const onBoard = on('board');
-  const navigate = useNavigate();
-  onCleanup(
-    registerPane({
-      screen: 'chat',
-      open: () => chatVisible(),
-      placeholder: !can('chat') ? undefined : () => <PanePlaceholder icon={<MessagesSquare size={22} />} title="No chat open" hint="Pick a session on the left. It stays live while you browse the others." />,
-    }),
-  );
-  onCleanup(registerPane({ screen: 'board', open: () => !!ui.openedTask() || !!ui.reader() }));
-  onCleanup(registerPane({ screen: 'files', open: () => location.pathname === '/files/edit' }));
-
+  const onBoard = () => location.pathname === '/board';
   const boardReady = () => onBoard() && can('board');
   onCleanup(
     registerCommands([
@@ -51,7 +36,6 @@ export function BuiltinPanes() {
       { id: 'board.closeTask', title: 'Close task', group: 'Board', icon: () => <X size={16} />, keys: 'Esc', when: () => onBoard() && !!ui.openedTask(), run: () => ui.closeTask() },
       { id: 'chat.progress', title: 'Show long-horizon progress', group: 'Chat', keywords: 'goal ralph swarm graph progress mermaid', icon: () => <Network size={16} />, when: () => chatVisible(), run: () => setProgressSheetOpen(true) },
       { id: 'chat.close', title: 'Back to the chat list', group: 'Chat', keywords: 'close leave', icon: () => <X size={16} />, keys: 'Esc', when: () => chatVisible(), run: () => hideChat() },
-      { id: 'chat.new', title: 'New chat', group: 'Chat', keywords: 'start session folder project', icon: () => <Plus size={16} />, when: () => can('chat'), run: () => (navigate('/chat'), setNewChatOpen(true)) },
       { id: 'hosts.add', title: 'Add a PC (pair)', group: 'PCs', keywords: 'pair computer host add a host', icon: () => <Server size={16} />, when: () => can('hosts'), run: () => setAddHostOpen(true) },
       { id: 'hosts.pairPhone', title: 'Pair a phone', group: 'PCs', keywords: 'qr code phone pair this pc computer scan', icon: () => <QrCode size={16} />, when: () => can('localSharing'), run: () => openPairPhone() },
       { id: 'app.reload', title: 'Reload the app', group: 'App', keywords: 'refresh', icon: () => <RefreshCw size={16} />, run: () => window.location.reload() },

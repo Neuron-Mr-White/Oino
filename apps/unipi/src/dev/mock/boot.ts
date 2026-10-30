@@ -42,6 +42,7 @@ export function bootCapture(): void {
       // storage unavailable: fine
     }
   }
+  scenario.setup?.();
 }
 
 bootCapture();

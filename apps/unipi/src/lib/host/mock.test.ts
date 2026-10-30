@@ -115,11 +115,13 @@ describe('mock generators + scenarios (WP-A1)', () => {
   });
 
   it('the A1 scenarios load into a world', async () => {
+    // The scenarios index also pulls the shell scenarios (WP-A3), which
+    // reach lucide-solid — its cold transform can exceed 5 s.
     const { SCENARIOS } = await import('../../dev/mock/scenarios');
     expect(Object.keys(SCENARIOS)).toEqual(expect.arrayContaining(['empty', 'no-host', 'offline']));
     const off = createMockHost(SCENARIOS.offline);
     expect(off.client('pc-coffee').conn().state).toBe('offline');
     const none = createMockHost(SCENARIOS['no-host']);
     expect(await none.client('app').request('list_hosts')).toEqual([]);
-  });
+  }, 30000);
 });

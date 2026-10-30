@@ -1,64 +1,15 @@
 /**
- * Desktop shell registries (UNI-117): panes and palette commands.
+ * Palette commands (UNI-117; WP-A18 grows this into the command center).
  *
- * ── Panes (list | detail) ──────────────────────────────────────────────
- * A screen's LIST is its route component (rendered in `.app-content`). Its
- * DETAIL is a full-screen fixed overlay on the phone (chat layer, task
- * page, editor, terminal…). On the desktop shell the detail is placed to
- * the right of the list instead, with a resizable splitter between them:
- *
- *   registerPane({ screen: 'chat', open: () => chatVisible(),
- *                  placeholder: () => <PanePlaceholder title="Pick a chat" /> });
- *
- * and the overlay element gets the class `shell-detail` (or is one of the
- * legacy overlay classes listed in style.css). While `open()` is true the
- * shell sets `html[data-detail]`, narrows the list to `--list-w` and puts
- * the overlay at `left: var(--detail-left)`. `placeholder` (optional) fills
- * the detail area while nothing is open; without one the list takes the
- * whole width. `screen` is the route's first path segment (`''` → sessions).
- *
- * ── Commands (Ctrl/⌘+K palette) ────────────────────────────────────────
  *   onCleanup(registerCommands([{ id: 'board.new', title: 'New task',
  *     group: 'Board', keys: 'N', run: () => … , when: () => !!slug() }]));
  *
- * Screens register their actions while mounted; the shell always has the
- * "Go to …" commands. `when` hides a command that can't run right now.
+ * Screens register their actions while mounted; the shell registers its
+ * "Go to" and "View" commands (AppShell). `when` hides a command that can't
+ * run right now. The old list | detail pane registry is gone (WP-A3: side
+ * pane + bottom panel, lib/panes.ts).
  */
 import { createSignal, type JSX } from 'solid-js';
-
-export type PaneSpec = {
-  /** Route's first segment: 'sessions' | 'chat' | 'board' | 'files' | 'preview' | … */
-  screen: string;
-  /** Is the detail pane showing something? */
-  open: () => boolean;
-  /** Fills the detail area while nothing is open (desktop only). */
-  placeholder?: () => JSX.Element;
-};
-
-const [panes, setPanes] = createSignal<Record<string, PaneSpec>>({});
-
-/** Declares a screen's list | detail split. Returns an unregister. */
-export function registerPane(spec: PaneSpec): () => void {
-  setPanes((current) => ({ ...current, [spec.screen]: spec }));
-  return () =>
-    setPanes((current) => {
-      if (current[spec.screen] !== spec) return current;
-      const next = { ...current };
-      delete next[spec.screen];
-      return next;
-    });
-}
-
-export function paneFor(screen: string): PaneSpec | undefined {
-  return panes()[screen];
-}
-
-/** Route path → screen key. */
-export function screenOf(pathname: string): string {
-  const first = pathname.split('/').filter(Boolean)[0] ?? '';
-  if (first === '') return 'chat';
-  return first;
-}
 
 export type Command = {
   id: string;

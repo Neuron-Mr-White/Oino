@@ -1,110 +1,141 @@
-import { PageHeader } from './components/PageHeader';
-import { RelaySettings } from './components/RelaySettings';
-import { HostsProvider } from './hosts/context';
-import { Pairing } from './components/Pairing';
+/**
+ * App entry + routes (app spec §3.7, WP-A3). The shell (frames, sidebar,
+ * rail, side pane, bottom panel, shortcuts) is `components/shell/AppShell`.
+ *
+ *   /                    last open session of the last host, else the draft for This computer
+ *   /s/:host/:session    conversation
+ *   /new/:host?cwd=      draft (Z-19, WP-A5 fills it)
+ *   /board, /cron        rail pages
+ *   /x/:entryId          extension sidebar page (`fullscreen` slot, U10)
+ *   /settings/:section?  the one Settings screen
+ *   /setup               SetupWizard
+ * Phone only (until A20 / A29): /chat (the Chat tab list), /files(/edit), /preview
+ * (the forward viewer; on the desktop shell ports live in the side pane `+`
+ * launcher, Z-104). On the desktop shell those redirect to `/`.
+ */
 import { render } from 'solid-js/web';
-import { HashRouter, Route, A, Navigate, useLocation, useNavigate } from '@solidjs/router';
-import { Columns3, Settings as SettingsIcon, MessagesSquare, Files as FilesIcon } from 'lucide-solid';
+import { HashRouter, Navigate, Route, useLocation, useParams, useSearchParams } from '@solidjs/router';
 import { Show } from 'solid-js';
-import type { Component, ParentProps } from 'solid-js';
+import type { Component } from 'solid-js';
+import { Puzzle } from 'lucide-solid';
 import Board from './screens/Board';
 import Chat from './screens/Chat';
 import Cron from './screens/Cron';
 import Files from './screens/Files';
-import Editor from './screens/Editor';
-import { getEditorTarget } from './lib/editorTarget';
 import Preview from './screens/Preview';
-import { ChatLayer } from './components/chat/ChatView';
-import { MermaidViewer } from './components/chat/MermaidViewer';
-import { ReviewViewer } from './components/chat/ReviewViewer';
-import { GitView } from './components/git/GitView';
-import { gitTarget } from './lib/git';
-import { Previewer } from './components/media/Previewer';
-import { LinkAnchorMenu } from './components/LinkAnchorMenu';
-import './components/media/media.css';
 import Settings from './screens/Settings';
 import { SetupWizard } from './screens/SetupWizard';
-import { SetupGate } from './lib/setupGate';
-import { SettingsProvider } from './settings/context';
-import '@xterm/xterm/css/xterm.css';
-import './style.css';
+import { PageHeader } from './components/PageHeader';
+import { EmptyState } from './components/EmptyState';
+import { Requires, UnavailableNotice } from './components/Requires';
+import { AppShell } from './components/shell/AppShell';
+import { readLastSession, Workspace } from './components/shell/Workspace';
+import { sessionHref } from './components/shell/Sidebar';
+import { extPageView } from './components/shell/Rail';
 import { SettingsNotices } from './components/SettingsNotices';
-import { dismissSplashWhenReady } from './lib/splash';
-import { watchForUpdates } from './lib/update';
-import { watchDesktopUpdates } from './lib/desktopUpdate';
-import { DesktopUpdatePrompt } from './components/DesktopUpdate';
 import { UpdateBanner } from './components/UpdateCard';
-import { FloatingBell } from './components/FloatingBell';
-import { NotifyInitRunner } from './components/NotifyInitRunner';
-import { IncomingPushRunner } from './components/IncomingPush';
-import { SharingRequestsRunner } from './components/SharingSettings';
-import { QuitRunner } from './components/LifecycleUi';
-import { PairPhoneDialog } from './components/PairPhone';
-import { chatVisible } from './lib/session/open';
-// The task pane has its own header; the floating bell would cover its ⋯ (UNI-181).
-import { boardUi } from './lib/board/ui';
+import { LOCAL_HOST } from './lib/host/client';
 import { layout } from './lib/layout';
 import { can, isWeb, type Capability } from './lib/platform';
 import { applyWebEntry } from './lib/webEntry';
-import { Requires, UnavailableNotice } from './components/Requires';
-import { DesktopChrome, Sidebar } from './components/shell/DesktopShell';
-import { CommandPalette } from './components/shell/CommandPalette';
-import { BuiltinPanes } from './components/shell/builtins';
-import { DesktopNative } from './components/shell/DesktopNative';
-import { ShortcutsDialog } from './components/shell/ShortcutsDialog';
+import { dismissSplashWhenReady } from './lib/splash';
+import { watchForUpdates } from './lib/update';
+import { watchDesktopUpdates } from './lib/desktopUpdate';
+import './components/media/media.css';
+import '@xterm/xterm/css/xterm.css';
+import './style.css';
 import './components/shell/shell.css';
+import './components/panes/panes.css';
 // Shared tokens + components (UNI-218): last, so it wins over the per-screen rules it unifies.
 import './ui.css';
-/** Keyed editor: a new target (another file picked in the desktop Files pane) remounts it. */
-const NO_EDITOR_TARGET = {};
-function Shell(props: ParentProps) {
-  const location = useLocation();
-  const title = () => location.pathname === '/settings' ? 'Settings' : location.pathname === '/board' ? 'Board' : location.pathname === '/files' ? 'Files' : 'Chat';
-  // /files/edit shows the Files list underneath its full-screen layer; the
-  // page below is inert while it covers it. On the desktop shell (UNI-117) it
-  // sits in the detail pane instead, so the list stays usable.
-  const onEditor = () => location.pathname === '/files/edit';
-  const navigate = useNavigate();
-  const desktop = () => layout().desktop();
-  return (
-    <SettingsProvider><HostsProvider>
-      <RelaySettings/>
-      <div class="app-shell" inert={!desktop() && onEditor() ? true : undefined}>
-        <Show when={desktop()}><Sidebar /></Show>
-        <Show when={location.pathname !== "/" && location.pathname !== "/board" && location.pathname !== "/chat" && location.pathname !== "/files" && location.pathname !== "/preview" && location.pathname !== "/cron" && !onEditor()}><PageHeader title={title()}/></Show>
-        <main class="app-content"><Show when={location.pathname !== "/settings"}><UpdateBanner onOpen={() => navigate("/settings")} /></Show><SettingsNotices />{props.children}</main>
-        <Show when={!desktop()}>
-          <nav class="bottom-nav" aria-label="Main navigation"><A href="/chat"><MessagesSquare size={22} strokeWidth={1.5} /><span>Chat</span></A><A href="/board"><Columns3 size={22} strokeWidth={1.5} /><span>Board</span></A><A href="/files"><FilesIcon size={22} strokeWidth={1.5} /><span>Files</span></A><A href="/settings"><SettingsIcon size={22} strokeWidth={1.5} /><span>Settings</span></A></nav>
-        </Show>
-      </div>
-      <DesktopChrome />
-      <BuiltinPanes />
-      <Show when={can('hosts') && (desktop() || (!onEditor() && !chatVisible() && !boardUi().openedTask() && !gitTarget()))}><FloatingBell /></Show>
-      <ChatLayer /><Show when={onEditor() ? (getEditorTarget() ?? NO_EDITOR_TARGET) : undefined} keyed>{(_target) => <Editor />}</Show><Pairing /><NotifyInitRunner /><IncomingPushRunner /><SharingRequestsRunner /><QuitRunner /><SetupGate /><PairPhoneDialog /><Show when={can('desktopUpdater')}><DesktopUpdatePrompt /></Show><MermaidViewer /><ReviewViewer /><GitView /><Previewer /><LinkAnchorMenu />
-      <CommandPalette />
-      <Show when={desktop()}><ShortcutsDialog /></Show>
-      <DesktopNative />
-    </HostsProvider></SettingsProvider>
-  );
-}
-/** `/files` and `/files/edit` share one route: on the phone the editor is a full-screen layer and
- * the list isn't rendered under it (as before); on the desktop shell the list stays in its pane
- * next to the editor (UNI-117), same instance, so its folder and scroll survive. */
-function FilesRoute() {
-  const location = useLocation();
-  return <Show when={location.pathname === '/files' || layout().desktop()}><Files /></Show>;
-}
+
+const desktop = () => layout().desktop();
+
 /** Screens that need the native core show the standard notice in web mode (lib/platform.ts). */
 const gated = (cap: Capability, Screen: Component, title: string) => () => (
   <Requires cap={cap} fallback={<div class="page-screen"><PageHeader title={title} /><UnavailableNotice cap={cap} /></div>}><Screen /></Requires>
 );
-/** Home is the session list (`/chat`); the web build (served by the kanboard
- * daemon) has no sessions, so it opens on the Board. `/files/edit` is rendered
- * by the shell directly (full-screen-layer pattern) so the Files list
- * underneath keeps its scroll position. Herdr Sessions / Terminal and desktop
- * streaming routes are gone (D-14, D-15). */
-function Home() { return <Navigate href={!can('chat') && can('board') ? '/board' : '/chat'} />; }
-export function Root() { return <HashRouter root={Shell}><Route path="/" component={Home} /><Route path="/chat" component={gated('chat', Chat, 'Chat')} /><Route path="/board" component={Board} /><Route path={['/files', '/files/edit']} component={gated('files', FilesRoute, 'Files')} /><Route path="/cron" component={Cron} /><Route path="/settings" component={Settings} /><Route path="/setup" component={SetupWizard} /><Route path="/preview" component={Preview} /></HashRouter>; }
+
+/** A rail page: on the desktop shell it gets the page column (banner, notices, optional header). */
+const railPage = (Screen: Component, title?: string) => () => (
+  <Show when={desktop()} fallback={<Screen />}>
+    <div class="app-shell ashell-page">
+      <Show when={title}><PageHeader title={title!} /></Show>
+      <main class="app-content">
+        <Show when={title !== 'Settings'}><UpdateBanner onOpen={() => (location.hash = '#/settings')} /></Show>
+        <SettingsNotices />
+        <Screen />
+      </main>
+    </div>
+  </Show>
+);
+
+/** Phone-only routes; the desktop shell sends them home. */
+const phoneOnly = (Screen: Component) => () => <Show when={!desktop()} fallback={<Navigate href="/" />}><Screen /></Show>;
+
+/** `/files` and `/files/edit` share one route: the editor is a full-screen layer over the list (phone). */
+function FilesRoute() {
+  const location = useLocation();
+  return <Show when={location.pathname === '/files'}><Files /></Show>;
+}
+
+/** `/`: the web build (board only) opens the Board; the phone its Chat tab; the desktop the last session or a draft. */
+function Home() {
+  if (!can('chat') && can('board')) return <Navigate href="/board" />;
+  if (!desktop()) return <Navigate href="/chat" />;
+  const last = readLastSession();
+  return <Navigate href={last ? sessionHref(last.hostId, last.sessionId) : `/new/${LOCAL_HOST}`} />;
+}
+
+function ConversationRoute() {
+  const params = useParams<{ host: string; session: string }>();
+  const body = () => (
+    <Show when={params.session} keyed>
+      {(session) => <Workspace hostId={params.host} sessionId={session} />}
+    </Show>
+  );
+  return <Show when={desktop()} fallback={<div class="ws-layer">{body()}</div>}>{body()}</Show>;
+}
+
+function DraftRoute() {
+  const params = useParams<{ host: string }>();
+  const [search] = useSearchParams<{ cwd?: string }>();
+  const body = () => <Workspace hostId={params.host} cwd={search.cwd} />;
+  return <Show when={desktop()} fallback={<div class="ws-layer">{body()}</div>}>{body()}</Show>;
+}
+
+function ExtPageRoute() {
+  const params = useParams<{ entryId: string }>();
+  return (
+    <Show
+      when={extPageView()}
+      fallback={<EmptyState icon={<Puzzle size={22} />} title="This page isn't available" body="The extension that adds it is off or not installed." testId="ext-page-missing" />}
+    >
+      {(View) => {
+        const V = View();
+        return <V entryId={decodeURIComponent(params.entryId)} />;
+      }}
+    </Show>
+  );
+}
+
+export function Root() {
+  return (
+    <HashRouter root={AppShell}>
+      <Route path="/" component={Home} />
+      <Route path="/s/:host/:session" component={ConversationRoute} />
+      <Route path="/new/:host" component={DraftRoute} />
+      <Route path="/chat" component={phoneOnly(gated('chat', Chat, 'Chat'))} />
+      <Route path="/board" component={railPage(Board)} />
+      <Route path="/cron" component={railPage(Cron)} />
+      <Route path="/x/:entryId" component={railPage(ExtPageRoute)} />
+      <Route path={['/settings', '/settings/:section']} component={railPage(Settings, 'Settings')} />
+      <Route path="/setup" component={railPage(SetupWizard)} />
+      <Route path={['/files', '/files/edit']} component={phoneOnly(gated('files', FilesRoute, 'Files'))} />
+      <Route path="/preview" component={phoneOnly(Preview)} />
+    </HashRouter>
+  );
+}
 const root = document.getElementById('root');
 /** Visible viewport height (shrinks with the soft keyboard) for sheet caps. */
 function trackVisualViewport(): void {

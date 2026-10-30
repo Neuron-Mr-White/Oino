@@ -1,0 +1,180 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@solidjs/testing-library';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Root } from '../../main';
+import { createMockHost } from '../../dev/mock/host';
+import { streamBasic } from '../../dev/mock/scenarios/stream-basic';
+import { setHostClientFactory } from '../../lib/host/factory';
+import { resetLayout, setDesktopOverride } from '../../lib/layout';
+import { setPlatformOverride } from '../../lib/platform';
+import { resetPanes } from '../../lib/panes';
+import { registerPaneKind } from '../../lib/panes/kinds';
+import { resetHubs } from '../../lib/session/hub';
+import { registerChatAction } from './ConversationHeader';
+import { shellKeyOf } from './AppShell';
+
+// The desktop app's native listeners (quit sheet, tray, window title) have no Tauri here.
+vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
+
+const HOST = 'pc-coffee';
+const SESSION = streamBasic.hosts[0]!.cards![0]!.session_id;
+
+function width(w: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: w });
+}
+
+function boot(hash: string, w = 1440) {
+  width(w);
+  setPlatformOverride('tauri-desktop');
+  setDesktopOverride(true);
+  setHostClientFactory(createMockHost(streamBasic).client);
+  location.hash = hash;
+  return render(() => <Root />);
+}
+
+const loaded = () => waitFor(() => expect(screen.getByTestId('conv-title').textContent).not.toBe('Session'));
+
+const key = (k: string, opts: Partial<KeyboardEventInit> & { code?: string } = {}) =>
+  fireEvent.keyDown(window, { key: k, code: opts.code ?? `Key${k.toUpperCase()}`, ctrlKey: true, ...opts });
+
+beforeEach(() => {
+  localStorage.clear();
+  // Native listeners (quit sheet, tray) look for Tauri's internals.
+  (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { transformCallback: () => 0, invoke: () => Promise.resolve(0) };
+});
+afterEach(() => {
+  cleanup();
+  setDesktopOverride(undefined);
+  setPlatformOverride(undefined);
+  setHostClientFactory(undefined);
+  resetHubs();
+  resetPanes();
+  resetLayout();
+  location.hash = '';
+  width(1024);
+  delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+});
+
+describe('shell keys', () => {
+  it('maps chords (Cmd or Ctrl)', () => {
+    const k = (key: string, mods: Partial<KeyboardEvent> = {}) => shellKeyOf({ key, code: `Key${key.toUpperCase()}`, ctrlKey: false, metaKey: true, altKey: false, shiftKey: false, ...mods });
+    expect(k('b')).toBe('sidebar');
+    expect(k('j')).toBe('bottom');
+    expect(k('b', { altKey: true })).toBe('side');
+    expect(k('f', { shiftKey: true })).toBe('fullview');
+    expect(k('t', { shiftKey: true })).toBe('reopen');
+    expect(k('k')).toBe('palette');
+    expect(k('1')).toBeUndefined(); // the old Ctrl+1…6 screens are gone
+    expect(shellKeyOf({ key: 'b', code: 'KeyB', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false })).toBeUndefined();
+  });
+});
+
+describe('routes', () => {
+  it('/ opens the draft for This computer when nothing was open', async () => {
+    boot('#/');
+    await waitFor(() => expect(location.hash).toBe('#/new/local'));
+    expect(await screen.findByTestId('workspace')).toBeInTheDocument();
+    expect(screen.getByTestId('conv-title')).toHaveTextContent('New chat');
+  });
+
+  it('/s/:host/:session shows the conversation frame; / reopens it next time', async () => {
+    const r = boot(`#/s/${HOST}/${SESSION}`);
+    await waitFor(() => expect(screen.getByTestId('conv-title').textContent).not.toBe('Session'));
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('rail-board')).toBeInTheDocument();
+    expect(screen.getByTestId('rail-settings')).toBeInTheDocument();
+    // Files / Git / Preview are not rail pages (Z-1, Z-104)
+    expect(screen.queryByText('Files', { selector: '.rail-label' })).toBeNull();
+    expect(screen.queryByText('Preview', { selector: '.rail-label' })).toBeNull();
+    r.unmount();
+    boot('#/');
+    await waitFor(() => expect(location.hash).toBe(`#/s/${HOST}/${SESSION}`));
+  });
+
+  it('rail pages and desktop-only redirects', async () => {
+    boot('#/board');
+    await waitFor(() => expect(screen.getByTestId('rail-board')).toHaveAttribute('aria-current', 'page'));
+    location.hash = '#/x/unipi.demo%2Fpage';
+    expect(await screen.findByTestId('ext-page-missing')).toBeInTheDocument();
+    location.hash = '#/preview';
+    await waitFor(() => expect(location.hash).not.toBe('#/preview'));
+  });
+});
+
+describe('frame toggles', () => {
+  it('Cmd/Ctrl+B / J / Alt+B / Shift+F and Esc', async () => {
+    boot(`#/s/${HOST}/${SESSION}`);
+    await loaded();
+    key('b');
+    expect(screen.queryByTestId('sidebar')).toBeNull();
+    expect(screen.getByTestId('sidebar-reveal')).toBeInTheDocument();
+    key('b');
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+
+    expect(screen.queryByTestId('bottom-panel')).toBeNull();
+    key('j');
+    expect(screen.getByTestId('bottom-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-bottom')).toHaveAttribute('aria-pressed', 'true');
+
+    expect(screen.queryByTestId('side-pane')).toBeNull();
+    key('b', { altKey: true });
+    expect(screen.getByTestId('side-pane')).toBeInTheDocument();
+    expect(screen.getByTestId('workspace')).toHaveAttribute('data-side', 'push');
+    expect(screen.getByTestId('side-empty')).toBeInTheDocument(); // empty pane = the launcher
+
+    key('f', { shiftKey: true });
+    expect(screen.getByTestId('workspace')).toHaveAttribute('data-side', 'full');
+    fireEvent.click(screen.getByTestId('fullview-chat-tab'));
+    expect(screen.getByTestId('workspace')).toHaveAttribute('data-chat');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByTestId('workspace')).toHaveAttribute('data-side', 'push');
+  });
+
+  it('below 1280px the side pane is an overlay; a click outside closes it', async () => {
+    boot(`#/s/${HOST}/${SESSION}`, 1000);
+    await loaded();
+    fireEvent.click(screen.getByTestId('toggle-side'));
+    expect(screen.getByTestId('workspace')).toHaveAttribute('data-side', 'overlay');
+    fireEvent.click(screen.getByTestId('side-scrim'));
+    expect(screen.queryByTestId('side-pane')).toBeNull();
+  });
+
+  it('tabs: launcher opens, ✕ closes (last one hides the pane), Cmd/Ctrl+Shift+T reopens', async () => {
+    const off = registerPaneKind({ kind: 'demo', icon: () => null, title: () => 'Demo', singleton: false, scope: 'project', launcher: { label: 'Demo', order: 1 }, component: () => <p>demo body</p> });
+    try {
+      boot(`#/s/${HOST}/${SESSION}`);
+      // tabs are scoped to the session's project: wait for its card
+      await waitFor(() => expect(screen.getByTestId('conv-title').textContent).not.toBe('Session'));
+      key('b', { altKey: true });
+      fireEvent.click(within(screen.getByTestId('side-empty')).getByTestId('launcher-demo'));
+      expect(await screen.findByText('demo body')).toBeInTheDocument();
+      const tab = screen.getByRole('tab', { name: /Demo/ });
+      expect(tab).toHaveAttribute('aria-selected', 'true');
+      fireEvent.click(within(tab).getByLabelText('Close Demo'));
+      expect(screen.queryByTestId('side-pane')).toBeNull();
+      key('t', { shiftKey: true });
+      expect(await screen.findByText('demo body')).toBeInTheDocument();
+    } finally {
+      off();
+    }
+  });
+});
+
+describe('header ⋯ (Z-2)', () => {
+  it('lists the chat-scoped actions in order; unplugged ones stay hidden', async () => {
+    boot(`#/s/${HOST}/${SESSION}`);
+    await waitFor(() => expect(screen.getByTestId('conv-title').textContent).not.toBe('Session'));
+    fireEvent.click(screen.getByTestId('conv-more'));
+    const labels = () => screen.getAllByRole('menuitem').map((m) => m.textContent?.trim());
+    // the mock cards have no session file: no "Copy log path"
+    expect(labels()).toEqual(['Copy session id', 'Copy path']);
+    fireEvent.click(screen.getByTestId('anchored-menu-backdrop'));
+    const offs = (['rename', 'fork', 'export', 'reveal', 'info'] as const).map((id) => registerChatAction(id, { run: () => {} }));
+    try {
+      fireEvent.click(screen.getByTestId('conv-more'));
+      expect(labels()).toEqual(['Rename…', 'Fork', 'Export…', 'Copy session id', 'Copy path', 'Reveal folder', 'Session info']);
+    } finally {
+      offs.forEach((o) => o());
+    }
+  });
+});

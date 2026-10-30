@@ -1,6 +1,6 @@
 /**
  * Desktop-app native wiring (UNI-117 part 2), mounted once by the shell:
- * - window title follows the screen and the open chat / file
+ * - window title follows the page and the shown session
  *   (`windowTitle` cap: desktop app + web);
  * - native OS notifications for new "needs you" / finished items while the
  *   window isn't focused (`nativeNotifications`, desktop app only; the
@@ -11,28 +11,32 @@
 import { createEffect, createMemo, onCleanup, onMount } from 'solid-js';
 import { useLocation } from '@solidjs/router';
 import { can } from '../../lib/platform';
-import { screenOf } from '../../lib/shell';
-import { chatVisible, openChatState } from '../../lib/session/open';
-import { getEditorTarget } from '../../lib/editorTarget';
+import { hubs } from '../../lib/session/hub';
+import { sessionTitle } from '../../lib/session/selectors';
 import { needsYou } from '../../lib/needsYou';
 import { useHosts } from '../../hosts/context';
 import { runningAgents } from '../../lib/mascotLive';
 import { desktopNotifyOn, nativeNotify, notifyPlan, notifyText, setTrayStatus, setWindowTitle, windowTitle } from '../../lib/desktop';
-import { NAV } from './DesktopShell';
+import { routeSession } from './Sidebar';
+
+/** Pure: the window title's page label for a route (WP-A3 routes). */
+export function pageLabel(pathname: string): string | undefined {
+  const first = pathname.split('/').filter(Boolean)[0] ?? '';
+  const labels: Record<string, string> = { board: 'Board', cron: 'Cron', settings: 'Settings', setup: 'Setup', new: 'New chat', chat: 'Chat', files: 'Files', preview: 'Preview' };
+  return labels[first];
+}
 
 export function DesktopNative() {
   const location = useLocation();
   const hosts = useHosts();
-  const screen = createMemo(() => screenOf(location.pathname));
+  const shown = createMemo(() => routeSession(location.pathname));
 
   createEffect(() => {
     if (!can('windowTitle')) return;
-    const label = NAV.find((n) => n.screen === screen())?.label;
-    let detail: string | undefined;
-    const chat = openChatState();
-    if (screen() === 'chat' && chatVisible() && chat) detail = chat.chat.state.session?.name || chat.target.title;
-    else if (location.pathname === '/files/edit') detail = getEditorTarget()?.path.split('/').pop();
-    setWindowTitle(windowTitle([detail, label]));
+    const s = shown();
+    const card = s ? hubs().peek(s.hostId)?.state.cards[s.sessionId] : undefined;
+    const detail = s ? (card ? sessionTitle(card) : undefined) : undefined;
+    setWindowTitle(windowTitle([detail, pageLabel(location.pathname)]));
   });
 
   // Native notifications for new "needs you" items (seeded on first look: no burst at launch).
