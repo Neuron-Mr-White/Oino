@@ -1,0 +1,14 @@
+{
+ "t": "KeyHints",
+ "hints": [
+  {
+   "keys": "enter",
+   "label": "open"
+  },
+  {
+   "keys": "n",
+   "label": "new",
+   "action": "new-task"
+  }
+ ]
+}

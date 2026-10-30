@@ -1,0 +1,29 @@
+{
+ "t": "Paragraph",
+ "text": {
+  "lines": [
+   {
+    "spans": [
+     {
+      "content": "hey",
+      "style": {
+       "fg": "accent",
+       "link": "https://oino.dev"
+      }
+     }
+    ],
+    "alignment": "Center",
+    "style": {
+     "addModifier": [
+      "ITALIC"
+     ]
+    }
+   }
+  ],
+  "style": {
+   "fg": "text"
+  },
+  "alignment": "Right"
+ },
+ "alignment": "Center"
+}

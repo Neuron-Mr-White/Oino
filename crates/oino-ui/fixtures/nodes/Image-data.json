@@ -1,0 +1,11 @@
+{
+ "t": "Image",
+ "src": {
+  "data": "aGVsbG8=",
+  "mimeType": "image/png"
+ },
+ "alt": "shot",
+ "fit": "Contain",
+ "maxWidth": 40,
+ "maxHeight": 10
+}

@@ -1,0 +1,11 @@
+{
+ "t": "Block",
+ "title": "Details",
+ "collapsible": true,
+ "collapsed": true,
+ "onToggle": "toggle-details",
+ "child": {
+  "t": "Paragraph",
+  "text": "hidden"
+ }
+}

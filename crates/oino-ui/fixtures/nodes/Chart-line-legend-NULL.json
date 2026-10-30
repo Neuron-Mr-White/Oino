@@ -1,0 +1,33 @@
+{
+ "t": "Chart",
+ "datasets": [
+  {
+   "name": "ctx",
+   "data": [
+    [
+     0.0,
+     0.5
+    ],
+    [
+     1.0,
+     0.9
+    ]
+   ],
+   "marker": "Braille",
+   "graphType": "Line"
+  }
+ ],
+ "xAxis": {
+  "bounds": [
+   0.0,
+   1.0
+  ]
+ },
+ "yAxis": {
+  "bounds": [
+   0.0,
+   1.0
+  ]
+ },
+ "legendPosition": null
+}

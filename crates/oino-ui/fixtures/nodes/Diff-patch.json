@@ -1,0 +1,7 @@
+{
+ "t": "Diff",
+ "patch": "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new",
+ "path": "f.rs",
+ "context": 3,
+ "mode": "Split"
+}

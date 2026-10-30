@@ -1,0 +1,12 @@
+{
+ "t": "Button",
+ "label": "Deploy",
+ "action": "deploy",
+ "value": {
+  "env": "prod"
+ },
+ "variant": "Primary",
+ "icon": "play",
+ "disabled": false,
+ "confirm": "Deploy to production?"
+}

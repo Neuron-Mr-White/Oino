@@ -1,0 +1,11 @@
+{
+ "t": "Sparkline",
+ "data": [
+  2,
+  0,
+  8
+ ],
+ "direction": "RightToLeft",
+ "barSet": "Three",
+ "absentValueSymbol": "\u00b7"
+}

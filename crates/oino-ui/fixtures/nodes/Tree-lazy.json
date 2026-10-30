@@ -1,0 +1,10 @@
+{
+ "t": "Tree",
+ "nodes": [
+  {
+   "key": "a",
+   "label": "A",
+   "lazy": true
+  }
+ ]
+}

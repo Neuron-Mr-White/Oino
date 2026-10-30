@@ -1,0 +1,32 @@
+[package]
+name = "oino-ui"
+version = "1.0.0-alpha.5"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Wire types and ratatui-mirroring builder for the Oino extension UI protocol v2 (serde-only, wasm32-wasip2-safe)"
+
+[features]
+default = []
+# JSON Schema export (ui-protocol v2 Appendix A + registry envelopes).
+schema = []
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# No resolvers: the checked-in schemas are self-contained (and WASM-safe).
+jsonschema = { version = "0.30", default-features = false }
+
+# Criterion cannot build for wasip2 (rayon); keep it out of wasm dev builds.
+[target.'cfg(not(target_os = "wasi"))'.dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "validate"
+harness = false
+
+[lints]
+workspace = true

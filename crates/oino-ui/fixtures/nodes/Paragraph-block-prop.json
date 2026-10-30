@@ -1,0 +1,17 @@
+{
+ "t": "Paragraph",
+ "key": "p",
+ "style": {
+  "fg": "dim"
+ },
+ "block": {
+  "title": "Framed",
+  "borders": "ALL",
+  "padding": 1,
+  "collapsed": false
+ },
+ "text": "framed text",
+ "fallback": {
+  "t": "Spinner"
+ }
+}

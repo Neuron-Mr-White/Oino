@@ -1,0 +1,12 @@
+{
+ "t": "LineGauge",
+ "ratio": 0.25,
+ "label": "done",
+ "filledStyle": {
+  "fg": "success"
+ },
+ "unfilledStyle": {
+  "fg": "border"
+ },
+ "lineSet": "Thick"
+}

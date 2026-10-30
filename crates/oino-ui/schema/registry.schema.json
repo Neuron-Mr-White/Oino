@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oino.dev/schemas/ui/2/registry.schema.json",
+  "title": "Oino UI protocol v2 registry envelopes",
+  "description": "UiEntry / UiSnapshot / UiPatch / RegistryOp (ui-protocol v2 §6.1, §9.2) and NodeOp (§4.7). Limits that JSON Schema cannot express (depth, total nodes, encoded size, sibling-key uniqueness) are §4.8. Node trees reference node.schema.json.",
+  "$defs": {
+    "Node": {"$ref": "node.schema.json"},
+    "Line": {"$ref": "node.schema.json#/$defs/Line"},
+    "Icon": {"$ref": "node.schema.json#/$defs/Icon"},
+    "Color": {"$ref": "node.schema.json#/$defs/Color"},
+    "Key": {"$ref": "node.schema.json#/$defs/Key"},
+    "ActionId": {"$ref": "node.schema.json#/$defs/ActionId"},
+    "NodePath": {"type": "array", "items": {"type": "string"}},
+    "PatchField": {"enum": ["children", "items", "rows", "nodes", "lines", "titles", "datasets", "data", "panes"]},
+    "PatchItem": {"oneOf": [{"$ref": "node.schema.json"}, {"type": "object"}, {"type": "string"}, {"type": "number"}, {"type": "boolean"}, {"type": "null"}, {"type": "array"}]},
+    "NodeOp": {"type": "object", "required": ["op"], "oneOf": [
+      {"type": "object", "properties": {"op": {"const": "replace"}, "path": {"$ref": "#/$defs/NodePath"}, "node": {"$ref": "node.schema.json"}}, "required": ["op", "path", "node"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "set"}, "path": {"$ref": "#/$defs/NodePath"}, "props": {"type": "object"}}, "required": ["op", "path", "props"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "splice"}, "path": {"$ref": "#/$defs/NodePath"}, "field": {"$ref": "#/$defs/PatchField"}, "index": {"type": "integer", "minimum": 0}, "remove": {"type": "integer", "minimum": 0}, "insert": {"type": "array", "items": {"$ref": "#/$defs/PatchItem"}}}, "required": ["op", "path", "field", "index", "remove", "insert"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "append"}, "path": {"$ref": "#/$defs/NodePath"}, "field": {"$ref": "#/$defs/PatchField"}, "items": {"type": "array", "items": {"$ref": "#/$defs/PatchItem"}}}, "required": ["op", "path", "field", "items"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "item"}, "path": {"$ref": "#/$defs/NodePath"}, "field": {"$ref": "#/$defs/PatchField"}, "key": {"$ref": "node.schema.json#/$defs/Key"}, "value": {"$ref": "#/$defs/PatchItem"}}, "required": ["op", "path", "field", "key", "value"], "additionalProperties": false}
+    ]},
+    "Slot": {"enum": ["overlay", "sidePane", "bottomPane", "editorReplace", "fullscreen", "widget", "widgetBelow", "status", "turnFooter", "header", "footer", "settings"]},
+    "Scope": {"enum": ["session", "host"]},
+    "ReservedComponent": {"enum": ["board", "cron", "files", "git", "browser", "terminal", "sessionInfo", "lhStatus", "turnFiles"]},
+    "EntrySize": {"enum": ["small", "medium", "large", "full"]},
+    "KeyBinding": {"type": "object", "properties": {"key": {"type": "string"}, "action": {"$ref": "#/$defs/ActionId"}, "label": {"type": "string"}}, "required": ["key", "label"], "additionalProperties": false},
+    "SettingsNamespace": {"type": "object"},
+    "UiView": {"type": "object", "required": ["kind"], "oneOf": [
+      {"type": "object", "properties": {"kind": {"const": "tree"}, "root": {"$ref": "node.schema.json"}}, "required": ["kind", "root"], "additionalProperties": false},
+      {"type": "object", "properties": {"kind": {"const": "lines"}, "lines": {"type": "array", "items": {"type": "string"}}}, "required": ["kind", "lines"], "additionalProperties": false},
+      {"type": "object", "properties": {"kind": {"const": "status"}, "text": {"$ref": "node.schema.json#/$defs/Line"}}, "required": ["kind", "text"], "additionalProperties": false},
+      {"type": "object", "properties": {"kind": {"const": "reserved"}, "component": {"$ref": "#/$defs/ReservedComponent"}, "fallback": {"$ref": "node.schema.json"}, "params": {}}, "required": ["kind", "component"], "additionalProperties": false},
+      {"type": "object", "properties": {"kind": {"const": "renderer"}, "key": {"type": "string"}}, "required": ["kind", "key"], "additionalProperties": false},
+      {"type": "object", "properties": {"kind": {"const": "settings"}, "namespace": {"$ref": "#/$defs/SettingsNamespace"}}, "required": ["kind", "namespace"], "additionalProperties": false}
+    ]},
+    "UiEntry": {"type": "object", "properties": {
+      "id": {"type": "string"},
+      "extensionId": {"type": "string"},
+      "scope": {"$ref": "#/$defs/Scope"},
+      "slot": {"$ref": "#/$defs/Slot"},
+      "order": {"type": "integer"},
+      "seq": {"type": "integer", "minimum": 0},
+      "title": {"type": "string"},
+      "icon": {"$ref": "#/$defs/Icon"},
+      "badge": {"$ref": "#/$defs/Line"},
+      "tone": {"$ref": "#/$defs/Color"},
+      "view": {"$ref": "#/$defs/UiView"},
+      "keys": {"type": "array", "items": {"$ref": "#/$defs/KeyBinding"}},
+      "focus": {"type": "boolean"},
+      "closeOnEscape": {"type": "boolean"},
+      "size": {"$ref": "#/$defs/EntrySize"},
+      "rev": {"type": "integer", "minimum": 0}
+    }, "required": ["id", "extensionId", "scope", "slot", "seq", "view", "rev"], "additionalProperties": false},
+    "UiRequest": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+    "UiMeta": {"type": "object", "properties": {
+      "title": {"type": "string"},
+      "workingMessage": {"type": "string"},
+      "workingVisible": {"type": "boolean"},
+      "shortcuts": {"type": "array", "items": {"$ref": "#/$defs/KeyBinding"}}
+    }, "additionalProperties": false},
+    "UiMetaPatch": {"type": "object", "properties": {
+      "title": {"type": "string"},
+      "workingMessage": {"type": "string"},
+      "workingVisible": {"type": "boolean"},
+      "shortcuts": {"type": "array", "items": {"$ref": "#/$defs/KeyBinding"}}
+    }, "additionalProperties": false},
+    "EntryMetaPatch": {"type": "object", "properties": {
+      "title": {"type": "string"},
+      "icon": {"$ref": "#/$defs/Icon"},
+      "badge": {"$ref": "#/$defs/Line"},
+      "order": {"type": "integer"},
+      "keys": {"type": "array", "items": {"$ref": "#/$defs/KeyBinding"}},
+      "tone": {"$ref": "#/$defs/Color"},
+      "focus": {"type": "boolean"}
+    }, "additionalProperties": false},
+    "DismissReason": {"enum": ["answered", "timeout", "cancelled"]},
+    "RegistryOp": {"type": "object", "required": ["op"], "oneOf": [
+      {"type": "object", "properties": {"op": {"const": "put"}, "entry": {"$ref": "#/$defs/UiEntry"}}, "required": ["op", "entry"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "del"}, "id": {"type": "string"}}, "required": ["op", "id"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "meta"}, "id": {"type": "string"}, "set": {"$ref": "#/$defs/EntryMetaPatch"}}, "required": ["op", "id", "set"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "tree"}, "id": {"type": "string"}, "rev": {"type": "integer", "minimum": 0}, "ops": {"type": "array", "items": {"$ref": "#/$defs/NodeOp"}}}, "required": ["op", "id", "rev", "ops"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "invalidate"}, "id": {"type": "string"}, "turns": {"type": "array", "items": {"type": "string"}}}, "required": ["op", "id"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "dialog"}, "request": {"$ref": "#/$defs/UiRequest"}}, "required": ["op", "request"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "dismiss"}, "id": {"type": "string"}, "reason": {"$ref": "#/$defs/DismissReason"}}, "required": ["op", "id", "reason"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "sessionMeta"}, "set": {"$ref": "#/$defs/UiMetaPatch"}}, "required": ["op", "set"], "additionalProperties": false},
+      {"type": "object", "properties": {"op": {"const": "effect"}, "request": {"$ref": "#/$defs/UiRequest"}}, "required": ["op", "request"], "additionalProperties": false}
+    ]},
+    "UiSnapshot": {"type": "object", "properties": {
+      "scope": {"$ref": "#/$defs/Scope"},
+      "sessionId": {"type": "string"},
+      "rev": {"type": "integer", "minimum": 0},
+      "entries": {"type": "array", "items": {"$ref": "#/$defs/UiEntry"}},
+      "dialogs": {"type": "array", "items": {"$ref": "#/$defs/UiRequest"}},
+      "meta": {"$ref": "#/$defs/UiMeta"}
+    }, "required": ["scope", "rev"], "additionalProperties": false},
+    "UiPatch": {"type": "object", "properties": {
+      "scope": {"$ref": "#/$defs/Scope"},
+      "sessionId": {"type": "string"},
+      "rev": {"type": "integer", "minimum": 0},
+      "ops": {"type": "array", "items": {"$ref": "#/$defs/RegistryOp"}}
+    }, "required": ["scope", "rev"], "additionalProperties": false},
+    "UiAction": {"type": "object", "properties": {
+      "panelId": {"type": "string"},
+      "actionId": {"$ref": "#/$defs/ActionId"},
+      "value": {},
+      "values": {"type": "object"},
+      "path": {"$ref": "#/$defs/NodePath"},
+      "source": {"enum": ["tui", "app", "rpc"]}
+    }, "required": ["panelId", "actionId"], "additionalProperties": false},
+    "UiVisible": {"type": "object", "properties": {
+      "entryId": {"type": "string"},
+      "visible": {"type": "boolean"}
+    }, "required": ["entryId", "visible"], "additionalProperties": false},
+    "UiCapabilities": {"type": "object", "properties": {
+      "protocol": {"type": "integer", "const": 2},
+      "dialogs": {"type": "array", "items": {"type": "string"}},
+      "slots": {"type": "array", "items": {"$ref": "#/$defs/Slot"}},
+      "reserved": {"type": "array", "items": {"$ref": "#/$defs/ReservedComponent"}},
+      "nodes": {"type": "string"},
+      "images": {"type": "boolean"},
+      "osNotify": {"type": "boolean"},
+      "clipboard": {"type": "boolean"}
+    }, "required": ["protocol", "dialogs", "slots", "reserved", "nodes", "images", "osNotify", "clipboard"], "additionalProperties": false},
+    "PanelOpen": {"type": "object", "properties": {
+      "panelId": {"type": "string"},
+      "placement": {"$ref": "#/$defs/Slot"},
+      "title": {"type": "string"},
+      "icon": {"$ref": "#/$defs/Icon"},
+      "badge": {"$ref": "#/$defs/Line"},
+      "order": {"type": "integer"},
+      "spec": {"$ref": "node.schema.json"},
+      "keys": {"type": "array", "items": {"$ref": "#/$defs/KeyBinding"}},
+      "focus": {"type": "boolean"},
+      "closeOnEscape": {"type": "boolean"},
+      "size": {"$ref": "#/$defs/EntrySize"},
+      "params": {}
+    }, "required": ["placement"], "additionalProperties": false},
+    "PanelUpdate": {"type": "object", "properties": {
+      "spec": {"$ref": "node.schema.json"},
+      "patch": {"type": "array", "items": {"$ref": "#/$defs/NodeOp"}},
+      "title": {"type": "string"},
+      "icon": {"$ref": "#/$defs/Icon"},
+      "badge": {"$ref": "#/$defs/Line"},
+      "order": {"type": "integer"},
+      "keys": {"type": "array", "items": {"$ref": "#/$defs/KeyBinding"}},
+      "fallback": {"$ref": "node.schema.json"}
+    }, "additionalProperties": false}
+  }
+}

@@ -1,0 +1,11 @@
+{
+ "t": "Sparkline",
+ "data": [
+  1,
+  null,
+  3,
+  null,
+  5
+ ],
+ "max": 10
+}

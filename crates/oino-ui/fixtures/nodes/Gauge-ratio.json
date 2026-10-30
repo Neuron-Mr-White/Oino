@@ -1,0 +1,9 @@
+{
+ "t": "Gauge",
+ "ratio": 0.4,
+ "label": "40%",
+ "gaugeStyle": {
+  "fg": "success"
+ },
+ "useUnicode": true
+}

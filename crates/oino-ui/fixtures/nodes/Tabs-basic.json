@@ -1,0 +1,35 @@
+{
+ "t": "Tabs",
+ "titles": [
+  {
+   "key": "one",
+   "title": "One"
+  },
+  {
+   "key": "two",
+   "title": "Two",
+   "badge": {
+    "spans": [
+     {
+      "content": "2",
+      "style": {
+       "fg": "accent"
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "selected": "two",
+ "divider": "\u2502",
+ "padding": [
+  " ",
+  " "
+ ],
+ "highlightStyle": {
+  "addModifier": [
+   "BOLD"
+  ]
+ },
+ "onSelect": "tab"
+}

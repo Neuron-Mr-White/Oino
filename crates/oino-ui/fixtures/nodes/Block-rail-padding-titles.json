@@ -1,0 +1,42 @@
+{
+ "t": "Block",
+ "title": [
+  {
+   "content": {
+    "spans": [
+     "Panel"
+    ],
+    "alignment": "Left"
+   },
+   "alignment": "Center",
+   "position": "Top"
+  },
+  {
+   "content": "source",
+   "position": "Bottom"
+  }
+ ],
+ "titleAlignment": "Center",
+ "borders": [
+  "TOP",
+  "RIGHT",
+  "BOTTOM",
+  "LEFT"
+ ],
+ "borderType": "Double",
+ "borderStyle": {
+  "fg": "borderAccent"
+ },
+ "titleStyle": {
+  "addModifier": [
+   "BOLD"
+  ]
+ },
+ "padding": {
+  "left": 1,
+  "right": 1,
+  "top": 0,
+  "bottom": 0
+ },
+ "rail": "harness"
+}

@@ -1,0 +1,14 @@
+{
+ "t": "BarChart",
+ "data": [
+  {
+   "bars": [
+    {
+     "value": 9,
+     "label": "score"
+    }
+   ]
+  }
+ ],
+ "direction": "Horizontal"
+}

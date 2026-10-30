@@ -1,0 +1,53 @@
+{
+ "t": "Chart",
+ "datasets": [
+  {
+   "name": "tok/s",
+   "data": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     1.0,
+     4.0
+    ],
+    [
+     2.0,
+     3.5
+    ]
+   ],
+   "marker": "Dot",
+   "graphType": "Scatter",
+   "style": {
+    "fg": "c2"
+   }
+  }
+ ],
+ "xAxis": {
+  "title": "min",
+  "bounds": [
+   0.0,
+   2.0
+  ],
+  "labels": [
+   {
+    "content": "0"
+   },
+   {
+    "content": "2"
+   }
+  ],
+  "labelsAlignment": "Center",
+  "style": {
+   "fg": "muted"
+  }
+ },
+ "yAxis": {
+  "bounds": [
+   0.0,
+   5.0
+  ]
+ },
+ "legendPosition": "TopRight"
+}

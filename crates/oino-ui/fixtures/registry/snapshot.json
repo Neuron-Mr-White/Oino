@@ -1,0 +1,48 @@
+{
+ "scope": "session",
+ "sessionId": "s-1",
+ "rev": 4,
+ "entries": [
+  {
+   "id": "unipi.kanboard/board",
+   "extensionId": "unipi.kanboard",
+   "scope": "host",
+   "slot": "fullscreen",
+   "order": 1000,
+   "seq": 1,
+   "title": "Board",
+   "icon": "board",
+   "view": {
+    "kind": "reserved",
+    "component": "board",
+    "fallback": {"t": "List", "items": [{"key": "t-1", "content": "T-1 first"}]}
+   },
+   "keys": [{"key": "enter", "action": "open-task", "label": "open"}],
+   "focus": false,
+   "closeOnEscape": true,
+   "rev": 2
+  },
+  {
+   "id": "ext/widget:progress",
+   "extensionId": "ext",
+   "scope": "session",
+   "slot": "widget",
+   "order": 0,
+   "seq": 3,
+   "view": {"kind": "tree", "root": {"t": "Gauge", "ratio": 0.4, "label": "40%"}},
+   "rev": 1
+  },
+  {
+   "id": "ext/settings:ext",
+   "extensionId": "ext",
+   "scope": "host",
+   "slot": "settings",
+   "order": 0,
+   "seq": 4,
+   "view": {"kind": "settings", "namespace": {"namespace": "ext", "title": "Ext", "extensionId": "ext", "sections": []}},
+   "rev": 1
+  }
+ ],
+ "dialogs": [{"id": "1", "method": "select", "title": "Pick", "options": ["a", "b"]}],
+ "meta": {"title": "fix: bug", "workingMessage": "running", "workingVisible": true, "shortcuts": [{"key": "ctrl-s", "label": "save"}]}
+}

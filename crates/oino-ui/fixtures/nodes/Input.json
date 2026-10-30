@@ -1,0 +1,15 @@
+{
+ "t": "Input",
+ "key": "name",
+ "value": "Ada",
+ "placeholder": "your name",
+ "label": {
+  "spans": [
+   "Name"
+  ]
+ },
+ "maxLength": 32,
+ "disabled": false,
+ "onSubmit": "save",
+ "onChange": "preview"
+}

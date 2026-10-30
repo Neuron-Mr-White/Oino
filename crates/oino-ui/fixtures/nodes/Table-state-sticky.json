@@ -1,0 +1,27 @@
+{
+ "t": "Table",
+ "rows": [
+  {
+   "key": "r1",
+   "cells": [
+    "x",
+    "y"
+   ]
+  }
+ ],
+ "widths": [
+  {
+   "Length": 4
+  },
+  {
+   "Length": 4
+  }
+ ],
+ "state": {
+  "selected": "r1"
+ },
+ "sticky": "FirstColumn",
+ "scrollbar": true,
+ "onSelect": "pick-row",
+ "onActivate": "open-row"
+}

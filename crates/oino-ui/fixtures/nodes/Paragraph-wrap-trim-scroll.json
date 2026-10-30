@@ -1,0 +1,12 @@
+{
+ "t": "Paragraph",
+ "text": "wrapped",
+ "wrap": {
+  "trim": false
+ },
+ "scroll": [
+  3,
+  1
+ ],
+ "scrollbar": true
+}

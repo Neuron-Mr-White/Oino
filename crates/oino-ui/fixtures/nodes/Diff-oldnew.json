@@ -1,0 +1,6 @@
+{
+ "t": "Diff",
+ "old": "one\ntwo",
+ "new": "one\n2",
+ "mode": "Unified"
+}

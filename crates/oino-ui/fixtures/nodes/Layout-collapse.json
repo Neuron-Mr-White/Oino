@@ -1,0 +1,23 @@
+{
+ "t": "Layout",
+ "direction": "Horizontal",
+ "collapse": 40,
+ "constraints": [
+  {
+   "Fill": 1
+  },
+  {
+   "Fill": 1
+  }
+ ],
+ "children": [
+  {
+   "t": "Paragraph",
+   "text": "left"
+  },
+  {
+   "t": "Paragraph",
+   "text": "right"
+  }
+ ]
+}
