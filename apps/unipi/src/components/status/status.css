@@ -81,9 +81,10 @@ button.status-empty { padding: 0; border: 0; background: none; text-align: left;
 .status-capsule { position: absolute; top: 64px; right: 14px; z-index: 12; pointer-events: auto; }
 .status-capsule-btn { display: inline-flex; align-items: center; gap: 0; max-width: min(60vw, 420px); padding: 0; border-radius: 9999px; background: var(--color-surface-2); box-shadow: 0 6px 22px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(46 40 37 / 80%); cursor: pointer; overflow: hidden; }
 .status-capsule-btn:hover { background: var(--color-surface-3); }
-.cap-seg { display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; font-size: 12px; line-height: 16px; color: var(--color-text-muted); white-space: nowrap; }
+.cap-seg { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 6px 11px; font-size: 12px; line-height: 16px; color: var(--color-text-muted); white-space: nowrap; }
 .cap-seg + .cap-seg { border-left: 1px solid var(--color-line); }
-.cap-branch { font-family: var(--font-mono); }
+/* At the 60 vw cap the branch shrinks first (ellipsis), never a mid-word cut. */
+.cap-branch { font-family: var(--font-mono); display: block; overflow: hidden; text-overflow: ellipsis; }
 .cap-add { color: var(--color-wm-green); }
 .cap-del { color: #f3b3ad; }
 .cap-lh { color: var(--color-text); }

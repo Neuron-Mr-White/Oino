@@ -1,0 +1,637 @@
+[
+  {
+    "scenario": "bubble-fold",
+    "size": 360,
+    "route": "none:",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 348,
+      "testid": ""
+    },
+    "file": "a29-bubble-fold-phone-360.png"
+  },
+  {
+    "scenario": "shot:chat",
+    "route": "#/chat"
+  },
+  {
+    "scenario": "shot:panes-menu",
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-git",
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-files",
+    "route": "#/files"
+  },
+  {
+    "scenario": "shot:pane-tree",
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-btw",
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "git-pane-many",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-git-pane-many-phone-412.png"
+  },
+  {
+    "scenario": "git-pane-many",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-git-pane-many-phone-360.png"
+  },
+  {
+    "scenario": "tab-subagent-phone",
+    "size": 412,
+    "route": "none:#/",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-tab-subagent-phone-phone-412.png"
+  },
+  {
+    "scenario": "tab-subagent-phone",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-subagent-phone-phone-360.png"
+  },
+  {
+    "scenario": "editor-lsp",
+    "size": 412,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-editor-lsp-phone-412.png"
+  },
+  {
+    "scenario": "editor-lsp",
+    "size": 360,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-editor-lsp-phone-360.png"
+  },
+  {
+    "scenario": "dialog-dock",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-dialog-dock-phone-412.png"
+  },
+  {
+    "scenario": "dialog-dock",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-dialog-dock-phone-360.png"
+  },
+  {
+    "scenario": "slots-dialogs",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-slots-dialogs-phone-412.png"
+  },
+  {
+    "scenario": "slots-dialogs",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-slots-dialogs-phone-360.png"
+  },
+  {
+    "scenario": "settings-form-advanced",
+    "size": 412,
+    "route": "kept:#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-form-advanced-phone-412.png"
+  },
+  {
+    "scenario": "settings-form-advanced",
+    "size": 360,
+    "route": "kept:#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-form-advanced-phone-360.png"
+  },
+  {
+    "scenario": "u12-nav",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-nav-phone-412.png"
+  },
+  {
+    "scenario": "u12-nav",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-nav-phone-360.png"
+  },
+  {
+    "scenario": "shell-sidepane-tabs",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shell-sidepane-tabs-phone-412.png"
+  },
+  {
+    "scenario": "shell-sidepane-tabs",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shell-sidepane-tabs-phone-360.png"
+  },
+  {
+    "scenario": "queue",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-queue-phone-412.png"
+  },
+  {
+    "scenario": "queue",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-queue-phone-360.png"
+  },
+  {
+    "scenario": "capsule",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-capsule-phone-412.png"
+  },
+  {
+    "scenario": "capsule",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-capsule-phone-360.png"
+  },
+  {
+    "scenario": "toasts",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-toasts-phone-412.png"
+  },
+  {
+    "scenario": "toasts",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-toasts-phone-360.png"
+  },
+  {
+    "scenario": "u12-native",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-native-phone-412.png"
+  },
+  {
+    "scenario": "u12-native",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-native-phone-360.png"
+  },
+  {
+    "scenario": "u12-fallback",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-fallback-phone-412.png"
+  },
+  {
+    "scenario": "u12-fallback",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-fallback-phone-360.png"
+  },
+  {
+    "scenario": "u12-owner-off",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-owner-off-phone-412.png"
+  },
+  {
+    "scenario": "u12-owner-off",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-owner-off-phone-360.png"
+  },
+  {
+    "scenario": "u12-phone",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-phone-phone-412.png"
+  },
+  {
+    "scenario": "u12-phone",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-phone-phone-360.png"
+  },
+  {
+    "scenario": "u12-phone-off",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-phone-off-phone-412.png"
+  },
+  {
+    "scenario": "u12-phone-off",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-u12-phone-off-phone-360.png"
+  },
+  {
+    "scenario": "settings-form-list",
+    "size": 412,
+    "route": "kept:#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-form-list-phone-412.png"
+  },
+  {
+    "scenario": "settings-form-list",
+    "size": 360,
+    "route": "kept:#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-form-list-phone-360.png"
+  },
+  {
+    "scenario": "settings-nav",
+    "size": 412,
+    "route": "#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-nav-phone-412.png"
+  },
+  {
+    "scenario": "settings-nav",
+    "size": 360,
+    "route": "#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-nav-phone-360.png"
+  },
+  {
+    "scenario": "settings-search",
+    "size": 412,
+    "route": "#/settings",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-search-phone-412.png"
+  },
+  {
+    "scenario": "settings-search",
+    "size": 360,
+    "route": "#/settings",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-search-phone-360.png"
+  },
+  {
+    "scenario": "settings-extensions",
+    "size": 412,
+    "route": "#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-extensions-phone-412.png"
+  },
+  {
+    "scenario": "settings-extensions",
+    "size": 360,
+    "route": "#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-extensions-phone-360.png"
+  },
+  {
+    "scenario": "settings-safe-mode",
+    "size": 412,
+    "route": "#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-safe-mode-phone-412.png"
+  },
+  {
+    "scenario": "settings-safe-mode",
+    "size": 360,
+    "route": "#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-safe-mode-phone-360.png"
+  },
+  {
+    "scenario": "settings-form",
+    "size": 412,
+    "route": "kept:#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-form-phone-412.png"
+  },
+  {
+    "scenario": "settings-form",
+    "size": 360,
+    "route": "kept:#/settings/extensions",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-form-phone-360.png"
+  },
+  {
+    "scenario": "settings-form-agent",
+    "size": 412,
+    "route": "kept:#/settings/agent",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-form-agent-phone-412.png"
+  },
+  {
+    "scenario": "settings-form-agent",
+    "size": 360,
+    "route": "kept:#/settings/agent",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-settings-form-agent-phone-360.png"
+  }
+]

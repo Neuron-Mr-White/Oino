@@ -23,8 +23,10 @@ export type ToolbarSlot = 'computer' | 'permission' | 'plan' | 'think' | 'model'
 /** One measured toolbar item; `slot` marks the compressible ones. */
 export type ToolbarItem = { slot?: ToolbarSlot; width: number };
 
-/** Square icon button size (ZCode: 28px). */
-export const COMPACT = 28;
+/** Square icon button size (ZCode: 28px; our `.tb-chip` square folds to 30 px —
+ *  composer.css `width: 30px` — so the model must not under-budget it: an
+ *  underestimated fold leaves the send chevron ~2 px over the edge on phones). */
+export const COMPACT = 30;
 /** Step 4's think form: the icon plus the small level bar, no text. */
 export const THINK_LITE = 36;
 
