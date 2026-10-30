@@ -72,9 +72,11 @@ pub async fn status() -> Value {
     if !host_service::available(SERVICE) {
         return json!({"available": false, "reason": "no_host"});
     }
-    host_service::call(SERVICE, "status", &json!({})).await.unwrap_or_else(|e| {
-        json!({"available": false, "reason": "host_error", "error": e.to_string()})
-    })
+    host_service::call(SERVICE, "status", &json!({}))
+        .await
+        .unwrap_or_else(
+            |e| json!({"available": false, "reason": "host_error", "error": e.to_string()}),
+        )
 }
 
 /// Extension state.
