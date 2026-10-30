@@ -84,6 +84,8 @@ pub fn run() {
             term::term_input,
             term::term_resize,
             term::term_close,
+            term::term_list,
+            term::term_kill,
             hosts_commands::host_status,
             hosts_commands::set_relay,
             hosts_commands::pairing_preview,

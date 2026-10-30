@@ -1,7 +1,15 @@
-//! Live terminal sessions (DESIGN.md §3.3, §5.4): attach/shell streams
-//! with kind-1 data frames, JSON control frames, and a per-session
-//! writer task. One `TermHandle` per open terminal, keyed by a random
-//! hex id.
+//! Terminals (DESIGN.md §3.3, §5.4; host.md §9.3 v2): the PTYs live in the
+//! **host**, this module keeps one stream per open tab.
+//!
+//! - `term_open` opens a new host PTY in a workspace (`cwd`) or, when
+//!   `term_id` is given, re-attaches this tab to an existing one — the reply
+//!   is `{termId, shell}` and then the stream carries output (kind 1), input
+//!   (kind 2), `resize`, `title` and `exit` (host.md §9.3).
+//! - Closing the tab (`term_close`) only *detaches*: the host keeps the shell
+//!   running (ZCode parity), so a reopened tab or another device re-attaches
+//!   it. `term_kill` really ends it.
+//! - The host keeps no scrollback: a re-attached tab sees new output only, so
+//!   the app owns its xterm buffer per live tab.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -13,12 +21,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use unipi_proto::{
     frame::{encode, FrameKind},
-    AppErrorCode, AppErrorDto, AttachTarget, Control, ProtoError, Request, PROTO_VERSION,
+    AppErrorCode, AppErrorDto, Control, Dimension, FsPath, ProtoError, Request, TermAttachData,
+    TermId, TermInfo, TermShell, PROTO_VERSION,
 };
 
 use crate::{net::NetState, path_kind::PathKind, retry::retry_once};
 
-/// Events pushed to the UI while a terminal is live. Exactly one of
+/// Events pushed to the UI while a terminal stream is live. Exactly one of
 /// `exit`/`closed` is sent last; `title` can appear any time before.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -35,8 +44,8 @@ pub enum TermEvent {
     },
 }
 
-/// What a single wire frame means for the UI. Data goes to the
-/// terminal buffer; events go to the event channel; `Ignore` is an
+/// What a single wire frame means for the UI. Data goes to the terminal
+/// buffer; events go to the event channel; `Ignore` is an
 /// unexpected-but-harmless frame (e.g. a stray `ok`).
 #[derive(Debug, Clone)]
 pub enum Decoded {
@@ -82,7 +91,7 @@ fn schema_closed(payload: &[u8]) -> Decoded {
     })
 }
 
-/// Messages for the per-session writer task that owns the send half.
+/// Messages for the per-tab writer task that owns the send half.
 pub(crate) enum WriterMsg {
     Input(Vec<u8>),
     Resize { cols: u16, rows: u16 },
@@ -95,9 +104,9 @@ pub(crate) struct TermHandle {
     pub(crate) reader: Option<tokio::task::JoinHandle<()>>,
 }
 
-/// Managed registry of live terminal sessions. Shared (Arc) with each
-/// reader task so the task can remove its own entry when the stream
-/// ends for any reason.
+/// Managed registry of the app's live terminal streams (the host owns the
+/// PTYs; this is one stream per open tab). Shared (Arc) with each reader task
+/// so the task can remove its own entry when the stream ends for any reason.
 #[derive(Clone, Default)]
 pub struct TermRegistry {
     pub(crate) sessions: std::sync::Arc<Mutex<HashMap<String, TermHandle>>>,
@@ -133,202 +142,43 @@ impl TermRegistry {
     }
 }
 
-fn random_term_id() -> String {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0);
-    let pid = std::process::id() as u64;
-    format!("{:08x}{:08x}", nanos.wrapping_mul(0x9e37_79b9), pid)
-}
-
 fn directory(app: &tauri::AppHandle) -> Result<std::path::PathBuf, AppErrorDto> {
     app.path()
         .app_data_dir()
         .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())
 }
 
+fn schema(message: String) -> AppErrorDto {
+    ProtoError::Schema {
+        message,
+        path: vec![],
+        detail: None,
+    }
+    .to_app_error()
+}
+
+fn dimension(value: u16) -> Result<Dimension, AppErrorDto> {
+    Dimension::try_from(u32::from(value))
+        .map_err(ProtoError::Internal)
+        .map_err(|e| e.to_app_error())
+}
+
+/// The `term_open` reply the app's `openTerm()` uses (`lib/term.ts`).
 #[derive(Debug, Clone, Serialize)]
 pub struct TermOpenResult {
     #[serde(rename = "termId")]
     pub term_id: String,
-    pub effective_size_policy: unipi_proto::SizePolicy,
+    pub shell: String,
     pub path: PathKind,
-}
-
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub async fn term_open(
-    app: tauri::AppHandle,
-    state: State<'_, NetState>,
-    terms: State<'_, TermRegistry>,
-    host_id: String,
-    relay: Option<String>,
-    target: Option<AttachTarget>,
-    cols: u16,
-    rows: u16,
-    size_policy: unipi_proto::SizePolicy,
-    on_data: Channel<InvokeResponseBody>,
-    on_event: Channel<TermEvent>,
-) -> Result<TermOpenResult, AppErrorDto> {
-    let dir = directory(&app)?;
-    let host = crate::local_host::hosts(&dir)?
-        .into_iter()
-        .find(|host| host.id == host_id)
-        .ok_or_else(|| ProtoError::NotFound("Host not found".into()).to_app_error())?;
-    let request = match &target {
-        Some(target) => Request::Attach {
-            target: target.clone(),
-            cols: unipi_proto::Dimension::try_from(cols as u32)
-                .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
-            rows: unipi_proto::Dimension::try_from(rows as u32)
-                .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
-            size_policy,
-        },
-        None => Request::Shell {
-            cols: unipi_proto::Dimension::try_from(cols as u32)
-                .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
-            rows: unipi_proto::Dimension::try_from(rows as u32)
-                .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
-        },
-    };
-    let streams = open_term_streams(
-        &state,
-        &dir,
-        &host.ticket,
-        relay.as_deref().filter(|s| *s != "n0"),
-        request,
-    )
-    .await?;
-    let path = state.path_for(&host.ticket);
-
-    let term_id = random_term_id();
-
-    // Writer task: owns the send half.
-    let (writer_tx, mut writer_rx) = mpsc::channel::<WriterMsg>(64);
-    let mut send = streams.send;
-    let writer_task = tokio::spawn(async move {
-        while let Some(message) = writer_rx.recv().await {
-            let result = match message {
-                WriterMsg::Input(bytes) => send.write_all(&encode(FrameKind::Input, &bytes)).await,
-                WriterMsg::Resize { cols, rows } => {
-                    let control = serde_json::to_vec(&Control::Resize {
-                        cols: unipi_proto::Dimension::try_from(cols as u32).unwrap_or_default(),
-                        rows: unipi_proto::Dimension::try_from(rows as u32).unwrap_or_default(),
-                    })
-                    .unwrap_or_default();
-                    send.write_all(&encode(FrameKind::Control, &control)).await
-                }
-                WriterMsg::Close => {
-                    let _ = send.finish();
-                    break;
-                }
-            };
-            if result.is_err() {
-                break;
-            }
-        }
-    });
-
-    // Reader task: forwards frames to the UI channels; exactly one
-    // terminal (exit/closed) event is sent last. Removes its own
-    // registry entry when it ends for any reason.
-    let mut recv = streams.recv;
-    let registry = std::sync::Arc::clone(&terms.sessions);
-    // registry: Arc<Mutex<HashMap<..>>>
-    let reader_term_id = term_id.clone();
-    let reader_task = tokio::spawn(async move {
-        let send_closed = |on_event: &Channel<TermEvent>, error: Option<AppErrorDto>| {
-            let on_event = on_event.clone();
-            async move {
-                let _ = on_event.send(TermEvent::Closed { error });
-            }
-        };
-        let mut ended = false;
-        while !ended {
-            let mut kind_buffer = [0u8; 1];
-            let mut len_buffer = [0u8; 4];
-            if recv.read_exact(&mut kind_buffer).await.is_err() {
-                send_closed(&on_event, None).await;
-                break;
-            }
-            if recv.read_exact(&mut len_buffer).await.is_err() {
-                send_closed(&on_event, None).await;
-                break;
-            }
-            let len = u32::from_be_bytes(len_buffer) as usize;
-            if len > unipi_proto::MAX_FRAME {
-                send_closed(
-                    &on_event,
-                    Some(AppErrorDto::new(
-                        AppErrorCode::E_SCHEMA,
-                        "oversize frame",
-                        false,
-                    )),
-                )
-                .await;
-                break;
-            }
-            let mut payload = vec![0u8; len];
-            if recv.read_exact(&mut payload).await.is_err() {
-                send_closed(&on_event, None).await;
-                break;
-            }
-            match decode_frame(kind_buffer[0], &payload) {
-                Ok(Decoded::Data(bytes)) => {
-                    if on_data.send(InvokeResponseBody::Raw(bytes)).is_err() {
-                        break;
-                    }
-                }
-                Ok(Decoded::Event(event)) => {
-                    let is_final =
-                        matches!(event, TermEvent::Exit { .. } | TermEvent::Closed { .. });
-                    if on_event.send(event).is_err() {
-                        break;
-                    }
-                    if is_final {
-                        ended = true;
-                    }
-                }
-                Ok(Decoded::Ignore) => {}
-                Err(Decoded::Event(closed)) => {
-                    let _ = on_event.send(closed);
-                    ended = true;
-                }
-                Err(_) => {
-                    send_closed(&on_event, None).await;
-                    ended = true;
-                }
-            }
-        }
-        registry
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&reader_term_id);
-    });
-
-    terms.insert(
-        term_id.clone(),
-        TermHandle {
-            writer: writer_tx,
-            reader: Some(reader_task),
-        },
-    );
-    drop(writer_task);
-
-    Ok(TermOpenResult {
-        term_id,
-        effective_size_policy: streams.effective_size_policy,
-        path,
-    })
 }
 
 struct TermStreams {
     send: crate::op_stream::OpSend,
     recv: crate::op_stream::OpRecv,
-    effective_size_policy: unipi_proto::SizePolicy,
+    data: TermAttachData,
 }
 
+/// One `hello` carrying `term_open` / `term_attach`, then the reply frame.
 async fn open_term_streams(
     state: &NetState,
     dir: &std::path::Path,
@@ -360,7 +210,7 @@ async fn open_term_streams(
             };
             let bytes = serde_json::to_vec(&hello)
                 .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
-            send.write_all(&unipi_proto::frame::encode(FrameKind::Control, &bytes))
+            send.write_all(&encode(FrameKind::Control, &bytes))
                 .await
                 .map_err(|e| ProtoError::Transport(e.to_string()).to_app_error())?;
             let kind = recv
@@ -384,25 +234,294 @@ async fn open_term_streams(
             {
                 Control::Ok { data } => {
                     let payload = data.unwrap_or(serde_json::Value::Null);
-                    let effective = payload
-                        .get("effective_size_policy")
-                        .and_then(|v| v.as_str())
-                        .and_then(|v| {
-                            serde_json::from_value(serde_json::Value::String(v.to_string())).ok()
-                        })
-                        .unwrap_or(unipi_proto::SizePolicy::FitPhone);
-                    Ok(TermStreams {
-                        send,
-                        recv,
-                        effective_size_policy: effective,
-                    })
+                    let data: TermAttachData = serde_json::from_value(payload).map_err(|e| {
+                        ProtoError::Schema {
+                            message: format!("bad terminal reply: {e}"),
+                            path: vec![],
+                            detail: None,
+                        }
+                        .to_app_error()
+                    })?;
+                    Ok(TermStreams { send, recv, data })
                 }
                 Control::Err { error } => Err(error),
-                _ => Err(ProtoError::Internal("Unexpected attach reply".into()).to_app_error()),
+                _ => Err(ProtoError::Internal("Unexpected terminal reply".into()).to_app_error()),
             }
         }
     })
     .await
+}
+
+/// Opens a terminal — a new host PTY in `cwd`, or (`term_id`) a new stream on
+/// an existing one, which the host resizes to `cols`×`rows`.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn term_open(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    terms: State<'_, TermRegistry>,
+    host_id: String,
+    relay: Option<String>,
+    cwd: Option<String>,
+    cols: u16,
+    rows: u16,
+    term_id: Option<String>,
+    shell: Option<String>,
+    on_data: Channel<InvokeResponseBody>,
+    on_event: Channel<TermEvent>,
+) -> Result<TermOpenResult, AppErrorDto> {
+    let dir = directory(&app)?;
+    let host = crate::local_host::hosts(&dir)?
+        .into_iter()
+        .find(|host| host.id == host_id)
+        .ok_or_else(|| ProtoError::NotFound("Host not found".into()).to_app_error())?;
+    let request = match &term_id {
+        Some(term_id) => Request::TermAttach {
+            term_id: TermId::try_from(term_id.clone()).map_err(schema)?,
+            cols: dimension(cols)?,
+            rows: dimension(rows)?,
+        },
+        None => Request::TermOpen {
+            cwd: FsPath::try_from(cwd.unwrap_or_default()).map_err(schema)?,
+            cols: dimension(cols)?,
+            rows: dimension(rows)?,
+            shell: shell.map(TermShell::try_from).transpose().map_err(schema)?,
+        },
+    };
+    let streams = open_term_streams(
+        &state,
+        &dir,
+        &host.ticket,
+        relay.as_deref().filter(|s| *s != "n0"),
+        request,
+    )
+    .await?;
+    let path = state.path_for(&host.ticket);
+    let term_id = streams.data.term_id.as_str().to_owned();
+    let shell = streams.data.shell.as_str().to_owned();
+
+    // Writer task: owns the send half.
+    let (writer_tx, mut writer_rx) = mpsc::channel::<WriterMsg>(64);
+    let mut send = streams.send;
+    tokio::spawn(async move {
+        while let Some(message) = writer_rx.recv().await {
+            let result = match message {
+                WriterMsg::Input(bytes) => send.write_all(&encode(FrameKind::Input, &bytes)).await,
+                WriterMsg::Resize { cols, rows } => {
+                    let control = match (dimension(cols), dimension(rows)) {
+                        (Ok(cols), Ok(rows)) => Control::Resize { cols, rows },
+                        _ => continue,
+                    };
+                    let control = serde_json::to_vec(&control).unwrap_or_default();
+                    send.write_all(&encode(FrameKind::Control, &control)).await
+                }
+                WriterMsg::Close => {
+                    // Detach: the host keeps the PTY running.
+                    let _ = send.finish();
+                    break;
+                }
+            };
+            if result.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Reader task: forwards frames to the UI channels; exactly one
+    // terminal (exit/closed) event is sent last. Removes its own registry
+    // entry when it ends for any reason.
+    let mut recv = streams.recv;
+    let registry = std::sync::Arc::clone(&terms.sessions);
+    let reader_term_id = term_id.clone();
+    tokio::spawn(async move {
+        let mut ended = false;
+        while !ended {
+            let mut kind_buffer = [0u8; 1];
+            let mut len_buffer = [0u8; 4];
+            if recv.read_exact(&mut kind_buffer).await.is_err()
+                || recv.read_exact(&mut len_buffer).await.is_err()
+            {
+                let _ = on_event.send(TermEvent::Closed { error: None });
+                break;
+            }
+            let len = u32::from_be_bytes(len_buffer) as usize;
+            if len > unipi_proto::MAX_FRAME {
+                let _ = on_event.send(TermEvent::Closed {
+                    error: Some(AppErrorDto::new(
+                        AppErrorCode::E_SCHEMA,
+                        "oversize frame",
+                        false,
+                    )),
+                });
+                break;
+            }
+            let mut payload = vec![0u8; len];
+            if recv.read_exact(&mut payload).await.is_err() {
+                let _ = on_event.send(TermEvent::Closed { error: None });
+                break;
+            }
+            match decode_frame(kind_buffer[0], &payload) {
+                Ok(Decoded::Data(bytes)) => {
+                    if on_data.send(InvokeResponseBody::Raw(bytes)).is_err() {
+                        break;
+                    }
+                }
+                Ok(Decoded::Event(event)) => {
+                    let is_final =
+                        matches!(event, TermEvent::Exit { .. } | TermEvent::Closed { .. });
+                    if on_event.send(event).is_err() {
+                        break;
+                    }
+                    if is_final {
+                        ended = true;
+                    }
+                }
+                Ok(Decoded::Ignore) => {}
+                Err(Decoded::Event(closed)) => {
+                    let _ = on_event.send(closed);
+                    ended = true;
+                }
+                Err(_) => {
+                    let _ = on_event.send(TermEvent::Closed { error: None });
+                    ended = true;
+                }
+            }
+        }
+        registry
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&reader_term_id);
+    });
+
+    terms.insert(
+        term_id.clone(),
+        TermHandle {
+            writer: writer_tx,
+            reader: None,
+        },
+    );
+
+    Ok(TermOpenResult {
+        term_id,
+        shell,
+        path,
+    })
+}
+
+/// Every terminal the host holds (`cwd` = its workspace), live or exited —
+/// what the tab bar restores from.
+#[tauri::command]
+pub async fn term_list(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    relay: Option<String>,
+) -> Result<Vec<TermInfo>, AppErrorDto> {
+    let dir = directory(&app)?;
+    let host = crate::local_host::hosts(&dir)?
+        .into_iter()
+        .find(|host| host.id == host_id)
+        .ok_or_else(|| ProtoError::NotFound("Host not found".into()).to_app_error())?;
+    let (mut send, mut recv) = state
+        .open_op(&dir, relay.as_deref().filter(|s| *s != "n0"), &host.ticket)
+        .await?;
+    let hello = Control::Hello {
+        proto: PROTO_VERSION
+            .to_string()
+            .try_into()
+            .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
+        req: Request::TermList,
+    };
+    let bytes = serde_json::to_vec(&hello)
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    send.write_all(&encode(FrameKind::Control, &bytes))
+        .await
+        .map_err(|e| ProtoError::Transport(e.to_string()).to_app_error())?;
+    let (kind, payload) = read_control(&mut recv).await?;
+    if kind != 0 {
+        return Err(ProtoError::Internal("Invalid term_list reply".into()).to_app_error());
+    }
+    match serde_json::from_slice::<Control>(&payload)
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?
+    {
+        Control::Ok { data } => serde_json::from_value(data.unwrap_or(serde_json::Value::Null))
+            .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error()),
+        Control::Err { error } => Err(error),
+        _ => Err(ProtoError::Internal("Unexpected term_list reply".into()).to_app_error()),
+    }
+}
+
+/// Closes a terminal on the host (its child is killed).
+#[tauri::command]
+pub async fn term_kill(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    terms: State<'_, TermRegistry>,
+    host_id: String,
+    relay: Option<String>,
+    term_id: String,
+) -> Result<(), AppErrorDto> {
+    let dir = directory(&app)?;
+    let host = crate::local_host::hosts(&dir)?
+        .into_iter()
+        .find(|host| host.id == host_id)
+        .ok_or_else(|| ProtoError::NotFound("Host not found".into()).to_app_error())?;
+    let (mut send, mut recv) = state
+        .open_op(&dir, relay.as_deref().filter(|s| *s != "n0"), &host.ticket)
+        .await?;
+    let hello = Control::Hello {
+        proto: PROTO_VERSION
+            .to_string()
+            .try_into()
+            .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
+        req: Request::TermKill {
+            term_id: TermId::try_from(term_id.clone()).map_err(schema)?,
+        },
+    };
+    let bytes = serde_json::to_vec(&hello)
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    send.write_all(&encode(FrameKind::Control, &bytes))
+        .await
+        .map_err(|e| ProtoError::Transport(e.to_string()).to_app_error())?;
+    let (kind, payload) = read_control(&mut recv).await?;
+    if kind != 0 {
+        return Err(ProtoError::Internal("Invalid term_kill reply".into()).to_app_error());
+    }
+    match serde_json::from_slice::<Control>(&payload)
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?
+    {
+        Control::Ok { .. } => {
+            // Drop this app's stream too (no-op when the tab was detached).
+            if let Some(handle) = terms.remove(&term_id) {
+                let _ = handle.writer.send(WriterMsg::Close).await;
+                if let Some(reader) = handle.reader {
+                    reader.abort();
+                }
+            }
+            Ok(())
+        }
+        Control::Err { error } => Err(error),
+        _ => Err(ProtoError::Internal("Unexpected term_kill reply".into()).to_app_error()),
+    }
+}
+
+async fn read_control(recv: &mut crate::op_stream::OpRecv) -> Result<(u8, Vec<u8>), AppErrorDto> {
+    let kind = recv
+        .read_u8()
+        .await
+        .map_err(|e| ProtoError::Transport(e.to_string()).to_app_error())?;
+    let len = recv
+        .read_u32()
+        .await
+        .map_err(|e| ProtoError::Transport(e.to_string()).to_app_error())? as usize;
+    if len > unipi_proto::MAX_FRAME {
+        return Err(ProtoError::Internal("Oversize frame".into()).to_app_error());
+    }
+    let mut payload = vec![0u8; len];
+    recv.read_exact(&mut payload)
+        .await
+        .map_err(|e| ProtoError::Transport(e.to_string()).to_app_error())?;
+    Ok((kind, payload))
 }
 
 #[tauri::command]
@@ -436,13 +555,14 @@ pub async fn term_resize(
         .map_err(|_| ProtoError::Internal("terminal writer closed".into()).to_app_error())
 }
 
+/// Detaches this tab's stream. The host keeps the PTY (and its shell) alive;
+/// `term_kill` is what ends it. Idempotent: the reader task removes its own
+/// entry when the stream ends naturally.
 #[tauri::command]
 pub async fn term_close(
     terms: State<'_, TermRegistry>,
     term_id: String,
 ) -> Result<(), AppErrorDto> {
-    // Idempotent: the reader task removes its own entry when the
-    // stream ends naturally, so an already-removed id is fine.
     if let Some(handle) = terms.remove(&term_id) {
         let _ = handle.writer.send(WriterMsg::Close).await;
         if let Some(reader) = handle.reader {
@@ -455,7 +575,6 @@ pub async fn term_close(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use unipi_proto::SessionId;
 
     #[test]
     fn term_event_serde_shape() {
@@ -557,7 +676,5 @@ mod tests {
         // stray ok is ignored
         let ok = serde_json::to_vec(&Control::Ok { data: None }).unwrap();
         assert!(matches!(decode_frame(0, &ok), Ok(Decoded::Ignore)));
-        // silence unused import when SessionId unused in non-test builds
-        let _ = SessionId::try_from("s".to_string());
     }
 }
