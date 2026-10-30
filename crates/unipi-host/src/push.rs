@@ -241,9 +241,9 @@ pub enum ControlRequest {
     Browser {
         request: crate::browser::BrowserControl,
     },
-    /// UNI-314: `unipi-host cron ...` — the serve owns the scheduler.
+    /// UNI-314 / WP-H8: `unipi-host cron ...` — the serve owns the scheduler.
     Cron {
-        request: crate::cron::CronControl,
+        request: unipi_cron::control::CronControl,
     },
 }
 
@@ -701,8 +701,8 @@ pub struct ControlContext {
     pub host_name: String,
     /// Send the ntfy/UnifiedPush fallback (off in tests).
     pub notify: bool,
-    /// UNI-314: the one cron scheduler for this `serve` process.
-    pub cron: crate::cron::Scheduler,
+    /// UNI-314 / WP-H8: the cron job files and the one scheduler this `serve` owns.
+    pub cron: crate::cron_serve::CronHost,
 }
 
 /// Binds `<host dir>/control.sock` and serves CLI requests until the

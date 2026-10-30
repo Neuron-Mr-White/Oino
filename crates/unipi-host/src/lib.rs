@@ -1,8 +1,9 @@
 pub mod admin;
 pub mod blob;
 pub mod browser;
-pub mod cron;
+pub mod cron_notify;
 pub mod cron_serve;
+pub mod cron_wake;
 pub mod data_dir;
 pub mod devices;
 pub mod endpoint;

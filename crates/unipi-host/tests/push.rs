@@ -114,14 +114,14 @@ async fn setup() -> Host {
         host_id: host.id(),
         host_name: "push-test-pc".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
     };
     let control = unipi_host::push::serve_control(ControlContext {
         paths: paths.clone(),
         hub: PushHub::shared(&paths),
         host_name: "push-test-pc".into(),
         notify: false,
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
     })
     .await
     .unwrap();
@@ -418,7 +418,7 @@ async fn second_serve_refuses_the_same_control_socket_and_stale_socket_is_replac
         hub: PushHub::default(),
         host_name: "x".into(),
         notify: false,
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
     };
     // A stale socket file from a crashed serve is replaced.
     let stale =

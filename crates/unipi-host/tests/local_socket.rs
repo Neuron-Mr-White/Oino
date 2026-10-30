@@ -37,7 +37,7 @@ fn pipe_guard() -> std::sync::MutexGuard<'static, ()> {
 
 fn handler(paths: HostPaths) -> Handler {
     Handler {
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
         paths,
         host_id: iroh::SecretKey::generate().public(),
         host_name: "Test".into(),

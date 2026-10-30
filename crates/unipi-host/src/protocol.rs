@@ -62,9 +62,9 @@ pub struct Handler {
     pub host_id: EndpointId,
     pub host_name: String,
     pub lock: Arc<tokio::sync::Mutex<()>>,
-    /// UNI-317: the host-owned cron scheduler, shared with the CLI's
-    /// `control.sock` handler so both reach the same jobs/runs.
-    pub cron: crate::cron::Scheduler,
+    /// UNI-317 / WP-H8: the cron job files plus the embedded scheduler, shared with the
+    /// CLI's `control.sock` handler so both reach the same jobs/runs.
+    pub cron: crate::cron_serve::CronHost,
 }
 impl ProtocolHandler for Handler {
     async fn accept(&self, connection: iroh::endpoint::Connection) -> Result<(), AcceptError> {

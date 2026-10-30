@@ -219,6 +219,22 @@ impl LocalServices {
         });
     }
 
+    /// Publishes `topic` on the bus on behalf of the embedding host (`publisher` = the
+    /// extension identity the event speaks for): a sticky value is kept for late
+    /// subscribers, and every extension subscribed to a matching pattern receives the
+    /// `oino_bus` event. Host-side counterpart of the `bus.publish` WIT import (the cron
+    /// scheduler's `unipi:cron:run-finished` uses it, ext-abi §6.3).
+    pub fn publish_host(
+        &self,
+        publisher: &ExtensionId,
+        session_id: &str,
+        topic: &str,
+        data: &RawJson,
+        sticky: bool,
+    ) {
+        self.publish(publisher, session_id, topic, data, sticky);
+    }
+
     fn publish(
         &self,
         publisher: &ExtensionId,

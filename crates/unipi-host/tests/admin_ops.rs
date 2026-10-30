@@ -89,7 +89,7 @@ async fn admin_ops_are_local_only_and_pairing_works_end_to_end() {
         host_id: host.id(),
         host_name: "Test host".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
     };
     let local_srv = unipi_host::local::serve(handler.clone()).unwrap();
     let router = iroh::protocol::Router::builder(host.clone())

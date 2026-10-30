@@ -1,8 +1,8 @@
-//! UNI-316 integration tests: cron notify dispatch against fake HTTP
-//! servers (ntfy/gotify/telegram-shaped), never the user's real channels.
-//! Tests in this file share process-global env vars
-//! (`UNIPI_NOTIFY_CONFIG_JSON`/`UNIPI_NOTIFY_ENDPOINTS_JSON`), so they run
-//! serialized through `ENV_LOCK`.
+//! Cron run notifications through the host's own channels (WP-H8; host.md §9.5/§9.8):
+//! [`unipi_host::cron_notify`] dispatch against fake HTTP servers
+//! (ntfy/gotify/telegram-shaped), never the user's real channels. Tests in this file share
+//! process-global env vars (`UNIPI_NOTIFY_CONFIG_JSON`/`UNIPI_NOTIFY_ENDPOINTS_JSON`), so
+//! they run serialized through `ENV_LOCK`.
 
 // v2 H1: env-mutating tests serialize on a std Mutex across awaits (test-only; no contention on the guard).
 #![allow(clippy::await_holding_lock)]
@@ -12,9 +12,8 @@ use std::sync::Mutex;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use unipi_host::cron::model::CronSettings;
-use unipi_host::cron::model::{Job, NotifySpec, Run, RunStatus};
-use unipi_host::cron::notify::{dispatch, Channels};
+use unipi_cron::model::{CronSettings, Job, NotifySpec, Run, RunStatus};
+use unipi_host::cron_notify::{dispatch, Channels};
 use unipi_host::data_dir::HostPaths;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -32,6 +31,8 @@ fn job(notify: Option<NotifySpec>) -> Job {
         enabled: true,
         time_limit_s: 10,
         cost_cap_usd: None,
+        overlap: unipi_cron::model::OverlapPolicy::default(),
+        missed: unipi_cron::model::MissedPolicy::default(),
         notify,
         session_link: None,
         created: 0,
@@ -53,6 +54,7 @@ fn run(status: RunStatus) -> Run {
         session_path: None,
         cost_usd: Some(0.02),
         missed: false,
+        pid: None,
         notify_errors: Vec::new(),
         wake: None,
     }

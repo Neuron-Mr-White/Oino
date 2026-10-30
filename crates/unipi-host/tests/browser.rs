@@ -253,7 +253,7 @@ async fn remote_browser_streams_frames_and_takes_input() {
         host_id: host.id(),
         host_name: "Browser test host".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
     };
     let _router = iroh::protocol::Router::builder(host.clone())
         .accept(ALPN, handler)

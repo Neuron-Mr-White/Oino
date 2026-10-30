@@ -15,11 +15,17 @@ unipi-proto = { path = "../unipi-proto" }
 # wave-1 lazy client hub; extensions load on the process-shared wasm engine.
 oino-client = { path = "../oino-client" }
 oino-core = { path = "../oino-core" }
+# H5 (host.md §8): the lease metadata that names the runner an open took the session over
+# from (D-LOCK advisory file; the kernel lock itself stays core's).
+oino-session = { path = "../oino-session" }
 oino-extension-api = { path = "../oino-extension-api" }
 oino-models = { path = "../oino-models" }
 oino-settings = { path = "../oino-settings" }
 # H4 (host.md §7.3): the app's `UiCapabilities` for the implicit `_oino/hello`.
 oino-ui = { path = "../oino-ui" }
+# H8 (host.md §9.8; ext-abi §6): the cron scheduler is unipi-cron's job-file library; the
+# host embeds it as the single owner and registers its "cron" host service.
+unipi-cron = { path = "../unipi-cron" }
 oino-wasm-host = { path = "../oino-wasm-host" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 

@@ -10,7 +10,7 @@ use unipi_proto::{
 fn handler(dir: &std::path::Path) -> Handler {
     let paths = HostPaths::from_dir(dir);
     Handler {
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
         paths,
         host_id: iroh::SecretKey::generate().public(),
         host_name: "Test".into(),

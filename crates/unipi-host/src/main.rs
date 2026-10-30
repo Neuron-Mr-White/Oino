@@ -353,10 +353,10 @@ enum CronAction {
     },
     /// Stop allowing phones to use cron ops.
     Unshare,
-    /// Show or change the `cron` settings block (`concurrency`,
-    /// `missed_window_s`, `retention_runs`, `retention_days`,
-    /// `default_time_limit_s`, `paused`, `ntfy_topic`,
-    /// `notify_default_events`). With no flags, just shows the settings.
+    /// Show or change the scheduler settings (`concurrency`, `missed_window_s`,
+    /// `retention_runs`, `retention_days`, `default_time_limit_s`, `paused`,
+    /// `notify_default_events`; `<agent dir>/cron/settings.json`). With no flags,
+    /// just shows the settings. The ntfy topic is a notify-extension setting.
     Settings {
         #[arg(long)]
         concurrency: Option<u32>,
@@ -370,9 +370,6 @@ enum CronAction {
         default_time_limit_s: Option<u64>,
         #[arg(long)]
         paused: Option<bool>,
-        /// Empty string clears it.
-        #[arg(long)]
-        ntfy_topic: Option<String>,
         /// Comma-separated run outcomes (e.g. `failed,timeout`).
         #[arg(long)]
         notify_default_events: Option<String>,
@@ -600,23 +597,10 @@ async fn main() -> anyhow::Result<()> {
                     tracing::warn!(message = %diagnostic.message, "extension discovery");
                 }
             }
-            if let Some(local) = loader.local_services() {
-                let names = unipi_host::sessions::services::register_all(
-                    local,
-                    &unipi_host::sessions::services::HostServiceDeps {
-                        data_dir: paths_for_cleanup.root.clone(),
-                        agent_dir: agent_dir.clone(),
-                        host_name: hostname(),
-                        mode: mode.as_str().to_owned(),
-                        kanboard_bin: unipi_host::sessions::services::kanboard_bin(),
-                        // Registered by their own WPs: the cron merge (X4) and the browser
-                        // service (`spec-browser` WP-B7).
-                        cron: None,
-                        browser: None,
-                    },
-                );
-                tracing::info!(?names, "host services registered");
-            }
+            // The process-wide extension hub, when extensions load at all (the cron run
+            // notifications publish their bus event here too).
+            let local_services = loader.local_services().cloned();
+            let cron_agent_dir = agent_dir.clone();
             let flags = oino_core::services::ResourceFlags {
                 no_extensions,
                 safe_mode: safe_plan.disable_extensions.then(|| safe_plan.clone()),
@@ -647,16 +631,70 @@ async fn main() -> anyhow::Result<()> {
             // event feeds through this one service (`events_open`, the session streams).
             let _sessions =
                 unipi_host::sessions::SessionService::install(std::sync::Arc::clone(&hub));
-            // UNI-314: the host-owned cron scheduler -- always on while serve runs,
-            // shared by the iroh/app.sock handler (UNI-317 cron_* ops) and the
-            // CLI's control.sock (`unipi-host cron ...`).
-            let cron_scheduler = unipi_host::cron::Scheduler::new(paths.clone());
+            // H8 (host.md §9.8; ext-abi §6): the cron scheduler is unipi-cron's, embedded
+            // here as the single owner (`scheduler.lock`): it ticks every second, watches
+            // `jobs/`, sends run notifications through the host's own E2E channels and wakes
+            // linked chats through the hub. The lock also keeps a second host (or a CLI
+            // that cannot reach this one) from firing the same jobs.
+            let cron_paths = unipi_host::cron_serve::cron_paths_for_host(&paths_for_cleanup.root);
+            let cron_scheduler = unipi_cron::Scheduler::with_paths(cron_paths.clone())
+                .with_notify_sink(unipi_host::cron_notify::notify_sink(std::sync::Arc::new(
+                    paths_for_cleanup.clone(),
+                )));
+            let cron_scheduler = unipi_host::cron_wake::install(
+                cron_scheduler,
+                std::sync::Arc::clone(&hub),
+                cron_paths.clone(),
+                local_services.clone(),
+            );
+            let cron_owner = match unipi_cron::embedded::Embedded::start_with(cron_scheduler) {
+                Ok(owner) => Some(owner),
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        "cron: this process is not the scheduler owner; \
+                         job files stay editable but nothing fires"
+                    );
+                    None
+                }
+            };
+            let cron_scheduler = cron_owner
+                .as_ref()
+                .map(|owner| std::sync::Arc::clone(&owner.scheduler));
+            let cron = match &cron_scheduler {
+                Some(scheduler) => unipi_host::cron_serve::CronHost::with_scheduler(
+                    &paths_for_cleanup,
+                    std::sync::Arc::clone(scheduler),
+                ),
+                None => unipi_host::cron_serve::CronHost::new(&paths_for_cleanup),
+            };
+            if let Some(local) = &local_services {
+                let names = unipi_host::sessions::services::register_all(
+                    local,
+                    &unipi_host::sessions::services::HostServiceDeps {
+                        data_dir: paths_for_cleanup.root.clone(),
+                        agent_dir: cron_agent_dir.clone(),
+                        host_name: hostname(),
+                        mode: mode.as_str().to_owned(),
+                        kanboard_bin: unipi_host::sessions::services::kanboard_bin(),
+                        cron: cron_scheduler.as_ref().map(|scheduler| {
+                            std::sync::Arc::new(unipi_cron::host_service::CronHostService::new(
+                                std::sync::Arc::clone(scheduler),
+                            ))
+                                as std::sync::Arc<dyn oino_extension_api::host_service::HostService>
+                        }),
+                        // Registered by its own WP (`spec-browser` WP-B7).
+                        browser: None,
+                    },
+                );
+                tracing::info!(?names, "host services registered");
+            }
             let handler = Handler {
                 paths,
                 host_id: endpoint.id(),
                 host_name: hostname(),
                 lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-                cron: cron_scheduler.clone(),
+                cron: cron.clone(),
             };
             // UNI-303: the stable agent address (AGENT_BROWSER_CDP) for this host.
             if let Err(error) =
@@ -664,23 +702,13 @@ async fn main() -> anyhow::Result<()> {
             {
                 tracing::warn!(op = "browser_agent", %error, "no stable agent endpoint");
             }
-            let cron_ticker = {
-                let scheduler = cron_scheduler.clone();
-                tokio::spawn(async move {
-                    let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
-                    loop {
-                        tick.tick().await;
-                        scheduler.tick().await;
-                    }
-                })
-            };
             // UNI-214: local control socket (named pipe on Windows) for `unipi-host push`.
             let _control = unipi_host::push::serve_control(unipi_host::push::ControlContext {
                 paths: handler.paths.clone(),
                 hub: unipi_host::push::PushHub::shared(&handler.paths),
                 host_name: handler.host_name.clone(),
                 notify: true,
-                cron: cron_scheduler,
+                cron,
             })
             .await?;
             // UNI-248: end time-limited approvals and expire stale requests.
@@ -769,7 +797,10 @@ async fn main() -> anyhow::Result<()> {
             unipi_host::local::cleanup(&paths_for_cleanup);
             sweeper.abort();
             updater.abort();
-            cron_ticker.abort();
+            if let Some(cron_owner) = cron_owner {
+                // Stops ticking; running jobs are not killed (the next owner closes them).
+                cron_owner.shutdown();
+            }
             safe_task.abort();
             // Dispose the live sessions so extensions see `session_shutdown{quit}` and the
             // single-writer leases are released before this process goes away.
@@ -1290,14 +1321,26 @@ async fn browser_control(
         None => anyhow::bail!("`unipi-host serve` closed the connection (an older serve without `browser start`? restart it)"),
     }
 }
-/// One `cron` request to the running serve over control.sock.
+/// One `cron` request: to the running `serve` over `control.sock` when it owns the
+/// scheduler, else straight against the job files. Storage ops work without a host
+/// (ext-abi §6.5); the live ops (`run`/`stop`/…) then fail with the library's
+/// "scheduler is not running" message instead of silently doing nothing.
 async fn cron_control(
     paths: &HostPaths,
-    request: unipi_host::cron::CronControl,
+    request: unipi_cron::control::CronControl,
 ) -> anyhow::Result<serde_json::Value> {
     use unipi_host::push::{ControlEvent, ControlRequest};
-    let (mut lines, _w) =
-        unipi_host::push::connect_control(paths, &ControlRequest::Cron { request }).await?;
+    let connected = unipi_host::push::connect_control(
+        paths,
+        &ControlRequest::Cron {
+            request: request.clone(),
+        },
+    )
+    .await;
+    let Ok((mut lines, _w)) = connected else {
+        let cron = unipi_host::cron_serve::CronHost::new(paths);
+        return cron.control(request).await.map_err(|e| anyhow::anyhow!(e));
+    };
     match lines.next_line().await? {
         Some(line) => match serde_json::from_str::<ControlEvent>(&line)? {
             ControlEvent::Cron { data } => Ok(data),
@@ -1310,40 +1353,21 @@ async fn cron_control(
         None => anyhow::bail!("`unipi-host serve` closed the connection"),
     }
 }
-/// Turns `--schedule`/`--at` (plain language or machine form) into the
-/// 6-field cron / `at:<RFC3339>` string the host stores, resolved
-/// against `tz_input` (falling back to the system zone, same default
-/// `add`/`edit` use server-side) and the current time. `for_at` means
-/// the result must be one-time: a bare RFC3339 instant with no `at:`
-/// prefix is accepted too (the common case for `--at`).
+/// `--schedule`/`--at` (plain language or machine form), resolved the way `add`/`edit` do
+/// server-side (`unipi-cron`'s shared resolver: 6-field cron / `at:<RFC3339>`, a bare
+/// RFC3339 instant accepted for `--at`).
 fn resolve_schedule_input(
     input: &str,
     for_at: bool,
     tz_input: Option<&str>,
 ) -> anyhow::Result<String> {
-    use unipi_host::cron::schedule::{parse_human, resolve_tz, Schedule};
-    let tz = resolve_tz(tz_input.unwrap_or_default()).map_err(|e| anyhow::anyhow!("{e}"))?;
-    let now = chrono::Utc::now();
-    if for_at {
-        if let Ok(resolved) = parse_human(input, tz, now) {
-            if resolved.starts_with("at:") {
-                return Ok(resolved);
-            }
-        }
-        let bare = format!("at:{input}");
-        if Schedule::parse(&bare).is_ok() {
-            return Ok(bare);
-        }
-        anyhow::bail!(
-            "didn't understand --at {input:?}. Try: \"in 2 hours\", \"tomorrow at 9\", or an exact instant like 2025-12-01T09:00:00Z"
-        );
-    }
-    parse_human(input, tz, now).map_err(|e| anyhow::anyhow!("{e}"))
+    unipi_cron::control::resolve_schedule_input(input, for_at, tz_input)
+        .map_err(|e| anyhow::anyhow!(e))
 }
 
 /// The schedule + next-3-fires line shown after `add`/`edit` (human mode).
 fn schedule_summary(schedule: &str, tz_input: &str) -> String {
-    use unipi_host::cron::schedule::{next_fires, resolve_tz, Schedule};
+    use unipi_cron::schedule::{next_fires, resolve_tz, Schedule};
     let Ok(tz) = resolve_tz(tz_input) else {
         return format!("schedule: {schedule}");
     };
@@ -1375,7 +1399,7 @@ fn schedule_summary(schedule: &str, tz_input: &str) -> String {
 fn notify_spec_from_flags(
     notify: &[String],
     notify_on: &[String],
-) -> anyhow::Result<Option<unipi_host::cron::model::NotifySpec>> {
+) -> anyhow::Result<Option<unipi_cron::model::NotifySpec>> {
     let channels: Option<Vec<String>> = match notify {
         [] => None,
         v if v.iter().any(|c| c.eq_ignore_ascii_case("none")) => None,
@@ -1389,10 +1413,7 @@ fn notify_spec_from_flags(
     if channels.is_none() && events.is_none() {
         return Ok(None);
     }
-    Ok(Some(unipi_host::cron::model::NotifySpec {
-        channels,
-        events,
-    }))
+    Ok(Some(unipi_cron::model::NotifySpec { channels, events }))
 }
 
 /// Builds an `Option<SessionLink>` from `--wake-session`/`--wake-here`.
@@ -1402,13 +1423,13 @@ fn notify_spec_from_flags(
 fn session_link_from_flags(
     wake_session: Option<&str>,
     wake_here: bool,
-) -> anyhow::Result<Option<unipi_host::cron::model::SessionLink>> {
+) -> anyhow::Result<Option<unipi_cron::model::SessionLink>> {
     if wake_here {
         let file = std::env::var("PI_SESSION_FILE").map_err(|_| {
             anyhow::anyhow!("--wake-here needs $PI_SESSION_FILE, which pi's bash tool sets — run this from inside a pi session")
         })?;
         anyhow::ensure!(!file.is_empty(), "$PI_SESSION_FILE is empty");
-        return Ok(Some(unipi_host::cron::model::SessionLink {
+        return Ok(Some(unipi_cron::model::SessionLink {
             session_file: Some(file),
             session_id: None,
         }));
@@ -1417,12 +1438,12 @@ fn session_link_from_flags(
         None => Ok(None),
         Some(v) if v.eq_ignore_ascii_case("none") => Ok(None),
         Some(v) if v.ends_with(".jsonl") || v.contains('/') || v.contains('\\') => {
-            Ok(Some(unipi_host::cron::model::SessionLink {
+            Ok(Some(unipi_cron::model::SessionLink {
                 session_file: Some(v.to_string()),
                 session_id: None,
             }))
         }
-        Some(v) => Ok(Some(unipi_host::cron::model::SessionLink {
+        Some(v) => Ok(Some(unipi_cron::model::SessionLink {
             session_file: None,
             session_id: Some(v.to_string()),
         })),
@@ -1430,8 +1451,9 @@ fn session_link_from_flags(
 }
 
 async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<()> {
-    use unipi_host::cron::scheduler::{EditJob, NewJob};
-    use unipi_host::cron::CronControl;
+    use unipi_cron::control::{CronControl, EditJob, NewJob};
+    // `<agent dir>/cron` — the same files `serve`'s embedded scheduler and the extension use.
+    let cron_paths = unipi_host::cron_serve::cron_paths_for_host(&paths.root);
     let print_or = |json: bool, value: &serde_json::Value, text: String| {
         if json {
             println!("{}", serde_json::to_string(value).unwrap_or_default());
@@ -1554,21 +1576,23 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
             let session_link = session_link_from_flags(wake_session.as_deref(), wake_here)?;
             let data = cron_control(
                 paths,
-                CronControl::Add(NewJob {
+                CronControl::Add(Box::new(NewJob {
                     id,
                     name,
                     prompt,
                     schedule: resolved_schedule,
                     tz: tz.clone(),
-                    cwd,
+                    cwd: Some(cwd),
                     model,
                     thinking,
                     enabled: Some(!disabled),
                     time_limit_s,
                     cost_cap_usd: cost_cap,
+                    overlap: None,
+                    missed: None,
                     notify: notify_spec,
                     session_link,
-                }),
+                })),
             )
             .await?;
             let job_id = data["id"].as_str().unwrap_or("").to_string();
@@ -1628,11 +1652,13 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                 schedule: resolved_schedule,
                 tz,
                 cwd,
-                model,
-                thinking,
+                model: model.map(Some),
+                thinking: thinking.map(Some),
                 enabled: None,
                 time_limit_s,
-                cost_cap_usd: cost_cap,
+                cost_cap_usd: cost_cap.map(Some),
+                overlap: None,
+                missed: None,
                 notify: notify_patch,
                 session_link: session_link_patch,
             };
@@ -1640,7 +1666,7 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                 paths,
                 CronControl::Edit {
                     id: id.clone(),
-                    patch,
+                    patch: Box::new(patch),
                 },
             )
             .await?;
@@ -1677,7 +1703,7 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
             }
         }
         CronAction::Rm { id } => {
-            let data = cron_control(paths, CronControl::Rm { id }).await?;
+            let data = cron_control(paths, CronControl::Remove { id: id.clone() }).await?;
             println!("Removed {}", data["removed"].as_str().unwrap_or(""));
         }
         CronAction::Enable { id } => {
@@ -1796,14 +1822,14 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
             println!("{}", lines.join("\n"));
         }
         CronAction::Share { device } => {
-            let settings =
-                unipi_host::sharing::cron_enable(paths, (!device.is_empty()).then_some(device))?;
-            print_cron_settings(&settings);
+            unipi_host::sharing::cron_enable(paths, (!device.is_empty()).then_some(device))?;
+            let settings = unipi_cron::store::load_settings(&cron_paths)?;
+            print_cron_settings(&settings, &unipi_host::sharing::cron_share(paths));
         }
         CronAction::Unshare => {
             unipi_host::sharing::disable(paths, unipi_proto::FeatureKind::Cron)?;
-            let settings = unipi_host::cron::store::load_settings(&paths.config())?;
-            print_cron_settings(&settings);
+            let settings = unipi_cron::store::load_settings(&cron_paths)?;
+            print_cron_settings(&settings, &unipi_host::sharing::cron_share(paths));
         }
         CronAction::Settings {
             concurrency,
@@ -1812,7 +1838,6 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
             retention_days,
             default_time_limit_s,
             paused,
-            ntfy_topic,
             notify_default_events,
             json,
         } => {
@@ -1822,7 +1847,6 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                 || retention_days.is_some()
                 || default_time_limit_s.is_some()
                 || paused.is_some()
-                || ntfy_topic.is_some()
                 || notify_default_events.is_some();
             let settings = if any_set {
                 let patch = unipi_proto::CronSettingsSetRequest {
@@ -1832,7 +1856,7 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                     retention_days,
                     default_time_limit_s,
                     paused,
-                    ntfy_topic,
+                    ntfy_topic: None,
                     notify_default_events: notify_default_events.map(|s| {
                         s.split(',')
                             .map(|s| s.trim().to_string())
@@ -1840,43 +1864,42 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                             .collect()
                     }),
                 };
-                unipi_host::cron_serve::apply_settings_patch(paths, patch)
+                unipi_host::cron_serve::apply_settings_patch(&cron_paths, patch)
                     .map_err(|e| anyhow::anyhow!(e))?
             } else {
-                unipi_host::cron::store::load_settings(&paths.config())?
+                unipi_cron::store::load_settings(&cron_paths)?
             };
             if json {
                 println!("{}", serde_json::to_string(&settings)?);
                 return Ok(());
             }
-            print_cron_settings(&settings);
+            print_cron_settings(&settings, &unipi_host::sharing::cron_share(paths));
         }
     }
     Ok(())
 }
-fn print_cron_settings(settings: &unipi_host::cron::CronSettings) {
+fn print_cron_settings(
+    settings: &unipi_cron::model::CronSettings,
+    share: &unipi_host::sharing::CronShareConfig,
+) {
     println!(
         "concurrency {}  missed_window_s {}  retention_runs {}  retention_days {}  default_time_limit_s {}",
         settings.concurrency, settings.missed_window_s, settings.retention_runs, settings.retention_days, settings.default_time_limit_s,
     );
     println!(
         "paused {}  cron shared with phones: {}",
-        settings.paused, settings.enabled
+        settings.paused, share.enabled
     );
-    if settings.enabled {
+    if share.enabled {
         println!(
             "  devices: {}",
-            if settings.devices.is_empty() {
+            if share.devices.is_empty() {
                 "all paired devices".to_string()
             } else {
-                settings.devices.join(", ")
+                share.devices.join(", ")
             }
         );
     }
-    println!(
-        "ntfy_topic {}",
-        settings.ntfy_topic.as_deref().unwrap_or("-")
-    );
     println!(
         "notify_default_events {}",
         if settings.notify_default_events.is_empty() {

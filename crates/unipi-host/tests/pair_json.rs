@@ -58,14 +58,14 @@ async fn host() -> Host {
         host_id: endpoint.id(),
         host_name: "pair-test-pc".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
     };
     let control = unipi_host::push::serve_control(ControlContext {
         paths: paths.clone(),
         hub: PushHub::shared(&paths),
         host_name: "pair-test-pc".into(),
         notify: false,
-        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+        cron: unipi_host::cron_serve::CronHost::new(&paths),
     })
     .await
     .unwrap();

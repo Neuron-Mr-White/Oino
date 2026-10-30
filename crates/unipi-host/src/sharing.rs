@@ -144,21 +144,78 @@ pub fn push_enable(
     Ok(config.push)
 }
 
+/// The `cron` sharing block of `config.json` (WP-H8): who may use the `cron_*` ops. The
+/// scheduler's own settings (concurrency, pause, retention, …) moved to the library's
+/// `<agent dir>/cron/settings.json`; this block only grants the feature.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CronShareConfig {
+    /// The feature is on for phones (the PC's own app always has it).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Ids/prefixes/names allowed; empty = every paired device.
+    #[serde(default)]
+    pub devices: Vec<String>,
+}
+
+/// Reads the `cron` sharing block (fresh from `config.json`; a missing block is off).
+#[must_use]
+pub fn cron_share(paths: &HostPaths) -> CronShareConfig {
+    let Ok(mut config) = HostConfig::load(&paths.config()) else {
+        return CronShareConfig::default();
+    };
+    let Some(block) = config.rest.remove("cron") else {
+        return CronShareConfig::default();
+    };
+    CronShareConfig {
+        enabled: block
+            .get("enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        devices: block
+            .get("devices")
+            .and_then(serde_json::Value::as_array)
+            .map(|devices| {
+                devices
+                    .iter()
+                    .filter_map(|d| d.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+/// Writes the `cron` sharing block, keeping every other key of the block (and of the
+/// config) untouched.
+fn save_cron_share(paths: &HostPaths, share: &CronShareConfig) -> anyhow::Result<()> {
+    let path = paths.config();
+    let mut config = HostConfig::load(&path)?;
+    let mut block = config
+        .rest
+        .remove("cron")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    block.insert("enabled".to_owned(), serde_json::Value::Bool(share.enabled));
+    block.insert("devices".to_owned(), serde_json::to_value(&share.devices)?);
+    config
+        .rest
+        .insert("cron".to_owned(), serde_json::Value::Object(block));
+    config.save(&path)
+}
+
 /// UNI-317: switches `cron` on for phones (the PC's own app always has it).
 /// Like `push_enable`, this only grants the sharing feature — it has
 /// nothing to do with `cron pause`/`cron resume` (which stop/start runs).
 pub fn cron_enable(
     paths: &HostPaths,
     devices: Option<Vec<String>>,
-) -> anyhow::Result<crate::cron::CronSettings> {
-    let path = paths.config();
-    let mut settings = crate::cron::store::load_settings(&path)?;
-    settings.enabled = true;
+) -> anyhow::Result<CronShareConfig> {
+    let mut share = cron_share(paths);
+    share.enabled = true;
     if let Some(devices) = devices {
-        settings.devices = devices;
+        share.devices = devices;
     }
-    crate::cron::store::save_settings(&path, &settings)?;
-    Ok(settings)
+    save_cron_share(paths, &share)?;
+    Ok(share)
 }
 
 /// Switches a feature off (its settings are kept for next time). Approved
@@ -180,9 +237,9 @@ pub fn disable(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<()> {
             config.save(&path)?;
         }
         FeatureKind::Cron => {
-            let mut settings = crate::cron::store::load_settings(&path)?;
-            settings.enabled = false;
-            crate::cron::store::save_settings(&path, &settings)?;
+            let mut share = cron_share(paths);
+            share.enabled = false;
+            save_cron_share(paths, &share)?;
         }
     }
     end_grants(paths, feature, now_ms())
@@ -206,8 +263,8 @@ fn feature_state(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<(boo
             (b.enabled, b.devices)
         }
         FeatureKind::Cron => {
-            let c = crate::cron::store::load_settings(&path)?;
-            (c.enabled, c.devices)
+            let share = cron_share(paths);
+            (share.enabled, share.devices)
         }
     })
 }
@@ -268,12 +325,7 @@ fn set_devices(
             config.devices = devices;
             config.save(&path)
         }
-        FeatureKind::Cron => {
-            let mut settings = crate::cron::store::load_settings(&path)?;
-            settings.enabled = enabled;
-            settings.devices = devices;
-            crate::cron::store::save_settings(&path, &settings)
-        }
+        FeatureKind::Cron => save_cron_share(paths, &CronShareConfig { enabled, devices }),
     }
 }
 
@@ -1069,10 +1121,10 @@ pub fn status(paths: &HostPaths, now: u64) -> anyhow::Result<SharingStatus> {
             devices: host.push.devices.clone(),
         },
         cron: {
-            let cron = crate::cron::store::load_settings(&path).unwrap_or_default();
+            let share = cron_share(paths);
             CronShareStatus {
-                enabled: cron.enabled,
-                devices: cron.devices,
+                enabled: share.enabled,
+                devices: share.devices,
             }
         },
         devices: crate::devices::DeviceStore::new(paths.devices())

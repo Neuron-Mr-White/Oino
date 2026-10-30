@@ -1,31 +1,44 @@
-//! UNI-314 integration tests: a fake `pi` shell script on a temp PATH,
-//! driving the real [`unipi_host::cron`] scheduler end-to-end (no real
-//! LLM calls). Each test gets its own `UNIPI_HOST_DIR` tempdir.
+//! Integration tests for the cron scheduler the host embeds (WP-H8): a fake `oino` shell
+//! script on `$OINO_CRON_BIN`, driving the real [`unipi_cron`] scheduler end-to-end (no real
+//! LLM calls). Each test gets its own agent dir (tempdir); the binary override is
+//! process-global, so the tests serialise on `ENV_LOCK`.
 
 #![cfg(unix)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::await_holding_lock,
+    reason = "tests assert by unwrapping; the env override is process-global"
+)]
 
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Mutex;
 use std::time::Duration;
 
-use unipi_host::cron::model::{Job, RunStatus};
-use unipi_host::cron::scheduler::{Clock, Scheduler};
-use unipi_host::data_dir::HostPaths;
+use unipi_cron::model::{Job, RunStatus};
+use unipi_cron::scheduler::{Clock, Scheduler};
+use unipi_cron::{store, CronPaths};
 
-/// Writes a fake `pi` on its own temp dir and returns `(tempdir, path_list)`.
-/// The host dir's `env` file is written with that `PATH`, like a real
-/// `~/.unipi/app-host/env` (UNI-239).
-fn fake_pi(paths: &HostPaths, script: &str) -> tempfile::TempDir {
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+/// Writes a fake `oino` and points `$OINO_CRON_BIN` at it; returns the tempdir keeping it
+/// alive and the previous value to restore.
+fn fake_oino(script: &str) -> (tempfile::TempDir, Option<String>) {
     let bin_dir = tempfile::tempdir().unwrap();
-    let pi = bin_dir.path().join("pi");
-    std::fs::write(&pi, script).unwrap();
-    std::fs::set_permissions(&pi, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let path_list = format!(
-        "{}:{}",
-        bin_dir.path().display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    std::fs::write(paths.root.join("env"), format!("PATH={path_list}\n")).unwrap();
-    bin_dir
+    let bin = bin_dir.path().join("oino");
+    std::fs::write(&bin, script).unwrap();
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let previous = std::env::var("OINO_CRON_BIN").ok();
+    std::env::set_var("OINO_CRON_BIN", &bin);
+    (bin_dir, previous)
+}
+
+fn restore(previous: Option<String>) {
+    match previous {
+        Some(value) => std::env::set_var("OINO_CRON_BIN", value),
+        None => std::env::remove_var("OINO_CRON_BIN"),
+    }
 }
 
 fn job(id: &str, schedule: &str, cwd: &str, time_limit_s: u64) -> Job {
@@ -41,6 +54,8 @@ fn job(id: &str, schedule: &str, cwd: &str, time_limit_s: u64) -> Job {
         enabled: true,
         time_limit_s,
         cost_cap_usd: None,
+        overlap: unipi_cron::model::OverlapPolicy::default(),
+        missed: unipi_cron::model::MissedPolicy::default(),
         notify: None,
         session_link: None,
         created: 0,
@@ -71,25 +86,25 @@ async fn wait_for<F: Fn() -> bool>(cond: F, timeout: Duration) -> bool {
 /// A job firing every 2s runs, records `ok`, a summary and a log.
 #[tokio::test]
 async fn fires_every_2s_and_records_ok_with_summary_and_log() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    let paths = HostPaths::from_dir(tmp.path());
+    let paths = CronPaths::new(tmp.path());
     let cwd = tempfile::tempdir().unwrap();
-    let _bin = fake_pi(
-        &paths,
+    let (_bin, previous) = fake_oino(
         r#"#!/bin/sh
 echo '{"type":"turn_end","message":{"role":"assistant","content":[{"type":"text","text":"RESULT: did the thing"}],"usage":{"cost":{"total":0.01}}}}'
 exit 0
 "#,
     );
 
-    let scheduler = Scheduler::new(paths.clone());
+    let scheduler = Scheduler::with_paths(paths.clone());
     let j = job(
         "every2s",
         "*/2 * * * * *",
         &cwd.path().to_string_lossy(),
         10,
     );
-    unipi_host::cron::store::save_jobs(&paths, &[j]).unwrap();
+    store::save_jobs(&paths, &[j]).unwrap();
 
     // Drive the scheduler's ticks concurrently with the wait.
     let ticker = {
@@ -103,7 +118,7 @@ exit 0
     };
     let found = wait_for(
         || {
-            unipi_host::cron::store::load_runs(&paths, "every2s")
+            store::load_runs(&paths, "every2s")
                 .map(|r| r.iter().any(|r| r.status == RunStatus::Ok))
                 .unwrap_or(false)
         },
@@ -111,9 +126,10 @@ exit 0
     )
     .await;
     ticker.abort();
+    restore(previous);
     assert!(found, "the job should have fired and completed within 10s");
 
-    let runs = unipi_host::cron::store::load_runs(&paths, "every2s").unwrap();
+    let runs = store::load_runs(&paths, "every2s").unwrap();
     let ok = runs
         .iter()
         .find(|r| r.status == RunStatus::Ok)
@@ -127,22 +143,23 @@ exit 0
         "summary: {:?}",
         ok.summary
     );
-    let log = unipi_host::cron::store::read_log(&paths, "every2s", &ok.id).expect("log exists");
+    let log = store::read_log(&paths, "every2s", &ok.id).expect("log exists");
     assert!(String::from_utf8_lossy(&log).contains("did the thing"));
 }
 
 /// A job that sleeps 10s with a 2s limit → `timeout`, and the process is gone.
 #[tokio::test]
 async fn exceeding_time_limit_times_out_and_kills_the_process() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    let paths = HostPaths::from_dir(tmp.path());
+    let paths = CronPaths::new(tmp.path());
     let cwd = tempfile::tempdir().unwrap();
     let marker = tmp.path().join("still-running");
     let script = format!(
         "#!/bin/sh\ntouch {marker}\nsleep 10\nrm -f {marker}\n",
         marker = marker.display()
     );
-    let _bin = fake_pi(&paths, &script);
+    let (_bin, previous) = fake_oino(&script);
 
     let job = job(
         "slowjob",
@@ -151,17 +168,17 @@ async fn exceeding_time_limit_times_out_and_kills_the_process() {
         2,
     );
     // Run it directly (bypassing the schedule) via run_now.
-    let scheduler = Scheduler::new(paths.clone());
-    unipi_host::cron::store::save_jobs(&paths, std::slice::from_ref(&job)).unwrap();
+    let scheduler = Scheduler::with_paths(paths.clone());
+    store::save_jobs(&paths, std::slice::from_ref(&job)).unwrap();
     let run_id = scheduler.run_now(&job).await.unwrap();
 
     assert!(
         wait_for(|| marker.exists(), Duration::from_secs(5)).await,
-        "the fake pi should have started"
+        "the fake oino should have started"
     );
     let timed_out = wait_for(
         || {
-            unipi_host::cron::store::load_run(&paths, "slowjob", &run_id)
+            store::load_run(&paths, "slowjob", &run_id)
                 .unwrap()
                 .map(|r| r.status == RunStatus::Timeout)
                 .unwrap_or(false)
@@ -169,10 +186,11 @@ async fn exceeding_time_limit_times_out_and_kills_the_process() {
         Duration::from_secs(8),
     )
     .await;
+    restore(previous);
     assert!(timed_out, "expected a timeout status");
     // The process group was killed: the marker file (removed only by the
     // normal sleep-then-continue path) must still be there, i.e. it never
-    // reached the `rm`, and no "pi" process from this test is left running.
+    // reached the `rm`, and no "oino" process from this test is left running.
     assert!(
         marker.exists(),
         "the script never got past `sleep 10`, consistent with being killed"
@@ -189,28 +207,29 @@ async fn exceeding_time_limit_times_out_and_kills_the_process() {
     );
 }
 
-/// A second fire while the first is still running → `skipped`.
+/// A second fire while the first is still running → `skipped` (run_now refuses).
 #[tokio::test]
 async fn overlapping_fire_is_skipped() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    let paths = HostPaths::from_dir(tmp.path());
+    let paths = CronPaths::new(tmp.path());
     let cwd = tempfile::tempdir().unwrap();
-    let _bin = fake_pi(&paths, "#!/bin/sh\nsleep 3\necho done\n");
+    let (_bin, previous) = fake_oino("#!/bin/sh\nsleep 3\necho done\n");
 
-    let scheduler = Scheduler::new(paths.clone());
+    let scheduler = Scheduler::with_paths(paths.clone());
     let j = job(
         "overlap",
         "at:2000-01-01T00:00:00Z",
         &cwd.path().to_string_lossy(),
         10,
     );
-    unipi_host::cron::store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
+    store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
 
     let first = scheduler.run_now(&j).await.unwrap();
     // Give it a moment to actually start before trying to overlap it.
     wait_for(
         || {
-            unipi_host::cron::store::load_run(&paths, "overlap", &first)
+            store::load_run(&paths, "overlap", &first)
                 .unwrap()
                 .map(|r| r.status == RunStatus::Running)
                 .unwrap_or(false)
@@ -221,13 +240,12 @@ async fn overlapping_fire_is_skipped() {
     let second = scheduler.run_now(&j).await;
     assert!(second.is_err(), "run_now while running should refuse");
 
-    // A scheduled fire while running (via consider_fire through tick with
-    // an `at:` far in the future doesn't apply) is exercised at the unit
-    // level (scheduler::tests::overlap_fire_is_recorded_skipped); here we
-    // confirm the control-level `run_now` guard too, end to end.
-    wait_for(
+    // A scheduled fire while running is exercised at the unit level
+    // (scheduler::tests::overlap_fire_is_recorded_skipped); here we confirm the
+    // control-level `run_now` guard too, end to end.
+    let finished = wait_for(
         || {
-            unipi_host::cron::store::load_run(&paths, "overlap", &first)
+            store::load_run(&paths, "overlap", &first)
                 .unwrap()
                 .map(|r| r.status == RunStatus::Ok)
                 .unwrap_or(false)
@@ -235,17 +253,19 @@ async fn overlapping_fire_is_skipped() {
         Duration::from_secs(6),
     )
     .await;
+    restore(previous);
+    assert!(finished, "the first run should finish ok");
 }
 
 /// A run reporting more cost than the job's `cost_cap_usd` → `failed`,
-/// reason "cost cap", even though `pi` itself exited 0.
+/// reason "cost cap", even though `oino` itself exited 0.
 #[tokio::test]
 async fn over_cost_cap_fails_the_run() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    let paths = HostPaths::from_dir(tmp.path());
+    let paths = CronPaths::new(tmp.path());
     let cwd = tempfile::tempdir().unwrap();
-    let _bin = fake_pi(
-        &paths,
+    let (_bin, previous) = fake_oino(
         r#"#!/bin/sh
 echo '{"type":"turn_end","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"usage":{"cost":{"total":5.0}}}}'
 exit 0
@@ -259,13 +279,13 @@ exit 0
         10,
         1.0,
     );
-    let scheduler = Scheduler::new(paths.clone());
-    unipi_host::cron::store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
+    let scheduler = Scheduler::with_paths(paths.clone());
+    store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
     let run_id = scheduler.run_now(&j).await.unwrap();
 
     let failed = wait_for(
         || {
-            unipi_host::cron::store::load_run(&paths, "capped", &run_id)
+            store::load_run(&paths, "capped", &run_id)
                 .unwrap()
                 .map(|r| r.status == RunStatus::Failed)
                 .unwrap_or(false)
@@ -273,10 +293,9 @@ exit 0
         Duration::from_secs(5),
     )
     .await;
+    restore(previous);
     assert!(failed, "a run over the cost cap should be recorded failed");
-    let run = unipi_host::cron::store::load_run(&paths, "capped", &run_id)
-        .unwrap()
-        .unwrap();
+    let run = store::load_run(&paths, "capped", &run_id).unwrap().unwrap();
     assert!(
         run.reason.as_deref().unwrap_or("").contains("cost cap"),
         "reason: {:?}",
@@ -285,25 +304,29 @@ exit 0
     assert_eq!(run.cost_usd, Some(5.0));
 }
 
-/// `pi` missing from PATH fails clearly, never silently.
+/// No `oino` binary (and no `oino` on PATH) fails clearly, never silently.
 #[tokio::test]
-async fn missing_pi_fails_clearly() {
+async fn missing_oino_fails_clearly() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    let paths = HostPaths::from_dir(tmp.path());
-    std::fs::write(paths.root.join("env"), "PATH=/does/not/exist\n").unwrap();
+    let paths = CronPaths::new(tmp.path());
+    let previous_bin = std::env::var("OINO_CRON_BIN").ok();
+    let previous_path = std::env::var("PATH").ok();
+    std::env::remove_var("OINO_CRON_BIN");
+    std::env::set_var("PATH", "/does/not/exist");
     let cwd = tempfile::tempdir().unwrap();
-    let scheduler = Scheduler::new(paths.clone());
+    let scheduler = Scheduler::with_paths(paths.clone());
     let j = job(
-        "nopi",
+        "nooino",
         "at:2000-01-01T00:00:00Z",
         &cwd.path().to_string_lossy(),
         10,
     );
-    unipi_host::cron::store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
+    store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
     let run_id = scheduler.run_now(&j).await.unwrap();
     wait_for(
         || {
-            unipi_host::cron::store::load_run(&paths, "nopi", &run_id)
+            store::load_run(&paths, "nooino", &run_id)
                 .unwrap()
                 .map(|r| r.status == RunStatus::Failed)
                 .unwrap_or(false)
@@ -311,15 +334,18 @@ async fn missing_pi_fails_clearly() {
         Duration::from_secs(5),
     )
     .await;
-    let run = unipi_host::cron::store::load_run(&paths, "nopi", &run_id)
-        .unwrap()
-        .unwrap();
+    restore(previous_bin);
+    match previous_path {
+        Some(value) => std::env::set_var("PATH", value),
+        None => std::env::remove_var("PATH"),
+    }
+    let run = store::load_run(&paths, "nooino", &run_id).unwrap().unwrap();
     assert_eq!(run.status, RunStatus::Failed);
     assert!(
         run.reason
             .as_deref()
             .unwrap_or("")
-            .contains("pi not found on PATH"),
+            .contains("couldn't find the oino binary"),
         "reason: {:?}",
         run.reason
     );
@@ -329,10 +355,11 @@ async fn missing_pi_fails_clearly() {
 /// used here to exercise missed-run catch-up through `tick` end to end.
 #[tokio::test]
 async fn missed_run_catches_up_once_after_a_clock_jump() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    let paths = HostPaths::from_dir(tmp.path());
+    let paths = CronPaths::new(tmp.path());
     let cwd = tempfile::tempdir().unwrap();
-    let _bin = fake_pi(&paths, "#!/bin/sh\necho caught up\n");
+    let (_bin, previous) = fake_oino("#!/bin/sh\necho caught up\n");
 
     let start: chrono::DateTime<chrono::Utc> = "2024-01-01T00:00:00Z".parse().unwrap();
     let clock = std::sync::Arc::new(tokio::sync::Mutex::new(start));
@@ -340,7 +367,7 @@ async fn missed_run_catches_up_once_after_a_clock_jump() {
     // Daily job; `created` = start, so the first due fire is 2024-01-02T00:00:00Z.
     let mut j = job("daily", "0 0 0 * * *", &cwd.path().to_string_lossy(), 10);
     j.created = start.timestamp_millis() as u64;
-    unipi_host::cron::store::save_jobs(&paths, &[j]).unwrap();
+    store::save_jobs(&paths, &[j]).unwrap();
 
     // Jump the clock forward 2 days (simulating sleep/host-down): only the
     // latest missed midnight should run once.
@@ -348,15 +375,16 @@ async fn missed_run_catches_up_once_after_a_clock_jump() {
     scheduler.tick().await;
     let ran = wait_for(
         || {
-            unipi_host::cron::store::load_runs(&paths, "daily")
+            store::load_runs(&paths, "daily")
                 .map(|r| !r.is_empty())
                 .unwrap_or(false)
         },
         Duration::from_secs(5),
     )
     .await;
+    restore(previous);
     assert!(ran, "the missed run should have fired once");
-    let runs = unipi_host::cron::store::load_runs(&paths, "daily").unwrap();
+    let runs = store::load_runs(&paths, "daily").unwrap();
     assert_eq!(
         runs.len(),
         1,
