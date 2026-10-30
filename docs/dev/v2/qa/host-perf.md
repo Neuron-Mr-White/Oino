@@ -82,7 +82,12 @@ prints the per-session number above. The 32 MB figure is a test guard, not a spe
 ## Follow-ups
 
 - Run the Windows job once on a real runner when wave 2 CI runs; the pipe path is exercised
-  but the terminal/cron legs are skipped there by design.
+  but the terminal/cron legs are skipped there by design. The v2 pipe name is fixed
+  (`\\.\pipe\unipi-oino-app`, §6.1), so the machine must not already run another
+  `unipi-host` when this test starts (CI runners are clean).
+- The app-side e2e (`specs/app.md` WP-A30: `apps/unipi/e2e/*.mjs`, "H10 pattern") reuses this
+  scenario's sandbox (`OINO_AGENT_DIR` + staged provider + loopback SSE) once the Tauri app
+  builds; H10 itself has no app-crate test because that crate is mid-rewrite in this tree.
 - If debug-build RSS noise ever makes the 32 MB guard uncomfortable, run the same test
   against a release host binary (the test already takes the binary from Cargo's env, so a
   release test profile is a CI knob, not a code change).
