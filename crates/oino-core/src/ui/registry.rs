@@ -401,9 +401,11 @@ impl UiRegistry {
         rev != self.rev
     }
 
-    /// A full snapshot; drops queued ops (the snapshot supersedes them).
+    /// A full snapshot; drops queued state ops (the snapshot supersedes them) but keeps
+    /// one-shot `effect` ops, which are never part of a snapshot (§9.2).
     pub fn snapshot(&mut self) -> UiSnapshot {
-        self.pending.clear();
+        self.pending
+            .retain(|op| matches!(op, RegistryOp::Effect { .. }));
         UiSnapshot {
             scope: self.scope,
             session_id: self.session_id.clone(),
@@ -1424,11 +1426,13 @@ impl UiRegistry {
 
     fn produce_update(
         &mut self,
-        _extension: &str,
+        extension: &str,
         params: &JsonObject,
     ) -> Result<ProduceOutcome, RegistryError> {
         let id = string(params, "panelId")
             .ok_or_else(|| RegistryError::Invalid("updatePanel without panelId".into()))?;
+        // The caller must own the entry; `update` trusts the stored owner.
+        Self::check_ownership(extension, &id)?;
         let spec = params
             .get("spec")
             .filter(|value| !value.is_null())
@@ -1860,6 +1864,31 @@ mod tests {
         };
         assert_eq!(apply(root, ops).unwrap(), tree("two"));
         assert_eq!(registry.get("a/p").unwrap().rev, 2);
+    }
+
+    #[test]
+    fn foreign_entries_cannot_be_updated_or_closed() {
+        let mut registry = registry();
+        registry
+            .put(request("a", "a/p", Slot::SidePane, tree("1")))
+            .unwrap();
+        let update = params(serde_json::json!({
+            "panelId": "a/p",
+            "patch": [{"op": "set", "path": [], "props": {"text": "hijacked"}}]
+        }));
+        assert_eq!(
+            registry.produce("b", "updatePanel", &update).unwrap_err(),
+            RegistryError::ForeignId {
+                id: "a/p".to_owned(),
+                extension: "b".to_owned()
+            }
+        );
+        let close = params(serde_json::json!({"panelId": "a/p"}));
+        assert!(matches!(
+            registry.produce("b", "closePanel", &close),
+            Err(RegistryError::ForeignId { .. })
+        ));
+        assert!(registry.get("a/p").is_some());
     }
 
     #[test]
