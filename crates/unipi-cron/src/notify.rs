@@ -430,6 +430,7 @@ mod tests {
             missed: false,
             pid: None,
             notify_errors: Vec::new(),
+            wake: None,
         }
     }
 

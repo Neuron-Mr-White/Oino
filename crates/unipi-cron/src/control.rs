@@ -8,7 +8,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::model::{CronSettings, Job, MissedPolicy, NotifySpec, OverlapPolicy, Run, RunStatus};
+use crate::model::{
+    CronSettings, Job, MissedPolicy, NotifySpec, OverlapPolicy, Run, RunStatus, SessionLink,
+};
 use crate::paths::CronPaths;
 use crate::schedule::{self, Schedule};
 use crate::scheduler::{Scheduler, job_json, run_json, slugify, unique_id, validate_job};
@@ -31,8 +33,8 @@ pub enum CronControl {
     Edit {
         /// Job id.
         id: String,
-        /// The patch.
-        patch: EditJob,
+        /// The patch (boxed: the variant that carries it is the enum's biggest).
+        patch: Box<EditJob>,
     },
     /// Remove a job and its run history.
     Remove {
@@ -151,6 +153,9 @@ pub struct NewJob {
     /// Notification settings.
     #[serde(default)]
     pub notify: Option<NotifySpec>,
+    /// The chat a finished run wakes (host.md §9.8).
+    #[serde(default)]
+    pub session_link: Option<SessionLink>,
 }
 
 /// Fields for `edit`; every field `None` keeps the current value.
@@ -196,6 +201,9 @@ pub struct EditJob {
     /// Notification settings (`Some(None)` clears).
     #[serde(default)]
     pub notify: Option<Option<NotifySpec>>,
+    /// The chat a finished run wakes (`Some(None)` clears, host.md §9.8).
+    #[serde(default)]
+    pub session_link: Option<Option<SessionLink>>,
 }
 
 /// A settings patch (unipi's `cron settings --key value`).
@@ -301,6 +309,7 @@ pub fn add_job(
         overlap: new.overlap.unwrap_or_default(),
         missed: new.missed.unwrap_or_default(),
         notify: new.notify,
+        session_link: new.session_link,
         created: now_ms,
         updated: now_ms,
     };
@@ -352,6 +361,9 @@ pub fn edit_job(job: &mut Job, patch: EditJob, now_ms: u64) -> Result<(), String
     }
     if let Some(v) = patch.notify {
         job.notify = v;
+    }
+    if let Some(v) = patch.session_link {
+        job.session_link = v;
     }
     validate_job(job)?;
     job.updated = now_ms;
@@ -484,7 +496,7 @@ pub async fn handle_control(
             Ok(job_json(&job))
         }
         CronControl::Edit { id, patch } => {
-            let result = store::update_job(paths, &id, |job| edit_job(job, patch, now_ms))?;
+            let result = store::update_job(paths, &id, |job| edit_job(job, *patch, now_ms))?;
             match result {
                 Ok(Some((_value, job))) => Ok(job_json(&job)),
                 Ok(None) => Err(not_found(&format!("no job {id:?}"))),
@@ -637,6 +649,7 @@ pub async fn handle_control(
                 missed: false,
                 pid: None,
                 notify_errors: Vec::new(),
+                wake: None,
             };
             // Bypass the events filter (a test always sends) by dispatching directly.
             let errors = crate::notify::dispatch_forced(job, &test_run, &channels).await;
@@ -751,11 +764,11 @@ mod tests {
             None,
             CronControl::Edit {
                 id: "daily-digest".to_owned(),
-                patch: EditJob {
+                patch: Box::new(EditJob {
                     schedule: Some("weekdays at 18:30".to_owned()),
                     model: Some(Some("oino/deepseek/deepseek-flash".to_owned())),
                     ..EditJob::default()
-                },
+                }),
             },
         )
         .await

@@ -110,6 +110,10 @@ pub struct Job {
     /// Per-job notification settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notify: Option<NotifySpec>,
+    /// The chat a finished run wakes (host.md §9.8): the host opens this session in its hub
+    /// (takeover semantics) and prompts [`wake_text`]. Absent = no wake.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_link: Option<SessionLink>,
     /// Unix ms.
     #[serde(alias = "created")]
     pub created: u64,
@@ -138,6 +142,7 @@ impl Job {
             overlap: OverlapPolicy::default(),
             missed: MissedPolicy::default(),
             notify: None,
+            session_link: None,
             created: now,
             updated: now,
         }
@@ -149,6 +154,50 @@ fn default_true() -> bool {
 }
 fn default_time_limit() -> u64 {
     DEFAULT_TIME_LIMIT_S
+}
+
+/// The chat a finished run wakes (host.md §9.8; `wake_session`/`wake_here` on the CLI): the
+/// session file (most precise) or its id, resolved by the host's session hub.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLink {
+    /// The session file (`~/.oino/sessions/…/<ts>_<id>.jsonl`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_file: Option<String>,
+    /// The session id (when no file was given).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+impl SessionLink {
+    /// The hub target: the file when one was recorded, else the id.
+    #[must_use]
+    pub fn target(&self) -> Option<&str> {
+        self.session_file
+            .as_deref()
+            .filter(|v| !v.is_empty())
+            .or(self.session_id.as_deref().filter(|v| !v.is_empty()))
+    }
+}
+
+/// The wake prompt a finished run sends to its linked chat (host.md §9.8): the job, its
+/// outcome and the run id, in one short message.
+#[must_use]
+pub fn wake_text(job: &Job, run: &Run) -> String {
+    let summary = run
+        .summary
+        .as_deref()
+        .or(run.reason.as_deref())
+        .unwrap_or("(no summary)");
+    let clipped: String = summary.chars().take(300).collect();
+    format!(
+        "[cron] {} finished: {}. {}. Run {} — details: unipi-host cron log {}",
+        job.name,
+        run.status.as_str(),
+        clipped,
+        run.id,
+        run.id,
+    )
 }
 
 /// What a run is doing or did.
@@ -231,6 +280,10 @@ pub struct Run {
     /// Per-channel notification failures; never fails the run.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notify_errors: Vec<String>,
+    /// What happened waking the job's linked session (`"sent"`, `"session not found: …"`,
+    /// …); absent when the job links none (host.md §9.8).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wake: Option<String>,
 }
 
 /// The scheduler's own settings (`<agent dir>/cron/settings.json`).
@@ -345,6 +398,55 @@ mod tests {
             serde_json::from_str(r#"{"id":"r","job_id":"j","status":"ok","fired_at":0}"#).unwrap();
         assert_eq!(run.status, RunStatus::Ok);
         assert_eq!(RunStatus::Queued.as_str(), "queued");
+    }
+
+    #[test]
+    fn session_link_round_trips_and_targets_the_file_first() {
+        let mut job = Job::new("j", "n", "p", "0 0 * * * *", "UTC", "/tmp");
+        assert!(job.session_link.is_none());
+        job.session_link = Some(SessionLink {
+            session_file: Some("/s.jsonl".into()),
+            session_id: Some("abc".into()),
+        });
+        let value = serde_json::to_value(&job).unwrap();
+        assert_eq!(value["sessionLink"]["sessionFile"], "/s.jsonl");
+        let back: Job = serde_json::from_value(value).unwrap();
+        assert_eq!(back.session_link, job.session_link);
+        assert_eq!(
+            back.session_link.as_ref().unwrap().target(),
+            Some("/s.jsonl")
+        );
+        // An id-only link resolves to the id; an empty link has no target.
+        let id_only = SessionLink {
+            session_file: Some(String::new()),
+            session_id: Some("abc".into()),
+        };
+        assert_eq!(id_only.target(), Some("abc"));
+        assert_eq!(SessionLink::default().target(), None);
+    }
+
+    #[test]
+    fn wake_text_names_the_job_status_summary_and_run() {
+        let job = Job::new("digest", "Daily digest", "p", "0 0 9 * * *", "UTC", "/tmp");
+        let run: Run = serde_json::from_str(
+            r#"{"id":"r7","job_id":"digest","status":"ok","fired_at":0,
+                "summary":"Summarized 12 emails"}"#,
+        )
+        .unwrap();
+        let text = wake_text(&job, &run);
+        assert!(
+            text.starts_with("[cron] Daily digest finished: ok."),
+            "{text}"
+        );
+        assert!(text.contains("Summarized 12 emails"), "{text}");
+        assert!(text.contains("Run r7"), "{text}");
+        // No summary: the reason stands in; no reason either: a placeholder.
+        let mut failed = run.clone();
+        failed.summary = None;
+        failed.reason = Some("pi exited with status 1".into());
+        assert!(wake_text(&job, &failed).contains("pi exited with status 1"));
+        failed.reason = None;
+        assert!(wake_text(&job, &failed).contains("(no summary)"));
     }
 
     #[test]

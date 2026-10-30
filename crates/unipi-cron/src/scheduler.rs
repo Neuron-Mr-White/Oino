@@ -4,6 +4,8 @@
 //! async machinery so it's unit-testable without a tick loop or real processes.
 
 use std::collections::{HashMap, VecDeque};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -21,6 +23,15 @@ use crate::store;
 
 /// A sink notified after every finished run (used to publish a bus event).
 pub type RunEventSink = Arc<dyn Fn(&Job, &Run) + Send + Sync>;
+
+/// A boxed notification future (the sink type below; no `futures` dependency here).
+pub type NotifyFuture<'a> = Pin<Box<dyn Future<Output = Vec<String>> + Send + 'a>>;
+
+/// Replaces the built-in plain ntfy/gotify/telegram senders with the embedder's own channels
+/// (unipi-host's E2E `unipi1:` ntfy pushes, host.md §9.5/§9.8). Returns the per-channel
+/// failures recorded on the run.
+pub type NotifySink =
+    Arc<dyn for<'a> Fn(&'a Job, &'a Run, &'a CronSettings) -> NotifyFuture<'a> + Send + Sync>;
 
 // ------------------------------------------------------------- pure logic
 
@@ -210,6 +221,8 @@ pub struct Scheduler {
     run_seq: Arc<AtomicU32>,
     /// Notified after every finished run (bus publish), if installed.
     event_sink: Option<RunEventSink>,
+    /// Sends the run-finished notifications, if installed (else the crate's own channels).
+    notify_sink: Option<NotifySink>,
     /// How often [`Scheduler::tick`] is called by the owner ([`crate::embedded`]); used as
     /// the on-time tolerance for [`next_due_fire`].
     pub tick_interval: Duration,
@@ -250,6 +263,7 @@ impl Scheduler {
             })),
             run_seq: Arc::new(AtomicU32::new(0)),
             event_sink: None,
+            notify_sink: None,
             tick_interval: Duration::from_secs(1),
         }
     }
@@ -264,6 +278,13 @@ impl Scheduler {
     #[must_use]
     pub fn with_event_sink(mut self, sink: RunEventSink) -> Self {
         self.event_sink = Some(sink);
+        self
+    }
+
+    /// Installs the notification sink (the embedder's channels, e.g. unipi-host's E2E ntfy).
+    #[must_use]
+    pub fn with_notify_sink(mut self, sink: NotifySink) -> Self {
+        self.notify_sink = Some(sink);
         self
     }
 
@@ -351,6 +372,7 @@ impl Scheduler {
                 missed,
                 pid: None,
                 notify_errors: Vec::new(),
+                wake: None,
             };
             let _ = store::save_run(&self.paths, &run);
             return;
@@ -383,6 +405,7 @@ impl Scheduler {
                 missed,
                 pid: None,
                 notify_errors: Vec::new(),
+                wake: None,
             };
             let _ = store::save_run(&self.paths, &run);
         }
@@ -395,7 +418,7 @@ impl Scheduler {
         run_id: String,
         fired_at: u64,
         missed: bool,
-    ) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
         Box::pin(self.start_run_inner(job, run_id, fired_at, missed))
     }
 
@@ -420,6 +443,7 @@ impl Scheduler {
             missed,
             pid: None,
             notify_errors: Vec::new(),
+            wake: None,
         };
         if store::save_run(&self.paths, &run).is_err() {
             return; // nowhere to record: don't run blind
@@ -465,8 +489,12 @@ impl Scheduler {
             // Best-effort notifications, after the run record exists: a failing channel is
             // recorded on the run, never turns the run into a failure.
             let settings = this.settings();
-            let channels = crate::notify::Channels::load(&this.paths, &settings);
-            run.notify_errors = crate::notify::dispatch(&job_for_run, &run, &channels).await;
+            run.notify_errors = if let Some(sink) = &this.notify_sink {
+                sink(&job_for_run, &run, &settings).await
+            } else {
+                let channels = crate::notify::Channels::load(&this.paths, &settings);
+                crate::notify::dispatch(&job_for_run, &run, &channels).await
+            };
             let _ = store::save_run(&this.paths, &run);
             if let Some(sink) = &this.event_sink {
                 sink(&job_for_run, &run);
@@ -611,6 +639,7 @@ impl Scheduler {
                 missed: false,
                 pid: None,
                 notify_errors: Vec::new(),
+                wake: None,
             };
             let _ = store::save_run(&self.paths, &run);
         }
