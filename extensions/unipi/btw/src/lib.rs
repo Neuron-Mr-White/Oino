@@ -30,7 +30,8 @@ use futures::StreamExt;
 use oino_extension::agents::Agent;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
-use unipi_kit::ous::{dim, key_hints, span, text};
+use oino_extension::ui::KeyBinding;
+use oino_extension::ui::widgets::prelude::*;
 use unipi_kit::services::point;
 
 /// Panel id.
@@ -151,53 +152,82 @@ pub fn list_page(p: &Page) -> Value {
     v
 }
 
+/// One unwrapped text line.
+fn line(span: Span) -> Node {
+    Paragraph::new(Line::from(span))
+        .wrap(Wrap::Disabled(false))
+        .into()
+}
+
 /// Panel spec for page `index`.
 #[must_use]
-pub fn panel_spec(pages: &[Page], index: usize, streaming: bool) -> Value {
-    let mut body: Vec<Value> = Vec::new();
+pub fn panel_spec(pages: &[Page], index: usize, streaming: bool) -> Node {
+    let mut body: Vec<Node> = Vec::new();
     if let Some(p) = pages.get(index) {
-        body.push(text(json!([span(
-            &format!("❭ {}", p.question),
-            Some("accent")
-        )])));
+        body.push(line(
+            Span::from_string(format!("❭ {}", p.question)).fg(Color::Accent),
+        ));
         for l in &p.tool_lines {
-            body.push(text(json!([dim(if l.starts_with('…') {
-                l.clone()
-            } else {
-                format!("  {l}")
-            }
-            .as_str())])));
+            body.push(line(
+                Span::from_string(if l.starts_with('…') {
+                    l.clone()
+                } else {
+                    format!("  {l}")
+                })
+                .dim(),
+            ));
         }
         if !p.done {
-            body.push(text(json!([dim("Thinking..")])));
+            body.push(line(Span::from_string("Thinking..").dim()));
             if !p.partial.is_empty() {
-                body.push(json!({"t": "markdown", "value": p.partial}));
+                body.push(Markdown::new(p.partial.as_str()).into());
             }
         } else if let Some(e) = &p.error {
-            body.push(text(json!([span(&format!("✗ {e}"), Some("error"))])));
+            body.push(line(Span::from_string(format!("✗ {e}")).fg(Color::Error)));
         }
         if !p.answer.is_empty() {
-            body.push(json!({"t": "markdown", "value": p.answer}));
+            body.push(Markdown::new(p.answer.as_str()).into());
         }
     }
     let title = format!(" /btw {}/{} ", (index + 1).min(pages.len()), pages.len());
-    let input = if streaming {
-        text(json!([dim("❭ Waiting for the answer…")]))
+    let input: Node = if streaming {
+        line(Span::from_string("❭ Waiting for the answer…").dim())
     } else {
-        json!({"t": "input", "id": "question", "placeholder": "Ask a /btw…", "onSubmit": "ask"})
+        Input::new("question")
+            .placeholder("Ask a /btw…")
+            .on_submit("ask")
+            .into()
     };
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": [
-        {"t": "divider", "label": title},
-        {"t": "stack", "direction": "vertical", "gap": 0, "children": body},
-        input,
-        {"t": "divider"},
-        key_hints(&if streaming {
-            [("ctrl+c", "cancel answer"), ("↑↓", "scroll/history"), ("esc", "back to chat")]
-        } else {
-            [("↵", "ask"), ("↑↓", "scroll/history"), ("esc", "back to chat")]
-        }),
-        text(json!([dim(if streaming { HINT_STREAMING } else { HINT_IDLE })])),
-    ]})
+    let hints = if streaming {
+        [
+            ("ctrl+c", "cancel answer"),
+            ("↑↓", "scroll/history"),
+            ("esc", "back to chat"),
+        ]
+    } else {
+        [
+            ("↵", "ask"),
+            ("↑↓", "scroll/history"),
+            ("esc", "back to chat"),
+        ]
+    };
+    Layout::default()
+        .children([
+            Block::default()
+                .borders(Borders::Sides(vec![BorderSide::TOP]))
+                .border_style(Style::new().fg(Color::BorderMuted))
+                .title(title.as_str())
+                .into(),
+            Layout::default().children(body).into(),
+            input,
+            Block::default()
+                .borders(Borders::Sides(vec![BorderSide::TOP]))
+                .border_style(Style::new().fg(Color::BorderMuted))
+                .into(),
+            KeyHints::new(hints).into(),
+            line(Span::from_string(if streaming { HINT_STREAMING } else { HINT_IDLE }).dim()),
+        ])
+        .into()
 }
 
 #[derive(Default)]
@@ -222,16 +252,16 @@ impl Btw {
         let now = timers::now_ms();
         let (panel, spec) = self.sessions.with(sid, |s| {
             if !force && now - s.last_update < UPDATE_MS {
-                return (None, Value::Null);
+                return (None, None);
             }
             s.last_update = now;
             (
                 s.panel.clone(),
-                panel_spec(&s.pages, s.index, s.active.is_some()),
+                Some(panel_spec(&s.pages, s.index, s.active.is_some())),
             )
         });
-        if let Some(id) = panel {
-            let _ = ui::panel_update(&id, &json!({"spec": spec}));
+        if let (Some(id), Some(spec)) = (panel, spec) {
+            let _ = ui::Panel::update(&id).spec(spec).send();
         }
     }
 
@@ -412,15 +442,32 @@ impl Btw {
             s.index = s.pages.len().saturating_sub(1);
             panel_spec(&s.pages, s.index, s.active.is_some())
         });
-        let req = json!({
-            "panelId": PANEL, "placement": "editorReplace", "title": "/btw", "spec": spec, "focus": true, "closeOnEscape": true,
-            "keys": [
-                {"key": "ctrl+c", "actionId": "cancel", "label": "cancel answer"},
-                {"key": "up", "actionId": "prev", "label": "history"},
-                {"key": "down", "actionId": "next", "label": "history"},
-            ],
-        });
-        match ui::panel_open(&req) {
+        let keys = [
+            KeyBinding {
+                key: "ctrl+c".into(),
+                action: Some("cancel".into()),
+                label: "cancel answer".into(),
+            },
+            KeyBinding {
+                key: "up".into(),
+                action: Some("prev".into()),
+                label: "history".into(),
+            },
+            KeyBinding {
+                key: "down".into(),
+                action: Some("next".into()),
+                label: "history".into(),
+            },
+        ];
+        match ui::Panel::new(PANEL)
+            .placement(ui::Placement::EditorReplace)
+            .title("/btw")
+            .spec(spec)
+            .keys(keys)
+            .focus(true)
+            .close_on_escape(true)
+            .open()
+        {
             Ok(id) => self.sessions.with(&sid, |s| s.panel = Some(id)),
             Err(e) => {
                 let _ = ui::notify(&e.to_string(), "error");
@@ -687,9 +734,10 @@ mod tests {
         let mut n = Page::default();
         finish_page(&mut n, None);
         assert_eq!(n.error.as_deref(), Some("No response."));
-        let spec = panel_spec(&[p], 0, false);
-        assert_eq!(spec["children"][0]["label"], " /btw 1/1 ");
+        let spec: Value = serde_json::to_value(panel_spec(&[p], 0, false)).unwrap_or_default();
+        assert_eq!(spec["children"][0]["title"], " /btw 1/1 ");
         assert_eq!(spec["children"][2]["onSubmit"], "ask");
-        assert_eq!(panel_spec(&[], 0, true)["children"][2]["t"], "text");
+        let streaming: Value = serde_json::to_value(panel_spec(&[], 0, true)).unwrap_or_default();
+        assert_eq!(streaming["children"][2]["t"], "Paragraph");
     }
 }
