@@ -95,3 +95,8 @@ button.status-empty { padding: 0; border: 0; background: none; text-align: left;
 
 html[data-shell=phone] .status-capsule { top: 60px; right: 10px; }
 html[data-shell=phone] .cap-lh-label { display: none; }
+
+/* A banner (conn loss, taken over, host crash) fills the row under the
+   header — the capsule would cover its action button (§3.9 review, A29). */
+.conv:has(.tl-banner) .status-capsule { top: 118px; }
+html[data-shell=phone] .conv:has(.tl-banner) .status-capsule { top: 114px; }

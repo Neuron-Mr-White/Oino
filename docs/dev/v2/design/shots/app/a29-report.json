@@ -2,15 +2,7 @@
   {
     "scenario": "bubble-fold",
     "size": 360,
-    "route": "none:",
-    "overflow": false,
-    "diag": {
-      "sw": 360,
-      "iw": 360,
-      "bh": 348,
-      "testid": ""
-    },
-    "file": "a29-bubble-fold-phone-360.png"
+    "error": "Session with given id not found."
   },
   {
     "scenario": "shot:chat",
@@ -39,32 +31,6 @@
   {
     "scenario": "git-pane-many",
     "size": 412,
-    "route": "moved:#/s/this-pc/s001",
-    "overflow": false,
-    "diag": {
-      "sw": 412,
-      "iw": 412,
-      "bh": 915,
-      "testid": "phone-shell"
-    },
-    "file": "a29-git-pane-many-phone-412.png"
-  },
-  {
-    "scenario": "git-pane-many",
-    "size": 360,
-    "route": "moved:#/s/this-pc/s001",
-    "overflow": false,
-    "diag": {
-      "sw": 360,
-      "iw": 360,
-      "bh": 780,
-      "testid": "phone-shell"
-    },
-    "file": "a29-git-pane-many-phone-360.png"
-  },
-  {
-    "scenario": "tab-subagent-phone",
-    "size": 412,
     "route": "none:#/",
     "overflow": false,
     "diag": {
@@ -72,6 +38,32 @@
       "iw": 412,
       "bh": 0,
       "testid": ""
+    },
+    "file": "a29-git-pane-many-phone-412.png"
+  },
+  {
+    "scenario": "git-pane-many",
+    "size": 360,
+    "route": "none:#/",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-git-pane-many-phone-360.png"
+  },
+  {
+    "scenario": "tab-subagent-phone",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
     },
     "file": "a29-tab-subagent-phone-phone-412.png"
   },
@@ -325,13 +317,13 @@
   {
     "scenario": "u12-native",
     "size": 412,
-    "route": "moved:#/s/pc-coffee/s001",
+    "route": "none:#/",
     "overflow": false,
     "diag": {
       "sw": 412,
       "iw": 412,
-      "bh": 915,
-      "testid": "phone-shell"
+      "bh": 0,
+      "testid": ""
     },
     "file": "a29-u12-native-phone-412.png"
   },
@@ -633,5 +625,1822 @@
       "testid": "phone-shell"
     },
     "file": "a29-settings-form-agent-phone-360.png"
+  },
+  {
+    "scenario": "no-host",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-no-host-phone-412.png"
+  },
+  {
+    "scenario": "no-host",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-no-host-phone-360.png"
+  },
+  {
+    "scenario": "stream-basic",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-stream-basic-phone-412.png"
+  },
+  {
+    "scenario": "stream-basic",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-stream-basic-phone-360.png"
+  },
+  {
+    "scenario": "stream-steer",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-stream-steer-phone-412.png"
+  },
+  {
+    "scenario": "stream-steer",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-stream-steer-phone-360.png"
+  },
+  {
+    "scenario": "queue-held",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-queue-held-phone-412.png"
+  },
+  {
+    "scenario": "queue-held",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-queue-held-phone-360.png"
+  },
+  {
+    "scenario": "stream-reconnect",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-stream-reconnect-phone-412.png"
+  },
+  {
+    "scenario": "stream-reconnect",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-stream-reconnect-phone-360.png"
+  },
+  {
+    "scenario": "shell-desktop",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shell-desktop-phone-412.png"
+  },
+  {
+    "scenario": "shell-desktop",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shell-desktop-phone-360.png"
+  },
+  {
+    "scenario": "shell-narrow",
+    "size": 412,
+    "error": "Session with given id not found."
+  },
+  {
+    "scenario": "shell-narrow",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shell-narrow-phone-360.png"
+  },
+  {
+    "scenario": "shell-fullview",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shell-fullview-phone-412.png"
+  },
+  {
+    "scenario": "shell-fullview",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shell-fullview-phone-360.png"
+  },
+  {
+    "scenario": "sidebar-many",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-sidebar-many-phone-412.png"
+  },
+  {
+    "scenario": "sidebar-many",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-sidebar-many-phone-360.png"
+  },
+  {
+    "scenario": "sidebar-states",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-sidebar-states-phone-412.png"
+  },
+  {
+    "scenario": "sidebar-states",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-sidebar-states-phone-360.png"
+  },
+  {
+    "scenario": "timeline-many",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-timeline-many-phone-412.png"
+  },
+  {
+    "scenario": "timeline-many",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-timeline-many-phone-360.png"
+  },
+  {
+    "scenario": "turn-actions",
+    "size": 412,
+    "error": "Session with given id not found."
+  },
+  {
+    "scenario": "turn-actions",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-turn-actions-phone-360.png"
+  },
+  {
+    "scenario": "turn-navigator",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-turn-navigator-phone-412.png"
+  },
+  {
+    "scenario": "turn-navigator",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 308,
+      "testid": "root-crashed"
+    },
+    "file": "a29-turn-navigator-phone-360.png"
+  },
+  {
+    "scenario": "bubble-fold",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-bubble-fold-phone-412.png"
+  },
+  {
+    "scenario": "modal-context",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-modal-context-phone-412.png"
+  },
+  {
+    "scenario": "modal-context",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-modal-context-phone-360.png"
+  },
+  {
+    "scenario": "modal-running",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-modal-running-phone-412.png"
+  },
+  {
+    "scenario": "modal-running",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-modal-running-phone-360.png"
+  },
+  {
+    "scenario": "modal-info",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-modal-info-phone-412.png"
+  },
+  {
+    "scenario": "modal-info",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-modal-info-phone-360.png"
+  },
+  {
+    "scenario": "modal-limits",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-modal-limits-phone-412.png"
+  },
+  {
+    "scenario": "modal-limits",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-modal-limits-phone-360.png"
+  },
+  {
+    "scenario": "board-lanes",
+    "size": 412,
+    "route": "#/board",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-board-lanes-phone-412.png"
+  },
+  {
+    "scenario": "board-lanes",
+    "size": 360,
+    "route": "#/board",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-board-lanes-phone-360.png"
+  },
+  {
+    "scenario": "board-dashboard",
+    "size": 412,
+    "route": "#/board",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-board-dashboard-phone-412.png"
+  },
+  {
+    "scenario": "board-dashboard",
+    "size": 360,
+    "route": "#/board",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 308,
+      "testid": "root-crashed"
+    },
+    "file": "a29-board-dashboard-phone-360.png"
+  },
+  {
+    "scenario": "git-pane",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-git-pane-phone-412.png"
+  },
+  {
+    "scenario": "git-pane",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-git-pane-phone-360.png"
+  },
+  {
+    "scenario": "git-last-turn",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-git-last-turn-phone-412.png"
+  },
+  {
+    "scenario": "git-last-turn",
+    "size": 360,
+    "route": "none:#/",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-git-last-turn-phone-360.png"
+  },
+  {
+    "scenario": "git-history",
+    "size": 412,
+    "route": "none:#/",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-git-history-phone-412.png"
+  },
+  {
+    "scenario": "git-history",
+    "size": 360,
+    "route": "none:#/",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-git-history-phone-360.png"
+  },
+  {
+    "scenario": "status-lh-graph",
+    "size": 412,
+    "route": "none:#/",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-status-lh-graph-phone-412.png"
+  },
+  {
+    "scenario": "status-lh-graph",
+    "size": 360,
+    "route": "none:#/",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-status-lh-graph-phone-360.png"
+  },
+  {
+    "scenario": "status-todos",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-status-todos-phone-412.png"
+  },
+  {
+    "scenario": "status-todos",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-status-todos-phone-360.png"
+  },
+  {
+    "scenario": "status-running",
+    "size": 412,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-status-running-phone-412.png"
+  },
+  {
+    "scenario": "status-running",
+    "size": 360,
+    "route": "moved:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-status-running-phone-360.png"
+  },
+  {
+    "scenario": "files-tree",
+    "size": 412,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-files-tree-phone-412.png"
+  },
+  {
+    "scenario": "files-tree",
+    "size": 360,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-files-tree-phone-360.png"
+  },
+  {
+    "scenario": "tools-mix",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/tm001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tools-mix-phone-412.png"
+  },
+  {
+    "scenario": "tools-mix",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/tm001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tools-mix-phone-360.png"
+  },
+  {
+    "scenario": "tools-groups",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/tg001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tools-groups-phone-412.png"
+  },
+  {
+    "scenario": "tools-groups",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/tg001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tools-groups-phone-360.png"
+  },
+  {
+    "scenario": "renderer-cards",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/rc001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-renderer-cards-phone-412.png"
+  },
+  {
+    "scenario": "renderer-cards",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/rc001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-renderer-cards-phone-360.png"
+  },
+  {
+    "scenario": "tab-diff",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-diff-phone-412.png"
+  },
+  {
+    "scenario": "tab-diff",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-diff-phone-360.png"
+  },
+  {
+    "scenario": "tab-diff-split",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-diff-split-phone-412.png"
+  },
+  {
+    "scenario": "tab-diff-split",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-diff-split-phone-360.png"
+  },
+  {
+    "scenario": "tab-tree",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-tab-tree-phone-412.png"
+  },
+  {
+    "scenario": "tab-tree",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-tree-phone-360.png"
+  },
+  {
+    "scenario": "tab-btw",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-btw-phone-412.png"
+  },
+  {
+    "scenario": "tab-btw",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-btw-phone-360.png"
+  },
+  {
+    "scenario": "tab-subagent",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-subagent-phone-412.png"
+  },
+  {
+    "scenario": "tab-subagent",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-subagent-phone-360.png"
+  },
+  {
+    "scenario": "tab-diff-phone",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-tab-diff-phone-phone-412.png"
+  },
+  {
+    "scenario": "tab-diff-phone",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-diff-phone-phone-360.png"
+  },
+  {
+    "scenario": "tab-tree-phone",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-tree-phone-phone-412.png"
+  },
+  {
+    "scenario": "tab-tree-phone",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-tree-phone-phone-360.png"
+  },
+  {
+    "scenario": "tab-btw-phone",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-btw-phone-phone-412.png"
+  },
+  {
+    "scenario": "tab-btw-phone",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s-tabs",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-tab-btw-phone-phone-360.png"
+  },
+  {
+    "scenario": "empty-chat",
+    "size": 412,
+    "route": "#/new/pc-coffee",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-empty-chat-phone-412.png"
+  },
+  {
+    "scenario": "empty-chat",
+    "size": 360,
+    "route": "#/new/pc-coffee",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-empty-chat-phone-360.png"
+  },
+  {
+    "scenario": "motion-exits",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-motion-exits-phone-412.png"
+  },
+  {
+    "scenario": "motion-exits",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-motion-exits-phone-360.png"
+  },
+  {
+    "scenario": "files-search",
+    "size": 412,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-files-search-phone-412.png"
+  },
+  {
+    "scenario": "files-search",
+    "size": 360,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-files-search-phone-360.png"
+  },
+  {
+    "scenario": "files-preview",
+    "size": 412,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-files-preview-phone-412.png"
+  },
+  {
+    "scenario": "files-preview",
+    "size": 360,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-files-preview-phone-360.png"
+  },
+  {
+    "scenario": "editor-conflict",
+    "size": 412,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-editor-conflict-phone-412.png"
+  },
+  {
+    "scenario": "editor-conflict",
+    "size": 360,
+    "route": "#/files",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-editor-conflict-phone-360.png"
+  },
+  {
+    "scenario": "cron-list",
+    "size": 412,
+    "route": "#/cron",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-cron-list-phone-412.png"
+  },
+  {
+    "scenario": "cron-list",
+    "size": 360,
+    "route": "#/cron",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-cron-list-phone-360.png"
+  },
+  {
+    "scenario": "cron-form",
+    "size": 412,
+    "route": "#/cron",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 0,
+      "testid": ""
+    },
+    "file": "a29-cron-form-phone-412.png"
+  },
+  {
+    "scenario": "cron-form",
+    "size": 360,
+    "route": "#/cron",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-cron-form-phone-360.png"
+  },
+  {
+    "scenario": "cron-badge",
+    "size": 412,
+    "route": "#/cron",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-cron-badge-phone-412.png"
+  },
+  {
+    "scenario": "cron-badge",
+    "size": 360,
+    "route": "#/cron",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-cron-badge-phone-360.png"
+  },
+  {
+    "scenario": "dialog-approval",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-dialog-approval-phone-412.png"
+  },
+  {
+    "scenario": "dialog-approval",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-dialog-approval-phone-360.png"
+  },
+  {
+    "scenario": "error-row",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-error-row-phone-412.png"
+  },
+  {
+    "scenario": "error-row",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-error-row-phone-360.png"
+  },
+  {
+    "scenario": "taken-over",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-taken-over-phone-412.png"
+  },
+  {
+    "scenario": "taken-over",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-taken-over-phone-360.png"
+  },
+  {
+    "scenario": "crash-boundary",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-crash-boundary-phone-412.png"
+  },
+  {
+    "scenario": "crash-boundary",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-crash-boundary-phone-360.png"
+  },
+  {
+    "scenario": "slots-overlay",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 287,
+      "testid": "root-crashed"
+    },
+    "file": "a29-slots-overlay-phone-412.png"
+  },
+  {
+    "scenario": "slots-overlay",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-slots-overlay-phone-360.png"
+  },
+  {
+    "scenario": "slots-tray",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-slots-tray-phone-412.png"
+  },
+  {
+    "scenario": "slots-tray",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-slots-tray-phone-360.png"
+  },
+  {
+    "scenario": "needs-you",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 287,
+      "testid": "root-crashed"
+    },
+    "file": "a29-needs-you-phone-412.png"
+  },
+  {
+    "scenario": "needs-you",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-needs-you-phone-360.png"
+  },
+  {
+    "scenario": "cmdk-empty",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-cmdk-empty-phone-412.png"
+  },
+  {
+    "scenario": "cmdk-empty",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-cmdk-empty-phone-360.png"
+  },
+  {
+    "scenario": "cmdk-files",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-cmdk-files-phone-412.png"
+  },
+  {
+    "scenario": "cmdk-files",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-cmdk-files-phone-360.png"
+  },
+  {
+    "scenario": "find-bar",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-find-bar-phone-412.png"
+  },
+  {
+    "scenario": "find-bar",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-find-bar-phone-360.png"
+  },
+  {
+    "scenario": "shortcuts-list",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shortcuts-list-phone-412.png"
+  },
+  {
+    "scenario": "shortcuts-list",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-shortcuts-list-phone-360.png"
+  },
+  {
+    "scenario": "composer-states",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-states-phone-412.png"
+  },
+  {
+    "scenario": "composer-states",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-states-phone-360.png"
+  },
+  {
+    "scenario": "composer-paste",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-paste-phone-412.png"
+  },
+  {
+    "scenario": "composer-paste",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-paste-phone-360.png"
+  },
+  {
+    "scenario": "composer-slash",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-slash-phone-412.png"
+  },
+  {
+    "scenario": "composer-slash",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-slash-phone-360.png"
+  },
+  {
+    "scenario": "composer-attachments",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-attachments-phone-412.png"
+  },
+  {
+    "scenario": "composer-attachments",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-attachments-phone-360.png"
+  },
+  {
+    "scenario": "composer-narrow",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-narrow-phone-412.png"
+  },
+  {
+    "scenario": "composer-narrow",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-composer-narrow-phone-360.png"
+  },
+  {
+    "scenario": "image-editor-ellipse",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-image-editor-ellipse-phone-412.png"
+  },
+  {
+    "scenario": "image-editor-ellipse",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-image-editor-ellipse-phone-360.png"
+  },
+  {
+    "scenario": "model-picker",
+    "size": 412,
+    "route": "kept:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-model-picker-phone-412.png"
+  },
+  {
+    "scenario": "model-picker",
+    "size": 360,
+    "route": "kept:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-model-picker-phone-360.png"
+  },
+  {
+    "scenario": "model-fusion",
+    "size": 412,
+    "route": "kept:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-model-fusion-phone-412.png"
+  },
+  {
+    "scenario": "model-fusion",
+    "size": 360,
+    "route": "kept:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-model-fusion-phone-360.png"
+  },
+  {
+    "scenario": "thinking-chip",
+    "size": 412,
+    "route": "kept:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-thinking-chip-phone-412.png"
+  },
+  {
+    "scenario": "thinking-chip",
+    "size": 360,
+    "route": "kept:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-thinking-chip-phone-360.png"
+  },
+  {
+    "scenario": "mode-chip",
+    "size": 412,
+    "route": "kept:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-mode-chip-phone-412.png"
+  },
+  {
+    "scenario": "mode-chip",
+    "size": 360,
+    "route": "kept:#/s/this-pc/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-mode-chip-phone-360.png"
+  },
+  {
+    "scenario": "empty",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-empty-phone-412.png"
+  },
+  {
+    "scenario": "empty",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-empty-phone-360.png"
+  },
+  {
+    "scenario": "offline",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-offline-phone-412.png"
+  },
+  {
+    "scenario": "offline",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-offline-phone-360.png"
+  },
+  {
+    "scenario": "slots",
+    "size": 412,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-slots-phone-412.png"
+  },
+  {
+    "scenario": "slots",
+    "size": 360,
+    "route": "moved:#/s/pc-coffee/s001",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-slots-phone-360.png"
+  },
+  {
+    "scenario": "unread",
+    "size": 412,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 412,
+      "iw": 412,
+      "bh": 915,
+      "testid": "phone-shell"
+    },
+    "file": "a29-unread-phone-412.png"
+  },
+  {
+    "scenario": "unread",
+    "size": 360,
+    "route": "#/chat",
+    "overflow": false,
+    "diag": {
+      "sw": 360,
+      "iw": 360,
+      "bh": 780,
+      "testid": "phone-shell"
+    },
+    "file": "a29-unread-phone-360.png"
   }
 ]
