@@ -711,16 +711,14 @@ mod tests {
         assert_eq!(typed.fields().len(), 1);
     }
 
-    #[test]
-    fn v1_builder_namespaces_load_unchanged_in_oss2() {
+    /// One v1 namespace touching every v1 field kind and prop (what the unipi extensions
+    /// register through `cx.settings_namespace`), as wire JSON plus the parsed OSS-2 type.
+    fn v1_notify_namespace() -> (serde_json::Value, SettingsNamespace) {
         use super::super::schema::{
             Choice as V1Choice, Field as V1Field, Kind, Namespace as V1, Scope,
             Section as V1Section, Unit,
         };
-        use oino_ui::settings::{Layers, resolve};
 
-        // One v1 namespace touching every v1 field kind and prop (what the unipi extensions
-        // register through `cx.settings_namespace`).
         let v1 = V1::new("notify", "Notify", "unipi.notify")
             .defaults(json!({"events": {"agentEnd": true}, "platform": "native"}))
             .section(
@@ -799,6 +797,12 @@ mod tests {
         let raw = v1.to_json();
         let typed: SettingsNamespace =
             serde_json::from_value(raw.clone()).expect("v1 namespaces parse as OSS-2");
+        (raw, typed)
+    }
+
+    #[test]
+    fn v1_builder_namespaces_load_unchanged_in_oss2() {
+        let (raw, typed) = v1_notify_namespace();
         assert_eq!(typed.namespace, "notify");
         assert_eq!(
             typed.fields().len(),
@@ -812,6 +816,13 @@ mod tests {
                 .map(|field| field.props.items.clone()),
             Some(vec!["a".to_owned(), "b".to_owned()])
         );
+    }
+
+    #[test]
+    fn v1_builder_namespaces_resolve_and_validate_in_oss2() {
+        use oino_ui::settings::{Layers, resolve};
+
+        let (raw, typed) = v1_notify_namespace();
         // The v1 namespace resolves over its layers with the OSS-2 rules and no diagnostics.
         let resolved = resolve(
             &typed,

@@ -6,7 +6,16 @@
 //! dispatching for sessions that did not disable it.
 
 // The one deliberate guest trap in the tree lives here; that is the fixture's purpose.
-#![allow(clippy::panic, reason = "this fixture exists to trap")]
+#![allow(
+    clippy::panic,
+    clippy::manual_assert,
+    reason = "this fixture exists to trap"
+)]
+#![allow(
+    clippy::unused_async,
+    clippy::unused_async_trait_impl,
+    reason = "SDK handler signatures are async even when a body does not await"
+)]
 
 use oino_extension::prelude::*;
 

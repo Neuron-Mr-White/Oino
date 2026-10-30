@@ -187,4 +187,7 @@ impl Extension for FileSummary {
     }
 }
 
+// wasm-only like every other unipi extension: wit-bindgen's `[async-lift]` export names
+// cannot appear in a native cdylib version script (rust-lld cannot parse them).
+#[cfg(target_arch = "wasm32")]
 oino_extension::export_extension!(FileSummary);

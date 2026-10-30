@@ -311,7 +311,7 @@ async fn run_mode(mut args: cli::args::Args, mode: AppMode, env: &Environment) -
                 cli::args::TuiMode::Fullscreen => oino_tui::TuiMode::Fullscreen,
             }),
         };
-        return modes::interactive::run(started, env, options).await;
+        return Box::pin(modes::interactive::run(started, env, options)).await;
     }
     let output = if mode == AppMode::Json {
         PrintOutput::Json

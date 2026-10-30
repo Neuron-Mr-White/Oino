@@ -5,6 +5,12 @@
 //! `hibernate-probe.shutdown` with the reason — so a test can prove a hibernating
 //! subagent told its extensions (and that guests can still write during the event).
 
+#![allow(
+    clippy::unused_async,
+    clippy::unused_async_trait_impl,
+    reason = "SDK handler signatures are async even when a body does not await"
+)]
+
 use oino_extension::prelude::*;
 
 /// Fixture state.
