@@ -121,6 +121,7 @@ impl Host {
         let work = root.join("work");
         std::fs::create_dir_all(&agent_dir).unwrap();
         std::fs::create_dir_all(&work).unwrap();
+        std::fs::create_dir_all(root.join("home")).unwrap();
         // An empty dist dir: the staging tree's real packages must not load (only the
         // sandboxed provider below).
         let dist = root.join("dist");
