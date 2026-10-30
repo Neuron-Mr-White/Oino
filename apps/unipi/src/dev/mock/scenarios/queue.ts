@@ -9,7 +9,7 @@
  * All events share one seq counter (the store rejects gaps).
  */
 import type { MockHost, MockScenario, MockSession } from '../host';
-import type { SessionEventDto } from '../../lib/host/client';
+import type { SessionEventDto } from '../../../lib/host/client';
 import { genCards, genFsTree, genLiveRun, genSession } from '../gen';
 
 type Queues = { steering: string[]; followUp: string[] };
@@ -26,11 +26,11 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
   const push = (host: MockHost, events: Array<Record<string, unknown>>) =>
     host.world.push(host.hostId, id, events.map((event) => ({ session: id, seq: ++seq, event: event as never })));
 
-  const steps: Step[] = opts.running
-    ? [...genLiveRun(id, { seq, running: true, prompt: 'Run the tests and fix what fails' }), ev({ type: 'queue_update', steering: q.steering, followUp: q.followUp }, 50)]
-    : [ev({ type: 'queue_update', steering: q.steering, followUp: q.followUp }), ev({ type: 'run_state', state: 'idle' })];
-  // `genLiveRun` advanced the counter by its own step count.
-  seq = steps.at(-1)!.dto.seq;
+  // `genLiveRun` numbers its own steps from 1; the counter continues after them.
+  const run = opts.running ? genLiveRun(id, { seq: 1, running: true, prompt: 'Run the tests and fix what fails' }) : [];
+  seq = run.length;
+  const steps: Step[] = [...run, ev({ type: 'queue_update', steering: q.steering, followUp: q.followUp }, 50)];
+  if (!opts.running) steps.push(ev({ type: 'run_state', state: 'idle' }));
 
   return {
     ...base,
