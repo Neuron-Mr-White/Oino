@@ -2,33 +2,14 @@
  * The tab bodies of a pane (WP-A3): a tab mounts the first time it is shown
  * and stays mounted while it is in the view (browsers, terminals and editors
  * keep their state when you switch tabs); each body sits in its own
- * `ErrorBoundary` (Z-89) so one crashing tab never takes the shell down.
+ * `PaneTabBoundary` (Z-89) so one crashing tab never takes the shell down.
  */
-import { createEffect, createSignal, ErrorBoundary, For, Show } from 'solid-js';
+import { createEffect, createSignal, For, Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
-import { TriangleAlert } from 'lucide-solid';
 import type { PaneArea, PaneScope, PaneTab } from '../../lib/panes';
 import { paneKind, tabTitle } from '../../lib/panes/kinds';
 import { EmptyState } from '../EmptyState';
-
-export function TabCrashed(props: { title: string; error: unknown; reset: () => void }) {
-  const message = () => (props.error instanceof Error ? props.error.message : String(props.error));
-  return (
-    <EmptyState
-      compact
-      tone="error"
-      icon={<TriangleAlert size={22} />}
-      title={`${props.title} stopped working`}
-      body={message()}
-      testId="tab-crashed"
-      action={
-        <button type="button" class="btn btn-secondary btn-sm" onClick={() => props.reset()}>
-          Reload tab
-        </button>
-      }
-    />
-  );
-}
+import { PaneTabBoundary } from '../ErrorBoundaries';
 
 export function PaneBody(props: {
   area: PaneArea;
@@ -55,7 +36,7 @@ export function PaneBody(props: {
           const kind = () => paneKind(tab.kind);
           return (
             <div class="pane-tab-body" role="tabpanel" aria-label={tabTitle(tab)} hidden={tab.id !== props.activeId} data-kind={tab.kind}>
-              <ErrorBoundary fallback={(error, reset) => <TabCrashed title={tabTitle(tab)} error={error} reset={reset} />}>
+              <PaneTabBoundary title={tabTitle(tab)}>
                 <Show
                   when={kind()?.component}
                   fallback={<EmptyState compact title={`${tabTitle(tab)} isn't available`} body="This build can't show this tab. Close it, or update UniPi." testId="tab-unavailable" />}
@@ -73,7 +54,7 @@ export function PaneBody(props: {
                     />
                   )}
                 </Show>
-              </ErrorBoundary>
+              </PaneTabBoundary>
             </div>
           );
         }}

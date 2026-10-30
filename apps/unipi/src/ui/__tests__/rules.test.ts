@@ -13,7 +13,10 @@ const ROOT = resolve(__dirname, '..');
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => {
     const p = join(dir, f);
-    if (statSync(p).isDirectory()) return f === '__tests__' ? [] : files(p);
+    // `__tests__` is test code; `dialogs/` is the app's dialog card (moved in
+    // from `components/chat/` by WP-A9), not a node renderer — its markdown
+    // text is rendered by `lib/chat/markdown`.
+    if (statSync(p).isDirectory()) return f === '__tests__' || f === 'dialogs' ? [] : files(p);
     return /\.(ts|tsx)$/.test(f) ? [p] : [];
   });
 }

@@ -244,3 +244,12 @@ html[data-shell=desktop] .tl-user:focus-within .tl-user-actions { opacity: 1; po
 .tl-chip-x { flex: 0 0 auto; width: 20px; height: 20px; min-height: 20px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--color-text-dim); font-size: 13px; line-height: 1; }
 .tl-chip-x:hover { background: var(--color-surface-2); color: var(--color-text); }
 .tl-composer-send:disabled { opacity: .45; }
+
+/* ── error row (Z-48): the red row + the raw error behind Details ──── */
+.tl-error-main { flex: 1 1 auto; min-width: 0; }
+.tl-error-text { display: block; overflow-wrap: anywhere; }
+.tl-error-details { display: inline-flex; align-items: center; gap: 3px; margin: 4px 0 0 -4px; min-height: 22px; padding: 0 8px 0 4px; border-radius: 9999px; background: rgb(246 163 157 / 10%); color: #f6a39d; font-size: 12px; font-weight: 500; }
+.tl-error-caret { transition: transform .12s ease; }
+.tl-error-caret[data-open] { transform: rotate(90deg); }
+.tl-error-raw { margin: 6px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-muted); font-family: var(--font-mono); font-size: 12px; line-height: 17px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; overscroll-behavior: contain; }
+.tl-error-copy { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; min-height: 24px; padding: 0 10px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text); font-size: 12px; }

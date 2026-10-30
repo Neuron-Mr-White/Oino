@@ -21,14 +21,15 @@ import { Puzzle } from 'lucide-solid';
 import Board from './screens/Board';
 import Chat from './screens/Chat';
 import Cron from './screens/Cron';
-import Files from './screens/Files';
 import Preview from './screens/Preview';
 import Settings from './screens/Settings';
 import { SetupWizard } from './screens/SetupWizard';
+import { FilesLayer } from './components/files/FilesTab';
 import { PageHeader } from './components/PageHeader';
 import { EmptyState } from './components/EmptyState';
 import { Requires, UnavailableNotice } from './components/Requires';
 import { AppShell } from './components/shell/AppShell';
+import { RootBoundary } from './components/ErrorBoundaries';
 import { readLastSession, Workspace } from './components/shell/Workspace';
 import { sessionHref } from './components/shell/Sidebar';
 import { extPageView } from './components/shell/Rail';
@@ -37,7 +38,6 @@ import { UpdateBanner } from './components/UpdateCard';
 import { LOCAL_HOST } from './lib/host/client';
 import { layout } from './lib/layout';
 import { can, isWeb, type Capability } from './lib/platform';
-import { applyWebEntry } from './lib/webEntry';
 import { dismissSplashWhenReady } from './lib/splash';
 import { watchForUpdates } from './lib/update';
 import { watchDesktopUpdates } from './lib/desktopUpdate';
@@ -72,12 +72,6 @@ const railPage = (Screen: Component, title?: string) => () => (
 
 /** Phone-only routes; the desktop shell sends them home. */
 const phoneOnly = (Screen: Component) => () => <Show when={!desktop()} fallback={<Navigate href="/" />}><Screen /></Show>;
-
-/** `/files` and `/files/edit` share one route: the editor is a full-screen layer over the list (phone). */
-function FilesRoute() {
-  const location = useLocation();
-  return <Show when={location.pathname === '/files'}><Files /></Show>;
-}
 
 /** `/`: the web build (board only) opens the Board; the phone its Chat tab; the desktop the last session or a draft. */
 function Home() {
@@ -121,19 +115,21 @@ function ExtPageRoute() {
 
 export function Root() {
   return (
-    <HashRouter root={AppShell}>
-      <Route path="/" component={Home} />
-      <Route path="/s/:host/:session" component={ConversationRoute} />
-      <Route path="/new/:host" component={DraftRoute} />
-      <Route path="/chat" component={phoneOnly(gated('chat', Chat, 'Chat'))} />
-      <Route path="/board" component={railPage(Board)} />
-      <Route path="/cron" component={railPage(Cron)} />
-      <Route path="/x/:entryId" component={railPage(ExtPageRoute)} />
-      <Route path={['/settings', '/settings/:section']} component={railPage(Settings, 'Settings')} />
-      <Route path="/setup" component={railPage(SetupWizard)} />
-      <Route path={['/files', '/files/edit']} component={phoneOnly(gated('files', FilesRoute, 'Files'))} />
-      <Route path="/preview" component={phoneOnly(Preview)} />
-    </HashRouter>
+    <RootBoundary>
+      <HashRouter root={AppShell}>
+        <Route path="/" component={Home} />
+        <Route path="/s/:host/:session" component={ConversationRoute} />
+        <Route path="/new/:host" component={DraftRoute} />
+        <Route path="/chat" component={phoneOnly(gated('chat', Chat, 'Chat'))} />
+        <Route path="/board" component={railPage(Board)} />
+        <Route path="/cron" component={railPage(Cron)} />
+        <Route path="/x/:entryId" component={railPage(ExtPageRoute)} />
+        <Route path={['/settings', '/settings/:section']} component={railPage(Settings, 'Settings')} />
+        <Route path="/setup" component={railPage(SetupWizard)} />
+        <Route path={['/files', '/files/edit']} component={phoneOnly(gated('files', FilesLayer, 'Files'))} />
+        <Route path="/preview" component={phoneOnly(Preview)} />
+      </HashRouter>
+    </RootBoundary>
   );
 }
 const root = document.getElementById('root');
@@ -164,8 +160,6 @@ function trackVisualViewport(): void {
   window.addEventListener('unipi-ime', set);
 }
 if (root) {
-  // Web build served by the kanboard daemon: `/p/<slug>` / `?project=` links → #/board.
-  if (isWeb()) applyWebEntry();
   trackVisualViewport();
   watchForUpdates();
   watchDesktopUpdates();

@@ -2,11 +2,11 @@
  * `NodeView` (ui-protocol §13.1–13.3): one Solid component per node kind,
  * picked by `t`; unknown kinds render `fallback` (or nothing, D-U14); a leaf's
  * `block` prop wraps it in the Block chrome. `EntryView` renders one registry
- * entry inside an ErrorBoundary so one bad tree never breaks the shell.
+ * entry inside a `SlotBoundary` so one bad tree never breaks the shell.
  */
-import { ErrorBoundary, Match, Show, Switch, createMemo, type Component, type JSX } from 'solid-js';
+import { Match, Show, Switch, createMemo, type Component } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
-import { EmptyState } from '../components/EmptyState';
+import { SlotBoundary } from '../components/ErrorBoundaries';
 import { EntryContext, createEntryActions, type ActionHook, type UiTarget } from './actions';
 import { BlockFrame } from './nodes/Block';
 import { NODE_COMPONENTS } from './nodes';
@@ -62,16 +62,12 @@ export function EntryView(props: EntryViewProps) {
   const mode = () => props.mode ?? 'auto';
   const path: NodePath = [];
   return (
-    <ErrorBoundary
-      fallback={(error, reset) => (
-        <EntryFailed
-          onRetry={reset}
-          onReport={() => {
-            console.error('[ui] entry failed to render', props.entry.id, error);
-            props.onReport?.(props.entry.id, error);
-          }}
-        />
-      )}
+    <SlotBoundary
+      entryId={props.entry.id}
+      onReport={(id, error) => {
+        console.error('[ui] entry failed to render', id, error);
+        props.onReport?.(id, error);
+      }}
     >
       <EntryContext.Provider value={actions()}>
         <div class="ui-entry" data-entry={props.entry.id} data-mode={mode()}>
@@ -98,27 +94,6 @@ export function EntryView(props: EntryViewProps) {
           </Switch>
         </div>
       </EntryContext.Provider>
-    </ErrorBoundary>
-  );
-}
-
-function EntryFailed(props: { onRetry: () => void; onReport: () => void }): JSX.Element {
-  return (
-    <EmptyState
-      compact
-      tone="error"
-      title="This panel failed to render"
-      testId="ui-entry-failed"
-      action={
-        <>
-          <button type="button" class="btn btn-secondary btn-sm" onClick={() => props.onRetry()}>
-            Retry
-          </button>
-          <button type="button" class="btn btn-ghost btn-sm" onClick={() => props.onReport()}>
-            Report
-          </button>
-        </>
-      }
-    />
+    </SlotBoundary>
   );
 }
