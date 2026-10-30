@@ -11,8 +11,8 @@
 //! starts).
 
 use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::task::Poll;
 use std::time::Duration;
 
@@ -28,7 +28,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc;
 
 use crate::jsonl::{LineReader, serialize_line};
-use crate::wire::{WireEvent, rpc_event};
+use crate::wire::{Connection, WireEvent, rpc_event};
 
 /// Reply queue depth.
 const REPLY_QUEUE: usize = 1024;
@@ -56,10 +56,14 @@ struct Reply {
 struct Shared {
     backend: Arc<dyn SessionBackend>,
     replies: mpsc::Sender<Reply>,
-    /// `_oino/hello` was received.
-    oino: Arc<AtomicBool>,
+    /// `_oino/hello` and the `ui` capabilities it declared (§10).
+    connection: Arc<Mutex<Arc<Connection>>>,
     /// Prompts whose reply is not written yet.
     preflight: Arc<AtomicUsize>,
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl Shared {
@@ -96,14 +100,17 @@ impl Shared {
         };
         let kind = request.command.kind();
         let prompt = matches!(request.command, RpcCommand::Pi(PiCommand::Prompt { .. }));
-        let hello = matches!(request.command, RpcCommand::Oino(OinoCommand::Hello { .. }));
+        let hello = match &request.command {
+            RpcCommand::Oino(OinoCommand::Hello { ui, .. }) => Some(hello_connection(ui.as_ref())),
+            _ => None,
+        };
         if prompt {
             self.preflight.fetch_add(1, Ordering::AcqRel);
         }
         let request_id = request.id.as_ref().map(id_text);
         let result = self.backend.send_with_id(request_id, request.command).await;
-        if hello && result.is_ok() {
-            self.oino.store(true, Ordering::Release);
+        if let (Some(connection), true) = (hello, result.is_ok()) {
+            *lock(&self.connection) = Arc::new(connection);
         }
         let response = match result {
             Ok(data) => RpcResponse::success(request.id, kind, data),
@@ -113,6 +120,17 @@ impl Shared {
             Err(error) => RpcResponse::error(request.id, Some(kind.to_owned()), error.to_string()),
         };
         self.reply(response, prompt).await;
+    }
+}
+
+/// The connection `_oino/hello` declares: v1 without `ui`, v2 with parseable capabilities
+/// whose own `protocol` is 2 (§10).
+fn hello_connection(ui: Option<&JsonValue>) -> Connection {
+    match ui.and_then(|value| {
+        serde_json::from_value::<oino_ui::slot::UiCapabilities>(value.clone()).ok()
+    }) {
+        Some(capabilities) if capabilities.protocol >= 2 => Connection::v2(capabilities),
+        _ => Connection::v1(),
     }
 }
 
@@ -129,7 +147,7 @@ struct Writer<W> {
     output: W,
     events: BoxStream<'static, ClientEvent>,
     backend: Arc<dyn SessionBackend>,
-    oino: Arc<AtomicBool>,
+    connection: Arc<Mutex<Arc<Connection>>>,
     preflight: Arc<AtomicUsize>,
     /// `agent_start` waiting for its prompt's reply.
     held: Option<ClientEvent>,
@@ -154,7 +172,8 @@ impl<W: AsyncWrite + Unpin> Writer<W> {
     }
 
     async fn event(&mut self, event: &ClientEvent) {
-        match rpc_event(event, self.oino.load(Ordering::Acquire)) {
+        let connection = Arc::clone(&lock(&self.connection));
+        match rpc_event(event, &connection) {
             WireEvent::Line(value) => self.line(&value).await,
             WireEvent::Drop => {}
             WireEvent::CancelDialog(id) => self.backend.ui_respond(UiResponse {
@@ -260,13 +279,13 @@ impl RpcServer {
         W: AsyncWrite + Unpin + Send + 'static,
     {
         let (replies, replies_rx) = mpsc::channel::<Reply>(REPLY_QUEUE);
-        let oino = Arc::new(AtomicBool::new(false));
+        let connection = Arc::new(Mutex::new(Arc::new(Connection::pi())));
         let preflight = Arc::new(AtomicUsize::new(0));
         let writer = Writer {
             output,
             events: self.backend.events(),
             backend: Arc::clone(&self.backend),
-            oino: Arc::clone(&oino),
+            connection: Arc::clone(&connection),
             preflight: Arc::clone(&preflight),
             held: None,
             broken: false,
@@ -275,7 +294,7 @@ impl RpcServer {
         let shared = Arc::new(Shared {
             backend: Arc::clone(&self.backend),
             replies,
-            oino,
+            connection,
             preflight,
         });
         let mut reader = LineReader::new(input);

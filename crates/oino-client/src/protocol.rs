@@ -262,9 +262,32 @@ pub enum OinoCommand {
         #[serde(default = "protocol_version")]
         protocol: u32,
     },
-    /// Retained fire-and-forget UI state plus open dialogs.
+    /// The v2 registry snapshot (`UiSnapshot`, §9.2) plus the v1 replay list while the
+    /// TUI renderer (WP-U4) and `oino-view` (WP-U5) still read `requests`.
     #[serde(rename = "_oino/ui_snapshot")]
     UiSnapshot,
+    /// `_oino/ui_visible` (§6.5): a frontend reports an entry visible or hidden; core
+    /// aggregates over frontends and sends `$show`/`$hide` to the owner.
+    #[serde(rename = "_oino/ui_visible", rename_all = "camelCase")]
+    UiVisible {
+        /// Entry id.
+        entry_id: String,
+        /// Visible in this frontend?
+        visible: bool,
+        /// Frontend identity used for the aggregation (defaults to the RPC client).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frontend: Option<String>,
+    },
+    /// `_oino/ui_resync` (§9.2/§9.3): the frontend saw a `rev` gap (or failed an op) and
+    /// wants a fresh snapshot.
+    #[serde(rename = "_oino/ui_resync", rename_all = "camelCase")]
+    UiResync {
+        /// Registry scope (session when absent).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scope: Option<String>,
+        /// The last revision the frontend applied.
+        rev: u64,
+    },
     /// pi `navigateTree`.
     #[serde(rename = "_oino/navigate_tree", rename_all = "camelCase")]
     NavigateTree {
@@ -307,16 +330,25 @@ pub enum OinoCommand {
         /// Cursor (character offset into `text`).
         cursor: usize,
     },
-    /// Panel button / list / input action (ui-protocol §6.1) for the panel's owner.
+    /// Panel button / list / input action (ui-protocol §4.6) for the entry's owner.
     #[serde(rename = "_oino/ui_action", rename_all = "camelCase")]
     UiAction {
-        /// Panel id.
+        /// Entry id (field name kept from v1).
         panel_id: String,
         /// Action id.
         action_id: String,
         /// Item id, input text, bool or selected value.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         value: Option<JsonValue>,
+        /// Current values of every keyed `Input`/`Toggle`/`Select` (§4.6).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        values: Option<JsonValue>,
+        /// Path of the node that fired the action (§4.6).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<JsonValue>,
+        /// `tui` | `app` | `rpc` (§4.6).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
     },
     /// Composer intent (ui-protocol §7.2) → `{consumed}`.
     #[serde(rename = "_oino/editor_event")]
@@ -485,13 +517,22 @@ pub enum OinoCommand {
     /// render spec for `target`/`key` (`guest.render`; built-in tool rows too).
     #[serde(rename = "_oino/render", rename_all = "camelCase")]
     Render {
-        /// `customMessage` | `customEntry` | `tool`.
+        /// `customMessage` | `customEntry` | `tool` | `turnFooter` (§6.7).
         target: String,
-        /// Custom type or tool name.
+        /// Custom type, tool name or turn-footer renderer key.
         key: String,
         /// Entry or tool-call id.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         entry_id: Option<String>,
+        /// Turn id of a `turnFooter` request (the user message entry, §6.7).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        turn_entry_id: Option<String>,
+        /// Zero-based turn index.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        turn_index: Option<u64>,
+        /// Whether the turn is still running (§6.7).
+        #[serde(default)]
+        running: bool,
         /// `simple` | `regular` | `advanced`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         density: Option<String>,
@@ -524,9 +565,11 @@ const fn protocol_version() -> u32 {
 }
 
 /// Oino command types implemented by [`OinoCommand`].
-pub const OINO_COMMAND_TYPES: [&str; 35] = [
+pub const OINO_COMMAND_TYPES: [&str; 37] = [
     "_oino/hello",
     "_oino/ui_snapshot",
+    "_oino/ui_visible",
+    "_oino/ui_resync",
     "_oino/navigate_tree",
     "_oino/set_label",
     "_oino/import_jsonl",
@@ -621,6 +664,8 @@ impl OinoCommand {
         match self {
             Self::Hello { .. } => "_oino/hello",
             Self::UiSnapshot => "_oino/ui_snapshot",
+            Self::UiVisible { .. } => "_oino/ui_visible",
+            Self::UiResync { .. } => "_oino/ui_resync",
             Self::NavigateTree { .. } => "_oino/navigate_tree",
             Self::SetLabel { .. } => "_oino/set_label",
             Self::ImportJsonl { .. } => "_oino/import_jsonl",

@@ -434,7 +434,32 @@ impl Shared {
                         .is_some_and(|plan| plan.disable_extensions),
                 }))
             }
-            OinoCommand::UiSnapshot => data(json!({ "requests": session.ui().snapshot() })),
+            OinoCommand::UiSnapshot => {
+                let snapshot = session.ui_snapshot();
+                let mut value = serde_json::to_value(snapshot).unwrap_or(JsonValue::Null);
+                if let Some(object) = value.as_object_mut() {
+                    // Transitional: pi-shaped frontends still replay `requests` until the
+                    // TUI renderer (WP-U4) and `oino-view` (WP-U5) read the registry.
+                    object.insert(
+                        "requests".to_owned(),
+                        serde_json::to_value(session.ui().snapshot()).unwrap_or(JsonValue::Null),
+                    );
+                }
+                data(value)
+            }
+            OinoCommand::UiVisible {
+                entry_id,
+                visible,
+                frontend,
+            } => {
+                let frontend = frontend
+                    .as_deref()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or("rpc");
+                session.ui_visible(frontend, &entry_id, visible);
+                Ok(None)
+            }
+            OinoCommand::UiResync { .. } => data(session.ui_resync()),
             OinoCommand::NavigateTree { target_id, options } => {
                 let result = session
                     .navigate_tree(&EntryId::new(target_id), options)
@@ -579,6 +604,9 @@ impl Shared {
             target,
             key,
             entry_id,
+            turn_entry_id,
+            turn_index,
+            running,
             density,
             expanded,
             width,
@@ -596,6 +624,9 @@ impl Shared {
             target,
             key: key.clone(),
             entry_id: entry_id.clone(),
+            turn_entry_id: turn_entry_id.clone(),
+            turn_index: *turn_index,
+            running: *running,
             density: density.as_deref().map_or_else(Default::default, |d| {
                 oino_core::session::RenderDensity::parse(d).unwrap_or_default()
             }),
@@ -621,10 +652,24 @@ impl Shared {
                 panel_id,
                 action_id,
                 value,
+                values,
+                path,
+                source,
             } => {
-                session
-                    .ui_action(&panel_id, &action_id, value)
-                    .map_err(failed)?;
+                let action = oino_core::ui::UiAction {
+                    panel_id,
+                    action_id,
+                    value,
+                    values: values.and_then(|values| values.as_object().cloned()),
+                    path: path.and_then(|path| serde_json::from_value(path).ok()),
+                    source: source.as_deref().and_then(|name| match name {
+                        "tui" => Some(oino_core::ui::ActionSource::Tui),
+                        "app" => Some(oino_core::ui::ActionSource::App),
+                        "rpc" => Some(oino_core::ui::ActionSource::Rpc),
+                        _ => None,
+                    }),
+                };
+                session.ui_action_with(&action).map_err(failed)?;
                 Ok(None)
             }
             OinoCommand::EditorEvent(event) => {
@@ -699,6 +744,8 @@ impl Shared {
             | OinoCommand::Extensions
             | OinoCommand::SetExtensionEnabled { .. }
             | OinoCommand::UiSnapshot
+            | OinoCommand::UiVisible { .. }
+            | OinoCommand::UiResync { .. }
             | OinoCommand::NavigateTree { .. }
             | OinoCommand::SetLabel { .. }
             | OinoCommand::ImportJsonl { .. }

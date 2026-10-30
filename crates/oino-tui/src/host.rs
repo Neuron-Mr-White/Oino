@@ -367,6 +367,10 @@ mod local {
                 target: request.target.to_owned(),
                 key: request.key.clone(),
                 entry_id: request.entry_id.clone(),
+                // Turn footers are rendered by the v2 slot renderer (WP-U4).
+                turn_entry_id: None,
+                turn_index: None,
+                running: false,
                 density: Some(request.density.to_owned()),
                 expanded: request.expanded,
                 width: Some(request.width.to_owned()),

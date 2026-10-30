@@ -721,6 +721,9 @@ impl App {
                 // Takeover is handled there too (the mode shows the notice and exits);
                 // eviction never reaches the TUI (the hub owns it, and the single-session
                 // runtime never evicts).
+                // Registry patches drive the v2 slot renderers (WP-U4); the line compositor
+                // still renders the v1 replay of `_oino/ui_snapshot`.
+                OinoEvent::UiPatch { .. } => {}
                 OinoEvent::ToolsChanged { .. }
                 | OinoEvent::Topic { .. }
                 | OinoEvent::AgentsChanged { .. }

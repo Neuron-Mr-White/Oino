@@ -633,6 +633,44 @@ mod tests {
         );
     }
 
+    /// Every example of pi 1.4.0 `docs/rpc-extension-ui.md` round-trips byte-for-byte
+    /// (D-U1): the pi request/response records are untouched by the v2 wire.
+    #[test]
+    fn pi_rpc_extension_ui_examples_round_trip_byte_for_byte() {
+        let requests = [
+            r#"{"type":"extension_ui_request","id":"uuid-1","method":"select","title":"Allow dangerous command?","options":["Allow","Block"],"timeout":10000}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-2","method":"confirm","title":"Clear session?","message":"All messages will be lost.","timeout":5000}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-3","method":"input","title":"Enter a value","placeholder":"type something..."}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-4","method":"editor","title":"Edit some text","prefill":"Line 1\nLine 2\nLine 3"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-5","method":"notify","message":"Command blocked by user","notifyType":"warning"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-6","method":"setStatus","statusKey":"my-ext","statusText":"Turn 3 running..."}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-7","method":"setWidget","widgetKey":"my-ext","widgetLines":["--- My Widget ---","Line 1","Line 2"],"widgetPlacement":"aboveEditor"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-8","method":"setTitle","title":"pi - my project"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-9","method":"set_editor_text","text":"prefilled text for the user"}"#,
+        ];
+        for example in requests {
+            let request: UiRequest = serde_json::from_str(example).unwrap();
+            let encoded = serde_json::to_string(&request).unwrap();
+            assert_eq!(encoded, example);
+        }
+        let responses = [
+            r#"{"type":"extension_ui_response","id":"uuid-1","value":"Allow"}"#,
+            r#"{"type":"extension_ui_response","id":"uuid-2","confirmed":true}"#,
+            r#"{"type":"extension_ui_response","id":"uuid-3","cancelled":true}"#,
+        ];
+        for example in responses {
+            let response: UiResponse = serde_json::from_str(example).unwrap();
+            let encoded = serde_json::to_string(&response).unwrap();
+            assert_eq!(encoded, example);
+        }
+        // The registry form keeps the pi fields and adds the Oino ids (§9.2).
+        let request: UiRequest = serde_json::from_str(requests[0]).unwrap();
+        let registry = request.to_registry();
+        assert_eq!(registry.id, "uuid-1");
+        assert_eq!(registry.fields["method"], json!("select"));
+        assert_eq!(registry.fields["title"], json!("Allow dangerous command?"));
+    }
+
     #[test]
     fn retains_keyed_state() {
         let sink = Arc::new(Recorder::default());

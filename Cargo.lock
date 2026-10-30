@@ -4293,6 +4293,7 @@ dependencies = [
  "oino-ai",
  "oino-client",
  "oino-core",
+ "oino-ui",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

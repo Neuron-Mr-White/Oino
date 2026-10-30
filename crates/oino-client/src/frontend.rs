@@ -81,13 +81,18 @@ pub trait FrontendApi {
         text: &str,
         cursor: usize,
     ) -> BoxFuture<'_, Result<Vec<CompletionGroup>, ClientError>>;
-    /// `_oino/ui_action`.
+    /// `_oino/ui_action` (v1 shape; the v2 payload rides the same command).
     fn ui_action(
         &self,
         panel_id: &str,
         action_id: &str,
         value: Option<JsonValue>,
     ) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/ui_visible`: report an entry visible/hidden in this frontend (ui-protocol
+    /// §6.5); core aggregates and sends `$show`/`$hide`.
+    fn ui_visible(&self, entry_id: &str, visible: bool) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/ui_resync`: a fresh registry snapshot after a `rev` gap (§9.2).
+    fn ui_resync(&self, rev: u64) -> BoxFuture<'_, Result<JsonValue, ClientError>>;
     /// `_oino/editor_event` → whether an extension consumed it.
     fn editor_event(&self, event: EditorEvent) -> BoxFuture<'_, Result<bool, ClientError>>;
     /// `_oino/invoke_shortcut`.
@@ -206,13 +211,22 @@ pub trait FrontendApi {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderRow {
-    /// `customMessage` | `customEntry` | `tool`.
+    /// `customMessage` | `customEntry` | `tool` | `turnFooter` (ui-protocol §6.7).
     pub target: String,
-    /// Custom type or tool name.
+    /// Custom type, tool name or turn-footer renderer key.
     pub key: String,
     /// Entry or tool-call id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry_id: Option<String>,
+    /// Turn id of a `turnFooter` request (the user message entry).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_entry_id: Option<String>,
+    /// Zero-based turn index.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_index: Option<u64>,
+    /// Whether the turn is still running.
+    #[serde(default)]
+    pub running: bool,
     /// `simple` | `regular` | `advanced`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub density: Option<String>,
@@ -252,8 +266,25 @@ impl<B: SessionBackend + ?Sized> FrontendApi for B {
             panel_id: panel_id.to_owned(),
             action_id: action_id.to_owned(),
             value,
+            values: None,
+            path: None,
+            source: None,
         };
         self.send(command.into()).map(|r| r.map(drop)).boxed()
+    }
+
+    fn ui_visible(&self, entry_id: &str, visible: bool) -> BoxFuture<'_, Result<(), ClientError>> {
+        let command = OinoCommand::UiVisible {
+            entry_id: entry_id.to_owned(),
+            visible,
+            frontend: None,
+        };
+        self.send(command.into()).map(|r| r.map(drop)).boxed()
+    }
+
+    fn ui_resync(&self, rev: u64) -> BoxFuture<'_, Result<JsonValue, ClientError>> {
+        let command = OinoCommand::UiResync { scope: None, rev };
+        self.send(command.into()).map(|r| whole(r?)).boxed()
     }
 
     fn editor_event(&self, event: EditorEvent) -> BoxFuture<'_, Result<bool, ClientError>> {
@@ -510,6 +541,9 @@ impl<B: SessionBackend + ?Sized> FrontendApi for B {
             target: request.target,
             key: request.key,
             entry_id: request.entry_id,
+            turn_entry_id: request.turn_entry_id,
+            turn_index: request.turn_index,
+            running: request.running,
             density: request.density,
             expanded: request.expanded,
             width: request.width,
