@@ -9,7 +9,7 @@ use futures::StreamExt;
 use oino_ai::{Model, ThinkingLevel};
 use oino_models::resolver::{InitialModelOptions, ScopedModel, find_initial_model};
 use oino_models::virtual_models::branch_selection;
-use oino_session::{CreateOptions, EntryId, EntryKind, SessionEntry, SessionManager};
+use oino_session::{CreateOptions, EntryId, EntryKind, SessionEntry, SessionError, SessionManager};
 use serde_json::json;
 use tokio::task::JoinHandle;
 
@@ -161,6 +161,24 @@ fn session_error(error: impl std::fmt::Display) -> ServicesError {
 
 fn op_error(error: impl std::fmt::Display) -> SessionOpError {
     SessionOpError::Failed(error.to_string())
+}
+
+/// Repairs the interrupted turn of a just-opened session (D-REPAIR, WP-C2): every write
+/// open of an existing session file repairs before the session is used — a torn tail
+/// line is terminated and dangling tool calls are closed with unknown-outcome
+/// toolResults, so `prompt`/`continue_run` always see a balanced transcript. Read-only
+/// paths (listing, fork sources, `export`, `session-read`) never repair.
+fn repaired(mut manager: SessionManager) -> Result<SessionManager, SessionError> {
+    let report = manager.repair_interrupted_turn()?;
+    if report.torn_tail || !report.closed_tool_calls.is_empty() {
+        tracing::info!(
+            session = manager.session_id(),
+            closed_tool_calls = ?report.closed_tool_calls,
+            torn_tail = report.torn_tail,
+            "resume repair appended closers (D-REPAIR)"
+        );
+    }
+    Ok(manager)
 }
 
 /// The model and thinking level a session starts with (pi `createAgentSession`).
@@ -397,11 +415,20 @@ impl AgentSessionRuntime {
                     parent_session: None,
                 },
             ),
-            SessionSource::Open(path) => SessionManager::open(path, &root, None),
-            SessionSource::ContinueRecent => SessionManager::continue_recent(&services.cwd, &root),
+            SessionSource::Open(path) => Ok(repaired(
+                SessionManager::open(path, &root, None).map_err(session_error)?,
+            )
+            .map_err(session_error)?),
+            SessionSource::ContinueRecent => Ok(repaired(
+                SessionManager::continue_recent(&services.cwd, &root).map_err(session_error)?,
+            )
+            .map_err(session_error)?),
             SessionSource::Resume(id) => {
                 match SessionManager::find_by_id(&services.cwd, id, &root).map_err(session_error)? {
-                    Some(path) => SessionManager::open(&path, &root, None),
+                    Some(path) => Ok(repaired(
+                        SessionManager::open(&path, &root, None).map_err(session_error)?,
+                    )
+                    .map_err(session_error)?),
                     None => {
                         return Err(ServicesError::Session(format!(
                             "No session found matching '{id}'"
@@ -692,8 +719,10 @@ impl RuntimeCore {
         }
         let previous = self.session().session_file();
         let (_, root) = self.persisted();
-        let manager =
-            SessionManager::open(&path, &root, cwd_override.as_deref()).map_err(op_error)?;
+        let manager = repaired(
+            SessionManager::open(&path, &root, cwd_override.as_deref()).map_err(op_error)?,
+        )
+        .map_err(op_error)?;
         let target = manager.session_file().map(Path::to_path_buf);
         self.teardown("resume", target.as_deref()).await;
         self.swap(manager, "resume", previous).await?;

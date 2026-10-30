@@ -208,11 +208,17 @@ async fn tool_barrier_fails_closed_and_never_runs_the_body() {
         })
         .expect("a toolResult message");
     assert_eq!(result["isError"], json!(true));
+    // WP-C2: the dispatch-record append (D-DISPATCH) now runs before the barrier fsync,
+    // so on an unwritable session it is the first to fail — same fail-closed gate.
     assert!(
         result["content"][0]["text"]
             .as_str()
             .unwrap_or_default()
-            .contains("durability barrier"),
+            .contains("dispatch record")
+            || result["content"][0]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("durability barrier"),
         "tool result carries the barrier failure: {result}"
     );
 }

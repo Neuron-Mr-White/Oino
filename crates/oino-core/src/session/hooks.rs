@@ -48,7 +48,7 @@ impl Barrier {
 
 /// Built-in tools with no side effects: they are exempt from the tool barrier (D-FLUSH
 /// barrier 2; pi's read-only set `read`, `grep`, `find`, `ls`) — nothing to repair and no
-/// effect to attribute, so no fsync (and, from WP-C2 on, no dispatch record).
+/// effect to attribute, so no fsync and no dispatch record (D-DISPATCH).
 const READ_ONLY_BUILTIN_TOOLS: [&str; 4] = ["read", "grep", "find", "ls"];
 
 pub(crate) struct SessionHooks {
@@ -97,10 +97,12 @@ impl BeforeToolCall for SessionHooks {
                     .and_then(|r| r.input.as_ref())
                     .unwrap_or(cx.args);
                 session.checkpoint_tool_call(&cx.tool_call.name, args);
-                // D-FLUSH barrier 2: the tool runs only on top of a durable log. The error
-                // becomes the tool's error result (pi's hook-failure path), so the body
-                // never runs unpersisted.
-                session.tool_durability_barrier(&cx.tool_call.name)?;
+                // D-DISPATCH + D-FLUSH barrier 2: the call is on the durable log before
+                // the tool body runs — the record attributes an interrupted effect, the
+                // barrier makes the whole log durable. Either failure becomes the tool's
+                // error result (pi's hook-failure path), so the body never runs
+                // unpersisted. Read-only tools skip both.
+                session.tool_dispatch_barrier(cx.tool_call, args)?;
             }
             Ok(result)
         })
@@ -192,12 +194,26 @@ impl AgentSession {
             })
     }
 
-    /// D-FLUSH barrier 2: tools with side effects run only on a durable log; read-only
-    /// tools (`read`/`grep`/`find`/`ls` built-ins and `annotations.readOnly == true`
-    /// extension tools) skip the fsync.
-    pub(crate) fn tool_durability_barrier(&self, tool_name: &str) -> Result<(), HookError> {
-        if self.tool_is_read_only(tool_name) {
+    /// D-DISPATCH + D-FLUSH barrier 2: append the dispatch record of a tool with side
+    /// effects, then make the log durable — the tool body runs only after both
+    /// succeeded. Read-only tools (`read`/`grep`/`find`/`ls` built-ins and
+    /// `annotations.readOnly == true` extension tools) skip the record and the fsync:
+    /// nothing to repair and no effect to attribute.
+    pub(crate) fn tool_dispatch_barrier(
+        &self,
+        call: &oino_ai::ToolCall,
+        args: &JsonObject,
+    ) -> Result<(), HookError> {
+        if self.tool_is_read_only(&call.name) {
             return Ok(());
+        }
+        let recorded =
+            self.with_manager(|manager| manager.append_tool_dispatch(&call.id, &call.name, args));
+        if let Err(error) = recorded {
+            tracing::error!(session = %self.session_id(), "tool dispatch record failed: {error}");
+            return Err(HookError::new(format!(
+                "session dispatch record failed: {error}"
+            )));
         }
         self.durability_barrier(Barrier::Tool)
             .map_err(HookError::new)
