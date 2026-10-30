@@ -1,7 +1,9 @@
 //! Settings namespace `cron` (hub section "Cron"): a mirror of the scheduler's own
 //! settings block, pushed through to it on every write (unipi's `settings.ts` pattern).
-//! `~/.oino/cron/settings.json` stays the source of truth; `oino cron settings` and the
-//! desktop Automations page read it directly.
+//! `~/.oino/cron/settings.json` stays the source of truth (unipi-host owned); the
+//! `unipi-host cron settings` command (WP-H8) and the app's Automations page read it
+//! directly. The write-through goes over the `cron` host service (`settings-set`) —
+//! without a host (plain TUI) the hub layer still shows the intent.
 
 use serde_json::{Value, json};
 use unipi_kit::settings::{Field, Kind, Namespace, Section, Unit, Values};
@@ -9,7 +11,7 @@ use unipi_kit::settings::{Field, Kind, Namespace, Section, Unit, Values};
 /// Settings namespace.
 pub const NAMESPACE: &str = "cron";
 
-/// Scheduler defaults (must mirror `oino_cron::model::CronSettings::default`).
+/// Scheduler defaults (must mirror `unipi_cron::model::CronSettings::default`).
 #[must_use]
 pub fn defaults() -> Value {
     json!({
@@ -111,9 +113,17 @@ pub async fn push(values: &Values) {
         let Some(payload_key) = op_key(key) else {
             continue;
         };
-        // Fire-and-forget like unipi: a failure means the scheduler didn't get the change;
-        // the hub layer still shows the intent, and `oino cron settings` shows the truth.
-        let _ = oino_extension::cron::call("settings-set", &json!({ payload_key: value })).await;
+        // Fire-and-forget like unipi: without a live scheduler the change lands with the
+        // next owner start; the hub layer still shows the intent.
+        if !oino_extension::host_service::available("cron") {
+            continue;
+        }
+        let _ = oino_extension::host_service::call(
+            "cron",
+            "settings-set",
+            &json!({ payload_key: value }),
+        )
+        .await;
     }
 }
 

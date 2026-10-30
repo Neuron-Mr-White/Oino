@@ -1,13 +1,16 @@
 //! `/cron` subcommand handling: argument shapes, completions and the text rendering of
-//! scheduler replies (ports unipi's `packages/utility/src/cron/index.ts`, Oino wording,
-//! plus `add`/`edit`/`remove`).
+//! job files and scheduler replies (ports unipi's `packages/utility/src/cron/index.ts`,
+//! Oino wording, plus `add`/`edit`/`remove`). Storage ops read and write the job files
+//! directly ([`crate::jobs`]); `run`/`stop`/`pause`/`resume`/`status` go to the `cron`
+//! host service (unavailable under a plain TUI — ext-abi §6.4).
 
 use oino_extension::command::CompletionItem;
 use oino_extension::ui;
 use oino_extension::{context, host};
 use serde_json::{Value, json};
 
-use crate::Cron;
+use crate::jobs::{self, Job};
+use crate::{Cron, NOT_RUNNING};
 
 /// The subcommands.
 pub const SUBCOMMANDS: [&str; 13] = [
@@ -31,11 +34,17 @@ const SUB_DESCRIPTIONS: [(&str, &str); 13] = [
         "add name=\"…\" schedule=\"…\" prompt=\"…\" [cwd=…] — schedule a new job",
     ),
     ("edit", "edit <id> key=value… — change fields"),
-    ("remove", "remove <id> — delete the job and its history"),
+    (
+        "remove",
+        "remove <id> — delete the job (run history ages out)",
+    ),
 ];
 
 /// Subcommands that take a job id as their first argument.
 const ID_ARG_SUBS: [&str; 7] = ["show", "runs", "run", "stop", "enable", "disable", "remove"];
+
+/// Subcommands served by the live scheduler over the `cron` host service.
+const HOST_SUBS: [&str; 5] = ["run", "stop", "pause", "resume", "status"];
 
 /// Splits `/cron <sub> <rest…>` into the subcommand and remaining words.
 #[must_use]
@@ -86,74 +95,20 @@ pub fn parse_key_values(words: &[String]) -> Vec<(String, String)> {
     out
 }
 
-/// One of the `add`/`edit` fields the command understands.
-fn job_payload(pairs: &[(String, String)], include_optional: bool) -> Value {
-    let mut payload = json!({});
-    let get = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
-    if include_optional {
-        for key in ["name", "prompt"] {
-            if let Some(v) = get(key) {
-                payload[key] = Value::String(v);
-            }
-        }
-    }
-    if let Some(v) = get("schedule").or_else(|| get("at")) {
-        payload["schedule"] = Value::String(v);
-    }
-    for key in ["tz", "cwd", "model", "thinking", "overlap", "missed"] {
-        if let Some(v) = get(key) {
-            payload[key] = Value::String(v);
-        }
-    }
-    for key in ["id", "timeLimitS"] {
-        if let Some(v) = get(key) {
-            payload[key] = Value::String(v);
-        }
-    }
-    for (key, target) in [("notify", "notifyChannels"), ("notifyOn", "notifyEvents")] {
-        if let Some(v) = get(key).or_else(|| get(&key.to_ascii_lowercase())) {
-            let list: Vec<Value> = v
-                .split(',')
-                .map(|p| Value::String(p.trim().to_owned()))
-                .collect();
-            payload[target] = Value::Array(list);
-        }
-    }
-    if let Some(v) = get("costCapUsd") {
-        payload["costCapUsd"] = Value::String(v);
-    }
-    payload
-}
-
-fn op_of(sub: &str) -> &'static str {
-    match sub {
-        "list" => "list",
-        "show" => "show",
-        "add" => "add",
-        "edit" => "edit",
-        "remove" => "remove",
-        "runs" => "runs",
-        "run" => "run",
-        "stop" => "stop",
-        "enable" => "enable",
-        "disable" => "disable",
-        "pause" => "pause",
-        "resume" => "resume",
-        _ => "status",
-    }
-}
-
 /// `/cron <sub> <rest…>` dispatch; `sub` empty = the overview.
 pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], _cx: &context::Ctx) {
     let notify = |message: &str, kind: &str| {
         let _ = ui::notify(message, kind);
     };
     if sub.is_empty() {
-        let status = ext.op("status", json!({})).await;
-        let list = ext.op("list", json!({})).await;
-        match (status, list) {
-            (Ok(status), Ok(list)) => notify(&render_overview(&status, &list), "info"),
-            (Err(e), _) | (_, Err(e)) => notify(&unavailable(&e), "warning"),
+        let status = ext.host_op("status", json!({})).await;
+        let list = ext.list_value();
+        match status {
+            Ok(status) => notify(&render_overview(&status, &list), "info"),
+            Err(e) => notify(
+                &format!("{}\n{}", unavailable(&e), render_list(&list)),
+                "warning",
+            ),
         }
         return;
     }
@@ -169,6 +124,30 @@ pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], _cx:
         run_edit(ext, rest, notify).await;
         return;
     }
+    if HOST_SUBS.contains(&sub) {
+        let needs_id = matches!(sub, "run" | "stop");
+        let mut payload = json!({});
+        if needs_id {
+            let Some(id) = rest.first() else {
+                notify(
+                    &format!("cron {sub} needs a job id — /cron list to see them"),
+                    "warning",
+                );
+                return;
+            };
+            payload["id"] = Value::String(id.clone());
+        }
+        let result = ext.host_op(sub, payload).await;
+        match result {
+            Ok(value) => notify(
+                &render(sub, rest.first().map(String::as_str), &value),
+                "info",
+            ),
+            Err(e) => notify(&unavailable(&e), "warning"),
+        }
+        return;
+    }
+    // Storage ops, straight to the files.
     let needs_id = ID_ARG_SUBS.contains(&sub);
     let id = rest.first().cloned();
     if needs_id && id.is_none() {
@@ -178,36 +157,85 @@ pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], _cx:
         );
         return;
     }
-    let mut payload = json!({});
-    if let Some(id) = &id {
-        payload["id"] = Value::String(id.clone());
-    }
-    if sub == "runs"
-        && let Some(limit) = rest.get(1)
-        && let Ok(n) = limit.parse::<u64>()
-    {
-        payload["limit"] = json!(n);
-    }
-    let result = ext.op(op_of(sub), payload).await;
+    let id = id.unwrap_or_default();
+    let result = file_op(
+        ext,
+        sub,
+        &id,
+        rest.get(1).and_then(|n| n.parse::<usize>().ok()),
+    )
+    .await;
     match result {
-        Ok(value) => notify(&render(sub, id.as_deref(), &value), "info"),
-        Err(e) => notify(&unavailable(&e), "warning"),
+        Ok(text) => notify(&text, "info"),
+        Err(e) => notify(&format!("cron: {e}"), "warning"),
     }
 }
 
-async fn run_add(ext: &'static Cron, rest: &[String], notify: impl Fn(&str, &str)) {
+/// One storage subcommand against the job files; `Err` = a user-facing message.
+async fn file_op(
+    ext: &'static Cron,
+    sub: &str,
+    id: &str,
+    limit: Option<usize>,
+) -> Result<String, String> {
+    match sub {
+        "list" => Ok(render_list(&ext.list_value())),
+        "show" => match jobs::load(id) {
+            Some(job) => Ok(render(
+                "show",
+                None,
+                &json!({
+                    "job": jobs::job_value(&job),
+                    "runs": jobs::runs(id).iter().map(run_value).collect::<Vec<_>>(),
+                }),
+            )),
+            None => Err(format!("no job {id:?}")),
+        },
+        "runs" => {
+            let mut runs: Vec<Value> = jobs::runs(id).iter().map(run_value).collect();
+            if let Some(limit) = limit {
+                runs.truncate(limit);
+            }
+            Ok(render("runs", None, &json!({ "runs": runs })))
+        }
+        "enable" | "disable" => {
+            let enabled = sub == "enable";
+            let result = jobs::update(id, |job| {
+                job.enabled = enabled;
+                job.updated = jobs::now_ms();
+                Ok::<(), String>(())
+            })
+            .await;
+            match result {
+                Ok(Some(())) => Ok(format!(
+                    "{} {id}",
+                    if enabled { "Enabled" } else { "Disabled" }
+                )),
+                Ok(None) => Err(format!("no job {id:?}")),
+                Err(e) => Err(e),
+            }
+        }
+        "remove" => match jobs::remove(id) {
+            Ok(true) => Ok(format!("Removed {id}")),
+            Ok(false) => Err(format!("no job {id:?}")),
+            Err(e) => Err(e),
+        },
+        _ => Ok(crate::help_text()),
+    }
+}
+
+fn run_value(run: &jobs::Run) -> Value {
+    serde_json::to_value(run).unwrap_or_else(|_| Value::Null)
+}
+
+/// Builds a job from `add`'s key=value pairs and saves it.
+async fn run_add(_ext: &'static Cron, rest: &[String], notify: impl Fn(&str, &str)) {
     let pairs = parse_key_values(rest);
-    let mut payload = job_payload(&pairs, true);
+    let get = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
     let missing: Vec<&str> = ["name", "prompt", "schedule"]
         .iter()
         .copied()
-        .filter(|key| {
-            payload
-                .get(*key)
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .is_empty()
-        })
+        .filter(|key| get(key).unwrap_or_default().is_empty())
         .collect();
     if !missing.is_empty() {
         notify(
@@ -224,23 +252,48 @@ async fn run_add(ext: &'static Cron, rest: &[String], notify: impl Fn(&str, &str
         );
         return;
     }
-    if payload.get("cwd").is_none() {
-        payload["cwd"] = Value::String(default_cwd());
+    let tz = get("tz").unwrap_or_else(system_tz);
+    let schedule = match get("schedule").or_else(|| get("at")) {
+        Some(raw) => match jobs::resolve_schedule(&raw, &tz) {
+            Ok(resolved) => resolved,
+            Err(e) => {
+                notify(&format!("cron: {e}"), "warning");
+                return;
+            }
+        },
+        None => return,
+    };
+    let cwd = get("cwd").unwrap_or_else(default_cwd);
+    let id = match get("id") {
+        Some(id) => id,
+        None => jobs::unique_id(&jobs::slugify(&get("name").unwrap_or_default())),
+    };
+    let mut job = crate::new_job(
+        id,
+        get("name").unwrap_or_default(),
+        get("prompt").unwrap_or_default(),
+        schedule,
+        tz,
+        cwd,
+    );
+    apply_pairs(&mut job, &pairs, true);
+    if let Err(e) = validate(&job) {
+        notify(&format!("cron: {e}"), "warning");
+        return;
     }
-    match ext.op("add", payload).await {
-        Ok(job) => notify(
-            &format!(
-                "Added job {}.\n{}",
-                job.get("id").and_then(Value::as_str).unwrap_or(""),
-                schedule_summary(&job),
-            ),
-            "info",
-        ),
-        Err(e) => notify(&unavailable(&e), "warning"),
+    let value = jobs::job_value(&job);
+    if let Err(e) = jobs::insert(&job).await {
+        notify(&format!("cron: {e}"), "warning");
+        return;
     }
+    notify(
+        &format!("Added job {}.\n{}", job.id, schedule_summary(&value)),
+        "info",
+    );
 }
 
-async fn run_edit(ext: &'static Cron, rest: &[String], notify: impl Fn(&str, &str)) {
+/// Applies `edit`'s key=value pairs to a job and saves it.
+async fn run_edit(_ext: &'static Cron, rest: &[String], notify: impl Fn(&str, &str)) {
     let Some(id) = rest.first() else {
         notify(
             "/cron edit needs a job id — /cron list to see them",
@@ -256,20 +309,126 @@ async fn run_edit(ext: &'static Cron, rest: &[String], notify: impl Fn(&str, &st
         );
         return;
     }
-    let payload = job_payload(&pairs, true);
-    let mut request = json!({ "id": id });
-    if let Some(object) = payload.as_object() {
-        for (key, value) in object {
-            request[key] = value.clone();
+    let mut patch = pairs.clone();
+    if let Some(raw) = patch
+        .iter()
+        .find(|(k, _)| k == "schedule" || k == "at")
+        .map(|(k, v)| (k.clone(), v.clone()))
+    {
+        let tz = jobs::load(id).map_or_else(system_tz, |j| j.tz);
+        match jobs::resolve_schedule(&raw.1, &tz) {
+            Ok(resolved) => {
+                patch.retain(|(k, _)| k != "schedule" && k != "at");
+                patch.push(("schedule".to_owned(), resolved));
+            }
+            Err(e) => {
+                notify(&format!("cron: {e}"), "warning");
+                return;
+            }
         }
     }
-    match ext.op("edit", request).await {
-        Ok(job) => notify(
-            &format!("Updated job {id}.\n{}", schedule_summary(&job)),
+    let result = jobs::update(id, |job| {
+        apply_pairs(job, &patch, true);
+        validate(job)?;
+        job.updated = jobs::now_ms();
+        Ok::<(), String>(())
+    })
+    .await;
+    match result {
+        Ok(Some(())) => notify(
+            &format!(
+                "Updated job {id}.\n{}",
+                schedule_summary(&jobs::job_value(
+                    &jobs::load(id).unwrap_or(job_placeholder(id))
+                ))
+            ),
             "info",
         ),
-        Err(e) => notify(&unavailable(&e), "warning"),
+        Ok(None) => notify(&format!("cron: no job {id:?}"), "warning"),
+        Err(e) => notify(&format!("cron: {e}"), "warning"),
     }
+}
+
+fn job_placeholder(id: &str) -> Job {
+    crate::new_job(
+        id.to_owned(),
+        String::new(),
+        String::new(),
+        String::new(),
+        "UTC".to_owned(),
+        String::new(),
+    )
+}
+
+/// The fields `add`/`edit` accept, applied onto `job`.
+fn apply_pairs(job: &mut Job, pairs: &[(String, String)], include_optional: bool) {
+    let get = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+    if include_optional {
+        for key in ["name", "prompt"] {
+            if let Some(v) = get(key) {
+                match key {
+                    "name" => job.name = v,
+                    _ => job.prompt = v,
+                }
+            }
+        }
+    }
+    if let Some(v) = get("schedule") {
+        job.schedule = v;
+    }
+    for key in ["tz", "cwd", "model", "thinking", "overlap", "missed"] {
+        if let Some(v) = get(key) {
+            match key {
+                "tz" => job.tz = v,
+                "cwd" => job.cwd = v,
+                "model" => job.model = (!v.is_empty()).then_some(v),
+                "thinking" => job.thinking = (!v.is_empty()).then_some(v),
+                "overlap" => job.overlap = v,
+                _ => job.missed = v,
+            }
+        }
+    }
+    if let Some(v) = get("timeLimitS").and_then(|v| v.parse().ok()) {
+        job.time_limit_s = v;
+    }
+    if let Some(v) = get("costCapUsd").and_then(|v| v.parse().ok()) {
+        job.cost_cap_usd = Some(v);
+    }
+    if let Some(v) = get("enabled") {
+        job.enabled = v != "false";
+    }
+    let channels = get("notify");
+    let events = get("notifyOn");
+    if channels.is_some() || events.is_some() {
+        let clean = |v: Option<String>| {
+            v.map(|list| {
+                list.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty() && *s != "none")
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|v: &Vec<String>| !v.is_empty())
+        };
+        job.notify = Some(jobs::NotifySpec {
+            channels: clean(channels),
+            events: clean(events),
+        });
+    }
+}
+
+/// Validates what the guest can see: schedule + tz (the cwd's existence is the
+/// scheduler's to check — the extension's preopens cannot stat arbitrary paths).
+fn validate(job: &Job) -> Result<(), String> {
+    jobs::resolve_schedule(&job.schedule, &job.tz)?;
+    if job.cwd.is_empty() {
+        return Err("the working directory must not be empty".to_owned());
+    }
+    Ok(())
+}
+
+fn system_tz() -> String {
+    unipi_cron_schedule::system_tz_name()
 }
 
 fn default_cwd() -> String {
@@ -277,10 +436,8 @@ fn default_cwd() -> String {
 }
 
 fn unavailable(error: &str) -> String {
-    if error.contains("not running") || error.contains("couldn't reach") {
-        format!(
-            "cron: the scheduler isn't running ({error}) — start it with `oino cron serve` or `oino cron install`"
-        )
+    if error.contains("not running") {
+        format!("cron: {NOT_RUNNING}")
     } else {
         format!("cron: {error}")
     }
@@ -295,6 +452,7 @@ fn schedule_summary(job: &Value) -> String {
     )
 }
 
+/// Renders a reply for the given subcommand.
 fn render(sub: &str, id: Option<&str>, value: &Value) -> String {
     match sub {
         "list" => render_list(value),
@@ -446,7 +604,7 @@ pub(crate) fn render_show(value: &Value) -> String {
     if let Some(model) = job.get("model").and_then(Value::as_str) {
         lines.push(format!("  model: {model}"));
     }
-    if let Some(cap) = job.get("cost_cap_usd").and_then(Value::as_f64) {
+    if let Some(cap) = job.get("costCapUsd").and_then(Value::as_f64) {
         lines.push(format!("  cost cap: ${cap:.2}"));
     }
     lines.push(String::new());
@@ -538,11 +696,11 @@ pub(crate) fn render_status(value: &Value) -> String {
 }
 
 /// `/cron <TAB>` completions: subcommands, then a job id for the ones that take one.
-pub async fn completions(ext: &'static Cron, prefix: &str) -> Vec<CompletionItem> {
+pub fn completions(ext: &'static Cron, prefix: &str) -> Vec<CompletionItem> {
     let raw = prefix.trim_start();
     if let Some((sub, _, partial)) = split_first_word(raw) {
         if ID_ARG_SUBS.contains(&sub.as_str()) || ["edit"].contains(&sub.as_str()) {
-            let ids = ext.job_ids().await;
+            let ids = ext.job_ids();
             return ids
                 .into_iter()
                 .filter(|id| id.starts_with(partial))
@@ -617,29 +775,44 @@ mod tests {
     }
 
     #[test]
-    fn job_payload_maps_camel_and_plain_keys() {
+    fn applies_pairs_to_a_job() {
+        let mut job = crate::new_job(
+            "j".into(),
+            "n".into(),
+            "p".into(),
+            "0 0 * * * *".into(),
+            "UTC".into(),
+            "/tmp".into(),
+        );
         let words: Vec<String> = [
             "name=digest",
-            "schedule=daily",
+            "schedule=0 0 9 * * MON-FRI",
             "timeLimitS=300",
             "notifyOn=done,failed",
             "cwd=/tmp",
+            "costCapUsd=1.5",
         ]
         .iter()
         .map(ToString::to_string)
         .collect();
-        let payload = job_payload(&parse_key_values(&words), true);
-        assert_eq!(payload["schedule"], "daily");
-        assert_eq!(payload["timeLimitS"], "300");
-        assert_eq!(payload["notifyEvents"], json!(["done", "failed"]));
-        assert_eq!(payload["cwd"], "/tmp");
+        apply_pairs(&mut job, &parse_key_values(&words), true);
+        assert_eq!(job.schedule, "0 0 9 * * MON-FRI");
+        assert_eq!(job.time_limit_s, 300);
+        assert_eq!(job.cost_cap_usd, Some(1.5));
+        assert_eq!(
+            job.notify,
+            Some(jobs::NotifySpec {
+                channels: None,
+                events: Some(vec!["done".to_owned(), "failed".to_owned()]),
+            })
+        );
+        assert_eq!(job.cwd, "/tmp");
     }
 
     #[test]
     fn overview_renders_jobs_with_next_fires() {
         let status = json!({
-            "paused": false,
-            "concurrency": 2,
+            "paused": false, "concurrency": 2,
             "jobs": [
                 {"id": "digest", "enabled": true, "next_fire": "2026-01-01T09:00:00+00:00", "running": false},
             ],
@@ -652,8 +825,8 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_mentions_how_to_start_the_scheduler() {
-        assert!(unavailable("the cron scheduler is not running").contains("oino cron install"));
+    fn unavailable_names_the_missing_scheduler() {
+        assert!(unavailable(NOT_RUNNING).contains("unipi-host is not running"));
         assert_eq!(unavailable("no job \"x\""), "cron: no job \"x\"");
     }
 }

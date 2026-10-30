@@ -26,6 +26,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 syn = { version = "2", features = ["full"] }
 thiserror = "2"
+unipi-cron-schedule = { path = "../crates/unipi-cron-schedule" }
 unipi-kit = { path = "sdk/unipi-kit" }
 wit-bindgen = { version = "=0.62.0", features = ["async", "async-spawn", "futures-stream"] }
 

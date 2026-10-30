@@ -2,10 +2,18 @@
   "apiVersion": "oino.extension/1",
   "id": "unipi.cron",
   "name": "Cron",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "kind": "extension",
-  "description": "Scheduled, unattended Oino runs: /cron (list, show, runs, run, stop, enable, disable, pause, resume, status, add, edit, remove) with job-id completions, agent tools (cron_list, cron_add, cron_update, cron_remove, cron_run), scheduler settings in the hub and the bundled cron skill. Needs the always-on scheduler (oino cron serve or oino cron install).",
+  "description": "Scheduled, unattended Oino runs: /cron (list, show, runs, run, stop, enable, disable, pause, resume, status, add, edit, remove) with job-id completions, agent tools (cron_list, cron_add, cron_update, cron_remove, cron_run), scheduler settings in the hub and the bundled cron skill. Jobs live as files under ~/.oino/cron/jobs (written directly); firing needs the UniPi host's embedded scheduler (unipi-host) — under a plain oino TUI jobs are managed but nothing fires.",
   "license": "MIT",
   "resources": { "skills": ["skills"] },
-  "permissions": { "cron": true }
+  "permissions": {
+    "hostServices": ["cron"],
+    "fs": {
+      "paths": [
+        { "path": "~/.oino/cron", "access": "read", "alias": "cron-root" },
+        { "path": "~/.oino/cron/jobs", "access": "write", "alias": "cron-jobs" }
+      ]
+    }
+  }
 }

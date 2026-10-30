@@ -5,22 +5,21 @@ Oino can run prompts on a schedule with nobody at the keyboard: a **cron job** f
 records every **run** — status, the summary the run ended with, its cost, its output, and
 its own session file you can open later.
 
-Jobs live in `~/.oino/cron/` as plain JSON. Manage them with the `oino cron` CLI, the
-`/cron` command in any session, the Automations page in the desktop app, or the `cron_*`
-tools (ask the agent: "summarize my inbox every morning at 9").
+Jobs are plain JSON files under `~/.oino/cron/jobs/` (one per job). Manage them with the
+`/cron` command in any session, the `cron_*` tools (ask the agent: "summarize my inbox
+every morning at 9"), or — once the UniPi app ships — its Automations page and the
+`unipi-host cron` CLI.
 
 ## The scheduler
 
-Jobs fire only while a scheduler runs — exactly one per machine (a lock file enforces it):
+Jobs fire only while a scheduler runs — exactly one per machine (a lock file enforces
+it). Under v2 the scheduler is **embedded in the UniPi host** (`unipi-host`, the tray
+app): while it is up, jobs fire; when it is not, due jobs wait and the single latest
+missed fire runs late once it starts again (within the missed window).
 
-- **`oino cron serve`** runs it in the foreground (Ctrl-C stops it; running jobs finish).
-- **`oino cron install`** registers a user service so it starts at login and stays up:
-  systemd user service (Linux), launchd agent (macOS), Task Scheduler task (Windows).
-  `oino cron uninstall` removes it.
-- **The desktop app** embeds the scheduler while it is open (it takes over the single
-  owner lock when no daemon holds it, and attaches to the daemon otherwise).
-
-`oino cron status` says whether it is running, what's paused, and each job's next fire.
+Under a plain `oino` terminal nothing fires, but everything else works: jobs can be
+listed, added, edited and removed (they are just files), and `run`/`stop`/`status`
+report that no scheduler is running.
 
 ## Schedules
 
@@ -28,80 +27,68 @@ Plain language works:
 
 - `every 5 minutes` · `every 2 hours` · `every 30 seconds`
 - `every day at 9:00` · `weekdays at 18:30` · `every monday 08:00`
-- `hourly` · `daily` · `weekly`
-- one-time: `in 2 hours` · `tomorrow at 9` · `2030-01-01T09:00:00Z`
+- one-time: `in 2 hours` · `tomorrow at 9` · `at:2025-12-01T09:00:00Z`
 
-Anything else: a **6-field cron** (seconds first) — `0 30 9 * * MON-FRI` is 9:30 every
-weekday — or `at:<RFC3339>` for one-time runs. `--tz Europe/Berlin` picks the zone
-(default: the machine's).
+Anything else is a **6-field cron** (seconds first): `0 30 9 * * MON-FRI` is 9:30 every
+weekday. A job with an `at:` schedule disables itself after its one run.
 
-## Writing the prompt
+## Job files
 
-A scheduled run is unattended: nobody answers questions, approves choices or clarifies.
-Write the prompt as a briefing for someone who will never write back:
+One file per job, `~/.oino/cron/jobs/<id>.json`, schema `"v": 2` (camelCase fields, the
+`id` must equal the file name):
 
-- state the whole task in the prompt (the run starts a fresh session with no memory of
-  your conversation);
-- decide for it ("use the top 5", "pick the most recent file");
-- say where the result goes — a file ("write the summary to `~/notes/digest.md`"), a
-  notification (see below), or at least the run's own summary, which is kept;
-- keep it short. One job, one outcome.
+```json
+{
+  "v": 2,
+  "id": "digest",
+  "name": "Daily digest",
+  "prompt": "Summarize today's inbox and write it to ~/notes/digest.md",
+  "schedule": "0 30 9 * * MON-FRI",
+  "tz": "Europe/Berlin",
+  "cwd": "/home/me/work",
+  "enabled": true,
+  "timeLimitS": 1800,
+  "overlap": "skip",
+  "missed": "run-latest",
+  "createdAt": 0,
+  "updatedAt": 0
+}
+```
+
+Optional fields: `model`, `thinking`, `costCapUsd`, `notify` (`{channels, events}`).
+Delete a job by deleting its file; enable/disable by flipping `enabled`. Every writer
+(the extension, the host CLI, the scheduler) takes `jobs/.lock` and writes atomically,
+and the scheduler watches the folder, so edits land without a restart. Run records live
+under `runs/<job id>/<run id>.json` with a capped `.log` beside them; runs keep for
+50 per job / 30 days by default (the scheduler settings).
+
+A pre-v2 `jobs.json` is split into per-job files automatically the first time anything
+opens the store (the original is kept as `jobs.json.imported`).
 
 ## Managing jobs
 
-```bash
-oino cron add --name "daily digest" \
-  --prompt "Summarize ~/mail/inbox; write the digest to ~/notes/digest.md" \
-  --schedule "every day at 9:00" --cwd ~/jobs/digest
-
-oino cron list                    # every job
-oino cron show digest             # one job + recent runs
-oino cron runs digest             # run history
-oino cron log <run id>            # one run's output + its session file
-oino cron run digest              # fire it now
-oino cron stop digest             # kill its running runs
-oino cron edit digest --schedule "every 2 hours"
-oino cron enable|disable digest
-oino cron remove digest
-oino cron pause                   # pause everything (running ones finish)
-oino cron resume
-oino cron settings                # concurrency, missed window, retention, …
+```
+/cron list                 # every job: schedule, enabled, name
+/cron status               # running/paused, next fire per job
+/cron show <id>            # one job + recent runs
+/cron runs <id> [N]        # run history (newest first)
+/cron run <id>             # fire it now (bypass the schedule)
+/cron stop <id>            # kill its running runs
+/cron enable|disable <id>
+/cron edit <id> schedule="every 2 hours"
+/cron remove <id>
+/cron pause | /cron resume
 ```
 
-Every command takes `--json`. The same view is `/cron …` in any session (`/cron add
-name="…" schedule="…" prompt="…"`), the desktop's Automations page, and the agent's
-`cron_list` / `cron_add` / `cron_update` / `cron_remove` / `cron_run` tools (these ask for
-approval like other write tools).
+`run`, `stop`, `pause`, `resume` and live `status` need the UniPi host (they talk to its
+embedded scheduler); the rest read and write the files directly and work everywhere.
+The `cron_list`, `cron_add`, `cron_update`, `cron_remove` and `cron_run` tools do the
+same from a conversation (the write tools ask for approval first).
 
-## Limits, overlaps, missed runs
+## Unattended prompts
 
-- `--time-limit-s` (default 1800) caps a run's wall clock; `--cost-cap 1.00` records the
-  run as failed once it costs more.
-- `--overlap skip|allow` — what a fire does while the previous run of the same job is
-  still going (`skip` records it as skipped, the default; `allow` starts it anyway,
-  subject to the concurrency limit).
-- `--missed run-latest|skip` — what happens to fires missed while the machine was off
-  (`run-latest` runs the single latest missed one late, within the missed window — 6 h by
-  default; never a burst of catch-up runs).
-- History is kept per job: 50 runs / 30 days by default (`oino cron settings`).
-
-## Notifications
-
-A job can notify when a run ends, on the channels configured in Oino's notify settings
-(ntfy, Gotify, Telegram): `--notify ntfy,telegram --notify-on done,failed` (default:
-failed runs only, on your enabled channels). `oino cron test-notify <id>` sends a test
-message.
-
-## Where things live
-
-| Path | Contents |
-|---|---|
-| `~/.oino/cron/jobs.json` | every job |
-| `~/.oino/cron/runs/<job>/<run>.json` | one run record (status, summary, cost, session file) |
-| `~/.oino/cron/runs/<job>/<run>.log` | the run's captured output (last 64 KiB) |
-| `~/.oino/cron/settings.json` | scheduler settings |
-| `~/.oino/cron/scheduler.lock` | the single-owner lock |
-| `~/.oino/cron/serve.json` | the running daemon's pid and control port |
-
-A run's session is a normal Oino session whose **header id is the run id**: `oino --session-id
-<run id>` (or `--session <path>`, or the desktop's session list) shows it turn by turn.
+A scheduled run starts a fresh session with no memory of any conversation, and nobody
+answers its questions: write the prompt as a complete brief — the whole task, the
+choices made for it, and where the result goes (a file, a notification). Set the job's
+`notify` events to get a message on your channels when a run ends. Keep it short and
+concrete: one job, one clear outcome.

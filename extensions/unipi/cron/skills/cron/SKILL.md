@@ -5,12 +5,17 @@ description: Schedule a one-time or repeating unattended Oino run on this PC —
 
 # cron — scheduled, unattended Oino runs
 
-The cron scheduler (`oino cron serve`, usually installed as a user
-service with `oino cron install`) fires `oino -p "<prompt>"` on its
-own — on a cron schedule or once at a given time — with nobody there
-to answer it. You manage jobs with the `cron_*` tools, the `/cron`
-command, or the `oino cron` CLI. Each job runs in its own session, so
-you can open what a run did afterwards.
+The cron scheduler — embedded in the UniPi host (`unipi-host`, which
+runs whenever the UniPi tray app is up) — fires `oino -p "<prompt>"`
+on its own: on a cron schedule or once at a given time, with nobody
+there to answer it. You manage jobs with the `cron_*` tools or the
+`/cron` command; jobs live as plain files under `~/.oino/cron/jobs/`,
+one per job. Each job runs in its own session, so you can open what a
+run did afterwards.
+
+Firing needs the UniPi host: under a plain `oino` terminal nothing
+fires, but jobs can still be listed, added, edited and removed —
+`cron_run` then reports that no scheduler is running.
 
 ## Before anything: write a self-contained, one-shot prompt
 
@@ -33,8 +38,8 @@ if you were briefing someone who will never hear back from you:
     channels when the run finishes, so the prompt doesn't have to.
   - At minimum, the job's own summary (the last thing the run says)
     is kept and can be read back with `/cron show <id>` or
-    `oino cron log <run id>` — mention that to the user if nothing
-    richer applies.
+    `/cron runs <id>` — mention that to the user if nothing richer
+    applies.
 - Keep it short and concrete. One job, one clear outcome.
 
 ## Setting it up
@@ -45,36 +50,32 @@ if you were briefing someone who will never hear back from you:
    (`mkdir -p` it first if it's new).
 2. **Add the job** — with the `cron_add` tool, or:
 
-   ```bash
-   oino cron add --name "<short name>" \
-     --prompt "<the full, self-contained prompt — see above>" \
-     --schedule "<plain language, see below>" \
-     --cwd <the folder>
+   ```
+   /cron add name="<short name>"
+     prompt="<the full, self-contained prompt — see above>"
+     schedule="<plain language, see below>"
+     cwd=<the folder>
    ```
 
-   For a one-time reminder, use `--at` instead of `--schedule`:
-
-   ```bash
-   oino cron add --name "<short name>" --prompt "<prompt>" \
-     --at "in 2 hours" --cwd <the folder>
-   ```
+   For a one-time reminder, a `schedule` in the one-time forms
+   (`in 2 hours`, `tomorrow at 9`, or an exact
+   `at:2025-12-01T09:00:00Z`) does the same job.
 
    Plain-language schedules/times that work: `every 5 minutes`,
    `every day at 9:00`, `weekdays at 18:30`, `every monday 08:00`,
-   `hourly`, `daily` for `--schedule`; `in 2 hours`, `tomorrow at 9`
-   for `--at`. A 6-field cron (seconds first) or an exact
+   `hourly`, `daily`; one-time forms are `in 2 hours` and
+   `tomorrow at 9`. A 6-field cron (seconds first) or an exact
    `at:<RFC3339>` instant also works, for anything the phrasing above
-   doesn't cover. `--tz <IANA zone>` picks the zone (default: this
+   doesn't cover. `tz=<IANA zone>` picks the zone (default: this
    PC's).
 
    Optional flags worth offering:
-   - **`--notify ntfy,telegram,gotify --notify-on done,failed`**: Oino
+   - **`notify=ntfy,telegram,gotify` and `notifyOn=done,failed`**: Oino
      notifies on the user's own channels when a run ends. Without
-     `--notify` it uses the user's enabled channels, for failed runs
-     only. `--notify-on` takes `done`, `failed` and `skipped`.
-     `oino cron test-notify <id>` sends one test message.
-   - **`--time-limit-s`** (default 1800) caps a run's wall clock;
-     `--cost-cap` records the run as failed once it costs more.
+     `notify` it uses the user's enabled channels, for failed runs
+     only. `notifyOn` takes `done`, `failed` and `skipped`.
+   - **`timeLimitS`** (default 1800) caps a run's wall clock;
+     `costCapUsd` records the run as failed once it costs more.
    - **`--overlap skip|allow`**: what a fire does while the previous
      run of the same job is still going (default `skip`, recorded);
      **`--missed run-latest|skip`**: what happens to fires missed
@@ -83,43 +84,44 @@ if you were briefing someone who will never hear back from you:
 
 ## Day to day
 
-```bash
-oino cron list                 # every job: schedule, enabled, name
-oino cron status               # running/paused, next fire per job
-oino cron show <id>            # one job + recent runs
-oino cron runs [<id>] [-n N]   # run history (newest first)
-oino cron log <run id>         # one run's output + session file
-oino cron run <id>             # fire it now (bypasses the schedule)
-oino cron stop <id>            # kill its running runs
-oino cron enable|disable <id>
-oino cron edit <id> --schedule "every 2 hours"   # change anything
-oino cron remove <id>          # delete the job and its history
-oino cron pause                # pause everything; running ones finish
-oino cron resume
+```
+/cron list                 # every job: schedule, enabled, name
+/cron status               # running/paused, next fire per job
+/cron show <id>            # one job + recent runs
+/cron runs <id> [N]        # run history (newest first)
+/cron run <id>             # fire it now (bypasses the schedule)
+/cron stop <id>            # kill its running runs
+/cron enable|disable <id>
+/cron edit <id> schedule="every 2 hours"   # change anything
+/cron remove <id>          # delete the job (run history ages out)
+/cron pause                # pause everything; running ones finish
+/cron resume
 ```
 
-The same view lives in the desktop app's Automations page and as
-`/cron …` in any Oino session.
+The same view lives in the app's Automations page; the `cron_*` tools
+do all of this from a conversation. (`run`, `stop`, `pause`,
+`resume` and live `status` need the UniPi host; the rest work
+everywhere.)
 
 ## Reading a job's results
 
-- `oino cron show <id>`: the last 10 runs with their status and the
+- `/cron show <id>`: the last 10 runs with their status and the
   summary the run ended with.
-- `oino cron log <run id>`: the run's captured output (last 64 KiB),
-  its cost, and the path of its session file — open that file with
-  `oino --session <path>` (or the desktop's session list) to see the
-  whole run turn by turn.
-- Runs keep for 50 per job / 30 days by default
-  (`oino cron settings`).
+- `/cron runs <id>` and the `cron_list` tool: run history with each
+  run's session file path — open that file with `oino --session
+  <path>` (or the app's session list) to see the whole run turn by
+  turn.
+- Runs keep for 50 per job / 30 days by default (the scheduler
+  settings in the hub's Cron section).
 
 ## Checks
 
-- The scheduler must be running for jobs to fire:
-  `oino cron status` says so; `oino cron install` sets it up to start
-  at login (Linux: systemd user service; macOS: launchd agent;
-  Windows: Task Scheduler task). Without it, `run`/`stop` won't work
-  and due jobs wait.
-- A job's folder must exist before the job is added.
+- The UniPi host must be running for jobs to fire (`/cron status`
+  says so). Without it, due jobs wait — the host's scheduler catches
+  them up on start (the single latest missed fire, within the missed
+  window) — and `run`/`stop` report that no scheduler is running.
+- A job's folder must exist before the job is added; deleting a job
+  removes its file, and its run history ages out with retention.
 - Ask the user before creating or changing jobs (`cron_add`,
   `cron_update`, `cron_remove` ask for approval in ask/auto
   permission mode).
