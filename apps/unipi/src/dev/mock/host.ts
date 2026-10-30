@@ -11,6 +11,8 @@
  * browser) for assertions.
  */
 import { createSignal } from 'solid-js';
+import { parseNamespace } from '../../ui/settings/types';
+import { resolve, removePath, setPath } from '../../ui/settings/semantics';
 import { createMockBoard, type MockBoard, type MockBoardProject } from './board';
 import { MOCK_MODELS, mockLevelsFor, mockModelFor } from './models';
 import { mockLspServers, openMockLsp, type MockLspSpec } from './lsp';
@@ -103,13 +105,23 @@ export type MockExtension = {
   note?: string;
 };
 
-/** One OSS-2 settings namespace of the `get_settings_schema` answer. */
+/** One OSS-2 settings namespace of the `get_settings_schema` answer (WP-U11):
+ *  either the full dialect (`sections`, `defaults` and the stored `global` /
+ *  `project` layers) or the v1 flat `fields` shorthand A24's fixtures use. */
 export type MockNamespace = {
   namespace: string;
   title?: string;
   description?: string;
   extensionId?: string;
+  icon?: string;
+  order?: number;
+  defaults?: Record<string, unknown>;
+  sections?: unknown[];
   fields?: Array<{ key: string; type?: string; title?: string; description?: string }>;
+  /** Stored global layer (`extensionSettings.<ns>` of ~/.oino/settings.json). */
+  global?: Record<string, unknown>;
+  /** Stored project layer (`<project>/.oino/settings.json`). */
+  project?: Record<string, unknown>;
 };
 
 /** The settings fixtures a scenario seeds (WP-A24): the host's `config.json`,
@@ -370,6 +382,17 @@ function getDotted(source: Record<string, unknown>, key: string): unknown {
   return node === undefined ? null : node;
 }
 
+/** The stored layers of a namespace fixture: explicit `global` / `project`,
+ *  else the A24 `pi.extensionSettings.<ns>` seed for the global layer. */
+function mockLayers(fixture: MockNamespace, pi: Record<string, unknown>): { defaults?: Record<string, unknown>; global?: Record<string, unknown>; project?: Record<string, unknown> } {
+  const seeded = (pi.extensionSettings as Record<string, Record<string, unknown>> | undefined)?.[fixture.namespace];
+  return {
+    defaults: (fixture.defaults ?? {}) as Record<string, never>,
+    global: (fixture.global ?? seeded ?? {}) as Record<string, never>,
+    project: (fixture.project ?? {}) as Record<string, never>,
+  };
+}
+
 /** `host_cmd` (WP-A24): the hub-level `_oino/*` subset over the scenario's
  *  settings fixtures — pi settings, extension namespaces, the extension list
  *  (toggles mutate it, so a round trip is observable) and the auth shell. */
@@ -391,20 +414,30 @@ function mockHostCmd(cmd: { kind: string } & Record<string, unknown>, h: MockHos
       return { namespaces };
     case 'get_extension_settings': {
       const ns = String(cmd.namespace ?? '');
-      if (!namespaces.some((n) => n.namespace === ns)) throw err('E_FAILED', `Unknown settings namespace: ${ns}`);
-      const values = getDotted(pi, `extensionSettings.${ns}`);
-      return { values: typeof values === 'object' && values !== null ? values : {}, diagnostics: [] };
+      const fixture = namespaces.find((n) => n.namespace === ns);
+      if (!fixture) throw err('E_FAILED', `Unknown settings namespace: ${ns}`);
+      const parsed = parseNamespace(fixture)!;
+      const layers = mockLayers(fixture, pi);
+      const layer = String(cmd.layer ?? 'effective');
+      if (layer === 'global') return { values: layers.global, diagnostics: [] };
+      if (layer === 'project') return { values: layers.project, diagnostics: [] };
+      const resolved = resolve(parsed, layers);
+      return { values: resolved.values, diagnostics: resolved.diagnostics };
     }
     case 'set_extension_setting':
     case 'unset_extension_setting': {
       const ns = String(cmd.namespace ?? '');
-      if (!namespaces.some((n) => n.namespace === ns)) throw err('E_FAILED', `Unknown settings namespace: ${ns}`);
-      const values = (getDotted(pi, `extensionSettings.${ns}`) as Record<string, unknown>) ?? {};
-      const next = { ...values };
+      const fixture = namespaces.find((n) => n.namespace === ns);
+      if (!fixture) throw err('E_FAILED', `Unknown settings namespace: ${ns}`);
+      const layer = String(cmd.scope ?? 'global') === 'project' ? 'project' : 'global';
+      const stored = (fixture[layer] ??= {});
+      const key = String(cmd.key ?? '');
       if (cmd.kind === 'set_extension_setting' && cmd.value !== undefined && cmd.value !== null) {
-        next[String(cmd.key)] = cmd.value;
-      } else delete next[String(cmd.key)];
-      setDotted(pi, `extensionSettings.${ns}`, next);
+        setPath(stored as Record<string, unknown>, key, cmd.value);
+      } else {
+        removePath(stored as Record<string, unknown>, key);
+      }
+      // Keep the pi-facing view coherent for fixtures that seed extensionSettings.
       return null;
     }
     case 'extensions': {

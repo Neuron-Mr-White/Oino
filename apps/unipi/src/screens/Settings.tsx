@@ -129,28 +129,29 @@ export default function Settings() {
     window.setTimeout(() => el.classList.remove('settings-flash-target'), 1400);
   };
 
-  /** A search hit: open its section, then scroll to (and flash) the row/section. */
+  /**
+   * A search hit: open its section — the extension namespace page first when
+   * the hit belongs to one — then scroll to (and flash) the field row. A form
+   * row appears after its host read, so the landing retries for a moment.
+   */
   const onSearchPick = (hit: SearchHit) => {
-    if (hit.anchor.startsWith('ns-')) {
-      setNamespace(hit.anchor.slice(3));
-      navigate(`/settings/${hit.section}`, { replace: true });
-      return;
-    }
-    setNamespace(undefined);
+    if (hit.namespace) setNamespace(hit.namespace);
+    else setNamespace(undefined);
     navigate(`/settings/${hit.section}`, { replace: true });
-    // The desktop column re-renders on the route change: retry after the frame.
+    let tries = 0;
     const land = () => {
       const anchor = document.getElementById(hit.anchor);
       const el = anchor ?? document.getElementById(`sec-${hit.section}`);
-      if (!el) return false;
-      el.scrollIntoView?.({ block: 'center' });
-      // A row anchor (pi key, host key) flashes itself; a section flashes its card.
-      flash(anchor ?? el);
-      return true;
+      if (el) {
+        el.scrollIntoView?.({ block: 'center' });
+        // A row anchor (a form field) flashes itself; a section flashes its card.
+        flash(anchor ?? el);
+        return;
+      }
+      tries += 1;
+      if (tries < 30) window.setTimeout(land, 60);
     };
-    queueMicrotask(() => {
-      if (!land()) requestAnimationFrame(land);
-    });
+    queueMicrotask(land);
   };
 
   // Phone: Android Back leaves a namespace page before leaving Settings.

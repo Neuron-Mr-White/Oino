@@ -1,25 +1,31 @@
 /**
- * Settings search (WP-A24, Z-113): one search across all sections and the
- * extension namespaces — app rows (the catalog), host settings keys, pi agent
- * settings keys and every extension namespace + field. Selecting a result
- * jumps to its section (the desktop two-column view switches column, the
- * phone scrolls to the card) with the row highlighted.
+ * Settings search (WP-A24 + WP-U11, Z-113): one search across all sections and
+ * every OSS-2 namespace — app rows (the catalog), host settings keys, the core
+ * `oino.*` namespaces (pi settings) and each extension namespace with its
+ * fields (label, description and key, §7 "Search covers labels, descriptions
+ * and keys of all namespaces"). Selecting a result opens its section — a
+ * namespace page for extensions — and flashes the field row.
  */
 import { For, Show, createEffect, createMemo, createResource, createSignal } from 'solid-js';
 import { Search } from 'lucide-solid';
 import { HOST_SETTINGS_KEYS } from '@unipi/protocol';
 import { visibleSections } from './SettingsNav';
 import type { SettingsSectionId } from './catalog';
-import { piSettings, settingsSchema } from '../../settings/hostCmd';
+import { piSettings } from '../../settings/hostCmd';
+import { settingsSchema } from '../../ui/settings/data';
 import { can } from '../../lib/platform';
+import type { Namespace } from '../../ui/settings/types';
+import { allFields, fieldAnchor, isCoreNamespace } from '../../ui/settings/types';
 
 export type SearchHit = {
   section: SettingsSectionId;
   label: string;
   detail: string;
-  kind: 'app' | 'host' | 'pi' | 'extension';
-  /** `sec-<id>` anchor (sections) or `key-<dotted key>` row anchor. */
+  kind: 'app' | 'host' | 'pi' | 'agent' | 'extension';
+  /** `sec-<id>` / `key-<dotted key>` / `field-<ns>-<key>` anchor. */
   anchor: string;
+  /** The extension namespace a hit belongs to (its page opens first). */
+  namespace?: string;
 };
 
 const HOST_KEY_LABELS: Record<string, string> = {
@@ -30,32 +36,43 @@ const HOST_KEY_LABELS: Record<string, string> = {
   'term.max': 'Max terminals', 'update.mode': 'Host updates',
 };
 
-/** The dynamic keys (pi settings + extension namespaces), loaded once. */
+/** Namespace hits (§7): the namespace itself plus one hit per field. */
+function namespaceHits(namespaces: readonly Namespace[], out: SearchHit[]): void {
+  for (const ns of namespaces) {
+    const core = isCoreNamespace(ns);
+    const section: SearchHit['section'] = core ? 'agent' : 'extensions';
+    const kind: SearchHit['kind'] = core ? 'agent' : 'extension';
+    out.push({
+      section,
+      label: ns.title,
+      detail: `${ns.namespace}${ns.extensionId ? ` · ${ns.extensionId}` : ''} · ${core ? 'agent' : 'extension'} settings`,
+      kind,
+      anchor: core ? 'sec-agent' : `ns-${ns.namespace}`,
+      ...(core ? {} : { namespace: ns.namespace }),
+    });
+    for (const field of allFields(ns.sections)) {
+      out.push({
+        section,
+        label: field.label,
+        detail: `${ns.namespace}.${field.key}${field.type ? ` · ${field.type}` : ''} · ${core ? 'agent' : 'extension'} setting`,
+        kind,
+        anchor: fieldAnchor(ns.namespace, field.key),
+        ...(core ? {} : { namespace: ns.namespace }),
+      });
+    }
+  }
+}
+
+/** The dynamic keys (pi settings + every namespace), loaded once. */
 async function dynamicHits(): Promise<SearchHit[]> {
   if (!can('hosts')) return [];
   const hits: SearchHit[] = [];
   const [pi, schema] = await Promise.all([piSettings(), settingsSchema()]);
-  if (pi.ok) flatten(pi.value, '', 0, hits);
-  if (schema.ok) {
-    for (const ns of schema.value) {
-      hits.push({
-        section: 'extensions',
-        label: ns.title ?? ns.namespace,
-        detail: `${ns.namespace}${ns.extensionId ? ` · ${ns.extensionId}` : ''} · extension settings`,
-        kind: 'extension',
-        anchor: `ns-${ns.namespace}`,
-      });
-      for (const field of ns.fields ?? []) {
-        hits.push({
-          section: 'extensions',
-          label: field.title ?? field.key,
-          detail: `${ns.namespace}.${field.key}${field.type ? ` · ${field.type}` : ''} · extension setting`,
-          kind: 'extension',
-          anchor: `ns-${ns.namespace}`,
-        });
-      }
-    }
-  }
+  const namespaces = schema.ok ? schema.value : [];
+  const core = namespaces.some(isCoreNamespace);
+  // A v1 host without core namespaces still indexes the raw pi keys.
+  if (pi.ok && !core) flatten(pi.value, '', 0, hits);
+  namespaceHits(namespaces, hits);
   return hits;
 }
 

@@ -24,7 +24,7 @@ import { composerPaste, composerSlash, composerStates } from './composer';
 import { composerAttachments, composerNarrow, imageEditorEllipse } from './composer-attachments';
 import { editorConflict, editorLsp, filesPreview, filesSearch, filesTree } from './files';
 import { cmdkEmpty, cmdkFiles, findBar, shortcutsList } from './command';
-import { settingsExtensions, settingsNav, settingsSafeMode, settingsSearch } from './settings';
+import { settingsExtensions, settingsForm, settingsFormAdvanced, settingsFormAgent, settingsFormList, settingsNav, settingsSafeMode, settingsSearch } from './settings';
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
@@ -120,6 +120,10 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'settings-search': settingsSearch,
   'settings-extensions': settingsExtensions,
   'settings-safe-mode': settingsSafeMode,
+  'settings-form': settingsForm,
+  'settings-form-list': settingsFormList,
+  'settings-form-advanced': settingsFormAdvanced,
+  'settings-form-agent': settingsFormAgent,
   'model-picker': modelPicker,
   'model-fusion': modelFusion,
   'thinking-chip': thinkingChip,
