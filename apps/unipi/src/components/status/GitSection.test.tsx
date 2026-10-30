@@ -296,6 +296,13 @@ describe('Git section (WP-A15) — phone', () => {
     expect(await screen.findByTestId('git-not-repo')).toBeTruthy();
   });
 
+  it('row menu → Reveal in tree opens the Files layer (phone)', async () => {
+    mountPhone();
+    fireEvent.contextMenu((await screen.findAllByTestId('git-row'))[0]!);
+    fireEvent.click(await screen.findByRole('menuitem', { name: /reveal in tree/i }));
+    await waitFor(() => expect(location.hash).toBe('#/files'));
+  });
+
   it('row menu → Open in editor sets the editor target at the repo path (phone)', async () => {
     mountPhone();
     fireEvent.contextMenu((await screen.findAllByTestId('git-row'))[0]!);

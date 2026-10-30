@@ -18,6 +18,7 @@ import {
   CloudDownload,
   Copy,
   ExternalLink,
+  FolderTree,
   GitBranch,
   GitCommitHorizontal,
   Minus,
@@ -35,6 +36,8 @@ import { inTextField } from '../../lib/desktop';
 import { setEditorTarget } from '../../lib/editorTarget';
 import { parseUnifiedDiff } from '../../lib/markdown';
 import { hubs } from '../../lib/session/hub';
+import { panes } from '../../lib/panes';
+import { currentWorkspace } from '../shell/Workspace';
 import { sessions } from '../../lib/session/store';
 import type { Turn } from '../../lib/session/turns';
 import {
@@ -304,13 +307,43 @@ export function GitSection(props: {
       props.onToast(kind === 'push' ? `Pushed · ${first}` : kind === 'pull' ? `Pulled · ${first}` : 'Fetched');
     });
 
-  function openFile(change: GitFileChange) {
-    // The editor screen is the phone's layer today; the desktop editor tab
-    // arrives with A20 — until then the row keeps the action phone-only.
+  /** The change's absolute path (git status rows are repo-relative). */
+  function absPath(change: GitFileChange): string | undefined {
     const root = status()?.root;
-    if (!root || desktop()) return;
-    setEditorTarget({ hostId, path: `${root.replace(/\/+$/, '')}/${change.path}` });
+    return root ? `${root.replace(/\/+$/, '')}/${change.path}` : undefined;
+  }
+
+  function openFile(change: GitFileChange) {
+    const path = absPath(change);
+    if (!path) return;
+    if (desktop()) {
+      // A20's Files tab hosts the editor next to the tree on the desktop.
+      const ws = currentWorkspace();
+      if (!ws) return;
+      const dir = path.slice(0, path.lastIndexOf('/'));
+      panes().open(ws.scope, 'side', ws.view, { kind: 'files', params: { hostId, root: dir, path } });
+      return;
+    }
+    setEditorTarget({ hostId, path });
     navigate('/files/edit');
+  }
+
+  /** Z-96 "reveal in tree": the Files tree rooted at the file's folder, no
+   *  editor (its own row action); the phone opens the Files layer there. */
+  function revealInTree(change: GitFileChange) {
+    const path = absPath(change);
+    if (!path) return;
+    const dir = path.slice(0, path.lastIndexOf('/'));
+    if (desktop()) {
+      const ws = currentWorkspace();
+      if (!ws) return;
+      panes().open(ws.scope, 'side', ws.view, { kind: 'files', params: { hostId, root: dir } });
+      props.onToast('Revealed in Files');
+      return;
+    }
+    // The phone opens the Files layer at its last folder; a real tree
+    // selection needs A20's Files tree API (follow-up).
+    navigate('/files');
   }
   function copyPath(change: GitFileChange) {
     const root = status()?.root ?? '';
@@ -791,7 +824,8 @@ export function GitSection(props: {
               disabled={!canStage()}
               onSelect={() => { const c = m().change; setRowMenu(undefined); toggleStage(c); }}
             />
-            <MenuRow icon={<ExternalLink size={18} />} label="Open in editor" disabled={m().change.status === 'D' || desktop()} onSelect={() => { const c = m().change; setRowMenu(undefined); openFile(c); }} />
+            <MenuRow icon={<FolderTree size={18} />} label="Reveal in tree" onSelect={() => { const c = m().change; setRowMenu(undefined); revealInTree(c); }} />
+            <MenuRow icon={<ExternalLink size={18} />} label="Open in editor" disabled={m().change.status === 'D'} onSelect={() => { const c = m().change; setRowMenu(undefined); openFile(c); }} />
             <MenuRow icon={<Copy size={18} />} label="Copy path" onSelect={() => { const c = m().change; setRowMenu(undefined); copyPath(c); }} />
             <Show when={canStage() && m().change.area !== 'staged'}>
               <MenuSeparator />
