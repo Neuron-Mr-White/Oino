@@ -13,7 +13,7 @@
 //! | [`bus`] | `bus.ts` | typed publish/get/subscribe, `oino_bus` decoding, event routing |
 //! | [`services`] | `Symbol.for` holders | service names (fan-out + point) and payloads |
 //! | [`fanout`] | evidence/compaction/move registries | time-boxed call-every-provider |
-//! | [`settings`] | `src/settings/*` | schema builder (ui-protocol §6.6), layered values, store |
+//! | [`settings`] | `src/settings/*` | schema builders (v1-compatible + OSS-2, ui-protocol §7), layered values, store |
 //! | [`jev`] | `src/jev/*` | decision-model settings, transports, fail-open `ask` |
 //! | [`provenance`] | `harness-messages.ts` | provenance records + delivery mapping |
 //! | [`bounded`] | `bounded-output.ts` | head/tail bounded output with private artifact |

@@ -5,11 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Shared guest-side kit for the unipi 3.0.0 ports: suite ids, bus topics, service conventions, settings, jev, bounded output, attachments, savings"
+description = "Shared guest-side kit for the unipi 3.0.0 ports: suite ids, bus topics, service conventions, settings (v1 + OSS-2), jev, bounded output, attachments, savings"
 
 [dependencies]
 futures.workspace = true
 oino-extension.workspace = true
+oino-ui.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
