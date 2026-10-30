@@ -301,6 +301,11 @@ async fn five_thousand_deltas_coalesce_into_few_frames() {
 
     // §7.4: one `events` frame per 16 ms flush tick, not one per delta.
     let windows = (elapsed.as_millis() as f64 / 16.0).ceil() as usize + 2;
+    println!(
+        "{DELTAS} deltas -> {} `events` frames carrying {} events in {elapsed:?} (limit {windows})",
+        frames.len(),
+        events.len()
+    );
     assert!(
         frames.len() <= windows,
         "{} frames for {} deltas in {elapsed:?} (limit {windows})",
