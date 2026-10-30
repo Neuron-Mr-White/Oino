@@ -1,6 +1,6 @@
 # ZCode vs unipi-app UX audit (v2 phase A — for owner rulings)
 
-Status: **awaiting owner rulings.** Work id `[zcode-audit]`, branch `v2`, 2026-10-31. Read-only audit;
+Status: **ruled 2026-10-31** — owner: "take recommended for everything"; overrides/clarifications on Z-43, Z-61, Z-65, Z-95. Work id `[zcode-audit]`, branch `v2`, 2026-10-31. Read-only audit;
 nothing is implemented from it until each `Owner ruling:` line is filled
 ([DIRECTION.md](DIRECTION.md) §4.2 rule 3, §9 phase A).
 
@@ -114,49 +114,49 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: left sidebar = workspaces → tasks (the work list *is* the nav); Automations and Plugins entries on top; settings in footer; no screen tabs (`docs/ui/workspace-sidebar-navigation.md`, `ui/WorkspaceSidebar.tsx`).
 - unipi: sidebar of screens Sessions·Chat·Board·Files·Cron·Preview·Settings; each screen has its own list | detail (`components/shell/DesktopShell.tsx` `NAV`); phone: bottom tab bar.
 - Rec: **hybrid** — sidebar shows projects→sessions (ZCode) with a compact screen rail/footer for Board, Cron, Settings (unipi); Files/Git/Terminal/Browser move into the side pane (Z-5) so they are not top-level screens. Effort L.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-2 Workspace header (conversation top bar)**
 - ZCode: task title + project as secondary, project/branch hover card (Folder/Cloud icon), "open in editor" split button, terminal toggle, side-pane toggle; ⋯ menu: open in file manager, copy path / task id / session id / log path (`docs/ui/workspace-header-structure.md`, `docs/ui/header-git-branch-switcher.md`).
 - unipi: 56 px detail header: back, title + "PC · workspace" sub-line (title opens the model picker), working-mode chip, session strip (model·ctx·cost), ⋯ menu, globe (browser), terminal switch (`components/chat/ChatView.tsx` header, DESIGN §1.6 detail header).
 - Rec: **hybrid** — keep the 56 px detail header and mode chip; make the right side ZCode's icon set (terminal icon, side-pane toggle — QA#17); title click should not open the model picker (redundant with the composer chip, Z-70); add copy-session-id/path to ⋯. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-3 Sidebar collapse & width**
 - ZCode: collapsible sidebar (Cmd+B), reopen button stays top-left with New task; default/min 264 px; auto-collapse side pane when chat < 480 px and sidebar when < 360 px on window resize (`docs/ui/workspace-layout.md`, `docs/ui/workspace-resize-auto-collapse.md`).
 - unipi: fixed sidebar width (`lib/layout.ts SIDEBAR_WIDTH`), list | detail splitter remembered per screen; chat list folds away when list+chat+browser don't fit (DESIGN §5.8).
 - Rec: **take ZCode** — collapse + resize auto-collapse rules are cheap and protect the chat column. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-4 Independent frames & resize handles**
 - ZCode: conversation, bottom terminal and side pane are separate framed panels with 4 px gaps; handles show a 2 px line on hover/drag (`DESIGN.md` "Workspace layout").
 - unipi: flush panes with 1 px rules; splitter between list and detail (`components/shell/shell.css`).
 - Rec: **keep unipi** look (warm flush surfaces) but take ZCode's handle affordance (hover line, 4 px hit). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-5 Right side pane = tabs container**
 - ZCode: one right pane with tabs (browser ×n, terminal ×n, review/git, files, code viewer, diff, plan, subagent session, side chat, workflow …), `+` launcher, tab overview with search, close current/others/all, recently closed + reopen, tabs scoped per workspace+task (`docs/ui/side-pane-tabs.md`, `ui/app-shell/AnimatedSidePanePanel.tsx`).
 - unipi: only the browser can sit beside the chat (`components/chat/BrowserSide.tsx`); git, files, editor, terminal are separate screens/layers.
 - Rec: **take ZCode** — it is the natural host for D-2/D-3/D-4/D-10 and the `sidePane` slot (D-17); avoids separate screens for the same things (rule 2). Effort L.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-6 Side pane "full view"**
 - ZCode: Cmd+Shift+F expands the side pane over the conversation; chat becomes the first tab and a floating composer stays over other tabs (`docs/ui/side-pane-full-view.md`).
 - unipi: none (full-screen layers on phone only).
 - Rec: **take ZCode** (desktop only) — useful for git review and browser; low risk once Z-5 exists. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-7 Split panes / multiple conversations**
 - ZCode: workbench split panes (`ui/v4/WorkbenchPane.tsx`, `paneLayoutStore.ts`) — several sessions side by side.
 - unipi: one open chat at a time; Alt+↑/↓ switches.
 - Rec: **ask** — not needed for v2 parity; recommend **defer**. Effort L.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-8 Host switcher**
 - ZCode: remote workspaces (SSH/WSL/Docker) sit in the same sidebar as local ones, Cloud icon + hover card with host details (`docs/ui/header-git-branch-switcher.md`, `ui/WorkspaceSidebar/RemoteProjectDetailsPopover.tsx`).
 - unipi: a `PcChip` + "Choose a PC" sheet per screen (Chat, Board, Files, Preview), remembered per screen (`components/PcChip.tsx`, `screens/Chat.tsx`).
 - Rec: **hybrid** — sidebar groups by host (This computer first, then paired PCs, collapsible) → projects → sessions; keep the PC chip only on Board/Cron where content is per-PC. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## B. Sessions list & session actions
 
@@ -164,73 +164,73 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: views "By project / By group / Recently updated"; running + background-work sessions always on top inside a project (`docs/ui/sidebar-task-view-switcher.md`, `docs/ui/task-grouped-view.md`).
 - unipi: groups per herdr workspace, needs-you first (`lib/chat/list.ts needsYouFirst`).
 - Rec: **hybrid** — by project (D-9) with running-first + needs-you-first ordering; ask whether a "Recently updated" flat view is wanted; skip user-defined groups. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-10 Time groups**
 - ZCode: timeline view grouped Today / Yesterday / 2–3 days ago / This week / Last week / This month / Last month / Older (`docs/ui/sidebar-task-timeline-groups.md`).
 - unipi: none (v1 deferred as D9 in zcode-details).
 - Rec: **ask** — only meaningful if the flat "Recently updated" view (Z-9) is taken; inside projects recommend relative time on the row instead. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-11 Paging long lists**
 - ZCode: 5 sessions per project, "Show more" adds 5 (`docs/ui/workspace-sidebar-navigation.md`).
 - unipi: all rows rendered.
 - Rec: **take ZCode** — needed once archive (Z-13) isn't enough with many oino sessions. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-12 Row content**
 - ZCode: title (fade mask + 1 s hover marquee, no ellipsis), relative time, change summary +N −M, permission/interaction badge, running spinner, red error dot, blue unread dot (`docs/ui/task-item-title-overflow.md`, `ui/TaskListItem.tsx`, `ui/TaskInteractionBadge.tsx`).
 - unipi: π glyph tinted by state, title, "Needs you" badge, working-mode badge, sub-line status word + cwd or pending-work text (`screens/Chat.tsx`).
 - Rec: **hybrid** — keep unipi state glyph/words/mode badge (DESIGN §1.3: colour+icon+word); add ZCode relative time, +N −M and unread dot; marquee optional (ask). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-13 Archive** (QA#1)
 - ZCode: Archive from context menu or inline hover button with a confirm state; archived list reachable; Delete-all-archived (`docs/ui/task-list-context-menu.md`, `ui/DeleteAllArchivedTasksButton.tsx`).
 - unipi: "Just hide from list" per device + "n hidden · Show" (`lib/chat/newChat.ts hideChat`).
 - Rec: **take ZCode** — owner asked for archive + a place to reopen; store in session `custom` entry/host index so all devices agree. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-14 Pin**
 - ZCode: Pin/Unpin, separate "Pinned" group on top (`docs/ui/pinned-task-storage.md`).
 - unipi: none.
 - Rec: **take ZCode**. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-15 Rename**
 - ZCode: Rename dialog from context menu, Enter submits; manual title wins over auto title (`docs/ui/task-title-authority.md`).
 - unipi: ⋯ → Rename… sheet, `/name` (`components/chat/SessionMenus.tsx RenameSheet`); utility auto-rename runs silently.
 - Rec: **hybrid** — add Rename to the sidebar context menu; keep `/name`; manual name must lock out auto-rename. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-16 Session context menu**
 - ZCode: Pin, Rename, Archive, Mark as unread, Open in file manager, Copy path, Copy log path, Go to config, Delete (confirm) (`docs/ui/task-list-context-menu.md`).
 - unipi: no row menu on the chat list; header ⋯ has New session, New chat in workspace, Resume…, Search, Tree, Files here, Git, Kanboard, Add task, Rename, Close chat (`SessionMenus.tsx ChatHeaderMenu`).
 - Rec: **hybrid** — right-click/long-press row menu with Pin, Rename, Archive, Mark unread, Fork, Copy id/path, Reveal folder, Delete; header ⋯ keeps chat-scoped actions only. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-17 Fork**
 - ZCode: Fork action on the assistant turn actions; fork child sorts above parent while running (`ui/v4/ConversationRowView.tsx ConversationAssistantTextActions`).
 - unipi: Fork from here on any user/prose row action bar and in the message menu; `/fork` (`ChatView.tsx doFork`).
 - Rec: **hybrid** — keep "fork from any message" (pi supports it) but surface it in the turn-tail action bar (Z-27). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-18 Tree / branches**
 - ZCode: no tree UI (edit = new branch; fork = new task).
 - unipi: Session tree sheet with filters, "Go to this point", "Start a new branch here", jump restores the message into the composer (`SessionMenus.tsx TreeSheet`, `ChatView.tsx doTreeGo`).
 - Rec: **keep unipi** — pi-specific power feature; open it as a side-pane tab on desktop instead of a sheet (ask). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-19 New session / resume flow**
 - ZCode: Cmd+N new task in the last active workspace; draft composer with project picker; empty draft shows greeting + suggested prompts (`docs/ui/workspace-sidebar-navigation.md`, `docs/ui/project-local-directory-picker.md`).
 - unipi: New chat sheet (PC → where (herdr/tmux) → folder → first message); "New session" (restart this pi), "New chat in this workspace", "Resume…" sheet, WelcomeState lists recent sessions (`components/chat/NewChatSheet.tsx`, `SessionMenus.tsx ResumeSheet/WelcomeState`).
 - Rec: **take ZCode** — one "New chat" (+ per-project `+`) opening a draft composer with host+folder pickers; drop "New session"/"New chat here" duplication and the Resume sheet (the sidebar *is* resume; rule 2). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-20 Export / share / delete**
 - ZCode: conversation share link with permission picker and selection mode; delete task with confirm (`ui/ConversationShareMenu.tsx`, `docs/ui/confirm-dialog.md`).
 - unipi: `/export`, `/share`, `/import`, `/clone` marked terminal-only (`lib/chat/commands.ts TERMINAL_ONLY`); message Share (OS share text); no delete.
 - Rec: **ask** — recommend Export (HTML/JSONL via pi) + Delete (confirm) in the row menu; skip ZCode web share links (needs a service). See G-15. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## C. Chat timeline
 
@@ -238,97 +238,97 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: per work segment, everything before the latest assistant text folds into one "Worked for 1m 18s" line; forced open while running and on interrupted/failed/error; "Working for N s" live; "Stopped" without time when interrupted (`docs/ui/v4-chat-turn-render-units.md`).
 - unipi: each run of thinking+tools between prose blocks folds into its own process group ("Read files, edited files · 1m 3s", live shimmer line); intermediate prose stays visible (`Transcript.tsx ProcessGroup`, `lib/chat/model.ts processSummary`).
 - Rec: **take ZCode** (owner rule 4) keeping unipi's summary wording inside the fold ("Worked for 1m 3s · read files, edited 2"). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-22 Live tail while running**
 - ZCode: the running turn renders expanded as a live tail outside the virtualized history, then migrates in (`ui/v4/conversationTimelineLiveTail.ts`).
 - unipi: a separate RunningRow ("Working… · cmd" + clock) below the list unless the last row is live (`ChatView.tsx RunningRow`, `lastRowLive`).
 - Rec: **hybrid** — ZCode live tail; keep the unipi clock text in the "Working for" label so there's one live indicator. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-23 Follow threshold & jump button**
 - ZCode: detach at > 48 px, user intent beats layout, button only when detached *and* overflowing, gradient mask behind it, `scrollbar-gutter: stable` (`docs/ui/chat-scroll-bottom-pinning.md`).
 - unipi: FOLLOW = 32 px, `.jump-btn` whenever not following (`ChatView.tsx`).
 - Rec: **take ZCode** (part of D-8). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-24 Unread marker on jump button**
 - ZCode: none beyond the button.
 - unipi: none. (v1 oino added an unread dot while busy.)
 - Rec: **ask** — small dot on the jump button when new content arrived while detached. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-25 Query navigator rail**
 - ZCode: compact rail left of the timeline, one bar per user query (≥ 2 queries, wide screens), tooltip = query + answer excerpt, click jumps exactly (`docs/ui/conversation-turn-navigator.md`, `ui/v4/ConversationTurnNavigator.tsx`).
 - unipi: none.
 - Rec: **take ZCode** (desktop only). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-26 Timestamps**
 - ZCode: assistant turn actions end with the time: `HH:MM` today, `Yesterday HH:MM`, `M/D HH:MM`, `Y/M/D HH:MM` (`ui/v4/messageTimeLabel.ts`).
 - unipi: no message times; turn end "Done in 1m 34s · $0.003" (`Transcript.tsx TurnEnd`).
 - Rec: **hybrid** — keep "Done in · $cost" and add the ZCode time label to the same line. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-27 Message actions placement** (QA#14)
 - ZCode: actions only at the **tail of each turn**, bottom-left, hover-revealed (always visible on phone): Copy (whole turn text, glyph→check 1.2 s), like/dislike, Fork, hook details, time. User row: Copy + inline Edit (`ConversationRowView.tsx` 1478–1650).
 - unipi: hover bar on **every** user and prose row: Copy, Quote, Start from here, Fork, Retry, More (Share); phone: tap a row toggles the bar; swipe right quotes (`ChatView.tsx actionBar`).
 - Rec: **hybrid** — ZCode placement (turn tail, bottom-left) with unipi's set (Copy, Quote, Fork, Retry, More); drop like/dislike (no telemetry); per-message actions stay in right-click/long-press menu. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-28 Edit a sent message**
 - ZCode: inline edit of the user bubble (text + attachments), submit as new branch, optional "reset with files" (FileClock) that rewinds the workspace too (`docs/ui/user-message-plain-text.md`).
 - unipi: "Start from here" = tree jump that puts the message back into the composer (`ChatView.tsx restoreIntoDraft`).
 - Rec: **hybrid** — Edit icon on the user bubble that does unipi's tree-jump into the composer; "reset with files" ties into D-1 snapshots (ask). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-29 User bubble fold**
 - ZCode: max 120 px, bottom fade mask, centred expand/collapse button, 300 ms height transition, chips/attachments stay outside the fold (`docs/ui/v4-user-message-display.md`).
 - unipi: clamps > 600 chars or > 12 lines, tap toggles, no button (`Transcript.tsx UserBubble data-clamped`).
 - Rec: **take ZCode** — explicit button is clearer and works with tap-to-select. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-30 Text-selection actions**
 - ZCode: select text in the timeline → "Add to current task" (quote chip in composer) / "Ask in side chat" (`docs/ui/conversation-selection-side-chat.md`, `ui/v4/SelectionActionMenu.tsx`).
 - unipi: Quote inserts the whole message as `> text`; swipe-to-quote on phone.
 - Rec: **take ZCode** for desktop (selection → quote chip); keep swipe-to-quote on phone. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-31 Side chat (BTW)**
 - ZCode: `/side` and `/btw` open a *multi-turn* side chat as a side-pane tab (several allowed); selection can seed it (`docs/ui/conversation-selection-side-chat.md`).
 - unipi: BtwSheet: one-question pages, streamed answer, history, "Ask in main chat" (`components/chat/BtwSheet.tsx`); oino btw ext is single-answer `editorReplace` panel.
 - Rec: **hybrid** — keep btw semantics (read-only, never touches main session) but open it as a side-pane tab on desktop, sheet on phone. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-32 Assistant preview cards**
 - ZCode: media/file paths in the final answer become preview cards (≤ 10) that open in the preview pane (`docs/ui/assistant-media-preview.md`, `docs/ui/assistant-preview-cards.md`).
 - unipi: verified file refs become tappable links with a menu (`lib/chat/fileRefs.ts`, `FileRefText.tsx`); tool attachments as chips; mermaid viewer.
 - Rec: **keep unipi** file refs; ask whether image/video refs should get inline cards. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-33 Display settings for the stream**
 - ZCode: Settings toggles "show all reasoning" (first reasoning per turn always shown) and "show Todo cards" (`docs/ui/message-stream-display-settings.md`).
 - unipi: none.
 - Rec: **ask** — low value if Z-21 folds everything; recommend skip. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-34 Streaming text animation**
 - ZCode: new streamed text fades in (900 ms per chunk), completed markdown rendered static (`ui/styles.css zcode-stream-text-in`, `docs/ui/chat-virtual-scroll.md`).
 - unipi: blocks re-render as they stream (`renderBlocks(text, live)`).
 - Rec: **take ZCode**'s "static once complete" render rule (perf); fade-in optional (ask). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-35 Compaction marker**
 - ZCode: manual `/compact` shows no user bubble, only a compact timeline marker (`docs/ui/v4-chat-turn-render-units.md`).
 - unipi: "Context compacted · Nk tokens before" divider, expandable summary (`Transcript.tsx Compaction`) + compactor card.
 - Rec: **keep unipi** divider; hide the `/compact` echo bubble like ZCode. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-36 Harness / command echo rows**
 - ZCode: control-only turns (e.g. model change) render as light boundary rows; `/goal` renders as a goal tag in the bubble; cron-sent prompts show "Sent by scheduled task" above the bubble (`docs/ui/scheduled-tasks-main-view.md`).
 - unipi: harness messages as cards with source/title; `/command` echo = own bubble with command chip + injected-text chip (`Transcript.tsx UserBubble harness/command`, `Cards.tsx`).
 - Rec: **keep unipi** and add the cron source label (Z-112). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## D. Tool rows, thinking, diffs
 
@@ -336,55 +336,55 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: status + title + summary, static kind icon, chevron only on hover when done, shimmer while running, progress indicator bar (`docs/ui/tool-inline-diff.md`, `ui/ToolCallBlocks/ToolSummaryRow.tsx`).
 - unipi: icon by category, tool name (shimmer when busy), subject (tappable verified path), +N −M, error first line in red (`Transcript.tsx ToolRow`).
 - Rec: **keep unipi** row (QA#13 preferred it); take ZCode hover-only chevron. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-38 Tool grouping**
 - ZCode: consecutive non-read-only shell calls grouped into one "Execute" parent; explore (reads/searches) and changes groups (`docs/ui/tool-display-rendering.md`, `renderers/execute-group.tsx`, `explore.tsx`, `changes-group.tsx`).
 - unipi: all tools listed flat inside the process fold.
 - Rec: **take ZCode** grouping inside the turn fold. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-39 Expanded tool views**
 - ZCode: per-tool renderers (execute, read, search, web-fetch, todo, mcp, agent, ask-question, skill …); write `.md` previews as markdown; generic In/Out fallback (`ui/ToolCallBlocks/renderers/*`, `docs/ui/write-tool-markdown-preview.md`).
 - unipi: run → `$ cmd` + output tail; edit → diff; write → all-additions diff; read/search/web/memory → output head; fallback In/Out JSON (`Transcript.tsx ToolBody`).
 - Rec: **hybrid** — keep unipi bodies; add markdown preview for `.md` writes, todo and mcp renderers; tool renderers from extensions come through UI v2. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-40 Inline diff vs full diff**
 - ZCode: lightweight highlighted unified diff inline; "View diff" opens the full Pierre diff viewer in the side pane (`docs/ui/diff-viewer.md`).
 - unipi: `renderDiffHtml` inline; Review opens a full-screen read-only viewer; Open in editor jumps to the line (`components/chat/ReviewViewer.tsx`).
 - Rec: **hybrid** — unipi inline diff; Review opens a side-pane diff tab on desktop (Z-5). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-41 Thinking display**
 - ZCode: Reasoning collapsed by default even while streaming; label "Thinking…" (shimmer) → "Thought for 12s"; hidden when empty (`ConversationRowView.tsx ReasoningRowView`).
 - unipi: ThinkingRow inside the fold, preview = latest finished paragraph, "Thinking" label (`Transcript.tsx ThinkingRow`).
 - Rec: **hybrid** — ZCode labels with duration + unipi's one-line preview. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-42 Subagent / sidekick rows**
 - ZCode: subagent row opens the child session in a side-pane tab (drilldown) with its own transcript (`ui/v4/SubagentDrilldown.tsx`, `ui/app-shell/SubagentSessionSidePane.tsx`).
 - unipi: completion cards; Running tab detail (report text, stop/re-run/background); Progress sheet "Open session" (`Cards.tsx`, `ControlCentre.tsx WorkDetail`).
 - Rec: **take ZCode** — open subagent transcripts as side-pane tabs; one place instead of two (rule 2). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-43 Todo / plan rendering**
 - ZCode: plan & todos live in the status panel (Z-95); inline todo cards optional (`docs/ui/plan-mode-panel.md`).
 - unipi: no todo concept beyond harness cards; plan review is a `custom` dialog (unsupported, G-2).
 - Rec: **ask** together with Z-95. Effort M.
-- Owner ruling:
+- Owner ruling: todos/plans render in the git/status pane next to long-horizon status (per Z-95); no inline todo cards.
 
 **Z-44 Images in tool output**
 - ZCode: image grids (node-repl, CUA screenshots), media cards.
 - unipi: `AttachmentChipRow` + previewer (`ImageChip.tsx`).
 - Rec: **keep unipi**. Effort —.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-45 Code blocks**
 - ZCode: Streamdown; sticky header with language + copy (`DESIGN.md` Chat).
 - unipi: sticky language + Copy header, Copy→Copied 1.2 s, wrap toggle (`MdBlock.tsx`).
 - Rec: **keep unipi**. Effort —.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## E. Dialogs, errors, retry
 
@@ -392,37 +392,37 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: permission / question / elicitation panels dock **above** the composer in the same bottom dock; composer stays usable; mobile can collapse the question panel (`ui/v4/SessionPane.tsx` bottom dock, `docs/ui/ask-user-question-header-title.md`).
 - unipi: dialogs **replace** the composer slot (`ChatView.tsx DialogStack`).
 - Rec: **take ZCode** — keeps typing/steering possible while a question waits; add collapse on phone. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-47 Permission prompt**
 - ZCode: inline permission block with origin badge and workflow holes (`ui/PermissionDialog.tsx`, `ui/WorkflowPermissionBlock.tsx`).
 - unipi: no `approval` kind; oino workflow sends `approval` (Allow once / Always / Deny / Deny with note) (G-2).
 - Rec: **take ZCode** layout in unipi style. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-48 Error rows**
 - ZCode: error banner with trace id and a details dialog; provider/business error mapping (`ui/ChatErrorBanner.tsx`).
 - unipi: red error row; Retry button under the last error when `/unipi:continue` exists (`ChatView.tsx canRetry`).
 - Rec: **hybrid** — unipi row + a "Details" disclosure with the raw error. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-49 Retry**
 - ZCode: Retry is an assistant turn action (`retryTurn`), always available on finished turns (`docs/ui/chat-user-message-retry.md`).
 - unipi: Retry only after an error (`/unipi:continue`).
 - Rec: **ask** — recommend Retry in the turn-tail bar for the last turn (re-run from its user message via tree jump). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-50 Connection / subscription errors**
 - ZCode: session subscription error panel (Reconnect + feedback); pending command recovery banner (Resend / Dismiss a discarded command) (`ui/v4/SessionSubscriptionErrorPanel.tsx`, `PendingCommandRecoveryBanner.tsx`).
 - unipi: chat banner "Lost the connection · Retry"; outbox bubbles "Waiting for connection… ✕" (`ChatView.tsx chat-banner`, `Transcript.tsx`).
 - Rec: **keep unipi** (outbox already covers resend). Effort —.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-51 Session lock taken elsewhere**
 - ZCode: n/a.
 - unipi: n/a. DIRECTION §3.1.5: opening a session running elsewhere closes the other runner.
 - Rec: **ask** — show "Opened here; the TUI copy was closed" notice and a read-only banner in the losing client. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## F. Queue, steering, interruption
 
@@ -430,31 +430,31 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: global setting follow-up mode = queue or guide (steer); Enter does the default, Cmd/Ctrl+Enter the opposite; placeholder "Keep typing to queue follow-up changes" (`ui/v4/composer/followupModeSettings.ts`, `docs/ui/chat-composer-placeholder.md`).
 - unipi: Enter = this chat's last Steer/Queue choice (Steer first); Ctrl/⌘+Enter opens an inline Steer/Queue choice (S/Q); chevron menu: Steer / Send now / After it ends (`Composer.tsx`, `lib/chat/sendChoice.ts`).
 - Rec: **hybrid** — ZCode's global default setting + modifier for the opposite (simpler), keep "Send now (stops run)" in the chevron menu. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-53 Queue panel**
 - ZCode: queue above composer; drag to reorder, Edit = recall into composer (refused if a draft exists), Remove, Send now; held queue after interrupt with "Resume" and auto-drain (`docs/ui/chat-message-queue.md`, `ui/v4/ConversationQueuePanel.tsx`).
 - unipi: queue strip with mode label, inline edit, remove, ↑ move, ⋯ Steer now / Send now / Move down (`Composer.tsx QueueRow`).
 - Rec: **hybrid** — ZCode recall-to-composer edit + draft guard and held-queue Resume; drag reorder on desktop, keep arrows on phone. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-54 Steered messages in the timeline**
 - ZCode: an accepted guide opens a new work segment inside the same turn, own fold and own navigator entry (`docs/ui/v4-chat-turn-render-units.md`).
 - unipi: steer shows as a normal user bubble when pi delivers it.
 - Rec: **take ZCode** (falls out of Z-21). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-55 Stop**
 - ZCode: Esc stops unless a dialog/popup consumed it; Send button becomes Stop (`ui/v4/composer/escapeStop.ts`).
 - unipi: Esc in composer while running stops; Send ↔ Stop (`lib/desktop.ts composerKey`).
 - Rec: **take ZCode** guard (Esc from any focus in the chat, ignoring consumed events). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-56 Interrupted turn display**
 - ZCode: interrupted segment forced open, label "Stopped" (no duration) (`docs/ui/v4-chat-turn-render-units.md`).
 - unipi: "Stopped" tag in prose + "Stopped" turn end.
 - Rec: **take ZCode** (one "Stopped" label at the fold). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## G. Composer
 
@@ -462,61 +462,61 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: empty session → capabilities hint (`@ files, / commands, $ skills, # conversations`); has history → "Ask for follow-up changes"; running → "Keep typing to queue…"; phone short variant (`docs/ui/chat-composer-placeholder.md`).
 - unipi: "Message pi, / commands, @ files" / "Steer pi… (Ctrl+Enter: steer or queue)" (`Composer.tsx` placeholder).
 - Rec: **take ZCode** three-state copy (say "Oino"/"pi" per owner). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-58 Prompt history ↑/↓**
 - ZCode: ↑/↓ on empty composer walks sent prompts, per workspace, 30 max, consecutive duplicates skipped (`docs/ui/composer-prompt-history.md`).
 - unipi: none in chat (terminal composer has per-host history); chat has undo/redo per chat (`lib/chat/undo.ts`).
 - Rec: **take ZCode**. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-59 Draft persistence**
 - ZCode: per-session drafts incl. attachments in memory; text drafts persisted across restarts (text only, removed when emptied) (`docs/ui/task-scoped-composer-drafts.md`, `composer-text-draft-persistence.md`).
 - unipi: drafts in an in-memory signal per chat key; lost on restart (`ChatView.tsx drafts`).
 - Rec: **take ZCode** (with D-6 for images). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-60 Attachment states**
 - ZCode: pre-upload on attach, states queued→uploading→ready with progress %, auto-retry once, manual retry, send disabled until ready, max 8 (`docs/ui/chat-file-attachments.md`).
 - unipi: images shrunk and sent inline (or blob upload); files uploaded to the host, chip `[file: name]@path` with spinner; 1 GB cap (`lib/chat/attachments.ts`).
 - Rec: **hybrid** — keep unipi paths; add progress %, failed+retry state and the send gate. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-61 Long paste → text attachment**
 - ZCode: plain-text paste ≥ 5120 chars becomes a "Pasted text · 128 lines" chip saved to a temp file (`docs/ui/chat-long-paste-text-attachment.md`).
 - unipi: long text stays inline.
 - Rec: **ask** — useful for logs; pi parity sends text inline. Effort S.
-- Owner ruling:
+- Owner ruling: take ZCode — paste ≥ 5120 chars shows a "Pasted text · N lines" chip; on send it expands inline (pi parity: the model receives text).
 
 **Z-62 Mention triggers**
 - ZCode: `@` plugins/files+folders/conversations, `/` commands+skills+subagents grouped, `$` skills, `#` conversations; chips with token colours (`docs/ui/mention-panel-layout.md`, `docs/ui/slash-command-skill-suggestions.md`).
 - unipi: `/` commands/prompt templates/skills with source labels; `@` files via pi's finder; chips (`lib/chat/commands.ts`, `ChipEditor.tsx`).
 - Rec: **hybrid** — keep `/` and `@`; ask for `#` session refs and `$` skills alias. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-63 "+" menu**
 - ZCode: `+` popover (composer width): Attach, Goal/Workflow starters, Plugins, Files, Conversations (`docs/ui/chat-composer-action-menu.md`).
 - unipi: `+` menu: Photo, Camera, File, Side question, Board task…, New session, Resume… (`SessionMenus.tsx PlusMenu`).
 - Rec: **hybrid** — keep attach + side question + board task; move New session/Resume out (Z-19); add mode starters (Goal/Ralph/Graph) from the mode chip (Z-74). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-64 Composer toolbar contents**
 - ZCode: mode control, plan toggle, model, thought level, context, background-works count, send/stop; seven-step compression on narrow widths (`docs/ui/chat-model-select-menu.md`, `ui/v4/composer/V4ComposerToolbar.tsx`).
 - unipi: `+`, model chip (ring + name + thinking text), send chevron, Send/Stop (`Composer.tsx`).
 - Rec: **hybrid** — add permission/plan mode control (G-6) and separate thinking control (Z-71); keep one model chip; adopt the compression order. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-65 Dictation**
 - ZCode: none.
 - unipi: planned in DESIGN §3.5 (Android SpeechRecognizer), not built.
 - Rec: **ask** (phone). Effort M.
-- Owner ruling:
+- Owner ruling: defer (not in v2).
 
 **Z-66 Composer spacing** (QA#16)
 - ZCode: composer sticky inside the scroll viewport with a gradient fade above (`docs/ui/chat-virtual-scroll.md`).
 - unipi: composer in `.chat-bottom` below the scroller.
 - Rec: **take ZCode** (also fixes "last message too close to input"). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-67 Web element / screenshot chips**
 - ZCode: element-picker chip and screenshot attachment in composer (`docs/ui/web-element-context.md`).
@@ -528,7 +528,7 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: under an empty draft, rotating suggested prompts that prefill the composer (`docs/ui/conversation-draft-suggested-prompts.md`).
 - unipi: WelcomeState lists recent sessions (`SessionMenus.tsx WelcomeState`).
 - Rec: **ask** — recommend skip (sidebar covers recents); maybe Unicrab lore line instead. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## H. Model, thinking, context
 
@@ -536,49 +536,49 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: dropdown menu from the composer; provider level → submenu when several providers; Vision badge; checked current; "Manage models"; Ctrl+M opens; rolling label animation; spinner after the name while switching (`docs/ui/chat-model-select-menu.md`, `ui/ModelConfigSelect.tsx`).
 - unipi: centred sheet/dialog: "Now …" line, Single|Fusion tabs, thinking levels, search over > 6 models, list with provider/id sub-line, "current" tag, sticky Cancel / "Switch model" footer (`ControlCentre.tsx ModelPickerSheet`).
 - Rec: **hybrid** — keep unipi sheet (Fusion needs room) but: wider dialog, search shared by Single and Fusion columns (QA#4), Now label in sentence case (QA#3a), compact right-aligned buttons (QA#3c), Vision/context badges, Ctrl+M. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-70 Model picker entry points**
 - ZCode: composer only (+ Ctrl+M).
 - unipi: composer chip, chat title button, tray "Model" row, `/model`, `/thinking` (`ChatView.tsx` header, `FooterTray`).
 - Rec: **take ZCode** — composer chip + Ctrl+M + `/model`; drop title and tray entries (rule 2). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-71 Thinking control**
 - ZCode: separate composer control: brain icon + level label + ladder bar; click = list; Ctrl+T cycles without opening (`docs/ui/chat-thought-level-control.md`).
 - unipi: level radio inside the model sheet; level text on the model chip.
 - Rec: **hybrid** — separate brain chip (lucide, QA#10) with level text, Ctrl+T cycle; no ladder bar unless asked. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-72 Model switch feedback**
 - ZCode: toast "Switched from X to Y" (`docs/ui/model-switch-toast.md`).
 - unipi: sheet shows pending → closes; transcript `model_change` card (`Cards.tsx`).
 - Rec: **take ZCode** toast; keep the card. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-73 Context indicator**
 - ZCode: Context trigger with hover card: used/total tokens, breakdown bars, cache-hit rate (≥ 78 %) (`docs/ui/chat-input-context.md`).
 - unipi: ring + "1%" in model chip; tray Context row; Session modal Context tab (`Composer.tsx ContextRing`, D-7).
 - Rec: **hybrid** — ring stays (fix 0 % visibility, QA#8); hover/click opens Session modal → Context (no second breakdown surface). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-74 Working mode (goal/ralph/swarm/graph)**
 - ZCode: mode control in composer (Ctrl+Shift+M cycles), goal banner, goal in status panel with pause/resume (`ui/v4/composer/V4ComposerModeControls.tsx`, `ConversationGoalBanner.tsx`).
 - unipi: header ModeChip with live count + popover (what it does, state, Show progress, switch mode); ⋯ → Working mode; Progress sheet (`components/chat/ModeChip.tsx`, `ProgressSheet.tsx`).
 - Rec: **ask** — with D-2 the LH status moves into the git pane; keep the mode chip as the *switch* (header or composer?) and the Progress view as the pane section. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-75 Session strip / tray**
 - ZCode: no header strip; cost not shown in chat.
 - unipi: header strip "model · ctx · cost" + "N running" badge, tap expands a tray (Model, Context, Cost, Running) (`ControlCentre.tsx FooterStrip/FooterTray`).
 - Rec: **ask** — redundant with composer chip + ring + Session modal (rule 2); recommend drop the tray and keep a one-line cost in the turn end. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-76 Fusion pairing UI**
 - ZCode: n/a (single model).
 - unipi: Fusion tab with Lead/Sidekick lists and effort pills (`ModelPickerSheet`).
 - Rec: **keep unipi** with QA#4 fixes (search above both columns, wider). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## I. Command palette & search
 
@@ -586,31 +586,31 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: Cmd+K (and Cmd+Shift+P): tabs All / Actions / Tasks / Files; prefixes `>` `#` `@`; empty state = Recent changes (3), Recent tasks (3), grouped commands (Suggested, Chat, Navigation, Panels, Configure, App); ≤ 3 per group + "show more" (`docs/ui/command-center-cmd-k.md`, `docs/ui/quickpick-command-palette.md`).
 - unipi: Ctrl+K palette of registered commands only; ranked; group headers on empty query (`components/shell/CommandPalette.tsx`).
 - Rec: **take ZCode** scopes (sessions + files + commands) with unipi's command registry. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-78 Search history**
 - ZCode: per-workspace history chips (20, dedup) under the input (`docs/ui/quickpick-command-palette.md`).
 - unipi: none.
 - Rec: **take ZCode**. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-79 Find in chat**
 - ZCode: Cmd+F find bar centred over the conversation; highlights all matches in the virtual timeline; ↑/↓/Enter/Shift+Enter wrap; scope switch Conversation ↔ File changes (`docs/ui/chat-find-placement.md`, `docs/ui/task-find-dialog.md`).
 - unipi: Ctrl+F opens a Search sheet: whole-session fuzzy search via pi, results list, jump + flash (`components/chat/SearchSheet.tsx`).
 - Rec: **hybrid** — ZCode in-place find bar for loaded text; "Search whole session" inside it falls back to unipi's host search. One surface (rule 2). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-80 Extension commands in the palette**
 - ZCode: commands from a static registry + plugins.
 - unipi: extension commands only via composer `/`.
 - Rec: **ask** — list session `/` commands in the palette's Actions scope (running inserts `/cmd` into the composer). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-81 Quick open file**
 - ZCode: Cmd+P routes into the command center Files scope.
 - unipi: Files screen search.
 - Rec: **take ZCode**. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## J. Notifications, needs-you, toasts
 
@@ -618,31 +618,31 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: persisted blue unread dot, set when a background session finishes unseen or via "Mark as unread", cleared on open; dock badge (`docs/ui/task-unread-state.md`).
 - unipi: "Needs you" badge + status words; Needs-you drawer marks read (`lib/needsYou.ts`).
 - Rec: **hybrid** — add persisted unread dot + Mark as unread; drawer stays. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-83 Needs-you surface**
 - ZCode: none central; badges on task rows + OS notifications.
 - unipi: animated Unicrab (floating crab on phone, header crab on desktop, optional mascot window, Android overlay) opening a drawer grouped Waiting / Finished / Other (`components/NeedsYouBell.tsx`, `FloatingMascot.tsx`, DESIGN §1.5.1).
 - Rec: **keep unipi** (brand). Effort —.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-84 OS notifications**
 - ZCode: notifications from projections on completion/error/permission, suppressed when that task is focused; cold snapshots never replay old ones (`docs/ui/task-notification-routing.md`).
 - unipi: desktop polls every 20 s, notifies for new needs-you/finished while unfocused, first look seeds, max 3 (`components/shell/DesktopNative.tsx`).
 - Rec: **take ZCode** event-driven routing (host pushes) with unipi's seed + max-3 rules; drop polling. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-85 Toasts**
 - ZCode: top-centre toasts (sonner) for confirmations (model switch, feedback).
 - unipi: one chat toast string at a time; Board toasts with one action (Undo/Open) (`ChatView.tsx chat-toast`, `components/board/BoardToasts.tsx`).
 - Rec: **hybrid** — one app-wide toast stack in the BoardToasts style (action, exit fade, hover pause, v1 F1 timings). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-86 Background-session completion while focused elsewhere**
 - ZCode: completion seen in foreground isn't marked unread; minimizing right after marks it (`docs/ui/task-unread-state.md`).
 - unipi: n/a.
 - Rec: **take ZCode** rule. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## K. Empty, loading, error states
 
@@ -650,25 +650,25 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: time-of-day greeting, decorative logo behind the title, suggested prompts (`docs/ui/chat-empty-time-greeting.md`, `chat-empty-state-logo.md`).
 - unipi: Sparkles + "New session" + recent sessions (`SessionMenus.tsx WelcomeState`); EmptyState with crab elsewhere.
 - Rec: **hybrid** — Unicrab (not ZCode logo) + time greeting + short capability hint; no recents (Z-19). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-88 Loading**
 - ZCode: task restore placeholder; image shimmer skeleton; tool progress bar (`ui/styles.css markdown-image-loading-shimmer`).
 - unipi: 3-line skeleton while connecting; HistoryEdge "load older"; spinners (`ChatView.tsx chat-skeleton`).
 - Rec: **keep unipi** + image skeleton. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-89 Crash containment**
 - ZCode: root React error boundary with Retry / Reload app; optional per-region boundaries (`docs/ui/react-error-boundary.md`).
 - unipi: none.
 - Rec: **take ZCode** — Solid `ErrorBoundary` at root + per pane (chat, side pane tab, extension panel). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-90 Offline / no host / unavailable**
 - ZCode: remote availability banner.
 - unipi: `NoHostState`, `OfflineState` with retry + hint, `<Requires cap>` notices (`components/EmptyState.tsx`, `Requires.tsx`).
 - Rec: **keep unipi**. Effort —.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## L. Motion
 
@@ -676,19 +676,19 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: collapses animate out (`zcode-collapsible-up` + fade, 300 ms); toasts animate out (`ui/styles.css`).
 - unipi: enter animations (popover-in, pane-in, send-choice-in), removals are instant; sheets spring 380 ms (`style.css`).
 - Rec: **take ZCode** exits (≤ 200 ms, DESIGN §1.4). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-92 Rolling labels**
 - ZCode: model / mode / thinking labels roll vertically on change (`docs/ui/chat-model-select-menu.md`).
 - unipi: instant swap.
 - Rec: **ask** — nice, cheap; recommend take. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-93 Micro-feedback**
 - ZCode: copy glyph→check 1.2 s; reaction burst; draft prompt waterfall.
 - unipi: code Copy→Copied 1.2 s; row flash after a jump; mode chip pulse; shimmer.
 - Rec: **keep unipi** + copy→check on row actions. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## M. Keyboard shortcuts
 
@@ -696,7 +696,7 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode (`packages/shared/src/shortcutCommands.ts`, rebindable in Settings, platform primary modifier): Cmd+K/Cmd+Shift+P palette · Cmd+, settings · Cmd+F find · Cmd+B sidebar · Cmd+J terminal · Cmd+Alt+B side pane · Cmd+Shift+F side-pane full view · Cmd+Shift+[ / ] prev/next conversation · Cmd+[ / ] back/forward · Ctrl+M model menu · Ctrl+Shift+M cycle mode · Ctrl+T cycle thinking · Cmd+N new task · Cmd+O open workspace · Cmd+W close context · Cmd+= / - / 0 zoom · Cmd+Shift+L theme.
 - unipi (`lib/desktop.ts shortcuts()`, fixed): Ctrl+K palette · Ctrl+1…6 screens · Ctrl+/ shortcuts list · Esc back · Enter/Shift+Enter/Ctrl+Enter send/newline/steer-or-queue · Ctrl+L focus composer · Ctrl+Shift+B browser · Alt+↑/↓ prev/next chat · Ctrl+F chat search · terminal Ctrl+Shift+C/V, Ctrl+=/-/0, Ctrl+Shift+K · Files ↑↓/Enter/Backspace/F2/Delete · Editor Ctrl+S/F · Board C / J K B L R X ? · Git Space/Ctrl+Enter.
 - Rec: **hybrid** — take ZCode's map for shell-level actions (B, J, Alt+B, N, F, M, T, Shift+[ ]) and rebinding; keep unipi screen/board/files keys and Ctrl+/ list; register extension shortcuts (Alt+M permission, Alt+P plan, Shift+↓ tray, Ctrl+B subagents to background → **conflicts with Cmd+B sidebar**, needs a ruling) (G-7). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## N. Git pane & status panel
 
@@ -704,37 +704,37 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: one aside that collapses to a capsule: sections Git tools (changes +/−, branch switcher, Commit/Push/Create branch), Goal (elapsed, pause/resume, iterations), Plans, Progress (todos, windowed), Terminals (background bash), Agents (subagents); inline-offsets chat by 168 px only when the container ≥ 1280 px, else mini capsule (`docs/ui/chat-summary-panel.md`, `ui/v4/ConversationStatusPanel.tsx`).
 - unipi: ModeChip + Progress sheet (LH), Session modal Running tab (bg tasks, subagents, sidekick), Git via ⋯.
 - Rec: **ask (redundancy)** — D-2 puts LH status in the git pane with a capsule. Does that pane also take ZCode's todos, background terminals and agents? If yes, the Session modal Running tab (D-7) duplicates it → pick one. Recommend: pane = Git + LH + Running; modal keeps Context + Info and links to the pane. Also QA#12: overlay vs push — ZCode only pushes at ≥ 1280 px. Effort L.
-- Owner ruling:
+- Owner ruling: **hybrid (owner override of Rec)** — pane = Git + long-horizon + todos/plans + a compact Running summary that links to the Session modal; the Session modal keeps Context / Running / Info (D-7) as the single full Running view. Push only ≥ 1280 px, else overlay/capsule (QA#12).
 
 **Z-96 Git review sources**
 - ZCode: Git pane source select: Unstaged / Staged / Branch (vs base) / Last turn; virtualized file rows, lazy per-file diff, file-change find, reveal in tree, open in editor (`ui/GitPane.tsx`, `packages/shared/src/git.ts GitChangeSourceId`).
 - unipi: GitView Changes tab grouped Conflicts / Staged / Changes / Untracked + History tab (`components/git/GitView.tsx`).
 - Rec: **hybrid** — ZCode sources incl. Last turn (D-2) + unipi grouping and History tab. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-97 Git write actions**
 - ZCode: Commit / Push / Create branch from the status panel (`ui/GitActionMenu.tsx`); branch switcher in panel/composer area; no stage-per-file UI in the pane.
 - unipi: full client: stage/unstage per file and all, discard/delete with confirm, commit composer with Amend, pull (ff/rebase), push, fetch, stash/pop, branch sheet with create/track (`GitView.tsx`, DESIGN §3.8.2).
 - Rec: **keep unipi** actions inside the git pane (ZCode is thinner). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-98 Git auto-refresh**
 - ZCode: file watcher on git metadata (and worktree on macOS/Windows), 1 min debounce; no polling (`docs/ui/git-auto-refresh.md`).
 - unipi: refresh on open/after ops + manual Refresh.
 - Rec: **take ZCode** (host-side watcher). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-99 Git graph**
 - ZCode: commit graph pane/dialog (`ui/git-graph/*`).
 - unipi: History list with ref pills.
 - Rec: **ask** — recommend skip for v2. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-100 Git entry points**
 - ZCode: side-pane Review tab, status panel, Cmd+Alt+B.
 - unipi: Files toolbar branch chip, Files ⋯ → Git…, chat ⋯ → Git, palette Git commands.
 - Rec: **hybrid** — chat: capsule/side pane; Files: branch chip opens the same pane (no second git UI). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## O. Files, editor, LSP, preview
 
@@ -742,25 +742,25 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: tree in a side-pane Files tab (preview left, tree right, resizable), lazy readdir, virtualized, compact folders, dotfiles shown, fuzzy name search, git-changed filter, watchers on expanded dirs (`docs/ui/workspace-file-tree.md`).
 - unipi: breadcrumb list with git badges, gitignore dim, search name/content, recent files, changed filter, hidden toggle, row menu (Rename/Delete/Copy path/Mention in chat), upload by drop (`screens/Files.tsx`).
 - Rec: **hybrid** — D-10 tree with ZCode behaviours + unipi row menu, Mention in chat, upload, content search. Ask: Files as a sidebar screen, a side-pane tab, or both (rule 2 says one). Effort L.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-102 Editor**
 - ZCode: read-only code viewer (Shiki, sticky line numbers, wrap toggle, 256 KB cap) + "open in external editor"; no in-app editing (`docs/ui/preview-pane.md`).
 - unipi: CodeMirror 6 editor with save (baseHash conflict sheet), find, vim option, phone key bar (`screens/Editor.tsx`).
 - Rec: **keep unipi** editor + LSP (D-10); add "Open in external editor" split button like ZCode header (`docs/ui/workspace-open-actions.md`). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-103 Preview pane (file types)**
 - ZCode: side-pane preview of text, patch, image (checkerboard, @2x aware), media, PDF, Office (xlsx/docx), PPTX, markdown/SVG preview↔source (`docs/ui/preview-pane.md`).
 - unipi: full-screen Previewer/MediaPager for images, PDF, media; mermaid viewer (`components/media/*`).
 - Rec: **hybrid** — Previewer becomes a side-pane tab on desktop; ask for Office/PPTX (recommend skip). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-104 "Preview" screen naming / overlap**
 - ZCode: "Preview" = file preview; web pages open in the browser tab.
 - unipi: Preview screen = PC ports → port-forwarded web viewer, plus Browser and Desktop modes (`screens/Preview.tsx`).
 - Rec: **ask (redundancy)** — the forwarded-port viewer and the side browser both show web pages. Recommend: ports list becomes a launcher inside the Browser tab ("Open localhost:5173"); phone keeps the forward viewer (D-13). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## P. Terminal
 
@@ -768,19 +768,19 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: tab names = cwd leaf, no "1", then "name 2…", lowest free number reused; closing the only tab hides the panel but keeps the session; PTY exit closes its tab; last exit closes the panel; focus the visible xterm on open/switch; resize throttled while dragging (`docs/ui/terminal-sessions.md`).
 - unipi: live connections as tabs over the terminal pane, ✕ detaches (herdr/tmux era) (`screens/Terminal.tsx`).
 - Rec: **take ZCode** (D-3 details). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-106 Terminal links**
 - ZCode: http(s) links in xterm open in the side browser (`docs/ui/terminal-sessions.md`).
 - unipi: none.
 - Rec: **take ZCode**. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-107 Phone terminal input**
 - ZCode: no phone terminal UX (web remote only).
 - unipi: Moshi-grade toolbar capsule (modifiers one-shot/lock, arrow drag pad, shortcuts, history), gestures (tap = click, drag scroll, pinch font), composer (`components/TermToolbar.tsx`, DESIGN §3.3).
 - Rec: **keep unipi** on the phone for host PTYs. Effort M (re-point to PTY).
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## Q. Browser
 
@@ -788,19 +788,19 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: responsive viewport (width/height/zoom, fit), site permission prompts/settings, DevTools, load-error and guest-failed pages with Retry, open externally (`ui/browser-use/BrowserViewportToolbar.tsx`, `ui/EmbeddedBrowserPaneParts.tsx`).
 - unipi: profile picker, Stealth / Not stealthy badge, back/forward/reload, keyboard button, open tabs list (`screens/BrowserView.tsx`).
 - Rec: **hybrid** — keep profile + stealth badge; take load-error page, open externally, responsive viewport (ask); skip DevTools. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-109 Agent/user handoff**
 - ZCode: browser-use operation-active indicator.
 - unipi: ember strip "Agent is using the browser · Take over" / cyan "You have control · Give back" (`BrowserView.tsx`, DIRECTION §6 `gate.rs`).
 - Rec: **keep unipi**. Effort —.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-110 Browser on phone**
 - ZCode: not supported on web remote (`docs/ui/web-embedded-browser-capability.md`).
 - unipi: full-height sheet over the chat with touch mapping (`BrowserSide.tsx BrowserSheet`).
 - Rec: **keep unipi**. Effort —.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## R. Board
 
@@ -808,7 +808,7 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: no kanban.
 - unipi: full kanboard parity (lanes, list, overview dashboard, filters, DnD, keys, sheets) (`screens/Board.tsx`, DESIGN §3.9); oino v1 GPUI showed unexplained lane buttons.
 - Rec: **keep unipi** Board, re-pointed to the `unipi-kanboard` CLI (DIRECTION §3.4.1); ask whether chat's "Add task…" + task refs stay in chat ⋯ or move to the `+` menu only (currently both — rule 2). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## S. Cron
 
@@ -816,7 +816,7 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: Scheduled tasks are a workspace main view (not settings); Run now is a separate manual run; cron-sent prompts carry a clock "Sent by scheduled task" label in the bubble and task list (`docs/ui/scheduled-tasks-main-view.md`).
 - unipi: Cron screen list → detail (prompt, folder, run history) → form with live schedule preview, Run now, Pause all (`screens/Cron.tsx`).
 - Rec: **hybrid** — keep the Cron screen; add the "Sent by cron" label on bubbles and a clock badge on cron sessions in the sidebar. Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## T. Settings
 
@@ -824,13 +824,13 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: full page, 264 px left nav (64 px icon rail below `lg`), groups (Basics / Agent capabilities / Data & stats), search inputs per list page, secondary pages with a standard Back, empty states, row actions (`docs/ui/settings-sidebar-layout.md`, `settings-secondary-navigation.md`).
 - unipi: desktop two columns (section list | section), phone one long page; sections Hosts, Terminal, Input, Editor, Connection, Board, Desktop, Phone notifications, Unicrab, About (`screens/Settings.tsx`).
 - Rec: **hybrid** — unipi two columns + ZCode grouping and a **global settings search** (needed once 21 extension namespaces land, D-11). Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 **Z-114 Appearance**
 - ZCode: theme System/Light/Dark, UI font size 12–20 px via `--ui-font-size`, code theme/line numbers/wrap/code font size (`docs/ui/settings-appearance.md`).
 - unipi: dark only; terminal and chat font sizes separate (DESIGN §1.4).
 - Rec: **ask** — UI font size + code settings recommended; light theme recommend **no** (brand). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## U. Mobile layout
 
@@ -838,7 +838,7 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode (web remote): single column, sidebar as drawer, side pane as overlay drawer, actions always visible (no hover), placeholder ≤ 2 lines (`ui/WebRemoteControlMobileShell.tsx`, `docs/ui/web-remote-control-mobile-task-timeline.md`).
 - unipi: bottom tab bar, full-screen layers (chat, git, editor), corvu bottom sheets, floating crab, tap-to-select action bar, swipe-to-quote, Android Back closes top layer (DESIGN §2–3).
 - Rec: **keep unipi** phone shell; map side-pane tabs (Z-5) to full-screen layers/sheets and the sidebar to the Chat tab list. Effort M.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ## V. Accessibility
 
@@ -846,7 +846,7 @@ From the owner's brief and [DIRECTION.md](DIRECTION.md):
 - ZCode: shared tooltip (300 ms, per-trigger timer) on every icon-only control incl. disabled ones; i18n-safe layouts; no added focus outlines in composites (`docs/ui/sidebar-tooltips.md`, `DESIGN.md` Accessibility).
 - unipi: native `title` tooltips; 44 dp targets; 2 px shell focus ring; state = colour + icon + word; reduced-motion honoured globally (`ui.css`, DESIGN §1.3/1.6).
 - Rec: **hybrid** — unipi targets/focus/state rules + ZCode shared tooltip component with plain-English text on every icon button, lucide icons only, no emoji (QA#10). Effort S.
-- Owner ruling:
+- Owner ruling: **accepted — take Rec** (where Rec is "ask", take the option the Rec text recommends).
 
 ---
 
