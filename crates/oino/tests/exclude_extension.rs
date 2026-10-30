@@ -114,7 +114,7 @@ fn exclusion_drops_bundled_packages_and_warns_on_misses() {
     let sandbox = Sandbox::new();
 
     // Spec acceptance: `--exclude-extension unipi.kanboard,oino.anthropic -p "hi"` — neither
-    // loads, the log names both, the run still answers.
+    // loads, the log names both, the run still answers (`unipi.notify` too: WP-C6's example).
     let output = sandbox.run(
         &package,
         &[
@@ -122,19 +122,19 @@ fn exclusion_drops_bundled_packages_and_warns_on_misses() {
             "hi",
             "--exclude-extension",
             "unipi.kanboard,oino.anthropic",
+            "--exclude-extension",
+            "unipi.notify",
         ],
     );
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     assert_eq!(stdout(&output), "Hello from faux.\n");
     let err = stderr(&output);
-    assert!(
-        err.contains("Excluded extension \"unipi.kanboard\" not loaded"),
-        "{err}"
-    );
-    assert!(
-        err.contains("Excluded extension \"oino.anthropic\" not loaded"),
-        "{err}"
-    );
+    for id in ["unipi.kanboard", "oino.anthropic", "unipi.notify"] {
+        assert!(
+            err.contains(&format!("Excluded extension \"{id}\" not loaded")),
+            "{err}"
+        );
+    }
 
     // Spec acceptance: an id matching nothing warns and exits 0.
     let output = sandbox.run(
