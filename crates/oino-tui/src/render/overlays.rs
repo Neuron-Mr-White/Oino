@@ -1342,7 +1342,32 @@ pub(super) fn modal(app: &App, width: usize, height: usize) -> Option<Block> {
 
 // ── v2 registry slots (§6.2 TUI column) ─────────────────────────────────────
 
-use oino_ui::slot::{Slot, UiEntry};
+use oino_ui::slot::{Slot, UiEntry, UiView};
+
+/// Whether a root requests a definite height: a vertical `Layout` with a `Fill`,
+/// `Percentage` or `Ratio` constraint (§4.4).
+fn root_is_definite(node: &oino_ui::node::Node) -> bool {
+    let oino_ui::node::Node::Layout(layout) = node else {
+        return false;
+    };
+    !matches!(
+        layout.direction,
+        Some(oino_ui::layout::Direction::Horizontal)
+    ) && layout.constraints.iter().any(|constraint| {
+        matches!(
+            constraint,
+            oino_ui::layout::Constraint::Fill(_)
+                | oino_ui::layout::Constraint::Percentage(_)
+                | oino_ui::layout::Constraint::Ratio(..)
+        )
+    })
+}
+
+/// Rows a framed entry spends on its top rule, title and hint line.
+fn entry_chrome_rows(entry: &UiEntry) -> usize {
+    1 + usize::from(entry.title.is_some())
+        + usize::from(!entry.keys.is_empty() || entry.close_on_escape.unwrap_or(true))
+}
 
 /// Lines of a v2 entry framed as a panel: top rule, title, body, key hints (§12.4).
 pub(super) fn ui_entry_block(app: &mut App, id: &str, width: usize, max_height: usize) -> Block {
@@ -1392,6 +1417,10 @@ pub(super) fn ui_entry_block(app: &mut App, id: &str, width: usize, max_height: 
 }
 
 /// The visible v2 overlay (stack top) or side-pane tab, framed like a modal (§6.2).
+#[allow(
+    clippy::too_many_lines,
+    reason = "one function frames the overlay and side-pane slots together"
+)]
 pub(super) fn ui_modal(app: &mut App, width: usize, height: usize) -> Option<Block> {
     let (id, tabs) = if let Some(entry) = app.registry.stack_top(Slot::Overlay) {
         (entry.id.clone(), Vec::new())
@@ -1424,6 +1453,34 @@ pub(super) fn ui_modal(app: &mut App, width: usize, height: usize) -> Option<Blo
     let box_width = (width * 4 / 5).max(30).min(width);
     let inner = box_width.saturating_sub(4);
     let inner_height = height.saturating_sub(2);
+    // Overlays are definite only when the root asks for it (§4.4); side panes are always
+    // definite (§6.2). Otherwise the modal sizes to its content.
+    let (definite, content_height) = {
+        let entry = app.registry.entry(&id)?;
+        let root = match &entry.view {
+            UiView::Tree { root } => Some(root),
+            UiView::Reserved {
+                fallback: Some(root),
+                ..
+            } => Some(root.as_ref()),
+            _ => None,
+        };
+        let entry_slot = entry.slot;
+        let definite = entry_slot == Slot::SidePane || root.is_some_and(root_is_definite);
+        let content = if definite {
+            inner_height
+        } else {
+            super::ui_entry_height(app, &id, u16::try_from(inner).unwrap_or(u16::MAX)) as usize
+        };
+        (definite, content)
+    };
+    let min_height =
+        content_height.saturating_add(app.registry.entry(&id).map_or(1, entry_chrome_rows));
+    let inner_height = if definite {
+        inner_height
+    } else {
+        min_height.min(inner_height).max(3)
+    };
     let mut content = ui_entry_block(app, &id, inner, inner_height);
     if content.lines.first().is_some_and(|line| {
         line.spans
@@ -1486,5 +1543,15 @@ pub(super) fn ui_editor_block(app: &mut App, width: usize, max_height: usize) ->
         .stack_top(Slot::EditorReplace)
         .map(|entry| entry.id.clone())
         .or_else(|| super::slot_entry_id(app, Slot::BottomPane))?;
-    Some(ui_entry_block(app, &id, width, max_height))
+    let content = super::ui_entry_height(
+        app,
+        &id,
+        u16::try_from(width.saturating_sub(2)).unwrap_or(u16::MAX),
+    ) as usize;
+    let chrome = app.registry.entry(&id).map_or(0, entry_chrome_rows);
+    let height = content
+        .saturating_add(chrome)
+        .min(max_height)
+        .max(3.min(max_height));
+    Some(ui_entry_block(app, &id, width, height))
 }

@@ -246,12 +246,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
         return;
     }
     let width = usize::from(area.width);
-    if let Some(id) = slot_entry_id(app, Slot::Fullscreen) {
-        let block = overlays::ui_entry_block(app, &id, width, usize::from(area.height));
-        frame.render_widget(Clear, area);
-        frame.render_widget(Paragraph::new(block.lines).style(base), area);
-        return;
-    }
 
     // Bottom stack, top to bottom.
     let status = chrome::status_lines(app, width);
@@ -283,7 +277,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
         width: area.width,
         height: bottom_height,
     };
-    draw_transcript(frame, app, transcript_area);
+    if let Some(id) = slot_entry_id(app, Slot::Fullscreen) {
+        let block = overlays::ui_entry_block(app, &id, width, usize::from(transcript_area.height));
+        frame.render_widget(Clear, transcript_area);
+        frame.render_widget(Paragraph::new(block.lines).style(base), transcript_area);
+    } else {
+        draw_transcript(frame, app, transcript_area);
+    }
     frame.render_widget(Paragraph::new(bottom).style(base), bottom_area);
 
     // Composer cursor.

@@ -278,12 +278,12 @@ pub(crate) struct FocusTarget {
 }
 
 /// Collects the focusables of an entry tree in render order (§4.6).
-pub(crate) fn focusables(entry: &UiEntry) -> Vec<FocusTarget> {
+pub(crate) fn focusables(entry: &UiEntry, local: &UiLocalState) -> Vec<FocusTarget> {
     let Some(root) = entry_root(entry) else {
         return Vec::new();
     };
     let mut out = Vec::new();
-    collect(root, "", &mut out);
+    collect(root, "", local, &mut out);
     out
 }
 
@@ -301,12 +301,12 @@ pub(crate) fn entry_root(entry: &UiEntry) -> Option<&Node> {
     clippy::too_many_lines,
     reason = "one arm per node kind, mirroring the renderer"
 )]
-pub(crate) fn collect(node: &Node, path: &str, out: &mut Vec<FocusTarget>) {
+pub(crate) fn collect(node: &Node, path: &str, local: &UiLocalState, out: &mut Vec<FocusTarget>) {
     match node {
         Node::Layout(layout) => {
             for (index, child) in layout.children.iter().enumerate() {
                 let segment = key_or(&child.common().key.map(str::to_owned), index);
-                collect(child, &join(path, &segment), out);
+                collect(child, &join(path, &segment), local, out);
             }
         }
         Node::Block(block) => {
@@ -321,7 +321,7 @@ pub(crate) fn collect(node: &Node, path: &str, out: &mut Vec<FocusTarget>) {
             if let Some(child) = &block.child
                 && !block.collapsed.unwrap_or(false)
             {
-                collect(child, &join(path, "child"), out);
+                collect(child, &join(path, "child"), local, out);
             }
         }
         Node::List(list) => {
@@ -368,16 +368,20 @@ pub(crate) fn collect(node: &Node, path: &str, out: &mut Vec<FocusTarget>) {
                 },
             });
             if let Some(panes) = &tabs.panes {
-                let selected = tabs
+                let declared = tabs
                     .selected
-                    .clone()
-                    .or_else(|| tabs.titles.first().map(|t| t.key.clone()));
-                if let Some(pane) = selected.as_ref().and_then(|key| panes.get(key)) {
-                    collect(
-                        pane,
-                        &join(path, selected.unwrap_or_default().as_str()),
-                        out,
-                    );
+                    .as_ref()
+                    .and_then(|key| tabs.titles.iter().position(|title| &title.key == key))
+                    .unwrap_or(0);
+                let selected = local
+                    .selected(path, declared)
+                    .min(tabs.titles.len().saturating_sub(1));
+                if let Some((key, pane)) = tabs
+                    .titles
+                    .get(selected)
+                    .and_then(|title| panes.get_key_value(&title.key))
+                {
+                    collect(pane, &join(path, key), local, out);
                 }
             }
         }
@@ -441,12 +445,12 @@ pub(crate) fn collect(node: &Node, path: &str, out: &mut Vec<FocusTarget>) {
         }
         Node::Empty(empty) => {
             if let Some(action) = &empty.action {
-                collect(action, &join(path, "action"), out);
+                collect(action, &join(path, "action"), local, out);
             }
         }
         Node::Unknown(unknown) => {
             if let Some(fallback) = &unknown.fallback {
-                collect(fallback, &join(path, "fallback"), out);
+                collect(fallback, &join(path, "fallback"), local, out);
             }
         }
         _ => {}
@@ -579,7 +583,7 @@ pub(crate) fn key_action(
         return vec![Action::plain("$close")];
     }
     let targets = {
-        let mut targets = focusables(entry);
+        let mut targets = focusables(entry, local);
         fix_tree_rows(&mut targets, entry, local);
         targets
     };

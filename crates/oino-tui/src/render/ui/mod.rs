@@ -301,6 +301,7 @@ struct CacheKey {
     epoch: u64,
     focused: Option<usize>,
     tick: u64,
+    theme: &'static str,
 }
 
 /// Line cache of the registry slots. A patch invalidates only its entry (`rev`).
@@ -325,6 +326,7 @@ impl UiCache {
             epoch: cx.local.epoch,
             focused: cx.local.focused,
             tick: if animated { cx.tick } else { 0 },
+            theme: cx.theme.name,
         };
         if let Some(cached) = self.entries.get(&entry.id)
             && cached.key == key

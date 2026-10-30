@@ -519,7 +519,7 @@ impl App {
             return false;
         }
         let local = self.ui_local.entry(id.to_owned()).or_default();
-        let targets = ui_focus::focusables(entry);
+        let targets = ui_focus::focusables(entry, local);
         let actions = ui_focus::key_action(entry, local, &key, &self.keys);
         if actions.is_empty() && targets.is_empty() && entry.keys.is_empty() {
             // A panel with no interactive nodes does not swallow the editor.
