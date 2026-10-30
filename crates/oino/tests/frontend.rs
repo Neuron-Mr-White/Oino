@@ -182,7 +182,7 @@ fn extension_and_core_settings_round_trip() {
     let all = rpc.ok(json!({"type": "_oino/get_settings"}));
     assert_eq!(all["settings"]["tui"]["inline"], true);
 
-    // Core `oino.*` namespaces (pi settings groups, ui-protocol §7.5) ride the same commands.
+    // Core `oino.*` namespaces (pi settings groups, ui-protocol §7) ride the same commands.
     let compaction = schema["namespaces"]
         .as_array()
         .unwrap()

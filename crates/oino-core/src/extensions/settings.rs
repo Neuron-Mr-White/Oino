@@ -198,7 +198,7 @@ impl std::fmt::Debug for ExtensionSettings {
 
 impl ExtensionSettings {
     /// A registry over `settings`; secrets go to `secrets` (absent in secret-less hosts).
-    /// The core `oino.*` namespaces (pi settings, §7.5) are registered up front.
+    /// The core `oino.*` namespaces (pi settings groups, §7) are registered up front.
     #[must_use]
     pub fn new(settings: Arc<Mutex<SettingsManager>>, secrets: Option<SecretStore>) -> Self {
         let (changes, _) = broadcast::channel(CHANGE_CAPACITY);
@@ -1070,7 +1070,7 @@ fn core_namespace(
     }
 }
 
-/// The `oino.*` namespaces of §7.5 with their storage prefix (pi settings top-level key).
+/// The `oino.*` namespaces of §7 with their storage prefix (pi settings top-level key).
 #[allow(
     clippy::too_many_lines,
     reason = "declarative table of the pi settings groups"
