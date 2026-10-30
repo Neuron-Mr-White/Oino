@@ -18,8 +18,23 @@
 use crate::{data_dir::HostPaths, protocol::Handler};
 
 impl HostPaths {
+    /// `<dir>/app.sock` (Unix; on Windows the listener is a named pipe).
     pub fn app_socket(&self) -> std::path::PathBuf {
         self.root.join("app.sock")
+    }
+
+    /// The local listener's address as a string, for clients: the socket
+    /// path on Unix, the pipe name on Windows (spec §5.1/§6.1).
+    pub fn local_addr(&self) -> String {
+        #[cfg(unix)]
+        {
+            self.app_socket().to_string_lossy().into_owned()
+        }
+        #[cfg(windows)]
+        {
+            let _ = self;
+            PIPE_NAME.to_string()
+        }
     }
 }
 
@@ -149,14 +164,12 @@ pub fn serve(handler: Handler) -> std::io::Result<tokio::task::JoinHandle<()>> {
 #[cfg(windows)]
 pub fn cleanup(_paths: &HostPaths) {}
 
-/// The owner-only security descriptor (DACL granting the current user
-/// FILE_GENERIC_READ|WRITE) the pipe instances are created with, plus our
-/// own SID for the per-connection client check.
+/// The owner-only security descriptor (a DACL granting the current user
+/// FILE_GENERIC_READ|WRITE) the pipe instances are created with.
 #[cfg(windows)]
 struct OwnerPipe {
     descriptor: Box<windows_sys::Win32::Security::SECURITY_DESCRIPTOR>,
     acl: *mut windows_sys::Win32::Security::ACL,
-    own_sid: Vec<u32>,
 }
 
 #[cfg(windows)]
@@ -208,11 +221,7 @@ impl OwnerPipe {
             unsafe { LocalFree(acl.cast()) };
             return Err(std::io::Error::last_os_error());
         }
-        Ok(OwnerPipe {
-            descriptor,
-            acl,
-            own_sid,
-        })
+        Ok(OwnerPipe { descriptor, acl })
     }
 
     /// Creates one pipe instance with the owner-only DACL. `first` claims

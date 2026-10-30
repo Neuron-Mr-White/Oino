@@ -1,6 +1,7 @@
 //! Local IPC streams: a unix socket on Linux/macOS, a named pipe on
-//! Windows. One [`Stream`] type so the request/reply and relay loops can
-//! be written once (`chat::relay`, `mux::herdr::socket_call`).
+//! Windows. One [`Stream`] type so callers are written once — the host's own
+//! listener (`local.rs`) uses tokio's pipe/socket types directly, this is the
+//! connecting side (the `unipi-host` CLI, tests, spec host.md §6.1).
 
 use std::io;
 use std::pin::Pin;
@@ -85,6 +86,19 @@ impl AsyncWrite for Stream {
             #[cfg(windows)]
             Stream::Pipe(stream) => Pin::new(stream).poll_shutdown(cx),
         }
+    }
+}
+
+/// Connects to a local endpoint: a socket path on Unix, a `\\.\pipe\…`
+/// name on Windows (the host's `app.sock` / `\\.\pipe\unipi-oino-app`).
+pub async fn connect(path: &str) -> io::Result<Stream> {
+    #[cfg(unix)]
+    {
+        connect_unix(path).await
+    }
+    #[cfg(windows)]
+    {
+        connect_pipe(path).await
     }
 }
 

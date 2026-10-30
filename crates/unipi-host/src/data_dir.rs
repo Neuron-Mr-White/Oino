@@ -255,6 +255,42 @@ mod tests {
         assert_eq!(paths.root, tmp.path());
     }
 
+    /// Spec §5.1 / risk R8: the v2 host never reads, writes or locks anything
+    /// under the owner's old `~/.unipi` (a live unipi runs there on this PC).
+    #[test]
+    fn never_touches_the_old_unipi_tree() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let old = home.path().join(".unipi").join("app-host");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("secret.key"), [7u8; 32]).unwrap();
+        let before: Vec<_> = std::fs::read_dir(&old)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+
+        let _env = EnvGuard::change(
+            &[
+                ("HOME", home.path().as_os_str().to_os_string()),
+                ("USERPROFILE", home.path().as_os_str().to_os_string()),
+            ],
+            &[OINO_HOST_DIR_ENV],
+        );
+        let paths = HostPaths::resolve();
+        assert_eq!(paths.root, home.path().join(".oino").join("host"));
+        paths.ensure_dir().unwrap();
+        write_atomic(&paths.secret_key(), &[0u8; 32]).unwrap();
+
+        // The old dir is untouched and the new one holds our own identity.
+        let after: Vec<_> = std::fs::read_dir(&old)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(before.len(), after.len(), "~/.unipi was modified");
+        assert_eq!(std::fs::read(old.join("secret.key")).unwrap(), [7u8; 32]);
+        assert!(paths.secret_key().exists());
+        assert!(!paths.root.starts_with(home.path().join(".unipi")));
+    }
+
     #[test]
     fn write_atomic_then_read_round_trips() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -289,12 +325,12 @@ mod tests {
         assert!(remove_optional(&path).is_ok());
     }
 
-    /// Minimal env var guard: serializes access to the one var it
-    /// touches via a global mutex so tests can run in parallel
-    /// without clobbering each other's `OINO_HOST_DIR`.
+    /// Minimal env var guard: serializes access to the vars it touches via a
+    /// global mutex so tests can run in parallel without clobbering each
+    /// other's `OINO_HOST_DIR`/`HOME`. Several vars share one guard (one lock)
+    /// — nesting guards would deadlock.
     pub struct EnvGuard {
-        key: &'static str,
-        previous: Option<std::ffi::OsString>,
+        saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
         _lock: std::sync::MutexGuard<'static, ()>,
     }
 
@@ -302,33 +338,37 @@ mod tests {
 
     impl EnvGuard {
         pub fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-            let lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-            let previous = std::env::var_os(key);
-            std::env::set_var(key, value);
-            EnvGuard {
-                key,
-                previous,
-                _lock: lock,
-            }
+            EnvGuard::change(&[(key, value.as_ref().to_os_string())], &[])
         }
 
         pub fn unset(key: &'static str) -> Self {
+            EnvGuard::change(&[], &[key])
+        }
+
+        /// Sets and/or removes several vars under one lock (the mutex is not
+        /// reentrant, so a test's env changes must share a single guard).
+        pub fn change(vars: &[(&'static str, std::ffi::OsString)], unset: &[&'static str]) -> Self {
             let lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-            let previous = std::env::var_os(key);
-            std::env::remove_var(key);
-            EnvGuard {
-                key,
-                previous,
-                _lock: lock,
+            let mut saved = Vec::with_capacity(vars.len() + unset.len());
+            for (key, value) in vars {
+                saved.push((*key, std::env::var_os(key)));
+                std::env::set_var(key, value);
             }
+            for key in unset {
+                saved.push((*key, std::env::var_os(key)));
+                std::env::remove_var(key);
+            }
+            EnvGuard { saved, _lock: lock }
         }
     }
 
     impl Drop for EnvGuard {
         fn drop(&mut self) {
-            match &self.previous {
-                Some(v) => std::env::set_var(self.key, v),
-                None => std::env::remove_var(self.key),
+            for (key, previous) in &self.saved {
+                match previous {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
             }
         }
     }

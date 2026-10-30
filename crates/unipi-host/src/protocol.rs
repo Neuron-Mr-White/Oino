@@ -15,14 +15,16 @@ use unipi_proto::{
     AppErrorCode, AppErrorDto, Control, Request,
 };
 
-/// UNI-229: the device id this PC's own local client (`app.sock`) acts as in
+/// UNI-229: the device id this PC's own local client (`app.sock`, or the
+/// `\\.\pipe\unipi-oino-app` pipe on Windows) acts as in
 /// per-device allow lists and logs. Never a real iroh id (those are 64 hex chars).
 pub const LOCAL_DEVICE_ID: &str = "local";
 /// The name shown for the local client ("This computer").
 pub const LOCAL_DEVICE_NAME: &str = "This computer";
 
 /// Who opened a stream: a paired phone over iroh, or this PC's own UniPi app
-/// over the local socket (same user, checked by uid — it is the owner).
+/// over the local socket/pipe (same user, checked by uid or user SID — it is
+/// the owner).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Peer {
     Iroh(EndpointId),
