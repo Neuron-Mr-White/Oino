@@ -20,10 +20,12 @@ oino-extension-macros = { path = "sdk/oino-extension-macros" }
 oino-provider-kit = { path = "sdk/oino-provider-kit" }
 proc-macro2 = "1"
 quote = "1"
+ruzstd = "0.9"
 schemars = "1.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
+similar = "2"
 syn = { version = "2", features = ["full"] }
 thiserror = "2"
 unipi-cron-schedule = { path = "../crates/unipi-cron-schedule" }
