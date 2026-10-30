@@ -11,6 +11,12 @@
 //!   (takeover + repair, disposing a crashed session first), `fork` (before an entry, or at
 //!   the leaf), `archive` (dispose, then move the file to `<agent dir>/trash/`, §14.2) and
 //!   `close` (dispose, keep the file).
+//! - **Takeover** (§8, D-TAKEOVER is core's) — every open goes through core's lease with
+//!   takeover, so a session held by the TUI, a `oino -p` job or another host is closed there
+//!   and reloaded here; the runner it came from is carried on the [`HubSession`] for the
+//!   stream's `{kind:"taken_over", from}` notice (§8.2). Symmetrically, when another runner
+//!   takes one of this host's sessions, the run supervisor or the stream tap marks the card
+//!   [`HubState::TakenOver`] (§8.4); opening it again takes it back.
 //! - **Cards and project grouping** ([`super::card`]) — the Sessions list is headers only
 //!   (core `list_all`), merged with the host's live state; nothing here loads a runtime.
 //! - **Per-session panic isolation** (§4.4) — a supervisor follows a session while it runs
@@ -45,6 +51,7 @@ use oino_core::extensions::api::ExtensionMode;
 use oino_core::runtime::ToolSelection;
 use oino_core::services::{ExtensionLoader, ResourceFlags};
 use oino_models::ModelRegistry;
+use oino_session::LeaseInfo;
 use oino_settings::SettingsManager;
 
 use super::card::{HubState, ProjectGroup, SessionCard};
@@ -156,6 +163,9 @@ pub struct HubSession {
     backend: Arc<dyn SessionBackend>,
     hub: Weak<Inner>,
     card: SessionCard,
+    /// The runner this open took the session over from (§8.2), if any: the stream emits it
+    /// as the first event after the snapshot.
+    taken_over: Option<String>,
 }
 
 impl std::fmt::Debug for HubSession {
@@ -168,14 +178,31 @@ impl std::fmt::Debug for HubSession {
 }
 
 impl HubSession {
-    fn new(hub: Weak<Inner>, backend: Arc<dyn SessionBackend>, card: SessionCard) -> Self {
-        Self { backend, hub, card }
+    fn new(
+        hub: Weak<Inner>,
+        backend: Arc<dyn SessionBackend>,
+        card: SessionCard,
+        taken_over: Option<String>,
+    ) -> Self {
+        Self {
+            backend,
+            hub,
+            card,
+            taken_over,
+        }
     }
 
     /// Current session id (changes after a fork/switch: the runtime keeps running).
     #[must_use]
     pub fn session_id(&self) -> String {
         self.backend.session_id()
+    }
+
+    /// Who this open took the session over from (`tui`, `host:<name>`, `cli`), when another
+    /// runner held it (§8.1–8.2). The stream sends it right after the snapshot.
+    #[must_use]
+    pub fn taken_over(&self) -> Option<&str> {
+        self.taken_over.as_deref()
     }
 
     /// The card at open time (state included).
@@ -429,6 +456,14 @@ impl SessionHub {
         self.inner.card(session_id).await
     }
 
+    /// §8.4: another runner took one of this host's sessions over — record it on the card
+    /// and emit the new `SessionChanged` (once: the run supervisor and the stream tap can
+    /// both see the core event). The runtime is already gone (core's holder side disposed
+    /// it); opening the record again takes it back.
+    pub async fn mark_taken_over(&self, session_id: &str, from: &str) {
+        self.inner.mark_taken_over(session_id, from).await;
+    }
+
     /// `session_new{cwd, name?}` (§4.2): a new runtime over a fresh session file (core
     /// writes the header when the first message arrives).
     ///
@@ -609,18 +644,25 @@ impl Inner {
         let backend = self.core.create_session(Some(&cwd), name).await?;
         let card = self.card_for(&backend, &cwd).await;
         self.emit(HubEvent::SessionChanged { card: card.clone() });
-        Ok(HubSession::new(Arc::downgrade(self), backend, card))
+        Ok(HubSession::new(Arc::downgrade(self), backend, card, None))
     }
 
-    /// `session_open{session}`.
+    /// `session_open{session}` — with takeover (§8): a session held by the TUI, a CLI run or
+    /// another host is asked to close (core D-TAKEOVER), reloaded here, and the runner it
+    /// came from is attached to the result for the stream's `taken_over` notice.
     async fn open(self: &Arc<Self>, target: &str) -> Result<HubSession, HubError> {
         let record = self.resolve(target).await?;
         let id = record.info.id.clone();
-        let crashed = matches!(
-            Self::state_of(&lock(&self.state), &id, record.state),
-            HubState::Crashed { .. }
-        );
-        if crashed {
+        let prior = Self::state_of(&lock(&self.state), &id, record.state);
+        // Read the previous holder before `core.open` overwrites the advisory metadata with
+        // ours: a live holder means this open is a takeover (§8.1); a dead one is a stale
+        // lock core reclaims silently (spec-core D-TAKEOVER step 1). A session live in this
+        // hub is already ours — nothing to take over.
+        let taken_over = match record.state {
+            CoreHubState::Live => None,
+            _ => lease_holder(&record.info.path).map(|holder| takeover_from(&holder)),
+        };
+        if matches!(prior, HubState::Crashed { .. }) {
             // §4.2: "crashed sessions are disposed on next open" — the resume layer repairs
             // the torn tail and the fresh runtime continues from the record.
             self.core.close(&id).await?;
@@ -635,10 +677,26 @@ impl Inner {
             }
         }
         let backend = self.core.open(&id).await?;
+        // The runtime is ours now: a crash we repaired or a takeover we took back is
+        // history (§4.2, §8.4). `Working` still describes a running session and stays.
+        {
+            let mut state = lock(&self.state);
+            if matches!(
+                state.states.get(&id),
+                Some(HubState::Crashed { .. } | HubState::TakenOver { .. })
+            ) {
+                state.states.remove(&id);
+            }
+        }
         let cwd = record_cwd(&record, &self.cwd);
         let card = self.card_for(&backend, &cwd).await;
         self.emit(HubEvent::SessionChanged { card: card.clone() });
-        Ok(HubSession::new(Arc::downgrade(self), backend, card))
+        Ok(HubSession::new(
+            Arc::downgrade(self),
+            backend,
+            card,
+            taken_over,
+        ))
     }
 
     /// `session_fork{session, entry_id?, name?}`.
@@ -671,6 +729,7 @@ impl Inner {
             Arc::downgrade(self),
             Arc::clone(&session.backend),
             card,
+            session.taken_over.clone(),
         ))
     }
 
@@ -758,6 +817,38 @@ impl Inner {
     }
 }
 
+/// The `from` label of a takeover (§8.2: `tui`, `host:<name>` or `cli`) from the previous
+/// runner's lease identity (D-LOCK advisory metadata). Core labels every lease `oino <mode>`;
+/// `desktop` and `mobile` are only ever held by a host process, so those name the host.
+#[must_use]
+pub fn takeover_from(holder: &LeaseInfo) -> String {
+    let client = holder.client.trim();
+    let host = holder.host.trim();
+    if client.eq_ignore_ascii_case("oino tui") || client.eq_ignore_ascii_case("tui") {
+        return "tui".to_owned();
+    }
+    let from_host = client.eq_ignore_ascii_case("oino desktop")
+        || client.eq_ignore_ascii_case("oino mobile")
+        || client.to_ascii_lowercase().starts_with("unipi-host");
+    if from_host {
+        return if host.is_empty() {
+            "host".to_owned()
+        } else {
+            format!("host:{host}")
+        };
+    }
+    "cli".to_owned()
+}
+
+/// The runner holding `session_file`'s lease right now, when it is a live one (D-LOCK's
+/// advisory `<file>.lock.json`; core replaces it with ours when the open acquires). A
+/// certainly-dead holder is not a takeover — core reclaims the stale lock silently.
+fn lease_holder(session_file: &Path) -> Option<LeaseInfo> {
+    let text = std::fs::read_to_string(oino_session::lock_metadata_path(session_file)).ok()?;
+    let holder: LeaseInfo = serde_json::from_str(&text).ok()?;
+    (!holder.dead()).then_some(holder)
+}
+
 /// The cwd a session record runs in: its header cwd when absolute, else the hub's primary.
 fn record_cwd(record: &CoreHubSession, default: &Path) -> PathBuf {
     let cwd = Path::new(&record.info.cwd);
@@ -837,6 +928,27 @@ impl Inner {
         self.changed(session_id).await;
     }
 
+    /// §8.4: the session was taken over by another runner — mark the card once and tell the
+    /// Sessions list (the supervisor and the stream tap may both observe the same event).
+    async fn mark_taken_over(&self, session_id: &str, from: &str) {
+        {
+            let mut state = lock(&self.state);
+            if matches!(
+                state.states.get(session_id),
+                Some(HubState::TakenOver { from: existing }) if existing == from
+            ) {
+                return;
+            }
+            state.states.insert(
+                session_id.to_owned(),
+                HubState::TakenOver {
+                    from: from.to_owned(),
+                },
+            );
+        }
+        self.changed(session_id).await;
+    }
+
     /// Moves a supervised session's bookkeeping when the runtime replaces its session (fork,
     /// switch, new session through a backend).
     fn rekey(&self, old: &str, new: &str) {
@@ -901,7 +1013,8 @@ async fn supervise(
                     }
                     Some(ClientEvent::Oino(OinoEvent::SessionTakenOver { by })) => {
                         if let Some(hub) = hub.upgrade() {
-                            hub.mark(&session_id, HubState::TakenOver { from: by.client }).await;
+                            hub.mark_taken_over(&session_id, &takeover_from(&by))
+                                .await;
                         }
                         return session_id;
                     }

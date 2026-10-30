@@ -31,7 +31,9 @@
 //! - **Host-only events** ride the same envelope with reserved `kind`s (§7.4): the tap adds
 //!   `{kind:"crashed", error}` and `{kind:"taken_over", from}` next to the core event that
 //!   caused them, so the app's banner has the resolved text (core events are tagged `type`,
-//!   host-only ones `kind`).
+//!   host-only ones `kind`). The *winning* side of a takeover gets one too: the stream that
+//!   opened the session from another runner publishes `{kind:"taken_over", from}` as its
+//!   first event after the snapshot (§8.2).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -52,7 +54,7 @@ use unipi_proto::{
 };
 
 use super::card::{HubState, SessionCard as HostCard};
-use super::hub::{HubError, HubEvent, HubSession, SessionHub};
+use super::hub::{takeover_from, HubError, HubEvent, HubSession, SessionHub};
 
 /// The coalescing window of §7.4: consecutive deltas merge for at most this long.
 pub const FLUSH_WINDOW: Duration = Duration::from_millis(16);
@@ -347,9 +349,18 @@ impl Feed {
                         ClientEvent::Oino(oino_core::events::OinoEvent::SessionTakenOver {
                             ref by,
                         }) => {
-                            self.publish(json!({"kind": "taken_over", "from": by.client}))
+                            let from = takeover_from(by);
+                            self.publish(json!({"kind": "taken_over", "from": from}))
                                 .await;
                             self.mark_disposed();
+                            // §8.4: the card says who took it; a stream that reopens the
+                            // record takes it back (and resets, this runtime is gone).
+                            if let Some(service) = service.upgrade() {
+                                service
+                                    .hub()
+                                    .mark_taken_over(&self.session_id(), &from)
+                                    .await;
+                            }
                             return;
                         }
                         ClientEvent::Oino(oino_core::events::OinoEvent::SessionEvicted {
@@ -722,8 +733,11 @@ where
     let feed = service.feed(&session.session_id());
     feed.ensure_tap(Arc::clone(session.backend()), Arc::downgrade(service));
     let subscription = feed.subscribe();
+    // §8.2: an open that took the session over from another runner is a new runtime here, so
+    // the previous stream's numbering is not resumable (the other runner wrote in between).
+    let taken_over = session.taken_over().map(str::to_owned);
     let data = match since_seq {
-        Some(since) if feed.can_resume(since) => {
+        Some(since) if taken_over.is_none() && feed.can_resume(since) => {
             let replay = feed.events_after(since);
             let seq = replay.last().map_or(since, |event| event.seq);
             tracing::debug!(session = %feed.session_id(), since, seq, "session resume");
@@ -731,6 +745,11 @@ where
         }
         _ => snapshot(&session, &feed).await?,
     };
+    if let Some(from) = taken_over {
+        // §8.2: the first session event after the snapshot tells the app where it came from.
+        feed.publish(json!({"kind": "taken_over", "from": from}))
+            .await;
+    }
     serve_stream(
         feed,
         session,

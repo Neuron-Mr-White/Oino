@@ -9,5 +9,7 @@ pub mod services;
 pub mod stream;
 
 pub use card::{HubState, ProjectGroup, SessionCard};
-pub use hub::{HostHubOptions, HubError, HubEvent, HubSession, NoticeLevel, SessionHub};
+pub use hub::{
+    takeover_from, HostHubOptions, HubError, HubEvent, HubSession, NoticeLevel, SessionHub,
+};
 pub use stream::{Feed, SessionService, Subscription};
