@@ -254,7 +254,7 @@ impl Registry {
             proxy,
             filter: String::new(),
         };
-        let id = ui::panel_open(&ed.open_request())?;
+        let id = ed.panel().open()?;
         self.sessions.with(cx.session_id(), |s| {
             s.editor = Some((id, ed, global, project, proxy));
         });
@@ -311,7 +311,7 @@ impl Registry {
                 }
             }
             Outcome::Changed => {
-                let _ = ui::panel_update(&id, &json!({"spec": ed.spec()}));
+                let _ = ui::Panel::update(&id).spec(ed.spec()).send();
                 self.sessions.with(&sid, |s| {
                     s.editor = Some((id, ed, before_g, before_p, before_proxy));
                 });

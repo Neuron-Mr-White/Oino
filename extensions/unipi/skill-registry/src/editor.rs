@@ -1,4 +1,4 @@
-//! The "Skill settings…" editor (unipi `src/editor.ts`) as an OUS overlay panel.
+//! The "Skill settings…" editor (unipi `src/editor.ts`) as a v2 overlay panel.
 //!
 //! Rows: skill, source tag, `E` (enabled) and `M` (must show) toggles showing the effective
 //! value (project over global over the source default; inherited values dim), an `inherit`
@@ -7,7 +7,9 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{Value, json};
+use oino_extension::ui::widgets::prelude::*;
+use oino_extension::ui::{self, KeyBinding, Placement};
+use serde_json::Value;
 
 use crate::registry::{SkillSource, SkillState, default_enabled, default_must_show};
 
@@ -214,59 +216,158 @@ impl Editor {
             .collect()
     }
 
-    /// The OUS spec.
+    /// The panel spec.
     #[must_use]
-    pub fn spec(&self) -> Value {
+    #[allow(clippy::too_many_lines, reason = "one linear layout mirroring unipi")]
+    pub fn spec(&self) -> Node {
         let scope = match self.scope {
             Scope::Global => "global",
             Scope::Project => "project",
         };
-        let mut rows = Vec::new();
+        let mut rows: Vec<Node> = Vec::new();
         for s in self.visible() {
+            // v1 dimmed a toggle whose value came from the other layer; the v2 `Toggle` has no
+            // `dim`, so an inherited cell is marked with a trailing `*` (see the legend).
             let toggle = |c: Column| {
                 let (v, own) = self.cell(s, c);
-                json!({"t": "toggle", "id": format!("{}:{}", c.key(), s.name), "label": if c == Column::Enabled { "E" } else { "M" }, "value": v, "onChange": format!("{}:{}", c.key(), s.name), "dim": !own})
+                let label = match (c, own) {
+                    (Column::Enabled, true) => "E",
+                    (Column::Enabled, false) => "E*",
+                    (Column::MustShow, true) => "M",
+                    (Column::MustShow, false) => "M*",
+                };
+                Toggle::new(format!("{}:{}", c.key(), s.name), Line::from(label), v)
+                    .on_change(format!("{}:{}", c.key(), s.name))
             };
             let desc: String = s.description.chars().take(80).collect();
-            rows.push(json!({"t": "stack", "key": s.name, "direction": "horizontal", "gap": 2, "children": [
-                toggle(Column::Enabled),
-                toggle(Column::MustShow),
-                {"t": "text", "wrap": false, "value": [
-                    {"text": s.name.clone(), "bold": true},
-                    {"text": format!("  {}{}  ", s.source.as_str(), if s.default_enabled { "" } else { " · opt-in" }), "tone": "muted"},
-                    {"text": desc, "dim": true},
-                ]},
-                {"t": "button", "label": "inherit", "actionId": format!("clear:{}", s.name)},
-            ]}));
+            let text = Paragraph::new(Line::from(vec![
+                Span::from_string(s.name.clone()).bold(),
+                Span::from_string(format!(
+                    "  {}{}  ",
+                    s.source.as_str(),
+                    if s.default_enabled { "" } else { " · opt-in" }
+                ))
+                .fg(Color::Muted),
+                Span::from_string(desc).dim(),
+            ]))
+            .wrap(Wrap::Disabled(false));
+            rows.push(
+                Layout::horizontal([
+                    Constraint::Min(0),
+                    Constraint::Min(0),
+                    Constraint::Fill(1),
+                    Constraint::Min(0),
+                ])
+                .spacing(2)
+                .children([
+                    toggle(Column::Enabled).into(),
+                    toggle(Column::MustShow).into(),
+                    text.into(),
+                    Button::new("inherit", format!("clear:{}", s.name)).into(),
+                ])
+                .key(s.name.clone())
+                .into(),
+            );
         }
         if rows.is_empty() {
-            rows.push(json!({"t": "empty", "message": "No skills match the filter"}));
+            rows.push(Empty::new().message("No skills match the filter").into());
         }
-        json!({"t": "stack", "direction": "vertical", "gap": 1, "children": [
-            {"t": "text", "value": [{"text": "Skill settings", "bold": true}, {"text": format!(" · {} skills · editing {scope} · proxy {}", self.skills.len(), if self.proxy { "on" } else { "off" }), "tone": "muted"}]},
-            {"t": "stack", "direction": "horizontal", "gap": 2, "children": [
-                {"t": "input", "id": "filter", "value": self.filter, "placeholder": "Search: (type to filter)", "onSubmit": "filter"},
-                {"t": "select", "id": "scope", "value": scope, "options": [{"value": "global", "label": "global"}, {"value": "project", "label": "project"}], "onChange": "scope"},
-                {"t": "toggle", "id": "proxy", "label": "proxy", "value": self.proxy, "onChange": "proxy"},
-            ]},
-            {"t": "divider"},
-            {"t": "stack", "direction": "vertical", "children": rows},
-            {"t": "divider"},
-            {"t": "text", "value": "E enabled — the model sees it (judged first when exposure is on); off removes it and blocks /skill:name. opt-in skills are off until enabled here (no proxy needed); /skill:name still runs them", "wrap": true},
-            {"t": "text", "value": "M must show — always listed, even when judging would hide it"},
-            {"t": "stack", "direction": "horizontal", "gap": 2, "children": [
-                {"t": "button", "label": "Save", "actionId": "save", "primary": true},
-                {"t": "button", "label": "Cancel", "actionId": "cancel"},
-            ]},
-        ]})
+        let rule = || -> Node {
+            Block::default()
+                .borders(Borders::Sides(vec![BorderSide::TOP]))
+                .border_style(Style::new().fg(Color::BorderMuted))
+                .into()
+        };
+        Layout::default()
+            .spacing(1)
+            .children([
+                Paragraph::new(Line::from(vec![
+                    Span::from_string("Skill settings").bold(),
+                    Span::from_string(format!(
+                        " · {} skills · editing {scope} · proxy {}",
+                        self.skills.len(),
+                        if self.proxy { "on" } else { "off" }
+                    ))
+                    .fg(Color::Muted),
+                ]))
+                .into(),
+                Layout::horizontal([
+                    Constraint::Fill(1),
+                    Constraint::Min(0),
+                    Constraint::Min(0),
+                ])
+                .spacing(2)
+                .children([
+                    Input::new("filter")
+                        .value(self.filter.clone())
+                        .placeholder("Search: (type to filter)")
+                        .on_submit("filter")
+                        .into(),
+                    Select::new(
+                        "scope",
+                        [
+                            SelectOption::new("global", "global"),
+                            SelectOption::new("project", "project"),
+                        ],
+                    )
+                    .value(scope)
+                    .on_change("scope")
+                    .into(),
+                    Toggle::new("proxy", Line::from("proxy"), self.proxy)
+                        .on_change("proxy")
+                        .into(),
+                ])
+                .into(),
+                rule(),
+                Layout::default().children(rows).into(),
+                rule(),
+                Paragraph::new(
+                    "E enabled — the model sees it (judged first when exposure is on); off removes it \
+                     and blocks /skill:name. opt-in skills are off until enabled here (no proxy \
+                     needed); /skill:name still runs them.  * value inherited from the other layer",
+                )
+                .into(),
+                Paragraph::new(
+                    "M must show — always listed, even when judging would hide it",
+                )
+                .into(),
+                Layout::horizontal([
+                    Constraint::Min(0),
+                    Constraint::Min(0),
+                ])
+                .spacing(2)
+                .children([
+                    Button::new("Save", "save")
+                        .variant(ButtonVariant::Primary)
+                        .into(),
+                    Button::new("Cancel", "cancel").into(),
+                ])
+                .into(),
+            ])
+            .into()
     }
 
-    /// The `openPanel` request.
+    /// The editor panel (`openPanel`).
     #[must_use]
-    pub fn open_request(&self) -> Value {
-        json!({"panelId": PANEL, "placement": "overlay", "title": "Skill settings", "focus": true, "closeOnEscape": true,
-            "keys": [{"key": "enter", "actionId": "save", "label": "save"}, {"key": "esc", "actionId": "cancel", "label": "cancel"}],
-            "spec": self.spec()})
+    pub fn panel(&self) -> ui::Panel {
+        ui::Panel::new(PANEL)
+            .placement(Placement::Overlay)
+            .title("Skill settings")
+            .spec(self.spec())
+            .keys([
+                KeyBinding {
+                    key: "enter".into(),
+                    action: Some("save".into()),
+                    label: "save".into(),
+                },
+                KeyBinding {
+                    key: "esc".into(),
+                    action: Some("cancel".into()),
+                    label: "cancel".into(),
+                },
+            ])
+            .focus(true)
+            .close_on_escape(true)
     }
 }
 
@@ -303,6 +404,8 @@ pub fn count_changes(
     reason = "test assertions"
 )]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     fn editor() -> Editor {
@@ -361,10 +464,10 @@ mod tests {
         ed.act("enabled:unipi-migrate", None);
         assert_eq!(ed.cell(&migrate, Column::Enabled), (true, true));
         ed.act("filter", Some(&json!("")));
-        let spec = ed.spec().to_string();
+        let spec = serde_json::to_string(&ed.spec()).unwrap_or_default();
         assert!(spec.contains("unipi · opt-in"));
         ed.act("filter", Some(&json!("sql")));
-        let spec = ed.spec().to_string();
+        let spec = serde_json::to_string(&ed.spec()).unwrap_or_default();
         assert!(spec.contains("editing global"));
         assert!(spec.contains("sql-review"));
     }
