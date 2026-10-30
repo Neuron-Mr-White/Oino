@@ -337,13 +337,20 @@ impl Attached {
         self.entry.exit_code()
     }
 
-    /// Writes client input into the PTY.
+    /// Writes client input into the PTY (ignored once the child is gone —
+    /// the stream ends with its `Exit` anyway).
     pub fn input(&self, bytes: &[u8]) -> Result<(), AppErrorDto> {
+        if !self.entry.alive.load(Ordering::SeqCst) {
+            return Ok(());
+        }
         self.entry.write_input(bytes).map_err(internal)
     }
 
     /// Requests a resize; the registry applies it under the throttle.
     pub fn resize(&self, cols: u16, rows: u16) {
+        if !self.entry.alive.load(Ordering::SeqCst) {
+            return;
+        }
         self.entry.apply_throttled_resize(cols, rows);
     }
 }
