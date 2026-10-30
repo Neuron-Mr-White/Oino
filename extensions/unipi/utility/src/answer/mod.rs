@@ -89,31 +89,38 @@ pub fn hint_text(n: usize) -> String {
 /// The reply dialog (`custom`).
 #[must_use]
 pub fn reply_dialog(reply: &str, questions: usize) -> Value {
-    let mut header = vec![json!({"text": " /answer · reply ", "tone": "accent"})];
+    let mut header = vec![Span::from(" /answer · reply ").fg(Color::Accent)];
     if questions > 0 {
-        header.push(json!({"text": format!(" {questions} question{} · tab answers them one by one ", if questions == 1 { "" } else { "s" }), "dim": true}));
+        header.push(
+            Span::from_string(format!(
+                " {questions} question{} · tab answers them one by one ",
+                if questions == 1 { "" } else { "s" }
+            ))
+            .dim(),
+        );
     }
-    let mut children = vec![
-        json!({"t": "text", "value": header}),
-        json!({"t": "markdown", "key": "reply", "value": reply}),
-        json!({"t": "input", "id": "answer", "placeholder": "your answer (multi-line: shift+enter)", "onSubmit": "send", "multiline": true}),
+    let mut children: Vec<Node> = vec![
+        line(Line::from(header)),
+        Markdown::new(reply).into(),
+        Input::new("answer")
+            .placeholder("your answer (multi-line: shift+enter)")
+            .on_submit("send")
+            .multiline(4)
+            .into(),
     ];
-    let mut hints = vec![
-        json!({"keys": "↵", "label": "send"}),
-        json!({"keys": "shift+↵", "label": "newline"}),
-    ];
+    let mut hints = vec![Hint::new("↵", "send"), Hint::new("shift+↵", "newline")];
     if questions > 0 {
-        children
-            .push(json!({"t": "button", "label": "Answer one by one", "actionId": "questions"}));
-        hints.push(json!({"keys": "tab", "label": "questions"}));
+        children.push(Button::new("Answer one by one", "questions").into());
+        hints.push(Hint::new("tab", "questions"));
     }
-    hints.push(json!({"keys": "esc", "label": "back"}));
-    children.push(json!({"t": "keyHints", "hints": hints}));
+    hints.push(Hint::new("esc", "back"));
+    children.push(KeyHints::new(hints).into());
+    let spec: Node = Layout::default().spacing(1).children(children).into();
     json!({
         "method": "custom",
         "title": "/answer · reply",
         "size": "full",
-        "spec": {"t": "stack", "direction": "vertical", "gap": 1, "children": children},
+        "spec": serde_json::to_value(spec).unwrap_or(Value::Null),
     })
 }
 
@@ -176,8 +183,8 @@ pub fn questions_dialog(questions: &[String]) -> Value {
 }
 
 /// One unwrapped text line.
-fn line(span: Span) -> Node {
-    Paragraph::new(Line::from(span))
+fn line(text: impl Into<Line>) -> Node {
+    Paragraph::new(text.into())
         .wrap(Wrap::Disabled(false))
         .into()
 }
@@ -444,13 +451,13 @@ mod tests {
             .unwrap_or_default();
         assert!(
             kids.iter()
-                .any(|k| k["t"] == "input" && k["onSubmit"] == "send")
+                .any(|k| k["t"] == "Input" && k["onSubmit"] == "send")
         );
-        assert!(kids.iter().any(|k| k["actionId"] == "questions"));
+        assert!(kids.iter().any(|k| k["action"] == "questions"));
         assert!(
             !reply_dialog("x", 0)["spec"]["children"]
                 .as_array()
-                .is_some_and(|k| k.iter().any(|k| k["actionId"] == "questions"))
+                .is_some_and(|k| k.iter().any(|k| k["action"] == "questions"))
         );
         assert_eq!(
             reply_outcome(&json!({"value": {"actionId": "send", "value": " 8080\ntls "}})),
