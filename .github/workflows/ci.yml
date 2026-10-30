@@ -3,7 +3,7 @@ name: ci
 # quality.md §6. The toolchain (1.99.0 + wasm32-wasip2) comes from rust-toolchain.toml.
 on:
   push:
-    branches: [main, v1-alpha]
+    branches: [main, v1-alpha, v2]
     tags: ['v*']
   workflow_dispatch:
 
@@ -70,6 +70,44 @@ jobs:
       - run: cargo install wasm-tools --locked && cargo xtask wit
       - name: Install smoke
         run: sh scripts/install-smoke.sh
+
+  v2-host-integration:
+    name: v2 host integration + perf (spec-host WP-H10)
+    # spec-host §12 WP-H10: the headless host + client e2e and its performance gates. The
+    # wasm job's dist artifact supplies the staged `oino.openai-compat` provider.
+    if: github.ref_name == 'v2' || github.event_name == 'workflow_dispatch'
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - name: Headless host + client e2e
+        env:
+          CARGO_BUILD_JOBS: '8'
+        run: cargo test -p unipi-host --test integration -- --ignored --nocapture
+
+  v2-host-integration-windows:
+    name: v2 host integration (Windows, secondary)
+    # The §7.4/§9 e2e on the named-pipe transport; terminal/cron scenarios are Unix-only.
+    if: github.ref_name == 'v2' || github.event_name == 'workflow_dispatch'
+    needs: wasm
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - name: Headless host + client e2e
+        env:
+          CARGO_BUILD_JOBS: '8'
+        run: cargo test -p unipi-host --test integration -- --ignored --nocapture
 
   docs-and-installers:
     runs-on: ubuntu-latest
