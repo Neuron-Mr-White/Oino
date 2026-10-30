@@ -1,15 +1,16 @@
 node_modules/
 dist/
 /target/
-apps/mobile/src-tauri/gen/android/.gradle/
-apps/mobile/src-tauri/gen/android/build/
-apps/mobile/src-tauri/gen/android/app/build/
-apps/mobile/src-tauri/gen/android/buildSrc/build/
-apps/mobile/src-tauri/gen/android/buildSrc/.gradle/
-apps/mobile/src-tauri/gen/android/.kotlin/
-apps/mobile/src-tauri/gen/android/local.properties
-apps/mobile/src-tauri/gen/android/app/src/main/jniLibs/
-apps/mobile/src-tauri/gen/android/.idea/
+/src-tauri/target/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/build/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/buildSrc/build/
+src-tauri/gen/android/buildSrc/.gradle/
+src-tauri/gen/android/.kotlin/
+src-tauri/gen/android/local.properties
+src-tauri/gen/android/app/src/main/jniLibs/
+src-tauri/gen/android/.idea/
 
 *.apk
 *.aab
