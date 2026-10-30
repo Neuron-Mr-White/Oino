@@ -757,7 +757,7 @@ pub fn describe(item: &FeatureRequestItem) -> String {
 /// like every UniPi notification). Best effort.
 pub async fn notify_owner(paths: &HostPaths, host_name: &str, item: &FeatureRequestItem) -> bool {
     let connection = crate::notify::read_ntfy_config(&crate::notify::notify_config_json_path());
-    let endpoints = crate::notify::read_app_endpoints(&crate::notify::app_endpoints_path());
+    let endpoints = crate::notify::read_app_endpoints(&crate::notify::app_endpoints_path(paths));
     if connection.topic.is_none() && endpoints.is_empty() {
         return false;
     }

@@ -63,6 +63,10 @@ pub use git::{
     GIT_DIFF_CAP, GIT_LOG_MAX, GIT_PATHS_MAX, GIT_SHORTSTAT_UNTRACKED_MAX,
 };
 pub use push::{PushId, PushItem, PushListData, PushOutcome, PushWait, PUSH_WAIT_MAX};
+pub use settings::{
+    HostSettingsKey, HostSettingsSetRequest, RelaySetting, HOST_SETTINGS_BLOCKS,
+    HOST_SETTINGS_KEYS, SECRET_MASK,
+};
 pub use sharing::{
     FeatureKind, FeatureLeaveData, FeatureLeaveScope, FeatureNote, FeatureRequestItem,
     FeatureRequestStatus, FeatureRequestsData, FeatureScope, FEATURE_NOTE_MAX, FEATURE_PORTS_MAX,

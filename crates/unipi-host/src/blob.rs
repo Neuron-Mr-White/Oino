@@ -4,11 +4,12 @@
 //! Storage: uploaded blobs live under `<host dir>/blobs/<sha256>`, capped at
 //! ~50 MiB each; the whole directory is capped at [`BLOB_DIR_CAP`] with an
 //! LRU-by-mtime eviction sweep run after every successful put. `blob_get`
-//! also serves paths the pi app-bridge registered as attachments (a shared
-//! allow-list file at `~/.unipi/bridge/<pid>.files.json`, read fresh on
-//! every request so the bridge needs no host-side RPC).
+//! also serves paths inside the `fs_*` scope (`$HOME` + the extra safe
+//! roots) and one pushed file, so a phone can open what the Files screen
+//! shows. v2: the pi app-bridge attachment allow-list
+//! (`~/.unipi/bridge/<pid>.files.json`) is gone with the bridge; session
+//! attachments ride the blob channel itself.
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -250,53 +251,13 @@ fn evict_lru(dir: &Path, cap: u64) {
     }
 }
 
-/// Reads the bridge-registered attachment allow-list: every
-/// `~/.unipi/bridge/*.files.json` file (one per live pi process), each a
-/// JSON array of absolute paths the bridge has told us about (tool results,
-/// kanboard attachments, screenshots…). Missing/unreadable files are
-/// skipped; this never errors.
-pub fn registered_paths(bridge_dir: &Path) -> HashSet<PathBuf> {
-    let mut out = HashSet::new();
-    let Ok(entries) = std::fs::read_dir(bridge_dir) else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else { continue };
-        if !name.ends_with(".files.json") {
-            continue;
-        }
-        let Ok(text) = std::fs::read_to_string(entry.path()) else {
-            continue;
-        };
-        let Ok(list) = serde_json::from_str::<Vec<String>>(&text) else {
-            continue;
-        };
-        for p in list {
-            out.insert(PathBuf::from(p));
-        }
-    }
-    out
-}
-
-/// Whether `path` may be read by `blob_get{path}`: under the blobs dir,
-/// one of the bridges' registered attachment paths, or (UNI-155: files
-/// opened from the Files screen) any path in `scope` (`$HOME` + the extra
-/// safe roots like `/tmp`, UNI-220) once canonicalized — same scope rule
-/// as `fs_read`.
-pub fn path_allowed(
-    path: &Path,
-    blobs_dir: &Path,
-    bridge_dir: Option<&Path>,
-    scope: Option<&FsScope>,
-) -> bool {
+/// Whether `path` may be read by `blob_get{path}`: under the blobs dir, or
+/// (UNI-155: files opened from the Files screen) any path in `scope`
+/// (`$HOME` + the extra safe roots like `/tmp`, UNI-220) once canonicalized
+/// — same scope rule as `fs_read`.
+pub fn path_allowed(path: &Path, blobs_dir: &Path, scope: Option<&FsScope>) -> bool {
     if path.starts_with(blobs_dir) {
         return true;
-    }
-    if let Some(dir) = bridge_dir {
-        if registered_paths(dir).contains(path) {
-            return true;
-        }
     }
     if let Some(scope) = scope {
         if let Ok(canon) = dunce::canonicalize(path) {
@@ -313,17 +274,13 @@ pub fn path_allowed(
 /// enforces the actual allow-list).
 pub async fn serve_get<W: AsyncWrite + Unpin>(
     blobs_dir: &Path,
-    bridge_dir: Option<&Path>,
     scope: Option<&FsScope>,
     write: &mut W,
     sha256: Option<&Sha256Hex>,
     path: Option<&BlobPath>,
     range: Option<BlobRange>,
 ) -> Result<(), AppErrorDto> {
-    serve_get_with(
-        blobs_dir, bridge_dir, scope, None, write, sha256, path, range,
-    )
-    .await
+    serve_get_with(blobs_dir, scope, None, write, sha256, path, range).await
 }
 
 /// [`serve_get`] plus one extra exactly-allowed path (UNI-214: a file
@@ -331,7 +288,6 @@ pub async fn serve_get<W: AsyncWrite + Unpin>(
 #[allow(clippy::too_many_arguments)]
 pub async fn serve_get_with<W: AsyncWrite + Unpin>(
     blobs_dir: &Path,
-    bridge_dir: Option<&Path>,
     scope: Option<&FsScope>,
     pushed: Option<&Path>,
     write: &mut W,
@@ -346,9 +302,7 @@ pub async fn serve_get_with<W: AsyncWrite + Unpin>(
         )
     } else if let Some(p) = path {
         let candidate = PathBuf::from(p.as_str());
-        if pushed != Some(candidate.as_path())
-            && !path_allowed(&candidate, blobs_dir, bridge_dir, scope)
-        {
+        if pushed != Some(candidate.as_path()) && !path_allowed(&candidate, blobs_dir, scope) {
             return Err(unauthorized("That path isn't available to the phone"));
         }
         let mime = mime_guess_from_ext(&candidate);
@@ -559,7 +513,7 @@ mod tests {
         let d3 = sha(&digest);
         let blobs4 = blobs.clone();
         let get_task = tokio::spawn(async move {
-            serve_get(&blobs4, None, None, &mut to_phone3, Some(&d3), None, None).await
+            serve_get(&blobs4, None, &mut to_phone3, Some(&d3), None, None).await
         });
         let ok3 = read_control(&mut from_host3).await;
         let size = match ok3 {
@@ -751,51 +705,6 @@ mod tests {
     }
 
     #[test]
-    fn registered_paths_reads_every_bridge_files_json() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("111.files.json"),
-            r#"["/tmp/a.png","/tmp/b.png"]"#,
-        )
-        .unwrap();
-        std::fs::write(dir.path().join("222.files.json"), r#"["/tmp/c.png"]"#).unwrap();
-        std::fs::write(dir.path().join("333.json"), r#"not a files list"#).unwrap();
-        let paths = registered_paths(dir.path());
-        assert!(paths.contains(&PathBuf::from("/tmp/a.png")));
-        assert!(paths.contains(&PathBuf::from("/tmp/c.png")));
-        assert_eq!(paths.len(), 3);
-    }
-
-    #[test]
-    fn path_allowed_checks_blobs_dir_and_registered_attachments() {
-        let dir = tempfile::tempdir().unwrap();
-        let blobs = dir.path().join("blobs");
-        std::fs::create_dir_all(&blobs).unwrap();
-        let bridge = dir.path().join("bridge");
-        std::fs::create_dir_all(&bridge).unwrap();
-        std::fs::write(bridge.join("1.files.json"), r#"["/tmp/allowed.png"]"#).unwrap();
-        assert!(path_allowed(
-            &blobs.join("abc"),
-            &blobs,
-            Some(&bridge),
-            None
-        ));
-        assert!(path_allowed(
-            Path::new("/tmp/allowed.png"),
-            &blobs,
-            Some(&bridge),
-            None
-        ));
-        assert!(!path_allowed(
-            Path::new("/tmp/not-allowed.png"),
-            &blobs,
-            Some(&bridge),
-            None
-        ));
-        assert!(!path_allowed(Path::new("/etc/passwd"), &blobs, None, None));
-    }
-
-    #[test]
     fn path_allowed_checks_home_scope_for_files_screen() {
         let tmp = tempfile::tempdir().unwrap();
         let blobs = tmp.path().join("blobs");
@@ -807,8 +716,8 @@ mod tests {
         let outside = tmp.path().join("outside.txt");
         std::fs::write(&outside, "x").unwrap();
         let scope = FsScope::home_only(&home);
-        assert!(path_allowed(&under_home, &blobs, None, Some(&scope)));
-        assert!(!path_allowed(&outside, &blobs, None, Some(&scope)));
+        assert!(path_allowed(&under_home, &blobs, Some(&scope)));
+        assert!(!path_allowed(&outside, &blobs, Some(&scope)));
     }
 
     /// UNI-220: a file link to an extra safe root (e.g. /tmp) is served,
@@ -832,22 +741,16 @@ mod tests {
             extra: vec![extra.canonicalize().unwrap()],
             deny: vec![],
         };
-        assert!(path_allowed(&shot, &blobs, None, Some(&scope)));
-        assert!(!path_allowed(&secret, &blobs, None, Some(&scope)));
+        assert!(path_allowed(&shot, &blobs, Some(&scope)));
+        assert!(!path_allowed(&secret, &blobs, Some(&scope)));
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(&secret, extra.join("link.txt")).unwrap();
-            assert!(!path_allowed(
-                &extra.join("link.txt"),
-                &blobs,
-                None,
-                Some(&scope)
-            ));
+            assert!(!path_allowed(&extra.join("link.txt"), &blobs, Some(&scope)));
         }
         assert!(!path_allowed(
             Path::new("/etc/passwd"),
             &blobs,
-            None,
             Some(&scope)
         ));
     }

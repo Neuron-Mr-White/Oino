@@ -6,12 +6,17 @@
 //!   the *same* file (see `packages/notify/notify-key.ts`) to encrypt
 //!   notification payloads; this file is the one shared secret between the
 //!   two local processes, so the server only ever sees ciphertext.
-//! - `read_ntfy_config`: the user's own ntfy server/topic/token from
-//!   `~/.unipi/config/notify/config.json`'s `ntfy` block (the same file the
-//!   pi-side `notify` package already writes via its Settings UI).
+//! - `read_ntfy_config`: the user's own ntfy server/topic/token from the
+//!   `notify` extension's settings — `extensionSettings.notify` of the agent
+//!   settings file (`$OINO_AGENT_DIR`/`settings.json`, default
+//!   `~/.oino/settings.json`), the same values the `unipi.notify` extension
+//!   writes from its setup wizards. Secret fields (`ntfy.token`,
+//!   `gotify.appToken`, `telegram.botToken`/`chatId`) live in
+//!   `<agent>/secrets.json`, exactly like the extension's own reads.
 //! - `app_endpoints_path`/`register_app_endpoint`: the UnifiedPush endpoint
-//!   fan-out list at `~/.unipi/config/notify/app-endpoints.json`, matching
-//!   the shape `packages/notify/app-endpoints.ts` already reads.
+//!   fan-out list at `<host dir>/app-endpoints.json` (`{endpoints:[{url,
+//!   addedAt}]}`). v2: the host owns phone push, so the list lives with the
+//!   host, not in the pi-side notify package's config dir.
 //! - `send_test`: POSTs one encrypted test notification straight to the
 //!   configured ntfy server, proving the whole `notify_config` \u2192 app path
 //!   without round-tripping through a live pi process.
@@ -52,8 +57,9 @@ pub fn notify_key_or_create(paths: &HostPaths) -> anyhow::Result<[u8; KEY_LEN]> 
     }
 }
 
-/// `~/.unipi/config/notify/config.json`'s `ntfy` block: the user's own
-/// server/topic/token, written by the pi-side notify package's settings.
+/// The `notify` extension's `ntfy` block: the user's own server/topic/token,
+/// written by its setup wizards (`extensionSettings.notify` in the agent
+/// settings file; secret fields in `<agent>/secrets.json`).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NtfyBlock {
@@ -79,10 +85,8 @@ struct NotifyConfigJson {
     telegram: TelegramBlock,
 }
 
-/// `~/.unipi/config/notify/config.json`'s `gotify` block, matching
-/// `packages/notify/types.ts`'s `GotifyConfig` (UNI-316): server URL + app
-/// token, `POST <server>/message` with header `X-Gotify-Key: <token>`
-/// (`packages/notify/platforms/gotify.ts`).
+/// The `notify` extension's `gotify` block (UNI-316): server URL + app token,
+/// `POST <server>/message` with header `X-Gotify-Key: <token>`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GotifyBlock {
@@ -94,10 +98,8 @@ struct GotifyBlock {
     app_token: Option<String>,
 }
 
-/// `~/.unipi/config/notify/config.json`'s `telegram` block, matching
-/// `packages/notify/types.ts`'s `TelegramConfig` (UNI-316): bot token +
-/// chat id, `POST https://api.telegram.org/bot<token>/sendMessage`
-/// (`packages/notify/platforms/telegram.ts`).
+/// The `notify` extension's `telegram` block (UNI-316): bot token + chat id,
+/// `POST https://api.telegram.org/bot<token>/sendMessage`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TelegramBlock {
@@ -125,7 +127,7 @@ pub struct TelegramConnection {
     pub enabled: bool,
 }
 
-/// Resolved ntfy connection details read from `~/.unipi/config/notify/config.json`.
+/// Resolved ntfy connection details read from the `notify` extension's settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NtfyConnection {
     pub server: Option<String>,
@@ -138,44 +140,122 @@ pub struct NtfyConnection {
     pub enabled: bool,
 }
 
-/// Env var overriding the notify config.json path (tests only; same idea
-/// as `data_dir::UNIPI_HOST_DIR_ENV`).
+/// Env var overriding the notify settings path (tests only; same idea as
+/// `data_dir::UNIPI_HOST_DIR_ENV`).
 pub const UNIPI_NOTIFY_CONFIG_ENV: &str = "UNIPI_NOTIFY_CONFIG_JSON";
 
-/// Default path for the pi-side notify config (shared with
-/// `packages/notify/ntfy-config.ts`'s legacy `config.json` fallback).
+/// The agent dir core uses (pi `getAgentDir`): `$OINO_AGENT_DIR`, else
+/// `~/.oino`. Kept local so this crate needs no core dependency for one path.
+pub fn agent_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("OINO_AGENT_DIR").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
+    crate::fs::home_dir_opt().map(|home| home.join(".oino"))
+}
+
+/// Default settings file holding the `notify` extension's settings:
+/// `<agent>/settings.json` (`$OINO_AGENT_DIR` or `~/.oino/settings.json`).
 pub fn notify_config_json_path() -> PathBuf {
     if let Ok(dir) = std::env::var(UNIPI_NOTIFY_CONFIG_ENV) {
         if !dir.is_empty() {
             return PathBuf::from(dir);
         }
     }
-    match crate::fs::home_dir_opt() {
-        Some(home) => home
-            .join(".unipi")
-            .join("config")
-            .join("notify")
-            .join("config.json"),
-        None => PathBuf::from(".unipi")
-            .join("config")
-            .join("notify")
-            .join("config.json"),
+    match agent_dir() {
+        Some(agent) => agent.join("settings.json"),
+        None => PathBuf::from(".oino").join("settings.json"),
     }
+}
+
+/// The `notify` block of `path`: the agent settings file's
+/// `extensionSettings.notify`, or — for a test/legacy file that is just the
+/// block itself — the whole object. Legacy flat dotted keys
+/// (`"ntfy.serverUrl": …`) are expanded like core's settings load does.
+fn notify_block(path: &Path) -> NotifyConfigJson {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return NotifyConfigJson::default();
+    };
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return NotifyConfigJson::default();
+    };
+    if let Some(block) = value
+        .get("extensionSettings")
+        .and_then(|it| it.get("notify"))
+        .cloned()
+    {
+        value = block;
+    }
+    expand_dotted(&mut value);
+    serde_json::from_value::<NotifyConfigJson>(value).unwrap_or_default()
+}
+
+/// Expands `{"ntfy.serverUrl": "x"}` into `{"ntfy": {"serverUrl": "x"}}`
+/// (core migrates legacy flat extension-settings keys on load).
+fn expand_dotted(value: &mut serde_json::Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    let dotted: Vec<(String, serde_json::Value)> = object
+        .iter()
+        .filter(|(key, _)| key.contains('.'))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    for (key, value) in dotted {
+        object.remove(&key);
+        insert_path(object, &key, value);
+    }
+}
+
+/// `insert_path(map, "ntfy.serverUrl", v)` sets `map.ntfy.serverUrl = v`,
+/// creating intermediate objects and replacing non-object values.
+fn insert_path(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    value: serde_json::Value,
+) {
+    let mut parts: Vec<&str> = key.split('.').collect();
+    let leaf = parts.pop().expect("split yields at least one part");
+    let mut cursor = map;
+    for part in parts {
+        let entry = cursor
+            .entry(part.to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if !entry.is_object() {
+            *entry = serde_json::json!({});
+        }
+        cursor = entry.as_object_mut().expect("just made an object");
+    }
+    cursor.insert(leaf.to_string(), value);
+}
+
+/// One secret field of the notify extension: the agent dir's `secrets.json`
+/// (`<agent>/secrets.json`, a flat string map). The settings registry stores
+/// secret fields as `<owner-ext-id>/<namespace>/<key>`; the extension's own
+/// fallback write uses `<namespace>/<key>`. Never errors.
+fn notify_secret(path: &Path, keys: &[&str]) -> Option<String> {
+    let agent = path.parent()?;
+    let raw = std::fs::read_to_string(agent.join("secrets.json")).ok()?;
+    let map = serde_json::from_str::<std::collections::HashMap<String, String>>(&raw).ok()?;
+    keys.iter().find_map(|key| map.get(*key).cloned())
 }
 
 /// Reads the ntfy connection details from `path` (missing/corrupt file ->
 /// all-`None`, never an error \u2014 the app shows "not configured" instead).
 pub fn read_ntfy_config(path: &Path) -> NtfyConnection {
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return NtfyConnection::default();
-    };
-    let Ok(parsed) = serde_json::from_str::<NotifyConfigJson>(&raw) else {
-        return NtfyConnection::default();
-    };
+    let parsed = notify_block(path);
     NtfyConnection {
         server: parsed.ntfy.server_url,
         topic: parsed.ntfy.topic,
-        token: parsed.ntfy.token,
+        token: parsed.ntfy.token.or_else(|| {
+            notify_secret(
+                path,
+                &[
+                    "unipi.notify/notify/ntfy.token",
+                    "notify/ntfy.token",
+                    "ntfy.token",
+                ],
+            )
+        }),
         app_detail_full: parsed.ntfy.app_detail.as_deref() == Some("full"),
         enabled: parsed.ntfy.enabled,
     }
@@ -184,15 +264,19 @@ pub fn read_ntfy_config(path: &Path) -> NtfyConnection {
 /// Reads the Gotify connection details from `path` (missing/corrupt file
 /// -> all-`None`, never an error).
 pub fn read_gotify_config(path: &Path) -> GotifyConnection {
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return GotifyConnection::default();
-    };
-    let Ok(parsed) = serde_json::from_str::<NotifyConfigJson>(&raw) else {
-        return GotifyConnection::default();
-    };
+    let parsed = notify_block(path);
     GotifyConnection {
         server_url: parsed.gotify.server_url,
-        app_token: parsed.gotify.app_token,
+        app_token: parsed.gotify.app_token.or_else(|| {
+            notify_secret(
+                path,
+                &[
+                    "unipi.notify/notify/gotify.appToken",
+                    "notify/gotify.appToken",
+                    "gotify.appToken",
+                ],
+            )
+        }),
         enabled: parsed.gotify.enabled,
     }
 }
@@ -200,15 +284,22 @@ pub fn read_gotify_config(path: &Path) -> GotifyConnection {
 /// Reads the Telegram connection details from `path` (missing/corrupt file
 /// -> all-`None`, never an error).
 pub fn read_telegram_config(path: &Path) -> TelegramConnection {
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return TelegramConnection::default();
-    };
-    let Ok(parsed) = serde_json::from_str::<NotifyConfigJson>(&raw) else {
-        return TelegramConnection::default();
+    let parsed = notify_block(path);
+    let secret = |key: &str| {
+        let namespace = format!("notify/{key}");
+        let owned = format!("unipi.notify/notify/{key}");
+        let bare = key.to_string();
+        notify_secret(path, &[&owned, &namespace, &bare])
     };
     TelegramConnection {
-        bot_token: parsed.telegram.bot_token,
-        chat_id: parsed.telegram.chat_id,
+        bot_token: parsed
+            .telegram
+            .bot_token
+            .or_else(|| secret("telegram.botToken")),
+        chat_id: parsed
+            .telegram
+            .chat_id
+            .or_else(|| secret("telegram.chatId")),
         enabled: parsed.telegram.enabled,
     }
 }
@@ -302,8 +393,8 @@ pub async fn send_telegram(
     Ok(())
 }
 
-/// `~/.unipi/config/notify/app-endpoints.json`: matches
-/// `packages/notify/app-endpoints.ts`'s `{ endpoints: [{url, addedAt}] }`.
+/// `<host dir>/app-endpoints.json`: `{ endpoints: [{url, addedAt}] }`, the
+/// fan-out list `notify_register` maintains and phone push reads.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct AppEndpointsFile {
     #[serde(default)]
@@ -320,25 +411,15 @@ struct AppEndpointEntry {
 /// Env var overriding the app-endpoints.json path (tests only).
 pub const UNIPI_NOTIFY_ENDPOINTS_ENV: &str = "UNIPI_NOTIFY_ENDPOINTS_JSON";
 
-/// Default path for the app-endpoints fan-out file (same scope as
-/// `notify_config_json_path`'s `config.json`).
-pub fn app_endpoints_path() -> PathBuf {
+/// The app-endpoints fan-out file: `<host dir>/app-endpoints.json`
+/// (`$UNIPI_NOTIFY_ENDPOINTS_JSON` overrides it in tests).
+pub fn app_endpoints_path(paths: &HostPaths) -> PathBuf {
     if let Ok(dir) = std::env::var(UNIPI_NOTIFY_ENDPOINTS_ENV) {
         if !dir.is_empty() {
             return PathBuf::from(dir);
         }
     }
-    match crate::fs::home_dir_opt() {
-        Some(home) => home
-            .join(".unipi")
-            .join("config")
-            .join("notify")
-            .join("app-endpoints.json"),
-        None => PathBuf::from(".unipi")
-            .join("config")
-            .join("notify")
-            .join("app-endpoints.json"),
-    }
+    paths.root.join("app-endpoints.json")
 }
 
 /// Adds (or refreshes) one endpoint's `addedAt`, de-duplicated by URL.
@@ -547,6 +628,79 @@ mod tests {
         assert_eq!(connection.topic, Some("abc".to_string()));
         assert_eq!(connection.token, Some("tk_x".to_string()));
         assert!(connection.app_detail_full);
+    }
+
+    /// v2 (host.md §9.5): the notify settings live in the agent settings file
+    /// under `extensionSettings.notify`, the same values the `unipi.notify`
+    /// extension's wizards write.
+    #[test]
+    fn reads_the_notify_block_from_agent_settings() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"theme":"dark","extensionSettings":{"notify":{"ntfy":{"enabled":true,"serverUrl":"https://ntfy.example","topic":"fam","appDetail":"full"},"events":{"agentEnd":true}}}}"#,
+        )
+        .expect("write");
+        let connection = read_ntfy_config(&path);
+        assert_eq!(connection.server, Some("https://ntfy.example".to_string()));
+        assert_eq!(connection.topic, Some("fam".to_string()));
+        assert!(connection.app_detail_full);
+        assert!(connection.enabled);
+    }
+
+    /// Core migrates legacy flat extension-settings keys on load; the host
+    /// reads the same shapes.
+    #[test]
+    fn legacy_dotted_settings_keys_are_expanded() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"extensionSettings":{"notify":{"ntfy.serverUrl":"https://ntfy.example","ntfy.topic":"flat","ntfy.enabled":true}}}"#,
+        )
+        .expect("write");
+        let connection = read_ntfy_config(&path);
+        assert_eq!(connection.server, Some("https://ntfy.example".to_string()));
+        assert_eq!(connection.topic, Some("flat".to_string()));
+        assert!(connection.enabled);
+    }
+
+    /// Secret fields never reach settings.json: they live in
+    /// `<agent>/secrets.json` as `<owner-ext-id>/<namespace>/<key>`.
+    #[test]
+    fn secret_fields_come_from_the_agent_secrets_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"extensionSettings":{"notify":{"ntfy":{"enabled":true,"serverUrl":"https://ntfy.example","topic":"t"},"gotify":{"enabled":true,"serverUrl":"https://gotify.example"},"telegram":{"enabled":true}}}}"#,
+        )
+        .expect("write");
+        std::fs::write(
+            tmp.path().join("secrets.json"),
+            r#"{"unipi.notify/notify/ntfy.token":"tk_ntfy","unipi.notify/notify/gotify.appToken":"tk_gotify","notify/telegram.botToken":"tk_tg","unipi.notify/notify/telegram.chatId":"42"}"#,
+        )
+        .expect("write");
+        let ntfy = read_ntfy_config(&path);
+        assert_eq!(ntfy.token, Some("tk_ntfy".to_string()));
+        let gotify = read_gotify_config(&path);
+        assert_eq!(gotify.app_token, Some("tk_gotify".to_string()));
+        let telegram = read_telegram_config(&path);
+        assert_eq!(telegram.bot_token, Some("tk_tg".to_string()));
+        assert_eq!(telegram.chat_id, Some("42".to_string()));
+    }
+
+    /// The UnifiedPush fan-out list is host-owned (v2: the host sends the
+    /// notifications): `<host dir>/app-endpoints.json`.
+    #[test]
+    fn app_endpoints_live_in_the_host_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let paths = HostPaths::from_dir(tmp.path().join("host"));
+        assert_eq!(
+            app_endpoints_path(&paths),
+            tmp.path().join("host").join("app-endpoints.json")
+        );
     }
 
     #[test]

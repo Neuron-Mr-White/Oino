@@ -117,14 +117,14 @@ pub struct Channels {
 
 impl Channels {
     /// Reads every channel's connection details from disk (UNI-316): the
-    /// shared `~/.unipi/config/notify/config.json` for ntfy/gotify/telegram,
-    /// the app-endpoints fan-out file, and the host's own E2E notify key
+    /// notify extension's settings for ntfy/gotify/telegram, the host's
+    /// app-endpoints fan-out file, and the host's own E2E notify key
     /// (generated on first use).
     pub fn load(paths: &HostPaths, settings: &CronSettings) -> Channels {
         let config_path = notify::notify_config_json_path();
         Channels {
             ntfy: notify::read_ntfy_config(&config_path),
-            endpoints: notify::read_app_endpoints(&notify::app_endpoints_path()),
+            endpoints: notify::read_app_endpoints(&notify::app_endpoints_path(paths)),
             key: notify::notify_key_or_create(paths).ok(),
             ntfy_topic: settings.ntfy_topic.clone(),
             gotify: notify::read_gotify_config(&config_path),

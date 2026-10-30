@@ -1,2 +1,204 @@
-//! settings-layer wire types for `unipi/oino/1` (host.md §7). Wire DTOs land with their
-//! work packages; this module exists so the v2 protocol surface is in place.
+//! Host settings (host.md §9.9): one Settings screen for the app.
+//!
+//! The host's own settings live in `<host dir>/config.json` and are read
+//! fresh on every request (no restart after a change):
+//!
+//! ```json
+//! { "relay": "n0" | "https://relay.example",
+//!   "relay_only": false,
+//!   "forwarding": { "enabled": false, "ports": "any" | [5173], "devices": [] },
+//!   "push": { "enabled": false, "devices": [] },
+//!   "fs": { "allow": [], "deny": [] },
+//!   "browser": { … }, "sharing": { … }, "cron": { … },
+//!   "term": { "max": 16 },
+//!   "update": { "mode": "prompt" | "auto" } }
+//! ```
+//!
+//! - `host_settings_get` → the whole object, secret-looking values masked
+//!   ([`SECRET_MASK`]); the file's unknown keys are preserved but only the
+//!   known ones are returned.
+//! - `host_settings_set{key, value}` → one dotted key ([`HostSettingsKey`]);
+//!   the merged `config.json` is validated before it is written, so an
+//!   unknown key or a value of the wrong shape is `E_SCHEMA` and changes
+//!   nothing. Only this computer may change its host settings.
+//!
+//! App settings (`closeAction`, autostart, UI prefs) live in the app's own
+//! config dir and never travel here; pi agent settings and extension settings
+//! are core's (`_oino/get_settings` etc. over a session stream). This module
+//! is only the middle layer.
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// Mask shown in place of a secret-looking value (core's `SECRET_MASK`).
+pub const SECRET_MASK: &str = "••••••";
+
+/// The top-level blocks of `config.json` (host.md §9.9).
+pub const HOST_SETTINGS_BLOCKS: [&str; 8] = [
+    "forwarding",
+    "push",
+    "fs",
+    "browser",
+    "sharing",
+    "cron",
+    "term",
+    "update",
+];
+
+/// Leaves (and block names) `host_settings_set` accepts. Blocks owned by
+/// other modules (`browser`, `sharing`, `cron`) accept any leaf under their
+/// prefix — their own loaders are the schema.
+pub const HOST_SETTINGS_KEYS: [&str; 18] = [
+    "relay",
+    "relay_only",
+    "forwarding",
+    "forwarding.enabled",
+    "forwarding.ports",
+    "forwarding.devices",
+    "push",
+    "push.enabled",
+    "push.devices",
+    "fs",
+    "fs.allow",
+    "fs.deny",
+    "term",
+    "term.max",
+    "update",
+    "update.mode",
+    "browser",
+    "sharing",
+];
+
+/// Is `key` a host settings key (an exact leaf/block or a leaf of an
+/// open block)? `cron` is open too; it is not in [`HOST_SETTINGS_KEYS`]
+/// because its whole block is a settings object of its own.
+pub fn is_host_settings_key(key: &str) -> bool {
+    if HOST_SETTINGS_KEYS.contains(&key) || key == "cron" {
+        return true;
+    }
+    ["browser", "sharing", "cron"].iter().any(|block| {
+        key.strip_prefix(block)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .is_some_and(|rest| !rest.is_empty() && !rest.starts_with('.') && !rest.ends_with('.'))
+    })
+}
+
+/// A dotted host settings key: `relay`, `term.max`, `forwarding.enabled`, …
+/// Unknown keys are a schema error, never a silent write into nowhere.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct HostSettingsKey(String);
+
+impl HostSettingsKey {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for HostSettingsKey {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if !is_host_settings_key(&value) {
+            return Err(format!(
+                "unknown host settings key `{value}` (known: {})",
+                HOST_SETTINGS_KEYS.join(", ")
+            ));
+        }
+        Ok(HostSettingsKey(value))
+    }
+}
+
+impl<'de> Deserialize<'de> for HostSettingsKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        HostSettingsKey::try_from(String::deserialize(deserializer)?)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+/// `relay`: the public N0 relays (`"n0"`) or a self-hosted relay URL.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct RelaySetting(String);
+
+impl RelaySetting {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for RelaySetting {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value == "n0" {
+            return Ok(RelaySetting(value));
+        }
+        // Same loose check as the other URL fields (`NotifyEndpoint`): the
+        // host parses the URL for real when it dials the relay.
+        let rest = value.strip_prefix("https://").unwrap_or_default();
+        if rest.is_empty() || rest.starts_with('/') {
+            return Err("relay must be \"n0\" or an https URL".into());
+        }
+        Ok(RelaySetting(value))
+    }
+}
+
+impl<'de> Deserialize<'de> for RelaySetting {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        RelaySetting::try_from(String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+/// `host_settings_set{key, value}`: patch one dotted key of `config.json`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HostSettingsSetRequest {
+    pub key: HostSettingsKey,
+    pub value: Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_are_closed_but_open_blocks_take_leaves() {
+        assert!(is_host_settings_key("relay"));
+        assert!(is_host_settings_key("relay_only"));
+        assert!(is_host_settings_key("forwarding.enabled"));
+        assert!(is_host_settings_key("fs.allow"));
+        assert!(is_host_settings_key("term.max"));
+        assert!(is_host_settings_key("update.mode"));
+        assert!(is_host_settings_key("cron"));
+        assert!(is_host_settings_key("cron.concurrency"));
+        assert!(is_host_settings_key("browser.headless"));
+        assert!(is_host_settings_key("sharing.anything"));
+        assert!(!is_host_settings_key("nope"));
+        assert!(!is_host_settings_key("browser."));
+        assert!(!is_host_settings_key("browser..x"));
+        assert!(!is_host_settings_key("term."));
+        assert!(!is_host_settings_key(""));
+    }
+
+    #[test]
+    fn unknown_key_is_a_schema_error() {
+        assert!(serde_json::from_str::<HostSettingsKey>("\"term.max\"").is_ok());
+        assert!(serde_json::from_str::<HostSettingsKey>("\"term.nope\"").is_err());
+        let request: HostSettingsSetRequest =
+            serde_json::from_str(r#"{"key":"update.mode","value":"auto"}"#).unwrap();
+        assert_eq!(request.key.as_str(), "update.mode");
+        assert_eq!(request.value, serde_json::json!("auto"));
+    }
+
+    #[test]
+    fn relay_is_n0_or_https() {
+        assert_eq!(
+            RelaySetting::try_from("n0".to_string()).unwrap().as_str(),
+            "n0"
+        );
+        assert!(RelaySetting::try_from("https://relay.example".to_string()).is_ok());
+        assert!(RelaySetting::try_from("http://relay.example".to_string()).is_err());
+        assert!(RelaySetting::try_from("relay.example".to_string()).is_err());
+        assert!(RelaySetting::try_from("".to_string()).is_err());
+    }
+}

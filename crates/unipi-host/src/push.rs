@@ -664,7 +664,7 @@ pub fn prepare_push(
 /// endpoint. Best-effort; returns whether anything was sent.
 pub async fn notify_push(paths: &HostPaths, host_name: &str, item: &PushItem) -> bool {
     let connection = crate::notify::read_ntfy_config(&crate::notify::notify_config_json_path());
-    let endpoints = crate::notify::read_app_endpoints(&crate::notify::app_endpoints_path());
+    let endpoints = crate::notify::read_app_endpoints(&crate::notify::app_endpoints_path(paths));
     if connection.topic.is_none() && endpoints.is_empty() {
         return false;
     }

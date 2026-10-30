@@ -621,6 +621,13 @@ pub enum Request {
     TermKill {
         term_id: crate::term::TermId,
     },
+    /// v2 (host.md §9.9): the host settings object (`config.json`), secrets
+    /// masked. Any paired device may read it; → the object.
+    HostSettingsGet,
+    /// v2 (host.md §9.9): local-only. Patch one dotted key (validated; an
+    /// unknown key or a wrong-typed value is `E_SCHEMA`). → the masked,
+    /// complete object.
+    HostSettingsSet(crate::settings::HostSettingsSetRequest),
 }
 
 /// A UnifiedPush/ntfy endpoint URL: 1..=2048 characters, must look like an

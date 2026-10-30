@@ -219,6 +219,10 @@ impl Handler {
                 | Request::PairStatus { .. }
                 | Request::DevicesList
                 | Request::DeviceRevoke { .. }
+                // v2 (host.md §9.9): switching host settings on (forwarding,
+                // browser, cron, …) stays the PC owner's decision, so a paired
+                // phone may read them but never write them.
+                | Request::HostSettingsSet(..)
         ) && peer != Peer::Local
         {
             return Err(error(
@@ -322,9 +326,8 @@ impl Handler {
                 crate::blob::serve_get_with(
                     &self.paths.blobs(),
                     // v2: the app-bridge attachment allow-list is gone with
-                    // the bridge; path access is scope-gated (plus pushed
-                    // files) until the hub registers attachments again.
-                    None,
+                    // the bridge; path access is scope-gated plus one pushed
+                    // file.
                     scope.as_ref(),
                     pushed.as_deref(),
                     write,
@@ -493,7 +496,7 @@ impl Handler {
                 tracing::info!(op = "fs_import", to = to.as_str(), "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
                 let home = scope.home.clone();
-                let default_uploads = crate::fs::resolve_request_path("~/.unipi/uploads", &home)?;
+                let default_uploads = crate::fs::resolve_request_path("~/.oino/uploads", &home)?;
                 let requested = crate::fs::resolve_request_path(to.as_str(), &home)?;
                 let create_parent = requested.parent() == Some(default_uploads.as_path());
                 if create_parent {
@@ -580,7 +583,7 @@ impl Handler {
             Request::NotifyRegister { endpoint } => {
                 tracing::info!(op = "notify_register", "request");
                 crate::notify::register_app_endpoint(
-                    &crate::notify::app_endpoints_path(),
+                    &crate::notify::app_endpoints_path(&self.paths),
                     endpoint.as_str(),
                 )
                 .map_err(internal)?;
@@ -791,6 +794,24 @@ impl Handler {
                 .map_err(internal)?;
             }
             Request::Pair { .. } => {}
+            Request::HostSettingsGet => {
+                tracing::info!(op = "host_settings_get", "request");
+                let data = crate::settings::get(&self.paths)?;
+                write_control(write, &Control::Ok { data: Some(data) })
+                    .await
+                    .map_err(internal)?;
+            }
+            Request::HostSettingsSet(request) => {
+                tracing::info!(
+                    op = "host_settings_set",
+                    key = request.key.as_str(),
+                    "request"
+                );
+                let data = crate::settings::set(&self.paths, &request)?;
+                write_control(write, &Control::Ok { data: Some(data) })
+                    .await
+                    .map_err(internal)?;
+            }
             Request::HostInfo => {
                 let owner = match crate::instance::status(&self.paths) {
                     Ok(crate::instance::Status::Running { owner: Some(o) }) => Some(o),
