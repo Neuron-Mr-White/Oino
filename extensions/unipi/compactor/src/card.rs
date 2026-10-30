@@ -1,6 +1,7 @@
 //! The compaction card (unipi `card.ts`) and branch stats (unipi `stats.ts`, `info-screen.ts`,
 //! `tools/context-budget.ts`, `tools/ctx-doctor.ts`).
 
+use oino_extension::ui::widgets::prelude::*;
 use serde_json::{Value, json};
 use unipi_kit::fmt::format_tokens;
 
@@ -152,16 +153,30 @@ pub fn details(d: &Value) -> Vec<(String, String)> {
     rows
 }
 
-/// OUS rendering of the card.
+/// v2 rendering of the card (§12.1: `card` → `Block`, `kv` → `Table`).
 #[must_use]
 pub fn render(d: &Value, expanded: bool) -> Value {
-    let mut children = vec![
-        json!({"t": "text", "value": [{"text": headline(d)}, {"text": if expanded { "" } else { "  ctrl+o" }, "dim": true}]}),
-    ];
+    let head: Node = Paragraph::new(Line::from(vec![
+        Span::from(headline(d)),
+        Span::from(if expanded { "" } else { "  ctrl+o" }).dim(),
+    ]))
+    .into();
+    let mut children = vec![head];
     if expanded {
-        children.push(json!({"t": "kv", "items": details(d).into_iter().map(|(k, v)| json!({"key": k, "value": v})).collect::<Vec<_>>()}));
+        let rows = details(d).into_iter().map(|(k, v)| {
+            Row::new([
+                Cell::new(k).style(Style::new().fg(Color::Muted)),
+                Cell::new(v),
+            ])
+        });
+        children.push(Table::new(rows, [Constraint::Max(24), Constraint::Fill(1)]).into());
     }
-    json!({"t": "card", "rail": "harness", "source": "Compactor", "body": {"t": "stack", "direction": "vertical", "children": children}})
+    let card = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .rail(Color::Harness)
+        .title(vec![Title::bottom("Compactor")])
+        .child(Layout::default().children(children));
+    serde_json::to_value(Node::from(card)).unwrap_or(Value::Null)
 }
 
 /// Inputs of the card data.
@@ -496,7 +511,12 @@ mod tests {
             "Compacted from 100 tokens · model summary · at 81%"
         );
         assert_eq!(details(&p)[1].1, "81% of context (setting: 80%)");
-        assert_eq!(render(&d, true)["t"], "card");
+        let card = render(&d, true);
+        assert_eq!(card["t"], "Block");
+        assert_eq!(card["rail"], "harness");
+        assert_eq!(card["title"][0]["content"], "Compactor");
+        assert_eq!(card["title"][0]["position"], "Bottom");
+        assert_eq!(card["child"]["children"][1]["t"], "Table");
     }
 
     #[test]
