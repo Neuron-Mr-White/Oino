@@ -36,6 +36,7 @@ use oino_extension::command::CompletionItem;
 use oino_extension::prelude::*;
 use oino_extension::session::{CustomMessage, Delivery, Provenance, SendOptions};
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::widgets::prelude::*;
 use oino_extension::wit::registry::RendererTarget;
 use oino_extension::wit::session as ws;
 use unipi_kit::services::{MoveReport, MoveRequest, fanout as fan};
@@ -1443,16 +1444,38 @@ fn spawn_replay_kick() {
     timers::set(PENDING_TIMER, Duration::from_millis(500), false);
 }
 
-// ── renderers (OUS memory cards) ─────────────────────────────────────────────
+// ── renderers (v2 memory cards) ──────────────────────────────────────────────
 
+/// A memory card: rounded block with the tone rail and a `Memory` bottom title.
 #[allow(clippy::needless_pass_by_value, reason = "rows are built inline")]
-fn rail(rows: Vec<Value>, tone: &str) -> Value {
-    json!({"t": "card", "rail": tone, "source": "Memory", "body": {"t": "stack", "direction": "vertical", "children": rows}})
+fn rail(rows: Vec<Node>, tone: &str) -> Node {
+    Block::default()
+        .borders(Borders::All)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(Color::Border))
+        .rail(Color::parse(tone))
+        .title(vec![Title::bottom(Line::from("Memory"))])
+        .child(Layout::default().children(rows))
+        .into()
 }
 
+/// One unwrapped text line.
+fn text(line: impl Into<Line>) -> Node {
+    Paragraph::new(line.into())
+        .wrap(Wrap::Disabled(false))
+        .into()
+}
+
+/// Left text plus a dim right-aligned note.
 #[allow(clippy::needless_pass_by_value, reason = "cells are built inline")]
-fn row(left: Value, right: Option<String>) -> Value {
-    json!({"t": "stack", "direction": "horizontal", "gap": 2, "children": [{"t": "text", "wrap": false, "value": left}, {"t": "text", "wrap": false, "value": [{"text": right.unwrap_or_default(), "dim": true}]}]})
+fn row(left: Line, right: Option<String>) -> Node {
+    Layout::horizontal([Constraint::Fill(1), Constraint::Min(0)])
+        .spacing(2)
+        .children([
+            Paragraph::new(left).wrap(Wrap::Disabled(false)).into(),
+            text(Span::from_string(right.unwrap_or_default()).dim()),
+        ])
+        .into()
 }
 
 fn outcome_tone(o: &str) -> &'static str {
@@ -1466,15 +1489,17 @@ fn outcome_tone(o: &str) -> &'static str {
 /// Renders a memory tool result (unipi `renderResult` cards).
 #[must_use]
 #[allow(clippy::too_many_lines, reason = "one card per memory tool")]
-pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
+pub fn render_tool(name: &str, d: &Value, plain: &str, expanded: bool) -> Node {
     let plural = |n: usize, w: &str| format!("{n} {w}{}", if n == 1 { "" } else { "s" });
     match name {
         "memory_store" => {
             let Some(outcome) = d.get("outcome").and_then(Value::as_str) else {
                 return rail(
-                    vec![
-                        json!({"t": "text", "value": [{"text": "Memory ", "bold": true}, {"text": text.lines().next().unwrap_or_default(), "tone": "warning"}]}),
-                    ],
+                    vec![text(Line::from(vec![
+                        Span::from("Memory ").bold(),
+                        Span::from_string(plain.lines().next().unwrap_or_default())
+                            .fg(Color::Warning),
+                    ]))],
                     "warning",
                 );
             };
@@ -1484,7 +1509,18 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
                 _ => "⚠ markdown only",
             };
             let mut rows = vec![row(
-                json!([{"text": "Memory ", "bold": true}, {"text": if d.get("action").and_then(Value::as_str) == Some("updated") { "updated " } else { "" }, "dim": true}, {"text": d.get("title").and_then(Value::as_str).unwrap_or_default()}]),
+                Line::from(vec![
+                    Span::from("Memory ").bold(),
+                    Span::from_string(
+                        if d.get("action").and_then(Value::as_str) == Some("updated") {
+                            "updated "
+                        } else {
+                            ""
+                        },
+                    )
+                    .dim(),
+                    Span::from_string(d.get("title").and_then(Value::as_str).unwrap_or_default()),
+                ]),
                 Some(format!(
                     "{label} {} › {}",
                     d.get("project").and_then(Value::as_str).unwrap_or_default(),
@@ -1498,7 +1534,7 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
                 .flatten()
                 .filter_map(Value::as_str)
             {
-                rows.push(json!({"t": "text", "value": [{"text": format!("~ similar: {s}"), "dim": true}]}));
+                rows.push(text(Span::from_string(format!("~ similar: {s}")).dim()));
             }
             rail(rows, outcome_tone(outcome))
         }
@@ -1512,7 +1548,10 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
             if hits.is_empty() {
                 return rail(
                     vec![row(
-                        json!([{"text": "Memory ", "bold": true}, {"text": format!("\"{q}\"")}]),
+                        Line::from(vec![
+                            Span::from("Memory ").bold(),
+                            Span::from_string(format!("\"{q}\"")),
+                        ]),
                         Some("no matches".into()),
                     )],
                     "harness",
@@ -1528,7 +1567,10 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
                 hits.len().min(5)
             };
             let mut rows = vec![row(
-                json!([{"text": "Memory ", "bold": true}, {"text": format!("\"{q}\"")}]),
+                Line::from(vec![
+                    Span::from("Memory ").bold(),
+                    Span::from_string(format!("\"{q}\"")),
+                ]),
                 Some(format!(
                     "{} · {}",
                     plural(hits.len(), "hit"),
@@ -1536,14 +1578,48 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
                 )),
             )];
             for h in &hits[..shown] {
-                rows.push(json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-                    {"t": "meter", "value": h.get("score").and_then(Value::as_f64).unwrap_or(0.0), "max": 1, "tone": "harness"},
-                    {"t": "text", "wrap": false, "value": h.get("title").and_then(Value::as_str).unwrap_or_default()},
-                    {"t": "text", "wrap": false, "value": [{"text": format!("{} › {} · {}", h.get("wing").and_then(Value::as_str).unwrap_or_default(), h.get("room").and_then(Value::as_str).unwrap_or_default(), search::source_label(h.get("sourceLabel").and_then(Value::as_str).unwrap_or_default())), "dim": true}]},
-                ]}));
+                rows.push(
+                    Layout::horizontal([
+                        Constraint::Length(10),
+                        Constraint::Fill(1),
+                        Constraint::Min(0),
+                    ])
+                    .spacing(1)
+                    .children([
+                        LineGauge::new(
+                            h.get("score")
+                                .and_then(Value::as_f64)
+                                .unwrap_or(0.0)
+                                .clamp(0.0, 1.0),
+                        )
+                        .filled_style(Style::new().fg(Color::Harness))
+                        .into(),
+                        Paragraph::new(Line::from(
+                            h.get("title").and_then(Value::as_str).unwrap_or_default(),
+                        ))
+                        .wrap(Wrap::Disabled(false))
+                        .into(),
+                        text(
+                            Span::from_string(format!(
+                                "{} › {} · {}",
+                                h.get("wing").and_then(Value::as_str).unwrap_or_default(),
+                                h.get("room").and_then(Value::as_str).unwrap_or_default(),
+                                search::source_label(
+                                    h.get("sourceLabel")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or_default()
+                                )
+                            ))
+                            .dim(),
+                        ),
+                    ])
+                    .into(),
+                );
             }
             if hits.len() > shown {
-                rows.push(json!({"t": "text", "value": [{"text": format!("… {} more", hits.len() - shown), "dim": true}]}));
+                rows.push(text(
+                    Span::from_string(format!("… {} more", hits.len() - shown)).dim(),
+                ));
             }
             rail(rows, "harness")
         }
@@ -1561,7 +1637,16 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
             };
             rail(
                 vec![row(
-                    json!([{"text": "Memory ", "bold": true}, {"text": "forgot ", "dim": true}, {"text": d.get("title").or_else(|| d.get("id")).and_then(Value::as_str).unwrap_or("memory")}]),
+                    Line::from(vec![
+                        Span::from("Memory ").bold(),
+                        Span::from("forgot ").dim(),
+                        Span::from_string(
+                            d.get("title")
+                                .or_else(|| d.get("id"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("memory"),
+                        ),
+                    ]),
                     Some(right.into()),
                 )],
                 if deleted {
@@ -1584,7 +1669,18 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
                 mems.len().min(8)
             };
             let mut rows = vec![row(
-                json!([{"text": "Memory ", "bold": true}, {"text": format!("{} {}", mems.len(), if mems.len() == 1 { "memory" } else { "memories" })}]),
+                Line::from(vec![
+                    Span::from("Memory ").bold(),
+                    Span::from_string(format!(
+                        "{} {}",
+                        mems.len(),
+                        if mems.len() == 1 {
+                            "memory"
+                        } else {
+                            "memories"
+                        }
+                    )),
+                ]),
                 Some(
                     if global {
                         "all projects"
@@ -1597,7 +1693,7 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
             for m in &mems[..shown] {
                 let t = m.get("type").and_then(Value::as_str).unwrap_or_default();
                 rows.push(row(
-                    json!(m.get("title").and_then(Value::as_str).unwrap_or_default()),
+                    Line::from(m.get("title").and_then(Value::as_str).unwrap_or_default()),
                     Some(if global {
                         format!(
                             "{} › {t}",
@@ -1609,7 +1705,9 @@ pub fn render_tool(name: &str, d: &Value, text: &str, expanded: bool) -> Value {
                 ));
             }
             if mems.len() > shown {
-                rows.push(json!({"t": "text", "value": [{"text": format!("… {} more", mems.len() - shown), "dim": true}]}));
+                rows.push(text(
+                    Span::from_string(format!("… {} more", mems.len() - shown)).dim(),
+                ));
             }
             rail(rows, "harness")
         }
@@ -1772,45 +1870,118 @@ impl Extension for Memory {
             cx.renderer(RendererTarget::CustomMessage, t, move |_ext, req, _cx| {
                 let m = req.get("data")?;
                 let content = m.get("content").and_then(Value::as_str).unwrap_or_default();
-                let first: String = content.lines().next().unwrap_or_default().chars().filter(|c| !matches!(c, '*' | '#' | '🧠')).collect();
-                Some(rail(vec![json!({"t": "text", "value": [{"text": format!("{label} "), "bold": true}, {"text": first.trim(), "dim": true}]})], "harness"))
+                let first: String = content
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .chars()
+                    .filter(|c| !matches!(c, '*' | '#' | '🧠'))
+                    .collect();
+                serde_json::to_value(rail(
+                    vec![text(Line::from(vec![
+                        Span::from_string(format!("{label} ")).bold(),
+                        Span::from_string(first.trim()).dim(),
+                    ]))],
+                    "harness",
+                ))
+                .ok()
             });
         }
-        cx.renderer(RendererTarget::CustomEntry, CARD_CUSTOM_TYPE, |ext, req, cx| {
-            let e = req.get("data")?;
-            let d = e.get("data").unwrap_or(e);
-            let cfg = ext.cfg();
-            let (ro, wo) = ext.sessions.with(cx.session_id(), |s| (s.recall_override, s.write_override));
-            let count = d.get("count").and_then(Value::as_u64).unwrap_or(0);
-            let wake = d.get("wakeUp").and_then(Value::as_str);
-            let issue = d.get("issue").and_then(Value::as_str);
-            let mut rows = vec![
-                row(json!([{"text": "Memory palace ", "bold": true}, {"text": d.get("project").and_then(Value::as_str).unwrap_or_default()}]), Some(format!("{count} {}", if count == 1 { "memory" } else { "memories" }))),
-                json!({"t": "text", "value": [{"text": format!("recall {} · write {}{}", if cfg.recall_at_start && ro != Some(false) { "on" } else { "off" }, if cfg.write && wo != Some(false) { "on" } else { "off" }, if wake.is_some() { " · wake-up ready (expand)" } else { "" }), "dim": true}]}),
-            ];
-            if let Some(i) = issue {
-                rows.push(json!({"t": "text", "value": [{"text": i, "tone": "warning"}]}));
-            }
-            if req.get("expanded").and_then(Value::as_bool).unwrap_or(false)
-                && let Some(w) = wake
-            {
-                rows.push(json!({"t": "markdown", "value": w}));
-            }
-            Some(rail(rows, if issue.is_some() { "warning" } else { "harness" }))
-        });
-        cx.renderer(RendererTarget::CustomEntry, SAVE_CARD_TYPE, |_ext, req, _cx| {
-            let e = req.get("data")?;
-            let d = e.get("data").unwrap_or(e);
-            let titles: Vec<&str> = d.get("titles")?.as_array()?.iter().filter_map(Value::as_str).collect();
-            if titles.is_empty() {
-                return None;
-            }
-            let mut rows = vec![json!({"t": "text", "value": [{"text": "Memory saved ", "bold": true}, {"text": titles.join(", ")}]})];
-            if let Some(u) = d.get("usage") {
-                rows.push(json!({"t": "text", "value": [{"text": save_usage_line(u), "dim": true}]}));
-            }
-            Some(rail(rows, "harness"))
-        });
+        cx.renderer(
+            RendererTarget::CustomEntry,
+            CARD_CUSTOM_TYPE,
+            |ext, req, cx| {
+                let e = req.get("data")?;
+                let d = e.get("data").unwrap_or(e);
+                let cfg = ext.cfg();
+                let (ro, wo) = ext
+                    .sessions
+                    .with(cx.session_id(), |s| (s.recall_override, s.write_override));
+                let count = d.get("count").and_then(Value::as_u64).unwrap_or(0);
+                let wake = d.get("wakeUp").and_then(Value::as_str);
+                let issue = d.get("issue").and_then(Value::as_str);
+                let mut rows = vec![
+                    row(
+                        Line::from(vec![
+                            Span::from("Memory palace ").bold(),
+                            Span::from_string(
+                                d.get("project").and_then(Value::as_str).unwrap_or_default(),
+                            ),
+                        ]),
+                        Some(format!(
+                            "{count} {}",
+                            if count == 1 { "memory" } else { "memories" }
+                        )),
+                    ),
+                    text(
+                        Span::from_string(format!(
+                            "recall {} · write {}{}",
+                            if cfg.recall_at_start && ro != Some(false) {
+                                "on"
+                            } else {
+                                "off"
+                            },
+                            if cfg.write && wo != Some(false) {
+                                "on"
+                            } else {
+                                "off"
+                            },
+                            if wake.is_some() {
+                                " · wake-up ready (expand)"
+                            } else {
+                                ""
+                            }
+                        ))
+                        .dim(),
+                    ),
+                ];
+                if let Some(i) = issue {
+                    rows.push(text(Span::from_string(i).fg(Color::Warning)));
+                }
+                if req
+                    .get("expanded")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                    && let Some(w) = wake
+                {
+                    rows.push(Markdown::new(w).into());
+                }
+                serde_json::to_value(rail(
+                    rows,
+                    if issue.is_some() {
+                        "warning"
+                    } else {
+                        "harness"
+                    },
+                ))
+                .ok()
+            },
+        );
+        cx.renderer(
+            RendererTarget::CustomEntry,
+            SAVE_CARD_TYPE,
+            |_ext, req, _cx| {
+                let e = req.get("data")?;
+                let d = e.get("data").unwrap_or(e);
+                let titles: Vec<&str> = d
+                    .get("titles")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect();
+                if titles.is_empty() {
+                    return None;
+                }
+                let mut rows = vec![text(Line::from(vec![
+                    Span::from("Memory saved ").bold(),
+                    Span::from_string(titles.join(", ")),
+                ]))];
+                if let Some(u) = d.get("usage") {
+                    rows.push(text(Span::from_string(save_usage_line(u)).dim()));
+                }
+                serde_json::to_value(rail(rows, "harness")).ok()
+            },
+        );
         for name in [
             "memory_store",
             "memory_search",
@@ -1826,7 +1997,7 @@ impl Extension for Memory {
                     .pointer("/content/0/text")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
-                Some(render_tool(
+                serde_json::to_value(render_tool(
                     name,
                     result.get("details").unwrap_or(&Value::Null),
                     text,
@@ -1834,6 +2005,7 @@ impl Extension for Memory {
                         .and_then(Value::as_bool)
                         .unwrap_or(false),
                 ))
+                .ok()
             });
         }
 
@@ -2177,21 +2349,29 @@ mod tests {
 
     #[test]
     fn cards() {
-        let c = render_tool(
+        let c: Value = serde_json::to_value(render_tool(
             "memory_store",
             &json!({"action": "updated", "title": "t", "project": "p", "type": "decision", "outcome": "filed", "similar": ["\"x\" (70%)"]}),
             "",
             false,
-        );
+        ))
+        .unwrap_or_default();
         assert_eq!(c["rail"], "success");
-        let s = render_tool(
+        let s = serde_json::to_string(&render_tool(
             "memory_search",
             &json!({"query": "q", "hits": [{"title": "a", "wing": "w", "room": "r", "score": 0.5, "sourceLabel": "pi"}]}),
             "",
             false,
-        );
-        assert!(s.to_string().contains("1 hit · 1 project"));
-        let l = render_tool("global_memory_list", &json!({"memories": []}), "", false);
-        assert!(l.to_string().contains("all projects"));
+        ))
+        .unwrap_or_default();
+        assert!(s.contains("1 hit · 1 project"));
+        let l = serde_json::to_string(&render_tool(
+            "global_memory_list",
+            &json!({"memories": []}),
+            "",
+            false,
+        ))
+        .unwrap_or_default();
+        assert!(l.contains("all projects"));
     }
 }
