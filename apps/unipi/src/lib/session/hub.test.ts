@@ -29,10 +29,15 @@ describe('hub store', () => {
     w.emit({ kind: 'host_notice', level: 'warning', text: 'Safe mode: extensions are off' });
     w.emit({ kind: 'host_notice', level: 'warning', text: 'Safe mode: extensions are off' });
     w.emit({ kind: 'ui', snapshot: { scope: 'host', rev: 1, entries: [], dialogs: [] } });
+    // WP-A15: every git_changed ticks the repo's counter (the Git pane refreshes on it).
+    w.emit({ kind: 'git_changed', root: '/home/u/proj' });
+    w.emit({ kind: 'git_changed', root: '/home/u/proj' });
+    w.emit({ kind: 'git_changed', root: '/other' });
     expect(hub.state.cards.b?.run_state).toBe('working');
     expect(hub.state.cards.c?.name).toBe('New');
     expect(hub.state.cards.a).toBeUndefined();
     expect(hub.state.meta.a).toBeUndefined();
+    expect(hub.state.git).toEqual({ '/home/u/proj': 2, '/other': 1 });
     expect(hub.state.notices.map((n) => n.text)).toEqual(['Safe mode: extensions are off']);
     expect(ui).toHaveLength(1);
     hub.dismissNotice(hub.state.notices[0]!.id);
@@ -127,7 +132,7 @@ describe('hub helpers', () => {
   });
 
   it('notices are capped', () => {
-    const s: HubState = { hostId: 'h', cards: {}, notices: [], meta: {}, loaded: true, loading: false, live: true };
+    const s: HubState = { hostId: 'h', cards: {}, notices: [], meta: {}, git: {}, loaded: true, loading: false, live: true };
     for (let i = 0; i < MAX_NOTICES + 3; i++) applyHubEvent(s, { kind: 'host_notice', level: 'info', text: `n${i}` });
     expect(s.notices).toHaveLength(MAX_NOTICES);
     expect(s.notices[0]!.text).toBe('n3');

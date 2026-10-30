@@ -157,6 +157,23 @@ pub async fn git_op(
     simple_op_within(&app, &state, &host_id, request, limit).await
 }
 
+/// `git_watch{root, on}` (v2 app.md §3.14, WP-A15): refcount the repo's fs
+/// watcher on the host; `git_changed` hub events flow on `events_open`.
+#[tauri::command]
+pub async fn git_watch(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, NetState>,
+    host_id: String,
+    root: String,
+    on: Option<bool>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    let request = Request::GitWatch {
+        root: root.try_into().map_err(|e: String| schema("root", e))?,
+        on: on.unwrap_or(true),
+    };
+    simple_op_within(&app, &state, &host_id, request, Duration::from_secs(30)).await
+}
+
 #[tauri::command]
 pub async fn fs_roots(
     app: tauri::AppHandle,

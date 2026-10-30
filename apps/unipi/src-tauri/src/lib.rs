@@ -124,6 +124,7 @@ pub fn run() {
             fs::fs_write,
             fs::fs_import,
             fs::git_op,
+            fs::git_watch,
             cron::cron_list,
             cron::cron_show,
             cron::cron_runs,

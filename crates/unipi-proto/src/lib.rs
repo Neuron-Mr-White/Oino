@@ -62,10 +62,11 @@ pub use fs::{
     FS_READ_CAP, FS_SEARCH_CAP,
 };
 pub use git::{
-    GitArea, GitBranch, GitBranchesData, GitCmd, GitCommitData, GitCommitInfo, GitDiffData,
-    GitFileChange, GitLogData, GitMessage, GitPath, GitRefName, GitRepoData, GitShortstatData,
-    GitShowData, GitShowFile, GitStatusData, GitSyncData, GitTurnFile, GitTurnFilesData,
-    GIT_DIFF_CAP, GIT_LOG_MAX, GIT_PATHS_MAX, GIT_SHORTSTAT_UNTRACKED_MAX,
+    GitArea, GitBranch, GitBranchFile, GitBranchFilesData, GitBranchesData, GitCmd, GitCommitData,
+    GitCommitInfo, GitDiffData, GitFileChange, GitLogData, GitMessage, GitPath, GitRefName,
+    GitRepoData, GitShortstatData, GitShowData, GitShowFile, GitStatusData, GitSyncData,
+    GitTurnFile, GitTurnFilesData, GitWatchData, GIT_DIFF_CAP, GIT_LOG_MAX, GIT_PATHS_MAX,
+    GIT_SHORTSTAT_UNTRACKED_MAX,
 };
 pub use push::{PushId, PushItem, PushListData, PushOutcome, PushWait, PUSH_WAIT_MAX};
 pub use session::{

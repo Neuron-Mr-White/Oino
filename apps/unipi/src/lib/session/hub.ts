@@ -27,6 +27,8 @@ export type HubState = {
   cards: Record<string, SessionCard>;
   notices: HubNotice[];
   meta: Record<string, SessionMeta>;
+  /** Repo root → change counter (WP-A15): bumped by every `git_changed`. */
+  git: Record<string, number>;
   loaded: boolean;
   loading: boolean;
   error?: AppError;
@@ -79,6 +81,11 @@ export function applyHubEvent(s: HubState, event: HubEvent, now = Date.now()): v
       if (s.notices.length > MAX_NOTICES) s.notices.splice(0, s.notices.length - MAX_NOTICES);
       return;
     }
+    // WP-A15 (app.md §3.14): one tick per repo change; the Git pane refreshes
+    // on it (Z-98 — no polling).
+    case 'git_changed':
+      s.git[event.root] = (s.git[event.root] ?? 0) + 1;
+      return;
     default:
       return;
   }
@@ -108,7 +115,7 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
   const client = opts.client ?? hostClient(hostId);
   const setTimer = opts.setTimer ?? ((ms: number, cb: () => void) => setTimeout(cb, ms));
   const clearTimer = opts.clearTimer ?? ((h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const [state, setState] = createStore<HubState>({ hostId, cards: {}, notices: [], meta: {}, loaded: false, loading: false, live: false });
+  const [state, setState] = createStore<HubState>({ hostId, cards: {}, notices: [], meta: {}, git: {}, loaded: false, loading: false, live: false });
   let events: Closable | undefined;
   let eventsFocus: ((session: string | null) => void) | undefined;
   let retry: unknown;
