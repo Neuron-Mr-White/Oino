@@ -80,6 +80,17 @@ impl Env {
         }
     }
 
+    /// SIGKILL of the host process for the guest (core.md §2.1.8 restart gate): the runtime
+    /// and its guest instances die; the agent/project dirs and the recorded host calls
+    /// survive, and a fresh runtime is rebuilt over them.
+    fn restart(&mut self) {
+        let mut options =
+            WasmRuntimeOptions::new(HostConfig::new(self.agent.path(), self.project.path()));
+        options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        options.local_services = false;
+        self.runtime = WasmRuntime::new(options).unwrap();
+    }
+
     fn cx(&self, kind: CallKind) -> CallContext {
         CallContext {
             session_id: "s1".into(),
@@ -598,4 +609,44 @@ async fn updater_docs_browsers() {
         .to_value();
     assert_eq!(group["id"], "updater");
     assert_eq!(group["data"]["status"]["value"], "checking");
+}
+
+/// The §2.1.8 restart gate for notify: the audit verdict is OK-by-disposal — alert dedup and
+/// queue timers are memory-only, so a SIGKILL mid-queue loses the queued alert (accepted;
+/// worst case one lost or duplicate notification, never a wedged extension). After
+/// [`Env::restart`] the extension re-registers, `session_start` runs clean and a fresh
+/// notification dispatches to the configured platform.
+#[tokio::test(flavor = "multi_thread")]
+async fn kill_and_restart_keeps_notify_disposable_and_usable() {
+    let mut env = Env::new();
+    let (port, seen) = http_server(gotify_route).await;
+    let settings = json!({"notify": {
+        "gotify": {"enabled": true, "serverUrl": format!("http://127.0.0.1:{port}"), "appToken": "tok"},
+    }});
+    {
+        let (ext, _) = env.load("notify", "unipi_notify.wasm", settings.clone()).await;
+        env.event(&ext, EventKind::SessionStart, json!({"type": "session_start", "reason": "startup"})).await;
+        // Mid-turn: a notification is queued for dispatch when the process dies — the queue
+        // timer is never pumped.
+        let r = env.tool(&ext, "notify_user", json!({"message": "Lost in the crash", "platforms": ["gotify"]})).await;
+        assert_eq!(r["content"][0]["text"], "Notification sending to 1 platform(s): gotify");
+    }
+
+    env.restart();
+    let (ext, _) = env.load("notify", "unipi_notify.wasm", settings).await;
+    env.event(&ext, EventKind::SessionStart, json!({"type": "session_start", "reason": "startup"})).await;
+    assert_eq!(
+        seen.lock().unwrap().len(),
+        0,
+        "the queued alert died with the process (memory-only, accepted)"
+    );
+    let r = env.tool(&ext, "notify_user", json!({"message": "After restart", "platforms": ["gotify"]})).await;
+    assert_eq!(r["content"][0]["text"], "Notification sending to 1 platform(s): gotify");
+    assert!(env.pump_timers(&ext, "notify.queue", 5000).await > 0);
+    let posts = seen.lock().unwrap().clone();
+    assert_eq!(posts.len(), 1, "{posts:?}");
+    let body: Value = serde_json::from_str(&posts[0].3).unwrap();
+    assert_eq!(body["message"], "After restart");
+    let sent = env.published("unipi:notify:sent");
+    assert_eq!(sent.last().unwrap()["success"], true);
 }

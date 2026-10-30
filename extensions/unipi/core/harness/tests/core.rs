@@ -89,6 +89,16 @@ impl Env {
         }
     }
 
+    /// SIGKILL of the host process for the guest (core.md §2.1.8 restart gate): the runtime
+    /// and its guest instances die; the agent/project dirs and the recorded host calls
+    /// survive, and a fresh runtime is rebuilt over them.
+    fn restart(&mut self) {
+        let mut options =
+            WasmRuntimeOptions::new(HostConfig::new(self.agent.path(), self.project.path()));
+        options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        self.runtime = WasmRuntime::new(options).unwrap();
+    }
+
     fn cx(&self, kind: CallKind) -> CallContext {
         CallContext {
             session_id: "s1".into(),
@@ -321,4 +331,73 @@ async fn work_tray_with_a_producer() {
         env.panels().last().unwrap().get("update").is_some(),
         "shortcut while open updates in place"
     );
+}
+
+/// The §2.1.8 restart gate for core: the work-tray state is memory-only by design (audit
+/// verdict OK — "tray refetched from bus"). A scripted session is SIGKILLed mid-turn with
+/// the tray open ([`Env::restart`]); after the restart `session_start` refetches the tabs
+/// from the producer over the bus, the strip widget is rebuilt and the tray is usable again.
+#[tokio::test(flavor = "multi_thread")]
+async fn kill_and_restart_rebuilds_the_work_tray_from_the_bus() {
+    let mut env = Env::new();
+    let (_, probe_wasm) = components();
+    {
+        let probe = env
+            .load(&harness_dir().join("probe/extension.json"), probe_wasm)
+            .await;
+        let core = env.core().await;
+        env.event(
+            &core,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+        assert!(
+            env.fired("setWidget", Some("work-tray-strip"))
+                .last()
+                .unwrap()["widgetLines"]
+                .is_array(),
+            "strip armed before the crash"
+        );
+        // Mid-turn: the tray is open when the process dies.
+        env.event(
+            &core,
+            EventKind::OinoEditor,
+            json!({"type": "oino_editor", "intent": "emptyArrowDown", "text": ""}),
+        )
+        .await;
+        assert!(env.panels().last().unwrap().get("open").is_some());
+        let _ = probe;
+    }
+
+    env.restart();
+    let (_, probe_wasm) = components();
+    let _probe = env
+        .load(&harness_dir().join("probe/extension.json"), probe_wasm)
+        .await;
+    let core = env.core().await;
+    env.event(
+        &core,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    let strips = env.fired("setWidget", Some("work-tray-strip"));
+    let strip = strips.last().unwrap();
+    assert_eq!(
+        strip["widgetLines"],
+        json!([" Background tasks 2 (1 running) · ↓ open"]),
+        "the tray strip is rebuilt from the bus after the restart"
+    );
+    // And the tray opens and drives the producer again.
+    env.event(
+        &core,
+        EventKind::OinoEditor,
+        json!({"type": "oino_editor", "intent": "emptyArrowDown", "text": ""}),
+    )
+    .await;
+    let panels = env.panels();
+    let open = &panels.last().unwrap()["open"];
+    assert_eq!(open["panelId"], "unipi.core/tray");
+    assert_eq!(open["spec"]["children"][0]["active"], "bg");
 }

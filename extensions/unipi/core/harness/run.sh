@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 # Runs the unipi.core wasm-host harness tests. Reuses the root workspace's lock file and target
 # dir so wasmtime is not rebuilt; `-j 2` because rustc is memory-hungry on small machines.
+# Includes the §2.1.8 kill-and-restart step: the kill_and_restart_* tests SIGKILL the
+# host (drop the wasm runtime) mid-turn and assert extension state restored or safely reset.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)

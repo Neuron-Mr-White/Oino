@@ -2,6 +2,8 @@
 # Runs the unipi-context wasm-host harness tests. Reuses the root workspace's lock file and
 # target dir so wasmtime is not rebuilt. EXT_WORKSPACE overrides the extensions workspace used
 # to build the components (default: this checkout's extensions/).
+# Includes the §2.1.8 kill-and-restart step: the kill_and_restart_* tests SIGKILL the
+# host (drop the wasm runtime) mid-turn and assert extension state restored or safely reset.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)

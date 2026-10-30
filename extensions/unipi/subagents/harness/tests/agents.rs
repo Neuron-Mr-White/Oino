@@ -94,14 +94,29 @@ impl Env {
     fn new() -> Self {
         let agent = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
-        let mut options = WasmRuntimeOptions::new(HostConfig::new(agent.path(), project.path()));
-        options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        let runtime = Self::runtime(agent.path(), project.path());
         Self {
-            runtime: WasmRuntime::new(options).unwrap(),
+            runtime,
             host: RecordingHostServices::new(),
             project,
             _agent: agent,
         }
+    }
+
+    fn runtime(agent: &Path, project: &Path) -> WasmRuntime {
+        let mut options = WasmRuntimeOptions::new(HostConfig::new(agent, project));
+        options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        WasmRuntime::new(options).unwrap()
+    }
+
+    /// SIGKILL of the host process for the guest: the runtime (guest instances, epoch
+    /// ticker, in-memory hub) dies and is rebuilt over the same agent and project dirs —
+    /// everything on disk (kv, workspaces, task store) and the recorded session entries
+    /// survive exactly as across a real process kill (core.md §2.1.8 restart gate).
+    fn restart(&mut self) {
+        let agent = self._agent.path().to_path_buf();
+        let project = self.project.path().to_path_buf();
+        self.runtime = Self::runtime(&agent, &project);
     }
 
     fn cx(&self, kind: CallKind) -> CallContext {
@@ -626,4 +641,233 @@ async fn long_horizon_ralph_loop() {
     let runner = env.command(&lh, "goal-status", "{}").await.unwrap();
     assert_eq!(runner["found"], true);
     let _ = Path::new("/");
+}
+
+/// The §2.1.8 restart gate for this suite's components, at both kill levels:
+///
+/// * instance kill (the session-eviction path: the guest's WASM state dies, the host process,
+///   its task store and the session file live on) — background-tasks rebuilds its `local`
+///   map from the `unipi:bg-tasks` entry and merges it with the still-alive host task list;
+/// * process kill ([`Env::restart`]: runtime, guest instances and the in-memory hub die; the
+///   agent dir and the session entries survive) — subagents rebuilds its records from the run
+///   index (Running → Failed with the repair-compatible text and a cold-resume hint when the
+///   child session file exists), fusion re-attaches its pairing from `unipi:fusion-sidekick`,
+///   and every extension stays usable. (The host task store itself is per-process today: its
+///   `tasks.json` is written but not re-read — a known gap outside this suite.)
+#[allow(
+    clippy::too_many_lines,
+    reason = "one scripted crash, three extensions"
+)]
+#[tokio::test(flavor = "multi_thread")]
+async fn kill_and_restart_restores_extension_state() {
+    let mut env = Env::new();
+    let agent = env._agent.path().to_path_buf();
+    // ── the scripted session (what the process leaves behind when it dies) ────────────
+    let (sleep_id, quick_id) = {
+        let (bg, _) = env.load("background-tasks").await;
+        // A running task and a finished one whose notification was already delivered.
+        let sleep = env
+            .tool(
+                &bg,
+                "bg_run",
+                json!({"name": "Long build", "command": "sleep 30", "isAgent": false}),
+            )
+            .await;
+        let sleep_id = sleep["details"]["task"]["id"].as_str().unwrap().to_owned();
+        let quick = env
+            .tool(
+                &bg,
+                "bg_run",
+                json!({"name": "Quick echo", "command": "echo hi", "isAgent": false}),
+            )
+            .await;
+        let quick_id = quick["details"]["task"]["id"].as_str().unwrap().to_owned();
+        let mut notified = None;
+        for _ in 0..100 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            notified = env.calls("session_write").into_iter().find(|d| {
+                d["sendMessage"]["content"]
+                    .as_str()
+                    .is_some_and(|c| c.starts_with("<background-task-notification>"))
+            });
+            if notified.is_some() {
+                break;
+            }
+        }
+        notified.expect("quick task completion notification");
+        // The settle rewrite of the durable snapshot also runs clean.
+        env.event(&bg, EventKind::TurnEnd, json!({"type": "turn_end"}))
+            .await;
+        let entry = env
+            .host
+            .entries()
+            .into_iter()
+            .rev()
+            .find(|e| e["customType"] == "unipi:bg-tasks")
+            .expect("unipi:bg-tasks entry appended");
+        assert_eq!(
+            entry["data"]["local"][&quick_id]["notified"], true,
+            "the durable local map carries the delivered notification"
+        );
+        assert!(
+            entry["data"]["local"]
+                .as_object()
+                .unwrap()
+                .contains_key(&sleep_id)
+        );
+
+        // The previous process died while a subagent ran: index + child file on disk.
+        let (sa, _) = env.load("subagents").await;
+        env.event(
+            &sa,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+        let ws_root = agent.join("state/unipi.subagents/workspace");
+        let index_dir = std::fs::read_dir(&ws_root)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path()
+            .join("sessions/s1");
+        std::fs::write(
+            index_dir.join("index.json"),
+            serde_json::to_vec(&json!([{
+                "id": "ab12cd34", "title": "Map auth", "profile": "subagent_explore",
+                "model": "faux/faux-1", "status": "running", "background": true,
+                "startedAt": 1000, "toolCalls": 3, "lastActivity": 5000,
+                "task": "map the auth flows",
+                "sessionFile": "/ext-workspace/x/sessions/s1/ab12cd34.jsonl", "depth": 1
+            }]))
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            index_dir.join("ab12cd34.jsonl"),
+            "{\"type\":\"session\",\"version\":3,\"id\":\"child\"}\n",
+        )
+        .unwrap();
+        // And while a Fusion pair was active (the crashed process appended this).
+        env.host.seed_entries(vec![json!({
+            "type": "custom", "customType": "unipi:fusion-sidekick",
+            "data": {"active": true, "selection": {
+                "kind": "fusion", "lead": "faux/lead", "sidekick": "faux/cheap",
+                "leadEffort": "high", "sidekickEffort": "low"
+            }}
+        })]);
+        (sleep_id, quick_id)
+    };
+
+    // ── instance kill: guest state dies, the host task store lives on ────────────────
+    {
+        let (bg, _) = env.load("background-tasks").await;
+        env.event(
+            &bg,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+        let status = env.tool(&bg, "bg_status", json!({})).await;
+        let tasks = status["details"]["tasks"].as_array().unwrap().clone();
+        let find = |id: &str| {
+            tasks
+                .iter()
+                .find(|t| t["id"].as_str().is_some_and(|t| t.starts_with(id)))
+                .unwrap_or_else(|| panic!("task {id} in {tasks:?}"))
+                .clone()
+        };
+        assert_eq!(
+            find(&quick_id)["notified"],
+            true,
+            "local map restored from unipi:bg-tasks and merged with the host list"
+        );
+        assert_eq!(find(&sleep_id)["status"], "running");
+        let killed = env.tool(&bg, "bg_kill", json!({"taskId": sleep_id})).await;
+        assert!(
+            killed["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("Killed background task Long build"),
+            "{killed}"
+        );
+    }
+
+    // ── process kill: runtime + hub die; agent dir and session entries survive ──────
+    env.restart();
+    let (bg, _) = env.load("background-tasks").await;
+    let (sa, _) = env.load("subagents").await;
+    let (fusion, _) = env.load("fusion").await;
+    for ext in [&bg, &sa, &fusion] {
+        env.event(
+            ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+    }
+    // background-tasks stays usable (the per-process task store starts empty — known gap).
+    let fresh = env
+        .tool(
+            &bg,
+            "bg_run",
+            json!({"name": "After restart", "command": "echo ok", "isAgent": false}),
+        )
+        .await;
+    assert!(
+        fresh["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("Started background task After restart"),
+        "{fresh}"
+    );
+
+    // subagents: the interrupted run reads as failed with the repair-compatible text and a
+    // cold-resume hint (the child session file exists).
+    let records = sa
+        .handle_service(
+            "subagents.list",
+            RawJson::from(json!({})),
+            &oino_extension_api::ExtensionId::new("unipi.core").unwrap(),
+            env.cx(CallKind::Service),
+        )
+        .await
+        .unwrap()
+        .to_value();
+    assert_eq!(records[0]["status"], "failed");
+    assert_eq!(
+        records[0]["error"].as_str().unwrap(),
+        "interrupted — Oino exited while it ran (outcome unknown; see the child session)"
+    );
+    assert!(
+        records[0]["resumeHint"]
+            .as_str()
+            .unwrap()
+            .contains("resume:ab12cd34"),
+        "{records:?}"
+    );
+    let read = env
+        .tool(
+            &sa,
+            "read_subagent",
+            json!({"agent_id": "ab12cd34", "block": false}),
+        )
+        .await;
+    assert!(
+        text_of(&read).contains("resume:ab12cd34"),
+        "read_subagent offers the cold resume: {}",
+        text_of(&read)
+    );
+
+    // fusion: the pairing re-attaches (the lead is set, the status names both models).
+    let status = env
+        .calls("bus_publish")
+        .into_iter()
+        .filter(|d| d["topic"] == "unipi:fusion:status")
+        .last()
+        .expect("fusion status published");
+    assert_eq!(status["data"]["leadKey"], "faux/lead");
+    assert_eq!(status["data"]["sidekickKey"], "faux/cheap");
+    assert_eq!(status["data"]["leadEffort"], "high");
 }

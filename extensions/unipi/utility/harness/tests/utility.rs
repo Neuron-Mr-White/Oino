@@ -310,6 +310,17 @@ impl Env {
         }
     }
 
+    /// SIGKILL of the host process for the guest (core.md §2.1.8 restart gate): the runtime
+    /// and its guest instances die; the agent/project dirs, the scripted world and the
+    /// recorded session entries survive, and a fresh runtime is rebuilt over them.
+    fn restart(&mut self) {
+        let mut options =
+            WasmRuntimeOptions::new(HostConfig::new(self._agent.path(), self.project.path()));
+        options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        options.local_services = false;
+        self.runtime = WasmRuntime::new(options).unwrap();
+    }
+
     fn cx(&self, kind: CallKind) -> CallContext {
         CallContext {
             session_id: "s1".into(),
@@ -1097,4 +1108,90 @@ async fn move_dry_run_and_argument_errors() {
                 .unwrap_or_default()
                 .contains("still exists")
     }));
+}
+
+/// The §2.1.8 restart gate for utility: a scripted session is SIGKILLed mid-turn with a
+/// pending attachment (widget set, `unipi:attachments` entry appended) and a recorded
+/// auto-name. After [`Env::restart`] the extension comes back usable: no stale widget state
+/// is resurrected at `session_start` (attachments are per-session memory — safely reset),
+/// and the editor scan works again on a fresh event.
+#[tokio::test(flavor = "multi_thread")]
+async fn kill_and_restart_resets_attachment_state_and_stays_usable() {
+    let mut env = Env::new();
+    {
+        let (ext, _) = env.load(json!({})).await;
+        env.event(
+            &ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+        // Mid-turn: the composer holds an image chip.
+        let png = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0];
+        let shot = env.project.path().join("shot.png");
+        std::fs::write(&shot, png).unwrap();
+        let text = format!("look at {} please", shot.canonicalize().unwrap().display());
+        env.event(
+            &ext,
+            EventKind::OinoEditor,
+            json!({"type": "oino_editor", "intent": "changed", "text": text}),
+        )
+        .await;
+        assert!(
+            env.fired("setWidget")
+                .iter()
+                .rev()
+                .any(|w| w["widgetKey"] == "unipi-attachments"
+                    && w["widgetLines"].to_string().contains("[Image #1] shot.png")),
+            "attachment widget armed before the crash"
+        );
+    }
+
+    env.restart();
+    let fired_before = env.fired("setWidget").len();
+    let (ext, _) = env.load(json!({})).await;
+    env.event(
+        &ext,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        !env.fired("setWidget")[fired_before..]
+            .iter()
+            .any(|w| w["widgetKey"] == "unipi-attachments" && !w["widgetLines"].is_null()),
+        "no stale attachment widget is resurrected after the restart (only the clear fires)"
+    );
+
+    // The extension is usable again: commands answer and a fresh editor scan re-arms.
+    env.command(&ext, "doctor", "").await;
+    assert!(env.writes("sendMessage").iter().any(|w| {
+        w["sendMessage"]["customType"] == "unipi-response"
+            && w["sendMessage"]["content"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("## Diagnostics")
+    }));
+    let text = format!(
+        "and {} too",
+        env.project
+            .path()
+            .join("shot.png")
+            .canonicalize()
+            .unwrap()
+            .display()
+    );
+    env.event(
+        &ext,
+        EventKind::OinoEditor,
+        json!({"type": "oino_editor", "intent": "changed", "text": text}),
+    )
+    .await;
+    assert!(
+        env.fired("setWidget")[fired_before..]
+            .iter()
+            .any(|w| w["widgetKey"] == "unipi-attachments"),
+        "the editor scan works again after the restart"
+    );
 }

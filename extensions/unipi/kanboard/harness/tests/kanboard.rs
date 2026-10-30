@@ -109,6 +109,18 @@ impl Env {
         }
     }
 
+    /// SIGKILL of the host process for the guest (core.md §2.1.8 restart gate): the runtime
+    /// and its guest instances die; the kanboard CLI's locked board files (under
+    /// `OINO_KANBOARD_HOME`), the agent/project dirs and the recorded host calls survive, and
+    /// a fresh runtime is rebuilt over them. The process-global env vars stay as `new` set
+    /// them.
+    fn restart(&mut self) {
+        let mut options =
+            WasmRuntimeOptions::new(HostConfig::new(self._agent.path(), self.project.path()));
+        options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        self.runtime = WasmRuntime::new(options).unwrap();
+    }
+
     fn cx(&self, kind: CallKind) -> CallContext {
         CallContext {
             session_id: "s1".into(),
@@ -426,4 +438,120 @@ async fn capture_service_and_claims_nudge() {
         .unwrap();
     let task: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(task["status"], "todo");
+}
+
+/// The §2.1.8 restart gate for kanboard: session state (guard budget, monitor, tracker) is
+/// memory-only and safely resets; the board itself is durable in the kanboard CLI's locked
+/// files. A scripted session is SIGKILLed mid-turn with a card In Progress ([`Env::restart`]);
+/// after the restart the session re-registers, the write gate is armed fresh, and the
+/// monitor's nudge is rebuilt from the board — the interrupted card is still In Progress on
+/// disk (a hard kill never ran `session_shutdown`, so the claim survives).
+#[allow(
+    clippy::too_many_lines,
+    reason = "one scripted crash, board + gate + nudge"
+)]
+#[tokio::test(flavor = "multi_thread")]
+async fn kill_and_restart_rebuilds_from_the_board() {
+    let mut env = Env::new();
+    let bin = root_dir().join("target/debug/oino-kanboard");
+    let run = |args: &[&str]| {
+        let out = Command::new(&bin)
+            .args(args)
+            .current_dir(env.project.path())
+            .env("OINO_KANBOARD_SESSION", "oino-s1")
+            .env("OINO_KANBOARD_PID", std::process::id().to_string())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    let id = {
+        let (ext, _) = env.load().await;
+        env.event(
+            &ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+        env.command(&ext, "kanboard", "onboard").await;
+        env.command(&ext, "kanboard-add", "-p 4 Fix login\nsteps below")
+            .await;
+        let added = env
+            .notices()
+            .into_iter()
+            .find(|n| n.starts_with('✓'))
+            .unwrap();
+        let id = added
+            .trim_start_matches("✓ ")
+            .split(' ')
+            .next()
+            .unwrap()
+            .to_owned();
+        // Mid-turn: the card is claimed In Progress when the process dies.
+        run(&["move", &id, "todo"]);
+        run(&["--actor", "agent", "start", &id]);
+        id
+    };
+
+    env.restart();
+    let (ext, _) = env.load().await;
+    env.event(
+        &ext,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    env.command(&ext, "kanboard", "onboard").await;
+    assert!(
+        env.notices().iter().any(|n| n.contains("registered")),
+        "the restarted session re-registers with the board"
+    );
+    // Session-scoped write budget safely reset: a kanboard write without -do is blocked.
+    let blocked = env
+        .event(
+            &ext,
+            EventKind::ToolCall,
+            json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c1", "input": {"command": "oino-kanboard --actor agent add x"}}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked["block"], true, "the guard is armed fresh");
+    // The board is durable: the interrupted card is still In Progress, and the monitor's
+    // nudge is rebuilt from it.
+    let out = Command::new(&bin)
+        .args(["show", &id, "--json"])
+        .current_dir(env.project.path())
+        .output()
+        .unwrap();
+    let task: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        task["status"], "in_progress",
+        "a hard kill never released the claim: {task}"
+    );
+    env.event(
+        &ext,
+        EventKind::ToolResult,
+        json!({"type": "tool_result", "toolName": "bash", "toolCallId": "c2", "input": {"command": format!("oino-kanboard start {id}")}, "content": [], "isError": false}),
+    )
+    .await;
+    env.event(&ext, EventKind::AgentStart, json!({"type": "agent_start"}))
+        .await;
+    env.event(&ext, EventKind::AgentEnd, json!({"type": "agent_end", "messages": [{"role": "assistant", "content": [{"type": "text", "text": "working on it"}], "stopReason": "stop"}]})).await;
+    let nudge = ext
+        .propose_nudge(env.cx(CallKind::Nudge))
+        .await
+        .unwrap()
+        .to_value();
+    assert_eq!(nudge["customType"], "unipi:kanboard-continue");
+    assert!(
+        nudge["content"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("↻ {id} still In Progress")),
+        "the monitor rebuilt from the durable board: {}",
+        nudge["content"]
+    );
 }

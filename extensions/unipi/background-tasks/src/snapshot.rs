@@ -127,7 +127,7 @@ pub fn local_entry_data(local: &std::collections::HashMap<String, Local>) -> Val
 }
 
 /// Restores the `local` map from the session's `unipi:bg-tasks` entries (last wins).
-/// The caller merges it against the host task list (ids no longer known are dropped).
+/// The map only annotates host tasks; snapshots merge it against the host task list.
 #[must_use]
 pub fn restore_local(entries: &[Value]) -> Option<std::collections::HashMap<String, Local>> {
     let mut restored = None;

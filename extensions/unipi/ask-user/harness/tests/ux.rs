@@ -89,6 +89,16 @@ impl Env {
         }
     }
 
+    /// SIGKILL of the host process for the guest (core.md §2.1.8 restart gate): the runtime
+    /// and its guest instances die; the agent/project dirs and the recorded host calls
+    /// survive, and a fresh runtime is rebuilt over them.
+    fn restart(&mut self) {
+        let mut options =
+            WasmRuntimeOptions::new(HostConfig::new(self.agent.path(), self.project.path()));
+        options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        self.runtime = WasmRuntime::new(options).unwrap();
+    }
+
     fn cx(&self, kind: CallKind) -> CallContext {
         CallContext {
             session_id: "s1".into(),
@@ -320,4 +330,77 @@ async fn info_screen_splash_and_dashboard() {
         env.calls("ui_panel").last().unwrap(),
         &json!({"close": "panel-1"})
     );
+}
+
+/// The §2.1.8 restart gate for ask-user: an in-flight `ask_user` tool call (dialog open, no
+/// answer yet) is killed with the host — the tool call is later closed by the core resume
+/// repair, never by the guest. After [`Env::restart`] the extension holds no stale question
+/// state: `session_start` runs clean and a fresh `ask_user` round trip works immediately.
+#[tokio::test(flavor = "multi_thread")]
+async fn kill_and_restart_resets_an_in_flight_question() {
+    let mut env = Env::new();
+    let settings = json!({"ask-user": {"enabled": true}});
+    {
+        let (ext, reg) = env.load("ask-user", settings.clone()).await;
+        let _ = reg;
+        env.event(
+            &ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+        // Mid-turn: the tool call is waiting on a dialog that will never be answered.
+        let ext2 = Arc::clone(&ext);
+        let cx = env.cx(CallKind::Tool);
+        let asked = tokio::spawn(async move {
+            let inv = ToolInvocation {
+                tool_call_id: "c1".into(),
+                name: "ask_user".into(),
+                args: RawJson::from(
+                    json!({"questions": [{"question": "Which DB?", "header": "DB", "options": [{"label": "Postgres"}, {"label": "SQLite", "value": "sqlite"}]}]}),
+                ),
+                parent_tool_call_id: None,
+            };
+            ext2.run_tool(inv, CancellationToken::new(), cx).await
+        });
+        for _ in 0..200 {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            if !env.calls("ui_dialog").is_empty() {
+                break;
+            }
+        }
+        assert!(
+            !env.calls("ui_dialog").is_empty(),
+            "the dialog opened before the crash"
+        );
+        asked.abort(); // the host process dies with the turn in flight
+    }
+
+    env.restart();
+    let (ext, _) = env.load("ask-user", settings).await;
+    env.event(
+        &ext,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    // No stale dialog or prompt leaks into the restarted session; a new question works.
+    let dialogs_before = env.calls("ui_dialog").len();
+    env.host
+        .queue_dialog_answer(json!({"value": {"answers": [{"id": "q0", "selected": ["sqlite"]}]}}));
+    let inv = ToolInvocation {
+        tool_call_id: "c2".into(),
+        name: "ask_user".into(),
+        args: RawJson::from(
+            json!({"questions": [{"question": "Which DB?", "header": "DB", "options": [{"label": "Postgres"}, {"label": "SQLite", "value": "sqlite"}]}]}),
+        ),
+        parent_tool_call_id: None,
+    };
+    let result = ext
+        .run_tool(inv, CancellationToken::new(), env.cx(CallKind::Tool))
+        .await
+        .unwrap()
+        .to_value();
+    assert_eq!(result["details"]["outcome"], "answered");
+    assert_eq!(env.calls("ui_dialog").len(), dialogs_before + 1);
 }

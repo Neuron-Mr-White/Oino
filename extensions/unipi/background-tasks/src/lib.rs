@@ -166,19 +166,14 @@ impl Bg {
         let _ = session::append_entry(BG_TASKS_ENTRY, Some(&snapshot::local_entry_data(&local)));
     }
 
-    /// Merges the restored `local` map with the host task list at `session_start`:
-    /// ids the host no longer reports are dropped, the rest annotate the snapshots again.
+    /// Restores the `local` map at `session_start` (last durable entry wins). Entries for
+    /// tasks the host no longer reports are kept: `local` only annotates host tasks, and the
+    /// merge itself happens when snapshots are built (ids missing from the host list are
+    /// simply never looked up; persist prunes them from the next durable snapshot).
     fn restore_local_state(&self, cx: &Ctx) {
-        let Some(mut local) = snapshot::restore_local(&session::entries().unwrap_or_default())
-        else {
+        let Some(local) = snapshot::restore_local(&session::entries().unwrap_or_default()) else {
             return;
         };
-        let known: HashSet<String> = tasks::list()
-            .unwrap_or_default()
-            .iter()
-            .filter_map(|t| t.get("id").and_then(Value::as_str).map(str::to_owned))
-            .collect();
-        local.retain(|id, _| known.contains(id));
         self.sessions.with(cx.session_id(), |s| s.local = local);
     }
 

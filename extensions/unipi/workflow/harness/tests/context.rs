@@ -99,6 +99,16 @@ impl Env {
         }
     }
 
+    /// SIGKILL of the host process for the guest (core.md §2.1.8 restart gate): the runtime
+    /// and its guest instances die, the agent/project dirs and the recorded session entries
+    /// survive, and a fresh runtime is rebuilt over them.
+    fn restart(&mut self) {
+        let mut options =
+            WasmRuntimeOptions::new(HostConfig::new(self.agent.path(), self.project.path()));
+        options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        self.runtime = WasmRuntime::new(options).unwrap();
+    }
+
     fn cx(&self, kind: CallKind) -> CallContext {
         CallContext {
             session_id: "s1".into(),
@@ -661,4 +671,101 @@ async fn memory_store_list_search_delete() {
         "Deleted memory: redis_cache_ttl (markdown-only)"
     );
     assert!(!file.exists());
+}
+
+/// The §2.1.8 restart gate for this suite: a scripted session is SIGKILLed mid-turn
+/// ([`Env::restart`]) and a fresh host reloads the extensions over the same agent dir and
+/// session file. Workflow restores plan mode from its `unipi:plan-mode` entry (and the gate
+/// still enforces); compactor restores the pending `compact-vcc` from its
+/// `unipi:compactor-pending` entry — the restarted session's first compaction runs it as a
+/// command compaction and clears the entry when it executes.
+#[allow(clippy::too_many_lines, reason = "one scripted crash, two extensions")]
+#[tokio::test(flavor = "multi_thread")]
+async fn kill_and_restart_restores_plan_mode_and_pending_compaction() {
+    let mut env = Env::new();
+    {
+        let (wf, _) = env.load("workflow").await;
+        env.command(&wf, "plan", "on").await;
+        assert_eq!(env.appended("unipi:plan-mode").len(), 1);
+        // The process died right after arming a /compact-vcc that never ran.
+        env.host.seed_entries(vec![json!({
+            "type": "custom", "customType": "unipi:compactor-pending",
+            "data": {"method": "vcc", "command": "compact-vcc"}
+        })]);
+    }
+    env.restart();
+
+    // workflow: plan mode rebuilt from the session entry, the gate still blocks writes.
+    let (wf, _) = env.load("workflow").await;
+    env.event(
+        &wf,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    let changed = env
+        .host
+        .calls_named("bus_publish")
+        .into_iter()
+        .map(|c| c.detail)
+        .filter(|d| d["topic"] == "unipi:plan:mode:changed")
+        .last()
+        .expect("plan mode change published after restart");
+    assert_eq!(changed["data"]["active"], true, "{changed:?}");
+    let blocked = env
+        .event(
+            &wf,
+            EventKind::ToolCall,
+            json!({"type": "tool_call", "toolName": "write", "toolCallId": "c1", "input": {"path": "src/main.rs", "content": "x"}}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked["block"], true, "plan gate usable after restart");
+
+    // compactor: the pending command compaction is armed again and consumed by the next
+    // compaction as a command compaction, which clears the durable entry.
+    let (cp, _) = env.load("compactor").await;
+    env.event(
+        &cp,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    let u = |id: &str, t: &str| json!({"id": id, "type": "message", "message": {"role": "user", "content": t}});
+    let a = |id: &str, t: &str| json!({"id": id, "type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": t}]}});
+    let branch = json!([
+        u("e1", "Build a login page."),
+        a("e2", "Working on it."),
+        u("e3", "Now add a reset link."),
+        a("e4", "Adding it.")
+    ]);
+    let before = env
+        .event(
+            &cp,
+            EventKind::SessionBeforeCompact,
+            json!({"type": "session_before_compact", "reason": "threshold", "willRetry": false, "branchEntries": branch, "preparation": {"tokensBefore": 50000, "firstKeptEntryId": "e3", "messagesToSummarize": [], "turnPrefixMessages": [], "isSplitTurn": false, "fileOps": {"read": [], "written": [], "edited": []}, "settings": {}}}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        before["compaction"]["details"]["method"], "vcc",
+        "the restored pending method drives the compaction"
+    );
+    assert!(
+        env.appended("unipi:compactor-pending")
+            .iter()
+            .any(|e| e["data"]["cleared"] == true),
+        "executing the pending compaction clears the durable entry"
+    );
+    env.event(
+        &cp,
+        EventKind::SessionCompact,
+        json!({"type": "session_compact", "compactionEntry": before["compaction"].clone()}),
+    )
+    .await;
+    let cards = env.appended("unipi-compaction");
+    assert!(
+        cards.iter().any(|c| c["data"]["command"] == "compact-vcc"),
+        "the restarted compaction is labelled with the restored command: {cards:?}"
+    );
 }

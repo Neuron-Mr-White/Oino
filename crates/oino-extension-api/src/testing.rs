@@ -145,6 +145,12 @@ impl RecordingHostServices {
         guard(&self.entries).clone()
     }
 
+    /// Seeds entries as if a previous process had appended them before dying (restart
+    /// tests: the session file is durable, the guest state is not).
+    pub fn seed_entries(&self, entries: Vec<Value>) {
+        guard(&self.entries).extend(entries);
+    }
+
     /// Queues an answer for the next `ui.dialog`.
     pub fn queue_dialog_answer(&self, answer: Value) {
         guard(&self.dialog_answers).push_back(RawJson::from(answer));
@@ -378,7 +384,9 @@ impl HostServices for RecordingHostServices {
     ) -> BoxFut<'_, Result<ControlReply, HostError>> {
         self.record("control", Some(ext), json!(op.name()));
         let reply = match op {
-            ControlOp::IsIdle | ControlOp::IsProjectTrusted => ControlReply::Bool(true),
+            ControlOp::IsIdle | ControlOp::IsProjectTrusted | ControlOp::SetModel { .. } => {
+                ControlReply::Bool(true)
+            }
             ControlOp::HasPendingMessages => ControlReply::Bool(false),
             ControlOp::ThinkingLevel => ControlReply::String("off".into()),
             ControlOp::SystemPrompt => ControlReply::String(String::new()),

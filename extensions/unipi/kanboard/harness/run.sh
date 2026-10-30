@@ -3,6 +3,8 @@
 # component, then drives the component in the real wasm host against the real binary.
 # KANBOARD_EXT_WORKSPACE may point at another extensions workspace root (one listing only
 # buildable members) when sibling work in progress breaks `extensions/`.
+# Includes the §2.1.8 kill-and-restart step: the kill_and_restart_* tests SIGKILL the
+# host (drop the wasm runtime) mid-turn and assert extension state restored or safely reset.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)
