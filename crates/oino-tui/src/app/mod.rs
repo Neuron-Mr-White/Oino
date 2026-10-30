@@ -718,13 +718,16 @@ impl App {
                     format!("Session task crashed: {error}"),
                 ),
                 // Topic / agent feeds are GUI surfaces; shutdown is handled by the mode loop.
-                // Takeover is handled there too (the mode shows the notice and exits).
+                // Takeover is handled there too (the mode shows the notice and exits);
+                // eviction never reaches the TUI (the hub owns it, and the single-session
+                // runtime never evicts).
                 OinoEvent::ToolsChanged { .. }
                 | OinoEvent::Topic { .. }
                 | OinoEvent::AgentsChanged { .. }
                 | OinoEvent::AgentEvent { .. }
                 | OinoEvent::ShutdownRequested
-                | OinoEvent::SessionTakenOver { .. } => {}
+                | OinoEvent::SessionTakenOver { .. }
+                | OinoEvent::SessionEvicted { .. } => {}
             },
         }
     }

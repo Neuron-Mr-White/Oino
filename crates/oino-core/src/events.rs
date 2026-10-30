@@ -488,6 +488,15 @@ pub enum OinoEvent {
         /// Who took the session over.
         by: oino_session::LeaseInfo,
     },
+    /// The hub evicted an idle session (E-LAZY): the session was disposed and its lease
+    /// released; the record stays on disk and the next message re-opens and repairs it.
+    /// Published on the session's stream before it ends — only subscribers still attached
+    /// see it (eviction requires none); the hub list is the source of truth.
+    #[serde(rename_all = "camelCase")]
+    SessionEvicted {
+        /// Evicted session id.
+        session_id: String,
+    },
 }
 
 impl From<crate::topics::TopicValue> for OinoEvent {
@@ -631,6 +640,14 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&crashed).unwrap(),
             json!({"type":"session_crashed","error":"boom"})
+        );
+        let evicted: ClientEvent = OinoEvent::SessionEvicted {
+            session_id: "s1".into(),
+        }
+        .into();
+        assert_eq!(
+            serde_json::to_value(&evicted).unwrap(),
+            json!({"type":"session_evicted","sessionId":"s1"})
         );
     }
 }
