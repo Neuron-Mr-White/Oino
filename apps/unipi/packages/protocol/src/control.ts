@@ -628,9 +628,10 @@ const BaseRequestSchema = z.discriminatedUnion("op", [
   ChatCloseRequestSchema,
   ChatConfigRequestSchema,
   ChatConfigSetRequestSchema,
-  // UNI-232: local-only admin ops (see admin.ts).
+  // v2 (host.md §9.9): host settings — read anywhere, written on this PC only.
   HostSettingsGetRequestSchema,
   HostSettingsSetRequestSchema,
+  // UNI-232: local-only admin ops (see admin.ts).
   HostInfoRequestSchema,
   PairBeginRequestSchema,
   PairStatusRequestSchema,
