@@ -176,7 +176,9 @@ fn turn_footers(
     for entry in app.registry.entries_for(Slot::TurnFooter) {
         let lines = match &entry.view {
             UiView::Renderer { key } => {
-                let turn = turn_entry.unwrap_or_default().to_owned();
+                // Live (not yet persisted) turns have no entry id: key by turn index so two
+                // running turns never share a cached footer.
+                let turn = turn_entry.map_or_else(|| format!("#turn-{turn_index}"), str::to_owned);
                 let cache_key = (entry.id.clone(), turn, entry.rev, running);
                 if let Some(lines) = cache.get(&cache_key) {
                     lines.clone()
