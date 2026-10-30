@@ -853,6 +853,7 @@ dependencies = [
  "futures",
  "oino-ai",
  "oino-extension-macros",
+ "oino-ui",
  "schemars",
  "serde",
  "serde_json",
@@ -880,6 +881,14 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "oino-ui"
+version = "1.0.0-alpha.5"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

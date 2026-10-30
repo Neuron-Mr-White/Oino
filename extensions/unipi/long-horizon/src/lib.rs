@@ -2332,7 +2332,7 @@ impl Lh {
                 );
             }
             None => {
-                let _ = ui::status("lh-progress", None);
+                let _ = ui::status("lh-progress", None::<&str>);
                 let _ = ui::notify(
                     "Goal progress estimate failed (model unavailable or unparseable reply).",
                     "info",

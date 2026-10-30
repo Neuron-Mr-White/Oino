@@ -112,6 +112,104 @@ pub enum NodeOp {
     },
 }
 
+impl NodeOp {
+    /// `replace` at `path` (an empty path is the entry root).
+    #[must_use]
+    pub fn replace(
+        path: impl IntoIterator<Item = impl Into<String>>,
+        node: impl Into<Node>,
+    ) -> Self {
+        Self::Replace {
+            path: path.into_iter().map(Into::into).collect(),
+            node: node.into(),
+        }
+    }
+
+    /// `set`: shallow prop merge at `path`.
+    #[must_use]
+    pub fn set(
+        path: impl IntoIterator<Item = impl Into<String>>,
+        props: serde_json::Map<String, Json>,
+    ) -> Self {
+        Self::Set {
+            path: path.into_iter().map(Into::into).collect(),
+            props,
+        }
+    }
+
+    /// `splice`: remove `remove` members at `index` and insert `insert`.
+    #[must_use]
+    pub fn splice(
+        path: impl IntoIterator<Item = impl Into<String>>,
+        field: PatchField,
+        index: u32,
+        remove: u32,
+        insert: impl IntoIterator<Item = impl Into<PatchItem>>,
+    ) -> Self {
+        Self::Splice {
+            path: path.into_iter().map(Into::into).collect(),
+            field,
+            index,
+            remove,
+            insert: insert.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    /// `append`: extend a ring-trimmed collection at `path` (the hot path for logs).
+    #[must_use]
+    pub fn append(
+        path: impl IntoIterator<Item = impl Into<String>>,
+        field: PatchField,
+        items: impl IntoIterator<Item = impl Into<PatchItem>>,
+    ) -> Self {
+        Self::Append {
+            path: path.into_iter().map(Into::into).collect(),
+            field,
+            items: items.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    /// `item`: replace one keyed member at `path`.
+    #[must_use]
+    pub fn item(
+        path: impl IntoIterator<Item = impl Into<String>>,
+        field: PatchField,
+        key: impl Into<String>,
+        value: impl Into<PatchItem>,
+    ) -> Self {
+        Self::Item {
+            path: path.into_iter().map(Into::into).collect(),
+            field,
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+}
+
+impl From<Json> for PatchItem {
+    fn from(json: Json) -> Self {
+        Self::Item(json)
+    }
+}
+
+impl From<String> for PatchItem {
+    fn from(text: String) -> Self {
+        Self::Item(Json::String(text))
+    }
+}
+
+impl From<&str> for PatchItem {
+    fn from(text: &str) -> Self {
+        Self::Item(Json::String(text.to_owned()))
+    }
+}
+
+impl From<Node> for PatchItem {
+    fn from(node: Node) -> Self {
+        Self::Node(node)
+    }
+}
+
 /// Why a patch failed to resolve (§4.7 / §9.3): the consumer drops the tree and
 /// requests a resync. Ops before the failing one stay applied — the protocol
 /// applies ops in order and gives no transactionality guarantee.

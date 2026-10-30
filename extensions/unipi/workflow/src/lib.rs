@@ -718,7 +718,7 @@ impl Workflow {
             load_time_ms: None,
         });
         if cx.has_ui() {
-            let _ = ui::status(STATUS_KEY, None);
+            let _ = ui::status(STATUS_KEY, None::<&str>);
         }
     }
 

@@ -10,7 +10,7 @@
 //! | [`session`] | `session` | entries, `append_entry`, `send_message`, sessions index |
 //! | [`control`] | `control` | model, thinking, tools, commands, compaction, command-context ops |
 //! | [`models`] | `models` | completions, streaming, summaries, credentials |
-//! | [`ui`] | `ui` | dialogs, notify/status/widgets, panels, editor, OS integration |
+//! | [`ui`] | `ui`, `registry` | dialogs, slots (panels, widgets, status, turn footers), settings namespaces, editor, OS integration; node trees from [`ui::widgets`] |
 //! | [`agents`] | `agents` | nested agent sessions (subagents) |
 //! | [`process`] | `process` | `exec`, spawn with streaming stdio, signals, process trees |
 //! | [`tasks`] | `tasks` | host background tasks |

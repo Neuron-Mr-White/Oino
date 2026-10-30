@@ -14,6 +14,7 @@ provider = []
 [dependencies]
 futures.workspace = true
 oino-ai.workspace = true
+oino-ui.workspace = true
 oino-extension-macros.workspace = true
 schemars.workspace = true
 serde.workspace = true
