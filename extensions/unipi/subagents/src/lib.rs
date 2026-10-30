@@ -336,6 +336,24 @@ fn session_dir(sid: &str) -> PathBuf {
     unipi_kit::paths::workspace(&format!("sessions/{}", unipi_kit::paths::sanitize(sid)))
 }
 
+/// Host child-session path → guest path under `/ext-workspace` (scans the session index
+/// dirs for the file name; empty when the child file is gone).
+fn guest_session_file(host: &str) -> PathBuf {
+    Path::new(host)
+        .file_name()
+        .map_or_else(PathBuf::new, |name| {
+            let dir = unipi_kit::paths::workspace("sessions");
+            std::fs::read_dir(&dir)
+                .ok()
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|d| d.path().join(name))
+                .find(|p| p.exists())
+                .unwrap_or_default()
+        })
+}
+
 impl Subagents {
     fn config(&self) -> Config {
         Config::from(&self.settings.get(NAMESPACE))
@@ -418,8 +436,12 @@ impl Subagents {
     fn restore(&self, sid: &str) {
         let list: Vec<Record> =
             unipi_kit::paths::read_json(&session_dir(sid).join("index.json")).unwrap_or_default();
-        self.sessions
-            .with(sid, |s| s.records = record::restore(list));
+        self.sessions.with(sid, |s| {
+            s.records = record::restore(list, |host| {
+                // Cold-resume hint only when the child session file still exists.
+                !guest_session_file(host).as_os_str().is_empty()
+            });
+        });
         self.persist(sid);
         self.publish(sid);
     }
@@ -526,6 +548,7 @@ impl Subagents {
                 .or_else(|| prev.map(|p| p.session_file))
                 .unwrap_or_default(),
             depth,
+            resume_hint: None,
         };
         let run = Rc::new(Run {
             agent,
@@ -1159,19 +1182,7 @@ impl Subagents {
     /// Host child-session path → guest path under `/ext-workspace` (index dir).
     fn guest_session_file(&self, host: &str) -> PathBuf {
         let _ = self;
-        Path::new(host)
-            .file_name()
-            .map_or_else(PathBuf::new, |name| {
-                let dir = unipi_kit::paths::workspace("sessions");
-                std::fs::read_dir(&dir)
-                    .ok()
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .map(|d| d.path().join(name))
-                    .find(|p| p.exists())
-                    .unwrap_or_default()
-            })
+        guest_session_file(host)
     }
 
     fn body(&self, sid: &str, records: &[Record]) -> Value {

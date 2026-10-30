@@ -52,7 +52,7 @@ use unipi_kit::tray::{Action, ActionReply, TabRequest, TrayTab};
 
 use crate::pane::{Armed, LogView, PaneAction, PaneState};
 use crate::settings::{Config, NAMESPACE};
-use crate::snapshot::{HostTask, Local, Snapshot, Status};
+use crate::snapshot::{BG_TASKS_ENTRY, HostTask, Local, Snapshot, Status};
 
 /// Timer refreshing the open tray while tasks run.
 const TICK: &str = "bg-tray-tick";
@@ -146,6 +146,42 @@ impl Bg {
             .map_err(Error::Message)
     }
 
+    // ── durable local state (core.md §2.1.8 D-EXTSTATE) ─────────────────────
+
+    /// Appends one `unipi:bg-tasks` entry with the `local` map, pruned to tasks the host
+    /// still knows. `dismissed`/`seen` stay disposable and are never persisted.
+    fn persist_local(&self, cx: &Ctx) {
+        let known: HashSet<String> = self
+            .host_tasks(cx.session_id())
+            .into_iter()
+            .map(|t| t.id)
+            .collect();
+        let local = self.sessions.with(cx.session_id(), |s| {
+            s.local.retain(|id, _| known.contains(id));
+            s.local.clone()
+        });
+        if local.is_empty() {
+            return;
+        }
+        let _ = session::append_entry(BG_TASKS_ENTRY, Some(&snapshot::local_entry_data(&local)));
+    }
+
+    /// Merges the restored `local` map with the host task list at `session_start`:
+    /// ids the host no longer reports are dropped, the rest annotate the snapshots again.
+    fn restore_local_state(&self, cx: &Ctx) {
+        let Some(mut local) = snapshot::restore_local(&session::entries().unwrap_or_default())
+        else {
+            return;
+        };
+        let known: HashSet<String> = tasks::list()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|t| t.get("id").and_then(Value::as_str).map(str::to_owned))
+            .collect();
+        local.retain(|id, _| known.contains(id));
+        self.sessions.with(cx.session_id(), |s| s.local = local);
+    }
+
     /// Publishes `unipi:bg:tasks` and the tray change signal.
     fn publish(&self, cx: &Ctx) {
         let snaps = self.snapshots(cx);
@@ -219,6 +255,7 @@ impl Bg {
             .as_ref()
             .and_then(HostTask::decode)
             .ok_or_else(|| Error::msg(format!("Unknown background task ID: {id}")))?;
+        self.persist_local(cx);
         self.publish(cx);
         Ok(self.snapshot(cx.session_id(), &host, &cwd))
     }
@@ -240,6 +277,7 @@ impl Bg {
             l.stopped = true;
             l.error = reason.map(ToOwned::to_owned);
         });
+        self.persist_local(cx);
         tasks::kill(&host.id)?;
         let deadline = timers::now_ms() + STOP_WAIT_MS;
         loop {
@@ -1068,6 +1106,7 @@ impl Extension for Bg {
                 ext.sessions.with(cx.session_id(), |s| {
                     s.local.entry(host.id.clone()).or_default().notified = true;
                 });
+                ext.persist_local(&cx);
                 let cwd = cx.cwd().to_string_lossy().into_owned();
                 let snap = ext.snapshot(cx.session_id(), &host, &cwd);
                 Ok(json!(text::notification_text(&snap)))
@@ -1081,7 +1120,14 @@ impl Extension for Bg {
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.shutting_down.set(false);
+            ext.restore_local_state(&cx);
             ext.publish(&cx);
+            Ok(())
+        });
+        // Settle: rewrite the durable `local` snapshot so a crash mid-turn loses at most the
+        // fields changed after the last persist (core.md §2.1.8).
+        cx.on(EventKind::TurnEnd, |ext, _ev, cx| async move {
+            ext.persist_local(&cx);
             Ok(())
         });
         cx.on(EventKind::SessionShutdown, |ext, _ev, cx| async move {

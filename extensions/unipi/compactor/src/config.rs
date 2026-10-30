@@ -38,7 +38,9 @@ pub enum Method {
 }
 
 impl Method {
-    fn parse(v: Option<&str>) -> Option<Self> {
+    /// Parses the wire name (`vcc | llm`); anything else is `None`.
+    #[must_use]
+    pub fn parse(v: Option<&str>) -> Option<Self> {
         match v {
             Some("vcc") => Some(Self::Vcc),
             Some("llm") => Some(Self::Llm),

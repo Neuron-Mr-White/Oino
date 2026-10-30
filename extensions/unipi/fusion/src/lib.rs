@@ -331,6 +331,49 @@ fn read_raw(p: &std::path::Path) -> Option<Value> {
     unipi_kit::paths::read_json(p)
 }
 
+/// Custom entry persisting this session's sidekick pairing (core.md §2.1.8 D-EXTSTATE):
+/// `{active, selection, sessionFile?}`, last entry wins on restore.
+const SIDEKICK_ENTRY: &str = "unipi:fusion-sidekick";
+
+/// The `unipi:fusion-sidekick` payload: `None` records that Fusion was closed for the session.
+fn sidekick_entry_data(active: Option<&Active>, session_file: Option<&str>) -> Value {
+    match active {
+        Some(sel) => {
+            let mut data = json!({"active": true, "selection": sel});
+            if let Some(f) = session_file {
+                data["sessionFile"] = json!(f);
+            }
+            data
+        }
+        None => json!({"active": false}),
+    }
+}
+
+/// Restores the sidekick pairing from the session's `unipi:fusion-sidekick` entries: the last
+/// entry wins; a closed tail means no pairing. The child session file is re-found by the
+/// sidekick-dir scan in `runtime()` (seed), so only the pairing itself is restored here.
+#[must_use]
+pub fn restore_sidekick(entries: &[Value]) -> Option<Active> {
+    let mut restored: Option<Option<Active>> = None;
+    for e in entries {
+        if e.get("customType").and_then(Value::as_str) != Some(SIDEKICK_ENTRY) {
+            continue;
+        }
+        let data = e.get("data").cloned().unwrap_or(Value::Null);
+        restored = Some(
+            (data.get("active") == Some(&Value::Bool(true)))
+                .then(|| {
+                    data.get("selection")
+                        .cloned()
+                        .and_then(|s| serde_json::from_value::<Active>(s).ok())
+                        .filter(|a| matches!(a, Active::Fusion { .. }))
+                })
+                .flatten(),
+        );
+    }
+    restored.flatten()
+}
+
 /// Settings schema (unipi `registerSettings({namespace: "fusion"})`).
 #[must_use]
 pub fn namespace() -> Namespace {
@@ -618,6 +661,9 @@ impl Fusion {
             .flatten()
             .map(|e| e.path())
             .find(|p| p.extension().is_some_and(|e| e == "jsonl"));
+        let seed = existing
+            .and_then(|p| unipi_kit::paths::host_path(&p))
+            .map(|p| p.to_string_lossy().into_owned());
         let spec = Spec {
             label: "Sidekick".into(),
             model: Some(sidekick),
@@ -629,9 +675,7 @@ impl Fusion {
                 "read_subagent".into(),
                 "run_subagent".into(),
             ],
-            seed_session_file: existing
-                .and_then(|p| unipi_kit::paths::host_path(&p))
-                .map(|p| p.to_string_lossy().into_owned()),
+            seed_session_file: seed.clone(),
             session_dir: unipi_kit::paths::host_path(&dir)
                 .map(|p| p.to_string_lossy().into_owned()),
             child_role: "fusion".into(),
@@ -641,6 +685,14 @@ impl Fusion {
         let agent = Agent::spawn(&spec.to_json())
             .await
             .map_err(|e| e.to_string())?;
+        // D-EXTSTATE: the pairing (and the child session file it re-attaches to) is durable.
+        let _ = session::append_entry(
+            SIDEKICK_ENTRY,
+            Some(&sidekick_entry_data(
+                self.sessions.with(sid, |s| s.active.clone()).as_ref(),
+                seed.as_deref(),
+            )),
+        );
         let sk = Rc::new(Sidekick {
             agent: Rc::new(agent),
             handoffs: RefCell::new(Vec::new()),
@@ -1142,7 +1194,19 @@ impl Fusion {
             }
         };
         let _ = control::set_thinking_level(&effort);
+        let prev_fusion = matches!(prev, Some(Active::Fusion { .. }));
         self.sessions.with(sid, |s| s.active = Some(sel.clone()));
+        // D-EXTSTATE: the pairing is durable in the session (spawn re-records it with the
+        // child session file; a plain model after Fusion records the close).
+        if matches!(sel, Active::Fusion { .. }) || prev_fusion {
+            let _ = session::append_entry(
+                SIDEKICK_ENTRY,
+                Some(&sidekick_entry_data(
+                    matches!(sel, Active::Fusion { .. }).then_some(sel),
+                    None,
+                )),
+            );
+        }
         let (p, has_project) = self.preset();
         let recent = preset::push_recent(&p.recent, &target);
         if let Active::Fusion { lead, sidekick, .. } = sel {
@@ -1589,6 +1653,12 @@ impl Fusion {
                 active = Some(a);
             }
         }
+        // D-EXTSTATE: the session's own sidekick record outranks the global preset — a
+        // restarted host re-attaches the pairing instead of losing it to another session's
+        // model switch (the child file is re-found by the sidekick-dir scan in runtime()).
+        if let Some(a) = restore_sidekick(&session::entries().unwrap_or_default()) {
+            active = Some(a);
+        }
         self.sessions.with(&sid, |s| {
             *s = State {
                 active: active.clone(),
@@ -1663,6 +1733,7 @@ impl Fusion {
             self.stop_runtime(sid);
             let a = Active::Single { model: key };
             self.sessions.with(sid, |s| s.active = Some(a.clone()));
+            let _ = session::append_entry(SIDEKICK_ENTRY, Some(&sidekick_entry_data(None, None)));
             let (p, _) = self.preset();
             self.save_runtime(&p.effort, &p.recent, Some(&a));
             self.sync_tools(cx);
@@ -1919,6 +1990,45 @@ oino_extension::export_extension!(Fusion);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sidekick_pairing_restores_from_custom_entries() {
+        let pair = Active::Fusion {
+            lead: "a/x".into(),
+            sidekick: "b/y".into(),
+            lead_effort: Some("high".into()),
+            sidekick_effort: Some("low".into()),
+        };
+        let entry = |data: Value| json!({"type": "custom", "customType": "unipi:fusion-sidekick", "data": data});
+        // Spawn records the pairing with the child session file.
+        let spawn = sidekick_entry_data(Some(&pair), Some("/host/sidekick/ab.jsonl"));
+        assert_eq!(spawn["active"], true);
+        assert_eq!(spawn["selection"]["lead"], "a/x");
+        assert_eq!(spawn["sessionFile"], "/host/sidekick/ab.jsonl");
+        let closed = sidekick_entry_data(None, None);
+        assert_eq!(closed, json!({"active": false}));
+
+        let entries = vec![
+            json!({"type": "custom", "customType": "unipi:plan-mode", "data": {}}),
+            entry(spawn),
+            entry(closed),
+            entry(sidekick_entry_data(Some(&pair), None)),
+        ];
+        assert_eq!(restore_sidekick(&entries), Some(pair));
+        // A closed tail means the pairing is gone.
+        assert_eq!(restore_sidekick(&entries[..3]), None);
+        // A Single selection in the entry never restores as a pairing.
+        assert_eq!(
+            restore_sidekick(&[entry(sidekick_entry_data(
+                Some(&Active::Single {
+                    model: "a/x".into()
+                }),
+                None,
+            ))]),
+            None
+        );
+        assert_eq!(restore_sidekick(&[]), None);
+    }
 
     #[test]
     fn rows_boost_and_texts() {

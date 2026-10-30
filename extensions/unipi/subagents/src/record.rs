@@ -15,6 +15,12 @@ pub const MAX_TASK_CHARS: usize = 20_000;
 pub const CANCEL_GRACE_MS: u32 = 5000;
 /// Foreground `run_subagent` wait (45 min).
 pub const FOREGROUND_WAIT_MS: i64 = 2_700_000;
+/// Error of a run interrupted by the host dying (repair-compatible, core.md §2.1.8).
+pub const INTERRUPTED_ERROR: &str =
+    "interrupted — Oino exited while it ran (outcome unknown; see the child session)";
+/// Cold-resume hint of an interrupted run whose child session file still exists.
+pub const RESUME_HINT: &str =
+    "The child session file survives — resume:<id> with a follow-up task continues it.";
 
 /// unipi `SubagentStatus`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +140,9 @@ pub struct Record {
     pub session_file: String,
     /// Nesting depth.
     pub depth: u8,
+    /// Cold-resume hint set by [`restore`] when the child session file exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_hint: Option<String>,
 }
 
 /// unipi `recordStatusFor`: a user/session cancel wins over the error a forced kill produces.
@@ -147,16 +156,20 @@ pub fn status_for(report: ReportStatus, cancelled_by: Option<CancelledBy>) -> St
     }
 }
 
-/// Restored index: running entries become failed (unipi `restore`).
+/// Restored index: running entries become failed (unipi `restore`); when the child session
+/// file still exists the record carries a cold-resume hint (`has_session` gets the record's
+/// host `session_file` path).
 #[must_use]
-pub fn restore(list: Vec<Record>) -> Vec<Record> {
+pub fn restore(list: Vec<Record>, has_session: impl Fn(&str) -> bool) -> Vec<Record> {
     list.into_iter()
         .map(|r| {
             if r.status == Status::Running {
+                let resumable = !r.session_file.is_empty() && has_session(&r.session_file);
                 Record {
                     status: Status::Failed,
-                    error: Some("interrupted — Oino exited while it ran".into()),
+                    error: Some(INTERRUPTED_ERROR.into()),
                     ended_at: Some(r.last_activity),
+                    resume_hint: resumable.then(|| RESUME_HINT.replace("<id>", &r.id)),
                     ..r
                 }
             } else {
@@ -345,9 +358,14 @@ pub fn completion_content(rec: Option<&Record>, report: &Report, status: Status)
 /// `read_subagent` text for a finished record.
 #[must_use]
 pub fn finished_read_text(rec: &Record) -> String {
+    let hint = rec
+        .resume_hint
+        .as_deref()
+        .map(|h| format!("\n\n{h}"))
+        .unwrap_or_default();
     match &rec.report {
         Some(report) => format!(
-            "{}{report}\n\n--- subagent {} · {} · {}",
+            "{}{report}\n\n--- subagent {} · {} · {}{hint}",
             if rec.status == Status::Cancelled {
                 format!(
                     "Cancelled{}. Partial output:\n\n",
@@ -365,13 +383,14 @@ pub fn finished_read_text(rec: &Record) -> String {
             plural(rec.tool_calls, "tool call")
         ),
         None => format!(
-            "Subagent {} {}{}",
+            "Subagent {} {}{}{}",
             rec.id,
             rec.status.as_str(),
             rec.error
                 .as_ref()
                 .map(|e| format!(": {e}"))
-                .unwrap_or_default()
+                .unwrap_or_default(),
+            hint
         ),
     }
 }
@@ -468,13 +487,33 @@ mod tests {
             .as_deref(),
             Some("2 subagents working")
         );
-        let r = restore(vec![rec(Status::Running, false)]);
-        assert_eq!(r[0].status, Status::Failed);
-        assert!(
-            r[0].error
-                .as_deref()
-                .is_some_and(|e| e.starts_with("interrupted"))
+        let r = restore(
+            vec![Record {
+                session_file: "/children/abcd1234.jsonl".into(),
+                ..rec(Status::Running, false)
+            }],
+            |file| file == "/children/abcd1234.jsonl",
         );
+        assert_eq!(r[0].status, Status::Failed);
+        assert_eq!(r[0].error.as_deref(), Some(INTERRUPTED_ERROR));
+        assert_eq!(
+            r[0].resume_hint.as_deref(),
+            Some(
+                "The child session file survives — resume:abcd1234 with a follow-up task continues it."
+            ),
+            "hint names the agent id when the child file exists"
+        );
+        // No child file (or a finished run): no hint, error still repair-compatible.
+        let lost = restore(
+            vec![Record {
+                session_file: String::new(),
+                ..rec(Status::Running, false)
+            }],
+            |file| !file.is_empty(),
+        );
+        assert_eq!(lost[0].resume_hint, None);
+        let finished = restore(vec![rec(Status::Completed, false)], |file| !file.is_empty());
+        assert_eq!(finished[0].resume_hint, None);
     }
 
     #[test]

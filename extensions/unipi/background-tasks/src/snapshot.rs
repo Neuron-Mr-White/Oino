@@ -2,7 +2,7 @@
 //! state this extension keeps per task (cwd, notified, output size and tail).
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::text;
 
@@ -98,8 +98,13 @@ impl HostTask {
     }
 }
 
+/// Custom entry that persists the per-task `local` map (core.md §2.1.8 D-EXTSTATE):
+/// `{"local": {<taskId>: Local}}`, last entry wins on restore.
+pub const BG_TASKS_ENTRY: &str = "unipi:bg-tasks";
+
 /// What this extension knows about a task beyond the host record.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Local {
     /// cwd at start.
     pub cwd: String,
@@ -109,6 +114,41 @@ pub struct Local {
     pub error: Option<String>,
     /// Stopped on request (`stop`/`kill`), so a non-zero exit is `killed`.
     pub stopped: bool,
+}
+
+/// The `unipi:bg-tasks` entry payload for a `local` map.
+#[allow(
+    clippy::implicit_hasher,
+    reason = "the map is this extension's own state, never a caller-chosen hasher"
+)]
+#[must_use]
+pub fn local_entry_data(local: &std::collections::HashMap<String, Local>) -> Value {
+    json!({"local": local})
+}
+
+/// Restores the `local` map from the session's `unipi:bg-tasks` entries (last wins).
+/// The caller merges it against the host task list (ids no longer known are dropped).
+#[must_use]
+pub fn restore_local(entries: &[Value]) -> Option<std::collections::HashMap<String, Local>> {
+    let mut restored = None;
+    for e in entries {
+        if e.get("customType").and_then(Value::as_str) != Some(BG_TASKS_ENTRY) {
+            continue;
+        }
+        let map = e
+            .pointer("/data/local")
+            .and_then(Value::as_object)
+            .and_then(|m| {
+                serde_json::from_value::<std::collections::HashMap<String, Local>>(Value::Object(
+                    m.clone(),
+                ))
+                .ok()
+            });
+        if let Some(map) = map {
+            restored = Some(map);
+        }
+    }
+    restored
 }
 
 /// unipi `BgTaskSnapshot` (telemetry fields are absent: Oino tasks are not telemetry-wrapped).
@@ -386,5 +426,50 @@ mod tests {
             resolve(&tasks, "zz").unwrap_err(),
             "Unknown background task ID: zz"
         );
+    }
+
+    #[test]
+    fn local_map_restores_from_the_last_bg_tasks_entry() {
+        let mut one = Local {
+            cwd: "/w".into(),
+            notified: false,
+            ..Local::default()
+        };
+        one.notified = true;
+        let mut local = std::collections::HashMap::new();
+        local.insert("t1".into(), one.clone());
+        local.insert(
+            "t2".into(),
+            Local {
+                cwd: "/other".into(),
+                stopped: true,
+                error: Some("watchdog".into()),
+                ..Local::default()
+            },
+        );
+        let entries = vec![
+            json!({"type": "custom", "customType": "unipi:plan-mode", "data": {}}),
+            json!({"type": "custom", "customType": BG_TASKS_ENTRY,
+            "data": local_entry_data(&{
+                 let mut m = std::collections::HashMap::new();
+                 m.insert("gone".to_owned(), Local::default());
+                 m
+            })}),
+            json!({"type": "message"}),
+            json!({"type": "custom", "customType": BG_TASKS_ENTRY,
+                   "data": local_entry_data(&local)}),
+            // A trailing corrupt/foreign entry never wins.
+            json!({"type": "custom", "customType": BG_TASKS_ENTRY, "data": {"local": null}}),
+        ];
+        let restored = restore_local(&entries).unwrap();
+        assert_eq!(restored.len(), 2);
+        assert_eq!(restored["t1"], one);
+        assert_eq!(restored["t2"].cwd, "/other");
+        assert!(restored["t2"].stopped);
+        assert_eq!(
+            restore_local(&entries[..3]).unwrap()["gone"],
+            Local::default()
+        );
+        assert_eq!(restore_local(&[]), None);
     }
 }

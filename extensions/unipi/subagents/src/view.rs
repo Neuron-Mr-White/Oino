@@ -382,6 +382,9 @@ pub fn detail_body(
                 Some("warning")
             )])));
         }
+        if let Some(h) = &rec.resume_hint {
+            children.push(text(json!([span(&format!("↻ {h}"), Some("accent"))])));
+        }
     }
     let id = &rec.id;
     children.push(json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": [

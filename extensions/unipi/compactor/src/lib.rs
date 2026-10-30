@@ -48,6 +48,45 @@ use crate::cut::{COMPACTOR_INSTRUCTION, apply_tail_budget, build_own_cut, parse_
 use crate::plan::{PlanInput, Stats, plan_lossless};
 
 const RECALL_TYPE: &str = "compactor-recall";
+/// Custom entry persisting a pending command compaction (core.md §2.1.8 D-EXTSTATE).
+const PENDING_ENTRY: &str = "unipi:compactor-pending";
+
+/// A pending compaction as persisted in [`PENDING_ENTRY`] entries.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PendingCompaction {
+    /// Method the next compaction must use (`None` = the configured default).
+    pub method: Option<Method>,
+    /// Command that started it (labels the card, marks a command compaction).
+    pub command: Option<String>,
+}
+
+/// Restores the pending compaction from the session's `unipi:compactor-pending` entries:
+/// the last entry wins, a `{"cleared": true}` entry resets it.
+#[must_use]
+pub fn restore_pending(entries: &[Value]) -> Option<PendingCompaction> {
+    let mut restored: Option<PendingCompaction> = None;
+    for e in entries {
+        if e.get("customType").and_then(Value::as_str) != Some(PENDING_ENTRY) {
+            continue;
+        }
+        let data = e.get("data").cloned().unwrap_or(Value::Null);
+        if data.get("cleared") == Some(&Value::Bool(true)) {
+            restored = None;
+            continue;
+        }
+        restored = Some(PendingCompaction {
+            method: data
+                .get("method")
+                .and_then(Value::as_str)
+                .and_then(|m| Method::parse(Some(m))),
+            command: data
+                .get("command")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
+        });
+    }
+    restored.filter(|p| p.method.is_some() || p.command.is_some())
+}
 
 /// `/compact-then <prompt>` match → prompt.
 #[must_use]
@@ -70,6 +109,8 @@ struct Sess {
     pending_method: Option<Method>,
     command_compaction: bool,
     pending_command: Option<String>,
+    /// A `unipi:compactor-pending` entry is live in the session file.
+    pending_entry: bool,
     last_command: Option<String>,
     last_reason: Option<String>,
     last_stats: Option<Stats>,
@@ -209,6 +250,28 @@ impl Compactor {
         config::load(&self.settings.get(NAMESPACE))
     }
 
+    // ── durable pending state (core.md §2.1.8 D-EXTSTATE) ─────────────────────
+
+    /// Persists the pending compaction as one `unipi:compactor-pending` entry.
+    fn persist_pending(&self, sid: &str, method: Option<Method>, command: Option<&str>) {
+        self.sessions.with(sid, |s| s.pending_entry = true);
+        let _ = session::append_entry(
+            PENDING_ENTRY,
+            Some(&json!({"method": method.map(Method::as_str), "command": command})),
+        );
+    }
+
+    /// Appends the reset entry once per persist: when the pending values are consumed by
+    /// `session_before_compact`, or when the compaction call resolves without consuming them.
+    fn clear_pending_if_live(&self, sid: &str) {
+        if self
+            .sessions
+            .with(sid, |s| std::mem::take(&mut s.pending_entry))
+        {
+            let _ = session::append_entry(PENDING_ENTRY, Some(&json!({"cleared": true})));
+        }
+    }
+
     async fn active_work() -> Vec<(String, String)> {
         let replies = unipi_kit::fanout::call_all(
             fan::COMPACTION_CONTEXT_PROVIDE,
@@ -282,6 +345,8 @@ impl Compactor {
             s.pending_follow_up = None;
             (p, fc, c)
         });
+        // The pending values were consumed: execution clears the durable entry.
+        self.clear_pending_if_live(&sid);
         let _ = command;
         let method = pending.unwrap_or(if parsed.is_compactor {
             Method::Vcc
@@ -473,6 +538,7 @@ impl Compactor {
             s.command_compaction = true;
             s.pending_command = Some(command.to_owned());
         });
+        self.persist_pending(&sid, None, Some(command));
         let has_ui = cx.has_ui();
         spawn(async move {
             match control::compact(Some(COMPACTOR_INSTRUCTION)).await {
@@ -487,6 +553,7 @@ impl Compactor {
                     }
                 }
             }
+            self.clear_pending_if_live(&sid);
         });
     }
 
@@ -742,11 +809,13 @@ impl Compactor {
 
     async fn run_compaction(&self, cx: &CommandCtx, method: Method, args: &str, command: &str) {
         let trimmed = args.trim();
-        self.sessions.with(cx.session_id(), |s| {
+        let sid = cx.session_id().to_owned();
+        self.sessions.with(&sid, |s| {
             s.pending_method = Some(method);
             s.command_compaction = true;
             s.pending_command = Some(command.to_owned());
         });
+        self.persist_pending(&sid, Some(method), Some(command));
         let instructions = match method {
             Method::Llm => (!trimmed.is_empty()).then(|| trimmed.to_owned()),
             Method::Vcc => Some(if trimmed.is_empty() {
@@ -756,10 +825,11 @@ impl Compactor {
             }),
         };
         let result = control::compact(instructions.as_deref()).await;
-        self.sessions.with(cx.session_id(), |s| {
+        self.sessions.with(&sid, |s| {
             s.pending_method = None;
             s.pending_command = None;
         });
+        self.clear_pending_if_live(&sid);
         if let Err(e) = result {
             let m = e.to_string();
             if m.to_lowercase().contains("too small") || !cx.has_ui() {
@@ -927,6 +997,15 @@ impl Extension for Compactor {
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.settings.refresh();
             ext.sessions.remove(cx.session_id());
+            // D-EXTSTATE: a pending command compaction survives a restart.
+            if let Some(p) = restore_pending(&session::entries().unwrap_or_default()) {
+                ext.sessions.with(cx.session_id(), |s| {
+                    s.pending_method = p.method;
+                    s.pending_command.clone_from(&p.command);
+                    s.command_compaction = p.command.is_some();
+                    s.pending_entry = true;
+                });
+            }
             unipi_kit::bus::emit(&ModuleReady {
                 name: "@pi-unipi/compactor".into(),
                 version: host::info().extension_version,
@@ -1145,5 +1224,39 @@ mod tests {
             &json!({"fileOps": {"read": ["a"], "written": ["b"], "edited": ["c"]}}),
         ));
         assert!(ops.read.contains("a") && ops.modified.contains("b") && ops.modified.contains("c"));
+    }
+
+    #[test]
+    fn pending_compaction_restores_from_custom_entries() {
+        let entry = |data: Value| json!({"type": "custom", "customType": "unipi:compactor-pending", "data": data});
+        let entries = vec![
+            json!({"type": "custom", "customType": "unipi:plan-mode", "data": {}}),
+            entry(json!({"method": "llm", "command": "compact-by-llm"})),
+            entry(json!({"cleared": true})),
+            entry(json!({"method": "vcc", "command": "compact-vcc"})),
+        ];
+        assert_eq!(
+            restore_pending(&entries),
+            Some(PendingCompaction {
+                method: Some(Method::Vcc),
+                command: Some("compact-vcc".into()),
+            })
+        );
+        // A cleared tail means nothing is pending.
+        assert_eq!(restore_pending(&entries[..3]), None);
+        // compact-then persists no method, only the command.
+        assert_eq!(
+            restore_pending(&[entry(json!({"method": null, "command": "compact-then"}))]),
+            Some(PendingCompaction {
+                method: None,
+                command: Some("compact-then".into()),
+            })
+        );
+        assert_eq!(restore_pending(&[]), None);
+        assert_eq!(
+            restore_pending(&[entry(json!({"method": "bogus", "command": null}))]),
+            None,
+            "nothing recognisable is not a pending compaction"
+        );
     }
 }
