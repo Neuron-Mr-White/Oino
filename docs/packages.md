@@ -35,5 +35,7 @@ Copy (or symlink) the package directory into `~/.oino/extensions/` (global) or
 
 The pi-style package manager installs from a directory, an archive, an `https` archive or a
 `git+https` URL: `oino install <source> [--project] [--yes]`, `oino remove <id>`,
-`oino update <id>…` / `oino update --extensions`, `oino list`, `oino config`. `oino ext
-validate` is not available yet.
+`oino update <id>…` / `oino update --extensions`, `oino list`, `oino config`. `oino list`
+also shows the distribution share-dir packages (scope `dist`; `OINO_DIST_EXTENSIONS`
+overrides the dir, an empty value hides them); `remove` refuses them — they belong to the
+installer. `oino ext validate` is not available yet.

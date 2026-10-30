@@ -11,18 +11,21 @@ their Markdown resources (skills, prompts) can.
 
 Load order (later packages with the same id replace earlier ones in place):
 
-1. **Bundled** — every provider and unipi component compiled into `oino`
-   (`crates/oino-bundle`): providers first, then unipi in its load order.
-2. **Global** — `~/.oino/extensions/<package>/extension.json`.
+1. **Distribution** — the share dir the installer owns (`/usr/share/unipi-oino/extensions`,
+   `UniPi.app/Contents/Resources/extensions`, `%LOCALAPPDATA%\UniPi\extensions`; resolved
+   relative to the binary, overridable with `OINO_DIST_EXTENSIONS`). Nothing is compiled
+   into the binary.
+2. **Global** — `~/.oino/extensions/<package>/extension.json` (a user copy shadows the
+   distribution one).
 3. **Project** — `<project>/.oino/extensions/<package>/` (trusted projects only).
-4. **Command line** — `-e <package dir>` (repeatable).
+4. **Command line** — `-e <package dir>` (repeatable, wins over everything).
 
 `-ne/--no-extensions` skips every `kind: "extension"` package (providers stay loaded, explicit
 `-e` packages still load). `--exclude-extension <id>` drops composed packages by id —
 repeatable, comma-separated, applied after load-order replacement and before instantiation —
 including explicit `-e` paths and providers (`builtin:` test components are not subject). An
-id that matches nothing warns and is ignored; exclusion never writes settings. `OINO_BUNDLED=0`
-drops the bundled set. `disabledExtensions` in settings disables ids persistently; the CLI
+id that matches nothing warns and is ignored; exclusion never writes settings.
+`disabledExtensions` in settings disables ids persistently; the CLI
 flag is an ephemeral union with it for one run (excluded either way: not loaded).
 
 ## Safe mode

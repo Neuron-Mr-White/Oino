@@ -109,7 +109,7 @@ try_binary_install() {
 }
 
 source_install() {
-  if [ -f "Cargo.toml" ] && [ -d "crates/oino-bundle" ]; then
+  if [ -f "Cargo.toml" ] && [ -d "crates/oino-core" ]; then
     SRC=$(pwd)
   else
     SRC=$SRC_DIR

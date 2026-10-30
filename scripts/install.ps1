@@ -61,7 +61,7 @@ function Install-Release {
 }
 
 function Install-Source {
-    if ((Test-Path "Cargo.toml") -and (Test-Path "crates\oino-bundle")) {
+    if ((Test-Path "Cargo.toml") -and (Test-Path "crates\oino-core")) {
         $Src = (Get-Location).Path
     } else {
         $Src = $SrcDir

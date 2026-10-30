@@ -101,7 +101,7 @@ Two cargo workspaces: the root (`crates/*`, `xtask`) and `extensions/` (`wasm32-
 components).
 
 ```bash
-cargo xtask wasm                      # build every component into extensions/dist (bundled by oino-bundle)
+cargo xtask wasm                      # build every component into extensions/dist (staged into the distribution share dir)
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
 cargo test --workspace

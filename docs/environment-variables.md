@@ -6,7 +6,8 @@
 | `OINO_SESSION_DIR` | session storage directory (overridden by `--session-dir`) |
 | `OINO_OFFLINE` | `1`/`true`/`yes`: no startup network operations (dynamic model lists); same as `--offline` |
 | `OINO_CACHE_RETENTION` | prompt cache retention: `none`, `short`, `long` (`PI_CACHE_RETENTION` is honoured too) |
-| `OINO_BUNDLED` | `0`: do not load the components bundled into the binary (tests, debugging) |
+| `OINO_DIST_EXTENSIONS` | overrides the distribution share dir scanned first for extension packages (a directory of `<id>/` packages; empty: disabled — tests, debugging) |
+| `OINO_DOCS_ROOT` | overrides the docs root of the system prompt's docs section (default: the share dir's `docs/` tree, then the legacy `~/.oino/bundled/oino.docs@*`) |
 | provider keys | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, … ([providers.md](providers.md)) |
 
 ## Exported to tools

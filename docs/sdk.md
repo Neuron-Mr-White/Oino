@@ -10,9 +10,8 @@ Oino Desktop do.
 | `oino-agent` | agent loop, tools contract |
 | `oino-tools` | built-in tools |
 | `oino-settings`, `oino-resources`, `oino-models` | settings, resources (skills, prompts, context files), model registry and auth |
-| `oino-core` | `Services`, `AgentSessionRuntime`, `AgentSession`, extension runner, compaction, export |
+| `oino-core` | `Services`, `AgentSessionRuntime`, `AgentSession`, extension runner, source discovery (share dir, agent, project, `-e`), compaction, export |
 | `oino-wasm-host` | wasmtime host; `core_bridge::CoreLoader` loads packages into `oino-core` |
-| `oino-bundle` | the bundled components and docs |
 | `oino-client` | `SessionBackend` trait with in-process and fake backends |
 | `oino-rpc` | RPC codec, server and typed client (`RpcBackend`) |
 | `oino-acp` | ACP agent over `oino-core` |

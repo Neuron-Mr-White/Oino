@@ -17,7 +17,7 @@ Read these first:
 ## Gates (run for the workspaces you touch)
 
 ```sh
-cargo xtask wasm                       # components into extensions/dist (bundled by oino-bundle)
+cargo xtask wasm                       # components into extensions/dist (staged into the share dir or -e)
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
 cargo test --workspace
@@ -31,8 +31,8 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 - `/tmp` hits its quota on the dev machine: export `TMPDIR=$PWD/target/tmp` for builds and
   tests; tests create temp dirs under `CARGO_TARGET_TMPDIR` / `target/tmp`.
 - Memory is tight: use `-j 2`–`-j 4` for cargo, `-j 1`/`-j 2` in `apps/`.
-- Tests that spawn `oino` set `OINO_BUNDLED=0` so the bundled unipi components do not change
-  their output.
+- Tests that spawn `oino` point `OINO_DIST_EXTENSIONS` at a staged share dir (or leave it
+  empty) so the distribution packages do not change their output.
 
 ## Code
 

@@ -4,8 +4,8 @@ Oino ships as two binaries:
 
 | Binary | What it is |
 |---|---|
-| `oino` | the agent: terminal UI, print / JSON / RPC / ACP modes. Every provider and unipi extension component is compiled into it (`crates/oino-bundle`). |
-| `oino-kanboard` | the kanboard CLI and daemon used by the bundled `unipi.kanboard` extension. |
+| `oino` | the agent: terminal UI, print / JSON / RPC / ACP modes. Extension packages come from the installer's share dir (`OINO_DIST_EXTENSIONS` to override) and `~/.oino/extensions`; nothing is compiled in. |
+| `oino-kanboard` | the kanboard CLI and daemon used by the `unipi.kanboard` extension. |
 
 ## Installers
 

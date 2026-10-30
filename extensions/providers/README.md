@@ -56,7 +56,7 @@ oracle fixtures); each component is a thin `Provider` impl over `oino_provider_k
   SigV4 signatures are recomputed from pi's signed headers).
 - Host end to end: `scripts/pi-oracle/providers-{v1,more}/host-e2e.rs` (copy into
   `crates/oino-wasm-host/tests/`).
-- Build/bundle: `cargo xtask wasm` → `extensions/dist/oino.*` → `crates/oino-bundle` (feature `providers`).
+- Build: `cargo xtask wasm` → `extensions/dist/oino.*` → installed via the share dir or `~/.oino/extensions`.
 - Deviations from the specs: `docs/dev/v1/deviations/providers-v1.md`; providers-more additions below.
 
 ## Deviations (providers-more)
