@@ -36,6 +36,8 @@ jobs:
       - name: Clippy (wasm32-wasip2)
         working-directory: extensions
         run: cargo clippy --target wasm32-wasip2 --workspace --all-targets -- -D warnings -W clippy::pedantic
+      - name: ui-protocol v2 gate (no OUS v1 node trees)
+        run: sh scripts/ui-v1-gate.sh
       - name: Native extension tests
         working-directory: extensions
         run: cargo test --workspace -j 4
