@@ -52,7 +52,13 @@ export function SessionRow(props: {
 }): JSX.Element {
   const state = () => rowState(props.card);
   const changes = () => changesOf(props.card);
-  const time = () => relativeTimeMs(props.card.last_activity ?? props.card.updated_at);
+  const at = () => props.card.last_activity ?? props.card.updated_at;
+  const time = () => relativeTimeMs(at());
+  /** The exact moment behind the relative time (hover). */
+  const stamp = () => {
+    const ms = at();
+    return ms ? new Date(ms).toLocaleString() : undefined;
+  };
   const pin = () => (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -84,7 +90,7 @@ export function SessionRow(props: {
           <Show when={props.meta?.unread}>
             <span class="srow-unread" title="Unread" aria-label="Unread" />
           </Show>
-          <span class="srow-time">{time()}</span>
+          <span class="srow-time" title={stamp()}>{time()}</span>
         </span>
         <span class="srow-sub">
           <Show when={STATE_WORD[state()]} fallback={<Show when={props.showFolder && folder()}><span class="srow-cwd">{folder()}</span></Show>}>
