@@ -133,8 +133,9 @@ enum Command {
         #[arg(long)]
         no_wait: bool,
     },
-    /// Scheduled `pi -p` jobs, run by `unipi-host serve` itself (no pi
-    /// window needed). See `docs/m7/CRON.md`.
+    /// Scheduled unattended `oino` runs, fired by `unipi-host serve` itself (one job
+    /// file each under `<agent dir>/cron/jobs`, ext-abi §6; the cron extension and the
+    /// app's Cron screen see the same files).
     Cron {
         #[command(subcommand)]
         action: CronAction,

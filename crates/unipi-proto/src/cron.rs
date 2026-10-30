@@ -1,8 +1,8 @@
-//! Scheduled pi runs from the app (UNI-317) and their settings (UNI-318).
+//! Scheduled unattended Oino runs from the app (UNI-317) and their settings (UNI-318).
 //! Mirrors `packages/protocol/src/cron.ts`. The host owns the real
-//! `Job`/`Run`/`CronSettings` types (`crates/host/src/cron/model.rs`,
-//! documented in `docs/m7/CRON.md`); these are the wire shapes, built from
-//! (and read back into) the same JSON the CLI already prints with
+//! `Job`/`Run`/`CronSettings` types (`unipi-cron`'s job files, spec
+//! `docs/dev/v2/specs/ext-abi.md` §6 and `specs/host.md` §9.8); these are the wire
+//! shapes, built from (and read back into) the same JSON the CLI already prints with
 //! `--json`.
 //!
 //! One request/reply op per action below (`hello{req:{op:"cron_*", …}}` →

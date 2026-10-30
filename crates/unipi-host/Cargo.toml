@@ -70,12 +70,7 @@ hmac = "0.12"
 sha1 = "0.10"
 tempfile = "3"
 tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake"] }
-croner = "4.0.1"
-chrono-tz = "0.10.4"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
-shell-words = "1.1.1"
-nix = { version = "0.31.3", features = ["process", "signal"] }
-iana-time-zone = "0.1.65"
 
 # UNI-228: parent-death watch + kill(pid,0) for the instance lock.
 [target.'cfg(unix)'.dependencies]

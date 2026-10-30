@@ -566,7 +566,7 @@ where
             let input = sched_input
                 .or(at)
                 .ok_or_else(|| bad_request("cron_parse needs `schedule` or `at`"))?;
-            let resolved = control::resolve_schedule_input(&input, for_at, Some(&tz_zone.name()))
+            let resolved = control::resolve_schedule_input(&input, for_at, Some(tz_zone.name()))
                 .map_err(bad_request)?;
             let parsed = schedule::Schedule::parse(&resolved).map_err(|e| bad_request(e.0))?;
             let fires =
