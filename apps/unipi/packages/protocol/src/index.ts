@@ -245,6 +245,22 @@ export type {
 } from "./git.js";
 
 export {
+  HOST_SETTINGS_KEYS,
+  HOST_SETTINGS_SECRET_MASK,
+  HostSettingsKeySchema,
+  RelaySettingSchema,
+  HostSettingsGetRequestSchema,
+  HostSettingsSetRequestSchema,
+  HostSettingsSchema,
+  ForwardingSettingsSchema,
+  PushSettingsSchema,
+  FsSettingsSchema,
+  TermSettingsSchema,
+  UpdateSettingsSchema,
+} from "./settings.js";
+export type { HostSettings, ForwardingSettings, UpdateSettings } from "./settings.js";
+
+export {
   FEATURE_NOTE_MAX,
   FEATURE_PORTS_MAX,
   FeatureKindSchema,

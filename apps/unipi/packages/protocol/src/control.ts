@@ -9,6 +9,7 @@ import { DesktopCmdSchema, DesktopEventSchema, DesktopQualitySchema, DesktopView
 import { FEATURE_NOTE_MAX, FeatureKindSchema, FeatureLeaveScopeSchema, FeatureScopeSchema } from "./sharing.js";
 import { ChatCloseRequestSchema, ChatConfigRequestSchema, ChatConfigSetRequestSchema, ChatNewRequestSchema, ChatNewTargetSchema } from "./chat.js";
 import { DeviceRevokeRequestSchema, DevicesListRequestSchema, HostInfoRequestSchema, PairBeginRequestSchema, PairStatusRequestSchema } from "./admin.js";
+import { HostSettingsGetRequestSchema, HostSettingsSetRequestSchema } from "./settings.js";
 import {
   CronAddRequestSchema,
   CronEditRequestSchema,
@@ -628,6 +629,8 @@ const BaseRequestSchema = z.discriminatedUnion("op", [
   ChatConfigRequestSchema,
   ChatConfigSetRequestSchema,
   // UNI-232: local-only admin ops (see admin.ts).
+  HostSettingsGetRequestSchema,
+  HostSettingsSetRequestSchema,
   HostInfoRequestSchema,
   PairBeginRequestSchema,
   PairStatusRequestSchema,
