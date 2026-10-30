@@ -434,6 +434,20 @@ pub enum OinoEvent {
         /// Number of dropped events.
         dropped: u64,
     },
+    /// A registry patch (`ui-protocol` §9.2): `{"type":"oino_ui_patch", …UiPatch}`.
+    /// Frontends apply the ops in order; `rev != last + 1` triggers `_oino/ui_resync`.
+    #[serde(rename = "oino_ui_patch", rename_all = "camelCase")]
+    UiPatch {
+        /// Registry scope (`session` / `host`).
+        scope: oino_ui::slot::Scope,
+        /// Session id (session scope only).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        /// `previous + 1`.
+        rev: u64,
+        /// Ops, applied in order.
+        ops: Vec<oino_ui::slot::RegistryOp>,
+    },
     /// A bus topic the frontend subscribed to (`_oino/topics`) was published.
     Topic {
         /// Topic name.
@@ -506,6 +520,38 @@ impl From<crate::topics::TopicValue> for OinoEvent {
             data: value.data,
             sticky: value.sticky,
             publisher: value.publisher,
+        }
+    }
+}
+
+impl From<oino_ui::slot::UiPatch> for OinoEvent {
+    fn from(patch: oino_ui::slot::UiPatch) -> Self {
+        Self::UiPatch {
+            scope: patch.scope,
+            session_id: patch.session_id,
+            rev: patch.rev,
+            ops: patch.ops,
+        }
+    }
+}
+
+impl OinoEvent {
+    /// The registry patch this event carries (`oino_ui_patch`), if any.
+    #[must_use]
+    pub fn ui_patch(&self) -> Option<oino_ui::slot::UiPatch> {
+        match self {
+            Self::UiPatch {
+                scope,
+                session_id,
+                rev,
+                ops,
+            } => Some(oino_ui::slot::UiPatch {
+                scope: *scope,
+                session_id: session_id.clone(),
+                rev: *rev,
+                ops: ops.clone(),
+            }),
+            _ => None,
         }
     }
 }

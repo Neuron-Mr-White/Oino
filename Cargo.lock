@@ -4223,6 +4223,7 @@ dependencies = [
  "oino-session",
  "oino-settings",
  "oino-tools",
+ "oino-ui",
  "regex",
  "serde",
  "serde_json",

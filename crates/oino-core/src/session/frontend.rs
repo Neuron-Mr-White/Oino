@@ -41,7 +41,7 @@ pub enum FrontendError {
     Failed(String),
 }
 
-/// Transcript row a render spec targets (ui-protocol §6.4).
+/// Transcript row a render spec targets (ui-protocol §6.4, §6.7).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RenderTarget {
@@ -52,6 +52,8 @@ pub enum RenderTarget {
     /// A tool call (extension tool or built-in override).
     #[default]
     Tool,
+    /// An end-of-turn footer (§6.7): `render{target:"turnFooter", key, turnEntryId, …}`.
+    TurnFooter,
 }
 
 impl RenderTarget {
@@ -62,6 +64,18 @@ impl RenderTarget {
             Self::CustomMessage => "customMessage",
             Self::CustomEntry => "customEntry",
             Self::Tool => "tool",
+            Self::TurnFooter => "turnFooter",
+        }
+    }
+
+    /// Registry spec target (`renderer-target`, ext-api kebab-case).
+    #[must_use]
+    pub const fn spec_str(self) -> &'static str {
+        match self {
+            Self::CustomMessage => "customMessage",
+            Self::CustomEntry => "customEntry",
+            Self::Tool => "tool",
+            Self::TurnFooter => "turn-footer",
         }
     }
 
@@ -72,6 +86,7 @@ impl RenderTarget {
             "customMessage" => Some(Self::CustomMessage),
             "customEntry" => Some(Self::CustomEntry),
             "tool" => Some(Self::Tool),
+            "turnFooter" => Some(Self::TurnFooter),
             _ => None,
         }
     }
@@ -155,11 +170,20 @@ impl RenderWidth {
 pub struct RenderRequest {
     /// Row kind.
     pub target: RenderTarget,
-    /// Custom type or tool name.
+    /// Custom type or tool name (the renderer key of a turn footer, §6.7).
     pub key: String,
     /// Entry or tool-call id (cache key).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry_id: Option<String>,
+    /// Turn id of a `turnFooter` request = the user message entry that started it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_entry_id: Option<String>,
+    /// Zero-based turn index (0 = first turn).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_index: Option<u64>,
+    /// Whether the turn is still running (§6.7).
+    #[serde(default)]
+    pub running: bool,
     /// Density hint.
     #[serde(default)]
     pub density: RenderDensity,
@@ -182,6 +206,9 @@ impl RenderRequest {
             target: RenderTarget::Tool,
             key: key.into(),
             entry_id,
+            turn_entry_id: None,
+            turn_index: None,
+            running: false,
             density: RenderDensity::Simple,
             expanded: false,
             width: RenderWidth::Normal,
@@ -496,18 +523,13 @@ impl AgentSession {
             .collect()
     }
 
-    /// The extension that opened panel `panel_id` (retained `openPanel`, else the
-    /// `<ext>/panel-<n>` id prefix).
-    fn panel_owner(&self, panel_id: &str) -> Option<String> {
-        self.inner
-            .ui
-            .snapshot()
-            .into_iter()
-            .filter(|r| r.method == "openPanel" || r.method == "updatePanel")
-            .find(|r| r.params.get("panelId").and_then(JsonValue::as_str) == Some(panel_id))
-            .and_then(|r| r.extension_id)
+    /// The extension that owns entry `entry_id` (§6.1), from the registry.
+    fn panel_owner(&self, entry_id: &str) -> Option<String> {
+        lock(&self.inner.registry)
+            .get(entry_id)
+            .map(|entry| entry.extension_id.clone())
             .or_else(|| {
-                panel_id
+                entry_id
                     .rsplit_once("/panel-")
                     .map(|(owner, _)| owner.to_owned())
             })
@@ -526,17 +548,152 @@ impl AgentSession {
         action_id: &str,
         value: Option<JsonValue>,
     ) -> Result<(), FrontendError> {
+        self.dispatch_action(
+            &crate::ui::UiAction {
+                panel_id: panel_id.to_owned(),
+                action_id: action_id.to_owned(),
+                value,
+                ..crate::ui::UiAction::default()
+            },
+            false,
+        )
+    }
+
+    /// Delivers a v2 action payload (`_oino/ui_action`, §4.6); `$close` also deletes the
+    /// entry after the event is delivered (§6.6).
+    ///
+    /// # Errors
+    ///
+    /// [`FrontendError::NotFound`] for an unknown or disposed entry.
+    pub fn ui_action_with(&self, action: &crate::ui::UiAction) -> Result<(), FrontendError> {
+        self.dispatch_action(action, action.action_id == "$close")
+    }
+
+    /// `_oino/ui_visible` (§6.5): aggregates over frontends and sends `$show`/`$hide` to the
+    /// owner when the aggregate changes.
+    pub fn ui_visible(&self, frontend: &str, entry_id: &str, visible: bool) {
+        let change = lock(&self.inner.registry).set_visible(frontend, entry_id, visible);
+        if let Some(change) = change {
+            let action = crate::ui::UiAction {
+                panel_id: change.entry_id,
+                action_id: if change.visible { "$show" } else { "$hide" }.to_owned(),
+                ..crate::ui::UiAction::default()
+            };
+            let _ = self.dispatch_action(&action, false);
+        }
+    }
+
+    /// The current registry snapshot (`_oino/ui_snapshot`, `_oino/ui_resync`, §9.3).
+    #[must_use]
+    pub fn ui_snapshot(&self) -> crate::ui::UiSnapshot {
+        lock(&self.inner.registry).snapshot()
+    }
+
+    /// `_oino/ui_resync{rev}`: the frontend saw a gap, so it always gets a full snapshot.
+    #[must_use]
+    pub fn ui_resync(&self) -> crate::ui::UiSnapshot {
+        self.ui_snapshot()
+    }
+
+    /// Applies one retained producer call (`ui.fire`, §6.3): the registry records it and
+    /// publishes a patch; the pi-shaped record is kept for pi clients and the v1 replay.
+    ///
+    /// # Errors
+    ///
+    /// Invalid trees/patches, foreign ids and limit failures (§9.1); the failure is also
+    /// published as `extension_error`.
+    pub fn ui_fire(
+        &self,
+        extension: &str,
+        method: &str,
+        params: oino_ai::JsonObject,
+    ) -> Result<crate::ui::ProduceOutcome, crate::ui::RegistryError> {
+        let outcome = {
+            let mut registry = lock(&self.inner.registry);
+            let outcome = registry.produce(extension, method, &params);
+            if outcome.is_ok() {
+                registry.flush();
+            }
+            outcome
+        };
+        match outcome {
+            Ok(outcome) => {
+                let effect = matches!(outcome, crate::ui::ProduceOutcome::Effect)
+                    && !crate::ui::registry::is_meta_method(method);
+                if let Some(request) = self.inner.ui.fire(Some(extension), method, params)
+                    && effect
+                {
+                    let mut registry = lock(&self.inner.registry);
+                    registry.effect(request.to_registry());
+                    registry.flush();
+                }
+                Ok(outcome)
+            }
+            Err(error) => {
+                self.inner.hub.publish(crate::events::ExtensionErrorEvent {
+                    extension_path: extension.to_owned(),
+                    event: method.to_owned(),
+                    error: error.to_string(),
+                    stack: None,
+                });
+                Err(error)
+            }
+        }
+    }
+
+    /// Creates the turn-footer registry entry of a `turn-footer` renderer (§6.7).
+    pub fn ui_register_turn_footer(&self, extension: &str, key: &str) {
+        let mut registry = lock(&self.inner.registry);
+        if let Err(error) = registry.register_turn_footer(extension, key) {
+            drop(registry);
+            self.inner.hub.publish(crate::events::ExtensionErrorEvent {
+                extension_path: extension.to_owned(),
+                event: "register-renderer".to_owned(),
+                error: error.to_string(),
+                stack: None,
+            });
+        } else {
+            registry.flush();
+        }
+    }
+
+    fn dispatch_action(
+        &self,
+        action: &crate::ui::UiAction,
+        close: bool,
+    ) -> Result<(), FrontendError> {
         let runner = self.runner();
         let extension = self
-            .panel_owner(panel_id)
+            .panel_owner(&action.panel_id)
             .and_then(|owner| runner.set().get(&owner).cloned())
-            .ok_or_else(|| FrontendError::NotFound(format!("Unknown panel: {panel_id}")))?;
-        let mut payload =
-            json!({"type": "oino_ui_action", "panelId": panel_id, "actionId": action_id});
-        if let Some(value) = value {
-            payload["value"] = value;
+            .ok_or_else(|| {
+                FrontendError::NotFound(format!("Unknown panel: {}", action.panel_id))
+            })?;
+        let mut payload = json!({
+            "type": "oino_ui_action",
+            "panelId": action.panel_id,
+            "actionId": action.action_id,
+        });
+        if let Some(value) = &action.value {
+            payload["value"] = value.clone();
+        }
+        if let Some(values) = &action.values {
+            payload["values"] = JsonValue::Object(values.clone());
+        }
+        if let Some(path) = &action.path {
+            payload["path"] = json!(path);
+        }
+        if let Some(source) = action.source {
+            let name = match source {
+                crate::ui::ActionSource::Tui => "tui",
+                crate::ui::ActionSource::App => "app",
+                crate::ui::ActionSource::Rpc => "rpc",
+            };
+            payload["source"] = json!(name);
         }
         let cx = runner.call_context().with_kind(CallKind::Command);
+        let session = self.clone();
+        let entry_id = action.panel_id.clone();
         self.spawn_task(async move {
             if let Err(error) = extension
                 .instance
@@ -544,6 +701,11 @@ impl AgentSession {
                 .await
             {
                 runner.emit_error(&extension.instance.path(), "oino_ui_action", error.message);
+            }
+            if close {
+                let mut registry = lock(&session.inner.registry);
+                registry.close(&entry_id);
+                registry.flush();
             }
         });
         Ok(())
@@ -771,12 +933,13 @@ impl AgentSession {
     pub fn render_spec(&self, request: &RenderRequest) -> Result<Option<JsonValue>, FrontendError> {
         let runner = self.runner();
         let target = request.target.as_str();
+        let spec_target = request.target.spec_str();
         let key = request.key.as_str();
         let owner = runner
             .renderers()
             .into_iter()
             .find(|(_, spec)| {
-                spec.get("target").and_then(JsonValue::as_str) == Some(target)
+                spec.get("target").and_then(JsonValue::as_str) == Some(spec_target)
                     && spec.get("key").and_then(JsonValue::as_str) == Some(key)
             })
             .map(|(id, _)| id);
@@ -788,15 +951,27 @@ impl AgentSession {
             .get(&owner)
             .cloned()
             .ok_or_else(|| FrontendError::Failed(format!("unknown extension {owner}")))?;
-        let payload = json!({
-            "target": target,
-            "key": key,
-            "entryId": request.entry_id,
-            "density": request.density.as_str(),
-            "expanded": request.expanded,
-            "width": request.width.as_str(),
-            "data": request.data.clone(),
-        });
+        // §6.7: a turn footer gets the turn identity instead of a row payload; `null`
+        // means "nothing to render" (not an error).
+        let payload = if request.target == RenderTarget::TurnFooter {
+            json!({
+                "target": target,
+                "key": key,
+                "turnEntryId": request.turn_entry_id,
+                "turnIndex": request.turn_index,
+                "running": request.running,
+            })
+        } else {
+            json!({
+                "target": target,
+                "key": key,
+                "entryId": request.entry_id,
+                "density": request.density.as_str(),
+                "expanded": request.expanded,
+                "width": request.width.as_str(),
+                "data": request.data.clone(),
+            })
+        };
         let cx = runner.call_context().with_kind(CallKind::Render);
         Ok(extension
             .instance

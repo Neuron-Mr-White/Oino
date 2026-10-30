@@ -48,7 +48,7 @@ use crate::events::{AgentSessionEvent, ClientEvent, ExtensionErrorEvent, OinoEve
 use crate::extensions::api::{CallContext, CallKind, ExtensionMode};
 use crate::extensions::runner::{ErrorSink, ExtensionRunner, ExtensionSet};
 use crate::hub::{EventHub, EventStream};
-use crate::ui::{UiBridge, UiOutput, UiSink};
+use crate::ui::{RegistrySink, UiBridge, UiOutput, UiRegistry, UiSink, is_dialog};
 
 pub use bash::BashResult;
 pub use checkpoints::{Checkpoint, CheckpointFile, RewindFailure, RewindResult};
@@ -271,6 +271,8 @@ pub(crate) struct Inner {
     pub(crate) runner: RwLock<ExtensionRunner>,
     pub(crate) hub: EventHub,
     pub(crate) ui: UiBridge,
+    /// Retained UI state (§6): entries, meta, dialogs, patches.
+    pub(crate) registry: Arc<Mutex<UiRegistry>>,
     pub(crate) book: Mutex<RunBook>,
     pub(crate) cancels: Mutex<Cancels>,
     pub(crate) tools: Mutex<tools::ToolState>,
@@ -305,32 +307,63 @@ impl std::fmt::Debug for AgentSession {
     }
 }
 
-struct HubErrors(EventHub);
+struct HubErrors {
+    hub: EventHub,
+    registry: Arc<Mutex<UiRegistry>>,
+}
 
 impl ErrorSink for HubErrors {
     fn report(&self, error: ExtensionErrorEvent) {
         tracing::warn!(extension = %error.extension_path, event = %error.event, "{}", error.error);
-        self.0.publish(error);
+        self.hub.publish(error);
     }
 
     fn disabled(&self, event: OinoEvent) {
         if let OinoEvent::ExtensionDisabled { extension_id, .. } = &event {
             tracing::error!(extension = %extension_id, "extension disabled for this session");
+            lock(&self.registry).remove_owner(extension_id);
+            lock(&self.registry).flush();
         }
-        self.0.publish(event);
+        self.hub.publish(event);
     }
 }
 
-struct HubUi(EventHub);
+/// The session's UI plumbing: pi records go to the hub for pi-shaped frontends,
+/// registry ops go out as `oino_ui_patch` events (§9.2).
+struct UiHub {
+    hub: EventHub,
+    registry: Arc<Mutex<UiRegistry>>,
+}
 
-impl UiSink for HubUi {
+impl UiHub {
+    fn flush(&self) {
+        lock(&self.registry).flush();
+    }
+}
+
+impl UiSink for UiHub {
     fn publish(&self, output: UiOutput) {
         match output {
-            UiOutput::Request(request) => self.0.publish(ClientEvent::Ui(request)),
+            UiOutput::Request(request) => {
+                if is_dialog(&request.method) {
+                    lock(&self.registry).dialog_opened(request.to_registry());
+                    self.flush();
+                }
+                self.hub.publish(ClientEvent::Ui(request));
+            }
             UiOutput::Dismiss { id, reason } => {
-                self.0.publish(OinoEvent::ExtensionUiDismiss { id, reason });
+                lock(&self.registry).dialog_dismissed(&id, reason.into());
+                self.flush();
+                self.hub
+                    .publish(OinoEvent::ExtensionUiDismiss { id, reason });
             }
         }
+    }
+}
+
+impl RegistrySink for UiHub {
+    fn publish(&self, patch: oino_ui::slot::UiPatch) {
+        self.hub.publish(OinoEvent::from(patch));
     }
 }
 
@@ -351,11 +384,23 @@ impl AgentSession {
             child_role: config.child.as_ref().and_then(|c| c.link.role.clone()),
             call_kind: CallKind::Event,
         };
-        let ui = UiBridge::new(has_ui, session_id.clone(), Arc::new(HubUi(hub.clone())));
+        let registry = Arc::new(Mutex::new(UiRegistry::new(
+            oino_ui::slot::Scope::Session,
+            Some(session_id.clone()),
+        )));
+        let ui_hub = Arc::new(UiHub {
+            hub: hub.clone(),
+            registry: Arc::clone(&registry),
+        });
+        lock(&registry).set_sink(ui_hub.clone());
+        let ui = UiBridge::new(has_ui, session_id.clone(), ui_hub);
         let runner = ExtensionRunner::new(
             Arc::clone(&config.extensions),
             cx,
-            Arc::new(HubErrors(hub.clone())),
+            Arc::new(HubErrors {
+                hub: hub.clone(),
+                registry: Arc::clone(&registry),
+            }),
             config.flag_values.clone(),
         )
         .with_dialogs(ui.clone());
@@ -405,6 +450,7 @@ impl AgentSession {
             runner: RwLock::new(runner),
             hub,
             ui,
+            registry,
             book: Mutex::new(RunBook::default()),
             cancels: Mutex::new(Cancels::default()),
             tools: Mutex::new(tool_state),
@@ -454,6 +500,15 @@ impl AgentSession {
             "startup"
         };
         self.extend_resources_from_extensions(discover_reason).await;
+        // Static `register-renderer{target:"turn-footer"}` / manifest renderers get their
+        // registry entry when the instance is bound (§6.7).
+        for (extension, spec) in runner.renderers() {
+            if spec.get("target").and_then(oino_ai::JsonValue::as_str) == Some("turn-footer")
+                && let Some(key) = spec.get("key").and_then(oino_ai::JsonValue::as_str)
+            {
+                self.ui_register_turn_footer(&extension, key);
+            }
+        }
         if !runner.shortcuts().is_empty() {
             self.publish_shortcuts();
         }
@@ -534,6 +589,12 @@ impl AgentSession {
     ///
     /// Never fails today; kept fallible for the package reload path.
     pub async fn reload(&self) -> Result<(), SessionOpError> {
+        // Reload drops every extension instance: its session entries go with it (§6.6).
+        {
+            let mut registry = lock(&self.inner.registry);
+            registry.clear();
+            registry.flush();
+        }
         let runner = self.runner();
         if runner.has_handlers("session_shutdown") {
             runner
@@ -959,6 +1020,11 @@ impl AgentSession {
         self.inner.agent.abort();
         self.runner().invalidate(None);
         self.inner.ui.cancel_all();
+        {
+            let mut registry = lock(&self.inner.registry);
+            registry.clear();
+            registry.flush();
+        }
         *lock(&self.inner.subscription) = None;
     }
 

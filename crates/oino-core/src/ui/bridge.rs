@@ -1,11 +1,15 @@
-//! Extension UI bridge (ui-protocol.md §2–§4).
+//! pi dialog protocol and one-shot effects (ui-protocol.md §2–§4).
 //!
 //! Extensions raise dialogs (`select`, `confirm`, `input`, `editor`, Oino dialogs) and
-//! fire-and-forget updates (`notify`, `setStatus`, `setWidget`, …). The bridge publishes them
-//! as `extension_ui_request` client events, resolves dialogs with the first valid
-//! `extension_ui_response` (or the pi default on timeout / cancel / no UI), broadcasts
-//! `extension_ui_dismiss`, and retains fire-and-forget state for late-joining frontends.
-//! Wire types will move to `oino-protocol::ui`.
+//! fire-and-forget updates (`notify`, `setStatus`, `setWidget`, …). The bridge publishes the
+//! pi-shaped `extension_ui_request` records, resolves dialogs with the first valid
+//! `extension_ui_response` (or the pi default on timeout / cancel / no UI), and broadcasts
+//! `extension_ui_dismiss`. Retained producer calls are also mirrored into the
+//! [`super::registry::UiRegistry`] (§6); the v1 `retained` replay here feeds pi-shaped
+//! frontends until the TUI renderer (WP-U4) and `oino-view` (WP-U5) move to the registry.
+//!
+//! Wire types live in `oino_ui::slot`; this module keeps the pi request/response records
+//! byte-for-byte (D-U1).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -145,6 +149,41 @@ pub enum DismissReason {
     Timeout,
     /// The caller cancelled.
     Cancelled,
+}
+
+impl UiRequest {
+    /// The registry form of this request (`UiSnapshot.dialogs`, `op:"dialog"`, §9.2).
+    #[must_use]
+    pub fn to_registry(&self) -> super::registry::DialogRequest {
+        let mut fields = JsonObject::new();
+        fields.insert("method".to_owned(), JsonValue::String(self.method.clone()));
+        for (key, value) in &self.params {
+            fields.insert(key.clone(), value.clone());
+        }
+        if let Some(extension) = &self.extension_id {
+            fields.insert(
+                "extensionId".to_owned(),
+                JsonValue::String(extension.clone()),
+            );
+        }
+        if let Some(session) = &self.session_id {
+            fields.insert("sessionId".to_owned(), JsonValue::String(session.clone()));
+        }
+        oino_ui::slot::UiRequest {
+            id: self.id.clone(),
+            fields,
+        }
+    }
+}
+
+impl From<DismissReason> for oino_ui::slot::DismissReason {
+    fn from(reason: DismissReason) -> Self {
+        match reason {
+            DismissReason::Answered => Self::Answered,
+            DismissReason::Timeout => Self::Timeout,
+            DismissReason::Cancelled => Self::Cancelled,
+        }
+    }
 }
 
 /// Output of the bridge: requests to publish and dismissals.
@@ -360,15 +399,24 @@ impl UiBridge {
     }
 
     /// Publishes a fire-and-forget request (dropped without UI) and retains keyed state.
-    pub fn fire(&self, extension: Option<&str>, method: &str, params: JsonObject) {
+    ///
+    /// Returns the published record so the caller can mirror it into the registry
+    /// (one-shot `effect` ops, §9.2).
+    pub fn fire(
+        &self,
+        extension: Option<&str>,
+        method: &str,
+        params: JsonObject,
+    ) -> Option<UiRequest> {
         if !self.has_ui {
-            return;
+            return None;
         }
         let request = self.request(extension, method, params);
         if let Some(key) = retention_key(&request) {
             lock(&self.state).retained.insert(key, request.clone());
         }
-        self.sink.publish(UiOutput::Request(request));
+        self.sink.publish(UiOutput::Request(request.clone()));
+        Some(request)
     }
 
     /// Retained fire-and-forget state plus open dialogs, for a frontend that attaches late.

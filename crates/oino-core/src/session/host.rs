@@ -164,6 +164,11 @@ impl AgentSession {
                 let loaded = loaded
                     .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
                 check_render_override(&spec, &loaded.instance.tool_overrides())?;
+                if spec.get("target").and_then(JsonValue::as_str) == Some("turn-footer")
+                    && let Some(key) = spec.get("key").and_then(JsonValue::as_str)
+                {
+                    self.ui_register_turn_footer(extension, key);
+                }
                 loaded.update(|state| state.renderers.push(spec));
                 Ok(JsonValue::Null)
             }
@@ -424,7 +429,10 @@ impl AgentSession {
             }
             HostOp::UiFire { method, params } => {
                 match &self.inner.agents.link {
-                    None => self.inner.ui.fire(Some(extension), &method, params),
+                    None => {
+                        self.ui_fire(extension, &method, params)
+                            .map_err(|error| HostError::Invalid(error.to_string()))?;
+                    }
                     Some(link) => child_fire(link, extension, &method, params),
                 }
                 Ok(JsonValue::Null)

@@ -23,6 +23,7 @@ oino-resources = { path = "../oino-resources" }
 oino-session = { path = "../oino-session" }
 oino-settings = { path = "../oino-settings" }
 oino-tools = { path = "../oino-tools" }
+oino-ui.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
