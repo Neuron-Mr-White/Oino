@@ -107,3 +107,10 @@ export function tabTitle(tab: PaneTab): string {
 }
 
 setPaneRules((kind) => kinds()[kind]);
+
+// The session tab views (`diff`, `tree`, `btw`, `subagent`, WP-A10) register
+// themselves when their module loads; `main.tsx` imports
+// `components/panes/tabs` once, before the first render (the spec's shared
+// append-only registration point). This module must not import them: the tab
+// modules reach the side pane and the shown workspace, which import this
+// registry.

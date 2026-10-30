@@ -29,6 +29,7 @@ import { PageHeader } from './components/PageHeader';
 import { EmptyState } from './components/EmptyState';
 import { Requires, UnavailableNotice } from './components/Requires';
 import { AppShell } from './components/shell/AppShell';
+import { SessionTabLayer } from './components/panes/tabs';
 import { RootBoundary } from './components/ErrorBoundaries';
 import { readLastSession, Workspace } from './components/shell/Workspace';
 import { sessionHref } from './components/shell/Sidebar';
@@ -129,6 +130,8 @@ export function Root() {
         <Route path={['/files', '/files/edit']} component={phoneOnly(gated('files', FilesLayer, 'Files'))} />
         <Route path="/preview" component={phoneOnly(Preview)} />
       </HashRouter>
+      {/* WP-A10: the phone's session-tab sheets / diff layer (no-ops on the desktop). */}
+      <SessionTabLayer />
     </RootBoundary>
   );
 }

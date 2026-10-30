@@ -1,0 +1,208 @@
+/* ══ Session side tabs (WP-A10, Z-18 / Z-31 / Z-40 / Z-42) ═════════════
+   Unipi tokens (DESIGN §1): surface-1 cards on the pane surface, 1 px rules,
+   mono for diffs and child output, claw for live work. One file for the four
+   views and the phone's sheet / layer chrome. */
+
+/* ── diff (Z-40): full diff of one tool call ─────────────────────────── */
+.dtab { display: flex; flex-direction: column; min-height: 100%; font-size: 13px; }
+.dtab-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  min-height: 40px; padding: 4px 8px 4px 14px; box-sizing: border-box;
+  background: var(--color-surface-1); border-bottom: 1px solid var(--color-line);
+}
+.dtab-title { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.dtab-path { font-family: var(--font-mono); font-size: 12.5px; color: var(--color-text); }
+.dtab-stat { flex: none; font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
+.dtab-stat .add { color: var(--color-wm-green); }
+.dtab-stat .del { color: var(--color-wm-red); }
+.dtab-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.dtab-mode { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--color-surface-2); }
+.dtab-mode-btn { display: grid; place-items: center; width: 26px; height: 26px; min-height: 26px; border-radius: 6px; background: transparent; color: var(--color-text-dim); }
+.dtab-mode-btn:hover { color: var(--color-text); }
+.dtab-mode-btn[aria-checked='true'] { background: var(--color-surface-3); color: var(--color-claw); }
+.dtab-open {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; min-height: 30px; padding: 0 10px; border-radius: 8px;
+  background: var(--color-surface-2); color: var(--color-text);
+  font-size: 12.5px; font-weight: 550; white-space: nowrap;
+}
+.dtab-open:hover:not(:disabled) { background: var(--color-surface-3); }
+.dtab-open:disabled { color: var(--color-text-dim); }
+.dtab-body { flex: 1 1 auto; min-height: 0; padding: 6px 0 10px; overflow: auto; }
+.dtab .diffview { font-size: 12.5px; line-height: 19px; }
+.dtab .diffview .diff-no { flex-basis: 42px; padding-right: 8px; }
+.dtab .diffview .diff-text { padding-right: 14px; }
+.dtab-empty { margin: 0; padding: 14px var(--page-gutter); color: var(--color-text-dim); font-size: 13px; }
+.dtab-foot {
+  position: sticky; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); box-sizing: border-box;
+  background: var(--color-surface-1); border-top: 1px solid var(--color-line);
+}
+.dtab-count { font-size: 12px; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+
+/* Split view: two line cells per row (old | new); reuses .diff-no/.diff-mark. */
+.diffview-split { overflow-x: auto; }
+.diff-row.diff-split { min-width: 0; }
+.diff-split .diff-cell { flex: 1 1 50%; display: flex; min-width: 0; border-right: 1px solid rgb(46 40 37 / 55%); }
+.diff-split .diff-cell:last-child { border-right: 0; }
+.diff-split .diff-no { flex: 0 0 30px; }
+.diff-split .diff-text { overflow-wrap: anywhere; }
+.diff-cell.diff-gap { background: rgb(46 40 37 / 22%); }
+.diff-split-hunk { display: block; padding: 2px 10px; color: var(--md-diff-hunk-fg); background: rgb(46 40 37 / 35%); }
+
+/* ── tree (Z-18): the session's branches ─────────────────────────────── */
+.ttab { display: flex; flex-direction: column; min-height: 100%; }
+.ttab-filters {
+  position: sticky; top: 0; z-index: 2; display: flex; gap: 2px; padding: 6px 8px;
+  background: var(--color-surface-1); border-bottom: 1px solid var(--color-line);
+  overflow-x: auto; scrollbar-width: none;
+}
+.ttab-filters::-webkit-scrollbar { display: none; }
+.ttab-filter {
+  flex: none; height: 28px; min-height: 28px; padding: 0 10px; border-radius: 9999px;
+  background: transparent; color: var(--color-text-dim); font-size: 12px; font-weight: 550; white-space: nowrap;
+}
+.ttab-filter:hover { background: var(--color-surface-2); color: var(--color-text-muted); }
+.ttab-filter[aria-checked='true'] { background: var(--color-surface-3); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-line); }
+.ttab-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 0 8px; }
+.ttab-row {
+  display: flex; align-items: center; gap: 4px;
+  width: 100%; min-height: 40px; padding: 4px 12px 4px 10px; box-sizing: border-box;
+  background: transparent; color: var(--color-text); font-size: 13px; text-align: left;
+}
+.ttab-row:hover { background: var(--color-surface-2); }
+.ttab-row[data-on-path] { color: var(--color-text); }
+.ttab-row:not([data-on-path]) { color: var(--color-text-muted); }
+.ttab-row[data-current] { background: rgb(240 120 24 / 10%); }
+/* Fork connectors drawn in CSS (a glyph per 40 px row leaves gaps): a
+   still-open branch keeps its rule down the row, a fork child gets the
+   elbow, and an only child nothing. */
+.ttab-gutter { display: inline-flex; align-self: stretch; margin-right: 2px; }
+.ttab-cell { position: relative; display: block; width: 12px; }
+.ttab-cell[data-cell='│'], .ttab-cell[data-cell='├'] { box-shadow: inset 1px 0 0 var(--color-line); }
+.ttab-cell[data-cell='└'] { background: linear-gradient(to bottom, var(--color-line) 0 50%, transparent 50% 100%) 0 0 / 1px 100% no-repeat; }
+.ttab-cell[data-cell='├']::before, .ttab-cell[data-cell='└']::before {
+  content: ''; position: absolute; left: 0; top: 50%; width: 9px; height: 1px; background: var(--color-claw);
+}
+.ttab-sub { font-size: 11.5px; line-height: 15px; color: var(--color-text-dim); }
+.ttab-deep { flex: none; font-size: 11px; color: var(--color-text-dim); }
+.ttab-current { color: var(--color-claw); }
+.ttab-foot {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  padding: 8px 14px calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-line); background: var(--color-surface-1);
+  font-size: 12.5px; color: var(--color-text-muted);
+}
+.ttab-foot input { width: 16px; height: 16px; accent-color: var(--color-shell); }
+.ttab-note { margin: 0; padding: 14px; font-size: 13px; line-height: 19px; color: var(--color-text-dim); }
+
+/* ── side chat (Z-31): read-only, never touches the session ──────────── */
+/* The pages scroll; the ask row is pinned at the bottom (one composer per surface). */
+.btab { display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; }
+.btab-list { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: auto; padding: 10px var(--page-gutter) 10px; }
+.btab-ask {
+  position: sticky; bottom: 0; display: flex; align-items: flex-end; gap: 8px; flex: none;
+  padding: 8px var(--page-gutter) calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--color-bg) 62%, transparent); box-sizing: border-box;
+}
+.btab-field {
+  flex: 1 1 auto; min-height: 40px; max-height: 120px; padding: 9px 12px; box-sizing: border-box;
+  border: 0; border-radius: 12px; background: var(--color-surface-2); color: var(--color-text);
+  font: inherit; font-size: 13.5px; line-height: 20px; resize: none; outline: none;
+}
+.btab-field:focus-visible { box-shadow: inset 0 0 0 2px var(--color-shell); }
+.btab-field::placeholder { color: var(--color-text-dim); }
+.btab-send {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; min-height: 40px;
+  border-radius: 9999px; background: var(--color-shell); color: var(--color-bg);
+}
+.btab-send:disabled { background: var(--color-surface-3); color: var(--color-text-dim); }
+.btab-page { border-radius: 14px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 60%); padding: 10px 12px 8px; }
+.btab-page + .btab-page { margin-top: 0; }
+.btab-q { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--color-text); }
+.btab-q > svg { color: var(--color-claw); }
+.btab-tools { margin: 6px 0 0; padding: 0 0 0 22px; list-style: none; font-family: var(--font-mono); font-size: 11.5px; line-height: 17px; color: var(--color-text-dim); }
+.btab-answer { margin-top: 8px; font-size: 13.5px; line-height: 21px; color: var(--color-text); }
+.btab-answer > * + * { margin-top: 8px; }
+.btab-thinking { margin: 8px 0 0; font-size: 13px; color: var(--color-text-muted); }
+.btab-think { margin: 6px 0 0; padding: 6px 8px; border-radius: 8px; background: var(--color-surface-2); font-size: 12px; line-height: 18px; color: var(--color-text-dim); }
+.btab-error { margin: 6px 0 0; font-size: 12.5px; line-height: 18px; color: var(--color-wm-red); }
+.btab-foot { display: flex; gap: 4px; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgb(46 40 37 / 70%); }
+.btab-action { height: 30px; min-height: 30px; padding: 0 10px; border-radius: 8px; background: transparent; color: var(--color-text-muted); font-size: 12.5px; font-weight: 550; }
+.btab-action:hover { background: var(--color-surface-3); color: var(--color-text); }
+.btab-empty { margin: 6px 0 0; font-size: 13px; line-height: 19px; color: var(--color-text-dim); }
+
+/* ── subagent (Z-42): the child transcript ───────────────────────────── */
+.stab { display: flex; flex-direction: column; min-height: 100%; }
+.stab-head {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
+  min-height: 40px; padding: 4px 10px 4px 14px; box-sizing: border-box;
+  background: var(--color-surface-1); border-bottom: 1px solid var(--color-line);
+}
+.stab-icon { flex: none; color: var(--color-claw); }
+.stab-title { min-width: 0; font-size: 13px; font-weight: 600; color: var(--color-text); }
+.stab-state { flex: none; height: 18px; padding: 0 7px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: 11px; line-height: 18px; font-weight: 600; text-transform: capitalize; }
+.stab-state[data-state='running'] { background: rgb(240 120 24 / 16%); color: var(--color-claw); }
+.stab-state[data-state='closed'] { color: var(--color-text-dim); }
+.stab-stop { display: inline-flex; align-items: center; gap: 5px; height: 28px; min-height: 28px; padding: 0 10px; border-radius: 8px; background: var(--color-surface-2); color: var(--color-text); font-size: 12px; font-weight: 600; }
+.stab-stop:hover { background: rgb(240 60 50 / 16%); color: var(--color-wm-red); }
+.stab-meta { margin: 0; padding: 4px 14px 6px; font-size: 11.5px; color: var(--color-text-dim); }
+.stab-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px var(--page-gutter) calc(12px + env(safe-area-inset-bottom)); }
+.stab-msgs { display: flex; flex-direction: column; gap: 8px; }
+.stab-msg { min-width: 0; }
+.stab-msg[data-role='user'] { border-radius: 12px; background: var(--color-surface-2); padding: 8px 11px; }
+.stab-msg[data-role='note'] { color: var(--color-text-dim); font-size: 12px; }
+.stab-role { display: block; margin-bottom: 3px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-dim); }
+.stab-text { margin: 0; font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stab-think { border-radius: 8px; background: var(--color-surface-2); padding: 4px 9px; font-size: 12px; color: var(--color-text-muted); }
+.stab-think > summary { cursor: pointer; list-style: none; font-size: 11.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--color-text-dim); }
+.stab-think > summary::-webkit-details-marker { display: none; }
+.stab-think > summary::before { content: '▸'; display: inline-block; width: 12px; color: var(--color-text-dim); }
+.stab-think[open] > summary::before { content: '▾'; }
+.stab-think-text { margin: 5px 0 2px; line-height: 18px; white-space: pre-wrap; color: var(--color-text-muted); }
+.stab-tool { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 5px 9px; border-radius: 8px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 55%); }
+.stab-tool-name { font-size: 12px; font-weight: 600; color: var(--color-text); }
+.stab-tool-subject { flex: 1 1 120px; min-width: 0; font-family: var(--font-mono); font-size: 11.5px; color: var(--color-text-muted); }
+.stab-tool[data-state='error'] { box-shadow: inset 2px 0 0 var(--color-wm-red); }
+.stab-out {
+  flex-basis: 100%; margin: 4px 0 0; padding: 6px 8px; border-radius: 6px;
+  background: var(--color-surface-2); color: var(--color-text-muted);
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 17px;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto;
+}
+.stab-out[data-error] { color: var(--color-wm-red); }
+.stab-prose { font-size: 13.5px; line-height: 21px; color: var(--color-text); }
+.stab-prose > * + * { margin-top: 8px; }
+.stab-note { margin: 0; padding: 14px var(--page-gutter); font-size: 13px; line-height: 19px; color: var(--color-text-dim); }
+.stab-error { margin: 6px 0; font-size: 12.5px; color: var(--color-wm-red); }
+
+/* ── Phone surfaces (§3.9): sheet for tree / side chat / subagent, a
+      full-screen layer for the diff viewer ───────────────────────────── */
+.stab-layer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--color-bg); padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px)); }
+.stab-layer-head { flex: none; display: flex; align-items: center; gap: 6px; height: 56px; padding: 0 10px 0 4px; border-bottom: 1px solid var(--color-line); }
+.stab-layer-title { min-width: 0; font-size: 15px; font-weight: 600; color: var(--color-text); }
+.stab-layer-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.stab-layer-body > .dtab { flex: 1 1 auto; }
+.stab-sheet-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; }
+.stab-sheet-body { display: flex; flex-direction: column; min-height: 0; max-height: min(78vh, calc(var(--vvh, 100vh) * .86)); overflow: auto; margin: 0 -8px; }
+.stab-sheet-body > * { flex: 1 1 auto; }
+.stab-sheet-body > .ttab, .stab-sheet-body > .stab, .stab-sheet-body > .btab { min-height: 0; }
+.stab-sheet .dtab-head, .stab-sheet .ttab-filters, .stab-sheet .stab-head { border-radius: 0; }
+/* A sheet opens over the phone's conversation layer (`ws-layer`, z 40) and
+   the dock: lift it and its overlay (the Session modal's rule, A17). */
+body > div:has(> .sheet.stab-sheet) > .sheet-overlay { z-index: 69; }
+.sheet.stab-sheet { z-index: 70; }
+
+/* Phone: 44 px rows for the tabs' tappable lines (§1 touch targets). */
+html:not([data-shell='desktop']) .ttab-row { min-height: 44px; }
+html:not([data-shell='desktop']) .ttab-filter { height: 34px; min-height: 34px; }
+html:not([data-shell='desktop']) .btab-send { width: 44px; height: 44px; min-height: 44px; }
+html:not([data-shell='desktop']) .btab-action { height: 38px; min-height: 38px; padding: 0 12px; }
+html:not([data-shell='desktop']) .stab-stop { height: 34px; min-height: 34px; }
+
+/* The phone sheet / layer header already names the tab: no second title row. */
+html:not([data-shell='desktop']) .stab-sheet .stab-title,
+html:not([data-shell='desktop']) .stab-sheet .stab-head > .grow,
+html:not([data-shell='desktop']) .stab-layer .dtab-path { display: none; }
+html:not([data-shell='desktop']) .stab-sheet .stab-head { justify-content: flex-start; }

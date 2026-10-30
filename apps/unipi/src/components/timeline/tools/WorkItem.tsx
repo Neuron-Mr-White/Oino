@@ -26,7 +26,7 @@ export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
       <Match when={ofKind(item(), 'thinking')}>{(i) => <ThinkingRow item={i()} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'tool')}>{(i) => <ToolRow tool={i().tool} ctx={props.ctx} itemKey={i().key} />}</Match>
       <Match when={ofKind(item(), 'prose')}>{(i) => <Prose text={i().text} live={i().live} entryKey={i().key} chat={props.ctx.refs} width={props.ctx.columnWidth} />}</Match>
-      <Match when={ofKind(item(), 'step')}>{(i) => <StepRow entry={i().entry} />}</Match>
+      <Match when={ofKind(item(), 'step')}>{(i) => <StepRow entry={i().entry} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'card')}>{(i) => <CardRow entry={i().entry} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'compaction')}>{(i) => <Compaction entry={i().entry} sessionId={props.ctx.sessionId} />}</Match>
       <Match when={ofKind(item(), 'error')}>{(i) => <ErrorRow text={i().text} />}</Match>

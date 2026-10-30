@@ -5,9 +5,12 @@
  * Everything `custom` / `custom_message` goes through the extension
  * renderer (`RendererCard`, G-21) with the native light row as fallback.
  */
-import { SquareTerminal } from 'lucide-solid';
+import { Show } from 'solid-js';
+import { CornerDownRight, SquareTerminal } from 'lucide-solid';
 import type { SessionEntry } from '../../../lib/session/types';
 import type { TimelineCtx } from '../context';
+import { agentOfEntry } from '../../panes/tabs/agentEntry';
+import { openSubagentTab } from '../../panes/tabs/sessionTabs';
 import { ModelChangeCard } from './ModelChangeCard';
 import { RendererCard } from './RendererCard';
 
@@ -26,5 +29,23 @@ export function CardRow(props: { entry: SessionEntry; ctx: TimelineCtx }) {
       </div>
     );
   }
-  return <RendererCard entry={e()} ctx={props.ctx} />;
+  // Z-42: a subagent / sidekick card has one way into the child transcript —
+  // the `subagent` tab (a sheet on the phone). No second "Open session" path.
+  const agent = () => agentOfEntry(e());
+  const openAgent = () => {
+    const a = agent();
+    if (!a) return;
+    openSubagentTab({ hostId: props.ctx.hostId, sessionId: props.ctx.sessionId(), cwd: props.ctx.cwd() }, a);
+  };
+  return (
+    <div class="tl-cardblock">
+      <RendererCard entry={e()} ctx={props.ctx} />
+      <Show when={agent()}>
+        <button type="button" class="tl-card-transcript" onClick={openAgent} data-testid="tl-card-transcript">
+          <CornerDownRight size={13} />
+          <span>Transcript</span>
+        </button>
+      </Show>
+    </div>
+  );
 }

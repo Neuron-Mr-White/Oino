@@ -21,7 +21,6 @@ describe('detail header (F39): one 56px bar on every detail pane', () => {
     ['screens/Preview.tsx', 'preview-viewer-head detail-head'],
     ['screens/BrowserView.tsx', 'preview-viewer-head browser-head detail-head'],
     ['components/chat/MermaidViewer.tsx', 'mmd-viewer-head detail-head'],
-    ['components/chat/ReviewViewer.tsx', 'review-viewer-head detail-head'],
     ['components/media/Previewer.tsx', 'media-page-head detail-head'],
   ])('%s uses it', (file, cls) => {
     expect(src(file)).toContain(`class="${cls}`);

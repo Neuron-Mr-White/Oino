@@ -27,6 +27,7 @@ import { settingsExtensions, settingsNav, settingsSafeMode, settingsSearch } fro
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
+import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreePhone } from './tabs';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -65,6 +66,15 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'tools-mix': toolsMix,
   'tools-groups': toolsGroups,
   'renderer-cards': rendererCards,
+  'tab-diff': tabDiff,
+  'tab-diff-split': tabDiffSplit,
+  'tab-tree': tabTree,
+  'tab-btw': tabBtw,
+  'tab-subagent': tabSubagent,
+  'tab-diff-phone': tabDiffPhone,
+  'tab-tree-phone': tabTreePhone,
+  'tab-btw-phone': tabBtwPhone,
+  'tab-subagent-phone': tabSubagentPhone,
   'files-search': filesSearch,
   'files-preview': filesPreview,
   'editor-lsp': editorLsp,

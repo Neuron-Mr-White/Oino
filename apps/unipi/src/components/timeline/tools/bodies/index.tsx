@@ -5,7 +5,7 @@
  * All bodies mount only inside an expanded row (lazy detail, §3.6).
  */
 import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js';
-import { CircleCheck, CircleDashed, Loader2 } from 'lucide-solid';
+import { CircleCheck, CircleDashed, ExternalLink, Loader2 } from 'lucide-solid';
 import { diffStat } from '../../../../lib/chat/model';
 import { allAdditions, editDiff, renderDiffHtml } from '../../../../lib/markdown';
 import { languageForPath } from '../../../../lib/markdown';
@@ -14,6 +14,7 @@ import type { ToolRun } from '../../../../lib/session/turns';
 import type { TimelineCtx } from '../../context';
 import { MdBlock } from '../../../chat/MdBlock';
 import { ImageChipRow } from '../../../chat/ImageChip';
+import { openDiffTab } from '../../../panes/tabs/sessionTabs';
 import { toolImages } from '../toolData';
 import { useFullOutput } from './fullOutput';
 
@@ -55,6 +56,27 @@ export function RunBody(props: { tool: ToolRun; ctx: TimelineCtx }) {
   );
 }
 
+/** Z-40 "View diff": the same change in the full `diff` side-pane tab (at the edit's line). */
+export function ViewDiffAction(props: { tool: ToolRun; ctx: TimelineCtx }) {
+  const path = () => {
+    const p = props.tool.args.path ?? props.tool.args.file_path;
+    return typeof p === 'string' ? p : '';
+  };
+  const open = () =>
+    openDiffTab(
+      { hostId: props.ctx.hostId, sessionId: props.ctx.sessionId(), cwd: props.ctx.cwd() },
+      { toolId: props.tool.id, path: path() },
+    );
+  return (
+    <Show when={path()}>
+      <button type="button" class="tool-more tool-view-diff" onClick={open} data-testid="tool-view-diff">
+        View diff
+        <ExternalLink size={12} />
+      </button>
+    </Show>
+  );
+}
+
 /** Unified diff of `edit` calls (one hunk per edit pair). */
 export function EditBody(props: { tool: ToolRun; ctx: TimelineCtx }) {
   const t = () => props.tool;
@@ -71,6 +93,7 @@ export function EditBody(props: { tool: ToolRun; ctx: TimelineCtx }) {
       <Show when={t().state === 'error' && t().output}>
         <pre class="tool-err">{tail(t().output!, 1200)}</pre>
       </Show>
+      <ViewDiffAction tool={t()} ctx={props.ctx} />
     </>
   );
 }
@@ -109,6 +132,7 @@ export function WriteBody(props: { tool: ToolRun; ctx: TimelineCtx }) {
       <Show when={t().state === 'error' && t().output}>
         <pre class="tool-err">{tail(t().output!, 1200)}</pre>
       </Show>
+      <ViewDiffAction tool={t()} ctx={props.ctx} />
     </div>
   );
 }

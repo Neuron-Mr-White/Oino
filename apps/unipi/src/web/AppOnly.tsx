@@ -11,5 +11,4 @@ export default function AppOnly() {
   return null;
 }
 export const ChatLayer = AppOnly;
-export const ReviewViewer = AppOnly;
 export const Previewer = AppOnly;

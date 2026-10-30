@@ -20,7 +20,6 @@ const WEB_STUBS: Record<string, string> = {
   './screens/Files': 'AppOnly.tsx',
   './screens/Editor': 'AppOnly.tsx',
   './components/chat/ChatView': 'AppOnly.tsx',
-  './components/chat/ReviewViewer': 'AppOnly.tsx',
   './components/media/Previewer': 'AppOnly.tsx',
   '@xterm/xterm/css/xterm.css': 'empty.css',
 };

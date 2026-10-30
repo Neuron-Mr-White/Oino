@@ -22,8 +22,7 @@ import type { OutboxImage } from '../../lib/session/types';
 import { allCommands, applyAt, atQuery, isKnownCommand, rankCommands, slashQuery } from '../../lib/chat/commands';
 import { commandNames } from '../timeline/context';
 import { fsList, fsSearch, fsStat } from '../../lib/fs';
-import { layout } from '../../lib/layout';
-import { panes, type PaneScope, type PaneView } from '../../lib/panes';
+import { openBtwTab } from '../panes/tabs/sessionTabs';
 import { addTaskFromChat } from '../../lib/session/open';
 import { followUpMode, sendModeForEnter } from '../../lib/composer/sendMode';
 import { SendButton } from './SendButton';
@@ -292,13 +291,10 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
 
   /* ── the `+` menu (Z-63) ──────────────────────────────────────────── */
   const [plusAnchor, setPlusAnchor] = createSignal<DOMRect | null>(null);
+  // Z-31: the `btw` side chat (WP-A10) — a pane tab on the desktop, a sheet on
+  // the phone; the extension's own `editorReplace` panel is never opened.
   const openSideQuestion = (question?: string) => {
-    // WP-A10's `btw` tab; opening it now means the entry works the day the
-    // view plugs in (the pane shows "not available" until then).
-    const scope: PaneScope = { hostId: hostId(), projectKey: cwd() || '~' };
-    const view: PaneView = { sessionId: props.session.sessionId() };
-    panes().open(scope, 'side', view, { kind: 'btw', ...(question ? { params: { question }, title: 'Side chat' } : {}) });
-    layout().toggleSide(true);
+    openBtwTab({ hostId: hostId(), sessionId: props.session.sessionId(), cwd: cwd() }, question);
   };
 
   /* ── focus handoff (A7: quotes and Edit focus the field) ──────────── */
