@@ -1,5 +1,5 @@
 import { For } from 'solid-js';
-import { runSegments, type LhRun } from '../../lib/chat/progress';
+import { runSegments, type LhRun } from '../status/lhProgress';
 
 /**
  * Graph / swarm item bar: done (green) · failed (red) · running (animated)

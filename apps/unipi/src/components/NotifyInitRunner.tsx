@@ -9,7 +9,7 @@ import { createEffect, onMount, onCleanup } from 'solid-js';
 import { useHosts } from '../hosts/context';
 import { useSettings } from '../settings/context';
 import { syncNotifyKeyToNative, openChatFromDeepLink, replayPendingAction } from '../lib/notifyInit';
-import { openChatState } from '../lib/chat/open';
+import { openChatState } from '../lib/session/open';
 import { syncPushEndpoint } from '../lib/pushRegister';
 import { startRunningNotification } from '../lib/runningNotification';
 import { MascotFeedRunner } from './MascotFeedRunner';

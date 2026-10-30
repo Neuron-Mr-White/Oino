@@ -14,7 +14,8 @@ import { AnchoredMenu, MenuRow, MenuSeparator } from './board/AnchoredMenu';
 import { needsYou, type NeedsYouItem } from '../lib/needsYou';
 import { mascotLive } from '../lib/mascotLive';
 import { useHosts } from '../hosts/context';
-import { openChat } from '../lib/chat/open';
+import { openChat } from '../lib/session/open';
+import { bareTarget } from '../lib/session/list';
 import {
   BUBBLE_MS,
   DRAG_SLOP,
@@ -45,9 +46,9 @@ function bounds(): Bounds {
 export function openItem(item: NeedsYouItem, hosts: ReturnType<typeof useHosts>, fallback: () => void): void {
   needsYou().markRead(item.id);
   const host = hostForItem(hosts.hosts(), item);
-  if (item.pid === null || !host) return fallback();
+  if (!item.session || !host) return fallback();
   openChat(
-    { hostId: host.id, session: item.session, workspaceId: '', workspaceLabel: item.session, tabId: '', paneId: '', pid: item.pid, title: item.title, status: 'unknown', focused: false },
+    bareTarget(host.id, item.session, item.title),
     host.name,
   );
 }

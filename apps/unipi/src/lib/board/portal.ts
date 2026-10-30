@@ -144,7 +144,7 @@ export function hydrateTaskRefs(root: HTMLElement, prefixes: Set<string>): void 
 }
 
 // ── board → chat: which chat (UNI-185) ──
-/** `/home/u/x` → `~/x`, the form chat_list cwds use. */
+/** `/home/u/x` → `~/x`, the form the session list's cwds use. */
 const shortHome = (path: string) => path.replace(/^\/home\/[^/]+/, '~').replace(/\/+$/, '');
 
 /**

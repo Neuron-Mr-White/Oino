@@ -1,9 +1,12 @@
 /**
  * The open chat (one at a time; the layer over the app shows it). Opening
- * the same pi again resumes the live connection.
+ * the same session again resumes the live connection. WP-A1 placeholder
+ * (moved from lib/chat/open.ts): WP-A3 replaces it with routes
+ * (`/s/:host/:session`) and the session store LRU.
  */
 import { createRoot, createSignal } from 'solid-js';
-import { createChat, type Chat } from './store';
+import { createChat, type Chat } from '../chat/store';
+import { requestBoardJump } from '../board/portal';
 import type { ChatTarget } from './list';
 
 export type OpenChat = { target: ChatTarget; pcName: string; chat: Chat };
@@ -15,24 +18,23 @@ export const openChatState = current;
 export const chatVisible = visible;
 
 export function openChat(target: ChatTarget, pcName: string): void {
-  if (target.pid === null) return;
   const cur = current();
-  if (cur && cur.target.hostId === target.hostId && cur.target.pid === target.pid) {
+  if (cur && cur.target.hostId === target.hostId && cur.target.session === target.session) {
     setVisible(true);
     return;
   }
   cur?.chat.close();
-  const chat = createRoot(() => createChat(target.hostId, target.pid!));
+  const chat = createRoot(() => createChat(target.hostId, target.session));
   setCurrent({ target, pcName, chat });
   setVisible(true);
 }
 
 /** Fills in the open chat's list labels (title, workspace…) once they're known — a chat opened
- * from a notification deep link starts with placeholders (UNI-161). Same pi only; the live
+ * from a notification deep link starts with placeholders (UNI-161). Same session only; the live
  * connection is kept. */
 export function updateOpenTarget(target: ChatTarget): void {
   const cur = current();
-  if (!cur || cur.target.hostId !== target.hostId || cur.target.pid !== target.pid) return;
+  if (!cur || cur.target.hostId !== target.hostId || cur.target.session !== target.session) return;
   setCurrent({ ...cur, target });
 }
 
@@ -55,7 +57,7 @@ export function closeChat(): void {
   setVisible(false);
 }
 
-/** Set when the Terminal switch left a chat; the terminal's exit returns to it. */
+/** Set when a screen (board, files) left a chat; leaving that screen returns to it. */
 let returnToChat = false;
 export function markReturnToChat(): void {
   returnToChat = true;
@@ -64,7 +66,7 @@ export function markReturnToChat(): void {
 export function hasMarkedReturnToChat(): boolean {
   return returnToChat;
 }
-/** Called when a terminal is left; reopens the chat it came from (once). */
+/** Called when that screen is left; reopens the chat it came from (once). */
 export function resumeChatAfterTerminal(): boolean {
   if (!returnToChat || !current()) return false;
   returnToChat = false;
@@ -79,7 +81,7 @@ export function clearReturnToChat(): void {
  * Desktop shell only (UNI-312): decides what a sidebar tab switch does to
  * the chat layer. Pure (keyed only off the screen the route *was* on and
  * the screen it just became) so the transition is unit-testable without
- * mounting the shell — see lib/chat/open.test.ts.
+ * mounting the shell — see lib/session/open.test.ts.
  *
  *   any screen → 'chat'   an open chat comes back (sidebar "Chat" = show
  *                         again, draft/scroll untouched — same OpenChat
@@ -114,4 +116,33 @@ export function chatVisibilityOnScreenChange(
 export function syncChatVisibleOnScreenChange(prevScreen: string | undefined, nextScreen: string): void {
   const next = chatVisibilityOnScreenChange(prevScreen, nextScreen, current() !== null);
   if (next !== undefined) setVisible(next);
+}
+
+// ── Chat → board portal (UNI-181) ────────────────────────────────────────
+// Hide the chat, mark the return, hand the Board screen a jump and switch to
+// its tab. The Board returns to this chat when the task pane closes.
+
+function goBoard(): void {
+  hideChat();
+  markReturnToChat();
+  // Hash route switch (works outside a router-scoped component, e.g. MdBlock).
+  if (typeof location !== 'undefined') location.hash = '#/board';
+}
+
+/** Opens a task's detail pane on the board. */
+export function openTaskFromChat(hostId: string, taskId: string, cwd?: string): void {
+  requestBoardJump({ hostId, taskId, cwd, fromChat: true });
+  goBoard();
+}
+
+/** Opens the board's New task sheet (project picked from the chat's cwd). */
+export function addTaskFromChat(hostId: string, cwd?: string): void {
+  requestBoardJump({ hostId, newTask: true, cwd, fromChat: true });
+  goBoard();
+}
+
+/** Just the board, no pane (header menu "Kanboard"). */
+export function openBoardFromChat(): void {
+  hideChat();
+  if (typeof location !== 'undefined') location.hash = '#/board';
 }

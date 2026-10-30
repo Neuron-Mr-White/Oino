@@ -55,7 +55,7 @@ export function SetupWizard() {
   const [cancelled, setCancelled] = createSignal(false);
   const [logShown, setLogShown] = createSignal(false);
   const [handle, setHandle] = createSignal<ReturnType<typeof runSetup> | undefined>();
-  /** Decision 8's "Install for me" running for one component (herdr, tmux). */
+  /** Decision 8's "Install for me" running for one component (a manual component, e.g. xvfb). */
   const [installing, setInstalling] = createSignal(false);
   const [installNote, setInstallNote] = createSignal<string | undefined>();
 
@@ -250,7 +250,7 @@ export function SetupWizard() {
                       </span>
                     </span>
                   </button>
-                  {/* §4.1 / decision 8: tmux is never automatic, so it is offered
+                  {/* §4.1 / decision 8: manual components are never automatic, so they are offered
                       as its own opt-in with the engine's method chain. */}
                   <Show when={row.manual && component(row.id)?.fix}>
                     <div class="setup-row-actions">
@@ -362,8 +362,7 @@ export function SetupWizard() {
               <RotateCcw size={16} /> Retry
             </button>
             {/* §4.3 point 3's "Try another way": the engine has a method chain
-                for this component (pi's N1 → N2, herdr's installer → static
-                binary), so offer the next one rather than only a rerun. */}
+                for this component (pi's N1 → N2), so offer the next one rather than only a rerun. */}
             <Show when={anotherWay()}>{(next) => (
               <button
                 type="button"

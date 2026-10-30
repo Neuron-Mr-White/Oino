@@ -37,12 +37,12 @@ function caretAt(node: Node, offset: number) {
 }
 function fakeChat(commands: Array<{ name: string; source: string; description?: string }> = []) {
   const [state] = createStore({ conn: 'live', run: { running: false }, entries: [], commands, models: [], dialogs: [], queue: [], pending: [] });
-  return { state, hostId: 'host1', pid: 42, send: vi.fn(), abort: vi.fn(), files: vi.fn(async () => []) } as unknown as Chat & { send: ReturnType<typeof vi.fn> };
+  return { state, hostId: 'host1', session: '42', send: vi.fn(), abort: vi.fn(), files: vi.fn(async () => []) } as unknown as Chat & { send: ReturnType<typeof vi.fn> };
 }
 function mount(initial = '', commands: Array<{ name: string; source: string }> = []) {
   const [draft, setDraft] = createSignal(initial);
   const chat = fakeChat(commands);
-  const view = render(() => <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />);
+  const view = render(() => <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />);
   const field = view.container.querySelector('.chip-field') as HTMLDivElement;
   field.focus();
   /** Types like a browser: beforeinput, the text node changes, input. */

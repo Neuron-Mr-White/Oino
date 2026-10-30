@@ -9,7 +9,7 @@
  * resume and aborts the run.
  */
 import { createEffect, createRoot, on } from 'solid-js';
-import { openChatState } from './chat/open';
+import { openChatState } from './session/open';
 import { formatDuration, liveActivity } from './chat/model';
 import { readPendingAction } from './notifyDeepLink';
 

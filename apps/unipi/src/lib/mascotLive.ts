@@ -1,29 +1,27 @@
 /**
  * The mascot's live state (UNI-200): one reactive source for the floating
  * crab, the desktop header crab, the desktop mascot window and the Android
- * overlay — derived from the "needs you" store + every host's chat_list
+ * overlay — derived from the "needs you" store + every host's session list
  * (the same data the bell badge and tray already use; no new poll).
  */
 import { createMemo, createRoot, createSignal, on, createEffect, type Accessor } from 'solid-js';
 import { needsYou } from './needsYou';
-import { chatLists, paneStatus } from './chat/list';
+import { chatLists } from './session/list';
 import type { HostInfo } from './schemas';
 import { mascotState, type MascotInputs, type MascotState } from './unicrab';
 
 export type MascotLive = { state: Accessor<MascotState>; count: Accessor<number>; inputs: Accessor<MascotInputs>; poke: () => void };
 
-/** Agents working across `hosts` (pi panes whose status is `working`). */
+/** Sessions working across `hosts` (session cards in state `working`). */
 export function runningAgents(hosts: readonly HostInfo[]): number {
   let running = 0;
   for (const host of hosts) {
-    const data = chatLists().get(host.id)?.data;
-    for (const s of data?.herdr.sessions ?? [])
-      for (const w of s.workspaces) for (const t of w.tabs) for (const p of t.panes) if (p.agent && paneStatus(p) === 'working') running += 1;
+    for (const card of chatLists().get(host.id)?.data?.sessions ?? []) if (card.state === 'working' || card.pending_work) running += 1;
   }
   return running;
 }
 
-/** Hosts whose last chat_list failed and that never answered. */
+/** Hosts whose last session list failed and that never answered. */
 export function offlineHosts(hosts: readonly HostInfo[]): number {
   return hosts.filter((h) => {
     const e = chatLists().get(h.id);

@@ -25,7 +25,7 @@ import { anchorFromEvent, isExternalHref, openLink } from '../../lib/markdown/li
 import { copyText } from '../../lib/board/share';
 import type { Chat } from '../../lib/chat/store';
 import { hydrateTaskRefs, knownPrefixes } from '../../lib/board/portal';
-import { openTaskFromChat } from '../../lib/chat/boardPortal';
+import { openTaskFromChat } from '../../lib/session/open';
 import { hydrateFileRefs } from '../../lib/chat/fileRefs';
 import { attachFileRefGestures, handleFileRefClick } from '../../lib/chat/fileRefGestures';
 

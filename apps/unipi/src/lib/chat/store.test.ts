@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot } from 'solid-js';
 import { applyMessage, createChat, BusyError, customInsertIndex, reconcileBtwPages, treeGoRestoreOf, type BtwPage, type TreeGoRestore } from './store';
-import { setChatTransport, type ChatConnection, type ChatTransport } from './transport';
+import { setChatTransport, type ChatConnection, type ChatTransport } from '../session/link';
 
 type Sent = { msg: Record<string, unknown> };
 
@@ -21,7 +21,7 @@ function fakeTransport() {
     close: () => {},
   };
   const transport: ChatTransport = {
-    list: async () => ({ herdr: { available: false } }),
+    list: async () => ({ sessions: [] }),
     open: (_host, _pid, onLineCb, onState) => {
       onLine = onLineCb;
       queueMicrotask(() => onState('open'));
@@ -51,7 +51,7 @@ describe('chat store — session navigation (UNI-158)', () => {
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -74,7 +74,7 @@ describe('chat store — session navigation (UNI-158)', () => {
     setChatTransport(f.transport);
     let result: unknown;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -96,7 +96,7 @@ describe('chat store — session navigation (UNI-158)', () => {
     setChatTransport(f.transport);
     let ok = false;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -119,7 +119,7 @@ describe('chat store — session navigation (UNI-158)', () => {
     let caught: unknown;
     let forcedSent = false;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -150,7 +150,7 @@ describe('chat store — session navigation (UNI-158)', () => {
     setChatTransport(f.transport);
     let ok = false;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -174,7 +174,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: { running: true }, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -205,7 +205,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -247,7 +247,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [{ id: 'tui-1', text: 'steer me', mode: 'steer', source: 'tui', editable: true }] });
         await Promise.resolve();
@@ -273,7 +273,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -297,7 +297,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -335,7 +335,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -360,13 +360,13 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 7);
+      const chat = createChat('host', 's7');
       // Not live yet (no hello pushed): sends queue into the outbox, not the wire.
       chat.send('first offline message');
       chat.send('second offline message');
       expect(chat.state.outbox).toHaveLength(2);
       expect(f.sent).toHaveLength(0);
-      expect(JSON.parse(localStorage.getItem('unipi.chat.outbox.host.7')!)).toHaveLength(2);
+      expect(JSON.parse(localStorage.getItem('unipi.chat.outbox.host.s7')!)).toHaveLength(2);
 
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
@@ -375,7 +375,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
         expect(chat.state.outbox).toHaveLength(0);
         const sentTexts = f.sent.filter((s) => s.msg.t === 'prompt').map((s) => s.msg.text);
         expect(sentTexts).toEqual(['first offline message', 'second offline message']);
-        expect(localStorage.getItem('unipi.chat.outbox.host.7')).toBe('[]');
+        expect(localStorage.getItem('unipi.chat.outbox.host.s7')).toBe('[]');
       })();
       return d;
     });
@@ -388,13 +388,13 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 8);
+      const chat = createChat('host', 's8');
       chat.send('keep me');
       chat.send('drop me');
       const dropId = chat.state.outbox[1]!.id;
       chat.removeOutboxed(dropId);
       expect(chat.state.outbox.map((o) => o.text)).toEqual(['keep me']);
-      expect(JSON.parse(localStorage.getItem('unipi.chat.outbox.host.8')!)).toHaveLength(1);
+      expect(JSON.parse(localStorage.getItem('unipi.chat.outbox.host.s8')!)).toHaveLength(1);
       return d;
     });
     dispose();
@@ -404,7 +404,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -434,7 +434,7 @@ describe('chat store — send modes, bridge queue, outbox, btw (UNI-159)', () =>
     setChatTransport(f.transport);
     let result: unknown;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -457,7 +457,7 @@ describe('chat store — fusion preset push (UNI-176)', () => {
     setChatTransport(f.transport);
     let seen: unknown;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();
@@ -534,7 +534,7 @@ describe('btw side questions across reconnects (UNI-219)', () => {
     setChatTransport(f.transport);
     let chat!: ReturnType<typeof createChat>;
     const dispose = createRoot((d) => {
-      chat = createChat('host', 1);
+      chat = createChat('host', 's1');
       return d;
     });
     f.push(hello);
@@ -558,7 +558,7 @@ describe('btw side questions across reconnects (UNI-219)', () => {
     setChatTransport(f.transport);
     let chat!: ReturnType<typeof createChat>;
     const dispose = createRoot((d) => {
-      chat = createChat('host', 1);
+      chat = createChat('host', 's1');
       return d;
     });
     f.push(hello);
@@ -592,7 +592,7 @@ describe('btw side questions across reconnects (UNI-219)', () => {
     setChatTransport(f.transport);
     let chat!: ReturnType<typeof createChat>;
     const dispose = createRoot((d) => {
-      chat = createChat('host', 1);
+      chat = createChat('host', 's1');
       return d;
     });
     f.push(hello);
@@ -612,7 +612,7 @@ describe('btw side questions across reconnects (UNI-219)', () => {
     setChatTransport(f.transport);
     let chat!: ReturnType<typeof createChat>;
     const dispose = createRoot((d) => {
-      chat = createChat('host', 1);
+      chat = createChat('host', 's1');
       return d;
     });
     f.push(hello);
@@ -645,7 +645,7 @@ describe('tree_go restore (UNI-290)', () => {
     setChatTransport(f.transport);
     const got: Array<TreeGoRestore | undefined> = [];
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({ t: 'hello', session: { id: 's', cwd: '/p' }, state: {}, entries: [], commands: [], models: [], dialogs: [], queue: [] });
         await Promise.resolve();

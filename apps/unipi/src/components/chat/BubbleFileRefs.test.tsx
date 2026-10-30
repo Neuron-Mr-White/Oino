@@ -31,7 +31,7 @@ const EXIST: Record<string, 'file' | 'dir'> = { 'src/a.ts': 'file', 'docs/': 'di
 const mkChat = () =>
   ({
     hostId: 'h1',
-    pid: 1,
+    session: '1',
     state: { session: { cwd: CWD }, commands: [] },
     statPaths: vi.fn(async (paths: string[]) => paths.map((path) => ({ path, resolved: `${CWD}/${path.replace(/\/$/, '')}`, kind: EXIST[path] ?? 'missing' }))),
   }) as unknown as Chat;

@@ -16,8 +16,7 @@
  * Browser mode (UNI-215, `?mode=browser`): drive a dedicated desktop
  * browser on the PC over CDP — see `BrowserView.tsx`.
  *
- * Desktop mode (UNI-216, `?mode=desktop`): the PC's whole screen as H.264
- * with mouse/keyboard — see `DesktopView.tsx`.
+ * Desktop streaming (UNI-216) is deferred (D-15, WP-A1 removed it).
  */
 import { createEffect, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
 import { useNavigate, useSearchParams } from '@solidjs/router';
@@ -29,7 +28,6 @@ import {
   Globe,
   Home,
   Monitor,
-  MonitorSmartphone,
   Plug,
   RefreshCw,
   RotateCw,
@@ -37,7 +35,7 @@ import {
   TriangleAlert,
   Unplug,
 } from 'lucide-solid';
-import type { AppError, DesktopStatusData, FeatureKind, ListeningPort, PortsListData } from '@unipi/protocol';
+import type { AppError, FeatureKind, ListeningPort, PortsListData } from '@unipi/protocol';
 import { useHosts } from '../hosts/context';
 import type { Result } from '../lib/ipc';
 import { pushBack } from '../lib/back';
@@ -68,11 +66,9 @@ import {
   type ForwardInfo,
 } from '../lib/forward';
 import { BrowserPanel, BrowserViewer } from './BrowserView';
-import { DesktopPanel, DesktopViewer } from './DesktopView';
-import { Requires, UnavailableNotice } from '../components/Requires';
+import { UnavailableNotice } from '../components/Requires';
 import { FeatureOff } from '../components/FeatureOff';
 import '../components/Requires.css';
-import './desktop.css';
 import './preview.css';
 
 /** The preview iframe may do everything except navigate the app itself away (UNI-224). */
@@ -95,7 +91,7 @@ export default function Preview() {
 }
 
 /** Preview's page header: the shared PageHeader (UNI-218 F1). On the phone Preview is
- * pushed from Sessions, so it gets a back arrow; on the desktop it's a sidebar screen. */
+ * pushed from the session list, so it gets a back arrow; on the desktop it's a sidebar screen. */
 function PreviewHead(props: { onBack: () => void; chip?: JSX.Element; children?: JSX.Element }) {
   return (
     <PageHeader
@@ -163,8 +159,7 @@ function PreviewApp() {
   const hosts = useHosts();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams<{ host?: string; mode?: string }>();
-  const mode = () => (params.mode === 'browser' ? 'browser' : params.mode === 'desktop' ? 'desktop' : 'ports');
-  const [streaming, setStreaming] = createSignal<{ hostId: string; viewOnly: boolean; status?: DesktopStatusData } | undefined>();
+  const mode = () => (params.mode === 'browser' ? 'browser' : 'ports');
   const [browsing, setBrowsing] = createSignal<{ hostId: string; url?: string; target?: string } | undefined>();
   const [hostSheet, setHostSheet] = createSignal(false);
   const hostId = () => {
@@ -256,24 +251,12 @@ function PreviewApp() {
           <PreviewHead onBack={() => navigate('/')} />
           <div class="preview-body">
             <div data-testid="preview-no-hosts">
-              <NoHostState what="its web apps, browser and desktop" onAdd={() => setAddHostOpen(true)} />
+              <NoHostState what="its web apps and browser" onAdd={() => setAddHostOpen(true)} />
             </div>
           </div>
         </>
       }
     >
-      <Show when={streaming()}>
-        {(d) => (
-          <DesktopViewer
-            hostId={d().hostId}
-            hostName={hostName(d().hostId)}
-            viewOnly={d().viewOnly}
-            status={d().status}
-            CommandBox={CommandBox}
-            onClose={() => setStreaming(undefined)}
-          />
-        )}
-      </Show>
       <Show when={browsing()}>
         {(b) => (
           <BrowserViewer
@@ -308,11 +291,6 @@ function PreviewApp() {
                 <button type="button" role="tab" class="seg-option" aria-selected={mode() === 'browser'} aria-checked={mode() === 'browser'} onClick={() => setParams({ mode: 'browser' }, { replace: true })}>
                   <Monitor size={15} /> Browser
                 </button>
-                <Show when={!isLocal(hostId())}>
-                  <button type="button" role="tab" class="seg-option" aria-selected={mode() === 'desktop'} aria-checked={mode() === 'desktop'} onClick={() => setParams({ mode: 'desktop' }, { replace: true })}>
-                    <MonitorSmartphone size={15} /> Desktop
-                  </button>
-                </Show>
               </div>
               <Show when={mode() === 'browser' && hostId()}>
                 {(id) => (
@@ -323,22 +301,6 @@ function PreviewApp() {
                     CommandBox={CommandBox}
                     onOpen={(args) => setBrowsing({ hostId: id(), ...args })}
                   />
-                )}
-              </Show>
-              <Show when={mode() === 'desktop' && isLocal(hostId())}>
-                <p class="preview-muted" data-testid="preview-desktop-local">This is this computer's own screen — streaming is for reaching it from your phone.</p>
-              </Show>
-              <Show when={mode() === 'desktop' && !isLocal(hostId()) ? hostId() : undefined}>
-                {(id) => (
-                  <Requires cap="desktopStream" variant="inline">
-                    <DesktopPanel
-                      hostId={id()}
-                      hostName={hostName(id())}
-                      Notice={Notice}
-                      CommandBox={CommandBox}
-                      onOpen={(args) => setStreaming({ hostId: id(), ...args })}
-                    />
-                  </Requires>
                 )}
               </Show>
               <Show when={mode() === 'ports'}>

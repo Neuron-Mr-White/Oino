@@ -4,7 +4,7 @@
  * docs/m5/PROTOCOL.md §7.1), plus the pure pieces of the chat's mode chip,
  * its popover and the chat list's mode badge.
  */
-import { MODE_LABEL, type LhMode, type LhProgress, type LhRun } from './progress';
+import { MODE_LABEL, type LhMode, type LhProgress, type LhRun } from './lhProgress';
 
 /** `@pi-unipi/core` LhStateEvent, relayed verbatim. `mode: "none"` = plain. */
 export type LhModeState = {
@@ -134,7 +134,7 @@ export function modeErrorText(message: string): string {
   return /unknown type/i.test(message) ? 'Switching modes from the app needs a newer unipi on this PC.' : message;
 }
 
-/** The list's mode badge for a row (host `chat_list` lh_mode / lh_paused). */
+/** The list's mode badge for a row (session card lh_mode / lh_paused). */
 export function listModeBadge(lhMode: string | undefined, lhPaused: string | undefined): { mode: string; label: string; paused: boolean } | undefined {
   if (lhMode && lhMode !== 'none') return { mode: lhMode, label: modeLabel(lhMode), paused: false };
   if (lhPaused && lhPaused !== 'none') return { mode: lhPaused, label: `${modeLabel(lhPaused)} · paused`, paused: true };

@@ -27,8 +27,4 @@ describe('detail header (F39): one 56px bar on every detail pane', () => {
     expect(src(file)).toContain(`class="${cls}`);
   });
 
-  it('the remote desktop has a floating RustDesk-style toolbar instead (UNI-271)', () => {
-    expect(src('screens/DesktopView.tsx')).toContain('class="desktop-bar"');
-    expect(src('screens/DesktopView.tsx')).not.toContain('detail-head');
-  });
 });

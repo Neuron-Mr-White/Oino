@@ -25,8 +25,9 @@ import { openMermaidViewer } from './MermaidViewer';
 import { renderMermaid } from '../../lib/markdown/mermaid';
 import { renderBlocks } from '../../lib/markdown';
 import type { Chat } from '../../lib/chat/store';
-import { durationText, startedText } from '../../lib/chat/dream';
 import {
+  durationText,
+  startedText,
   agoText,
   clockText,
   isSelected,
@@ -44,7 +45,7 @@ import {
   type LhRun,
   type TranscriptItem,
   type WorkTranscript,
-} from '../../lib/chat/progress';
+} from '../status/lhProgress';
 
 /** Is there a run worth a dot on the menu row? */
 export function progressActive(chat: Chat | undefined): boolean {

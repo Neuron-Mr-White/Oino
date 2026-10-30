@@ -22,7 +22,7 @@ const EXIST = new Set([`${CWD}/src/a.ts`, `${CWD}/packages/fusion/src/picker.ts`
 const mkChat = () =>
   ({
     hostId: 'h1',
-    pid: 1,
+    session: '1',
     state: { session: { cwd: CWD } },
     statPaths: vi.fn(async (paths: string[]) =>
       paths.map((path) => {
@@ -86,7 +86,7 @@ describe('tool rows: file subjects and output are tappable (UNI-204)', () => {
 });
 
 describe('older pi without paths_stat (UNI-204 regression)', () => {
-  const oldPi = () => ({ hostId: 'h1', pid: 2, state: { session: { cwd: CWD } }, statPaths: vi.fn(async () => null) }) as unknown as Chat;
+  const oldPi = () => ({ hostId: 'h1', session: '2', state: { session: { cwd: CWD } }, statPaths: vi.fn(async () => null) }) as unknown as Chat;
 
   it('a read row keeps its Open: the subject links unverified, resolved against the cwd', async () => {
     const chat = oldPi();

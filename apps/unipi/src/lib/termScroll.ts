@@ -1,9 +1,9 @@
 /**
  * One-finger touch scrolling for the terminal (DESIGN §3.3).
  *
- * herdr (`mouse_capture = true`) and tmux (`mouse on`) both turn on
- * mouse reporting and draw on the alternate screen, so xterm's own
- * scrollback is empty and native touch-panning does nothing useful.
+ * Full-screen TUIs (pi, editors, pagers) turn on mouse reporting and
+ * draw on the alternate screen, so xterm's own scrollback is empty and
+ * native touch-panning does nothing useful.
  * A vertical drag is therefore translated into whatever the app on
  * the other end understands:
  *
@@ -13,17 +13,14 @@
  *   scroll" behaviour)
  * - normal screen       → scroll xterm's local scrollback
  *
- * Pure mapping only; Terminal.tsx owns the pointers.
+ * Pure mapping only; the terminal pane (wave 3, WP-A31) owns the pointers.
  */
 
 export type ScrollTarget = 'mouse' | 'alt-keys' | 'scrollback';
 export type MouseEncoding = 'DEFAULT' | 'SGR' | 'SGR_PIXELS' | string;
 
-/** Lines the remote scrolls per wheel notch (herdr `mouse_scroll_lines`
- * defaults to 3; tmux copy-mode scrolls 5 per wheel event). */
-export function linesPerWheel(mux: 'herdr' | 'tmux' | undefined): number {
-  return mux === 'tmux' ? 5 : 3;
-}
+/** Lines a TUI scrolls per wheel notch (the common default). */
+export const LINES_PER_WHEEL = 3;
 
 /** Drag distance before a one-finger touch counts as a scroll. */
 export const SCROLL_SLOP_PX = 8;
@@ -38,16 +35,15 @@ export const SCROLL_GAIN = 1.6;
 
 /**
  * Finger px per emitted scroll step: one wheel notch scrolls
- * `linesPerWheel` lines remotely, one arrow / scrollLines step scrolls
+ * `LINES_PER_WHEEL` lines remotely, one arrow / scrollLines step scrolls
  * one line locally.
  */
 export function scrollStepPx(
   target: ScrollTarget,
   cellHeight: number,
-  mux: 'herdr' | 'tmux' | undefined,
   gain = SCROLL_GAIN,
 ): number {
-  const lines = target === 'mouse' ? linesPerWheel(mux) : 1;
+  const lines = target === 'mouse' ? LINES_PER_WHEEL : 1;
   return Math.max(1, (cellHeight * lines) / gain);
 }
 
@@ -85,7 +81,7 @@ export function wheelSequence(
 
 /**
  * Left click (press + release) at 1-based cell `col`/`row`, for taps
- * while the app tracks the mouse (UNI-128: herdr's header buttons).
+ * while the app tracks the mouse (UNI-128: a TUI's header buttons).
  * SGR ends the press with `M` and the release with `m`; X10 reports a
  * release as button 3. `withRelease` is false for X10-only tracking
  * (mode 9 reports presses only).

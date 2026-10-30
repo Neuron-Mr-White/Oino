@@ -13,7 +13,6 @@ import {
   Copy,
   CornerDownRight,
   FilePlus2,
-  FolderOpen,
   Files,
   GitBranch,
   Gauge,
@@ -36,9 +35,7 @@ import {
   Columns3,
   ListPlus,
   Network,
-  Moon,
   Workflow,
-  XCircle,
   SquarePlus,
 } from 'lucide-solid';
 import type { Chat, SessionsItem, TreeNode } from '../../lib/chat/store';
@@ -127,9 +124,8 @@ export function ChatHeaderMenu(props: {
   anchor: DOMRect;
   onDismiss: () => void;
   onNew: () => void;
-  /** A separate pi beside this one: a new tab in the same herdr workspace (new tmux window). */
+  /** A separate session beside this one, in the same folder. */
   onNewHere?: () => void;
-  onResume: () => void;
   onTree: () => void;
   /** UNI-275: search this chat's text. */
   onSearch?: () => void;
@@ -139,8 +135,6 @@ export function ChatHeaderMenu(props: {
   onFilesHere?: () => void;
   /** UNI-217: opens the Git view for this chat's cwd, when known. */
   onGit?: () => void;
-  /** UNI-260: "Close chat…" (stop pi + close its tab, or hide it). */
-  onCloseChat?: () => void;
   /** UNI-257: where to read the Git row's +/- from (the chat's PC + cwd). */
   gitStat?: { hostId: string; path: string };
   /** UNI-181 portal: jump to the board / add a task there. */
@@ -155,9 +149,6 @@ export function ChatHeaderMenu(props: {
   /** UNI-269: opens the working-mode popover; `modeHint` = the current mode's name ("Plain" when none). */
   onMode?: () => void;
   modeHint?: string;
-  /** UNI-118: opens the Dream sheet; `dreamHint` = "running" or the number of proposals waiting. */
-  onDream?: () => void;
-  dreamHint?: string;
   /** UNI-296: the PC's browser beside the chat (pane / sheet); `browserOpen` marks it shown. */
   onBrowser?: () => void;
   browserOpen?: boolean;
@@ -193,22 +184,13 @@ export function ChatHeaderMenu(props: {
                 onSelect={() => (props.onDismiss(), props.onProgress?.())}
               />
             </Show>
-            <Show when={props.onDream}>
-              <MenuRow
-                icon={<Moon size={18} />}
-                label="Dream"
-                hint={props.dreamHint ? <span class="board-menu-note">{props.dreamHint}</span> : undefined}
-                onSelect={() => (props.onDismiss(), props.onDream?.())}
-              />
-            </Show>
             <MenuSeparator />
         </>
       </Show>
       <MenuRow icon={<FilePlus2 size={18} />} label="New session" onSelect={() => (props.onDismiss(), props.onNew())} />
       <Show when={props.onNewHere}>
-        <MenuRow icon={<SquarePlus size={18} />} label="New chat in this workspace" onSelect={() => (props.onDismiss(), props.onNewHere?.())} />
+        <MenuRow icon={<SquarePlus size={18} />} label="New chat in this folder" onSelect={() => (props.onDismiss(), props.onNewHere?.())} />
       </Show>
-      <MenuRow icon={<FolderOpen size={18} />} label="Resume…" onSelect={() => (props.onDismiss(), props.onResume())} />
       <Show when={props.onSearch}>
         <MenuRow icon={<Search size={18} />} label="Search in chat" onSelect={() => (props.onDismiss(), props.onSearch?.())} />
       </Show>
@@ -241,80 +223,7 @@ export function ChatHeaderMenu(props: {
         <MenuSeparator />
         <MenuRow icon={<Pencil size={18} />} label="Rename…" onSelect={() => (props.onDismiss(), props.onRename())} />
       </Show>
-      <Show when={props.onCloseChat}>
-        <Show when={!props.canRename}>
-          <MenuSeparator />
-        </Show>
-        <MenuRow icon={<XCircle size={18} />} label="Close chat…" tone="danger" onSelect={() => (props.onDismiss(), props.onCloseChat?.())} />
-      </Show>
     </AnchoredMenu>
-  );
-}
-
-/** Resume sheet: search, this-project/all-projects toggle, rows to tap and resume. */
-export function ResumeSheet(props: { open: boolean; onClose: () => void; chat: Chat; onPick: (item: SessionsItem) => void }) {
-  const [scope, setScope] = createSignal<'cwd' | 'all'>('cwd');
-  const [query, setQuery] = createSignal('');
-  const [items, setItems] = createSignal<SessionsItem[]>([]);
-  const [loading, setLoading] = createSignal(false);
-  let seq = 0;
-
-  const load = () => {
-    const mySeq = ++seq;
-    setLoading(true);
-    void props.chat.sessions(scope(), query().trim() || undefined).then(({ items: list }) => {
-      if (mySeq !== seq) return;
-      setItems(list);
-      setLoading(false);
-    });
-  };
-  createEffect(() => {
-    if (!props.open) return;
-    // Track scope/query; debounce the query a little.
-    const q = query();
-    const s = scope();
-    const t = setTimeout(load, q ? 180 : 0);
-    void s;
-    return () => clearTimeout(t);
-  });
-  createEffect(() => {
-    if (props.open) load();
-  });
-
-  return (
-    <BoardSheet open={props.open} onClose={props.onClose} label="Resume" testId="resume-sheet">
-      <input class="model-search" placeholder="Search sessions" value={query()} onInput={(e) => setQuery(e.currentTarget.value)} />
-      <div class="think-levels" role="radiogroup" aria-label="Scope">
-        <button type="button" role="radio" aria-checked={scope() === 'cwd'} class="think-level" onClick={() => setScope('cwd')}>
-          This project
-        </button>
-        <button type="button" role="radio" aria-checked={scope() === 'all'} class="think-level" onClick={() => setScope('all')}>
-          All projects
-        </button>
-      </div>
-      <Show when={!loading()} fallback={<p class="sheet-label">Loading…</p>}>
-        <Show when={items().length > 0} fallback={<p class="board-menu-note">No sessions found.</p>}>
-          <div class="model-list">
-            <For each={items()}>
-              {(item) => (
-                <button type="button" class="model-row resume-row" aria-current={item.current ? 'true' : undefined} onClick={() => props.onPick(item)}>
-                  <span class="min-w-0 flex-1 text-left">
-                    <span class="block truncate">{item.name || item.firstMessage || '(empty session)'}</span>
-                    <span class="block truncate model-row-sub">
-                      {relativeTimeMs(item.modified)} · {item.messageCount} {item.messageCount === 1 ? 'message' : 'messages'}
-                      {scope() === 'all' ? ` · ${item.cwd}` : ''}
-                    </span>
-                  </span>
-                  <Show when={item.current}>
-                    <Check size={18} class="board-accent shrink-0" />
-                  </Show>
-                </button>
-              )}
-            </For>
-          </div>
-        </Show>
-      </Show>
-    </BoardSheet>
   );
 }
 
@@ -695,7 +604,7 @@ export function RenameSheet(props: { open: boolean; onClose: () => void; name: s
 }
 
 /** Welcome state for a brand-new, empty session: up to 5 recent sessions to resume. */
-export function WelcomeState(props: { chat: Chat; onResume: (item: SessionsItem) => void; onOpenResume: () => void }) {
+export function WelcomeState(props: { chat: Chat; onResume: (item: SessionsItem) => void }) {
   const [recent, setRecent] = createSignal<SessionsItem[]>([]);
   createEffect(() => {
     void props.chat.sessions('cwd').then(({ items }) => setRecent(items.filter((i) => !i.current).slice(0, 5)));
@@ -720,16 +629,13 @@ export function WelcomeState(props: { chat: Chat; onResume: (item: SessionsItem)
             )}
           </For>
         </div>
-        <button type="button" class="board-text-button chat-welcome-more" onClick={props.onOpenResume}>
-          See all sessions…
-        </button>
       </Show>
     </div>
   );
 }
 
-/** The composer "+" menu: Photo, Camera, File, Side question, New session,
- *  Resume. */
+/** The composer "+" menu: Photo, Camera, File, Side question, New session
+ *  (resuming lives in the sessions sidebar, Z-19). */
 export function PlusMenu(props: {
   anchor: DOMRect;
   onDismiss: () => void;
@@ -738,7 +644,6 @@ export function PlusMenu(props: {
   onFile: () => void;
   onSideQuestion: () => void;
   onNewSession: () => void;
-  onResume: () => void;
   /** UNI-181: create a board task from the chat. */
   onAddTask?: () => void;
 }) {
@@ -754,7 +659,6 @@ export function PlusMenu(props: {
       </Show>
       <MenuSeparator />
       <MenuRow icon={<FilePlus2 size={18} />} label="New session" onSelect={() => (props.onDismiss(), props.onNewSession())} />
-      <MenuRow icon={<FolderOpen size={18} />} label="Resume…" onSelect={() => (props.onDismiss(), props.onResume())} />
     </AnchoredMenu>
   );
 }

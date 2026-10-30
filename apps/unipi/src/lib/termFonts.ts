@@ -2,7 +2,7 @@
  * Terminal fonts (UNI-127): JetBrains Mono Variable first, then the
  * bundled Symbols Nerd Font Mono (style.css @font-face) for powerline /
  * devicons / Material Design glyphs, so TUIs like the unipi footer,
- * herdr and starship prompts render icons instead of tofu.
+ * TUI and starship prompts render icons instead of tofu.
  *
  * xterm measures its cell from the font at open time, so the terminal
  * must only open once both faces are loaded (bounded by a timeout), and

@@ -4,16 +4,16 @@ import { HashRouter, Route } from '@solidjs/router';
 import { vi, it, describe, expect, afterEach, beforeEach } from 'vitest';
 import Cron, { lastRunChip, nextFireText, wakeText } from './Cron';
 import { notifyFromForm, notifyModeOf, notifyText } from '../lib/cron';
-import { openChatState, closeChat } from '../lib/chat/open';
+import { openChatState, closeChat } from '../lib/session/open';
 import { HostsProvider } from '../hosts/context';
 import { SettingsProvider } from '../settings/context';
 import { call } from '../lib/ipc';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 // The chat layer (opened by "Open session") talks over this; keep it inert.
-vi.mock('../lib/chat/transport', () => ({
+vi.mock('../lib/session/link', () => ({
   chatTransport: () => ({
-    list: async () => ({ herdr: { available: false }, tmux: { available: false } }),
+    list: async () => ({ sessions: [] }),
     open: () => ({ send: () => undefined, close: () => undefined }),
   }),
 }));
@@ -187,27 +187,20 @@ describe('Cron notify, wake and Open session (UNI-319)', () => {
     );
   });
 
-  it("Open session starts pi on the run's session in a new herdr workspace and opens that chat", async () => {
-    const tree = { herdr: { available: true, sessions: [{ name: 'main', running: true, workspaces: [] }] }, tmux: { available: false }, protected: [] };
-    routes({
-      chat_config: { ok: true, value: { launcher: 'pi', default: true, herdr: true, tmux: false } },
-      mux_tree: { ok: true, value: { tree } },
-      cron_open_session: { ok: true, value: { pid: 4242, already_open: false, started: { pid: 4242, mux: 'herdr', session: 'main', workspace_id: 'w9', tab_id: 't1', pane_id: 'p1', cwd: '/home/me/jobs/digest' } } },
-    });
+  it("Open session asks the host to open the run's session and opens that chat", async () => {
+    routes({ cron_open_session: { ok: true, value: { session: 'sess-42' } } });
     mount();
     fireEvent.click(await screen.findByTestId('cron-job-digest'));
     fireEvent.click(await screen.findByTestId('cron-run-r1'));
     fireEvent.click(await screen.findByTestId('cron-open-session'));
-    await waitFor(() => expect(openChatState()?.target.pid).toBe(4242));
-    expect(call).toHaveBeenCalledWith('cron_open_session', { hostId: 'host-1', runId: 'r1', target: { kind: 'herdr_new_workspace', session: 'main', label: 'daily digest' } }, expect.anything());
-    expect(openChatState()?.target.workspaceLabel).toBe('daily digest');
+    await waitFor(() => expect(openChatState()?.target.session).toBe('sess-42'));
+    expect(call).toHaveBeenCalledWith('cron_open_session', { hostId: 'host-1', runId: 'r1' }, expect.anything());
+    expect(openChatState()?.target.title).toBe('daily digest');
     await waitFor(() => expect(screen.queryByTestId('cron-detail-sheet')).toBeNull());
   });
 
   it('Open session errors stay in the sheet, in words', async () => {
     routes({
-      chat_config: { ok: true, value: { launcher: 'pi', default: true, herdr: false, tmux: true } },
-      mux_tree: { ok: true, value: { tree: { herdr: { available: false }, tmux: { available: true, sessions: [] }, protected: [] } } },
       cron_open_session: { ok: false, error: { code: 'E_NOT_FOUND', message: "This run's session file is gone (deleted or moved).", retryable: false } },
     });
     mount();
@@ -215,7 +208,7 @@ describe('Cron notify, wake and Open session (UNI-319)', () => {
     fireEvent.click(await screen.findByTestId('cron-run-r1'));
     fireEvent.click(await screen.findByTestId('cron-open-session'));
     expect(await screen.findByTestId('cron-open-session-error')).toHaveTextContent('session file is gone');
-    expect(call).toHaveBeenCalledWith('cron_open_session', expect.objectContaining({ target: { kind: 'tmux_new_session', name: 'daily-digest' } }), expect.anything());
+    expect(call).toHaveBeenCalledWith('cron_open_session', { hostId: 'host-1', runId: 'r1' }, expect.anything());
     expect(openChatState()).toBeNull();
   });
 

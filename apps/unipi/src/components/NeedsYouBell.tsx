@@ -11,7 +11,8 @@ import { mascotLive } from '../lib/mascotLive';
 import './mascot.css';
 import { BoardSheet } from './board/BoardSheet';
 import { groupNeedsYou, needsYou, type NeedsYouGroup, type NeedsYouItem } from '../lib/needsYou';
-import { openChat } from '../lib/chat/open';
+import { openChat } from '../lib/session/open';
+import { bareTarget } from '../lib/session/list';
 import { useHosts, useHostsOptional } from '../hosts/context';
 import './needsYou.css';
 
@@ -54,12 +55,12 @@ export function NeedsYouDrawer(props: { open: boolean; onClose: () => void }) {
   const open = (item: NeedsYouItem) => {
     store.markRead(item.id);
     const host = hosts.hosts().find((h) => h.id === item.hostId);
-    if (item.pid === null || !host) {
+    if (!item.session || !host) {
       props.onClose();
       return;
     }
     openChat(
-      { hostId: item.hostId, session: item.session, workspaceId: '', workspaceLabel: item.session, tabId: '', paneId: '', pid: item.pid, title: item.title, status: 'unknown', focused: false },
+      bareTarget(item.hostId, item.session, item.title),
       host.name,
     );
     props.onClose();

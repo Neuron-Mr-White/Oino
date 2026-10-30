@@ -230,14 +230,13 @@ export function Composer(props: {
   setDraft: (text: string) => void;
   onSideQuestion: (question?: string) => void;
   onNewSession: () => void;
-  onResume: () => void;
   /** UNI-181: + menu "Board task…". */
   onAddTask?: () => void;
   /** UNI-117: hands the chat layer focus/attach controls. */
   api?: (api: ComposerApi) => void;
 }) {
   const s = () => props.chat.state;
-  const chatKey = () => `${props.chat.hostId}:${props.chat.pid}`;
+  const chatKey = () => `${props.chat.hostId}:${props.chat.session}`;
   let editor: ChipEditorApi | undefined;
   const [caret, setCaret] = createSignal(0);
   const [dismissed, setDismissed] = createSignal<string | null>(null);
@@ -577,7 +576,7 @@ export function Composer(props: {
   const [choiceOpen, setChoiceOpen] = createSignal(false);
   // The highlighted pill while the choice is open (keyboard: ←/→ move it, Enter picks it).
   const [choiceHi, setChoiceHi] = createSignal<SendChoice>('steer');
-  createEffect(on(choiceOpen, (o) => o && setChoiceHi(lastSendChoice(props.chat.hostId, props.chat.pid))));
+  createEffect(on(choiceOpen, (o) => o && setChoiceHi(lastSendChoice(props.chat.hostId, props.chat.session))));
   // The run ended while the choice was open: nothing to steer — the bar goes.
   createEffect(on(running, (r) => !r && setChoiceOpen(false)));
   createEffect(on(() => props.draft, (d) => !d.trim() && setChoiceOpen(false)));
@@ -599,7 +598,7 @@ export function Composer(props: {
   };
   onCleanup(up);
   const choose = (choice: SendChoice) => {
-    rememberSendChoice(props.chat.hostId, props.chat.pid, choice);
+    rememberSendChoice(props.chat.hostId, props.chat.session, choice);
     setChoiceOpen(false);
     send(choice);
   };
@@ -738,7 +737,7 @@ export function Composer(props: {
     e.stopPropagation();
     if (action === 'stop') props.chat.abort();
     else if (action === 'choose') setChoiceOpen(true);
-    else if (action === 'send-default') choose(lastSendChoice(props.chat.hostId, props.chat.pid));
+    else if (action === 'send-default') choose(lastSendChoice(props.chat.hostId, props.chat.session));
     else send();
     return true;
   };
@@ -858,7 +857,7 @@ export function Composer(props: {
         </div>
       </Show>
       <Show when={choiceOpen()}>
-        <SendChoiceBar defaultChoice={desktopShell() ? choiceHi() : lastSendChoice(props.chat.hostId, props.chat.pid)} keys={desktopShell()} onDismiss={() => setChoiceOpen(false)} onPick={choose} />
+        <SendChoiceBar defaultChoice={desktopShell() ? choiceHi() : lastSendChoice(props.chat.hostId, props.chat.session)} keys={desktopShell()} onDismiss={() => setChoiceOpen(false)} onPick={choose} />
       </Show>
       <div class="chat-composer">
         <ChipEditor
@@ -1017,7 +1016,6 @@ export function Composer(props: {
             onFile={() => fileInput?.click()}
             onSideQuestion={() => props.onSideQuestion(resolveAttachmentTokens(props.draft, () => undefined).text.trim() || undefined)}
             onNewSession={props.onNewSession}
-            onResume={props.onResume}
             onAddTask={props.onAddTask}
           />
         )}

@@ -14,8 +14,8 @@ import {
   resetPrefixCache,
   splitTaskRefs,
 } from './portal';
-import { addTaskFromChat, openTaskFromChat } from '../chat/boardPortal';
-import { hasMarkedReturnToChat, clearReturnToChat } from '../chat/open';
+import { addTaskFromChat, openTaskFromChat } from '../session/open';
+import { hasMarkedReturnToChat, clearReturnToChat } from '../session/open';
 import type { ProjectSummary } from './api';
 
 const P = (slug: string, prefix: string, root?: string, archived = false): ProjectSummary => ({ slug, name: slug, prefix, root, archived });

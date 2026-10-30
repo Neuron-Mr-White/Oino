@@ -56,7 +56,7 @@ export function paneFor(screen: string): PaneSpec | undefined {
 /** Route path → screen key. */
 export function screenOf(pathname: string): string {
   const first = pathname.split('/').filter(Boolean)[0] ?? '';
-  if (first === '' || first === 'term') return 'sessions';
+  if (first === '') return 'chat';
   return first;
 }
 

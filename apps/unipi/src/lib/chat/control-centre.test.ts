@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot } from 'solid-js';
 import { createChat } from './store';
-import { setChatTransport, type ChatConnection, type ChatTransport } from './transport';
+import { setChatTransport, type ChatConnection, type ChatTransport } from '../session/link';
 
 type Sent = { msg: Record<string, unknown> };
 
@@ -20,7 +20,7 @@ function fakeTransport() {
     close: () => {},
   };
   const transport: ChatTransport = {
-    list: async () => ({ herdr: { available: false } }),
+    list: async () => ({ sessions: [] }),
     open: (_host, _pid, onLineCb, onState) => {
       onLine = onLineCb;
       queueMicrotask(() => onState('open'));
@@ -50,7 +50,7 @@ describe('control centre store (UNI-160)', () => {
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push({
           ...helloBase,
@@ -72,7 +72,7 @@ describe('control centre store (UNI-160)', () => {
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();
@@ -94,7 +94,7 @@ describe('control centre store (UNI-160)', () => {
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();
@@ -115,7 +115,7 @@ describe('control centre store (UNI-160)', () => {
     let singleOk = false;
     let pairOk = false;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();
@@ -145,7 +145,7 @@ describe('control centre store (UNI-160)', () => {
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();
@@ -166,7 +166,7 @@ describe('control centre store (UNI-160)', () => {
     const f = fakeTransport();
     setChatTransport(f.transport);
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();
@@ -189,7 +189,7 @@ describe('control centre store (UNI-160)', () => {
     let page1: unknown;
     let page2: unknown;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();
@@ -217,7 +217,7 @@ describe('control centre store (UNI-160)', () => {
     let stopped = false;
     let rejectedMessage: string | undefined;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();
@@ -249,7 +249,7 @@ describe('control centre store (UNI-160)', () => {
     setChatTransport(f.transport);
     const got: Record<string, unknown> = {};
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();
@@ -299,7 +299,7 @@ describe('control centre store (UNI-160)', () => {
     let stopped = false;
     let message: string | undefined;
     const dispose = createRoot((d) => {
-      const chat = createChat('host', 1);
+      const chat = createChat('host', 's1');
       void (async () => {
         f.push(helloBase);
         await Promise.resolve();

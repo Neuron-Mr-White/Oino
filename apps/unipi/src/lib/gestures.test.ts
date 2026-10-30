@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  edgeStart,
-  edgeSwipeDirection,
   isDoubleTap,
   pinchFontSize,
   twoFingerSwipe,
@@ -15,25 +13,6 @@ describe('two-finger swipe → pane switching', () => {
   it('swipe right → previous pane, swipe left → next pane', () => {
     expect(twoFingerSwipe({ startX: 200, currentX: 300 })).toBe('pane_prev');
     expect(twoFingerSwipe({ startX: 200, currentX: 100 })).toBe('pane_next');
-  });
-});
-
-describe('edge swipe → tab/window switching', () => {
-  it('only arms from the edge strips', () => {
-    expect(edgeStart(10, 412)).toBe('left');
-    expect(edgeStart(400, 412)).toBe('right');
-    expect(edgeStart(200, 412)).toBeUndefined();
-  });
-
-  it('left edge: swipe left → next, swipe right → previous', () => {
-    expect(edgeSwipeDirection('left', -80)).toBe('tab_next');
-    expect(edgeSwipeDirection('left', 80)).toBe('tab_prev');
-    expect(edgeSwipeDirection('left', -10)).toBeUndefined();
-  });
-
-  it('right edge: swipe right → next, swipe left → previous', () => {
-    expect(edgeSwipeDirection('right', 80)).toBe('tab_next');
-    expect(edgeSwipeDirection('right', -80)).toBe('tab_prev');
   });
 });
 

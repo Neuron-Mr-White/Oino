@@ -1,46 +1,23 @@
 /**
- * Chat transport (UNI-113) — the one seam between the Chat UI and a PC's
- * pi sessions (docs/m5/PROTOCOL.md).
+ * Session link — WP-A1 placeholder for the v1 chat transport (herdr
+ * `chat_list` / bridge `chat_open`, both deleted with the v1 host protocol).
  *
- * - Tauri: `chat_list` / `chat_open` (Channel) / `chat_send` / `chat_close`
- *   → iroh → unipi-host → `~/.unipi/bridge/<pid>.sock`.
- * - Browser dev / tests: `setChatTransport()` injects a fake (the capture
- *   harness replays a recorded session through it).
+ * - `list(hostId)` is the host's `sessions_list` (host.md §7.2) through the
+ *   HostClient seam (`lib/host`).
+ * - `open(...)` is the line-oriented link the current chat store
+ *   (`lib/chat/store.ts`, bridge-message reducer) still speaks. The real host
+ *   session stream (`HostClient.openSession`, WP-H4) does not carry bridge
+ *   lines, so by default it reports "not available yet"; WP-A2 replaces the
+ *   store and this module with `lib/session/{store,stream}.ts`.
+ * - Tests inject a fake with `setChatTransport()`.
  */
-import { Channel, invoke } from '@tauri-apps/api/core';
-import { isTauri } from '../platform';
+import { hostClient } from '../host/factory';
+import type { SessionCard } from '../host/client';
 
 export type AgentStatus = 'idle' | 'working' | 'blocked' | 'done' | 'unknown';
 
-export type ChatPane = {
-  id: string;
-  focused: boolean;
-  title?: string;
-  terminal_title?: string;
-  cwd?: string;
-  agent?: { name: string; status: AgentStatus; session?: { kind: string; value: string } };
-  chat?: { pid: number; session_name?: string; cwd?: string; waiting?: { kind: string; title?: string; since: number }; running?: boolean; pending_work?: string; lh_mode?: string; lh_paused?: string };
-};
-export type ChatTab = { id: string; label: string; number: number; focused: boolean; agent_status: AgentStatus; panes: ChatPane[] };
-export type ChatWorkspace = {
-  id: string;
-  label: string;
-  number: number;
-  focused: boolean;
-  agent_status: AgentStatus;
-  tab_count: number;
-  pane_count: number;
-  tabs: ChatTab[];
-};
-export type ChatHerdrSession = { name: string; running: boolean; default: boolean; workspaces: ChatWorkspace[]; error?: string };
-/** UNI-260: tmux panes in chat_list (hosts ≥ proto 1.12.0). */
-export type ChatTmuxPane = { id: string; index: number; active: boolean; cwd: string; pid: number; title: string; current_command?: string; agent?: ChatPane['agent']; chat?: ChatPane['chat'] };
-export type ChatTmuxSession = { id: string; name: string; windows: Array<{ id: string; index: number; name: string; active: boolean; panes: ChatTmuxPane[] }> };
-export type ChatListData = {
-  herdr: { available: boolean; reason?: string; sessions?: ChatHerdrSession[] };
-  tmux?: { available: boolean; reason?: string; sessions?: ChatTmuxSession[] };
-  protected?: string[];
-};
+/** `sessions_list` reply (host.md §7.2). */
+export type SessionListData = { sessions: SessionCard[] };
 
 export type ChatStreamState = 'open' | 'closed' | 'error';
 
@@ -50,72 +27,26 @@ export interface ChatConnection {
 }
 
 export interface ChatTransport {
-  list(hostId: string): Promise<ChatListData>;
+  list(hostId: string): Promise<SessionListData>;
   open(
     hostId: string,
-    pid: number,
+    session: string,
     onLine: (line: string) => void,
     onState: (state: ChatStreamState, message?: string, code?: string) => void,
   ): ChatConnection;
 }
 
-type StreamMsg =
-  | { kind: 'open' }
-  | { kind: 'line'; line: string }
-  | { kind: 'closed'; message?: string }
-  | { kind: 'error'; message: string; code?: string };
+/** The words the chat shows until the session stream (WP-H4/A2) lands. */
+export const SESSION_LINK_PENDING = 'Opening a session needs the new host session stream (coming in this update).';
 
-const errorText = (error: unknown) => String((error as { message?: string })?.message ?? error);
-
-export const tauriChatTransport: ChatTransport = {
+export const hostSessionTransport: ChatTransport = {
   async list(hostId) {
-    return (await invoke('chat_list', { hostId })) as ChatListData;
+    const data = await hostClient(hostId).request<SessionListData | SessionCard[] | null>('sessions_list');
+    if (Array.isArray(data)) return { sessions: data };
+    return { sessions: data?.sessions ?? [] };
   },
-  open(hostId, pid, onLine, onState) {
-    const channel = new Channel<StreamMsg>();
-    let streamId: string | undefined;
-    let closed = false;
-    const queue: string[] = [];
-    channel.onmessage = (message) => {
-      if (message.kind === 'line') onLine(message.line);
-      else if (message.kind === 'open') onState('open');
-      else onState(message.kind, message.message, message.kind === 'error' ? message.code : undefined);
-    };
-    const ready = invoke('chat_open', { hostId, pid, onEvent: channel })
-      .then((id) => {
-        streamId = String(id);
-        if (closed) void invoke('chat_close', { streamId }).catch(() => {});
-        for (const line of queue.splice(0)) void invoke('chat_send', { streamId, line }).catch(() => {});
-        return streamId;
-      })
-      .catch((error) => {
-        onState('error', errorText(error), (error as { code?: string })?.code);
-        return undefined;
-      });
-    return {
-      async send(line) {
-        if (!streamId) {
-          queue.push(line);
-          await ready;
-          return;
-        }
-        await invoke('chat_send', { streamId, line });
-      },
-      close() {
-        closed = true;
-        if (streamId) void invoke('chat_close', { streamId }).catch(() => {});
-      },
-    };
-  },
-};
-
-/** No PC (browser without an injected fake). */
-const noTransport: ChatTransport = {
-  async list() {
-    return { herdr: { available: false, reason: 'Chat needs the app (no PC in the browser).' } };
-  },
-  open(_h, _p, _l, onState) {
-    queueMicrotask(() => onState('error', 'Chat needs the app.'));
+  open(_hostId, _session, _onLine, onState) {
+    queueMicrotask(() => onState('error', SESSION_LINK_PENDING, 'E_UNSUPPORTED'));
     return { send: async () => {}, close: () => {} };
   },
 };
@@ -125,8 +56,5 @@ export function setChatTransport(transport: ChatTransport | undefined): void {
   override = transport;
 }
 export function chatTransport(): ChatTransport {
-  if (override) return override;
-  const injected = typeof window !== 'undefined' ? (window as { __UNIPI_CHAT__?: ChatTransport }).__UNIPI_CHAT__ : undefined;
-  if (injected) return injected;
-  return isTauri() ? tauriChatTransport : noTransport;
+  return override ?? hostSessionTransport;
 }

@@ -12,7 +12,7 @@ import type { Chat } from './store';
 import { openFilePath } from '../media/pathTokens';
 import { setEditorTarget } from '../editorTarget';
 import { setFilesTarget } from '../filesTarget';
-import { hideChat, markReturnToChat } from './open';
+import { hideChat, markReturnToChat } from '../session/open';
 import { queueMention } from './mention';
 
 export type FileRefTarget = { resolved: string; kind: 'file' | 'dir'; line?: number };
@@ -54,7 +54,7 @@ export function mentionText(resolved: string, kind: 'file' | 'dir', cwd?: string
 }
 
 export function mentionFileRef(chat: Chat, ref: FileRefTarget): void {
-  queueMention(`${chat.hostId}:${chat.pid}`, `${mentionText(ref.resolved, ref.kind, chat.state?.session?.cwd)} `);
+  queueMention(`${chat.hostId}:${chat.session}`, `${mentionText(ref.resolved, ref.kind, chat.state?.session?.cwd)} `);
 }
 
 // ---- long-press menu state (rendered by components/chat/FileRefMenu.tsx) ----

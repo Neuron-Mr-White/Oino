@@ -82,14 +82,14 @@ import { can, isTauriDesktop } from '../lib/platform';
 import { describeLocal, readLocalFiles, registerDropZone, startNativeDrop } from '../lib/localFiles';
 import { openPreviewer } from '../lib/media/previewerState';
 import { isDirectPreview } from '../lib/media/previewer';
-import { clearReturnToChat, hasMarkedReturnToChat, openChat, openChatState, resumeChatAfterTerminal } from '../lib/chat/open';
+import { clearReturnToChat, hasMarkedReturnToChat, openChat, openChatState, resumeChatAfterTerminal } from '../lib/session/open';
 import { activeRoot, crumbsFor, nextFilesBack, PLACES_INLINE_MAX, placesLayout, rememberFolder, rootLabel, startFolder } from '../lib/filesNav';
 import { pushBack } from '../lib/back';
 import { desktopShell, menuAnchor } from '../lib/layout';
 import { downloadToDevice, openWithExternal, progressLabel, transferMessage, type TransferProgress } from '../lib/filesTransfer';
 import { queueMention } from '../lib/chat/mention';
 import { ChatPickSheet } from '../components/board/ChatPickSheet';
-import type { ChatTarget } from '../lib/chat/list';
+import type { ChatTarget } from '../lib/session/list';
 import { aheadBehind, branchLabel, git, gitTarget, openGit, type GitRepoData } from '../lib/git';
 import './files.css';
 
@@ -534,7 +534,7 @@ export default function Files() {
     const pick = mentionPick();
     setMentionPick(undefined);
     if (!pick) return;
-    queueMention(`${target.hostId}:${target.pid}`, `@${pick.entry.path} `);
+    queueMention(`${target.hostId}:${target.session}`, `@${pick.entry.path} `);
     openChat(target, hostName(target.hostId));
   }
 

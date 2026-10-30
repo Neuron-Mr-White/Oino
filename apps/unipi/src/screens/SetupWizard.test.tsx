@@ -17,8 +17,8 @@ function report(ready = false) {
       { name: 'pi', state: 'missing', source: 'found', fix: 'Install pi' },
       { name: 'unipi', state: 'missing', source: 'found', fix: 'pi install npm:@pi-unipi/unipi@alpha' },
       { name: 'kanboard', state: 'unsupported', source: 'found', note: 'Comes with the UniPi extensions' },
-      { name: 'herdr', state: 'missing', source: 'found' },
-      { name: 'tmux', state: 'unsupported', source: 'found', fix: 'sudo apt install tmux', note: 'Optional' },
+      { name: 'agent-browser', state: 'missing', source: 'found' },
+      { name: 'xvfb', state: 'unsupported', source: 'found', fix: 'sudo apt install xvfb', note: 'Optional' },
     ],
     path: { value: '/usr/bin', fromShell: [], localBinOnLoginPath: false, probed: true },
     ready,
@@ -33,12 +33,12 @@ const PLAN = {
     { id: 'pi', label: 'pi (coding agent)', action: 'install', sizeHint: '~440 MB', needs: ['node'] },
     { id: 'unipi', label: 'UniPi extensions (channel: alpha)', action: 'install', needs: ['pi'] },
     { id: 'kanboard', label: 'Board binary', action: 'install', needs: ['unipi'] },
-    { id: 'herdr', label: 'herdr (terminals)', action: 'install', sizeHint: '~5 MB', needs: [] },
-    { id: 'tmux', label: 'tmux', action: 'manual', needs: [] },
+    { id: 'agent-browser', label: 'agent-browser (browser skill)', action: 'install', sizeHint: '~5 MB', needs: [] },
+    { id: 'xvfb', label: 'xvfb', action: 'manual', needs: [] },
   ],
-  needsInternet: ['node', 'pi', 'unipi', 'herdr'],
+  needsInternet: ['node', 'pi', 'unipi', 'agent-browser'],
   offline: false,
-  consent: 'Node, pi, UniPi, herdr',
+  consent: 'Node, pi, UniPi, agent-browser',
 };
 
 function transport(over: Partial<SetupTransport> = {}): SetupTransport {
@@ -94,17 +94,17 @@ describe('Set up this PC (UNI-241)', () => {
     // Pre-ticked exactly what the core planned to do, and nothing else.
     expect(screen.getByTestId('setup-row-node').dataset.ticked).toBe('true');
     expect(screen.getByTestId('setup-row-pi').dataset.ticked).toBe('true');
-    // npm is not a row: it comes with Node. And tmux is never the user's to
+    // npm is not a row: it comes with Node. And xvfb is never the user's to
     // tick — its step is Manual, so its row is inert and shows the command.
     expect(screen.queryByTestId('setup-row-npm')).toBeNull();
-    expect(screen.getByTestId('setup-row-tmux')).toHaveProperty('disabled', true);
+    expect(screen.getByTestId('setup-row-xvfb')).toHaveProperty('disabled', true);
     // §4.1 / decision 8: the command is still the answer, but it is no longer
-    // the *only* one — tmux is offered as its own opt-in.
-    expect(screen.getByTestId('setup-row-note-tmux').textContent).toContain('sudo apt install tmux');
-    expect(screen.queryByTestId('setup-install-for-me-tmux')).toBeTruthy();
-    expect(screen.queryByTestId('setup-copy-tmux')).toBeTruthy();
+    // the *only* one — xvfb is offered as its own opt-in.
+    expect(screen.getByTestId('setup-row-note-xvfb').textContent).toContain('sudo apt install xvfb');
+    expect(screen.queryByTestId('setup-install-for-me-xvfb')).toBeTruthy();
+    expect(screen.queryByTestId('setup-copy-xvfb')).toBeTruthy();
     // A manual row is not part of the consent list, so it is not pre-ticked.
-    expect(screen.getByTestId('setup-row-tmux')).toHaveProperty('disabled', true);
+    expect(screen.getByTestId('setup-row-xvfb')).toHaveProperty('disabled', true);
     // An older version reads as what it would become.
     // The sub-line says what the status chip deliberately does not repeat.
     expect(screen.getByTestId('setup-row-note-node').textContent).toContain('Older — 22.18.0');
@@ -116,8 +116,8 @@ describe('Set up this PC (UNI-241)', () => {
     setSetupTransport(transport({ run: async (_p, o) => { lastOnly = o; return { steps: [], cancelled: false }; } }));
     wizard();
     await ready();
-    fireEvent.click(screen.getByTestId('setup-row-herdr'));
-    expect(screen.getByTestId('setup-row-herdr').dataset.ticked).toBe('false');
+    fireEvent.click(screen.getByTestId('setup-row-agent-browser'));
+    expect(screen.getByTestId('setup-row-agent-browser').dataset.ticked).toBe('false');
     fireEvent.click(screen.getByTestId('setup-install'));
     await waitFor(() => expect(screen.queryByTestId('setup-done')).toBeTruthy());
     expect(lastOnly).toEqual(['node', 'pi', 'unipi', 'kanboard']);
@@ -128,7 +128,7 @@ describe('Set up this PC (UNI-241)', () => {
     wizard();
     await ready();
     expect(screen.getByTestId('setup-offline').textContent).toContain('node');
-    expect(screen.getByTestId('setup-offline').textContent).toContain('herdr');
+    expect(screen.getByTestId('setup-offline').textContent).toContain('agent-browser');
   });
 
   it('"Not now" is remembered, so the takeover stops appearing', async () => {

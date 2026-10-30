@@ -4,7 +4,7 @@
  * and pointers, these functions own the bytes.
  */
 
-/** Bracketed paste wrapper (xterm-style, understood by herdr/tmux). */
+/** Bracketed paste wrapper (xterm-style, understood by shells and TUIs). */
 export const PASTE_START = '\x1b[200~';
 export const PASTE_END = '\x1b[201~';
 

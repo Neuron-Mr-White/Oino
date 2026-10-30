@@ -7,9 +7,9 @@
  * from a notification): opens the right chat and sends `answer` once the
  * bridge connects.
  */
-import { openChat, updateOpenTarget } from './chat/open';
-import { chatGroups, chatLists, type ChatTarget } from './chat/list';
-import type { ChatListData } from './chat/transport';
+import { openChat, updateOpenTarget } from './session/open';
+import { bareTarget, chatGroups, chatLists, type ChatTarget } from './session/list';
+import type { SessionListData } from './session/link';
 import { parseChatDeepLink, readPendingAction } from './notifyDeepLink';
 import type { HostInfo } from './schemas';
 
@@ -41,46 +41,35 @@ export function resolveHostId(hosts: readonly HostInfo[], host: string | undefin
   return byName?.id ?? hosts[0]?.id;
 }
 
-/** The chat-list row for `pid` on `hostId` in a `chat_list` snapshot. */
-export function findChatTarget(hostId: string, data: ChatListData | undefined, pid: number): ChatTarget | undefined {
+/** The session-list row for `session` on `hostId`. */
+export function findChatTarget(hostId: string, data: SessionListData | undefined, session: string): ChatTarget | undefined {
   for (const group of chatGroups(hostId, data)) {
-    const hit = group.items.find((t) => t.pid === pid);
+    const hit = group.items.find((t) => t.session === session);
     if (hit) return hit;
   }
   return undefined;
 }
 
-/** Opens the chat a `unipi://chat?host=&pid=&dialog=` link points at.
- *  Only `hostId`/`pid` are known from the link itself, so the chat opens
- *  at once with placeholders, then takes its labels (session name,
- *  workspace) from the cached chat list and again after a fresh
- *  `chat_list` — seen on the Redmi: the header otherwise stayed
- *  "<PC> / <PC> ·" for good (nothing else fills them in). */
+/** Opens the chat a `unipi://chat?host=&session=&dialog=` link points at.
+ *  Only `hostId`/`session` are known from the link itself, so the chat opens
+ *  at once with placeholders, then takes its labels from the cached session
+ *  list and again after a fresh `sessions_list`. A v1 link (`pid=` only) has
+ *  no session to open: it just shows the list. */
 export function openChatFromDeepLink(hosts: readonly HostInfo[], url: string): void {
   const parsed = parseChatDeepLink(url);
   if (!parsed) return;
   const hostId = resolveHostId(hosts, parsed.host);
-  if (!hostId || parsed.pid === undefined) return;
+  const session = parsed.session;
+  if (!hostId || !session) return;
   const hostName = hosts.find((h) => h.id === hostId)?.name ?? '';
-  const target: ChatTarget = {
-    hostId,
-    session: '',
-    workspaceId: '',
-    workspaceLabel: '',
-    tabId: '',
-    paneId: '',
-    pid: parsed.pid,
-    title: hostName,
-    status: 'idle',
-    focused: false,
-  };
+  const target = bareTarget(hostId, session, hostName);
   const lists = chatLists();
   const fill = () => {
-    const known = findChatTarget(hostId, lists.get(hostId)?.data, parsed.pid!);
+    const known = findChatTarget(hostId, lists.get(hostId)?.data, session);
     if (known) updateOpenTarget(known);
     return known;
   };
-  openChat(findChatTarget(hostId, lists.get(hostId)?.data, parsed.pid) ?? target, hostName);
+  openChat(findChatTarget(hostId, lists.get(hostId)?.data, session) ?? target, hostName);
   void lists.load(hostId).then(fill, () => undefined);
 }
 

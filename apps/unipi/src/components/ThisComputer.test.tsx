@@ -16,7 +16,7 @@ const status: SharingStatus = SharingStatusSchema.parse({
   forward: { enabled: false, any: false, ports: [] }, browser: { enabled: false, headless: true, idle_minutes: 10 }, desktop: { enabled: false, view_only: false, display: 'wayland' }, push: { enabled: false },
   devices: [{ id: 'aa11bb22cc33', name: 'Pixel 9' }], requests: [], linger: true,
 });
-const info = { version: '0.4.8', proto: '1.14.0', mode: 'service', pid: 42, started_at: 1, host_id: 'h', host_name: 'oi-desktop', data_dir: '/home/u/.unipi/app-host', tools: { herdr: true, tmux: true, pi: true, kanboard: true }, devices: 2 };
+const info = { version: '0.4.8', proto: '1.14.0', mode: 'service', pid: 42, started_at: 1, host_id: 'h', host_name: 'oi-desktop', data_dir: '/home/u/.unipi/app-host', tools: { oino: true, unipi_kanboard: true, browser_engines: ['chromium'], cloak: false }, devices: 2 };
 let devices: Array<{ id: string; name: string; paired_at: number; last_seen?: number }>;
 const calls: Array<Record<string, unknown>> = [];
 

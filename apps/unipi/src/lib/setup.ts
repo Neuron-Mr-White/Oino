@@ -281,7 +281,7 @@ export function runSetup(onProgress: (p: Progress) => void, only?: string[]): Ru
   return { outcome, cancel };
 }
 
-/** Decision 8's "Install for me" for one component (herdr, tmux). */
+/** Decision 8's "Install for me" for one component (a manual-install one, e.g. xvfb). */
 export async function installComponent(name: string, onProgress: (p: Progress) => void): Promise<Outcome | undefined> {
   setRunning(true);
   setError(undefined);
@@ -311,7 +311,7 @@ export function resetSetup(): void {
 
 /** One Components / wizard row: what to do about a component, and why. */
 export interface SetupRow {
-  /** The component name (`node`, `pi`, …, `tmux`). */
+  /** The component name (`node`, `pi`, …, `xvfb`). */
   id: string;
   /** The row's title (the component's own label). */
   label: string;
@@ -335,8 +335,6 @@ const LABEL: Record<string, string> = {
   unipi: 'UniPi extensions',
   'agent-browser': 'agent-browser (browser skill)',
   kanboard: 'Board binary',
-  herdr: 'herdr (terminals)',
-  tmux: 'tmux',
   xvfb: 'Hidden browser display (Xvfb)',
   service: 'systemd',
   host: 'Background host',
@@ -434,15 +432,15 @@ export function versionNewer(a: string, b: string): boolean {
 /** What a row is, in one short status word: the tick-box's chip. */
 export type Badge = 'install' | 'update' | 'ok' | 'newer' | 'broken' | 'manual';
 
-/** Components the app never installs on its own: §4.1's tmux says the answer
- * is the package-manager command (decision 8's chain is user-initiated), and
- * the core plans them as `Action::Manual`. */
-const NEVER_AUTOMATIC = new Set(['tmux', 'xvfb']);
+/** Components the app never installs on its own: the answer is the
+ * package-manager command (decision 8's chain is user-initiated), and the
+ * core plans them as `Action::Manual`. (herdr/tmux are gone, D-14.) */
+const NEVER_AUTOMATIC = new Set(['xvfb']);
 
 /** §4.3's "needs internet": every one of these is a download. */
-const NEEDS_INTERNET = new Set(['node', 'pi', 'unipi', 'kanboard', 'agent-browser', 'herdr']);
+const NEEDS_INTERNET = new Set(['node', 'pi', 'unipi', 'kanboard', 'agent-browser']);
 /** §4.3's "needs admin rights": the package managers do. */
-const NEEDS_ADMIN = new Set(['tmux', 'xvfb']);
+const NEEDS_ADMIN = new Set(['xvfb']);
 
 /** Where a component lands, so a row can say where its files go (§4.3). */
 const PLACE: Record<string, string> = {
@@ -452,8 +450,6 @@ const PLACE: Record<string, string> = {
   unipi: "a pi package",
   'agent-browser': '~/.pi/agent/npm',
   kanboard: 'no download of its own',
-  herdr: '~/.local/bin',
-  tmux: 'your package manager',
   xvfb: 'your package manager · lets the browser show only in the app',
   host: '~/.unipi/app-host',
 };
@@ -466,9 +462,9 @@ const PLACE: Record<string, string> = {
  * to be the same string, so a row read "Not installed / Not installed".
  *
  * A row is pre-ticked when the core's plan would do work on it — including
- * decision 4's `update` — and never for tmux (`Action::Manual`). */
+ * decision 4's `update` — and never for a manual one (`Action::Manual`). */
 export function setupRows(report?: SetupReport, updates?: UpdateReport, plan?: Plan): SetupRow[] {
-  const order = ['node', 'pi', 'unipi', 'agent-browser', 'kanboard', 'herdr', 'tmux', 'xvfb'];
+  const order = ['node', 'pi', 'unipi', 'agent-browser', 'kanboard', 'xvfb'];
   const step = (id: string) => plan?.steps.find((s) => s.id === id);
   return order.flatMap((id) => {
     const component = report?.components.find((c) => c.name === id);
@@ -535,16 +531,14 @@ export function setupRows(report?: SetupReport, updates?: UpdateReport, plan?: P
  * core rather than guessing: on a failure the sheet shows the first method that
  * is not in the step's `attempted` list.
  *
- * tmux and herdr are PC-specific (which package manager, which installer), so
- * their *names* are whatever the core reported; the chain's length and shape are
- * what matters here, and `attempted` is the authority on what ran.
+ * PC-specific methods (which package manager) are named by the core; the
+ * chain's length and shape are what matters here, and `attempted` is the
+ * authority on what ran.
  */
 export function methodsForStep(component: string): string[] {
   switch (component) {
     case 'pi':
       return ['pi.dev installer', 'npm'];
-    case 'herdr':
-      return ['herdr installer', 'static binary in ~/.local/bin'];
     default:
       return [];
   }

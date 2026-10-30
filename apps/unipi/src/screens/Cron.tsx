@@ -33,13 +33,10 @@ import {
   notifyText,
   type NotifyMode,
 } from '../lib/cron';
-import { ChatPickSheet } from '../components/board/ChatPickSheet';
-import { chatConfig, folderName, targetFromNew, whereOptions } from '../lib/chat/newChat';
-import { chatLists, type ChatTarget } from '../lib/chat/list';
-import { openChat } from '../lib/chat/open';
+import { folderName } from '../lib/session/newSession';
+import { bareTarget, chatLists } from '../lib/session/list';
+import { openChat } from '../lib/session/open';
 import { findChatTarget } from '../lib/notifyInit';
-import { MuxTreeResultSchema } from '../lib/schemas';
-import { call } from '../lib/ipc';
 import { useHosts } from '../hosts/context';
 import { PageHeader } from '../components/PageHeader';
 import { PcChip } from '../components/PcChip';
@@ -394,21 +391,6 @@ export function wakeText(job: Pick<CronJob, 'wake'>): string {
   return w.pid ? `${name} (open)` : `${name} — not open now; skipped until it is`;
 }
 
-/** Where a run's session opens when no pi has it: a new herdr workspace
- * named after the job, else a new tmux session (the New chat defaults). */
-async function placeFor(hostId: string, jobName: string) {
-  const [cfg, tree] = await Promise.all([chatConfig(hostId), call('mux_tree', { hostId, relay: 'n0' }, MuxTreeResultSchema)]);
-  const opts = whereOptions(tree.ok ? tree.value.tree : undefined, {
-    herdr: cfg.ok ? cfg.value.herdr : !!(tree.ok && tree.value.tree.herdr.available),
-    tmux: cfg.ok ? cfg.value.tmux : false,
-  });
-  const label = jobName.slice(0, 128) || 'cron';
-  const herdr = opts.find((o) => o.target.kind === 'herdr_new_workspace');
-  if (herdr && herdr.target.kind === 'herdr_new_workspace') return { ...herdr.target, label };
-  if (opts.some((o) => o.target.kind === 'tmux_new_session')) return { kind: 'tmux_new_session' as const, name: label.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 64) || 'cron' };
-  return undefined;
-}
-
 function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; run: CronRun; onClose: () => void; onOpened: () => void }) {
   const [data, setData] = createSignal<Result<{ job_id: string; run: CronRun; log: string }> | undefined>();
   const [opening, setOpening] = createSignal(false);
@@ -416,32 +398,18 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
   async function openSession() {
     setOpening(true);
     setOpenError(undefined);
-    const target = await placeFor(props.hostId, props.job.name);
-    if (!target) {
-      setOpening(false);
-      setOpenError('No herdr or tmux on this PC to open the session in.');
-      return;
-    }
-    const r = await cronOpenSession(props.hostId, props.run.id, target);
+    const r = await cronOpenSession(props.hostId, props.run.id);
     setOpening(false);
     if (!r.ok) {
       setOpenError(r.error.message);
       return;
     }
+    // The host opens the run's saved session in its hub and names it (WP-H8/A23).
     const lists = chatLists();
-    let chat: ChatTarget;
-    if (r.value.started) {
-      chat = targetFromNew(props.hostId, r.value.started, props.job.name, 'label' in target ? target.label : target.name);
-    } else {
-      await lists.load(props.hostId).catch(() => undefined);
-      chat = findChatTarget(props.hostId, lists.get(props.hostId)?.data, r.value.pid) ?? {
-        hostId: props.hostId, session: '', workspaceId: '', workspaceLabel: '', tabId: '', paneId: '',
-        pid: r.value.pid, title: props.job.name, status: 'idle', focused: false,
-      };
-    }
+    await lists.load(props.hostId).catch(() => undefined);
+    const chat = findChatTarget(props.hostId, lists.get(props.hostId)?.data, r.value.session) ?? bareTarget(props.hostId, r.value.session, props.job.name);
     props.onOpened();
     openChat(chat, props.hostName);
-    void lists.load(props.hostId);
   }
   createEffect(() => {
     void cronLog(props.hostId, props.run.id).then(setData);
@@ -507,15 +475,11 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
     if (!job?.notify?.events && !eventsTouched && r.value.notify_default_events?.length) setEvents(r.value.notify_default_events);
   });
   const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  type WakePick = { pid: number; name: string } | 'off' | undefined; // undefined = unchanged
+  // Waking a chat targeted a v1 bridge pid; picking an oino session to wake
+  // comes back with the cron job files (WP-A23). Until then: show it, turn it off.
+  type WakePick = 'off' | undefined; // undefined = unchanged
   const [wake, setWake] = createSignal<WakePick>(undefined);
-  const [wakePick, setWakePick] = createSignal(false);
-  const wakeLabel = () => {
-    const w = wake();
-    if (w === 'off') return 'Off';
-    if (w) return w.name;
-    return job?.wake ? wakeText(job) : 'Off';
-  };
+  const wakeLabel = () => (wake() === 'off' ? 'Off' : job?.wake ? wakeText(job) : 'Off');
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | undefined>(undefined);
 
@@ -556,7 +520,7 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
           model: model() || undefined,
           time_limit_s: timeLimitN,
           notify,
-          ...(w === 'off' ? { wake_clear: true } : w ? { wake_pid: w.pid } : {}),
+          ...(w === 'off' ? { wake_clear: true } : {}),
         })
       : await cronAdd(hostId, {
           name: name(),
@@ -567,7 +531,6 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
           model: model() || undefined,
           time_limit_s: timeLimitN,
           ...(Object.keys(notify).length ? { notify } : {}),
-          ...(w && w !== 'off' ? { wake_pid: w.pid } : {}),
         });
     setSaving(false);
     if (!r.ok) {
@@ -685,24 +648,12 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
           <legend><MessageSquare size={14} /> Wake a chat when a run ends</legend>
           <div class="cron-wake-row">
             <span class="min-w-0 flex-1 truncate" data-testid="cron-wake-label">{wakeLabel()}</span>
-            <button type="button" class="cron-small-btn" onClick={() => setWakePick(true)} data-testid="cron-wake-choose">Choose chat</button>
             <Show when={wakeLabel() !== 'Off'}>
               <button type="button" class="cron-small-btn" onClick={() => setWake('off')} data-testid="cron-wake-off">Off</button>
             </Show>
           </div>
           <p class="cron-hint">The chat gets a short message with the result — run now if it's idle, queued if it's busy.</p>
         </fieldset>
-        <ChatPickSheet
-          open={wakePick()}
-          hostId={hostId}
-          root={cwd() || undefined}
-          label="Wake which chat?"
-          onPick={(t) => {
-            setWakePick(false);
-            if (t.pid !== null) setWake({ pid: t.pid, name: t.title || t.workspaceLabel || `pi ${t.pid}` });
-          }}
-          onClose={() => setWakePick(false)}
-        />
 
         <Show when={error()}>
           <p class="cron-form-error" role="alert">{error()}</p>

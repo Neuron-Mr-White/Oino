@@ -1,10 +1,10 @@
 /** UNI-222: long-horizon progress — mermaid builder, formatters, store wiring. */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot } from 'solid-js';
-import { agoText, clockText, isProgress, mermaidText, nodeId, progressMermaid, runPercent, runSegments, runSettled, shownRun, type LhProgress, type LhRun } from './progress';
-import { renderMermaid, resetMermaidCache } from '../markdown/mermaid';
-import { createChat } from './store';
-import { setChatTransport, type ChatTransport } from './transport';
+import { agoText, clockText, isProgress, mermaidText, nodeId, progressMermaid, runPercent, runSegments, runSettled, shownRun, type LhProgress, type LhRun } from './lhProgress';
+import { renderMermaid, resetMermaidCache } from '../../lib/markdown/mermaid';
+import { createChat } from '../../lib/chat/store';
+import { setChatTransport, type ChatTransport } from '../../lib/session/link';
 
 if (!(SVGElement.prototype as unknown as { getBBox?: unknown }).getBBox) {
   (SVGElement.prototype as unknown as { getBBox: () => DOMRect }).getBBox = () => ({ x: 0, y: 0, width: 10, height: 10 }) as DOMRect;
@@ -92,7 +92,7 @@ describe('chat store — lh_progress (UNI-222)', () => {
   beforeEach(() => {
     sent = [];
     const transport: ChatTransport = {
-      list: async () => ({ herdr: { available: false } }),
+      list: async () => ({ sessions: [] }),
       open: (_h, _p, onLine, onState) => {
         push = (m) => onLine(JSON.stringify(m));
         queueMicrotask(() => onState('open'));
@@ -109,7 +109,7 @@ describe('chat store — lh_progress (UNI-222)', () => {
   it('hello.lhProgress seeds the state; pushes replace it; garbage is ignored', async () => {
     await new Promise<void>((resolve) =>
       createRoot((dispose) => {
-        const chat = createChat('h', 1);
+        const chat = createChat('h', 's1');
         void (async () => {
           await Promise.resolve();
           push(hello({ lhProgress: progress }));
@@ -132,7 +132,7 @@ describe('chat store — lh_progress (UNI-222)', () => {
   it('refreshProgress sends lh_progress_get; an older bridge error marks it unsupported without a toast', async () => {
     await new Promise<void>((resolve) =>
       createRoot((dispose) => {
-        const chat = createChat('h', 1);
+        const chat = createChat('h', 's1');
         void (async () => {
           await new Promise((r) => setTimeout(r, 0));
           push(hello());

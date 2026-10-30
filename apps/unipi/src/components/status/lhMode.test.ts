@@ -2,11 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRoot } from 'solid-js';
 import { isLhModeState, listModeBadge, modeChipCount, modeErrorText, modeLabel, modeLiveText, modePercent, modeView, switchHint, type LhModeState } from './lhMode';
-import type { LhProgress, LhRun } from './progress';
-import { createChat } from './store';
-import { setChatTransport, type ChatTransport } from './transport';
-import { chatGroups, withLive } from './list';
-import type { ChatListData } from './transport';
+import type { LhProgress, LhRun } from './lhProgress';
+import { createChat } from '../../lib/chat/store';
+import { setChatTransport, type ChatTransport } from '../../lib/session/link';
+import { chatGroups, withLive } from '../../lib/session/list';
+import type { SessionListData } from '../../lib/session/link';
 
 const counts = (total: number, done: number, running = 0, failed = 0) => ({ total, done, running, failed, queued: total - done - running - failed });
 const graphRun: LhRun = { mode: 'graph', title: 'Repo health', status: 'running', items: [], counts: counts(7, 3, 2) };
@@ -107,7 +107,7 @@ describe('chat store — lh_mode / set_lh_mode (UNI-269)', () => {
   beforeEach(() => {
     sent = [];
     const transport: ChatTransport = {
-      list: async () => ({ herdr: { available: false } }),
+      list: async () => ({ sessions: [] }),
       open: (_h, _p, onLine, onState) => {
         push = (m) => onLine(JSON.stringify(m));
         queueMicrotask(() => onState('open'));
@@ -121,7 +121,7 @@ describe('chat store — lh_mode / set_lh_mode (UNI-269)', () => {
   const run = (body: (chat: ReturnType<typeof createChat>) => Promise<void>) =>
     new Promise<void>((resolve, reject) =>
       createRoot((dispose) => {
-        const chat = createChat('h', 1);
+        const chat = createChat('h', 's1');
         void (async () => {
           await new Promise((r) => setTimeout(r, 0));
           try {
@@ -166,13 +166,7 @@ describe('chat store — lh_mode / set_lh_mode (UNI-269)', () => {
 });
 
 describe('chat list — mode badge fields (UNI-269)', () => {
-  const list = (chat: Record<string, unknown>): ChatListData =>
-    ({
-      herdr: {
-        available: true,
-        sessions: [{ name: 'default', running: true, default: true, workspaces: [{ id: 'w1', label: 'main', number: 1, focused: true, agent_status: 'idle', tab_count: 1, pane_count: 1, tabs: [{ id: 't1', label: 't', number: 1, focused: true, agent_status: 'idle', panes: [{ id: 'p1', focused: false, agent: { name: 'pi', status: 'idle' }, chat: { pid: 7, ...chat } }] }] }] }],
-      },
-    }) as unknown as ChatListData;
+  const list = (card: Record<string, unknown>): SessionListData => ({ sessions: [{ id: 's7', cwd: '/home/u/p', state: 'idle', ...card }] });
 
   it('carries lh_mode / lh_paused onto the row', () => {
     const [row] = chatGroups('h', list({ lh_mode: 'graph', lh_paused: 'goal' }))[0]!.items;
@@ -183,9 +177,9 @@ describe('chat list — mode badge fields (UNI-269)', () => {
 
   it("the open chat's live mode beats the polled one (both ways)", () => {
     const [row] = chatGroups('h', list({ lh_mode: 'graph' }))[0]!.items;
-    expect(withLive(row!, { hostId: 'h', pid: 7, running: false, lhMode: { mode: 'none' } }).lhMode).toBeUndefined();
-    expect(withLive(row!, { hostId: 'h', pid: 7, running: false, lhMode: { mode: 'swarm', paused: 'graph' } })).toMatchObject({ lhMode: 'swarm', lhPaused: 'graph' });
-    expect(withLive(row!, { hostId: 'h', pid: 7, running: false }).lhMode).toBe('graph');
-    expect(withLive(row!, { hostId: 'h', pid: 8, running: false, lhMode: { mode: 'none' } }).lhMode).toBe('graph');
+    expect(withLive(row!, { hostId: 'h', session: 's7', running: false, lhMode: { mode: 'none' } }).lhMode).toBeUndefined();
+    expect(withLive(row!, { hostId: 'h', session: 's7', running: false, lhMode: { mode: 'swarm', paused: 'graph' } })).toMatchObject({ lhMode: 'swarm', lhPaused: 'graph' });
+    expect(withLive(row!, { hostId: 'h', session: 's7', running: false }).lhMode).toBe('graph');
+    expect(withLive(row!, { hostId: 'h', session: 's8', running: false, lhMode: { mode: 'none' } }).lhMode).toBe('graph');
   });
 });

@@ -210,8 +210,6 @@ html[data-shell=desktop] .image-viewer-head.detail-head { border-bottom: 0; }
 /* Chat (F42): the session strip is a compact button in the header, not a band of its own. */
 html[data-shell=desktop] .chat-head .chat-footer-strip { flex: 0 1 auto; width: auto; max-width: 46%; min-width: 0; height: 32px; padding: 0 12px; margin-right: 4px; border: 0; border-radius: 9999px; background: transparent; font-size: 12px; line-height: 16px; color: var(--color-text-dim); justify-content: flex-end; }
 html[data-shell=desktop] .chat-head .chat-footer-strip:hover, html[data-shell=desktop] .chat-head .chat-footer-strip[aria-expanded=true] { background: var(--color-surface-2); color: var(--color-text-muted); }
-html[data-shell=desktop] .chat-term-switch { width: 40px; height: 40px; min-height: 40px; border-radius: 50%; background: transparent; }
-html[data-shell=desktop] .chat-term-switch:hover { background: var(--color-surface-2); color: var(--color-text); }
 html[data-shell=desktop] .chat-head-menu { border-radius: 50%; }
 
 /* ── Sessions as the list column (F44): with a terminal open on the right, the
@@ -225,7 +223,7 @@ html[data-shell=desktop][data-detail] .page-screen [data-group] .recent-card { d
 html[data-shell=desktop][data-detail] .page-screen [data-group] > p { margin-top: 0; font-size: 15px; }
 html[data-shell=desktop][data-detail] .page-screen [data-group] > div { margin-top: 2px; font-size: 13px; }
 
-/* ── Chat list (F40): the group's herdr session name is an aside, not mono. ── */
+/* ── Chat list (F40): the group's folder path is an aside, not mono. ── */
 .chat-group-session { font-family: inherit; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--color-text-dim); }
 /* ── Needs-you drawer (F41): head actions are ghost text buttons next to ✕. ── */
 .ny-action.btn { height: 34px; min-height: 34px; padding: 0 12px; background: transparent; color: var(--color-text-muted); }
@@ -248,9 +246,6 @@ html[data-shell=desktop] .settings-nav { margin-top: -8px; }
 .page-screen > .platform-notice[data-variant=page], .page-screen > [data-testid=preview-needs-app] > .platform-notice[data-variant=page] { min-height: 0; justify-content: flex-start; padding: var(--empty-top) 24px 32px; gap: 10px; }
 .page-screen .platform-notice[data-variant=page] .platform-notice-icon { width: 56px; height: 56px; border-radius: 16px; }
 
-/* F64: the session picker's herdr/tmux rows draw their own inset rule; the board's .picker-row
-   flex/padding/::before made the content shrink-wrap (chevron right after the text, two half rules). */
-.picker-row.mux-row { display: block; padding: 0; min-height: 0; gap: 0; }
 .picker-row.mux-row + .picker-row.mux-row::before { content: none; }
 /* F64: on a narrow phone Tmux|Herdr · Preview · Skip didn't fit (Skip cut off at 412) — Preview goes icon-only. */
 @media (max-width: 479px) {

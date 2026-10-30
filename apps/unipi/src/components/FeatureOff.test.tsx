@@ -8,7 +8,7 @@ import { loadLocalHost, setSharingTransport, SharingStatusSchema, type FeatureRe
 
 const Cmd = (p: { command: string }) => <code data-testid="cmd">{p.command}</code>;
 const item = (extra: Partial<FeatureRequestItem> = {}): FeatureRequestItem => ({
-  id: 'r1', feature: 'desktop', scope: {}, device_name: 'Pixel', status: 'pending', created_at: Date.now(), ...extra,
+  id: 'r1', feature: 'browser', scope: {}, device_name: 'Pixel', status: 'pending', created_at: Date.now(), ...extra,
 });
 const statusOk = SharingStatusSchema.parse({
   version: '0.4.1', host_dir: '/tmp/qa-248',
@@ -53,18 +53,18 @@ afterEach(() => {
 describe('ask the PC (phone / other PC)', () => {
   it('asks with the chosen scope and note, then waits; the poll shows the answer', async () => {
     const changed = vi.fn();
-    render(() => <FeatureOff feature="desktop" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={changed} />);
-    const card = await screen.findByTestId('share-ask-desktop');
-    expect(card.textContent).toContain('Desktop streaming is off on this PC');
+    render(() => <FeatureOff feature="browser" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={changed} />);
+    const card = await screen.findByTestId('share-ask-browser');
+    expect(card.textContent).toContain('The remote browser is off on this PC');
     expect(card.textContent).toContain('Nothing changes until they say yes');
-    fireEvent.click(screen.getByLabelText(/Watch only/));
+    fireEvent.click(screen.getByLabelText(/Show its window on the PC/));
     fireEvent.input(screen.getByLabelText('Note for the PC'), { target: { value: 'quick look' } });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(screen.getByTestId('share-ask'));
     await waitFor(() => expect(card.dataset.state).toBe('pending'));
-    expect(t.asks[0]).toEqual({ hostId: 'h1', feature: 'desktop', scope: { view_only: true }, note: 'quick look' });
+    expect(t.asks[0]).toEqual({ hostId: 'h1', feature: 'browser', scope: { headed: true }, note: 'quick look' });
     expect(card.textContent).toContain('Waiting for coffee');
-    expect(card.textContent).toContain('watch only');
+    expect(card.textContent).toContain('window shown on the PC');
     // The PC approves for an hour: the next poll shows it and re-checks the panel.
     requests = [item({ status: 'approved', decided_at: Date.now(), until: Date.now() + 3_600_000 })];
     await vi.advanceTimersByTimeAsync(4100);
@@ -76,24 +76,24 @@ describe('ask the PC (phone / other PC)', () => {
 
   it('denied → Ask again; expired explains itself', async () => {
     requests = [item({ status: 'denied', decided_at: Date.now() })];
-    render(() => <FeatureOff feature="desktop" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={() => {}} />);
-    const card = await screen.findByTestId('share-ask-desktop');
+    render(() => <FeatureOff feature="browser" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={() => {}} />);
+    const card = await screen.findByTestId('share-ask-browser');
     await waitFor(() => expect(card.dataset.state).toBe('denied'));
     expect(card.textContent).toContain('coffee said no');
     fireEvent.click(screen.getByText('Ask again'));
     expect(card.dataset.state).toBe('idle');
     cleanup();
     requests = [item({ status: 'expired', decided_at: Date.now() })];
-    render(() => <FeatureOff feature="desktop" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={() => {}} />);
-    await waitFor(() => expect(screen.getByTestId('share-ask-desktop').dataset.state).toBe('expired'));
-    expect(screen.getByTestId('share-ask-desktop').textContent).toContain('Nobody answered');
+    render(() => <FeatureOff feature="browser" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('share-ask-browser').dataset.state).toBe('expired'));
+    expect(screen.getByTestId('share-ask-browser').textContent).toContain('Nobody answered');
   });
 
   it('a stale answer from long ago is not shown; a pending one is', async () => {
     requests = [item({ status: 'denied', created_at: 1, decided_at: 1 })];
-    render(() => <FeatureOff feature="desktop" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={() => {}} />);
+    render(() => <FeatureOff feature="browser" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={() => {}} />);
     await new Promise((r) => setTimeout(r, 20));
-    expect(screen.getByTestId('share-ask-desktop').dataset.state).toBe('idle');
+    expect(screen.getByTestId('share-ask-browser').dataset.state).toBe('idle');
   });
 
   it('forward: "Only these ports" validates before asking', async () => {
@@ -132,13 +132,13 @@ describe('this computer (desktop app)', () => {
     transport();
     await loadLocalHost();
     const changed = vi.fn();
-    render(() => <FeatureOff feature="desktop" hostId="local-id" hostName="coffee" CommandBox={Cmd} onChanged={changed} />);
-    const card = await screen.findByTestId('share-local-desktop');
-    expect(card.textContent).toContain('Desktop on this computer');
-    fireEvent.click(screen.getByLabelText(/Watch only/));
+    render(() => <FeatureOff feature="browser" hostId="local-id" hostName="coffee" CommandBox={Cmd} onChanged={changed} />);
+    const card = await screen.findByTestId('share-local-browser');
+    expect(card.textContent).toContain('on this computer');
+    fireEvent.click(screen.getByLabelText(/Show its window on the PC/));
     fireEvent.click(screen.getByRole('switch'));
     await waitFor(() => expect(changed).toHaveBeenCalled());
-    expect(t.changes).toEqual([{ kind: 'desktop_enable', view_only: true }]);
+    expect(t.changes).toEqual([{ kind: 'browser_enable', headed: true }]);
   });
 
   it('another PC from the desktop app still asks; unipi-host missing shows the installer', async () => {

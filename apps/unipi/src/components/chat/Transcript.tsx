@@ -30,7 +30,7 @@ import { useNavigate } from '@solidjs/router';
 import { openFilePath, resolvePathToken } from '../../lib/media/pathTokens';
 import { BoardSheet } from '../board/BoardSheet';
 import { knownPrefixes, splitTaskRefs } from '../../lib/board/portal';
-import { openTaskFromChat } from '../../lib/chat/boardPortal';
+import { openTaskFromChat } from '../../lib/session/open';
 import { fileRefLabel, verifyCandidates, type FileRefHit } from '../../lib/chat/fileRefs';
 import { toolBaseDir } from '../../lib/chat/fileRefScan';
 import { attachFileRefGestures, handleFileRefClick } from '../../lib/chat/fileRefGestures';

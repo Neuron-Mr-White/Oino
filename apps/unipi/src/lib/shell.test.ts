@@ -6,8 +6,7 @@ const cmd = (id: string, title: string, group = 'G', keywords?: string): Command
 
 describe('shell registries', () => {
   it('screenOf maps routes to screen keys', () => {
-    expect(screenOf('/')).toBe('sessions');
-    expect(screenOf('/term')).toBe('sessions');
+    expect(screenOf('/')).toBe('chat');
     expect(screenOf('/files/edit')).toBe('files');
     expect(screenOf('/board')).toBe('board');
   });

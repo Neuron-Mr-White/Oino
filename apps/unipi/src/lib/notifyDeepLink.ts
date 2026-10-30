@@ -1,5 +1,6 @@
 /**
- * UNI-161 §2/§3: routes a `unipi://chat?host=&pid=&dialog=` deep link
+ * UNI-161 §2/§3: routes a `unipi://chat?host=&session=&dialog=` deep link
+ * (`pid=` is the v1 bridge key, still parsed for old notifications)
  * (tapped from a notification, native or a UnifiedPush background
  * delivery) to the right chat, and reads one pending action queued by
  * the native side (`NotificationBridge.takePendingAction`) — an ask_user
@@ -9,6 +10,8 @@ import { z } from 'zod';
 
 export const ChatDeepLinkSchema = z.object({
   host: z.string().optional(),
+  /** The oino session id (v2). */
+  session: z.string().min(1).optional(),
   pid: z.coerce.number().int().optional(),
   dialog: z.coerce.number().int().optional(),
 });
@@ -25,6 +28,7 @@ export function parseChatDeepLink(raw: string): ChatDeepLink | undefined {
   if (url.protocol !== 'unipi:' || url.hostname !== 'chat') return undefined;
   const result = ChatDeepLinkSchema.safeParse({
     host: url.searchParams.get('host') ?? undefined,
+    session: url.searchParams.get('session') ?? undefined,
     pid: url.searchParams.get('pid') ?? undefined,
     dialog: url.searchParams.get('dialog') ?? undefined,
   });

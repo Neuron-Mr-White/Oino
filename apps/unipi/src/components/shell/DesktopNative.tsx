@@ -1,6 +1,6 @@
 /**
  * Desktop-app native wiring (UNI-117 part 2), mounted once by the shell:
- * - window title follows the screen and the open chat / terminal / file
+ * - window title follows the screen and the open chat / file
  *   (`windowTitle` cap: desktop app + web);
  * - native OS notifications for new "needs you" / finished items while the
  *   window isn't focused (`nativeNotifications`, desktop app only; the
@@ -12,15 +12,11 @@ import { createEffect, createMemo, onCleanup, onMount } from 'solid-js';
 import { useLocation } from '@solidjs/router';
 import { can } from '../../lib/platform';
 import { screenOf } from '../../lib/shell';
-import { chatVisible, openChatState } from '../../lib/chat/open';
-import { activeLive } from '../../lib/liveSessions';
+import { chatVisible, openChatState } from '../../lib/session/open';
 import { getEditorTarget } from '../../lib/editorTarget';
 import { needsYou } from '../../lib/needsYou';
-import { chatLists, paneStatus } from '../../lib/chat/list';
 import { useHosts } from '../../hosts/context';
-import { pollNeedsYou } from '../../lib/needsYouPoll';
-
-const NOTIFY_POLL_MS = 20_000;
+import { runningAgents } from '../../lib/mascotLive';
 import { desktopNotifyOn, nativeNotify, notifyPlan, notifyText, setTrayStatus, setWindowTitle, windowTitle } from '../../lib/desktop';
 import { NAV } from './DesktopShell';
 
@@ -35,14 +31,12 @@ export function DesktopNative() {
     let detail: string | undefined;
     const chat = openChatState();
     if (screen() === 'chat' && chatVisible() && chat) detail = chat.chat.state.session?.name || chat.target.title;
-    else if (location.pathname === '/term') detail = activeLive()?.target.label;
     else if (location.pathname === '/files/edit') detail = getEditorTarget()?.path.split('/').pop();
     setWindowTitle(windowTitle([detail, label]));
   });
 
   // Native notifications for new "needs you" items (seeded on first look: no burst at launch).
-  // Its own poll: the bell's poll pauses while a chat/terminal covers it and while the window is
-  // hidden — exactly when a notification matters.
+  // The items come from the needs-you store (hub events after WP-A19); no polling here (Z-84).
   if (can('nativeNotifications')) {
     let seen: Set<string> | undefined;
     createEffect(() => {
@@ -56,10 +50,6 @@ export function DesktopNative() {
         void nativeNotify(title, body);
       }
     });
-    onMount(() => {
-      const timer = setInterval(() => void pollNeedsYou(hosts.hosts()), NOTIFY_POLL_MS);
-      onCleanup(() => clearInterval(timer));
-    });
   }
 
   // Tray status: agents that need you (unread) and agents working, across every PC.
@@ -67,13 +57,7 @@ export function DesktopNative() {
     createEffect(() => {
       const store = needsYou();
       const needs = store.list().filter((i) => i.group === 'waiting' && !store.isRead(i.id)).length;
-      let running = 0;
-      for (const host of hosts.hosts()) {
-        const data = chatLists().get(host.id)?.data;
-        for (const s of data?.herdr.sessions ?? [])
-          for (const w of s.workspaces) for (const t of w.tabs) for (const p of t.panes) if (p.agent && paneStatus(p) === 'working') running += 1;
-      }
-      setTrayStatus(needs, running);
+      setTrayStatus(needs, runningAgents(hosts.hosts()));
     });
   }
 

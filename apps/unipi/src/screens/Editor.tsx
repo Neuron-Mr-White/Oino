@@ -37,7 +37,7 @@ import { hapticTick } from '../lib/haptics';
 import { useSettings } from '../settings/context';
 import { useHosts } from '../hosts/context';
 import { queueMention } from '../lib/chat/mention';
-import { chatVisible, openChatState } from '../lib/chat/open';
+import { chatVisible, openChatState } from '../lib/session/open';
 import { BoardSheet } from '../components/board/BoardSheet';
 import { renderBlocks } from '../lib/chat/markdown';
 import { MdBlock } from '../components/chat/MdBlock';
@@ -428,7 +428,7 @@ export default function Editor() {
     if (!target) return;
     const open = openChatState();
     if (open && open.target.hostId === target.hostId) {
-      queueMention(`${open.target.hostId}:${open.target.pid}`, `@${target.path}`);
+      queueMention(`${open.target.hostId}:${open.target.session}`, `@${target.path}`);
       showToast('Added @path to the chat draft');
       return;
     }

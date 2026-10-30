@@ -4,7 +4,7 @@ import {
   cellAt,
   clickSequence,
   decayVelocity,
-  linesPerWheel,
+  LINES_PER_WHEEL,
   MOMENTUM_FRICTION,
   MOMENTUM_MIN_VELOCITY,
   MOMENTUM_START_VELOCITY,
@@ -97,10 +97,8 @@ describe('momentum helpers', () => {
     expect(decayVelocity(1, 16)).toBeCloseTo(MOMENTUM_FRICTION);
     expect(decayVelocity(1, 32)).toBeCloseTo(MOMENTUM_FRICTION * MOMENTUM_FRICTION);
   });
-  it('lines per wheel follows the mux', () => {
-    expect(linesPerWheel('tmux')).toBe(5);
-    expect(linesPerWheel('herdr')).toBe(3);
-    expect(linesPerWheel(undefined)).toBe(3);
+  it('scrolls three lines per wheel notch', () => {
+    expect(LINES_PER_WHEEL).toBe(3);
   });
 });
 
@@ -108,16 +106,14 @@ describe('scroll sensitivity (UNI-127)', () => {
   it('moves more than one line per cell height of finger travel', () => {
     expect(SCROLL_GAIN).toBeGreaterThan(1);
     // local scrollback / arrows: one line per cellHeight / gain px
-    expect(scrollStepPx('scrollback', 16, undefined)).toBeCloseTo(10);
-    expect(scrollStepPx('alt-keys', 16, 'tmux')).toBeCloseTo(10);
+    expect(scrollStepPx('scrollback', 16)).toBeCloseTo(10);
+    expect(scrollStepPx('alt-keys', 16)).toBeCloseTo(10);
   });
   it('wheel steps cover a whole notch of lines', () => {
-    // herdr: 3 lines per notch → 48 / 1.6 = 30 px per notch
-    expect(scrollStepPx('mouse', 16, 'herdr')).toBeCloseTo(30);
-    // tmux: 5 lines per notch → 80 / 1.6 = 50 px
-    expect(scrollStepPx('mouse', 16, 'tmux')).toBeCloseTo(50);
+    // 3 lines per notch → 48 / 1.6 = 30 px per notch
+    expect(scrollStepPx('mouse', 16)).toBeCloseTo(30);
     // never below 1 px
-    expect(scrollStepPx('mouse', 0, 'tmux')).toBe(1);
+    expect(scrollStepPx('mouse', 0)).toBe(1);
   });
   it('momentum glides ~1.5 s and starts on gentle flicks', () => {
     let v = 1;

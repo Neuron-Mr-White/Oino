@@ -1,25 +1,27 @@
 /**
- * Chat tab (UNI-113, DESIGN §3.4): pick a PC (like the Board), then a pi
- * running in one of its herdr workspaces; the conversation opens over the
- * tab (ChatView) and stays live both ways with the TUI.
+ * Chat tab (UNI-113, DESIGN §3.4) — the app's home: pick a PC (like the
+ * Board), then one of its sessions (host `sessions_list`, grouped by project
+ * folder); the conversation opens over the tab (ChatView). WP-A1: herdr/tmux
+ * groups are gone (D-14); the sessions sidebar (WP-A4) replaces this list.
  */
 import { createEffect, createMemo, createSignal, For, on, Show, untrack } from 'solid-js';
 import { ChevronRight, MessagesSquare, Plus, RefreshCw } from 'lucide-solid';
 import { NewChatSheet, type NewChatStarted } from '../components/chat/NewChatSheet';
-import { errorWords, folderName, hideKey, newChatHere, newChatOpen, pruneHidden, readHidden, setNewChatOpen, targetFromNew, unhideChat } from '../lib/chat/newChat';
+import { errorWords, hideKey, newChatHere, newChatOpen, pruneHidden, readHidden, setNewChatOpen, unhideChat } from '../lib/session/newSession';
 import { desktopShell } from '../lib/layout';
 import { useHosts } from '../hosts/context';
 import { useSettings } from '../settings/context';
-import { EmptyState, NoHostState, OfflineState } from '../components/EmptyState';
+import { EmptyState, NoHostState } from '../components/EmptyState';
+import { HostGate, hostConnState } from '../components/ConnectionState';
 import { PageHeader } from '../components/PageHeader';
 import { PcChip } from '../components/PcChip';
 import { setAddHostOpen } from '../components/Pairing';
 import { hapticTick } from '../lib/haptics';
 import { boardPcs } from '../lib/board/pcs';
 import { BoardSheet } from '../components/board/BoardSheet';
-import { chatGroups, chatLists, needsYouFirst, readLastChatHost, rememberChatHost, STATUS_WORD, withLive, WORKING_WORD, type ChatTarget } from '../lib/chat/list';
-import { chatVisible, openChat, openChatState } from '../lib/chat/open';
-import { listModeBadge } from '../lib/chat/lhMode';
+import { chatGroups, chatLists, needsYouFirst, readLastChatHost, rememberChatHost, STATUS_WORD, withLive, WORKING_WORD, type ChatTarget } from '../lib/session/list';
+import { chatVisible, openChat, openChatState } from '../lib/session/open';
+import { listModeBadge } from '../components/status/lhMode';
 import { ModeIcon } from '../components/chat/ModeChip';
 import { Monitor, Check } from 'lucide-solid';
 import './chat.css';
@@ -28,20 +30,24 @@ export default function Chat() {
   const hosts = useHosts();
   const [settings] = useSettings();
   const lists = chatLists();
-  const pcs = createMemo(() => boardPcs(hosts.hosts()).filter((pc) => !pc.dev || !!(window as { __UNIPI_CHAT__?: unknown }).__UNIPI_CHAT__));
+  const pcs = createMemo(() => boardPcs(hosts.hosts()).filter((pc) => !pc.dev));
   const [hostId, setHostId] = createSignal<string | undefined>();
   const [pcSheet, setPcSheet] = createSignal(false);
   const pc = () => pcs().find((p) => p.id === hostId());
   const entry = () => (hostId() ? lists.get(hostId()!) : undefined);
+  // Z-90: the host connection (HostClient) decides the offline state; a failed list without
+  // any data also counts (the first request is what discovers an unreachable PC).
+  const conn = () => hostConnState(hostId());
+  const offline = () => conn()?.state === 'offline' || (!!entry()?.error && !entry()?.data);
   // UNI-212: the open chat's live run state beats a stale polled "Idle".
   const liveOpen = () => {
     const o = openChatState();
     if (!o || o.chat.state.conn !== 'live') return undefined;
-    return { hostId: o.target.hostId, pid: o.target.pid!, running: !!o.chat.state.run.running, waiting: o.chat.state.run.waiting, lhMode: o.chat.state.lhMode };
+    return { hostId: o.target.hostId, session: o.target.session, running: !!o.chat.state.run.running, waiting: o.chat.state.run.waiting, lhMode: o.chat.state.lhMode };
   };
   const allGroups = createMemo(() =>
     hostId()
-      ? chatGroups(hostId()!, entry()?.data, entry()?.data?.protected ?? []).map((g) => ({ ...g, items: g.items.map((t) => withLive(t, liveOpen())) }))
+      ? chatGroups(hostId()!, entry()?.data).map((g) => ({ ...g, items: g.items.map((t) => withLive(t, liveOpen())) }))
       : [],
   );
   // UNI-260: chats hidden on this device ("Just hide from list"), per PC.
@@ -55,11 +61,11 @@ export default function Chat() {
           .filter((g) => g.items.length > 0),
   );
   const hiddenCount = () => allGroups().reduce((n, g) => n + g.items.filter((t) => hidden().includes(hideKey(t))).length, 0);
-  // Forget hide marks whose pi is gone (only once the list is really loaded).
+  // Forget hide marks whose session is gone (only once the list is really loaded).
   createEffect(() => {
     const id = hostId();
     const data = entry()?.data;
-    if (id && data?.herdr.available) pruneHidden(id, allGroups().flatMap((g) => g.items));
+    if (id && data) pruneHidden(id, allGroups().flatMap((g) => g.items));
   });
   const total = () => groups().reduce((n, g) => n + g.items.length, 0);
 
@@ -100,32 +106,29 @@ export default function Chat() {
       setHostId(started.hostId);
       rememberChatHost(started.hostId);
     }
-    openChat(targetFromNew(started.hostId, started.data, started.title, started.label), started.pcName);
+    openChat(started.target, started.pcName);
     if (started.first) openChatState()?.chat.send(started.first);
     void lists.load(started.hostId);
   };
 
-  // "+" on a workspace group: a separate pi beside the others, same workspace
-  // and folder — no sheet, no folder picking (the sheet stays for new places).
+  // "+" on a folder group: a separate session beside the others, same
+  // folder — no sheet, no folder picking (the sheet stays for new folders).
   const [startingIn, setStartingIn] = createSignal<string | null>(null);
   const [groupError, setGroupError] = createSignal<{ key: string; text: string } | null>(null);
-  const groupKey = (g: { session: string; workspaceId: string }) => `${g.session}:${g.workspaceId}`;
-  const newInGroup = async (group: { session: string; workspaceId: string; label: string; items: ChatTarget[] }) => {
+  const newInGroup = async (group: { key: string; cwd?: string; items: ChatTarget[] }) => {
     const first = group.items[0];
     const id = hostId();
     if (!first || !id || startingIn()) return;
     haptic();
-    const key = groupKey(group);
-    setStartingIn(key);
+    setStartingIn(group.key);
     setGroupError(null);
-    const cwd = first.cwdFull;
-    const res = await newChatHere({ ...first, hostId: id }, cwd);
+    const res = await newChatHere({ hostId: id, cwdFull: group.cwd ?? first.cwdFull, cwd: first.cwd });
     setStartingIn(null);
     if (!res.ok) {
-      setGroupError({ key, text: errorWords(res.error).text });
+      setGroupError({ key: group.key, text: errorWords(res.error).text });
       return;
     }
-    openChat(targetFromNew(id, res.value, folderName(res.value.cwd ?? cwd ?? group.label), group.label), pc()?.name ?? '');
+    openChat(res.value, pc()?.name ?? '');
     void lists.load(id);
   };
 
@@ -135,7 +138,7 @@ export default function Chat() {
       fallback={
         <div class="page-screen">
           <PageHeader title="Chat" />
-          <NoHostState what="its pi chats" onAdd={() => setAddHostOpen(true)} />
+          <NoHostState what="its sessions" onAdd={() => setAddHostOpen(true)} />
         </div>
       }
     >
@@ -143,7 +146,7 @@ export default function Chat() {
         <PageHeader
           class="chat-tab-head"
           title="Chat"
-          lead={<PcChip name={pc()?.name} state={entry()?.error ? 'error' : entry()?.data ? 'ok' : 'checking'} onClick={() => setPcSheet(true)} />}
+          lead={<PcChip name={pc()?.name} state={offline() ? 'error' : entry()?.data ? 'ok' : 'checking'} onClick={() => setPcSheet(true)} />}
           tools={
             <>
               <button type="button" class="ghost-icon-button" aria-label="Refresh" onClick={() => hostId() && void lists.load(hostId()!)}>
@@ -154,32 +157,25 @@ export default function Chat() {
               </button>
             </>
           }
-          meta={entry()?.data ? `${total()} pi ${total() === 1 ? 'session' : 'sessions'}${groups().some((g) => g.mux === 'tmux') ? '' : ' in herdr'}` : entry()?.error ? '\u00a0' : 'Connecting…'}
+          meta={entry()?.data ? `${total()} ${total() === 1 ? 'session' : 'sessions'}` : offline() ? '\u00a0' : 'Connecting…'}
         />
 
         <div class="chat-tab-list">
-          <Show when={entry()?.error && !entry()?.data}>
-            <OfflineState compact={desktopShell()} pc={pc()?.name} message={entry()!.error} hint="Is unipi-host running on the PC?" onRetry={() => void lists.load(hostId()!)} />
-          </Show>
-          <Show when={entry()?.data && !entry()!.data!.herdr.available && total() === 0}>
+          <HostGate
+            hostId={hostId()}
+            pcName={pc()?.name}
+            what="its sessions"
+            compact={desktopShell()}
+            offline={offline()}
+            message={entry()?.error}
+            onRetry={() => void lists.load(hostId()!)}
+          >
+          <Show when={entry()?.data && total() === 0}>
             <EmptyState
               compact
               icon={<MessagesSquare size={22} />}
-              title="herdr isn't running on this PC"
-              body={`Chat follows pi sessions in herdr (and tmux).${entry()!.data!.herdr.reason ? ` (${entry()!.data!.herdr.reason})` : ''}`}
-              action={
-                <button type="button" class="btn btn-secondary" onClick={() => setNewChatOpen(true)}>
-                  <Plus size={18} /> New chat
-                </button>
-              }
-            />
-          </Show>
-          <Show when={entry()?.data?.herdr.available && total() === 0}>
-            <EmptyState
-              compact
-              icon={<MessagesSquare size={22} />}
-              title={`No pi running on ${pc()?.name ?? 'this PC'}`}
-              body={hiddenCount() > 0 ? 'Every chat here is hidden on this device.' : 'Start one here, or run pi in a herdr pane on the PC.'}
+              title={`No sessions on ${pc()?.name ?? 'this PC'} yet`}
+              body={hiddenCount() > 0 ? 'Every session here is hidden on this device.' : 'Start one in a project folder.'}
               action={
                 <button type="button" class="btn btn-primary" onClick={() => setNewChatOpen(true)}>
                   <Plus size={18} /> New chat
@@ -192,7 +188,9 @@ export default function Chat() {
               <section class="chat-group">
                 <h2 class="chat-group-head">
                   <span class="truncate">{group.label}</span>
-                  <span class="chat-group-session">{group.session}</span>
+                  <Show when={group.cwd}>
+                    <span class="chat-group-session truncate">{group.cwd!.replace(/^\/home\/[^/]+/, '~')}</span>
+                  </Show>
                   <button
                     type="button"
                     class="chat-group-new"
@@ -202,12 +200,12 @@ export default function Chat() {
                     disabled={startingIn() !== null}
                     onClick={() => void newInGroup(group)}
                   >
-                    <Show when={startingIn() === groupKey(group)} fallback={<Plus size={16} />}>
+                    <Show when={startingIn() === group.key} fallback={<Plus size={16} />}>
                       <RefreshCw size={14} class="animate-spin" />
                     </Show>
                   </button>
                 </h2>
-                <Show when={groupError()?.key === groupKey(group)}>
+                <Show when={groupError()?.key === group.key}>
                   <p class="chat-group-error" role="alert">
                     Couldn't start a chat here: {groupError()!.text}
                   </p>
@@ -220,8 +218,7 @@ export default function Chat() {
                         class="chat-row"
                         data-status={t.status}
                         data-waiting={t.waiting ? '' : undefined}
-                        data-open={chatVisible() && openChatState()?.target.hostId === t.hostId && openChatState()?.target.pid === t.pid ? '' : undefined}
-                        disabled={t.pid === null}
+                        data-open={chatVisible() && openChatState()?.target.hostId === t.hostId && openChatState()?.target.session === t.session ? '' : undefined}
                         onClick={() => open(t)}
                       >
                         <span class="chat-row-glyph" data-status={t.status}>
@@ -244,10 +241,6 @@ export default function Chat() {
                           </span>
                           <span class="chat-row-sub">
                             <Show
-                              when={t.pid !== null}
-                              fallback={<span class="text-amber">Restart pi with the latest unipi to chat</span>}
-                            >
-                              <Show
                                 when={t.waiting?.title}
                                 fallback={
                                   <>
@@ -261,7 +254,6 @@ export default function Chat() {
                                 }
                               >
                                 <span class="chat-row-waiting-text truncate">{t.waiting!.title}</span>
-                              </Show>
                             </Show>
                           </span>
                         </span>
@@ -289,6 +281,7 @@ export default function Chat() {
               {showHidden() ? 'Hide hidden chats' : `${hiddenCount()} hidden · Show`}
             </button>
           </Show>
+          </HostGate>
         </div>
       </div>
 

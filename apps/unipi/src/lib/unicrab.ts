@@ -163,13 +163,13 @@ export function zzzCells(s: Sprite = sprite): Cell[] {
 export type MascotInputs = {
   /** Paired hosts. */
   hosts: number;
-  /** Hosts whose last chat_list failed with no data. */
+  /** Hosts whose last session list failed with no data. */
   offlineHosts: number;
   /** Unread "waiting" items (ask_user, permission, input…). */
   waiting: number;
   /** Unread "finished" items. */
   finished: number;
-  /** Agents working right now (chat_list). */
+  /** Agents working right now (session list). */
   running: number;
   /** ms since anything changed (an item arrived, an agent started/stopped, the user touched the mascot). */
   quietMs: number;

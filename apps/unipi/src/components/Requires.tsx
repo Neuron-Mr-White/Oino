@@ -6,10 +6,16 @@
  *   <Requires cap="chat"><ChatScreen /></Requires>
  *   <Requires cap={['files', 'blob']} fallback={<MyOwnNotice />}>…</Requires>
  *   <Requires cap="camera" fallback={null}><ScanButton /></Requires>   // just hide
+ *   <Requires cap="files" host={hostId} pcName="coffee">…</Requires>       // + host reachable (Z-90)
+ *
+ * With `host`, the children also need that host's HostClient connection
+ * (lib/host): an offline host shows the shared OfflineState (Retry re-checks).
  */
 import { Show, type JSX } from 'solid-js';
 import { Globe, Monitor, Smartphone, Clock, ExternalLink } from 'lucide-solid';
 import { can, unavailable, type Capability, type UnavailableKind } from '../lib/platform';
+import { hostClient } from '../lib/host/factory';
+import { OfflineState } from './EmptyState';
 import './Requires.css';
 
 /** Where to get the app (the web notice links here). */
@@ -21,16 +27,34 @@ export function Requires(props: {
   fallback?: JSX.Element | null;
   /** Notice layout for the default fallback. */
   variant?: 'page' | 'inline';
+  /** Also require this host to be reachable (its HostClient connection, Z-90). */
+  host?: string;
+  /** The host's name for the offline state. */
+  pcName?: string;
   children: JSX.Element;
 }) {
   const caps = () => (Array.isArray(props.cap) ? props.cap : [props.cap]);
   const missing = () => caps().find((cap) => !can(cap));
+  const conn = () => (props.host ? hostClient(props.host).conn() : undefined);
   return (
     <Show
       when={!missing()}
       fallback={props.fallback === undefined ? <UnavailableNotice cap={missing()!} variant={props.variant} /> : props.fallback}
     >
-      {props.children}
+      <Show
+        when={conn()?.state !== 'offline'}
+        fallback={
+          <OfflineState
+            compact={props.variant === 'inline'}
+            pc={props.pcName}
+            message={conn()?.message}
+            hint={conn()?.hint}
+            onRetry={() => void hostClient(props.host!).retry()}
+          />
+        }
+      >
+        {props.children}
+      </Show>
     </Show>
   );
 }

@@ -10,7 +10,7 @@ import { Search as SearchIcon, X } from 'lucide-solid';
 import { BoardSheet } from '../board/BoardSheet';
 import { EmptyState } from '../EmptyState';
 import type { Chat, SearchHit } from '../../lib/chat/store';
-import { agoText } from '../../lib/chat/progress';
+import { agoText } from '../status/lhProgress';
 
 const ROLE_LABEL: Record<string, string> = { user: 'You', assistant: 'pi', tool: 'Ran', output: 'Output', command: 'Command', note: 'Note' };
 

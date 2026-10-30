@@ -58,9 +58,6 @@ export const TerminalSettingsSchema = z.object({
   sizePolicy: z.enum(['fit_phone', 'keep_pc']).default('fit_phone'),
   keepScreenOn: z.boolean().default(false),
   reopenLast: z.boolean().default(true),
-  tmuxFriendlyOptions: z.boolean().default(true),
-  /** Attach without changing the herdr focus (DESIGN §5.6). */
-  herdrFollowFocus: z.boolean().default(true),
 });
 export type TerminalSettings = z.infer<typeof TerminalSettingsSchema>;
 

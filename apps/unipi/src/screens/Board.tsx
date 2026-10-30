@@ -46,9 +46,9 @@ import { boardStore, type ConnState } from '../lib/board/store';
 import { useBoardLive } from '../lib/board/live';
 import { boardUi, readLast, rememberLast } from '../lib/board/ui';
 import { clearBoardJump, clearChatPick, pendingBoardJump, pendingChatPick, pickProjectForCwd, pickProjectForRef, requestChatPick, type BoardJump } from '../lib/board/portal';
-import { clearReturnToChat, openChat, resumeChatAfterTerminal } from '../lib/chat/open';
+import { clearReturnToChat, openChat, resumeChatAfterTerminal } from '../lib/session/open';
 import { queueMention } from '../lib/chat/mention';
-import type { ChatTarget } from '../lib/chat/list';
+import type { ChatTarget } from '../lib/session/list';
 import { ChatPickSheet } from '../components/board/ChatPickSheet';
 import { boardActions, registerHighlighter } from '../lib/board/actions';
 import { availabilityText, boardPcs, pcAvailability } from '../lib/board/pcs';
@@ -276,7 +276,7 @@ export default function Board() {
     // Leaving for a chat the user chose: drop any armed return-to-chat.
     portal = null;
     clearReturnToChat();
-    if (pick?.mention) queueMention(`${target.hostId}:${target.pid}`, pick.mention);
+    if (pick?.mention) queueMention(`${target.hostId}:${target.session}`, pick.mention);
     // The task pane is a portal above the chat layer: close it so the chat shows.
     if (ui.openedTask()) ui.closeTask();
     openChat(target, pcs().find((candidate) => candidate.id === target.hostId)?.name ?? '');

@@ -9,11 +9,11 @@
  * The row actions:
  * - **Check for updates** — reads the feeds again; never installs anything;
  * - **Update all / Repair** — the same `setup_run` engine as a first install;
- * - **Install for me** (herdr, tmux) — decision 8's method chain, with the
+ * - **Install for me** (manual components, e.g. xvfb) — decision 8's method chain, with the
  *   command to do it yourself as the last resort (Copy).
  */
 import { For, Show, createSignal, onMount, type JSX } from 'solid-js';
-import { AlertTriangle, Check, Copy, Download, ExternalLink, Puzzle, RefreshCw, Server, Sparkles, SquareTerminal, Terminal, Wrench, Columns3, Globe } from 'lucide-solid';
+import { AlertTriangle, Check, Copy, Download, ExternalLink, Puzzle, RefreshCw, Server, Sparkles, Terminal, Wrench, Columns3, Globe } from 'lucide-solid';
 import { checkDesktopUpdate, desktopUpdateState, installDesktopUpdate } from '../lib/desktopUpdate';
 import { openExternal } from '../lib/board/share';
 import {
@@ -130,7 +130,7 @@ export function ComponentsCard() {
                   </span>
                   <span class="setup-components-actions">
                     {/* §4.3 point 6: Repair / Update runs the same engine as a
-                        first install. For herdr and tmux that is decision 8's
+                        first install. For manual components that is decision 8's
                         method chain, which is what "Install for me" invokes. */}
                     <Show when={row.ticked || (row.manual && row.state !== 'ok')}>
                       <button
@@ -245,8 +245,6 @@ const ROW_ICON: Record<string, JSX.Element> = {
   pi: <Sparkles size={18} />,
   unipi: <Puzzle size={18} />,
   kanboard: <Columns3 size={18} />,
-  herdr: <SquareTerminal size={18} />,
-  tmux: <SquareTerminal size={18} />,
   xvfb: <Globe size={18} />,
   host: <Server size={18} />,
 };

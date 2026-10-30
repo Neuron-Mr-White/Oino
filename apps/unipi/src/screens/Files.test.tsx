@@ -7,7 +7,7 @@ import Files from './Files';
 import { HostsProvider } from '../hosts/context';
 import { SettingsProvider } from '../settings/context';
 import { call } from '../lib/ipc';
-import { setChatTransport, type ChatListData } from '../lib/chat/transport';
+import { setChatTransport, type SessionListData } from '../lib/session/link';
 import { consumeMentionFor } from '../lib/chat/mention';
 import { getEditorTarget, clearEditorTarget } from '../lib/editorTarget';
 import { setBlobTransport, type BlobTransport } from '../lib/blob';
@@ -18,45 +18,8 @@ import { closeGit, gitTarget } from '../lib/git';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 
-function chatListing(panes: Array<{ id: string; cwd: string }>): ChatListData {
-  return {
-    herdr: {
-      available: true,
-      sessions: [
-        {
-          name: 'default',
-          running: true,
-          default: true,
-          workspaces: [
-            {
-              id: 'w1',
-              label: 'main',
-              number: 1,
-              focused: true,
-              agent_status: 'idle',
-              tab_count: 1,
-              pane_count: panes.length,
-              tabs: [
-                {
-                  id: 'w1:t1',
-                  label: 't',
-                  number: 1,
-                  focused: true,
-                  agent_status: 'idle',
-                  panes: panes.map((p, i) => ({
-                    id: p.id,
-                    focused: false,
-                    agent: { name: 'pi', status: 'idle' as const },
-                    chat: { pid: 100 + i, session_name: p.id, cwd: p.cwd },
-                  })),
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  } as unknown as ChatListData;
+function chatListing(panes: Array<{ id: string; cwd: string }>): SessionListData {
+  return { sessions: panes.map((p) => ({ id: p.id, title: p.id, cwd: p.cwd, state: 'idle' as const })) };
 }
 
 const hosts = [{ id: 'host-1', name: 'coffee', ticket: 't', paired_at: 0, last_path: 'lan' as const }];
@@ -218,7 +181,7 @@ describe('Files screen (UNI-155)', () => {
       await waitFor(() => expect(screen.getAllByTestId('chat-pick-row').length).toBe(2));
       expect(screen.getByText(/Mention a\.txt in/)).toBeTruthy();
       screen.getAllByTestId('chat-pick-row')[0]!.click();
-      await waitFor(() => expect(consumeMentionFor('host-1:101')).toMatch(/^@.*a\.txt /));
+      await waitFor(() => expect(consumeMentionFor('host-1:here')).toMatch(/^@.*a\.txt /));
     });
 
     it('a single candidate chat auto-picks (no sheet)', async () => {
@@ -227,7 +190,7 @@ describe('Files screen (UNI-155)', () => {
       await waitFor(() => expect(screen.getAllByTestId('files-row').length).toBe(4));
       screen.getByLabelText('Actions for a.txt').click();
       screen.getByRole('menuitem', { name: 'Mention in chat' }).click();
-      await waitFor(() => expect(consumeMentionFor('host-1:100')).toMatch(/^@.*a\.txt /));
+      await waitFor(() => expect(consumeMentionFor('host-1:only')).toMatch(/^@.*a\.txt /));
       await waitFor(() => expect(screen.queryByTestId('chat-pick-sheet')).toBeNull());
     });
   });

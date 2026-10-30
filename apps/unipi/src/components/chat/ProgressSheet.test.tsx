@@ -9,7 +9,7 @@ import { createStore } from 'solid-js/store';
 import { ProgressSheet, progressActive } from './ProgressSheet';
 import { ChatHeaderMenu } from './SessionMenus';
 import type { Chat } from '../../lib/chat/store';
-import type { LhProgress, LhRun } from '../../lib/chat/progress';
+import type { LhProgress, LhRun } from '../status/lhProgress';
 
 vi.mock('../../lib/markdown/mermaid', () => ({ renderMermaid: async (src: string) => ({ ok: true, svg: `<svg data-src="${src.length}"><g class="node"></g></svg>` }) }));
 const opened: Array<{ svg: string; source: string }> = [];
@@ -354,7 +354,7 @@ describe('ChatHeaderMenu Progress row (UNI-222)', () => {
     const onProgress = vi.fn();
     const onDismiss = vi.fn();
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={onDismiss} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename onOpenSection={() => {}} onProgress={onProgress} progressLive />
+      <ChatHeaderMenu anchor={anchor} onDismiss={onDismiss} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename onOpenSection={() => {}} onProgress={onProgress} progressLive />
     ));
     expect(screen.getByText('live')).toBeTruthy();
     fireEvent.click(screen.getByText('Progress'));
@@ -362,7 +362,7 @@ describe('ChatHeaderMenu Progress row (UNI-222)', () => {
     expect(onDismiss).toHaveBeenCalled();
   });
   it('no Progress row without onProgress', () => {
-    render(() => <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename onOpenSection={() => {}} />);
+    render(() => <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename onOpenSection={() => {}} />);
     expect(screen.queryByText('Progress')).toBeNull();
   });
 });

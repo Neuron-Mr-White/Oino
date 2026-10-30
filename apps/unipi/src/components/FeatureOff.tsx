@@ -2,10 +2,11 @@
  * The "this is off on the PC" card in Preview (UNI-248), replacing the bare
  * command box:
  * - viewing **this computer** in the desktop app → the switch itself plus its
- *   options (any port / listed ports, window on the PC, watch only);
+ *   options (any port / listed ports, window on the PC);
  * - any other PC → "Ask <PC> to turn this on" with the same options, then a
  *   live pending / approved / denied / expired state (polls while pending).
  * The command stays available under "Or run this on the PC".
+ * Desktop streaming is deferred (D-15): its kind is not offered here.
  */
 import { createEffect, createSignal, on, onCleanup, Show, type JSX } from 'solid-js';
 import { ChevronDown, Clock, Hand, PowerOff, RefreshCw, Send, ShieldCheck, Unplug, X } from 'lucide-solid';
@@ -28,7 +29,7 @@ import {
   sharingTransport,
   untilText,
   type AskState,
-  type FeatureKind,
+  type FeatureKind as AnyFeatureKind,
   type FeatureRequestItem,
   type FeatureScope,
   type SharingChange,
@@ -36,11 +37,12 @@ import {
 import './sharing.css';
 
 type CommandBoxComp = (props: { command: string }) => JSX.Element;
+/** The sharing features this card handles (desktop streaming is deferred, D-15). */
+type FeatureKind = Exclude<AnyFeatureKind, 'desktop'>;
 
 const TITLE: Record<FeatureKind, string> = {
   forward: 'Web apps are off on this PC',
   browser: 'The remote browser is off on this PC',
-  desktop: 'Desktop streaming is off on this PC',
   push: 'Sending files to phones is off on this PC',
   cron: 'Scheduled runs are off on this PC',
 };
@@ -48,7 +50,6 @@ const TITLE: Record<FeatureKind, string> = {
 const WHY: Record<FeatureKind, string> = {
   forward: "Open web apps running on the PC (dev servers on its loopback) here. Only the PC's own loopback is ever reachable.",
   browser: 'A separate Chrome on the PC with its own profile — never your everyday browser or its logins.',
-  desktop: "See the PC's screen and, unless it's watch only, use its mouse and keyboard.",
   push: 'Lets the PC send files (like an APK) to this device.',
   cron: "See and manage the PC's scheduled, unattended pi runs.",
 };
@@ -59,7 +60,6 @@ function useOptions(feature: FeatureKind) {
   const [ports, setPorts] = createSignal('');
   const [portsError, setPortsError] = createSignal<string | undefined>();
   const [headed, setHeaded] = createSignal(false);
-  const [viewOnly, setViewOnly] = createSignal(false);
   /** The scope to ask for / the change to make; `undefined` = invalid input (error shown). */
   const scope = (): FeatureScope | undefined => {
     if (feature === 'forward') {
@@ -71,7 +71,6 @@ function useOptions(feature: FeatureKind) {
       }
       return { ports: parsed.ports };
     }
-    if (feature === 'desktop') return { view_only: viewOnly() };
     if (feature === 'browser') return headed() ? { headed: true } : {};
     return {};
   };
@@ -83,8 +82,6 @@ function useOptions(feature: FeatureKind) {
         return { kind: 'forward_enable', any: !!s.any_port, ports: s.ports };
       case 'browser':
         return { kind: 'browser_enable', headed: headed() };
-      case 'desktop':
-        return { kind: 'desktop_enable', view_only: viewOnly() };
       case 'push':
         return { kind: 'push_enable' };
       case 'cron':
@@ -125,12 +122,6 @@ function useOptions(feature: FeatureKind) {
         <label class="desktop-check share-check">
           <input type="checkbox" checked={headed()} disabled={disabled} onChange={(e) => setHeaded(e.currentTarget.checked)} /> Show its window on the PC (otherwise only in the app)
           too
-        </label>
-      </Show>
-      <Show when={feature === 'desktop'}>
-        <label class="desktop-check share-check">
-          <input type="checkbox" checked={viewOnly()} disabled={disabled} onChange={(e) => setViewOnly(e.currentTarget.checked)} /> Watch only (no mouse or
-          keyboard)
         </label>
       </Show>
     </div>

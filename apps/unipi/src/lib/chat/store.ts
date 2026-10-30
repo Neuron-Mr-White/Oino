@@ -1,15 +1,16 @@
 /**
- * One live chat (UNI-113): a connection to one pi (host + pid) and the
- * state its bridge messages build (docs/m5/PROTOCOL.md §3).
+ * One live chat (UNI-113): a connection to one session (host + session id)
+ * and the state its bridge-shaped messages build (docs/m5/PROTOCOL.md §3).
+ * WP-A1: fed by the `lib/session/link` placeholder; WP-A2 replaces this store
+ * with `lib/session/store.ts` on the host session stream.
  */
 import { batch, createSignal } from 'solid-js';
-import { graphErrorText, isProgress, isRun, type GraphError, type LhGraphOutput, type LhProgress, type LhRun, type TranscriptItem, type WorkTranscript } from './progress';
-import { isLhModeState, type LhModeChoice, type LhModeState } from './lhMode';
-import { isDreamStatus, type DreamAction, type DreamDetail, type DreamStatus } from './dream';
+import { graphErrorText, isProgress, isRun, type GraphError, type LhGraphOutput, type LhProgress, type LhRun, type TranscriptItem, type WorkTranscript } from '../../components/status/lhProgress';
+import { isLhModeState, type LhModeChoice, type LhModeState } from '../../components/status/lhMode';
 import { createStore, produce, reconcile } from 'solid-js/store';
-import { chatTransport, type ChatConnection } from './transport';
+import { chatTransport, type ChatConnection } from '../session/link';
 import type { Entry, ImageRef, LiveTools, Part, Streaming } from './model';
-import { friendlyBridgeError } from './bridgeError';
+import { isUnknownOpError } from '../../components/status/lhProgress';
 
 /** UNI-251: where a live `custom` entry belongs. Bridges before UNI-251 send
  * custom entries (a `/command` echo) only at the turn's end, AFTER the user
@@ -238,7 +239,7 @@ export const PENDING_ACKED_MS = 20_000;
 export const PENDING_LOST_MS = 30_000;
 
 /** A message typed while the chat connection isn't live (UNI-159): kept in
- *  localStorage (per host+pid) and sent in order once `hello` arrives. Shown
+ *  localStorage (per host+session) and sent in order once `hello` arrives. Shown
  *  as a bubble marked "Waiting for connection", never "Sending…". */
 export type Outboxed = { id: string; text: string; images?: Array<{ mime: string; data: string } | { mime: string; path: string }>; at: number };
 
@@ -305,7 +306,7 @@ export type ChatState = {
   seams: string[];
   /** Side-question (btw) pages for this chat's sheet, newest last — mirrors the bridge's `btw_list`. */
   btwPages: BtwPage[];
-  /** Messages waiting for a live connection (UNI-159), persisted in localStorage per host+pid. */
+  /** Messages waiting for a live connection (UNI-159), persisted in localStorage per host+session. */
   outbox: Outboxed[];
   /** Fusion's preset (UNI-160 §1) — undefined when Fusion isn't installed on this pi. */
   fusion?: FusionPresetInfo;
@@ -323,10 +324,6 @@ export type ChatState = {
   lhProgressSupported?: boolean;
   /** UNI-269: the working mode (hello.lhMode / `lh_mode` pushes); undefined = an older bridge or no long-horizon. */
   lhMode?: LhModeState;
-  /** UNI-118: Dream status (hello.dream / `dream_status` pushes); undefined = no dream module on this pi. */
-  dream?: DreamStatus;
-  /** UNI-118: `false` once this pi's bridge answered `dream_get` with "unknown type" (an older unipi). */
-  dreamSupported?: boolean;
 };
 
 const initial = (): ChatState => ({
@@ -376,8 +373,6 @@ export function applyMessage(state: ChatState, msg: Msg): void {
       state.work = (msg.work as WorkItem[]) ?? [];
       state.lhProgress = isProgress(msg.lhProgress) ? msg.lhProgress : undefined;
       state.lhMode = isLhModeState(msg.lhMode) ? msg.lhMode : undefined;
-      state.dream = isDreamStatus(msg.dream) ? msg.dream : undefined;
-      if (state.dream) state.dreamSupported = true;
       // pi already has every message it acked or accepted (entries or queue).
       {
         const seen = new Set(state.entries.flatMap((e) => (e.type === 'message' && (e as { message: { role: string } }).message.role === 'user' ? [userText((e as { message: { content: unknown } }).message.content).trim()] : [])));
@@ -590,12 +585,8 @@ export function applyMessage(state: ChatState, msg: Msg): void {
     case 'lh_mode':
       state.lhMode = isLhModeState(msg.mode) ? msg.mode : undefined;
       return;
-    case 'dream_status':
-      state.dream = isDreamStatus(msg.status) ? msg.status : undefined;
-      state.dreamSupported = true;
-      return;
     case 'error': {
-      state.error = { message: friendlyBridgeError(msg.message as string | undefined), at: Date.now() };
+      state.error = { message: friendlyError(msg.message as string | undefined), at: Date.now() };
       const ref = msg.ref as string | undefined;
       if (ref) {
         const i = state.pending.findIndex((p) => p.ref === ref);
@@ -603,7 +594,7 @@ export function applyMessage(state: ChatState, msg: Msg): void {
         // `btw{}` refused (btw not installed, bad request): end that page.
         const page = state.btwPages.find((p) => p.id === ref && !p.done);
         if (page) {
-          page.error = friendlyBridgeError(msg.message as string | undefined);
+          page.error = friendlyError(msg.message as string | undefined);
           page.done = true;
         }
       }
@@ -617,12 +608,12 @@ export function applyMessage(state: ChatState, msg: Msg): void {
 let refSeq = 0;
 const nextRef = () => `m${Date.now().toString(36)}${(++refSeq).toString(36)}`;
 
-/** localStorage key for one chat's outbox (UNI-159): per host+pid, survives app restarts. */
-const outboxKey = (hostId: string, pid: number) => `unipi.chat.outbox.${hostId}.${pid}`;
+/** localStorage key for one chat's outbox (UNI-159): per host+session, survives app restarts. */
+const outboxKey = (hostId: string, session: string) => `unipi.chat.outbox.${hostId}.${session}`;
 
-function loadOutbox(hostId: string, pid: number): Outboxed[] {
+function loadOutbox(hostId: string, session: string): Outboxed[] {
   try {
-    const raw = localStorage.getItem(outboxKey(hostId, pid));
+    const raw = localStorage.getItem(outboxKey(hostId, session));
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
     return Array.isArray(parsed) ? (parsed as Outboxed[]) : [];
   } catch {
@@ -630,19 +621,26 @@ function loadOutbox(hostId: string, pid: number): Outboxed[] {
   }
 }
 
-function saveOutbox(hostId: string, pid: number, items: Outboxed[]): void {
+function saveOutbox(hostId: string, session: string, items: Outboxed[]): void {
   try {
-    localStorage.setItem(outboxKey(hostId, pid), JSON.stringify(items));
+    localStorage.setItem(outboxKey(hostId, session), JSON.stringify(items));
   } catch {
     // storage full/unavailable: the outbox just won't survive a restart.
   }
 }
 
+/** What the user sees for a failed op: "unknown type/command" from a session
+ * that lacks the op becomes an actionable line; anything else passes through. */
+function friendlyError(message: string | undefined | null): string {
+  const text = String(message || 'Something went wrong');
+  return isUnknownOpError(text) ? 'This session is older than the app — restart it to use this.' : text;
+}
+
 export type Chat = ReturnType<typeof createChat>;
 
 /** A live chat with one pi. Call `close()` when the view goes away. */
-export function createChat(hostId: string, pid: number) {
-  const [state, setState] = createStore<ChatState>({ ...initial(), outbox: loadOutbox(hostId, pid) });
+export function createChat(hostId: string, session: string) {
+  const [state, setState] = createStore<ChatState>({ ...initial(), outbox: loadOutbox(hostId, session) });
   const [generation, setGeneration] = createSignal(0);
   let conn: ChatConnection | undefined;
   let closed = false;
@@ -673,9 +671,6 @@ export function createChat(hostId: string, pid: number) {
   const replyWaiters = new Map<string, { t: string; done: (msg: Msg) => void }>();
   /** In-flight `lh_progress_get` refs (UNI-222). */
   const lhProgressRefs = new Set<string>();
-  /** In-flight `dream_get` refs and `dream_detail` waiters (UNI-118). */
-  const dreamRefs = new Set<string>();
-  const dreamDetailWaiters = new Map<string, (d: DreamDetail | { error: string }) => void>();
 
   const connect = () => {
     if (closed) return;
@@ -683,7 +678,7 @@ export function createChat(hostId: string, pid: number) {
     conn?.close();
     conn = chatTransport().open(
       hostId,
-      pid,
+      session,
       (line) => {
         let msg: Msg;
         try {
@@ -791,19 +786,6 @@ export function createChat(hostId: string, pid: number) {
           return;
         }
         if (msg.t === 'lh_progress' && msg.ref) lhProgressRefs.delete(String(msg.ref));
-        // UNI-118: same for `dream_get` on an older bridge.
-        if (msg.t === 'error' && dreamRefs.has(String(msg.ref))) {
-          dreamRefs.delete(String(msg.ref));
-          setState('dreamSupported', false);
-          return;
-        }
-        if (msg.t === 'dream_status' && msg.ref) dreamRefs.delete(String(msg.ref));
-        if ((msg.t === 'dream_detail' || msg.t === 'error') && dreamDetailWaiters.has(String(msg.ref))) {
-          const done = dreamDetailWaiters.get(String(msg.ref))!;
-          dreamDetailWaiters.delete(String(msg.ref));
-          done(msg.t === 'dream_detail' ? (msg.detail as DreamDetail) : { error: friendlyBridgeError(msg.message as string | undefined) });
-          return;
-        }
         // UNI-282: agent-graph detail requests (output / history / transcript): reply or error.
         if (replyWaiters.has(String(msg.ref)) && (msg.t === replyWaiters.get(String(msg.ref))!.t || msg.t === 'error')) {
           const w = replyWaiters.get(String(msg.ref))!;
@@ -820,7 +802,7 @@ export function createChat(hostId: string, pid: number) {
         if (msg.t === 'error' && workLogWaiters.has(String(msg.ref))) {
           const done = workLogWaiters.get(String(msg.ref))!;
           workLogWaiters.delete(String(msg.ref));
-          done({ error: friendlyBridgeError(msg.message as string | undefined) });
+          done({ error: friendlyError(msg.message as string | undefined) });
           return;
         }
         // pi is replacing the session (new / resume / fork / reload): its
@@ -843,7 +825,7 @@ export function createChat(hostId: string, pid: number) {
           const w = opWaiters.get(String(msg.ref))!;
           opWaiters.delete(String(msg.ref));
           if (msg.t === 'ack') w.resolve(msg);
-          else w.reject(msg.code === 'busy' ? new BusyError(String(msg.message ?? 'pi is busy')) : new Error(w.raw ? String(msg.message ?? 'Something went wrong') : friendlyBridgeError(msg.message as string | undefined)));
+          else w.reject(msg.code === 'busy' ? new BusyError(String(msg.message ?? 'pi is busy')) : new Error(w.raw ? String(msg.message ?? 'Something went wrong') : friendlyError(msg.message as string | undefined)));
           return;
         }
         if (msg.t === 'hello') {
@@ -941,7 +923,7 @@ export function createChat(hostId: string, pid: number) {
     const items = [...state.outbox];
     if (!items.length) return;
     setState('outbox', []);
-    saveOutbox(hostId, pid, []);
+    saveOutbox(hostId, session, []);
     for (const item of items) doSend(item.text, 'auto', item.images);
   }
 
@@ -995,7 +977,7 @@ export function createChat(hostId: string, pid: number) {
     state,
     generation,
     hostId,
-    pid,
+    session,
     /** Send a prompt. `mode`: `auto` (prompt when idle, steer when busy; default) \| `steer`
      * (next tool boundary) \| `followUp` (pi's own queued follow-up) \| `now` (abort the run,
      * wait for idle, then send as a prompt) \| `after` (wait in the bridge's own queue,
@@ -1008,7 +990,7 @@ export function createChat(hostId: string, pid: number) {
         const item: Outboxed = { id: nextRef(), text, images, at: Date.now() };
         setState('outbox', (o) => {
           const next = [...o, item];
-          saveOutbox(hostId, pid, next);
+          saveOutbox(hostId, session, next);
           return next;
         });
         return;
@@ -1019,7 +1001,7 @@ export function createChat(hostId: string, pid: number) {
     removeOutboxed(id: string) {
       setState('outbox', (o) => {
         const next = o.filter((x) => x.id !== id);
-        saveOutbox(hostId, pid, next);
+        saveOutbox(hostId, session, next);
         return next;
       });
     },
@@ -1238,29 +1220,6 @@ export function createChat(hostId: string, pid: number) {
     /** UNI-269: switch the working mode (no prompt); `none` = plain. Resolves on ack (an `lh_mode` push follows), rejects with pi's reason. */
     setLhMode(mode: LhModeChoice): Promise<void> {
       return runOp({ t: 'set_lh_mode', mode });
-    },
-    /** UNI-118: asks for the current Dream status (pushes keep it live afterwards). */
-    refreshDream() {
-      if (state.conn !== 'live') return;
-      const ref = nextRef();
-      dreamRefs.add(ref);
-      void sendRaw({ t: 'dream_get', ref });
-    },
-    /** UNI-118: one run's report markdown + live trajectory. */
-    dreamDetail(id: string): Promise<DreamDetail | { error: string }> {
-      if (state.conn !== 'live') return Promise.resolve({ error: 'Not connected' });
-      const ref = nextRef();
-      return new Promise((resolve) => {
-        dreamDetailWaiters.set(ref, resolve);
-        void sendRaw({ t: 'dream_detail', id, ref });
-        setTimeout(() => {
-          if (dreamDetailWaiters.delete(ref)) resolve({ error: 'Timed out' });
-        }, 8000);
-      });
-    },
-    /** UNI-118: run / stop / approve / reject / dismiss — resolves on ack, rejects with pi's reason. */
-    dreamAction(action: DreamAction, id?: string, proposal?: string): Promise<void> {
-      return runOp({ t: 'dream_action', action, ...(id ? { id } : {}), ...(proposal ? { proposal } : {}) });
     },
     /** A page of a bg task's live log, tail-first (UNI-160 §4). */
     workLog(id: string): Promise<{ text: string; more: boolean } | { error: string }> {

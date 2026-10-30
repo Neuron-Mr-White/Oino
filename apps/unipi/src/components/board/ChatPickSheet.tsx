@@ -7,8 +7,8 @@
 import { createEffect, createMemo, For, on, Show } from 'solid-js';
 import { Check, MessagesSquare } from 'lucide-solid';
 import { BoardSheet } from './BoardSheet';
-import { chatGroups, chatLists, STATUS_WORD, type ChatTarget } from '../../lib/chat/list';
-import { openChatState } from '../../lib/chat/open';
+import { chatGroups, chatLists, STATUS_WORD, type ChatTarget } from '../../lib/session/list';
+import { openChatState } from '../../lib/session/open';
 import { rankChatsForProject } from '../../lib/board/portal';
 
 export function ChatPickSheet(props: {
@@ -25,12 +25,12 @@ export function ChatPickSheet(props: {
   const entry = () => (props.hostId ? lists.get(props.hostId) : undefined);
   const chats = createMemo(() => {
     if (!props.hostId) return [];
-    const items = chatGroups(props.hostId, entry()?.data).flatMap((g) => g.items.filter((t) => t.pid !== null));
+    const items = chatGroups(props.hostId, entry()?.data).flatMap((g) => g.items);
     return rankChatsForProject(items, props.root);
   });
   const isOpen = (t: ChatTarget) => {
     const open = openChatState();
-    return !!open && open.target.hostId === t.hostId && open.target.pid === t.pid;
+    return !!open && open.target.hostId === t.hostId && open.target.session === t.session;
   };
   // Fresh list on open; a single candidate needs no question.
   createEffect(

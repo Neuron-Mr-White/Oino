@@ -20,8 +20,8 @@ const report: SetupReport = {
     // An older install: pre-ticked as an update.
     { name: 'unipi', state: 'ok', version: '3.0.0-alpha.41', source: 'found', note: 'Installed as npm:@pi-unipi/unipi@alpha' },
     { name: 'kanboard', state: 'ok', version: '0.2.0', source: 'found' },
-    { name: 'herdr', state: 'ok', version: '0.9.1', source: 'found' },
-    { name: 'tmux', state: 'missing', source: 'found', fix: 'sudo apt install tmux', note: 'Optional — better terminals' },
+    { name: 'agent-browser', state: 'ok', version: '0.9.1', source: 'found' },
+    { name: 'xvfb', state: 'missing', source: 'found', fix: 'sudo apt install xvfb', note: 'Optional — better terminals' },
     { name: 'host', state: 'ok', version: '0.4.9', source: 'found', note: 'Run by service' },
   ],
   path: { value: '/usr/bin', fromShell: [], localBinOnLoginPath: true, probed: true },
@@ -132,7 +132,7 @@ describe('Settings → Components (UNI-241, §4.3 point 6)', () => {
     expect(screen.queryByTestId('components-repair-unipi')).toBeNull();
     // §4.3 point 4: an unknown feed answer never dresses itself up as
     // "Up to date". What is installed is reported; newer-or-not is not.
-    for (const name of ['node', 'pi', 'unipi', 'herdr']) {
+    for (const name of ['node', 'pi', 'unipi', 'agent-browser']) {
       expect(screen.getByTestId(`components-row-${name}`).textContent).toContain('Installed');
       expect(screen.getByTestId(`components-row-${name}`).textContent).not.toContain('Up to date');
     }
@@ -145,7 +145,7 @@ describe('Settings → Components (UNI-241, §4.3 point 6)', () => {
         checkUpdates: async () => ({
           components: [
             { name: 'unipi', update: { state: 'available', from: '3.0.0-alpha.41', to: '3.0.0-alpha.42' } },
-            { name: 'herdr', update: { state: 'available', from: '0.9.1', to: '0.9.2' } },
+            { name: 'agent-browser', update: { state: 'available', from: '0.9.1', to: '0.9.2' } },
           ],
           anyAvailable: true,
           offline: false,
@@ -159,7 +159,7 @@ describe('Settings → Components (UNI-241, §4.3 point 6)', () => {
     card();
     await waitFor(() => expect(screen.getByTestId('components-update-all')).toBeTruthy());
     await waitFor(() => expect(screen.queryByTestId('components-repair-unipi')).toBeTruthy());
-    expect(screen.queryByTestId('components-repair-herdr')).toBeTruthy();
+    expect(screen.queryByTestId('components-repair-agent-browser')).toBeTruthy();
   });
 
   it('a failed install says so, and never claims it worked', async () => {

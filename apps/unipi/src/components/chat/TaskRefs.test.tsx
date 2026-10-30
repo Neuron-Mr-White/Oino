@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const openTaskFromChat = vi.fn();
-vi.mock('../../lib/chat/boardPortal', () => ({ openTaskFromChat: (...a: unknown[]) => openTaskFromChat(...a) }));
+vi.mock('../../lib/session/open', () => ({ openTaskFromChat: (...a: unknown[]) => openTaskFromChat(...a) }));
 vi.mock('../../lib/board/portal', async (orig) => ({
   ...(await orig<typeof import('../../lib/board/portal')>()),
   knownPrefixes: async () => new Set(['UNI']),

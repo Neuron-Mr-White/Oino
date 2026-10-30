@@ -5,14 +5,12 @@
  * can read their open state without touching the screens. A new screen
  * declares its own in its component instead (see lib/shell.ts).
  */
-import { createEffect, onCleanup } from 'solid-js';
+import { onCleanup } from 'solid-js';
 import { useLocation, useNavigate } from '@solidjs/router';
-import { MessagesSquare, Plus, Search, SlidersHorizontal, LayoutGrid, List, Monitor, FolderOpen, RefreshCw, X, Server, LayoutDashboard, Keyboard, Network, Moon, QrCode } from 'lucide-solid';
-import { setProgressSheetOpen } from '../../lib/chat/progress';
-import { setDreamSheetOpen } from '../../lib/chat/dream';
-import { chatVisible, hideChat, openChatState } from '../../lib/chat/open';
-import { setNewChatOpen } from '../../lib/chat/newChat';
-import { setCloseChatTarget } from '../../lib/chat/closeTarget';
+import { MessagesSquare, Plus, Search, SlidersHorizontal, LayoutGrid, List, Monitor, FolderOpen, RefreshCw, X, Server, LayoutDashboard, Keyboard, Network, QrCode } from 'lucide-solid';
+import { setProgressSheetOpen } from '../status/lhProgress';
+import { chatVisible, hideChat } from '../../lib/session/open';
+import { setNewChatOpen } from '../../lib/session/newSession';
 import { boardUi } from '../../lib/board/ui';
 import { registerCommands, registerPane, screenOf } from '../../lib/shell';
 import { can, isTauri } from '../../lib/platform';
@@ -26,17 +24,11 @@ export function BuiltinPanes() {
   const ui = boardUi();
   const onBoard = on('board');
   const navigate = useNavigate();
-  // Web mode (served by the kanboard daemon / vite): Home is terminals,
-  // which can't work here, so open on the Board instead.
-  createEffect(() => {
-    if (!can('terminal') && can('board') && location.pathname === '/') navigate('/board', { replace: true });
-  });
-  onCleanup(registerPane({ screen: 'sessions', open: () => location.pathname === '/term' }));
   onCleanup(
     registerPane({
       screen: 'chat',
       open: () => chatVisible(),
-      placeholder: !can('chat') ? undefined : () => <PanePlaceholder icon={<MessagesSquare size={22} />} title="No chat open" hint="Pick a pi session on the left. It stays live while you browse the others." />,
+      placeholder: !can('chat') ? undefined : () => <PanePlaceholder icon={<MessagesSquare size={22} />} title="No chat open" hint="Pick a session on the left. It stays live while you browse the others." />,
     }),
   );
   onCleanup(registerPane({ screen: 'board', open: () => !!ui.openedTask() || !!ui.reader() }));
@@ -58,11 +50,8 @@ export function BuiltinPanes() {
       { id: 'board.project', title: 'Switch project', group: 'Board', keywords: 'project', icon: () => <FolderOpen size={16} />, when: boardReady, run: () => ui.setSheet('project') },
       { id: 'board.closeTask', title: 'Close task', group: 'Board', icon: () => <X size={16} />, keys: 'Esc', when: () => onBoard() && !!ui.openedTask(), run: () => ui.closeTask() },
       { id: 'chat.progress', title: 'Show long-horizon progress', group: 'Chat', keywords: 'goal ralph swarm graph progress mermaid', icon: () => <Network size={16} />, when: () => chatVisible(), run: () => setProgressSheetOpen(true) },
-      { id: 'chat.dream', title: 'Show Dream', group: 'Chat', keywords: 'dream memory skills proposals approve background consolidation', icon: () => <Moon size={16} />, when: () => chatVisible(), run: () => setDreamSheetOpen(true) },
       { id: 'chat.close', title: 'Back to the chat list', group: 'Chat', keywords: 'close leave', icon: () => <X size={16} />, keys: 'Esc', when: () => chatVisible(), run: () => hideChat() },
-      // UNI-260: start a pi in a new herdr tab / workspace (or tmux), and stop one.
-      { id: 'chat.new', title: 'New chat', group: 'Chat', keywords: 'start pi session herdr tab workspace tmux', icon: () => <Plus size={16} />, when: () => can('chat'), run: () => (navigate('/chat'), setNewChatOpen(true)) },
-      { id: 'chat.stop', title: 'Close chat… (stop pi)', group: 'Chat', keywords: 'quit stop kill end tab hide', icon: () => <X size={16} />, when: () => chatVisible() && !!openChatState(), run: () => setCloseChatTarget(openChatState()!.target) },
+      { id: 'chat.new', title: 'New chat', group: 'Chat', keywords: 'start session folder project', icon: () => <Plus size={16} />, when: () => can('chat'), run: () => (navigate('/chat'), setNewChatOpen(true)) },
       { id: 'hosts.add', title: 'Add a PC (pair)', group: 'PCs', keywords: 'pair computer host add a host', icon: () => <Server size={16} />, when: () => can('hosts'), run: () => setAddHostOpen(true) },
       { id: 'hosts.pairPhone', title: 'Pair a phone', group: 'PCs', keywords: 'qr code phone pair this pc computer scan', icon: () => <QrCode size={16} />, when: () => can('localSharing'), run: () => openPairPhone() },
       { id: 'app.reload', title: 'Reload the app', group: 'App', keywords: 'refresh', icon: () => <RefreshCw size={16} />, run: () => window.location.reload() },

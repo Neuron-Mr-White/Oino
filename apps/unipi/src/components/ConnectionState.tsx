@@ -1,4 +1,9 @@
+import { Show, type JSX } from "solid-js";
 import type { PathKind } from "../lib/schemas";
+import { hostClient } from "../lib/host/factory";
+import type { HostConn } from "../lib/host/client";
+import { NoHostState, OfflineState } from "./EmptyState";
+import { setAddHostOpen } from "./Pairing";
 export type OnlineState = "connected" | "connecting" | "error" | "unknown";
 export const pathLabels: Record<PathKind, string> = {
   lan: "LAN",
@@ -77,5 +82,57 @@ export function SessionSkeleton() {
       <div class="skeleton h-24 rounded-card bg-surface-2" />
       <div class="skeleton h-24 rounded-card bg-surface-2" />
     </div>
+  );
+}
+
+/** A host's connection state from its HostClient (Z-90); `undefined` = no host. */
+export function hostConnState(hostId: string | undefined): HostConn | undefined {
+  return hostId ? hostClient(hostId).conn() : undefined;
+}
+
+/**
+ * The one gate for host-dependent content (Z-90, WP-A1): no host → the shared
+ * NoHostState ("Add a PC"); host offline (its HostClient says so, or the
+ * caller saw an unreachable error) → the shared OfflineState with Retry
+ * (re-checks the connection, then `onRetry`); otherwise the children.
+ */
+export function HostGate(props: {
+  hostId: string | undefined;
+  pcName?: string;
+  /** "its sessions", "its files"… (NoHostState wording). */
+  what: string;
+  compact?: boolean;
+  /** Extra offline signal from the caller (e.g. its first request failed). */
+  offline?: boolean;
+  message?: string;
+  hint?: string;
+  onRetry?: () => void;
+  onAdd?: () => void;
+  children: JSX.Element;
+}) {
+  const conn = () => hostConnState(props.hostId);
+  const offline = () => conn()?.state === "offline" || !!props.offline;
+  const retry = () => {
+    const id = props.hostId;
+    if (!id) return;
+    void hostClient(id).retry().finally(() => props.onRetry?.());
+  };
+  return (
+    <Show when={props.hostId} fallback={<NoHostState what={props.what} onAdd={props.onAdd ?? (() => setAddHostOpen(true))} />}>
+      <Show
+        when={!offline()}
+        fallback={
+          <OfflineState
+            compact={props.compact}
+            pc={props.pcName}
+            message={conn()?.message ?? props.message}
+            hint={conn()?.hint ?? props.hint ?? "Is unipi-host running on the PC?"}
+            onRetry={retry}
+          />
+        }
+      >
+        {props.children}
+      </Show>
+    </Show>
   );
 }

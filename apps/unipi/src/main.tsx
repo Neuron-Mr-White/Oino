@@ -1,15 +1,12 @@
 import { PageHeader } from './components/PageHeader';
 import { RelaySettings } from './components/RelaySettings';
 import { HostsProvider } from './hosts/context';
-import { RecentsProvider } from './lib/recentsContext';
 import { Pairing } from './components/Pairing';
 import { render } from 'solid-js/web';
-import { HashRouter, Route, A, useLocation, useNavigate } from '@solidjs/router';
-import { Terminal, Columns3, Settings as SettingsIcon, MessagesSquare, Files as FilesIcon } from 'lucide-solid';
+import { HashRouter, Route, A, Navigate, useLocation, useNavigate } from '@solidjs/router';
+import { Columns3, Settings as SettingsIcon, MessagesSquare, Files as FilesIcon } from 'lucide-solid';
 import { Show } from 'solid-js';
 import type { Component, ParentProps } from 'solid-js';
-import Sessions from './screens/Sessions';
-import TerminalLayer from './screens/Terminal';
 import Board from './screens/Board';
 import Chat from './screens/Chat';
 import Cron from './screens/Cron';
@@ -43,7 +40,7 @@ import { IncomingPushRunner } from './components/IncomingPush';
 import { SharingRequestsRunner } from './components/SharingSettings';
 import { QuitRunner } from './components/LifecycleUi';
 import { PairPhoneDialog } from './components/PairPhone';
-import { chatVisible } from './lib/chat/open';
+import { chatVisible } from './lib/session/open';
 // The task pane has its own header; the floating bell would cover its ⋯ (UNI-181).
 import { boardUi } from './lib/board/ui';
 import { layout } from './lib/layout';
@@ -62,34 +59,32 @@ import './ui.css';
 const NO_EDITOR_TARGET = {};
 function Shell(props: ParentProps) {
   const location = useLocation();
-  const title = () => location.pathname === '/settings' ? 'Settings' : location.pathname === '/board' ? 'Board' : location.pathname === '/chat' ? 'Chat' : location.pathname === '/files' ? 'Files' : 'Sessions';
-  // /term and /files/edit show Home underneath their full-screen layer
-  // (the knob drag-down reveals the terminal); the page below is inert
-  // while either covers it. On the desktop shell (UNI-117) they sit in the
-  // detail pane instead, so the list stays usable.
-  const onTerm = () => location.pathname === '/term';
+  const title = () => location.pathname === '/settings' ? 'Settings' : location.pathname === '/board' ? 'Board' : location.pathname === '/files' ? 'Files' : 'Chat';
+  // /files/edit shows the Files list underneath its full-screen layer; the
+  // page below is inert while it covers it. On the desktop shell (UNI-117) it
+  // sits in the detail pane instead, so the list stays usable.
   const onEditor = () => location.pathname === '/files/edit';
   const navigate = useNavigate();
   const desktop = () => layout().desktop();
   return (
-    <SettingsProvider><HostsProvider><RecentsProvider>
+    <SettingsProvider><HostsProvider>
       <RelaySettings/>
-      <div class="app-shell" inert={!desktop() && (onTerm() || onEditor()) ? true : undefined}>
+      <div class="app-shell" inert={!desktop() && onEditor() ? true : undefined}>
         <Show when={desktop()}><Sidebar /></Show>
-        <Show when={location.pathname !== "/" && location.pathname !== "/board" && location.pathname !== "/chat" && location.pathname !== "/files" && location.pathname !== "/preview" && location.pathname !== "/cron" && !onTerm() && !onEditor()}><PageHeader title={title()}/></Show>
+        <Show when={location.pathname !== "/" && location.pathname !== "/board" && location.pathname !== "/chat" && location.pathname !== "/files" && location.pathname !== "/preview" && location.pathname !== "/cron" && !onEditor()}><PageHeader title={title()}/></Show>
         <main class="app-content"><Show when={location.pathname !== "/settings"}><UpdateBanner onOpen={() => navigate("/settings")} /></Show><SettingsNotices />{props.children}</main>
         <Show when={!desktop()}>
-          <nav class="bottom-nav" aria-label="Main navigation"><A href="/" end><Terminal size={22} strokeWidth={1.5} /><span>Sessions</span></A><A href="/chat"><MessagesSquare size={22} strokeWidth={1.5} /><span>Chat</span></A><A href="/board"><Columns3 size={22} strokeWidth={1.5} /><span>Board</span></A><A href="/files"><FilesIcon size={22} strokeWidth={1.5} /><span>Files</span></A><A href="/settings"><SettingsIcon size={22} strokeWidth={1.5} /><span>Settings</span></A></nav>
+          <nav class="bottom-nav" aria-label="Main navigation"><A href="/chat"><MessagesSquare size={22} strokeWidth={1.5} /><span>Chat</span></A><A href="/board"><Columns3 size={22} strokeWidth={1.5} /><span>Board</span></A><A href="/files"><FilesIcon size={22} strokeWidth={1.5} /><span>Files</span></A><A href="/settings"><SettingsIcon size={22} strokeWidth={1.5} /><span>Settings</span></A></nav>
         </Show>
       </div>
       <DesktopChrome />
       <BuiltinPanes />
-      <Show when={can('hosts') && (desktop() || (!onTerm() && !onEditor() && !chatVisible() && !boardUi().openedTask() && !gitTarget()))}><FloatingBell /></Show>
-      <ChatLayer /><TerminalLayer /><Show when={onEditor() ? (getEditorTarget() ?? NO_EDITOR_TARGET) : undefined} keyed>{(_target) => <Editor />}</Show><Pairing /><NotifyInitRunner /><IncomingPushRunner /><SharingRequestsRunner /><QuitRunner /><SetupGate /><PairPhoneDialog /><Show when={can('desktopUpdater')}><DesktopUpdatePrompt /></Show><MermaidViewer /><ReviewViewer /><GitView /><Previewer /><LinkAnchorMenu />
+      <Show when={can('hosts') && (desktop() || (!onEditor() && !chatVisible() && !boardUi().openedTask() && !gitTarget()))}><FloatingBell /></Show>
+      <ChatLayer /><Show when={onEditor() ? (getEditorTarget() ?? NO_EDITOR_TARGET) : undefined} keyed>{(_target) => <Editor />}</Show><Pairing /><NotifyInitRunner /><IncomingPushRunner /><SharingRequestsRunner /><QuitRunner /><SetupGate /><PairPhoneDialog /><Show when={can('desktopUpdater')}><DesktopUpdatePrompt /></Show><MermaidViewer /><ReviewViewer /><GitView /><Previewer /><LinkAnchorMenu />
       <CommandPalette />
       <Show when={desktop()}><ShortcutsDialog /></Show>
       <DesktopNative />
-    </RecentsProvider></HostsProvider></SettingsProvider>
+    </HostsProvider></SettingsProvider>
   );
 }
 /** `/files` and `/files/edit` share one route: on the phone the editor is a full-screen layer and
@@ -103,11 +98,13 @@ function FilesRoute() {
 const gated = (cap: Capability, Screen: Component, title: string) => () => (
   <Requires cap={cap} fallback={<div class="page-screen"><PageHeader title={title} /><UnavailableNotice cap={cap} /></div>}><Screen /></Requires>
 );
-/** `/` and `/term` share one Home instance (no remount when a terminal
- * goes to the background); the terminal layer lives in the shell. `/files/edit`
- * is rendered by the shell directly (same full-screen-layer pattern) so
- * the Files list underneath keeps its scroll position. */
-export function Root() { return <HashRouter root={Shell}><Route path={['/', '/term']} component={gated('terminal', Sessions, 'Sessions')} /><Route path="/chat" component={gated('chat', Chat, 'Chat')} /><Route path="/board" component={Board} /><Route path={['/files', '/files/edit']} component={gated('files', FilesRoute, 'Files')} /><Route path="/cron" component={Cron} /><Route path="/settings" component={Settings} /><Route path="/setup" component={SetupWizard} /><Route path="/preview" component={Preview} /></HashRouter>; }
+/** Home is the session list (`/chat`); the web build (served by the kanboard
+ * daemon) has no sessions, so it opens on the Board. `/files/edit` is rendered
+ * by the shell directly (full-screen-layer pattern) so the Files list
+ * underneath keeps its scroll position. Herdr Sessions / Terminal and desktop
+ * streaming routes are gone (D-14, D-15). */
+function Home() { return <Navigate href={!can('chat') && can('board') ? '/board' : '/chat'} />; }
+export function Root() { return <HashRouter root={Shell}><Route path="/" component={Home} /><Route path="/chat" component={gated('chat', Chat, 'Chat')} /><Route path="/board" component={Board} /><Route path={['/files', '/files/edit']} component={gated('files', FilesRoute, 'Files')} /><Route path="/cron" component={Cron} /><Route path="/settings" component={Settings} /><Route path="/setup" component={SetupWizard} /><Route path="/preview" component={Preview} /></HashRouter>; }
 const root = document.getElementById('root');
 /** Visible viewport height (shrinks with the soft keyboard) for sheet caps. */
 function trackVisualViewport(): void {

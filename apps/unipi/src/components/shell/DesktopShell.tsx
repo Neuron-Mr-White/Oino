@@ -6,11 +6,11 @@
  */
 import { createEffect, createMemo, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { A, useLocation, useNavigate } from '@solidjs/router';
-import { Terminal, Columns3, Settings as SettingsIcon, MessagesSquare, Files as FilesIcon, Globe, Command as CommandIcon, Search, Clock } from 'lucide-solid';
+import { Columns3, Settings as SettingsIcon, MessagesSquare, Files as FilesIcon, Globe, Command as CommandIcon, Search, Clock } from 'lucide-solid';
 import { can, isWeb, type Capability } from '../../lib/platform';
 import { layout, SIDEBAR_WIDTH } from '../../lib/layout';
 import { modKey, paneFor, paletteOpen, registerCommands, screenOf, setPaletteOpen } from '../../lib/shell';
-import { syncChatVisibleOnScreenChange } from '../../lib/chat/open';
+import { syncChatVisibleOnScreenChange } from '../../lib/session/open';
 import crab from '../../assets/unicrab-pixel.png';
 import { EmptyState } from '../EmptyState';
 import { setShortcutsOpen, shortcutsOpen } from './ShortcutsDialog';
@@ -20,7 +20,6 @@ export type NavItem = { href: string; label: string; screen: string; cap?: Capab
 
 /** The main screens, in sidebar / Ctrl+1…9 order. */
 export const NAV: NavItem[] = [
-  { href: '/', label: 'Sessions', screen: 'sessions', cap: 'terminal', icon: (s) => <Terminal size={s} strokeWidth={1.6} /> },
   { href: '/chat', label: 'Chat', screen: 'chat', cap: 'chat', icon: (s) => <MessagesSquare size={s} strokeWidth={1.6} /> },
   { href: '/board', label: 'Board', screen: 'board', cap: 'board', icon: (s) => <Columns3 size={s} strokeWidth={1.6} /> },
   { href: '/files', label: 'Files', screen: 'files', cap: 'files', icon: (s) => <FilesIcon size={s} strokeWidth={1.6} /> },

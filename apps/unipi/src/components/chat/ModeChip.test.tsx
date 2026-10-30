@@ -11,7 +11,7 @@ import { createStore } from 'solid-js/store';
 import { ModeChip, ModePopover } from './ModeChip';
 import { ChatHeaderMenu } from './SessionMenus';
 import type { Chat } from '../../lib/chat/store';
-import type { LhProgress, LhRun } from '../../lib/chat/progress';
+import type { LhProgress, LhRun } from '../status/lhProgress';
 
 afterEach(() => {
   cleanup();
@@ -155,7 +155,7 @@ describe('⋯ menu', () => {
   it('has a "Working mode" row with the current mode', () => {
     const onMode = vi.fn();
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename onOpenSection={() => {}} onMode={onMode} modeHint="Plain" />
+      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename onOpenSection={() => {}} onMode={onMode} modeHint="Plain" />
     ));
     const row = screen.getByText('Working mode').closest('button')!;
     expect(row.textContent).toContain('Plain');

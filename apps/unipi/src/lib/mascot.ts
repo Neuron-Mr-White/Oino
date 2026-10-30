@@ -15,7 +15,7 @@ export const BUBBLE_MAX = 140;
 export const BUBBLE_MS = 6000;
 
 /** The bubble line for an item: the summarized reply / question pi sent
- *  (the same `body` ntfy carries, or the chat_list waiting title), else a
+ *  (the same `body` ntfy carries, or the session list's waiting title), else a
  *  plain "… finished / needs you". */
 export function bubbleText(item: Pick<NeedsYouItem, 'what' | 'title' | 'group' | 'hostName'>): string {
   let what = item.what?.trim();

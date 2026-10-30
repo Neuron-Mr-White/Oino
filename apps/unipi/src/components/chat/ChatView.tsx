@@ -6,7 +6,7 @@
  */
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { createVirtualizer } from '@tanstack/solid-virtual';
-import { ArrowDown, ChevronLeft, CircleAlert, Copy, Ellipsis, EllipsisVertical, Globe, History, Quote, RefreshCw, RotateCcw, SquareStack, SquareTerminal } from 'lucide-solid';
+import { ArrowDown, ChevronLeft, CircleAlert, Copy, Ellipsis, EllipsisVertical, Globe, History, Quote, RefreshCw, RotateCcw, SquareStack } from 'lucide-solid';
 import { useNavigate } from '@solidjs/router';
 import { useSettings } from '../../settings/context';
 import { hapticTick, type HapticKind } from '../../lib/haptics';
@@ -15,22 +15,19 @@ import { buildRows, formatDuration, liveActivity, rowIndexForEntry, textOf, tool
 import { SearchSheet } from './SearchSheet';
 import type { SearchHit } from '../../lib/chat/store';
 import { TERMINAL_ONLY } from '../../lib/chat/commands';
-import { chatVisible, closeChat, hideChat, markReturnToChat, openChatState } from '../../lib/chat/open';
-import { CloseChatSheet } from './CloseChatSheet';
-import { closeChatTarget, setCloseChatTarget } from '../../lib/chat/closeTarget';
-import { errorWords, folderName, hideChatFromList, newChatHere, targetFromNew } from '../../lib/chat/newChat';
-import { setTermTarget } from '../../lib/termTarget';
+import { chatVisible, closeChat, hideChat, markReturnToChat, openChatState } from '../../lib/session/open';
+import { errorWords, newChatHere } from '../../lib/session/newSession';
 import { setFilesTarget } from '../../lib/filesTarget';
 import { openGit } from '../../lib/git';
-import { addTaskFromChat, openBoardFromChat } from '../../lib/chat/boardPortal';
+import { addTaskFromChat, openBoardFromChat } from '../../lib/session/open';
 import { consumeMentionFor } from '../../lib/chat/mention';
 import { copyText, openExternal } from '../../lib/board/share';
 import { RowView } from './Transcript';
 import { desktopShell, menuAnchor } from '../../lib/layout';
 import { Composer, type ComposerApi } from './Composer';
 import { adjacentIndex, dragHasFiles, inTextField } from '../../lib/desktop';
-import { chatGroups, chatLists, needsYouFirst, WORKING_WORD } from '../../lib/chat/list';
-import { openChat } from '../../lib/chat/open';
+import { chatGroups, chatLists, needsYouFirst, WORKING_WORD } from '../../lib/session/list';
+import { openChat } from '../../lib/session/open';
 import { can, isTauriDesktop } from '../../lib/platform';
 import { describeLocal, registerDropZone, startNativeDrop } from '../../lib/localFiles';
 import { Upload } from 'lucide-solid';
@@ -39,12 +36,10 @@ import { DialogStack } from './DialogCard';
 import { FileRefMenu } from './FileRefMenu';
 import { BusyError, type SessionsItem, type TreeGoRestore, type TreeNode } from '../../lib/chat/store';
 import { imageRefFile } from './ImageChip';
-import { ChatHeaderMenu, MessageMenu, RenameSheet, ResumeSheet, RunConfirmSheet, TreeSheet, WelcomeState, type RunRequest } from './SessionMenus';
+import { ChatHeaderMenu, MessageMenu, RenameSheet, RunConfirmSheet, TreeSheet, WelcomeState, type RunRequest } from './SessionMenus';
 import { ProgressSheet, progressActive } from './ProgressSheet';
 import { chatModeView, ModeChip, ModePopover } from './ModeChip';
-import { progressSheetOpen, setProgressSheetOpen } from '../../lib/chat/progress';
-import { DreamSheet, dreamHint } from './DreamSheet';
-import { dreamSheetOpen, setDreamSheetOpen } from '../../lib/chat/dream';
+import { progressSheetOpen, setProgressSheetOpen } from '../status/lhProgress';
 import { BrowserSheet, BrowserSidePane } from './BrowserSide';
 import { browserPane, toggleBrowser } from '../../lib/browserPane';
 import { modKey } from '../../lib/shell';
@@ -222,8 +217,8 @@ export function ChatLayer() {
     const o = open();
     if (!o) return;
     const data = chatLists().get(o.target.hostId)?.data;
-    const all = chatGroups(o.target.hostId, data, data?.protected ?? []).flatMap((g) => needsYouFirst(g.items)).filter((t) => t.pid !== null);
-    const at = all.findIndex((t) => t.pid === o.target.pid);
+    const all = chatGroups(o.target.hostId, data).flatMap((g) => needsYouFirst(g.items));
+    const at = all.findIndex((t) => t.session === o.target.session);
     const next = adjacentIndex(all.length, at, delta);
     if (next === undefined || next === at) return;
     openChat(all[next]!, o.pcName);
@@ -270,7 +265,7 @@ export function ChatLayer() {
   createEffect(() => {
     if (!chatVisible()) pane.setSheet(false);
   });
-  const key = () => (open() ? `${open()!.target.hostId}:${open()!.target.pid}` : '');
+  const key = () => (open() ? `${open()!.target.hostId}:${open()!.target.session}` : '');
   const draft = () => drafts()[key()] ?? '';
   const setDraft = (text: string) => setDrafts((d) => ({ ...d, [key()]: text }));
 
@@ -288,7 +283,6 @@ export function ChatLayer() {
   const [headerMenu, setHeaderMenu] = createSignal<DOMRect | null>(null);
   // UNI-269: the working-mode popover (from the header chip, or ⋯ → Working mode).
   const [modeMenu, setModeMenu] = createSignal<DOMRect | null>(null);
-  const [resumeOpen, setResumeOpen] = createSignal(false);
   const [treeOpen, setTreeOpen] = createSignal(false);
   const [renameOpen, setRenameOpen] = createSignal(false);
   // Side question sheet (UNI-159): the "+" menu, or typed /btw, /unipi:btw.
@@ -315,21 +309,21 @@ export function ChatLayer() {
     });
   };
 
-  // A separate pi beside this one (same herdr workspace, same folder) — the
-  // fast path; "New session" restarts THIS pi's conversation instead.
+  // A separate session beside this one (same folder) — the fast path; "New
+  // session" restarts THIS session's conversation instead.
   const doNewHere = async () => {
     const cur = open();
     if (!cur) return;
     const cwd = s()?.session?.cwd ?? cur.target.cwdFull;
     setToast('Starting a new chat…');
-    const res = await newChatHere(cur.target, cwd);
+    const res = await newChatHere({ hostId: cur.target.hostId, cwdFull: cwd });
     if (!res.ok) {
       setToast(`Couldn't start a chat here: ${errorWords(res.error).text}`);
       setTimeout(() => setToast(null), 4000);
       return;
     }
     setToast(null);
-    openChat(targetFromNew(cur.target.hostId, res.value, folderName(res.value.cwd ?? cwd ?? cur.target.workspaceLabel), cur.target.workspaceLabel), cur.pcName);
+    openChat(res.value, cur.pcName);
   };
   const doNew = () => withBusyConfirm('Start a new session?', 'pi is still working on something. Stop it and start a new session?', (force) => chat()!.sessionNew(force));
   // UNI-308: /reload — "Reloading…" while the op is in flight, "Reloaded" once pi's
@@ -348,7 +342,7 @@ export function ChatLayer() {
     setTimeout(() => setToast((t) => (t === 'Reloading…' || t === 'Reloaded' ? null : t)), 3000);
   };
   const doResume = (item: SessionsItem) =>
-    withBusyConfirm('Resume this session?', 'pi is still working on something. Stop it and resume the other session?', (force) => chat()!.sessionResume(item.path, force).then(() => void setResumeOpen(false)));
+    withBusyConfirm('Resume this session?', 'pi is still working on something. Stop it and resume the other session?', (force) => chat()!.sessionResume(item.path, force));
   // UNI-290: a jump to a user message puts that message back in the composer (pi's /tree does the
   // same in the TUI editor). An empty draft is simply replaced; anything typed asks first.
   const [replaceConfirm, setReplaceConfirm] = createSignal<RunRequest | null>(null);
@@ -628,20 +622,6 @@ export function ChatLayer() {
     }
   };
 
-  const toTerminal = () => {
-    const o = open();
-    if (!o) return;
-    haptic();
-    setTermTarget({
-      hostId: o.target.hostId,
-      target: { mux: 'herdr', session: o.target.session, workspace_id: o.target.workspaceId, tab_id: o.target.tabId, pane_id: o.target.paneId },
-      label: o.target.workspaceLabel,
-      sublabel: o.target.session,
-    });
-    hideChat();
-    markReturnToChat();
-    navigate('/term');
-  };
 
   const onCommand = (name: string, args?: string): boolean => {
     if (name === 'files') {
@@ -681,8 +661,9 @@ export function ChatLayer() {
       return true;
     }
     if (name === 'resume') {
+      // Resuming lives in the session list (Z-19).
       haptic();
-      setResumeOpen(true);
+      hideChat();
       return true;
     }
     if (name === 'tree') {
@@ -788,7 +769,7 @@ export function ChatLayer() {
             <span class="chat-head-name truncate">{s()?.session?.name || open()!.target.title}</span>
             <span class="chat-head-sub truncate">
               <span class="pc-dot" data-state={s()?.conn === 'live' ? 'ok' : s()?.conn === 'connecting' ? 'checking' : 'error'} data-live={s()?.conn === 'live' ? 'live' : undefined} />
-              {s()?.fusionStatus ? modelHeaderLabel(chat()!) : `${open()!.pcName} · ${open()!.target.workspaceLabel}`}
+              {s()?.fusionStatus ? modelHeaderLabel(chat()!) : [open()!.pcName, open()!.target.cwd].filter(Boolean).join(' · ')}
             </span>
           </button>
           <Show when={s()}>
@@ -824,9 +805,6 @@ export function ChatLayer() {
               <Globe size={19} />
             </button>
           </Show>
-          <button type="button" class="chat-term-switch" aria-label="Open in terminal" onClick={toTerminal}>
-            <SquareTerminal size={18} />
-          </button>
         </header>
         <Show when={s()}>
           <Show when={!desktopShell()}>
@@ -867,7 +845,7 @@ export function ChatLayer() {
             </div>
           </Show>
           <Show when={s()?.conn === 'live' && s()?.entries.length === 0 && !s()?.pending.length && !s()?.run.running}>
-            <WelcomeState chat={chat()!} onResume={doResume} onOpenResume={() => setResumeOpen(true)} />
+            <WelcomeState chat={chat()!} onResume={doResume} />
           </Show>
           <div class="chat-virtual" style={{ height: `${virt.getTotalSize()}px` }}>
             <For each={virt.getVirtualItems()}>
@@ -1116,7 +1094,6 @@ export function ChatLayer() {
                 onSideQuestion={openBtw}
                 onNewSession={doNew}
                 onAddTask={() => addTaskFromChat(open()!.target.hostId, s()?.session?.cwd)}
-                onResume={() => setResumeOpen(true)}
                 api={(a) => (composerApi = a)}
               />
             }
@@ -1127,7 +1104,6 @@ export function ChatLayer() {
       </div>
       <ModelPickerSheet open={modelOpen()} onClose={() => setModelOpen(false)} chat={chat()!} onHaptic={() => haptic('tick')} />
       <ProgressSheet open={progressOpen()} onClose={() => setProgressOpen(false)} chat={chat()!} />
-      <DreamSheet open={dreamSheetOpen()} onClose={() => setDreamSheetOpen(false)} chat={chat()!} />
       <ControlCentreSheet open={ccOpen()} onClose={() => setCcOpen(false)} chat={chat()!} onHaptic={() => haptic('tick')} initialSection={ccSection()} />
       <Show when={headerMenu()} keyed>
         {(anchor) => (
@@ -1136,7 +1112,6 @@ export function ChatLayer() {
             onDismiss={() => setHeaderMenu(null)}
             onNew={doNew}
             onNewHere={() => void doNewHere()}
-            onResume={() => setResumeOpen(true)}
             onTree={() => setTreeOpen(true)}
             onSearch={() => setSearchOpen(true)}
             onRename={() => setRenameOpen(true)}
@@ -1147,8 +1122,6 @@ export function ChatLayer() {
             progressLive={progressActive(chat())}
             onMode={() => setModeMenu(anchor)}
             modeHint={chatModeView(chat())?.label ?? 'Plain'}
-            onDream={() => setDreamSheetOpen(true)}
-            dreamHint={dreamHint(chat())}
             onBoard={() => openBoardFromChat()}
             onAddTask={() => addTaskFromChat(open()!.target.hostId, s()?.session?.cwd)}
             onFilesHere={
@@ -1163,7 +1136,6 @@ export function ChatLayer() {
             }
             onGit={s()?.session?.cwd ? () => openGit({ hostId: open()!.target.hostId, path: s()!.session!.cwd!, from: 'chat' }) : undefined}
             gitStat={s()?.session?.cwd ? { hostId: open()!.target.hostId, path: s()!.session!.cwd! } : undefined}
-            onCloseChat={() => setCloseChatTarget(open()!.target)}
             onBrowser={canBrowser() ? openBrowser : undefined}
             browserOpen={desktopShell() ? pane.open() : pane.sheet()}
           />
@@ -1181,7 +1153,6 @@ export function ChatLayer() {
         )}
       </Show>
       <FileRefMenu />
-      <ResumeSheet open={resumeOpen()} onClose={() => setResumeOpen(false)} chat={chat()!} onPick={doResume} />
       <TreeSheet open={treeOpen()} onClose={() => setTreeOpen(false)} chat={chat()!} onPick={doTreeGo} onNavigate={(node) => (setTreeOpen(false), void navigateToEntry(node.id))} />
       <SearchSheet open={searchOpen()} onClose={() => setSearchOpen(false)} chat={chat()!} onPick={pickSearchHit} />
       <RenameSheet
@@ -1192,20 +1163,6 @@ export function ChatLayer() {
       />
       <RunConfirmSheet request={runConfirm()} onClose={() => setRunConfirm(null)} />
       <RunConfirmSheet request={replaceConfirm()} onClose={() => setReplaceConfirm(null)} />
-      <CloseChatSheet
-        target={closeChatTarget()}
-        pcName={open()?.pcName ?? ''}
-        running={!!s()?.run.running}
-        onClose={() => setCloseChatTarget(null)}
-        onDone={(choice) => {
-          const t = closeChatTarget();
-          setCloseChatTarget(null);
-          if (!t) return;
-          if (choice === 'hide') hideChatFromList(t.hostId, t);
-          closeChat();
-          void chatLists().load(t.hostId);
-        }}
-      />
       <BtwSheet
         open={btwOpen()}
         onClose={() => setBtwOpen(false)}

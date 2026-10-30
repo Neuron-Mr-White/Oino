@@ -10,7 +10,7 @@
 .chat-tab-list { padding: 4px var(--page-gutter) 0; display: flex; flex-direction: column; gap: 18px; }
 .chat-group-head { display: flex; align-items: baseline; gap: 8px; margin: 0 4px 8px; font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--color-text-muted); }
 .chat-group-session { margin-left: auto; font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--color-text-dim); }
-/* "+": a new pi beside the group's chats, same workspace (a new herdr tab). */
+/* "+": a new session beside the group's chats, same folder. */
 .chat-group-new { align-self: center; flex: 0 0 auto; display: grid; place-items: center; width: 28px; height: 28px; min-height: 28px; margin: -6px -4px -6px 0; border-radius: 9px; background: transparent; border: 0; color: var(--color-text-dim); }
 .chat-group-new:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
 .chat-group-new:disabled { opacity: .5; }
@@ -46,7 +46,6 @@
 .chat-head-title { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .chat-head-name { font-size: 16px; line-height: 21px; font-weight: 600; }
 .chat-head-sub { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
-.chat-term-switch { width: 40px; height: 40px; min-height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--color-surface-2); color: var(--color-text-muted); }
 .chat-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .chat-col { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 18px; max-width: 760px; margin: 0 auto; }
 .chat-truncated { margin: 0 0 4px; text-align: center; font-size: 12px; color: var(--color-text-dim); }
@@ -729,7 +728,7 @@ html[data-shell=desktop] .new-chat-where-row[aria-checked=true]:hover { backgrou
 .chat-mode-badge[data-paused] { background: transparent; border: 1px dashed color-mix(in srgb, var(--mode-tint) 50%, transparent); padding: 0 6px 0 5px; }
 @media (prefers-reduced-motion: reduce) { .mode-chip, .mode-chip-pulse, .mode-pop-spin { animation: none; } }
 @keyframes mode-spin { to { transform: rotate(360deg); } }
-.chat-head > :is(.ghost-icon-button, .chat-head-menu, .chat-term-switch) { flex-shrink: 0; }
+.chat-head > :is(.ghost-icon-button, .chat-head-menu) { flex-shrink: 0; }
 
 /* UNI-275: chat search + the jump highlight. Row rules are scoped to
    .search-list: .search-row is also the Board pickers' row (board.css), and a

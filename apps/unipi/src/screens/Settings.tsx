@@ -57,7 +57,7 @@ function Section(props: { title: string; icon: JSX.Element; children: JSX.Elemen
 const rowIcons: Record<string, typeof Info> = {
  'Font size':Type,'Line height':AlignJustify,'Cursor style':TextCursor,'Cursor blink':Sparkle,
  'Scrollback':ScrollText,'Phone-size policy':Smartphone,'Keep screen on':Sun,'Reopen last session':History,
- 'tmux friendly options':SquareTerminal,'Haptics':Vibrate,'Composer autocorrect':SpellCheck,'Toolbar':PanelBottom,
+ 'Haptics':Vibrate,'Composer autocorrect':SpellCheck,'Toolbar':PanelBottom,
  'Relay':RadioTower,'Path preference':Route,'Default project':KanbanSquare,'Show backlog':Archive,
  'Version':Info,'Platform':Smartphone,'Protocol':SquareTerminal,'Licences':ScrollText,
  'Enable phone notifications':Bell,'Server URL':Link2,'Topic':Bell,'Access token':Link2,
@@ -623,9 +623,6 @@ export default function Settings() {
         </Row>
         <Row label="Reopen last session">
           <SwitchField label="Reopen last session" checked={settings.terminal.reopenLast} onChange={(v) => update('terminal.reopenLast', v)} />
-        </Row>
-        <Row label="tmux friendly options" description="Apply mouse and titles on attach">
-          <SwitchField label="tmux friendly options" checked={settings.terminal.tmuxFriendlyOptions} onChange={(v) => update('terminal.tmuxFriendlyOptions', v)} />
         </Row>
       </Section>
       </Requires>

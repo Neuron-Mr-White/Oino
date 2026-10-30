@@ -1,13 +1,12 @@
 /**
- * UNI-222: long-horizon progress (goal / ralph / swarm / graph) as the bridge
- * sends it (`hello.lhProgress`, `lh_progress` pushes — docs/m5/PROTOCOL.md
- * §7), plus the pure pieces of the Progress sheet: the mermaid source for
+ * UNI-222: long-horizon progress (goal / ralph / swarm / graph) and the pure
+ * pieces of the LH status view (moved from lib/chat/progress.ts by WP-A1;
+ * the data arrives as topics / reserved panels after WP-A2, §3.10): the mermaid source for
  * graph/swarm (nodes coloured by status via classDef, deps as edges, waves
  * as subgraphs) and small formatters.
  */
 
 import { createSignal } from 'solid-js';
-import { isUnknownTypeError } from './bridgeError';
 
 /** The Progress sheet's open state — module-level so the desktop palette can open it too. */
 export const [progressSheetOpen, setProgressSheetOpen] = createSignal(false);
@@ -229,14 +228,39 @@ export type TranscriptItem =
 
 export type WorkTranscript = { id: string; items: TranscriptItem[]; report?: string };
 
-/** A failed request: pi's reason, or (an older bridge's "unknown type") `unsupported`. */
+/** A failed request: the reason, or (a host/extension that lacks the op) `unsupported`. */
 export type GraphError = { error: string; unsupported?: boolean };
 
-/** The app's text for a failed agent-graph request: an older bridge answers "unknown type"
- * (UNI-308: the same bridge wire error `friendlyBridgeError` in `bridgeError.ts` turns into
- * a generic "restart that pi session" message; this one names what was being attempted). */
+/** "Unknown command/type" from a host or extension that lacks the op. */
+export function isUnknownOpError(message: string | undefined | null): boolean {
+  return typeof message === 'string' && /^unknown (type|command)(\s|:|$)/i.test(message.trim());
+}
+
+/** The app's text for a failed agent-graph request; names what was being attempted
+ * when the host/extension does not know the op. */
 export function graphErrorText(message: string, what: string): GraphError {
-  return isUnknownTypeError(message) ? { error: `${what} needs a newer unipi on the PC.`, unsupported: true } : { error: message };
+  return isUnknownOpError(message) ? { error: `${what} needs a newer unipi on the PC.`, unsupported: true } : { error: message };
+}
+
+// Moved from the deleted Dream sheet helpers (lib/chat/dream.ts, WP-A1).
+/** `42s`, `3m 05s`, `1h 12m`. */
+export function durationText(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+/** "Today 14:02", "Yesterday 09:10", "Oct 3, 14:02". */
+export function startedText(ms: number, now = Date.now()): string {
+  const d = new Date(ms);
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const today = new Date(now);
+  const y = new Date(now - 86_400_000);
+  if (d.toDateString() === today.toDateString()) return `Today ${time}`;
+  if (d.toDateString() === y.toDateString()) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
 /** A quick shape check for one LhRun off the wire (history rows). */

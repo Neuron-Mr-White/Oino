@@ -1,6 +1,6 @@
 /**
  * "Needs you" bell + drawer (UNI-161): aggregates every paired host's chat
- * list (its bridges' `waiting` state — see lib/chat/list.ts ChatWaiting) into
+ * list (its sessions' `waiting` state — see lib/session/list.ts ChatWaiting) into
  * one flat feed across the whole app, grouped Waiting / Finished / Other for
  * the drawer, with a bell badge. Read/dismissed state persists locally
  * (localStorage) so it survives app restarts; it's keyed by host+pid+kind so
@@ -8,7 +8,7 @@
  * again (the `since` timestamp changes).
  *
  * Sources feeding `pushNeedsYouItems` (not this module's job to poll):
- * - live chat_list `waiting` state (UNI-161 §2), polled by whoever owns the
+ * - live session-list `waiting` state (UNI-161 §2; hub events after WP-A19), read by whoever owns the
  *   PC picker/Chat screen already (reuses that poll, no new one here);
  * - live bridge `dialog`/`dialog_end` events from any chat the app has open
  *   right now (ChatView forwards them);

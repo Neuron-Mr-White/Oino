@@ -15,8 +15,6 @@ describe('SettingsV1Schema', () => {
         sizePolicy: 'fit_phone',
         keepScreenOn: false,
         reopenLast: true,
-        tmuxFriendlyOptions: true,
-        herdrFollowFocus: true,
       },
       input: {
         haptics: true,
@@ -75,10 +73,11 @@ describe('SettingsV1Schema', () => {
   });
 });
 
-describe('settings migrations (herdrFollowFocus)', () => {
-  it('defaults herdrFollowFocus for v1 data saved before it existed', () => {
-    const parsed = SettingsV1Schema.parse({ version: 1, terminal: { fontSize: 16 } });
-    expect(parsed.terminal.herdrFollowFocus).toBe(true);
+describe('settings: v1 terminal-multiplexer keys (D-14)', () => {
+  it('drops the removed herdr/tmux attach options from saved data', () => {
+    const parsed = SettingsV1Schema.parse({ version: 1, terminal: { fontSize: 16, tmuxFriendlyOptions: false, herdrFollowFocus: false } });
+    expect(parsed.terminal).not.toHaveProperty('herdrFollowFocus');
+    expect(parsed.terminal).not.toHaveProperty('tmuxFriendlyOptions');
     expect(parsed.terminal.fontSize).toBe(16);
   });
 });

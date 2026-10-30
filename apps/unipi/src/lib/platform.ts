@@ -40,7 +40,7 @@ export type Capability =
   | 'hosts'
   /** Live terminal streams (term_open). */
   | 'terminal'
-  /** pi chat bridge (chat_open). */
+  /** Chat sessions (host session streams). */
   | 'chat'
   /** Remote filesystem browser/editor (fs_*). */
   | 'files'

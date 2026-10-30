@@ -85,7 +85,7 @@ describe('ChatHeaderMenu inside <Show> (UNI-226)', () => {
             anchor={a()}
             onDismiss={() => setAnchor(null)}
             onNew={() => {}}
-            onResume={() => {}}
+           
             onTree={() => {}}
             onRename={() => {}}
             canRename

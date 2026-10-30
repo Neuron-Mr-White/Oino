@@ -7,6 +7,7 @@
 import { Show, type JSX } from 'solid-js';
 import { CloudOff, RefreshCw } from 'lucide-solid';
 import crab from '../assets/unicrab-pixel.png';
+import { isUnreachableCode } from '../lib/host/client';
 
 export function EmptyState(props: {
   title: string;
@@ -42,7 +43,8 @@ export function EmptyState(props: {
   );
 }
 
-/** Shared "no PC paired yet" state for every host-dependent screen (F12). */
+/** Shared "no PC paired yet" state for every host-dependent screen (F12);
+ *  `HostGate` (ConnectionState.tsx) picks it, OfflineState or the content. */
 export function NoHostState(props: { what: string; onAdd: () => void }) {
   return (
     <EmptyState
@@ -103,7 +105,8 @@ export function OfflineState(props: {
   );
 }
 
-/** Error codes that mean "the PC can't be reached" (show OfflineState, not a generic error). */
+/** Error codes that mean "the PC can't be reached" (show OfflineState, not a generic error).
+ *  Same rule the HostClient uses for its connection state (lib/host, Z-90). */
 export function isUnreachable(code: string | undefined): boolean {
-  return code === 'E_TRANSPORT' || code === 'E_TIMEOUT';
+  return isUnreachableCode(code);
 }

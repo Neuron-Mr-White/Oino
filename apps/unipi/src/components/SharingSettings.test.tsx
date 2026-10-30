@@ -150,7 +150,7 @@ describe('Settings → Sharing with phones (desktop app)', () => {
     setLocalAdmin({
       call: async (req) =>
         req.op === 'host_info'
-          ? { version: '0.4.9', proto: '1.14.0', mode: 'service', pid: 42, started_at: 1, host_id: 'h', host_name: 'oi', data_dir: '/tmp/qa-248', tools: { herdr: true, tmux: true, pi: true, kanboard: true }, devices: 1 }
+          ? { version: '0.4.9', proto: '1.14.0', mode: 'service', pid: 42, started_at: 1, host_id: 'h', host_name: 'oi', data_dir: '/tmp/qa-248', tools: { oino: true, unipi_kanboard: true, browser_engines: ['chromium'], cloak: false }, devices: 1 }
           : { devices: [] },
     });
     render(() => <SharingSettings />);

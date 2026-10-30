@@ -44,7 +44,7 @@ function fakeChat(overrides?: { running?: boolean; queue?: unknown[]; commands?:
   return {
     state,
     hostId: 'host1',
-    pid: 42,
+    session: '42',
     send: vi.fn(),
     abort: vi.fn(),
     files: vi.fn(async () => []),
@@ -89,7 +89,7 @@ describe('chat Composer draft sync (UNI-136/212)', () => {
         onCommand={() => false}
         onSideQuestion={() => {}}
         onNewSession={() => {}}
-        onResume={() => {}}
+       
       />
     ));
     const field = container.querySelector('.chip-field')!;
@@ -105,7 +105,7 @@ describe('chat Composer image attachments (UNI-157)', () => {
     const [draft, setDraft] = createSignal('');
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     return { view, chat, draft };
   }
@@ -151,7 +151,7 @@ describe('chat Composer send choice (UNI-202, in-flow since UNI-212)', () => {
     const [draft, setDraft] = createSignal('do the thing');
     const chat = fakeChat({ running: true });
     const { container } = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     fireEvent.click(container.querySelector('.send-btn')!);
     const bar = container.querySelector('.send-choice-bar');
@@ -166,7 +166,7 @@ describe('chat Composer send choice (UNI-202, in-flow since UNI-212)', () => {
     const [draft, setDraft] = createSignal('steer this');
     const chat = fakeChat({ running: true });
     const { container } = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     fireEvent.click(container.querySelector('.send-btn')!);
     const [steerPill, queuePill] = [...container.querySelectorAll<HTMLButtonElement>('.send-choice-pill')];
@@ -183,7 +183,7 @@ describe('chat Composer send choice (UNI-202, in-flow since UNI-212)', () => {
     const [state, setState] = createStore<any>({ conn: 'live', run: { running: true }, entries: [], commands: [], models: [], dialogs: [], queue: [], pending: [] });
     const chat = { ...fakeChat(), state } as unknown as Chat;
     const { container } = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     fireEvent.click(container.querySelector('.send-btn')!);
     expect(container.querySelector('.send-choice-bar')).not.toBeNull();
@@ -196,7 +196,7 @@ describe('chat Composer send choice (UNI-202, in-flow since UNI-212)', () => {
     const [draft, setDraft] = createSignal('hello');
     const chat = fakeChat({ running: false });
     const { container } = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     fireEvent.click(container.querySelector('.send-btn')!);
     expect(container.querySelector('.send-choice-bar')).toBeNull();
@@ -209,7 +209,7 @@ describe('chat Composer queue strip (UNI-202/211, compact since UNI-212)', () =>
     const [draft, setDraft] = createSignal('');
     const chat = fakeChat({ running: true, queue });
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     return { view, chat };
   }
@@ -282,7 +282,7 @@ describe('desktop composer keys + paste (UNI-117)', () => {
     const [draft, setDraft] = createSignal(text);
     const chat = fakeChat({ running });
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     const field = view.container.querySelector('.chip-field') as HTMLElement;
     return { view, chat, field, draft };
@@ -340,7 +340,7 @@ describe('phone composer is unchanged (UNI-117)', () => {
     const [draft, setDraft] = createSignal('');
     const chat = fakeChat({ running: true });
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     const field = view.container.querySelector('.chip-field') as HTMLElement;
     fireEvent.keyDown(field, { key: 'Escape' });
@@ -381,7 +381,7 @@ describe('image chips in the draft (UNI-285)', () => {
     const [draft, setDraft] = createSignal('look at these: ');
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     caretToEnd(view);
     await pick(view, [pngFile('one.png'), pngFile('two.png')]);
@@ -397,7 +397,7 @@ describe('image chips in the draft (UNI-285)', () => {
     const [draft, setDraft] = createSignal('');
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     await pick(view, [pngFile('one.png'), pngFile('two.png')]);
     await waitFor(() => expect(stripImages(view)).toBe(2));
@@ -412,7 +412,7 @@ describe('image chips in the draft (UNI-285)', () => {
     const [draft, setDraft] = createSignal('');
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     await pick(view, [pngFile('one.png')]);
     await waitFor(() => expect(stripImages(view)).toBe(1));
@@ -428,7 +428,7 @@ describe('image chips in the draft (UNI-285)', () => {
     const [draft, setDraft] = createSignal('');
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     await pick(view, [pngFile('one.png')]);
     await waitFor(() => expect(stripImages(view)).toBe(1));
@@ -443,7 +443,7 @@ describe('image chips in the draft (UNI-285)', () => {
     const [draft, setDraft] = createSignal('compare ');
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     caretToEnd(view);
     await pick(view, [pngFile('one.png'), pngFile('two.png')]);
@@ -470,7 +470,7 @@ describe('image chip labelling in the draft (UNI-285)', () => {
     const [draft, setDraft] = createSignal('see [image]@img:ghost1 and [image]@img:ghost2 here');
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     await waitFor(() => expect(view.container.querySelectorAll('.ichip[data-kind=image]')).toHaveLength(2));
     expect(labels(view)).toEqual(['image 1', 'image 2']);
@@ -481,7 +481,7 @@ describe('image chip labelling in the draft (UNI-285)', () => {
     const [draft, setDraft] = createSignal('');
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} />
     ));
     const input = view.container.querySelector('input[type=file]') as HTMLInputElement;
     setInputFiles(input, [pngFile('bad.png'), pngFile('one.png')]);
@@ -501,7 +501,7 @@ describe('restore a message into the draft (UNI-290 "Start from here")', () => {
     const [draft, setDraft] = createSignal('');
     let api: ComposerApi | undefined;
     const view = render(() => (
-      <Composer chat={fakeChat()} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} api={(a) => (api = a)} />
+      <Composer chat={fakeChat()} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} api={(a) => (api = a)} />
     ));
     api!.restore('fix the login bug');
     expect(draft()).toBe('fix the login bug');
@@ -521,7 +521,7 @@ describe('restore a message into the draft (UNI-290 "Start from here")', () => {
     let api: ComposerApi | undefined;
     const chat = fakeChat();
     const view = render(() => (
-      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} api={(a) => (api = a)} />
+      <Composer chat={chat} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} api={(a) => (api = a)} />
     ));
     api!.restore('compare [image 1] with [image 2]', [Promise.resolve(pngFile('a.png')), Promise.resolve(pngFile('b.png'))]);
     expect(draft()).toMatch(/^compare \[image]@img:\S+ with \[image]@img:\S+$/);
@@ -539,7 +539,7 @@ describe('restore a message into the draft (UNI-290 "Start from here")', () => {
     const [draft, setDraft] = createSignal('');
     let api: ComposerApi | undefined;
     render(() => (
-      <Composer chat={fakeChat()} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} onResume={() => {}} api={(a) => (api = a)} />
+      <Composer chat={fakeChat()} draft={draft()} setDraft={setDraft} onHaptic={() => {}} onModel={() => {}} onCommand={() => false} onSideQuestion={() => {}} onNewSession={() => {}} api={(a) => (api = a)} />
     ));
     api!.restore('see [image 1]', [Promise.resolve(undefined)]);
     await waitFor(() => expect(draft()).toBe('see'));
@@ -562,7 +562,7 @@ describe('UNI-308: an unknown /command never falls through to a plain prompt', (
         onUnknownCommand={onUnknownCommand}
         onSideQuestion={() => {}}
         onNewSession={() => {}}
-        onResume={() => {}}
+       
       />
     ));
     fireEvent.click(view.container.querySelector('button[aria-label="Send"]') as HTMLButtonElement);
@@ -586,7 +586,7 @@ describe('UNI-308: an unknown /command never falls through to a plain prompt', (
         onUnknownCommand={onUnknownCommand}
         onSideQuestion={() => {}}
         onNewSession={() => {}}
-        onResume={() => {}}
+       
       />
     ));
     fireEvent.click(view.container.querySelector('button[aria-label="Send"]') as HTMLButtonElement);
@@ -611,7 +611,7 @@ describe('UNI-308: an unknown /command never falls through to a plain prompt', (
         onUnknownCommand={onUnknownCommand}
         onSideQuestion={() => {}}
         onNewSession={() => {}}
-        onResume={() => {}}
+       
       />
     ));
     fireEvent.click(document.querySelector('button[aria-label="Send"]') as HTMLButtonElement);

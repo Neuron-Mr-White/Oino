@@ -1,7 +1,8 @@
 /**
  * Terminal gesture classification (DESIGN.md §3.3): double-tap paste,
- * pinch font size, two-finger swipe pane switching, edge-swipe
- * tab/window switching. Pure mapping; the component owns pointers.
+ * pinch font size, two-finger swipe pane switching (the herdr edge-swipe
+ * tab switching went with herdr, D-14). Pure mapping; the component owns
+ * pointers.
  */
 
 /** A pointer pair during a two-finger gesture. */
@@ -12,9 +13,6 @@ export type TwoFingerState = {
 
 /** Swipe distance that triggers a pane/window switch. */
 export const SWIPE_THRESHOLD_PX = 60;
-
-/** Edge strip width for edge swipes. */
-export const EDGE_PX = 24;
 
 /** Font-size clamp for pinch (DESIGN.md §3.9). */
 export const FONT_MIN = 8;
@@ -27,23 +25,6 @@ export function twoFingerSwipe(state: TwoFingerState): 'pane_next' | 'pane_prev'
   // Swiping right moves focus to the pane on the left (content
   // follows the finger).
   return delta > 0 ? 'pane_prev' : 'pane_next';
-}
-
-/** Whether a single-finger drag started in a screen edge. */
-export function edgeStart(startX: number, viewportWidth: number): 'left' | 'right' | undefined {
-  if (startX <= EDGE_PX) return 'left';
-  if (startX >= viewportWidth - EDGE_PX) return 'right';
-  return undefined;
-}
-
-/** Edge swipe → next/previous herdr tab or tmux window. */
-export function edgeSwipeDirection(
-  edge: 'left' | 'right',
-  deltaX: number,
-): 'tab_next' | 'tab_prev' | undefined {
-  if (Math.abs(deltaX) < SWIPE_THRESHOLD_PX) return undefined;
-  if (edge === 'left') return deltaX < 0 ? 'tab_next' : 'tab_prev';
-  return deltaX > 0 ? 'tab_next' : 'tab_prev';
 }
 
 /** Pinch scale → next font size, clamped to 8–32. */

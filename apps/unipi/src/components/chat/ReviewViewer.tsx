@@ -17,7 +17,7 @@ import { pushBack } from '../../lib/back';
 import { editDiff, renderDiffHtml } from '../../lib/markdown';
 import { resolvePathToken } from '../../lib/media/pathTokens';
 import { setEditorTarget } from '../../lib/editorTarget';
-import { openChatState } from '../../lib/chat/open';
+import { openChatState } from '../../lib/session/open';
 import { turnFileEditLine, type TurnFile } from '../../lib/chat/model';
 
 export type ReviewRequest = { file: TurnFile; editIndex: number };

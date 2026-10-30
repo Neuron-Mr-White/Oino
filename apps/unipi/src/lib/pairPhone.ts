@@ -10,9 +10,13 @@
  * Closing the dialog cancels: unipi-host removes the code, so the QR on the
  * screen stops working.
  */
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
+import { appClient } from './host/factory';
 import { createRoot, createSignal } from 'solid-js';
 import { can, platform } from './platform';
+
+/** Pairing ops go through the app HostClient (lib/host, WP-A1). */
+const invoke = <T = unknown,>(op: string, args?: Record<string, unknown>): Promise<T> => appClient().request<T>(op, args);
 
 export const PAIR_TTL_SECONDS = 600;
 

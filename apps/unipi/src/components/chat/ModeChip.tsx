@@ -25,8 +25,8 @@ import {
   switchHint,
   type LhModeChoice,
   type ModeView,
-} from '../../lib/chat/lhMode';
-import { RUN_LABEL } from '../../lib/chat/progress';
+} from '../status/lhMode';
+import { RUN_LABEL } from '../status/lhProgress';
 import { StatusBar } from './StatusBar';
 
 /** Mode icon (unknown future ids get the generic one). */

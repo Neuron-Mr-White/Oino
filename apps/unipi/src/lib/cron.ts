@@ -9,14 +9,12 @@
  */
 import { z } from 'zod';
 import { hostCall } from './host/factory';
-import type { ChatNewTarget } from '@unipi/protocol';
 import {
   CronAddRequestSchema,
   CronEditRequestSchema,
   CronJobSchema,
   CronJobsDataSchema,
   CronLogDataSchema,
-  CronOpenSessionDataSchema,
   CronParseDataSchema,
   CronRunStartedDataSchema,
   CronRunsDataSchema,
@@ -133,10 +131,12 @@ export async function cronSettingsSet(hostId: string, patch: CronSettingsSetRequ
   return hostCall(hostId, 'cron_settings_set', { patch: CronSettingsSetRequestSchema.parse(patch) }, CronSettingsDataSchema);
 }
 
-/** UNI-319: open a run's saved session as a live chat — a pi already on it,
- * or one started at `target` (a New chat place). */
-export async function cronOpenSession(hostId: string, runId: string, target: ChatNewTarget) {
-  return hostCall(hostId, 'cron_open_session', { runId, target }, CronOpenSessionDataSchema);
+/** UNI-319: open a run's saved session as a live chat. The host opens it in
+ * its session hub and answers the session id (host.md §9.8; the herdr/tmux
+ * placement of v1 is gone, D-14). */
+const CronOpenedSchema = z.object({ session: z.string().min(1) });
+export async function cronOpenSession(hostId: string, runId: string) {
+  return hostCall(hostId, 'cron_open_session', { runId }, CronOpenedSchema);
 }
 
 /** UNI-319: what the form shows for a job's notify outcomes. */

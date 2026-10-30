@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Resume and Session tree sheets (UNI-158): basics — they load their list
+ * Session tree sheet (UNI-158): basics — they load their list
  * when opened, show the current session/leaf marked, and call back on pick.
  * BoardSheet portals its content to document.body, so queries go through
  * `screen` (document.body), not the render container.
@@ -8,7 +8,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'solid-js/store';
-import { ChatHeaderMenu, ResumeSheet, TreeSheet, filterTree, flattenTree, relativeTimeMs } from './SessionMenus';
+import { ChatHeaderMenu, TreeSheet, filterTree, flattenTree, relativeTimeMs } from './SessionMenus';
 import type { Chat, SessionsItem, TreeNode } from '../../lib/chat/store';
 
 afterEach(() => (document.body.innerHTML = ''));
@@ -41,59 +41,29 @@ describe('relativeTimeMs', () => {
   });
 });
 
-describe('ResumeSheet', () => {
-  it('loads sessions when opened and marks the current one', async () => {
-    const items: SessionsItem[] = [
-      { path: '/a.jsonl', id: 'a', cwd: '/p', firstMessage: 'fix the bug', modified: Date.now(), messageCount: 3, current: true },
-      { path: '/b.jsonl', id: 'b', cwd: '/p', firstMessage: 'add a feature', modified: Date.now() - 60_000, messageCount: 1, current: false },
-    ];
-    const sessions = vi.fn(async () => ({ items, more: false }));
-    const chat = fakeChat({ sessions } as never);
-    const onPick = vi.fn();
-    render(() => <ResumeSheet open chat={chat} onClose={() => {}} onPick={onPick} />);
-    await waitFor(() => expect(sessions).toHaveBeenCalledWith('cwd', undefined));
-    await waitFor(() => expect(screen.getByText('fix the bug')).toBeTruthy());
-    const current = document.body.querySelector('[aria-current="true"]');
-    expect(current?.textContent).toContain('fix the bug');
-    const rows = document.body.querySelectorAll('.resume-row');
-    expect(rows).toHaveLength(2);
-    (rows[1] as HTMLButtonElement).click();
-    expect(onPick).toHaveBeenCalledWith(items[1]);
-  });
-
-  it('switches scope to All projects and re-queries', async () => {
-    const sessions = vi.fn(async () => ({ items: [], more: false }));
-    const chat = fakeChat({ sessions } as never);
-    render(() => <ResumeSheet open chat={chat} onClose={() => {}} onPick={() => {}} />);
-    await waitFor(() => expect(sessions).toHaveBeenCalledWith('cwd', undefined));
-    screen.getByText('All projects').click();
-    await waitFor(() => expect(sessions).toHaveBeenCalledWith('all', undefined));
-  });
-});
-
 describe('ChatHeaderMenu', () => {
   const anchor = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
 
-  it('"New chat in this workspace" (a separate pi beside this one) shows with onNewHere and runs it; "New session" stays', () => {
+  it('"New chat in this folder" (a separate pi beside this one) shows with onNewHere and runs it; "New session" stays', () => {
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename />
+      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename />
     ));
-    expect(screen.queryByText('New chat in this workspace')).toBeNull();
+    expect(screen.queryByText('New chat in this folder')).toBeNull();
     cleanup();
     const onNewHere = vi.fn();
     const onDismiss = vi.fn();
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={onDismiss} onNew={() => {}} onNewHere={onNewHere} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename />
+      <ChatHeaderMenu anchor={anchor} onDismiss={onDismiss} onNew={() => {}} onNewHere={onNewHere} onTree={() => {}} onRename={() => {}} canRename />
     ));
     expect(screen.getByText('New session')).toBeTruthy();
-    screen.getByText('New chat in this workspace').click();
+    screen.getByText('New chat in this folder').click();
     expect(onDismiss).toHaveBeenCalled();
     expect(onNewHere).toHaveBeenCalled();
   });
 
   it('shows "Files here" only when onFilesHere is provided (a known cwd)', () => {
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename />
+      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename />
     ));
     expect(screen.queryByText('Files here')).toBeNull();
   });
@@ -101,7 +71,7 @@ describe('ChatHeaderMenu', () => {
   it('calls onFilesHere when the row is tapped', () => {
     const onFilesHere = vi.fn();
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename onFilesHere={onFilesHere} />
+      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename onFilesHere={onFilesHere} />
     ));
     screen.getByText('Files here').click();
     expect(onFilesHere).toHaveBeenCalled();
@@ -109,14 +79,14 @@ describe('ChatHeaderMenu', () => {
 
   it('UNI-217: "Git" shows only with onGit (a known cwd) and runs it', () => {
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename />
+      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename />
     ));
     expect(screen.queryByText('Git')).toBeNull();
     cleanup();
     const onGit = vi.fn();
     const onDismiss = vi.fn();
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={onDismiss} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename onGit={onGit} />
+      <ChatHeaderMenu anchor={anchor} onDismiss={onDismiss} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename onGit={onGit} />
     ));
     screen.getByText('Git').click();
     expect(onDismiss).toHaveBeenCalled();
@@ -125,7 +95,7 @@ describe('ChatHeaderMenu', () => {
 
   it('UNI-188: shows Running / Context / Session info only with onOpenSection, with the running count hint', () => {
     render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename />
+      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename />
     ));
     expect(screen.queryByText('Running')).toBeNull();
 
@@ -137,7 +107,7 @@ describe('ChatHeaderMenu', () => {
         anchor={anchor}
         onDismiss={onDismiss}
         onNew={() => {}}
-        onResume={() => {}}
+       
         onTree={() => {}}
         onRename={() => {}}
         canRename

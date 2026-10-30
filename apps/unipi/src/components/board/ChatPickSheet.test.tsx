@@ -3,48 +3,11 @@
 import { render, screen, waitFor, cleanup } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatPickSheet } from './ChatPickSheet';
-import { setChatTransport, type ChatListData } from '../../lib/chat/transport';
+import { setChatTransport, type SessionListData } from '../../lib/session/link';
 import { rankChatsForProject } from '../../lib/board/portal';
 
-function listing(panes: Array<{ id: string; cwd: string }>): ChatListData {
-  return {
-    herdr: {
-      available: true,
-      sessions: [
-        {
-          name: 'default',
-          running: true,
-          default: true,
-          workspaces: [
-            {
-              id: 'w1',
-              label: 'main',
-              number: 1,
-              focused: true,
-              agent_status: 'idle',
-              tab_count: 1,
-              pane_count: panes.length,
-              tabs: [
-                {
-                  id: 'w1:t1',
-                  label: 't',
-                  number: 1,
-                  focused: true,
-                  agent_status: 'idle',
-                  panes: panes.map((p, i) => ({
-                    id: p.id,
-                    focused: false,
-                    agent: { name: 'pi', status: 'idle' as const },
-                    chat: { pid: 100 + i, session_name: p.id, cwd: p.cwd },
-                  })),
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  } as unknown as ChatListData;
+function listing(panes: Array<{ id: string; cwd: string }>): SessionListData {
+  return { sessions: panes.map((p) => ({ id: p.id, title: p.id, cwd: p.cwd, state: 'idle' as const })) };
 }
 
 afterEach(() => {

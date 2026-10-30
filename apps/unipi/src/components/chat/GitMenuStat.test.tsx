@@ -17,7 +17,7 @@ const anchor = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0
 let n = 0;
 const menu = (path = `/p/${++n}`) =>
   render(() => (
-    <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename onGit={() => {}} gitStat={{ hostId: 'h1', path }} />
+    <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename onGit={() => {}} gitStat={{ hostId: 'h1', path }} />
   ));
 
 beforeEach(() => call.mockReset());
@@ -77,7 +77,7 @@ describe('Git row +/- (UNI-257)', () => {
   });
 
   it('no gitStat prop → no request', () => {
-    render(() => <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onResume={() => {}} onTree={() => {}} onRename={() => {}} canRename onGit={() => {}} />);
+    render(() => <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename onGit={() => {}} />);
     expect(call).not.toHaveBeenCalled();
   });
 });

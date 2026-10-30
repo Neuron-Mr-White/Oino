@@ -50,7 +50,8 @@ import {
 import './sharing.css';
 
 const ICON: Record<FeatureKind, typeof Plug> = { forward: Plug, browser: Globe, desktop: MonitorSmartphone, push: Send, cron: Clock };
-const FEATURES: FeatureKind[] = ['forward', 'browser', 'desktop', 'push', 'cron'];
+/** The switches shown; desktop streaming is deferred (D-15), so it has none. */
+const FEATURES: FeatureKind[] = ['forward', 'browser', 'push', 'cron'];
 
 function useChange() {
   const [busy, setBusy] = createSignal<string | undefined>();

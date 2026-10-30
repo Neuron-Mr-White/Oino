@@ -22,7 +22,7 @@ import {
   type SetupTransport,
 } from './setup';
 
-/** A PC with Node old, pi missing, UniPi alpha, herdr fine and no tmux. */
+/** A PC with Node old, pi missing, UniPi alpha, the board fine and no xvfb. */
 function report(overrides: Partial<SetupReport> = {}): SetupReport {
   return {
     components: [
@@ -31,8 +31,7 @@ function report(overrides: Partial<SetupReport> = {}): SetupReport {
       { name: 'pi', state: 'missing', source: 'found', fix: 'Install pi' },
       { name: 'unipi', state: 'ok', version: '3.0.0-alpha.41', source: 'found' },
       { name: 'kanboard', state: 'ok', version: '0.2.0', source: 'found' },
-      { name: 'herdr', state: 'ok', version: '0.9.1', source: 'found' },
-      { name: 'tmux', state: 'unsupported', source: 'found', fix: 'sudo apt install tmux', note: 'Optional' },
+      { name: 'xvfb', state: 'unsupported', source: 'found', fix: 'sudo apt install xvfb', note: 'Optional' },
       { name: 'host', state: 'missing', source: 'unipi-managed' },
     ],
     path: { value: '/usr/bin', fromShell: [], localBinOnLoginPath: true, probed: true },
@@ -170,15 +169,15 @@ describe('the wizard’s rows (UNI-241, §4.3)', () => {
     ).toBe(false);
   });
 
-  it('tmux is never pre-ticked: its step is manual, the command is the answer', () => {
+  it('xvfb is never pre-ticked: its step is manual, the command is the answer', () => {
     const r = setupRows(report());
-    const tmux = r.find((x) => x.id === 'tmux')!;
-    expect(tmux.manual).toBe(true);
-    expect(tmux.ticked).toBe(false);
-    expect(tmux.note).toContain('sudo apt install tmux');
-    expect(tmux.note).toContain('needs admin rights');
+    const xvfb = r.find((x) => x.id === 'xvfb')!;
+    expect(xvfb.manual).toBe(true);
+    expect(xvfb.ticked).toBe(false);
+    expect(xvfb.note).toContain('sudo apt install xvfb');
+    expect(xvfb.note).toContain('needs admin rights');
     // Nothing to do means the consent line says so.
-    expect(consentLine(r.map((x) => ({ ...x, ticked: x.id === 'tmux' })))).toBe('Everything UniPi needs is already here');
+    expect(consentLine(r.map((x) => ({ ...x, ticked: x.id === 'xvfb' })))).toBe('Everything UniPi needs is already here');
   });
 
   it('agent-browser is optional, missing is pre-ticked, and present reads up to date', () => {
