@@ -21,11 +21,10 @@ pub fn active_index(tabs: &[TrayTab], requested: Option<&str>) -> usize {
     pick_initial_tab(tabs, requested)
 }
 
-/// A producer's pane body (`TrayTab.body`, v2 node JSON); `None` renders the empty state.
+/// A producer's pane body (`TrayTab.body`); `None` renders the empty state.
 fn body(tab: &TrayTab) -> Node {
     tab.body
-        .as_ref()
-        .and_then(|body| serde_json::from_value::<Node>(body.clone()).ok())
+        .clone()
         .unwrap_or_else(|| Empty::new().message("Nothing to show.").into())
 }
 
@@ -107,10 +106,9 @@ mod tests {
             counts: Counts { total, running },
             visible: true,
             body: Some(
-                serde_json::to_value(Node::from(
-                    List::new(Vec::<ListItem>::new()).on_activate(format!("{id}:open")),
-                ))
-                .unwrap_or(Value::Null),
+                List::new(Vec::<ListItem>::new())
+                    .on_activate(format!("{id}:open"))
+                    .into(),
             ),
             owner: Some("unipi.background-tasks".into()),
         }

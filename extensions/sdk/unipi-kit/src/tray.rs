@@ -8,6 +8,7 @@
 //! ([`ActionReply`]) may close the tray or ask for a refresh. Producers publish
 //! [`crate::topics::WORK_TRAY_CHANGED`] when their counts change.
 
+use oino_ui::Node;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -57,9 +58,9 @@ pub struct TrayTab {
     /// `false` hides the tab (Dream with no history and dreaming off).
     #[serde(default = "yes")]
     pub visible: bool,
-    /// Pane content (OUS node); `None` when not requested.
+    /// Pane content (v2 node); `None` when not requested.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body: Option<Value>,
+    pub body: Option<Node>,
     /// Owning extension (filled by the tray).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,

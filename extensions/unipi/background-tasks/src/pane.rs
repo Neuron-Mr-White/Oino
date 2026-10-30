@@ -192,11 +192,6 @@ fn line_spans(spans: Vec<Span>) -> Paragraph {
     Paragraph::new(Line::from(spans)).wrap(Wrap::Disabled(false))
 }
 
-/// A built node as the wire JSON the renderer callback returns.
-fn node(node: impl Into<Node>) -> Value {
-    serde_json::to_value(node.into()).unwrap_or(Value::Null)
-}
-
 fn flash_node(state: &PaneState) -> Option<Node> {
     state
         .flash
@@ -206,7 +201,7 @@ fn flash_node(state: &PaneState) -> Option<Node> {
 
 /// List view body.
 #[must_use]
-pub fn list_body(tasks: &[Snapshot], state: &PaneState, now: i64) -> Value {
+pub fn list_body(tasks: &[Snapshot], state: &PaneState, now: i64) -> Node {
     let ordered = order_tasks(tasks);
     let mut children: Vec<Node> = Vec::new();
     if ordered.is_empty() {
@@ -258,7 +253,7 @@ pub fn list_body(tasks: &[Snapshot], state: &PaneState, now: i64) -> Value {
         ])
         .into(),
     );
-    node(Layout::default().children(children))
+    Layout::default().children(children).into()
 }
 
 /// The output read for the detail view.
@@ -431,7 +426,7 @@ fn buttons_row(t: &Snapshot, full_log: bool) -> Node {
 
 /// Detail view body.
 #[must_use]
-pub fn detail_body(t: &Snapshot, log: Option<&LogView>, state: &PaneState, now: i64) -> Value {
+pub fn detail_body(t: &Snapshot, log: Option<&LogView>, state: &PaneState, now: i64) -> Node {
     let status_text = match t.status {
         Status::Running if t.trigger_on_completion => "running · wakes agent".to_owned(),
         Status::Running => "running".to_owned(),
@@ -490,7 +485,7 @@ pub fn detail_body(t: &Snapshot, log: Option<&LogView>, state: &PaneState, now: 
         ])
         .into(),
     );
-    node(Layout::default().children(children))
+    Layout::default().children(children).into()
 }
 
 /// `Counts` of the tab (`total`, `running`).
@@ -509,6 +504,11 @@ pub fn counts(tasks: &[Snapshot]) -> unipi_kit::tray::Counts {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// A node as the wire JSON the tray carries.
+    fn wire(node: Node) -> Value {
+        serde_json::to_value(node).unwrap_or_default()
+    }
 
     fn t(id: &str, status: Status, start: i64, end: Option<i64>) -> Snapshot {
         Snapshot {
@@ -544,20 +544,20 @@ mod tests {
         let f = t("f", Status::Failed, 0, Some(1000));
         assert_eq!(task_tags(&f, 0), ["1s", "559B", "exit 1"]);
         assert_eq!(short_command(&r).as_deref(), Some("run r --long"));
-        let body = list_body(&[r.clone(), f], &PaneState::default(), 70_000);
+        let body = wire(list_body(&[r.clone(), f], &PaneState::default(), 70_000));
         assert_eq!(body["children"][0]["title"], "Running");
         assert_eq!(body["children"][1]["title"], "Recent");
         assert_eq!(body["children"][0]["t"], "Block");
         assert_eq!(body["children"][0]["child"]["onActivate"], "bg:open");
         assert_eq!(body["children"][0]["child"]["state"]["selected"], "r");
-        let empty = list_body(&[], &PaneState::default(), 0);
+        let empty = wire(list_body(&[], &PaneState::default(), 0));
         assert_eq!(empty["children"][0]["message"], "No background tasks.");
-        let d = detail_body(
+        let d = wire(detail_body(
             &r,
             Some(&LogView::from_read("x\ny\n", 4)),
             &PaneState::default(),
             0,
-        );
+        ));
         let s = d.to_string();
         assert!(s.contains("\"bg:stop:r\"") && s.contains("\"bg:kill:r\""));
         assert!(s.contains("running · wakes agent"));

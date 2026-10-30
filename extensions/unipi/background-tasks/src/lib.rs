@@ -43,6 +43,7 @@ use std::time::Duration;
 
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::widgets::prelude::*;
 use oino_extension::wit::registry::RendererTarget;
 use unipi_kit::bus::Delivery;
 use unipi_kit::services::{OpenTray, fanout as fan, point};
@@ -535,7 +536,7 @@ impl Bg {
         }
     }
 
-    fn body(&self, cx: &Ctx, snaps: &[Snapshot]) -> Value {
+    fn body(&self, cx: &Ctx, snaps: &[Snapshot]) -> Node {
         let state = self.sessions.with(cx.session_id(), |s| s.pane.clone());
         let now = timers::now_ms();
         let Some(view) = state

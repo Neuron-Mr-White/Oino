@@ -645,36 +645,32 @@ impl Dream {
             running: u32::try_from(runs.iter().filter(|r| r.status == Status::Running).count())
                 .unwrap_or(u32::MAX),
         };
-        let body = req
-            .open
-            .then(|| {
-                let view = self.views.with(cx.session_id(), |v| {
-                    let snapshot = v.clone();
-                    v.flash = None;
-                    snapshot
-                });
-                let now = timers::now_ms();
-                match view
-                    .open
-                    .as_ref()
-                    .and_then(|id| runs.iter().find(|r| &r.id == id))
-                {
-                    Some(run) => {
-                        let (steps, log) = store::run_trajectory(&run.staging, 200);
-                        tray::detail_body(
-                            run,
-                            &store::read_report(&run.staging),
-                            &steps,
-                            &log,
-                            &view,
-                            now,
-                        )
-                    }
-                    None => tray::list_body(&runs, cfg.enabled, &view, now),
+        let body = req.open.then(|| {
+            let view = self.views.with(cx.session_id(), |v| {
+                let snapshot = v.clone();
+                v.flash = None;
+                snapshot
+            });
+            let now = timers::now_ms();
+            match view
+                .open
+                .as_ref()
+                .and_then(|id| runs.iter().find(|r| &r.id == id))
+            {
+                Some(run) => {
+                    let (steps, log) = store::run_trajectory(&run.staging, 200);
+                    tray::detail_body(
+                        run,
+                        &store::read_report(&run.staging),
+                        &steps,
+                        &log,
+                        &view,
+                        now,
+                    )
                 }
-            })
-            // `TrayTab.body` is still the wire `Value` (unipi-kit); the node goes over as v2 JSON.
-            .map(|node| serde_json::to_value(node).unwrap_or(Value::Null));
+                None => tray::list_body(&runs, cfg.enabled, &view, now),
+            }
+        });
         json!(TrayTab {
             id: "dream".into(),
             label: "Dream".into(),

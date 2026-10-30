@@ -19,7 +19,6 @@ only on the `oino-extension` SDK. Add it with `unipi-kit.workspace = true`.
 | `tray` | work-tray contract (`TrayTab`, `TabRequest`, `Action`, `ActionReply`), `WorkItem`/`Dot`, `tray_hint_text` |
 | `paths` | `global/workspace/session/tmp/cache/logs(rel)`, `host_path`, `read_json`/`write_json` |
 | `fmt` | `format_tokens`, `format_bytes`, `compare_versions`, `parse_args`, `iso_from_ms`, `truncate_to_width` |
-| `ous` | small OUS v1 node builders — transitional: use `oino_extension::ui::widgets` (`oino-ui`, ui-protocol §11); removed by WP-U7a/U7b once the last v1 emitter is migrated |
 
 Serving a work-tray tab (background-tasks, subagents, dream):
 

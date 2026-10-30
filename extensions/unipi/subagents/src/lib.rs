@@ -1181,7 +1181,7 @@ impl Subagents {
             order: 1,
             counts,
             visible: true,
-            body: req.open.then(|| self.body(sid, &records)),
+            body: req.open.then(|| self.body_node(sid, &records)),
             owner: None,
         }
     }
@@ -1204,10 +1204,6 @@ impl Subagents {
     fn guest_session_file(&self, host: &str) -> PathBuf {
         let _ = self;
         guest_session_file(host)
-    }
-
-    fn body(&self, sid: &str, records: &[Record]) -> Value {
-        wire(self.body_node(sid, records))
     }
 
     fn body_node(&self, sid: &str, records: &[Record]) -> Node {

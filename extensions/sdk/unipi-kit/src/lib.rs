@@ -22,7 +22,6 @@
 //! | [`tray`] | `src/work/*` | work-tray tab contract, hint line, work items |
 //! | [`paths`] | `src/workspace/*`, `utils.ts` | preopen state paths, host-path mapping, JSON files |
 //! | [`fmt`] | `utils.ts` | tokens/bytes/version/args formatting, ISO time, widths |
-//! | [`ous`] | — | OUS node builders |
 //!
 //! # Errors
 //!
@@ -45,7 +44,6 @@ pub mod bus;
 pub mod fanout;
 pub mod fmt;
 pub mod jev;
-pub mod ous;
 pub mod paths;
 pub mod provenance;
 pub mod savings;
