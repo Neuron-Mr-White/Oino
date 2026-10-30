@@ -28,9 +28,10 @@
 //!   events never dropped. A slow client applies backpressure through its bounded channel:
 //!   non-delta events wait for room (correctness first), deltas are cumulative-append and
 //!   may be dropped when the channel is full (lossy by design, §7.4).
-//! - **Host-only events** ride the same envelope with reserved `type`s (§7.4): the tap adds
-//!   `{type:"crashed", error}` and `{type:"taken_over", from}` next to the core event that
-//!   caused them, so the app's banner has the resolved text.
+//! - **Host-only events** ride the same envelope with reserved `kind`s (§7.4): the tap adds
+//!   `{kind:"crashed", error}` and `{kind:"taken_over", from}` next to the core event that
+//!   caused them, so the app's banner has the resolved text (core events are tagged `type`,
+//!   host-only ones `kind`).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -336,13 +337,13 @@ impl Feed {
                         ClientEvent::Oino(oino_core::events::OinoEvent::SessionCrashed {
                             ref error,
                         }) => {
-                            self.publish(json!({"type": "crashed", "error": error}))
+                            self.publish(json!({"kind": "crashed", "error": error}))
                                 .await;
                         }
                         ClientEvent::Oino(oino_core::events::OinoEvent::SessionTakenOver {
                             ref by,
                         }) => {
-                            self.publish(json!({"type": "taken_over", "from": by.client}))
+                            self.publish(json!({"kind": "taken_over", "from": by.client}))
                                 .await;
                             self.mark_disposed();
                             return;
@@ -458,14 +459,27 @@ impl SessionService {
     }
 
     /// The feed of `session_id` (created on first use).
+    ///
+    /// A feed whose runtime replaced its session id (a fork, §7.3) keeps numbering under the
+    /// new id; the registry catches up with it here, so a forked stream shares one feed
+    /// instead of tapping the runtime twice.
     #[must_use]
     pub fn feed(&self, session_id: &str) -> Arc<Feed> {
         let mut feeds = lock(&self.feeds);
-        Arc::clone(
-            feeds
-                .entry(session_id.to_owned())
-                .or_insert_with(|| Feed::new(session_id)),
-        )
+        if let Some(feed) = feeds.get(session_id) {
+            return Arc::clone(feed);
+        }
+        if let Some(feed) = feeds
+            .values()
+            .find(|feed| feed.session_id() == session_id)
+            .map(Arc::clone)
+        {
+            feeds.insert(session_id.to_owned(), Arc::clone(&feed));
+            return feed;
+        }
+        let feed = Feed::new(session_id);
+        feeds.insert(session_id.to_owned(), Arc::clone(&feed));
+        feed
     }
 
     /// Moves a feed when the runtime replaces its session (a fork keeps the stream, §7.3).
@@ -791,10 +805,7 @@ async fn snapshot(
 }
 
 fn field_array(value: Option<&Value>, field: &str) -> Option<Vec<Value>> {
-    value?
-        .get(field)
-        .and_then(Value::as_array)
-        .map(|items| items.clone())
+    value?.get(field).and_then(Value::as_array).cloned()
 }
 
 async fn send_data(

@@ -97,7 +97,7 @@
             "assistantMessageEvent": { "type": "text_delta", "contentIndex": 0, "delta": "hi" }
           }
         },
-        { "session": "s1", "seq": 45, "event": { "type": "crashed", "error": "tool body exploded" } }
+        { "session": "s1", "seq": 45, "event": { "kind": "crashed", "error": "tool body exploded" } }
       ]
     }
   },

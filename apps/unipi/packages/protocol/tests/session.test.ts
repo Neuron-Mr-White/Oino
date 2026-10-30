@@ -67,6 +67,7 @@ describe('session contract fixtures (v2 host.md §7.3–7.4)', () => {
 
 describe('session host events', () => {
   it('maps the host-only kinds to banner text', () => {
+    expect(hostEventBanner({ kind: 'crashed', error: 'tool body exploded' })).toContain('tool body exploded');
     expect(hostEventBanner({ type: 'crashed', error: 'tool body exploded' })).toContain('tool body exploded');
     expect(hostEventBanner({ type: 'taken_over', from: 'tui' })).toContain('tui');
     expect(hostEventBanner({ type: 'reloaded' })).toBeTruthy();
