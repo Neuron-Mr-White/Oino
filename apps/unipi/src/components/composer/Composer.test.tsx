@@ -18,6 +18,8 @@ import { setDesktopOverride, resetLayout } from '../../lib/layout';
 import { resetComposerDrafts, flushComposerDrafts, composerDraft } from '../../lib/composer/drafts';
 import { installEscapeStop } from '../../lib/composer/escapeStop';
 import { Composer } from './Composer';
+import { shortcutsOpen } from '../shell/ShortcutsDialog';
+import { actionNotice } from '../../lib/timeline/actions';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
@@ -374,5 +376,42 @@ describe('send ↔ stop (WP-A11 matrix: Enter = default, Cmd/Ctrl+Enter the oppo
     field.focus();
     fireEvent.keyDown(field, { key: 'Escape' });
     await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'abort')).toBe(true));
+  });
+});
+
+describe('pi built-ins route to app surfaces (WP-A25, G-15)', () => {
+  it('/hotkeys opens the keyboard list and clears the draft (never a prompt)', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/hotkeys');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).not.toBeNull());
+    c.key({ key: 'Escape' });
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).toBeNull());
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(shortcutsOpen()).toBe(true));
+    expect(composerDraft(s.key).text).toBe('');
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
+  });
+
+  it('/share and /trust explain themselves instead of a prompt', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/share');
+    c.key({ key: 'Escape' });
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(actionNotice() ?? '').toMatch(/Export/));
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
+  });
+
+  it('an extension command of the same name wins over the app route', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    // The mock session lists `model` as a builtin; `settings` is not listed, so
+    // the app route handles it — and never sends it as a prompt.
+    c.setText('/settings');
+    c.key({ key: 'Escape' });
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(location.hash).toBe('#/settings/general'));
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
   });
 });

@@ -392,13 +392,13 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     // the only entry points) instead of becoming a prompt.
     if (!props.readOnly && cmd && cmd[1] === 'model' && !cmd[2]?.trim()) {
       openModelPicker({ hostId: hostId(), sessionId: props.session.sessionId() });
-      afterSend(text);
+      afterRoute(text);
       return;
     }
     // `/btw` opens the side question instead of sending to the main chat (Z-31).
     if (cmd && (cmd[1] === 'btw' || cmd[1] === 'unipi:btw')) {
       openSideQuestion(cmd[2]?.trim() || undefined);
-      afterSend(text);
+      afterRoute(text);
       return;
     }
     // WP-A25 (G-15): every pi built-in the app can show has a surface — the
@@ -406,7 +406,7 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     const builtin = cmd ? builtinPlan(cmd[1]!) : undefined;
     const sessionOwns = cmd ? props.session.state.commands.some((c) => c.name.replace(/^\//, '') === cmd[1]) : false;
     if (cmd && builtin && !sessionOwns && runBuiltin(cmd[1]!, builtinDeps())) {
-      afterSend(text);
+      afterRoute(text);
       return;
     }
     // A `/name` neither the session nor the app knows never becomes a prompt.
@@ -448,6 +448,16 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     setHistRev((n) => n + 1);
     setDismissed(null);
     histIndex = null;
+  };
+  /**
+   * A `/command` the app routes (`/model`, `/btw`, every pi built-in, WP-A25)
+   * is not sent: the draft is cleared here, outside an edit event, so the field
+   * is rebuilt from the draft — otherwise Enter's default handling leaves the
+   * command text in the box.
+   */
+  const afterRoute = (outgoing: string) => {
+    afterSend(outgoing);
+    queueMicrotask(() => editor?.syncFromStore());
   };
   const stop = () => {
     if (!props.readOnly) void props.session.abort();

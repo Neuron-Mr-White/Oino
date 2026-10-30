@@ -216,16 +216,36 @@ const EXTENSIONS = [
   { id: 'unipi.subagents', enabled: true, loaded: true, path: '~/.oino/extensions/unipi.subagents' },
 ];
 
+/** The project tree plus a `.oino/sessions` folder, so the import dialog's
+ *  "Recent session files" list has something to offer. */
+function sessionFs() {
+  const tree = genFsTree(CWD);
+  const root = tree[CWD];
+  if (root?.kind === 'dir') {
+    root.children['.oino'] = {
+      kind: 'dir',
+      children: {
+        sessions: {
+          kind: 'dir',
+          children: {
+            '2026-10-31T09-00-00.jsonl': { kind: 'file', text: '{"type":"session"}\n', mtime: 0 },
+            '2026-10-30T18-42-00.jsonl': { kind: 'file', text: '{"type":"session"}\n', mtime: 0 },
+          },
+        },
+      },
+    };
+  }
+  return tree;
+}
+
 /** The memory browse panel's tree — the shape `extensions/unipi/memory/src/panel.rs` builds. */
 export const MEMORY_PANEL_ROOT = {
   t: 'Layout',
   direction: 'Vertical',
   spacing: 1,
   children: [
-    {
-      t: 'Paragraph',
-      text: { lines: [{ spans: ['Memory · ', { content: 'unipi', style: { fg: 'claw' } }, ' · 12 memories   ', { content: 'project', style: { fg: 'muted' } }] }] },
-    },
+    // Mirrors `panel::header`: one muted line with the scope and the count.
+    { t: 'Paragraph', text: { lines: [{ spans: [{ content: 'Memory · unipi · 12 memories', style: { fg: 'muted' } }] }] } },
     { t: 'Input', value: '', placeholder: 'Search memories…', label: ['Search'], onSubmit: 'search' },
     {
       t: 'List',
@@ -356,7 +376,7 @@ function host(extra: Partial<MockHostSpec> = {}): MockHostSpec {
     conn: { state: 'connected' as const },
     cards: genCards(3, { seed: 4, root: CWD }),
     sessions: { [SESSION]: capSession() },
-    fs: genFsTree(CWD),
+    fs: sessionFs(),
     settings: {
       pi: { defaultModel: 'glm-4.7', enabledModels: ['anthropic/claude-opus-5-5', 'openai/gpt-5'] },
       namespaces: [MCP_NAMESPACE, MEMORY_NAMESPACE, SKILLS_NAMESPACE, SUBAGENTS_NAMESPACE],
@@ -380,9 +400,8 @@ function host(extra: Partial<MockHostSpec> = {}): MockHostSpec {
  * A12), so a capture must not go chat → Settings. Opening the handle is what
  * the app does for a chat shown in another pane.
  */
-function openChatThen(page: string): void {
+function openChat(): void {
   void import('../../../lib/session/store').then(({ sessions }) => sessions().ensure(HOST, SESSION));
-  location.hash = `#/settings/${page}`;
 }
 
 /** Clicks the Manage row of one action once the page is up. */
@@ -403,25 +422,53 @@ function clickManage(id: string): void {
 export const capMcp: MockScenario = {
   name: 'cap-mcp',
   hosts: [host()],
-  setup: () => openChatThen('mcp'),
+  setup: () => openChat(),
 };
 
 export const capMemory: MockScenario = {
   name: 'cap-memory',
   hosts: [host()],
-  setup: () => openChatThen('memory'),
+  setup: () => openChat(),
 };
 
 export const capSkills: MockScenario = {
   name: 'cap-skills',
   hosts: [host()],
-  setup: () => openChatThen('skills'),
+  setup: () => openChat(),
 };
 
 export const capAgents: MockScenario = {
   name: 'cap-agents',
   hosts: [host()],
-  setup: () => openChatThen('subagents'),
+  setup: () => openChat(),
+};
+
+/** `/import`: the Import session… dialog over an open chat (G-15). */
+export const capImport: MockScenario = {
+  name: 'cap-import',
+  hosts: [host()],
+  setup: () => {
+    void import('../../../lib/session/store').then(({ sessions }) => sessions().ensure(HOST, SESSION));
+    location.hash = '#/settings/mcp';
+    void import('../../../components/command/ImportSession').then((m) => m.openImportSession());
+  },
+};
+
+/** The command center with the capability "Manage…" actions (one action, two entry points). */
+export const capPalette: MockScenario = {
+  name: 'cap-palette',
+  hosts: [host()],
+  setup: () => {
+    void import('../../../lib/session/store').then(({ sessions }) => sessions().ensure(HOST, SESSION));
+    location.hash = '#/s/' + HOST + '/' + SESSION;
+    void import('../../../lib/shell').then((m) => m.setPaletteOpen(true));
+    setTimeout(() => {
+      const input = document.querySelector('.palette-input') as HTMLInputElement | null;
+      if (!input) return;
+      input.value = 'mcp';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, 400);
+  },
 };
 
 /** The chatless R8 state: the Manage rows say what they need. */
@@ -438,7 +485,7 @@ export const capMemoryPanel: MockScenario = {
   name: 'cap-memory-panel',
   hosts: [host()],
   setup: () => {
-    openChatThen('memory');
+    openChat();
     setTimeout(() => clickManage('memory.browse'), 1200);
   },
 };
@@ -447,7 +494,7 @@ export const capMcpPanel: MockScenario = {
   name: 'cap-mcp-panel',
   hosts: [host()],
   setup: () => {
-    openChatThen('mcp');
+    openChat();
     setTimeout(() => clickManage('mcp.servers'), 1200);
   },
 };
@@ -456,7 +503,7 @@ export const capSkillsPanel: MockScenario = {
   name: 'cap-skills-panel',
   hosts: [host()],
   setup: () => {
-    openChatThen('skills');
+    openChat();
     setTimeout(() => clickManage('skills.editor'), 1200);
   },
 };
@@ -465,7 +512,7 @@ export const capAgentsPanel: MockScenario = {
   name: 'cap-agents-panel',
   hosts: [host()],
   setup: () => {
-    openChatThen('subagents');
+    openChat();
     setTimeout(() => clickManage('agents.profiles'), 1200);
   },
 };
@@ -490,7 +537,7 @@ export const providers: MockScenario = {
       },
     }),
   ],
-  setup: () => openChatThen('providers'),
+  setup: () => openChat(),
 };
 
 /** The chatless Providers page: Sign in disabled with the reason, keys still work. */

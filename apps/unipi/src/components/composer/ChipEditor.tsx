@@ -28,6 +28,12 @@ export type ChipEditorApi = {
   /** Moves the caret to a character offset in the draft string. */
   setCaret(offset: number): void;
   getCaret(): number;
+  /**
+   * Rebuilds the field from the draft when the draft changed *outside* an edit
+   * event — a routed `/command` clears it in the keydown handler, and the
+   * browser's own Enter handling can leave the old text in the DOM.
+   */
+  syncFromStore(): void;
 };
 
 export type ChipStatus = { status?: 'uploading' | 'done' | 'error'; error?: string };
@@ -417,6 +423,10 @@ export function ChipEditor(props: {
         props.onCaret?.(offset);
       },
       getCaret: () => (document.activeElement === root ? (readCaret() ?? caret) : caret),
+      syncFromStore: () => {
+        caret = Math.min(caret, props.value.length);
+        render(props.value, document.activeElement === root ? caret : undefined);
+      },
     });
     const onSel = () => {
       if (document.activeElement === root) trackCaret();

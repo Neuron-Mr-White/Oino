@@ -102,14 +102,16 @@ export function ImportSessionDialog() {
   return (
     <BoardSheet open={open()} onClose={closeImportSession} label="Import session" title="Import session" testId="import-session">
       <div class="import-session" data-testid="import-session-body">
-        <label class="settings-field" for="import-session-path">
-          <span class="settings-field-label">Session file</span>
+        <div class="import-session-field">
+          <label class="import-session-label" for="import-session-path">
+            Session file
+          </label>
           <input
             id="import-session-path"
-            class="settings-input"
+            class="import-session-input"
             type="text"
             spellcheck={false}
-            placeholder="/home/you/.oino/sessions/…/2026-10-31T12-00-00.jsonl"
+            placeholder="/home/you/.oino/sessions/2026-10-31T12-00-00.jsonl"
             value={path()}
             onInput={(e) => setPath(e.currentTarget.value)}
             data-testid="import-session-path"
@@ -119,10 +121,10 @@ export function ImportSessionDialog() {
               {problem()}
             </span>
           </Show>
-        </label>
+        </div>
         <Show when={(files.latest ?? []).length > 0}>
           <div class="import-session-recent">
-            <p class="settings-field-label">Recent files</p>
+            <p class="import-session-label">Recent session files</p>
             <ul>
               {(files.latest ?? []).map((file) => (
                 <li>
