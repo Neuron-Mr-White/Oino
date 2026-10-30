@@ -70,11 +70,13 @@ describe('BottomDock', () => {
     expect(dock.contains(dialog)).toBe(true);
     expect(dialog.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    const input = screen.getByPlaceholderText('Keep typing to steer…') as HTMLInputElement;
+    const input = screen.getByPlaceholderText('Keep typing to queue…') as HTMLInputElement;
     fireEvent.input(input, { target: { value: 'also check cli.ts' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(cmds(w, 'steer')).toHaveLength(1));
-    expect((cmds(w, 'steer')[0] as { message?: string }).message).toBe('also check cli.ts');
+    // Z-52 (WP-A11): Enter follows the global follow-up default — `queue` →
+    // a follow-up; Cmd/Ctrl+Enter is the opposite (a steer).
+    await waitFor(() => expect(cmds(w, 'follow_up')).toHaveLength(1));
+    expect((cmds(w, 'follow_up')[0] as { message?: string }).message).toBe('also check cli.ts');
     expect(input.value).toBe('');
     // Answering the dialog still reaches the caller (the conversation sends `extension_ui_response`).
     fireEvent.click(screen.getByText('cli.ts'));
@@ -86,7 +88,7 @@ describe('BottomDock', () => {
     const s = await open(w);
     startRun(w);
     render(() => <BottomDock session={s} dialogs={[select]} onAnswer={() => {}} />);
-    const input = screen.getByPlaceholderText('Keep typing to steer…');
+    const input = screen.getByPlaceholderText('Keep typing to queue…');
     fireEvent.keyDown(input, { key: 'Escape' });
     await waitFor(() => expect(cmds(w, 'abort')).toHaveLength(1));
     fireEvent.click(screen.getByLabelText('Stop'));
@@ -116,5 +118,79 @@ describe('BottomDock', () => {
     fireEvent.click(screen.getByLabelText('Stop'));
     await new Promise((r) => setTimeout(r, 0));
     expect(cmds(w, 'abort')).toHaveLength(0);
+  });
+});
+
+describe('BottomDock · WP-A11 (queue, steering, stop)', () => {
+  it('Cmd/Ctrl+Enter is the opposite of the default while running (Z-52)', async () => {
+    const w = world();
+    const s = await open(w);
+    startRun(w);
+    render(() => <BottomDock session={s} />);
+    const input = screen.getByPlaceholderText('Keep typing to queue…') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'a queue default' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.input(input, { target: { value: 'a steer via modifier' } });
+    fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+    fireEvent.input(input, { target: { value: 'a steer via ctrl' } });
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(cmds(w, 'follow_up')).toHaveLength(1));
+    expect(cmds(w, 'follow_up')[0]).toMatchObject({ message: 'a queue default' });
+    expect(cmds(w, 'steer')).toHaveLength(2);
+    expect(cmds(w, 'steer')[0]).toMatchObject({ message: 'a steer via modifier' });
+    expect(cmds(w, 'steer')[1]).toMatchObject({ message: 'a steer via ctrl' });
+  });
+
+  it('the chevron menu switches the default and "Send now (stops run)" aborts then prompts', async () => {
+    const w = world();
+    const s = await open(w);
+    startRun(w);
+    render(() => <BottomDock session={s} />);
+    fireEvent.click(screen.getByTestId('send-chevron'));
+    fireEvent.click(screen.getByTestId('send-mode-steer'));
+    const input = screen.getByPlaceholderText('Keep typing to steer…') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'now the default is steer' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(cmds(w, 'steer')).toHaveLength(1));
+
+    // "Send now (stops run)": abort, then send the text as a prompt once idle.
+    fireEvent.input(input, { target: { value: 'right now' } });
+    fireEvent.click(screen.getByTestId('send-chevron'));
+    fireEvent.click(screen.getByTestId('send-now'));
+    await waitFor(() => expect(cmds(w, 'abort')).toHaveLength(1));
+    await waitFor(() => expect(cmds(w, 'prompt')).toHaveLength(1));
+    expect(cmds(w, 'prompt')[0]).toMatchObject({ message: 'right now' });
+  });
+
+  it('Esc stops from any focus in the conversation, but a docked dialog consumes it (Z-55)', async () => {
+    const w = world();
+    const s = await open(w);
+    startRun(w);
+    const { container } = render(() => (
+      <div class="conv-tl">
+        <BottomDock session={s} dialogs={[select]} onAnswer={() => {}} />
+      </div>
+    ));
+    // Any focus inside the conversation element — not just the dock.
+    const outside = document.createElement('button');
+    container.querySelector('.conv-tl')!.appendChild(outside);
+    fireEvent.keyDown(outside, { key: 'Escape' });
+    await waitFor(() => expect(cmds(w, 'abort')).toHaveLength(1));
+    // The docked dialog takes the Esc itself: the run is untouched from there.
+    fireEvent.keyDown(screen.getByTestId('dialog-panel'), { key: 'Escape' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cmds(w, 'abort')).toHaveLength(1);
+  });
+
+  it('renders the queue panel above the composer by default (Z-53)', async () => {
+    const w = world();
+    const s = await open(w);
+    startRun(w);
+    w.push('h1', 's1', [{ session: 's1', seq: 2, event: { type: 'queue_update', steering: ['Keep it small'], followUp: [] } }]);
+    render(() => <BottomDock session={s} />);
+    const queue = await screen.findByTestId('queue-panel');
+    const composer = screen.getByTestId('tl-composer');
+    expect(queue.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Keep it small')).toBeTruthy();
   });
 });

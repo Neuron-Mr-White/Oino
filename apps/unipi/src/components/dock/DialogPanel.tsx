@@ -14,11 +14,18 @@ import { createEffect, createMemo, createSignal, Show } from 'solid-js';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircleQuestion } from 'lucide-solid';
 import { DialogCard } from '../../ui/dialogs/DialogCard';
 import { piDialog } from '../../ui/dialogs/adapter';
+import { oinoDialogBody } from '../../ui/dialogs/bodies';
 import type { UiRequest } from '../../ui/types';
 import { ApprovalPanel } from './ApprovalPanel';
 
-/** Kinds A9 renders itself; U10 adds the rest (`multiSelect`, `form`, `custom` nodes, …). */
+/** Kinds A9 renders itself; U10 widens the rest in `ui/dialogs/bodies.tsx`. */
 const PI_KINDS = new Set(['select', 'confirm', 'input', 'editor']);
+
+const WIDENED = (d: UiRequest): boolean =>
+  (d.method === 'multiSelect' && !Array.isArray(d.questions)) ||
+  (d.method === 'custom' && !!d.spec) ||
+  d.method === 'editExternally' ||
+  d.method === 'clipboardReadImage';
 
 export function DialogPanel(props: {
   /** Open dialogs, in arrival order (the registry keeps that order). */
@@ -28,6 +35,9 @@ export function DialogPanel(props: {
   /** Phone: collapse to a one-line bar (Z-46). */
   phone?: boolean;
   onHaptic?: () => void;
+  /** The session the dialogs belong to (U10's `custom` value collection). */
+  hostId?: string;
+  sessionId?: string;
 }) {
   const [page, setPage] = createSignal(0);
   const [collapsed, setCollapsed] = createSignal(false);
@@ -45,6 +55,7 @@ export function DialogPanel(props: {
     const dialog = shown();
     if (!dialog) return undefined;
     if (dialog.method === 'approval') return <ApprovalPanel dialog={dialog} onAnswer={answer(dialog.id)} />;
+    if (WIDENED(dialog)) return oinoDialogBody({ dialog, onAnswer: answer(dialog.id), hostId: props.hostId, sessionId: props.sessionId });
     if (PI_KINDS.has(dialog.method) || dialog.method === 'custom' || Array.isArray(dialog.questions)) {
       return <DialogCard dialog={piDialog(dialog)} onAnswer={answer(dialog.id)} onHaptic={() => props.onHaptic?.()} />;
     }
@@ -60,7 +71,18 @@ export function DialogPanel(props: {
 
   return (
     <Show when={shown()}>
-      <div class="dock-dialog" data-testid="dialog-panel" data-collapsed={props.phone && collapsed() ? '' : undefined}>
+      <div
+        class="dock-dialog"
+        data-testid="dialog-panel"
+        data-collapsed={props.phone && collapsed() ? '' : undefined}
+        // A docked dialog takes the Esc itself (WP-A11, Z-55): consuming it
+        // here keeps the run alive while a question waits for its answer.
+        // Native listener — it must run before the conversation root's stop
+        // rule (Solid's delegated `onKeyDown` would run at the document).
+        on:keydown={(e: KeyboardEvent) => {
+          if (e.key === 'Escape' && !e.defaultPrevented) e.preventDefault();
+        }}
+      >
         <Show
           when={props.phone && collapsed()}
           fallback={

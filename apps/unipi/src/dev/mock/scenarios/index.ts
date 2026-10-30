@@ -29,6 +29,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   offline,
   'stream-basic': streamBasic,
   'stream-steer': streamSteer,
+  queue: queuePanel,
+  'queue-held': queueHeld,
   'stream-reconnect': streamReconnect,
   'shell-desktop': shellDesktop,
   'shell-narrow': shellNarrow,
