@@ -117,6 +117,71 @@ describe('OSS-2 form: every field type', () => {
     }
   });
 
+  it('advanced types: action and page rows, and an unknown type stays read-only', async () => {
+    const { namespace } = setup();
+    mount(namespace);
+    await loaded();
+    fireEvent.click(screen.getByTestId('form-advanced'));
+    await waitFor(() => expect(row('memory', 'consolidate')).toBeTruthy());
+    // `action` → a .btn-secondary that runs the command in an open chat.
+    const action = row('memory', 'consolidate');
+    expect(action.dataset.type).toBe('action');
+    expect(action.querySelector('.btn-secondary')).toBeTruthy();
+    expect(sanitize(action.outerHTML)).toMatchSnapshot('action-desktop');
+    // `page` → a drill-in row; its nested sections render under a Back (Z-113).
+    const page = row('memory', 'advanced-page');
+    expect(sanitize(page.outerHTML)).toMatchSnapshot('page-desktop');
+    fireEvent.click(page);
+    const body = await screen.findByTestId('page-body-advanced-page');
+    expect(body.textContent).toContain('Page size');
+    expect(sanitize(body.outerHTML)).toMatchSnapshot('page-body-desktop');
+
+    setDesktopOverride(false);
+    cleanup();
+    mount(namespace);
+    await loaded();
+    fireEvent.click(screen.getByTestId('form-advanced'));
+    await waitFor(() => expect(row('memory', 'consolidate')).toBeTruthy());
+    expect(sanitize(row('memory', 'consolidate').outerHTML)).toMatchSnapshot('action-phone');
+    fireEvent.click(row('memory', 'advanced-page'));
+    await waitFor(() => expect(screen.getByTestId('page-body-advanced-page')).toBeTruthy());
+    expect(sanitize(screen.getByTestId('page-body-advanced-page').outerHTML)).toMatchSnapshot('page-body-phone');
+  });
+
+  it('an unknown field type renders read-only and is never written', async () => {
+    const spec = {
+      name: 'settings-unknown',
+      hosts: [
+        {
+          id: 'local',
+          name: 'workstation',
+          transport: 'local',
+          conn: { state: 'connected' },
+          cards: [],
+          settings: {
+            pi: {},
+            namespaces: [
+              {
+                namespace: 'demo',
+                title: 'Demo',
+                extensionId: 'unipi.demo',
+                sections: [{ id: 's', title: 'S', fields: [{ key: 'mystery', type: 'quantum', label: 'Mystery lever', description: 'A newer host sent a type this build does not know' }] }],
+              },
+            ],
+            extensions: [],
+          },
+        } as MockHostSpec,
+      ],
+    } as MockScenario;
+    setHostClientFactory(createMockHost(spec).client);
+    mount(parseNamespace((spec.hosts[0]!.settings as { namespaces: unknown[] }).namespaces[0])!);
+    await loaded();
+    const row = document.getElementById('field-demo-mystery')!;
+    expect(row.dataset.type).toBe('unknown');
+    expect(row.querySelector('input, button, select, textarea')).toBeNull();
+    expect(sanitize(row.outerHTML)).toMatchSnapshot('unknown-desktop');
+  });
+
   it('shows "default" for an unset key and "modified · Reset" for a stored one', async () => {
     const { namespace } = setup();
     mount(namespace);
