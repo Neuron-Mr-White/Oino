@@ -518,6 +518,18 @@ impl App {
         ) {
             return false;
         }
+        // Reserved process bindings win over entry keys (v1 §8 conflict rules); Esc stays
+        // with the entry (`closeOnEscape`, §4.6) unless the entry binds it itself.
+        let bound = entry
+            .keys
+            .iter()
+            .any(|binding| binding.key.parse::<KeyId>().is_ok_and(|id| id == key));
+        let reserved = ["app.interrupt", "app.clear", "app.exit", "app.suspend"]
+            .iter()
+            .any(|action| self.keys.matches(action, &key));
+        if reserved && !bound && key.key != Key::Escape {
+            return false;
+        }
         let local = self.ui_local.entry(id.to_owned()).or_default();
         let targets = ui_focus::focusables(entry, local);
         let actions = ui_focus::key_action(entry, local, &key, &self.keys);

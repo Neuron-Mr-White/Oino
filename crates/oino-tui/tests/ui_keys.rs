@@ -251,3 +251,30 @@ async fn multi_list_space_sends_the_selected_keys() {
     assert_eq!(last["action"], "pick");
     assert_eq!(last["value"], json!(["a", "b"]));
 }
+
+#[tokio::test]
+async fn reserved_app_bindings_win_over_entry_keys() {
+    let mut h = Harness::new(TestHost::default()).await;
+    h.type_text("draft").await;
+    h.json_event(patch(
+        1,
+        entry(
+            "probe/panel",
+            "overlay",
+            json!({"kind": "tree", "root": {"t": "List", "items": [
+                {"key": "a", "content": "A"}
+            ]}}),
+        ),
+    ))
+    .await;
+    h.key("ctrl+c").await;
+    let frame = h.frame(60, 20);
+    assert!(
+        !frame.contains("draft"),
+        "ctrl+c clears the composer: {frame}"
+    );
+    assert!(
+        delivered(&h).is_empty(),
+        "no entry action for a reserved key"
+    );
+}
