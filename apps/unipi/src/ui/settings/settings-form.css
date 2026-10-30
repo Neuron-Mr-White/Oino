@@ -136,7 +136,8 @@ html:not([data-shell=desktop]) .settings-number-input { width: 72px; min-height:
 html:not([data-shell=desktop]) .settings-select { min-width: 0; }
 html:not([data-shell=desktop]) .settings-list-row .settings-key { flex-basis: 96px; }
 html:not([data-shell=desktop]) .settings-row.settings-field { gap: 10px; }
-html:not([data-shell=desktop]) .settings-scope-option { height: 32px; }
+html:not([data-shell=desktop]) .settings-scope { align-self: flex-start; }
+html:not([data-shell=desktop]) .settings-scope-option { height: 32px; min-width: 88px; }
 html:not([data-shell=desktop]) .settings-order-row { min-height: 44px; }
 html:not([data-shell=desktop]) .settings-iconbtn { width: 36px; height: 36px; }
 

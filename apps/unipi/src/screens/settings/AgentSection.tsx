@@ -53,14 +53,12 @@ export function AgentSection() {
         when={core().length > 0}
         fallback={<PiKeyList hostId={hostId()} />}
       >
-        <div class="px-4 pt-4">
-          <p class="text-xs text-text-dim" data-testid="agent-form-note">
-            The pi agent's settings on this PC, edited per scope: Global writes ~/.oino/settings.json, Project writes the folder's .oino/settings.json.
-          </p>
-        </div>
         <div class="settings-form-list">
           <SettingsSections namespaces={core()} flat empty="No agent settings on this PC yet" />
         </div>
+        <p class="px-4 py-3 text-xs text-text-dim" data-testid="agent-form-note">
+          Global writes ~/.oino/settings.json; Project writes the folder's .oino/settings.json.
+        </p>
       </Show>
     </Section>
   );

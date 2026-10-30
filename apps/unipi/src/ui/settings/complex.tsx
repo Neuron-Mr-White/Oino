@@ -5,7 +5,7 @@
  */
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { json as jsonLang } from '@codemirror/lang-json';
 import { ChevronDown, ChevronUp, Minus, Plus, Search, Trash2 } from 'lucide-solid';
@@ -437,6 +437,7 @@ function JsonField(props: { field: Field; value: Json; disabled: boolean; set: (
         keymap.of([...defaultKeymap, ...historyKeymap]),
         jsonLang(),
         ...(settings.appearance.codeWrap ? [EditorView.lineWrapping] : []),
+        placeholder('Not set — type JSON to add it'),
         EditorView.theme({
           '&': { fontSize: `${settings.appearance.codeFontSize}px`, maxHeight: '220px' },
           '.cm-scroller': { fontFamily: 'var(--font-mono)', overflow: 'auto' },

@@ -29,45 +29,59 @@ const SHOTS = [
   ['agent', 'settings-form-agent', 'phone', 412, 915, '#/settings/agent', '#field-oino_model-defaultModel'],
 ];
 
-const version = await (await fetch(`${CDP}/json/version`)).json();
-const browser = new WebSocket(version.webSocketDebuggerUrl);
-await new Promise((resolve, reject) => { browser.onopen = resolve; browser.onerror = reject; });
 
-let seq = 0;
-const pending = new Map();
-browser.onmessage = (event) => {
-  const msg = JSON.parse(event.data);
-  if (msg.id && pending.has(msg.id)) {
-    const { resolve, reject } = pending.get(msg.id);
-    pending.delete(msg.id);
-    msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result);
-  }
-};
-function send(method, params = {}, sessionId) {
-  const id = ++seq;
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(id);
-      reject(new Error(`CDP timeout: ${method}`));
-    }, 20000);
-    pending.set(id, {
-      resolve: (value) => { clearTimeout(timer); resolve(value); },
-      reject: (error) => { clearTimeout(timer); reject(error); },
+/** One CDP connection per round: the owner's browser restarts (an update, a
+ *  concurrent capture) kill the socket mid-run, so a failed shot is re-tried on
+ *  a fresh connection instead of ending the capture. */
+async function connect() {
+  const version = await (await fetch(`${CDP}/json/version`)).json();
+  const browser = new WebSocket(version.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => { browser.onopen = resolve; browser.onerror = reject; });
+  let seq = 0;
+  const pending = new Map();
+  browser.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.id && pending.has(msg.id)) {
+      const { resolve, reject } = pending.get(msg.id);
+      pending.delete(msg.id);
+      msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result);
+    }
+  };
+  function send(method, params = {}, sessionId) {
+    const id = ++seq;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`CDP timeout: ${method}`));
+      }, 20000);
+      pending.set(id, {
+        resolve: (value) => { clearTimeout(timer); resolve(value); },
+        reject: (error) => { clearTimeout(timer); reject(error); },
+      });
+      try {
+        browser.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+      } catch (error) {
+        clearTimeout(timer);
+        pending.delete(id);
+        reject(error);
+      }
     });
-    browser.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-  });
+  }
+  browser.onclose = () => {
+    for (const { reject } of pending.values()) reject(new Error('CDP socket closed'));
+    pending.clear();
+  };
+  return { browser, send };
 }
-browser.onclose = () => {
-  for (const { reject } of pending.values()) reject(new Error('CDP socket closed'));
-  pending.clear();
-};
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 mkdirSync(OUT, { recursive: true });
-async function shoot(name, scenario, shell, width, height, route, ready, focus) {
+async function shoot(send, name, scenario, shell, width, height, route, ready, focus) {
   const url = `${APP}/?scenario=${scenario}&shell=${shell}${route}`;
-  const { targetId } = await send('Target.createTarget', { url, background: true });
+  let targetId;
   try {
+    ({ targetId } = await send('Target.createTarget', { url, background: true }));
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: shell === 'phone' }, sessionId);
     await send('Page.enable', {}, sessionId);
@@ -98,16 +112,28 @@ async function shoot(name, scenario, shell, width, height, route, ready, focus) 
     console.log(`attempt failed: ${String(error)}`);
     return false;
   } finally {
-    await send('Target.closeTarget', { targetId }).catch(() => {});
+    if (targetId) await send('Target.closeTarget', { targetId }).catch(() => {});
     await sleep(300);
   }
 }
 
-for (const shot of SHOTS) {
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    if (await shoot(...shot)) break;
-    if (attempt === 3) throw new Error(`page never became ready: ${shot.join(' ')}`);
-    console.log(`retrying ${shot[0]} ${shot[2]} (attempt ${attempt + 1})`);
+let pendingShots = [...SHOTS];
+for (let round = 1; round <= 4 && pendingShots.length > 0; round += 1) {
+  const { browser, send } = await connect();
+  const failed = [];
+  for (const shot of pendingShots) {
+    let done = false;
+    for (let attempt = 1; attempt <= 2 && !done; attempt += 1) {
+      done = await shoot(send, ...shot);
+      if (!done) console.log(`retrying ${shot[0]} ${shot[2]} (attempt ${attempt + 1})`);
+    }
+    if (!done) failed.push(shot);
+  }
+  browser.close();
+  pendingShots = failed;
+  if (pendingShots.length) {
+    console.log(`reconnecting for ${pendingShots.length} shot(s)`);
+    await sleep(2000);
   }
 }
-browser.close();
+if (pendingShots.length) throw new Error(`pages never became ready: ${pendingShots.map((shot) => shot.join(' ')).join(' | ')}`);
