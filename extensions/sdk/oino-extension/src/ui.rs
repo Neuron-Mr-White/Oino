@@ -51,6 +51,8 @@
 //!
 //! Panels opened by `Panel::open` live until [`Panel::close`], the user closes them (`$close`)
 //! or the extension instance is disposed (ui-protocol §6.6). Reserved ids (§8) ignore `spec`.
+//! Slot options the builders do not model (`widgetPlacement`, `order` on a widget, `tone` /
+//! `priority` on a status segment, `invalidateTurnFooter` arguments) go through [`fire`].
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -278,8 +280,11 @@ pub struct Panel {
 }
 
 impl Panel {
-    /// Opens a panel with explicit entry id (`"<extensionId>/<name>"`; reserved ids §8) in the
-    /// `overlay` slot unless [`Panel::placement`] says otherwise.
+    /// Opens a panel with entry id `id` (`"<extensionId>/<name>"`, v1 U8) in the `overlay`
+    /// slot unless [`Panel::placement`] says otherwise.
+    ///
+    /// Reserved ids (§8) are opened the same way with an empty spec; `Panel::default()` omits
+    /// the id, which lets core assign `"<extensionId>/panel-<n>"`.
     #[must_use]
     pub fn new(panel_id: impl AsRef<str>) -> Self {
         Self {
