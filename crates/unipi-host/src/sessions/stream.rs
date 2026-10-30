@@ -123,6 +123,8 @@ pub struct Feed {
     subscribers: Mutex<Vec<(u64, mpsc::Sender<Arc<SessionEventDto>>)>>,
     next_subscriber: AtomicU64,
     tap: Mutex<Option<JoinHandle<()>>>,
+    /// The backend the running tap listens to (a repaired/reopened runtime is a new one).
+    tap_backend: Mutex<Option<Arc<dyn SessionBackend>>>,
     /// The runtime this feed was numbering is gone (evicted, taken over, closed): a reopen is
     /// a new runtime, so every stream resets rather than replay.
     disposed: AtomicBool,
@@ -152,6 +154,7 @@ impl Feed {
             subscribers: Mutex::new(Vec::new()),
             next_subscriber: AtomicU64::new(1),
             tap: Mutex::new(None),
+            tap_backend: Mutex::new(None),
             disposed: AtomicBool::new(false),
             dropped: AtomicU64::new(0),
         })
@@ -301,6 +304,7 @@ impl Feed {
 
     /// Stops the tap (the runtime is gone; a later open restarts it).
     pub fn stop_tap(&self) {
+        *lock(&self.tap_backend) = None;
         if let Some(task) = lock(&self.tap).take() {
             task.abort();
         }
