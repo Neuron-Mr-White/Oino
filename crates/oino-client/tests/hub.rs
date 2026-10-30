@@ -1,0 +1,500 @@
+//! E-LAZY lazy session hub (core spec §2.2, WP-C7): listing is lazy (records only, no
+//! services/engines/leases), `open` wakes with lease + repair, idle eviction disposes and
+//! releases the lease (guests observe `session_shutdown`), re-opening continues the
+//! conversation, and a crashed session (X-PANIC) is listed `crashed` until re-opened.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "tests assert by unwrapping"
+)]
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
+
+use futures::future::BoxFuture;
+use oino_agent::AgentToolResult;
+use oino_ai::AgentMessage;
+use oino_client::backend::SessionBackend;
+use oino_client::hub::{HubOptions, HubSessionState, SessionHub};
+use oino_client::protocol::{PiCommand, RpcCommand, RpcResponseData, RpcSessionState};
+use oino_core::extensions::api::{
+    ExtensionInstance, ExtensionMode, Registration, ToolExposure, ToolSpec,
+};
+use oino_core::extensions::host::HostApi;
+use oino_core::runtime::ToolSelection;
+use oino_core::services::{ExtensionLoader, ResourceFlags, StaticLoader};
+use oino_core::testing::{FakeExtension, FauxComponent, FauxProvider, FauxResponse};
+use oino_models::ModelRegistry;
+use oino_session::{CreateOptions, SessionManager, lock_file_path, lock_metadata_path};
+use serde_json::{Value, json};
+
+/// A loader counting how often services were built (the laziness observable).
+struct CountingLoader {
+    inner: StaticLoader,
+    loads: Arc<AtomicUsize>,
+}
+
+impl ExtensionLoader for CountingLoader {
+    fn load(
+        &self,
+        host: Arc<dyn HostApi>,
+        project_trusted: bool,
+    ) -> BoxFuture<'_, Vec<Arc<dyn ExtensionInstance>>> {
+        self.loads.fetch_add(1, Ordering::SeqCst);
+        self.inner.load(host, project_trusted)
+    }
+}
+
+/// A `boom` tool spec (the crashing tool of the C5 tests).
+fn tool(name: &str) -> ToolSpec {
+    ToolSpec {
+        name: name.into(),
+        label: name.into(),
+        description: format!("{name} tool"),
+        parameters: json!({"type": "object"}),
+        prompt_snippet: None,
+        prompt_guidelines: Vec::new(),
+        exposure: ToolExposure::Direct,
+        default_active: None,
+        execution_mode: None,
+        namespace: None,
+        annotations: None,
+        reaches_tools: None,
+        output_schema: None,
+        prepare_arguments: false,
+    }
+}
+
+fn hub_with(
+    settings: Option<&str>,
+    responses: Vec<FauxResponse>,
+    extra: Vec<Arc<dyn ExtensionInstance>>,
+    tools: ToolSelection,
+) -> (
+    tempfile::TempDir,
+    Arc<SessionHub>,
+    Arc<AtomicUsize>,
+    Arc<FauxProvider>,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("sessions")).unwrap();
+    std::fs::create_dir_all(dir.path().join("agent")).unwrap();
+    if let Some(settings) = settings {
+        std::fs::write(dir.path().join("agent/settings.json"), settings).unwrap();
+    }
+    let provider = FauxProvider::new(responses);
+    let loads = Arc::new(AtomicUsize::new(0));
+    let mut instances: Vec<Arc<dyn ExtensionInstance>> =
+        vec![Arc::new(FauxComponent(Arc::clone(&provider)))];
+    instances.extend(extra);
+    let loader = CountingLoader {
+        inner: StaticLoader(instances),
+        loads: Arc::clone(&loads),
+    };
+    let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
+    models.set_runtime_api_key("faux", "k");
+    let hub = SessionHub::create(HubOptions {
+        cwd: dir.path().to_path_buf(),
+        agent_dir: dir.path().join("agent"),
+        docs_root: None,
+        session_dir: Some(dir.path().join("sessions")),
+        mode: ExtensionMode::Rpc,
+        has_ui: false,
+        approve: Some(false),
+        flags: ResourceFlags {
+            no_context_files: true,
+            ..ResourceFlags::default()
+        },
+        loader: Arc::new(loader),
+        models: Some(models),
+        tools,
+        exclude_tools: Vec::new(),
+    })
+    .unwrap();
+    (dir, hub, loads, provider)
+}
+
+/// A session file with one user/assistant turn and the faux model recorded.
+fn conversation_file(dir: &Path) -> (PathBuf, String) {
+    let sessions = dir.join("sessions");
+    let mut manager = SessionManager::create(dir, &sessions, CreateOptions::default()).unwrap();
+    manager.append_model_change("faux", "faux-1").unwrap();
+    manager.append_thinking_level_change("off").unwrap();
+    manager
+        .append_message(AgentMessage::User(oino_ai::UserMessage {
+            content: oino_ai::UserContentField::Text("seed question".into()),
+            timestamp: 1,
+        }))
+        .unwrap();
+    let mut assistant = oino_ai::AssistantMessage::empty("faux", "faux", "faux-1", 2);
+    assistant.content = vec![oino_ai::AssistantContent::text("seed answer")];
+    manager
+        .append_message(AgentMessage::Assistant(assistant))
+        .unwrap();
+    (
+        PathBuf::from(manager.session_file().unwrap()),
+        manager.session_id().to_owned(),
+    )
+}
+
+/// A session file whose turn was interrupted after tool `c1` but before `c2`
+/// (C2's `interrupted_file` shape): re-opening must repair the dangling call.
+fn interrupted_file(dir: &Path) -> (PathBuf, String) {
+    let sessions = dir.join("sessions");
+    let mut manager = SessionManager::create(dir, &sessions, CreateOptions::default()).unwrap();
+    manager
+        .append_message(AgentMessage::User(oino_ai::UserMessage {
+            content: oino_ai::UserContentField::Text("run probe".into()),
+            timestamp: 1,
+        }))
+        .unwrap();
+    let mut assistant = oino_ai::AssistantMessage::empty("faux", "faux", "faux-1", 2);
+    assistant.content = vec![
+        oino_ai::AssistantContent::text("running"),
+        oino_ai::AssistantContent::ToolCall(oino_ai::ToolCall {
+            id: "c1".into(),
+            name: "probe".into(),
+            ..oino_ai::ToolCall::default()
+        }),
+        oino_ai::AssistantContent::ToolCall(oino_ai::ToolCall {
+            id: "c2".into(),
+            name: "probe".into(),
+            ..oino_ai::ToolCall::default()
+        }),
+    ];
+    assistant.stop_reason = oino_ai::StopReason::ToolUse;
+    manager
+        .append_message(AgentMessage::Assistant(assistant))
+        .unwrap();
+    manager
+        .append_message(AgentMessage::ToolResult(oino_ai::ToolResultMessage {
+            tool_call_id: "c1".into(),
+            tool_name: "probe".into(),
+            content: vec![oino_ai::UserContent::text("ok")],
+            details: None,
+            usage: None,
+            nested_calls: None,
+            is_error: false,
+            timestamp: 3,
+            duration_ms: None,
+        }))
+        .unwrap();
+    (
+        PathBuf::from(manager.session_file().unwrap()),
+        manager.session_id().to_owned(),
+    )
+}
+
+async fn state_of(backend: &Arc<dyn SessionBackend>) -> RpcSessionState {
+    let data: RpcResponseData = backend
+        .send(RpcCommand::Pi(PiCommand::GetState))
+        .await
+        .unwrap();
+    serde_json::from_value(data.unwrap()).unwrap()
+}
+
+async fn wait_idle(backend: &Arc<dyn SessionBackend>) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let state = state_of(backend).await;
+        if !state.is_streaming && !state.is_compacting {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "session never went idle"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn wait_state(hub: &SessionHub, id: &str, want: HubSessionState) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let listed = hub.list().await.unwrap();
+        let found = listed.iter().find(|s| s.info.id == id);
+        if let Some(found) = found
+            && found.state == want
+        {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "session {id} never reached {want:?}: {listed:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+async fn prompt(backend: &Arc<dyn SessionBackend>, message: &str) {
+    backend
+        .send(RpcCommand::Pi(PiCommand::Prompt {
+            message: message.into(),
+            images: Vec::new(),
+            streaming_behavior: None,
+        }))
+        .await
+        .unwrap();
+    wait_idle(backend).await;
+}
+
+/// Listing shows records without engines/leases (lazy); opening acquires the lease,
+/// repairs the interrupted turn and lists `live`; closing returns it to a record.
+#[tokio::test]
+async fn list_is_lazy_open_wakes_with_lease_and_repair() {
+    let (dir, hub, loads, _provider) =
+        hub_with(None, Vec::new(), Vec::new(), ToolSelection::Default);
+    let (clean, _clean_id) = conversation_file(dir.path());
+    let (torn, torn_id) = interrupted_file(dir.path());
+
+    let listed = hub.list().await.unwrap();
+    assert_eq!(listed.len(), 2, "{listed:?}");
+    assert!(listed.iter().all(|s| s.state == HubSessionState::Record));
+    assert_eq!(
+        loads.load(Ordering::SeqCst),
+        0,
+        "a lazy list builds no services"
+    );
+    for path in [&clean, &torn] {
+        assert!(!lock_file_path(path).exists(), "no kernel lock file");
+        assert!(!lock_metadata_path(path).exists(), "no lease metadata");
+    }
+
+    // Two sessions created in the same millisecond share their uuid7 timestamp prefix:
+    // the prefix lookup reports the ambiguity instead of guessing.
+    let ambiguous = hub
+        .open(&torn_id[..6])
+        .await
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    assert!(ambiguous.contains("Ambiguous session id"), "{ambiguous}");
+
+    // Wake by exact id: acquire lease → open → repair → live.
+    let backend = hub.open(&torn_id).await.unwrap();
+    assert_eq!(backend.session_id(), torn_id);
+    assert!(
+        loads.load(Ordering::SeqCst) >= 1,
+        "waking builds the services once"
+    );
+    assert!(lock_metadata_path(&torn).exists(), "the lease is held");
+    let text = std::fs::read_to_string(&torn).unwrap();
+    assert!(
+        text.contains("interrupted before completion"),
+        "D-REPAIR closed the dangling tool call: {text}"
+    );
+    wait_state(&hub, &torn_id, HubSessionState::Live).await;
+
+    // Close: back to a record with the lease released.
+    hub.close(&torn_id).await.unwrap();
+    assert!(
+        !lock_metadata_path(&torn).exists(),
+        "close releases the lease"
+    );
+    wait_state(&hub, &torn_id, HubSessionState::Record).await;
+
+    // Unknown and too-short targets fail precisely.
+    let missing = hub.open("no-such-session").await;
+    let missing = missing
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(missing.contains("No session found matching"), "{missing}");
+    let short = hub
+        .open(&torn_id[..2])
+        .await
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    assert!(short.contains("No session found matching"), "{short}");
+}
+
+/// Idle eviction (short `sessionIdleSec`): disposes the session, releases the lease,
+/// clears guest state (`session_shutdown{reason:"idle"}` observed by the fixture), and a
+/// re-open continues the conversation with no lost entries.
+#[tokio::test]
+async fn idle_eviction_disposes_releases_and_reopen_continues() {
+    let observer = Arc::new(FakeExtension::new(
+        "observer",
+        Registration {
+            events: vec!["session_shutdown".into()],
+            ..Registration::default()
+        },
+    ));
+    let (dir, hub, _loads, _provider) = hub_with(
+        Some(r#"{"extensionSettings":{"hub":{"sessionIdleSec":1}}}"#),
+        vec![
+            FauxResponse::Text("first reply".into()),
+            FauxResponse::Text("second reply".into()),
+        ],
+        vec![Arc::clone(&observer) as Arc<dyn ExtensionInstance>],
+        ToolSelection::Default,
+    );
+    let (file, id) = conversation_file(dir.path());
+
+    let backend = hub.open(&id).await.unwrap();
+    prompt(&backend, "hello").await;
+    let after_first = state_of(&backend).await;
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("first reply"), "{text}");
+    drop(backend);
+
+    // No run, no compaction, no children, no subscribers: evicted back to a record.
+    wait_state(&hub, &id, HubSessionState::Record).await;
+    assert!(
+        !lock_metadata_path(&file).exists(),
+        "eviction releases the lease"
+    );
+
+    // Guest state was cleared: the fixture observed the shutdown.
+    let received = observer.received();
+    let shutdown = received
+        .iter()
+        .find(|(kind, _)| kind == "session_shutdown")
+        .unwrap_or_else(|| panic!("fixture did not observe session_shutdown: {received:?}"));
+    let reason = shutdown.1.get("reason").and_then(Value::as_str);
+    assert_eq!(reason, Some("idle"), "{received:?}");
+
+    // Re-open: same session, no lost entries, and the conversation continues.
+    let backend = hub.open(&id).await.unwrap();
+    let resumed = state_of(&backend).await;
+    assert_eq!(
+        resumed.message_count, after_first.message_count,
+        "no entries lost across eviction"
+    );
+    prompt(&backend, "again").await;
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("first reply"), "{text}");
+    assert!(text.contains("second reply"), "{text}");
+    assert!(
+        state_of(&backend).await.message_count >= resumed.message_count + 2,
+        "the conversation continues after the eviction"
+    );
+    wait_state(&hub, &id, HubSessionState::Live).await;
+}
+
+/// A running background task keeps the session live (spec risk 6): the idle monitor must
+/// not evict a session with an open `!` command.
+#[tokio::test]
+async fn running_bash_prevents_idle_eviction() {
+    let (dir, hub, _loads, _provider) = hub_with(
+        Some(r#"{"extensionSettings":{"hub":{"sessionIdleSec":1}}}"#),
+        Vec::new(),
+        Vec::new(),
+        ToolSelection::Default,
+    );
+    let (_file, id) = conversation_file(dir.path());
+    let backend = hub.open(&id).await.unwrap();
+    let sender = Arc::clone(&backend);
+    let bash = tokio::spawn(async move {
+        sender
+            .send(RpcCommand::Pi(PiCommand::Bash {
+                command: "sleep 3".into(),
+                exclude_from_context: Some(true),
+            }))
+            .await
+    });
+
+    // Well past the 1 s idle window while the command runs: still live.
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    let listed = hub.list().await.unwrap();
+    assert_eq!(
+        listed.iter().find(|s| s.info.id == id).unwrap().state,
+        HubSessionState::Live,
+        "an open `!` command keeps the session live"
+    );
+
+    bash.await.unwrap().unwrap();
+    wait_state(&hub, &id, HubSessionState::Record).await;
+}
+
+/// A crashed session (X-PANIC) is listed `crashed` until re-opened; the live session
+/// stays usable and the re-opened record clears the marker.
+#[tokio::test]
+async fn crashed_session_is_listed_crashed_until_reopened() {
+    let boom = Arc::new(
+        FakeExtension::new(
+            "boom-ext",
+            Registration {
+                tools: vec![tool("boom")],
+                ..Registration::default()
+            },
+        )
+        .on_tool(|name, _| {
+            if name != "boom" {
+                return Ok(AgentToolResult::text("ok"));
+            }
+            panic!("tool body exploded");
+        }),
+    );
+    let (dir, hub, _loads, _provider) = hub_with(
+        None,
+        vec![
+            FauxResponse::ToolCalls(vec![(
+                "c1".into(),
+                "boom".into(),
+                serde_json::from_value(json!({})).unwrap(),
+            )]),
+            FauxResponse::Text("recovered".into()),
+        ],
+        vec![Arc::clone(&boom) as Arc<dyn ExtensionInstance>],
+        ToolSelection::List(vec!["boom".into()]),
+    );
+    let (_file, id) = conversation_file(dir.path());
+
+    let backend = hub.open(&id).await.unwrap();
+    prompt(&backend, "go").await;
+    wait_state(&hub, &id, HubSessionState::Crashed).await;
+
+    // X-PANIC containment: the live session still accepts a prompt.
+    prompt(&backend, "once more").await;
+    let still = hub.list().await.unwrap();
+    assert_eq!(
+        still.iter().find(|s| s.info.id == id).unwrap().state,
+        HubSessionState::Crashed,
+        "the marker stands until re-opened"
+    );
+
+    // Close, then re-open the record: the marker clears.
+    hub.close(&id).await.unwrap();
+    let backend = hub.open(&id).await.unwrap();
+    assert_eq!(backend.session_id(), id);
+    wait_state(&hub, &id, HubSessionState::Live).await;
+}
+
+/// A services set with zero live sessions for `servicesIdleSec` is disposed (extension
+/// `shutdown`) and rebuilt on the next wake.
+#[tokio::test]
+async fn idle_services_set_is_disposed_and_rebuilt_on_demand() {
+    let (dir, hub, loads, _provider) = hub_with(
+        Some(r#"{"extensionSettings":{"hub":{"sessionIdleSec":1,"servicesIdleSec":1}}}"#),
+        vec![
+            FauxResponse::Text("one".into()),
+            FauxResponse::Text("two".into()),
+        ],
+        Vec::new(),
+        ToolSelection::Default,
+    );
+    let (_file, id) = conversation_file(dir.path());
+
+    let backend = hub.open(&id).await.unwrap();
+    prompt(&backend, "hello").await;
+    drop(backend);
+    assert_eq!(loads.load(Ordering::SeqCst), 1);
+    wait_state(&hub, &id, HubSessionState::Record).await;
+
+    // Past servicesIdleSec with no live session: the set is disposed; the next wake
+    // rebuilds it (the counter is the observable).
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let backend = hub.open(&id).await.unwrap();
+    assert_eq!(
+        loads.load(Ordering::SeqCst),
+        2,
+        "the idle services set was disposed and rebuilt"
+    );
+    prompt(&backend, "again").await;
+}

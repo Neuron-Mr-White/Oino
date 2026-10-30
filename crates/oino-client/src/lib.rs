@@ -36,6 +36,8 @@ pub mod fake;
 mod follow;
 pub mod frontend;
 #[cfg(feature = "in-process")]
+pub mod hub;
+#[cfg(feature = "in-process")]
 pub mod in_process;
 pub mod protocol;
 
@@ -43,6 +45,8 @@ pub use backend::{ClientError, SessionBackend};
 #[cfg(feature = "in-process")]
 pub use follow::FollowStream;
 pub use frontend::{AgentTree, FrontendApi, RenderRow, RewindOptions, ShortcutInfo};
+#[cfg(feature = "in-process")]
+pub use hub::{HubOptions, HubSession, HubSessionState, SessionHub};
 #[cfg(feature = "in-process")]
 pub use in_process::{InProcessBackend, ServerInfo};
 pub use protocol::{
