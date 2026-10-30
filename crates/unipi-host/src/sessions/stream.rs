@@ -544,6 +544,9 @@ fn wire_hub_event(event: &HubEvent) -> WireHubEvent {
             snapshot: snapshot.clone(),
             patch: patch.clone(),
         },
+        HubEvent::BoardChanged { project } => WireHubEvent::BoardChanged {
+            project: project.clone(),
+        },
     }
 }
 

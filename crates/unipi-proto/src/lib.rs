@@ -8,6 +8,7 @@
 
 pub mod admin;
 pub mod blob;
+pub mod board;
 pub mod browser;
 pub mod control;
 pub mod cron;
@@ -31,6 +32,10 @@ pub use admin::{
 pub use blob::{
     BlobGetData, BlobMime, BlobName, BlobPath, BlobPutData, BlobRange, BlobSize, Sha256Hex,
     BLOB_MAX_SIZE,
+};
+pub use board::{
+    BoardCliData, BoardErrorKind, BoardSlug, BoardWatchData, BOARD_ARGS_MAX, BOARD_ARG_MAX,
+    BOARD_SLUG_MAX,
 };
 pub use browser::{
     BrowserAgent, BrowserCmd, BrowserEvent, BrowserFrameMeta, BrowserInfo, BrowserOpenData,

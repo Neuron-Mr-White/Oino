@@ -427,6 +427,13 @@ pub enum HubEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         patch: Option<Value>,
     },
+    /// App spec §3.14 (WP-A22): a board project's files changed on disk (CLI
+    /// or agent writes land here too — the watcher is on the files, not the
+    /// writer). The Board re-reads the project; no payload beyond the slug.
+    BoardChanged {
+        /// Project slug, as `board_cli`'s `--project` spells it.
+        project: String,
+    },
 }
 
 #[cfg(test)]

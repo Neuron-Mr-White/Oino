@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod blob;
+pub mod board_cli;
 pub mod browser;
 pub mod cron_notify;
 pub mod cron_serve;

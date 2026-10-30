@@ -694,6 +694,27 @@ pub enum Request {
     /// unknown key or a wrong-typed value is `E_SCHEMA`). → the masked,
     /// complete object.
     HostSettingsSet(crate::settings::HostSettingsSetRequest),
+    /// App spec §3.14 (WP-A22; ext-abi §5.5, G-18): run the `unipi-kanboard`
+    /// CLI once — `--json`, actor `user` pinned by the host, subcommand
+    /// allow-list — and answer with the decoded outcome
+    /// (`ok{data:BoardCliData}`): the stdout payload, or the stderr
+    /// `{ok:false, error, kind}` line as a domain failure.
+    BoardCli {
+        /// The subcommand and its arguments (validated `BoardArg`s).
+        #[serde(with = "crate::board::serde_args", default)]
+        args: Vec<String>,
+        /// `--project <slug>`, pinned per view.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        project: Option<crate::board::BoardSlug>,
+    },
+    /// App spec §3.14 (WP-A22): turn the board file watcher on or off
+    /// (refcounted). While on, board file changes emit
+    /// `HubEvent::BoardChanged{project}` on every open `events_open` stream.
+    /// → `ok{data:BoardWatchData}`.
+    BoardWatch {
+        #[serde(default)]
+        on: bool,
+    },
 }
 
 /// A UnifiedPush/ntfy endpoint URL: 1..=2048 characters, must look like an

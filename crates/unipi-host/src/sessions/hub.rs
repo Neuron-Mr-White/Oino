@@ -128,6 +128,12 @@ pub enum HubEvent {
         /// Incremental update (`UiPatch` JSON, forwarded verbatim).
         patch: Option<serde_json::Value>,
     },
+    /// A board project's files changed (app.md §3.14 `board_watch`, WP-A22): the Board
+    /// re-reads the project.
+    BoardChanged {
+        /// Project slug.
+        project: String,
+    },
 }
 
 /// Inputs of [`SessionHub::create`] — the host's view of the core [`CoreHubOptions`].
@@ -435,6 +441,14 @@ impl SessionHub {
     /// forwards the registry's snapshot and patches verbatim).
     pub fn emit_ui(&self, snapshot: Option<serde_json::Value>, patch: Option<serde_json::Value>) {
         self.inner.emit(HubEvent::Ui { snapshot, patch });
+    }
+
+    /// Emits a board project change on `events_open` (app.md §3.14 `board_watch`, WP-A22):
+    /// the CLI/agent wrote the project's files; the Board re-reads it.
+    pub fn emit_board_changed(&self, project: &str) {
+        self.inner.emit(HubEvent::BoardChanged {
+            project: project.to_owned(),
+        });
     }
 
     /// The same list grouped by project cwd (the Sessions list's project sections).

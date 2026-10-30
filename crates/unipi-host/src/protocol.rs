@@ -555,6 +555,30 @@ impl Handler {
                     .await
                     .map_err(internal)?;
             }
+            Request::BoardCli { args, project } => {
+                let joined = args.join(" ");
+                tracing::info!(op = "board_cli", argv = %joined, "request");
+                let data =
+                    crate::board_cli::run_cli(&args, project.as_ref().map(|slug| slug.as_str()))
+                        .await?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
+            }
+            Request::BoardWatch { on } => {
+                tracing::info!(op = "board_watch", on, "request");
+                let watching = crate::board_cli::BoardWatchers::shared().set(on);
+                let data = serde_json::to_value(unipi_proto::BoardWatchData { watching })
+                    .map_err(internal)?;
+                write_control(write, &Control::Ok { data: Some(data) })
+                    .await
+                    .map_err(internal)?;
+            }
             Request::NotifyConfig => {
                 tracing::info!(op = "notify_config", "request");
                 let key = crate::notify::notify_key_or_create(&self.paths).map_err(internal)?;
