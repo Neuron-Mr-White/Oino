@@ -570,15 +570,16 @@ where
 {
     let hub = Arc::clone(service.hub());
     match req {
-        Request::SessionsList => {
-            tracing::info!(op = "sessions_list", "request");
-            let cards: SessionsListData = hub
-                .list()
-                .await
-                .map_err(hub_error)?
-                .iter()
-                .map(wire_card)
-                .collect();
+        Request::SessionsList { archived } => {
+            tracing::info!(op = "sessions_list", archived, "request");
+            let cards: SessionsListData = if archived {
+                hub.archived().await.map_err(hub_error)?
+            } else {
+                hub.list().await.map_err(hub_error)?
+            }
+            .iter()
+            .map(wire_card)
+            .collect();
             let data = serde_json::to_value(&cards).map_err(internal)?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
@@ -641,6 +642,31 @@ where
             let data = serde_json::to_value(wire_card(&card)).map_err(internal)?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
+        Request::SessionRestore { session } => {
+            tracing::info!(
+                op = "session_restore",
+                session = session.as_str(),
+                "request"
+            );
+            let card = hub.restore(session.as_str()).await.map_err(hub_error)?;
+            let data = serde_json::to_value(wire_card(&card)).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
+        Request::SessionDelete { session } => {
+            tracing::info!(op = "session_delete", session = session.as_str(), "request");
+            hub.delete_archived(session.as_str())
+                .await
+                .map_err(hub_error)?;
+            write_control(write, &Control::Ok { data: None }).await
+        }
+        Request::TrashEmpty => {
+            tracing::info!(op = "trash_empty", "request");
+            let data = serde_json::to_value(unipi_proto::session::TrashEmptyData {
+                deleted: hub.empty_trash().await.map_err(hub_error)?,
+            })
+            .map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
         Request::SessionRename { session, name } => {
             tracing::info!(op = "session_rename", session = session.as_str(), "request");
             let opened = hub.open(session.as_str()).await.map_err(hub_error)?;
@@ -671,6 +697,11 @@ where
                 .await
                 .map_err(hub_error)?;
             let data = serde_json::to_value(wire_card(&card)).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
+        // App spec §3.14 (WP-A24): hub-level `_oino/*` subset, no session runtime.
+        Request::HostCmd { cmd } => {
+            let data = crate::host_cmd::run(&hub, cmd).await?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
         _ => Err(AppErrorDto::new(

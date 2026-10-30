@@ -30,7 +30,7 @@
 html[data-shell=desktop] { --shell-rule: rgb(46 40 37 / 70%); }
 html[data-shell=desktop] body { overflow: hidden; }
 .ashell { display: flex; height: 100dvh; min-height: 0; background: radial-gradient(circle at 0 0, rgb(240 48 24 / 5%), transparent 520px); }
-.ashell-main { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.ashell-main { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; font-size: var(--ui-font-size, 15px); }
 html[data-shell=desktop] .ashell-page { flex: 1; height: auto; min-height: 0; padding: 0; background: none; }
 html[data-shell=desktop] .ashell-page > .app-content { padding-left: var(--page-gutter); padding-right: var(--page-gutter); }
 
@@ -54,19 +54,7 @@ html[data-shell=desktop] .app-content:has(.settings-group) > div { margin: 0; }
 .sb-keys { margin-left: auto; display: flex; gap: 3px; }
 .sb-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 10px 12px; scrollbar-width: thin; scrollbar-color: transparent transparent; mask-image: linear-gradient(180deg, #000 calc(100% - 16px), transparent); }
 .sb-scroll:hover { scrollbar-color: var(--color-surface-3) transparent; }
-.sb-host + .sb-host { margin-top: 10px; }
-.sb-host-head { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-dim); }
-.sb-host-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.sb-project-head { padding: 8px 10px 3px; font-size: 12.5px; font-weight: 600; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-row { display: flex; align-items: center; gap: 9px; height: 32px; min-height: 32px; padding: 0 10px; border-radius: 8px; color: var(--color-text-muted); font-size: 13.5px; text-decoration: none; }
-.sb-row:hover { background: var(--color-surface-2); color: var(--color-text); }
-.sb-row[aria-current=page] { background: rgb(240 48 24 / 12%); color: var(--color-text); box-shadow: inset 0 0 0 1px rgb(240 48 24 / 20%); }
-.sb-row-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-dim); opacity: .55; }
-.sb-row[data-state=working] .sb-row-dot { background: var(--color-amber); opacity: 1; }
-.sb-row[data-state=needs-you] .sb-row-dot { background: var(--color-claw); opacity: 1; }
-.sb-row[data-state=crashed] .sb-row-dot { background: var(--color-wm-red); opacity: 1; }
-.sb-row-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
-.sb-empty { margin: 0; padding: 4px 10px 6px; font-size: 12.5px; color: var(--color-text-dim); }
+/* WP-A4: the sessions area (hosts/projects/rows) lives in components/sidebar/sidebar.css. */
 
 /* ── Rail (Z-1): Board · Cron · ext pages · Settings ─────────────────── */
 .rail { flex: none; display: flex; flex-direction: column; gap: 1px; padding: 8px 10px 12px; border-top: 1px solid var(--shell-rule); }
@@ -240,12 +228,56 @@ html[data-shell=desktop] .files-screen { position: relative; }
 html[data-shell=desktop] .editor-toolbar-keys { display: none; }
 html[data-shell=desktop] .editor-toolbar { justify-content: flex-end; }
 
-/* ── Settings: sections | content ────────────────────────────────────── */
-html[data-shell=desktop] .app-content:has(.settings-page) > .settings-page { max-width: 1040px; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 0 36px; align-items: start; padding-top: 4px; }
-html[data-shell=desktop] .settings-page > section { grid-column: 2; }
-html[data-shell=desktop] .settings-page > section[hidden] { display: none; }
-.settings-nav { grid-column: 1; grid-row: 1 / span 40; position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
-.settings-nav-item { display: flex; align-items: center; height: 36px; min-height: 36px; padding: 0 12px; border-radius: 10px; background: transparent; color: var(--color-text-muted); font-size: 14px; font-weight: 500; text-align: left; }
+/* ── Settings: nav | content (WP-A24, Z-113) ─────────────────────────── */
+html[data-shell=desktop] .app-content:has(.settings-page) > .settings-page { max-width: 1080px; display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 0 36px; align-items: start; padding-top: 4px; }
+html[data-shell=desktop] .settings-page > .settings-body { grid-column: 2; min-width: 0; }
+html[data-shell=desktop] .settings-page > .settings-top { grid-column: 1 / -1; margin-bottom: 12px; }
+/* Below `lg` (1024 px content) the nav collapses to the 64 px icon rail. */
+@media (max-width: 1360px) {
+  html[data-shell=desktop] .app-content:has(.settings-page) > .settings-page { grid-template-columns: 64px minmax(0, 1fr); gap: 0 20px; }
+}
+.settings-nav { grid-column: 1; grid-row: 2 / span 40; position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 2px; max-height: calc(100dvh - 170px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--color-surface-3) transparent; }
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-group + .settings-nav-group { margin-top: 10px; padding-top: 7px; border-top: 1px solid var(--color-line); }
+.settings-nav-group-title { margin: 0 0 2px; padding: 0 12px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-dim); }
+.settings-nav-rail .settings-nav-item { justify-content: center; padding: 0; }
+.settings-nav-item { display: flex; align-items: center; gap: 10px; height: 30px; min-height: 30px; padding: 0 12px; border-radius: 10px; background: transparent; color: var(--color-text-muted); font-size: 14px; font-weight: 500; text-align: left; }
 .settings-nav-item:hover { background: var(--color-surface-2); color: var(--color-text); }
 .settings-nav-item[aria-current=page] { background: rgb(240 48 24 / 13%); color: var(--color-text); box-shadow: inset 0 0 0 1px rgb(240 48 24 / 22%); }
 .settings-nav-item:active:not(:disabled) { transform: none; }
+/* The one global search (Z-113): top of the page, above nav + content. */
+.settings-top { position: relative; }
+.settings-search { position: relative; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 12px; background: var(--color-surface-2); color: var(--color-text-dim); }
+.settings-search:focus-within { box-shadow: inset 0 0 0 1px var(--color-line), 0 0 0 2px rgb(240 48 24 / 30%); }
+.settings-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--color-text); font-size: 14px; min-height: 34px; }
+.settings-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.settings-search-results { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0; margin: 0; padding: 6px; list-style: none; border-radius: 14px; background: var(--color-surface-2); border: 1px solid var(--color-line); box-shadow: 0 16px 40px rgb(0 0 0 / 50%); max-height: 380px; overflow-y: auto; }
+.settings-search-hit { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 8px 10px; border-radius: 9px; text-align: left; color: var(--color-text); font-size: 13.5px; }
+.settings-search-hit.active, .settings-search-hit:hover { background: var(--color-surface-3); }
+.settings-search-detail { color: var(--color-text-dim); font-size: 11.5px; }
+.settings-search-hit[data-kind=host] .settings-search-detail::before { content: 'host \00b7 '; color: var(--color-amber); }
+.settings-search-hit[data-kind=pi] .settings-search-detail::before { content: 'pi \00b7 '; color: var(--color-wm-cyan); }
+.settings-search-hit[data-kind=extension] .settings-search-detail::before { content: 'ext \00b7 '; color: var(--color-claw); }
+/* The standard secondary-page Back (Z-113): ghost, 32 px, 16 px arrow. */
+.settings-back { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 9px; background: transparent; color: var(--color-text-muted); font-size: 13px; }
+.settings-back:hover { background: var(--color-surface-2); color: var(--color-text); }
+/* A search result's target flashes once (Z-113): row or section card. */
+.settings-flash-target { animation: settings-flash 1.4s ease-out both; }
+@keyframes settings-flash {
+  0%, 30% { background: rgb(240 48 24 / 12%); box-shadow: inset 0 0 0 1px rgb(240 48 24 / 28%); border-radius: 10px; }
+  100% { background: transparent; box-shadow: none; }
+}
+/* The safe-mode banner (G-19): names the suspects. */
+.safe-mode-banner { display: flex; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--color-line); background: rgb(240 168 24 / 10%); color: var(--color-amber); }
+/* Any other host warning (a crash notice): the same row, quieter. */
+.settings-notice-row { display: flex; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--color-line); background: rgb(240 168 24 / 6%); color: var(--color-text-muted); font-size: 13px; }
+.settings-notice-row svg { color: var(--color-amber); }
+/* Phone: one long page, grouped like the desktop nav (Z-113). */
+.settings-phone-group + .settings-phone-group { margin-top: 4px; }
+.settings-phone-group-title { margin: 26px 0 10px; padding: 0 4px; font-size: 13px; font-weight: 500; letter-spacing: 0.01em; color: var(--color-text-muted); }
+.settings-phone-group:first-child > .settings-phone-group-title { margin-top: 8px; }
+.settings-in-card-label { padding: 10px 16px 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-dim); border-top: 1px solid var(--color-line); }
+.settings-namespace-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 16px; text-align: left; border-top: 1px solid var(--color-line); }
+.settings-namespace-row:hover { background: var(--color-surface-2); }
+/* The Update card's host row (G-14). */
+.update-host { display: flex; align-items: center; gap: 8px; padding: 10px 14px 0; margin-top: 10px; border-top: 1px dashed var(--color-line); color: var(--color-text-muted); font-size: 12.5px; }

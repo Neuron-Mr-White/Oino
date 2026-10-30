@@ -399,6 +399,17 @@ impl SessionHub {
             .unwrap_or_default()
     }
 
+    /// App spec §3.14 (WP-A24): the services of the primary cwd — the same
+    /// cached, idle-evicted set a session runs on, but with **no session
+    /// runtime** — for the hub-level `_oino/*` subset (`host_cmd`).
+    ///
+    /// # Errors
+    ///
+    /// Services creation failures (core hub texts).
+    pub async fn core_services(&self) -> Result<Arc<oino_core::services::Services>, HubError> {
+        self.inner.core.services().await.map_err(HubError::Client)
+    }
+
     /// The hub event stream (§7.4). A new `events_open` stream first sends
     /// [`SessionHub::notices`], then this stream.
     #[must_use]
@@ -589,6 +600,47 @@ impl SessionHub {
     /// Unknown target, dispose failures, trash I/O.
     pub async fn archive(&self, target: &str) -> Result<SessionCard, HubError> {
         self.inner.archive(target).await
+    }
+
+    /// App spec §3.14 (`sessions_list{archived:true}`, WP-A5): the archived sessions — the
+    /// session files in `<agent dir>/trash/` — newest activity first, headers only.
+    ///
+    /// # Errors
+    ///
+    /// Trash directory I/O.
+    pub async fn archived(&self) -> Result<Vec<SessionCard>, HubError> {
+        self.inner.archived()
+    }
+
+    /// App spec §3.14 (`session_restore`, WP-A5, Z-13): move an archived session file back
+    /// into its project's folder under the sessions root and return its card.
+    ///
+    /// # Errors
+    ///
+    /// Unknown/ambiguous archived target, trash or sessions I/O.
+    pub async fn restore(&self, target: &str) -> Result<SessionCard, HubError> {
+        self.inner.restore(target).await
+    }
+
+    /// App spec §3.14 (`session_delete`, WP-A5, Z-13/Z-20): delete one archived session
+    /// file. Live sessions are archived first (the app does that), so a target outside the
+    /// trash is refused rather than silently skipped.
+    ///
+    /// # Errors
+    ///
+    /// Unknown/ambiguous archived target, trash I/O.
+    pub async fn delete_archived(&self, target: &str) -> Result<(), HubError> {
+        self.inner.delete_archived(target).await
+    }
+
+    /// App spec §3.14 (`trash_empty`, WP-A5, Z-13): delete every archived session file;
+    /// answers how many went.
+    ///
+    /// # Errors
+    ///
+    /// Reading the trash directory.
+    pub async fn empty_trash(&self) -> Result<usize, HubError> {
+        self.inner.empty_trash().await
     }
 
     /// `session_close{session}`: dispose the runtime when idle and no other subscriber; the
@@ -927,6 +979,193 @@ impl Inner {
         lock(&self.state).states.remove(session_id);
         self.changed(session_id).await;
         Ok(())
+    }
+
+    /// `sessions_list{archived:true}` (§3.14, WP-A5): the trashed session files, newest
+    /// activity first, as idle cards. Each file is read header-only
+    /// ([`oino_session::manager::session_info`]); nothing wakes a runtime.
+    fn archived(&self) -> Result<Vec<SessionCard>, HubError> {
+        let mut cards: Vec<SessionCard> = self
+            .archived_sessions()?
+            .iter()
+            .map(|info| {
+                let updated_at = info
+                    .modified
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+                let card = SessionCard {
+                    session_id: info.id.clone(),
+                    file: info.path.clone(),
+                    name: info.name.clone(),
+                    cwd: info.cwd.clone(),
+                    updated_at,
+                    message_count: info.message_count,
+                    state: HubState::Idle,
+                    needs_you: false,
+                    model: None,
+                    pinned: false,
+                    unread: false,
+                    title_locked: false,
+                    source: None,
+                    changes: None,
+                    last_activity: updated_at,
+                };
+                self.meta.onto(card)
+            })
+            .collect();
+        cards.sort_by_key(|card| std::cmp::Reverse(card.updated_at));
+        Ok(cards)
+    }
+
+    /// `session_restore{session}` (§3.14, WP-A5, Z-13): move the archived file back to
+    /// `<sessions root>/<encoded cwd>/` (core's own layout) and re-list it. The restored
+    /// card is announced on `events_open` like any other change.
+    async fn restore(&self, target: &str) -> Result<SessionCard, HubError> {
+        let entry = self.resolve_archived(target)?;
+        let cwd = if entry.cwd.is_empty() {
+            self.cwd.clone()
+        } else {
+            PathBuf::from(&entry.cwd)
+        };
+        let dir = oino_session::manager::cwd_session_dir(&self.sessions_root, &cwd);
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(|error| HubError::failed(format!("creating {}: {error}", dir.display())))?;
+        let name = entry.path.file_name().map_or_else(
+            || format!("{}.jsonl", entry.id),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let dest = unique_destination(&dir, &name);
+        tokio::fs::rename(&entry.path, &dest)
+            .await
+            .map_err(|error| {
+                HubError::failed(format!("restoring {}: {error}", entry.path.display()))
+            })?;
+        let card = match self.core.list().await {
+            Ok(records) => records
+                .iter()
+                .find(|record| record.info.id == entry.id)
+                .map(|record| self.card_from(&lock(&self.state), record)),
+            Err(error) => {
+                tracing::warn!(%error, session_id = %entry.id, "listing after a restore");
+                None
+            }
+        }
+        .unwrap_or_else(|| SessionCard {
+            session_id: entry.id.clone(),
+            file: dest.clone(),
+            name: entry.name.clone(),
+            cwd: entry.cwd.clone(),
+            updated_at: epoch_ms(entry.modified),
+            message_count: entry.message_count,
+            state: HubState::Idle,
+            needs_you: false,
+            model: None,
+            pinned: false,
+            unread: false,
+            title_locked: false,
+            source: None,
+            changes: None,
+            last_activity: epoch_ms(entry.modified),
+        });
+        let card = self.meta.onto(card);
+        self.emit(HubEvent::SessionChanged { card: card.clone() });
+        tracing::info!(session_id = %entry.id, dest = %dest.display(), "session restored");
+        Ok(card)
+    }
+
+    /// `session_delete{session}` (§3.14, WP-A5): unlink one archived session file. The
+    /// op is trash-only: a live session has to be archived first (Z-13/Z-20).
+    async fn delete_archived(&self, target: &str) -> Result<(), HubError> {
+        let entry = self.resolve_archived(target)?;
+        tokio::fs::remove_file(&entry.path).await.map_err(|error| {
+            HubError::failed(format!("deleting {}: {error}", entry.path.display()))
+        })?;
+        self.emit(HubEvent::SessionRemoved {
+            session_id: entry.id.clone(),
+        });
+        tracing::info!(session_id = %entry.id, "archived session deleted");
+        Ok(())
+    }
+
+    /// `trash_empty` (§3.14, WP-A5): delete every archived session file (ZCode's
+    /// "Delete all archived").
+    async fn empty_trash(&self) -> Result<usize, HubError> {
+        let archived = self.archived_sessions()?;
+        let mut deleted = 0;
+        for entry in archived {
+            match tokio::fs::remove_file(&entry.path).await {
+                Ok(()) => {
+                    deleted += 1;
+                    self.emit(HubEvent::SessionRemoved {
+                        session_id: entry.id,
+                    });
+                }
+                // Another runner already deleted it: the trash ends up empty either way.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    tracing::warn!(%error, path = %entry.path.display(), "emptying the trash")
+                }
+            }
+        }
+        tracing::info!(deleted, "trash emptied");
+        Ok(deleted)
+    }
+
+    /// Every session file in `trash/` that parses as a session (headers only).
+    fn archived_sessions(&self) -> Result<Vec<oino_session::manager::SessionInfo>, HubError> {
+        let trash = self.agent_dir.join("trash");
+        let entries = match std::fs::read_dir(&trash) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => {
+                return Err(HubError::failed(format!(
+                    "reading {}: {error}",
+                    trash.display()
+                )));
+            }
+        };
+        let mut sessions: Vec<oino_session::manager::SessionInfo> = entries
+            .flatten()
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
+            .filter_map(|entry| oino_session::manager::session_info(&entry.path()))
+            .collect();
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.modified));
+        Ok(sessions)
+    }
+
+    /// Resolves an archived `session` target — exact id, unique prefix (≥ 4 chars) or the
+    /// archived file's path — against `trash/`.
+    fn resolve_archived(
+        &self,
+        target: &str,
+    ) -> Result<oino_session::manager::SessionInfo, HubError> {
+        let archived = self.archived_sessions()?;
+        let path = Path::new(target);
+        if path.is_absolute() {
+            return archived
+                .into_iter()
+                .find(|entry| entry.path == path)
+                .ok_or_else(|| HubError::failed(format!("no archived session at {target}")));
+        }
+        let exact: Vec<&oino_session::manager::SessionInfo> =
+            archived.iter().filter(|entry| entry.id == target).collect();
+        if let Some(entry) = exact.first() {
+            return Ok((*entry).clone());
+        }
+        let matches: Vec<&oino_session::manager::SessionInfo> = archived
+            .iter()
+            .filter(|entry| entry.id.starts_with(target))
+            .collect();
+        match matches.as_slice() {
+            [entry] if target.chars().count() >= 4 => Ok((*entry).clone()),
+            [] => Err(HubError::failed(format!(
+                "no archived session matches {target:?}"
+            ))),
+            _ => Err(HubError::failed(format!(
+                "{target:?} matches more than one archived session"
+            ))),
+        }
     }
 
     /// Resolves a `session` target (exact id, unique prefix ≥ 4 chars, or file path) against

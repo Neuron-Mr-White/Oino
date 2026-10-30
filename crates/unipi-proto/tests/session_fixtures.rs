@@ -37,12 +37,15 @@ fn parses(schema: &str, value: &Value) -> Result<(), String> {
         },
         "SessionRequest" => match serde_json::from_value::<Request>(value.clone()) {
             Ok(
-                Request::SessionsList
+                Request::SessionsList { .. }
                 | Request::EventsOpen
                 | Request::SessionNew { .. }
                 | Request::SessionOpen { .. }
                 | Request::SessionFork { .. }
                 | Request::SessionArchive { .. }
+                | Request::SessionRestore { .. }
+                | Request::SessionDelete { .. }
+                | Request::TrashEmpty
                 | Request::SessionRename { .. }
                 | Request::SessionClose { .. }
                 | Request::SessionMetaSet { .. },
@@ -56,6 +59,11 @@ fn parses(schema: &str, value: &Value) -> Result<(), String> {
         "SessionSnapshot" => serde_json::from_value::<SessionSnapshot>(value.clone())
             .map_err(|error| error.to_string())
             .and_then(|snapshot| snapshot.validate()),
+        "TrashEmptyData" => {
+            serde_json::from_value::<unipi_proto::session::TrashEmptyData>(value.clone())
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
         "SessionReply" => serde_json::from_value::<SessionReply>(value.clone())
             .map(|_| ())
             .map_err(|error| error.to_string()),

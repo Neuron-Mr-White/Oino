@@ -63,3 +63,53 @@ export function useAutostart() {
   onCleanup(() => undefined);
   return { on, set, refresh };
 }
+
+/** v2 §5.4 (WP-A24, D-20): the ask-once close dialog. The Rust side emits
+ * `unipi-close-ask` when `closeAction` is still `ask` and the window closes;
+ * the answer ("Minimize to tray" default, or Quit) may be remembered, which
+ * is exactly what Settings → General changes later. */
+const CLOSE_ASK_EVENT = 'unipi-close-ask';
+const CLOSE_ASK_TEST_EVENT = 'unipi-close-ask-test';
+
+export function CloseAskRunner() {
+  if (!can('localSharing')) return null;
+  const [open, setOpen] = createSignal(false);
+  const [remember, setRemember] = createSignal(true);
+  const [message, setMessage] = createSignal('');
+  onMount(() => {
+    void listen<{ message: string }>(CLOSE_ASK_EVENT, (event) => {
+      setMessage(event.payload.message);
+      setOpen(true);
+    });
+    // Capture hook: the same listener, driven from a browser script.
+    const drive = (event: Event) => {
+      setMessage((event as CustomEvent<{ message: string }>).detail.message);
+      setOpen(true);
+    };
+    window.addEventListener(CLOSE_ASK_TEST_EVENT, drive);
+    onCleanup(() => window.removeEventListener(CLOSE_ASK_TEST_EVENT, drive));
+  });
+  const answer = (action: 'tray' | 'quit') => {
+    setOpen(false);
+    void call('close_answer', { action, remember: remember() }, z.null());
+  };
+  return (
+    <BoardSheet open={open()} onClose={() => answer('tray')} label="Close UniPi?" testId="close-ask-sheet">
+      <p class="preview-muted" style={{ margin: '0 0 12px' }} data-testid="close-ask-message">
+        {message() || "Close UniPi, or keep it running in the tray so phones and cron keep working?"}
+      </p>
+      <label class="flex items-center gap-2 text-sm text-text-muted mb-3" data-testid="close-ask-remember">
+        <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} />
+        Remember my choice
+      </label>
+      <div class="share-request-actions">
+        <button type="button" class="btn btn-primary" data-testid="close-ask-tray" onClick={() => answer('tray')}>
+          Minimize to tray
+        </button>
+        <button type="button" class="btn btn-secondary" data-testid="close-ask-quit" onClick={() => answer('quit')}>
+          Quit
+        </button>
+      </div>
+    </BoardSheet>
+  );
+}

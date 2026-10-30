@@ -852,8 +852,9 @@ fn provider_component(extensions: &ExtensionSet, api: &str) -> Option<Arc<Loaded
 }
 
 /// Re-fetches the model list of one `models: "dynamic"` provider with `credential` (after
-/// `/login` or a new API key); other providers are left alone.
-pub(crate) async fn refresh_provider_models(
+/// `/login` or a new API key); other providers are left alone. Public for the embedding
+/// host's hub-level `set_api_key` (app spec §3.14 `host_cmd`, WP-A24).
+pub async fn refresh_provider_models(
     extensions: &ExtensionSet,
     models: &ModelRegistry,
     provider_id: &str,

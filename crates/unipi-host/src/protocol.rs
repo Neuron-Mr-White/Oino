@@ -1048,15 +1048,19 @@ impl Handler {
             // event stream and the one-shot session ops. The hub is the process's one
             // session owner (`serve` installs it); a handler without one (tests, a CLI
             // path) says so instead of silently succeeding.
-            Request::SessionsList
+            Request::SessionsList { .. }
             | Request::EventsOpen
             | Request::SessionNew { .. }
             | Request::SessionOpen { .. }
             | Request::SessionFork { .. }
             | Request::SessionArchive { .. }
+            | Request::SessionRestore { .. }
+            | Request::SessionDelete { .. }
+            | Request::TrashEmpty
             | Request::SessionRename { .. }
             | Request::SessionClose { .. }
-            | Request::SessionMetaSet { .. } => {
+            | Request::SessionMetaSet { .. }
+            | Request::HostCmd { .. } => {
                 let Some(service) = crate::sessions::SessionService::shared() else {
                     return Err(error(
                         AppErrorCode::E_UNSUPPORTED,
@@ -1064,19 +1068,6 @@ impl Handler {
                     ));
                 };
                 crate::sessions::stream::serve_request(&service, req, read, write).await?;
-            }
-            Request::LspServers { .. } | Request::LspOpen { .. } => {
-                // app spec §3.12 (WP-A21): like the PTYs, the language
-                // servers live in this host process — one per
-                // (root, language), outliving the stream that opened it.
-                crate::lsp::serve_request(
-                    crate::lsp::LspRegistry::shared(),
-                    &self.paths,
-                    req,
-                    read,
-                    write,
-                )
-                .await?;
             }
             Request::TermOpen { .. }
             | Request::TermAttach { .. }
@@ -1086,6 +1077,19 @@ impl Handler {
                 // terminal outlives the stream that opened it.
                 crate::term::serve_request(
                     crate::term::TermRegistry::shared(),
+                    &self.paths,
+                    req,
+                    read,
+                    write,
+                )
+                .await?;
+            }
+            Request::LspServers { .. } | Request::LspOpen { .. } => {
+                // app spec §3.12 (WP-A21): like the PTYs, the language
+                // servers live in this host process — one per
+                // (root, language), outliving the stream that opened it.
+                crate::lsp::serve_request(
+                    crate::lsp::LspRegistry::shared(),
                     &self.paths,
                     req,
                     read,

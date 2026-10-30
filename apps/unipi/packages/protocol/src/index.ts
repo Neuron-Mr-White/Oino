@@ -1,4 +1,16 @@
 export { PROTO_VERSION, SemverSchema } from "./version.js";
+export {
+  BOARD_ARG_MAX,
+  BOARD_ARGS_MAX,
+  BOARD_SLUG_MAX,
+  BoardErrorKindSchema,
+  BoardCliDataSchema,
+  BoardWatchDataSchema,
+  boardArgError,
+  boardArgsError,
+  BoardSlugSchema,
+} from "./board.js";
+export type { BoardErrorKind, BoardCliData, BoardWatchData, BoardSlug } from "./board.js";
 
 export {
   AppErrorCodeSchema,
@@ -38,13 +50,6 @@ export {
   TmuxSessionSchema,
   TmuxStateSchema,
   TreeDataSchema,
-  BOARD_MAX_BODY,
-  BOARD_MAX_PATH,
-  boardPathError,
-  BoardMethodSchema,
-  BoardPathSchema,
-  BoardProjectSchema,
-  BoardHttpDataSchema,
   BLOB_MAX_SIZE,
   Sha256HexSchema,
   BlobSizeSchema,
@@ -83,7 +88,6 @@ export type {
   TmuxSession,
   TmuxState,
   TreeData,
-  BoardHttpData,
   BlobPutData,
   BlobGetData,
   NotifyConfigData,
@@ -229,6 +233,20 @@ export {
   GitShortstatDataSchema,
   GIT_SHORTSTAT_UNTRACKED_MAX,
 } from "./git.js";
+export {
+  LSP_LANGUAGE_MAX,
+  LspLanguageSchema,
+  LspServerInfoSchema,
+  LspServersDataSchema,
+  LspAttachDataSchema,
+} from "./lsp.js";
+export type {
+  LspLanguage,
+  LspServerInfo,
+  LspServersData,
+  LspAttachData,
+} from "./lsp.js";
+
 export type {
   GitCmd,
   GitRepoData,
@@ -251,19 +269,6 @@ export type {
   GitSyncData,
   GitShortstatData,
 } from "./git.js";
-export {
-  LSP_LANGUAGE_MAX,
-  LspLanguageSchema,
-  LspServerInfoSchema,
-  LspServersDataSchema,
-  LspAttachDataSchema,
-} from "./lsp.js";
-export type {
-  LspLanguage,
-  LspServerInfo,
-  LspServersData,
-  LspAttachData,
-} from "./lsp.js";
 
 export {
   HOST_SETTINGS_KEYS,
@@ -394,6 +399,10 @@ export {
   SessionOpenRequestSchema,
   SessionForkRequestSchema,
   SessionArchiveRequestSchema,
+  SessionRestoreRequestSchema,
+  SessionDeleteRequestSchema,
+  TrashEmptyRequestSchema,
+  TrashEmptyDataSchema,
   SessionRenameRequestSchema,
   SessionCloseRequestSchema,
   SessionMetaSetRequestSchema,

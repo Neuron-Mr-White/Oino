@@ -79,7 +79,7 @@ export default function Editor() {
   const target = getEditorTarget();
   const [state, setState] = createSignal<LoadState>({ kind: 'loading' });
   const [dirty, setDirty] = createSignal(false);
-  const [wrap, setWrap] = createSignal(true);
+  const [wrap, setWrap] = createSignal(settings.appearance.codeWrap);
   const [saving, setSaving] = createSignal(false);
   const [conflict, setConflict] = createSignal<{ theirHash: string; mine: string; mineBefore: string } | undefined>(undefined);
   const [toast, setToast] = createSignal<string | null>(null);
@@ -220,7 +220,8 @@ export default function Editor() {
     view?.destroy();
     setVimMode(null);
     const extensions = [
-      lineNumbers(),
+      // Z-114 (WP-A24): line numbers follow the Appearance setting.
+      ...(settings.appearance.codeLineNumbers ? [lineNumbers()] : []),
       history(),
       search({ top: true }),
       // Mod-s saves (desktop keyboards; harmless on the phone); Mod-f is searchKeymap's find.

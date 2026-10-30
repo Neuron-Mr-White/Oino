@@ -11,7 +11,8 @@ export const editorTheme = EditorView.theme(
       color: 'var(--color-text)',
       backgroundColor: 'var(--color-bg)',
       height: '100%',
-      fontSize: '14px',
+      // Z-114 (WP-A24): the Appearance section drives code size.
+      fontSize: 'var(--code-font-size, 13px)',
     },
     '.cm-content': {
       fontFamily: 'var(--font-mono)',

@@ -350,45 +350,8 @@ export const ShortcutsDataSchema = z.object({
 });
 export type ShortcutsData = z.infer<typeof ShortcutsDataSchema>;
 
-/** Board relay (DESIGN.md §3.9 "Data path"); mirrors `crates/proto/src/board.rs`. */
-export const BOARD_MAX_BODY = 26 * 1024 * 1024;
-export const BOARD_MAX_PATH = 4096;
-
-/**
- * The board path allow-list: `/api/…` only, ≤ 4096 chars, no control
- * characters, `#` or `\`, and no empty or dot (`.`, `..`, `%2e`) segments
- * before the query. Returns the reason, or null when allowed.
- */
-export function boardPathError(path: string): string | null {
-  if (!path.startsWith("/api/")) return "path must start with /api/";
-  const length = [...path].length;
-  if (length > BOARD_MAX_PATH) return `path must be at most ${BOARD_MAX_PATH} characters, got ${length}`;
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f-\u009f#\\]/.test(path)) return "path must not contain control characters, '#' or '\\'";
-  const route = path.split("?", 1)[0] ?? "";
-  for (const segment of route.split("/").slice(1)) {
-    if (segment === "") return "path must not contain empty segments";
-    const decoded = segment.toLowerCase().replaceAll("%2e", ".");
-    if (decoded === "." || decoded === "..") return "path must not contain dot segments";
-  }
-  return null;
-}
-
-export const BoardMethodSchema = z.enum(["GET", "POST", "PUT"]);
-export const BoardPathSchema = z.string().superRefine((path, ctx) => {
-  const reason = boardPathError(path);
-  if (reason) ctx.addIssue({ code: "custom", message: reason });
-});
-export const BoardProjectSchema = z
-  .string()
-  .min(1, "project must be at least 1 character")
-  .max(128, "project must be at most 128 characters")
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, "project must be a slug ([A-Za-z0-9._-], starting alphanumeric)");
-const ContentTypeSchema = z
-  .string()
-  .min(1)
-  .max(256)
-  .regex(/^[\x20-\x7e]+$/, "content_type must be printable ASCII");
+/** Board v2 (WP-A22; ext-abi §5.5): request schemas below; shapes in `board.ts`. */
+import { BoardSlugSchema } from "./board.js";
 
 /** Blob channel (UNI-157 "media + attachments"); mirrors `crates/proto/src/blob.rs`. */
 /** UNI-278: 4 GiB (was 50 MiB); uploads stream to disk. */
@@ -432,13 +395,6 @@ export type BlobPutData = z.infer<typeof BlobPutDataSchema>;
 
 export const BlobGetDataSchema = z.object({ size: z.number().int().min(0), mime: z.string() });
 export type BlobGetData = z.infer<typeof BlobGetDataSchema>;
-
-/** `ok.data` for `board_http`; the body follows in kind-1 frames, ended by `exit`. */
-export const BoardHttpDataSchema = z.object({
-  status: z.number().int().min(100).max(599),
-  content_type: z.string(),
-});
-export type BoardHttpData = z.infer<typeof BoardHttpDataSchema>;
 
 /** A UnifiedPush/ntfy endpoint URL (UNI-161 §2): 1..=2048 chars, https://. */
 const NotifyEndpointSchema = z
@@ -484,14 +440,14 @@ const BaseRequestSchema = z.discriminatedUnion("op", [
     code: PairCodeSchema,
     name: PairNameSchema.optional(),
   }),
+  // WP-A22 (app.md §3.14): the Board talks to the `unipi-kanboard` CLI through
+  // the host — one process per call, `--json`, actor user, allow-list.
   z.object({
-    op: z.literal("board_http"),
-    method: BoardMethodSchema,
-    path: BoardPathSchema,
-    content_type: ContentTypeSchema.optional(),
-    body_len: z.number().int().min(0).max(BOARD_MAX_BODY).optional(),
+    op: z.literal("board_cli"),
+    args: z.array(z.string().min(1).max(1024)).min(1).max(64),
+    project: BoardSlugSchema.optional(),
   }),
-  z.object({ op: z.literal("board_sse"), project: BoardProjectSchema }),
+  z.object({ op: z.literal("board_watch"), on: z.boolean() }),
   z.object({ op: z.literal("chat_list") }),
   z.object({ op: z.literal("chat_open"), pid: z.number().int().min(1).max(4294967295) }),
   z.object({
@@ -746,11 +702,6 @@ export const ControlSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("title"),
     title: TitleSchema,
-  }),
-  z.object({
-    type: z.literal("board_event"),
-    event: z.string().optional(),
-    data: z.string(),
   }),
   z.object({
     type: z.literal("chat"),

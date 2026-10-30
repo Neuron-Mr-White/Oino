@@ -6,6 +6,10 @@ import {
   HubEventSchema,
   PROTO_VERSION,
   SessionArchiveRequestSchema,
+  SessionRestoreRequestSchema,
+  SessionDeleteRequestSchema,
+  TrashEmptyRequestSchema,
+  TrashEmptyDataSchema,
   SessionCloseRequestSchema,
   SessionCmdControlSchema,
   SessionMetaSetRequestSchema,
@@ -33,6 +37,10 @@ const SessionRequestSchema = z.union([
   SessionOpenRequestSchema,
   SessionForkRequestSchema,
   SessionArchiveRequestSchema,
+  SessionRestoreRequestSchema,
+  SessionDeleteRequestSchema,
+  TrashEmptyRequestSchema,
+  TrashEmptyDataSchema,
   SessionRenameRequestSchema,
   SessionCloseRequestSchema,
   SessionMetaSetRequestSchema,
@@ -45,6 +53,7 @@ const schemas: Record<string, z.ZodTypeAny> = {
   SessionSnapshot: SessionSnapshotSchema,
   SessionReply: SessionReplySchema,
   HubEvent: HubEventSchema,
+  TrashEmptyData: TrashEmptyDataSchema,
 };
 
 describe('session contract fixtures (v2 host.md §7.3–7.4)', () => {

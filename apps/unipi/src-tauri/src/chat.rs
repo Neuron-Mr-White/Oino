@@ -11,7 +11,8 @@
 //! session_stream_close(streamId)             local hang-up (the session keeps running)
 //! events_open(hostId, onEvent)               → stream id; {kind:"hub_event", event}
 //! events_close(streamId)                     local hang-up
-//! session_archive|rename|close(hostId, …)    one-shot session ops
+//! session_archive|restore|delete|rename|close   one-shot session ops
+//! trash_empty(hostId)                          delete every archived session
 //! ```
 //!
 //! `session_cmd` generates the correlation id itself and waits for the stream's
@@ -41,7 +42,7 @@ use crate::net::NetState;
 
 /// The host may take a moment to open (wake) a session: 30 s, like every other
 /// op on a fresh connection.
-const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 /// A session command's reply budget (the host answers within 30 s and
 /// `_oino/render` within 2 s; these are the backstops, app spec §3.2).
 const CMD_TIMEOUT: Duration = Duration::from_secs(35);
@@ -209,7 +210,7 @@ async fn open_stream(
 }
 
 /// One request/reply op on a fresh stream.
-async fn one_shot(
+pub(crate) async fn one_shot(
     app: &tauri::AppHandle,
     state: &NetState,
     host_id: &str,
@@ -495,8 +496,18 @@ pub async fn sessions_list(
     app: tauri::AppHandle,
     state: State<'_, NetState>,
     host_id: String,
+    archived: Option<bool>,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::SessionsList, REPLY_TIMEOUT).await
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionsList {
+            archived: archived.unwrap_or(false),
+        },
+        REPLY_TIMEOUT,
+    )
+    .await
 }
 
 /// `session_open` (host.md §7.3): open or resume a session as a live stream.
@@ -723,6 +734,55 @@ pub async fn session_archive(
     .await
 }
 
+/// `session_restore` (app spec §3.14, WP-A5, Z-13): move an archived session back into
+/// its project's folder. → the restored card.
+#[tauri::command]
+pub async fn session_restore(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    session: SessionTarget,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionRestore { session },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
+/// `session_delete` (app spec §3.14, WP-A5, Z-13/Z-20): delete one **archived** session
+/// file. The UI archives first, then deletes.
+#[tauri::command]
+pub async fn session_delete(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    session: SessionTarget,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionDelete { session },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
+/// `trash_empty` (app spec §3.14, WP-A5, Z-13): delete every archived session.
+/// → `{"deleted": N}`.
+#[tauri::command]
+pub async fn trash_empty(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::TrashEmpty, REPLY_TIMEOUT).await
+}
+
 /// `session_rename` (host.md §7.2): set the session's display name.
 #[tauri::command]
 pub async fn session_rename(
@@ -837,7 +897,7 @@ mod tests {
             host.write_all(&reply).await.unwrap();
         });
         let (mut r, mut w) = tokio::io::split(&mut phone);
-        let data = request(&mut w, &mut r, Request::SessionsList)
+        let data = request(&mut w, &mut r, Request::SessionsList { archived: false })
             .await
             .unwrap();
         assert_eq!(data.unwrap()[0]["session_id"], "s1");

@@ -261,6 +261,13 @@ fn is_false(value: &bool) -> bool {
 /// §3.14's `sessions_list{archived:true}` is additive).
 pub type SessionsListData = Vec<SessionCard>;
 
+/// `trash_empty` → how many archived sessions were deleted (app spec §3.14, WP-A5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrashEmptyData {
+    /// Archived session files removed.
+    pub deleted: usize,
+}
+
 /// One numbered event of a session stream (host.md §7.4): `{session, seq, event}`.
 ///
 /// `event` is exactly oino's `ClientEvent` serde JSON (`oino-core/src/events.rs`), or one of

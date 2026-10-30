@@ -511,7 +511,7 @@ async fn sessions_list_cards_and_events_open_push_notices_cards_and_ui() {
     }
 
     // `sessions_list`: headers only, the card of the session we created.
-    let mut list = Client::open(&fixture.service, Request::SessionsList);
+    let mut list = Client::open(&fixture.service, Request::SessionsList { archived: false });
     let cards: Vec<SessionCard> = match list.control().await {
         Control::Ok { data } => serde_json::from_value(data.expect("sessions_list data")).unwrap(),
         other => panic!("expected ok from sessions_list, got {other:?}"),

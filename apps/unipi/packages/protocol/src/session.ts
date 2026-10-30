@@ -251,10 +251,17 @@ export const HubEventSchema = z.discriminatedUnion("kind", [
     })
     .passthrough(),
   z.object({ kind: z.literal("git_changed"), root: z.string() }).passthrough(),
+  // WP-A22 (app.md §3.14): a board project's files changed (the watcher is on
+  // the files, not the writer — CLI and agent writes land here too).
+  z.object({ kind: z.literal("board_changed"), project: z.string() }).passthrough(),
 ]);
 export type HubEvent = z.infer<typeof HubEventSchema>;
 
-export const SessionsListRequestSchema = z.object({ op: z.literal("sessions_list") });
+export const SessionsListRequestSchema = z.object({
+  op: z.literal("sessions_list"),
+  /** App spec §3.14 (WP-A5, Z-13): the archived (trashed) sessions instead of the live list. */
+  archived: z.boolean().optional(),
+});
 
 export const EventsOpenRequestSchema = z.object({ op: z.literal("events_open") });
 
@@ -281,6 +288,25 @@ export const SessionArchiveRequestSchema = z.object({
   op: z.literal("session_archive"),
   session: SessionTargetSchema,
 });
+
+/** App spec §3.14 (WP-A5, Z-13): move an archived session back into its project. */
+export const SessionRestoreRequestSchema = z.object({
+  op: z.literal("session_restore"),
+  session: SessionTargetSchema,
+});
+
+/** App spec §3.14 (WP-A5, Z-13/Z-20): delete one archived session file. */
+export const SessionDeleteRequestSchema = z.object({
+  op: z.literal("session_delete"),
+  session: SessionTargetSchema,
+});
+
+/** App spec §3.14 (WP-A5, Z-13): delete every archived session file. */
+export const TrashEmptyRequestSchema = z.object({ op: z.literal("trash_empty") });
+
+/** `trash_empty` → how many archived sessions went. */
+export const TrashEmptyDataSchema = z.object({ deleted: z.number().int().min(0) }).passthrough();
+export type TrashEmptyData = z.infer<typeof TrashEmptyDataSchema>;
 
 export const SessionRenameRequestSchema = z.object({
   op: z.literal("session_rename"),

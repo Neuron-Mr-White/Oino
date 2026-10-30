@@ -14,6 +14,7 @@ import {
   type Accessor,
   type JSX,
   createContext,
+  createEffect,
   createSignal,
   onMount,
   useContext,
@@ -28,6 +29,7 @@ import {
 } from './schema';
 import { createDefaultAdapter, type SettingsAdapter } from './adapter';
 import { loadSettingsFromAdapter } from './load';
+import { applyAppearance } from './appearance';
 
 const GROUP_SCHEMAS = SETTINGS_GROUP_SCHEMAS;
 type GroupName = SettingsGroup;
@@ -112,6 +114,12 @@ export function SettingsProvider(props: SettingsProviderProps): JSX.Element {
     } catch (cause) {
       setError(settingsError(`Could not load settings: ${String(cause)}`, []));
     }
+  });
+
+  // Z-114 (WP-A24): the appearance vars follow the store app-wide (the root
+  // html font size itself is never touched — only text that reads the vars).
+  createEffect(() => {
+    if (typeof document !== 'undefined') applyAppearance(document.documentElement.style, store.appearance);
   });
 
   const persist = (next: SettingsV1) => {

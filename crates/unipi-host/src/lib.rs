@@ -13,6 +13,7 @@ pub mod fs;
 pub mod fs_scope;
 pub mod git;
 pub mod git_watch;
+pub mod host_cmd;
 pub mod instance;
 pub mod ipc;
 pub mod local;

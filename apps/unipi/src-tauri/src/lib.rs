@@ -32,15 +32,16 @@ mod cron;
 mod desktop;
 mod forward;
 mod fs;
+mod host_settings;
 mod host_store;
 mod host_supervisor;
-mod lifecycle;
 mod hosts_commands;
+#[cfg(target_os = "ios")]
+mod ios_webview;
+mod lifecycle;
 mod local_files;
 mod local_host;
 mod lsp;
-#[cfg(target_os = "ios")]
-mod ios_webview;
 mod net;
 mod op_stream;
 mod pair_phone;
@@ -65,7 +66,13 @@ pub fn run() {
         .manage(host_supervisor::Shared::default())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_log::Builder::new().level(log::LevelFilter::Info).level_for("iroh", log::LevelFilter::Warn).level_for("noq_proto", log::LevelFilter::Warn).build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .level_for("iroh", log::LevelFilter::Warn)
+                .level_for("noq_proto", log::LevelFilter::Warn)
+                .build(),
+        )
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
@@ -110,12 +117,18 @@ pub fn run() {
             chat::session_cmd,
             chat::session_stream_close,
             chat::session_archive,
+            chat::session_restore,
+            chat::session_delete,
+            chat::trash_empty,
             chat::session_rename,
             chat::session_close,
             chat::session_meta_set,
             chat::events_open,
             chat::events_close,
             chat::events_focus,
+            host_settings::host_settings_get,
+            host_settings::host_settings_set,
+            host_settings::host_cmd,
             fs::fs_roots,
             fs::fs_list,
             fs::fs_stat,

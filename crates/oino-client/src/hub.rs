@@ -466,6 +466,19 @@ impl SessionHub {
         Ok(lazy_backend(live))
     }
 
+    /// The services of the hub's primary cwd — cached and LRU-bounded like a session's —
+    /// with **no session runtime**: the hub-level `_oino/*` subset (app spec §3.14,
+    /// `host_cmd`, WP-A24) runs settings/auth/extension commands against it.
+    ///
+    /// # Errors
+    ///
+    /// Services creation failures.
+    pub async fn services(&self) -> Result<Arc<Services>, ClientError> {
+        let cwd = self.inner.cwd.clone();
+        let mut state = self.inner.state.lock().await;
+        self.services_for(&mut state, &cwd).await
+    }
+
     /// The services of `cwd`: cached, LRU-bounded (`maxServices`) and reset to "in use".
     /// Called with the hub lock held (the caller owns it through the whole wake).
     async fn services_for(

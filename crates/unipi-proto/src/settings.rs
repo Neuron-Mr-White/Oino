@@ -34,7 +34,7 @@ use serde_json::Value;
 pub const SECRET_MASK: &str = "••••••";
 
 /// The top-level blocks of `config.json` (host.md §9.9).
-pub const HOST_SETTINGS_BLOCKS: [&str; 8] = [
+pub const HOST_SETTINGS_BLOCKS: [&str; 9] = [
     "forwarding",
     "push",
     "fs",
@@ -43,12 +43,13 @@ pub const HOST_SETTINGS_BLOCKS: [&str; 8] = [
     "cron",
     "term",
     "update",
+    "lsp",
 ];
 
 /// Leaves (and block names) `host_settings_set` accepts. Blocks owned by
 /// other modules (`browser`, `sharing`, `cron`) accept any leaf under their
 /// prefix — their own loaders are the schema.
-pub const HOST_SETTINGS_KEYS: [&str; 18] = [
+pub const HOST_SETTINGS_KEYS: [&str; 20] = [
     "relay",
     "relay_only",
     "forwarding",
@@ -67,6 +68,8 @@ pub const HOST_SETTINGS_KEYS: [&str; 18] = [
     "update.mode",
     "browser",
     "sharing",
+    "lsp",
+    "lsp.enabled",
 ];
 
 /// Is `key` a host settings key (an exact leaf/block or a leaf of an
@@ -76,7 +79,10 @@ pub fn is_host_settings_key(key: &str) -> bool {
     if HOST_SETTINGS_KEYS.contains(&key) || key == "cron" {
         return true;
     }
-    ["browser", "sharing", "cron"].iter().any(|block| {
+    // app spec §3.12 (WP-A21): `lsp.*` (`lsp.enabled`, `lsp.idle_minutes`,
+    // `lsp.servers.<language>.command`) is an open block too — the host's
+    // `lsp` loader is its schema, like browser/sharing/cron.
+    ["browser", "sharing", "cron", "lsp"].iter().any(|block| {
         key.strip_prefix(block)
             .and_then(|rest| rest.strip_prefix('.'))
             .is_some_and(|rest| !rest.is_empty() && !rest.starts_with('.') && !rest.ends_with('.'))
@@ -157,6 +163,96 @@ pub struct HostSettingsSetRequest {
     pub value: Value,
 }
 
+/// App spec §3.14 (WP-A24): the hub-level `_oino/*` subset — settings, auth and
+/// extension commands against core services, **without a session runtime**
+/// (`host_cmd{cmd}`). Tag names are the `_oino/*` command names minus the
+/// prefix; replies match the session commands' `{settings}`, `{value}`,
+/// `{namespaces}`, `{extensions}` … shapes exactly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HostCmd {
+    /// `_oino/get_settings`: the merged pi settings object, or one dot-path
+    /// value → `{settings}` / `{value}`.
+    GetSettings {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+    },
+    /// `_oino/set_setting`: write (or, with `null`, delete) one dot-path key.
+    SetSetting {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<Value>,
+        /// `global` (`<agent>/settings.json`) or `project` (`<cwd>/.oino/settings.json`).
+        scope: String,
+    },
+    /// `_oino/get_settings_schema`: every extension settings namespace →
+    /// `{namespaces: […]}`.
+    GetSettingsSchema,
+    /// `_oino/get_extension_settings`: one namespace's resolved values →
+    /// `{values, diagnostics}`.
+    GetExtensionSettings {
+        namespace: String,
+        /// `effective` (default) | `global` | `project`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        layer: Option<String>,
+    },
+    /// `_oino/set_extension_setting`: write (or, with `null`, unset) one key.
+    SetExtensionSetting {
+        namespace: String,
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<Value>,
+        /// `global` | `project`.
+        scope: String,
+    },
+    /// `_oino/unset_extension_setting`: delete one key (back to the default).
+    UnsetExtensionSetting {
+        namespace: String,
+        key: String,
+        scope: String,
+    },
+    /// `_oino/extensions`: loaded + disabled extensions → `{extensions: […]}`.
+    Extensions,
+    /// `_oino/set_extension_enabled`: add to / remove from `disabledExtensions`
+    /// (applies to sessions created afterwards). → `null`.
+    SetExtensionEnabled { id: String, enabled: bool },
+    /// `_oino/auth_providers`: providers with sign-in support and credential
+    /// state → `{providers: […]}`.
+    AuthProviders,
+    /// `_oino/login`: **not served here** — the OAuth flow needs a session's
+    /// frontend for its dialogs; the app opens it from a chat (WP-A25).
+    Login { provider: String },
+    /// `_oino/logout`: remove a provider's stored credential.
+    Logout { provider: String },
+    /// `_oino/set_api_key`: store an API key in `auth.json`.
+    SetApiKey { provider: String, key: String },
+    /// `_oino/get_shortcuts`: every extension's registered shortcuts →
+    /// `{shortcuts: […]}`.
+    GetShortcuts,
+}
+
+impl HostCmd {
+    /// The `_oino/*` command name this is the hub-level twin of.
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::GetSettings { .. } => "get_settings",
+            Self::SetSetting { .. } => "set_setting",
+            Self::GetSettingsSchema => "get_settings_schema",
+            Self::GetExtensionSettings { .. } => "get_extension_settings",
+            Self::SetExtensionSetting { .. } => "set_extension_setting",
+            Self::UnsetExtensionSetting { .. } => "unset_extension_setting",
+            Self::Extensions => "extensions",
+            Self::SetExtensionEnabled { .. } => "set_extension_enabled",
+            Self::AuthProviders => "auth_providers",
+            Self::Login { .. } => "login",
+            Self::Logout { .. } => "logout",
+            Self::SetApiKey { .. } => "set_api_key",
+            Self::GetShortcuts => "get_shortcuts",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,5 +296,42 @@ mod tests {
         assert!(RelaySetting::try_from("http://relay.example".to_string()).is_err());
         assert!(RelaySetting::try_from("relay.example".to_string()).is_err());
         assert!(RelaySetting::try_from("".to_string()).is_err());
+    }
+
+    #[test]
+    fn host_cmd_wire_names_match_the_oino_commands() {
+        // The tag is the `_oino/*` name minus the prefix, args keep the same keys.
+        let cmd: HostCmd = serde_json::from_str(
+            r#"{"kind":"set_extension_enabled","id":"unipi.memory","enabled":false}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            cmd,
+            HostCmd::SetExtensionEnabled {
+                id: "unipi.memory".into(),
+                enabled: false,
+            }
+        );
+        assert_eq!(cmd.kind(), "set_extension_enabled");
+        let round = serde_json::to_value(&cmd).unwrap();
+        assert_eq!(round["kind"], "set_extension_enabled");
+        assert_eq!(round["id"], "unipi.memory");
+        assert_eq!(round["enabled"], false);
+        // Absent-optionals stay off the wire.
+        let get: HostCmd = serde_json::from_str(r#"{"kind":"get_settings"}"#).unwrap();
+        assert_eq!(get, HostCmd::GetSettings { key: None });
+        assert_eq!(
+            serde_json::to_value(&get).unwrap().to_string(),
+            "{\"kind\":\"get_settings\"}"
+        );
+        for (cmd, name) in [
+            (HostCmd::GetSettingsSchema, "get_settings_schema"),
+            (HostCmd::Extensions, "extensions"),
+            (HostCmd::AuthProviders, "auth_providers"),
+            (HostCmd::GetShortcuts, "get_shortcuts"),
+        ] {
+            assert_eq!(cmd.kind(), name);
+            assert_eq!(serde_json::to_value(&cmd).unwrap()["kind"], name);
+        }
     }
 }

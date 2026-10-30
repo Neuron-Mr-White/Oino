@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-/** UNI-263: desktop app update card + prompt. */
+/** The one Update card (G-14, WP-A24): desktop body + prompt; one card, one surface. */
 import { render, screen, cleanup, fireEvent, waitFor } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DesktopUpdateCard, DesktopUpdatePrompt } from './DesktopUpdate';
+import { DesktopUpdatePrompt, UpdateCard } from './UpdateCard';
 import { checkDesktopUpdate, resetDesktopUpdate, setDesktopUpdateTransport } from '../lib/desktopUpdate';
 import { setPlatformOverride } from '../lib/platform';
 
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')) }));
 vi.mock('../lib/board/share', () => ({ openExternal: vi.fn(() => true) }));
 import { openExternal } from '../lib/board/share';
 
@@ -28,13 +29,13 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('desktop update UI', () => {
+describe('the one Update card (desktop)', () => {
   it('card: Check for updates → up to date', async () => {
     setDesktopUpdateTransport({ check: async () => ({ current: '0.4.5', kind: 'in_app', downloadPage: 'https://unipi.nrn.one/' }), install });
-    render(() => <DesktopUpdateCard />);
+    render(() => <UpdateCard />);
     fireEvent.click(screen.getByTestId('desktop-update-check'));
-    await waitFor(() => expect(screen.getByTestId('desktop-update-card').textContent).toContain('UniPi is up to date'));
-    expect(screen.getByTestId('desktop-update-card').textContent).toContain('Installed: 0.4.5');
+    await waitFor(() => expect(screen.getByTestId('update-card').textContent).toContain('UniPi is up to date'));
+    expect(screen.getByTestId('update-card').textContent).toContain('Installed: 0.4.5');
   });
 
   it('prompt opens for a newer version; Update and restart downloads with progress', async () => {
@@ -56,18 +57,18 @@ describe('desktop update UI', () => {
     render(() => (
       <>
         <DesktopUpdatePrompt />
-        <DesktopUpdateCard />
+        <UpdateCard />
       </>
     ));
     await checkDesktopUpdate(true);
     fireEvent.click(await screen.findByTestId('desktop-update-later'));
     await waitFor(() => expect(screen.queryByTestId('desktop-update-prompt')).toBeNull());
-    expect(screen.getByTestId('desktop-update-card').textContent).toContain('0.4.5 is available');
+    expect(screen.getByTestId('update-card').textContent).toContain('0.4.5 is available');
   });
 
   it('package installs get a Download link instead of an install button', async () => {
     setDesktopUpdateTransport({ check: async () => ({ ...info, kind: 'manual' }), install });
-    render(() => <DesktopUpdateCard />);
+    render(() => <UpdateCard />);
     await checkDesktopUpdate(true);
     await waitFor(() => expect(screen.getByTestId('desktop-update-download').textContent).toContain('Download 0.4.5'));
     expect(screen.queryByTestId('desktop-update-install')).toBeNull();
@@ -77,7 +78,7 @@ describe('desktop update UI', () => {
 
   it('a failed check says why', async () => {
     setDesktopUpdateTransport({ check: async () => Promise.reject({ message: 'Update check failed: offline' }), install });
-    render(() => <DesktopUpdateCard />);
+    render(() => <UpdateCard />);
     fireEvent.click(screen.getByTestId('desktop-update-check'));
     expect((await screen.findByTestId('desktop-update-error')).textContent).toContain('offline');
   });

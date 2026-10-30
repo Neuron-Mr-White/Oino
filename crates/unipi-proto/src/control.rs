@@ -631,9 +631,6 @@ pub enum Request {
     TermKill {
         term_id: crate::term::TermId,
     },
-    /// host.md §7.2/§4.2 (WP-H4): every session the host knows, newest activity
-    /// first — a lazy list (headers only, no runtime loaded) merged with the
-    /// host's live cards. → `[SessionCard, …]` (bare array, like `term_list`).
     /// app spec §3.12 (WP-A21): the project root for `path` (nearest
     /// ancestor with a marker, inside the fs scope) plus every language
     /// server the host knows — configured or built-in — with its command
@@ -659,7 +656,16 @@ pub enum Request {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         command: Option<String>,
     },
-    SessionsList,
+    /// host.md §7.2/§4.2 (WP-H4): every session the host knows, newest activity
+    /// first — a lazy list (headers only, no runtime loaded) merged with the
+    /// host's live cards. → `[SessionCard, …]` (bare array, like `term_list`).
+    /// App spec §3.14 (WP-A5): `archived: true` answers the archived list (the
+    /// session files in `<agent dir>/trash/`) instead.
+    SessionsList {
+        /// The archived (trashed) sessions rather than the live ones.
+        #[serde(default)]
+        archived: bool,
+    },
     /// host.md §7.4 (WP-H4): the one per-connection hub event stream. The host
     /// answers `ok{data:null}`, then pushes `session_changed` / `session_removed`
     /// / `host_notice` / `ui` events (a retained safe-mode notice first) until
@@ -708,6 +714,22 @@ pub enum Request {
         /// Exact id, unique prefix or session file path.
         session: crate::session::SessionTarget,
     },
+    /// App spec §3.14 (WP-A5, Z-13): move an archived session file back out of
+    /// `<agent dir>/trash/` into its project's sessions folder and list it
+    /// again. → the restored `SessionCard`.
+    SessionRestore {
+        /// Session id, unique prefix or the archived file's path.
+        session: crate::session::SessionTarget,
+    },
+    /// App spec §3.14 (WP-A5, Z-13/Z-20): delete one **archived** session file
+    /// (a live session is archived first). → `null`.
+    SessionDelete {
+        /// Session id, unique prefix or the archived file's path.
+        session: crate::session::SessionTarget,
+    },
+    /// App spec §3.14 (WP-A5, Z-13): delete every archived session file.
+    /// → `{ "deleted": N }`.
+    TrashEmpty,
     /// host.md §7.2 (WP-H4): set the session's display name (wakes the runtime
     /// to write the `session_info` entry, then emits a card update). → `null`.
     SessionRename {
@@ -739,6 +761,13 @@ pub enum Request {
     /// unknown key or a wrong-typed value is `E_SCHEMA`). → the masked,
     /// complete object.
     HostSettingsSet(crate::settings::HostSettingsSetRequest),
+    /// App spec §3.14 (WP-A24): run one hub-level `_oino/*` command (the
+    /// settings / auth / extension subset of [`crate::settings::HostCmd`])
+    /// against core services, without a session runtime → the command's data
+    /// (`{settings}`, `{namespaces}`, `{extensions}`, …).
+    HostCmd {
+        cmd: crate::settings::HostCmd,
+    },
     /// App spec §3.14 (WP-A22; ext-abi §5.5, G-18): run the `unipi-kanboard`
     /// CLI once — `--json`, actor `user` pinned by the host, subcommand
     /// allow-list — and answer with the decoded outcome
