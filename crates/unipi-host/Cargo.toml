@@ -11,6 +11,15 @@ path = "src/main.rs"
 
 [dependencies]
 unipi-proto = { path = "../unipi-proto" }
+# H3 (host.md §4.2): the host links oino-core in-process and runs every session through the
+# wave-1 lazy client hub; extensions load on the process-shared wasm engine.
+oino-client = { path = "../oino-client" }
+oino-core = { path = "../oino-core" }
+oino-extension-api = { path = "../oino-extension-api" }
+oino-models = { path = "../oino-models" }
+oino-settings = { path = "../oino-settings" }
+oino-wasm-host = { path = "../oino-wasm-host" }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 
 tokio = { version = "1", features = ["full"] }
 dunce = "1"
@@ -53,7 +62,6 @@ hmac = "0.12"
 sha1 = "0.10"
 tempfile = "3"
 tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake"] }
-futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 croner = "4.0.1"
 chrono-tz = "0.10.4"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
@@ -79,6 +87,9 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
+# WP-H3 acceptance (`tests/sessions_hub.rs`): the faux provider and fake components.
+oino-agent = { path = "../oino-agent" }
+oino-core = { path = "../oino-core", features = ["testing"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }

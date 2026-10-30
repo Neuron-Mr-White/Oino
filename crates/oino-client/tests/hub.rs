@@ -313,6 +313,66 @@ async fn list_is_lazy_open_wakes_with_lease_and_repair() {
     assert!(short.contains("No session found matching"), "{short}");
 }
 
+/// `create_session` (WP-H3): a new runtime is live immediately (no file until the first
+/// message, core durability rule), a later `open` reuses that runtime instead of re-waking the
+/// record, and the named session is listed once its first message wrote the file.
+#[tokio::test]
+async fn create_session_is_live_reused_and_listed_after_the_first_message() {
+    let (dir, hub, loads, _provider) = hub_with(
+        None,
+        vec![FauxResponse::Text("fresh reply".into())],
+        Vec::new(),
+        ToolSelection::Default,
+    );
+    let backend = hub.create_session(None, Some("Fresh")).await.unwrap();
+    let id = backend.session_id();
+    backend
+        .send(
+            PiCommand::SetModel {
+                provider: "faux".into(),
+                model_id: "faux-1".into(),
+            }
+            .into(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        loads.load(Ordering::SeqCst),
+        1,
+        "create builds the services once"
+    );
+    assert!(
+        hub.list().await.unwrap().is_empty(),
+        "a new session has no file before its first message"
+    );
+
+    // A second handle by id reuses the live runtime (one services set, no re-wake).
+    let same = hub.open(&id).await.unwrap();
+    assert_eq!(same.session_id(), id);
+    assert_eq!(loads.load(Ordering::SeqCst), 1);
+
+    prompt(&same, "hello").await;
+    let listed = hub.list().await.unwrap();
+    let created = listed
+        .iter()
+        .find(|session| session.info.id == id)
+        .unwrap_or_else(|| panic!("the created session is listed: {listed:?}"));
+    assert_eq!(created.info.name.as_deref(), Some("Fresh"));
+    assert!(created.info.message_count >= 2, "{created:?}");
+    assert_eq!(created.state, HubSessionState::Live);
+    assert!(
+        created.info.path.is_file(),
+        "the file exists after a message"
+    );
+    assert!(created.info.path.starts_with(dir.path().join("sessions")));
+
+    // Closing returns it to a record; the file stays.
+    hub.close(&id).await.unwrap();
+    wait_state(&hub, &id, HubSessionState::Record).await;
+    assert!(!lock_metadata_path(&created.info.path).exists());
+    assert!(created.info.path.is_file());
+}
+
 /// Idle eviction (short `sessionIdleSec`): disposes the session, releases the lease,
 /// clears guest state (`session_shutdown{reason:"idle"}` observed by the fixture), and a
 /// re-open continues the conversation with no lost entries.

@@ -21,6 +21,7 @@ pub mod pairing;
 pub mod protocol;
 pub mod push;
 pub mod secret;
+pub mod sessions;
 pub mod settings;
 pub mod sharing;
 pub mod term;

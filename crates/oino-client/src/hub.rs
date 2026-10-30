@@ -310,6 +310,48 @@ impl SessionHub {
         self.wake(target).await
     }
 
+    /// Creates a fresh session (pi `session_new`) in `cwd` (the hub's primary cwd when
+    /// `None`) and returns its backend. Services come from the hub's per-cwd cache; the
+    /// runtime starts over `SessionSource::New`, so core writes the session file at the
+    /// first conversation entry (durability rule), and `name` is recorded as the session's
+    /// `session_info` name. The live entry is keyed by the new session's id, so later
+    /// [`SessionHub::open`]/[`SessionHub::attach`] calls reuse this runtime.
+    ///
+    /// # Errors
+    ///
+    /// Services creation or session-open failures.
+    pub async fn create_session(
+        &self,
+        cwd: Option<&Path>,
+        name: Option<&str>,
+    ) -> Result<Arc<dyn SessionBackend>, ClientError> {
+        let mut state = self.inner.state.lock().await;
+        let cwd = cwd.map_or_else(|| self.inner.cwd.clone(), Path::to_path_buf);
+        let services = self.services_for(&mut state, &cwd).await?;
+        let options = SessionOptions {
+            source: SessionSource::New,
+            session_dir: Some(self.inner.sessions_root.clone()),
+            name: name.map(str::to_owned),
+            tools: self.inner.tools.clone(),
+            exclude_tools: self.inner.exclude_tools.clone(),
+            ..SessionOptions::default()
+        };
+        let runtime = Arc::new(
+            AgentSessionRuntime::create_for_hub(Arc::clone(&services), options)
+                .await
+                .map_err(|error| ClientError::Command(error.to_string()))?,
+        );
+        let session_id = runtime.session().session_id();
+        tracing::info!(session_id = %session_id, cwd = %cwd.display(), "hub created a session");
+        let live = live_entry(&runtime, (cwd, self.inner.agent_dir.clone()));
+        state.crashed.remove(&session_id);
+        state.locked.remove(&session_id);
+        state.live.insert(session_id, Arc::clone(&live));
+        drop(state);
+        tokio::spawn(watch(Arc::downgrade(&self.inner), Arc::clone(&live)));
+        Ok(lazy_backend(live))
+    }
+
     /// Attaches to `session_id` by exact id, waking the record if needed (E-LAZY "a record
     /// becomes live on open/attach").
     ///
@@ -415,23 +457,7 @@ impl SessionHub {
         let session_id = runtime.session().session_id();
         tracing::info!(session_id = %session_id, "hub woke a session (E-LAZY)");
         let key = (cwd, self.inner.agent_dir.clone());
-        let live = Arc::new(Live {
-            runtime: Arc::clone(&runtime),
-            services: key,
-            id: Mutex::new(session_id.clone()),
-            last_active: Mutex::new(Instant::now()),
-            gone: AtomicBool::new(false),
-        });
-        // Hub variant of the holder side (D-TAKEOVER): close our side, no fresh session.
-        let weak_runtime = Arc::downgrade(&runtime);
-        runtime.set_takeover_handler(Some(Arc::new(move |by| {
-            let weak_runtime = weak_runtime.clone();
-            Box::pin(async move {
-                if let Some(runtime) = weak_runtime.upgrade() {
-                    runtime.evict_taken_over(by).await;
-                }
-            })
-        })));
+        let live = live_entry(&runtime, key);
         state.crashed.remove(&session_id);
         state.locked.remove(&session_id);
         state.live.insert(session_id, Arc::clone(&live));
@@ -512,6 +538,29 @@ impl SessionHub {
             cwd.to_path_buf()
         }
     }
+}
+
+/// One live session's entry: the runtime plus the bookkeeping the watcher and idle monitor
+/// update, with the hub variant of the holder side of D-TAKEOVER installed (close our side,
+/// no fresh replacement session).
+fn live_entry(runtime: &Arc<AgentSessionRuntime>, services: ServicesKey) -> Arc<Live> {
+    let live = Arc::new(Live {
+        runtime: Arc::clone(runtime),
+        services,
+        id: Mutex::new(runtime.session().session_id()),
+        last_active: Mutex::new(Instant::now()),
+        gone: AtomicBool::new(false),
+    });
+    let weak_runtime = Arc::downgrade(runtime);
+    runtime.set_takeover_handler(Some(Arc::new(move |by| {
+        let weak_runtime = weak_runtime.clone();
+        Box::pin(async move {
+            if let Some(runtime) = weak_runtime.upgrade() {
+                runtime.evict_taken_over(by).await;
+            }
+        })
+    })));
+    live
 }
 
 /// The backend of one woken session: an [`InProcessBackend`] wrapped with idle-clock

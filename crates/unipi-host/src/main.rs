@@ -29,6 +29,13 @@ enum Command {
         /// Exit when this process exits (the desktop app's sidecar).
         #[arg(long, value_name = "PID")]
         exit_with_parent: Option<u32>,
+        /// Drop this extension id (repeatable; same as `oino --exclude-extension`).
+        #[arg(long = "exclude-extension", value_name = "ID")]
+        exclude_extension: Vec<String>,
+        /// Start without the UniPi extensions (providers stay). Safe mode also does this by
+        /// itself after two failed starts (spec-host §4.4).
+        #[arg(long = "no-extensions")]
+        no_extensions: bool,
     },
     /// Is a host running on this data dir, and who runs it.
     /// Exit 0 = running, 3 = not running.
@@ -518,6 +525,8 @@ async fn main() -> anyhow::Result<()> {
             relay_only,
             mode,
             exit_with_parent,
+            exclude_extension,
+            no_extensions,
         } => {
             // UNI-228: one host per data dir (two on one secret.key make phones flap).
             let mode = mode
@@ -541,6 +550,20 @@ async fn main() -> anyhow::Result<()> {
                     drop(paths);
                 });
             }
+            // H3 (spec-host §4.4): host-level safe mode. A start that exits within 60 s — or
+            // dies before it recorded a success — is a failed start; after two consecutive
+            // failed starts the next one runs with extensions off (providers on) and names
+            // the suspects from host.log.
+            let mut safe_mode = unipi_host::sessions::crash::HostSafeMode::load(&paths.root);
+            safe_mode.begin_start();
+            let safe_plan =
+                safe_mode.plan(unipi_host::sessions::crash::suspects_from_log(&paths.root));
+            if safe_plan.disable_extensions {
+                tracing::warn!(
+                    text = %unipi_host::sessions::crash::banner(&safe_plan),
+                    "safe mode: starting without extensions"
+                );
+            }
             tracing::info!(mode = mode.as_str(), "taking the host lock");
             let key = unipi_host::secret::load_or_create(&paths.secret_key())?;
             let mut builder = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
@@ -558,6 +581,68 @@ async fn main() -> anyhow::Result<()> {
             let endpoint = builder.bind().await?;
             unipi_host::endpoint::persist_and_watch(&endpoint, paths.endpoint()).await?;
             let paths_for_cleanup = paths.clone();
+            // H3 (spec-host §4.2): one session hub for this host. Extensions are discovered the
+            // way the `oino` binary does (distribution share dir, `~/.oino/extensions`, the
+            // trust-gated project dir), run in Desktop mode, and reach the host services
+            // through the process-wide wasm host hub.
+            let agent_dir = unipi_host::sessions::services::agent_dir(&paths_for_cleanup.root);
+            let cwd = std::env::current_dir().unwrap_or_else(|_| agent_dir.clone());
+            let loader = unipi_host::sessions::services::HostLoader::build(
+                &agent_dir,
+                &cwd,
+                no_extensions || safe_plan.disable_extensions,
+                &exclude_extension,
+            );
+            for diagnostic in loader.diagnostics() {
+                if diagnostic.error {
+                    tracing::error!(message = %diagnostic.message, "extension discovery");
+                } else {
+                    tracing::warn!(message = %diagnostic.message, "extension discovery");
+                }
+            }
+            if let Some(local) = loader.local_services() {
+                let names = unipi_host::sessions::services::register_all(
+                    local,
+                    &unipi_host::sessions::services::HostServiceDeps {
+                        data_dir: paths_for_cleanup.root.clone(),
+                        agent_dir: agent_dir.clone(),
+                        host_name: hostname(),
+                        mode: mode.as_str().to_owned(),
+                        kanboard_bin: unipi_host::sessions::services::kanboard_bin(),
+                        // Registered by their own WPs: the cron merge (X4) and the browser
+                        // service (`spec-browser` WP-B7).
+                        cron: None,
+                        browser: None,
+                    },
+                );
+                tracing::info!(?names, "host services registered");
+            }
+            let flags = oino_core::services::ResourceFlags {
+                no_extensions,
+                safe_mode: safe_plan.disable_extensions.then(|| safe_plan.clone()),
+                ..oino_core::services::ResourceFlags::default()
+            };
+            let hub =
+                unipi_host::sessions::SessionHub::create(unipi_host::sessions::HostHubOptions {
+                    cwd,
+                    agent_dir,
+                    docs_root: None,
+                    session_dir: None,
+                    mode: oino_core::extensions::api::ExtensionMode::Desktop,
+                    has_ui: true,
+                    approve: None,
+                    flags,
+                    loader: std::sync::Arc::new(loader),
+                    models: None,
+                    tools: oino_core::runtime::ToolSelection::Default,
+                    exclude_tools: Vec::new(),
+                })?;
+            if safe_plan.disable_extensions {
+                hub.notice(
+                    unipi_host::sessions::NoticeLevel::Warning,
+                    unipi_host::sessions::crash::banner(&safe_plan),
+                );
+            }
             // UNI-314: the host-owned cron scheduler -- always on while serve runs,
             // shared by the iroh/app.sock handler (UNI-317 cron_* ops) and the
             // CLI's control.sock (`unipi-host cron ...`).
@@ -658,6 +743,15 @@ async fn main() -> anyhow::Result<()> {
                 .accept(ALPN, handler)
                 .spawn();
             tracing::info!(relay_only, "host ready");
+            // spec-host §4.4: a start that stays up this long is a success and clears the
+            // consecutive-failure counter.
+            let safe_task = tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(
+                    unipi_host::sessions::crash::FAST_FAIL_SECS,
+                ))
+                .await;
+                safe_mode.record_success(unipi_host::sessions::crash::FAST_FAIL_SECS);
+            });
             // A self-update ended the loop early: the binary on disk is the new
             // one, so this process steps aside (the app supervisor respawns it).
             tokio::select! {
@@ -672,12 +766,19 @@ async fn main() -> anyhow::Result<()> {
             sweeper.abort();
             updater.abort();
             cron_ticker.abort();
+            safe_task.abort();
+            // Dispose the live sessions so extensions see `session_shutdown{quit}` and the
+            // single-writer leases are released before this process goes away.
+            if let Ok(cards) = hub.list().await {
+                for card in cards {
+                    if let Err(error) = hub.close(&card.session_id).await {
+                        tracing::warn!(session_id = %card.session_id, %error, "closing a session");
+                    }
+                }
+            }
             // UNI-215: never leave the dedicated browser running.
             unipi_host::browser::Manager::shutdown_all().await;
             unipi_host::browser::agent_endpoint::forget(&paths_for_cleanup.root);
-            // host.md §9.3: terminals die with the host (they outlive nothing
-            // but their own streams).
-            unipi_host::term::TermRegistry::shared().kill_all();
             // host.md §9.3: terminals die with the host (they outlive nothing
             // but their own streams).
             unipi_host::term::TermRegistry::shared().kill_all();
