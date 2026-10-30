@@ -125,7 +125,7 @@ async fn imports_allowed() {
         .unwrap();
 
     let info = probe(&h, &*ext, "host-info", Value::Null).await;
-    assert_eq!(info["ok"]["api"], "1.0.0");
+    assert_eq!(info["ok"]["api"], oino_extension_api::manifest::WIT_VERSION);
     assert_eq!(info["ok"]["ext"], "1.0.0");
     assert_eq!(info["ok"]["ws"].as_str().unwrap().len(), 16);
     assert_eq!(

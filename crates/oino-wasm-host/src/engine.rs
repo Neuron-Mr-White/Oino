@@ -454,7 +454,7 @@ impl WasmRuntime {
         };
         let wit = oino_extension_api::manifest::WIT_VERSION;
         let exports_provider = component
-            .get_export_index(None, &format!("oino:extension/provider@{wit}"))
+            .get_export_index(None, format!("oino:extension/provider@{wit}"))
             .is_some();
         if package.manifest.kind == ExtensionKind::Provider && !exports_provider {
             return Err(fail(
@@ -462,7 +462,7 @@ impl WasmRuntime {
             ));
         }
         if component
-            .get_export_index(None, &format!("oino:extension/guest@{wit}"))
+            .get_export_index(None, format!("oino:extension/guest@{wit}"))
             .is_none()
         {
             return Err(fail(format!(
