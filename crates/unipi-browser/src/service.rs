@@ -7,9 +7,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
+use crate::host::{BrowserHost, BrowserRequest, ViewStream};
 use futures::stream::BoxStream;
 use oino_extension_api::BoxFut;
-use crate::host::{BrowserHost, BrowserRequest, ViewStream};
 use tokio_util::sync::CancellationToken;
 use unipi_browser_protocol::{
     BrowserResult, BrowserScope, BrowserStatus, BrowserViewEvent, FrontendRequest, ProfileInfo,

@@ -17,7 +17,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use futures::StreamExt as _;
-use unipi_browser::{Approval, BrowserHost, BrowserRequest};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio_util::sync::CancellationToken;
@@ -25,6 +24,7 @@ use unipi_browser::config::EngineChoice;
 use unipi_browser::protocol::{
     BrowserCommand, BrowserResult, BrowserScope, BrowserViewEvent, FrontendRequest,
 };
+use unipi_browser::{Approval, BrowserHost, BrowserRequest};
 use unipi_browser::{BrowserOptions, BrowserService, BrowserSettings};
 
 fn browser() -> Option<PathBuf> {
