@@ -6,8 +6,8 @@
 //! Keys become buttons; unipi's double-press confirmations (`x x` kill, `a a` stop all) are
 //! kept as an armed state: the first press arms and flashes, the second runs.
 
-use serde_json::{Value, json};
-use unipi_kit::ous::{dim, key_hints, span, text};
+use oino_extension::ui::widgets::prelude::*;
+use serde_json::Value;
 
 use crate::cards::tone;
 use crate::snapshot::{Snapshot, Status};
@@ -154,41 +154,63 @@ fn kind(t: &Snapshot) -> &'static str {
     if t.is_agent { "Agent" } else { "Shell" }
 }
 
-fn row(t: &Snapshot, now: i64) -> Value {
-    let mut item = json!({
-        "id": t.id,
-        "label": [dim(kind(t)), {"text": " "}, {"text": t.display_name(), "bold": true}],
-        "badge": task_tags(t, now).join(" · "),
-        "tone": tone(t.status),
-    });
-    if let Some(d) = short_command(t) {
-        item["detail"] = json!(d);
+fn row(t: &Snapshot, now: i64) -> ListItem {
+    let item = ListItem::new(Line::from(vec![
+        Span::from(kind(t)).dim(),
+        Span::from(" "),
+        Span::from(t.display_name()).bold(),
+    ]))
+    .key(&t.id)
+    .badge(Line::from(task_tags(t, now).join(" · ")))
+    .style(Style::new().fg(Color::parse(tone(t.status))));
+    match short_command(t) {
+        Some(d) => item.detail(Line::from(d)),
+        None => item,
     }
-    item
 }
 
-fn button(label: &str, action: &str, tone: Option<&str>) -> Value {
-    let mut b = json!({"t": "button", "label": label, "actionId": format!("{TAB}:{action}")});
-    if let Some(t) = tone {
-        b["tone"] = json!(t);
-    }
-    b
+/// A top-rule section (`section` → `Block`, §12.1).
+fn section(title: &str, body: impl Into<Node>) -> Node {
+    Block::default()
+        .borders(Borders::Sides(vec![BorderSide::TOP]))
+        .border_style(Style::new().fg(Color::BorderMuted))
+        .title(title)
+        .child(body.into())
+        .into()
 }
 
-fn flash_node(state: &PaneState) -> Option<Value> {
+fn button(label: &str, action: &str, tone: Option<&str>) -> Node {
+    let button = Button::new(label, format!("{TAB}:{action}"));
+    match tone {
+        Some("error" | "warning") => button.variant(ButtonVariant::Danger).into(),
+        _ => button.into(),
+    }
+}
+
+/// A dim (or toned) one-line paragraph.
+fn line_spans(spans: Vec<Span>) -> Paragraph {
+    Paragraph::new(Line::from(spans)).wrap(Wrap::Disabled(false))
+}
+
+/// A built node as the wire JSON the renderer callback returns.
+fn node(node: impl Into<Node>) -> Value {
+    serde_json::to_value(node.into()).unwrap_or(Value::Null)
+}
+
+fn flash_node(state: &PaneState) -> Option<Node> {
     state
         .flash
         .as_deref()
-        .map(|f| text(json!([span(f, Some("warning"))])))
+        .map(|f| line_spans(vec![Span::from(f).fg(Color::Warning)]).into())
 }
 
 /// List view body.
 #[must_use]
 pub fn list_body(tasks: &[Snapshot], state: &PaneState, now: i64) -> Value {
     let ordered = order_tasks(tasks);
-    let mut children: Vec<Value> = Vec::new();
+    let mut children: Vec<Node> = Vec::new();
     if ordered.is_empty() {
-        children.push(json!({"t": "empty", "message": "No background tasks."}));
+        children.push(Empty::new().message("No background tasks.").into());
     } else {
         let selected = ordered
             .iter()
@@ -196,7 +218,7 @@ pub fn list_body(tasks: &[Snapshot], state: &PaneState, now: i64) -> Value {
             .or_else(|| ordered.first())
             .map(|t| t.id.clone());
         for (title, running) in [("Running", true), ("Recent", false)] {
-            let items: Vec<Value> = ordered
+            let items: Vec<ListItem> = ordered
                 .iter()
                 .filter(|t| (t.status == Status::Running) == running)
                 .map(|t| row(t, now))
@@ -204,30 +226,39 @@ pub fn list_body(tasks: &[Snapshot], state: &PaneState, now: i64) -> Value {
             if items.is_empty() {
                 continue;
             }
-            children.push(json!({"t": "section", "title": title, "body": {
-                "t": "list", "items": items, "selectable": format!("{TAB}:open"), "selected": selected,
-            }}));
+            let list = List::new(items).on_activate(format!("{TAB}:open")).state(
+                selected
+                    .clone()
+                    .map_or_else(ListState::default, ListState::with_selected),
+            );
+            children.push(section(title, list));
         }
         children.push(
-            json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-                button("Stop all", "stopall", Some("warning")),
-                button("Dismiss finished", "dismissall", None),
-            ]}),
+            Layout::horizontal([Constraint::Min(0), Constraint::Min(0)])
+                .spacing(1)
+                .children([
+                    button("Stop all", "stopall", Some("warning")),
+                    button("Dismiss finished", "dismissall", None),
+                ])
+                .into(),
         );
     }
     children.extend(flash_node(state));
-    children.push(key_hints(&[
-        ("↑↓", "navigate"),
-        ("↵", "view"),
-        ("s", "stop"),
-        ("x", "kill"),
-        ("d", "dismiss"),
-        ("R", "rerun"),
-        ("c", "path"),
-        ("←→", "tabs"),
-        ("esc", "close"),
-    ]));
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": children})
+    children.push(
+        KeyHints::new([
+            ("↑↓", "navigate"),
+            ("↵", "view"),
+            ("s", "stop"),
+            ("x", "kill"),
+            ("d", "dismiss"),
+            ("R", "rerun"),
+            ("c", "path"),
+            ("←→", "tabs"),
+            ("esc", "close"),
+        ])
+        .into(),
+    );
+    node(Layout::default().children(children))
 }
 
 /// The output read for the detail view.
@@ -269,7 +300,7 @@ fn info_lines(t: &Snapshot) -> Vec<String> {
     info
 }
 
-fn settled_line(t: &Snapshot) -> Option<Value> {
+fn settled_line(t: &Snapshot) -> Option<Node> {
     let code = match t.exit_code {
         Some(Some(c)) => format!("exit {c}"),
         _ => String::new(),
@@ -282,24 +313,120 @@ fn settled_line(t: &Snapshot) -> Option<Value> {
         }
     };
     let err = t.error.clone().unwrap_or_default();
+    let row = |spans: Vec<Span>| -> Node { line_spans(spans).into() };
     match t.status {
         Status::Running => t
             .error
             .as_deref()
-            .map(|e| text(json!([span(e, Some("warning"))]))),
-        Status::Completed => Some(text(json!([span(
-            &format!("✓ Completed{}", with(&code)),
-            Some("success")
-        )]))),
-        Status::Killed => Some(text(json!([span(
-            &format!("⊘ Stopped{}", with(&err)),
-            Some("warning")
-        )]))),
-        Status::Failed => Some(text(json!([span(
-            &format!("✗ Failed{}{}", with(&code), with(&err)),
-            Some("error")
-        )]))),
+            .map(|e| row(vec![Span::from(e).fg(Color::Warning)])),
+        Status::Completed => Some(row(vec![
+            Span::from(format!("✓ Completed{}", with(&code))).fg(Color::Success),
+        ])),
+        Status::Killed => Some(row(vec![
+            Span::from(format!("⊘ Stopped{}", with(&err))).fg(Color::Warning),
+        ])),
+        Status::Failed => Some(row(vec![
+            Span::from(format!("✗ Failed{}{}", with(&code), with(&err))).fg(Color::Error),
+        ])),
     }
+}
+
+/// Chip, `kind › name` and the elapsed · bytes line of the detail view.
+fn header_row(t: &Snapshot, now: i64) -> Node {
+    let chip_node: Node = if t.status == Status::Running {
+        Spinner::new(crate::cards::chip(t.status)).into()
+    } else {
+        let color = Color::parse(tone(t.status));
+        line_spans(vec![Span::from(crate::cards::chip(t.status)).fg(color)]).into()
+    };
+    Layout::horizontal([
+        Constraint::Min(0),
+        Constraint::Min(0),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .spacing(1)
+    .children([
+        chip_node,
+        line_spans(vec![
+            Span::from(kind(t)).dim(),
+            Span::from(" › ").dim(),
+            Span::from(t.display_name()).bold(),
+        ])
+        .into(),
+        Block::default()
+            .borders(Borders::Sides(vec![BorderSide::TOP]))
+            .border_style(Style::new().fg(Color::BorderMuted))
+            .into(),
+        line_spans(vec![
+            Span::from(format!(
+                "{} · {}",
+                tray_elapsed(duration_of(t, now)),
+                format_size(t.bytes_written)
+            ))
+            .dim(),
+        ])
+        .into(),
+    ])
+    .into()
+}
+
+/// The output block: read error, empty, or the (tailing) log behind a truncation note.
+fn output_body(log: Option<&LogView>, full_log: bool) -> Node {
+    match log {
+        Some(LogView { error: Some(e), .. }) => {
+            line_spans(vec![Span::from(e.as_str()).fg(Color::Error)]).into()
+        }
+        None => line_spans(vec![Span::from("reading…").dim()]).into(),
+        Some(l) if l.lines.is_empty() => line_spans(vec![Span::from("no output yet").dim()]).into(),
+        Some(l) => {
+            let mut parts: Vec<Node> = Vec::new();
+            if l.truncated {
+                parts.push(
+                    line_spans(vec![
+                        Span::from(format!(
+                            "… earlier output not shown ({} total{})",
+                            format_size(l.total_bytes),
+                            if full_log { "" } else { " · l full log" }
+                        ))
+                        .dim(),
+                    ])
+                    .into(),
+                );
+            }
+            parts.push(
+                Log::new(l.lines.iter().cloned())
+                    .follow(true)
+                    .max_lines(5000)
+                    .into(),
+            );
+            Layout::default().children(parts).into()
+        }
+    }
+}
+
+/// The action row (back / stop / kill / … as buttons).
+fn buttons_row(t: &Snapshot, full_log: bool) -> Node {
+    let id = &t.id;
+    let mut buttons = vec![button("Back", "back", None)];
+    if t.status == Status::Running {
+        buttons.push(button("Stop", &format!("stop:{id}"), Some("warning")));
+        buttons.push(button("Kill", &format!("kill:{id}"), Some("error")));
+    } else {
+        buttons.push(button("Dismiss", &format!("dismiss:{id}"), None));
+    }
+    buttons.push(button("Rerun", &format!("rerun:{id}"), None));
+    buttons.push(button(
+        if full_log { "Tail" } else { "Full log" },
+        &format!("full:{id}"),
+        None,
+    ));
+    buttons.push(button("Path", &format!("path:{id}"), None));
+    let n = buttons.len();
+    Layout::horizontal(vec![Constraint::Min(0); n])
+        .spacing(1)
+        .children(buttons)
+        .into()
 }
 
 /// Detail view body.
@@ -324,17 +451,8 @@ pub fn detail_body(t: &Snapshot, log: Option<&LogView>, state: &PaneState, now: 
         meta.push("full log".into());
     }
     let mut children = vec![
-        json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-            if t.status == Status::Running {
-                json!({"t": "spinner", "label": crate::cards::chip(t.status)})
-            } else {
-                json!({"t": "badge", "value": crate::cards::chip(t.status), "tone": tone(t.status)})
-            },
-            text(json!([dim(kind(t)), dim(" › "), {"text": t.display_name(), "bold": true}])),
-            {"t": "divider"},
-            text(json!([dim(&format!("{} · {}", tray_elapsed(duration_of(t, now)), format_size(t.bytes_written)))])),
-        ]}),
-        text(json!([dim(&meta.join(" · "))])),
+        header_row(t, now),
+        line_spans(vec![Span::from(meta.join(" · ")).dim()]).into(),
     ];
     let cmd = if t.command.chars().count() > DETAIL_COMMAND_MAX * 4 {
         format!(
@@ -347,61 +465,32 @@ pub fn detail_body(t: &Snapshot, log: Option<&LogView>, state: &PaneState, now: 
     } else {
         t.command.clone()
     };
-    children.push(json!({"t": "section", "title": "Command", "body": {"t": "code", "value": cmd, "language": "sh"}}));
+    children.push(section("Command", Code::new(cmd).language("sh")));
     if let Some(d) = &t.description
         && compact_whitespace(d) != compact_whitespace(&t.display_name())
     {
-        children.push(json!({"t": "section", "title": "Description", "body": text(d.as_str())}));
+        children.push(section("Description", Paragraph::new(d.as_str())));
     }
-    children.push(text(json!([dim(&info_lines(t).join("\n"))])));
-    let output = match log {
-        Some(LogView { error: Some(e), .. }) => text(json!([span(e, Some("error"))])),
-        None => text(json!([dim("reading…")])),
-        Some(l) if l.lines.is_empty() => text(json!([dim("no output yet")])),
-        Some(l) => {
-            let mut parts = Vec::new();
-            if l.truncated {
-                parts.push(text(json!([dim(&format!(
-                    "… earlier output not shown ({} total{})",
-                    format_size(l.total_bytes),
-                    if state.full_log { "" } else { " · l full log" }
-                ))])));
-            }
-            parts.push(json!({"t": "log", "lines": l.lines, "tail": true, "maxLines": 5000}));
-            json!({"t": "stack", "direction": "vertical", "gap": 0, "children": parts})
-        }
-    };
-    children.push(json!({"t": "section", "title": "Output", "body": output}));
+    children.push(line_spans(vec![Span::from(info_lines(t).join("\n")).dim()]).into());
+    children.push(section("Output", output_body(log, state.full_log)));
     children.extend(settled_line(t));
-    let id = &t.id;
-    let mut buttons = vec![button("Back", "back", None)];
-    if t.status == Status::Running {
-        buttons.push(button("Stop", &format!("stop:{id}"), Some("warning")));
-        buttons.push(button("Kill", &format!("kill:{id}"), Some("error")));
-    } else {
-        buttons.push(button("Dismiss", &format!("dismiss:{id}"), None));
-    }
-    buttons.push(button("Rerun", &format!("rerun:{id}"), None));
-    buttons.push(button(
-        if state.full_log { "Tail" } else { "Full log" },
-        &format!("full:{id}"),
-        None,
-    ));
-    buttons.push(button("Path", &format!("path:{id}"), None));
-    children.push(json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": buttons}));
+    children.push(buttons_row(t, state.full_log));
     children.extend(flash_node(state));
-    children.push(key_hints(&[
-        ("↑↓", "scroll"),
-        ("g/G", "top/end"),
-        ("l", "full log"),
-        ("s", "stop"),
-        ("x", "kill"),
-        ("d", "dismiss"),
-        ("R", "rerun"),
-        ("c", "path"),
-        ("←/esc", "back"),
-    ]));
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": children})
+    children.push(
+        KeyHints::new([
+            ("↑↓", "scroll"),
+            ("g/G", "top/end"),
+            ("l", "full log"),
+            ("s", "stop"),
+            ("x", "kill"),
+            ("d", "dismiss"),
+            ("R", "rerun"),
+            ("c", "path"),
+            ("←/esc", "back"),
+        ])
+        .into(),
+    );
+    node(Layout::default().children(children))
 }
 
 /// `Counts` of the tab (`total`, `running`).
@@ -419,6 +508,7 @@ pub fn counts(tasks: &[Snapshot]) -> unipi_kit::tray::Counts {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn t(id: &str, status: Status, start: i64, end: Option<i64>) -> Snapshot {
         Snapshot {
@@ -457,8 +547,9 @@ mod tests {
         let body = list_body(&[r.clone(), f], &PaneState::default(), 70_000);
         assert_eq!(body["children"][0]["title"], "Running");
         assert_eq!(body["children"][1]["title"], "Recent");
-        assert_eq!(body["children"][0]["body"]["selectable"], "bg:open");
-        assert_eq!(body["children"][0]["body"]["selected"], "r");
+        assert_eq!(body["children"][0]["t"], "Block");
+        assert_eq!(body["children"][0]["child"]["onActivate"], "bg:open");
+        assert_eq!(body["children"][0]["child"]["state"]["selected"], "r");
         let empty = list_body(&[], &PaneState::default(), 0);
         assert_eq!(empty["children"][0]["message"], "No background tasks.");
         let d = detail_body(

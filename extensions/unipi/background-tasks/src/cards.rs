@@ -1,8 +1,9 @@
-//! Chat cards as OUS nodes (unipi `cards.ts`): a four-letter state chip, the bold task name and
-//! a dim right side; expanded adds the command, error, output tail, output path and id.
+//! Chat cards as v2 nodes (ui-protocol §12.1; unipi `cards.ts`): a four-letter state chip, the
+//! bold task name and a dim right side; expanded adds the command, error, output tail, output
+//! path and id.
 
-use serde_json::{Value, json};
-use unipi_kit::ous::{span, text};
+use oino_extension::ui::widgets::prelude::*;
+use serde_json::Value;
 
 use crate::snapshot::{Snapshot, Status};
 use crate::text::format_duration;
@@ -29,44 +30,82 @@ pub fn tone(status: Status) -> &'static str {
     }
 }
 
-fn head(chip_text: &str, chip_tone: &str, name: &str, right: &str) -> Value {
-    json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-        {"t": "badge", "value": chip_text, "tone": chip_tone},
-        text(json!([{"text": name, "bold": true}])),
-        {"t": "divider"},
-        text(json!([{"text": right, "dim": true}])),
-    ]})
+/// The `bg` sibling of a tone token (`<tone>Bg`, §5); `None` when the token has none.
+fn bg(tone: &Color) -> Option<Color> {
+    Some(match tone {
+        Color::Accent => Color::AccentBg,
+        Color::Info => Color::InfoBg,
+        Color::Success => Color::SuccessBg,
+        Color::Warning => Color::WarningBg,
+        Color::Error => Color::ErrorBg,
+        _ => return None,
+    })
 }
 
-fn expanded_lines(task: &Snapshot) -> Vec<Value> {
+/// A badge span: `{content, style:{fg:tone, bg:<tone>Bg}}` (§12.1 `badge` → `Span`).
+fn badge(text: &str, tone: &str) -> Span {
+    let color = Color::parse(tone);
+    match bg(&color) {
+        Some(fill) => Span::from_string(text).fg(color).bg(fill),
+        None => Span::from_string(text).fg(color),
+    }
+}
+
+/// A nowrap paragraph from spans (`wrap:false`).
+fn text(spans: Vec<Span>) -> Paragraph {
+    Paragraph::new(Line::from(spans)).wrap(Wrap::Disabled(false))
+}
+
+/// The rule between the name and the right side (`divider`, §12.1: a top-border `Block`).
+fn divider() -> Block {
+    Block::default()
+        .borders(Borders::Sides(vec![BorderSide::TOP]))
+        .border_style(Style::new().fg(Color::BorderMuted))
+}
+
+fn head(chip_text: &str, chip_tone: &str, name: &str, right: &str) -> Node {
+    let children: Vec<Node> = vec![
+        text(vec![badge(chip_text, chip_tone)]).into(),
+        text(vec![Span::from(name).bold()]).into(),
+        divider().into(),
+        text(vec![Span::from(right).dim()]).into(),
+    ];
+    Layout::horizontal([
+        Constraint::Min(0),
+        Constraint::Fill(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .spacing(1)
+    .children(children)
+    .into()
+}
+
+fn expanded_lines(task: &Snapshot) -> Vec<Node> {
     let cmd = if task.command.chars().count() > 120 {
         format!("{}…", task.command.chars().take(120).collect::<String>())
     } else {
         task.command.clone()
     };
-    let mut out = vec![text(json!([{"text": format!("  $ {cmd}"), "dim": true}]))];
+    let mut out: Vec<Node> = vec![text(vec![Span::from(format!("  $ {cmd}")).dim()]).into()];
     if let Some(e) = task.error.as_deref().filter(|e| !e.is_empty()) {
-        out.push(text(json!([span(&format!("  {e}"), Some("error"))])));
+        out.push(text(vec![Span::from(format!("  {e}")).fg(Color::Error)]).into());
     }
     for line in task.output_tail.iter().flatten() {
-        out.push(text(json!([span(&format!("  {line}"), Some("tool"))])));
+        out.push(text(vec![Span::from(format!("  {line}")).fg(Color::Tool)]).into());
     }
-    out.push(text(
-        json!([{"text": format!("  {}", task.output_path), "dim": true}]),
-    ));
-    out.push(text(
-        json!([{"text": format!("  ({})", task.id), "dim": true}]),
-    ));
+    out.push(text(vec![Span::from(format!("  {}", task.output_path)).dim()]).into());
+    out.push(text(vec![Span::from(format!("  ({})", task.id)).dim()]).into());
     out
 }
 
-fn card(head_node: Value, task: &Snapshot, expanded: bool) -> Value {
+fn card(head_node: Node, task: &Snapshot, expanded: bool) -> Node {
     if !expanded {
         return head_node;
     }
     let mut children = vec![head_node];
     children.extend(expanded_lines(task));
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": children})
+    Layout::default().children(children).into()
 }
 
 /// `bg_run` result card: `BG   <name> ···· started · wakes agent`.
@@ -85,7 +124,7 @@ pub fn launch_card(task: &Snapshot, expanded: bool) -> Value {
         &task.display_name(),
         &format!("started · {wake}"),
     );
-    card(h, task, expanded)
+    node(card(h, task, expanded))
 }
 
 /// Right side of the completion card (`exit 0 · 25s · agent woken`, `killed · 4s`).
@@ -123,7 +162,7 @@ pub fn completion_meta(task: &Snapshot) -> String {
 #[must_use]
 pub fn completion_card(task: Option<&Snapshot>, expanded: bool) -> Value {
     let Some(task) = task else {
-        return head("DONE", tone(Status::Completed), "bg task", "");
+        return node(head("DONE", tone(Status::Completed), "bg task", ""));
     };
     let h = head(
         chip(task.status),
@@ -131,7 +170,7 @@ pub fn completion_card(task: Option<&Snapshot>, expanded: bool) -> Value {
         &task.display_name(),
         &completion_meta(task),
     );
-    card(h, task, expanded)
+    node(card(h, task, expanded))
 }
 
 /// `bg_logs` result line(s).
@@ -145,34 +184,45 @@ pub fn logs_card(
     output: Option<&str>,
 ) -> Value {
     let mut spans = vec![
-        span(&task.display_name(), Some("accent")),
-        json!({"text": format!(" ({})", task.id), "dim": true}),
-        span(
-            &format!(" {} {bytes_read}", if tail { "tail" } else { "head" }),
-            Some("muted"),
-        ),
+        Span::from(task.display_name()).fg(Color::Accent),
+        Span::from(format!(" ({})", task.id)).dim(),
+        Span::from(format!(
+            " {} {bytes_read}",
+            if tail { "tail" } else { "head" }
+        ))
+        .fg(Color::Muted),
     ];
     if truncated {
-        spans.push(span(" (truncated)", Some("warning")));
+        spans.push(Span::from(" (truncated)").fg(Color::Warning));
     }
-    let mut children = vec![
-        text(Value::Array(spans)),
-        text(json!([{"text": format!("Full output: {path}"), "dim": true}])),
+    let mut children: Vec<Node> = vec![
+        text(spans).into(),
+        text(vec![Span::from(format!("Full output: {path}")).dim()]).into(),
     ];
     if let Some(out) = output {
-        let lines: Vec<&str> = out.split('\n').take(30).collect();
-        children.push(json!({"t": "log", "lines": lines}));
+        children.push(Log::new(out.split('\n').take(30)).into());
     }
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": children})
+    node(Layout::default().children(children))
 }
 
 /// `bg_kill` result card.
 #[must_use]
 pub fn kill_card(task: &Snapshot) -> Value {
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": [
-        text(json!([span("■ killed", Some("warning")), {"text": " "}, span(&task.display_name(), Some("accent")), {"text": format!(" ({})", task.id), "dim": true}])),
-        text(json!([{"text": format!("Output: {}", task.output_path), "dim": true}])),
-    ]})
+    let line = text(vec![
+        Span::from("■ killed").fg(Color::Warning),
+        Span::from(" "),
+        Span::from(task.display_name()).fg(Color::Accent),
+        Span::from(format!(" ({})", task.id)).dim(),
+    ]);
+    let path = text(vec![
+        Span::from(format!("Output: {}", task.output_path)).dim(),
+    ]);
+    node(Layout::default().children([line.into(), path.into()]))
+}
+
+/// A built node as the wire JSON the renderer callback returns.
+fn node(node: impl Into<Node>) -> Value {
+    serde_json::to_value(node.into()).unwrap_or(Value::Null)
 }
 
 #[cfg(test)]
@@ -199,14 +249,16 @@ mod tests {
     #[test]
     fn launch_and_completion_cards() {
         let c = launch_card(&task(Status::Running), false);
-        assert_eq!(c["children"][0]["value"], "BG  ");
+        assert_eq!(c["children"][0]["text"][0][0]["content"], "BG  ");
+        assert_eq!(c["children"][0]["text"][0][0]["style"]["bg"], "accentBg");
+
         assert_eq!(
-            c["children"][3]["value"][0]["text"],
+            c["children"][3]["text"][0][0]["content"],
             "started · wakes agent"
         );
         let e = launch_card(&task(Status::Running), true);
-        assert_eq!(e["children"][1]["value"][0]["text"], "  $ npm test");
-        assert_eq!(e["children"][2]["value"][0]["text"], "  ok");
+        assert_eq!(e["children"][1]["text"][0][0]["content"], "  $ npm test");
+        assert_eq!(e["children"][2]["text"][0][0]["content"], "  ok");
         assert_eq!(
             completion_meta(&task(Status::Completed)),
             "exit 0 · 25s · agent woken"
@@ -219,9 +271,9 @@ mod tests {
         f.trigger_on_completion = false;
         f.error = Some("boom".into());
         assert_eq!(completion_meta(&f), "error · 25s");
-        assert_eq!(completion_card(None, false)["children"][2]["t"], "divider");
+        assert_eq!(completion_card(None, false)["children"][2]["t"], "Block");
         assert_eq!(
-            completion_card(Some(&f), false)["children"][0]["value"],
+            completion_card(Some(&f), false)["children"][0]["text"][0][0]["content"],
             "FAIL"
         );
     }
