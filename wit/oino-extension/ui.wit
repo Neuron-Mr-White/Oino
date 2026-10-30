@@ -1,4 +1,4 @@
-package oino:extension@1.0.0;
+package oino:extension@2.0.0;
 
 interface ui {
     use types.{json, host-error, cancel-token};
@@ -6,10 +6,15 @@ interface ui {
     /// (method select|confirm|input|editor|multiSelect|form|approval|custom).
     dialog: async func(request: json, cancel: option<borrow<cancel-token>>) -> result<json, host-error>;
     /// Fire-and-forget (notify|setStatus|setWidget|setTitle|set_editor_text|setFrame|setWorkingMessage|
-    /// setHeader|setFooter|registerAutocomplete…), ui-protocol §4.2.
+    /// setHeader|setFooter|registerAutocomplete|invalidateTurnFooter…), ui-protocol §3/§4.2/§6.3.
+    /// `widgetSpec`/`spec` are v2 node trees (§4); `invalidateTurnFooter{key, turnEntryIds?}`
+    /// drops cached end-of-turn footers (§6.7).
     fire: func(request: json) -> result<_, host-error>;
-    /// Panels (ui-protocol §5): open returns panel id; update replaces the spec; close.
+    /// Panels (ui-protocol §6): `{panelId?, placement, title?, icon?, badge?, order?, spec?, keys?,
+    /// focus?, closeOnEscape?, size?, params?}` → entry id. Reserved ids (§8) ignore `spec`.
     panel-open: func(spec: json) -> result<string, host-error>;
+    /// `{spec?}` (whole tree, diffed) or `{patch: NodeOp[]}`, plus optional `title`, `icon`,
+    /// `badge`, `order`, `keys`, `fallback` (ui-protocol §6/§9.1).
     panel-update: func(panel-id: string, spec: json) -> result<_, host-error>;
     panel-close: func(panel-id: string);
     /// Editor model (ui-protocol §7).

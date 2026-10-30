@@ -1,10 +1,10 @@
-package oino:extension@1.0.0;
+package oino:extension@2.0.0;
 
 interface host-info {
     use types.{mode, host-error};
     record info {
         oino-version: string,
-        api-version: string,          // "1.0.0"
+        api-version: string,          // "2.0.0" (WIT package `oino:extension@2.0.0`)
         platform: string,             // "linux" | "macos" | "windows" | "android" | "ios"
         arch: string,
         mode: mode,

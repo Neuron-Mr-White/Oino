@@ -1,4 +1,4 @@
-package oino:extension@1.0.0;
+package oino:extension@2.0.0;
 
 interface registry {
     use types.{json, host-error};
@@ -65,7 +65,10 @@ interface registry {
     record shortcut-spec { id: string, default-keys: list<string>, description: string }
     enum flag-type { boolean, %string }
     record flag-spec { name: string, %type: flag-type, default-value: option<json>, description: string }
-    enum renderer-target { custom-message, custom-entry, tool }
+    /// `turn-footer` = end-of-turn renderer (ui-protocol §6.7): core creates the entry
+    /// `<extensionId>/turnFooter:<key>`; frontends call the guest `render` export with
+    /// `{target:"turnFooter", key, turnEntryId, turnIndex, running}`.
+    enum renderer-target { custom-message, custom-entry, tool, turn-footer }
     record renderer-spec { target: renderer-target, key: string }   // customType or tool name
     record arbiter-roles { nudge-provider: bool, wait-source: bool }
     /// Settings file a write targets (runtime §10.1).
@@ -100,7 +103,8 @@ interface registry {
     register-renderer: func(spec: renderer-spec);
     register-service: func(name: string) -> result<_, host-error>;
     set-arbiter-roles: func(roles: arbiter-roles);
-    /// JSON of oino_protocol::ext::SettingsNamespace.
+    /// JSON of oino_protocol::ext::SettingsNamespace. Runtime registration; a manifest's static
+    /// `ui.settings` namespaces are registered by core as well (both accepted in 2.x).
     register-settings: func(namespace: json) -> result<_, host-error>;
     /// Values of a settings namespace (JSON object). Secret fields are resolved for the owner
     /// and for extensions matching the namespace's `secretReaders`; others do not see them.

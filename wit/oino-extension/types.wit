@@ -1,4 +1,4 @@
-package oino:extension@1.0.0;
+package oino:extension@2.0.0;
 
 interface types {
     /// Canonical JSON text of a serde type named in the doc comment of each use.

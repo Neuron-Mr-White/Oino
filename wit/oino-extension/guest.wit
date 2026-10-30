@@ -1,4 +1,4 @@
-package oino:extension@1.0.0;
+package oino:extension@2.0.0;
 
 interface guest {
     use types.{json, call-context, cancel-token};
@@ -30,7 +30,10 @@ interface guest {
     propose-nudge: async func(ctx: call-context) -> option<json>;
     nudge-delivered: func(id: string, ctx: call-context);
     wait-reason: async func(ctx: call-context) -> option<string>;
-    /// Render specs (ui-protocol §6.4). request = RenderRequest JSON; result = OUS node JSON.
+    /// Render specs (ui-protocol §6.4, §6.7). request = RenderRequest JSON
+    /// `{target, key?, customType?, tool?, turnEntryId?, turnIndex?, running?, width?, density?}`;
+    /// `target` may be `"tool"`, `"customMessage"`, `"customEntry"` or `"turnFooter"`.
+    /// result = v2 `Node` JSON (PascalCase `t`), or none for "nothing to render".
     render: func(request: json, ctx: call-context) -> option<json>;
     /// Virtual model routing (runtime §13). request/response = pi route request/result JSON.
     route-model: async func(request: json, ctx: call-context) -> result<json, string>;

@@ -1,4 +1,4 @@
-package oino:extension@1.0.0;
+package oino:extension@2.0.0;
 
 interface process {
     use types.{host-error};

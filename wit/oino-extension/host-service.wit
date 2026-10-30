@@ -1,4 +1,4 @@
-package oino:extension@1.0.0;
+package oino:extension@2.0.0;
 
 /// Host-provided services (v2 §3.4.2): named capabilities an embedding host
 /// (unipi-host) registers with the runtime — "browser", "cron", … . Oino

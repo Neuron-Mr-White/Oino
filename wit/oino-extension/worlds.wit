@@ -1,4 +1,4 @@
-package oino:extension@1.0.0;
+package oino:extension@2.0.0;
 
 world extension {
     import wasi:cli/environment@0.2.12;

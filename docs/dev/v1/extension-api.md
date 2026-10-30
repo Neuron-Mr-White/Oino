@@ -1,3 +1,12 @@
+> **Superseded (v2).** Since `[abi-x6]` the package is `oino:extension@2.0.0` and the manifest
+> `apiVersion` is `oino.extension/2`: interfaces `kanboard`, `browser` and `cron` are removed,
+> `host-service` is added, the manifest permission keys `cron`/`browser` are replaced by
+> `hostServices`, the manifest gained `binaries` and a `ui` section, and the UI node trees are
+> ui-protocol v2 (PascalCase). Read [../v2/specs/ext-abi.md](../v2/specs/ext-abi.md) §8 (WP-X6,
+> incl. the 2.0.0 compatibility statement) and [../v2/specs/ui-protocol.md](../v2/specs/ui-protocol.md)
+> for those deltas; everything else here is still the v1 history and the baseline the v2 spec
+> diffs against.
+
 # Extension API: WIT `oino:extension@1.0.0`, host, manifest, SDK, bundling
 
 Status: binding. Owner: `wit-v1` (`wit/`, `crates/oino-extension-api`, `crates/oino-wasm-host`,
