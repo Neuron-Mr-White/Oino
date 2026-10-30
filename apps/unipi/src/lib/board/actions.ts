@@ -1,32 +1,30 @@
 /**
- * Board action hooks (UNI-130 → UNI-131).
+ * Board action hooks (UNI-130 → UNI-131, v2 WP-A22).
  *
  * The board screen calls these and nothing else for anything beyond
  * browsing/creating: the task detail page, the card long-press quick
- * menu, lane bulk actions and project actions. UNI-130 shipped them as
- * stubs; UNI-131 implements them below on top of lib/board/taskActions.ts
- * (every write), lib/board/summarize.ts (the summary jobs) and the ui
- * signals the board screen renders (detail page, card menu, comment /
- * confirm / settings sheets). Tests can still override single hooks with
- * `setBoardActions`. `highlightTask(id)` jumps to a card and flashes it.
+ * menu, lane bulk actions and project actions. v2 drops the daemon-backed
+ * summarize jobs and the PC-side settings sheet (no CLI surface for them);
+ * every write goes through lib/board/taskActions.ts. Tests can still
+ * override single hooks with `setBoardActions`. `highlightTask(id)` jumps
+ * to a card and flashes it.
  */
 import type { Task } from './api';
 import { boardUi } from './ui';
 import { boardStore } from './store';
-import { summaries } from './summarize';
 import { archiveLane, boardCtx, buzz, doneLane, setProjectArchived } from './taskActions';
 
-export type ProjectAction = 'summarize-board' | 'settings' | 'archive-project' | 'unarchive-project';
-export type LaneAction = 'done-all' | 'archive-lane' | 'summarize-archive';
+export type ProjectAction = 'archive-project' | 'unarchive-project';
+export type LaneAction = 'done-all' | 'archive-lane';
 
 export interface BoardActions {
   /** Card tap / search result: open the task detail. */
   openTask(task: Task): void;
   /** Card long-press: quick-action menu anchored at the card's rect. */
   openCardMenu(task: Task, anchor: DOMRect): void;
-  /** Header ⋯ menu: Summarize board, Board settings, Archive / Unarchive project. `slug` targets a project other than the open one (project list long-press); defaults to the open project. */
+  /** Header ⋯ menu: Archive / Unarchive project. `slug` targets a project other than the open one (project list long-press); defaults to the open project. */
   projectAction(action: ProjectAction, slug?: string): void;
-  /** Lane header: In Review → Done all / Archive all; Done → Summarize & archive / Archive all. */
+  /** Lane header: In Review → Done all; Done / In Review → Archive all. */
   laneAction(lane: 'in_review' | 'done', action: LaneAction): void;
 }
 
@@ -44,17 +42,11 @@ const defaultActions: BoardActions = {
     boardUi().setCardMenu({ taskId: task.id, anchor });
   },
   projectAction: (action, slug) => {
-    const ui = boardUi();
-    if (action === 'summarize-board') summaries().show('board');
-    else if (action === 'settings') ui.setSettingsOpen(true);
-    else {
-      const ctx = slug ? { hostId: boardCtx()?.hostId ?? boardStore().target()?.hostId ?? '', slug } : boardCtx();
-      if (ctx?.hostId) void setProjectArchived(action === 'archive-project', ctx);
-    }
+    const ctx = slug ? { hostId: boardCtx()?.hostId ?? boardStore().target()?.hostId ?? '', slug } : boardCtx();
+    if (ctx?.hostId) void setProjectArchived(action === 'archive-project', ctx);
   },
   laneAction: (lane, action) => {
     const ui = boardUi();
-    if (action === 'summarize-archive') return summaries().show('done');
     const total = count(lane);
     if (total === 0) return;
     if (action === 'done-all') {
@@ -67,7 +59,7 @@ const defaultActions: BoardActions = {
     } else {
       ui.setConfirm({
         title: `Archive ${plural(total)} from ${lane === 'done' ? 'Done' : 'In Review'}?`,
-        detail: lane === 'done' ? 'No summary is written. Archived tasks leave the board for good.' : 'Archived tasks leave the board for good.',
+        detail: 'Archived tasks leave the board for good.',
         confirm: `Archive ${plural(total)}`,
         danger: true,
         run: () => archiveLane(lane),

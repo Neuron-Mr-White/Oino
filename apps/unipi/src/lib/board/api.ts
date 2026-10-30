@@ -1,13 +1,26 @@
 /**
- * Kanboard API client + shared types (UNI-130). Mirrors the kanboard web
- * UI's `crates/kanboard/web/src/api.ts` — same shapes, same endpoints,
- * same helpers (LANES, PRIORITIES, canMove, needsComment, displayTitle) —
- * but every call goes through `boardTransport()` (lib/board/transport.ts)
- * and takes the PC (`hostId`) it talks to first. Never fetch() directly.
+ * Kanboard API client v2 (WP-A22, G-18): the same surface the Board UI has
+ * always consumed (types, constants, helpers unchanged from the daemon era),
+ * but every call maps onto a `unipi-kanboard` subcommand run through
+ * `boardTransport().cli()` (ext-abi §5.5), actor `user`, `--json`.
+ *
+ * What moved where (no daemon anymore):
+ *  - `rules` is a client mirror of the transition table's user rows
+ *    (`USER_RULES`) — the daemon served the same JSON; the CLI does not;
+ *  - `projects`, `running` and `dashboard` are derived from
+ *    `project list` + per-project `list --all` exactly the way the daemon
+ *    derived them server-side (dashboard.ts keeps the view logic);
+ *  - `doneLane`/`archiveLane` are composed per-task `move`s (the bulk
+ *    commands are daemon leftovers, not CLI subcommands);
+ *  - attachments upload by staging the bytes as a host blob
+ *    (`blob_put_bytes` + `fs_import` into `~/.oino/uploads`) and handing the
+ *    host path to `attach`; downloads read the stored file by its board path
+ *    through `blob_get_bytes`.
  */
-import { boardTransport, type BoardMethod } from './transport';
+import { boardTransport, type BoardCliOutcome } from './transport';
+import { hostClient } from '../host/factory';
 
-// ─── shapes (mirror the daemon JSON) ───────────────────────────────────────
+// ─── shapes (the CLI's JSON, same as the v1 daemon's) ──────────────────────
 
 export interface Problem {
   file: string;
@@ -102,42 +115,7 @@ export interface Rules {
   final: string[];
 }
 
-export interface Settings {
-  piCommand: string[];
-  models: string[];
-  /** "" = pi's default model. */
-  summaryModel: string;
-  summaryInstruction: string;
-  defaultSummaryInstruction: string;
-  /** Session limits (older daemons call this `runner`). */
-  sessions?: { maxSessions: number; turnAddLimit: number; chainGate: string };
-  runner?: { maxSessions: number; turnAddLimit: number; chainGate: string };
-  archive: { archiveAfterDays: number; retentionDays: number };
-}
-
-/** Flat PUT patch the daemon validates + writes. */
-export interface SettingsPatch {
-  summaryModel?: string;
-  summaryInstruction?: string;
-  maxSessions?: number;
-  turnAddLimit?: number;
-  chainGate?: string;
-  archiveAfterDays?: number;
-  retentionDays?: number;
-}
-
-export interface SummaryResult {
-  summary: string;
-  taskIds: string[];
-}
-
-export interface ArchiveResult {
-  path: string;
-  archived: string[];
-  skipped: string[];
-}
-
-// Dashboard (`GET /api/dashboard`, kanboard UNI-67): the cross-project overview.
+// Dashboard (the cross-project overview; derived from per-project lists).
 export interface DashboardProject {
   slug: string;
   review: number;
@@ -197,9 +175,8 @@ export type CreateTaskBody = {
 
 export type EditTaskPatch = { title?: string; body?: string; priority?: string; labels?: string[] };
 export type OrderTarget = { before?: string; afterPos?: string; top?: boolean; bottom?: boolean };
-export type SummarizeOptions = { instruction?: string; scope?: 'done' | 'board'; previous?: string; note?: string };
 
-// ─── constants & helpers (identical to the web UI) ─────────────────────────
+// ─── constants & helpers (unchanged) ───────────────────────────────────────
 
 export const STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'blocked', 'done', 'cancelled', 'archived'] as const;
 
@@ -237,7 +214,34 @@ export function displayTitle(task: { title: string; displayTitle?: string }): st
   return task.displayTitle || task.title || '(untitled)';
 }
 
-/** Fallback when `/api/rules` is unavailable: permissive, the server still decides. */
+/**
+ * The user-actor rows of the kanboard transition table
+ * (`crates/unipi-kanboard/src/transitions.rs` RULES), mirrored the way the
+ * daemon's `/api/rules` served them. The server still decides — this only
+ * dims invalid targets and opens the comment sheet before a refusal.
+ */
+export const USER_RULES: Rules = {
+  statuses: [...STATUSES],
+  allowedMoves: {
+    backlog: ['todo', 'cancelled'],
+    todo: ['backlog', 'cancelled'],
+    in_progress: ['todo', 'backlog'],
+    blocked: ['todo', 'done', 'cancelled'],
+    in_review: ['done', 'todo', 'backlog', 'archived'],
+    done: ['archived'],
+    cancelled: ['archived'],
+    archived: [],
+  },
+  commentRequired: {
+    in_progress: {
+      todo: 'why the stale run is being released',
+      backlog: 'why the stale run is being released',
+    },
+  },
+  final: ['done', 'cancelled', 'archived'],
+};
+
+/** Fallback when a host predates the board delta: permissive, the server still decides. */
 export const PERMISSIVE_RULES: Rules = {
   statuses: [...STATUSES],
   allowedMoves: {},
@@ -245,7 +249,7 @@ export const PERMISSIVE_RULES: Rules = {
   final: ['done', 'cancelled', 'archived'],
 };
 
-/** Can a card move from its lane to `to`, according to the server's rules? */
+/** Can a card move from its lane to `to`, according to the rules? */
 export function canMove(rules: Rules, task: Task, to: string): boolean {
   if (to === task.status) return true;
   const explicit = task.allowedMoves;
@@ -262,7 +266,7 @@ export function needsComment(rules: Rules, from: string, to: string): string | n
 // ─── errors ────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
-  /** HTTP status; 0 = the transport itself failed (PC offline, no route). */
+  /** 0 = the transport itself failed (PC offline, no route); 409 = a rule refusal. */
   readonly status: number;
   /** The move needs a comment (`commentRequired`). */
   readonly needsComment: boolean;
@@ -283,123 +287,145 @@ export function describe(error: unknown): string {
   return String(error);
 }
 
-const decoder = new TextDecoder();
-
-/** The daemon's error JSON (`{error, needsComment?, needsAgent?}`) → ApiError. */
-export function parseError(status: number, text: string): ApiError {
-  let payload: unknown = null;
-  try {
-    payload = text.length > 0 ? JSON.parse(text) : null;
-  } catch {
-    payload = null;
-  }
-  const record = (payload && typeof payload === 'object' ? payload : {}) as {
-    error?: unknown;
-    message?: unknown;
-    needsComment?: unknown;
-    needsAgent?: unknown;
-  };
-  const message =
-    typeof record.error === 'string' && record.error
-      ? record.error
-      : typeof record.message === 'string' && record.message
-        ? record.message
-        : text && !payload && text.length < 200
-          ? text.trim()
-          : `request failed (${status})`;
-  return new ApiError(message, status, record.needsComment === true, record.needsAgent === true);
+/** A CLI failure line (`{ok:false, error, kind}`) → `ApiError`. */
+export function parseError(outcome: { ok: false; error?: string; kind?: string }): ApiError {
+  const message = outcome.error?.trim() || 'the board refused the change';
+  const status = outcome.kind === 'usage' ? 400 : outcome.kind === 'not_found' ? 404 : 409;
+  const needsComment = outcome.kind === 'rule' && /requires --comment/i.test(message);
+  const needsAgent = outcome.kind === 'rule' && /\bagent\b/i.test(message) && /only/i.test(message);
+  return new ApiError(message, status, needsComment, needsAgent);
 }
 
-async function send(hostId: string, method: BoardMethod, path: string, body?: string | Uint8Array) {
+/** Runs one CLI call; throws `ApiError` for refusals and host failures alike. */
+async function cli<T>(hostId: string, args: string[], opts?: { project?: string }): Promise<T> {
+  let outcome: BoardCliOutcome;
   try {
-    return await boardTransport().request(hostId, { method, path, body });
+    outcome = await boardTransport().cli(hostId, args, opts?.project);
   } catch (error) {
-    throw new ApiError(describe(error) || 'the PC is unreachable', 0);
+    const message = describe(error) || 'the PC is unreachable';
+    throw new ApiError(message, 0);
   }
+  if (!outcome.ok) throw parseError(outcome);
+  return outcome.payload as T;
 }
 
-async function request<T>(hostId: string, method: BoardMethod, path: string, json?: unknown): Promise<T> {
-  const response = await send(hostId, method, path, json === undefined ? undefined : JSON.stringify(json));
-  const text = decoder.decode(response.body);
-  if (response.status < 200 || response.status >= 300) throw parseError(response.status, text);
-  if (text.length === 0) return null as T;
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new ApiError('the board answered with something that is not JSON', response.status);
-  }
-}
-
-const enc = encodeURIComponent;
-const taskPath = (slug: string, id: string) => `/api/tasks/${enc(slug)}/${enc(id)}`;
-
-/** Daemon path of an attachment file (`att:<TASK>/<name>` refs resolve here). */
+/** Board-relative path of an attachment file (`att:<TASK>/<name>` refs resolve here; stored names are already filesystem-safe). */
 export function filePath(slug: string, taskId: string, name: string): string {
-  return `/api/files/${enc(slug)}/${enc(taskId)}/${enc(name)}`;
+  return `projects/${slug}/attachments/${taskId}/${name}`;
+}
+
+// ─── per-host board home (attachment paths resolve against it) ─────────────
+
+const homes = new Map<string, string>();
+
+/** Remembers the board home a `status` call reported. */
+export function setBoardHome(hostId: string, home: string | undefined): void {
+  if (home) homes.set(hostId, home.replace(/\/$/, ''));
+  else homes.delete(hostId);
+}
+
+export function boardHome(hostId: string): string | undefined {
+  return homes.get(hostId);
 }
 
 const objectUrls = new Map<string, Promise<string>>();
 
 // ─── endpoints ─────────────────────────────────────────────────────────────
 
+/** One project's tasks + problems (`list --all`: every lane, like the daemon). */
 export const api = {
-  /** Daemon liveness/version (the transport's availability() wraps this). */
-  health: (hostId: string) => request<{ ok: boolean; pid?: number; version?: string }>(hostId, 'GET', '/api/health'),
-  projects: (hostId: string) => request<ProjectSummary[]>(hostId, 'GET', '/api/projects'),
-  /** Every claimed task across all projects (the web sidebar's Agents list). */
-  running: (hostId: string) => request<{ running: RunningItem[] }>(hostId, 'GET', '/api/running'),
-  rules: (hostId: string) => request<Rules>(hostId, 'GET', '/api/rules'),
-  /** Cross-project overview: needs-you inbox, up next, activity, throughput. */
-  dashboard: (hostId: string) => request<DashboardData>(hostId, 'GET', '/api/dashboard'),
-  tasks: (hostId: string, slug: string) =>
-    request<{ tasks: Task[]; problems: Problem[] }>(hostId, 'GET', `/api/projects/${enc(slug)}/tasks`),
-  task: (hostId: string, slug: string, id: string) => request<Task>(hostId, 'GET', taskPath(slug, id)),
-  create: (hostId: string, slug: string, body: CreateTaskBody) =>
-    request<Task>(hostId, 'POST', `/api/tasks/${enc(slug)}/create`, body),
-  /** Moves a task; hard-to-reverse moves return a one-shot `undoToken`. */
-  move: (hostId: string, slug: string, id: string, status: string, comment?: string) =>
-    request<Task & { undoToken?: string }>(hostId, 'POST', `${taskPath(slug, id)}/move`, { status, comment }),
-  /** Undoes one move with its one-shot token. */
-  undoMove: (hostId: string, slug: string, id: string, token: string) =>
-    request<Task>(hostId, 'POST', `${taskPath(slug, id)}/undo`, { token }),
-  note: (hostId: string, slug: string, id: string, text: string) =>
-    request<Task>(hostId, 'POST', `${taskPath(slug, id)}/note`, { text }),
-  edit: (hostId: string, slug: string, id: string, patch: EditTaskPatch) =>
-    request<Task>(hostId, 'POST', `${taskPath(slug, id)}/edit`, patch),
-  link: (hostId: string, slug: string, id: string, dep: string) =>
-    request<Task>(hostId, 'POST', `${taskPath(slug, id)}/link`, { dep }),
-  unlink: (hostId: string, slug: string, id: string, dep: string) =>
-    request<Task>(hostId, 'POST', `${taskPath(slug, id)}/unlink`, { dep }),
-  order: (hostId: string, slug: string, id: string, target: OrderTarget) =>
-    request<Task>(hostId, 'POST', `${taskPath(slug, id)}/order`, {
-      before: target.before,
-      after_pos: target.afterPos,
-      top: target.top,
-      bottom: target.bottom,
-    }),
-  duplicate: (hostId: string, slug: string, id: string) =>
-    request<Task>(hostId, 'POST', `${taskPath(slug, id)}/duplicate`, {}),
-  /** Uploads raw bytes as an attachment; returns its `markdown` to embed. */
-  upload: async (hostId: string, slug: string, id: string, name: string, bytes: Uint8Array): Promise<Attachment> => {
-    const response = await send(
-      hostId,
-      'POST',
-      `${taskPath(slug, id)}/attachments?name=${enc(name || 'pasted')}`,
-      bytes,
+  /** CLI liveness + home (the transport's availability() wraps this). */
+  health: (hostId: string) => {
+    interface StatusPayload {
+      ok: boolean;
+      home?: string;
+      binary?: string;
+      hostname?: string;
+    }
+    return (async () => {
+      const payload = await cli<StatusPayload>(hostId, ['status']);
+      setBoardHome(hostId, payload.home);
+      return payload;
+    })();
+  },
+  /** Every project with counts/running/updatedAt/problems, derived per project. */
+  projects: async (hostId: string): Promise<ProjectSummary[]> => {
+    const projects = await cli<Array<{ slug: string; name: string; root?: string; prefix?: string; archived?: boolean }>>(hostId, ['project', 'list']);
+    const summaries = await Promise.all(
+      projects.map(async (project) => summarizeProject(hostId, project)),
     );
-    const text = decoder.decode(response.body);
-    if (response.status === 413) throw new ApiError(`${name} is larger than 25 MB`, 413);
-    if (response.status < 200 || response.status >= 300) throw parseError(response.status, text);
-    return JSON.parse(text) as Attachment;
+    return summaries;
+  },
+  /** Every claimed task across all projects (the sidebar's Agents list). */
+  running: async (hostId: string): Promise<{ running: RunningItem[] }> => {
+    const index = await boardIndex(hostId);
+    return { running: index.running };
+  },
+  /** The user-actor transition table (a client mirror — no call). */
+  rules: (hostId: string): Promise<Rules> => Promise.resolve({ ...USER_RULES, statuses: [...USER_RULES.statuses] }),
+  /** Cross-project overview, derived exactly as the daemon derived it. */
+  dashboard: async (hostId: string): Promise<DashboardData> => {
+    const index = await boardIndex(hostId);
+    return deriveDashboard(index, Date.now());
+  },
+  tasks: (hostId: string, slug: string) => cli<{ tasks: Task[]; problems: Problem[] }>(hostId, ['list', '--all'], { project: slug }),
+  task: (hostId: string, slug: string, id: string) => cli<Task>(hostId, ['show', id], { project: slug }),
+  create: (hostId: string, slug: string, body: CreateTaskBody) => {
+    const args = ['add'];
+    if (body.title) args.push(body.title);
+    if (body.body !== undefined) args.push(`--body=${body.body}`);
+    if (body.status) args.push('--status', body.status);
+    if (body.priority) args.push('--priority', body.priority);
+    for (const dep of body.after ?? []) args.push('--after', dep);
+    for (const label of body.labels ?? []) args.push('--label', label);
+    if ((body.labels ?? []).length > 0) args.push('--new-label');
+    return cli<Task>(hostId, args, { project: slug });
+  },
+  move: (hostId: string, slug: string, id: string, status: string, comment?: string) => {
+    const args = ['move', id, status];
+    if (comment) args.push('--comment', comment);
+    return cli<Task>(hostId, args, { project: slug });
+  },
+  note: (hostId: string, slug: string, id: string, text: string) =>
+    cli<Task>(hostId, ['note', id, '--', text], { project: slug }),
+  edit: (hostId: string, slug: string, id: string, patch: EditTaskPatch) => {
+    const args = ['edit', id];
+    if (patch.title !== undefined) args.push(`--title=${patch.title}`);
+    if (patch.body !== undefined) args.push(`--body=${patch.body}`);
+    if (patch.priority !== undefined) args.push('--priority', patch.priority);
+    if (patch.labels !== undefined) args.push(`--labels=${patch.labels.join(',')}`, '--new-label');
+    return cli<Task>(hostId, args, { project: slug });
+  },
+  link: (hostId: string, slug: string, id: string, dep: string) =>
+    cli<Task>(hostId, ['link', id, '--after', dep], { project: slug }),
+  unlink: (hostId: string, slug: string, id: string, dep: string) =>
+    cli<Task>(hostId, ['unlink', id, '--after', dep], { project: slug }),
+  order: (hostId: string, slug: string, id: string, target: OrderTarget) => {
+    const args = ['order', id];
+    if (target.before) args.push('--before', target.before);
+    else if (target.afterPos) args.push('--after-pos', target.afterPos);
+    else if (target.top) args.push('--top');
+    else args.push('--bottom');
+    return cli<Task>(hostId, args, { project: slug });
+  },
+  duplicate: (hostId: string, slug: string, id: string) => cli<Task>(hostId, ['duplicate', id], { project: slug }),
+  /** Uploads raw bytes as an attachment: stage on the host, then `attach`. */
+  upload: async (hostId: string, slug: string, id: string, name: string, bytes: Uint8Array): Promise<Attachment> => {
+    const staged = await stageBytes(hostId, name, bytes);
+    try {
+      return await cli<Attachment>(hostId, ['attach', id, staged.path, '--name', name], { project: slug });
+    } finally {
+      void staged.cleanup().catch(() => {});
+    }
   },
   /** Convenience: uploads a File/Blob (reads it into bytes first). */
   uploadFile: async (hostId: string, slug: string, id: string, file: File): Promise<Attachment> =>
     api.upload(hostId, slug, id, file.name, new Uint8Array(await file.arrayBuffer())),
-  /** Downloads an attachment (or any `/api/files/…` path) as a Blob. */
+  /** Downloads an attachment (or any board-relative path) as a Blob. */
   file: async (hostId: string, path: string): Promise<Blob> => {
-    const response = await send(hostId, 'GET', path);
-    if (response.status < 200 || response.status >= 300) throw parseError(response.status, decoder.decode(response.body));
-    return new Blob([response.body as BlobPart], { type: response.contentType || 'application/octet-stream' });
+    const absolute = resolveBoardPath(hostId, path);
+    const result = (await hostClient(hostId).request('blob_get_bytes', { path: absolute })) as { mime: string; bytes: number[] };
+    return new Blob([new Uint8Array(result.bytes)], { type: result.mime || 'application/octet-stream' });
   },
   /** An object URL for a file path, cached per (host, path) for the session. */
   fileUrl: (hostId: string, path: string): Promise<string> => {
@@ -412,31 +438,358 @@ export const api = {
     }
     return url;
   },
-  settings: (hostId: string) => request<Settings>(hostId, 'GET', '/api/settings'),
-  saveSettings: (hostId: string, patch: SettingsPatch) => request<Settings>(hostId, 'PUT', '/api/settings', patch),
-  /** The daemon-owned model catalog; `refresh` bypasses its cache. */
-  models: (hostId: string, refresh = false) =>
-    request<{ models: string[] }>(hostId, 'GET', `/api/models${refresh ? '?refresh=1' : ''}`),
-  archiveLane: (hostId: string, slug: string, status: 'done' | 'in_review') =>
-    request<{ archived: string[]; skipped: string[] }>(hostId, 'POST', `/api/projects/${enc(slug)}/archive-lane`, { status }),
-  /** Moves every In Review task to Done. */
-  doneLane: (hostId: string, slug: string) =>
-    request<{ moved: string[] }>(hostId, 'POST', `/api/projects/${enc(slug)}/done-lane`),
-  updateProject: (hostId: string, slug: string, patch: { archived?: boolean }) =>
-    request<ProjectSummary>(hostId, 'PUT', `/api/projects/${enc(slug)}`, patch),
-  summarize: (hostId: string, slug: string, opts?: SummarizeOptions) => {
-    const body: Record<string, string> = {};
-    if (opts?.instruction?.trim()) body.instruction = opts.instruction;
-    if (opts?.scope) body.scope = opts.scope;
-    if (opts?.previous?.trim()) body.previous = opts.previous;
-    if (opts?.note?.trim()) body.note = opts.note;
-    return request<SummaryResult>(hostId, 'POST', `/api/projects/${enc(slug)}/summarize`, body);
+  updateProject: async (hostId: string, slug: string, patch: { archived?: boolean }): Promise<ProjectSummary> => {
+    if (patch.archived === undefined) return (await api.projects(hostId)).find((project) => project.slug === slug)!;
+    await cli(hostId, ['project', patch.archived ? 'archive' : 'unarchive', slug]);
+    const projects = await api.projects(hostId);
+    return projects.find((project) => project.slug === slug)!;
   },
-  archiveSummary: (hostId: string, slug: string, body: { markdown: string; taskIds: string[] }) =>
-    request<ArchiveResult>(hostId, 'POST', `/api/projects/${enc(slug)}/archive-summary`, body),
+  /** Moves every In Review task to Done (composed per-task moves). */
+  doneLane: async (hostId: string, slug: string): Promise<{ moved: string[] }> => {
+    const { tasks } = await api.tasks(hostId, slug);
+    const moved: string[] = [];
+    for (const task of tasks.filter((candidate) => candidate.status === 'in_review')) {
+      try {
+        await api.move(hostId, slug, task.id, 'done');
+        moved.push(task.id);
+      } catch {
+        // A rule refusal skips that task (the daemon's bulk pass did the same).
+      }
+    }
+    return { moved };
+  },
+  /** Archives every task of a lane (done or in_review), skipping refusals. */
+  archiveLane: async (hostId: string, slug: string, status: 'done' | 'in_review'): Promise<{ archived: string[]; skipped: string[] }> => {
+    const { tasks } = await api.tasks(hostId, slug);
+    const archived: string[] = [];
+    const skipped: string[] = [];
+    for (const task of tasks.filter((candidate) => candidate.status === status)) {
+      try {
+        await api.move(hostId, slug, task.id, 'archived');
+        archived.push(task.id);
+      } catch {
+        skipped.push(task.id);
+      }
+    }
+    return { archived, skipped };
+  },
 };
 
-/** Test hook: forget cached object URLs. */
+// ─── staging (attachment upload) ───────────────────────────────────────────
+
+type Staged = { path: string; cleanup: () => Promise<void> };
+
+/** Upload bytes to the host (`blob_put_bytes`) and import them into `~/.oino/uploads`. */
+async function stageBytes(hostId: string, name: string, bytes: Uint8Array): Promise<Staged> {
+  const safe = name.replace(/[^\w.-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '') || 'file';
+  const put = (await hostClient(hostId).request('blob_put_bytes', {
+    bytes: Array.from(bytes),
+    mime: 'application/octet-stream',
+    name: safe,
+  })) as { sha256: string };
+  const path = `~/.oino/uploads/board-${Date.now().toString(36)}-${safe}`;
+  await hostClient(hostId).request('fs_import', { sha256: put.sha256, to: path });
+  return {
+    path,
+    cleanup: () => hostClient(hostId).request('fs_delete', { path, confirm: true }),
+  };
+}
+
+/** A board-relative path → the absolute host path (needs the home from `status`). */
+function resolveBoardPath(hostId: string, path: string): string {
+  if (path.startsWith('/')) return path;
+  const home = boardHome(hostId);
+  if (!home) throw new ApiError('the board home is not known yet — open the board once', 0);
+  return `${home}/${path}`;
+}
+
+/** Test hook: forget cached object URLs and homes. */
 export function resetFileUrlCache(): void {
   objectUrls.clear();
+  homes.clear();
+}
+
+// ─── derivation (what the daemon computed server-side) ─────────────────────
+
+type ProjectMeta = { slug: string; name: string; root?: string; prefix?: string; archived?: boolean };
+
+type BoardIndex = {
+  projects: ProjectMeta[];
+  perProject: Array<{ meta: ProjectMeta; tasks: Task[]; problems: Problem[] }>;
+  running: RunningItem[];
+};
+
+/** `project list` + one `list --all` per project (the daemon's dashboard scan). */
+async function boardIndex(hostId: string): Promise<BoardIndex> {
+  const projects = await cli<ProjectMeta[]>(hostId, ['project', 'list']);
+  const perProject = await Promise.all(
+    projects.map(async (meta) => {
+      try {
+        const payload = await cli<{ tasks: Task[]; problems: Problem[] }>(hostId, ['list', '--all'], { project: meta.slug });
+        return { meta, tasks: payload.tasks ?? [], problems: payload.problems ?? [] };
+      } catch {
+        // An unreadable project shows as empty with its problems, like the daemon.
+        return { meta, tasks: [], problems: [] as Problem[] };
+      }
+    }),
+  );
+  const running: RunningItem[] = [];
+  for (const { meta, tasks } of perProject) {
+    for (const task of tasks) {
+      if (task.run) running.push({ slug: meta.slug, project: meta.name, task });
+    }
+  }
+  return { projects, perProject, running };
+}
+
+/** One project's sidebar summary: counts, total, running, newest change, problems. */
+async function summarizeProject(hostId: string, meta: ProjectMeta): Promise<ProjectSummary> {
+  let tasks: Task[] = [];
+  let problems: Problem[] = [];
+  try {
+    const payload = await cli<{ tasks: Task[]; problems: Problem[] }>(hostId, ['list', '--all'], { project: meta.slug });
+    tasks = payload.tasks ?? [];
+    problems = payload.problems ?? [];
+  } catch {
+    // Unreadable board: keep the project listed with no counts.
+  }
+  return projectSummaryOf(meta, tasks, problems);
+}
+
+/** Pure half of `summarizeProject` (tests). */
+export function projectSummaryOf(meta: ProjectMeta, tasks: Task[], problems: Problem[]): ProjectSummary {
+  const counts: Record<string, number> = {};
+  for (const status of STATUSES) counts[status] = 0;
+  for (const task of tasks) counts[task.status] = (counts[task.status] ?? 0) + 1;
+  return {
+    slug: meta.slug,
+    name: meta.name,
+    root: meta.root,
+    prefix: meta.prefix,
+    archived: meta.archived,
+    counts,
+    total: tasks.length,
+    running: tasks.filter((task) => task.run).length,
+    problems,
+    updatedAt: tasks.reduce<string | null>(
+      (newest, task) => (newest === null || task.updated > newest ? task.updated : newest),
+      null,
+    ),
+  };
+}
+
+/** The status an activity entry moved its task INTO (the write path's vocabulary). */
+export function enteredStatus(text: string): string | null {
+  const t = text.trim();
+  if (t.startsWith('finished:')) return 'in_review';
+  if (t.startsWith('released to ')) return t.slice(12).split(':')[0]?.trim() ?? null;
+  if (t === 'blocked' || t.startsWith('blocked:')) return 'blocked';
+  if (t === 'unblocked' || t.startsWith('unblocked:') || t === 'rework' || t.startsWith('rework:')) return 'todo';
+  if (t === 'cancelled' || t.startsWith('cancelled:')) return 'cancelled';
+  if (t === 'archived' || t.startsWith('archived ') || t.startsWith('archived:')) return 'archived';
+  if (t.startsWith('moved ')) {
+    const to = t.slice(6).split(' → ').pop()?.trim() ?? '';
+    return to.split(':')[0]?.replace(/ \(bulk\)$/, '').trim() || null;
+  }
+  if (t.startsWith('undo: ')) {
+    const from = t.slice(6).split(' → ').pop()?.split(' (')[0]?.trim() ?? '';
+    return from || null;
+  }
+  if (t.startsWith('created in ')) return t.slice(11).split(/\s+/)[0] ?? null;
+  return null;
+}
+
+/** The latest activity entry that moved `task` INTO `status`. */
+function transitionInto(task: Task, status: string): Activity | undefined {
+  for (let i = task.activity.length - 1; i >= 0; i -= 1) {
+    const entry = task.activity[i]!;
+    if (enteredStatus(entry.text) === status) return entry;
+  }
+  return undefined;
+}
+
+/** First line that carries text. */
+function firstNonEmptyLine(text: string): string {
+  return (
+    text
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? ''
+  );
+}
+
+/** Drop the transition prefix so the excerpt is just what the agent said. */
+function stripTransitionPrefix(text: string): string {
+  const t = text.trim();
+  if (t.startsWith('released to ')) {
+    const rest = t.slice(12);
+    const at = rest.indexOf(':');
+    return at === -1 ? rest : rest.slice(at + 1).trim();
+  }
+  for (const prefix of ['blocked:', 'finished:']) {
+    if (t.startsWith(prefix)) return t.slice(prefix.length).trim();
+  }
+  return t;
+}
+
+/** Remove markdown image embeds — they never read well in a one-line excerpt. */
+function stripMarkdownImages(text: string): string {
+  return text.replace(/!\[[^\]]*\]\([^)]*\)/g, '');
+}
+
+/** Char-safe cut with an ellipsis. */
+function excerptChars(text: string, max: number): string {
+  const trimmed = stripMarkdownImages(firstNonEmptyLine(text)).trim();
+  const chars = [...trimmed];
+  if (chars.length <= max) return trimmed;
+  return `${chars.slice(0, Math.max(0, max - 1)).join('')}…`;
+}
+
+const ACTIVITY_WINDOW_MS = 48 * 3600_000;
+const THROUGHPUT_WINDOW_MS = 14 * 24 * 3600_000;
+const UP_NEXT_CAP = 8;
+const ACTIVITY_CAP = 60;
+const EXCERPT_MAX = 160;
+
+/** Pure dashboard derivation (the daemon's `GET /api/dashboard` logic). */
+export function deriveDashboard(index: BoardIndex, now: number): DashboardData {
+  const inbox: DashboardInboxItem[] = [];
+  const upNext: DashboardUpNextItem[] = [];
+  let upNextBeforeCap = 0;
+  const activity: Array<{ at: number; seq: number; item: DashboardActivityItem }> = [];
+  let seq = 0;
+  const doneAt: string[] = [];
+  const reviewWaits: number[] = [];
+  const projects: DashboardProject[] = [];
+
+  for (const { meta, tasks, problems } of index.perProject) {
+    if (meta.archived) continue;
+    let review = 0;
+    let blocked = 0;
+    let ready = 0;
+    let lastActivity: string | null = null;
+
+    for (const task of tasks) {
+      if (lastActivity === null || task.updated > lastActivity) {
+        lastActivity = task.updated;
+      }
+      if (task.status === 'in_review' || task.status === 'blocked') {
+        if (task.status === 'in_review') review += 1;
+        else blocked += 1;
+        const entry = transitionInto(task, task.status);
+        const waitingSince = entry?.at ?? task.updated;
+        // An undo re-entered the status without carrying the agent's words —
+        // fall back to the previous real transition into the same status.
+        let excerptEntry = entry;
+        if (entry && entry.text.startsWith('undo:')) {
+          const at = task.activity.lastIndexOf(entry);
+          for (let i = at - 1; i >= 0; i -= 1) {
+            const candidate = task.activity[i]!;
+            if (!candidate.text.startsWith('undo:') && enteredStatus(candidate.text) === task.status) {
+              excerptEntry = candidate;
+              break;
+            }
+          }
+        }
+        inbox.push({
+          slug: meta.slug,
+          project: meta.name,
+          task,
+          waitingSince,
+          excerpt: excerptEntry ? excerptChars(stripTransitionPrefix(excerptEntry.text), EXCERPT_MAX) : null,
+        });
+      } else if (task.status === 'todo') {
+        const isReady = task.ready === true;
+        if (isReady) ready += 1;
+        if (isReady && !task.run) {
+          upNextBeforeCap += 1;
+          upNext.push({ slug: meta.slug, project: meta.name, task });
+        }
+      }
+
+      // Done events, revert-aware: an `undo: done → …` after a transition into
+      // done means that done never happened — drop the recorded stamp.
+      const doneStamps: number[] = [];
+      for (const entry of task.activity) {
+        if (enteredStatus(entry.text) === 'done') doneStamps.push(Date.parse(entry.at));
+        else if (entry.text.trim().startsWith('undo: ')) {
+          const reverted = entry.text.trim().slice(6).split(' → ')[0]?.trim();
+          if (reverted === 'done') doneStamps.pop();
+        }
+      }
+      for (const entry of task.activity) {
+        const at = Date.parse(entry.at);
+        if (now - at <= ACTIVITY_WINDOW_MS) {
+          seq += 1;
+          activity.push({
+            at,
+            seq,
+            item: {
+              slug: meta.slug,
+              project: meta.name,
+              taskId: task.id,
+              title: displayTitle(task),
+              at: entry.at,
+              actor: entry.actor,
+              session: entry.session ?? null,
+              text: entry.text,
+            },
+          });
+        }
+      }
+      for (const stamp of doneStamps) {
+        if (now - stamp <= THROUGHPUT_WINDOW_MS) doneAt.push(new Date(stamp).toISOString());
+      }
+
+      // Completed review cycles: entering in_review, next transition leaving it.
+      for (let i = 0; i < task.activity.length; i += 1) {
+        const entry = task.activity[i]!;
+        if (enteredStatus(entry.text) !== 'in_review') continue;
+        const exit = task.activity.slice(i + 1).find((later) => {
+          const left = enteredStatus(later.text);
+          return left !== null && left !== 'in_review';
+        });
+        if (exit) {
+          const wait = (Date.parse(exit.at) - Date.parse(entry.at)) / 1000;
+          if (now - Date.parse(exit.at) <= THROUGHPUT_WINDOW_MS) reviewWaits.push(Math.max(0, wait));
+        }
+      }
+    }
+
+    projects.push({
+      slug: meta.slug,
+      review,
+      blocked,
+      ready,
+      lastActivity,
+      problems: problems.length,
+    });
+  }
+
+  inbox.sort((a, b) => Date.parse(a.waitingSince) - Date.parse(b.waitingSince));
+  upNext.sort((a, b) => {
+    const rank = (item: DashboardUpNextItem) => PRIORITY_RANK[item.task.priority] ?? 4;
+    return (
+      rank(a) - rank(b) ||
+      a.task.order - b.task.order ||
+      Date.parse(a.task.created) - Date.parse(b.task.created)
+    );
+  });
+  upNext.splice(UP_NEXT_CAP);
+
+  activity.sort((a, b) => b.at - a.at || b.seq - a.seq);
+  const capped = activity.slice(0, ACTIVITY_CAP).map((entry) => entry.item);
+  doneAt.sort();
+  reviewWaits.sort((a, b) => a - b);
+
+  return {
+    generatedAt: new Date(now).toISOString(),
+    inbox,
+    upNext,
+    readyTotal: upNextBeforeCap,
+    activity: capped,
+    doneAt,
+    reviewWaits,
+    projects,
+  };
 }

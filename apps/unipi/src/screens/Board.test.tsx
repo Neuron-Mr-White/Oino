@@ -6,8 +6,10 @@ import Board, { pickProject } from './Board';
 import { SettingsProvider } from '../settings/context';
 import { HostsProvider } from '../hosts/context';
 import { call } from '../lib/ipc';
-import { setBoardTransport } from '../lib/board/transport';
-import { fakeBoard, project, task, type FakeBoardOptions } from '../lib/board/testing';
+import { setBoardTransport, type BoardAvailability } from '../lib/board/transport';
+import { setHostClientFactory } from '../lib/host/factory';
+import { fakeBoard, task } from '../lib/board/testing';
+import { createMockBoard, type MockBoardProject } from '../dev/mock/board';
 import { resetBoardStore } from '../lib/board/store';
 import { resetBoardUi } from '../lib/board/ui';
 import { resetPcAvailability } from '../lib/board/pcs';
@@ -33,33 +35,42 @@ function boardTasks(): Task[] {
   ];
 }
 
-function setup(options: { hostList?: typeof hosts; availability?: FakeBoardOptions['availability']; tasksStatus?: number } = {}) {
-  let tasks = boardTasks();
+function boardProjects(): MockBoardProject[] {
+  return [
+    { slug: 'scratch-1', name: 'scratch', prefix: 'S', tasks: boardTasks() },
+    { slug: 'other-2', name: 'other', prefix: 'O', tasks: [task({ id: 'O-1', title: 'Older work', updated: '2026-10-01T00:00:00Z' })] },
+    { slug: 'old-3', name: 'old', prefix: 'X', archived: true, tasks: [] },
+  ];
+}
+
+function setup(options: { hostList?: typeof hosts; availability?: Record<string, BoardAvailability>; failingTasks?: boolean } = {}) {
+  const projects = boardProjects();
+  const board = createMockBoard(projects);
   const fake = fakeBoard({
     availability: options.availability,
-    routes: {
-      'GET /api/projects': () => ({
-        json: [
-          project({ slug: 'scratch-1', name: 'scratch', counts: { todo: 3 }, updatedAt: '2026-10-07T00:00:00Z' }),
-          project({ slug: 'other-2', name: 'other', updatedAt: '2026-10-01T00:00:00Z' }),
-          project({ slug: 'old-3', name: 'old', archived: true }),
-        ],
-      }),
-      'GET /api/rules': () => ({ json: { statuses: [], allowedMoves: {}, commentRequired: {}, final: ['done'], chainGate: 'in_review', maxSessions: 2 } }),
-      'GET /api/running': () => ({ json: { running: [] } }),
-      'GET /api/projects/scratch-1/tasks': () =>
-        options.tasksStatus ? { status: options.tasksStatus, json: { error: 'tasks dir unreadable' } } : { json: { tasks, problems: [] } },
-      'POST /api/tasks/scratch-1/S-99/attachments': () => ({ json: { name: 'abc12345-shot.png', markdown: '![shot.png](att:S-99/abc12345-shot.png)' } }),
-      'POST /api/tasks/scratch-1/S-99/edit': (req) => ({ json: task({ id: 'S-99', body: (req.json as { body: string }).body }) }),
-      'POST /api/tasks/scratch-1/create': (req) => {
-        const body = req.json as { title: string; status: string };
-        const created = task({ id: 'S-99', title: body.title, status: body.status });
-        tasks = [...tasks, created];
-        return { json: created };
-      },
-    },
+    handlers: options.failingTasks
+      ? { 'list --all': () => ({ ok: false, error: 'tasks dir unreadable', kind: 'io' }) }
+      : undefined,
+    fallback: ({ args, project }) => board.cli(args, project),
   });
   setBoardTransport(fake.transport);
+  // Attachment staging (blob_put_bytes → fs_import → attach → fs_delete).
+  setHostClientFactory((hostId) => ({
+    hostId,
+    conn: () => ({ state: 'connected' }),
+    retry: async () => {},
+    request: async <T,>(op: string) => (op === 'blob_put_bytes' ? ({ sha256: 'mock-sha' } as T) : (null as T)),
+    openEvents: () => ({ close() {} }),
+    openSession: () => {
+      throw new Error('not needed');
+    },
+    openTerm: () => {
+      throw new Error('not needed');
+    },
+    openLsp: () => {
+      throw new Error('not needed');
+    },
+  }));
   vi.mocked(call).mockImplementation(async (cmd: string) => {
     if (cmd === 'list_hosts') return { ok: true, value: options.hostList ?? hosts };
     return { ok: true, value: null };
@@ -78,7 +89,7 @@ function setup(options: { hostList?: typeof hosts; availability?: FakeBoardOptio
       />
     </HashRouter>
   ));
-  return fake;
+  return { fake, board };
 }
 
 beforeEach(() => {
@@ -91,6 +102,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   setBoardTransport(undefined);
+  setHostClientFactory(undefined);
   vi.resetAllMocks();
   location.hash = '#/';
 });
@@ -102,7 +114,7 @@ describe('Board', () => {
     setup();
     await waitFor(() => expect(screen.getByText('Token cache')).toBeInTheDocument());
     expect(screen.getByLabelText('Project: scratch')).toBeInTheDocument();
-    expect(screen.getByLabelText('PC: coffee')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^PC: coffee/)).toBeInTheDocument();
     // Backlog is off by default (settings.board.showBacklog), archive hidden.
     expect(pill('backlog')).toBeNull();
     expect(pill('archived')).toBeNull();
@@ -168,7 +180,7 @@ describe('Board', () => {
   });
 
   it('new task: validation, defaults and the submitted payload', async () => {
-    const fake = setup();
+    const { fake } = setup();
     await waitFor(() => expect(screen.getByText('Token cache')).toBeInTheDocument());
     // On the Todo page the FAB creates into Todo.
     fireEvent.click(screen.getByLabelText('New task in Todo'));
@@ -190,16 +202,19 @@ describe('Board', () => {
     fireEvent.click(await within(sheet).findByRole('option', { name: /S-3/ }));
     fireEvent.click(within(sheet).getByRole('button', { name: 'Back to the form' }));
     fireEvent.click(within(sheet).getByRole('button', { name: 'Create task' }));
-    await waitFor(() => expect(fake.requests.some((r) => r.path === '/api/tasks/scratch-1/create')).toBe(true));
-    const sent = fake.requests.find((r) => r.path === '/api/tasks/scratch-1/create')!;
-    expect(sent.hostId).toBe('pc1');
-    expect(sent.json).toEqual({ title: 'Retry banner copy', status: 'todo', priority: 'urgent', after: ['S-3'], labels: ['auth', 'copy'] });
-    await waitFor(() => expect(screen.getByText('Created S-99')).toBeInTheDocument());
+    await waitFor(() => expect(fake.sent('add').length).toBeGreaterThan(0));
+    const createCall = fake.sent('add').at(-1)!;
+    expect(createCall.hostId).toBe('pc1');
+    expect(createCall.project).toBe('scratch-1');
+    expect(createCall.args).toEqual([
+      'add', 'Retry banner copy', '--status', 'todo', '--priority', 'urgent', '--after', 'S-3', '--label', 'auth', '--label', 'copy', '--new-label',
+    ]);
+    await waitFor(() => expect(screen.getByText(/Created S-\d+/)).toBeInTheDocument());
     await waitFor(() => expect(screen.queryByTestId('new-task-sheet')).toBeNull());
   });
 
   it('new task: picked files upload after creation and land in the body', async () => {
-    const fake = setup();
+    const { fake } = setup();
     await waitFor(() => expect(screen.getByText('Token cache')).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText('New task in Todo'));
     const sheet = await screen.findByTestId('new-task-sheet');
@@ -208,13 +223,22 @@ describe('Board', () => {
     fireEvent.change(within(sheet).getByLabelText('Attach files'), { target: { files: [file] } });
     expect(within(sheet).getByText('shot.png')).toBeInTheDocument();
     fireEvent.click(within(sheet).getByRole('button', { name: 'Create task' }));
-    await waitFor(() => expect(fake.requests.some((r) => r.path.endsWith('/S-99/edit'))).toBe(true));
-    const upload = fake.requests.find((r) => r.path.includes('/attachments'))!;
-    expect(upload.path).toBe('/api/tasks/scratch-1/S-99/attachments?name=shot.png');
-    expect(upload.body).toBeInstanceOf(Uint8Array);
-    expect(fake.requests.find((r) => r.path.endsWith('/S-99/edit'))!.json).toEqual({
-      body: 'See the screenshot\n\n![shot.png](att:S-99/abc12345-shot.png)',
+    // The bytes are staged on the host (`blob_put_bytes` + `fs_import`) and handed
+    // to the CLI's `attach`, then the markdown lands in the body through `edit`.
+    const upload = await waitFor(() => {
+      const call = fake.sent('attach').at(0);
+      expect(call).toBeDefined();
+      return call!;
     });
+    expect(upload.args[0]).toBe('attach');
+    expect(upload.args.at(-1)).toBe('shot.png');
+    expect(upload.args.at(-2)).toBe('--name');
+    const edit = await waitFor(() => {
+      const call = fake.sent('edit').at(0);
+      expect(call).toBeDefined();
+      return call!;
+    });
+    expect(edit.args.join(' ')).toMatch(/^edit S-\d+ --body=See the screenshot\n\n!\[shot\.png\]\(att:S-\d+\/aaaa\d+-shot\.png\)$/);
   });
 
   it('new task: closing a dirty draft asks first', async () => {
@@ -281,15 +305,15 @@ describe('Board', () => {
   });
 
   it('a failing tasks request shows the error with Retry', async () => {
-    setup({ tasksStatus: 500 });
+    setup({ failingTasks: true });
     await waitFor(() => expect(screen.getByText("Couldn't load the board")).toBeInTheDocument());
     expect(screen.getByText('tasks dir unreadable')).toBeInTheDocument();
   });
 
-  it('in a browser without paired hosts the dev PC is used', async () => {
+  it('without paired hosts the board says so (no synthetic web PC in v2)', async () => {
     setup({ hostList: [] });
-    await waitFor(() => expect(screen.getByLabelText('PC: dev (vite proxy)')).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText('Token cache')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('No PC paired yet')).toBeInTheDocument());
+    expect(screen.getByTestId('no-host-state')).toBeInTheDocument();
   });
 
   it('list view groups by lane; Review queue scopes it', async () => {

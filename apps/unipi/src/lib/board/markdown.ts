@@ -18,7 +18,7 @@ export function setAttachmentBase(slug: string | null): void {
   projectSlug = slug ?? '';
 }
 
-/** `att:UNI-4/abc-shot.png` → `/api/files/<slug>/UNI-4/abc-shot.png` (daemon path), or null. */
+/** `att:UNI-4/abc-shot.png` → `projects/<slug>/attachments/UNI-4/abc-shot.png` (board-relative), or null. */
 export function attPath(reference: string): string | null {
   const match = ATT_REF.exec(reference.trim());
   if (!match || !projectSlug) return null;

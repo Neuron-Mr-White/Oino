@@ -7,7 +7,7 @@
  * state, and pull-to-refresh at the top.
  */
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { Archive, Check, EllipsisVertical, EyeOff, Info, Plus, RefreshCw, Sparkles } from 'lucide-solid';
+import { Archive, Check, EllipsisVertical, EyeOff, Info, Plus, RefreshCw } from 'lucide-solid';
 import { laneLabel, type Rules } from '../../lib/board/api';
 import { laneCount, laneLayout, laneTasks } from '../../lib/board/view';
 import { boardStore } from '../../lib/board/store';
@@ -300,11 +300,6 @@ function LanePage(props: {
             <Check size={15} /> Done all
           </button>
         </Show>
-        <Show when={props.lane.id === 'done' && total() > 0}>
-          <button type="button" class="lane-quick" onClick={() => boardActions().laneAction('done', 'summarize-archive')}>
-            <Sparkles size={15} /> Summarize
-          </button>
-        </Show>
         <button
           type="button"
           class="ghost-icon-button lane-more"
@@ -333,11 +328,6 @@ function LanePage(props: {
           <Show when={props.lane.id === 'in_review' && total() > 0}>
             <button type="button" class="lane-quick" onClick={() => boardActions().laneAction('in_review', 'done-all')}>
               <Check size={13} /> Done all
-            </button>
-          </Show>
-          <Show when={props.lane.id === 'done' && total() > 0}>
-            <button type="button" class="lane-quick" onClick={() => boardActions().laneAction('done', 'summarize-archive')}>
-              <Sparkles size={13} /> Summarize
             </button>
           </Show>
           <button
@@ -409,8 +399,7 @@ function LaneMenuItems(props: { lane: LaneDef; total: number; close: () => void;
   return (
     <>
       <Show when={props.lane.id === 'done'}>
-        <MenuRow icon={<Sparkles size={18} />} label="Summarize & archive…" disabled={props.total === 0} onSelect={run(() => boardActions().laneAction('done', 'summarize-archive'))} />
-        <MenuRow icon={<Archive size={18} />} label={`Archive all (${props.total}) without summary`} disabled={props.total === 0} onSelect={run(() => boardActions().laneAction('done', 'archive-lane'))} />
+        <MenuRow icon={<Archive size={18} />} label={`Archive all (${props.total})`} disabled={props.total === 0} onSelect={run(() => boardActions().laneAction('done', 'archive-lane'))} />
         <MenuSeparator />
       </Show>
       <Show when={props.lane.id === 'in_review'}>

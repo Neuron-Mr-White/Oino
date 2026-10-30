@@ -96,7 +96,6 @@ function createUi() {
   const [confirm, setConfirm] = createSignal<ConfirmRequest | null>(null);
   const [reader, setReader] = createSignal<ReaderEntry | null>(null);
   const [viewer, setViewer] = createSignal<ViewerRequest | null>(null);
-  const [settingsOpen, setSettingsOpen] = createSignal(false);
   /** Keyboard selection (desktop J/K, web parity) and the shortcuts sheet. */
   const [selected, setSelected] = createSignal<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
@@ -195,8 +194,6 @@ function createUi() {
     setReader,
     viewer,
     setViewer,
-    settingsOpen,
-    setSettingsOpen,
     selected,
     setSelected,
     shortcutsOpen,

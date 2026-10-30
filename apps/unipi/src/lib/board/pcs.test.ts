@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { availabilityText, boardPcs, DEV_PC, pcAvailability, resetPcAvailability } from './pcs';
-import { DEV_HOST_ID, setBoardTransport } from './transport';
+import { availabilityText, boardPcs, pcAvailability, resetPcAvailability } from './pcs';
+import { setBoardTransport } from './transport';
 import { fakeBoard } from './testing';
 
 afterEach(() => {
@@ -9,19 +9,17 @@ afterEach(() => {
 });
 
 describe('board PCs', () => {
-  it('lists paired hosts, or the dev PC in a browser without hosts', () => {
-    expect(boardPcs([{ id: 'a', name: 'coffee' }], true)).toEqual([{ id: 'a', name: 'coffee' }]);
-    expect(boardPcs([], true)).toEqual([]);
-    expect(boardPcs([], false)).toEqual([DEV_PC]);
-    expect(DEV_PC).toEqual({ id: DEV_HOST_ID, name: 'dev (vite proxy)', dev: true });
+  it('lists the hosts the app knows (no synthetic web PC in v2)', () => {
+    expect(boardPcs([{ id: 'a', name: 'coffee' }])).toEqual([{ id: 'a', name: 'coffee' }]);
+    expect(boardPcs([])).toEqual([]);
   });
 
   it('checks availability per PC: ok / offline / not installed / error', async () => {
     const fake = fakeBoard({
       availability: {
-        ok: { state: 'ok', version: '3.0.0' },
+        ok: { state: 'ok' },
         off: { state: 'offline' },
-        none: { state: 'not_installed', hint: 'install unipi-host' },
+        none: { state: 'not_installed', hint: 'install unipi-kanboard' },
         bad: { state: 'error', message: 'connection reset' },
       },
     });
@@ -31,9 +29,9 @@ describe('board PCs', () => {
     expect(avail.availability('ok')).toEqual({ state: 'checking' });
     await pending;
     await Promise.all(['off', 'none', 'bad'].map((id) => avail.check(id)));
-    expect(availabilityText(avail.availability('ok'))).toBe('Board 3.0.0');
+    expect(availabilityText(avail.availability('ok'))).toBe('Board ready');
     expect(availabilityText(avail.availability('off'))).toBe('Offline');
-    expect(availabilityText(avail.availability('none'))).toBe('install unipi-host');
+    expect(availabilityText(avail.availability('none'))).toBe('install unipi-kanboard');
     expect(availabilityText(avail.availability('bad'))).toBe('connection reset');
     expect(availabilityText(undefined)).toBe('Checking…');
   });
@@ -43,8 +41,9 @@ describe('board PCs', () => {
       availability: async () => {
         throw new Error('boom');
       },
-      request: async () => ({ status: 500, contentType: '', body: new Uint8Array() }),
-      events: () => () => {},
+      cli: async () => {
+        throw new Error('unreachable');
+      },
     });
     expect(await pcAvailability().check('x')).toEqual({ state: 'error', message: 'boom' });
   });

@@ -27,9 +27,7 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Settings2,
   SlidersHorizontal,
-  Sparkles,
   TriangleAlert,
   X,
 } from 'lucide-solid';
@@ -66,14 +64,11 @@ import { TaskDetail } from '../components/board/TaskDetail';
 import { CardMenu } from '../components/board/TaskMenus';
 import { CommentSheet, ConfirmSheet } from '../components/board/MoveSheets';
 import { ImageViewer, ReportReader } from '../components/board/Viewers';
-import { SummarizeSheet } from '../components/board/SummarizeSheet';
-import { BoardSettingsSheet } from '../components/board/BoardSettingsSheet';
 import { registerActionHaptic } from '../lib/board/taskActions';
 import { Dashboard } from '../components/board/Dashboard';
 import { BoardKeys, BoardShortcutsSheet } from '../components/board/BoardKeys';
 import { desktopShell } from '../lib/layout';
 import { can } from '../lib/platform';
-import { summaries } from '../lib/board/summarize';
 import './board.css';
 
 /** The project to open on a PC: remembered → settings default → most recently active → first. */
@@ -483,11 +478,6 @@ export default function Board() {
                 <Show when={project()?.archived}>
                   <span class="board-meta-archived">Archived</span>
                 </Show>
-                <Show when={summaries().busy() && summaries().open() === null}>
-                  <button type="button" class="board-meta-job" onClick={() => summaries().show(summaries().job.scope)}>
-                    <Sparkles size={13} /> Summarizing…
-                  </button>
-                </Show>
               </Show>
               </Show>
             </span>
@@ -710,8 +700,6 @@ export default function Board() {
               />
               <MenuRow icon={<OctagonX size={18} />} label="Blocked" hint={count('blocked') || undefined} onSelect={runMenu(() => ui.setView('list', 'blocked'))} />
               <MenuSeparator />
-              <MenuRow icon={<Sparkles size={18} />} label="Summarize board" onSelect={runMenu(() => boardActions().projectAction('summarize-board'))} />
-              <MenuRow icon={<Settings2 size={18} />} label="Board settings" onSelect={runMenu(() => boardActions().projectAction('settings'))} />
               <Show
                 when={project()?.archived}
                 fallback={<MenuRow icon={<Archive size={18} />} label="Archive project" onSelect={runMenu(() => boardActions().projectAction('archive-project'))} />}
@@ -761,8 +749,6 @@ export default function Board() {
       <CardMenu />
       <CommentSheet />
       <ConfirmSheet />
-      <SummarizeSheet pcName={pc()?.name} />
-      <BoardSettingsSheet pcName={pc()?.name} />
       <NewTaskSheet onHaptic={() => haptic()} />
       <BoardShortcutsSheet />
       <BoardKeys lanes={lanes} project={() => !!slug() && !ui.overview()} />

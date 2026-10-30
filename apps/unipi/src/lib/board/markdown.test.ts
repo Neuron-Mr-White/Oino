@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { attPath, hydrateAttachments, plainText, renderMarkdown, setAttachmentBase } from './markdown';
 import { namedFile, insertAtCursor } from './attach';
-import { resetFileUrlCache } from './api';
+import { resetFileUrlCache, setBoardHome } from './api';
+import { setHostClientFactory } from '../host/factory';
 import { setBoardTransport } from './transport';
 import { fakeBoard } from './testing';
 
 afterEach(() => {
   setAttachmentBase(null);
   setBoardTransport(undefined);
+  setHostClientFactory(undefined);
   resetFileUrlCache();
 });
 
@@ -19,19 +21,38 @@ describe('board markdown', () => {
     expect(html).toContain('<li>item</li>');
   });
 
-  it('rewrites att: refs to daemon paths (resolved later through the transport)', () => {
+  it('rewrites att: refs to board-relative paths (resolved later through the host blob channel)', () => {
     setAttachmentBase('proj-1');
-    expect(attPath('att:T-4/abc12345-shot.png')).toBe('/api/files/proj-1/T-4/abc12345-shot.png');
+    expect(attPath('att:T-4/abc12345-shot.png')).toBe('projects/proj-1/attachments/T-4/abc12345-shot.png');
     const html = renderMarkdown('![shot](att:T-4/abc12345-shot.png) and [log](att:T-4/abc12345-run.log)');
-    expect(html).toContain('data-att-path="/api/files/proj-1/T-4/abc12345-shot.png"');
+    expect(html).toContain('data-att-path="projects/proj-1/attachments/T-4/abc12345-shot.png"');
     expect(html).toContain('class="att-chip att-text"');
     expect(html).not.toContain('att:T-4');
   });
 
-  it('hydrates attachment nodes with object URLs', async () => {
+  it('hydrates attachment nodes with object URLs (downloaded by absolute board path)', async () => {
     setAttachmentBase('proj-1');
-    const fake = fakeBoard({ routes: { 'GET /api/files/proj-1/T-4/abc12345-shot.png': () => ({ text: 'PNG' }) } });
-    setBoardTransport(fake.transport);
+    setBoardHome('pc', '/home/me/.oino/state/unipi.kanboard');
+    setHostClientFactory(() => ({
+      hostId: 'pc',
+      conn: () => ({ state: 'connected' }),
+      retry: async () => {},
+      request: async <T,>(op: string, args?: Record<string, unknown>) => {
+        expect(op).toBe('blob_get_bytes');
+        expect(args?.path).toBe('/home/me/.oino/state/unipi.kanboard/projects/proj-1/attachments/T-4/abc12345-shot.png');
+        return { mime: 'image/png', bytes: [1] } as T;
+      },
+      openEvents: () => ({ close() {} }),
+      openSession: () => {
+        throw new Error('x');
+      },
+      openTerm: () => {
+        throw new Error('x');
+      },
+      openLsp: () => {
+        throw new Error('x');
+      },
+    }));
     const created: string[] = [];
     URL.createObjectURL = ((blob: Blob) => {
       created.push(blob.type);
@@ -41,7 +62,7 @@ describe('board markdown', () => {
     root.innerHTML = renderMarkdown('![shot](att:T-4/abc12345-shot.png)');
     await hydrateAttachments(root, 'pc');
     expect(root.querySelector('img')!.getAttribute('src')).toBe('blob:fake/1');
-    expect(fake.requests[0]!.hostId).toBe('pc');
+    expect(created).toEqual(['image/png']);
   });
 
   it('plainText flattens markdown for card callouts', () => {

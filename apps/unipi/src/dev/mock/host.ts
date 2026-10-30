@@ -11,6 +11,7 @@
  * browser) for assertions.
  */
 import { createSignal } from 'solid-js';
+import { createMockBoard, type MockBoard, type MockBoardProject } from './board';
 import {
   APP_HOST,
   type Closable,
@@ -99,6 +100,8 @@ export type MockHostSpec = {
   fs?: Record<string, MockFsNode>;
   git?: MockGit;
   cron?: unknown[];
+  /** Board projects + tasks behind `board_cli`/`board_watch` (WP-A22). */
+  board?: MockBoardProject[];
   ops?: Record<string, MockOp>;
 };
 
@@ -323,6 +326,10 @@ const BUILTIN: Record<string, MockOp> = {
     h.watch(String(a.root ?? g.root ?? ''), a.on !== false);
     return { root: g.repo === false ? null : (g.root ?? a.root ?? null) };
   },
+  // WP-A22 (app.md 3.14): one `unipi-kanboard` process per call, the 5.5 outcome.
+  board_cli: (a, h) => h.board.cli((a.args as string[] | undefined) ?? [], (a.project as string | undefined) ?? undefined),
+  // WP-A22: the refcounted file watcher (writes then answer `board_changed`).
+  board_watch: (a, h) => ({ watching: h.setBoardWatching(a.on !== false) }),
   cron_list: (_a, h) => ({ jobs: h.spec.cron ?? [], paused: false }),
   cron_status: () => ({ paused: false, concurrency: 1, jobs: [] }),
   ports_list: () => ({ ports: [], any: true, allowed: [] }),
@@ -345,14 +352,25 @@ export class MockHost implements HostClient {
   private readonly setConn;
   /** Repo roots a `git_watch{on:true}` asked for (off drops them, like the host's refcount). */
   readonly watched = new Set<string>();
+  /** The in-memory board behind `board_cli`; every write emits `board_changed`. */
+  readonly board: MockBoard;
+  /** `board_watch{on}`: whether the UI has the watcher on (last call wins). */
+  boardWatching = false;
   constructor(
     readonly spec: MockHostSpec,
     private readonly world: MockWorld,
   ) {
     this.hostId = spec.id;
+    this.board = createMockBoard(spec.board ?? [], (project) => this.emit({ kind: 'board_changed', project }));
     const [conn, setConn] = createSignal<HostConn>(spec.conn ?? { state: 'connected' });
     this.conn = conn;
     this.setConn = setConn;
+  }
+
+  /** `board_watch{on}`: records the state the UI asked for and answers it. */
+  setBoardWatching(on: boolean): boolean {
+    this.boardWatching = on;
+    return this.boardWatching;
   }
 
   /** Scenario/test control: flip the connection (e.g. go offline mid-capture). */

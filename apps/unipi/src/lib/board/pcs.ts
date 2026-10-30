@@ -1,30 +1,20 @@
 /**
- * PCs the Board can talk to (UNI-130): every paired host from
- * `useHosts()`, or — in web mode (lib/platform.ts), where there are no
- * paired hosts — one synthetic PC: the kanboard daemon serving this page
- * (same origin) or, under `vite dev`, the one behind the `/kb` proxy. Availability is checked per PC through the board
- * transport and cached for the session.
+ * PCs the Board can talk to (v2): every host from `useHosts()` — in the app
+ * that is "This computer" plus the paired PCs; under the capture harness the
+ * mock world's hosts. Availability is checked per PC through the board
+ * transport (one `status` CLI call) and cached for the session. The v1
+ * synthetic web PC (a kanboard daemon serving the page) is gone with the
+ * daemon.
  */
 import { createRoot } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import { boardTransport, DEV_HOST_ID, servedByDaemon, type BoardAvailability } from './transport';
-import { isTauri } from '../platform';
+import { boardTransport, type BoardAvailability } from './transport';
 
-export type Pc = { id: string; name: string; dev?: boolean };
-export const DEV_PC: Pc = { id: DEV_HOST_ID, name: 'dev (vite proxy)', dev: true };
+export type Pc = { id: string; name: string };
 
-/** The synthetic web-mode PC: "This computer" when the daemon serves the page. */
-export function webPc(): Pc {
-  if (!servedByDaemon()) return DEV_PC;
-  const host = typeof location !== 'undefined' ? location.hostname : '';
-  const local = host === '' || host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
-  return { id: DEV_HOST_ID, name: local ? 'This computer' : host, dev: true };
-}
-
-/** The Board's PC list: paired hosts, or the synthetic web PC (no iroh hosts in a browser). */
-export function boardPcs(hosts: readonly { id: string; name: string }[], tauri = isTauri()): Pc[] {
-  if (hosts.length > 0) return hosts.map((host) => ({ id: host.id, name: host.name }));
-  return tauri ? [] : [webPc()];
+/** The Board's PC list: the hosts the app knows (captures: the mock's). */
+export function boardPcs(hosts: readonly { id: string; name: string }[]): Pc[] {
+  return hosts.map((host) => ({ id: host.id, name: host.name }));
 }
 
 export type Availability = BoardAvailability | { state: 'checking' };
@@ -59,15 +49,15 @@ export function resetPcAvailability(): void {
   shared = undefined;
 }
 
-/** One-line status for a PC row. */
+/** One-line text for the PC chip's availability state. */
 export function availabilityText(availability: Availability | undefined): string {
   switch (availability?.state) {
     case 'ok':
-      return availability.version ? `Board ${availability.version}` : 'Board ready';
+      return 'Board ready';
     case 'offline':
       return 'Offline';
     case 'not_installed':
-      return availability.hint || 'unipi-host is not installed on this PC';
+      return availability.hint || 'unipi-kanboard is not installed on this PC';
     case 'error':
       return availability.message;
     case 'checking':

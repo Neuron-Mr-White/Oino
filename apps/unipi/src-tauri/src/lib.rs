@@ -56,7 +56,6 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .manage(net::NetState::default())
         .manage(term::TermRegistry::new())
-        .manage(board::BoardStreams::default())
         .manage(chat::SessionStreams::default())
         .manage(forward::ForwardRegistry::default())
         .manage(browser::BrowserStreams::default())
@@ -89,10 +88,8 @@ pub fn run() {
             hosts_commands::notify_config,
             hosts_commands::notify_register,
             hosts_commands::notify_test,
-            board::board_availability,
-            board::board_request,
-            board::board_events,
-            board::board_events_close,
+            board::board_cli,
+            board::board_watch,
             blob::blob_put_file,
             blob::upload_stage_begin,
             blob::upload_stage_chunk,

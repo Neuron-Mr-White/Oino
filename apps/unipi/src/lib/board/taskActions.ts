@@ -11,9 +11,8 @@
  *    Cancelled, Archived) asks first — a mis-tap in a long menu is easy
  *    on a phone. Explicit buttons ("Mark done") and the comment sheet are
  *    their own confirmation (`confirmed`);
- *  - hard-to-reverse moves carry a one-shot `undoToken` → an Undo toast
- *    that acts on the PC + project + task the move happened on, even
- *    after the user switched boards;
+ *  - final-lane moves ask first (the CLI contract has no one-shot undo
+ *    token, so a hard-to-reverse move is confirmed before it happens);
  *  - a task landing in Todo while a dependency is still in Backlog
  *    offers (never forces) to schedule those dependencies;
  *  - every write upserts the server's answer (`applyTask`) and then
@@ -107,20 +106,14 @@ export async function moveTask(
     const moved = await api.move(ctx.hostId, ctx.slug, original.id, to, comment?.trim() || undefined);
     if (onBoard(ctx)) store.applyTask(moved);
     haptic('tap');
-    const token = moved.undoToken;
-    // A drag & drop places the card; an undoable move keeps its natural
-    // position instead (reordering would change the task and kill the undo
-    // snapshot, web UNI-57).
-    if (opts.after && !token) {
+    if (opts.after) {
       try {
         await opts.after(moved);
       } catch (error) {
         toastError(error);
       }
     }
-    const message = `Moved ${original.id} to ${laneLabel(to)}`;
-    if (token) ui.toast(message, 'success', { label: 'Undo', run: () => undoMove(ctx, original.id, token) });
-    else ui.toast(message, 'success');
+    ui.toast(`Moved ${original.id} to ${laneLabel(to)}`, 'success');
     await settle(ctx);
     if (to === 'todo' && onBoard(ctx)) offerToSchedule(ctx, original.id);
     return true;
@@ -135,21 +128,6 @@ export async function moveTask(
     else toastError(error);
     await settle(ctx);
     return false;
-  }
-}
-
-/** Undo one move with its one-shot token (on the board it happened on). */
-export async function undoMove(ctx: BoardCtx, id: string, token: string): Promise<void> {
-  const store = boardStore();
-  try {
-    const restored = await api.undoMove(ctx.hostId, ctx.slug, id, token);
-    if (onBoard(ctx)) store.applyTask(restored);
-    haptic('tap');
-    boardUi().toast(`Restored ${id} to ${laneLabel(restored.status)}`, 'success');
-  } catch (error) {
-    toastError(error);
-  } finally {
-    await settle(ctx);
   }
 }
 

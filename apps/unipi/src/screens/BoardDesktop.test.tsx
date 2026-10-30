@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 /**
- * UNI-117 kanboard migration: the Board as the daemon's web UI and on the
- * desktop shell — drag & drop between columns + reorder, keyboard
- * shortcuts, the Overview (dashboard), web-mode hiding of chat-only
- * actions. Phone behaviour is covered by Board.test / BoardActions.test.
+ * UNI-117 kanboard migration, v2 (WP-A22): the Board as the desktop shell's
+ * web UI — drag & drop between columns + reorder, keyboard shortcuts, the
+ * Overview (dashboard), web-mode hiding of chat-only actions. Every call goes
+ * through the CLI seam (`board_cli`, ext-abi §5.5): the assertions read the
+ * argv `lib/board/api.ts` composed. Phone behaviour is covered by Board.test /
+ * BoardActions.test.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@solidjs/testing-library';
 import { HashRouter, Route } from '@solidjs/router';
@@ -11,8 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Board from './Board';
 import { SettingsProvider } from '../settings/context';
 import { HostsProvider } from '../hosts/context';
+import { call } from '../lib/ipc';
 import { setBoardTransport } from '../lib/board/transport';
-import { fakeBoard, project, task, type Handler } from '../lib/board/testing';
+import { fakeBoard, task, type CliHandler } from '../lib/board/testing';
+import { createMockBoard, type MockBoardProject } from '../dev/mock/board';
 import { resetBoardStore } from '../lib/board/store';
 import { resetBoardUi } from '../lib/board/ui';
 import { resetPcAvailability } from '../lib/board/pcs';
@@ -21,71 +25,41 @@ import { resetBoardDrag } from '../lib/board/dnd';
 import { cancelCardDrag } from '../components/board/cardDrag';
 import { resetLayout } from '../lib/layout';
 import { setPlatformOverride } from '../lib/platform';
-import type { DashboardData, Rules, Task } from '../lib/board/api';
+import type { Task } from '../lib/board/api';
 
-const RULES: Rules = {
-  statuses: [],
-  allowedMoves: {
-    backlog: ['todo', 'cancelled'],
-    todo: ['backlog', 'cancelled'],
-    in_progress: ['todo', 'backlog'],
-    blocked: ['todo', 'done', 'cancelled'],
-    in_review: ['done', 'todo', 'backlog', 'archived'],
-    done: ['archived'],
-    cancelled: ['archived'],
-    archived: [],
-  },
-  commentRequired: { in_progress: { todo: 'why the stale run is being released' } },
-  final: ['done', 'cancelled', 'archived'],
-};
+vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
+
+const hosts = [{ id: 'pc1', name: 'coffee', ticket: 't', paired_at: 0, last_path: 'lan' as const }];
 
 function seed(): Task[] {
   return [
-    task({ id: 'S-1', title: 'Offline login', status: 'todo', order: 1000 }),
-    task({ id: 'S-2', title: 'Token cache', status: 'todo', order: 2000 }),
-    task({ id: 'S-3', title: 'Dark mode polish', status: 'todo', order: 3000 }),
+    task({ id: 'S-1', title: 'Offline login', status: 'todo', order: 1000, labels: ['auth'] }),
+    task({ id: 'S-2', title: 'Token cache', status: 'todo', order: 2000, labels: ['auth'] }),
+    task({ id: 'S-3', title: 'Dark mode polish', status: 'todo', order: 3000, labels: ['ui'] }),
     task({ id: 'S-4', title: 'Crash on rotate', status: 'in_progress', run: { session: 's1', started: new Date().toISOString() } }),
-    task({ id: 'S-6', title: 'Pairing polish', status: 'in_review' }),
+    task({
+      id: 'S-6',
+      title: 'Pairing polish',
+      status: 'in_review',
+      statusReport: { kind: 'review', text: '## Summary\nQR fixed', actor: 'agent', at: new Date(Date.now() - 3 * 3600_000).toISOString() },
+      activity: [{ at: new Date(Date.now() - 3 * 3600_000).toISOString(), actor: 'agent', text: 'finished: QR fixed' }],
+    }),
     task({ id: 'S-7', title: 'Ship relay', status: 'done' }),
   ];
 }
 
-const DASH: DashboardData = {
-  generatedAt: '2026-10-10T00:00:00Z',
-  inbox: [{ slug: 'scratch-1', project: 'scratch', task: task({ id: 'S-6', title: 'Pairing polish', status: 'in_review' }), waitingSince: new Date(Date.now() - 3 * 3600_000).toISOString(), excerpt: 'QR fixed' }],
-  readyTotal: 3,
-  upNext: [{ slug: 'scratch-1', project: 'scratch', task: task({ id: 'S-1', title: 'Offline login', status: 'todo' }) }],
-  activity: [{ slug: 'scratch-1', project: 'scratch', taskId: 'S-6', title: 'Pairing polish', at: new Date().toISOString(), actor: 'agent', session: null, text: 'finished: QR fixed' }],
-  doneAt: [new Date().toISOString()],
-  reviewWaits: [3600],
-  projects: [{ slug: 'scratch-1', review: 1, blocked: 0, ready: 3, lastActivity: new Date().toISOString(), problems: 0 }],
-};
+function boardProjects(): MockBoardProject[] {
+  return [{ slug: 'scratch-1', name: 'scratch', prefix: 'S', tasks: seed() }];
+}
 
-function setup(overrides: Record<string, Handler> = {}) {
-  let tasks = seed();
-  const update = (id: string, patch: Partial<Task>) => {
-    tasks = tasks.map((item) => (item.id === id ? { ...item, ...patch } : item));
-    return tasks.find((item) => item.id === id)!;
-  };
-  const routes: Record<string, Handler> = {
-    'GET /api/projects': () => ({ json: [project({ slug: 'scratch-1', name: 'scratch', updatedAt: '2026-10-07T00:00:00Z', counts: { todo: 3, in_review: 1 } })] }),
-    'GET /api/rules': () => ({ json: RULES }),
-    'GET /api/running': () => ({ json: { running: [] } }),
-    'GET /api/dashboard': () => ({ json: DASH }),
-    'GET /api/projects/scratch-1/tasks': () => ({ json: { tasks, problems: [] } }),
-  };
-  for (const id of tasks.map((item) => item.id)) {
-    const base = `/api/tasks/scratch-1/${id}`;
-    routes[`POST ${base}/move`] = (req) => {
-      const body = req.json as { status: string };
-      return { json: { ...update(id, { status: body.status }), undoToken: ['done', 'cancelled', 'archived'].includes(body.status) ? `tok-${id}` : undefined } };
-    };
-    routes[`POST ${base}/order`] = () => ({ json: tasks.find((item) => item.id === id) });
-    routes[`POST ${base}/undo`] = () => ({ json: update(id, { status: seed().find((item) => item.id === id)!.status }) });
-  }
-  Object.assign(routes, overrides);
-  const fake = fakeBoard({ routes });
+function setup(overrides: Record<string, CliHandler> = {}) {
+  const board = createMockBoard(boardProjects());
+  const fake = fakeBoard({ handlers: overrides, fallback: ({ args, project }) => board.cli(args, project) });
   setBoardTransport(fake.transport);
+  vi.mocked(call).mockImplementation(async (cmd: string) => {
+    if (cmd === 'list_hosts') return { ok: true, value: hosts };
+    return { ok: true, value: null };
+  });
   render(() => (
     <HashRouter>
       <Route
@@ -100,8 +74,8 @@ function setup(overrides: Record<string, Handler> = {}) {
       />
     </HashRouter>
   ));
-  const sent = (suffix: string) => fake.requests.filter((r) => r.path.split('?')[0]!.endsWith(suffix));
-  return { fake, sent };
+  /** Calls whose argv starts with `prefix` (e.g. `move S-6`). */
+  return { fake, board };
 }
 
 function desktop(on: boolean) {
@@ -128,6 +102,7 @@ afterEach(() => {
   desktop(false);
   delete (window as { matchMedia?: unknown }).matchMedia;
   resetLayout();
+  vi.resetAllMocks();
   location.hash = '#/';
 });
 
@@ -146,9 +121,13 @@ function moveOver(lane: string, y = 9999) {
 function release(lane: string, y = 9999) {
   fireEvent.pointerUp(column(lane), { clientX: 40, clientY: y, pointerId: 1 });
 }
-function drag(id: string, lane: string, y = 9999) {
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+/** A human drag: the lanes re-render between phases (Backlog appears), so flush. */
+async function drag(id: string, lane: string, y = 9999) {
   press(id);
+  await flush();
   moveOver(lane, y);
+  await flush();
   release(lane, y);
 }
 
@@ -172,7 +151,7 @@ describe('desktop / web board: drag & drop', () => {
   });
 
   it('while dragging: refused lanes collapse (data-drop=refused), the hovered lane is ok, a ghost follows, Esc cancels', async () => {
-    const { sent } = setup();
+    const { fake } = setup();
     await ready();
     press('S-1');
     moveOver('todo');
@@ -187,13 +166,13 @@ describe('desktop / web board: drag & drop', () => {
     expect(document.querySelector('.bcard-ghost')).toBeNull();
     expect(column('done')).not.toHaveAttribute('data-drop');
     release('cancelled');
-    expect(sent('/S-1/move')).toHaveLength(0);
+    expect(fake.sent('move S-1')).toHaveLength(0);
     // The click after a drag doesn't open the card.
     expect(screen.queryByTestId('task-detail')).toBeNull();
   });
 
   it('Backlog (hidden by default) shows while a card that may go there is dragged, and takes the drop', async () => {
-    const { sent } = setup();
+    const { fake } = setup();
     await ready();
     expect(column('backlog')).toBeNull();
     press('S-2');
@@ -202,8 +181,8 @@ describe('desktop / web board: drag & drop', () => {
     expect(column('backlog')).toHaveAttribute('data-drop', 'allowed');
     moveOver('backlog');
     release('backlog');
-    await waitFor(() => expect(sent('/S-2/move')).toHaveLength(1));
-    expect(sent('/S-2/move')[0]!.json).toEqual({ status: 'backlog' });
+    await waitFor(() => expect(fake.sent('move S-2')).toHaveLength(1));
+    expect(fake.sent('move S-2')[0]!.args).toEqual(['move', 'S-2', 'backlog']);
     await waitFor(() => expect(column('backlog')).toBeNull());
   });
 
@@ -215,33 +194,35 @@ describe('desktop / web board: drag & drop', () => {
     expect(column('backlog')).toBeNull();
   });
 
-  it('dropping In Review → Done moves it with an Undo toast (no reorder: the undo snapshot stays valid)', async () => {
-    const { sent } = setup();
+  it('dropping In Review → Done moves it where it was dropped, with no undo (the drop is the confirmation)', async () => {
+    const { fake } = setup();
     await ready();
-    drag('S-6', 'done');
-        await waitFor(() => expect(sent('/S-6/move')).toHaveLength(1));
-    expect(sent('/S-6/move')[0]!.json).toEqual({ status: 'done' });
+    await drag('S-6', 'done');
+    await waitFor(() => expect(fake.sent('move S-6')).toHaveLength(1));
+    expect(fake.sent('move S-6')[0]!.args).toEqual(['move', 'S-6', 'done']);
     await screen.findByText('Moved S-6 to Done');
-    expect(sent('/S-6/order')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    await waitFor(() => expect(sent('/S-6/undo')).toHaveLength(1));
+    // The drop position is applied after the move (the CLI move has no undo
+    // token, so nothing needs the card's old position to stay valid).
+    await waitFor(() => expect(fake.sent('order S-6')).toHaveLength(1));
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
   });
 
-  it('a move without an undo token is placed where it was dropped', async () => {
-    const { sent } = setup();
+  it('a move reorders to where it was dropped', async () => {
+    const { fake } = setup();
     await ready();
-    drag('S-6', 'todo');
-    await waitFor(() => expect(sent('/S-6/order')).toHaveLength(1));
-    expect(sent('/S-6/move')[0]!.json).toEqual({ status: 'todo' });
-    expect(sent('/S-6/order')[0]!.json).toEqual({ bottom: true });
+    await drag('S-6', 'todo');
+    await waitFor(() => expect(fake.sent('move S-6')).toHaveLength(1));
+    expect(fake.sent('move S-6')[0]!.args).toEqual(['move', 'S-6', 'todo']);
+    await waitFor(() => expect(fake.sent('order S-6')).toHaveLength(1));
+    expect(fake.sent('order S-6')[0]!.args).toEqual(['order', 'S-6', '--bottom']);
   });
 
   it('reorders within a lane (bottom) and refuses a disallowed lane with the rule', async () => {
-    const { sent } = setup();
+    const { fake } = setup();
     await ready();
-    drag('S-1', 'todo');
-    await waitFor(() => expect(sent('/S-1/order')).toHaveLength(1));
-    expect(sent('/S-1/order')[0]!.json).toEqual({ bottom: true });
+    await drag('S-1', 'todo');
+    await waitFor(() => expect(fake.sent('order S-1')).toHaveLength(1));
+    expect(fake.sent('order S-1')[0]!.args).toEqual(['order', 'S-1', '--bottom']);
     await screen.findByText('Reordered S-1');
     // A refused lane still accepts the drop (dropEffect 'move'): with 'none'
     // a real browser never fires drop and the refusal is silent.
@@ -250,7 +231,7 @@ describe('desktop / web board: drag & drop', () => {
     expect(column('done')).toHaveAttribute('data-drop', 'refused');
     release('done');
     await screen.findByText("S-2 can't move from Todo to Done");
-    expect(sent('/S-2/move')).toHaveLength(0);
+    expect(fake.sent('move S-2')).toHaveLength(0);
   });
 
   it('a running card refuses to be picked up and says why', async () => {
@@ -326,20 +307,20 @@ describe('desktop / web board: keyboard', () => {
 });
 
 describe('Overview (kanboard dashboard)', () => {
-  it('opens from the ⋯ menu: greeting, KPIs, inbox, up next; Approve moves to Done with Undo', async () => {
-    const { sent } = setup();
+  it('opens from the ⋯ menu: greeting, KPIs, inbox, up next; Approve moves to Done', async () => {
+    const { fake } = setup();
     await ready();
     fireEvent.click(screen.getByLabelText('Board menu'));
     fireEvent.click(await screen.findByText('Overview of all projects'));
     const dash = await screen.findByTestId('dashboard');
     await waitFor(() => expect(within(dash).getByLabelText('Approve S-6')).toBeInTheDocument());
     expect(within(dash).getByText('Waiting on you')).toBeInTheDocument();
-    expect(within(dash).getByText('1 review waiting · 0 agents running')).toBeInTheDocument();
+    expect(within(dash).getByText(/1 review waiting/)).toBeInTheDocument();
     expect(within(dash).getByText('QR fixed', { selector: '.dash-row-excerpt' })).toBeInTheDocument();
     expect(screen.queryByLabelText(/New task in/)).toBeNull();
     fireEvent.click(within(dash).getByLabelText('Approve S-6'));
-    await waitFor(() => expect(sent('/S-6/move')).toHaveLength(1));
-    expect(sent('/S-6/move')[0]!.json).toEqual({ status: 'done' });
+    await waitFor(() => expect(fake.sent('move S-6')).toHaveLength(1));
+    expect(fake.sent('move S-6')[0]!.args).toEqual(['move', 'S-6', 'done']);
     await screen.findByText('Moved S-6 to Done');
   });
 
@@ -355,12 +336,14 @@ describe('Overview (kanboard dashboard)', () => {
     expect(screen.queryByTestId('dashboard')).toBeNull();
   });
 
-  it('shows an error with Retry when /api/dashboard fails', async () => {
-    setup({ 'GET /api/dashboard': () => ({ status: 500, json: { error: 'boom' } }) });
+  it('shows an error with Retry when the CLI refuses `project list`', async () => {
+    const { fake } = setup();
     await ready();
+    fake.handlers['project list'] = () => ({ ok: false, error: 'board home is unreadable', kind: 'io' });
     fireEvent.click(screen.getByLabelText('Board menu'));
     fireEvent.click(await screen.findByText('Overview of all projects'));
     await screen.findByText(/Couldn't load the overview/);
+    expect(screen.getByText(/board home is unreadable/)).toBeInTheDocument();
   });
 });
 

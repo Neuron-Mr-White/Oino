@@ -9,12 +9,12 @@
  * Approve carries the undo toast. Live: each project's revision stream
  * (≤ 12) reloads it, debounced.
  */
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { Check, ChevronDown, ChevronRight, EllipsisVertical, Archive, ArchiveRestore, Sparkles, RefreshCw } from 'lucide-solid';
 import { api, describe, displayTitle, laneLabel, needsComment, type DashboardData, type ProjectSummary, type RunningItem, type Task } from '../../lib/board/api';
 import { boardStore } from '../../lib/board/store';
 import { boardUi } from '../../lib/board/ui';
-import { boardTransport } from '../../lib/board/transport';
+import { hostClient } from '../../lib/host/factory';
 import { boardActions } from '../../lib/board/actions';
 import { elapsed, hue } from '../../lib/board/view';
 import {
@@ -42,7 +42,6 @@ import './dashboard.css';
 const SORT_KEY = 'unipi.board.dashSort';
 const INBOX_KEY = 'unipi.board.dashInbox';
 const SEGMENTS = ['backlog', 'todo', 'in_progress', 'blocked', 'in_review', 'done'];
-const MAX_STREAMS = 12;
 
 type InboxPrefs = { collapsed: string[]; expanded: string[]; all: boolean };
 function readPrefs(): InboxPrefs {
@@ -100,7 +99,9 @@ export function Dashboard(props: { hostId: string; onOpenTask: (slug: string, id
     void store.loadProjects();
   });
 
-  // Live: one revision stream per active project (capped), debounced reload.
+  // Live: board changes refresh the dashboard (debounced), through the same
+  // hub-event stream the board lanes use — the watcher is on the files, so
+  // one subscription per host covers every project.
   let debounce: ReturnType<typeof setTimeout> | undefined;
   const scheduleReload = () => {
     clearTimeout(debounce);
@@ -109,32 +110,15 @@ export function Dashboard(props: { hostId: string; onOpenTask: (slug: string, id
       void store.loadProjects();
     }, 400);
   };
-  createEffect(
-    on(
-      () => (data()?.projects ?? []).map((project) => project.slug).slice(0, MAX_STREAMS).join(','),
-      (key) => {
-        if (!key) return;
-        let first = new Set<string>();
-        const stops = key.split(',').map((slug) =>
-          boardTransport().events(
-            props.hostId,
-            slug,
-            () => {
-              // Every stream sends the current revision on connect: ignore that one.
-              if (!first.has(slug)) return void first.add(slug);
-              scheduleReload();
-            },
-            () => {},
-          ),
-        );
-        onCleanup(() => {
-          first = new Set();
-          stops.forEach((stop) => stop());
-        });
-      },
-    ),
-  );
-  onCleanup(() => clearTimeout(debounce));
+  createEffect(() => {
+    const stop = hostClient(props.hostId).openEvents((event) => {
+      if (event.kind === 'board_changed') scheduleReload();
+    });
+    onCleanup(() => {
+      clearTimeout(debounce);
+      stop.close();
+    });
+  });
 
   const counts = createMemo(() => inboxCounts(data()?.inbox ?? []));
   const groups = createMemo(() => groupInbox(data()?.inbox ?? [], filter(), prefs()));
@@ -150,33 +134,14 @@ export function Dashboard(props: { hostId: string; onOpenTask: (slug: string, id
   const archived = () => store.state.projects.filter((project) => project.archived);
   const oldWait = createMemo(() => (data()?.inbox ?? []).some((item) => waitAge(item.waitingSince, now()).old));
 
-  /** Approve (→ Done, with Undo) / Rework (→ Todo). A move that needs a note opens the task instead. */
+  /** Approve (→ Done) / Rework (→ Todo). A move that needs a note opens the task instead. */
   async function move(slug: string, task: Task, to: string) {
     const key = `${slug}/${task.id}`;
     if (needsComment(store.state.rules, task.status, to)) return props.onOpenTask(slug, task.id);
     setBusy((current) => new Set(current).add(key));
     try {
-      const moved = await api.move(props.hostId, slug, task.id, to);
-      const token = moved.undoToken;
-      ui.toast(
-        `Moved ${task.id} to ${laneLabel(to)}`,
-        'success',
-        token
-          ? {
-              label: 'Undo',
-              run: async () => {
-                try {
-                  await api.undoMove(props.hostId, slug, task.id, token);
-                  ui.toast(`Restored ${task.id}`, 'success');
-                } catch (cause) {
-                  ui.toast(describe(cause), 'error');
-                } finally {
-                  await load();
-                }
-              },
-            }
-          : undefined,
-      );
+      await api.move(props.hostId, slug, task.id, to);
+      ui.toast(`Moved ${task.id} to ${laneLabel(to)}`, 'success');
     } catch (cause) {
       ui.toast(describe(cause), 'error');
     } finally {

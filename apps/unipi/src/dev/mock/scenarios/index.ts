@@ -9,6 +9,7 @@ import { streamSteer } from './stream-steer';
 import { shellDesktop, shellFullview, shellNarrow, shellSidepaneTabs } from './shell';
 import { sidebarMany, sidebarStates } from './sidebar';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
+import { boardDashboard, boardLanes } from './board';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -27,4 +28,6 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'git-last-turn': gitLastTurn,
   'git-history': gitHistory,
   'git-pane-many': gitPaneMany,
+  'board-lanes': boardLanes,
+  'board-dashboard': boardDashboard,
 };

@@ -1,30 +1,29 @@
 /**
- * Board live updates (UNI-132) — the phone's take on the kanboard web
- * UI's `watchBoard` (crates/kanboard/web/src/state.ts): one revision
- * stream per open project (`GET /events?project=<slug>` through the
- * board transport). The daemon sends the current revision on connect
- * and one `revision` event per board change (file watcher, so CLI and
- * agent writes show up too); the payload is just a counter, so every
- * event means "refetch": a debounced (250 ms, like the web) `reload()`
- * of the tasks plus `loadProjects()` (sidebar counts / running list).
+ * Board live updates v2 (WP-A22): `board_watch{on}` turns the host's file
+ * watcher on, and `BoardChanged{project}` hub events arrive on the host event
+ * stream (`events_open`, one per connection) — the SSE revision stream of the
+ * daemon era is gone. Every event means "refetch": a debounced (250 ms, like
+ * the web) `reload()` of the open project plus `loadProjects()` (sidebar
+ * counts / running list); a change in another project refreshes only the
+ * project list.
  *
- * Unlike the web (EventSource retries by itself) the stream here can
- * end for good — the daemon idles out, the host restarts it, the PC
- * drops off — so the controller reconnects with backoff (500 ms → 8 s,
- * then every 15 s, `reconnect.ts` timings, no give-up while visible),
- * shows `reconnecting`, and reloads once the stream is back (missed
- * revisions). It goes `idle` (pull to refresh) only on non-retryable
- * failures: the PC has no board (`not_installed`) or the request itself
- * is invalid.
+ * The event stream can still end for good — the PC drops off, the host
+ * restarts — so the controller reconnects with backoff (500 ms → 8 s, then
+ * every 15 s, `reconnect.ts` timings, no give-up while visible), shows
+ * `reconnecting`, and reloads once the stream is back (missed changes). It
+ * goes `idle` (pull to refresh) only on non-retryable failures: the PC has
+ * no board (`not_installed`) or the request itself is invalid.
  *
  * `useBoardLive` binds it to the Board screen: subscribed while the tab
- * shows a project and the page is visible; a hidden page, a project /
- * PC switch or leaving the tab unsubscribes; coming back resubscribes
- * (the connect revision triggers the one catch-up reload).
+ * shows a project and the page is visible; a hidden page, a project / PC
+ * switch or leaving the tab unsubscribes; coming back resubscribes (the
+ * connect-time catch-up reload covers what was missed).
  */
 import { createEffect, onCleanup, createSignal, type Accessor } from 'solid-js';
 import { BACKOFF_MS, STEADY_MS } from '../reconnect';
-import { boardTransport, type BoardAvailability, type BoardEvent, type BoardStreamState, type BoardTransport } from './transport';
+import { hostClient } from '../host/factory';
+import type { HubEvent } from '@unipi/protocol';
+import type { BoardAvailability } from './transport';
 import type { BoardStore } from './store';
 import { pcAvailability } from './pcs';
 
@@ -34,7 +33,6 @@ export type LiveTarget = { hostId: string; slug: string };
 
 export type BoardLiveOptions = {
   store: Pick<BoardStore, 'reload' | 'loadProjects' | 'setConn'>;
-  transport?: () => BoardTransport;
   /** Re-checks the PC before a retry (default: the shared PC availability, so the chip dot follows). */
   checkAvailability?: (hostId: string) => Promise<BoardAvailability>;
   debounceMs?: number;
@@ -59,7 +57,6 @@ export function backoffDelay(attempt: number): number {
 
 export function createBoardLive(options: BoardLiveOptions): BoardLive {
   const { store } = options;
-  const transport = options.transport ?? boardTransport;
   const check = options.checkAvailability ?? ((hostId: string) => pcAvailability().check(hostId));
   const debounceMs = options.debounceMs ?? LIVE_DEBOUNCE_MS;
 
@@ -76,18 +73,31 @@ export function createBoardLive(options: BoardLiveOptions): BoardLive {
     if (debounceTimer !== undefined) clearTimeout(debounceTimer);
     retryTimer = debounceTimer = undefined;
   };
-  const close = () => {
+  const closeStream = () => {
     const off = unsubscribe;
     unsubscribe = undefined;
     off?.();
   };
+  /** Turns the host's watcher off (best effort; the stream ends with it). */
+  const watchOff = (hostId: string) => {
+    void hostClient(hostId)
+      .request('board_watch', { on: false })
+      .catch(() => {});
+  };
 
-  function schedule(gen: number) {
-    if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+  let debounceTimerTasks = false;
+
+  function schedule(gen: number, reloadTasks: boolean) {
+    if (debounceTimer !== undefined) {
+      // A pending reload of the open project outranks a counts-only refresh.
+      debounceTimerTasks = debounceTimerTasks || reloadTasks;
+      return;
+    }
+    debounceTimerTasks = reloadTasks;
     debounceTimer = setTimeout(() => {
       debounceTimer = undefined;
       if (gen !== generation) return;
-      void store.reload();
+      if (debounceTimerTasks) void store.reload();
       void store.loadProjects();
     }, debounceMs);
   }
@@ -95,40 +105,47 @@ export function createBoardLive(options: BoardLiveOptions): BoardLive {
   function connect() {
     const at = current;
     if (!at) return;
-    close();
+    closeStream();
     const gen = ++generation;
     store.setConn(attempt === 0 ? 'connecting' : 'reconnecting');
-    const onEvent = (event: BoardEvent) => {
+    const onEvent = (event: HubEvent) => {
       if (gen !== generation) return;
-      if (event.event && event.event !== 'revision' && event.event !== 'message') return;
+      if (event.kind !== 'board_changed') return;
       attempt = 0;
       store.setConn('live');
-      schedule(gen);
+      schedule(gen, event.project === at.slug);
     };
-    const onState = (state: BoardStreamState, message?: string) => {
+    const onClosed = (error?: { message?: string }) => {
       if (gen !== generation) return;
-      if (state === 'open') {
-        attempt = 0;
-        store.setConn('live');
-        // The daemon's connect revision follows and coalesces with this.
-        schedule(gen);
-        return;
-      }
-      dropped(message);
+      dropped(error?.message);
     };
     try {
-      unsubscribe = transport().events(at.hostId, at.slug, onEvent, onState);
+      const stream = hostClient(at.hostId).openEvents(onEvent, onClosed);
+      unsubscribe = () => stream.close();
     } catch (error) {
       dropped(String((error as Error)?.message ?? error));
       return;
     }
-    // The stream ended synchronously inside events(): drop its handle.
-    if (gen !== generation) close();
+    // The stream ended synchronously inside openEvents(): drop its handle.
+    if (gen !== generation) closeStream();
+    void hostClient(at.hostId)
+      .request('board_watch', { on: true })
+      .then(() => {
+        if (gen !== generation) return;
+        attempt = 0;
+        store.setConn('live');
+        // No replay on connect: one catch-up reload covers what was missed.
+        schedule(gen, true);
+      })
+      .catch((error: unknown) => {
+        if (gen !== generation) return;
+        dropped(String((error as Error)?.message ?? error));
+      });
   }
 
   function dropped(message: string | undefined) {
     ++generation; // ignore anything else from this stream
-    close();
+    closeStream();
     if (nonRetryable(message)) return giveUp();
     attempt += 1;
     store.setConn('reconnecting');
@@ -153,15 +170,17 @@ export function createBoardLive(options: BoardLiveOptions): BoardLive {
 
   function giveUp() {
     clearTimers();
-    close();
+    closeStream();
     ++generation;
     attempt = 0;
     store.setConn('idle');
   }
 
   function stop() {
+    const at = current;
     current = null;
     giveUp();
+    if (at) watchOff(at.hostId);
   }
 
   function watch(target: LiveTarget | null) {

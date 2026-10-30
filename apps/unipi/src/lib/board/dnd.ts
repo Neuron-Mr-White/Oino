@@ -14,8 +14,7 @@
  *  - a lane the rules don't allow is faded while dragging and refuses
  *    the drop with "X can't move from A to B";
  *  - a move that needs a note opens the comment sheet first, then the
- *    order is applied; an undoable move (carries `undoToken`) keeps its
- *    natural position (reordering would kill the snapshot, UNI-57);
+ *    order is applied;
  *  - dropping back where it was is a no-op.
  */
 import { createRoot, createSignal } from 'solid-js';

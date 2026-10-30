@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 /**
- * UNI-131: task detail + every task / project action against a fake
- * board transport — exact request payloads, the comment / undo flows,
- * summaries, settings, project archive.
+ * Task detail + every task / project action against the CLI-shaped board
+ * (v2, WP-A22): exact argv composed by `lib/board/api.ts`, the comment /
+ * confirm flows, note / dependency / order / duplicate writes, lane and
+ * project actions, live `board_changed` refreshes. Summaries and the board
+ * settings sheet are gone with the daemon (no CLI surface).
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@solidjs/testing-library';
 import { HashRouter, Route } from '@solidjs/router';
@@ -12,34 +14,21 @@ import { SettingsProvider } from '../settings/context';
 import { HostsProvider } from '../hosts/context';
 import { call } from '../lib/ipc';
 import { setBoardTransport } from '../lib/board/transport';
-import { fakeBoard, project, task, type Handler } from '../lib/board/testing';
+import { setHostClientFactory } from '../lib/host/factory';
+import { fakeBoard, task, type CliHandler } from '../lib/board/testing';
+import { createMockBoard, type MockBoardProject } from '../dev/mock/board';
 import { resetBoardStore } from '../lib/board/store';
 import { resetBoardUi } from '../lib/board/ui';
 import { resetPcAvailability } from '../lib/board/pcs';
 import { resetBoardActions } from '../lib/board/actions';
-import { resetSummaries } from '../lib/board/summarize';
-import type { Rules, Task } from '../lib/board/api';
+import type { Task } from '../lib/board/api';
+import type { AppError } from '@unipi/protocol';
+import type { Closable, HostClient, HubEvent } from '../lib/host/client';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 
 const STALE_HINT = 'why the stale run is being released';
-const RULES: Rules = {
-  statuses: [],
-  allowedMoves: {
-    backlog: ['todo', 'cancelled'],
-    todo: ['backlog', 'cancelled'],
-    in_progress: ['todo', 'backlog'],
-    blocked: ['todo', 'done', 'cancelled'],
-    in_review: ['done', 'todo', 'backlog', 'archived'],
-    done: ['archived'],
-    cancelled: ['archived'],
-    archived: [],
-  },
-  commentRequired: { in_progress: { todo: STALE_HINT, backlog: STALE_HINT } },
-  final: ['done', 'cancelled', 'archived'],
-  chainGate: 'in_review',
-  maxSessions: 2,
-};
+const hosts = [{ id: 'pc1', name: 'coffee', ticket: 't', paired_at: 0, last_path: 'lan' as const }];
 
 function seed(): Task[] {
   return [
@@ -54,68 +43,73 @@ function seed(): Task[] {
   ];
 }
 
-type Overrides = Record<string, Handler>;
+function boardProjects(): MockBoardProject[] {
+  return [
+    { slug: 'scratch-1', name: 'scratch', prefix: 'S', tasks: seed() },
+    { slug: 'other', name: 'other project', prefix: 'O', tasks: [] },
+  ];
+}
 
-function setup(overrides: Overrides = {}, options: { rules?: Rules } = {}) {
-  let tasks = seed();
-  const find = (id: string) => tasks.find((item) => item.id === id)!;
-  const update = (id: string, patch: Partial<Task>) => {
-    tasks = tasks.map((item) => (item.id === id ? { ...item, ...patch } : item));
-    return find(id);
+/** A fake host: the live stream (`board_changed`) + the attachment staging ops. */
+type FakeHost = {
+  client: HostClient;
+  emit: (event: HubEvent) => void;
+  drop: (message?: string) => void;
+  requests: Array<{ op: string; args?: Record<string, unknown> }>;
+};
+
+function fakeHost(): FakeHost {
+  const sinks = new Set<(event: HubEvent) => void>();
+  const closers = new Set<(error?: AppError) => void>();
+  const requests: Array<{ op: string; args?: Record<string, unknown> }> = [];
+  const client: HostClient = {
+    hostId: 'pc1',
+    conn: () => ({ state: 'connected' }),
+    retry: () => Promise.resolve(),
+    request: async <T,>(op: string, args?: Record<string, unknown>) => {
+      requests.push({ op, args });
+      if (op === 'board_watch') return { watching: args?.on !== false } as T;
+      if (op === 'blob_put_bytes') return { sha256: 'mock-sha' } as T;
+      return null as T;
+    },
+    openEvents: (sink: (event: HubEvent) => void, closed?: (error?: AppError) => void) => {
+      sinks.add(sink);
+      if (closed) closers.add(closed);
+      const closable: Closable = {
+        close: () => {
+          sinks.delete(sink);
+          closers.delete(closed ?? (() => {}));
+        },
+      };
+      return closable;
+    },
+    openSession: () => {
+      throw new Error('not needed');
+    },
+    openTerm: () => {
+      throw new Error('not needed');
+    },
+    openLsp: () => {
+      throw new Error('not needed');
+    },
   };
-  const routes: Record<string, Handler> = {
-    'GET /api/projects': () => ({ json: [project({ slug: 'scratch-1', name: 'scratch', updatedAt: '2026-10-07T00:00:00Z' })] }),
-    'GET /api/rules': () => ({ json: options.rules ?? RULES }),
-    'GET /api/running': () => ({ json: { running: [] } }),
-    'GET /api/projects/scratch-1/tasks': () => ({ json: { tasks, problems: [] } }),
-    'GET /api/settings': () => ({
-      json: {
-        piCommand: ['pi'],
-        models: [],
-        summaryModel: '',
-        summaryInstruction: 'Write a changelog.',
-        defaultSummaryInstruction: 'Write a changelog.',
-        sessions: { maxSessions: 2, turnAddLimit: 20, chainGate: 'in_review' },
-        archive: { archiveAfterDays: 0, retentionDays: 90 },
-      },
-    }),
-    'GET /api/models': () => ({ json: { models: ['anthropic/claude-x', 'openai/gpt-y'] } }),
-    'PUT /api/settings': (req) => ({ json: req.json }),
-    'PUT /api/projects/scratch-1': (req) => ({ json: project({ slug: 'scratch-1', name: 'scratch', archived: (req.json as { archived: boolean }).archived }) }),
-    'POST /api/projects/scratch-1/done-lane': () => ({ json: { moved: ['S-6'] } }),
-    'POST /api/projects/scratch-1/archive-lane': () => ({ json: { archived: ['S-7'], skipped: [] } }),
-    'POST /api/projects/scratch-1/summarize': () => ({ json: { summary: '- feat: shipped relay (S-7)', taskIds: ['S-7'] } }),
-    'POST /api/projects/scratch-1/archive-summary': () => ({ json: { path: '/pc/summaries/x.md', archived: ['S-7'], skipped: [] } }),
+  return {
+    client,
+    requests,
+    emit: (event) => sinks.forEach((sink) => sink(event)),
+    drop: (message) =>
+      closers.forEach((closed) => closed(message ? ({ code: 'E_TRANSPORT', message, retryable: true } as AppError) : undefined)),
   };
-  for (const id of tasks.map((item) => item.id)) {
-    const base = `/api/tasks/scratch-1/${id}`;
-    routes[`POST ${base}/move`] = (req) => {
-      const body = req.json as { status: string };
-      return { json: { ...update(id, { status: body.status }), undoToken: ['done', 'cancelled', 'archived'].includes(body.status) ? `tok-${id}` : undefined } };
-    };
-    routes[`POST ${base}/undo`] = () => ({ json: update(id, { status: seed().find((item) => item.id === id)!.status }) });
-    routes[`POST ${base}/edit`] = (req) => ({ json: update(id, req.json as Partial<Task>) });
-    routes[`POST ${base}/note`] = (req) => ({
-      json: update(id, { activity: [...find(id).activity, { at: new Date().toISOString(), actor: 'user', text: (req.json as { text: string }).text }] }),
-    });
-    routes[`POST ${base}/link`] = (req) => ({ json: update(id, { deps: [...find(id).deps, (req.json as { dep: string }).dep] }) });
-    routes[`POST ${base}/unlink`] = (req) => ({ json: update(id, { deps: find(id).deps.filter((dep) => dep !== (req.json as { dep: string }).dep) }) });
-    routes[`POST ${base}/order`] = () => ({ json: find(id) });
-    routes[`POST ${base}/duplicate`] = () => {
-      const copy = task({ id: 'S-99', title: find(id).title, status: 'backlog' });
-      tasks = [...tasks, copy];
-      return { json: copy };
-    };
-    routes[`POST ${base}/attachments`] = (req) => {
-      const name = new URLSearchParams(req.path.split('?')[1]).get('name') ?? 'file';
-      return { json: { name: `abcd1234-${name}`, original: name, markdown: `![${name}](att:${id}/abcd1234-${name})`, kind: 'image', size: 4 } };
-    };
-  }
-  Object.assign(routes, overrides);
-  const fake = fakeBoard({ routes });
+}
+
+function setup(overrides: Record<string, CliHandler> = {}) {
+  const board = createMockBoard(boardProjects());
+  const fake = fakeBoard({ handlers: overrides, fallback: ({ args, project }) => board.cli(args, project) });
   setBoardTransport(fake.transport);
+  const host = fakeHost();
+  setHostClientFactory(() => host.client);
   vi.mocked(call).mockImplementation(async (cmd: string) => {
-    if (cmd === 'list_hosts') return { ok: true, value: [{ id: 'pc1', name: 'coffee', ticket: 't', paired_at: 0, last_path: 'lan' }] };
+    if (cmd === 'list_hosts') return { ok: true, value: hosts };
     return { ok: true, value: null };
   });
   render(() => (
@@ -132,8 +126,9 @@ function setup(overrides: Overrides = {}, options: { rules?: Rules } = {}) {
       />
     </HashRouter>
   ));
-  const sent = (suffix: string) => fake.requests.filter((r) => r.path.split('?')[0]!.endsWith(suffix));
-  return { fake, sent, find, update };
+  /** Calls whose argv starts with `prefix` (e.g. `move S-6`). */
+  const sent = (prefix: string) => fake.calls.filter((item) => item.args.join(' ').startsWith(prefix));
+  return { fake, board, host, sent };
 }
 
 beforeEach(() => {
@@ -142,11 +137,11 @@ beforeEach(() => {
   resetBoardUi();
   resetPcAvailability();
   resetBoardActions();
-  resetSummaries();
 });
 afterEach(() => {
   cleanup();
   setBoardTransport(undefined);
+  setHostClientFactory(undefined);
   vi.resetAllMocks();
   location.hash = '#/';
 });
@@ -242,19 +237,15 @@ describe('task detail', () => {
 });
 
 describe('moves', () => {
-  it('moves without a comment and offers Undo for final lanes', async () => {
+  it('moves into a final lane with no undo (the CLI contract has no undo token)', async () => {
     const { sent } = setup();
     await ready();
     const detail = await openDetail('S-6', 'in_review');
     fireEvent.click(within(detail).getByRole('button', { name: /Mark done/ }));
-    await waitFor(() => expect(sent('/S-6/move')).toHaveLength(1));
-    expect(sent('/S-6/move')[0]!.json).toEqual({ status: 'done' });
-    const undo = await screen.findByRole('button', { name: 'Undo' });
-    expect(screen.getByText('Moved S-6 to Done')).toBeInTheDocument();
-    fireEvent.click(undo);
-    await waitFor(() => expect(sent('/S-6/undo')).toHaveLength(1));
-    expect(sent('/S-6/undo')[0]!.json).toEqual({ token: 'tok-S-6' });
-    await waitFor(() => expect(screen.getByText('Restored S-6 to In Review')).toBeInTheDocument());
+    await waitFor(() => expect(sent('move S-6')).toHaveLength(1));
+    expect(sent('move S-6')[0]!.args).toEqual(['move', 'S-6', 'done']);
+    await screen.findByText('Moved S-6 to Done');
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
   });
 
   it('the status menu lists only allowed moves', async () => {
@@ -279,38 +270,37 @@ describe('moves', () => {
     fireEvent.input(within(sheet).getByLabelText('Note'), { target: { value: 'session died' } });
     expect(move).not.toBeDisabled();
     fireEvent.click(move);
-    await waitFor(() => expect(sent('/S-4/move')).toHaveLength(1));
-    expect(sent('/S-4/move')[0]!.json).toEqual({ status: 'todo', comment: 'session died' });
+    await waitFor(() => expect(sent('move S-4')).toHaveLength(1));
+    expect(sent('move S-4')[0]!.args).toEqual(['move', 'S-4', 'todo', '--comment', 'session died']);
     await waitFor(() => expect(screen.queryByTestId('comment-sheet')).toBeNull());
   });
 
-  it('a 409 needsComment refusal opens the comment sheet and retries with the note', async () => {
+  it('a rule refusal that needs a comment opens the comment sheet and retries with the note', async () => {
     let calls = 0;
-    const { sent } = setup(
-      {
-        'POST /api/tasks/scratch-1/S-5/move': (req) => {
-          calls += 1;
-          const body = req.json as { status: string; comment?: string };
-          if (!body.comment) return { status: 409, json: { error: 'blocked → done requires --comment (why)', needsComment: true } };
-          return { json: task({ id: 'S-5', status: body.status }) };
-        },
+    const { sent } = setup({
+      'move S-5': () => {
+        calls += 1;
+        if (calls === 1) return { ok: false, error: 'blocked → done requires --comment (why)', kind: 'rule' };
+        return { ok: true, payload: task({ id: 'S-5', title: 'Upgrade iroh', status: 'done' }) };
       },
-      { rules: { ...RULES, commentRequired: {} } },
-    );
+    });
     await ready();
     const detail = await openDetail('S-5', 'blocked');
     fireEvent.click(within(detail).getByLabelText('Status: Blocked'));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to Done' }));
     // A menu move into a final lane asks first …
     const confirm = await screen.findByTestId('confirm-sheet');
-    expect(sent('/S-5/move')).toHaveLength(0);
+    expect(sent('move S-5')).toHaveLength(0);
     fireEvent.click(within(confirm).getByRole('button', { name: 'Move to Done' }));
-    // … then the 409 swaps in the comment sheet.
+    // … then the refusal swaps in the comment sheet.
     const sheet = await screen.findByTestId('comment-sheet');
     fireEvent.input(within(sheet).getByLabelText('Note'), { target: { value: 'decided: pin 0.95' } });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Move to Done' }));
     await waitFor(() => expect(calls).toBe(2));
-    expect(sent('/S-5/move').map((r) => r.json)).toEqual([{ status: 'done' }, { status: 'done', comment: 'decided: pin 0.95' }]);
+    expect(sent('move S-5').map((call) => call.args)).toEqual([
+      ['move', 'S-5', 'done'],
+      ['move', 'S-5', 'done', '--comment', 'decided: pin 0.95'],
+    ]);
   });
 
   it('rework from In Review takes an optional note', async () => {
@@ -320,8 +310,8 @@ describe('moves', () => {
     fireEvent.click(within(detail).getByRole('button', { name: /Rework/ }));
     const sheet = await screen.findByTestId('comment-sheet');
     fireEvent.click(within(sheet).getByRole('button', { name: 'Move without note' }));
-    await waitFor(() => expect(sent('/S-6/move')).toHaveLength(1));
-    expect(sent('/S-6/move')[0]!.json).toEqual({ status: 'todo' });
+    await waitFor(() => expect(sent('move S-6')).toHaveLength(1));
+    expect(sent('move S-6')[0]!.args).toEqual(['move', 'S-6', 'todo']);
   });
 });
 
@@ -333,19 +323,19 @@ describe('edits', () => {
     const title = within(detail).getByLabelText('Task title');
     fireEvent.input(title, { target: { value: 'Token cache v2' } });
     fireEvent.blur(title);
-    await waitFor(() => expect(sent('/S-2/edit')).toHaveLength(1));
-    expect(sent('/S-2/edit')[0]!.json).toEqual({ title: 'Token cache v2' });
+    await waitFor(() => expect(sent('edit S-2')).toHaveLength(1));
+    expect(sent('edit S-2')[0]!.args).toEqual(['edit', 'S-2', '--title=Token cache v2']);
 
     fireEvent.click(within(detail).getByLabelText('Priority: Medium'));
     fireEvent.click(await screen.findByRole('menuitem', { name: /Urgent/ }));
-    await waitFor(() => expect(sent('/S-2/edit')).toHaveLength(2));
-    expect(sent('/S-2/edit')[1]!.json).toEqual({ priority: 'urgent' });
+    await waitFor(() => expect(sent('edit S-2')).toHaveLength(2));
+    expect(sent('edit S-2')[1]!.args).toEqual(['edit', 'S-2', '--priority', 'urgent']);
 
     fireEvent.click(within(detail).getByLabelText('Edit labels'));
     const labels = await screen.findByTestId('labels-sheet');
     fireEvent.click(within(labels).getByRole('option', { name: /ui/ }));
-    await waitFor(() => expect(sent('/S-2/edit')).toHaveLength(3));
-    expect(sent('/S-2/edit')[2]!.json).toEqual({ labels: ['auth', 'ui'] });
+    await waitFor(() => expect(sent('edit S-2')).toHaveLength(3));
+    expect(sent('edit S-2')[2]!.args).toEqual(['edit', 'S-2', '--labels=auth,ui', '--new-label']);
     fireEvent.click(within(labels).getByRole('button', { name: 'Done' }));
 
     fireEvent.click(within(detail).getByLabelText('Edit description'));
@@ -353,9 +343,9 @@ describe('edits', () => {
     fireEvent.input(within(editor).getByLabelText('Description (markdown)'), { target: { value: 'Cache it.' } });
     fireEvent.click(within(editor).getByLabelText('Bold'));
     fireEvent.click(within(editor).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(sent('/S-2/edit')).toHaveLength(4));
+    await waitFor(() => expect(sent('edit S-2')).toHaveLength(4));
     // Bold with no selection inserts a placeholder at the caret (end of the text).
-    expect(sent('/S-2/edit')[3]!.json).toEqual({ body: 'Cache it.**bold**' });
+    expect(sent('edit S-2')[3]!.args).toEqual(['edit', 'S-2', '--body=Cache it.**bold**']);
     await waitFor(() => expect(screen.queryByTestId('body-editor')).toBeNull());
   });
 
@@ -387,8 +377,8 @@ describe('edits', () => {
     expect(within(detail).getByText('Discard your unsent note?')).toBeInTheDocument();
     fireEvent.click(within(detail).getByRole('button', { name: 'Keep' }));
     fireEvent.click(within(detail).getByLabelText('Send note'));
-    await waitFor(() => expect(sent('/S-5/note')).toHaveLength(1));
-    expect(sent('/S-5/note')[0]!.json).toEqual({ text: 'pin it, see S-3' });
+    await waitFor(() => expect(sent('note S-5')).toHaveLength(1));
+    expect(sent('note S-5')[0]!.args).toEqual(['note', 'S-5', '--', 'pin it, see S-3']);
     await waitFor(() => expect(field.value).toBe(''));
   });
 
@@ -402,20 +392,31 @@ describe('edits', () => {
     fireEvent.input(field);
     await within(detail).findByRole('listbox', { name: 'Mention a task' });
     fireEvent.keyDown(field, { key: 'Enter', ctrlKey: true });
-    await waitFor(() => expect(sent('/S-5/note')).toHaveLength(1));
+    await waitFor(() => expect(sent('note S-5')).toHaveLength(1));
     await waitFor(() => expect(field.value).toBe(''));
     expect(within(detail).queryByRole('listbox', { name: 'Mention a task' })).toBeNull();
   });
 
-  it('attachments upload into the note draft', async () => {
-    const { sent } = setup();
+  it('attachments upload into the note draft (host blob + CLI attach)', async () => {
+    const { sent, host } = setup();
     await ready();
     const detail = await openDetail('S-3');
     const file = new File([new Uint8Array([1, 2, 3, 4])], 'shot.png', { type: 'image/png' });
     fireEvent.change(within(detail).getByLabelText('Attach to note: photos'), { target: { files: [file] } });
-    await waitFor(() => expect(sent('/S-3/attachments')).toHaveLength(1));
-    expect(sent('/S-3/attachments')[0]!.path).toBe('/api/tasks/scratch-1/S-3/attachments?name=shot.png');
-    await waitFor(() => expect((within(detail).getByLabelText('Add a note') as HTMLTextAreaElement).value).toBe('![shot.png](att:S-3/abcd1234-shot.png)'));
+    const attach = await waitFor(() => {
+      const call = sent('attach S-3').at(0);
+      expect(call).toBeDefined();
+      return call!;
+    });
+    expect(attach.args[0]).toBe('attach');
+    expect(attach.args[1]).toBe('S-3');
+    expect(attach.args[2]).toMatch(/^~\/.oino\/uploads\/board-[^/]+-shot\.png$/);
+    expect(attach.args.slice(3)).toEqual(['--name', 'shot.png']);
+    // The bytes crossed the host seam (`blob_put_bytes` → `fs_import`).
+    expect(host.requests.map((request) => request.op)).toEqual(expect.arrayContaining(['blob_put_bytes', 'fs_import']));
+    await waitFor(() =>
+      expect((within(detail).getByLabelText('Add a note') as HTMLTextAreaElement).value).toMatch(/^!\[shot\.png\]\(att:S-3\/aaaa\d+-shot\.png\)$/),
+    );
   });
 });
 
@@ -429,12 +430,12 @@ describe('dependencies + reorder', () => {
     // S-1 already runs after S-2: picking it would close a loop.
     expect(within(sheet).queryByRole('option', { name: /S-1/ })).toBeNull();
     fireEvent.click(within(sheet).getByRole('option', { name: /S-3/ }));
-    await waitFor(() => expect(sent('/S-2/link')).toHaveLength(1));
-    expect(sent('/S-2/link')[0]!.json).toEqual({ dep: 'S-3' });
+    await waitFor(() => expect(sent('link S-2')).toHaveLength(1));
+    expect(sent('link S-2')[0]!.args).toEqual(['link', 'S-2', '--after', 'S-3']);
     await waitFor(() => expect(within(sheet).getByRole('option', { name: /S-3/ })).toHaveAttribute('aria-selected', 'true'));
     fireEvent.click(within(sheet).getByRole('option', { name: /S-3/ }));
-    await waitFor(() => expect(sent('/S-2/unlink')).toHaveLength(1));
-    expect(sent('/S-2/unlink')[0]!.json).toEqual({ dep: 'S-3' });
+    await waitFor(() => expect(sent('unlink S-2')).toHaveLength(1));
+    expect(sent('unlink S-2')[0]!.args).toEqual(['unlink', 'S-2', '--after', 'S-3']);
   });
 
   it('unlinks from the dependency row', async () => {
@@ -442,8 +443,8 @@ describe('dependencies + reorder', () => {
     await ready();
     const detail = await openDetail('S-1');
     fireEvent.click(within(detail).getByLabelText('Remove dependency S-2'));
-    await waitFor(() => expect(sent('/S-1/unlink')).toHaveLength(1));
-    expect(sent('/S-1/unlink')[0]!.json).toEqual({ dep: 'S-2' });
+    await waitFor(() => expect(sent('unlink S-1')).toHaveLength(1));
+    expect(sent('unlink S-1')[0]!.args).toEqual(['unlink', 'S-1', '--after', 'S-2']);
   });
 
   it('card long-press menu: moves, one-tap priority, reorder payloads, duplicate', async () => {
@@ -453,31 +454,32 @@ describe('dependencies + reorder', () => {
     let menu = await screen.findByRole('menu', { name: 'S-3 actions' });
     expect(within(menu).getByRole('menuitem', { name: 'Move to Backlog' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: 'Cancel task' })).toBeInTheDocument();
-    // Lane drawn as [S-2 → S-1 chain], S-3: S-3 is last → down/bottom disabled.
+    // Lane drawn as [S-1 → S-2], S-3 last: nothing below → down/bottom disabled.
     expect(within(menu).getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Move up' }));
-    await waitFor(() => expect(sent('/S-3/order')).toHaveLength(1));
-    expect(sent('/S-3/order')[0]!.json).toEqual({ before: 'S-2' });
+    await waitFor(() => expect(sent('order S-3')).toHaveLength(1));
+    expect(sent('order S-3')[0]!.args).toEqual(['order', 'S-3', '--before', 'S-2']);
 
     fireEvent.contextMenu(card('S-2'));
     menu = await screen.findByRole('menu', { name: 'S-2 actions' });
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Move to bottom' }));
-    await waitFor(() => expect(sent('/S-1/order')).toHaveLength(1));
-    // The chain moves as a block: S-2 to the bottom, S-1 right after it.
-    expect(sent('/S-2/order')[0]!.json).toEqual({ bottom: true });
-    expect(sent('/S-1/order')[0]!.json).toEqual({ after_pos: 'S-2' });
+    await waitFor(() => expect(sent('order S-2')).toHaveLength(1));
+    // The chain (S-2 → S-1) moves as a block: S-2 to the bottom, S-1 right after it.
+    expect(sent('order S-2')[0]!.args).toEqual(['order', 'S-2', '--bottom']);
+    await waitFor(() => expect(sent('order S-1')).toHaveLength(1));
+    expect(sent('order S-1')[0]!.args).toEqual(['order', 'S-1', '--after-pos', 'S-2']);
 
     fireEvent.contextMenu(card('S-3'));
     menu = await screen.findByRole('menu', { name: 'S-3 actions' });
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Priority: Urgent' }));
-    await waitFor(() => expect(sent('/S-3/edit')).toHaveLength(1));
-    expect(sent('/S-3/edit')[0]!.json).toEqual({ priority: 'urgent' });
+    await waitFor(() => expect(sent('edit S-3')).toHaveLength(1));
+    expect(sent('edit S-3')[0]!.args).toEqual(['edit', 'S-3', '--priority', 'urgent']);
 
     fireEvent.contextMenu(card('S-3'));
     menu = await screen.findByRole('menu', { name: 'S-3 actions' });
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Duplicate' }));
-    await waitFor(() => expect(sent('/S-3/duplicate')).toHaveLength(1));
-    expect(await screen.findByText('Duplicated S-3 as S-99')).toBeInTheDocument();
+    await waitFor(() => expect(sent('duplicate S-3')).toHaveLength(1));
+    expect(await screen.findByText(/^Duplicated S-3 as S-\d+$/)).toBeInTheDocument();
   });
 
   it('a final-lane move from the card menu asks first; Keep it sends nothing', async () => {
@@ -490,22 +492,23 @@ describe('dependencies + reorder', () => {
     expect(within(confirm).getByText('Cancelled is final for a task — afterwards it can only be archived.')).toBeInTheDocument();
     fireEvent.click(within(confirm).getByRole('button', { name: 'Keep it' }));
     await waitFor(() => expect(screen.queryByTestId('confirm-sheet')).toBeNull());
-    expect(sent('/S-3/move')).toHaveLength(0);
+    expect(sent('move S-3')).toHaveLength(0);
 
     fireEvent.contextMenu(card('S-3'));
     menu = await screen.findByRole('menu', { name: 'S-3 actions' });
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Cancel task' }));
     confirm = await screen.findByTestId('confirm-sheet');
     fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel task' }));
-    await waitFor(() => expect(sent('/S-3/move')).toHaveLength(1));
-    expect(sent('/S-3/move')[0]!.json).toEqual({ status: 'cancelled' });
-    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument();
+    await waitFor(() => expect(sent('move S-3')).toHaveLength(1));
+    expect(sent('move S-3')[0]!.args).toEqual(['move', 'S-3', 'cancelled']);
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
   });
 
   it('a running card lists no moves', async () => {
-    setup({
-      'GET /api/projects/scratch-1/tasks': () => ({
-        json: { tasks: [task({ id: 'S-2', title: 'Token cache', status: 'in_progress', staleness: 'running', run: { session: 'live', pid: 1 } })], problems: [] },
+    const { sent } = setup({
+      'list --all': () => ({
+        ok: true,
+        payload: { tasks: [task({ id: 'S-2', title: 'Token cache', status: 'in_progress', staleness: 'running', run: { session: 'live', pid: 1 } })], problems: [] },
       }),
     });
     await waitFor(() => expect(document.querySelector('[data-id="S-2"]')).not.toBeNull());
@@ -514,146 +517,69 @@ describe('dependencies + reorder', () => {
     expect(within(menu).getByText(/Claimed by session live/)).toBeInTheDocument();
     expect(within(menu).queryByRole('menuitem', { name: /Release/ })).toBeNull();
     expect(within(menu).queryByRole('menuitem', { name: 'Cancel task' })).toBeNull();
+    expect(sent('move S-2')).toHaveLength(0);
   });
 });
 
 describe('lane + project actions', () => {
-  it('Done all asks first, then moves the lane', async () => {
+  it('Done all asks first, then moves the lane (one CLI move per task)', async () => {
     const { sent } = setup();
     await ready();
     fireEvent.click(pill('in_review'));
     fireEvent.click(screen.getByRole('button', { name: /Done all/ }));
     const sheet = await screen.findByTestId('confirm-sheet');
-    expect(sent('/done-lane')).toHaveLength(0);
+    expect(sent('move S-6')).toHaveLength(0);
     fireEvent.click(within(sheet).getByRole('button', { name: 'Move 1 to Done' }));
-    await waitFor(() => expect(sent('/done-lane')).toHaveLength(1));
+    await waitFor(() => expect(sent('move S-6')).toHaveLength(1));
+    expect(sent('move S-6')[0]!.args).toEqual(['move', 'S-6', 'done']);
     expect(await screen.findByText('Moved 1 to Done')).toBeInTheDocument();
   });
 
-  it('Archive all from the Done lane menu', async () => {
+  it('Archive all from the Done lane menu archives each task', async () => {
     const { sent } = setup();
     await ready();
     fireEvent.click(pill('done'));
     fireEvent.click(screen.getByLabelText('Done options'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /without summary/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Archive all \(1\)/ }));
     fireEvent.click(within(await screen.findByTestId('confirm-sheet')).getByRole('button', { name: 'Archive 1 task' }));
-    await waitFor(() => expect(sent('/archive-lane')).toHaveLength(1));
-    expect(sent('/archive-lane')[0]!.json).toEqual({ status: 'done' });
+    await waitFor(() => expect(sent('move S-7')).toHaveLength(1));
+    expect(sent('move S-7')[0]!.args).toEqual(['move', 'S-7', 'archived']);
+    expect(await screen.findByText('Archived 1 task')).toBeInTheDocument();
   });
 
-  it('Summarize & archive: instruction from settings → generate → save & archive', async () => {
-    const { sent } = setup();
-    await ready();
-    fireEvent.click(pill('done'));
-    fireEvent.click(screen.getByRole('button', { name: /Summarize/ }));
-    const sheet = await screen.findByTestId('summarize-sheet');
-    await waitFor(() => expect(within(sheet).getByLabelText('Summary instruction')).toHaveValue('Write a changelog.'));
-    fireEvent.click(within(sheet).getByRole('button', { name: /Generate summary/ }));
-    await waitFor(() => expect(within(sheet).getByRole('button', { name: 'Save & archive 1 task' })).toBeInTheDocument());
-    expect(sent('/summarize')[0]!.json).toEqual({ instruction: 'Write a changelog.' });
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Resummarize with note' }));
-    fireEvent.input(within(sheet).getByLabelText('Note for the resummary'), { target: { value: 'shorter' } });
-    fireEvent.click(within(sheet).getByRole('button', { name: /^Resummarize$/ }));
-    await waitFor(() => expect(sent('/summarize')).toHaveLength(2));
-    expect(sent('/summarize')[1]!.json).toEqual({ instruction: 'Write a changelog.', previous: '- feat: shipped relay (S-7)', note: 'shorter' });
-    await waitFor(() => expect(within(sheet).getByRole('button', { name: 'Save & archive 1 task' })).not.toBeDisabled());
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Save & archive 1 task' }));
-    await waitFor(() => expect(sent('/archive-summary')).toHaveLength(1));
-    expect(sent('/archive-summary')[0]!.json).toEqual({ markdown: '- feat: shipped relay (S-7)', taskIds: ['S-7'] });
-    expect(await screen.findByText('Archived 1 task · summary saved')).toBeInTheDocument();
-  });
-
-  it('Summarize board: scope board + prompt; needsAgent shows the configure banner', async () => {
-    let first = true;
-    const { sent } = setup({
-      'POST /api/projects/scratch-1/summarize': () => {
-        if (first) {
-          first = false;
-          return { status: 409, json: { error: 'no agent', needsAgent: true } };
-        }
-        return { json: { summary: 'All calm.', taskIds: [] } };
-      },
-    });
-    await ready();
-    fireEvent.click(screen.getByLabelText('Board menu'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Summarize board' }));
-    const sheet = await screen.findByTestId('summarize-sheet');
-    fireEvent.input(within(sheet).getByLabelText('Summary prompt'), { target: { value: 'todo only' } });
-    fireEvent.click(within(sheet).getByRole('button', { name: /Generate summary/ }));
-    expect(await within(sheet).findByText('No agent configured')).toBeInTheDocument();
-    fireEvent.click(within(sheet).getByRole('button', { name: /Generate summary/ }));
-    await waitFor(() => expect(within(sheet).getByText('All calm.')).toBeInTheDocument());
-    expect(sent('/summarize')[1]!.json).toEqual({ scope: 'board', instruction: 'todo only' });
-  });
-
-  it('Board settings: edits a limit and saves the flat patch', async () => {
-    const { sent } = setup();
-    await ready();
-    fireEvent.click(screen.getByLabelText('Board menu'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Board settings' }));
-    const sheet = await screen.findByTestId('board-settings-sheet');
-    await waitFor(() => expect(within(sheet).getByLabelText('Summary model: pi default')).toBeInTheDocument());
-    fireEvent.click(within(sheet).getByLabelText('Summary model: pi default'));
-    fireEvent.click(await within(sheet).findByRole('option', { name: 'claude-x' }));
-    fireEvent.click(within(sheet).getByRole('tab', { name: 'Sessions' }));
-    fireEvent.click(within(sheet).getByLabelText('Increase Sessions at once'));
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'Done' }));
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(sent('/api/settings').filter((r) => r.method === 'PUT')).toHaveLength(1));
-    expect(sent('/api/settings').find((r) => r.method === 'PUT')!.json).toEqual({
-      summaryModel: 'anthropic/claude-x',
-      summaryInstruction: '',
-      maxSessions: 3,
-      turnAddLimit: 20,
-      chainGate: 'done',
-      archiveAfterDays: 0,
-      retentionDays: 90,
-    });
-    expect(await screen.findByText('Settings saved')).toBeInTheDocument();
-  });
-
-  it('Archive project, then Undo unarchives it', async () => {
+  it('Archive project, then Unarchive project from the same menu', async () => {
     const { sent } = setup();
     await ready();
     fireEvent.click(screen.getByLabelText('Board menu'));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Archive project' }));
-    await waitFor(() => expect(sent('/api/projects/scratch-1').filter((r) => r.method === 'PUT')).toHaveLength(1));
-    expect(sent('/api/projects/scratch-1').find((r) => r.method === 'PUT')!.json).toEqual({ archived: true });
-    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
-    await waitFor(() => expect(sent('/api/projects/scratch-1').filter((r) => r.method === 'PUT')).toHaveLength(2));
-    expect(sent('/api/projects/scratch-1').filter((r) => r.method === 'PUT')[1]!.json).toEqual({ archived: false });
+    await waitFor(() => expect(sent('project archive')).toHaveLength(1));
+    expect(sent('project archive')[0]!.args).toEqual(['project', 'archive', 'scratch-1']);
+    fireEvent.click(screen.getByLabelText('Board menu'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Unarchive project' }));
+    await waitFor(() => expect(sent('project unarchive')).toHaveLength(1));
+    expect(sent('project unarchive')[0]!.args).toEqual(['project', 'unarchive', 'scratch-1']);
   });
 
   it('UNI-134: long-press a project in the picker opens its context menu, Archive acts on that project (not the open one)', async () => {
-    const { sent } = setup({
-      'GET /api/projects': () => ({
-        json: [
-          project({ slug: 'scratch-1', name: 'scratch', updatedAt: '2026-10-07T00:00:00Z' }),
-          project({ slug: 'other', name: 'other project', updatedAt: '2026-10-07T00:00:00Z' }),
-        ],
-      }),
-      'PUT /api/projects/other': (req) => ({ json: project({ slug: 'other', name: 'other project', archived: (req.json as { archived: boolean }).archived }) }),
-    });
+    const { sent } = setup();
     await ready();
     fireEvent.click(screen.getByLabelText('Project: scratch'));
     const sheet = await screen.findByTestId('project-sheet');
     const row = within(sheet).getByText('other project').closest('button')!;
     fireEvent.contextMenu(row);
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Archive' }));
-    await waitFor(() => expect(sent('/api/projects/other').filter((r) => r.method === 'PUT')).toHaveLength(1));
-    expect(sent('/api/projects/other').find((r) => r.method === 'PUT')!.json).toEqual({ archived: true });
+    await waitFor(() => expect(sent('project archive')).toHaveLength(1));
+    expect(sent('project archive')[0]!.args).toEqual(['project', 'archive', 'other']);
     // The open project (scratch-1) wasn't touched.
-    expect(sent('/api/projects/scratch-1').filter((r) => r.method === 'PUT')).toHaveLength(0);
+    expect(sent('project archive scratch-1')).toHaveLength(0);
   });
 });
 
 describe('live updates (UNI-132)', () => {
-  it('a revision refreshes the open task without clobbering the note / description drafts', async () => {
-    const { fake, update } = setup();
+  it('a board_changed event refreshes the open task without clobbering the note / description drafts', async () => {
+    const { board, host } = setup();
     await ready();
-    await waitFor(() => expect(fake.open().map((s) => s.project)).toEqual(['scratch-1']));
-    const stream = fake.open()[0]!;
-    stream.state('open');
+    await waitFor(() => expect(host.requests.some((request) => request.op === 'board_watch')).toBe(true));
     const detail = await openDetail('S-2');
     const note = within(detail).getByLabelText('Add a note') as HTMLTextAreaElement;
     fireEvent.input(note, { target: { value: 'half-written note' } });
@@ -662,11 +588,15 @@ describe('live updates (UNI-132)', () => {
     const body = within(editor).getByLabelText('Description (markdown)') as HTMLTextAreaElement;
     fireEvent.input(body, { target: { value: 'my draft body' } });
 
-    // Someone else (CLI / agent) changes the task: the daemon bumps the revision.
-    update('S-2', { title: 'Token cache (live)', body: 'server body', priority: 'urgent' });
-    stream.revision('2');
-    stream.revision('3');
-    await waitFor(() => expect((within(detail).getByLabelText('Task title') as HTMLTextAreaElement).value).toBe('Token cache (live)'));
+    // Someone else (the CLI, an agent) changes the task: the watcher answers board_changed.
+    const live = board.tasks('scratch-1').find((item) => item.id === 'S-2')!;
+    live.title = 'Token cache (live)';
+    live.priority = 'urgent';
+    host.emit({ kind: 'board_changed', project: 'scratch-1' });
+    await waitFor(
+      () => expect((within(detail).getByLabelText('Task title') as HTMLTextAreaElement).value).toBe('Token cache (live)'),
+      { timeout: 3000 },
+    );
     expect(within(detail).getByLabelText('Priority: Urgent')).toBeInTheDocument();
     expect(note.value).toBe('half-written note');
     expect(body.value).toBe('my draft body');
@@ -674,14 +604,13 @@ describe('live updates (UNI-132)', () => {
   });
 
   it('the ⋯ menu shows the live state; a dropped stream shows reconnecting', async () => {
-    const { fake } = setup();
+    const { host } = setup();
     await ready();
-    await waitFor(() => expect(fake.open()).toHaveLength(1));
-    fake.open()[0]!.state('open');
+    await waitFor(() => expect(host.requests.some((request) => request.op === 'board_watch' && request.args?.on === true)).toBe(true));
     fireEvent.click(screen.getByLabelText('Board menu'));
     expect(await screen.findByText(/Live updates: on/)).toBeInTheDocument();
-    expect(screen.getByLabelText('PC: coffee · live')).toBeInTheDocument();
-    fake.open()[0]!.state('closed', 'The PC closed the board stream');
+    expect(screen.getByLabelText(/^PC: coffee · live/)).toBeInTheDocument();
+    host.drop('The PC closed the board stream');
     expect(await screen.findByText(/Live updates: reconnecting/)).toBeInTheDocument();
     expect(document.querySelector('.pc-dot')!.getAttribute('data-live')).toBe('reconnecting');
   });
