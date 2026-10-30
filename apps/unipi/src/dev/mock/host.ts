@@ -12,6 +12,7 @@
  */
 import { createSignal } from 'solid-js';
 import { createMockBoard, type MockBoard, type MockBoardProject } from './board';
+import { MOCK_MODELS, mockLevelsFor, mockModelFor } from './models';
 import { mockLspServers, openMockLsp, type MockLspSpec } from './lsp';
 import {
   APP_HOST,
@@ -639,6 +640,43 @@ export class MockHost implements HostClient {
   readonly board: MockBoard;
   /** `board_watch{on}`: whether the UI has the watcher on (last call wins). */
   boardWatching = false;
+  /** WP-A14: the model + thinking level a mock session has switched to, and the
+   *  top event seq per `host/session` — a command that emits an event must not
+   *  reuse a seq the store already applied. */
+  readonly picked = new Map<string, { provider: string; id: string; level: string }>();
+  private readonly seqTop = new Map<string, number>();
+
+  /** The next event seq for a session (its snapshot and any script steps included). */
+  private topSeq(key: string, session: MockSession): number {
+    const known = this.seqTop.get(key);
+    if (known !== undefined) return known;
+    let top = session.snapshot.seq;
+    for (const step of session.events ?? []) if ('dto' in step) top = Math.max(top, step.dto.seq);
+    this.seqTop.set(key, top);
+    return top;
+  }
+
+  /** Pushes one live event to the session's open streams with a fresh seq. */
+  private emitSession(key: string, session: MockSession, event: Record<string, unknown>): void {
+    const seq = this.topSeq(key, session) + 1;
+    this.seqTop.set(key, seq);
+    const sessionId = session.snapshot.session_id;
+    this.world.push(this.hostId, sessionId, [{ session: sessionId, seq, event } as SessionEventDto]);
+  }
+
+  /** The model + thinking level a session starts on (its snapshot state). */
+  private levelOf(key: string, session: MockSession): { provider: string; id: string; level: string } {
+    const known = this.picked.get(key);
+    if (known) return known;
+    const state = (session.snapshot.state ?? {}) as { model?: { provider?: unknown; id?: unknown }; thinkingLevel?: unknown };
+    const init = {
+      provider: typeof state.model?.provider === 'string' ? state.model.provider : 'anthropic',
+      id: typeof state.model?.id === 'string' ? state.model.id : 'claude-sonnet-4-5',
+      level: typeof state.thinkingLevel === 'string' ? state.thinkingLevel : 'medium',
+    };
+    this.picked.set(key, init);
+    return init;
+  }
   constructor(
     readonly spec: MockHostSpec,
     /** The shared world (recorded log, event sinks): public for the builtin ops. */
@@ -747,6 +785,39 @@ export class MockHost implements HostClient {
           const all = session.entries.entries as Array<{ id?: string }>;
           const at = since ? all.findIndex((e) => e.id === since) : -1;
           return { entries: since ? all.slice(at + 1) : all, leafId: session.entries.leafId } as T;
+        }
+        // WP-A14: the model / thinking commands answer from the catalogue and
+        // push the event the real host emits, so the chips follow a switch.
+        if (cmd.type === 'get_available_models') return { models: MOCK_MODELS } as T;
+        if (cmd.type === 'get_available_thinking_levels') {
+          const model = session?.snapshot.state as { model?: { provider?: string; id?: string } } | undefined;
+          const row = model?.model ? mockModelFor(String(model.model.provider ?? ''), String(model.model.id ?? '')) : undefined;
+          return { levels: mockLevelsFor(row) } as T;
+        }
+        if (cmd.type === 'set_model' && session) {
+          const row = mockModelFor(String(cmd.provider ?? ''), String(cmd.modelId ?? ''));
+          if (!row) throw err('E_NOT_FOUND', 'Model not found');
+          const previous = this.levelOf(key, session);
+          this.picked.set(key, { provider: row.provider, id: row.id, level: previous.level });
+          this.emitSession(key, session, { type: 'model_changed', model: row, source: 'set' });
+          return row as T;
+        }
+        if (cmd.type === 'set_thinking_level' && session) {
+          const level = String(cmd.level ?? '');
+          const current = this.levelOf(key, session);
+          this.picked.set(key, { ...current, level });
+          this.emitSession(key, session, { type: 'thinking_level_changed', level });
+          return null as T;
+        }
+        if (cmd.type === 'cycle_thinking_level' && session) {
+          const current = this.levelOf(key, session);
+          const row = mockModelFor(current.provider, current.id);
+          const levels = mockLevelsFor(row);
+          const at = levels.indexOf(current.level);
+          const level = levels[(at + 1) % levels.length]!;
+          this.picked.set(key, { ...current, level });
+          this.emitSession(key, session, { type: 'thinking_level_changed', level });
+          return { level } as T;
         }
         return {} as T;
       },

@@ -67,6 +67,10 @@ import { AttachmentChip } from './AttachmentChip';
 import { ImageEditor } from './ImageEditor';
 import { PermissionControl, PlanToggle } from './PermissionControl';
 import { Toolbar, ToolbarSlot } from './Toolbar';
+import { ModelChip } from '../model/ModelChip';
+import { ThinkingChip } from '../model/ThinkingChip';
+import { ContextRing } from '../model/ContextRing';
+import { openModelPicker } from '../model/target';
 import './composer.css';
 
 /** A paste's tooltip head (Z-61): the first lines, whitespace-collapsed. */
@@ -330,6 +334,13 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     const images = current.images;
     if (!text.trim() && !images.length) return;
     const cmd = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+    // `/model` opens the picker (Z-70: composer chip, Ctrl/Cmd+M and /model are
+    // the only entry points) instead of becoming a prompt.
+    if (!props.readOnly && cmd && cmd[1] === 'model' && !cmd[2]?.trim()) {
+      openModelPicker({ hostId: hostId(), sessionId: props.session.sessionId() });
+      afterSend(text);
+      return;
+    }
     // `/btw` opens the side question instead of sending to the main chat (Z-31).
     if (cmd && (cmd[1] === 'btw' || cmd[1] === 'unipi:btw')) {
       openSideQuestion(cmd[2]?.trim() || undefined);
@@ -550,16 +561,19 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
             </button>
           }
           end={
-            <SendButton
-              running={running()}
-              disabled={props.readOnly}
-              empty={empty()}
-              blocked={!canSend()}
-              blockedReason="Waiting for the attachments — Send unlocks when they are ready"
-              onSend={() => send()}
-              onStop={stop}
-              onSendNow={sendNow}
-            />
+            <span class="tb-end-group">
+              <ContextRing session={props.session} />
+              <SendButton
+                running={running()}
+                disabled={props.readOnly}
+                empty={empty()}
+                blocked={!canSend()}
+                blockedReason="Waiting for the attachments — Send unlocks when they are ready"
+                onSend={() => send()}
+                onStop={stop}
+                onSendNow={sendNow}
+              />
+            </span>
           }
         >
           <ToolbarSlot slot="permission">
@@ -567,6 +581,12 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
           </ToolbarSlot>
           <ToolbarSlot slot="plan">
             <PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} />
+          </ToolbarSlot>
+          <ToolbarSlot slot="think">
+            <ThinkingChip session={props.session} disabled={props.readOnly} />
+          </ToolbarSlot>
+          <ToolbarSlot slot="model">
+            <ModelChip session={props.session} disabled={props.readOnly} />
           </ToolbarSlot>
         </Toolbar>
       </div>

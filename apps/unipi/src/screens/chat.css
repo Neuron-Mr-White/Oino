@@ -349,10 +349,6 @@ pre.ucard-body { font-family: var(--font-mono); font-size: 11.5px; line-height: 
 .cc-tab svg { flex: 0 0 auto; }
 @media (max-width: 380px) { .cc-tab svg { display: none; } }
 .cc-tab[aria-selected=true] { background: var(--color-surface-3); color: var(--color-text); font-weight: 600; }
-.fusion-pair { display: flex; gap: 10px; margin-bottom: 10px; }
-.fusion-side { flex: 1 1 50%; min-width: 0; }
-.cc-fusion-list { max-height: 220px; overflow-y: auto; }
-.fusion-model-name { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 19px; font-size: 14px; overflow-wrap: anywhere; }
 .cc-inline-confirm { margin-top: 10px; padding: 10px; border-radius: 14px; background: var(--color-surface-1); }
 .cc-context { display: flex; flex-direction: column; gap: 14px; }
 .cc-meter { display: flex; flex-direction: column; gap: 6px; }
@@ -410,22 +406,6 @@ pre.ucard-body { font-family: var(--font-mono); font-size: 11.5px; line-height: 
 .tree-filters::-webkit-scrollbar { display: none; }
 .tree-filter { flex: none; height: 32px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--color-surface-2); color: var(--color-text-muted); font-size: 13px; font-weight: 500; }
 .tree-filter[aria-checked='true'] { background: rgb(240 120 24 / 16%); color: var(--color-claw); box-shadow: inset 0 0 0 1px rgb(240 120 24 / 45%); }
-
-/* Model picker (UNI-212): the list scrolls in a short box, the one action lives in the sticky sheet footer. */
-.model-picker-sheet .board-sheet-body { padding-bottom: 12px; }
-.mp-current { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0 2px 12px; font-size: 13px; color: var(--color-text-muted); }
-.mp-current-label { flex: 0 0 auto; padding: 0 7px; border-radius: 9999px; font-size: 10.5px; line-height: 18px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; background: var(--color-surface-3); color: var(--color-text-dim); }
-.mp-modes { margin-bottom: 12px; }
-.mp-model-list { max-height: min(44vh, 380px); overflow-y: auto; overscroll-behavior: contain; }
-.cc-fusion-list { max-height: min(30vh, 220px); }
-.model-row[data-picked] { background: rgb(240 48 24 / 14%); box-shadow: inset 3px 0 0 var(--color-shell); }
-.mp-tag { flex: 0 0 auto; padding: 0 7px; border-radius: 9999px; font-size: 10.5px; line-height: 18px; background: var(--color-surface-3); color: var(--color-wm-green); }
-.mp-foot { display: flex; flex-direction: column; gap: 8px; }
-.mp-foot .pair-primary { gap: 8px; }
-.mp-foot .pair-primary:disabled, .mp-foot .pair-secondary:disabled { opacity: .5; }
-.mp-hint { margin: 0; min-height: 48px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--color-text-dim); text-align: center; }
-.mp-error { margin: 0; padding: 8px 12px; border-radius: 12px; background: rgb(240 48 24 / 12%); color: var(--color-wm-red); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
-.mp-spinner { width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgb(255 255 255 / 35%); border-top-color: currentColor; animation: composer-file-spin .8s linear infinite; }
 
 /* ── UNI-222 Progress sheet (goal / ralph / swarm / graph) ─────────────── */
 .progress-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }

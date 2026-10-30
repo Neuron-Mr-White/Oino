@@ -6,8 +6,8 @@
  *   each id to its action). ZCode shell map (K/⇧P palette, P files, F find,
  *   ⌘, settings, B sidebar, J bottom panel, ⌥⌘B side pane, ⇧F full view,
  *   ⇧T reopen tab, N new chat, ⇧[ / ⇧] prev/next conversation) plus unipi's
- *   Ctrl+/ list and Ctrl+L focus composer. Later WPs append (A14: Ctrl+M
- *   model menu, Ctrl+T thinking, Ctrl+Shift+M mode).
+ *   Ctrl+/ list and Ctrl+L focus composer, plus A14's ZCode set: Mod+M model
+ *   menu, Mod+T thinking cycle, Mod+Shift+M working-mode cycle.
  * - `SCREEN_KEYS` — display-only (Ctrl+/ list, Settings): the keys the
  *   screens handle inside themselves (unipi board/files/editor/terminal
  *   keys, kept per the Z-94 ruling).
@@ -41,6 +41,9 @@ export const APP_BINDINGS: AppBinding[] = [
   { id: 'chat.prev', title: 'Previous conversation', group: 'Chat', chords: ['Mod+Shift+['], scope: 'app' },
   { id: 'chat.next', title: 'Next conversation', group: 'Chat', chords: ['Mod+Shift+]'], scope: 'app' },
   { id: 'chat.running', title: 'Running work (Session modal)', group: 'Chat', chords: ['Shift+Down'], scope: 'conversation' },
+  { id: 'model.open', title: 'Change model', group: 'Chat', chords: ['Mod+M'], scope: 'conversation' },
+  { id: 'thinking.cycle', title: 'Cycle the thinking level', group: 'Chat', chords: ['Mod+T'], scope: 'conversation' },
+  { id: 'mode.cycle', title: 'Cycle the working-mode starter (Goal / Ralph / Graph)', group: 'Chat', chords: ['Mod+Shift+M'], scope: 'conversation' },
   { id: 'chat.send', title: 'Send (while running: last Steer/Queue choice)', group: 'Chat', chords: ['Enter'], scope: 'conversation', displayOnly: true },
   { id: 'chat.newline', title: 'New line', group: 'Chat', chords: ['Shift+Enter'], scope: 'conversation', displayOnly: true },
   { id: 'chat.back', title: 'Back / close the top layer', group: 'Chat', chords: ['Esc'], scope: 'conversation', displayOnly: true },

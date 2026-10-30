@@ -30,6 +30,7 @@ import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
 import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreePhone } from './tabs';
 import { emptyChat, motionExits } from './empty-chat';
+import { modeChip, modelFusion, modelPicker, thinkingChip } from './model';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -112,4 +113,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'settings-search': settingsSearch,
   'settings-extensions': settingsExtensions,
   'settings-safe-mode': settingsSafeMode,
+  'model-picker': modelPicker,
+  'model-fusion': modelFusion,
+  'thinking-chip': thinkingChip,
+  'mode-chip': modeChip,
 };

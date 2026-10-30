@@ -1,0 +1,30 @@
+/* ══ Rolling label (Z-92, WP-A14) ═════════════════════════════════════════
+   Model / thinking / mode names roll vertically when they change: the old
+   text leaves upward while the new one arrives from below, 180 ms (DESIGN
+   §1.4 keeps exits ≤ 200 ms). The container clips both layers and keeps the
+   current text's width; the leaving layer is out of flow so a shorter name
+   does not leave a gap. Reduced motion (and no matchMedia) swaps instantly —
+   RollingLabel.tsx renders no leaving layer then, and these rules drop the
+   keyframes as a second guard. */
+.roll-label {
+  position: relative;
+  display: inline-grid;
+  min-width: 0;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+.roll-label > * { grid-area: 1 / 1; white-space: nowrap; }
+.roll-in { animation: roll-in 180ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.roll-out { position: absolute; inset: 0; pointer-events: none; animation: roll-out 180ms cubic-bezier(0.4, 0, 1, 1) both; }
+@keyframes roll-in {
+  from { transform: translateY(70%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes roll-out {
+  from { transform: none; opacity: 1; }
+  to { transform: translateY(-70%); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .roll-in, .roll-out { animation: none !important; }
+  .roll-out { display: none; }
+}
