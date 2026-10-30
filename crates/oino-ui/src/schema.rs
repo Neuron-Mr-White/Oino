@@ -31,3 +31,55 @@ pub fn registry_schema() -> Result<Json, String> {
 
 /// Protocol version the exported schemas describe.
 pub const PROTOCOL_VERSION: u8 = 2;
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests assert by unwrapping"
+    )]
+
+    use super::*;
+
+    #[test]
+    fn exports_parse_and_match_the_spec_ids() {
+        let node = node_schema().expect("node schema parses");
+        let registry = registry_schema().expect("registry schema parses");
+        assert_eq!(
+            node["$id"],
+            "https://oino.dev/schemas/ui/2/node.schema.json"
+        );
+        assert_eq!(
+            registry["$id"],
+            "https://oino.dev/schemas/ui/2/registry.schema.json"
+        );
+        assert_eq!(
+            node["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+        assert_eq!(
+            registry["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+    }
+
+    #[test]
+    fn node_schema_lists_every_kind() {
+        let schema = node_schema().expect("node schema parses");
+        let defs = schema["$defs"].as_object().expect("$defs object");
+        let kinds: Vec<&str> = schema["$defs"]["Node"]["oneOf"]
+            .as_array()
+            .expect("Node oneOf")
+            .iter()
+            .filter_map(|r| r["$ref"].as_str())
+            .map(|r| r.trim_start_matches("#/$defs/"))
+            .collect();
+        assert_eq!(kinds.len(), crate::node::NODE_KINDS.len());
+        for kind in crate::node::NODE_KINDS {
+            assert!(kinds.contains(&kind), "schema misses node kind {kind}");
+            assert!(defs.contains_key(kind), "schema $defs misses {kind}");
+        }
+    }
+}
