@@ -70,6 +70,11 @@ pub struct Manifest {
     /// Bundled resources.
     #[serde(default)]
     pub resources: Resources,
+    /// Native CLI binaries the package ships in `bin/` (ext-abi §5.2, D2):
+    /// bare file names, resolved by the host's process service against
+    /// `OINO_EXT_BIN_DIR`, `<package root>/bin/` and `PATH`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binaries: Vec<String>,
     /// Limits.
     #[serde(default)]
     pub limits: Limits,
@@ -548,6 +553,12 @@ impl Manifest {
         for path in self.resources.paths() {
             safe_relative(path)?;
         }
+        for name in &self.binaries {
+            safe_relative(&format!("bin/{name}"))?;
+            if Path::new(name).components().count() != 1 || name.is_empty() {
+                return Err(ManifestError::PathEscape(name.clone()));
+            }
+        }
         Ok(())
     }
 
@@ -579,6 +590,12 @@ impl Manifest {
             }
         }
         for (file, expected) in &self.checksums {
+            // A missing `bin/` entry is a load-time warning, not a package error
+            // (ext-abi §5.2: the extension still loads; its tools report
+            // unavailable) — one platform's dist must not brick another's load.
+            if file.starts_with("bin/") && !root.join(safe_relative(file)?).exists() {
+                continue;
+            }
             let path = root.join(safe_relative(file)?);
             let bytes =
                 std::fs::read(&path).map_err(|source| ManifestError::Io { path, source })?;
@@ -598,6 +615,29 @@ impl Manifest {
     #[must_use]
     pub fn component_path(&self, root: &Path) -> PathBuf {
         root.join(&self.component)
+    }
+
+    /// Declared binaries missing from `<root>/bin/` (names, `.exe` accepted
+    /// on Windows). Package **build** time (xtask, `oino install`’s staging)
+    /// treats a non-empty result as an error; load time treats it as a warning
+    /// (ext-abi §5.2).
+    #[must_use]
+    pub fn missing_binaries(&self, root: &Path) -> Vec<String> {
+        self.binaries
+            .iter()
+            .filter(|name| {
+                let exe = format!("{name}.exe");
+                let candidates: Vec<&str> = if cfg!(windows) {
+                    vec![name.as_str(), exe.as_str()]
+                } else {
+                    vec![name.as_str()]
+                };
+                !candidates
+                    .iter()
+                    .any(|c| root.join("bin").join(c).is_file())
+            })
+            .cloned()
+            .collect()
     }
 }
 
@@ -713,5 +753,49 @@ mod tests {
             Err(ManifestError::Missing(_))
         ));
         assert!(glob_match("a*c", "abbc") && !glob_match("a*c", "abd") && glob_match("*", ""));
+    }
+
+    #[test]
+    fn binaries_parse_validate_and_probe() {
+        let m = Manifest::parse(&manifest(r#","binaries":["unipi-kanboard"]"#)).unwrap();
+        assert_eq!(m.binaries, ["unipi-kanboard"]);
+        // Default: none.
+        assert_eq!(
+            Manifest::parse(&manifest("")).unwrap().binaries,
+            Vec::<String>::new()
+        );
+        // A declared binary must be a bare file name.
+        for bad in ["../x", "sub/dir/x", "/bin/sh"] {
+            assert!(
+                Manifest::parse(&manifest(&format!(r#","binaries":["{bad}"]"#))).is_err(),
+                "{bad}"
+            );
+        }
+        // Load-time probe: present vs missing under bin/.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("bin")).unwrap();
+        let path = if cfg!(windows) {
+            dir.path().join("bin/unipi-kanboard.exe")
+        } else {
+            dir.path().join("bin/unipi-kanboard")
+        };
+        std::fs::write(&path, b"#").unwrap();
+        assert_eq!(m.missing_binaries(dir.path()), Vec::<String>::new());
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(m.missing_binaries(dir.path()), ["unipi-kanboard"]);
+        assert_eq!(
+            m.missing_binaries(tempfile::tempdir().unwrap().path()),
+            ["unipi-kanboard"]
+        );
+        // A missing bin/* checksum entry is skipped, not fatal (ext-abi §5.2).
+        std::fs::write(dir.path().join("component.wasm"), b"wasm").unwrap();
+        std::fs::write(
+            dir.path().join(MANIFEST_FILE),
+            manifest(
+                r#","binaries":["unipi-kanboard"],"checksums":{"bin/unipi-kanboard":"sha256:00"}"#,
+            ),
+        )
+        .unwrap();
+        Manifest::load_package(dir.path()).unwrap();
     }
 }

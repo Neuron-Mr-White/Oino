@@ -492,6 +492,7 @@ impl WasmRuntime {
             dialogs_open: std::sync::atomic::AtomicUsize::new(0),
             id: id.clone(),
             bundled: package.bundled,
+            package_root: package.root,
             host,
             paths: ext_paths,
             config,

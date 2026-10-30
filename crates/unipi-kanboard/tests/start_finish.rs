@@ -23,9 +23,9 @@
 mod common;
 
 use common::{Fixture, cli_with_env};
+use serde_json::Value;
 use unipi_kanboard::commands::{self, StartArgs};
 use unipi_kanboard::model::{Actor, ChainGate, Priority, RunOwner, Status};
-use serde_json::Value;
 
 fn start(
     fixture: &Fixture,

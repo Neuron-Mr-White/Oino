@@ -7,13 +7,39 @@
 )]
 
 use clap::Parser;
+use clap::error::ErrorKind;
 
 use unipi_kanboard::cli::Cli;
 use unipi_kanboard::error::Error;
 use unipi_kanboard::run;
 
 fn main() {
-    let cli = Cli::parse();
+    // clap-level failures (an unknown subcommand, a missing argument) keep the
+    // §5.5 contract under `--json`: one `{ok: false, …, kind: "usage"}` line on
+    // stderr, exit 2 — the same shape `report` prints for `Error::Usage`.
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err)
+            if matches!(
+                err.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) =>
+        {
+            err.exit()
+        }
+        Err(err) => {
+            if std::env::args().any(|a| a == "--json") {
+                let payload = serde_json::json!({
+                    "ok": false,
+                    "error": err.to_string().trim().to_owned(),
+                    "kind": "usage",
+                });
+                eprintln!("{payload}");
+                std::process::exit(2);
+            }
+            err.exit()
+        }
+    };
     let code = match run::dispatch(&cli) {
         Ok(payload) => {
             if cli.json {

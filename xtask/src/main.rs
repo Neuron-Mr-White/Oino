@@ -2,7 +2,7 @@
 //!
 //! | Task | Does |
 //! |---|---|
-//! | `wasm [--debug] [-p <crate>…]` | builds every component under `extensions/{providers,unipi,fixtures}` for `wasm32-wasip2` and writes `extensions/dist/<id>/{extension.json, component.wasm, resources}` + `extensions/dist/checksums.json` |
+//! | `wasm [--debug] [-p <crate>…]` | builds every component under `extensions/{providers,unipi,oino,fixtures}` for `wasm32-wasip2`, builds any declared `binaries` (ext-abi §5.2) for the host target and writes `extensions/dist/<id>/{extension.json, component.wasm, resources, bin/}` + `extensions/dist/checksums.json` |
 //! | `checksums` | verifies `extensions/dist` against `checksums.json` |
 //! | `wit` | validates `wit/oino-extension` with `wasm-tools component wit` |
 //! | `bench <suite> [--n N] [--out dir]` | core benchmarks (WP-C11): runs a suite via `crates/oino-bench --release`; results land under `bench/results/` (currently: `subagents`) |
@@ -112,6 +112,65 @@ fn tool_version(cmd: &str, arg: &str) -> String {
         .unwrap_or_default()
 }
 
+/// The host target triple (`rustc -vV` `host:`), so native binaries land at a
+/// stable `target/<triple>/<profile>/` path regardless of local cargo config.
+fn host_target() -> Result<String> {
+    let out = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into()))
+        .arg("-vV")
+        .output()
+        .context("rustc -vV")?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let host = text
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("host:"))
+        .map(str::trim)
+        .with_context(|| format!("rustc -vV has no host line: {text:?}"))?;
+    Ok(host.to_owned())
+}
+
+/// The root-workspace crate whose `[[bin]]` builds `bin` (ext-abi §5.2: an
+/// extension package ships native CLI binaries built by the monorepo — the
+/// extensions workspace cannot build them, it targets wasm guests). The bin
+/// name is also the crate name in this repo (e.g. `unipi-kanboard`).
+fn owning_crate(bin: &str) -> Result<String> {
+    let crates_dir = root().join("crates");
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&crates_dir)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    for dir in dirs {
+        let Ok(toml) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+            continue;
+        };
+        let mut section = "";
+        let mut declared = false;
+        for line in toml.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('[') {
+                section = trimmed;
+                continue;
+            }
+            let Some(name) = trimmed.strip_prefix("name = ") else {
+                continue;
+            };
+            let name = name.trim_matches('"');
+            if name == bin && (section == "[[bin]]" || section == "[package]") {
+                declared = true;
+            }
+        }
+        if declared && dir.join("src/main.rs").is_file() {
+            return Ok(bin.to_owned());
+        }
+    }
+    bail!("no crate under crates/ builds binary `{bin}`")
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "one straight-line build: component, resources, binaries, checksums"
+)]
 fn wasm(args: &[String]) -> Result<()> {
     let debug = args.iter().any(|a| a == "--debug");
     let filter: Vec<String> = args
@@ -174,7 +233,72 @@ fn wasm(args: &[String]) -> Result<()> {
         }
         let mut manifest = c.manifest.clone();
         manifest["component"] = json!("component.wasm");
-        manifest["checksums"] = json!({"component.wasm": sha256(&component)});
+        let mut pkg_checksums = serde_json::Map::new();
+        pkg_checksums.insert("component.wasm".to_owned(), json!(sha256(&component)));
+        // ext-abi §5.2: packages declaring `binaries` ship this platform's
+        // build in `bin/` — the dist is therefore target-specific.
+        let binaries: Vec<String> = c.manifest["binaries"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(ToOwned::to_owned)
+            .collect();
+        if !binaries.is_empty() {
+            let target = host_target()?;
+            let mut crates: Vec<String> = Vec::new();
+            for bin in &binaries {
+                let owner = owning_crate(bin)?;
+                if !crates.contains(&owner) {
+                    crates.push(owner);
+                }
+            }
+            println!(
+                "building native binaries {} for {target}",
+                crates.join(", ")
+            );
+            let mut cmd = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
+            cmd.current_dir(root()).arg("build");
+            for owner in &crates {
+                cmd.arg("-p").arg(owner);
+            }
+            if !debug {
+                cmd.arg("--release");
+            }
+            cmd.arg("--target").arg(&target);
+            let status = cmd.status()?;
+            if !status.success() {
+                bail!("cargo build failed for {}", crates.join(", "));
+            }
+            let exe = |bin: &str| {
+                let is_exe = std::path::Path::new(bin)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"));
+                if cfg!(windows) && !is_exe {
+                    format!("{bin}.exe")
+                } else {
+                    bin.to_owned()
+                }
+            };
+            for bin in &binaries {
+                let built = root()
+                    .join("target")
+                    .join(&target)
+                    .join(profile)
+                    .join(exe(bin));
+                let out_bin = out_dir.join("bin").join(exe(bin));
+                let bin_dir = out_bin.parent().context("bin/ has a parent")?;
+                std::fs::create_dir_all(bin_dir)?;
+                std::fs::copy(&built, &out_bin)
+                    .with_context(|| format!("copying {}", built.display()))?;
+                pkg_checksums.insert(
+                    format!("bin/{}", exe(bin)),
+                    json!(sha256(&std::fs::read(&out_bin)?)),
+                );
+                files.push(out_bin);
+            }
+        }
+        manifest["checksums"] = Value::Object(pkg_checksums);
         std::fs::write(
             out_dir.join("extension.json"),
             serde_json::to_vec_pretty(&manifest)?,

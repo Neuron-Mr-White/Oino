@@ -538,8 +538,12 @@ mod tests {
         assert_eq!(badge_text("started", "A-1", None), "▣ A-1 started");
         assert_eq!(badge_text("finished", "A-1", None), "✓ A-1 → In Review");
         assert!(
-            badge_from_tool_call("bash", &json!({"command": "unipi-kanboard start A-1"}), true)
-                .is_none()
+            badge_from_tool_call(
+                "bash",
+                &json!({"command": "unipi-kanboard start A-1"}),
+                true
+            )
+            .is_none()
         );
         assert!(badge_from_tool_call("read", &json!({}), false).is_none());
         assert!(

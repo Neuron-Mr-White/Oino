@@ -54,6 +54,9 @@ impl HostConfig {
 pub(crate) struct ExtShared {
     pub(crate) id: ExtensionId,
     pub(crate) manifest: Manifest,
+    /// Package root on disk (resources + `bin/`), when any — the process
+    /// service resolves declared `binaries` against it (ext-abi §5.2).
+    pub(crate) package_root: Option<PathBuf>,
     pub(crate) bundled: bool,
     pub(crate) host: Arc<dyn HostServices>,
     pub(crate) config: HostConfig,

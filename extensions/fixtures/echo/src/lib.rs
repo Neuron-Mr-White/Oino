@@ -139,6 +139,20 @@ async fn probe(name: &str, arg: Value) -> Result<Value> {
             let out = process::exec("sh", &["-c", &s("script")], None, Some(5000)).await?;
             json!({"stdout": out.stdout, "stderr": out.stderr, "code": out.code, "killed": out.killed})
         }
+        "exec-program" => {
+            // Arbitrary program name/args: exercises the host's program
+            // resolution (ext-abi §5.2) in wasm-host tests.
+            let args: Vec<String> = arg
+                .get("args")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect();
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            let out = process::exec(&s("command"), &refs, None, Some(5000)).await?;
+            json!({"stdout": out.stdout, "stderr": out.stderr, "code": out.code, "killed": out.killed})
+        }
         "spawn" => {
             let child = process::Child::spawn(&process::spec("cat", &[]))?;
             child.write_stdin(s("input").as_bytes()).await?;

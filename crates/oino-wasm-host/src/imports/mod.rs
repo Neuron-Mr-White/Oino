@@ -10,7 +10,6 @@ mod core;
 mod cron;
 mod host_service;
 mod io;
-mod kanboard;
 mod runtime;
 mod session;
 

@@ -23,24 +23,16 @@ pub const KNOWN_SUBCOMMANDS: &[&str] = &[
     "link",
     "unlink",
     "order",
-    "claim-next",
     "start",
     "finish",
     "next",
     "reap",
-    "queue",
-    "unqueue",
     "chain",
     "search",
     "release",
-    "set-run",
     "duplicate",
     "archive-sweep",
-    "serve",
-    "settings",
-    "rotate-token",
     "status",
-    "stop",
     "validate",
 ];
 
@@ -296,7 +288,6 @@ impl Invocation {
         let first = self.args.first().map(String::as_str);
         match self.sub.as_str() {
             "project" => matches!(first, Some("list" | "show")),
-            "settings" => first != Some("set"),
             "validate" => !self.args.iter().any(|a| a == "--fix"),
             _ => false,
         }
@@ -391,7 +382,10 @@ mod tests {
             subs(r#"find . -name "unipi-kanboard""#),
             [] as [std::string::String; 0]
         );
-        assert_eq!(subs("unipi-kanboard --json --gate=done show KB-2"), ["show"]);
+        assert_eq!(
+            subs("unipi-kanboard --json --gate=done show KB-2"),
+            ["show"]
+        );
         assert_eq!(subs("unipi-kanboard"), [""]);
         assert_eq!(
             subs("unipi-kanboard show A-1 && unipi-kanboard finish A-1 --comment 'x'"),
@@ -432,9 +426,6 @@ mod tests {
         assert!(inv("unipi-kanboard project show").is_readonly());
         assert!(!inv("unipi-kanboard project archive s").is_readonly());
         assert!(!inv("unipi-kanboard project rebind s --root /x").is_readonly());
-        assert!(inv("unipi-kanboard settings").is_readonly());
-        assert!(inv("unipi-kanboard settings show").is_readonly());
-        assert!(!inv("unipi-kanboard settings set a b").is_readonly());
         assert!(inv("unipi-kanboard validate").is_readonly());
         assert!(!inv("unipi-kanboard validate --fix").is_readonly());
     }
@@ -459,14 +450,22 @@ mod tests {
 
     #[test]
     fn known_subcommands_match_the_cli() {
-        for sub in [
-            "start",
-            "finish",
-            "release",
-            "archive-sweep",
+        // The pruned runner-era names are the binary's usage errors now
+        // (ext-abi §5.3), not write candidates.
+        for gone in [
+            "queue",
+            "unqueue",
+            "claim-next",
+            "set-run",
+            "serve",
+            "settings",
             "rotate-token",
-            "validate",
+            "stop",
         ] {
+            assert!(!KNOWN_SUBCOMMANDS.contains(&gone));
+            assert!(!invocations(&format!("unipi-kanboard {gone} A-1"))[0].is_known());
+        }
+        for sub in ["start", "finish", "release", "archive-sweep", "validate"] {
             assert!(KNOWN_SUBCOMMANDS.contains(&sub));
         }
         assert!(!invocations("unipi-kanboard done A-1")[0].is_known());

@@ -23,10 +23,10 @@
 mod common;
 
 use common::{Fixture, cli, id_of, task_from};
+use serde_json::Value;
 use unipi_kanboard::commands::{self, Common, EditArgs, StartArgs};
 use unipi_kanboard::model::{Actor, ChainGate, Priority, Status};
 use unipi_kanboard::store::Project;
-use serde_json::Value;
 
 /// `start <ID>` for `session` (pid owns the claim).
 fn start_id(
@@ -544,7 +544,8 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
     let id = id_of(&value);
     let listed = task_from(&value);
     assert_eq!(listed.id, id);
-    let attachments = unipi_kanboard::attachments::list(&fixture.layout, &fixture.project.slug, &id);
+    let attachments =
+        unipi_kanboard::attachments::list(&fixture.layout, &fixture.project.slug, &id);
     assert_eq!(attachments.len(), 1);
 }
 

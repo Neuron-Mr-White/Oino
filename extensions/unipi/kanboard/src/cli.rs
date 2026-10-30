@@ -1,8 +1,9 @@
-//! The kanboard bridge (round-5 #7): runs an `unipi-kanboard` argv **in the
-//! host process** through `oino:extension/kanboard.exec` — no binary, no
-//! daemon, no HTTP port; writes still serialise on the library's file locks
-//! (the CLI binary and the agent's own calls share them). `binary` is kept in
-//! the signature for callers and ignored.
+//! The kanboard bridge (ext-abi WP-X3): runs a `unipi-kanboard` argv through
+//! `process.exec` — one process per call, `--json` on the wire. The binary is
+//! resolved by the host's process service (`OINO_EXT_BIN_DIR` → the package's
+//! `bin/` → `PATH`); `UNIPI_KANBOARD_BIN` hands the agent an absolute-path
+//! override. Writes still serialise on the board's file locks (the extension,
+//! the agent's own calls and the Board share them).
 
 use serde_json::Value;
 
@@ -125,58 +126,35 @@ pub fn argv(args: &[String], json: bool) -> Vec<String> {
     out
 }
 
-/// Runs `unipi-kanboard args` in the host process. `env` comes on top of the
+/// Runs `unipi-kanboard args` as a child process. `env` goes on top of the
 /// host environment; the actor defaults to `user` (the extension acts as the
-/// user; only the agent's own calls say `agent`). `binary` and `timeout_ms`
-/// are ignored — an in-process call cannot be killed or go missing.
-#[allow(clippy::unused_async, reason = "callers await a uniform Result")]
+/// user; only the agent's own calls say `agent`). `binary` is the resolved
+/// command (`UNIPI_KANBOARD_BIN` override or the bare name); `timeout_ms`
+/// defaults to [`DEFAULT_TIMEOUT_MS`].
 pub async fn run(
-    _binary: &str,
+    binary: &str,
     args: &[String],
     env: &[(String, String)],
     cwd: Option<&str>,
     json: bool,
-    _timeout_ms: Option<u64>,
+    timeout_ms: Option<u64>,
 ) -> Result<Value, CliError> {
-    let mut vars = std::collections::BTreeMap::from_iter(env.iter().cloned());
-    vars.entry("UNIPI_KANBOARD_ACTOR".to_owned())
-        .or_insert_with(|| "user".to_owned());
-    let request = oino_extension::kanboard::Request {
-        argv: argv(args, json),
-        env: vars,
-        cwd: cwd.map(ToOwned::to_owned),
-        stdin: None,
-    };
-    let payload =
-        oino_extension::kanboard::exec(&request).map_err(|e| CliError::io(e.to_string()))?;
-    if oino_extension::kanboard::is_error(&payload) {
-        return Err(CliError {
-            message: payload
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("unipi-kanboard failed")
-                .to_owned(),
-            code: 1,
-            kind: payload
-                .get("kind")
-                .and_then(Value::as_str)
-                .unwrap_or("rule")
-                .to_owned(),
-        });
+    let mut vars = env.to_vec();
+    if !vars.iter().any(|(k, _)| k == "UNIPI_KANBOARD_ACTOR") {
+        vars.push(("UNIPI_KANBOARD_ACTOR".to_owned(), "user".to_owned()));
     }
-    if json {
-        return Ok(payload);
-    }
-    // The human rendering travels as `output` ([`service::exec`]) — the text
-    // the binary would have printed.
-    Ok(Value::String(
-        payload
-            .get("output")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .trim_end()
-            .to_owned(),
-    ))
+    let full = argv(args, json);
+    let refs: Vec<&str> = full.iter().map(String::as_str).collect();
+    let out = oino_extension::process::exec_env(
+        binary,
+        &refs,
+        cwd,
+        &vars,
+        timeout_ms.or(Some(DEFAULT_TIMEOUT_MS)),
+    )
+    .await
+    .map_err(|e| CliError::io(e.to_string()))?;
+    interpret(&out.stdout, &out.stderr, out.code, out.killed, json)
 }
 
 #[cfg(test)]

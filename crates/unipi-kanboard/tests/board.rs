@@ -22,9 +22,9 @@
 mod common;
 
 use common::Fixture;
+use std::sync::Arc;
 use unipi_kanboard::commands::{self, OrderTarget};
 use unipi_kanboard::model::{Actor, ChainGate, Priority, RunMode, Staleness, Status};
-use std::sync::Arc;
 
 /// The id `next` suggests (None when nothing is ready).
 fn next_id(fixture: &Fixture) -> Option<String> {

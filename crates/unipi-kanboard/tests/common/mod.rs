@@ -22,12 +22,12 @@
 )]
 #![allow(dead_code)]
 
-use unipi_kanboard::commands::{self, Common};
-use unipi_kanboard::model::{Actor, ChainGate, Priority, Status, Task};
-use unipi_kanboard::store::{Layout, Project};
 use serde_json::Value;
 use std::path::PathBuf;
 use tempfile::TempDir;
+use unipi_kanboard::commands::{self, Common};
+use unipi_kanboard::model::{Actor, ChainGate, Priority, Status, Task};
+use unipi_kanboard::store::{Layout, Project};
 
 // In-process tests read `UNIPI_KANBOARD_MAX_SESSIONS` & co. from the process
 // environment (`commands::max_sessions()`); run them from a shell that does not

@@ -82,16 +82,15 @@ struct Env {
 
 impl Env {
     fn new() -> Self {
-        // The extension runs kanboard in-process now (`kanboard.exec`); the
-        // binary only simulates the agent's own calls in `settle_nudges`.
-        assert!(
-            root_dir().join("target/debug/unipi-kanboard").exists(),
-            "build unipi-kanboard first (run.sh does)"
-        );
+        // The extension spawns the binary through `process.exec` (ext-abi
+        // WP-X3): the guest passes `UNIPI_KANBOARD_BIN` (the manifest grants the
+        // env read), so every call uses the debug build run.sh made.
+        let bin = root_dir().join("target/debug/unipi-kanboard");
+        assert!(bin.exists(), "build unipi-kanboard first (run.sh does)");
         let home = tempfile::tempdir().unwrap();
         // SAFETY: set before the runtime starts; tests run with --test-threads=1.
         unsafe {
-            std::env::remove_var("UNIPI_KANBOARD_BIN");
+            std::env::set_var("UNIPI_KANBOARD_BIN", &bin);
             std::env::set_var("UNIPI_KANBOARD_HOME", home.path());
             std::env::set_var("UNIPI_KANBOARD_NO_WATCH", "1");
             std::env::remove_var("UNIPI_KANBOARD_CHILD");
@@ -294,8 +293,7 @@ async fn board_flow_guard_and_env() {
         .is_none());
 
     // -do grants a budget and sends the harness prompt.
-    env.command(&ext, "kanboard-do", "triage the board")
-        .await;
+    env.command(&ext, "kanboard-do", "triage the board").await;
     let sent = env.writes("sendUserMessage");
     let text = sent[0]["sendUserMessage"].as_str().unwrap();
     assert!(
@@ -438,6 +436,61 @@ async fn capture_service_and_claims_nudge() {
         .unwrap();
     let task: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(task["status"], "todo");
+}
+
+/// WP-X3: without `UNIPI_KANBOARD_BIN`, the host's process service resolves the
+/// bare `unipi-kanboard` name against the calling package's `bin/` dir — the
+/// shipped-binary path (`OINO_EXT_BIN_DIR` → package `bin/` → `PATH`).
+#[tokio::test(flavor = "multi_thread")]
+async fn spawn_resolves_the_package_bin_without_the_env_override() {
+    let env = Env::new();
+    // A package root shipping this platform's binary (the dist layout).
+    let pkg = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(pkg.path().join("bin")).unwrap();
+    std::fs::copy(
+        root_dir().join("target/debug/unipi-kanboard"),
+        pkg.path().join("bin/unipi-kanboard"),
+    )
+    .unwrap();
+    // SAFETY: the harness runs with --test-threads=1; restored before the
+    // assertions so later tests keep the debug-build override.
+    unsafe {
+        std::env::remove_var("UNIPI_KANBOARD_BIN");
+    }
+    let manifest = Manifest::parse(
+        &std::fs::read_to_string(extensions_dir().join("unipi/kanboard/extension.json")).unwrap(),
+    )
+    .unwrap();
+    let package = LoadedPackage {
+        manifest,
+        component: ComponentSource::Path(built().clone()),
+        root: Some(pkg.path().to_path_buf()),
+        bundled: true,
+    };
+    let host: Arc<dyn HostServices> = Arc::clone(&env.host) as Arc<dyn HostServices>;
+    let ext = env.runtime.load(package, host).await.unwrap();
+    ext.init(InitInput::default(), env.cx(CallKind::Init))
+        .await
+        .unwrap();
+    env.event(
+        &ext,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    env.command(&ext, "kanboard", "onboard").await;
+    // SAFETY: restore before any assertion can early-return.
+    unsafe {
+        std::env::set_var(
+            "UNIPI_KANBOARD_BIN",
+            root_dir().join("target/debug/unipi-kanboard"),
+        );
+    }
+    assert!(
+        env.notices().iter().any(|n| n.contains("registered")),
+        "the extension onboarded through the package's bin/ binary: {:?}",
+        env.notices()
+    );
 }
 
 /// The §2.1.8 restart gate for kanboard: session state (guard budget, monitor, tracker) is

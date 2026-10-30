@@ -22,9 +22,9 @@
 mod common;
 
 use common::{AMBIENT_KANBOARD_ENV, Fixture, VALID_TASK};
-use unipi_kanboard::store::Layout;
 use serde_json::Value;
 use std::process::Command;
+use unipi_kanboard::store::Layout;
 
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_unipi-kanboard")
@@ -101,6 +101,25 @@ fn add_rejects_a_lane_it_may_not_target() {
             .unwrap()
             .contains("new tasks start in backlog or todo")
     );
+}
+
+/// The §5.5 contract holds even for clap-level failures: `--json` puts one
+/// `{ok: false, …, kind: "usage"}` line on stderr, exit 2 (the Board and the
+/// extension's `interpret()` decode it like any other failure).
+#[test]
+fn unknown_subcommands_report_usage_json_on_stderr() {
+    let fixture = Fixture::new();
+    let run = kb(&fixture, &["frobnicate", "--json"]);
+    assert_eq!(run.code, 2);
+    assert_eq!(run.json["ok"], false);
+    assert_eq!(run.json["kind"], "usage");
+    assert!(run.json["error"].as_str().unwrap().contains("frobnicate"));
+    assert!(
+        run.stderr.trim_start().starts_with('{'),
+        "the JSON line is on stderr: {}",
+        run.stderr
+    );
+    assert!(run.stdout.trim().is_empty(), "nothing on stdout");
 }
 
 #[test]

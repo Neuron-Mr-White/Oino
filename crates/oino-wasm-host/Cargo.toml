@@ -26,7 +26,6 @@ oino-browser-protocol = { path = "../oino-browser-protocol" }
 oino-core = { path = "../oino-core", optional = true }
 oino-cron = { path = "../oino-cron" }
 oino-extension-api = { path = "../oino-extension-api" }
-unipi-kanboard = { path = "../unipi-kanboard" }
 oino-settings = { path = "../oino-settings" }
 reqwest.workspace = true
 serde.workspace = true

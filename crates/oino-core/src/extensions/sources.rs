@@ -382,10 +382,7 @@ pub fn resolve_with(
 /// Load-time binary check (ext-abi §5.2): a package declaring `binaries` whose
 /// `bin/<name>` is absent still loads — its tools report "binary unavailable" —
 /// but discovery says so (a wrong-platform dist is the usual cause).
-fn warn_missing_binaries(
-    packages: &mut [SourcePackage],
-    diagnostics: &mut Vec<SourceDiagnostic>,
-) {
+fn warn_missing_binaries(packages: &mut [SourcePackage], diagnostics: &mut Vec<SourceDiagnostic>) {
     for p in packages {
         let Some(root) = p.package.root.clone() else {
             continue;
@@ -746,10 +743,11 @@ mod tests {
                     .to_owned(),
             ]
         );
-        assert!(out
-            .diagnostics
-            .iter()
-            .all(|d| d.severity == SourceSeverity::Warning));
+        assert!(
+            out.diagnostics
+                .iter()
+                .all(|d| d.severity == SourceSeverity::Warning)
+        );
         // Present: silent.
         std::fs::create_dir_all(pkg.join("bin")).unwrap();
         std::fs::write(pkg.join("bin/unipi-kanboard"), b"#").unwrap();

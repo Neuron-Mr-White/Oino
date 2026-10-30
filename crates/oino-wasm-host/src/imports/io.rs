@@ -25,6 +25,68 @@ type HostResult<T> = wasmtime::Result<Result<T, wt::HostError>>;
 
 // ── process ──────────────────────────────────────────────────────────────
 
+/// Host-level dev override for [`resolve_program`] (ext-abi §5.2): a path
+/// list searched before the package `bin/` dir and `PATH`, so a stale package
+/// binary never shadows a fresh dev build (unipi's `bin.ts` rationale).
+pub(crate) const EXT_BIN_DIR_ENV: &str = "OINO_EXT_BIN_DIR";
+
+/// `name` and, on Windows, `name.exe` (the install name drops the suffix).
+fn bin_candidates(name: &str) -> Vec<String> {
+    let is_exe = Path::new(name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"));
+    if cfg!(windows) && !is_exe {
+        vec![format!("{name}.exe"), name.to_owned()]
+    } else {
+        vec![name.to_owned()]
+    }
+}
+
+/// Resolves a non-path `command` for `process.exec`/`child.spawn` (ext-abi
+/// §5.2), mirroring unipi `bin.ts`'s env-override → package → PATH order in a
+/// host-appropriate shape:
+/// 1. each entry of [`EXT_BIN_DIR_ENV`] (dev-only override),
+/// 2. `<package root>/bin/<name>[.exe]` when the calling extension's manifest
+///    declares `name` in `binaries`,
+/// 3. `PATH` — returned unchanged, so the OS resolves it
+///    (`process::resolve_program` keeps its GA-41 executable-dir fallback).
+///
+/// Absolute and relative paths pass through unchanged; permission matching is
+/// by file name either way ([`Permissions::allows_program`]).
+fn resolve_program(ext: &ExtShared, command: &str) -> String {
+    if command.is_empty() || Path::new(command).components().count() != 1 {
+        return command.to_owned();
+    }
+    let stem = command.strip_suffix(".exe").unwrap_or(command);
+    if let Some(dirs) = std::env::var_os(EXT_BIN_DIR_ENV)
+        && !dirs.is_empty()
+    {
+        for dir in std::env::split_paths(&dirs) {
+            for name in bin_candidates(command) {
+                let path = dir.join(name);
+                if path.is_file() {
+                    return path.to_string_lossy().into_owned();
+                }
+            }
+        }
+    }
+    if ext
+        .manifest
+        .binaries
+        .iter()
+        .any(|b| b == command || b == stem)
+        && let Some(root) = &ext.package_root
+    {
+        for name in bin_candidates(command) {
+            let path = root.join("bin").join(name);
+            if path.is_file() {
+                return path.to_string_lossy().into_owned();
+            }
+        }
+    }
+    command.to_owned()
+}
+
 fn host_path(cx: &CallContext, p: Option<String>) -> PathBuf {
     match p {
         Some(p) if Path::new(&p).is_absolute() => PathBuf::from(p),
@@ -73,7 +135,7 @@ fn spawn(
         wp::StdioMode::Null | wp::StdioMode::InheritLog => Input::Null,
     };
     let s = Spawn {
-        command: spec.command,
+        command: resolve_program(ext, &spec.command),
         args: spec.args,
         cwd: host_path(cx, spec.cwd),
         env: spec.env,
@@ -230,8 +292,9 @@ impl<T: Send> wp::HostWithStore<T> for HostState {
         ) {
             Ok(()) => {
                 let cwd = host_path(&cx, options.cwd);
+                let resolved = resolve_program(&ext, &command);
                 process::exec(
-                    &command,
+                    &resolved,
                     &args,
                     &cwd,
                     &options.env,

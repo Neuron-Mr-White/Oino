@@ -20,7 +20,7 @@ use crate::shell::{Invocation, invocations};
 /// Refusal for every write from a child session.
 pub const CHILD_WRITE_REFUSAL: &str =
     "board writes are the lead's job — report this to the lead; the lead updates the board";
-/// Refusal for the subcommands removed with the runner.
+/// Refusal for runner remnants in an argv (`edit --strategy`/`--plan`).
 pub const REMOVED_REFUSAL: &str =
     "removed: the session works tasks itself (no runner/queue/strategy)";
 /// Refusal when the task slots are spent.
@@ -34,8 +34,11 @@ pub const DEFAULT_DO_WRITES: u64 = 10;
 /// Default `kanboard.turnAddLimit`.
 pub const ADD_CAP: u64 = 20;
 
-/// Subcommands removed with the runner: refused outright.
-const REMOVED: &[&str] = &["queue", "unqueue", "claim-next", "set-run"];
+// Subcommands removed with the runner are no longer listed in
+// `shell::KNOWN_SUBCOMMANDS` (ext-abi §5.3): like any unknown name they are the
+// binary's own usage error — neither blocked nor charged. `edit
+// --strategy/--plan` still names the removed runner and is refused
+// ([`REMOVED_REFUSAL`]).
 
 /// Refusal past the add cap.
 #[must_use]
@@ -160,7 +163,7 @@ impl WriteGuard {
             if is_child {
                 return Some(CHILD_WRITE_REFUSAL.to_owned());
             }
-            if REMOVED.contains(&inv.sub.as_str()) || inv.is_removed_edit() {
+            if inv.is_removed_edit() {
                 return Some(REMOVED_REFUSAL.to_owned());
             }
             // The add cap applies always (runaway guard), before any charging.
@@ -256,18 +259,28 @@ mod tests {
     }
 
     #[test]
-    fn removed_subcommands_are_refused_before_any_charge() {
+    fn runner_remnants_are_usage_errors_except_removed_edits() {
         let mut g = WriteGuard::default();
         g.open(5, 10);
         g.set_autowork(true);
+        // The runner-era subcommands are pruned from KNOWN_SUBCOMMANDS: unknown
+        // names are the binary's usage errors — skipped, never blocked.
         for cmd in [
             "queue A-1",
             "unqueue A-1",
             "claim-next",
             "set-run A-1",
-            "edit A-1 --strategy swarm",
-            "edit A-1 --plan=true",
+            "serve",
+            "settings",
         ] {
+            assert_eq!(
+                check(&mut g, &format!("{B} {cmd}")).as_deref(),
+                None,
+                "{cmd}"
+            );
+        }
+        // `edit --strategy/--plan` still names the removed runner.
+        for cmd in ["edit A-1 --strategy swarm", "edit A-1 --plan=true"] {
             assert_eq!(
                 check(&mut g, &format!("{B} {cmd}")).as_deref(),
                 Some(REMOVED_REFUSAL),

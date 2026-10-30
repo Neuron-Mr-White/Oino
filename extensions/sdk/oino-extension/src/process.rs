@@ -15,10 +15,22 @@ pub async fn exec(
     cwd: Option<&str>,
     timeout_ms: Option<u64>,
 ) -> Result<ExecResult> {
+    exec_env(command, args, cwd, &[], timeout_ms).await
+}
+
+/// pi `exec` with `env` set on top of the host's environment (ext-abi §5.3:
+/// the caller's `UNIPI_KANBOARD_*` identity travels with the argv).
+pub async fn exec_env(
+    command: &str,
+    args: &[&str],
+    cwd: Option<&str>,
+    env: &[(String, String)],
+    timeout_ms: Option<u64>,
+) -> Result<ExecResult> {
     let options = wp::ExecOptions {
         cwd: cwd.map(ToOwned::to_owned),
         timeout_ms,
-        env: Vec::new(),
+        env: env.to_vec(),
     };
     Ok(wp::exec(
         command.to_owned(),
