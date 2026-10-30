@@ -1,9 +1,11 @@
 /**
- * Settings → This computer → Cron (UNI-318, app part): concurrency,
- * retention, default time limit, paused, plus the C3 notification fields
- * (ntfy topic, default events) — just stored and shown here, read/written
- * through `cron_settings_get` / `cron_settings_set` against this PC's own
- * host id (the `last_path === 'local'` entry from `useHosts`).
+ * Settings → This computer → Cron (WP-A23 over H8): the scheduler's own
+ * settings — concurrency, missed window, retention, default time limit,
+ * default notify events — read/written through `cron_settings_get` /
+ * `cron_settings_set` against this PC's own host id (the `last_path ===
+ * 'local'` entry from `useHosts`). They live in `<agent dir>/cron/settings.json`
+ * next to the job files. The ntfy topic is no longer set here: it moved to
+ * the notify settings (the host rejects a topic in `cron_settings_set`).
  */
 import { createEffect, createSignal, For, Show } from 'solid-js';
 import { Clock, RefreshCw } from 'lucide-solid';
@@ -58,7 +60,6 @@ export function CronSettingsCard() {
   const [data, setData] = createSignal<CronSettingsData | undefined>();
   const [error, setError] = createSignal<AppError | undefined>();
   const [busy, setBusy] = createSignal(false);
-  const [topic, setTopic] = createSignal('');
 
   const load = async () => {
     const id = localId();
@@ -68,7 +69,6 @@ export function CronSettingsCard() {
     setBusy(false);
     if (r.ok) {
       setData(r.value);
-      setTopic(r.value.ntfy_topic ?? '');
       setError(undefined);
     } else setError(r.error);
   };
@@ -84,7 +84,6 @@ export function CronSettingsCard() {
     setBusy(false);
     if (r.ok) {
       setData(r.value);
-      setTopic(r.value.ntfy_topic ?? '');
       setError(undefined);
     } else setError(r.error);
   }
@@ -146,26 +145,8 @@ export function CronSettingsCard() {
         />
         <div class="settings-row">
           <div class="min-w-0">
-            <p class="text-[15px] text-text">Notify topic (ntfy)</p>
-            <p class="text-xs text-text-dim mt-0.5">The ntfy.sh topic run notifications are posted to, if any.</p>
-          </div>
-          <div class="shrink-0">
-            <input
-              type="text"
-              class="rounded-input bg-surface-2 border border-line px-3 py-1.5 text-sm text-text w-40"
-              placeholder="none"
-              value={topic()}
-              disabled={busy()}
-              data-testid="cron-settings-ntfy-topic"
-              onInput={(e) => setTopic(e.currentTarget.value)}
-              onBlur={() => void set({ ntfy_topic: topic().trim() === '' ? undefined : topic().trim() })}
-            />
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="min-w-0">
             <p class="text-[15px] text-text">Notify on</p>
-            <p class="text-xs text-text-dim mt-0.5">Which run outcomes are notified about by default.</p>
+            <p class="text-xs text-text-dim mt-0.5">Which run outcomes are notified about by default. The channels themselves (ntfy, Gotify, Telegram) are set up in the notify settings.</p>
           </div>
           <div class="shrink-0 flex gap-2">
             <For each={NOTIFY_EVENTS}>

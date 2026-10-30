@@ -295,6 +295,9 @@ struct Inner {
     meta: MetaStore,
     /// Which session each live `events_open` connection focuses (Z-86).
     focus: FocusRegistry,
+    /// Which sessions the cron scheduler owns (app spec §3.14 "Cron source", WP-A23):
+    /// fills the cards' `source: "cron"` from the cron runs store.
+    cron: crate::cron_serve::CronSessions,
     started: SystemTime,
 }
 
@@ -357,13 +360,14 @@ impl SessionHub {
         let inner = Arc::new(Inner {
             core,
             cwd,
-            agent_dir,
+            agent_dir: agent_dir.clone(),
             sessions_root,
             events,
             notices: Mutex::new(Vec::new()),
             state: Mutex::new(State::default()),
             meta,
             focus: FocusRegistry::default(),
+            cron: crate::cron_serve::CronSessions::new(&agent_dir),
             started: SystemTime::now(),
         });
         Ok(Arc::new(Self { inner }))
@@ -643,7 +647,8 @@ impl Inner {
             pinned: false,
             unread: false,
             title_locked: false,
-            source: None,
+            // App spec §3.14 (WP-A23, Z-112): a run-owned session says who runs it.
+            source: self.cron.source_of(&info.id, &info.path).map(str::to_owned),
             changes: None,
             last_activity: epoch_ms(info.modified),
         })

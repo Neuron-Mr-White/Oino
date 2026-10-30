@@ -5,7 +5,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_list"
       }
@@ -17,7 +17,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_show",
         "id": "daily-digest"
@@ -30,7 +30,7 @@
     "ok": false,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_show",
         "id": "a/b"
@@ -43,7 +43,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_runs"
       }
@@ -55,7 +55,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_runs",
         "id": "daily-digest",
@@ -69,7 +69,7 @@
     "ok": false,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_runs",
         "limit": 501
@@ -82,7 +82,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_log",
         "run_id": "r1a2b3"
@@ -90,12 +90,12 @@
     }
   },
   {
-    "name": "cron_add minimal",
+    "name": "cron_add minimal (plain-language schedule resolves on the host)",
     "schema": "Control",
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_add",
         "name": "daily digest",
@@ -111,7 +111,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_add",
         "id": "daily-digest",
@@ -134,7 +134,7 @@
     "ok": false,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_add",
         "name": "",
@@ -145,12 +145,32 @@
     }
   },
   {
+    "name": "cron_add with notify (H8 job files; wake links are written to the file, not the wire)",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "2.0.0",
+      "req": {
+        "op": "cron_add",
+        "name": "digest",
+        "prompt": "p",
+        "schedule": "0 0 9 * * *",
+        "cwd": "/tmp",
+        "notify": {
+          "events": ["done", "failed"],
+          "channels": ["ntfy"]
+        }
+      }
+    }
+  },
+  {
     "name": "cron_edit patch",
     "schema": "Control",
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_edit",
         "id": "daily-digest",
@@ -161,12 +181,29 @@
     }
   },
   {
+    "name": "cron_edit notify back to defaults + wake_clear",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "2.0.0",
+      "req": {
+        "op": "cron_edit",
+        "id": "digest",
+        "patch": {
+          "notify": {},
+          "wake_clear": true
+        }
+      }
+    }
+  },
+  {
     "name": "cron_rm",
     "schema": "Control",
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_rm",
         "id": "daily-digest"
@@ -179,7 +216,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_enable",
         "id": "daily-digest"
@@ -192,7 +229,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_disable",
         "id": "daily-digest"
@@ -205,7 +242,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_run",
         "id": "daily-digest"
@@ -218,7 +255,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_stop",
         "id": "daily-digest"
@@ -226,12 +263,12 @@
     }
   },
   {
-    "name": "cron_pause",
+    "name": "cron_pause (the wire name of pause-all)",
     "schema": "Control",
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_pause"
       }
@@ -243,7 +280,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_resume"
       }
@@ -255,7 +292,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_status"
       }
@@ -267,7 +304,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_parse",
         "schedule": "every day at 9:00",
@@ -281,7 +318,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_parse",
         "at": "in 2 hours"
@@ -294,7 +331,7 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_settings_get"
       }
@@ -306,11 +343,23 @@
     "ok": true,
     "value": {
       "type": "hello",
-      "proto": "1.19.0",
+      "proto": "2.0.0",
       "req": {
         "op": "cron_settings_set",
         "concurrency": 4,
-        "paused": true,
+        "paused": true
+      }
+    }
+  },
+  {
+    "name": "cron_settings_set with an ntfy topic is schema-valid but the H8 host rejects it (the topic moved to the notify settings)",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "2.0.0",
+      "req": {
+        "op": "cron_settings_set",
         "ntfy_topic": "my-topic"
       }
     }
@@ -330,13 +379,224 @@
       "time_limit_s": 1800,
       "created": 1,
       "updated": 2,
-      "next_fire": "2025-01-01T09:00:00Z",
+      "next_fire": "2026-01-01T09:00:00+01:00",
       "running": false,
       "last_run_status": "ok"
     }
   },
   {
-    "name": "CronSettingsData defaults missing devices/ntfy",
+    "name": "CronJob with notify + a session-file wake link (H8: no pid on the wire)",
+    "schema": "CronJob",
+    "ok": true,
+    "value": {
+      "id": "d",
+      "name": "d",
+      "prompt": "p",
+      "schedule": "0 0 9 * * *",
+      "tz": "UTC",
+      "cwd": "/tmp",
+      "enabled": true,
+      "time_limit_s": 1800,
+      "created": 1,
+      "updated": 2,
+      "running": false,
+      "notify": {
+        "events": ["done"]
+      },
+      "wake": {
+        "session_file": "/home/me/.oino/sessions/--tmp--/planning.jsonl",
+        "session_id": "planning"
+      }
+    }
+  },
+  {
+    "name": "CronRun with the fired session (the run id is the session id)",
+    "schema": "CronRun",
+    "ok": true,
+    "value": {
+      "id": "daily-digest-0182",
+      "job_id": "daily-digest",
+      "status": "ok",
+      "fired_at": 1790000000000,
+      "started_at": 1790000000200,
+      "ended_at": 1790000043000,
+      "exit_code": 0,
+      "summary": "Digest: 12 threads, 3 replies",
+      "session_path": "/home/me/.oino/sessions/--home-me-jobs-digest--/daily-digest-0182.jsonl",
+      "cost_usd": 0.0412,
+      "missed": false
+    }
+  },
+  {
+    "name": "CronRun skipped (overlap) has a reason, no session",
+    "schema": "CronRun",
+    "ok": true,
+    "value": {
+      "id": "daily-digest-0183",
+      "job_id": "daily-digest",
+      "status": "skipped",
+      "fired_at": 1790086400000,
+      "reason": "the previous run was still going",
+      "missed": true
+    }
+  },
+  {
+    "name": "CronJobsData",
+    "schema": "CronJobsData",
+    "ok": true,
+    "value": {
+      "jobs": [
+        {
+          "id": "daily-digest",
+          "name": "daily digest",
+          "prompt": "p",
+          "schedule": "0 0 9 * * *",
+          "tz": "UTC",
+          "cwd": "/tmp",
+          "enabled": true,
+          "time_limit_s": 1800,
+          "created": 1,
+          "updated": 2,
+          "running": true,
+          "next_fire": "2026-01-01T09:00:00Z"
+        }
+      ],
+      "paused": false
+    }
+  },
+  {
+    "name": "CronShowData",
+    "schema": "CronShowData",
+    "ok": true,
+    "value": {
+      "job": {
+        "id": "daily-digest",
+        "name": "daily digest",
+        "prompt": "p",
+        "schedule": "0 0 9 * * *",
+        "tz": "UTC",
+        "cwd": "/tmp",
+        "enabled": true,
+        "time_limit_s": 1800,
+        "created": 1,
+        "updated": 2,
+        "running": false
+      },
+      "runs": [
+        {
+          "id": "daily-digest-0182",
+          "job_id": "daily-digest",
+          "status": "ok",
+          "fired_at": 1790000000000,
+          "missed": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "CronRunsData (all jobs, newest first per job)",
+    "schema": "CronRunsData",
+    "ok": true,
+    "value": {
+      "runs": [
+        {
+          "id": "daily-digest-0182",
+          "job_id": "daily-digest",
+          "status": "ok",
+          "fired_at": 1790000000000,
+          "missed": false
+        },
+        {
+          "id": "weekly-report-0031",
+          "job_id": "weekly-report",
+          "status": "failed",
+          "fired_at": 1789900000000,
+          "reason": "model auth expired (401)",
+          "missed": false
+        }
+      ]
+    }
+  },
+  {
+    "name": "CronLogData",
+    "schema": "CronLogData",
+    "ok": true,
+    "value": {
+      "job_id": "daily-digest",
+      "run": {
+        "id": "daily-digest-0182",
+        "job_id": "daily-digest",
+        "status": "ok",
+        "fired_at": 1790000000000,
+        "missed": false
+      },
+      "log": "Digest: 12 threads, 3 replies.\nDone in 41 s."
+    }
+  },
+  {
+    "name": "CronRunStartedData",
+    "schema": "CronRunStartedData",
+    "ok": true,
+    "value": {
+      "id": "daily-digest",
+      "run_id": "daily-digest-0184"
+    }
+  },
+  {
+    "name": "CronStoppedData",
+    "schema": "CronStoppedData",
+    "ok": true,
+    "value": {
+      "id": "daily-digest",
+      "stopped": true
+    }
+  },
+  {
+    "name": "CronStatusData",
+    "schema": "CronStatusData",
+    "ok": true,
+    "value": {
+      "paused": false,
+      "concurrency": 2,
+      "jobs": [
+        { "id": "daily-digest", "enabled": true, "next_fire": "2026-01-01T09:00:00Z", "running": false },
+        { "id": "cleanup", "enabled": false, "running": false }
+      ]
+    }
+  },
+  {
+    "name": "CronParseData",
+    "schema": "CronParseData",
+    "ok": true,
+    "value": {
+      "expression": "0 0 9 * * *",
+      "one_time": false,
+      "tz": "Europe/Berlin",
+      "next_fires": [
+        "2026-01-01T09:00:00+01:00",
+        "2026-01-02T09:00:00+01:00",
+        "2026-01-03T09:00:00+01:00"
+      ]
+    }
+  },
+  {
+    "name": "CronSettingsData with the notify channels",
+    "schema": "CronSettingsData",
+    "ok": true,
+    "value": {
+      "concurrency": 2,
+      "missed_window_s": 21600,
+      "retention_runs": 50,
+      "retention_days": 30,
+      "default_time_limit_s": 1800,
+      "paused": false,
+      "enabled": false,
+      "notify_default_events": ["failed"],
+      "notify_channels": ["ntfy", "telegram"]
+    }
+  },
+  {
+    "name": "CronSettingsData defaults missing devices/notify",
     "schema": "CronSettingsData",
     "ok": true,
     "value": {
@@ -361,94 +621,6 @@
       "default_time_limit_s": 1800,
       "paused": false,
       "enabled": false
-    }
-  },
-  {
-    "name": "cron_add with notify + wake (UNI-319)",
-    "schema": "Control",
-    "ok": true,
-    "value": {
-      "type": "hello",
-      "proto": "1.20.0",
-      "req": {
-        "op": "cron_add",
-        "name": "digest",
-        "prompt": "p",
-        "schedule": "0 0 9 * * *",
-        "cwd": "/tmp",
-        "notify": {
-          "events": [
-            "done",
-            "failed"
-          ],
-          "channels": [
-            "ntfy"
-          ]
-        },
-        "wake_pid": 4242
-      }
-    }
-  },
-  {
-    "name": "cron_edit notify back to defaults + wake_clear (UNI-319)",
-    "schema": "Control",
-    "ok": true,
-    "value": {
-      "type": "hello",
-      "proto": "1.20.0",
-      "req": {
-        "op": "cron_edit",
-        "id": "digest",
-        "patch": {
-          "notify": {},
-          "wake_clear": true
-        }
-      }
-    }
-  },
-  {
-    "name": "cron_add wake_pid 0 rejected",
-    "schema": "Control",
-    "ok": false,
-    "value": {
-      "type": "hello",
-      "proto": "1.20.0",
-      "req": {
-        "op": "cron_add",
-        "name": "d",
-        "prompt": "p",
-        "schedule": "0 0 9 * * *",
-        "cwd": "/tmp",
-        "wake_pid": 0
-      }
-    }
-  },
-  {
-    "name": "CronJob with notify + wake (UNI-319)",
-    "schema": "CronJob",
-    "ok": true,
-    "value": {
-      "id": "d",
-      "name": "d",
-      "prompt": "p",
-      "schedule": "0 0 9 * * *",
-      "tz": "UTC",
-      "cwd": "/tmp",
-      "enabled": true,
-      "time_limit_s": 1800,
-      "created": 1,
-      "updated": 2,
-      "running": false,
-      "notify": {
-        "events": [
-          "done"
-        ]
-      },
-      "wake": {
-        "session_file": "/s.jsonl",
-        "pid": 4242,
-        "session_name": "planning"
-      }
     }
   }
 ]

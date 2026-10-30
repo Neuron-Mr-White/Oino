@@ -38,6 +38,87 @@ fn internal(e: impl std::fmt::Display) -> AppErrorDto {
     AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false)
 }
 
+/// Which sessions the cron scheduler owns (app spec §3.14 "Cron source", WP-A23): a
+/// fired run's Oino session carries the run id as its session id and the run record names
+/// its session file (`exec.rs`), so a session is cron-run when a run answers its id or its
+/// file. The sidebar's clock badge (Z-112) and the "Sent by cron" bubble label data come
+/// from this.
+///
+/// The set is read from the runs store (`<agent dir>/cron/runs`), at most once per
+/// [`CronSessions::REFRESH`] — `sessions_list` and every `SessionChanged` card flow
+/// through here and must stay cheap. A missing or unreadable store is simply "no cron
+/// sessions".
+pub struct CronSessions {
+    paths: CronPaths,
+    state: std::sync::Mutex<CronCache>,
+}
+
+#[derive(Default)]
+struct CronCache {
+    /// When the set was last read (`None` = never).
+    at: Option<std::time::Instant>,
+    /// Run ids (= the fired sessions' ids).
+    ids: std::collections::HashSet<String>,
+    /// The run records' session files, as stored (absolute paths).
+    files: std::collections::HashSet<String>,
+}
+
+impl CronSessions {
+    /// How long a read set stays fresh (runs are minutes apart; a badge may lag this much
+    /// at most after a run first writes its session).
+    const REFRESH: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// The cron sessions of an agent dir (its `cron/` store; absent until the first job).
+    #[must_use]
+    pub fn new(agent_dir: &Path) -> Self {
+        Self {
+            paths: CronPaths::new(agent_dir.to_path_buf()),
+            state: std::sync::Mutex::new(CronCache::default()),
+        }
+    }
+
+    /// `Some("cron")` when a run owns the session (by id or file), `None` otherwise.
+    #[must_use]
+    pub fn source_of(&self, session_id: &str, file: &Path) -> Option<&'static str> {
+        let mut cache = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if cache.at.is_none_or(|at| at.elapsed() >= Self::REFRESH) {
+            *cache = CronCache {
+                at: Some(std::time::Instant::now()),
+                ..CronCache::from_runs(&self.paths)
+            };
+        }
+        cache
+            .ids
+            .contains(session_id)
+            .then_some("cron")
+            .or_else(|| {
+                cache
+                    .files
+                    .contains(&file.display().to_string())
+                    .then_some("cron")
+            })
+    }
+}
+
+impl CronCache {
+    /// The run store's answer, empty on any read trouble (a broken store must not take
+    /// the sessions list down).
+    fn from_runs(paths: &CronPaths) -> Self {
+        let runs = store::load_all_runs(paths).unwrap_or_default();
+        let mut cache = Self::default();
+        for run in runs {
+            cache.ids.insert(run.id);
+            if let Some(file) = run.session_path {
+                cache.files.insert(file);
+            }
+        }
+        cache
+    }
+}
+
 fn bad_request(e: impl Into<String>) -> AppErrorDto {
     AppErrorDto::new(AppErrorCode::E_SCHEMA, e.into(), false)
 }
@@ -704,4 +785,103 @@ pub fn apply_settings_patch(
 #[must_use]
 pub fn cron_paths_for_host(data_dir: &Path) -> CronPaths {
     CronPaths::new(crate::sessions::services::agent_dir(data_dir))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use unipi_cron::model::{Job, Run, RunStatus};
+
+    fn job(id: &str) -> Job {
+        Job {
+            id: id.to_owned(),
+            name: id.to_owned(),
+            prompt: "p".to_owned(),
+            schedule: "0 0 9 * * *".to_owned(),
+            tz: "UTC".to_owned(),
+            cwd: "/tmp".to_owned(),
+            model: None,
+            thinking: None,
+            enabled: true,
+            time_limit_s: 60,
+            cost_cap_usd: None,
+            overlap: Default::default(),
+            missed: Default::default(),
+            notify: None,
+            session_link: None,
+            created: 1,
+            updated: 1,
+        }
+    }
+
+    fn run(id: &str, job_id: &str, session_path: Option<&str>) -> Run {
+        Run {
+            id: id.to_owned(),
+            job_id: job_id.to_owned(),
+            status: RunStatus::Ok,
+            fired_at: 1,
+            started_at: Some(1),
+            ended_at: Some(2),
+            exit_code: Some(0),
+            summary: None,
+            reason: None,
+            session_path: session_path.map(str::to_owned),
+            cost_usd: None,
+            missed: false,
+            pid: None,
+            notify_errors: Vec::new(),
+            wake: None,
+        }
+    }
+
+    #[test]
+    fn cron_sessions_answer_by_run_id_and_session_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CronPaths::new(dir.path().join("agent"));
+        store::save_job(&paths, &job("digest")).unwrap();
+        // The usual shape: the run id is the session id and the record names the file.
+        store::save_run(
+            &paths,
+            &run(
+                "digest-0182",
+                "digest",
+                Some("/agent/sessions/--tmp--/digest-0182.jsonl"),
+            ),
+        )
+        .unwrap();
+        let sessions = CronSessions::new(&dir.path().join("agent"));
+        assert_eq!(
+            sessions.source_of("digest-0182", Path::new("/unrelated.jsonl")),
+            Some("cron"),
+            "the run id is the fired session's id"
+        );
+        assert_eq!(
+            sessions.source_of(
+                "other",
+                Path::new("/agent/sessions/--tmp--/digest-0182.jsonl")
+            ),
+            Some("cron"),
+            "a run's session file names its session even when the ids differ"
+        );
+        assert_eq!(
+            sessions.source_of("other", Path::new("/unrelated.jsonl")),
+            None
+        );
+    }
+
+    #[test]
+    fn no_store_or_broken_runs_are_simply_not_cron() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = CronSessions::new(&dir.path().join("agent"));
+        assert_eq!(sessions.source_of("x", Path::new("/s/x.jsonl")), None);
+
+        // A corrupt run file must not take the sessions list down: the set stays empty.
+        let paths = CronPaths::new(&dir.path().join("agent"));
+        store::save_job(&paths, &job("j")).unwrap();
+        std::fs::create_dir_all(paths.job_runs("j")).unwrap();
+        std::fs::write(paths.run_json("j", "bad"), "not json").unwrap();
+        // A fresh index (the cache is per-instance and 5 s fresh).
+        let sessions = CronSessions::new(&dir.path().join("agent"));
+        assert_eq!(sessions.source_of("bad", Path::new("/s/bad.jsonl")), None);
+    }
 }

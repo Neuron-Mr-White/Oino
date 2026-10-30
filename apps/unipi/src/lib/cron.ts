@@ -1,7 +1,10 @@
 /**
- * Scheduled pi runs (UNI-317) and their settings (UNI-318): the UI's one
- * seam onto the `cron_*` Tauri commands (`apps/mobile/src-tauri/src/cron.rs`
- * → `unipi-host`'s `cron_*` requests, `crates/host/src/cron_serve.rs`).
+ * Scheduled runs on job files (app spec WP-A23, G-17): the UI's one seam
+ * onto the `cron_*` Tauri commands (`src-tauri/src/cron.rs` → `unipi-host`'s
+ * `cron_*` requests, `crates/unipi-host/src/cron_serve.rs`), which the H8
+ * merge answers from the job files under `<agent dir>/cron` and the embedded
+ * scheduler `unipi-host serve` runs. Jobs are files written by the cron
+ * extension and this seam alike; the store is the truth.
  *
  * Who may use these: this PC's own app always; a phone needs the `cron`
  * sharing feature in its per-device allow list first (UNI-248 pattern,
@@ -131,12 +134,23 @@ export async function cronSettingsSet(hostId: string, patch: CronSettingsSetRequ
   return hostCall(hostId, 'cron_settings_set', { patch: CronSettingsSetRequestSchema.parse(patch) }, CronSettingsDataSchema);
 }
 
-/** UNI-319: open a run's saved session as a live chat. The host opens it in
- * its session hub and answers the session id (host.md §9.8; the herdr/tmux
- * placement of v1 is gone, D-14). */
+/** Open a run's saved session as a live chat (WP-A23): the run's Oino session
+ * carries the run id as its session id (the fired `oino -p --session-id <run
+ * id>`), so once the run record has a `session_path` the host answers that id
+ * and the app opens it in the session hub (host.md §9.8). */
 const CronOpenedSchema = z.object({ session: z.string().min(1) });
 export async function cronOpenSession(hostId: string, runId: string) {
   return hostCall(hostId, 'cron_open_session', { runId }, CronOpenedSchema);
+}
+
+/** Where a `/cron …` composer command goes (G-17): the reserved Cron page
+ * instead of a text dump — `/cron` and `/cron list` open the page,
+ * `/cron add` opens the page with the add-job form, anything else the page. */
+export function cronCommandOf(text: string): string | null {
+  const m = /^\/cron(?:\s+(\S+))?\s*$/.exec(text.trim());
+  if (!m) return null;
+  const arg = m[1]?.toLowerCase();
+  return arg === 'add' || arg === 'new' ? '/cron?form=new' : '/cron';
 }
 
 /** UNI-319: what the form shows for a job's notify outcomes. */

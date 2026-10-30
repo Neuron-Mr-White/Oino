@@ -5,6 +5,7 @@
  * payload on the MockHost, and clear afterwards.
  */
 import { cleanup, fireEvent, render, waitFor } from '@solidjs/testing-library';
+import { HashRouter, Route } from '@solidjs/router';
 import { createRoot } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockHost, type MockScenario, type MockWorld } from '../../lib/host/mock';
@@ -61,7 +62,11 @@ async function open(): Promise<{ s: SessionHandle; w: MockWorld }> {
 describe('ComposerBridge', () => {
   it('shows quote chips, sends them as a blockquote and clears the draft (Z-30)', async () => {
     const { s, w } = await open();
-    const r = render(() => <ComposerBridge session={s} />);
+    const r = render(() => (
+      <HashRouter>
+        <Route path="*" component={() => <ComposerBridge session={s} />} />
+      </HashRouter>
+    ));
     const input = r.getByTestId('tl-composer').querySelector('input') as HTMLInputElement;
     fireEvent.input(input, { target: { value: 'my follow-up' } });
     addComposerQuote(s.key, 'quoted selection');
@@ -76,7 +81,11 @@ describe('ComposerBridge', () => {
 
   it('shows an edit-restored draft with its images and sends the image payload (Z-28)', async () => {
     const { s, w } = await open();
-    const r = render(() => <ComposerBridge session={s} />);
+    const r = render(() => (
+      <HashRouter>
+        <Route path="*" component={() => <ComposerBridge session={s} />} />
+      </HashRouter>
+    ));
     restoreComposer(s.key, { text: 'Question one', images: [{ mimeType: 'image/png', data: 'AAAA' }] });
     const input = await waitFor(() => r.getByTestId('tl-composer').querySelector('input') as HTMLInputElement);
     expect(input.value).toBe('Question one');
@@ -90,5 +99,26 @@ describe('ComposerBridge', () => {
       images: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }],
     });
     await waitFor(() => expect(r.queryByTestId('tl-draft-image')).toBeNull());
+  });
+
+  it('/cron opens the reserved Cron page instead of sending a text dump (G-17, WP-A23)', async () => {
+    const { s, w } = await open();
+    const r = render(() => (
+      <HashRouter>
+        <Route path="*" component={() => <ComposerBridge session={s} />} />
+      </HashRouter>
+    ));
+    const input = r.getByTestId('tl-composer').querySelector('input') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: '/cron add' } });
+    fireEvent.click(r.getByLabelText('Send'));
+    await waitFor(() => expect(location.hash).toBe('#/cron?form=new'));
+    // Nothing was sent to the session — the page *is* the command output.
+    expect(w.log.some((e) => e.op === 'prompt')).toBe(false);
+    expect(input.value).toBe('');
+
+    fireEvent.input(input, { target: { value: '/cron' } });
+    fireEvent.click(r.getByLabelText('Send'));
+    await waitFor(() => expect(location.hash).toBe('#/cron'));
+    expect(w.log.some((e) => e.op === 'prompt')).toBe(false);
   });
 });

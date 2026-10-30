@@ -75,7 +75,8 @@ pub struct SessionCard {
     /// Manual name beats auto-rename (Z-15).
     #[serde(default, skip_serializing_if = "is_false")]
     pub title_locked: bool,
-    /// Who runs the session when it is not the user (`"cron"`; A22 fills it).
+    /// Who runs the session when it is not the user (`"cron"`; WP-A23 fills it from the
+    /// cron runs store — a fired run's session id is its run id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     /// Line changes (`+N −M`) when a summary exists.

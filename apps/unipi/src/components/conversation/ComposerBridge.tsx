@@ -9,8 +9,10 @@
  * actions and selection quote keep working unchanged.
  */
 import { createEffect, For, onCleanup, Show } from 'solid-js';
+import { useNavigate } from '@solidjs/router';
 import { Image as ImageIcon, Quote, SendHorizonal, Square } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
+import { cronCommandOf } from '../../lib/cron';
 import {
   clearComposer,
   composerDraft,
@@ -23,6 +25,7 @@ import {
 } from '../../lib/timeline/actions';
 
 export function ComposerBridge(props: { session: SessionHandle; readOnly?: boolean }) {
+  const navigate = useNavigate();
   const key = () => props.session.key;
   const draft = () => composerDraft(key());
   let input: HTMLInputElement | undefined;
@@ -36,6 +39,15 @@ export function ComposerBridge(props: { session: SessionHandle; readOnly?: boole
     const current = draft();
     const text = composerSendText(current);
     if (props.readOnly || (!text.trim() && !current.images.length)) return;
+    // G-17 (WP-A23): `/cron …` opens the reserved Cron page — its output is
+    // the page (jobs, runs), never a text dump in the chat.
+    const cronRoute = cronCommandOf(text);
+    if (cronRoute) {
+      clearComposer(key());
+      if (input) input.value = '';
+      navigate(cronRoute);
+      return;
+    }
     props.session.send(text, current.images.length ? { images: current.images } : undefined);
     clearComposer(key());
     if (input) input.value = '';

@@ -187,15 +187,14 @@ describe('Cron notify, wake and Open session (UNI-319)', () => {
     );
   });
 
-  it("Open session asks the host to open the run's session and opens that chat", async () => {
+  it("Open session routes to the run's session (the conversation route, G-12)", async () => {
     routes({ cron_open_session: { ok: true, value: { session: 'sess-42' } } });
     mount();
     fireEvent.click(await screen.findByTestId('cron-job-digest'));
     fireEvent.click(await screen.findByTestId('cron-run-r1'));
     fireEvent.click(await screen.findByTestId('cron-open-session'));
-    await waitFor(() => expect(openChatState()?.target.session).toBe('sess-42'));
+    await waitFor(() => expect(location.hash).toBe('#/s/host-1/sess-42'));
     expect(call).toHaveBeenCalledWith('cron_open_session', { hostId: 'host-1', runId: 'r1' }, expect.anything());
-    expect(openChatState()?.target.title).toBe('daily digest');
     await waitFor(() => expect(screen.queryByTestId('cron-detail-sheet')).toBeNull());
   });
 
@@ -258,5 +257,40 @@ describe('pure helpers', () => {
     expect(lastRunChip({ running: true, last_run_status: 'ok' })).toBe('running');
     expect(lastRunChip({ running: false, last_run_status: 'failed' })).toBe('failed');
     expect(lastRunChip({ running: false, last_run_status: undefined })).toBeUndefined();
+  });
+});
+
+describe('WP-A23: form preview and the /cron add entry', () => {
+  it('the add form previews the resolved schedule (debounced cron_parse)', async () => {
+    vi.mocked(call).mockImplementation(async (cmd: string) =>
+      (cmd === 'list_hosts'
+        ? { ok: true, value: hosts }
+        : cmd === 'cron_list'
+          ? { ok: true, value: { jobs: [job], paused: false } }
+          : cmd === 'cron_settings_get'
+            ? { ok: true, value: { concurrency: 2, missed_window_s: 3600, retention_runs: 50, retention_days: 30, default_time_limit_s: 1800, paused: false, enabled: true, devices: [], notify_default_events: ['failed'], notify_channels: ['ntfy', 'telegram'] } }
+            : cmd === 'cron_parse'
+              ? { ok: true, value: { expression: '0 0 9 * * *', one_time: false, tz: 'Europe/Berlin', next_fires: ['2026-01-01T09:00:00+01:00', '2026-01-02T09:00:00+01:00', '2026-01-03T09:00:00+01:00'] } }
+              : { ok: true, value: null }) as never,
+    );
+    mount();
+    fireEvent.click(await screen.findByTestId('cron-add'));
+    fireEvent.input(screen.getByTestId('cron-form-schedule'), { target: { value: 'every day at 9:00' } });
+    // The debounce (300 ms) folds typing; only after it settles does the
+    // preview land.
+    const preview = await screen.findByTestId('cron-form-preview', undefined, { timeout: 2000 });
+    expect(preview).toHaveTextContent('0 0 9 * * *');
+    expect(preview).toHaveTextContent('2026-01-01T09:00:00+01:00');
+    const parse = vi.mocked(call).mock.calls.filter((c) => c[0] === 'cron_parse').at(-1);
+    expect(parse?.[1]).toMatchObject({ schedule: 'every day at 9:00' });
+  });
+
+  it('?form=new (the /cron add route) opens the add form once', async () => {
+    location.hash = '#/cron?form=new';
+    mockIpc();
+    mount();
+    expect(await screen.findByTestId('cron-form-sheet')).toBeInTheDocument();
+    // The param is consumed: back/refresh is the plain list.
+    await waitFor(() => expect(location.hash).toBe('#/cron'));
   });
 });
