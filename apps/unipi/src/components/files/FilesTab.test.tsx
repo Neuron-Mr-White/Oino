@@ -21,6 +21,8 @@ import { clearEditorTarget, getEditorTarget, setEditorTarget } from '../../lib/e
 import { consumeMentionFor, pendingMention } from '../../lib/chat/mention';
 import { FileTree } from './FileTree';
 import { EditorArea } from './EditorArea';
+import { FilesLayer } from './FilesTab';
+import { setDesktopOverride } from '../../lib/layout';
 import { PreviewTab } from '../media/Previewer';
 import { setBlobTransport, type BlobTransport } from '../../lib/blob';
 import type { PaneTabProps } from '../../lib/panes/kinds';
@@ -321,6 +323,23 @@ describe('PreviewTab (Z-103)', () => {
     await screen.findByTestId('preview-tab-image');
     fireEvent.click(screen.getByTestId('preview-tab-source'));
     await waitFor(() => expect(screen.getByTestId('preview-tab').textContent).toContain('<svg'));
+  });
+});
+
+describe('phone /files layer (§3.9)', () => {
+  it('opens full-screen with the detail header and Back, over the tree', async () => {
+    setDesktopOverride(false);
+    try {
+      withRouter(() => <FilesLayer />);
+      const layer = await screen.findByTestId('files-layer');
+      expect(layer.getAttribute('role')).toBe('dialog');
+      expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+      expect(screen.getByText('Files', { selector: '.files-layer-title' })).toBeTruthy();
+      await screen.findByRole('tree');
+      expect(layer.querySelector('[data-shell=phone]')).toBeTruthy();
+    } finally {
+      setDesktopOverride(undefined);
+    }
   });
 });
 
