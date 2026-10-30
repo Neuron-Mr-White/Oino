@@ -23,8 +23,8 @@ use tokio::process::Command;
 use unipi_proto::{
     AppErrorCode, AppErrorDto, GitArea, GitBranch, GitBranchesData, GitCmd, GitCommitData,
     GitCommitInfo, GitDiffData, GitFileChange, GitLogData, GitPath, GitRepoData, GitShortstatData,
-    GitShowData, GitShowFile, GitStatusData, GitSyncData, GIT_DIFF_CAP,
-    GIT_SHORTSTAT_UNTRACKED_MAX,
+    GitShowData, GitShowFile, GitStatusData, GitSyncData, GitTurnFile, GitTurnFilesData,
+    GIT_DIFF_CAP, GIT_SHORTSTAT_UNTRACKED_MAX,
 };
 
 use crate::fs::FsScope;
@@ -583,6 +583,9 @@ pub async fn handle(
         if matches!(cmd, GitCmd::Shortstat) {
             return json(GitShortstatData::default());
         }
+        if matches!(cmd, GitCmd::TurnFiles { .. }) {
+            return json(GitTurnFilesData::default());
+        }
         return Err(err(
             AppErrorCode::E_GIT,
             format!("{} is not inside a git repository", dir.display()),
@@ -595,6 +598,11 @@ pub async fn handle(
         GitCmd::Repo => json(repo_info(&git, &gitdir).await?),
         GitCmd::Status => json(status(&git, &gitdir).await?),
         GitCmd::Shortstat => json(shortstat(&git).await?),
+        GitCmd::TurnFiles {
+            files,
+            staged,
+            untracked,
+        } => json(turn_files(&git, &gitdir, &files, staged, untracked).await?),
         GitCmd::Diff {
             file,
             staged,
@@ -827,6 +835,60 @@ async fn status(git: &Git, gitdir: &Path) -> Result<GitStatusData, AppErrorDto> 
         repo: info,
         files,
         more,
+    })
+}
+
+/// v2 host.md §9.4: `turn_files` — the last turn's files as `status` rows,
+/// each with its diff, without new snapshot machinery. The rows are
+/// restricted to `files` (order kept, duplicates dropped); a file the
+/// work tree no longer changed is simply absent. `staged` / `untracked`
+/// narrow the set to index changes / untracked files.
+async fn turn_files(
+    git: &Git,
+    gitdir: &Path,
+    files: &[GitPath],
+    staged_only: bool,
+    untracked_only: bool,
+) -> Result<GitTurnFilesData, AppErrorDto> {
+    let st = status(git, gitdir).await?;
+    let mut out: Vec<GitTurnFile> = Vec::new();
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for file in files {
+        if !seen.insert(file.as_str()) {
+            continue;
+        }
+        // A file changed in the index *and* the work tree has two rows;
+        // the staged one is what a commit would take, so it wins.
+        let row = [
+            GitArea::Staged,
+            GitArea::Unstaged,
+            GitArea::Conflict,
+            GitArea::Untracked,
+        ]
+        .into_iter()
+        .filter(|area| !staged_only || *area == GitArea::Staged)
+        .filter(|area| !untracked_only || *area == GitArea::Untracked)
+        .find_map(|area| {
+            st.files
+                .iter()
+                .find(|f| f.path == file.as_str() && f.area == area)
+        });
+        let Some(row) = row else { continue };
+        let file_diff = diff(
+            git,
+            file,
+            row.area == GitArea::Staged,
+            row.area == GitArea::Untracked,
+        )
+        .await?;
+        out.push(GitTurnFile {
+            change: row.clone(),
+            diff: file_diff,
+        });
+    }
+    Ok(GitTurnFilesData {
+        repo: st.repo,
+        files: out,
     })
 }
 

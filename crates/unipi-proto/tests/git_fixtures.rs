@@ -3,7 +3,7 @@
 use serde_json::Value;
 use unipi_proto::{
     Control, GitBranchesData, GitDiffData, GitLogData, GitRepoData, GitShortstatData, GitShowData,
-    GitStatusData, GitSyncData,
+    GitStatusData, GitSyncData, GitTurnFilesData,
 };
 
 #[derive(Debug, serde::Deserialize)]
@@ -40,6 +40,7 @@ fn shared_git_fixtures_agree() {
             "GitBranchesData" => parse::<GitBranchesData>(fixture.value.clone()),
             "GitSyncData" => parse::<GitSyncData>(fixture.value.clone()),
             "GitShortstatData" => parse::<GitShortstatData>(fixture.value.clone()),
+            "GitTurnFilesData" => parse::<GitTurnFilesData>(fixture.value.clone()),
             other => panic!("unknown schema {other}"),
         };
         assert_eq!(

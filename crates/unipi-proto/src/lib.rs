@@ -59,15 +59,13 @@ pub use fs::{
 pub use git::{
     GitArea, GitBranch, GitBranchesData, GitCmd, GitCommitData, GitCommitInfo, GitDiffData,
     GitFileChange, GitLogData, GitMessage, GitPath, GitRefName, GitRepoData, GitShortstatData,
-    GitShowData, GitShowFile, GitStatusData, GitSyncData, GIT_DIFF_CAP, GIT_LOG_MAX, GIT_PATHS_MAX,
-    GIT_SHORTSTAT_UNTRACKED_MAX,
+    GitShowData, GitShowFile, GitStatusData, GitSyncData, GitTurnFile, GitTurnFilesData,
+    GIT_DIFF_CAP, GIT_LOG_MAX, GIT_PATHS_MAX, GIT_SHORTSTAT_UNTRACKED_MAX,
 };
 pub use push::{PushId, PushItem, PushListData, PushOutcome, PushWait, PUSH_WAIT_MAX};
 pub use sharing::{
     FeatureKind, FeatureLeaveData, FeatureLeaveScope, FeatureNote, FeatureRequestItem,
     FeatureRequestStatus, FeatureRequestsData, FeatureScope, FEATURE_NOTE_MAX, FEATURE_PORTS_MAX,
 };
-pub use term::{
-    TermAttachData, TermId, TermInfo, TermShell, TERM_ID_MAX, TERM_SHELL_MAX,
-};
+pub use term::{TermAttachData, TermId, TermInfo, TermShell, TERM_ID_MAX, TERM_SHELL_MAX};
 pub use version::{is_strict_semver, Semver, PROTO_VERSION};

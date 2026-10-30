@@ -3,7 +3,8 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import {
   ControlSchema, GitBranchesDataSchema, GitDiffDataSchema, GitLogDataSchema, GitRepoDataSchema,
-  GitShowDataSchema, GitStatusDataSchema, GitSyncDataSchema, GitShortstatDataSchema, PROTO_VERSION,
+  GitShowDataSchema, GitStatusDataSchema, GitSyncDataSchema, GitShortstatDataSchema,
+  GitTurnFilesDataSchema, PROTO_VERSION,
 } from '../src/index.js';
 import { atLeast } from './semver.js';
 
@@ -19,6 +20,7 @@ const schemas: Record<string, z.ZodTypeAny> = {
   GitBranchesData: GitBranchesDataSchema,
   GitSyncData: GitSyncDataSchema,
   GitShortstatData: GitShortstatDataSchema,
+  GitTurnFilesData: GitTurnFilesDataSchema,
 };
 
 describe('git contract fixtures (UNI-217)', () => {

@@ -678,6 +678,9 @@ async fn main() -> anyhow::Result<()> {
             // host.md §9.3: terminals die with the host (they outlive nothing
             // but their own streams).
             unipi_host::term::TermRegistry::shared().kill_all();
+            // host.md §9.3: terminals die with the host (they outlive nothing
+            // but their own streams).
+            unipi_host::term::TermRegistry::shared().kill_all();
             #[cfg(unix)]
             let _ = std::fs::remove_file(unipi_host::push::socket_path(&paths_for_cleanup));
             #[cfg(not(unix))]

@@ -55,6 +55,9 @@ export const GitCmdSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("stash_pop") }),
   // UNI-257 (proto 1.12.0): total +/- for the chat menu's Git row.
   z.object({ action: z.literal("shortstat") }),
+  // v2 (host.md §9.4): the Git pane's "Last turn" source — status rows plus
+  // each file's diff, restricted to the files the last turn touched.
+  z.object({ action: z.literal("turn_files"), files: Paths, staged: z.boolean().optional(), untracked: z.boolean().optional() }),
 ]);
 export type GitCmd = z.infer<typeof GitCmdSchema>;
 
@@ -106,6 +109,16 @@ export const GitDiffDataSchema = z.object({
   binary: z.boolean().default(false),
 });
 export type GitDiffData = z.infer<typeof GitDiffDataSchema>;
+
+/** One file of `turn_files`: its status row plus the diff of that change. */
+export const GitTurnFileSchema = GitFileChangeSchema.extend({ diff: GitDiffDataSchema });
+export type GitTurnFile = z.infer<typeof GitTurnFileSchema>;
+
+/** `ok.data` for `turn_files` (v2 host.md §9.4). */
+export const GitTurnFilesDataSchema = GitRepoDataSchema.extend({
+  files: z.array(GitTurnFileSchema).default([]),
+});
+export type GitTurnFilesData = z.infer<typeof GitTurnFilesDataSchema>;
 
 export const GitCommitDataSchema = z.object({ hash: z.string(), subject: z.string() });
 export type GitCommitData = z.infer<typeof GitCommitDataSchema>;

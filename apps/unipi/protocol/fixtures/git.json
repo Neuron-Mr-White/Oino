@@ -64,5 +64,19 @@
    "value": { "type": "hello", "proto": "1.12.0", "req": { "op": "git", "path": "~/proj", "cmd": { "action": "shortstat" } } } },
  { "name": "shortstat data", "schema": "GitShortstatData", "ok": true, "value": { "repo": true, "files": 3, "add": 120, "del": 34, "capped": false } },
  { "name": "shortstat outside a repo", "schema": "GitShortstatData", "ok": true, "value": { "repo": false } },
- { "name": "shortstat negative count", "schema": "GitShortstatData", "ok": false, "value": { "repo": true, "add": -1 } }
+ { "name": "shortstat negative count", "schema": "GitShortstatData", "ok": false, "value": { "repo": true, "add": -1 } },
+ { "name": "git turn files (last turn)", "schema": "Control", "ok": true,
+   "value": {"type": "hello", "proto": "2.0.0", "req": {"op": "git", "path": "/tmp/r", "cmd": {"action": "turn_files", "files": ["src/a.rs", "src/b.ts"]}}} },
+ { "name": "git turn files staged", "schema": "Control", "ok": true,
+   "value": {"type": "hello", "proto": "2.0.0", "req": {"op": "git", "path": "/tmp/r", "cmd": {"action": "turn_files", "files": ["src/a.rs"], "staged": true}}} },
+ { "name": "git turn files rejects ..", "schema": "Control", "ok": false,
+   "value": {"type": "hello", "proto": "2.0.0", "req": {"op": "git", "path": "/tmp/r", "cmd": {"action": "turn_files", "files": ["../../etc/passwd"]}}} },
+ { "name": "turn files data", "schema": "GitTurnFilesData", "ok": true,
+   "value": {"repo": true, "root": "/tmp/r", "branch": "main", "files": [{"path": "src/a.rs", "area": "unstaged", "status": "M", "add": 3, "del": 1, "diff": {"text": "--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1 +1,3 @@\n-old\n+new\n", "truncated": false, "binary": false}}, {"path": "src/b.ts", "area": "untracked", "status": "?", "add": 2, "diff": {"text": "", "truncated": false, "binary": false}}]} },
+ { "name": "turn files data, clean work tree", "schema": "GitTurnFilesData", "ok": true,
+   "value": {"repo": true, "root": "/tmp/r", "files": []} },
+ { "name": "turn files data outside a repo", "schema": "GitTurnFilesData", "ok": true,
+   "value": {"repo": false, "files": []} },
+ { "name": "turn files data rejects an unknown area", "schema": "GitTurnFilesData", "ok": false,
+   "value": {"repo": true, "files": [{"path": "a", "area": "staged and more", "status": "M", "diff": {"text": ""}}]} }
 ]

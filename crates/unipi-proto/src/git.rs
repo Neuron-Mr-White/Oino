@@ -23,6 +23,7 @@
 //! | `fetch` / `pull` / `push` | [`GitSyncData`] (pull is `--ff-only` unless `rebase:true`) |
 //! | `stash_push` / `stash_pop` | [`GitSyncData`] |
 //! | `shortstat` | [`GitShortstatData`] (UNI-257: total +/- vs HEAD incl. staged + untracked, capped; proto 1.12.0) |
+//! | `turn_files` | [`GitTurnFilesData`] (v2: `status` + per-file diffs, restricted to `files`) |
 
 use serde::{Deserialize, Serialize};
 
@@ -221,6 +222,22 @@ pub enum GitCmd {
     /// UNI-257: cheap total line counts (staged + unstaged vs HEAD, plus
     /// untracked files' lines, capped) for the chat menu's Git row.
     Shortstat,
+    /// v2 (host.md §9.4): the "Last turn" source of the Git pane. The app
+    /// passes the files the last turn's tool rows touched; the host answers
+    /// their `status` rows plus the diff of each (≤ [`GIT_DIFF_CAP`]), so the
+    /// whole last-turn set is one round trip.
+    ///
+    /// `staged` restricts the rows to index changes and `untracked` to
+    /// untracked files (both off = any change). A file changed in both the
+    /// index and the work tree yields its staged row first — that is what a
+    /// commit would take.
+    TurnFiles {
+        files: Vec<GitPath>,
+        #[serde(default)]
+        staged: bool,
+        #[serde(default)]
+        untracked: bool,
+    },
 }
 
 impl GitCmd {
@@ -243,6 +260,7 @@ impl GitCmd {
             GitCmd::StashPush { .. } => "stash_push",
             GitCmd::StashPop => "stash_pop",
             GitCmd::Shortstat => "shortstat",
+            GitCmd::TurnFiles { .. } => "turn_files",
         }
     }
 
@@ -260,6 +278,11 @@ impl GitCmd {
             GitCmd::Discard { paths, .. } => {
                 if paths.is_empty() || !paths_ok(paths) {
                     return Err(format!("discard needs 1..={GIT_PATHS_MAX} paths"));
+                }
+            }
+            GitCmd::TurnFiles { files, .. } => {
+                if files.is_empty() || !paths_ok(files) {
+                    return Err(format!("turn_files needs 1..={GIT_PATHS_MAX} files"));
                 }
             }
             GitCmd::Log {
@@ -362,6 +385,25 @@ pub struct GitDiffData {
     pub truncated: bool,
     #[serde(default)]
     pub binary: bool,
+}
+
+/// One file of `turn_files`: its `status` row plus the diff of that change.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitTurnFile {
+    #[serde(flatten)]
+    pub change: GitFileChange,
+    pub diff: GitDiffData,
+}
+
+/// `ok.data` for `turn_files`: `status` restricted to the asked-for files,
+/// each row carrying its diff. Files with no change are omitted. Outside a
+/// repo it is `repo:false` with no rows (not an error).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GitTurnFilesData {
+    #[serde(flatten)]
+    pub repo: GitRepoData,
+    #[serde(default)]
+    pub files: Vec<GitTurnFile>,
 }
 
 /// `ok.data` for `commit`.

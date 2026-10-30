@@ -738,3 +738,104 @@ async fn git_over_the_wire() {
     };
     assert_eq!(error.code, AppErrorCode::E_SCHEMA);
 }
+
+/// v2 host.md §9.4 — `turn_files`: the last turn's files as status rows with
+/// their diffs, restricted to the given paths (and their order), with the
+/// `staged`/`untracked` narrowings; unchanged files are absent.
+#[tokio::test]
+async fn turn_files_restricts_status_and_diffs_to_the_given_paths() {
+    isolate_env();
+    let temp = tempfile::tempdir().unwrap();
+    let scope = scope_for(temp.path());
+    let dir = repo(temp.path(), "r");
+    std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
+    std::fs::write(dir.join("b.txt"), "new\nfile\n").unwrap();
+    std::fs::write(dir.join("untouched.txt"), "x\n").unwrap();
+    git(&dir, &["add", "untouched.txt"]);
+    git(&dir, &["commit", "-q", "-m", "clean file"]);
+
+    // a.txt is changed in the work tree, b.txt is untracked; ask for both,
+    // out of order, plus a clean file and a duplicate.
+    let data = run(
+        &dir,
+        &scope,
+        GitCmd::TurnFiles {
+            files: vec![p("b.txt"), p("a.txt"), p("untouched.txt"), p("a.txt")],
+            staged: false,
+            untracked: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(data["repo"], true);
+    let files = data["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2, "clean path is absent: {data}");
+    assert_eq!(files[0]["path"], "b.txt");
+    assert_eq!(files[0]["area"], "untracked");
+    assert_eq!(files[0]["status"], "?");
+    assert_eq!(files[1]["path"], "a.txt");
+    assert_eq!(files[1]["area"], "unstaged");
+    assert_eq!(files[1]["status"], "M");
+    assert_eq!(files[1]["add"], 1);
+    assert_eq!(files[1]["del"], 1);
+    assert!(
+        files[1]["diff"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("-two\n+TWO"),
+        "a.txt diff: {data}"
+    );
+    assert!(files[0]["diff"]["text"].as_str().unwrap().contains("+new"));
+
+    // `untracked` keeps only the untracked file.
+    let data = run(
+        &dir,
+        &scope,
+        GitCmd::TurnFiles {
+            files: vec![p("a.txt"), p("b.txt")],
+            staged: false,
+            untracked: true,
+        },
+    )
+    .await
+    .unwrap();
+    let files = data["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0]["path"], "b.txt");
+
+    // Stage a.txt: `staged` now shows it from the index.
+    git(&dir, &["add", "a.txt"]);
+    let data = run(
+        &dir,
+        &scope,
+        GitCmd::TurnFiles {
+            staged: true,
+            untracked: false,
+            files: vec![p("a.txt"), p("b.txt")],
+        },
+    )
+    .await
+    .unwrap();
+    let files = data["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0]["path"], "a.txt");
+    assert_eq!(files[0]["area"], "staged");
+    assert!(files[0]["diff"]["text"].as_str().unwrap().contains("+TWO"));
+
+    // Inside no repo it is an empty answer, not an error.
+    let plain = temp.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let data = run(
+        &plain,
+        &scope,
+        GitCmd::TurnFiles {
+            files: vec![p("a.txt")],
+            staged: false,
+            untracked: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(data["repo"], false);
+    assert_eq!(data["files"].as_array().unwrap().len(), 0);
+}
