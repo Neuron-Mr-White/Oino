@@ -69,7 +69,7 @@ export function openStatusSection(base: { hostId: string; sessionId?: string; pa
       return;
     }
   }
-  openGit({ hostId: base.hostId, path: base.path });
+  openGit({ hostId: base.hostId, path: base.path, ...(base.sessionId ? { sessionId: base.sessionId } : {}) });
 }
 
 const SOURCES: GitSource[] = ['unstaged', 'staged', 'branch', 'turn'];
