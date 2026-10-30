@@ -165,3 +165,180 @@
 html:not([data-shell='desktop']) .cmenu {
   max-height: min(240px, 36vh);
 }
+
+/* ── WP-A13: the toolbar row (Z-64) ──────────────────────────────────────
+   The field takes the full width, the toolbar sits under it: `+` on the
+   left, the permission/plan (and, from A14, model/thinking/context) chips in
+   the middle, Send/Stop on the right. One row, never wraps; narrow widths
+   fold chips into their icon forms (the Toolbar sets `data-c-*` per step). */
+.tl-composer { position: relative; }
+.tl-composer.tl-composer-dock {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px 7px;
+}
+.tl-composer-dock .tl-composer-field {
+  width: 100%;
+  max-height: min(32vh, 180px);
+  padding: 4px 2px 0;
+}
+.comp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  flex: none;
+  white-space: nowrap;
+}
+.comp-bar .tb-item,
+.comp-bar .tb-slot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.comp-bar .tb-spacer { flex: 1 1 auto; min-width: 0; }
+.comp-bar .composer-plus-btn {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  margin: 0;
+  color: var(--color-text-muted);
+}
+/* The base layer gives every button a 44px minimum; inside the 36px bar the
+   send/stop circle and its chevron keep their own size instead (the circle's
+   tap target is the circle). */
+.comp-bar .tl-composer-send,
+.comp-bar .tl-composer-stop {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+.comp-bar .send-btn-chevron {
+  height: 30px;
+  min-height: 30px;
+}
+.comp-bar .composer-plus-btn:hover:not(:disabled) { color: var(--color-text); }
+
+/* A chip: the permission mode, the Plan toggle — same shape A14's model and
+   thinking chips use (`.tb-chip` + `.tb-ic` + `.tb-label`). */
+.tb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.tb-chip:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
+.tb-chip:disabled { opacity: .5; }
+.tb-chip .tb-ic { flex: 0 0 auto; }
+.tb-chip .tb-chev { flex: 0 0 auto; color: var(--color-text-dim); transform: rotate(180deg); }
+.tb-chip[data-mode="auto"] { color: var(--color-claw); background: rgb(240 120 24 / 12%); }
+.tb-chip[data-mode="full"] { color: #f6a89d; background: rgb(240 60 50 / 12%); }
+.tb-chip-plan[data-on] { color: var(--color-claw); background: rgb(240 120 24 / 12%); }
+
+/* The seven compression steps (Z-64): step 2 permission, 3 Plan, 4 thinking
+   icon + level bar, 6 thinking square, 7 model square. Steps are cumulative,
+   so each flag stays set from its step on. */
+.comp-bar[data-c-permission] .tb-slot[data-slot="permission"] .tb-label,
+.comp-bar[data-c-permission] .tb-slot[data-slot="permission"] .tb-chev,
+.comp-bar[data-c-plan] .tb-slot[data-slot="plan"] .tb-label,
+.comp-bar[data-c-model] .tb-slot[data-slot="model"] .tb-label,
+.comp-bar[data-c-model] .tb-slot[data-slot="model"] .tb-chev,
+.comp-bar[data-c-computer] .tb-slot[data-slot="computer"] .tb-label { display: none; }
+.comp-bar[data-c-permission] .tb-slot[data-slot="permission"] .tb-chip,
+.comp-bar[data-c-plan] .tb-slot[data-slot="plan"] .tb-chip,
+.comp-bar[data-c-model] .tb-slot[data-slot="model"] .tb-chip,
+.comp-bar[data-c-computer] .tb-slot[data-slot="computer"] .tb-chip {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+.comp-bar[data-c-think] .tb-slot[data-slot="think"] .tb-label,
+.comp-bar[data-c-think] .tb-slot[data-slot="think"] .tb-chev { display: none; }
+.comp-bar[data-c-think="square"] .tb-slot[data-slot="think"] .tb-chip {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* The permission menu rows (`.tb-menu-*` inside an AnchoredMenu). */
+.tb-menu-dot { display: block; width: 16px; height: 16px; }
+.tb-menu-hint { font-size: 11px; color: var(--color-text-dim); white-space: nowrap; }
+
+/* ── Attachment chips (Z-60 states) ─────────────────────────────────── */
+.att-chip {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+  max-width: min(280px, 78vw);
+  min-height: 34px;
+  padding: 3px 4px 3px 5px;
+  border-radius: 10px;
+  background: var(--color-surface-3);
+  box-shadow: inset 0 0 0 1px transparent;
+  color: var(--color-text);
+}
+.att-chip[data-status="failed"] { box-shadow: inset 0 0 0 1px rgb(240 60 50 / 55%); }
+.att-chip[data-status="queued"],
+.att-chip[data-status="uploading"] { color: var(--color-text-muted); }
+.att-ic { display: grid; place-items: center; width: 26px; color: var(--color-text-dim); }
+.att-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-surface-1);
+}
+.att-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.att-edit {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 62%);
+  color: var(--color-text);
+}
+.att-body { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; padding-right: 2px; }
+.att-name { max-width: 190px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; line-height: 15px; }
+.att-meta { max-width: 190px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; line-height: 14px; color: var(--color-text-dim); }
+.att-chip[data-status="failed"] .att-meta { color: #f6a89d; }
+.att-bar { display: block; height: 2px; border-radius: 2px; background: var(--color-line); overflow: hidden; }
+.att-bar-fill { display: block; height: 100%; background: var(--color-claw); transition: width 160ms linear; }
+.att-act {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  align-self: center;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-dim);
+  font-size: 12px;
+  line-height: 1;
+}
+.att-act:hover { background: var(--color-surface-2); color: var(--color-text); }
+.att-retry { color: var(--color-claw); }
+.att-fail { align-self: center; display: grid; place-items: center; color: #f6a89d; }
+html[data-shell=phone] .att-remove { width: 26px; height: 26px; min-height: 26px; }

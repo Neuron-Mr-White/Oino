@@ -38,14 +38,21 @@ export function bootCapture(): void {
   // Blob channel over the same mock host (WP-A20 preview bytes, A9 image
   // chips, A13 uploads): the capture runs in a browser, where the real
   // transport has no iroh endpoint.
+  //
+  // Deferred one microtask: this module is prepended to `lib/host/factory.ts`
+  // and `lib/blob.ts` imports that module, so calling into blob *while it is
+  // still in the import cycle* hits its temporal dead zone ("Cannot access
+  // 'override' before initialization") and would abort the rest of the boot.
   const off = () => {
     throw new Error('File transfer needs the app (not available in a browser capture).');
   };
-  setBlobTransport({
-    putFile: off,
-    getFile: off,
-    putBytes: (hostId, bytes, mime, name) => world.client(hostId).request('blob_put_bytes', { bytes: Array.from(bytes), mime, name }),
-    getBytes: (hostId, ref) => world.client(hostId).request('blob_get_bytes', ref),
+  queueMicrotask(() => {
+    setBlobTransport({
+      putFile: off,
+      getFile: off,
+      putBytes: (hostId, bytes, mime, name) => world.client(hostId).request('blob_put_bytes', { bytes: Array.from(bytes), mime, name }),
+      getBytes: (hostId, ref) => world.client(hostId).request('blob_get_bytes', ref),
+    });
   });
   // Captures start clean: no settings/hidden-chat state from an earlier run.
   if (param('keep') !== '1') {

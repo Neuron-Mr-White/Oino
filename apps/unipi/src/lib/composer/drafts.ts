@@ -6,9 +6,11 @@
  *   text     — persisted (localStorage, debounced 500 ms, removed when
  *              emptied: "没有输入文字就不算草稿", ZCode draft persistence);
  *   quotes   — in-memory quote chips (A7's tail/selection quote handoff);
- *   images   — in-memory pending images (base64 `OutboxImage`s — D-6: they
- *              live here, not in a Composer instance, so they survive
- *              chat switches; A13 deepens them into upload states);
+ *   images   — **derived**, not stored here: the pending attachments live in
+ *              `lib/composer/attachments.ts`'s per-chat store (D-6 — the
+ *              composer's `images` signal became that store, upload states
+ *              and all), and `composerDraft` merges the ready ones in so
+ *              every existing reader keeps working;
  *   chips    — in-memory paste chips (Z-61) and the public chip API's
  *              B8 element/screenshot chips, flattened inline on send.
  *
@@ -17,6 +19,7 @@
  */
 import { createSignal } from 'solid-js';
 import type { OutboxImage } from '../session/types';
+import { clearAttachments, pendingAttachmentsFor, readyImages, removeAttachment, resetAttachments, setImages } from './attachments';
 
 export type QuoteChip = { id: string; text: string };
 
@@ -37,6 +40,8 @@ export type ComposerChip = {
   markdown?: string;
 };
 
+/** The composer's state for one chat. `images` is derived from the attachments
+ *  store (D-6) — never persisted and never stored in this module. */
 export type ComposerDraft = { text: string; quotes: QuoteChip[]; images: OutboxImage[]; chips: ComposerChip[] };
 
 const EMPTY: ComposerDraft = { text: '', quotes: [], images: [], chips: [] };
@@ -117,7 +122,8 @@ if (typeof window !== 'undefined') {
 }
 
 export function composerDraft(key: string): ComposerDraft {
-  return drafts()[key] ?? load(key);
+  const stored = drafts()[key] ?? load(key);
+  return { ...stored, images: readyImages(key) };
 }
 
 const update = (key: string, fn: (draft: ComposerDraft) => ComposerDraft): void => {
@@ -143,21 +149,27 @@ export function removeComposerQuote(key: string, id: string): void {
   update(key, (draft) => ({ ...draft, quotes: draft.quotes.filter((quote) => quote.id !== id) }));
 }
 
+/** Removes the `index`-th pending image (attach order) from the chat's store. */
 export function removeComposerImage(key: string, index: number): void {
-  update(key, (draft) => ({ ...draft, images: draft.images.filter((_, i) => i !== index) }));
+  const image = pendingAttachmentsFor(key).filter((a) => a.kind === 'image')[index];
+  if (image) removeAttachment(key, image.id);
 }
 
+/** Replaces every pending image (Edit / tree jump restore; tests). */
 export function setComposerImages(key: string, images: OutboxImage[]): void {
-  update(key, (draft) => ({ ...draft, images }));
+  setImages(key, images);
 }
 
 /** Edit / tree jump (A7): replaces the composer's text and images. */
 export function restoreComposer(key: string, draft: { text: string; images?: OutboxImage[] }): void {
-  setDrafts((all) => ({ ...all, [key]: { text: draft.text, quotes: [], images: draft.images ?? [], chips: all[key]?.chips ?? [] } }));
+  setDrafts((all) => ({ ...all, [key]: { text: draft.text, quotes: [], images: [], chips: all[key]?.chips ?? [] } }));
+  setImages(key, draft.images ?? []);
   persist(key, draft.text);
 }
 
+/** Starts the composer over (a send): text, quotes, chips and attachments. */
 export function clearComposer(key: string): void {
+  clearAttachments(key);
   setDrafts((all) => {
     if (!(key in all)) return all;
     const next = { ...all };
@@ -229,16 +241,19 @@ export function focusComposer(key: string): void {
   for (const focus of focusers.get(key) ?? []) focus();
 }
 
-/** Tests: simulate an app reload — in-memory drafts die, storage stays. */
+/** Tests: simulate an app reload — in-memory drafts die (the per-chat
+ *  attachments are memory too, D-6), storage stays. */
 export function reloadComposerDrafts(): void {
   flushComposerDrafts();
   setDrafts({});
+  resetAttachments();
 }
 
 /** Tests: drop every draft (memory + storage). */
 export function resetComposerDrafts(): void {
   flushComposerDrafts();
   setDrafts({});
+  resetAttachments();
   for (const key of [...timers.keys()]) {
     clearTimeout(timers.get(key)!);
     timers.delete(key);

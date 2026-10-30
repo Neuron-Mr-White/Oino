@@ -19,16 +19,17 @@ import { boardDashboard, boardLanes } from './board';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
 import { capsuleScenario, statusLhGraph, statusRunning, statusTodos } from './status';
 import { crashBoundary, dialogApproval, dialogDock, errorRow, takenOver } from './dock';
-import { slots, slotsDialogs } from './slots';
+import { slots, slotsDialogs, slotsOverlay, slotsTray } from './slots';
 import { composerPaste, composerSlash, composerStates } from './composer';
+import { composerAttachments, composerNarrow, imageEditorEllipse } from './composer-attachments';
 import { editorConflict, editorLsp, filesPreview, filesSearch, filesTree } from './files';
 import { cmdkEmpty, cmdkFiles, findBar, shortcutsList } from './command';
 import { settingsExtensions, settingsNav, settingsSafeMode, settingsSearch } from './settings';
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
-import { emptyChat, motionExits } from './empty-chat';
 import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreePhone } from './tabs';
+import { emptyChat, motionExits } from './empty-chat';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -67,8 +68,6 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'tools-mix': toolsMix,
   'tools-groups': toolsGroups,
   'renderer-cards': rendererCards,
-  'empty-chat': emptyChat,
-  'motion-exits': motionExits,
   'tab-diff': tabDiff,
   'tab-diff-split': tabDiffSplit,
   'tab-tree': tabTree,
@@ -78,6 +77,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'tab-tree-phone': tabTreePhone,
   'tab-btw-phone': tabBtwPhone,
   'tab-subagent-phone': tabSubagentPhone,
+  'empty-chat': emptyChat,
+  'motion-exits': motionExits,
   'files-search': filesSearch,
   'files-preview': filesPreview,
   'editor-lsp': editorLsp,
@@ -91,6 +92,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'taken-over': takenOver,
   'crash-boundary': crashBoundary,
   slots,
+  'slots-overlay': slotsOverlay,
+  'slots-tray': slotsTray,
   'slots-dialogs': slotsDialogs,
   'needs-you': needsYou,
   toasts: toastsScenario,
@@ -102,6 +105,9 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'composer-states': composerStates,
   'composer-paste': composerPaste,
   'composer-slash': composerSlash,
+  'composer-attachments': composerAttachments,
+  'composer-narrow': composerNarrow,
+  'image-editor-ellipse': imageEditorEllipse,
   'settings-nav': settingsNav,
   'settings-search': settingsSearch,
   'settings-extensions': settingsExtensions,

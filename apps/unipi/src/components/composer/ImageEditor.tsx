@@ -1,18 +1,48 @@
 /**
- * UNI-227: edit an image before sending — draw (colour + thickness), arrows,
- * crop. Full screen over the chat; works with a finger (one-finger strokes,
- * big targets, bottom toolbar in thumb reach) and a mouse (pointer events,
- * Esc cancels, Ctrl/⌘+Z undoes, Enter applies a crop).
+ * Edit an image before sending (UNI-227, moved to the composer by WP-A13) —
+ * draw (colour + thickness), arrows, **ellipses/circles** (D-5) and crop.
+ * Full screen over the chat; works with a finger (one-finger strokes, big
+ * targets, bottom toolbar in thumb reach) and a mouse (pointer events, Esc
+ * cancels, Ctrl/⌘+Z undoes, Enter applies a crop).
  *
- * Model: lib/imageEdit.ts (ops in original-image pixels; crop applied last).
- * Done renders the result at full resolution (cropped) to a PNG/JPEG blob.
+ * Ellipse (D-5): drag a bounding box, Shift constrains it to a circle, it
+ * uses the same stroke colour/width as the other shapes and undo pops it like
+ * any other op. Dragging from an existing ellipse's stroke moves it (the hit
+ * test is `ellipseAt`); a tap inside a big one starts a new shape.
+ *
+ * Model: lib/composer/imageEdit.ts (ops in original-image pixels; crop
+ * applied last). Done renders the result at full resolution (cropped) to a
+ * PNG/JPEG blob.
  */
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import { ArrowUpRight, Check, Crop as CropIcon, PenLine, Undo2, X } from 'lucide-solid';
-import { clampRect, COLORS, currentCrop, drawMarks, fitBox, hasEdits, toImage, WIDTHS, type EditOp, type Point, type Rect } from '../../lib/imageEdit';
+import { ArrowUpRight, Check, Circle, Crop as CropIcon, PenLine, Undo2, X } from 'lucide-solid';
+import {
+  clampRect,
+  COLORS,
+  currentCrop,
+  drawMarks,
+  ellipseAt,
+  ellipseRect,
+  fitBox,
+  hasEdits,
+  toImage,
+  WIDTHS,
+  type EditOp,
+  type Ellipse,
+  type Point,
+  type Rect,
+} from '../../lib/composer/imageEdit';
 
-type Tool = 'draw' | 'arrow' | 'crop';
+type Tool = 'draw' | 'arrow' | 'ellipse' | 'crop';
+
+/** How close (screen px) a pointer must be to an ellipse's outline to grab it. */
+const ELLIPSE_GRAB = 14;
+
+/** A drag the editor is currently running. */
+type Drag =
+  | { id: number; start: Point; mode: 'draw' | 'arrow' | 'ellipse' | 'crop-new' | 'crop-move' | 'crop-corner'; corner?: [0 | 1, 0 | 1]; base?: Rect }
+  | { id: number; start: Point; mode: 'ellipse-move'; index: number; base: Ellipse };
 
 export function ImageEditor(props: { src: string; mime: string; name: string; onCancel: () => void; onDone: (blob: Blob) => void }) {
   const [img, setImg] = createSignal<HTMLImageElement | undefined>();
@@ -31,9 +61,18 @@ export function ImageEditor(props: { src: string; mime: string; name: string; on
     const el = new Image();
     el.onload = () => setImg(el);
     el.src = props.src;
-    const ro = new ResizeObserver(() => wrap && setSize({ w: wrap.clientWidth, h: wrap.clientHeight }));
+    // The stage's size drives the fitted box; measure at once (a resize
+    // observation can be missed while the portal is still being laid out, as
+    // happens in the phone shell) and then on every resize.
+    const measure = () => wrap && setSize({ w: wrap.clientWidth, h: wrap.clientHeight });
+    const ro = new ResizeObserver(measure);
     if (wrap) ro.observe(wrap);
-    onCleanup(() => ro.disconnect());
+    measure();
+    const frame = requestAnimationFrame(measure);
+    onCleanup(() => {
+      ro.disconnect();
+      cancelAnimationFrame(frame);
+    });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -114,7 +153,7 @@ export function ImageEditor(props: { src: string; mime: string; name: string; on
   });
 
   // ── pointer input ────────────────────────────────────────────────
-  let active: { id: number; start: Point; mode: 'draw' | 'arrow' | 'crop-new' | 'crop-move' | 'crop-corner'; corner?: [0 | 1, 0 | 1]; base?: Rect } | undefined;
+  let active: Drag | undefined;
   const local = (e: PointerEvent): Point => {
     const r = canvas!.getBoundingClientRect();
     return toImage({ x: e.clientX - r.left, y: e.clientY - r.top }, box(), view());
@@ -132,6 +171,15 @@ export function ImageEditor(props: { src: string; mime: string; name: string; on
     } else if (t === 'arrow') {
       setOps([...ops(), { kind: 'arrow', color: color(), width: strokeWidth(), from: p, to: p }]);
       active = { id: e.pointerId, start: p, mode: 'arrow' };
+    } else if (t === 'ellipse') {
+      // Grabbing an existing outline moves it; anywhere else starts a new shape.
+      const hit = ellipseAt(ops(), p, ELLIPSE_GRAB / box().scale);
+      if (hit !== undefined) {
+        active = { id: e.pointerId, start: p, mode: 'ellipse-move', index: hit, base: ops()[hit] as Ellipse };
+        return;
+      }
+      setOps([...ops(), { kind: 'ellipse', color: color(), width: strokeWidth(), from: p, to: p }]);
+      active = { id: e.pointerId, start: p, mode: 'ellipse' };
     } else {
       const r = draftCrop() ?? currentCrop(ops(), natural().w, natural().h);
       const tol = HANDLE / box().scale;
@@ -153,6 +201,28 @@ export function ImageEditor(props: { src: string; mime: string; name: string; on
       if (last.kind === 'draw') list[list.length - 1] = { ...last, points: [...last.points, p] };
       else if (last.kind === 'arrow') list[list.length - 1] = { ...last, to: p };
       setOps(list);
+    } else if (active.mode === 'ellipse') {
+      // The drag started at `from`; `to` is the box's opposite corner. Shift
+      // squares the box (D-5), keeping the direction the pointer went.
+      const list = ops().slice();
+      const last = list[list.length - 1]!;
+      if (last.kind === 'ellipse') {
+        const from = last.from;
+        const raw = { x: Math.max(0, Math.min(w, p.x)), y: Math.max(0, Math.min(h, p.y)) };
+        const r = ellipseRect(from, raw, e.shiftKey);
+        const to = { x: from.x <= raw.x ? r.x + r.w : r.x, y: from.y <= raw.y ? r.y + r.h : r.y };
+        list[list.length - 1] = { ...last, to };
+        setOps(list);
+      }
+    } else if (active.mode === 'ellipse-move') {
+      // Drag the whole shape; the box stops at the image edges.
+      const base = active.base;
+      const rect = ellipseRect(base.from, base.to);
+      const dx = Math.max(-rect.x, Math.min(w - rect.x - rect.w, p.x - active.start.x));
+      const dy = Math.max(-rect.y, Math.min(h - rect.y - rect.h, p.y - active.start.y));
+      const list = ops().slice();
+      list[active.index] = { ...base, from: { x: base.from.x + dx, y: base.from.y + dy }, to: { x: base.to.x + dx, y: base.to.y + dy } };
+      setOps(list);
     } else if (active.mode === 'crop-new') {
       setDraftCrop(clampRect({ x: active.start.x, y: active.start.y, w: p.x - active.start.x, h: p.y - active.start.y }, w, h));
     } else if (active.mode === 'crop-move' && active.base) {
@@ -170,10 +240,17 @@ export function ImageEditor(props: { src: string; mime: string; name: string; on
   };
   const onUp = (e: PointerEvent) => {
     if (!active || e.pointerId !== active.id) return;
-    // An arrow tapped without dragging isn't an arrow.
+    // An arrow tapped without dragging isn't an arrow; nor is a dot of an ellipse.
     if (active.mode === 'arrow') {
       const last = ops()[ops().length - 1];
       if (last?.kind === 'arrow' && Math.hypot(last.to.x - last.from.x, last.to.y - last.from.y) < 4 / box().scale) setOps(ops().slice(0, -1));
+    }
+    if (active.mode === 'ellipse') {
+      const last = ops()[ops().length - 1];
+      if (last?.kind === 'ellipse') {
+        const rect = ellipseRect(last.from, last.to);
+        if (rect.w < 4 / box().scale || rect.h < 4 / box().scale) setOps(ops().slice(0, -1));
+      }
     }
     active = undefined;
   };
@@ -290,6 +367,10 @@ export function ImageEditor(props: { src: string; mime: string; name: string; on
             <button type="button" role="radio" class="img-edit-tool" aria-checked={tool() === 'arrow'} onClick={() => pickTool('arrow')}>
               <ArrowUpRight size={20} />
               <span>Arrow</span>
+            </button>
+            <button type="button" role="radio" class="img-edit-tool" aria-checked={tool() === 'ellipse'} onClick={() => pickTool('ellipse')} data-testid="tool-ellipse">
+              <Circle size={20} />
+              <span>Ellipse</span>
             </button>
             <button type="button" role="radio" class="img-edit-tool" aria-checked={tool() === 'crop'} onClick={() => pickTool('crop')}>
               <CropIcon size={20} />

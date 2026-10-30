@@ -13,7 +13,7 @@ import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from 's
 import { File as FileIcon, ImageIcon } from 'lucide-solid';
 import type { Chat } from '../../lib/chat/store';
 import type { AttachmentRef, ImageRef } from '../../lib/chat/model';
-import type { FileMention } from '../../lib/chat/attachments';
+import type { FileMention } from '../../lib/composer/attachments';
 import { classifyMedia } from '../../lib/media/previewer';
 import { openPreviewer } from '../../lib/media/previewerState';
 import { openFilePath, resolvePathToken } from '../../lib/media/pathTokens';

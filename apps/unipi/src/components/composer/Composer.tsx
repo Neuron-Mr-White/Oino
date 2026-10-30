@@ -12,13 +12,28 @@
  *
  * Enter sends (auto: a steer while a run is live — the session store picks),
  * Shift+Enter is a newline, Esc stops a running turn (after closing a menu;
- * WP-A9's rules until WP-A11 refines them). Attachments beyond inline images
- * and the toolbar are WP-A13.
+ * WP-A9's rules until WP-A11 refines them).
+ *
+ * WP-A13 owns the frame around that: attachments with upload states, max 8
+ * and the send gate (Z-60, `lib/composer/attachments.ts` — a per-chat store,
+ * so a picked image survives a chat switch, D-6), the image editor's ellipse
+ * tool (D-5, `./ImageEditor`), the toolbar with the seven-step compression
+ * (Z-64, `./Toolbar`) and the permission/plan control bound to the workflow
+ * extension (G-6, `./PermissionControl`).
  */
 import { createEffect, createMemo, createSignal, on, onCleanup, For, Show, untrack } from 'solid-js';
-import { Image as ImageIcon, Paperclip, Quote } from 'lucide-solid';
+import { Paperclip, Quote } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
-import type { OutboxImage } from '../../lib/session/types';
+import {
+  MAX_ATTACHMENTS,
+  attachmentsReady,
+  attach,
+  pendingAttachmentsFor,
+  removeAttachment,
+  replaceImage,
+  retryAttachment,
+  withAttachmentMentions,
+} from '../../lib/composer/attachments';
 import { allCommands, applyAt, atQuery, isKnownCommand, rankCommands, slashQuery } from '../../lib/chat/commands';
 import { commandNames } from '../timeline/context';
 import { fsList, fsSearch, fsStat } from '../../lib/fs';
@@ -27,7 +42,6 @@ import { addTaskFromChat } from '../../lib/session/open';
 import { followUpMode, sendModeForEnter } from '../../lib/composer/sendMode';
 import { SendButton } from './SendButton';
 import { showActionNotice } from '../../lib/timeline/actions';
-import { blobToBase64, shrinkImage } from '../../lib/imageShrink';
 import {
   addComposerChip,
   clearComposer,
@@ -36,9 +50,7 @@ import {
   focusComposer,
   registerComposerFocus,
   removeComposerChip,
-  removeComposerImage,
   removeComposerQuote,
-  setComposerImages,
   setComposerText,
   type ComposerChip,
 } from '../../lib/composer/drafts';
@@ -51,6 +63,10 @@ import { SlashMenu } from './SlashMenu';
 import { MentionMenu, type MentionItem } from './MentionMenu';
 import { PlusMenu } from './PlusMenu';
 import { PastedTextChip } from './PastedTextChip';
+import { AttachmentChip } from './AttachmentChip';
+import { ImageEditor } from './ImageEditor';
+import { PermissionControl, PlanToggle } from './PermissionControl';
+import { Toolbar, ToolbarSlot } from './Toolbar';
 import './composer.css';
 
 /** A paste's tooltip head (Z-61): the first lines, whitespace-collapsed. */
@@ -267,23 +283,23 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     return true;
   };
 
-  /* ── images (in-memory draft images, D-6; A13 owns upload states) ─── */
-  const attachImages = async (files: readonly File[]) => {
-    const picked = files.filter((f) => f.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(f.name));
-    const refused = files.length - picked.length;
-    if (refused > 0) showActionNotice('File uploads need a newer build — images work today');
-    if (!picked.length) return;
-    const images: OutboxImage[] = [];
-    for (const file of picked) {
-      try {
-        const shrunk = await shrinkImage(file);
-        images.push({ mimeType: shrunk.mime, data: await blobToBase64(shrunk.blob) });
-      } catch (error) {
-        console.warn(`[attach] could not attach ${file.name}: ${String(error)}`);
-      }
-    }
-    if (images.length) setComposerImages(key(), [...draft().images, ...images]);
+  /* ── attachments (Z-60 states, D-6 per-chat store) ───────────────── */
+  const attachments = () => pendingAttachmentsFor(key());
+  /** Pre-uploads what was picked (images shrink+encode, files over the blob
+   *  channel) and says so when something does not fit. */
+  const attachPicked = (files: readonly File[]) => {
+    if (props.readOnly || !files.length) return;
+    const { overLimit, refused } = attach(key(), hostId(), files);
+    if (overLimit > 0) showActionNotice(`Up to ${MAX_ATTACHMENTS} attachments per message — ${overLimit} left out`);
+    else if (refused.length === 1) showActionNotice(`${refused[0]!.name} is larger than 1 GB`);
     focusComposer(key());
+  };
+  /** The image editor (D-5): annotate a pending image in place. */
+  const [editing, setEditing] = createSignal<{ id: string; src: string; mime: string; name: string } | undefined>();
+  const openEditor = (id: string) => {
+    const image = attachments().find((a) => a.id === id);
+    if (!image?.preview) return;
+    setEditing({ id, src: image.preview, mime: image.mime, name: image.name });
   };
   let photoInput: HTMLInputElement | undefined;
   let cameraInput: HTMLInputElement | undefined;
@@ -307,8 +323,10 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
   /* ── send ─────────────────────────────────────────────────────────── */
   const send = (mode?: 'prompt' | 'steer' | 'followUp') => {
     if (props.readOnly) return;
+    // Z-60: nothing leaves until every attachment is ready.
+    if (!attachmentsReady(key())) return;
     const current = draft();
-    const text = composerSendText(current);
+    const text = withAttachmentMentions(key(), composerSendText(current));
     const images = current.images;
     if (!text.trim() && !images.length) return;
     const cmd = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
@@ -343,6 +361,13 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
       }
     }
   });
+  /** A workflow control's command (`/permission …`, `/plan …`, G-6): sent as a
+   *  prompt straight to the session — it never touches the draft or history. */
+  const runCommand = (command: string) => {
+    if (props.readOnly) return;
+    props.session.send(command, { mode: 'prompt' });
+    focusComposer(key());
+  };
   /** After a send the draft starts over; one Ctrl/⌘+Z brings back what was sent. */
   const afterSend = (outgoing: string) => {
     clearComposer(key());
@@ -356,9 +381,9 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
   };
   /** "Send now (stops run)" (Z-52): stop, then send the text as a prompt. */
   const sendNow = () => {
-    if (props.readOnly) return;
+    if (props.readOnly || !attachmentsReady(key())) return;
     const current = draft();
-    const text = composerSendText(current);
+    const text = withAttachmentMentions(key(), composerSendText(current));
     if (!text.trim() && !current.images.length) return;
     afterSend(text);
     void props.session
@@ -415,7 +440,10 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
   };
 
   const chips = () => draft().chips;
-  const empty = () => !draft().text.trim() && !draft().quotes.length && !draft().images.length && !draft().chips.length;
+  const pending = () => pendingAttachmentsFor(key());
+  const empty = () => !draft().text.trim() && !draft().quotes.length && !pending().length && !draft().chips.length;
+  /** Z-60: Send waits for the attachments; a failed one keeps it closed. */
+  const canSend = () => props.readOnly || attachmentsReady(key());
 
   return (
     <div class="tl-composer-wrap" data-testid="tl-composer-wrap">
@@ -425,8 +453,8 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
       <Show when={menuItems()}>
         <MentionMenu items={menuItems()!} selected={Math.min(sel(), menuItems()!.length - 1)} onPick={pickMention} onHover={setSel} />
       </Show>
-      <Show when={draft().quotes.length > 0 || draft().images.length > 0 || chips().length > 0}>
-        <div class="tl-composer-chips" data-testid="tl-composer-chips">
+      <Show when={draft().quotes.length > 0 || pending().length > 0 || chips().length > 0}>
+        <div class="tl-composer-chips" data-testid="tl-composer-chips" role="list">
           <For each={draft().quotes}>
             {(quote) => (
               <span class="tl-chip tl-quote-chip" data-testid="tl-quote-chip" title={quote.text}>
@@ -439,19 +467,19 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
             )}
           </For>
           <For each={chips()}>{(chip: ComposerChip) => <PastedTextChip chip={chip} onRemove={() => removeComposerChip(key(), chip.id)} />}</For>
-          <For each={draft().images}>
-            {(image, i) => (
-              <span class="tl-chip" data-testid="tl-draft-image" title={`Image ${i() + 1}`}>
-                <img class="tl-chip-thumb" src={`data:${image.mimeType};base64,${image.data}`} alt="" />
-                <button type="button" class="tl-chip-x" aria-label={`Remove image ${i() + 1}`} onClick={() => removeComposerImage(key(), i())}>
-                  ✕
-                </button>
-              </span>
+          <For each={pending()}>
+            {(attachment) => (
+              <AttachmentChip
+                attachment={attachment}
+                onRemove={() => removeAttachment(key(), attachment.id)}
+                onRetry={() => retryAttachment(key(), hostId(), attachment.id)}
+                onEdit={attachment.kind === 'image' ? () => openEditor(attachment.id) : undefined}
+              />
             )}
           </For>
         </div>
       </Show>
-      <div class="tl-composer" data-testid="tl-composer" data-readonly={props.readOnly ? '' : undefined}>
+      <div class="tl-composer tl-composer-dock" data-testid="tl-composer" data-readonly={props.readOnly ? '' : undefined}>
         <input
           ref={photoInput}
           type="file"
@@ -460,7 +488,7 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
           hidden
           aria-label="Attach photos"
           onChange={(e) => {
-            void attachImages([...(e.currentTarget.files ?? [])]);
+            attachPicked([...(e.currentTarget.files ?? [])]);
             e.currentTarget.value = '';
           }}
         />
@@ -472,7 +500,7 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
           hidden
           aria-label="Take a photo"
           onChange={(e) => {
-            void attachImages([...(e.currentTarget.files ?? [])]);
+            attachPicked([...(e.currentTarget.files ?? [])]);
             e.currentTarget.value = '';
           }}
         />
@@ -483,20 +511,10 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
           hidden
           aria-label="Attach a file"
           onChange={(e) => {
-            void attachImages([...(e.currentTarget.files ?? [])]);
+            attachPicked([...(e.currentTarget.files ?? [])]);
             e.currentTarget.value = '';
           }}
         />
-        <button
-          type="button"
-          class="composer-plus-btn"
-          aria-label="Add"
-          aria-expanded={plusAnchor() !== null}
-          disabled={props.readOnly}
-          onClick={(e) => setPlusAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
-        >
-          <Paperclip size={16} />
-        </button>
         <ChipEditor
           class="tl-composer-field"
           value={draft().text}
@@ -513,10 +531,44 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
           }}
           onCaret={setCaret}
           onKeyDown={onKeyDown}
-          onPasteFiles={props.phone ? undefined : (files) => void attachImages(files)}
+          onPasteFiles={props.phone ? undefined : (files) => attachPicked(files)}
           onPasteText={onPasteText}
         />
-        <SendButton running={running()} disabled={props.readOnly} empty={empty()} onSend={() => send()} onStop={stop} onSendNow={sendNow} />
+        <Toolbar
+          phone={props.phone}
+          lead={
+            <button
+              type="button"
+              class="composer-plus-btn"
+              aria-label="Add"
+              aria-expanded={plusAnchor() !== null}
+              disabled={props.readOnly}
+              onClick={(e) => setPlusAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
+              data-testid="composer-plus"
+            >
+              <Paperclip size={16} />
+            </button>
+          }
+          end={
+            <SendButton
+              running={running()}
+              disabled={props.readOnly}
+              empty={empty()}
+              blocked={!canSend()}
+              blockedReason="Waiting for the attachments — Send unlocks when they are ready"
+              onSend={() => send()}
+              onStop={stop}
+              onSendNow={sendNow}
+            />
+          }
+        >
+          <ToolbarSlot slot="permission">
+            <PermissionControl session={props.session} onCommand={runCommand} disabled={props.readOnly} />
+          </ToolbarSlot>
+          <ToolbarSlot slot="plan">
+            <PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} />
+          </ToolbarSlot>
+        </Toolbar>
       </div>
       <Show when={plusAnchor()}>
         {(anchor) => (
@@ -528,6 +580,21 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
             onFile={() => fileInput?.click()}
             onSideQuestion={() => openSideQuestion(draft().text.trim() || undefined)}
             onAddTask={() => addTaskFromChat(hostId(), cwd() || undefined)}
+          />
+        )}
+      </Show>
+      <Show when={editing()}>
+        {(edit) => (
+          <ImageEditor
+            src={edit().src}
+            mime={edit().mime}
+            name={edit().name}
+            onCancel={() => setEditing(undefined)}
+            onDone={(blob) => {
+              replaceImage(key(), edit().id, blob);
+              setEditing(undefined);
+              focusComposer(key());
+            }}
           />
         )}
       </Show>

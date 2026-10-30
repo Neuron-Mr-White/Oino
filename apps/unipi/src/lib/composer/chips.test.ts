@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { attachmentToken, chipSpans, imageChipIds, imageToken, insertToken, pathCandidates, removeToken, resolveAttachmentTokens, resolveImageTokens, restoredImageText, tokenize } from './chips';
-import { appendFileMentions, fileMentionsOf, formatFileMention } from '../chat/attachments';
+import { appendFileMentions, fileMentionsOf, formatFileMention } from './attachments';
 
 const cmds = new Set(['skill:review', 'unipi:goal']);
 
