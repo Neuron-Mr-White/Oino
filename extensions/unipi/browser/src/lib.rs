@@ -27,6 +27,8 @@ use oino_extension::bindings::oino::extension::types::LogLevel;
 use oino_extension::host::log;
 use oino_extension::host_service;
 use oino_extension::prelude::*;
+use oino_extension::ui::widgets::extras::image::{Image as ImageNode, ImageSource};
+use oino_extension::ui::widgets::prelude::*;
 
 /// Custom entry type of the turn-tail screenshot.
 pub const TURN_SHOT: &str = "unipi.browser/turn-shot";
@@ -202,7 +204,7 @@ pub fn prompt_line(product: &str, profile: &str) -> String {
     )
 }
 
-/// OUS node of a turn-tail screenshot entry (§11.3).
+/// v2 node of a turn-tail screenshot entry (§11.3; `stack` → `Layout`, `image` → `Image`).
 #[must_use]
 pub fn render_turn_shot(data: &Value) -> Value {
     let title = data["title"]
@@ -210,15 +212,21 @@ pub fn render_turn_shot(data: &Value) -> Value {
         .filter(|t| !t.is_empty())
         .unwrap_or("untitled");
     let caption = format!("Browser at end of turn · {title}");
-    match data["path"].as_str() {
+    let line: Node = Paragraph::new(Line::from(Span::from(caption.as_str()).dim())).into();
+    let node: Node = match data["path"].as_str() {
         Some(path) if std::path::Path::new(path).is_file() || !cfg!(target_arch = "wasm32") => {
-            json!({"t": "stack", "direction": "vertical", "children": [
-                {"t": "image", "path": path, "alt": caption, "maxWidth": 640},
-                {"t": "text", "value": [{"text": caption, "dim": true}]}
-            ]})
+            Layout::default()
+                .children([
+                    ImageNode::new(ImageSource::path(path), caption.as_str())
+                        .max_width(640)
+                        .into(),
+                    line,
+                ])
+                .into()
         }
-        _ => json!({"t": "text", "value": [{"text": caption, "dim": true}]}),
-    }
+        _ => line,
+    };
+    serde_json::to_value(node).unwrap_or(Value::Null)
 }
 
 impl Extension for BrowserExt {
