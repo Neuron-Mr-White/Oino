@@ -18,6 +18,8 @@ oino-core = { path = "../oino-core" }
 oino-extension-api = { path = "../oino-extension-api" }
 oino-models = { path = "../oino-models" }
 oino-settings = { path = "../oino-settings" }
+# H4 (host.md §7.3): the app's `UiCapabilities` for the implicit `_oino/hello`.
+oino-ui = { path = "../oino-ui" }
 oino-wasm-host = { path = "../oino-wasm-host" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 

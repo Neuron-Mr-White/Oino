@@ -643,6 +643,10 @@ async fn main() -> anyhow::Result<()> {
                     unipi_host::sessions::crash::banner(&safe_plan),
                 );
             }
+            // H4 (host.md §7.3–7.5): the protocol handler reaches the hub and its per-session
+            // event feeds through this one service (`events_open`, the session streams).
+            let _sessions =
+                unipi_host::sessions::SessionService::install(std::sync::Arc::clone(&hub));
             // UNI-314: the host-owned cron scheduler -- always on while serve runs,
             // shared by the iroh/app.sock handler (UNI-317 cron_* ops) and the
             // CLI's control.sock (`unipi-host cron ...`).

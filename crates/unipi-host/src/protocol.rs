@@ -1006,6 +1006,26 @@ impl Handler {
                 )
                 .await?;
             }
+            // host.md §7.2–7.5 (WP-H4): the session layer — session streams, the hub
+            // event stream and the one-shot session ops. The hub is the process's one
+            // session owner (`serve` installs it); a handler without one (tests, a CLI
+            // path) says so instead of silently succeeding.
+            Request::SessionsList
+            | Request::EventsOpen
+            | Request::SessionNew { .. }
+            | Request::SessionOpen { .. }
+            | Request::SessionFork { .. }
+            | Request::SessionArchive { .. }
+            | Request::SessionRename { .. }
+            | Request::SessionClose { .. } => {
+                let Some(service) = crate::sessions::SessionService::shared() else {
+                    return Err(error(
+                        AppErrorCode::E_UNSUPPORTED,
+                        "Sessions are served by `unipi-host serve`",
+                    ));
+                };
+                crate::sessions::stream::serve_request(&service, req, read, write).await?;
+            }
             Request::TermOpen { .. }
             | Request::TermAttach { .. }
             | Request::TermList

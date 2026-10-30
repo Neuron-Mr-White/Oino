@@ -113,6 +113,14 @@ pub enum HubEvent {
         /// Text to show.
         text: String,
     },
+    /// The **host-scope** ui registry changed (ui-protocol §9.2): the first event after
+    /// `events_open` is a snapshot, patches follow with `rev = previous + 1` (§7.4).
+    Ui {
+        /// Full registry snapshot (`UiSnapshot` JSON, forwarded verbatim).
+        snapshot: Option<serde_json::Value>,
+        /// Incremental update (`UiPatch` JSON, forwarded verbatim).
+        patch: Option<serde_json::Value>,
+    },
 }
 
 /// Inputs of [`SessionHub::create`] — the host's view of the core [`CoreHubOptions`].
@@ -198,6 +206,26 @@ impl HubSession {
             hub.ensure_supervisor(Arc::clone(&self.backend));
         }
         self.backend.send(command).await.map_err(HubError::from)
+    }
+
+    /// [`HubSession::send`] with the RPC request id (`SessionCmd{id}`): `bash` streams
+    /// `bash_execution_update{id}` with it, exactly as a pi client would (§7.3).
+    ///
+    /// # Errors
+    ///
+    /// As [`HubSession::send`].
+    pub async fn send_with_id(
+        &self,
+        request_id: Option<String>,
+        command: RpcCommand,
+    ) -> Result<RpcResponseData, HubError> {
+        if let Some(hub) = self.hub.upgrade() {
+            hub.ensure_supervisor(Arc::clone(&self.backend));
+        }
+        self.backend
+            .send_with_id(request_id, command)
+            .await
+            .map_err(HubError::from)
     }
 }
 
@@ -355,6 +383,31 @@ impl SessionHub {
     /// Listing I/O failures.
     pub async fn list(&self) -> Result<Vec<SessionCard>, HubError> {
         self.inner.list().await
+    }
+
+    /// Resolves a `session` target — exact id, unique prefix (≥ 4 chars) or session file
+    /// path — to its card, without waking anything (§4.2, §7.2 `session_close` /
+    /// `session_archive`).
+    ///
+    /// # Errors
+    ///
+    /// Unknown or ambiguous target, listing I/O failures.
+    pub async fn resolve(&self, target: &str) -> Result<SessionCard, HubError> {
+        let record = self.inner.resolve(target).await?;
+        let state = lock(&self.inner.state);
+        Ok(self.inner.card_from(&state, &record))
+    }
+
+    /// Emits the current card of one session again (a rename, or a state the protocol layer
+    /// changed): `SessionChanged` keeps the Sessions list live (§7.4).
+    pub async fn refresh(&self, session_id: &str) {
+        self.inner.changed(session_id).await;
+    }
+
+    /// Emits a host-scope ui registry event on `events_open` (ui-protocol §9.2: the host
+    /// forwards the registry's snapshot and patches verbatim).
+    pub fn emit_ui(&self, snapshot: Option<serde_json::Value>, patch: Option<serde_json::Value>) {
+        self.inner.emit(HubEvent::Ui { snapshot, patch });
     }
 
     /// The same list grouped by project cwd (the Sessions list's project sections).
