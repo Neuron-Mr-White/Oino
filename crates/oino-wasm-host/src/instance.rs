@@ -387,19 +387,7 @@ impl ExtensionInstance for WasmInstance {
                 Ok(reg) => {
                     let mut reg =
                         convert::registration(reg).map_err(|e| self.err("init", e.to_string()))?;
-                    // Manifest-declared namespaces (`ui.settings`, ui-protocol §9.1) ride the same
-                    // registration path as the init-time `registry.register-settings` calls
-                    // (both accepted in 2.x); an init-time declaration of the same namespace wins.
-                    for namespace in &self.shared.manifest.ui.settings {
-                        let name = namespace.get("namespace");
-                        if !reg
-                            .settings
-                            .iter()
-                            .any(|s| s.to_value().get("namespace") == name)
-                        {
-                            reg.settings.push(RawJson::from(namespace));
-                        }
-                    }
+                    add_manifest_settings(&self.shared.manifest, &mut reg);
                     if let Some(hub) = self.hub.get().and_then(std::sync::Weak::upgrade) {
                         hub.note_registration(&self.shared.id, &reg);
                     }
@@ -948,5 +936,62 @@ impl ProviderInstance for WasmInstance {
             r.map(convert::json_lossy)
                 .map_err(|m| self.err("provider.oauth-refresh", m))
         })
+    }
+}
+
+/// Appends a manifest's static `ui.settings` namespaces to an `init` registration
+/// (ui-protocol §9.1): the manifest path and the runtime `registry.register-settings` path are
+/// both accepted in 2.x, and a runtime declaration of the same namespace wins.
+fn add_manifest_settings(manifest: &Manifest, reg: &mut Registration) {
+    for namespace in &manifest.ui.settings {
+        let name = namespace.get("namespace");
+        if !reg
+            .settings
+            .iter()
+            .any(|s| s.to_value().get("namespace") == name)
+        {
+            reg.settings.push(RawJson::from(namespace));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest(ui: &str) -> Manifest {
+        Manifest::parse(&format!(
+            r#"{{"apiVersion":"oino.extension/2","id":"acme.x","name":"X","version":"1.0.0"{ui}}}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn manifest_settings_join_the_registration() {
+        let manifest = manifest(
+            r#","ui":{"settings":[
+                {"namespace":"acme.x","title":"X","sections":[]},
+                {"namespace":"acme.y","title":"Y","sections":[]}]}"#,
+        );
+        let mut reg = Registration::default();
+        add_manifest_settings(&manifest, &mut reg);
+        assert_eq!(reg.settings.len(), 2);
+        assert_eq!(reg.settings[1].to_value()["namespace"], "acme.y");
+    }
+
+    #[test]
+    fn runtime_settings_win_over_the_manifest() {
+        let manifest = manifest(
+            r#","ui":{"settings":[{"namespace":"acme.x","title":"Static","sections":[]}]}"#,
+        );
+        let mut reg = Registration {
+            settings: vec![RawJson::from_json_value(&serde_json::json!({
+                "namespace": "acme.x", "title": "Runtime", "sections": []
+            }))],
+            ..Registration::default()
+        };
+        add_manifest_settings(&manifest, &mut reg);
+        assert_eq!(reg.settings.len(), 1);
+        assert_eq!(reg.settings[0].to_value()["title"], "Runtime");
     }
 }
