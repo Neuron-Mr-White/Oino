@@ -1,0 +1,536 @@
+/**
+ * Turn model (app spec §3.5, WP-A2): the current branch → turn units for the
+ * timeline (A6), with ZCode's render units in unipi wording.
+ *
+ * - A **turn** = one user message + everything after it until the next user
+ *   message that is not a steer. `turnId` = that user entry id (ui-protocol
+ *   `turnEntryId`). Entries before the first user message form a `preamble`
+ *   (`pre:<firstId>`); a compaction between turns is its own `compaction`
+ *   marker unit (`cmp:<id>`, Z-35).
+ * - A turn has **segments**: an accepted steer (a user message that arrives
+ *   while the run continues: after a tool result or a `toolUse` stop) opens a
+ *   new segment inside the same turn (Z-54).
+ * - Per segment: `work` (thinking, tools, intermediate prose, steps, cards)
+ *   folds under "Worked for 1m 3s · read 4 files, edited 2" (Z-21); `answer`
+ *   is the latest assistant prose. The fold is forced open while running and
+ *   on stopped / error (Z-56: "Stopped", no duration).
+ * - Consecutive tools of one class group (Z-38): shell → Execute, reads /
+ *   searches → Explored, writes / edits → Changed.
+ *
+ * `createTurnsIndex()` recomputes only the tail turn for stream events
+ * (settled turns keep their identity, so Solid does no work for them) and
+ * rebuilds the whole index on snapshot / reset / reconcile / compaction /
+ * tree navigation (an `entriesRev` change), reusing unchanged turn objects.
+ */
+import { STEP_TYPES, formatDuration, isHiddenCommandText, textOf, toolCategory, type Part as ModelPart, type ToolCategory } from '../chat/model';
+import type { AgentMessage, LiveTool, RunInfo, SessionEntry, Streaming } from './types';
+import { branchOf } from './reducer';
+
+/** A tool call joined with its result or live execution (same shape as `chat/model` `ToolRun`). */
+export type ToolRun = {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  state: 'preparing' | 'running' | 'ok' | 'error' | 'stopped';
+  output?: string;
+  /** Live output tail while running. */
+  live?: string;
+  details?: unknown;
+  durationMs?: number;
+  /** The toolResult entry id (lazy detail fetch, `get_entries{ids}`). */
+  resultId?: string;
+};
+
+export type WorkItem =
+  | { kind: 'thinking'; key: string; text: string; live: boolean }
+  | { kind: 'tool'; key: string; tool: ToolRun }
+  | { kind: 'prose'; key: string; text: string; live: boolean }
+  | { kind: 'step'; key: string; entry: SessionEntry }
+  | { kind: 'card'; key: string; entry: SessionEntry }
+  | { kind: 'compaction'; key: string; entry: SessionEntry }
+  | { kind: 'error'; key: string; text: string };
+
+/** Z-38 tool group classes. */
+export type ToolGroupKind = 'execute' | 'explore' | 'changes';
+/** `work` with consecutive same-class tools merged (≥ 2 tools; thinking between them stays inside, in order). */
+export type WorkNode = Exclude<WorkItem, { kind: 'tool' }> | { kind: 'tool'; key: string; tool: ToolRun } | { kind: 'group'; key: string; group: ToolGroupKind; items: WorkItem[]; tools: ToolRun[] };
+
+export type FoldState = 'running' | 'done' | 'stopped' | 'error';
+export type Fold = {
+  state: FoldState;
+  /** "Working" (the UI appends the live clock from `startedAt`), "Worked for 1m 3s", "Stopped". */
+  label: string;
+  /** unipi summary wording: "read 4 files, edited 2" (+ " · 1 failed"). */
+  detail: string;
+  durationMs?: number;
+  startedAt?: number;
+  /** Open regardless of the user's toggle (running / stopped / error). */
+  forcedOpen: boolean;
+};
+
+export type Segment = {
+  /** The user / steer entry id that opened it (segment 0 = the turn id). */
+  id: string;
+  index: number;
+  /** The steering message (segments ≥ 1). */
+  steer?: SessionEntry;
+  work: WorkItem[];
+  nodes: WorkNode[];
+  answer?: Extract<WorkItem, { kind: 'prose' }>;
+  /** Absent when there is no work to fold. */
+  fold?: Fold;
+  live: boolean;
+};
+
+export type TurnSource = 'user' | 'cron' | 'harness';
+export type TurnCommand = { name: string; args: string; entryId?: string; hidden: boolean };
+
+export type Turn = {
+  turnId: string;
+  kind: 'turn' | 'preamble' | 'compaction';
+  /** The user message entry (kind `turn`). */
+  user?: SessionEntry;
+  /** The compaction entry (kind `compaction`). */
+  compaction?: SessionEntry;
+  /** Every entry of the turn on the branch, in order (stable refs). */
+  entries: SessionEntry[];
+  segments: Segment[];
+  live: boolean;
+  startedAt?: number;
+  endedAt?: number;
+  durationMs?: number;
+  costUsd?: number;
+  model?: string;
+  stopped: boolean;
+  error?: string;
+  source: TurnSource;
+  /** `/command …` echo (Z-35: `/compact` → `hidden`, the compaction marker shows instead). */
+  command?: TurnCommand;
+};
+
+/** What the index reads (a `SessionState` satisfies it). */
+export type TurnsInput = {
+  entries: readonly SessionEntry[];
+  leafId: string | null;
+  entriesRev: number;
+  streaming?: Streaming;
+  liveTools: Readonly<Record<string, LiveTool>>;
+  run: Pick<RunInfo, 'running' | 'startedAt'>;
+};
+
+const TERMINAL = new Set(['stop', 'aborted', 'error', 'length']);
+const ECHO_TYPES = new Set(['oino.command-echo', 'unipi-command-echo']);
+
+/** Z-38 class of a tool (undefined = never groups). */
+export function toolGroupOf(name: string): ToolGroupKind | undefined {
+  const c: ToolCategory = toolCategory(name);
+  if (c === 'run') return 'execute';
+  if (c === 'read' || c === 'search') return 'explore';
+  if (c === 'edit') return 'changes';
+  return undefined;
+}
+
+const VERB: Record<ToolCategory, [verb: string, one: string, many: string]> = {
+  read: ['read', 'file', 'files'],
+  search: ['searched', 'time', 'times'],
+  edit: ['edited', 'file', 'files'],
+  run: ['ran', 'command', 'commands'],
+  web: ['searched the web', 'time', 'times'],
+  ask: ['asked you', 'time', 'times'],
+  agent: ['ran', 'agent', 'agents'],
+  memory: ['used memory', 'time', 'times'],
+  board: ['updated tasks', 'time', 'times'],
+  other: ['used', 'tool', 'tools'],
+};
+
+/** The fold's summary words (unipi `processSummary` wording): "read 4 files, edited 2", " · 1 failed". */
+export function foldDetail(tools: readonly ToolRun[], steps = 0): string {
+  if (!tools.length) return steps ? `${steps} delegated ${steps === 1 ? 'step' : 'steps'}` : '';
+  const order: ToolCategory[] = [];
+  const count = new Map<ToolCategory, number>();
+  for (const t of tools) {
+    const c = toolCategory(t.name);
+    if (!count.has(c)) order.push(c);
+    count.set(c, (count.get(c) ?? 0) + 1);
+  }
+  const words = order.slice(0, 3).map((c, i) => {
+    const n = count.get(c)!;
+    const [verb, one, many] = VERB[c];
+    return i === 0 ? `${verb} ${n} ${n === 1 ? one : many}` : `${verb} ${n}`;
+  });
+  const failed = tools.filter((t) => t.state === 'error').length;
+  return words.join(', ') + (order.length > 3 ? ', …' : '') + (failed ? ` · ${failed} failed` : '');
+}
+
+/** Merges consecutive same-class tools (≥ 2) into groups; thinking between two of them joins the group. */
+export function groupWork(work: readonly WorkItem[]): WorkNode[] {
+  const out: WorkNode[] = [];
+  let i = 0;
+  while (i < work.length) {
+    const item = work[i]!;
+    const cls = item.kind === 'tool' ? toolGroupOf(item.tool.name) : undefined;
+    if (!cls) {
+      out.push(item);
+      i++;
+      continue;
+    }
+    const items: WorkItem[] = [item];
+    const tools: ToolRun[] = [(item as Extract<WorkItem, { kind: 'tool' }>).tool];
+    let j = i + 1;
+    let end = i + 1;
+    while (j < work.length) {
+      const next = work[j]!;
+      if (next.kind === 'thinking') {
+        j++;
+        continue;
+      }
+      if (next.kind === 'tool' && toolGroupOf(next.tool.name) === cls) {
+        for (let k = end; k <= j; k++) items.push(work[k]!);
+        tools.push(next.tool);
+        j++;
+        end = j;
+        continue;
+      }
+      break;
+    }
+    if (tools.length >= 2) {
+      out.push({ kind: 'group', key: `g-${item.key}`, group: cls, items, tools });
+      i = end;
+    } else {
+      out.push(item);
+      i++;
+    }
+  }
+  return out;
+}
+
+const tsOf = (e: SessionEntry): number | undefined => {
+  const m = e.message?.timestamp;
+  if (typeof m === 'number' && Number.isFinite(m)) return m;
+  const t = e.timestamp ? Date.parse(e.timestamp) : NaN;
+  return Number.isFinite(t) ? t : undefined;
+};
+
+const isUser = (e: SessionEntry | undefined): boolean => e?.type === 'message' && e.message?.role === 'user';
+
+/** A user message delivered while the run continued (after a tool result or a `toolUse` stop). */
+function isSteer(prevMessage: AgentMessage | undefined): boolean {
+  if (!prevMessage) return false;
+  if (prevMessage.role === 'toolResult') return true;
+  return prevMessage.role === 'assistant' && prevMessage.stopReason === 'toolUse';
+}
+
+/** A compaction between turns (the run before it had ended) is its own marker unit. */
+function isMarkerCompaction(prevMessage: AgentMessage | undefined): boolean {
+  if (!prevMessage) return true;
+  if (prevMessage.role === 'assistant') return TERMINAL.has(String(prevMessage.stopReason ?? ''));
+  return prevMessage.role === 'user';
+}
+
+const stoppedOf = (m: AgentMessage): boolean => m.stopReason === 'aborted' || (m.stopReason === 'error' && /\baborted\b/i.test(m.errorMessage ?? ''));
+
+function parseArgs(args: unknown): Record<string, unknown> {
+  if (args && typeof args === 'object' && !Array.isArray(args)) return args as Record<string, unknown>;
+  if (typeof args === 'string') {
+    try {
+      const v = JSON.parse(args);
+      if (v && typeof v === 'object') return v as Record<string, unknown>;
+    } catch {
+      // partial JSON while streaming
+    }
+  }
+  return {};
+}
+
+function commandOf(text: string, entryId?: string): TurnCommand | undefined {
+  const m = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+  if (!m) return undefined;
+  const name = m[1]!;
+  return { name, args: (m[2] ?? '').trim(), ...(entryId ? { entryId } : {}), hidden: name === 'compact' || isHiddenCommandText(text) };
+}
+
+type Start = { at: number; kind: Turn['kind'] };
+
+/** Turn starts in `branch[from..]`; `branch[from]` itself is a start when `firstKind` is given. */
+function scanStarts(branch: readonly SessionEntry[], from: number, firstKind?: Turn['kind']): Start[] {
+  const starts: Start[] = [];
+  let prev: AgentMessage | undefined;
+  for (let i = from; i < branch.length; i++) {
+    const e = branch[i]!;
+    if (i === from) {
+      const kind = firstKind ?? (isUser(e) ? 'turn' : e.type === 'compaction' ? 'compaction' : 'preamble');
+      starts.push({ at: i, kind });
+      if (e.type === 'message' && e.message) prev = e.message;
+      continue;
+    }
+    if (e.type === 'message' && e.message) {
+      if (e.message.role === 'user' && !isSteer(prev)) starts.push({ at: i, kind: 'turn' });
+      prev = e.message;
+    } else if (e.type === 'compaction' && isMarkerCompaction(prev)) {
+      starts.push({ at: i, kind: 'compaction' });
+    }
+  }
+  return starts;
+}
+
+type Live = { streaming?: Streaming; liveTools: Readonly<Record<string, LiveTool>>; running: boolean; runStartedAt?: number };
+
+function echoCommand(e: SessionEntry | undefined): TurnCommand | undefined {
+  if (!e || e.type !== 'custom' || !ECHO_TYPES.has(String(e.customType))) return undefined;
+  const d = (e.data ?? {}) as { name?: unknown; args?: unknown; text?: unknown };
+  if (typeof d.name === 'string') return { name: d.name, args: typeof d.args === 'string' ? d.args : '', entryId: e.id, hidden: d.name === 'compact' || isHiddenCommandText(`/${d.name}`) };
+  if (typeof d.text === 'string') return commandOf(d.text, e.id);
+  return undefined;
+}
+
+/** Builds one turn from `branch[start, end)`; `live` only for the tail turn. */
+function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, live: Live | undefined): Turn {
+  const first = branch[start.at]!;
+  const entries = branch.slice(start.at, end) as SessionEntry[];
+  const results = new Map<string, { message: AgentMessage; id: string }>();
+  for (const e of entries) if (e.message?.role === 'toolResult' && typeof e.message.toolCallId === 'string') results.set(e.message.toolCallId, { message: e.message, id: e.id });
+  const running = !!live?.running;
+  const segments: Segment[] = [];
+  let seg: Segment = { id: start.kind === 'compaction' ? `cmp:${first.id}` : first.id, index: 0, work: [], nodes: [], live: false };
+  segments.push(seg);
+  const segMeta: Array<{ startedAt?: number; endedAt?: number; stopped: boolean; error: boolean; steps: number }> = [{ startedAt: tsOf(first), stopped: false, error: false, steps: 0 }];
+  let cost = 0;
+  let model: string | undefined;
+  let lastAssistant: AgentMessage | undefined;
+  let endedAt: number | undefined;
+  const turn: Turn = { turnId: start.kind === 'turn' ? first.id : start.kind === 'compaction' ? `cmp:${first.id}` : `pre:${first.id}`, kind: start.kind, entries, segments, live: false, stopped: false, source: 'user' };
+  const pushParts = (key: string, parts: readonly ModelPart[], isLive: boolean, stopped: boolean) => {
+    parts.forEach((part, i) => {
+      const k = `${key}-${i}`;
+      if (part.type === 'thinking') {
+        const text = String((part as { thinking?: unknown }).thinking ?? '');
+        if (!text.trim() && !isLive) return;
+        seg.work.push({ kind: 'thinking', key: k, text, live: isLive && i === parts.length - 1 });
+      } else if (part.type === 'toolCall') {
+        const call = part as { id?: unknown; name?: unknown; arguments?: unknown };
+        const id = String(call.id ?? '');
+        const result = results.get(id);
+        const lt = live?.liveTools[id];
+        const tool: ToolRun = { id, name: String(call.name ?? ''), args: parseArgs(call.arguments), state: 'running' };
+        if (result) {
+          tool.state = result.message.isError ? 'error' : 'ok';
+          tool.output = textOf(result.message.content as string | ModelPart[] | undefined);
+          if (result.message.details !== undefined) tool.details = result.message.details;
+          tool.resultId = result.id;
+        } else if (lt) {
+          tool.state = lt.done ? (lt.isError ? 'error' : 'ok') : 'running';
+          if (lt.partial !== undefined) tool.live = lt.partial;
+        } else if (isLive) tool.state = 'preparing';
+        else tool.state = stopped || !running ? 'stopped' : 'running';
+        if (lt?.durationMs !== undefined) tool.durationMs = lt.durationMs;
+        seg.work.push({ kind: 'tool', key: k, tool });
+      } else if (part.type === 'text') {
+        const text = String((part as { text?: unknown }).text ?? '');
+        if (!text.trim()) return;
+        seg.work.push({ kind: 'prose', key: k, text, live: isLive });
+      }
+    });
+  };
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]!;
+    const at = tsOf(e);
+    if (at !== undefined) {
+      endedAt = at;
+      segMeta[seg.index]!.endedAt = at;
+    }
+    if (i === 0 && start.kind === 'turn') {
+      turn.user = e;
+      const m = e.message!;
+      const text = textOf(m.content as string | ModelPart[] | undefined);
+      turn.command = echoCommand(branch[start.at - 1]) ?? commandOf(text, e.id);
+      if (turn.command && isHiddenCommandText(text)) turn.command.hidden = true;
+      turn.source = m.source === 'cron' || m.unipiCron ? 'cron' : m.unipiHarness ? 'harness' : 'user';
+      continue;
+    }
+    if (i === 0 && start.kind === 'compaction') {
+      turn.compaction = e;
+      continue;
+    }
+    if (e.type === 'message' && e.message) {
+      const m = e.message;
+      if (m.role === 'user') {
+        seg = { id: e.id, index: segments.length, steer: e, work: [], nodes: [], live: false };
+        segments.push(seg);
+        segMeta.push({ startedAt: at, endedAt: at, stopped: false, error: false, steps: 0 });
+      } else if (m.role === 'assistant') {
+        lastAssistant = m;
+        cost += m.usage?.cost?.total ?? 0;
+        if (typeof m.model === 'string') model = m.model;
+        const stopped = stoppedOf(m);
+        pushParts(e.id, (Array.isArray(m.content) ? m.content : []) as ModelPart[], false, stopped);
+        if (stopped) segMeta[seg.index]!.stopped = true;
+        else if (m.stopReason === 'error') {
+          segMeta[seg.index]!.error = true;
+          if (m.errorMessage) seg.work.push({ kind: 'error', key: `${e.id}-err`, text: m.errorMessage });
+        }
+      } else if (m.role === 'bashExecution') {
+        seg.work.push({ kind: 'card', key: e.id, entry: e });
+      }
+      // toolResult: joined into its call.
+    } else if (e.type === 'custom') {
+      const ct = String(e.customType ?? '');
+      if (ECHO_TYPES.has(ct)) {
+        const cmd = echoCommand(e);
+        // An echo right before the user message it opened belongs to that turn (its `command`).
+        if (cmd?.hidden || (start.at + i + 1 === end && isUser(branch[end]))) continue;
+      }
+      if (STEP_TYPES.has(ct)) {
+        seg.work.push({ kind: 'step', key: e.id, entry: e });
+        segMeta[seg.index]!.steps++;
+      } else seg.work.push({ kind: 'card', key: e.id, entry: e });
+    } else if (e.type === 'custom_message' || e.type === 'model_change' || e.type === 'branch_summary' || e.type === 'thinking_level_change') {
+      seg.work.push({ kind: 'card', key: e.id, entry: e });
+    } else if (e.type === 'compaction') {
+      seg.work.push({ kind: 'compaction', key: e.id, entry: e });
+    }
+  }
+  if (live) {
+    if (live.streaming) {
+      const m = live.streaming.message;
+      pushParts('stream', (Array.isArray(m.content) ? m.content : []) as ModelPart[], true, false);
+    }
+    // Live tools whose call part never streamed (joined late / reconnect).
+    const shown = new Set<string>();
+    for (const s of segments) for (const w of s.work) if (w.kind === 'tool') shown.add(w.tool.id);
+    for (const t of Object.values(live.liveTools)) {
+      if (shown.has(t.id) || t.done || t.parentId) continue;
+      seg.work.push({ kind: 'tool', key: `live-${t.id}`, tool: { id: t.id, name: t.name, args: t.args, state: 'running', ...(t.partial !== undefined ? { live: t.partial } : {}) } });
+    }
+  }
+  turn.live = running;
+  turn.startedAt = tsOf(first);
+  if (!running) {
+    turn.endedAt = endedAt;
+    if (turn.startedAt !== undefined && endedAt !== undefined) turn.durationMs = Math.max(0, endedAt - turn.startedAt);
+  }
+  if (cost) turn.costUsd = cost;
+  if (model) turn.model = model;
+  if (lastAssistant) {
+    turn.stopped = stoppedOf(lastAssistant);
+    if (!turn.stopped && lastAssistant.stopReason === 'error' && lastAssistant.errorMessage) turn.error = lastAssistant.errorMessage;
+  }
+  for (const s of segments) finishSegment(s, segMeta[s.index]!, running && s === seg);
+  return turn;
+}
+
+function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number; stopped: boolean; error: boolean; steps: number }, live: boolean): void {
+  s.live = live;
+  const last = s.work[s.work.length - 1];
+  if (last?.kind === 'prose') {
+    s.answer = last;
+    s.work.pop();
+  }
+  s.nodes = groupWork(s.work);
+  if (!s.work.length && !live) return;
+  const tools = s.work.flatMap((w) => (w.kind === 'tool' ? [w.tool] : []));
+  const state: FoldState = live ? 'running' : meta.stopped ? 'stopped' : meta.error ? 'error' : 'done';
+  const durationMs = (state === 'done' || state === 'error') && meta.startedAt !== undefined && meta.endedAt !== undefined ? Math.max(0, meta.endedAt - meta.startedAt) : undefined;
+  s.fold = {
+    state,
+    label: state === 'running' ? 'Working' : state === 'stopped' ? 'Stopped' : `Worked for ${formatDuration(durationMs ?? 0)}`,
+    detail: foldDetail(tools, meta.steps),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(meta.startedAt !== undefined ? { startedAt: meta.startedAt } : {}),
+    forcedOpen: state !== 'done',
+  };
+}
+
+const liveOf = (input: TurnsInput): Live => ({ streaming: input.streaming, liveTools: input.liveTools, running: input.run.running, runStartedAt: input.run.startedAt });
+
+/** All turns of `branch` (pure; the index below is the incremental version). */
+export function buildTurns(input: TurnsInput): Turn[] {
+  const branch = branchOf(input.entries, input.leafId);
+  const starts = scanStarts(branch, 0);
+  return starts.map((s, i) => buildTurn(branch, s, starts[i + 1]?.at ?? branch.length, i === starts.length - 1 ? liveOf(input) : undefined));
+}
+
+function turnIdOf(branch: readonly SessionEntry[], s: Start): string {
+  const id = branch[s.at]!.id;
+  return s.kind === 'turn' ? id : s.kind === 'compaction' ? `cmp:${id}` : `pre:${id}`;
+}
+
+function sameEntries(a: readonly SessionEntry[], branch: readonly SessionEntry[], from: number, to: number): boolean {
+  if (a.length !== to - from) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== branch[from + i]) return false;
+  return true;
+}
+
+export type TurnsIndex = {
+  /** Turns for the new input: settled turns keep identity; only the tail is rebuilt for appends / live changes. */
+  update(input: TurnsInput): Turn[];
+  /** How the last update ran (tests / perf). */
+  readonly lastMode: 'full' | 'tail' | 'none';
+};
+
+export function createTurnsIndex(): TurnsIndex {
+  let rev = -1;
+  let source: readonly SessionEntry[] = [];
+  let sourceLen = 0;
+  let leaf: string | null = null;
+  let branch: SessionEntry[] = [];
+  let starts: Start[] = [];
+  let turns: Turn[] = [];
+  let mode: TurnsIndex['lastMode'] = 'none';
+
+  const full = (input: TurnsInput) => {
+    mode = 'full';
+    branch = branchOf(input.entries, input.leafId).slice();
+    starts = scanStarts(branch, 0);
+    const prev = new Map(turns.map((t) => [t.turnId, t]));
+    const live = liveOf(input);
+    turns = starts.map((s, i) => {
+      const end = starts[i + 1]?.at ?? branch.length;
+      const tail = i === starts.length - 1;
+      const old = prev.get(turnIdOf(branch, s));
+      if (!tail && old && !old.live && sameEntries(old.entries, branch, s.at, end)) return old;
+      return buildTurn(branch, s, end, tail ? live : undefined);
+    });
+  };
+
+  const tail = (input: TurnsInput) => {
+    mode = 'tail';
+    for (let i = sourceLen; i < input.entries.length; i++) branch.push(input.entries[i]!);
+    const lastStart = starts[starts.length - 1];
+    const from = lastStart?.at ?? 0;
+    const fresh = scanStarts(branch, from, lastStart?.kind);
+    starts = starts.slice(0, Math.max(0, starts.length - 1)).concat(fresh);
+    const keep = starts.length - fresh.length;
+    const live = liveOf(input);
+    const next = turns.slice(0, keep);
+    for (let i = keep; i < starts.length; i++) {
+      const end = starts[i + 1]?.at ?? branch.length;
+      const isTail = i === starts.length - 1;
+      const old = turns[i];
+      // The previous tail, settled and unchanged, keeps its identity once a new turn follows it.
+      if (!isTail && old && !old.live && old.turnId === turnIdOf(branch, starts[i]!) && sameEntries(old.entries, branch, starts[i]!.at, end)) next.push(old);
+      else next.push(buildTurn(branch, starts[i]!, end, isTail ? live : undefined));
+    }
+    turns = next;
+  };
+
+  return {
+    update(input) {
+      const appended =
+        input.entriesRev === rev &&
+        input.entries === source &&
+        input.entries.length >= sourceLen &&
+        (sourceLen === 0 || input.entries[sourceLen - 1] === branch[branch.length - 1]) &&
+        (input.entries.length === sourceLen || input.entries[sourceLen]?.parentId === leaf || leaf === null);
+      if (appended) tail(input);
+      else full(input);
+      rev = input.entriesRev;
+      source = input.entries;
+      sourceLen = input.entries.length;
+      leaf = input.leafId;
+      return turns;
+    },
+    get lastMode() {
+      return mode;
+    },
+  };
+}

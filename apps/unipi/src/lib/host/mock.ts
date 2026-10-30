@@ -5,4 +5,4 @@
  * Production code never imports this module.
  */
 export { createMockHost, MockHost, MockWorld } from '../../dev/mock/host';
-export type { MockHostSpec, MockLogEntry, MockOp, MockScenario, MockSession, MockFsNode } from '../../dev/mock/host';
+export type { MockHostSpec, MockLogEntry, MockOp, MockScenario, MockSession, MockStep, MockFsNode } from '../../dev/mock/host';

@@ -20,7 +20,7 @@ import { cardTarget, type ChatTarget } from './list';
 export async function newSession(hostId: string, cwd?: string): Promise<Result<ChatTarget>> {
   try {
     const card = await hostClient(hostId).request<SessionCard>('session_new', cwd ? { cwd } : {});
-    if (!card || typeof card.id !== 'string') return { ok: false, error: toAppError(new Error('The host did not return the new session.')) };
+    if (!card || typeof card.session_id !== 'string') return { ok: false, error: toAppError(new Error('The host did not return the new session.')) };
     return { ok: true, value: { ...cardTarget(hostId, card), status: 'idle' } };
   } catch (error) {
     return { ok: false, error: toAppError(error) };

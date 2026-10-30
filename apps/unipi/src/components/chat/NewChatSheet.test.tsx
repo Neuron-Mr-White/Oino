@@ -19,7 +19,7 @@ function mockHost(opts: { newSession?: unknown } = {}) {
   call.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
     if (cmd === 'fs_roots') return { ok: true, value: { roots: ['/home/u', '/tmp'] } };
     if (cmd === 'fs_list') return { ok: true, value: { entries: [{ name: 'proj', kind: 'dir', size: 0, mtime: 0, ignored: false }, { name: '.git', kind: 'dir', size: 0, mtime: 0, ignored: false }, { name: 'a.txt', kind: 'file', size: 1, mtime: 0, ignored: false }], more: false } };
-    if (cmd === 'session_new') return opts.newSession ?? { ok: true, value: { id: 'new-1', cwd: args.cwd, state: 'idle' } };
+    if (cmd === 'session_new') return opts.newSession ?? { ok: true, value: { session_id: 'new-1', cwd: args.cwd, run_state: 'idle' } };
     return { ok: true, value: null };
   });
 }
@@ -88,7 +88,7 @@ describe('NewChatSheet', () => {
 
   it('defaults to the first session folder and starts the session with the first message', async () => {
     mockHost();
-    setChatTransport({ list: async () => ({ sessions: [{ id: 'a', cwd: '/home/u/api' }] }), open: () => ({ send: async () => {}, close: () => {} }) });
+    setChatTransport({ list: async () => ({ sessions: [{ session_id: 'a', cwd: '/home/u/api', run_state: 'idle' as const }] }), open: () => ({ send: async () => {}, close: () => {} }) });
     await chatLists().load('h1');
     const onStarted = vi.fn();
     render(() => <NewChatSheet open onClose={() => {}} pcs={pcs} hostId="h1" onStarted={onStarted} />);

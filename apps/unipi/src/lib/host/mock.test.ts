@@ -15,7 +15,7 @@ const scenario: MockScenario = {
     {
       id: 'pc1',
       name: 'coffee',
-      cards: [{ id: 's1', title: 'Math', cwd: '/home/u/proj', state: 'idle' }],
+      cards: [{ session_id: 's1', name: 'Math', cwd: '/home/u/proj', run_state: 'idle' }],
       fs: { '/home/u/proj': { kind: 'dir', children: { 'a.ts': { kind: 'file', text: 'export {}\n' }, src: { kind: 'dir', children: {} } } } },
       sessions: { [rec.snapshot.session_id]: rec as unknown as { snapshot: SessionSnapshot; events: Array<{ at: number; dto: SessionEventDto }> } },
       ops: { cron_list: () => ({ jobs: [], paused: true }) },
@@ -46,8 +46,8 @@ describe('mock host (WP-A1)', () => {
     const hosts = await call('list_hosts', {}, z.array(z.object({ id: z.string(), name: z.string() }).passthrough()));
     expect(hosts.ok && hosts.value.map((h) => h.name)).toEqual(['coffee', 'desk']);
     expect((await forwardList()).ok).toBe(true);
-    const legacy = await appCall('sessions_list', { hostId: 'pc1' }, z.object({ sessions: z.array(z.object({ id: z.string() })) }));
-    expect(legacy.ok && legacy.value.sessions[0].id).toBe('s1');
+    const legacy = await appCall('sessions_list', { hostId: 'pc1' }, z.array(z.object({ session_id: z.string() })));
+    expect(legacy.ok && legacy.value[0].session_id).toBe('s1');
     expect(world.log.find((l) => l.op === 'sessions_list')?.host).toBe('pc1');
   });
 
@@ -111,7 +111,7 @@ describe('mock generators + scenarios (WP-A1)', () => {
     expect(genEntries({ seed: 3, turns: 4, thinking: true, diffs: true, compaction: true, error: true })).toEqual(a);
     a.slice(1).forEach((e, i) => expect(e.parentId).toBe(a[i].id));
     expect(a.some((e) => e.type === 'compaction')).toBe(true);
-    expect(genCards(5).map((c) => c.id)).toEqual(['s001', 's002', 's003', 's004', 's005']);
+    expect(genCards(5).map((c) => c.session_id)).toEqual(['s001', 's002', 's003', 's004', 's005']);
   });
 
   it('the A1 scenarios load into a world', async () => {

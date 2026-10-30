@@ -166,7 +166,7 @@ describe('chat store — lh_mode / set_lh_mode (UNI-269)', () => {
 });
 
 describe('chat list — mode badge fields (UNI-269)', () => {
-  const list = (card: Record<string, unknown>): SessionListData => ({ sessions: [{ id: 's7', cwd: '/home/u/p', state: 'idle', ...card }] });
+  const list = (card: Record<string, unknown>): SessionListData => ({ sessions: [{ session_id: 's7', cwd: '/home/u/p', run_state: 'idle' as const, ...card }] });
 
   it('carries lh_mode / lh_paused onto the row', () => {
     const [row] = chatGroups('h', list({ lh_mode: 'graph', lh_paused: 'goal' }))[0]!.items;

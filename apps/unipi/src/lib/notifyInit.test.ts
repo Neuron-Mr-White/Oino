@@ -10,7 +10,7 @@ import type { HostInfo } from './schemas';
 const host: HostInfo = { id: 'host-1', name: 'oi', ticket: 't', paired_at: 1, last_path: 'unknown' };
 
 function listWith(session: string): SessionListData {
-  return { sessions: [{ id: session, title: 'Fix the parser', cwd: '/tmp/qachat', state: 'idle' }] };
+  return { sessions: [{ session_id: session, name: 'Fix the parser', cwd: '/tmp/qachat', run_state: 'idle' }] };
 }
 
 let lists = 0;

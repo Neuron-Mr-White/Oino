@@ -33,6 +33,12 @@ export type ReconnectOpts = {
   setTimer?: (delayMs: number, callback: () => void) => unknown;
   clearTimer?: (handle: unknown) => void;
   now?: () => number;
+  /** Backoff table override (session streams: 0.5/1/2/5 s, app spec §3.4). */
+  backoffMs?: readonly number[];
+  /** Delay after the table (default `STEADY_MS`). */
+  steadyMs?: number;
+  /** Give up this long after the drop (default `GIVE_UP_MS`). */
+  giveUpMs?: number;
 };
 
 export class Reconnect {
@@ -100,7 +106,7 @@ export class Reconnect {
   fireRetry() {
     if (this.disposed || this.currentState.kind !== 'reconnecting') return;
     const now = (this.opts.now ?? Date.now)();
-    if (now - this.droppedAt >= GIVE_UP_MS) {
+    if (now - this.droppedAt >= (this.opts.giveUpMs ?? GIVE_UP_MS)) {
       this.clearPending();
       this.set({ kind: 'ended', reason: 'unreachable' });
       return;
@@ -121,13 +127,14 @@ export class Reconnect {
     }
     this.attempt += 1;
     const elapsed = (this.opts.now ?? Date.now)() - this.droppedAt;
-    if (elapsed >= GIVE_UP_MS) {
+    if (elapsed >= (this.opts.giveUpMs ?? GIVE_UP_MS)) {
       this.clearPending();
       this.set({ kind: 'ended', reason: 'unreachable' });
       return;
     }
+    const table = this.opts.backoffMs ?? BACKOFF_MS;
     const nextDelayMs =
-      this.attempt <= BACKOFF_MS.length ? BACKOFF_MS[this.attempt - 1] : STEADY_MS;
+      this.attempt <= table.length ? table[this.attempt - 1]! : (this.opts.steadyMs ?? STEADY_MS);
     this.set({ kind: 'reconnecting', attempt: this.attempt, nextDelayMs });
   }
 
@@ -135,7 +142,7 @@ export class Reconnect {
   onRetryTimer() {
     if (this.disposed || this.currentState.kind !== 'reconnecting') return;
     const now = (this.opts.now ?? Date.now)();
-    if (now - this.droppedAt >= GIVE_UP_MS) {
+    if (now - this.droppedAt >= (this.opts.giveUpMs ?? GIVE_UP_MS)) {
       this.clearPending();
       this.set({ kind: 'ended', reason: 'unreachable' });
       return;

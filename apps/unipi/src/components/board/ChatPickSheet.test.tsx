@@ -7,7 +7,7 @@ import { setChatTransport, type SessionListData } from '../../lib/session/link';
 import { rankChatsForProject } from '../../lib/board/portal';
 
 function listing(panes: Array<{ id: string; cwd: string }>): SessionListData {
-  return { sessions: panes.map((p) => ({ id: p.id, title: p.id, cwd: p.cwd, state: 'idle' as const })) };
+  return { sessions: panes.map((p) => ({ session_id: p.id, name: p.id, cwd: p.cwd, run_state: 'idle' as const })) };
 }
 
 afterEach(() => {

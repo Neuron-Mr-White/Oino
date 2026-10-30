@@ -1,0 +1,1267 @@
+{
+ "about": "WP-A2 reducer round trip: snapshot (seq 10) \u2192 resume patch (11-12) \u2192 live run (13-37, seq 20 coalesced by the host) must equal a fresh snapshot after get_entries reconcile. oino ClientEvent wire shapes (crates/oino-core/src/events.rs).",
+ "snapshot": {
+  "session_id": "s1",
+  "reset": true,
+  "seq": 10,
+  "state": {
+   "sessionId": "s1",
+   "thinkingLevel": "medium",
+   "isStreaming": false,
+   "isCompacting": false,
+   "steeringMode": "one-at-a-time",
+   "followUpMode": "one-at-a-time",
+   "autoCompactionEnabled": true,
+   "pendingMessageCount": 0,
+   "model": {
+    "provider": "anthropic",
+    "id": "claude-sonnet-4-5"
+   }
+  },
+  "entries": [
+   {
+    "type": "model_change",
+    "id": "m1",
+    "parentId": null,
+    "timestamp": "2026-10-30T09:00:00.000Z",
+    "provider": "anthropic",
+    "modelId": "claude-sonnet-4-5"
+   },
+   {
+    "type": "message",
+    "id": "u1",
+    "parentId": "m1",
+    "timestamp": "2026-10-30T09:00:01.000Z",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Fix the failing test in src/math.test.ts"
+      }
+     ],
+     "timestamp": 1793350801000
+    }
+   },
+   {
+    "type": "message",
+    "id": "a1",
+    "parentId": "u1",
+    "timestamp": "2026-10-30T09:00:04.000Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "Read the test first."
+      },
+      {
+       "type": "toolCall",
+       "id": "call_1",
+       "name": "read",
+       "arguments": {
+        "path": "src/math.test.ts"
+       }
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 1200,
+      "output": 80,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 1280,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0048
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1793350804000
+    }
+   },
+   {
+    "type": "message",
+    "id": "r1",
+    "parentId": "a1",
+    "timestamp": "2026-10-30T09:00:04.500Z",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_1",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "expect(add(1, 2)).toBe(3);"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1793350804500
+    }
+   },
+   {
+    "type": "message",
+    "id": "a2",
+    "parentId": "r1",
+    "timestamp": "2026-10-30T09:00:09.000Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Fixed: `add` subtracted."
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 1400,
+      "output": 40,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 1440,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0048
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1793350809000
+    }
+   }
+  ],
+  "leaf_id": "a2",
+  "commands": [
+   {
+    "name": "compact",
+    "description": "Compact the context",
+    "source": "builtin"
+   }
+  ],
+  "ui": {
+   "scope": "session",
+   "sessionId": "s1",
+   "rev": 3,
+   "entries": [],
+   "dialogs": []
+  },
+  "topics": []
+ },
+ "resume": {
+  "session_id": "s1",
+  "reset": false,
+  "seq": 12,
+  "replay": [
+   {
+    "session": "s1",
+    "seq": 11,
+    "event": {
+     "type": "queue_update",
+     "steering": [],
+     "followUp": []
+    }
+   },
+   {
+    "session": "s1",
+    "seq": 12,
+    "event": {
+     "type": "topic",
+     "topic": "plan",
+     "data": {
+      "items": [
+       {
+        "text": "Fix add",
+        "done": true
+       }
+      ]
+     },
+     "sticky": true,
+     "publisher": "oino.core"
+    }
+   }
+  ]
+ },
+ "live": [
+  {
+   "session": "s1",
+   "seq": 13,
+   "event": {
+    "type": "agent_start"
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 14,
+   "event": {
+    "type": "message_start",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Now add a regression test"
+      }
+     ],
+     "timestamp": 1793350860010
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 15,
+   "event": {
+    "type": "message_end",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Now add a regression test"
+      }
+     ],
+     "timestamp": 1793350860010
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 16,
+   "event": {
+    "type": "turn_start"
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 17,
+   "event": {
+    "type": "message_start",
+    "message": {
+     "role": "assistant",
+     "content": [],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2000,
+      "output": 120,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2120,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0078
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1793350862000
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 18,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "timestamp": 1793350862000,
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5"
+    },
+    "assistantMessageEvent": {
+     "type": "thinking_start",
+     "contentIndex": 0
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 19,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "timestamp": 1793350862000,
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5"
+    },
+    "assistantMessageEvent": {
+     "type": "thinking_delta",
+     "contentIndex": 0,
+     "delta": "Add a case "
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 21,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "timestamp": 1793350862000,
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5"
+    },
+    "assistantMessageEvent": {
+     "type": "thinking_delta",
+     "contentIndex": 0,
+     "delta": "for negative numbers."
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 22,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "timestamp": 1793350862000,
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5"
+    },
+    "assistantMessageEvent": {
+     "type": "toolcall_start",
+     "contentIndex": 1,
+     "toolCall": {
+      "type": "toolCall",
+      "id": "call_2",
+      "name": "edit",
+      "arguments": {}
+     }
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 23,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "timestamp": 1793350862000,
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5"
+    },
+    "assistantMessageEvent": {
+     "type": "toolcall_delta",
+     "contentIndex": 1,
+     "delta": "{\"path\":\"src/math.test.ts\""
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 24,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "timestamp": 1793350862000,
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5"
+    },
+    "assistantMessageEvent": {
+     "type": "toolcall_end",
+     "contentIndex": 1,
+     "toolCall": {
+      "type": "toolCall",
+      "id": "call_2",
+      "name": "edit",
+      "arguments": {
+       "path": "src/math.test.ts",
+       "oldText": "});",
+       "newText": "  expect(add(-1, -2)).toBe(-3);\n});"
+      }
+     }
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 25,
+   "event": {
+    "type": "message_end",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "Add a case for negative numbers."
+      },
+      {
+       "type": "toolCall",
+       "id": "call_2",
+       "name": "edit",
+       "arguments": {
+        "path": "src/math.test.ts",
+        "oldText": "});",
+        "newText": "  expect(add(-1, -2)).toBe(-3);\n});"
+       }
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2000,
+      "output": 120,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2120,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0078
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1793350862000
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 26,
+   "event": {
+    "type": "tool_execution_start",
+    "toolCallId": "call_2",
+    "toolName": "edit",
+    "args": {
+     "path": "src/math.test.ts",
+     "oldText": "});",
+     "newText": "  expect(add(-1, -2)).toBe(-3);\n});"
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 27,
+   "event": {
+    "type": "tool_execution_update",
+    "toolCallId": "call_2",
+    "toolName": "edit",
+    "args": {
+     "path": "src/math.test.ts",
+     "oldText": "});",
+     "newText": "  expect(add(-1, -2)).toBe(-3);\n});"
+    },
+    "partialResult": {
+     "content": [
+      {
+       "type": "text",
+       "text": "Editing\u2026"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 28,
+   "event": {
+    "type": "tool_execution_end",
+    "toolCallId": "call_2",
+    "toolName": "edit",
+    "result": {
+     "content": [
+      {
+       "type": "text",
+       "text": "Edited src/math.test.ts"
+      }
+     ],
+     "details": {
+      "firstChangedLine": 4
+     }
+    },
+    "isError": false,
+    "durationMs": 41
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 29,
+   "event": {
+    "type": "message_end",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_2",
+     "toolName": "edit",
+     "content": [
+      {
+       "type": "text",
+       "text": "Edited src/math.test.ts"
+      }
+     ],
+     "details": {
+      "firstChangedLine": 4
+     },
+     "isError": false,
+     "timestamp": 1793350862600
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 30,
+   "event": {
+    "type": "turn_end",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "Add a case for negative numbers."
+      },
+      {
+       "type": "toolCall",
+       "id": "call_2",
+       "name": "edit",
+       "arguments": {
+        "path": "src/math.test.ts",
+        "oldText": "});",
+        "newText": "  expect(add(-1, -2)).toBe(-3);\n});"
+       }
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2000,
+      "output": 120,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2120,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0078
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1793350862000
+    },
+    "toolResults": [
+     {
+      "role": "toolResult",
+      "toolCallId": "call_2",
+      "toolName": "edit",
+      "content": [
+       {
+        "type": "text",
+        "text": "Edited src/math.test.ts"
+       }
+      ],
+      "details": {
+       "firstChangedLine": 4
+      },
+      "isError": false,
+      "timestamp": 1793350862600
+     }
+    ]
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 31,
+   "event": {
+    "type": "turn_start"
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 32,
+   "event": {
+    "type": "message_start",
+    "message": {
+     "role": "assistant",
+     "content": [],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2200,
+      "output": 30,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2230,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0071
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1793350865000
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 33,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "timestamp": 1793350865000,
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5"
+    },
+    "assistantMessageEvent": {
+     "type": "text_delta",
+     "contentIndex": 0,
+     "delta": "Added a "
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 34,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Added a regression test."
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2200,
+      "output": 30,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2230,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0071
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1793350865000
+    },
+    "assistantMessageEvent": {
+     "type": "text_delta",
+     "contentIndex": 0,
+     "delta": "regression test."
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 35,
+   "event": {
+    "type": "message_end",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Added a regression test."
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2200,
+      "output": 30,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2230,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0071
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1793350865000
+    }
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 36,
+   "event": {
+    "type": "turn_end",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Added a regression test."
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2200,
+      "output": 30,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2230,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0071
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1793350865000
+    },
+    "toolResults": []
+   }
+  },
+  {
+   "session": "s1",
+   "seq": 37,
+   "event": {
+    "type": "agent_end",
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "Now add a regression test"
+       }
+      ],
+      "timestamp": 1793350860010
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "thinking",
+        "thinking": "Add a case for negative numbers."
+       },
+       {
+        "type": "toolCall",
+        "id": "call_2",
+        "name": "edit",
+        "arguments": {
+         "path": "src/math.test.ts",
+         "oldText": "});",
+         "newText": "  expect(add(-1, -2)).toBe(-3);\n});"
+        }
+       }
+      ],
+      "api": "anthropic-messages",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "usage": {
+       "input": 2000,
+       "output": 120,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "totalTokens": 2120,
+       "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0.0078
+       }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1793350862000
+     },
+     {
+      "role": "toolResult",
+      "toolCallId": "call_2",
+      "toolName": "edit",
+      "content": [
+       {
+        "type": "text",
+        "text": "Edited src/math.test.ts"
+       }
+      ],
+      "details": {
+       "firstChangedLine": 4
+      },
+      "isError": false,
+      "timestamp": 1793350862600
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "text",
+        "text": "Added a regression test."
+       }
+      ],
+      "api": "anthropic-messages",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "usage": {
+       "input": 2200,
+       "output": 30,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "totalTokens": 2230,
+       "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0.0071
+       }
+      },
+      "stopReason": "stop",
+      "timestamp": 1793350865000
+     }
+    ]
+   }
+  }
+ ],
+ "getEntries": {
+  "since": "a2",
+  "reply": {
+   "entries": [
+    {
+     "type": "message",
+     "id": "u2",
+     "parentId": "a2",
+     "timestamp": "2026-10-30T09:01:00.011Z",
+     "message": {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "Now add a regression test"
+       }
+      ],
+      "timestamp": 1793350860010
+     }
+    },
+    {
+     "type": "message",
+     "id": "a3",
+     "parentId": "u2",
+     "timestamp": "2026-10-30T09:01:02.001Z",
+     "message": {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "thinking",
+        "thinking": "Add a case for negative numbers."
+       },
+       {
+        "type": "toolCall",
+        "id": "call_2",
+        "name": "edit",
+        "arguments": {
+         "path": "src/math.test.ts",
+         "oldText": "});",
+         "newText": "  expect(add(-1, -2)).toBe(-3);\n});"
+        }
+       }
+      ],
+      "api": "anthropic-messages",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "usage": {
+       "input": 2000,
+       "output": 120,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "totalTokens": 2120,
+       "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0.0078
+       }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1793350862000
+     }
+    },
+    {
+     "type": "message",
+     "id": "r2",
+     "parentId": "a3",
+     "timestamp": "2026-10-30T09:01:02.601Z",
+     "message": {
+      "role": "toolResult",
+      "toolCallId": "call_2",
+      "toolName": "edit",
+      "content": [
+       {
+        "type": "text",
+        "text": "Edited src/math.test.ts"
+       }
+      ],
+      "details": {
+       "firstChangedLine": 4
+      },
+      "isError": false,
+      "timestamp": 1793350862600
+     }
+    },
+    {
+     "type": "message",
+     "id": "a4",
+     "parentId": "r2",
+     "timestamp": "2026-10-30T09:01:05.001Z",
+     "message": {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "text",
+        "text": "Added a regression test."
+       }
+      ],
+      "api": "anthropic-messages",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "usage": {
+       "input": 2200,
+       "output": 30,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "totalTokens": 2230,
+       "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0.0071
+       }
+      },
+      "stopReason": "stop",
+      "timestamp": 1793350865000
+     }
+    }
+   ],
+   "leafId": "a4"
+  }
+ },
+ "fresh": {
+  "session_id": "s1",
+  "reset": true,
+  "seq": 37,
+  "state": {
+   "sessionId": "s1",
+   "thinkingLevel": "medium",
+   "isStreaming": false,
+   "isCompacting": false,
+   "steeringMode": "one-at-a-time",
+   "followUpMode": "one-at-a-time",
+   "autoCompactionEnabled": true,
+   "pendingMessageCount": 0,
+   "model": {
+    "provider": "anthropic",
+    "id": "claude-sonnet-4-5"
+   }
+  },
+  "entries": [
+   {
+    "type": "model_change",
+    "id": "m1",
+    "parentId": null,
+    "timestamp": "2026-10-30T09:00:00.000Z",
+    "provider": "anthropic",
+    "modelId": "claude-sonnet-4-5"
+   },
+   {
+    "type": "message",
+    "id": "u1",
+    "parentId": "m1",
+    "timestamp": "2026-10-30T09:00:01.000Z",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Fix the failing test in src/math.test.ts"
+      }
+     ],
+     "timestamp": 1793350801000
+    }
+   },
+   {
+    "type": "message",
+    "id": "a1",
+    "parentId": "u1",
+    "timestamp": "2026-10-30T09:00:04.000Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "Read the test first."
+      },
+      {
+       "type": "toolCall",
+       "id": "call_1",
+       "name": "read",
+       "arguments": {
+        "path": "src/math.test.ts"
+       }
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 1200,
+      "output": 80,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 1280,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0048
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1793350804000
+    }
+   },
+   {
+    "type": "message",
+    "id": "r1",
+    "parentId": "a1",
+    "timestamp": "2026-10-30T09:00:04.500Z",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_1",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "expect(add(1, 2)).toBe(3);"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1793350804500
+    }
+   },
+   {
+    "type": "message",
+    "id": "a2",
+    "parentId": "r1",
+    "timestamp": "2026-10-30T09:00:09.000Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Fixed: `add` subtracted."
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 1400,
+      "output": 40,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 1440,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0048
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1793350809000
+    }
+   },
+   {
+    "type": "message",
+    "id": "u2",
+    "parentId": "a2",
+    "timestamp": "2026-10-30T09:01:00.011Z",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Now add a regression test"
+      }
+     ],
+     "timestamp": 1793350860010
+    }
+   },
+   {
+    "type": "message",
+    "id": "a3",
+    "parentId": "u2",
+    "timestamp": "2026-10-30T09:01:02.001Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "Add a case for negative numbers."
+      },
+      {
+       "type": "toolCall",
+       "id": "call_2",
+       "name": "edit",
+       "arguments": {
+        "path": "src/math.test.ts",
+        "oldText": "});",
+        "newText": "  expect(add(-1, -2)).toBe(-3);\n});"
+       }
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2000,
+      "output": 120,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2120,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0078
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1793350862000
+    }
+   },
+   {
+    "type": "message",
+    "id": "r2",
+    "parentId": "a3",
+    "timestamp": "2026-10-30T09:01:02.601Z",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_2",
+     "toolName": "edit",
+     "content": [
+      {
+       "type": "text",
+       "text": "Edited src/math.test.ts"
+      }
+     ],
+     "details": {
+      "firstChangedLine": 4
+     },
+     "isError": false,
+     "timestamp": 1793350862600
+    }
+   },
+   {
+    "type": "message",
+    "id": "a4",
+    "parentId": "r2",
+    "timestamp": "2026-10-30T09:01:05.001Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Added a regression test."
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-sonnet-4-5",
+     "usage": {
+      "input": 2200,
+      "output": 30,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2230,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0071
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1793350865000
+    }
+   }
+  ],
+  "leaf_id": "a4",
+  "commands": [
+   {
+    "name": "compact",
+    "description": "Compact the context",
+    "source": "builtin"
+   }
+  ],
+  "ui": {
+   "scope": "session",
+   "sessionId": "s1",
+   "rev": 3,
+   "entries": [],
+   "dialogs": []
+  },
+  "topics": [
+   {
+    "topic": "plan",
+    "data": {
+     "items": [
+      {
+       "text": "Fix add",
+       "done": true
+      }
+     ]
+    },
+    "sticky": true,
+    "publisher": "oino.core"
+   }
+  ]
+ }
+}

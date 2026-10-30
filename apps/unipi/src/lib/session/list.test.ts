@@ -4,9 +4,9 @@ import type { SessionListData } from './link';
 
 const data: SessionListData = {
   sessions: [
-    { id: 'a', title: 'Fix the parser', cwd: '/home/u/proj', state: 'working' },
-    { id: 'b', cwd: '/home/u/other', state: 'idle', needs_you: { kind: 'ask_user', title: 'Which branch?', since: 5 } },
-    { id: 'c', title: 'Docs', cwd: '/home/u/proj', state: 'idle', pending_work: 'bg task: build', lh_mode: 'graph' },
+    { session_id: 'a', name: 'Fix the parser', cwd: '/home/u/proj', run_state: 'working' },
+    { session_id: 'b', cwd: '/home/u/other', run_state: 'idle', needs_you: true, updated_at: 5 },
+    { session_id: 'c', name: 'Docs', cwd: '/home/u/proj', run_state: 'idle', pending_work: 'bg task: build', lh_mode: 'graph' },
   ],
 };
 
@@ -24,7 +24,7 @@ describe('session list (WP-A1 placeholder over sessions_list)', () => {
   it('a card becomes a row: title falls back to the folder, cwd shortened for display', () => {
     const row = cardTarget('h1', data.sessions[1]);
     expect(row).toMatchObject({ hostId: 'h1', session: 'b', title: 'other', cwd: '~/other', cwdFull: '/home/u/other', status: 'idle' });
-    expect(row.waiting).toEqual({ kind: 'ask_user', title: 'Which branch?', since: 5 });
+    expect(row.waiting).toEqual({ kind: 'dialog', since: 5 });
     expect(cardTarget('h1', data.sessions[2])).toMatchObject({ pendingWork: 'bg task: build', lhMode: 'graph' });
   });
 

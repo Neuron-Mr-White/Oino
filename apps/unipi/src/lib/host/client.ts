@@ -8,12 +8,19 @@
  * Components never call `invoke` directly. `lib/host/tauri.ts` implements
  * this over the src-tauri commands; `lib/host/mock.ts` re-exports the mock.
  *
- * Session/hub types are stubbed from host.md §7.3–7.4 until WP-H4 lands the
- * `@unipi/protocol` `session.ts` mirror; payloads stay `unknown`-typed and
- * are narrowed by `type` in the session reducer (WP-A2).
+ * Session/hub types are `@unipi/protocol` `session.ts` (WP-H4); event
+ * payloads stay loosely typed and are narrowed by `type` in the session
+ * reducer (`lib/session/reducer.ts`, WP-A2; ui-protocol D-U14).
  */
 import type { Accessor } from 'solid-js';
-import { toAppError, type AppError } from '@unipi/protocol';
+import {
+  toAppError,
+  type AppError,
+  type HubEvent as ProtoHubEvent,
+  type SessionCard as ProtoSessionCard,
+  type SessionEventDto as ProtoSessionEventDto,
+  type SessionSnapshot as ProtoSessionSnapshot,
+} from '@unipi/protocol';
 import type { z } from 'zod';
 
 /** The pseudo host id for app-level ops (paired hosts list, local forwards,
@@ -42,23 +49,11 @@ export type OpenSessionRequest = {
 /** Any oino RPC command verbatim (`{type:'prompt', …}`, `{type:'_oino/render', …}`). */
 export type RpcCommand = { type: string; [key: string]: unknown };
 
-/** First frame of a session stream (host.md §7.3). Payloads are narrowed by WP-A2. */
-export type SessionSnapshot = {
-  session_id: string;
-  reset: boolean;
-  seq: number;
-  state?: unknown;
-  entries?: unknown[];
-  leaf_id?: string | null;
-  commands?: unknown[];
-  ui?: unknown[];
-  topics?: unknown[];
-  /** `reset:false` resumes: the buffered events after `sinceSeq`. */
-  replay?: SessionEventDto[];
-};
+/** First frame of a session stream (host.md §7.3, `@unipi/protocol` `session.ts`, WP-H4). */
+export type SessionSnapshot = ProtoSessionSnapshot;
 
 /** `{session, seq, event: <ClientEvent JSON>}` (host.md §7.4). */
-export type SessionEventDto = { session: string; seq: number; event: { type?: string; kind?: string; [key: string]: unknown } };
+export type SessionEventDto = ProtoSessionEventDto;
 
 export interface SessionSink {
   snapshot(snapshot: SessionSnapshot): void;
@@ -72,24 +67,10 @@ export interface SessionStream extends Closable {
 }
 
 /** Hub events on the per-host `events_open` stream (host.md §7.4). */
-export type HubEvent =
-  | { kind: 'session_changed'; card: SessionCard }
-  | { kind: 'session_removed'; session: string }
-  | { kind: 'host_notice'; level: 'info' | 'warn' | 'error'; text: string };
+export type HubEvent = ProtoHubEvent;
 
-/** One row of `sessions_list` (host.md §7.2). Fields beyond `id` are optional until H4 fixes them. */
-export type SessionCard = {
-  id: string;
-  title?: string;
-  cwd?: string;
-  /** idle / working / blocked (needs you) / done. */
-  state?: 'idle' | 'working' | 'blocked' | 'done' | 'unknown';
-  needs_you?: { kind: string; title?: string; since: number };
-  updated_at?: number;
-  pending_work?: string;
-  lh_mode?: string;
-  lh_paused?: string;
-};
+/** One row of `sessions_list` / a `session_changed` card (host.md §4.2). */
+export type SessionCard = ProtoSessionCard;
 
 export type TermRequest = { cwd?: string; cols: number; rows: number; id?: string };
 export interface TermSink {
@@ -120,7 +101,8 @@ export interface HostClient {
   /** One-shot ops; rejects with an `AppError`-shaped value. */
   request<T = unknown>(op: string, args?: Record<string, unknown>): Promise<T>;
   openSession(req: OpenSessionRequest, sink: SessionSink): SessionStream;
-  openEvents(sink: (event: HubEvent) => void): Closable;
+  /** The hub event stream; `closed` fires once when it ends (`error` when it failed). */
+  openEvents(sink: (event: HubEvent) => void, closed?: (error?: AppError) => void): Closable;
   openTerm(req: TermRequest, sink: TermSink): TermStream;
   openLsp(req: LspRequest, sink: LspSink): LspStream;
 }

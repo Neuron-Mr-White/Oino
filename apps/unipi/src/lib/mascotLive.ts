@@ -16,7 +16,7 @@ export type MascotLive = { state: Accessor<MascotState>; count: Accessor<number>
 export function runningAgents(hosts: readonly HostInfo[]): number {
   let running = 0;
   for (const host of hosts) {
-    for (const card of chatLists().get(host.id)?.data?.sessions ?? []) if (card.state === 'working' || card.pending_work) running += 1;
+    for (const card of chatLists().get(host.id)?.data?.sessions ?? []) if (card.run_state === 'working' || card.pending_work) running += 1;
   }
   return running;
 }

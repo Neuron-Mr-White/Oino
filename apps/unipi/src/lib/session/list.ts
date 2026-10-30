@@ -42,19 +42,25 @@ export type ChatGroup = { key: string; label: string; cwd?: string; status: Agen
 const short = (cwd?: string) => (cwd ? cwd.replace(/^\/home\/[^/]+/, '~') : undefined);
 const folderOf = (cwd?: string) => (cwd ? cwd.replace(/\/+$/, '').split('/').pop() || cwd : 'No folder');
 
-/** A host session card → a row. */
+const optStr = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
+
+/** A host session card (host.md §4.2) → a row. `needs_you` → a dialog wait since the last activity. */
 export function cardTarget(hostId: string, card: SessionCard): ChatTarget {
+  const pendingWork = optStr(card.pending_work);
+  const lhMode = optStr(card.lh_mode);
+  const lhPaused = optStr(card.lh_paused);
+  const waiting: ChatWaiting | undefined = card.needs_you ? { kind: 'dialog', since: card.updated_at ?? 0 } : undefined;
   return {
     hostId,
-    session: card.id,
-    title: card.title?.trim() || folderOf(card.cwd),
+    session: card.session_id,
+    title: card.name?.trim() || folderOf(card.cwd),
     cwd: short(card.cwd),
     cwdFull: card.cwd,
-    status: card.state ?? 'unknown',
-    waiting: effectiveWaiting(card.needs_you, card.pending_work),
-    ...(card.pending_work ? { pendingWork: card.pending_work } : {}),
-    ...(card.lh_mode ? { lhMode: card.lh_mode } : {}),
-    ...(card.lh_paused ? { lhPaused: card.lh_paused } : {}),
+    status: card.run_state === 'working' ? 'working' : card.run_state === 'idle' || card.run_state === 'taken_over' ? 'idle' : 'unknown',
+    waiting: effectiveWaiting(waiting, pendingWork),
+    ...(pendingWork ? { pendingWork } : {}),
+    ...(lhMode ? { lhMode } : {}),
+    ...(lhPaused ? { lhPaused } : {}),
   };
 }
 

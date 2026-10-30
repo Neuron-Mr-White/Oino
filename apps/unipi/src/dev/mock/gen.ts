@@ -175,11 +175,11 @@ export function genSession(id: string, opts: GenOptions = {}): MockSession {
       session_id: id,
       reset: true,
       seq: 0,
-      state: { running: false, model: { provider: 'anthropic', id: opts.model ?? 'claude-sonnet-4-5' }, thinking: 'medium' },
+      state: { sessionId: id, isStreaming: false, isCompacting: false, model: { provider: 'anthropic', id: opts.model ?? 'claude-sonnet-4-5' }, thinkingLevel: 'medium', messageCount: entries.length, pendingMessageCount: 0 },
       entries,
       leaf_id: entries.at(-1)?.id ?? null,
       commands: [],
-      ui: [],
+      ui: { scope: 'session', sessionId: id, rev: 0, entries: [], dialogs: [] },
       topics: [],
     },
     events: [],
@@ -191,18 +191,19 @@ export function recMathSession(): MockSession {
   return recMath as unknown as MockSession;
 }
 
-/** `n` session cards spread over a few project folders. */
+/** `n` session cards spread over a few project folders (host.md §4.2 `SessionCard`). */
 export function genCards(n: number, opts: { seed?: number; root?: string } = {}): SessionCard[] {
   const r = rng(opts.seed ?? 7);
   const root = opts.root ?? '/home/you/projects';
   const folders = ['unipi', 'oino', 'website'];
-  const states: NonNullable<SessionCard['state']>[] = ['idle', 'idle', 'working', 'done'];
+  const states: SessionCard['run_state'][] = ['idle', 'idle', 'working', 'idle'];
   return Array.from({ length: n }, (_, i) => ({
-    id: `s${String(i + 1).padStart(3, '0')}`,
-    title: PROMPTS[i % PROMPTS.length],
+    session_id: `s${String(i + 1).padStart(3, '0')}`,
+    name: PROMPTS[i % PROMPTS.length],
     cwd: `${root}/${folders[i % folders.length]}`,
-    state: pick(r, states),
+    run_state: pick(r, states),
     updated_at: BASE_TIME - i * 3_600_000,
+    message_count: 4 + i * 2,
   }));
 }
 
@@ -228,3 +229,74 @@ export function script(session: string, events: Array<{ at: number; event: Sessi
 
 /** 1×1 transparent PNG. */
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+export type LiveRunOptions = {
+  /** First event seq (the snapshot's seq + 1). */
+  seq?: number;
+  /** Virtual start time (ms) of the run in the script. */
+  at?: number;
+  prompt?: string;
+  /** A steer that arrives after the first tool result (Z-54). */
+  steer?: string;
+  /** Leave the run going (no final answer / agent_end). */
+  running?: boolean;
+  model?: string;
+};
+
+/**
+ * A live run as oino `ClientEvent`s (crates/oino-core/src/events.rs wire
+ * shapes): user prompt → streamed thinking + a tool call → tool execution →
+ * result → (steer) → streamed answer → `agent_end`. For the session stream
+ * scenarios (WP-A2) and component tests.
+ */
+export function genLiveRun(session: string, opts: LiveRunOptions = {}): Array<{ at: number; dto: SessionEventDto }> {
+  let seq = opts.seq ?? 1;
+  let at = opts.at ?? 0;
+  const model = opts.model ?? 'claude-sonnet-4-5';
+  const out: Array<{ at: number; dto: SessionEventDto }> = [];
+  const ev = (event: SessionEventDto['event'], dt = 120) => {
+    at += dt;
+    out.push({ at, dto: { session, seq: seq++, event } });
+  };
+  const ts = () => BASE_TIME + 86_400_000 + at;
+  const meta = { api: 'anthropic-messages', provider: 'anthropic', model };
+  const user = (text: string) => ({ role: 'user', content: [{ type: 'text', text }], timestamp: ts() });
+  const prompt = user(opts.prompt ?? 'Run the tests and fix what fails');
+  ev({ type: 'agent_start' }, 0);
+  ev({ type: 'message_start', message: prompt });
+  ev({ type: 'message_end', message: prompt });
+  const call = { type: 'toolCall', id: 'call_live_1', name: 'bash', arguments: { command: 'npm test -- --run' } };
+  const a1 = { role: 'assistant', content: [] as unknown[], ...meta, stopReason: 'toolUse', timestamp: ts(), usage: { input: 2100, output: 90, cacheRead: 0, cacheWrite: 0, totalTokens: 2190, cost: { total: 0.0076 } } };
+  ev({ type: 'message_start', message: a1 }, 400);
+  let thinking = '';
+  for (const piece of ['Run the suite first, ', 'then read the failing ', 'test before editing.']) {
+    thinking += piece;
+    ev({ type: 'message_update', message: { role: 'assistant', timestamp: a1.timestamp, ...meta }, assistantMessageEvent: { type: 'thinking_delta', contentIndex: 0, delta: piece } }, 180);
+  }
+  ev({ type: 'message_update', message: { role: 'assistant', timestamp: a1.timestamp, ...meta }, assistantMessageEvent: { type: 'toolcall_end', contentIndex: 1, toolCall: call } });
+  const a1End = { ...a1, content: [{ type: 'thinking', thinking }, call] };
+  ev({ type: 'message_end', message: a1End });
+  ev({ type: 'tool_execution_start', toolCallId: call.id, toolName: 'bash', args: call.arguments });
+  ev({ type: 'tool_execution_update', toolCallId: call.id, toolName: 'bash', args: call.arguments, partialResult: { content: [{ type: 'text', text: ' RUN  v5.0.3\n ✓ src/cli.test.ts (8)\n' }] } }, 600);
+  const output = ' RUN  v5.0.3\n ✓ src/cli.test.ts (8)\n × src/math.test.ts > add (1)\n   expected -1 to be 3\n';
+  ev({ type: 'tool_execution_end', toolCallId: call.id, toolName: 'bash', result: { content: [{ type: 'text', text: output }] }, isError: false, durationMs: 1400 }, 900);
+  ev({ type: 'message_end', message: { role: 'toolResult', toolCallId: call.id, toolName: 'bash', content: [{ type: 'text', text: output }], isError: false, timestamp: ts() } });
+  if (opts.steer) {
+    const steer = user(opts.steer);
+    ev({ type: 'queue_update', steering: [opts.steer], followUp: [] }, 200);
+    ev({ type: 'queue_update', steering: [], followUp: [] }, 200);
+    ev({ type: 'message_start', message: steer });
+    ev({ type: 'message_end', message: steer });
+  }
+  if (opts.running) return out;
+  const a2 = { role: 'assistant', content: [] as unknown[], ...meta, stopReason: 'stop', timestamp: ts(), usage: { input: 2600, output: 60, cacheRead: 1800, cacheWrite: 0, totalTokens: 2660, cost: { total: 0.0069 } } };
+  ev({ type: 'message_start', message: a2 }, 500);
+  let text = '';
+  for (const piece of ['`add` subtracted. ', 'It now returns `a + b`; ', 'all 9 tests pass.']) {
+    text += piece;
+    ev({ type: 'message_update', message: { role: 'assistant', timestamp: a2.timestamp, ...meta }, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: piece } }, 220);
+  }
+  ev({ type: 'message_end', message: { ...a2, content: [{ type: 'text', text }] } });
+  ev({ type: 'agent_end', messages: [] });
+  return out;
+}

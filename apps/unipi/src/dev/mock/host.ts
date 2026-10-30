@@ -28,8 +28,23 @@ import {
 
 export type MockOp = (args: Record<string, unknown>, host: MockHost) => unknown;
 
-/** A recorded session: snapshot + `{at (ms), dto}` script replayed on a virtual clock. */
-export type MockSession = { snapshot: SessionSnapshot; events?: Array<{ at: number; dto: SessionEventDto }> };
+/** One step of a session script: an event, or the stream dropping (`down` ms unreachable; `Infinity` = stays down). */
+export type MockStep = { at: number; dto: SessionEventDto } | { at: number; drop: { code?: string; message?: string; down?: number } };
+
+/**
+ * A recorded session: snapshot + script replayed on a virtual clock (from the
+ * first open). A reopen with `sinceSeq` gets a resume patch (`replay` = the
+ * due events after it), like the host's ring (host.md §7.4). `cmd` answers
+ * session commands by `type` (default: `get_commands` from the snapshot,
+ * `get_entries` from `entries`, everything else `{}`).
+ */
+export type MockSession = {
+  snapshot: SessionSnapshot;
+  events?: MockStep[];
+  /** What `get_entries` answers (the host's entries after the script ran). */
+  entries?: { entries: unknown[]; leafId: string | null };
+  cmd?: Record<string, (cmd: RpcCommand, host: MockHost) => unknown>;
+};
 
 export type MockFsNode = { kind: 'dir'; children: Record<string, MockFsNode> } | { kind: 'file'; text: string; mtime?: number };
 
@@ -81,7 +96,8 @@ function walk(root: Record<string, MockFsNode> | undefined, path: string): MockF
 
 const BUILTIN: Record<string, MockOp> = {
   host_info: (_a, h) => ({ name: h.spec.name, version: '2.0.0', proto: '2.0.0', tools: ['oino', 'unipi-kanboard'] }),
-  sessions_list: (_a, h) => ({ sessions: h.spec.cards ?? [] }),
+  // host.md §7.2: a bare array of cards, newest activity first.
+  sessions_list: (_a, h) => h.spec.cards ?? [],
   fs_roots: (_a, h) => ({ roots: Object.keys(h.spec.fs ?? {}) }),
   fs_list: (a, h) => {
     const path = String(a.path ?? '');
@@ -160,28 +176,69 @@ export class MockHost implements HostClient {
     this.world.record({ host: this.hostId, kind: 'open', op: `session_${req.kind}`, args: req });
     const timers: ReturnType<typeof setTimeout>[] = [];
     let open = true;
+    const id = req.session ?? '';
     const session = req.session ? this.spec.sessions?.[req.session] : undefined;
+    const key = `${this.hostId}/${id}`;
+    const end = (error?: Err) => {
+      if (!open) return;
+      open = false;
+      timers.forEach(clearTimeout);
+      this.world.streams.get(key)?.delete(handle);
+      sink.closed(error as never);
+    };
+    const handle = { push: (items: SessionEventDto[]) => open && sink.events(items), drop: (error?: Err) => end(error) };
     queueMicrotask(() => {
       if (!open) return;
-      if (this.conn().state === 'offline') return sink.closed(err('E_TRANSPORT', `Can't reach ${this.spec.name}`) as never);
-      if (!session) return sink.closed(err('E_NOT_FOUND', `No session ${req.session ?? ''}`) as never);
-      sink.snapshot(session.snapshot);
+      if (this.conn().state === 'offline') return end(err('E_TRANSPORT', `Can't reach ${this.spec.name}`));
+      if (!session) return end(err('E_NOT_FOUND', `No session ${req.session ?? ''}`));
+      const clock = this.world.clock(key);
+      if (this.world.isDown(key)) return end(err('E_TRANSPORT', 'The host stopped answering'));
+      (this.world.streams.get(key) ?? this.world.streams.set(key, new Set()).get(key)!).add(handle);
       const script = session.events ?? [];
       const speed = this.world.scenario.speed ?? 0;
-      if (!speed) {
-        if (script.length) sink.events(script.map((s) => s.dto));
-        return;
+      const elapsed = speed ? clock.elapsed() * speed : Infinity;
+      const since = req.sinceSeq ?? 0;
+      const dueEvents = script.flatMap((s) => ('dto' in s && s.at <= elapsed && s.dto.seq > since ? [s.dto] : []));
+      if (since > 0) {
+        sink.snapshot({ session_id: id, reset: false, seq: Math.max(since, ...dueEvents.map((e) => e.seq)), replay: dueEvents } as SessionSnapshot);
+      } else {
+        sink.snapshot(session.snapshot);
+        if (dueEvents.length) sink.events(dueEvents);
       }
-      for (const step of script) timers.push(setTimeout(() => open && sink.events([step.dto]), step.at / speed));
+      script.forEach((step, i) => {
+        if (!('drop' in step)) {
+          if (step.at > elapsed) timers.push(setTimeout(() => open && sink.events([step.dto]), (step.at - elapsed) / speed));
+          return;
+        }
+        const fire = () => {
+          if (!open || this.world.fired(key, i)) return;
+          this.world.markDown(key, (step.drop.down ?? 0) / (speed || 1));
+          end(err(step.drop.code ?? 'E_TRANSPORT', step.drop.message ?? 'The connection dropped'));
+        };
+        // Speed 0 settles at once: a drop that has not fired yet takes the stream down right after the replay.
+        if (step.at <= elapsed) queueMicrotask(fire);
+        else timers.push(setTimeout(fire, (step.at - elapsed) / speed));
+      });
     });
     return {
       cmd: async <T,>(cmd: RpcCommand): Promise<T> => {
         this.world.record({ host: this.hostId, kind: 'cmd', op: cmd.type, args: cmd });
-        return { ok: true } as T;
+        if (!open) throw err('E_TRANSPORT', 'The session stream closed');
+        const handler = session?.cmd?.[cmd.type];
+        if (handler) return (await handler(cmd, this)) as T;
+        if (cmd.type === 'get_commands') return { commands: session?.snapshot.commands ?? [] } as T;
+        if (cmd.type === 'get_entries' && session?.entries) {
+          const since = typeof cmd.since === 'string' ? cmd.since : undefined;
+          const all = session.entries.entries as Array<{ id?: string }>;
+          const at = since ? all.findIndex((e) => e.id === since) : -1;
+          return { entries: since ? all.slice(at + 1) : all, leafId: session.entries.leafId } as T;
+        }
+        return {} as T;
       },
       close: () => {
         open = false;
         timers.forEach(clearTimeout);
+        this.world.streams.get(key)?.delete(handle);
       },
     };
   }
@@ -203,9 +260,16 @@ export class MockHost implements HostClient {
   }
 }
 
+type StreamHandle = { push(items: SessionEventDto[]): void; drop(error?: Err): void };
+
 export class MockWorld {
   readonly log: MockLogEntry[] = [];
   readonly eventSinks = new Set<(event: HubEvent) => void>();
+  /** Open session streams by `host/session` (tests push events / drop them). */
+  readonly streams = new Map<string, Set<StreamHandle>>();
+  private readonly clocks = new Map<string, number>();
+  private readonly down = new Map<string, number>();
+  private readonly firedSteps = new Set<string>();
   private readonly clients = new Map<string, MockHost>();
   private readonly t0 = Date.now();
 
@@ -229,6 +293,45 @@ export class MockWorld {
     const full = { ...entry, at: Date.now() - this.t0 };
     this.log.push(full);
     if (typeof window !== 'undefined' && window.__UNIPI_HOST__ === this.client) (window.__UNIPI_MOCK_LOG__ ??= []).push(full);
+  }
+
+  /** The virtual clock of a session script (starts at its first open). */
+  clock(key: string): { elapsed(): number } {
+    if (!this.clocks.has(key)) this.clocks.set(key, Date.now());
+    const t0 = this.clocks.get(key)!;
+    return { elapsed: () => Date.now() - t0 };
+  }
+
+  /** A script drop: the session's host is unreachable for `ms` real milliseconds (`Infinity` = stays down). */
+  markDown(key: string, ms: number): void {
+    this.down.set(key, Date.now() + ms);
+  }
+
+  isDown(key: string): boolean {
+    return Date.now() < (this.down.get(key) ?? 0);
+  }
+
+  /** Marks script step `index` of a session fired; true when it already had. */
+  fired(key: string, index: number): boolean {
+    const id = `${key}#${index}`;
+    if (this.firedSteps.has(id)) return true;
+    this.firedSteps.add(id);
+    return false;
+  }
+
+  /** Test control: the session's host answers again. */
+  restore(hostId: string, sessionId: string): void {
+    this.down.delete(`${hostId}/${sessionId}`);
+  }
+
+  /** Test control: pushes events to every open stream of a session. */
+  push(hostId: string, sessionId: string, items: SessionEventDto[]): void {
+    for (const s of this.streams.get(`${hostId}/${sessionId}`) ?? []) s.push(items);
+  }
+
+  /** Test control: drops every open stream of a session (`E_TRANSPORT` by default). */
+  drop(hostId: string, sessionId: string, error: Err = err('E_TRANSPORT', 'The connection dropped')): void {
+    for (const s of [...(this.streams.get(`${hostId}/${sessionId}`) ?? [])]) s.drop(error);
   }
 
   /** Pushes a hub event to every `openEvents` subscriber. */
