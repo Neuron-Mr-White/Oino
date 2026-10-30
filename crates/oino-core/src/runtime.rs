@@ -3,17 +3,24 @@
 //! one client event stream across replacements.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use oino_ai::{Model, ThinkingLevel};
 use oino_models::resolver::{InitialModelOptions, ScopedModel, find_initial_model};
 use oino_models::virtual_models::branch_selection;
-use oino_session::{CreateOptions, EntryId, EntryKind, SessionEntry, SessionError, SessionManager};
+use oino_session::{
+    CreateOptions, EntryId, EntryKind, LeaseInfo, SessionEntry, SessionError, SessionLease,
+    SessionLockError, SessionManager, clear_takeover_request, read_takeover_request,
+    write_takeover_request,
+};
 use serde_json::json;
 use tokio::task::JoinHandle;
 
 use crate::events::{ModelChangeSource, OinoEvent, ReplaceReason};
+use crate::extensions::api::ExtensionMode;
 use crate::hub::{EventHub, EventStream};
 use crate::services::{Services, ServicesError};
 use crate::session::{AgentSession, SessionConfig, SessionOpError, ToolEntry, lock};
@@ -145,6 +152,12 @@ pub(crate) struct RuntimeCore {
     options: SessionOptions,
     model_fallback_message: std::sync::OnceLock<String>,
     shutdown: tokio::sync::watch::Sender<bool>,
+    /// Single-writer lease of the current session (D-LOCK); `None` for in-memory sessions.
+    lease: Mutex<Option<SessionLease>>,
+    /// Bumped whenever `lease` changes; stale takeover watchers exit on a mismatch.
+    lease_epoch: AtomicU64,
+    /// Embedding override of the default takeover behaviour (D-TAKEOVER).
+    takeover_handler: Mutex<Option<TakeoverHandler>>,
     me: Weak<RuntimeCore>,
 }
 
@@ -161,6 +174,168 @@ fn session_error(error: impl std::fmt::Display) -> ServicesError {
 
 fn op_error(error: impl std::fmt::Display) -> SessionOpError {
     SessionOpError::Failed(error.to_string())
+}
+
+/// D-LOCK / D-TAKEOVER timings (spec core.md §2.1): retry window after a certainly-dead
+/// holder (kernel release lag), takeover poll interval, takeover deadline and the holder-side
+/// watcher poll.
+const DEAD_HOLDER_RETRY: Duration = Duration::from_secs(2);
+const TAKEOVER_POLL: Duration = Duration::from_millis(200);
+const TAKEOVER_DEADLINE: Duration = Duration::from_secs(10);
+const TAKEOVER_WATCH_POLL: Duration = Duration::from_millis(500);
+
+/// Overrides the default D-TAKEOVER holder behaviour (`on_takeover`): called instead of
+/// "close this session and keep the runtime usable" — e.g. WP-C7's hub closes its backend
+/// and notifies its client.
+pub type TakeoverHandler =
+    Arc<dyn Fn(LeaseInfo) -> futures::future::BoxFuture<'static, ()> + Send + Sync>;
+
+/// Process identity for lease metadata (D-LOCK): `oino <mode>` holding a pid/host/boot id.
+pub(crate) fn process_lease_info(agent_dir: &Path, mode: ExtensionMode) -> LeaseInfo {
+    let mode = match mode {
+        ExtensionMode::Tui => "tui",
+        ExtensionMode::Rpc => "rpc",
+        ExtensionMode::Json => "json",
+        ExtensionMode::Print => "print",
+        ExtensionMode::Acp => "acp",
+        ExtensionMode::Desktop => "desktop",
+        ExtensionMode::Mobile => "mobile",
+    };
+    LeaseInfo::for_process(&format!("oino {mode}"), &agent_dir.join("state"))
+}
+
+/// The D-TAKEOVER text when a holder does not respond: precise, names the holder.
+fn locked_text(session_id: &str, holder: &LeaseInfo) -> String {
+    format!(
+        "Session {session_id} is open in {} (pid {} on {}). It was asked to close and did not \
+         respond; close it there and try again.",
+        holder.client, holder.pid, holder.host
+    )
+}
+
+/// Acquires the single-writer lease of `session_file`, taking an unresponsive holder over
+/// (D-LOCK / D-TAKEOVER): (1) a certainly-dead holder gets a ≤2 s retry window (kernel
+/// release lag), (2) a live one is asked through `<file>.takeover` to close — its watcher
+/// disposes the session and releases within the 10 s deadline —, (3) past the deadline the
+/// precise [`SessionOpError::SessionLocked`] names the holder. The kernel lock remains the
+/// arbiter throughout; there is no lease expiry.
+pub(crate) async fn acquire_lease(
+    session_file: &Path,
+    holder: &LeaseInfo,
+    session_id: &str,
+) -> Result<SessionLease, SessionOpError> {
+    let attempt = || SessionLease::acquire(session_file, holder);
+    let mut held_by = match attempt() {
+        Ok(lease) => return Ok(lease),
+        Err(SessionLockError::HeldBy(info)) => info,
+        Err(SessionLockError::Io { path, source }) => {
+            return Err(SessionOpError::Failed(format!(
+                "session lock I/O error on {}: {source}",
+                path.display()
+            )));
+        }
+    };
+    // (1) certainly-dead holder: the kernel releases on death, retry out its lag. A live
+    // holder appearing mid-window falls through to the takeover phase.
+    if held_by.dead() {
+        let deadline = Instant::now() + DEAD_HOLDER_RETRY;
+        while Instant::now() < deadline {
+            tokio::time::sleep(TAKEOVER_POLL).await;
+            match attempt() {
+                Ok(lease) => return Ok(lease),
+                Err(SessionLockError::HeldBy(info)) => {
+                    held_by = info;
+                    if !held_by.dead() {
+                        break;
+                    }
+                }
+                Err(SessionLockError::Io { .. }) => break,
+            }
+        }
+    }
+    // (2) ask the holder to close and reload here (D-TAKEOVER), polling the kernel lock.
+    if write_takeover_request(session_file, holder).is_err() {
+        tracing::warn!(
+            session_file = %session_file.display(),
+            "cannot write the takeover request; polling the lock only"
+        );
+    }
+    let deadline = Instant::now() + TAKEOVER_DEADLINE;
+    loop {
+        if Instant::now() >= deadline {
+            clear_takeover_request(session_file);
+            return Err(SessionOpError::SessionLocked(locked_text(
+                session_id, &held_by,
+            )));
+        }
+        tokio::time::sleep(TAKEOVER_POLL).await;
+        match attempt() {
+            Ok(lease) => {
+                clear_takeover_request(session_file);
+                return Ok(lease);
+            }
+            Err(SessionLockError::HeldBy(info)) => held_by = info,
+            Err(SessionLockError::Io { path, source }) => {
+                clear_takeover_request(session_file);
+                return Err(SessionOpError::Failed(format!(
+                    "session lock I/O error on {}: {source}",
+                    path.display()
+                )));
+            }
+        }
+    }
+}
+
+/// Binds the lease of `manager`'s session file (D-LOCK ownership rule: the runtime holds the
+/// lease of the current session, children hold their own). New-session paths have unique
+/// planned names, so acquisition is uncontended there.
+async fn bind_lease(
+    services: &Services,
+    manager: &SessionManager,
+) -> Result<Option<SessionLease>, SessionOpError> {
+    let Some(file) = manager.session_file().filter(|_| manager.is_persisted()) else {
+        return Ok(None);
+    };
+    let holder = process_lease_info(&services.agent_dir, services.mode);
+    acquire_lease(file, &holder, manager.session_id())
+        .await
+        .map(Some)
+}
+
+/// Opens a file-backed session under its lease (D-TAKEOVER step 4: acquire, open, repair):
+/// the first open resolves migrations and the canonical path, the lease is acquired with
+/// takeover, and the file is re-read + repaired under the lease so nothing the previous
+/// holder appended after the first read is missed.
+async fn open_under_lease(
+    services: &Services,
+    path: &Path,
+    root: &Path,
+    cwd_override: Option<&Path>,
+) -> Result<(SessionManager, Option<SessionLease>), ServicesError> {
+    let first = SessionManager::open(path, root, cwd_override).map_err(session_error)?;
+    let lease = bind_lease(services, &first).await.map_err(session_error)?;
+    if lease.is_none() {
+        return Ok((first, None));
+    }
+    let file = first.session_file().map(Path::to_path_buf);
+    let manager = match file {
+        Some(file) => SessionManager::open(&file, root, cwd_override).map_err(session_error)?,
+        None => first,
+    };
+    let manager = repaired(manager).map_err(session_error)?;
+    Ok((manager, lease))
+}
+
+/// Wraps a freshly created manager (new/fork sources) with its lease; no repair (empty or
+/// copy-on-write content).
+async fn fresh_under_lease(
+    services: &Services,
+    manager: SessionManager,
+) -> Result<(SessionManager, Option<SessionLease>), ServicesError> {
+    let lease = bind_lease(services, &manager)
+        .await
+        .map_err(session_error)?;
+    Ok((manager, lease))
 }
 
 /// Repairs the interrupted turn of a just-opened session (D-REPAIR, WP-C2): every write
@@ -292,6 +467,26 @@ fn tool_names(
     }
 }
 
+/// Holder-side takeover watcher (D-TAKEOVER): polls `<session file>.takeover` while the
+/// lease identified by `epoch` is the current one; on a request the session is handed to
+/// the requester through [`RuntimeCore::on_takeover`] (close here, reload there).
+async fn lease_watcher(core: Weak<RuntimeCore>, epoch: u64, session_file: PathBuf) {
+    loop {
+        tokio::time::sleep(TAKEOVER_WATCH_POLL).await;
+        let Some(core) = core.upgrade() else {
+            return; // runtime gone
+        };
+        if core.lease_epoch.load(Ordering::SeqCst) != epoch {
+            return; // lease replaced or released
+        }
+        if let Some(request) = read_takeover_request(&session_file) {
+            core.on_takeover(epoch, &session_file, request.requester)
+                .await;
+            return; // teardown released this lease; the epoch moved on
+        }
+    }
+}
+
 async fn install(
     services: &Arc<Services>,
     options: &SessionOptions,
@@ -391,6 +586,77 @@ async fn install(
     Ok((Current { session, forward }, fallback))
 }
 
+/// Resolves the first session manager of `source` together with its lease: write opens of
+/// existing files go through [`open_under_lease`] (acquire → open → repair), fresh sources
+/// through [`fresh_under_lease`].
+async fn source_under_lease(
+    services: &Services,
+    source: &SessionSource,
+    root: &Path,
+) -> Result<(SessionManager, Option<SessionLease>), ServicesError> {
+    Ok(match source {
+        SessionSource::New => {
+            fresh_under_lease(
+                services,
+                SessionManager::create(&services.cwd, root, CreateOptions::default())
+                    .map_err(session_error)?,
+            )
+            .await?
+        }
+        SessionSource::NewWithId(id) => {
+            fresh_under_lease(
+                services,
+                SessionManager::create(
+                    &services.cwd,
+                    root,
+                    CreateOptions {
+                        id: Some(id.clone()),
+                        parent_session: None,
+                    },
+                )
+                .map_err(session_error)?,
+            )
+            .await?
+        }
+        SessionSource::Open(path) => open_under_lease(services, path, root, None).await?,
+        SessionSource::ContinueRecent => {
+            match SessionManager::find_most_recent(&services.cwd, root).map_err(session_error)? {
+                Some(path) => open_under_lease(services, &path, root, Some(&services.cwd)).await?,
+                None => {
+                    fresh_under_lease(
+                        services,
+                        SessionManager::create(&services.cwd, root, CreateOptions::default())
+                            .map_err(session_error)?,
+                    )
+                    .await?
+                }
+            }
+        }
+        SessionSource::Resume(id) => {
+            match SessionManager::find_by_id(&services.cwd, id, root).map_err(session_error)? {
+                Some(path) => open_under_lease(services, &path, root, None).await?,
+                None => {
+                    return Err(ServicesError::Session(format!(
+                        "No session found matching '{id}'"
+                    )));
+                }
+            }
+        }
+        SessionSource::Fork(path) => {
+            fresh_under_lease(
+                services,
+                SessionManager::fork_from(path, &services.cwd, root, CreateOptions::default())
+                    .map_err(session_error)?,
+            )
+            .await?
+        }
+        SessionSource::InMemory => (
+            SessionManager::in_memory(&services.cwd, CreateOptions::default(), Vec::new()),
+            None,
+        ),
+    })
+}
+
 impl AgentSessionRuntime {
     /// Creates the runtime and its first session; emits `session_start{reason:"startup"}`,
     /// `resources_discover` and the model restore.
@@ -403,52 +669,13 @@ impl AgentSessionRuntime {
         options: SessionOptions,
     ) -> Result<Self, ServicesError> {
         let root = services.sessions_root(options.session_dir.as_deref());
-        let manager = match &options.source {
-            SessionSource::New => {
-                SessionManager::create(&services.cwd, &root, CreateOptions::default())
-            }
-            SessionSource::NewWithId(id) => SessionManager::create(
-                &services.cwd,
-                &root,
-                CreateOptions {
-                    id: Some(id.clone()),
-                    parent_session: None,
-                },
-            ),
-            SessionSource::Open(path) => Ok(repaired(
-                SessionManager::open(path, &root, None).map_err(session_error)?,
-            )
-            .map_err(session_error)?),
-            SessionSource::ContinueRecent => Ok(repaired(
-                SessionManager::continue_recent(&services.cwd, &root).map_err(session_error)?,
-            )
-            .map_err(session_error)?),
-            SessionSource::Resume(id) => {
-                match SessionManager::find_by_id(&services.cwd, id, &root).map_err(session_error)? {
-                    Some(path) => Ok(repaired(
-                        SessionManager::open(&path, &root, None).map_err(session_error)?,
-                    )
-                    .map_err(session_error)?),
-                    None => {
-                        return Err(ServicesError::Session(format!(
-                            "No session found matching '{id}'"
-                        )));
-                    }
-                }
-            }
-            SessionSource::Fork(path) => {
-                SessionManager::fork_from(path, &services.cwd, &root, CreateOptions::default())
-            }
-            SessionSource::InMemory => Ok(SessionManager::in_memory(
-                &services.cwd,
-                CreateOptions::default(),
-                Vec::new(),
-            )),
-        }
-        .map_err(session_error)?;
+        let (manager, lease) = source_under_lease(&services, &options.source, &root).await?;
         let hub = EventHub::new();
         let (current, fallback) =
             install(&services, &options, &hub, None, manager, "startup", None).await?;
+        let lease_file = lease
+            .as_ref()
+            .map(|lease| lease.session_file().to_path_buf());
         let core = Arc::new_cyclic(|me: &Weak<RuntimeCore>| RuntimeCore {
             services: Arc::clone(&services),
             hub: hub.clone(),
@@ -456,8 +683,15 @@ impl AgentSessionRuntime {
             options,
             model_fallback_message: std::sync::OnceLock::new(),
             shutdown: tokio::sync::watch::channel(false).0,
+            lease: Mutex::new(lease),
+            lease_epoch: AtomicU64::new(0),
+            takeover_handler: Mutex::new(None),
             me: me.clone(),
         });
+        if let Some(file) = lease_file {
+            let epoch = core.lease_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+            tokio::spawn(lease_watcher(core.me.clone(), epoch, file));
+        }
         if let Some(fallback) = fallback {
             let _ = core.model_fallback_message.set(fallback);
         }
@@ -577,6 +811,13 @@ impl AgentSessionRuntime {
         self.core.import_jsonl(path, cwd_override).await
     }
 
+    /// Installs the embedding's takeover behaviour override (D-TAKEOVER `on_takeover`);
+    /// `None` restores the default (dispose the session, keep the runtime usable with a
+    /// fresh one, publish [`OinoEvent::SessionTakenOver`], ask frontends to exit).
+    pub fn set_takeover_handler(&self, handler: Option<TakeoverHandler>) {
+        *lock(&self.core.takeover_handler) = handler;
+    }
+
     /// Shuts the current session down (`session_shutdown{reason:"quit"}`).
     pub async fn dispose(&self) {
         self.core.teardown("quit", None).await;
@@ -594,6 +835,63 @@ impl RuntimeCore {
         if !self.shutdown.send_replace(true) {
             self.session().hub().publish(OinoEvent::ShutdownRequested);
         }
+    }
+
+    /// D-TAKEOVER holder side: this session was taken over by another runner. Aborts the
+    /// run, emits `session_shutdown{reason:"takeover"}`, disposes the session (releasing
+    /// the lease), publishes [`OinoEvent::SessionTakenOver`], keeps the runtime usable with
+    /// a fresh session and asks frontends to return to their session list.
+    ///
+    /// `epoch` + `session_file` guard against a stale watcher (one tick behind a lease
+    /// swap) taking over the session that replaced its own.
+    pub(crate) async fn on_takeover(
+        self: &Arc<Self>,
+        epoch: u64,
+        session_file: &Path,
+        by: LeaseInfo,
+    ) {
+        {
+            let held = lock(&self.lease);
+            let still_current = self.lease_epoch.load(Ordering::SeqCst) == epoch
+                && held
+                    .as_ref()
+                    .is_some_and(|lease| lease.session_file() == session_file);
+            if !still_current {
+                return; // stale watcher: this lease is no longer ours
+            }
+        }
+        let handler = lock(&self.takeover_handler).clone();
+        if let Some(handler) = handler {
+            handler(by).await;
+            return;
+        }
+        tracing::info!(session_id = %self.session().session_id(), by = %by.describe(), "session taken over (D-TAKEOVER)");
+        self.teardown("takeover", None).await;
+        self.hub.publish(OinoEvent::SessionTakenOver { by });
+        // "Next session": keep the runtime coherent — the taken-over file is gone from here.
+        let (persisted, root) = self.persisted();
+        let manager = if persisted {
+            SessionManager::create(&self.services.cwd, &root, CreateOptions::default())
+        } else {
+            Ok(SessionManager::in_memory(
+                &self.services.cwd,
+                CreateOptions::default(),
+                Vec::new(),
+            ))
+        };
+        if let Ok(manager) = manager {
+            match bind_lease(&self.services, &manager).await {
+                Ok(lease) => {
+                    if self.swap(manager, lease, "new", None).await.is_ok() {
+                        self.replaced(ReplaceReason::New);
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "cannot bind a fresh session after takeover");
+                }
+            }
+        }
+        self.shutdown.send_replace(true);
     }
 
     async fn before_switch(&self, reason: &str, target: Option<&Path>) -> bool {
@@ -624,11 +922,32 @@ impl RuntimeCore {
         }
         self.services.host.detach(&session.session_id());
         session.dispose().await;
+        self.release_lease();
+    }
+
+    /// Stores the lease of the (about-to-be) current session (D-LOCK): bumps the epoch,
+    /// retiring any previous watcher, and starts this lease's takeover watcher.
+    fn set_lease(&self, lease: Option<SessionLease>) {
+        let epoch = self.lease_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+        let file = lease
+            .as_ref()
+            .map(|lease| lease.session_file().to_path_buf());
+        if let Some(file) = file {
+            tokio::spawn(lease_watcher(self.me.clone(), epoch, file));
+        }
+        *lock(&self.lease) = lease; // replaces (and releases) any leftover
+    }
+
+    /// Releases the current session's lease (kernel lock, metadata, registry).
+    fn release_lease(&self) {
+        self.lease_epoch.fetch_add(1, Ordering::SeqCst);
+        drop(lock(&self.lease).take());
     }
 
     async fn swap(
         &self,
         manager: SessionManager,
+        lease: Option<SessionLease>,
         reason: &str,
         previous: Option<PathBuf>,
     ) -> Result<(), SessionOpError> {
@@ -651,6 +970,7 @@ impl RuntimeCore {
         }
         let old = std::mem::replace(&mut *lock(&self.current), next);
         old.forward.abort();
+        self.set_lease(lease);
         Ok(())
     }
 
@@ -689,14 +1009,22 @@ impl RuntimeCore {
             id: None,
             parent_session: parent,
         };
-        let manager = if persisted {
-            SessionManager::create(&self.services.cwd, &root, options).map_err(op_error)?
+        let (manager, lease) = if persisted {
+            fresh_under_lease(
+                &self.services,
+                SessionManager::create(&self.services.cwd, &root, options).map_err(op_error)?,
+            )
+            .await
+            .map_err(op_error)?
         } else {
-            SessionManager::in_memory(&self.services.cwd, options, Vec::new())
+            (
+                SessionManager::in_memory(&self.services.cwd, options, Vec::new()),
+                None,
+            )
         };
         let target = manager.session_file().map(Path::to_path_buf);
         self.teardown("new", target.as_deref()).await;
-        self.swap(manager, "new", previous).await?;
+        self.swap(manager, lease, "new", previous).await?;
         self.replaced(ReplaceReason::New);
         Ok(Replaced::default())
     }
@@ -719,13 +1047,13 @@ impl RuntimeCore {
         }
         let previous = self.session().session_file();
         let (_, root) = self.persisted();
-        let manager = repaired(
-            SessionManager::open(&path, &root, cwd_override.as_deref()).map_err(op_error)?,
-        )
-        .map_err(op_error)?;
+        let (manager, lease) =
+            open_under_lease(&self.services, &path, &root, cwd_override.as_deref())
+                .await
+                .map_err(op_error)?;
         let target = manager.session_file().map(Path::to_path_buf);
         self.teardown("resume", target.as_deref()).await;
-        self.swap(manager, "resume", previous).await?;
+        self.swap(manager, lease, "resume", previous).await?;
         self.replaced(ReplaceReason::Resume);
         Ok(Replaced::default())
     }
@@ -782,9 +1110,12 @@ impl RuntimeCore {
                 manager.branch_into_new_session(leaf).map_err(op_error)?;
             }
         }
+        let (manager, lease) = fresh_under_lease(&self.services, manager)
+            .await
+            .map_err(op_error)?;
         let target = manager.session_file().map(Path::to_path_buf);
         self.teardown("fork", target.as_deref()).await;
-        self.swap(manager, "fork", previous).await?;
+        self.swap(manager, lease, "fork", previous).await?;
         self.replaced(reason);
         Ok(Replaced {
             cancelled: false,

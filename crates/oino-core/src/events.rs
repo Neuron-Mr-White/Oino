@@ -480,6 +480,14 @@ pub enum OinoEvent {
         /// Panic message.
         error: String,
     },
+    /// Another runner took the current session over (D-TAKEOVER): this runtime closed the
+    /// session and released it; frontends show "Session moved to another window" and return
+    /// to their session list / next session.
+    #[serde(rename_all = "camelCase")]
+    SessionTakenOver {
+        /// Who took the session over.
+        by: oino_session::LeaseInfo,
+    },
 }
 
 impl From<crate::topics::TopicValue> for OinoEvent {

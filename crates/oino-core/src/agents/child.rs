@@ -1,14 +1,14 @@
 //! Spawning and driving one nested agent session.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use oino_ai::{AgentMessage, JsonValue, Model, ThinkingLevel};
-use oino_session::{CreateOptions, SessionManager};
+use oino_session::{CreateOptions, SessionLease, SessionManager};
 use serde_json::json;
 use tokio::task::JoinHandle;
 
@@ -18,14 +18,16 @@ use super::spec::{
 };
 use super::{ChildConfig, ChildLink, Tree};
 use crate::builtin::{SessionToolContext, builtin_tool_entries};
-use crate::events::{AgentSessionEvent, ClientEvent};
+use crate::events::{AgentSessionEvent, ClientEvent, OinoEvent};
 use crate::extensions::api::CallContext;
 use crate::extensions::host::HostError;
 use crate::extensions::runner::ExtensionSet;
+use crate::runtime::{acquire_lease, process_lease_info};
 use crate::session::{
     AgentSession, Inner, InputSource, IsolatedTask, PromptDisposition, PromptOptions,
     SessionConfig, StreamingBehavior, lock,
 };
+use oino_session::LeaseInfo;
 
 fn failed(error: impl std::fmt::Display) -> HostError {
     HostError::Failed(error.to_string())
@@ -41,6 +43,10 @@ pub struct ChildAgent {
     tree: Arc<Tree>,
     closed: AtomicBool,
     forward: Mutex<Option<JoinHandle<()>>>,
+    /// Single-writer lease of the child's session file (D-LOCK); children hold their own.
+    lease: Mutex<Option<SessionLease>>,
+    /// Bumped whenever `lease` changes; a stale takeover watcher exits on a mismatch.
+    lease_epoch: AtomicU64,
 }
 
 impl std::fmt::Debug for ChildAgent {
@@ -224,6 +230,12 @@ impl ChildAgent {
     /// `session_shutdown{reason:"quit"}` to the child's extensions, disposes the session and
     /// ends its event streams. Idempotent.
     pub async fn close(&self, grace: Duration) {
+        self.close_with_reason(grace, "quit").await;
+    }
+
+    /// [`ChildAgent::close`] with a `session_shutdown` reason (D-TAKEOVER uses
+    /// `"takeover"`). Also releases the child's lease (D-LOCK).
+    async fn close_with_reason(&self, grace: Duration, reason: &str) {
         if self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -238,7 +250,7 @@ impl ChildAgent {
         let runner = self.session.runner();
         if runner.has_handlers("session_shutdown") {
             runner
-                .emit(json!({"type": "session_shutdown", "reason": "quit"}))
+                .emit(json!({"type": "session_shutdown", "reason": reason}))
                 .await;
         }
         if let Some(router) = self.session.inner.agents.router() {
@@ -249,11 +261,39 @@ impl ChildAgent {
         if let Some(task) = lock(&self.forward).take() {
             task.abort();
         }
+        self.release_lease();
         if let Some(parent) = self.parent.upgrade() {
             parent.agents.remove_child(&self.id);
             AgentSession::from_inner(parent).publish_agents_changed();
         }
         self.tree.release();
+    }
+
+    /// Releases the child's single-writer lease and retires its watcher (D-LOCK).
+    fn release_lease(&self) {
+        self.lease_epoch.fetch_add(1, Ordering::SeqCst);
+        drop(lock(&self.lease).take());
+    }
+
+    /// D-TAKEOVER holder side: the child's session file was taken over by another runner;
+    /// close the child here (releasing the lease) and notify its subscribers. The
+    /// `epoch` + `session_file` guard ignores a stale watcher (one tick behind a lease
+    /// change) closing the child that replaced its own session file.
+    async fn on_taken_over(&self, epoch: u64, session_file: &Path, by: LeaseInfo) {
+        {
+            let held = lock(&self.lease);
+            let still_current = self.lease_epoch.load(Ordering::SeqCst) == epoch
+                && held
+                    .as_ref()
+                    .is_some_and(|lease| lease.session_file() == session_file);
+            if !still_current {
+                return;
+            }
+        }
+        self.session
+            .hub()
+            .publish(OinoEvent::SessionTakenOver { by });
+        self.close_with_reason(Duration::ZERO, "takeover").await;
     }
 }
 
@@ -394,9 +434,11 @@ impl AgentSession {
                 "Too many nested agents running (max {max})"
             )));
         }
-        let built = self.build_child(extension, &spec, model, thinking, &cwd, depth);
-        let child = match built {
-            Ok(child) => child,
+        let built = self
+            .build_child(extension, &spec, model, thinking, &cwd, depth)
+            .await;
+        let (child, child_lease, child_file) = match built {
+            Ok(built) => built,
             Err(error) => {
                 agents.tree.release();
                 return Err(error);
@@ -426,13 +468,23 @@ impl AgentSession {
             tree: Arc::clone(&agents.tree),
             closed: AtomicBool::new(false),
             forward: Mutex::new(Some(forward)),
+            lease: Mutex::new(child_lease),
+            lease_epoch: AtomicU64::new(0),
         });
+        if let Some(file) = child_file {
+            let epoch = handle.lease_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+            tokio::spawn(child_lease_watcher(Arc::downgrade(&handle), epoch, file));
+        }
         lock(&agents.children).push(Arc::clone(&handle));
         self.publish_agents_changed();
         Ok(handle)
     }
 
-    fn build_child(
+    #[allow(
+        clippy::type_complexity,
+        reason = "(session, its lease, the leased file)"
+    )]
+    async fn build_child(
         &self,
         extension: &str,
         spec: &AgentSpec,
@@ -440,9 +492,26 @@ impl AgentSession {
         thinking: ThinkingLevel,
         cwd: &Path,
         depth: u8,
-    ) -> Result<AgentSession, HostError> {
+    ) -> Result<(AgentSession, Option<SessionLease>, Option<PathBuf>), HostError> {
         let agents = &self.inner.agents;
         let mut manager = self.child_manager(spec, cwd)?;
+        // D-LOCK: children acquire the lease of their own file when `Persistence::File`
+        // (fresh files are uniquely named, so this only contends on a `SessionFile` seed) —
+        // before the child writes anything to it.
+        let lease = match manager.session_file().filter(|_| manager.is_persisted()) {
+            Some(file) => {
+                let holder = process_lease_info(self.agent_dir(), self.mode());
+                Some(
+                    acquire_lease(file, &holder, manager.session_id())
+                        .await
+                        .map_err(failed)?,
+                )
+            }
+            None => None,
+        };
+        let file = lease
+            .as_ref()
+            .map(|lease| lease.session_file().to_path_buf());
         manager
             .append_model_change(&model.provider, &model.id)
             .map_err(failed)?;
@@ -517,7 +586,7 @@ impl AgentSession {
             }),
         });
         context.bind(&session);
-        Ok(session)
+        Ok((session, lease, file))
     }
 
     /// Nested agents of this session (`agents.list`): `[{id, label, state, sessionFile}]`.
@@ -558,6 +627,27 @@ impl AgentSession {
     #[must_use]
     pub fn is_child(&self) -> bool {
         self.inner.agents.link.is_some()
+    }
+}
+
+/// Holder-side takeover watcher of a child's lease (D-TAKEOVER): polls the child session
+/// file's `.takeover` request while the lease identified by `epoch` is current; on a
+/// request the child is closed here (releasing the lease) so the other runner reloads it.
+async fn child_lease_watcher(child: Weak<ChildAgent>, epoch: u64, session_file: PathBuf) {
+    loop {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let Some(child) = child.upgrade() else {
+            return; // child gone
+        };
+        if child.lease_epoch.load(Ordering::SeqCst) != epoch {
+            return; // lease replaced or released
+        }
+        if let Some(request) = oino_session::read_takeover_request(&session_file) {
+            child
+                .on_taken_over(epoch, &session_file, request.requester)
+                .await;
+            return; // close released the lease; the epoch moved on
+        }
     }
 }
 

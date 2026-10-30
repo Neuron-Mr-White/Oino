@@ -148,6 +148,10 @@ pub enum SessionOpError {
         "Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry."
     )]
     CompactionInProgress,
+    /// Another runner holds the single-writer lease and did not respond to the takeover
+    /// request (D-LOCK / D-TAKEOVER); the text names the holder.
+    #[error("{0}")]
+    SessionLocked(String),
     /// Session-replacing operations need a command context.
     #[error("This operation is only available in command and shortcut contexts")]
     CommandContextRequired,

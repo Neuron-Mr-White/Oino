@@ -9,10 +9,12 @@ description = "pi session format v3: entries, migration, context projection and 
 
 [features]
 default = ["manager"]
-## Synchronous std file I/O: `SessionManager`, listing, legacy-file migration.
-manager = []
+## Synchronous std file I/O: `SessionManager`, listing, legacy-file migration, single-writer
+## lease (D-LOCK).
+manager = ["dep:fs4", "dep:nix"]
 
 [dependencies]
+fs4 = { workspace = true, optional = true }
 indexmap.workspace = true
 oino-ai = { path = "../oino-ai" }
 serde.workspace = true
@@ -20,9 +22,15 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror = "2"
 uuid = { workspace = true, features = ["v4", "v7"] }
 
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, optional = true }
+
 [dev-dependencies]
 proptest.workspace = true
 tempfile.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+nix = { workspace = true }
 
 [[test]]
 name = "golden_pi"
@@ -30,6 +38,10 @@ required-features = ["manager"]
 
 [[test]]
 name = "legacy_migration"
+required-features = ["manager"]
+
+[[test]]
+name = "lease"
 required-features = ["manager"]
 
 [[test]]

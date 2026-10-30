@@ -36,5 +36,8 @@ oino-core = { path = ".", features = ["testing"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 
+[target.'cfg(unix)'.dev-dependencies]
+nix = { workspace = true }
+
 [lints]
 workspace = true

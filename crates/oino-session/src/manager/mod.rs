@@ -4,6 +4,7 @@
 //! files go to `<root>/--<cwd>--/<ts>_<id>.jsonl` (session-v3 §6.1).
 
 mod files;
+mod lease;
 mod list;
 mod repair;
 mod tree;
@@ -20,6 +21,10 @@ use uuid::Uuid;
 pub use files::{
     LEGACY_DIR_NAME, MigratedSession, cwd_session_dir, default_agent_dir, default_sessions_root,
     encode_cwd, migrate_legacy_file, resolve_path, session_file_name, validate_session_id,
+};
+pub use lease::{
+    LeaseInfo, SessionLease, TakeoverRequest, clear_takeover_request, lock_file_path,
+    lock_metadata_path, read_takeover_request, takeover_path, write_takeover_request,
 };
 pub use list::{ProgressSink, SessionInfo, session_info};
 pub use repair::{INTERRUPTED_TOOL_TEXT, RESUME_REPAIR_TYPE, RepairReport, TOOL_DISPATCH_TYPE};

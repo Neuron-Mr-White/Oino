@@ -57,6 +57,23 @@ pub enum SessionError {
     Cancelled,
 }
 
+/// Failure of acquiring the single-writer session lease (D-LOCK, spec core.md §2.1).
+#[cfg(feature = "manager")]
+#[derive(Debug, thiserror::Error)]
+pub enum SessionLockError {
+    /// Another writer holds the lease (this process or another runner).
+    #[error("session is locked by {}", .0.describe())]
+    HeldBy(crate::manager::LeaseInfo),
+    /// Lock file failure.
+    #[error("I/O error on {path}: {source}")]
+    Io {
+        /// Affected path.
+        path: PathBuf,
+        /// Underlying error.
+        source: std::io::Error,
+    },
+}
+
 #[cfg(feature = "manager")]
 impl SessionError {
     /// Wraps an I/O error with its path.
