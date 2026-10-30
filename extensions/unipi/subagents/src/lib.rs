@@ -42,6 +42,7 @@ use futures::StreamExt;
 use oino_extension::agents::Agent;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::widgets::prelude::*;
 use oino_extension::wit::registry::RendererTarget;
 use unipi_kit::services::{OpenTray, fanout as fan, point};
 use unipi_kit::settings::{Field, Kind, Namespace, Section, Store, choice, plain};
@@ -51,6 +52,11 @@ use unipi_kit::{suite, topics};
 use crate::child::{Delivery, Done, Progress, Report, Spec, Usage};
 use crate::profiles::{AgentFile, Profile, Source};
 use crate::record::{CancelledBy, Record, Status};
+
+/// A built node as the wire JSON the renderer callback returns.
+fn wire(node: impl Into<Node>) -> Value {
+    serde_json::to_value(node.into()).unwrap_or(Value::Null)
+}
 
 /// Extension id.
 pub const EXTENSION_ID: &str = "unipi.subagents";
@@ -812,7 +818,7 @@ impl Subagents {
             return;
         }
         let now = timers::now_ms();
-        let mut cards = Vec::new();
+        let mut cards: Vec<Node> = Vec::new();
         let mut lines = Vec::new();
         for id in &watched {
             let (Some(rec), Some(run)) = (self.record(sid, id), self.run(sid, id)) else {
@@ -826,10 +832,25 @@ impl Subagents {
                 rec.title,
                 record::stat_line(&rec, p.tool_calls, Some(&p.usage), now)
             ));
-            cards.push(json!({"t": "card", "title": format!("{} subagent {}", record::profile_label(&rec.profile), rec.title), "body": view::live_card(&rec, &items, p.tool_calls, Some(&p.usage), now)}));
+            let card = Block::bordered()
+                .border_type(BorderType::Rounded)
+                .title(format!(
+                    "{} subagent {}",
+                    record::profile_label(&rec.profile),
+                    rec.title
+                ))
+                .child(view::live_card(
+                    &rec,
+                    &items,
+                    p.tool_calls,
+                    Some(&p.usage),
+                    now,
+                ));
+            cards.push(card.into());
         }
+        let spec = serde_json::to_value(Layout::default().children(cards)).unwrap_or(Value::Null);
         let _ = ui::fire(
-            &json!({"method": "setWidget", "widgetKey": FG_KEY, "widgetLines": lines, "widgetPlacement": "aboveEditor", "widgetSpec": {"t": "stack", "direction": "vertical", "gap": 0, "children": cards}}),
+            &json!({"method": "setWidget", "widgetKey": FG_KEY, "widgetLines": lines, "widgetPlacement": "aboveEditor", "widgetSpec": spec}),
         );
     }
 
@@ -1186,6 +1207,10 @@ impl Subagents {
     }
 
     fn body(&self, sid: &str, records: &[Record]) -> Value {
+        wire(self.body_node(sid, records))
+    }
+
+    fn body_node(&self, sid: &str, records: &[Record]) -> Node {
         let now = timers::now_ms();
         let (view, full, flash) = self.sessions.with(sid, |s| {
             (
@@ -1206,7 +1231,7 @@ impl Subagents {
                 now,
             );
         }
-        let rows: Vec<Value> = view::ordered(records)
+        let rows: Vec<ListItem> = view::ordered(records)
             .iter()
             .map(|r| {
                 view::row(
@@ -1588,8 +1613,10 @@ impl Subagents {
             .unwrap_or(false);
         let data = req.get("data")?;
         match key {
-            "subagent-completion" => Some(view::completion_card(data.get("details")?, expanded)),
-            "subagent-step" => Some(view::step_card(data.get("data")?, expanded)),
+            "subagent-completion" => {
+                Some(wire(view::completion_card(data.get("details")?, expanded)))
+            }
+            "subagent-step" => Some(wire(view::step_card(data.get("data")?, expanded))),
             "run_subagent" | "read_subagent" => {
                 if let Some(d) = data.pointer("/partialResult/details")
                     && let Some(id) = d.get("id").and_then(Value::as_str)
@@ -1599,27 +1626,27 @@ impl Subagents {
                     )
                 {
                     let p = run.progress.borrow();
-                    return Some(view::live_card(
+                    return Some(wire(view::live_card(
                         &rec,
                         &view::items_from_events(&p.events),
                         p.tool_calls,
                         Some(&p.usage),
                         timers::now_ms(),
-                    ));
+                    )));
                 }
                 let d = data.pointer("/result/details")?;
                 let outcome = view::card_outcome(d);
                 if !expanded || d.get("phase").and_then(Value::as_str) != Some("done") {
-                    return Some(outcome);
+                    return Some(wire(outcome));
                 }
                 let text = data
                     .pointer("/result/content/0/text")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 let report = text.split("\n\n--- subagent ").next().unwrap_or_default();
-                Some(
-                    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": [outcome, {"t": "markdown", "value": report}]}),
-                )
+                Some(wire(
+                    Layout::default().children([outcome, Markdown::new(report).into()]),
+                ))
             }
             _ => None,
         }

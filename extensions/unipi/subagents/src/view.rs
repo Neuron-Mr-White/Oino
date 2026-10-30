@@ -1,8 +1,8 @@
 //! Transcript items, chat cards and the work-tray "Subagents" tab as OUS (unipi
 //! `transcript.ts`, `cards.ts`, `ui.ts`).
 
+use oino_extension::ui::widgets::prelude::*;
 use serde_json::{Value, json};
-use unipi_kit::ous::{dim, key_hints, span, text};
 
 use crate::child::{ChildEvent, Usage, primary_arg};
 use crate::record::{Record, Status, elapsed, plural, profile_label, stat_line, usage_tail};
@@ -198,16 +198,19 @@ pub fn build_transcript(
     history
 }
 
-/// Transcript items as OUS (tools `●`, text markdown, output tails).
+/// Transcript items as v2 nodes (tools `●`, text markdown, output tails).
 #[must_use]
-pub fn render_items(items: &[Item], full_output: bool) -> Vec<Value> {
+pub fn render_items(items: &[Item], full_output: bool) -> Vec<Node> {
     let mut out = Vec::new();
     for item in items {
         match item {
             Item::Task(t) => {
-                out.push(json!({"t": "section", "title": "Task", "body": text(json!([dim(t)]))}));
+                out.push(section(
+                    "Task",
+                    paragraph(vec![Span::from(t.as_str()).dim()]),
+                ));
             }
-            Item::Text(t) => out.push(json!({"t": "markdown", "value": t})),
+            Item::Text(t) => out.push(Markdown::new(t.as_str()).into()),
             Item::Tool {
                 name,
                 arg,
@@ -217,21 +220,22 @@ pub fn render_items(items: &[Item], full_output: bool) -> Vec<Value> {
                 duration_ms,
             } => {
                 let mut head = vec![if *running {
-                    json!({"text": "⠋ ", "tone": "accent"})
+                    Span::from("⠋ ").fg(Color::Accent)
                 } else {
-                    span(
-                        if *is_error { "✗ " } else { "● " },
-                        Some(if *is_error { "error" } else { "accent" }),
-                    )
+                    Span::from(if *is_error { "✗ " } else { "● " }).fg(if *is_error {
+                        Color::Error
+                    } else {
+                        Color::Accent
+                    })
                 }];
-                head.push(json!({"text": name, "bold": true, "tone": "tool"}));
+                head.push(Span::from(name.as_str()).bold().fg(Color::Tool));
                 if !arg.is_empty() {
-                    head.push(span(&format!(" {arg}"), Some("accent")));
+                    head.push(Span::from(format!(" {arg}")).fg(Color::Accent));
                 }
                 if let Some(d) = duration_ms.filter(|d| *d >= 1000) {
-                    head.push(dim(&format!(" {}", elapsed(d))));
+                    head.push(Span::from(format!(" {}", elapsed(d))).dim());
                 }
-                out.push(text(Value::Array(head)));
+                out.push(paragraph(head).into());
                 let trimmed = output.trim_end();
                 if !trimmed.is_empty() {
                     let lines: Vec<&str> = trimmed.split('\n').collect();
@@ -241,12 +245,18 @@ pub fn render_items(items: &[Item], full_output: bool) -> Vec<Value> {
                         &lines[lines.len().saturating_sub(TOOL_OUTPUT_LINES)..]
                     };
                     if shown.len() < lines.len() {
-                        out.push(text(json!([dim(&format!(
-                            "  … {} earlier lines",
-                            lines.len() - shown.len()
-                        ))])));
+                        out.push(
+                            paragraph(vec![
+                                Span::from(format!(
+                                    "  … {} earlier lines",
+                                    lines.len() - shown.len()
+                                ))
+                                .dim(),
+                            ])
+                            .into(),
+                        );
                     }
-                    out.push(json!({"t": "log", "lines": shown}));
+                    out.push(Log::new(shown.iter().map(|l| Line::from(*l))).into());
                 }
             }
         }
@@ -254,9 +264,37 @@ pub fn render_items(items: &[Item], full_output: bool) -> Vec<Value> {
     out
 }
 
+/// A nowrap paragraph from spans.
+fn paragraph(spans: Vec<Span>) -> Paragraph {
+    Paragraph::new(Line::from(spans)).wrap(Wrap::Disabled(false))
+}
+
+/// A top-rule section (`section` → `Block`, §12.1).
+fn section(title: &str, body: impl Into<Node>) -> Node {
+    Block::default()
+        .borders(Borders::Sides(vec![BorderSide::TOP]))
+        .border_style(Style::new().fg(Color::BorderMuted))
+        .title(title)
+        .child(body.into())
+        .into()
+}
+
+/// The rule between a card's title and its right side (`divider` → top-border `Block`).
+fn divider() -> Block {
+    Block::default()
+        .borders(Borders::Sides(vec![BorderSide::TOP]))
+        .border_style(Style::new().fg(Color::BorderMuted))
+}
+
+/// A built node as the wire JSON the renderer callback returns.
+#[cfg(test)]
+fn wire(node: impl Into<Node>) -> Value {
+    serde_json::to_value(node.into()).unwrap_or(Value::Null)
+}
+
 /// One list row (unipi `subagentRow`).
 #[must_use]
-pub fn row(rec: &Record, tool_calls: u32, usage: Option<&Usage>, now: i64) -> Value {
+pub fn row(rec: &Record, tool_calls: u32, usage: Option<&Usage>, now: i64) -> ListItem {
     let mut tags = vec![
         elapsed(rec.ended_at.unwrap_or(now) - rec.started_at),
         plural(tool_calls, "tool"),
@@ -269,16 +307,21 @@ pub fn row(rec: &Record, tool_calls: u32, usage: Option<&Usage>, now: i64) -> Va
     if !tok.is_empty() {
         tags.push(tok[3..].to_owned());
     }
-    json!({
-        "id": rec.id,
-        "label": [{"text": rec.status.badge(), "tone": rec.status.tone(), "bold": true}, {"text": " "}, dim(&profile_label(&rec.profile)), {"text": format!(" {}", rec.title)}],
-        "badge": tags.join(" · "),
-        "tone": rec.status.tone(),
-    })
+    ListItem::new(Line::from(vec![
+        Span::from(rec.status.badge())
+            .fg(Color::parse(rec.status.tone()))
+            .bold(),
+        Span::from(" "),
+        Span::from(profile_label(&rec.profile)).dim(),
+        Span::from(format!(" {}", rec.title)),
+    ]))
+    .key(&rec.id)
+    .badge(Line::from(tags.join(" · ")))
+    .style(Style::new().fg(Color::parse(rec.status.tone())))
 }
 
-fn button(label: &str, action: &str) -> Value {
-    json!({"t": "button", "label": label, "actionId": format!("{TAB}:{action}")})
+fn button(label: &str, action: &str) -> Node {
+    Button::new(label, format!("{TAB}:{action}")).into()
 }
 
 /// Running first, newest first within each group.
@@ -295,37 +338,39 @@ pub fn ordered(records: &[Record]) -> Vec<Record> {
 
 /// List body.
 #[must_use]
-pub fn list_body(rows: &[Value], flash: Option<&str>) -> Value {
-    let mut children = if rows.is_empty() {
-        vec![json!({"t": "empty", "message": "No subagents in this session yet."})]
+pub fn list_body(rows: &[ListItem], flash: Option<&str>) -> Node {
+    let mut children: Vec<Node> = if rows.is_empty() {
+        vec![
+            Empty::new()
+                .message("No subagents in this session yet.")
+                .into(),
+        ]
     } else {
-        vec![json!({"t": "list", "items": rows, "selectable": format!("{TAB}:open")})]
+        vec![
+            List::new(rows.iter().cloned())
+                .on_activate(format!("{TAB}:open"))
+                .into(),
+        ]
     };
     if let Some(f) = flash {
-        children.push(text(json!([span(f, Some("warning"))])));
+        children.push(paragraph(vec![Span::from(f).fg(Color::Warning)]).into());
     }
-    children.push(key_hints(&[
-        ("↑↓", "navigate"),
-        ("↵", "view"),
-        ("f", "foreground"),
-        ("x", "cancel"),
-        ("←→", "tabs"),
-        ("esc", "close"),
-    ]));
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": children})
+    children.push(
+        KeyHints::new([
+            ("↑↓", "navigate"),
+            ("↵", "view"),
+            ("f", "foreground"),
+            ("x", "cancel"),
+            ("←→", "tabs"),
+            ("esc", "close"),
+        ])
+        .into(),
+    );
+    Layout::default().children(children).into()
 }
 
-/// Detail (transcript) body.
-#[must_use]
-pub fn detail_body(
-    rec: &Record,
-    items: &[Item],
-    tool_calls: u32,
-    usage: Option<&Usage>,
-    full_output: bool,
-    flash: Option<&str>,
-    now: i64,
-) -> Value {
+/// The `Model · id · phase · usage` line of the detail view.
+fn detail_meta(rec: &Record, usage: Option<&Usage>) -> String {
     let mut meta = vec![
         format!(
             "Model: {}{}",
@@ -351,60 +396,99 @@ pub fn detail_body(
     if !tok.is_empty() {
         meta.push(tok[3..].to_owned());
     }
+    meta.join(" · ")
+}
+
+/// Detail (transcript) body.
+#[must_use]
+pub fn detail_body(
+    rec: &Record,
+    items: &[Item],
+    tool_calls: u32,
+    usage: Option<&Usage>,
+    full_output: bool,
+    flash: Option<&str>,
+    now: i64,
+) -> Node {
     let mut children = vec![
-        text(json!([
-            {"text": rec.status.badge(), "tone": rec.status.tone(), "bold": true},
-            {"text": " "},
-            dim(&profile_label(&rec.profile)),
-            dim(" › "),
-            {"text": rec.title, "bold": true},
-            dim(&format!("  {} · {}", elapsed(rec.ended_at.unwrap_or(now) - rec.started_at), plural(tool_calls, "tool"))),
-        ])),
-        text(json!([dim(&meta.join(" · "))])),
+        paragraph(vec![
+            Span::from(rec.status.badge())
+                .fg(Color::parse(rec.status.tone()))
+                .bold(),
+            Span::from(" "),
+            Span::from(profile_label(&rec.profile)).dim(),
+            Span::from(" › ").dim(),
+            Span::from(rec.title.as_str()).bold(),
+            Span::from(format!(
+                "  {} · {}",
+                elapsed(rec.ended_at.unwrap_or(now) - rec.started_at),
+                plural(tool_calls, "tool")
+            ))
+            .dim(),
+        ])
+        .into(),
+        paragraph(vec![Span::from(detail_meta(rec, usage)).dim()]).into(),
     ];
     children.extend(render_items(items, full_output));
     if rec.status != Status::Running {
         if let Some(e) = &rec.error {
             let (g, tone) = if rec.status == Status::Cancelled {
-                ("⊘", "warning")
+                ("⊘", Color::Warning)
             } else {
-                ("✗", "error")
+                ("✗", Color::Error)
             };
-            children.push(text(json!([span(&format!("{g} {e}"), Some(tone))])));
+            children.push(paragraph(vec![Span::from(format!("{g} {e}")).fg(tone)]).into());
         } else if rec.status == Status::Cancelled {
             let by = if rec.cancelled_by == Some(crate::record::CancelledBy::User) {
                 " by you"
             } else {
                 ""
             };
-            children.push(text(json!([span(
-                &format!("⊘ Cancelled{by}"),
-                Some("warning")
-            )])));
+            children.push(
+                paragraph(vec![
+                    Span::from(format!("⊘ Cancelled{by}")).fg(Color::Warning),
+                ])
+                .into(),
+            );
         }
         if let Some(h) = &rec.resume_hint {
-            children.push(text(json!([span(&format!("↻ {h}"), Some("accent"))])));
+            children.push(paragraph(vec![Span::from(format!("↻ {h}")).fg(Color::Accent)]).into());
         }
     }
     let id = &rec.id;
-    children.push(json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-        button("Back", "back"),
-        button(if full_output { "Tail output" } else { "Full output" }, &format!("output:{id}")),
-        button("Foreground", &format!("foreground:{id}")),
-        button("Cancel", &format!("cancel:{id}")),
-    ]}));
+    children.push(
+        Layout::horizontal(vec![Constraint::Min(0); 4])
+            .spacing(1)
+            .children([
+                button("Back", "back"),
+                button(
+                    if full_output {
+                        "Tail output"
+                    } else {
+                        "Full output"
+                    },
+                    &format!("output:{id}"),
+                ),
+                button("Foreground", &format!("foreground:{id}")),
+                button("Cancel", &format!("cancel:{id}")),
+            ])
+            .into(),
+    );
     if let Some(f) = flash {
-        children.push(text(json!([span(f, Some("warning"))])));
+        children.push(paragraph(vec![Span::from(f).fg(Color::Warning)]).into());
     }
-    children.push(key_hints(&[
-        ("↑↓", "scroll"),
-        ("g/G", "top/end"),
-        ("o", "output"),
-        ("f", "foreground"),
-        ("x", "cancel"),
-        ("←/esc", "back"),
-    ]));
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": children})
+    children.push(
+        KeyHints::new([
+            ("↑↓", "scroll"),
+            ("g/G", "top/end"),
+            ("o", "output"),
+            ("f", "foreground"),
+            ("x", "cancel"),
+            ("←/esc", "back"),
+        ])
+        .into(),
+    );
+    Layout::default().children(children).into()
 }
 
 /// `run_subagent` details (unipi `CardDetails`).
@@ -419,7 +503,7 @@ pub fn details(rec: &Record, phase: Option<&str>, status: Status) -> Value {
 
 /// unipi `cardOutcome` (`└ Completed · 10s · 3 tool calls`).
 #[must_use]
-pub fn card_outcome(d: &Value) -> Value {
+pub fn card_outcome(d: &Value) -> Node {
     let phase = d.get("phase").and_then(Value::as_str);
     let status = d
         .get("status")
@@ -444,10 +528,10 @@ pub fn card_outcome(d: &Value) -> Value {
     } else {
         format!(" · {}", m.join(" · "))
     };
-    let line = match (phase, status) {
-        (Some("started"), _) => vec![dim("└ Background subagent started.")],
-        (Some("moved"), _) => vec![dim("└ Moved to background · keeps working")],
-        (_, "running") => vec![dim("└ Still running in the background.")],
+    let line: Vec<Span> = match (phase, status) {
+        (Some("started"), _) => vec![Span::from("└ Background subagent started.").dim()],
+        (Some("moved"), _) => vec![Span::from("└ Moved to background · keeps working").dim()],
+        (_, "running") => vec![Span::from("└ Still running in the background.").dim()],
         (_, s) => {
             let st = match s {
                 "failed" => Status::Failed,
@@ -461,22 +545,25 @@ pub fn card_outcome(d: &Value) -> Value {
             } else {
                 st.label()
             };
-            let mut v = vec![dim("└ "), span(label, Some(st.tone()))];
+            let mut v = vec![
+                Span::from("└ ").dim(),
+                Span::from(label).fg(Color::parse(st.tone())),
+            ];
             if st == Status::Failed
                 && let Some(e) = d.get("error").and_then(Value::as_str)
             {
-                v.push(span(&format!(": {e}"), Some("error")));
+                v.push(Span::from(format!(": {e}")).fg(Color::Error));
             }
-            v.push(dim(&tail));
+            v.push(Span::from(tail).dim());
             v
         }
     };
-    text(Value::Array(line))
+    paragraph(line).into()
 }
 
 /// Background completion card (`DONE Explore title ···· 50s · 2 tool calls`).
 #[must_use]
-pub fn completion_card(d: &Value, expanded: bool) -> Value {
+pub fn completion_card(d: &Value, expanded: bool) -> Node {
     let status = match d.get("status").and_then(Value::as_str) {
         Some("failed") => Status::Failed,
         Some("cancelled" | "aborted" | "interrupted") => Status::Cancelled,
@@ -499,53 +586,83 @@ pub fn completion_card(d: &Value, expanded: bool) -> Value {
         right.push(plural(u32::try_from(n).unwrap_or(u32::MAX), "tool call"));
     }
     let profile = d.get("profile").and_then(Value::as_str).map(profile_label);
-    let head = json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-        {"t": "badge", "value": status.badge(), "tone": status.tone()},
-        text(json!([{"text": profile.unwrap_or_default(), "bold": true}, {"text": format!(" {}", d.get("title").and_then(Value::as_str).unwrap_or_default())}])),
-        {"t": "divider"},
-        text(json!([dim(&right.join(" · "))])),
-    ]});
+    let color = Color::parse(status.tone());
+    let head: Node = Layout::horizontal([
+        Constraint::Min(0),
+        Constraint::Fill(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .spacing(1)
+    .children([
+        paragraph(vec![Span::from(status.badge()).fg(color).bold()]).into(),
+        paragraph(vec![
+            Span::from(profile.unwrap_or_default()).bold(),
+            Span::from(format!(
+                " {}",
+                d.get("title").and_then(Value::as_str).unwrap_or_default()
+            )),
+        ])
+        .into(),
+        divider().into(),
+        paragraph(vec![Span::from(right.join(" · ")).dim()]).into(),
+    ])
+    .into();
     match d.get("report").and_then(Value::as_str).filter(|_| expanded) {
-        Some(r) => {
-            json!({"t": "stack", "direction": "vertical", "gap": 0, "children": [head, {"t": "markdown", "value": r}]})
-        }
+        Some(r) => Layout::default()
+            .children([head, Markdown::new(r).into()])
+            .into(),
         None => head,
     }
 }
 
 /// `subagent-step` entry card (delegated step).
 #[must_use]
-pub fn step_card(data: &Value, expanded: bool) -> Value {
+pub fn step_card(data: &Value, expanded: bool) -> Node {
     let label = data
         .get("label")
         .and_then(Value::as_str)
         .unwrap_or("subagent");
-    let body = match data.get("kind").and_then(Value::as_str) {
+    let body: Node = match data.get("kind").and_then(Value::as_str) {
         Some("tool") => {
             let err = data
                 .get("isError")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            let mut parts = vec![text(json!([
-                span(if err { "✗ " } else { "● " }, Some(if err { "error" } else { "accent" })),
-                {"text": data.get("name").and_then(Value::as_str).unwrap_or("tool"), "bold": true},
-                span(&format!(" {}", data.get("arg").and_then(Value::as_str).unwrap_or_default()), Some("accent")),
-            ]))];
+            let mut parts: Vec<Node> = vec![
+                paragraph(vec![
+                    Span::from(if err { "✗ " } else { "● " }).fg(if err {
+                        Color::Error
+                    } else {
+                        Color::Accent
+                    }),
+                    Span::from(data.get("name").and_then(Value::as_str).unwrap_or("tool")).bold(),
+                    Span::from(format!(
+                        " {}",
+                        data.get("arg").and_then(Value::as_str).unwrap_or_default()
+                    ))
+                    .fg(Color::Accent),
+                ])
+                .into(),
+            ];
             if expanded
                 && let Some(o) = data
                     .get("output")
                     .and_then(Value::as_str)
                     .filter(|o| !o.is_empty())
             {
-                parts.push(json!({"t": "log", "lines": o.split('\n').collect::<Vec<_>>()}));
+                parts.push(Log::new(o.split('\n').map(Line::from)).into());
             }
-            json!({"t": "stack", "direction": "vertical", "gap": 0, "children": parts})
+            Layout::default().children(parts).into()
         }
-        _ => {
-            json!({"t": "markdown", "value": data.get("text").and_then(Value::as_str).unwrap_or_default()})
-        }
+        _ => Markdown::new(data.get("text").and_then(Value::as_str).unwrap_or_default()).into(),
     };
-    json!({"t": "card", "title": label, "rail": "tool", "body": body})
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(label)
+        .rail(Color::Tool)
+        .child(body)
+        .into()
 }
 
 /// Running foreground card body: tail + stat line.
@@ -556,7 +673,7 @@ pub fn live_card(
     tool_calls: u32,
     usage: Option<&Usage>,
     now: i64,
-) -> Value {
+) -> Node {
     let steps: Vec<Item> = items
         .iter()
         .filter(|i| !matches!(i, Item::Task(_)))
@@ -564,11 +681,17 @@ pub fn live_card(
         .collect();
     let tail = &steps[steps.len().saturating_sub(4)..];
     let mut children = render_items(tail, false);
-    children.push(text(json!([dim(&format!(
-        "└ {} · ctrl+b background · esc cancel",
-        stat_line(rec, tool_calls, usage, now)
-    ))])));
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": children})
+    children.push(
+        paragraph(vec![
+            Span::from(format!(
+                "└ {} · ctrl+b background · esc cancel",
+                stat_line(rec, tool_calls, usage, now)
+            ))
+            .dim(),
+        ])
+        .into(),
+    );
+    Layout::default().children(children).into()
 }
 
 #[cfg(test)]
@@ -624,19 +747,22 @@ mod tests {
     #[test]
     fn cards() {
         let d = json!({"status": "completed", "durationMs": 10_000, "toolCalls": 3});
-        let o = card_outcome(&d);
-        assert_eq!(o["value"][1]["text"], "Completed");
-        assert_eq!(o["value"][2]["text"], " · 10s · 3 tool calls");
+        let o = wire(card_outcome(&d));
+        assert_eq!(o["text"][0][1]["content"], "Completed");
+        assert_eq!(o["text"][0][2]["content"], " · 10s · 3 tool calls");
         assert_eq!(
-            card_outcome(&json!({"phase": "moved"}))["value"][0]["text"],
+            wire(card_outcome(&json!({"phase": "moved"})))["text"][0][0]["content"],
             "└ Moved to background · keeps working"
         );
-        let c = completion_card(
+        let c = wire(completion_card(
             &json!({"status": "aborted", "cancelledBy": "user", "profile": "subagent_explore", "title": "T"}),
             false,
+        ));
+        assert_eq!(c["children"][0]["text"][0][0]["content"], "STOP");
+        assert_eq!(
+            c["children"][3]["text"][0][0]["content"],
+            "cancelled by you"
         );
-        assert_eq!(c["children"][0]["value"], "STOP");
-        assert_eq!(c["children"][3]["value"][0]["text"], "cancelled by you");
         let rec = Record {
             id: "a".into(),
             title: "t".into(),
@@ -646,13 +772,28 @@ mod tests {
             background: true,
             ..Record::default()
         };
-        assert_eq!(row(&rec, 2, None, 5000)["badge"], "5s · 2 tools · bg · m");
-        let body = list_body(&[row(&rec, 0, None, 0)], Some("hi"));
-        assert_eq!(body["children"][0]["selectable"], "subagents:open");
-        let det = detail_body(&rec, &[Item::Task("x".into())], 0, None, false, None, 0).to_string();
+        assert_eq!(
+            wire(List::new([row(&rec, 2, None, 5000)]))["items"][0]["badge"],
+            "5s · 2 tools · bg · m"
+        );
+        let body = wire(list_body(&[row(&rec, 0, None, 0)], Some("hi")));
+        assert_eq!(body["children"][0]["onActivate"], "subagents:open");
+        let det = wire(detail_body(
+            &rec,
+            &[Item::Task("x".into())],
+            0,
+            None,
+            false,
+            None,
+            0,
+        ))
+        .to_string();
         assert!(det.contains("subagents:cancel:a") && det.contains("background"));
         assert_eq!(
-            step_card(&json!({"kind": "text", "text": "hi", "label": "L"}), false)["title"],
+            wire(step_card(
+                &json!({"kind": "text", "text": "hi", "label": "L"}),
+                false
+            ))["title"],
             "L"
         );
     }
