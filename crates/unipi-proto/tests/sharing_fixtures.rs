@@ -79,7 +79,7 @@ fn feature_leave_round_trips() {
     };
     assert!(scope.is_self());
     let all: Control = serde_json::from_str(
-        r#"{"type":"hello","proto":"1.15.0","req":{"op":"feature_leave","feature":"desktop","scope":"all"}}"#,
+        r#"{"type":"hello","proto":"1.15.0","req":{"op":"feature_leave","feature":"cron","scope":"all"}}"#,
     )
     .unwrap();
     let Control::Hello {
@@ -92,7 +92,7 @@ fn feature_leave_round_trips() {
     assert_eq!(scope.as_str(), "all");
     // A scope nobody knows is a schema error, not a silent default.
     assert!(serde_json::from_str::<Control>(
-        r#"{"type":"hello","proto":"1.15.0","req":{"op":"feature_leave","feature":"desktop","scope":"me"}}"#
+        r#"{"type":"hello","proto":"1.15.0","req":{"op":"feature_leave","feature":"cron","scope":"me"}}"#
     )
     .is_err());
 }

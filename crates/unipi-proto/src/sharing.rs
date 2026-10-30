@@ -1,7 +1,7 @@
 //! "Ask the PC to turn this on" (UNI-248). Mirrors
 //! `packages/protocol/src/sharing.ts`.
 //!
-//! Port forwarding, the remote browser, desktop streaming and push are off
+//! Port forwarding, the remote browser and push are off
 //! by default and only the PC's owner may switch them on (CLI or the desktop
 //! app on that PC). A paired device that finds one off can *ask*:
 //!
@@ -42,8 +42,6 @@ pub enum FeatureKind {
     Forward,
     /// The remote browser (Preview → Browser).
     Browser,
-    /// Desktop streaming (Preview → Desktop).
-    Desktop,
     /// Files pushed from the PC (`unipi-host push`).
     Push,
     /// UNI-317/UNI-318: scheduled cron jobs (`unipi-host cron`).
@@ -51,10 +49,9 @@ pub enum FeatureKind {
 }
 
 impl FeatureKind {
-    pub const ALL: [FeatureKind; 5] = [
+    pub const ALL: [FeatureKind; 4] = [
         FeatureKind::Forward,
         FeatureKind::Browser,
-        FeatureKind::Desktop,
         FeatureKind::Push,
         FeatureKind::Cron,
     ];
@@ -63,7 +60,6 @@ impl FeatureKind {
         match self {
             FeatureKind::Forward => "forward",
             FeatureKind::Browser => "browser",
-            FeatureKind::Desktop => "desktop",
             FeatureKind::Push => "push",
             FeatureKind::Cron => "cron",
         }
@@ -74,7 +70,6 @@ impl FeatureKind {
         match self {
             FeatureKind::Forward => "web app forwarding",
             FeatureKind::Browser => "the remote browser",
-            FeatureKind::Desktop => "desktop streaming",
             FeatureKind::Push => "file push",
             FeatureKind::Cron => "scheduled cron jobs",
         }
@@ -96,9 +91,6 @@ pub struct FeatureScope {
     /// forward: just these ports (1..=65535, at most [`FEATURE_PORTS_MAX`]).
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub ports: Vec<u16>,
-    /// desktop: watch only (no mouse/keyboard).
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub view_only: Option<bool>,
     /// browser: show its window on the PC.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub headed: Option<bool>,
@@ -111,8 +103,6 @@ struct RawScope {
     any_port: Option<bool>,
     #[serde(default)]
     ports: Vec<u16>,
-    #[serde(default)]
-    view_only: Option<bool>,
     #[serde(default)]
     headed: Option<bool>,
 }
@@ -129,7 +119,6 @@ impl TryFrom<RawScope> for FeatureScope {
         Ok(FeatureScope {
             any_port: raw.any_port,
             ports: raw.ports,
-            view_only: raw.view_only,
             headed: raw.headed,
         })
     }
@@ -153,11 +142,6 @@ impl FeatureScope {
                     .collect::<Vec<_>>()
                     .join(", ")
             )),
-            FeatureKind::Desktop => Some(if self.view_only == Some(true) {
-                "watch only".into()
-            } else {
-                "mouse and keyboard".into()
-            }),
             FeatureKind::Browser if self.headed == Some(true) => {
                 Some("window shown on the PC".into())
             }
@@ -315,11 +299,20 @@ mod tests {
     #[test]
     fn kinds_and_notes() {
         assert_eq!(
-            serde_json::to_string(&FeatureKind::Desktop).unwrap(),
-            "\"desktop\""
+            serde_json::to_string(&FeatureKind::Browser).unwrap(),
+            "\"browser\""
         );
+        // v2: desktop streaming is gone from the protocol.
+        assert!(serde_json::from_str::<FeatureKind>("\"desktop\"").is_err());
         assert!(serde_json::from_str::<FeatureKind>("\"shell\"").is_err());
         assert_eq!(FeatureKind::parse("push"), Some(FeatureKind::Push));
+        assert_eq!(
+            serde_json::to_string(&FeatureKind::ALL)
+                .unwrap()
+                .matches("desktop")
+                .count(),
+            0
+        );
         assert!(serde_json::from_value::<FeatureNote>(serde_json::json!("x".repeat(201))).is_err());
     }
 

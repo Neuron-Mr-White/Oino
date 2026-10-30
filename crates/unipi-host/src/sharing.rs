@@ -1,8 +1,8 @@
 //! Sharing with phones (UNI-248): the one code path that switches port
-//! forwarding, the remote browser, desktop streaming and push on or off, plus
-//! the store of "ask the PC to turn this on" requests.
+//! forwarding, the remote browser, scheduled cron jobs and push on or off,
+//! plus the store of "ask the PC to turn this on" requests.
 //!
-//! Every writer goes through here: the `unipi-host forward|browser|desktop|push
+//! Every writer goes through here: the `unipi-host forward|browser|push|cron
 //! enable|disable` CLI, `unipi-host requests approve|deny`, and the desktop app
 //! (which runs that same CLI). The serve process reads `config.json` on every
 //! request, so a change applies without a restart.
@@ -179,7 +179,6 @@ pub fn disable(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<()> {
             config.enabled = false;
             config.save(&path)?;
         }
-        FeatureKind::Desktop => anyhow::bail!("desktop streaming was removed in v2"),
         FeatureKind::Cron => {
             let mut settings = crate::cron::store::load_settings(&path)?;
             settings.enabled = false;
@@ -206,7 +205,6 @@ fn feature_state(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<(boo
             let b = BrowserConfig::load(&path)?;
             (b.enabled, b.devices)
         }
-        FeatureKind::Desktop => (false, Vec::new()),
         FeatureKind::Cron => {
             let c = crate::cron::store::load_settings(&path)?;
             (c.enabled, c.devices)
@@ -270,7 +268,6 @@ fn set_devices(
             config.devices = devices;
             config.save(&path)
         }
-        FeatureKind::Desktop => anyhow::bail!("desktop streaming was removed in v2"),
         FeatureKind::Cron => {
             let mut settings = crate::cron::store::load_settings(&path)?;
             settings.enabled = enabled;
@@ -654,7 +651,6 @@ pub fn approve(
                 },
             )?;
         }
-        FeatureKind::Desktop => anyhow::bail!("desktop streaming was removed in v2"),
         FeatureKind::Push => {
             push_enable(paths, new_devices)?;
         }
@@ -743,7 +739,7 @@ pub fn parse_duration_ms(text: &str) -> Option<u64> {
     n.checked_mul(unit_ms)
 }
 
-/// Plain words for a request: "Pixel asks for desktop streaming (watch only)".
+/// Plain words for a request: "Pixel asks for the remote browser (window shown on the PC)".
 pub fn describe(item: &FeatureRequestItem) -> String {
     let scope = item
         .scope
@@ -827,13 +823,12 @@ pub fn not_allowed(feature: FeatureKind) -> AppErrorDto {
 /// In both cases the device's own approvals of the feature end, so
 /// `feature_requests` stops showing "approved" for access it hasn't got.
 ///
-/// The device's live sessions (forward tunnels, the browser screencast, the
-/// desktop stream) are one per connection and nothing registers them per
-/// device: the allow-list above is what the host re-reads on the next
-/// request, so the device's next one is refused (`E_FORWARD_DISABLED` /
-/// `E_BROWSER_DISABLED` / `E_DESKTOP_DISABLED`) — the same as after the
-/// owner's `unipi-host forward|browser|desktop disable`, which also leaves a
-/// live stream running until the phone hangs up.
+/// The device's live sessions (forward tunnels, the browser screencast) are
+/// one per connection and nothing registers them per device: the allow-list
+/// above is what the host re-reads on the next request, so the device's next
+/// one is refused (`E_FORWARD_DISABLED` / `E_BROWSER_DISABLED`) — the same as
+/// after the owner's `unipi-host forward|browser disable`, which also leaves
+/// a live stream running until the phone hangs up.
 pub fn leave(
     paths: &HostPaths,
     feature: FeatureKind,

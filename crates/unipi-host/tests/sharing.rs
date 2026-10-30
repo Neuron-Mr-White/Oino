@@ -1,7 +1,7 @@
 //! UNI-248 end to end over real iroh (temp host dir, never `~/.unipi`): a
 //! paired phone asks with `feature_request`, sees it with `feature_requests`,
 //! the owner approves (the same `sharing::approve` the CLI runs) and the very
-//! next `ports_list` / `desktop_status` passes — the host re-reads
+//! next `ports_list` passes — the host re-reads
 //! config.json per request, no restart. Also: unpaired refused, bad scope
 //! refused by the schema, deny, time-limited approval switching back off,
 //! and an older-proto client still accepted.
@@ -255,7 +255,7 @@ async fn ask_approve_and_use_without_restart() {
 /// `UNIPI_HOST_DIR=/tmp/qa-248 unipi-host serve --relay-only`, then
 /// `SHARE_HOST_DIR=/tmp/qa-248 SHARE_HOST_BIN=target/debug/unipi-host cargo test -p unipi-host --test sharing external_serve_ask -- --ignored --nocapture`.
 /// A phone asks, the real CLI approves it (`requests approve --for 1h`), the
-/// running serve honours it on the next request, and `desktop disable` ends it.
+/// running serve honours it on the next request, and `forward disable` ends it.
 #[tokio::test]
 #[ignore]
 async fn external_serve_ask() {
