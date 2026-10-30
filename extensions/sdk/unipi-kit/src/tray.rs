@@ -239,7 +239,7 @@ pub enum Dot {
 }
 
 impl Dot {
-    /// OUS tone for the dot.
+    /// Theme tone token for the dot.
     #[must_use]
     pub fn tone(self) -> &'static str {
         match self {
