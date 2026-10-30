@@ -141,9 +141,12 @@ export class SessionStreamClient {
       {
         snapshot: (snap) => {
           if (gen !== this.gen) return;
-          const r = this.handlers.snapshot(snap);
+          // Live before the snapshot reaches the store: the reducer sets `state.conn = 'live'`
+          // inside `handlers.snapshot`, and a consumer reacting to that (the Session modal tabs
+          // fetch on `conn === 'live'`) must not send a command the stream still rejects.
           this.isLive = true;
           this.reconnect.live();
+          const r = this.handlers.snapshot(snap);
           this.handlers.conn('live');
           this.follow(r);
         },
