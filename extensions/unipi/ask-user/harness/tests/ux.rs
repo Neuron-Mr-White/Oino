@@ -297,14 +297,24 @@ async fn info_screen_splash_and_dashboard() {
     env.command(&ext, "info", "tools").await;
     let panels = env.calls("ui_panel");
     let open = &panels[0]["open"];
+    // `unipi.info-screen/dashboard` is the reserved §8 entry: the tree rides as the fallback
+    // of a follow-up `updatePanel`, not as a tree entry of its own.
+    assert_eq!(open["panelId"], "unipi.info-screen/dashboard");
     assert_eq!(open["placement"], "overlay");
-    assert_eq!(open["spec"]["t"], "tabs");
-    assert_eq!(open["spec"]["active"], "tools");
-    let ids: Vec<&str> = open["spec"]["tabs"]
+    assert!(open.get("spec").is_none() || open["spec"].is_null());
+    let tree = |call: &Value| -> Value { call["spec"]["fallback"].clone() };
+    let first = panels
+        .iter()
+        .find(|p| p.get("update").is_some())
+        .unwrap();
+    let spec = tree(first);
+    assert_eq!(spec["t"], "Tabs");
+    assert_eq!(spec["selected"], "tools");
+    let ids: Vec<&str> = spec["titles"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|t| t["id"].as_str().unwrap())
+        .map(|t| t["key"].as_str().unwrap())
         .collect();
     assert_eq!(ids, ["session", "usage", "tools", "skills", "extensions"]);
     env.event(
@@ -319,7 +329,7 @@ async fn info_screen_splash_and_dashboard() {
         .rev()
         .find(|p| p.get("update").is_some())
         .unwrap();
-    assert_eq!(update["spec"]["spec"]["active"], "session");
+    assert_eq!(tree(&update)["selected"], "session");
     env.event(
         &ext,
         EventKind::OinoUiAction,
