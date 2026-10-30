@@ -80,8 +80,92 @@ async fn ui_probe_round_trips_every_request() {
             "custom"
         ]
     );
-    assert_eq!(h.host.calls_named("ui_fire").len(), 9);
-    assert_eq!(h.host.calls_named("ui_panel").len(), 3);
+    let panels = h.host.calls_named("ui_panel");
+    // One entry per panel slot (§6.2), each opened, tree-updated and closed.
+    let slots: std::collections::BTreeSet<String> = panels
+        .iter()
+        .filter_map(|c| c.detail["open"]["placement"].as_str().map(str::to_owned))
+        .collect();
+    assert_eq!(
+        slots,
+        [
+            "overlay",
+            "sidePane",
+            "bottomPane",
+            "editorReplace",
+            "fullscreen"
+        ]
+        .map(str::to_owned)
+        .into_iter()
+        .collect()
+    );
+    assert!(
+        panels
+            .iter()
+            .any(|c| c.detail["open"]["spec"]["t"] == "Layout"),
+        "the probe opens a node tree"
+    );
+    // Every node kind of §4.5 appears in an opened or updated spec.
+    fn kinds(value: &Value, out: &mut std::collections::BTreeSet<String>) {
+        match value {
+            Value::Object(map) => {
+                if let Some(t) = map.get("t").and_then(Value::as_str) {
+                    out.insert(t.to_owned());
+                }
+                map.values().for_each(|v| kinds(v, out));
+            }
+            Value::Array(items) => items.iter().for_each(|v| kinds(v, out)),
+            _ => {}
+        }
+    }
+    let mut found = std::collections::BTreeSet::new();
+    for call in &panels {
+        kinds(&call.detail, &mut found);
+    }
+    for expected in [
+        "Block",
+        "Paragraph",
+        "Layout",
+        "List",
+        "Table",
+        "Tabs",
+        "Gauge",
+        "LineGauge",
+        "Sparkline",
+        "BarChart",
+        "Chart",
+        "Scrollbar",
+        "Markdown",
+        "Code",
+        "Diff",
+        "Image",
+        "Log",
+        "Tree",
+        "KeyHints",
+        "Input",
+        "Toggle",
+        "Select",
+        "Button",
+        "Spinner",
+        "Empty",
+    ] {
+        assert!(found.contains(expected), "ui-probe never sends {expected}");
+    }
+    // Every non-panel slot: widget (both placements), status, header, footer.
+    let fires = h.host.calls_named("ui_fire");
+    let methods: Vec<&str> = fires
+        .iter()
+        .filter_map(|c| c.detail["method"].as_str())
+        .collect();
+    for method in ["setWidget", "setStatus", "setHeader", "setFooter"] {
+        assert!(methods.contains(&method), "ui-probe never fires {method}");
+    }
+    assert!(
+        fires.iter().any(|c| c.detail["widgetPlacement"]
+            == json!("belowEditor")
+            && c.detail["widgetSpec"]["t"] == json!("Layout")),
+        "the widget slot carries a node tree"
+    );
     assert_eq!(h.host.calls_named("ui_device").len(), 2);
 }
 
