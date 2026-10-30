@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+ One │ Two 2
+  ~ 7..12=mods=BOLD

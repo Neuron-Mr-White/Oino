@@ -5,11 +5,14 @@ use std::time::{Duration, Instant};
 
 use oino_ai::JsonValue;
 use oino_client::protocol::PiCommand;
+use oino_ui::slot::{UiEntry, UiView};
 use oino_view::commands::filter_menu;
 use oino_view::composer::Composer;
 use oino_view::keys::{Key, KeyId};
 use oino_view::ous::Interactive;
 use oino_view::ui_state::PanelPlacement;
+
+use crate::render::ui::focus as ui_focus;
 
 use super::overlay::line_edit;
 use super::{App, Completion, EditPurpose, Effect, ModelsFor, Tag};
@@ -29,6 +32,12 @@ impl App {
         }
         if self.ui.focused_panel().is_some() {
             self.panel_key(key);
+            return;
+        }
+        if let Some(id) = self.focused_entry.clone()
+            && let Some(entry) = self.registry.entry(&id).cloned()
+            && self.entry_key(&id, &entry, key)
+        {
             return;
         }
         if let Some(forward) = self.jump.take() {
@@ -500,6 +509,35 @@ impl App {
         false
     }
 
+    /// Keys inside a focused v2 entry (§4.6): entry keys, Tab/Shift+Tab, arrows, Enter, Esc,
+    /// typed input and space toggles. Returns whether the key was consumed.
+    fn entry_key(&mut self, id: &str, entry: &UiEntry, key: KeyId) -> bool {
+        if matches!(
+            entry.view,
+            UiView::Settings { .. } | UiView::Renderer { .. }
+        ) {
+            return false;
+        }
+        let local = self.ui_local.entry(id.to_owned()).or_default();
+        let targets = ui_focus::focusables(entry);
+        let actions = ui_focus::key_action(entry, local, &key, &self.keys);
+        if actions.is_empty() && targets.is_empty() && entry.keys.is_empty() {
+            // A panel with no interactive nodes does not swallow the editor.
+            return false;
+        }
+        for action in actions {
+            self.effects.push(Effect::UiAction {
+                panel_id: id.to_owned(),
+                action_id: action.action_id,
+                value: action.value,
+                values: action.values,
+                path: action.path,
+            });
+        }
+        self.sync_visibility();
+        true
+    }
+
     /// Keys for a focused panel (ui-protocol §5).
     #[allow(
         clippy::too_many_lines,
@@ -521,6 +559,8 @@ impl App {
                         panel_id: panel.panel_id.clone(),
                         action_id: action_id.clone(),
                         value: Some(JsonValue::String(text)),
+                        values: None,
+                        path: None,
                     });
                 }
             } else {
@@ -534,6 +574,8 @@ impl App {
                 panel_id: panel.panel_id,
                 action_id: "$close".into(),
                 value: None,
+                values: None,
+                path: None,
             });
             self.panel_focus = 0;
             return;
@@ -547,6 +589,8 @@ impl App {
                 panel_id: panel.panel_id.clone(),
                 action_id: bound.action_id.clone(),
                 value: None,
+                values: None,
+                path: None,
             });
             return;
         }
@@ -565,6 +609,8 @@ impl App {
                     panel_id: panel.panel_id.clone(),
                     action_id: action_id.clone(),
                     value: None,
+                    values: None,
+                    path: None,
                 });
             }
             Some(Interactive::Input { value, .. }) if confirm => {
@@ -579,6 +625,8 @@ impl App {
                     panel_id: panel.panel_id.clone(),
                     action_id: action_id.clone(),
                     value: Some(JsonValue::Bool(!value)),
+                    values: None,
+                    path: None,
                 });
             }
             Some(Interactive::Select {
@@ -596,6 +644,8 @@ impl App {
                         panel_id: panel.panel_id.clone(),
                         action_id: action_id.clone(),
                         value: Some(JsonValue::String(next.value.clone())),
+                        values: None,
+                        path: None,
                     });
                 }
             }
@@ -614,6 +664,8 @@ impl App {
                         panel_id: panel.panel_id.clone(),
                         action_id: action_id.clone(),
                         value: Some(JsonValue::String(id.clone())),
+                        values: None,
+                        path: None,
                     });
                 }
             }
@@ -629,6 +681,8 @@ impl App {
                         panel_id: panel.panel_id.clone(),
                         action_id: "$close".into(),
                         value: None,
+                        values: None,
+                        path: None,
                     });
                     self.composer.insert_char(c);
                 }

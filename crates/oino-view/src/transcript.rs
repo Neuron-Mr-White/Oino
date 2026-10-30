@@ -62,6 +62,8 @@ pub struct UserRow {
     pub text: String,
     /// Attached images.
     pub images: Vec<ImageContent>,
+    /// Session entry id that started the turn (ui-protocol §6.7 `turnEntryId`).
+    pub entry_id: Option<String>,
 }
 
 /// pi `parseSkillBlock` result.
@@ -582,10 +584,15 @@ impl Transcript {
                         self.push(RowKind::User(UserRow {
                             text: user_message,
                             images,
+                            entry_id: entry_id.map(str::to_owned),
                         }));
                     }
                 } else {
-                    self.push(RowKind::User(UserRow { text, images }));
+                    self.push(RowKind::User(UserRow {
+                        text,
+                        images,
+                        entry_id: entry_id.map(str::to_owned),
+                    }));
                 }
             }
             AgentMessage::BashExecution(bash) => {

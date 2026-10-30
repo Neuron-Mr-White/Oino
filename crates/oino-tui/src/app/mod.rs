@@ -12,7 +12,7 @@ mod keys;
 pub(crate) mod overlay;
 mod submit;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -22,15 +22,19 @@ use oino_client::{ClientError, RpcResponseData};
 use oino_core::events::{AgentSessionEvent, ClientEvent, OinoEvent, RunState};
 use oino_core::ui::UiResponse;
 use oino_session::SessionEntry;
+use oino_ui::slot::{Scope as UiScope, Slot, UiEntry, UiPatch, UiSnapshot};
 use oino_view::commands::{CommandItem, menu_items};
 use oino_view::composer::Composer;
 use oino_view::keys::{KeyId, Keybindings};
 use oino_view::sessions::{Scope, SessionItem};
 use oino_view::transcript::{BashOutcome, NoticeLevel, RowId, Transcript};
-use oino_view::ui_state::{NotifyLevel, UiEffect, UiState};
+use oino_view::ui_state::{MirrorError, NotifyLevel, RegistryMirror, UiEffect, UiState};
 use serde_json::json;
 
 use crate::host::TuiHost;
+use crate::render::text::OLine;
+use crate::render::ui::UiCache;
+use crate::render::ui::focus::UiLocalState;
 use crate::theme::Theme;
 
 pub(crate) use dialog::DialogUi;
@@ -76,6 +80,8 @@ pub enum Tag {
     Hello,
     /// `_oino/ui_snapshot`.
     UiSnapshot,
+    /// `_oino/ui_resync` (a `rev` gap).
+    UiResync,
     /// `get_state`.
     State,
     /// `get_entries` (transcript rebuild).
@@ -212,14 +218,18 @@ pub enum Effect {
     },
     /// Answer a dialog.
     Respond(UiResponse),
-    /// Deliver a panel action (`extension_ui_action`).
+    /// Deliver an entry action (`_oino/ui_action`, §4.6).
     UiAction {
-        /// Panel.
+        /// Entry id (the v1 field name `panelId` is kept on the wire).
         panel_id: String,
         /// Action.
         action_id: String,
-        /// Value.
+        /// Primary value.
         value: Option<JsonValue>,
+        /// Current values of every keyed `Input`/`Toggle`/`Select` (§4.6).
+        values: Option<JsonValue>,
+        /// Path of the node that fired (§4.6).
+        path: Option<JsonValue>,
     },
     /// Invoke an extension shortcut.
     InvokeShortcut(String),
@@ -365,7 +375,20 @@ pub struct App {
     pub(crate) commands: Vec<CommandItem>,
     pub(crate) queue: (Vec<String>, Vec<String>),
     pub(crate) transcript: Transcript,
+    /// pi dialogs and one-shot effects (L0, §3); retained state lives in `registry`.
     pub(crate) ui: UiState,
+    /// v2 registry mirror of the session scope (§9.2): slots, meta and dialogs.
+    pub(crate) registry: RegistryMirror,
+    /// Local UI state per entry (focus, selection, typed text, §4.6).
+    pub(crate) ui_local: HashMap<String, UiLocalState>,
+    /// Rendered lines per entry, invalidated by `entry.rev` (§12.4 point 3).
+    pub(crate) ui_cache: UiCache,
+    /// Entries the TUI currently paints (`_oino/ui_visible`, §6.5).
+    pub(crate) ui_visible: HashSet<String>,
+    /// Entry that owns the keyboard (opened with `focus:true`, §6.5).
+    pub(crate) focused_entry: Option<String>,
+    /// Turn-footer lines keyed by `(entryId, turnEntryId, entry.rev)` (§6.7).
+    pub(crate) footer_cache: HashMap<(String, String, u64, bool), Vec<OLine>>,
     pub(crate) composer: Composer,
     pub(crate) keys: Keybindings,
     pub(crate) theme: Theme,
@@ -474,6 +497,12 @@ impl App {
             queue: (Vec::new(), Vec::new()),
             transcript,
             ui: UiState::new(),
+            registry: RegistryMirror::new(UiScope::Session),
+            ui_local: HashMap::new(),
+            ui_cache: UiCache::default(),
+            ui_visible: HashSet::new(),
+            focused_entry: None,
+            footer_cache: HashMap::new(),
             composer: Composer::new(),
             keys,
             theme: Theme::named(&theme_name),
@@ -571,14 +600,18 @@ impl App {
                     version: self.options.version.clone(),
                 },
                 ui: Some(json!({
+                    "protocol": 2,
                     "dialogs": ["select","confirm","input","editor","multiSelect","form","approval","custom","clipboardReadImage","editExternally"],
-                    "ous": true,
-                    "panels": ["overlay","sidePane","editorReplace","bottomPane","fullscreen"],
+                    "slots": ["overlay","sidePane","bottomPane","editorReplace","fullscreen","widget",
+                              "widgetBelow","status","turnFooter","header","footer","settings"],
+                    // The TUI renders node trees only: no native reserved components (§10).
+                    "reserved": [],
+                    "nodes": "all",
                     "images": false,
                     "osNotify": true,
                     "clipboard": true
                 })),
-                protocol: 1,
+                protocol: 2,
             },
         );
         self.refresh_session();
@@ -631,17 +664,23 @@ impl App {
     }
 
     fn update_title(&mut self) {
-        let title = self.ui.title.clone().unwrap_or_else(|| {
-            let cwd = self.host.cwd();
-            let dir = cwd.file_name().map_or_else(
-                || cwd.display().to_string(),
-                |n| n.to_string_lossy().into_owned(),
-            );
-            match &self.session.session_name {
-                Some(name) => format!("oino - {name} - {dir}"),
-                None => format!("oino - {dir}"),
-            }
-        });
+        let title = self
+            .registry
+            .meta()
+            .title
+            .clone()
+            .or_else(|| self.ui.title.clone())
+            .unwrap_or_else(|| {
+                let cwd = self.host.cwd();
+                let dir = cwd.file_name().map_or_else(
+                    || cwd.display().to_string(),
+                    |n| n.to_string_lossy().into_owned(),
+                );
+                match &self.session.session_name {
+                    Some(name) => format!("oino - {name} - {dir}"),
+                    None => format!("oino - {dir}"),
+                }
+            });
         if title != self.last_title {
             self.last_title.clone_from(&title);
             self.effects.push(Effect::SetTitle(title));
@@ -685,6 +724,12 @@ impl App {
                     self.transcript.clear();
                     self.cache.clear();
                     self.ui.reset();
+                    self.registry = RegistryMirror::new(UiScope::Session);
+                    self.ui_local.clear();
+                    self.ui_cache = UiCache::default();
+                    self.ui_visible.clear();
+                    self.focused_entry = None;
+                    self.footer_cache.clear();
                     self.dialog_ui = None;
                     self.queue = (Vec::new(), Vec::new());
                     self.scroll = 0;
@@ -710,6 +755,7 @@ impl App {
                 OinoEvent::CommandsChanged => self.send(Tag::Commands, PiCommand::GetCommands),
                 OinoEvent::ExtensionUiDismiss { id, .. } => {
                     self.ui.dismiss(&id);
+                    self.registry.dismiss_dialog(&id);
                     self.sync_dialog();
                 }
                 OinoEvent::Lagged { dropped } => self.notice(
@@ -732,10 +778,21 @@ impl App {
                 // Takeover is handled there too (the mode shows the notice and exits);
                 // eviction never reaches the TUI (the hub owns it, and the single-session
                 // runtime never evicts).
-                // Registry patches drive the v2 slot renderers (WP-U4); the line compositor
-                // still renders the v1 replay of `_oino/ui_snapshot`.
-                OinoEvent::UiPatch { .. }
-                | OinoEvent::ToolsChanged { .. }
+                OinoEvent::UiPatch {
+                    scope,
+                    session_id,
+                    rev,
+                    ops,
+                } => {
+                    let patch = UiPatch {
+                        scope,
+                        session_id,
+                        rev,
+                        ops,
+                    };
+                    self.apply_ui_patch(&patch);
+                }
+                OinoEvent::ToolsChanged { .. }
                 | OinoEvent::Topic { .. }
                 | OinoEvent::AgentsChanged { .. }
                 | OinoEvent::AgentEvent { .. }
@@ -909,18 +966,7 @@ impl App {
                     PiCommand::GetAvailableModels,
                 );
             }
-            Tag::UiSnapshot => {
-                let requests: Vec<oino_core::ui::UiRequest> =
-                    parse(data, "requests").unwrap_or_default();
-                for request in requests {
-                    if let Some(effect) = self.ui.apply(&request)
-                        && !matches!(effect, UiEffect::Notify { .. })
-                    {
-                        self.on_ui_effect(effect);
-                    }
-                }
-                self.sync_dialog();
-            }
+            Tag::UiSnapshot | Tag::UiResync => self.apply_ui_snapshot(data),
             Tag::State => self.apply_state(data),
             Tag::Entries => {
                 let entries: Vec<SessionEntry> = parse(data, "entries").unwrap_or_default();
@@ -1146,6 +1192,7 @@ impl App {
             // Optional Oino commands a backend may not implement.
             Tag::Hello
             | Tag::UiSnapshot
+            | Tag::UiResync
             | Tag::ContextUsage
             | Tag::Completions { .. }
             | Tag::SettingsSchema(SchemaPurpose::Hub) => {}
@@ -1247,6 +1294,145 @@ impl App {
         }
     }
 
+    /// Applies the v2 registry snapshot (`_oino/ui_snapshot`, `_oino/ui_resync`, §9.2).
+    fn apply_ui_snapshot(&mut self, data: Option<&JsonValue>) {
+        let Some(snapshot) = parse::<UiSnapshot>(data, "") else {
+            self.ui_snapshot_fallback(data);
+            return;
+        };
+        let dialogs = snapshot.dialogs.clone();
+        match self.registry.apply_snapshot(snapshot) {
+            Ok(change) => {
+                for id in change.removed {
+                    self.local_drop(&id);
+                }
+                let entries: Vec<&UiEntry> = self.registry.entries().collect();
+                self.ui_cache.retain(&entries);
+                self.seed_snapshot_dialogs(&dialogs);
+                self.after_registry_change();
+            }
+            Err(error) => self.ui_registry_error(&error),
+        }
+    }
+
+    /// A backend that only knows the v1 replay (`requests`) still works: dialogs come from
+    /// the pi records (`ClientEvent::Ui`), so nothing retained is replayed here.
+    fn ui_snapshot_fallback(&mut self, _data: Option<&JsonValue>) {
+        self.sync_visibility();
+    }
+
+    /// Seeds the dialog queue with the dialogs a late-attaching frontend missed (§9.2).
+    fn seed_snapshot_dialogs(&mut self, dialogs: &[oino_ui::slot::UiRequest]) {
+        for request in dialogs {
+            let dialog = oino_view::ui_state::parse_registry_dialog(request);
+            if !self.ui.dialogs.iter().any(|queued| queued.id == dialog.id) {
+                self.ui.dialogs.push_back(dialog);
+            }
+        }
+        self.sync_dialog();
+    }
+
+    /// Applies one registry patch; a `rev` gap or a failing op asks core for a resync.
+    fn apply_ui_patch(&mut self, patch: &UiPatch) {
+        if patch.scope != self.registry.scope() {
+            return;
+        }
+        match self.registry.apply_patch(patch) {
+            Ok(outcome) => {
+                for invalidation in outcome.invalidations {
+                    self.footer_cache.retain(|(entry, turn, _, _), _| {
+                        entry != &invalidation.entry_id
+                            || invalidation
+                                .turns
+                                .as_ref()
+                                .is_some_and(|turns| !turns.contains(turn))
+                    });
+                }
+                // One-shot effects also arrive as pi records (`ClientEvent::Ui`), so they are
+                // not applied twice here (D-U1 keeps the pi records byte-for-byte).
+                for op in &patch.ops {
+                    if let oino_ui::slot::RegistryOp::Del { id } = op {
+                        self.local_drop(id);
+                    }
+                }
+                self.after_registry_change();
+            }
+            Err(error) => self.ui_registry_error(&error),
+        }
+    }
+
+    /// Drops the local state of an entry core disposed (§6.6).
+    fn local_drop(&mut self, id: &str) {
+        self.ui_local.remove(id);
+        self.ui_visible.remove(id);
+        self.ui_cache.invalidate(id);
+        self.footer_cache.retain(|(entry, _, _, _), _| entry != id);
+        if self.focused_entry.as_deref() == Some(id) {
+            self.focused_entry = None;
+        }
+    }
+
+    /// Reports a registry failure and requests a fresh snapshot (§9.2).
+    fn ui_registry_error(&mut self, error: &MirrorError) {
+        self.notice(
+            NoticeLevel::Warning,
+            format!("UI registry out of sync: {error:?}"),
+        );
+        self.send(
+            Tag::UiResync,
+            OinoCommand::UiResync {
+                scope: Some("session".to_owned()),
+                rev: self.registry.rev(),
+            },
+        );
+    }
+
+    /// Focus and visibility bookkeeping after a snapshot or patch (§6.5).
+    fn after_registry_change(&mut self) {
+        if let Some(id) = self.focused_entry.clone()
+            && self.registry.entry(&id).is_none()
+        {
+            self.focused_entry = None;
+        }
+        if self.focused_entry.is_none()
+            && let Some(entry) = self
+                .registry
+                .entries()
+                .find(|entry| entry.focus == Some(true))
+        {
+            self.focused_entry = Some(entry.id.clone());
+        }
+        self.sync_visibility();
+    }
+
+    /// Sends `_oino/ui_visible` for entries that appeared or disappeared (§6.5).
+    pub(crate) fn sync_visibility(&mut self) {
+        let visible = visible_entries(&self.registry, self.focused_entry.as_deref());
+        let shown: Vec<String> = visible.difference(&self.ui_visible).cloned().collect();
+        let hidden: Vec<String> = self.ui_visible.difference(&visible).cloned().collect();
+        for id in shown {
+            self.send(
+                Tag::Ignore,
+                OinoCommand::UiVisible {
+                    entry_id: id,
+                    visible: true,
+                    frontend: Some("tui".to_owned()),
+                },
+            );
+        }
+        for id in hidden {
+            self.send(
+                Tag::Ignore,
+                OinoCommand::UiVisible {
+                    entry_id: id,
+                    visible: false,
+                    frontend: Some("tui".to_owned()),
+                },
+            );
+        }
+        self.ui_visible = visible;
+    }
+
     /// Answers a dialog and removes it locally (core broadcasts the dismissal too).
     pub(crate) fn answer(&mut self, id: &str, answer: oino_core::ui::UiAnswer) {
         self.effects.push(Effect::Respond(UiResponse {
@@ -1254,6 +1440,7 @@ impl App {
             answer,
         }));
         self.ui.dismiss(id);
+        self.registry.dismiss_dialog(id);
         self.sync_dialog();
     }
 
@@ -1285,4 +1472,41 @@ impl App {
     pub(crate) fn busy(&self) -> bool {
         self.session.streaming || self.session.compacting || self.retry.is_some()
     }
+}
+
+/// Entries the TUI paints: all non-stack slots plus the visible entry of each stack and
+/// of the side/fullscreen/bottom selections (§6.5).
+fn visible_entries(registry: &RegistryMirror, focused: Option<&str>) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for slot in [
+        Slot::Widget,
+        Slot::WidgetBelow,
+        Slot::Status,
+        Slot::Header,
+        Slot::Footer,
+        Slot::TurnFooter,
+    ] {
+        for entry in registry.entries_for(slot) {
+            out.insert(entry.id.clone());
+        }
+    }
+    for slot in [Slot::Overlay, Slot::EditorReplace] {
+        if let Some(entry) = registry.stack_top(slot) {
+            out.insert(entry.id.clone());
+        }
+    }
+    for slot in [Slot::SidePane, Slot::BottomPane, Slot::Fullscreen] {
+        let entries = registry.entries_for(slot);
+        if let Some(entry) = selected_entry(&entries, focused) {
+            out.insert(entry.id.clone());
+        }
+    }
+    out
+}
+
+/// The focused entry when it belongs to `entries`, else the last one (registry order).
+fn selected_entry<'a>(entries: &[&'a UiEntry], focused: Option<&str>) -> Option<&'a UiEntry> {
+    focused
+        .and_then(|id| entries.iter().find(|entry| entry.id == id).copied())
+        .or_else(|| entries.last().copied())
 }

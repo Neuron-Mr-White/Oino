@@ -9,7 +9,7 @@ expression: "h.frame(80, 30)"
 
  Oino can explain its own features and look up its docs. Ask it how to use or e…
 
- Welcome back
+Welcome back
 
 
 
@@ -18,17 +18,17 @@ expression: "h.frame(80, 30)"
 
 
 
-
- ⠋ Thinking hard... (escape to interrupt)
+ ⠋ Working... (escape to interrupt)
 
  Steering: also check docs
  ↳ alt+up to edit all queued messages
- ☐ write tests
- ☑ ship
-─ plan mode ────────────────────────────────────────────────────────────────────
+☐ write tests
+☑ ship
+────────────────────────────────────────────────────────────────────────────────
 draft
-────────────────────────────────────────────────────────────────────── ctx 12% ─
- [work tray]
+────────────────────────────────────────────────────────────────────────────────
+work tray
 /work/project (main)
 ↑1.2k ↓345 $0.012 0.8%/200k (auto)                        (faux) faux-1 • medium
-2 jobs
+2 jobs ctx 12%
+footer note

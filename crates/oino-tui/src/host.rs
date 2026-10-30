@@ -22,15 +22,22 @@ pub struct KeybindingOverrides {
     pub extension_shortcuts: IndexMap<String, Vec<String>>,
 }
 
-/// Lazy render request for custom messages/entries and tools (ui-protocol §6.4).
+/// Lazy render request for custom messages/entries, tools and turn footers (ui-protocol
+/// §6.4, §6.7).
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderRequest {
-    /// `customMessage` | `customEntry` | `tool`.
+    /// `customMessage` | `customEntry` | `tool` | `turnFooter`.
     pub target: &'static str,
-    /// Custom type or tool name (built-in tool names included).
+    /// Custom type, tool name or turn-footer renderer key.
     pub key: String,
     /// Entry or tool-call id.
     pub entry_id: Option<String>,
+    /// Turn id of a `turnFooter` request (the user message entry, §6.7).
+    pub turn_entry_id: Option<String>,
+    /// Zero-based turn index (§6.7).
+    pub turn_index: Option<u64>,
+    /// Whether the turn is still running (§6.7).
+    pub running: bool,
     /// `simple` | `regular` | `advanced`.
     pub density: &'static str,
     /// Expanded state.
@@ -367,10 +374,9 @@ mod local {
                 target: request.target.to_owned(),
                 key: request.key.clone(),
                 entry_id: request.entry_id.clone(),
-                // Turn footers are rendered by the v2 slot renderer (WP-U4).
-                turn_entry_id: None,
-                turn_index: None,
-                running: false,
+                turn_entry_id: request.turn_entry_id.clone(),
+                turn_index: request.turn_index,
+                running: request.running,
                 density: Some(request.density.to_owned()),
                 expanded: request.expanded,
                 width: Some(request.width.to_owned()),

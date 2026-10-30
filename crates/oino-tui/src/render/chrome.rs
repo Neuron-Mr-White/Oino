@@ -3,14 +3,15 @@
 use std::fmt::Write as _;
 
 use oino_ai::JsonValue;
+use oino_ui::slot::{Slot, UiView};
 use oino_view::format::{format_cwd, format_tokens, single_line, width as text_width};
-use oino_view::ui_state::{Placement, Segment, SegmentAlign, Widget};
+use oino_view::ui_state::{Segment, SegmentAlign};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthChar;
 
-use super::text::{OLine, boxed, spread, truncate_line};
-use super::{Block, RenderCtx, ctx, ous, overlays};
+use super::text::{OLine, spread, truncate_line};
+use super::{Block, overlays};
 use crate::app::App;
 
 /// pi built-in header (compact unless tools are expanded).
@@ -197,37 +198,19 @@ pub(super) fn status_lines(app: &App, width: usize) -> Vec<OLine> {
     out
 }
 
-/// Lines of one widget (OUS spec preferred over plain lines).
-pub(super) fn widget_body(widget: &Widget, cx: &RenderCtx<'_>) -> Vec<OLine> {
-    match &widget.spec {
-        Some(spec) => boxed(
-            ous::render(
-                spec,
-                cx.width.saturating_sub(2),
-                cx.theme,
-                ous::Focus::default(),
-                cx.tick,
-            ),
-            cx.width,
-            1,
-            None,
-        ),
-        None => widget
-            .lines
-            .iter()
-            .map(|l| truncate_line(Line::from(format!(" {l}")), cx.width))
-            .collect(),
+/// Widgets of a v2 slot (`widget` / `widgetBelow`), auto height ≤ 10 rows (§4.4).
+pub(super) fn widget_lines(app: &mut App, slot: Slot, width: usize) -> Vec<OLine> {
+    let ids = super::slot_ids(app, slot);
+    let mut out = Vec::new();
+    for id in ids {
+        out.extend(super::ui_entry_auto(
+            app,
+            &id,
+            u16::try_from(width).unwrap_or(u16::MAX),
+            10,
+        ));
     }
-}
-
-/// Widgets at `placement`.
-pub(super) fn widget_lines(app: &App, placement: Placement, width: usize) -> Vec<OLine> {
-    let cx = ctx(app, width);
-    app.ui
-        .widgets_at(placement)
-        .into_iter()
-        .flat_map(|w| widget_body(w, &cx))
-        .collect()
+    out
 }
 
 fn segments_line(segments: &[Segment], width: usize, border: Style, app: &App) -> OLine {
@@ -310,12 +293,16 @@ pub(super) fn icon_glyph(name: &str) -> &'static str {
 }
 
 /// The editor area: dialog, selector, editor-replacing panel or the composer.
-pub(super) fn editor_block(app: &App, width: usize, max_height: usize) -> Block {
+pub(super) fn editor_block(app: &mut App, width: usize, max_height: usize) -> Block {
     if app.ui.active_dialog().is_some() && !overlays::dialog_is_modal(app) {
         return overlays::dialog_block(app, width, max_height);
     }
     if let Some(overlay) = &app.overlay {
-        return overlays::overlay_block(app, overlay, width, max_height);
+        let overlay = overlay.clone();
+        return overlays::overlay_block(app, &overlay, width, max_height);
+    }
+    if let Some(block) = overlays::ui_editor_block(app, width, max_height) {
+        return block;
     }
     if let Some(panel) = app.ui.focused_panel()
         && matches!(
@@ -477,7 +464,7 @@ pub(super) fn completion_popup(app: &App, width: usize) -> Option<Vec<OLine>> {
     clippy::too_many_lines,
     reason = "mirrors pi FooterComponent.render step by step"
 )]
-pub(super) fn footer_lines(app: &App, width: usize) -> Vec<OLine> {
+pub(super) fn footer_lines(app: &mut App, width: usize) -> Vec<OLine> {
     let theme = &app.theme;
     let dim = Style::default().fg(theme.dim);
     let cwd = app.host.cwd();
@@ -566,38 +553,32 @@ pub(super) fn footer_lines(app: &App, width: usize) -> Vec<OLine> {
         }
     }
     out.push(spread(stats, vec![Span::styled(right, dim)], width));
-    let statuses = app.ui.sorted_statuses();
-    if !statuses.is_empty() {
-        let mut spans = Vec::new();
-        for (i, (_, status)) in statuses.iter().enumerate() {
-            if i > 0 {
-                spans.push(Span::raw(" "));
-            }
-            let style = match status.tone {
-                oino_view::ous::Tone::Default => Style::default().fg(theme.text),
-                tone => Style::default().fg(theme.tone(tone)),
-            };
-            spans.push(Span::styled(single_line(&status.text), style));
+    // v2 status segments (`setStatus` / `setFrame`), one row (§6.2).
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for entry in app.registry.entries_for(Slot::Status) {
+        let UiView::Status { text } = &entry.view else {
+            continue;
+        };
+        if !spans.is_empty() {
+            spans.push(Span::styled(" ", Style::default().fg(theme.border)));
         }
+        let style = entry.tone.as_ref().map_or_else(
+            || Style::default().fg(theme.text),
+            |tone| Style::default().fg(super::ui::style::token(tone, theme).unwrap_or(theme.text)),
+        );
+        let line = super::ui::style::line(text, style, theme);
+        spans.extend(line.spans);
+    }
+    if !spans.is_empty() {
         out.push(truncate_line(Line::from(spans), width));
     }
-    let cx = ctx(app, width);
-    for spec in app.ui.footers.values() {
-        out.extend(boxed(
-            ous::render(
-                spec,
-                width.saturating_sub(2),
-                theme,
-                ous::Focus::default(),
-                app.tick,
-            ),
-            width,
-            1,
-            None,
-        ));
-    }
-    for widget in app.ui.widgets_at(Placement::Footer) {
-        out.extend(widget_body(widget, &cx));
+    // v2 footer entries: one row each (§6.2).
+    let ids = super::slot_ids(app, Slot::Footer);
+    for id in ids {
+        let lines = super::ui_entry_auto(app, &id, u16::try_from(width).unwrap_or(u16::MAX), 1);
+        if let Some(line) = lines.into_iter().next() {
+            out.push(line);
+        }
     }
     out
 }

@@ -4,6 +4,7 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
+    clippy::needless_pass_by_value,
     reason = "tests"
 )]
 
@@ -230,17 +231,54 @@ async fn dialog_custom_ous() {
     );
 }
 
+fn ui_entry(id: &str, slot: &str, title: &str, view: Value) -> Value {
+    json!({
+        "id": id,
+        "extensionId": "probe",
+        "scope": "session",
+        "slot": slot,
+        "order": 0,
+        "seq": 1,
+        "title": title,
+        "view": view,
+        "rev": 1
+    })
+}
+
+fn patch(rev: u64, ops: Vec<Value>) -> Value {
+    json!({"type": "oino_ui_patch", "scope": "session", "sessionId": "s-1", "rev": rev, "ops": ops})
+}
+
+fn put(entry: Value) -> Value {
+    json!({"op": "put", "entry": entry})
+}
+
 fn panel(placement: &str) -> Value {
-    ui(
-        &format!("p-{placement}"),
-        "openPanel",
-        &json!({"panelId": "probe/dash", "placement": placement, "title": "Dashboard",
-        "spec": {"t": "stack", "children": [
-            {"t": "list", "selectable": "pick", "items": [{"id": "a", "label": "Alpha", "badge": "new"}, {"id": "b", "label": "Beta", "detail": "second"}]},
-            {"t": "sparkline", "values": [1, 3, 2, 5, 4], "label": "load"},
-            {"t": "keyHints", "hints": [{"keys": "r", "label": "refresh"}]}]},
-        "keys": [{"key": "r", "actionId": "refresh", "label": "Refresh"}]}),
-    )
+    put(json!({
+        "id": "probe/dash",
+        "extensionId": "probe",
+        "scope": "session",
+        "slot": placement,
+        "order": 0,
+        "seq": 1,
+        "title": "Dashboard",
+        "view": {"kind": "tree", "root": {
+            "t": "Layout",
+            "constraints": [{"Fill": 1}, {"Length": 1}, {"Length": 1}],
+            "children": [
+                {"t": "List", "highlightSymbol": "› ", "onSelect": "pick", "items": [
+                    {"key": "a", "content": "Alpha", "badge": "new"},
+                    {"key": "b", "content": "Beta", "detail": "second"}
+                ]},
+                {"t": "Sparkline", "data": [1, 3, 2, 5, 4]},
+                {"t": "KeyHints", "hints": [{"keys": "r", "label": "refresh", "action": "refresh"}]}
+            ]
+        }},
+        "keys": [{"key": "r", "action": "refresh", "label": "Refresh"}],
+        "focus": true,
+        "closeOnEscape": true,
+        "rev": 1
+    }))
 }
 
 #[tokio::test]
@@ -253,52 +291,93 @@ async fn panels_by_placement() {
         "fullscreen",
     ] {
         let mut h = harness().await;
-        h.json_event(panel(placement)).await;
+        h.json_event(patch(1, vec![panel(placement)])).await;
         insta::assert_snapshot!(format!("panel_{placement}"), h.frame(70, 22));
     }
 }
 
 #[tokio::test]
+async fn side_pane_tabs_render_in_order() {
+    let mut h = harness().await;
+    let mut first = ui_entry(
+        "probe/side:files",
+        "sidePane",
+        "Files",
+        json!({"kind": "tree", "root": {"t": "Paragraph", "text": "src/"}}),
+    );
+    first["seq"] = json!(1);
+    first["order"] = json!(10);
+    let mut second = ui_entry(
+        "probe/side:git",
+        "sidePane",
+        "Git",
+        json!({"kind": "tree", "root": {"t": "Paragraph", "text": "main"}}),
+    );
+    second["seq"] = json!(2);
+    second["order"] = json!(20);
+    second["focus"] = json!(true);
+    h.json_event(patch(1, vec![put(first), put(second)])).await;
+    let frame = h.frame(60, 20);
+    assert!(frame.contains("Git"), "{frame}");
+    assert!(frame.contains("Files"), "{frame}");
+    assert!(frame.contains("main"), "{frame}");
+    assert!(
+        !frame.contains("src/"),
+        "the focused tab's body is shown: {frame}"
+    );
+    insta::assert_snapshot!("side_pane_tabs", frame);
+}
+
+#[tokio::test]
 async fn widgets_status_frame_footer() {
     let mut h = harness().await;
-    h.json_event(ui(
-        "w1",
-        "setWidget",
-        &json!({"widgetKey": "todo", "widgetLines": ["☐ write tests", "☑ ship"]}),
-    ))
-    .await;
-    h.json_event(ui(
-        "w2",
-        "setWidget",
-        &json!({"widgetKey": "below", "widgetPlacement": "belowEditor",
-        "widgetSpec": {"t": "badge", "value": "work tray", "tone": "success"}}),
-    ))
-    .await;
-    h.json_event(ui(
-        "s1",
-        "setStatus",
-        &json!({"statusKey": "jobs", "statusText": "2 jobs", "tone": "warning"}),
-    ))
-    .await;
-    h.json_event(ui(
-        "f1",
-        "setFrame",
-        &json!({"frameKey": "f", "top": [{"text": "plan mode", "tone": "accent", "priority": 2}],
-        "bottom": [{"text": "ctx 12%", "align": "right", "priority": 1}]}),
-    ))
-    .await;
-    h.json_event(ui(
-        "h1",
-        "setHeader",
-        &json!({"key": "splash", "spec": {"t": "text", "value": "Welcome back"}}),
-    ))
-    .await;
-    h.json_event(ui(
-        "t1",
-        "setWorkingMessage",
-        &json!({"message": "Thinking hard..."}),
-    ))
-    .await;
+    let widgets = vec![
+        put(ui_entry(
+            "probe/widget:todo",
+            "widget",
+            "",
+            json!({"kind": "lines", "lines": ["☐ write tests", "☑ ship"]}),
+        )),
+        put(ui_entry(
+            "probe/widget:below",
+            "widgetBelow",
+            "",
+            json!({"kind": "tree", "root": {"t": "Paragraph", "text": [
+                {"spans": [{"content": "work tray", "style": {"fg": "success", "bg": "successBg"}}]}
+            ]}}),
+        )),
+        put(ui_entry(
+            "probe/status:jobs",
+            "status",
+            "",
+            json!({"kind": "status", "text": "2 jobs"}),
+        )),
+        put(json!({
+            "id": "probe/frame:f:1",
+            "extensionId": "probe",
+            "scope": "session",
+            "slot": "status",
+            "order": -1,
+            "seq": 2,
+            "tone": "accent",
+            "view": {"kind": "status", "text": "ctx 12%"},
+            "rev": 1
+        })),
+        put(ui_entry(
+            "probe/header:splash",
+            "header",
+            "",
+            json!({"kind": "tree", "root": {"t": "Paragraph", "text": "Welcome back"}}),
+        )),
+        put(ui_entry(
+            "probe/footer:note",
+            "footer",
+            "",
+            json!({"kind": "status", "text": "footer note"}),
+        )),
+        json!({"op": "sessionMeta", "set": {"workingMessage": "Thinking hard..."}}),
+    ];
+    h.json_event(patch(1, widgets)).await;
     h.json_event(json!({"type": "agent_start"})).await;
     h.json_event(json!({"type": "queue_update", "steering": ["also check docs"], "followUp": []}))
         .await;

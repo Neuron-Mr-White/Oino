@@ -4,6 +4,7 @@ use oino_view::composer::Composer;
 use oino_view::format::{format_age, shorten_path, single_line, width as text_width};
 use oino_view::tree::DisplayKind;
 use oino_view::ui_state::{DialogKind, Panel, PanelPlacement};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
@@ -1337,4 +1338,153 @@ pub(super) fn modal(app: &App, width: usize, height: usize) -> Option<Block> {
     )));
     let cursor = content.cursor.map(|(x, y)| (x + 1, y + 1));
     Some(Block { lines, cursor })
+}
+
+// ── v2 registry slots (§6.2 TUI column) ─────────────────────────────────────
+
+use oino_ui::slot::{Slot, UiEntry};
+
+/// Lines of a v2 entry framed as a panel: top rule, title, body, key hints (§12.4).
+pub(super) fn ui_entry_block(app: &mut App, id: &str, width: usize, max_height: usize) -> Block {
+    let theme = app.theme;
+    let Some(entry) = app.registry.entry(id) else {
+        return Block::new(Vec::new());
+    };
+    let title = entry.title.clone();
+    let keys: Vec<(String, String)> = entry
+        .keys
+        .iter()
+        .map(|binding| (binding.key.clone(), binding.label.clone()))
+        .collect();
+    let close = entry.close_on_escape.unwrap_or(true);
+    let mut lines = vec![border_line(theme.border, width)];
+    if let Some(title) = title {
+        lines.push(Line::from(Span::styled(
+            format!(" {title}"),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        )));
+    }
+    let hint_rows = usize::from(!keys.is_empty() || close);
+    let body_height = max_height.saturating_sub(lines.len() + hint_rows).max(1);
+    let body = super::ui_entry_lines(
+        app,
+        id,
+        Rect {
+            x: 0,
+            y: 0,
+            width: u16::try_from(width.saturating_sub(2)).unwrap_or(u16::MAX),
+            height: u16::try_from(body_height).unwrap_or(u16::MAX),
+        },
+    );
+    lines.extend(boxed(body, width, 1, None));
+    let mut hints: Vec<(String, String)> = keys;
+    if close {
+        hints.push(("esc".into(), "close".into()));
+    }
+    if !hints.is_empty() {
+        let hint_refs: Vec<(&str, &str)> = hints
+            .iter()
+            .map(|(k, l)| (k.as_str(), l.as_str()))
+            .collect();
+        lines.push(hint_line(app, &hint_refs, width));
+    }
+    Block::new(lines)
+}
+
+/// The visible v2 overlay (stack top) or side-pane tab, framed like a modal (§6.2).
+pub(super) fn ui_modal(app: &mut App, width: usize, height: usize) -> Option<Block> {
+    let (id, tabs) = if let Some(entry) = app.registry.stack_top(Slot::Overlay) {
+        (entry.id.clone(), Vec::new())
+    } else {
+        let entries: Vec<UiEntry> = app
+            .registry
+            .entries_for(Slot::SidePane)
+            .into_iter()
+            .cloned()
+            .collect();
+        if entries.is_empty() {
+            return None;
+        }
+        let selected = app
+            .focused_entry
+            .as_deref()
+            .and_then(|focused| entries.iter().find(|entry| entry.id == focused))
+            .or_else(|| entries.last())?;
+        let tabs: Vec<(String, bool)> = entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.title.clone().unwrap_or_else(|| entry.id.clone()),
+                    entry.id == selected.id,
+                )
+            })
+            .collect();
+        (selected.id.clone(), tabs)
+    };
+    let box_width = (width * 4 / 5).max(30).min(width);
+    let inner = box_width.saturating_sub(4);
+    let inner_height = height.saturating_sub(2);
+    let mut content = ui_entry_block(app, &id, inner, inner_height);
+    if content.lines.first().is_some_and(|line| {
+        line.spans
+            .first()
+            .is_some_and(|span| span.content.starts_with('─'))
+    }) {
+        content.lines.remove(0);
+    }
+    if tabs.len() > 1 {
+        let theme = app.theme;
+        let mut spans = Vec::new();
+        for (index, (title, selected)) in tabs.iter().enumerate() {
+            if index > 0 {
+                spans.push(Span::styled(" │ ", Style::default().fg(theme.border)));
+            }
+            spans.push(Span::styled(
+                title.clone(),
+                if *selected {
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(theme.muted)
+                },
+            ));
+        }
+        content
+            .lines
+            .insert(0, truncate_line(Line::from(spans), inner));
+    }
+    let theme = app.theme;
+    let border = Style::default().fg(theme.border_accent);
+    let mut lines = vec![Line::from(Span::styled(
+        format!("╭{}╮", "─".repeat(inner)),
+        border,
+    ))];
+    for line in content.lines.into_iter().take(inner_height) {
+        let line = truncate_line(line, inner);
+        let w = super::text::line_width(&line);
+        let mut spans = vec![Span::styled("│", border)];
+        spans.extend(line.spans);
+        spans.push(Span::raw(" ".repeat(inner.saturating_sub(w))));
+        spans.push(Span::styled("│", border));
+        lines.push(Line::from(spans));
+    }
+    lines.push(Line::from(Span::styled(
+        format!("╰{}╯", "─".repeat(inner)),
+        border,
+    )));
+    Some(Block {
+        lines,
+        cursor: content.cursor.map(|(x, y)| (x + 1, y + 1)),
+    })
+}
+
+/// The v2 entry replacing the composer (`editorReplace`, else `bottomPane`, §6.2).
+pub(super) fn ui_editor_block(app: &mut App, width: usize, max_height: usize) -> Option<Block> {
+    let id = app
+        .registry
+        .stack_top(Slot::EditorReplace)
+        .map(|entry| entry.id.clone())
+        .or_else(|| super::slot_entry_id(app, Slot::BottomPane))?;
+    Some(ui_entry_block(app, &id, width, max_height))
 }

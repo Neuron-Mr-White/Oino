@@ -1,0 +1,8 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+› ⚡  First task   P1
+  ~ 0..100=bg=rgb(213b49),mods=BOLD
+  open
+  ~ 0..100=bg=rgb(213b49),mods=BOLD

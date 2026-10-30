@@ -25,6 +25,7 @@ oino-core = { path = "../oino-core" }
 oino-resources = { path = "../oino-resources", optional = true }
 oino-session = { path = "../oino-session" }
 oino-settings = { path = "../oino-settings", optional = true }
+oino-ui = { path = "../oino-ui" }
 oino-view = { path = "../oino-view" }
 pulldown-cmark = { workspace = true, default-features = false }
 ratatui.workspace = true
@@ -41,8 +42,11 @@ nix.workspace = true
 [dev-dependencies]
 insta.workspace = true
 # WP-U2: regenerates crates/oino-ui/tests/layout_vectors.json from ratatui.
-oino-ui = { path = "../oino-ui" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[[bench]]
+name = "ui_render"
+harness = false
 
 [lints]
 workspace = true

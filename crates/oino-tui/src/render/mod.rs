@@ -12,11 +12,14 @@ mod overlays;
 pub(crate) mod text;
 mod tools;
 mod transcript;
+pub(crate) mod ui;
+
+pub use ui::{measure_v2_node, render_v2_node};
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use oino_view::ui_state::PanelPlacement;
+use oino_ui::slot::{Slot, UiView};
 use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
@@ -88,6 +91,146 @@ fn ctx(app: &App, width: usize) -> RenderCtx<'_> {
     }
 }
 
+/// Ids of a registry slot in render order (§6.4).
+pub(super) fn slot_ids(app: &App, slot: Slot) -> Vec<String> {
+    app.registry
+        .entries_for(slot)
+        .iter()
+        .map(|entry| entry.id.clone())
+        .collect()
+}
+
+/// The entry a non-stack slot paints (focused, else the last in registry order).
+pub(super) fn slot_entry_id(app: &App, slot: Slot) -> Option<String> {
+    let entries = app.registry.entries_for(slot);
+    app.focused_entry
+        .as_deref()
+        .and_then(|id| entries.iter().find(|entry| entry.id == id).copied())
+        .or_else(|| entries.last().copied())
+        .map(|entry| entry.id.clone())
+}
+
+/// Intrinsic height of a registry entry (§4.4), 0 for views without content.
+pub(super) fn ui_entry_height(app: &App, id: &str, width: u16) -> u16 {
+    let Some(entry) = app.registry.entry(id) else {
+        return 0;
+    };
+    let local = app.ui_local.get(id).cloned().unwrap_or_default();
+    let cx = ui::Ctx {
+        theme: &app.theme,
+        tick: app.tick,
+        local: &local,
+    };
+    match &entry.view {
+        UiView::Tree { root } => ui::measure::height(root, width, &cx),
+        UiView::Reserved { fallback, .. } => fallback
+            .as_deref()
+            .map_or(0, |root| ui::measure::height(root, width, &cx)),
+        UiView::Lines { lines } => u16::try_from(lines.len()).unwrap_or(u16::MAX),
+        UiView::Status { .. } => 1,
+        UiView::Renderer { .. } | UiView::Settings { .. } => 0,
+    }
+}
+
+/// Rendered lines of an entry at `area`, cached per `entry.rev` (§12.4 point 3).
+pub(super) fn ui_entry_lines(app: &mut App, id: &str, area: Rect) -> Vec<OLine> {
+    let Some(entry) = app.registry.entry(id) else {
+        return Vec::new();
+    };
+    let local = app.ui_local.get(id).cloned().unwrap_or_default();
+    let animated = ui::animated(entry);
+    let cx = ui::Ctx {
+        theme: &app.theme,
+        tick: app.tick,
+        local: &local,
+    };
+    app.ui_cache.lines(entry, area, &cx, animated)
+}
+
+/// Rendered lines of an entry in an auto slot (§4.4), capped at `max` rows.
+pub(super) fn ui_entry_auto(app: &mut App, id: &str, width: u16, max: u16) -> Vec<OLine> {
+    let height = ui_entry_height(app, id, width).clamp(1, max.max(1));
+    ui_entry_lines(
+        app,
+        id,
+        Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        },
+    )
+}
+
+/// Turn-footer lines of the turns that end at this row (§6.7).
+fn turn_footers(
+    app: &App,
+    cx: &RenderCtx<'_>,
+    cache: &mut std::collections::HashMap<(String, String, u64, bool), Vec<OLine>>,
+    turn_entry: Option<&str>,
+    turn_index: usize,
+    running: bool,
+) -> Vec<OLine> {
+    let width = u16::try_from(cx.width).unwrap_or(u16::MAX);
+    let mut out = Vec::new();
+    for entry in app.registry.entries_for(Slot::TurnFooter) {
+        let lines = match &entry.view {
+            UiView::Renderer { key } => {
+                let turn = turn_entry.unwrap_or_default().to_owned();
+                let cache_key = (entry.id.clone(), turn, entry.rev, running);
+                if let Some(lines) = cache.get(&cache_key) {
+                    lines.clone()
+                } else {
+                    let request = RenderRequest {
+                        target: "turnFooter",
+                        key: key.clone(),
+                        entry_id: Some(entry.id.clone()),
+                        turn_entry_id: turn_entry.map(str::to_owned),
+                        turn_index: Some(u64::try_from(turn_index).unwrap_or(0)),
+                        running,
+                        density: RenderRequest::density_for(false),
+                        expanded: false,
+                        width: RenderRequest::width_for(cx.width),
+                        data: serde_json::Value::Null,
+                    };
+                    let lines = cx
+                        .host
+                        .render(&request)
+                        .and_then(|node| serde_json::from_value::<oino_ui::node::Node>(node).ok())
+                        .map(|node| {
+                            let local = ui::focus::UiLocalState::default();
+                            let measure_ctx = ui::Ctx {
+                                theme: cx.theme,
+                                tick: cx.tick,
+                                local: &local,
+                            };
+                            let height = ui::measure::height(&node, width, &measure_ctx);
+                            render_v2_node(&node, width, height.min(6), cx.theme)
+                        })
+                        .unwrap_or_default();
+                    cache.insert(cache_key, lines.clone());
+                    lines
+                }
+            }
+            UiView::Reserved { fallback, .. } => {
+                fallback.as_deref().map_or_else(Vec::new, |node| {
+                    let local = ui::focus::UiLocalState::default();
+                    let measure_ctx = ui::Ctx {
+                        theme: cx.theme,
+                        tick: cx.tick,
+                        local: &local,
+                    };
+                    let height = ui::measure::height(node, width, &measure_ctx);
+                    render_v2_node(node, width, height.min(6), cx.theme)
+                })
+            }
+            _ => Vec::new(),
+        };
+        out.extend(lines);
+    }
+    out
+}
+
 /// Draws the whole frame.
 pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
     let area = frame.area();
@@ -103,19 +246,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
         return;
     }
     let width = usize::from(area.width);
-    if let Some(panel) = app.ui.focused_panel().cloned()
-        && panel.placement == PanelPlacement::Fullscreen
-    {
-        let block = overlays::panel_block(app, &panel, width, usize::from(area.height));
+    if let Some(id) = slot_entry_id(app, Slot::Fullscreen) {
+        let block = overlays::ui_entry_block(app, &id, width, usize::from(area.height));
+        frame.render_widget(Clear, area);
         frame.render_widget(Paragraph::new(block.lines).style(base), area);
         return;
     }
 
     // Bottom stack, top to bottom.
     let status = chrome::status_lines(app, width);
-    let above = chrome::widget_lines(app, oino_view::ui_state::Placement::AboveEditor, width);
+    let above = chrome::widget_lines(app, Slot::Widget, width);
     let editor = chrome::editor_block(app, width, usize::from(area.height) / 2);
-    let below = chrome::widget_lines(app, oino_view::ui_state::Placement::BelowEditor, width);
+    let below = chrome::widget_lines(app, Slot::WidgetBelow, width);
     let footer = chrome::footer_lines(app, width);
     let mut bottom: Vec<OLine> = Vec::new();
     bottom.extend(status);
@@ -167,33 +309,45 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
         frame.render_widget(Paragraph::new(popup).style(base), rect);
     }
 
+    // v2 overlays / side-pane tabs over the transcript; dialogs sit above them (§3.2).
+    if app.ui.active_dialog().is_none()
+        && app.overlay.is_none()
+        && let Some(block) = overlays::ui_modal(app, width, usize::from(transcript_area.height))
+    {
+        draw_modal(frame, block, area, transcript_area, base);
+    }
     // Modal panels and large custom dialogs over the transcript.
     if let Some(block) = overlays::modal(app, width, usize::from(transcript_area.height)) {
-        let h = height(&block.lines).min(transcript_area.height);
-        let w = block
-            .lines
-            .iter()
-            .map(text::line_width)
-            .max()
-            .unwrap_or(0)
-            .min(width);
-        let w = u16::try_from(w).unwrap_or(area.width);
-        let rect = Rect {
-            x: area.x + (area.width - w) / 2,
-            y: area.y + (transcript_area.height - h) / 2,
-            width: w,
-            height: h,
-        };
-        frame.render_widget(Clear, rect);
-        frame.render_widget(Paragraph::new(block.lines).style(base), rect);
-        if let Some((x, y)) = block.cursor {
-            frame.set_cursor_position(Position::new(rect.x + x, rect.y + y));
-        }
+        draw_modal(frame, block, area, transcript_area, base);
+    }
+}
+
+/// Centres a modal block inside the transcript area.
+fn draw_modal(frame: &mut Frame<'_>, block: Block, area: Rect, transcript_area: Rect, base: Style) {
+    let h = height(&block.lines).min(transcript_area.height);
+    let w = block
+        .lines
+        .iter()
+        .map(text::line_width)
+        .max()
+        .unwrap_or(0)
+        .min(usize::from(area.width));
+    let w = u16::try_from(w).unwrap_or(area.width);
+    let rect = Rect {
+        x: area.x + (area.width - w) / 2,
+        y: area.y + (transcript_area.height - h) / 2,
+        width: w,
+        height: h,
+    };
+    frame.render_widget(Clear, rect);
+    frame.render_widget(Paragraph::new(block.lines).style(base), rect);
+    if let Some((x, y)) = block.cursor {
+        frame.set_cursor_position(Position::new(rect.x + x, rect.y + y));
     }
 }
 
 /// Header lines at the top of the transcript (pi built-in header).
-fn header_lines(app: &App, width: usize) -> Vec<OLine> {
+fn header_lines(app: &mut App, width: usize) -> Vec<OLine> {
     let quiet = app
         .settings
         .get("quietStartup")
@@ -203,24 +357,15 @@ fn header_lines(app: &App, width: usize) -> Vec<OLine> {
     if !quiet {
         out.extend(chrome::builtin_header(app, width));
     }
-    let cx = ctx(app, width);
-    for spec in app.ui.headers.values() {
+    let ids = slot_ids(app, Slot::Header);
+    for id in ids {
         out.push(Line::default());
-        out.extend(text::boxed(
-            ous::render(
-                spec,
-                width.saturating_sub(2),
-                &app.theme,
-                ous::Focus::default(),
-                app.tick,
-            ),
-            width,
-            1,
-            None,
+        out.extend(ui_entry_auto(
+            app,
+            &id,
+            u16::try_from(width).unwrap_or(u16::MAX),
+            12,
         ));
-    }
-    for widget in app.ui.widgets_at(oino_view::ui_state::Placement::Header) {
-        out.extend(chrome::widget_body(widget, &cx));
     }
     out
 }
@@ -256,10 +401,32 @@ fn transcript_lines(app: &mut App, w16: u16, first: usize, header: bool) -> Vec<
     } else {
         Vec::new()
     };
-    let rows: Vec<_> = app.transcript.rows().iter().skip(first).cloned().collect();
+    let all_rows = app.transcript.rows();
+    let base_turns = all_rows
+        .iter()
+        .take(first)
+        .filter(|row| matches!(row.kind, oino_view::transcript::RowKind::User(_)))
+        .count();
+    let turn_count = all_rows
+        .iter()
+        .filter(|row| matches!(row.kind, oino_view::transcript::RowKind::User(_)))
+        .count();
+    let rows: Vec<_> = all_rows.iter().skip(first).cloned().collect();
+    let streaming = app.session.streaming;
+    let mut footer_cache = std::mem::take(&mut app.footer_cache);
     let cx = ctx(app, width);
     let mut fresh: Vec<(u64, CachedRow)> = Vec::new();
-    for row in &rows {
+    let mut turn_entry: Option<String> = None;
+    let mut turn_index = base_turns;
+    let mut seen_turn = false;
+    for (index, row) in rows.iter().enumerate() {
+        if let oino_view::transcript::RowKind::User(user) = &row.kind {
+            if seen_turn {
+                turn_index += 1;
+            }
+            seen_turn = true;
+            turn_entry.clone_from(&user.entry_id);
+        }
         let cached = app
             .cache
             .get(&row.id)
@@ -279,15 +446,32 @@ fn transcript_lines(app: &mut App, w16: u16, first: usize, header: bool) -> Vec<
             ));
             rendered
         };
-        if row_lines.is_empty() {
-            continue;
+        if !row_lines.is_empty() {
+            if !lines.is_empty() {
+                lines.push(Line::default());
+            }
+            lines.extend(row_lines);
         }
-        if !lines.is_empty() {
-            lines.push(Line::default());
+        let last_of_turn = rows
+            .get(index + 1)
+            .is_none_or(|next| matches!(next.kind, oino_view::transcript::RowKind::User(_)));
+        if last_of_turn {
+            let running = streaming && turn_index + 1 == turn_count;
+            let footers = turn_footers(
+                app,
+                &cx,
+                &mut footer_cache,
+                turn_entry.as_deref(),
+                turn_index,
+                running,
+            );
+            if !footers.is_empty() {
+                lines.extend(footers);
+            }
         }
-        lines.extend(row_lines);
     }
     drop(cx);
+    app.footer_cache = footer_cache;
     for (id, row) in fresh {
         app.cache.insert(id, row);
     }

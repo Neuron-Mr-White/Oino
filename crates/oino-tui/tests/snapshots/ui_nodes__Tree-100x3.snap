@@ -1,0 +1,10 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+▾ ▤ src
+  ~ 0..2=fg=rgb(9da5a9) 2..4=fg=rgb(a798d7)
+    · lib.rs                                                                                      1K
+  ~ 0..4=fg=rgb(9da5a9),bg=rgb(213b49),mods=BOLD 4..6=fg=rgb(a798d7),bg=rgb(213b49),mods=BOLD 6..100=bg=rgb(213b49),mods=BOLD
+    ▤ tests
+  ~ 0..4=fg=rgb(9da5a9) 4..6=fg=rgb(a798d7)

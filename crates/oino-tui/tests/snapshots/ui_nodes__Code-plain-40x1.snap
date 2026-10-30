@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+echo hi
+  ~ 0..7=fg=rgb(68b78d)

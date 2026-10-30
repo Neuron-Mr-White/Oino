@@ -193,17 +193,29 @@ async fn event_loop(
                     panel_id,
                     action_id,
                     value,
+                    values,
+                    path,
                 } => {
                     let backend = Arc::clone(shared);
                     let tx = tx.clone();
                     tokio::spawn(async move {
-                        let result = backend.ui_action(&panel_id, &action_id, value).await;
-                        // `$close` of a panel the backend already forgot is not an error.
+                        let command = oino_client::protocol::RpcCommand::Oino(
+                            oino_client::protocol::OinoCommand::UiAction {
+                                panel_id,
+                                action_id: action_id.clone(),
+                                value,
+                                values,
+                                path,
+                                source: Some("tui".to_owned()),
+                            },
+                        );
+                        let result = backend.send(command).await;
+                        // `$close` of an entry the backend already forgot is not an error.
                         if let Err(error) = result
                             && action_id != "$close"
                         {
                             let _ =
-                                tx.send(AppEvent::Notice(format!("Panel action failed: {error}")));
+                                tx.send(AppEvent::Notice(format!("Entry action failed: {error}")));
                         }
                     });
                 }

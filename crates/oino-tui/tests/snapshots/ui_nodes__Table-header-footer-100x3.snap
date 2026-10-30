@@ -1,0 +1,9 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+  Name                      Size
+  ~ 2..6=mods=BOLD
+> notes.md                  1 KB
+  ~ 0..100=bg=rgb(213b49)
+  total                     1 KB

@@ -1,0 +1,10 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+╭Tasks─────────────────────────────────╮
+  ~ 0..1=fg=rgb(5fa8cc) 6..40=fg=rgb(5fa8cc)
+│inside                                │
+  ~ 0..1=fg=rgb(5fa8cc) 39..40=fg=rgb(5fa8cc)
+╰──────────────────────────────────────╯
+  ~ 0..40=fg=rgb(5fa8cc)

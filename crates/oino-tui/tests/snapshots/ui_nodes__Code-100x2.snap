@@ -1,0 +1,8 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+10 let x = 1;
+  ~ 0..3=fg=rgb(7e888e) 3..6=fg=rgb(a798d7) 6..9=fg=rgb(68b78d) 9..10=fg=rgb(9da5a9) 10..12=fg=rgb(68b78d) 12..13=fg=rgb(9da5a9)
+11 let y = 2;
+  ~ 0..3=fg=rgb(7e888e),bg=rgb(213b49) 3..6=fg=rgb(a798d7),bg=rgb(213b49) 6..9=fg=rgb(68b78d),bg=rgb(213b49) 9..10=fg=rgb(9da5a9),bg=rgb(213b49) 10..12=fg=rgb(68b78d),bg=rgb(213b49) 12..13=fg=rgb(9da5a9),bg=rgb(213b49)

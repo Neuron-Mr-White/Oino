@@ -120,7 +120,13 @@ pub fn backend() -> FakeBackend {
             json!({"tokens": 1545, "contextWindow": 200000, "percent": 0.8}),
         )),
     );
-    fake.reply("_oino/ui_snapshot", Ok(Some(json!({"requests": []}))));
+    fake.reply(
+        "_oino/ui_snapshot",
+        Ok(Some(json!({
+            "scope": "session", "sessionId": "s-1", "rev": 0,
+            "entries": [], "dialogs": [], "meta": {}
+        }))),
+    );
     fake
 }
 
