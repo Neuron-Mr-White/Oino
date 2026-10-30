@@ -639,6 +639,10 @@ impl Shared {
     }
 
     /// The frontend command surface (`_oino/*` completions, actions, settings, auth).
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one arm per frontend command, mirroring the RPC surface"
+    )]
     async fn frontend(
         &self,
         session: &AgentSession,

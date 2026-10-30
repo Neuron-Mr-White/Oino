@@ -129,13 +129,12 @@ pub fn reserved(id: &str) -> Option<&'static ReservedEntry> {
 pub fn default_order(id: &str, slot: Slot) -> i32 {
     match id {
         "host/files" => 1000,
-        "host/git" => 990,
+        "host/git" | "unipi.cron/jobs" => 990,
         "unipi.browser/browser" => 980,
         "host/terminal" if slot == Slot::BottomPane => 1000,
         "host/terminal" => 970,
         "unipi.kanboard/board" if slot == Slot::Fullscreen => 1000,
         "unipi.kanboard/board" => 960,
-        "unipi.cron/jobs" => 990,
         _ => 0,
     }
 }
@@ -443,6 +442,31 @@ impl UiRegistry {
     pub fn has_pending(&self) -> bool {
         !self.pending.is_empty()
     }
+
+    /// Queues an op, coalescing consecutive ops for the same entry (§4.7): a later
+    /// whole-entry `put` replaces the earlier one, consecutive `tree` ops compose.
+    fn push_op(&mut self, op: RegistryOp) {
+        match (&op, self.pending.last_mut()) {
+            (
+                RegistryOp::Put { entry },
+                Some(RegistryOp::Put {
+                    entry: pending_entry,
+                }),
+            ) if pending_entry.id == entry.id => *pending_entry = entry.clone(),
+            (
+                RegistryOp::Tree { id, rev, ops },
+                Some(RegistryOp::Tree {
+                    id: pending_id,
+                    rev: pending_rev,
+                    ops: pending_ops,
+                }),
+            ) if pending_id == id => {
+                *pending_rev = *rev;
+                pending_ops.extend(ops.iter().cloned());
+            }
+            _ => self.pending.push(op),
+        }
+    }
 }
 
 /// Why a producer call could not change the registry is reported as
@@ -458,18 +482,17 @@ impl UiRegistry {
         let id = request.id.clone();
         let extension = request.extension_id.clone();
         check_id(&id)?;
-        self.check_ownership(&extension, &id)?;
-        let (slot, view, order) = self.gate(&request)?;
+        Self::check_ownership(&extension, &id)?;
+        let (slot, view, order) = Self::gate(&request)?;
         let existing = self.entries.get(&id);
         if existing.is_none() {
             self.check_limits(&id, &extension, slot)?;
         }
-        let seq = match existing {
-            Some(entry) => entry.seq,
-            None => {
-                self.seq += 1;
-                self.seq
-            }
+        let seq = if let Some(entry) = existing {
+            entry.seq
+        } else {
+            self.seq += 1;
+            self.seq
         };
         let rev = existing.map_or(1, |entry| entry.rev + 1);
         let title = request
@@ -502,14 +525,14 @@ impl UiRegistry {
                     (&old.view, &entry.view)
                 {
                     let ops = diff(old, new);
-                    self.pending.push(RegistryOp::Tree {
+                    self.push_op(RegistryOp::Tree {
                         id: entry.id.clone(),
                         rev,
                         ops,
                     });
                 }
             }
-            _ => self.pending.push(RegistryOp::Put {
+            _ => self.push_op(RegistryOp::Put {
                 entry: entry.clone(),
             }),
         }
@@ -528,7 +551,7 @@ impl UiRegistry {
         let Some(old) = self.entries.get(&update.id).cloned() else {
             return Err(RegistryError::NotFound(update.id.clone()));
         };
-        self.check_ownership(&old.extension_id, &update.id)?;
+        Self::check_ownership(&old.extension_id, &update.id)?;
         let mut next = old.clone();
         let mut meta_changed = false;
         if let Some(title) = update.title {
@@ -595,7 +618,7 @@ impl UiRegistry {
         };
         match (view_changed, tree_ops) {
             (true, Some(ops)) => {
-                self.pending.push(RegistryOp::Tree {
+                self.push_op(RegistryOp::Tree {
                     id: id.clone(),
                     rev,
                     ops,
@@ -607,7 +630,7 @@ impl UiRegistry {
                     });
                 }
             }
-            (true, None) => self.pending.push(RegistryOp::Put {
+            (true, None) => self.push_op(RegistryOp::Put {
                 entry: next.clone(),
             }),
             (false, _) => self.pending.push(RegistryOp::Meta {
@@ -625,7 +648,7 @@ impl UiRegistry {
     ///
     /// Foreign id or [`RegistryError::NotFound`].
     pub fn remove(&mut self, extension: &str, id: &str) -> Result<(), RegistryError> {
-        self.check_ownership(extension, id)?;
+        Self::check_ownership(extension, id)?;
         if !self.entries.contains_key(id) {
             return Err(RegistryError::NotFound(id.to_owned()));
         }
@@ -845,7 +868,7 @@ impl UiRegistry {
         self.delete(id);
     }
 
-    fn check_ownership(&self, extension: &str, id: &str) -> Result<(), RegistryError> {
+    fn check_ownership(extension: &str, id: &str) -> Result<(), RegistryError> {
         if reserved(id).is_some() {
             return Ok(());
         }
@@ -863,7 +886,7 @@ impl UiRegistry {
         }
     }
 
-    fn gate(&self, request: &EntryRequest) -> Result<(Slot, UiView, i32), RegistryError> {
+    fn gate(request: &EntryRequest) -> Result<(Slot, UiView, i32), RegistryError> {
         let fallback = request.fallback.clone().or_else(|| match &request.view {
             UiView::Reserved { fallback, .. } => fallback.as_deref().cloned(),
             _ => None,
@@ -872,56 +895,51 @@ impl UiRegistry {
             UiView::Reserved { params, .. } => params.clone(),
             _ => None,
         });
-        match reserved(&request.id) {
-            Some(entry) => {
-                if entry.owner != request.extension_id {
-                    return Err(RegistryError::ReservedOwned {
-                        id: request.id.clone(),
-                        owner: entry.owner.to_owned(),
-                    });
-                }
-                let slot = if request.slot == entry.slot || entry.allowed.contains(&request.slot) {
-                    request.slot
-                } else {
-                    entry.slot
-                };
-                let order = request
-                    .order
-                    .unwrap_or_else(|| default_order(entry.id, slot));
-                Ok((
-                    slot,
-                    UiView::Reserved {
-                        component: entry.component,
-                        fallback: fallback.map(Box::new),
-                        params,
-                    },
-                    order,
-                ))
+        if let Some(entry) = reserved(&request.id) {
+            if entry.owner != request.extension_id {
+                return Err(RegistryError::ReservedOwned {
+                    id: request.id.clone(),
+                    owner: entry.owner.to_owned(),
+                });
             }
-            None => {
-                if matches!(request.view, UiView::Reserved { .. }) {
-                    return Err(RegistryError::NotReserved(request.id.clone()));
-                }
-                if let UiView::Tree { root } = &request.view {
-                    oino_ui::limits::validate(root).map_err(|diagnostics| {
-                        RegistryError::Invalid(diagnostics_text(&diagnostics))
-                    })?;
-                }
-                // Third-party order is clamped (§6.4); the host owns the built-in
-                // Settings constants of core/app namespaces.
-                let built_in_settings = request.slot == Slot::Settings
-                    && matches!(
-                        request.extension_id.as_str(),
-                        "oino" | "core" | "pi" | "host" | "app"
-                    );
-                let order = match request.order {
-                    Some(order) if built_in_settings => order,
-                    Some(order) => order.clamp(*ORDER_RANGE.start(), *ORDER_RANGE.end()),
-                    None => 0,
-                };
-                Ok((request.slot, request.view.clone(), order))
-            }
+            let slot = if request.slot == entry.slot || entry.allowed.contains(&request.slot) {
+                request.slot
+            } else {
+                entry.slot
+            };
+            let order = request
+                .order
+                .unwrap_or_else(|| default_order(entry.id, slot));
+            return Ok((
+                slot,
+                UiView::Reserved {
+                    component: entry.component,
+                    fallback: fallback.map(Box::new),
+                    params,
+                },
+                order,
+            ));
         }
+        if matches!(request.view, UiView::Reserved { .. }) {
+            return Err(RegistryError::NotReserved(request.id.clone()));
+        }
+        if let UiView::Tree { root } = &request.view {
+            oino_ui::limits::validate(root)
+                .map_err(|diagnostics| RegistryError::Invalid(diagnostics_text(&diagnostics)))?;
+        }
+        // Third-party order is clamped (§6.4); the host owns the built-in Settings
+        // constants of core/app namespaces.
+        let built_in_settings = request.slot == Slot::Settings
+            && matches!(
+                request.extension_id.as_str(),
+                "oino" | "core" | "pi" | "host" | "app"
+            );
+        let order = match request.order {
+            Some(order) if built_in_settings => order,
+            Some(order) => order.clamp(*ORDER_RANGE.start(), *ORDER_RANGE.end()),
+            None => 0,
+        };
+        Ok((request.slot, request.view.clone(), order))
     }
 
     fn check_limits(&self, id: &str, extension: &str, slot: Slot) -> Result<(), RegistryError> {
@@ -973,28 +991,28 @@ fn only_tree_changed(old: &UiEntry, new: &UiEntry) -> bool {
 /// The `meta` op for changed entry meta (§9.2).
 fn meta_patch(old: &UiEntry, new: &UiEntry) -> EntryMetaPatch {
     EntryMetaPatch {
-        title: if old.title != new.title {
+        title: if old.title == new.title {
+            None
+        } else {
             new.title.clone()
-        } else {
-            None
         },
-        icon: if old.icon != new.icon { new.icon } else { None },
-        badge: if old.badge != new.badge {
-            new.badge.clone()
-        } else {
+        icon: if old.icon == new.icon { None } else { new.icon },
+        badge: if old.badge == new.badge {
             None
+        } else {
+            new.badge.clone()
         },
         order: (old.order != new.order).then_some(new.order),
         keys: (old.keys != new.keys).then(|| new.keys.clone()),
-        tone: if old.tone != new.tone {
+        tone: if old.tone == new.tone {
+            None
+        } else {
             new.tone.clone()
-        } else {
-            None
         },
-        focus: if old.focus != new.focus {
-            new.focus
-        } else {
+        focus: if old.focus == new.focus {
             None
+        } else {
+            new.focus
         },
     }
 }
@@ -1390,12 +1408,11 @@ impl UiRegistry {
         extension: &str,
         params: &JsonObject,
     ) -> Result<ProduceOutcome, RegistryError> {
-        let id = match string(params, "panelId") {
-            Some(id) => id,
-            None => {
-                self.panels += 1;
-                format!("{extension}/panel-{}", self.panels)
-            }
+        let id = if let Some(id) = string(params, "panelId") {
+            id
+        } else {
+            self.panels += 1;
+            format!("{extension}/panel-{}", self.panels)
         };
         let request = panel_request(extension, &id, params)?;
         let out = self.put(request)?;
@@ -1549,7 +1566,7 @@ mod tests {
         UiRegistry::new(Scope::Session, Some("s1".to_owned()))
     }
 
-    fn params(value: oino_ai::JsonValue) -> JsonObject {
+    fn params(value: JsonValue) -> JsonObject {
         serde_json::from_value(value).unwrap()
     }
 
@@ -1624,14 +1641,14 @@ mod tests {
 
         // A user `$close` deletes exactly one entry.
         registry.close("a/p");
-        assert!(registry.ids().is_empty());
+        assert_eq!(registry.ids().len(), 0);
 
         // Session close clears the rest.
         registry
             .put(request("a", "a/p", Slot::SidePane, tree("1")))
             .unwrap();
         assert_eq!(registry.clear(), ["a/p"]);
-        assert!(registry.ids().is_empty());
+        assert_eq!(registry.ids().len(), 0);
     }
 
     #[test]
@@ -1647,7 +1664,7 @@ mod tests {
                 extension: "a".to_owned()
             }
         );
-        assert!(registry.ids().is_empty());
+        assert_eq!(registry.ids().len(), 0);
     }
 
     #[test]
@@ -1751,6 +1768,32 @@ mod tests {
             panic!("not reserved");
         };
         assert_eq!(fallback.as_deref(), Some(&tree("tasks")));
+    }
+
+    #[test]
+    fn consecutive_ops_for_one_entry_coalesce() {
+        let mut registry = registry();
+        let lines = |text: &str| EntryRequest {
+            view: UiView::Lines {
+                lines: vec![text.to_owned()],
+            },
+            ..request("a", "a/p", Slot::Widget, tree("unused"))
+        };
+        registry.put(lines("1")).unwrap();
+        registry.put(lines("2")).unwrap();
+        let patch = registry.take_patch().unwrap();
+        assert_eq!(patch.ops.len(), 1, "the later put replaced the earlier one");
+        let RegistryOp::Put { entry } = &patch.ops[0] else {
+            panic!("expected a put");
+        };
+        assert_eq!(entry.rev, 2);
+        assert_eq!(
+            entry.view,
+            UiView::Lines {
+                lines: vec!["2".to_owned()]
+            }
+        );
+        assert_eq!(entry.extension_id, "a");
     }
 
     #[test]

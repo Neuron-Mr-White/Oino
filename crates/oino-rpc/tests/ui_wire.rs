@@ -1,5 +1,12 @@
 //! `_oino/hello` capabilities and the v2 registry wire (§9.2, §10) over the real RPC server.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "tests assert by unwrapping"
+)]
+
 use std::sync::Arc;
 
 use oino_ai::JsonValue;
@@ -68,7 +75,7 @@ async fn v2_hello_receives_registry_patches() {
     loop {
         let mut line = String::new();
         match tokio::time::timeout_at(deadline, reader.read_line(&mut line)).await {
-            Ok(Ok(0)) | Err(_) => break,
+            Ok(Ok(0) | Err(_)) | Err(_) => break,
             Ok(Ok(_)) => {
                 let value: JsonValue = serde_json::from_str(line.trim()).unwrap();
                 let done = value.get("type").and_then(JsonValue::as_str) == Some("oino_ui_patch");
@@ -77,7 +84,6 @@ async fn v2_hello_receives_registry_patches() {
                     break;
                 }
             }
-            Ok(Err(_)) => break,
         }
     }
     let patch = lines
@@ -114,7 +120,7 @@ async fn pi_clients_never_see_registry_patches() {
     loop {
         let mut line = String::new();
         match tokio::time::timeout_at(deadline, reader.read_line(&mut line)).await {
-            Ok(Ok(0)) | Err(_) => break,
+            Ok(Ok(0) | Err(_)) | Err(_) => break,
             Ok(Ok(_)) => {
                 let value: JsonValue = serde_json::from_str(line.trim()).unwrap();
                 let dialog =
@@ -124,7 +130,6 @@ async fn pi_clients_never_see_registry_patches() {
                     break;
                 }
             }
-            Ok(Err(_)) => break,
         }
     }
     assert!(

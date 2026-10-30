@@ -402,6 +402,7 @@ impl UiBridge {
     ///
     /// Returns the published record so the caller can mirror it into the registry
     /// (one-shot `effect` ops, §9.2).
+    #[must_use]
     pub fn fire(
         &self,
         extension: Option<&str>,
@@ -675,17 +676,17 @@ mod tests {
     fn retains_keyed_state() {
         let sink = Arc::new(Recorder::default());
         let bridge = UiBridge::new(true, "s", sink);
-        bridge.fire(
+        let _ = bridge.fire(
             Some("e"),
             "setStatus",
             params(json!({"statusKey":"k","statusText":"1"})),
         );
-        bridge.fire(
+        let _ = bridge.fire(
             Some("e"),
             "setStatus",
             params(json!({"statusKey":"k","statusText":"2"})),
         );
-        bridge.fire(Some("e"), "notify", params(json!({"message":"hi"})));
+        let _ = bridge.fire(Some("e"), "notify", params(json!({"message":"hi"})));
         let snapshot = bridge.snapshot();
         assert_eq!(snapshot.len(), 1);
         assert_eq!(snapshot[0].params["statusText"], json!("2"));

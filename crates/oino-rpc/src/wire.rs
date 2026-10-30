@@ -212,7 +212,7 @@ pub fn degrade_patch(patch: &UiPatch, caps: &UiCapabilities) -> Option<UiPatch> 
                 };
                 ops.push(RegistryOp::Put { entry });
             }
-            RegistryOp::Tree { .. } if caps.nodes != "all" => continue,
+            RegistryOp::Tree { .. } if caps.nodes != "all" => {}
             other => ops.push(other.clone()),
         }
     }

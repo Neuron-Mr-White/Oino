@@ -246,6 +246,10 @@ pub struct ClientInfo {
 }
 
 /// Oino RPC extensions (modes.md §4) implemented by this server.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "commands are built once and moved whole; boxing every payload adds noise"
+)]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum OinoCommand {
@@ -606,6 +610,10 @@ pub const OINO_COMMAND_TYPES: [&str; 37] = [
 ];
 
 /// Any command a backend accepts.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one command in flight at a time; boxing the Oino variant adds a hop"
+)]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RpcCommand {

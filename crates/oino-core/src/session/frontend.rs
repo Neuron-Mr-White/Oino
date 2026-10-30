@@ -753,7 +753,7 @@ impl AgentSession {
             .collect();
         let mut params = oino_ai::JsonObject::new();
         params.insert("shortcuts".into(), JsonValue::Array(shortcuts));
-        self.inner.ui.fire(None, "setShortcuts", params);
+        let _ = self.inner.ui.fire(None, "setShortcuts", params);
     }
 
     /// Records the composer text and delivers `oino_editor` to subscribed extensions.

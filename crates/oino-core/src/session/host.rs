@@ -907,6 +907,6 @@ fn child_fire(
         return;
     }
     if let Some(parent) = link.parent.upgrade() {
-        parent.ui.fire(Some(extension), method, params);
+        let _ = parent.ui.fire(Some(extension), method, params);
     }
 }

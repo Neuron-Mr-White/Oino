@@ -371,6 +371,10 @@ impl AgentSession {
     /// Creates a session (pi `new AgentSession` + `createAgentSession` agent wiring). Call
     /// [`AgentSession::bind_extensions`] afterwards to emit `session_start`.
     #[must_use]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one constructor for the whole session state, mirroring createAgentSession"
+    )]
     pub fn new(config: SessionConfig) -> Self {
         let hub = EventHub::new();
         let session_id = config.manager.session_id().to_owned();
