@@ -63,6 +63,8 @@
     "unipi.dream/skills/craft-skill/SKILL.md": "sha256:3fa1b4cbe3fb009885926bb22013671ee5dddac26200d3543a2b7d5166557517",
     "unipi.dream/skills/craft-skill/scripts/check": "sha256:3955c3f75e1a0ae6702a00b856090de85f539ecbd5eaab5f9b48a143454f21d0",
     "unipi.dream/skills/craft-skill/scripts/scaffold": "sha256:c15bd6a29c94a1e8ff873c94f5a028e142acd11069b09801ffceb919df2f6330",
+    "unipi.file-summary/component.wasm": "sha256:c7fc53b288dda42a149be44c3973687e8d6afe3bd8da4390a6a0541dc0c71e98",
+    "unipi.file-summary/extension.json": "sha256:fe8558ee32f33243ee6abde721e9df309cc6e23040356cdb99bef24d0f73d367",
     "unipi.fusion/component.wasm": "sha256:1e46bd8fba42db9b0ac3cbb18bf73123b97d444f3c6e79817a2feefdef28da64",
     "unipi.fusion/extension.json": "sha256:c252985ecacffb07382cf658ab3ff0dbb562f86de6c5d682aa335f752750d67e",
     "unipi.info-screen/component.wasm": "sha256:80f02526e83aa585597cc5f35ffba4f6e09dd366b4649e814c74557bec9ece70",
