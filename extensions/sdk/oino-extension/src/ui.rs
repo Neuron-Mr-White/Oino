@@ -172,13 +172,17 @@ impl<T: Into<Self>> From<Option<T>> for StatusText {
 /// `status("mode", Some("Graph 3/7"))`, `status("mode", None)` (pi form) and
 /// `status("mode", Some(Line::from("Graph 3/7").fg(Color::Info)))` (v2 form) all work.
 pub fn status(key: &str, text: impl Into<StatusText>) -> Result<()> {
+    fire(&status_request(key, text.into())?)
+}
+
+fn status_request(key: &str, text: StatusText) -> Result<Value> {
     let mut request = json!({"method": "setStatus", "statusKey": key});
-    match text.into() {
+    match text {
         StatusText::Text(text) => request["statusText"] = json!(text),
         StatusText::Line(line) => request["spans"] = serde_json::to_value(line)?,
         StatusText::Clear => {}
     }
-    fire(&request)
+    Ok(request)
 }
 
 /// pi `ctx.ui.setWidget(key, lines)` (absent lines clear it).
@@ -192,11 +196,15 @@ pub fn widget_lines(key: &str, lines: Option<&[String]>) -> Result<()> {
 
 /// A v2 widget above the composer (`setWidget{widgetSpec}`, absent node removes it).
 pub fn widget(key: &str, spec: Option<Node>) -> Result<()> {
+    fire(&widget_request(key, spec)?)
+}
+
+fn widget_request(key: &str, spec: Option<Node>) -> Result<Value> {
     let mut request = json!({"method": "setWidget", "widgetKey": key});
     if let Some(node) = spec {
         request["widgetSpec"] = serde_json::to_value(node)?;
     }
-    fire(&request)
+    Ok(request)
 }
 
 /// Renders `key` at the end of every turn (ui-protocol §6.7): registers the `turnFooter`
@@ -379,6 +387,10 @@ impl Panel {
 
     /// `openPanel` → the entry id core assigned.
     pub fn open(self) -> Result<String> {
+        Ok(wu::panel_open(&self.open_request()?.to_string())?)
+    }
+
+    fn open_request(&self) -> Result<Value> {
         let mut request = Map::new();
         insert(&mut request, "panelId", self.id.as_ref())?;
         insert(&mut request, "placement", self.placement.as_ref())?;
@@ -392,12 +404,17 @@ impl Panel {
         insert(&mut request, "closeOnEscape", self.close_on_escape.as_ref())?;
         insert(&mut request, "size", self.size.as_ref())?;
         insert(&mut request, "params", self.params.as_ref())?;
-        Ok(wu::panel_open(&Value::Object(request).to_string())?)
+        Ok(Value::Object(request))
     }
 
     /// `updatePanel` for this entry: tree, patch and/or meta.
     pub fn send(self) -> Result<()> {
-        let Some(id) = self.id else {
+        let (id, request) = self.update_request()?;
+        Ok(wu::panel_update(&id, &request.to_string())?)
+    }
+
+    fn update_request(&self) -> Result<(String, Value)> {
+        let Some(id) = self.id.clone() else {
             return Err(crate::Error::msg("panel update without an id"));
         };
         let mut request = Map::new();
@@ -409,7 +426,7 @@ impl Panel {
         insert(&mut request, "order", self.order.as_ref())?;
         insert(&mut request, "keys", self.keys.as_ref())?;
         insert(&mut request, "fallback", self.fallback.as_ref())?;
-        Ok(wu::panel_update(&id, &Value::Object(request).to_string())?)
+        Ok((id, Value::Object(request)))
     }
 
     /// `closePanel`: frontends drop the entry and its local state (§6.6).
@@ -454,4 +471,128 @@ pub fn open_url(url: &str) -> Result<()> {
 /// External editor (permission `editExternally`).
 pub async fn edit_externally(text: &str, extension_hint: Option<&str>) -> Result<Option<String>> {
     Ok(wu::edit_externally(text.to_owned(), extension_hint.map(ToOwned::to_owned)).await?)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests assert by unwrapping"
+    )]
+    use oino_ui::patch::{NodeOp, PatchField};
+    use oino_ui::prelude::{Paragraph, Span};
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn open_request_carries_the_v2_slot_fields() {
+        let request = Panel::new("ext/tasks")
+            .placement(Placement::SidePane)
+            .title("Tasks")
+            .icon(Icon::List)
+            .badge(Span::from("2"))
+            .spec(Paragraph::new("nothing"))
+            .keys([KeyBinding {
+                key: "enter".into(),
+                action: Some("open".into()),
+                label: "open".into(),
+            }])
+            .focus(true)
+            .close_on_escape(false)
+            .order(5)
+            .size(EntrySize::Large)
+            .params(json!({"task": "T-12"}))
+            .open_request()
+            .unwrap_or_default();
+        assert_eq!(request["panelId"], "ext/tasks");
+        assert_eq!(request["placement"], "sidePane");
+        assert_eq!(request["title"], "Tasks");
+        assert_eq!(request["icon"], "list");
+        assert_eq!(request["spec"]["t"], "Paragraph");
+        assert_eq!(request["keys"][0]["action"], "open");
+        assert_eq!(request["focus"], true);
+        assert_eq!(request["closeOnEscape"], false);
+        assert_eq!(request["order"], 5);
+        assert_eq!(request["size"], "large");
+        assert_eq!(request["params"]["task"], "T-12");
+        assert_eq!(
+            Panel::new("ext/x").open_request().unwrap_or_default()["placement"],
+            "overlay",
+            "panels default to the overlay slot"
+        );
+    }
+
+    #[test]
+    fn update_request_sends_ops_or_a_tree_but_never_a_placement() {
+        let (id, request) = Panel::update("ext/log")
+            .patch([NodeOp::append(["log"], PatchField::Lines, ["a".to_owned()])])
+            .title("Log")
+            .update_request()
+            .unwrap_or_default();
+        assert_eq!(id, "ext/log");
+        assert_eq!(request["patch"][0]["op"], "append");
+        assert_eq!(request["patch"][0]["field"], "lines");
+        assert_eq!(request["patch"][0]["items"], json!(["a"]));
+        assert_eq!(request["title"], "Log");
+        assert_eq!(request.get("spec"), None);
+        assert_eq!(request.get("placement"), None);
+
+        let (_, request) = Panel::update("ext/log")
+            .spec(Paragraph::new("tree"))
+            .fallback(Paragraph::new("fallback"))
+            .update_request()
+            .unwrap_or_default();
+        assert_eq!(request["spec"]["t"], "Paragraph");
+        assert_eq!(request["fallback"]["t"], "Paragraph");
+        assert!(Panel::default().update_request().is_err(), "no id");
+    }
+
+    #[test]
+    fn status_keeps_the_pi_form_and_accepts_a_line() {
+        let request =
+            status_request("mode", StatusText::from(Some("Graph 3/7"))).unwrap_or_default();
+        assert_eq!(request["method"], "setStatus");
+        assert_eq!(request["statusKey"], "mode");
+        assert_eq!(request["statusText"], "Graph 3/7");
+        assert_eq!(request.get("spans"), None);
+
+        let request =
+            status_request("mode", Some(String::from("owned")).into()).unwrap_or_default();
+        assert_eq!(request["statusText"], "owned");
+
+        let request = status_request(
+            "mode",
+            StatusText::from(Some(Line::from("Graph 3/7").fg(Color::Info))),
+        )
+        .unwrap_or_default();
+        assert_eq!(request.get("statusText"), None);
+        assert_eq!(request["spans"]["spans"][0], "Graph 3/7");
+        assert_eq!(request["spans"]["style"]["fg"], "info");
+
+        for clear in [
+            status_request("mode", StatusText::Clear).unwrap_or_default(),
+            status_request("mode", None::<&str>.into()).unwrap_or_default(),
+        ] {
+            assert_eq!(clear["method"], "setStatus");
+            assert_eq!(clear.get("statusText"), None);
+            assert_eq!(clear.get("spans"), None);
+        }
+    }
+
+    #[test]
+    fn widget_prefers_a_node_and_still_takes_pi_lines() {
+        let request =
+            widget_request("progress", Some(Paragraph::new("40%").into())).unwrap_or_default();
+        assert_eq!(request["method"], "setWidget");
+        assert_eq!(request["widgetKey"], "progress");
+        assert_eq!(request["widgetSpec"]["t"], "Paragraph");
+        assert_eq!(request.get("widgetLines"), None);
+
+        let request = widget_request("progress", None).unwrap_or_default();
+        assert_eq!(request.get("widgetSpec"), None);
+        assert_eq!(request.get("widgetLines"), None);
+    }
 }

@@ -1,7 +1,13 @@
-//! Small OUS v1 node builders (ui-protocol §6.1) shared by unipi ports.
+//! Small OUS v1 node builders (ui-protocol v1 §6.1) shared by the unipi ports.
+//!
+//! **Transitional.** New code builds nodes with [`oino_ui`](https://docs.rs/oino-ui) —
+//! `oino_extension::ui::widgets` re-exports it as a ratatui-mirroring builder (ui-protocol v2
+//! §11). This module goes away with the last v1 emitter: WP-U7a/WP-U7b migrate the callers
+//! (`unipi/{btw,background-tasks,core,subagents,kanboard}`) per §12.3 and delete it; WP-U6
+//! could not delete it earlier without leaving the extension workspace uncompilable.
 //!
 //! Nodes are plain JSON (`{"t": kind, ...}`); these helpers only remove boilerplate. Tones are
-//! the ui-protocol §6.5 names (`muted`, `accent`, `error`, `c1`…).
+//! the ui-protocol v1 §6.5 names (`muted`, `accent`, `error`, `c1`…).
 
 use serde_json::{Value, json};
 
