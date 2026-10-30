@@ -15,6 +15,7 @@
  */
 import { createSignal, type Component } from 'solid-js';
 import { Bot, FileDiff, FolderTree, GitBranch, Globe, Image, ListTree, MessageSquareText, Plug, Puzzle, SquareTerminal } from 'lucide-solid';
+import { reservedGate } from '../../ui/slots/reserved';
 import { setPaneRules, type KindRule, type PaneArea, type PaneTab } from '../panes';
 
 export type PaneTabProps = {
@@ -40,7 +41,7 @@ export type PaneKindDef = KindRule & {
   areas?: PaneArea[];
   /** Offered by the `+` launcher (default: not offered). */
   launcher?: { label: string; order: number; needsSession?: boolean; keywords?: string };
-  /** Reserved slot id it stands for (ui-protocol reserved routing), for the record. */
+  /** Reserved slot id it stands for (ui-protocol §8): its owner's gate offers the tab. */
   reserved?: string;
   /** Runs before the store closes a tab of this kind (U10: `ext` sends the entry `$close`). */
   onUserClose?: (tab: PaneTab) => void;
@@ -99,7 +100,9 @@ export function paneKinds(): PaneKindDef[] {
 /** The launcher's entries for an area: kinds with a view, in launcher order. */
 export function launchableKinds(area: PaneArea, hasSession: boolean): PaneKindDef[] {
   return paneKinds()
-    .filter((k) => k.launcher && k.component && (k.areas ?? ['side']).includes(area) && (hasSession || !k.launcher.needsSession))
+    // §8 rule 2 (U12): a reserved tab is offered only while its owner is enabled and
+    // the app renders its component; the launcher never shows a dead surface.
+    .filter((k) => k.launcher && k.component && (!k.reserved || reservedGate(k.reserved)) && (k.areas ?? ['side']).includes(area) && (hasSession || !k.launcher.needsSession))
     .sort((a, b) => a.launcher!.order - b.launcher!.order);
 }
 

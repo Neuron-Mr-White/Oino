@@ -17,6 +17,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { EntryView } from '../NodeView';
 import { ICONS } from '../nodes/icons';
 import { findUiEntryAnywhere, sessionUi } from '../registries';
+import { reservedRowFor } from './reserved';
 import { sessions } from '../../lib/session/store';
 import type { UiRegistry } from '../registry';
 import type { UiEntry } from '../types';
@@ -59,6 +60,9 @@ function railPagesOf(entries: UiEntry[]): Array<() => void> {
   const seen = new Set<string>();
   const offs: Array<() => void> = [];
   for (const e of entries) {
+    // §8 (U12): a reserved page row's nav item is the built-in one (Board, Cron);
+    // a second `/x/<id>` page would duplicate that surface (§4.2.2).
+    if (reservedRowFor(e)?.container === 'page') continue;
     if (seen.has(e.extensionId)) continue;
     seen.add(e.extensionId);
     const Icon = (e.icon && ICONS[e.icon]) || Puzzle;

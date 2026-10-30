@@ -1,5 +1,7 @@
-//! v2 slot integration in the TUI (WP-U4): `turnFooter` pull rendering, `$show`/`$hide`
-//! visibility reports and resync on a `rev` gap (ui-protocol §6.2, §6.5, §6.7, §9.2).
+//! v2 slot integration in the TUI (WP-U4, WP-U12): `turnFooter` pull rendering,
+//! reserved entries (the owner's `fallback` tree, §8 rule 3 — the TUI declares
+//! `reserved: []`), `$show`/`$hide` visibility reports and resync on a `rev` gap
+//! (ui-protocol §6.2, §6.5, §6.7, §9.2).
 
 #![allow(
     clippy::unwrap_used,
@@ -121,6 +123,57 @@ async fn widget_visibility_is_reported() {
     assert_eq!(visible["entryId"], "probe/widget:todo");
     assert_eq!(visible["visible"], true);
     assert_eq!(visible["frontend"], "tui");
+}
+
+/// §8 rule 3 (WP-U12): the TUI implements no native reserved component, so a
+/// reserved entry renders its owner's `fallback` tree in the panel.
+#[tokio::test]
+async fn a_reserved_entry_renders_its_fallback_tree() {
+    let mut h = Harness::new(TestHost::default()).await;
+    h.json_event(patch(
+        1,
+        vec![json!({"op": "put", "entry": {
+            "id": "unipi.kanboard/board",
+            "extensionId": "unipi.kanboard",
+            "scope": "session",
+            "slot": "sidePane",
+            "order": 0,
+            "seq": 1,
+            "title": "Board",
+            "icon": "board",
+            "view": {"kind": "reserved", "component": "board",
+                     "fallback": {"t": "Paragraph", "text": "T-1 first"}},
+            "rev": 1
+        }})],
+    ))
+    .await;
+    let frame = h.frame(80, 24);
+    assert!(frame.contains("T-1 first"), "{frame}");
+}
+
+/// A reserved entry without a fallback has no body to draw — the session keeps
+/// rendering and nothing of the entry is printed (§8 rule 3).
+#[tokio::test]
+async fn a_reserved_entry_without_fallback_has_no_body() {
+    let mut h = Harness::new(TestHost::default()).await;
+    h.json_event(patch(
+        1,
+        vec![json!({"op": "put", "entry": {
+            "id": "unipi.browser/browser",
+            "extensionId": "unipi.browser",
+            "scope": "session",
+            "slot": "sidePane",
+            "order": 0,
+            "seq": 1,
+            "title": "Browser",
+            "view": {"kind": "reserved", "component": "browser"},
+            "rev": 1
+        }})],
+    ))
+    .await;
+    let frame = h.frame(80, 24);
+    assert!(frame.contains("/work/project"), "{frame}");
+    assert!(!frame.contains("unipi.browser/browser"), "{frame}");
 }
 
 #[tokio::test]

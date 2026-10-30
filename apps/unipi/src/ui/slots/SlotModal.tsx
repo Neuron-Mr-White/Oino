@@ -13,6 +13,7 @@ import { EntryView } from '../NodeView';
 import { ICONS } from '../nodes/icons';
 import { plainLine } from '../nodes/Text';
 import { uiTransport } from '../actions';
+import { reservedGate, reservedRowFor } from './reserved';
 import type { UiEntry } from '../types';
 import type { UiTarget } from '../actions';
 
@@ -22,8 +23,19 @@ const SIZE_WIDTH: Record<string, string> = { small: '420px', medium: '560px', la
 const dismissed = new Set<string>();
 export const resetOverlayDismissals = () => dismissed.clear();
 
+/**
+ * §8 rule 1 (WP-U12): a reserved entry whose native surface *is* the overlay
+ * (the Session modal, A17) never draws here — its component owns the modal, and
+ * a second, empty one would be a duplicate surface. Every other reserved entry
+ * falls through and shows its owner's `fallback` tree (rule 3).
+ */
+const nativeOverlay = (entry: UiEntry): boolean => {
+  const row = reservedRowFor(entry);
+  return !!row && row.container === 'overlay' && reservedGate(row);
+};
+
 export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: boolean }) {
-  const top = () => [...props.stack].reverse().find((e) => !dismissed.has(`${e.id}:${e.seq}`));
+  const top = () => [...props.stack].reverse().find((e) => !dismissed.has(`${e.id}:${e.seq}`) && !nativeOverlay(e));
   createEffect(
     on(
       () => props.stack.map((e) => `${e.id}:${e.seq}`).join('|'),

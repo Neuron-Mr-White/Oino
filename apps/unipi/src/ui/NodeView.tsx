@@ -11,6 +11,7 @@ import { EntryContext, createEntryActions, type ActionHook, type UiTarget } from
 import { BlockFrame } from './nodes/Block';
 import { NODE_COMPONENTS } from './nodes';
 import { LineView } from './nodes/Text';
+import { reservedBodyFor, type ReservedBodyProps } from './slots/reserved';
 import type { Mode, NodeProps } from './nodes/props';
 import type { BlockProps, Common, NodePath, UiEntry, UiNode } from './types';
 import './ui.css';
@@ -56,6 +57,29 @@ export type EntryViewProps = {
   onReport?: (entryId: string, error: unknown) => void;
 };
 
+/**
+ * The body of a `reserved` entry (ui-protocol §8, WP-U12): the native component
+ * when the app renders this row in place (A27's turn footer registers here),
+ * else the owner's `fallback` tree — the same degradation the TUI gets (§10).
+ * A row whose native surface is a page, a pane tab or the Session modal is
+ * focused by `ReservedHost` instead; wherever it still lands in a slot, its
+ * fallback tree is what shows (rule 3).
+ */
+function ReservedEntryBody(props: { entry: UiEntry; target: UiTarget; mode: Mode }) {
+  const body = createMemo(() => reservedBodyFor(props.entry));
+  return (
+    <Show
+      when={body()}
+      fallback={<NodeView node={props.entry.view.kind === 'reserved' ? props.entry.view.fallback : undefined} path={['fallback']} mode={props.mode} />}
+    >
+      {(component) => {
+        const C = component() as unknown as Component<ReservedBodyProps>;
+        return <C entry={props.entry} target={props.target} mode={props.mode} />;
+      }}
+    </Show>
+  );
+}
+
 /** One registry entry: its view by kind, inside an ErrorBoundary + the entry's action context. */
 export function EntryView(props: EntryViewProps) {
   const actions = createMemo(() => createEntryActions(props.entry.id, props.target, props.onAction));
@@ -88,8 +112,7 @@ export function EntryView(props: EntryViewProps) {
               {(v) => <LineView line={(v() as { text: string }).text} class="ui-status-line" />}
             </Match>
             <Match when={props.entry.view.kind === 'reserved' && props.entry.view}>
-              {/* The native component is routed by U12 (ReservedHost); elsewhere its fallback tree shows. */}
-              {(v) => <NodeView node={(v() as { fallback?: UiNode }).fallback} path={['fallback']} mode={mode()} />}
+              <ReservedEntryBody entry={props.entry} target={props.target} mode={mode()} />
             </Match>
           </Switch>
         </div>

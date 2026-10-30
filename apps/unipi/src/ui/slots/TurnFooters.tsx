@@ -8,11 +8,13 @@
  * re-asks at most every 500 ms (§6.7). Footers never virtualize internally
  * and the row's height change re-measures only that turn (§13.4).
  */
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { Turn } from '../../lib/session/turns';
 import { sessionRenderCache, widthClassOf } from '../../lib/session/renderCache';
 import { NodeView } from '../NodeView';
+import { EntryView } from '../NodeView';
 import { sessionUi } from '../registries';
+import { isReservedEntry } from './reserved';
 import { footerRev } from './effects';
 import type { TimelineCtx } from '../../components/timeline/context';
 import type { UiEntry } from '../types';
@@ -43,6 +45,14 @@ export function TurnFooters(props: { ctx: TimelineCtx; turn: Turn }) {
       <div class="ui-turnfooters" data-testid="ui-turnfooters" data-turn={props.turn.turnId}>
         <For each={entries()}>
           {(entry) => {
+            // §8 (U12): a reserved row renders its native component — or the owner's
+            // fallback tree — right here; only `renderer` entries are pulled.
+            if (isReservedEntry(entry))
+              return (
+                <div class="ui-turnfooter" data-entry={entry.id}>
+                  <EntryView entry={entry} target={{ scope: 'session', hostId: props.ctx.hostId, sessionId: props.ctx.sessionId() }} mode="auto" />
+                </div>
+              );
             const node = () =>
               cache().node(
                 { target: 'turnFooter', key: rendererKey(entry), entryId: entry.id, rev: (entry.rev ?? 0) + footerRev(entry.id) + tick(), width: width() },

@@ -13,6 +13,7 @@ import { panes } from '../../lib/panes';
 import { registerCommands } from '../../lib/shell';
 import { projectKeyOf } from '../../components/shell/Workspace';
 import { feedExtensionPages } from './pages';
+import { focusReservedEntry, hashNavigate } from './ReservedHost';
 import { openPhonePane, wireExtPaneKind } from './paneTabs';
 import type { UiRegistry } from '../registry';
 import type { UiEntry } from '../types';
@@ -33,7 +34,12 @@ export function feedPaletteEntries(opts: { hostId: string; sessionId: string; cw
           title: `Open ${entry.title ?? entry.id}`,
           group: 'Panels',
           keywords: `panel open ${entry.extensionId}`,
-          run: () => openEntry(entry, { desktop, navigate: () => navigate(`/x/${encodeURIComponent(entry.id)}`), scope, view }),
+          run: () => {
+            // §8 (U12): a reserved id focuses its native view (page, pane tab,
+            // modal); everything else keeps the entry's own tab/page.
+            const focused = focusReservedEntry(entry, { hostId: opts.hostId, sessionId: opts.sessionId, cwd: opts.cwd(), navigate: hashNavigate, openLayer: openPhonePane });
+            if (!focused) openEntry(entry, { desktop, navigate: () => navigate(`/x/${encodeURIComponent(entry.id)}`), scope, view });
+          },
         },
       ]),
     );

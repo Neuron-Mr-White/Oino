@@ -70,7 +70,7 @@ import { Sidebar, useNewChatHost } from './Sidebar';
 import { currentWorkspace } from './Workspace';
 import { SIDEBAR_DEFAULT } from '../../lib/layout';
 import { installExtensionPageFeed } from '../../ui/slots/pages';
-import { installReservedRouting } from '../../ui/slots/ReservedHost';
+import { ReservedRoutingLayer } from '../../ui/slots/ReservedHost';
 import { reservedGate } from '../../ui/slots/reserved';
 
 // Z-100: every Git entry point opens the one `git` side-pane tab; the phone
@@ -304,13 +304,13 @@ export function AppShell(props: ParentProps) {
   installExtensionPageFeed(() => location.pathname);
   // U12: reserved ids route to native components — owner gates (live), the page a
   // focused `openPanel` asks for, and closing a page whose owner went away (§8).
-  // TEMP-DEBUG installReservedRouting({ navigate: (href) => navigate(href), pathname: () => location.pathname });
   const desktop = () => layout().desktop();
   const onEditor = () => location.pathname === '/files/edit';
   return (
     <SettingsProvider>
       <HostsProvider>
         <ShellShortcuts />
+        <ReservedRoutingLayer />
         <ShortcutPersistence />
         <RelaySettings />
         <ShellAttr />

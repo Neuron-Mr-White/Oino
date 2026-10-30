@@ -17,6 +17,7 @@ import {
   type PaneSet,
 } from './panes';
 import { BUILTIN_KINDS, launchableKinds, paneKind, registerPaneKind, setPaneComponent, tabTitle } from './panes/kinds';
+import { setPlatformOverride } from './platform';
 
 const rules: Record<string, KindRule> = {
   files: { singleton: true, scope: 'project' },
@@ -193,6 +194,9 @@ describe('kind registry', () => {
     expect(k.terminal!.areas).toContain('bottom');
   });
   it('the launcher offers only kinds with a view; setPaneComponent plugs one in', () => {
+    // Reserved kinds (`host/files`, `host/git`) follow their gate too (U12): the
+    // app shell has the host services, the web build does not.
+    setPlatformOverride('tauri-desktop');
     expect(launchableKinds('side', true).map((x) => x.kind)).not.toContain('files');
     const off = setPaneComponent('files', () => null);
     expect(launchableKinds('side', true).map((x) => x.kind)).toContain('files');
@@ -202,6 +206,7 @@ describe('kind registry', () => {
     const offTree = setPaneComponent('tree', () => null);
     expect(launchableKinds('side', false).map((x) => x.kind)).not.toContain('tree'); // needs a session
     offTree();
+    setPlatformOverride(undefined);
   });
   it('registerPaneKind adds an extension kind; titles come from params', () => {
     const off = registerPaneKind({ kind: 'demo', icon: (() => null) as never, title: (p) => `Demo ${String(p.n)}`, singleton: false, scope: 'project' });

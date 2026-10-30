@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import { HostSettingsSchema, type HostSettings } from '@unipi/protocol';
 import { hostClient, requestParsed, LOCAL_HOST } from '../lib/host';
+import { markReservedGatesStale } from '../ui/slots/reserved';
 import type { HostResult } from '../lib/host';
 
 /** One row of the `extensions` answer (`ExtensionInfo`, camelCase like core's). */
@@ -71,9 +72,16 @@ export function listExtensions(hostId = LOCAL_HOST): Promise<HostResult<Extensio
   );
 }
 
-/** `_oino/set_extension_enabled`: the toggle (round-trips through `extensions`). */
+/**
+ * `_oino/set_extension_enabled`: the toggle (round-trips through `extensions`).
+ * A reserved surface follows its owner live (ui-protocol §8 rule 2, WP-U12):
+ * the registry gate refetches, so the nav item/tab appears or disappears at once.
+ */
 export function setExtensionEnabled(id: string, enabled: boolean, hostId = LOCAL_HOST): Promise<HostResult<null>> {
-  return hostCmd({ kind: 'set_extension_enabled', id, enabled }, z.null(), hostId);
+  return hostCmd({ kind: 'set_extension_enabled', id, enabled }, z.null(), hostId).then((result) => {
+    if (result.ok) markReservedGatesStale();
+    return result;
+  });
 }
 
 /** `_oino/get_settings_schema`: every extension settings namespace. */

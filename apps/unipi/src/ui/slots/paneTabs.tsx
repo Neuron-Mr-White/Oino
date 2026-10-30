@@ -24,6 +24,7 @@ import { ICONS } from '../nodes/icons';
 import { plainLine } from '../nodes/Text';
 import { uiTransport } from '../actions';
 import { findUiEntry } from '../registries';
+import { focusReservedEntry, hashNavigate, isReservedPaneEntry } from './ReservedHost';
 import type { UiRegistry } from '../registry';
 import type { UiTarget } from '../actions';
 import type { Slot, UiEntry } from '../types';
@@ -89,6 +90,13 @@ export function reconcilePaneTabs(opts: { hostId: string; sessionId: string; cwd
       batch(() => {
         for (const e of entries) {
           if (userClosed.has(`${e.id}:${e.seq}`)) continue;
+          // §8 (U12): a reserved pane row opens *its native tab* (Files, the Git
+          // pane, …) instead of an `ext` tab — one surface, no fallback duplicate.
+          if (isReservedPaneEntry(e)) {
+            const ctx = { hostId: opts.hostId, sessionId: opts.sessionId, cwd: opts.cwd(), navigate: hashNavigate, openLayer: openPhonePane };
+            if (focusReservedEntry(e, ctx)) opened = true;
+            continue;
+          }
           const title = e.title ?? e.extensionId;
           const badge = plainLine(e.badge) || undefined;
           const tab = byEntry.get(e.id);

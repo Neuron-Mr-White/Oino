@@ -3,19 +3,30 @@
  * extensions' `fullscreen` pages (`/x/:entryId`, registered by U10 in
  * ui-protocol §6.4 order) — and Settings at the bottom. Files / Git /
  * Terminal / Browser are **not** here: they are side-pane tabs (Z-5).
- * Board / Cron hide when their reserved gate is false (U12 sets it).
+ * Board / Cron hide when their reserved gate is false (WP-U12: the owner's
+ * enablement, live — no "disabled" placeholders, §8 rule 2).
  */
 import { createSignal, For, Show, type Component } from 'solid-js';
 import { A, useLocation } from '@solidjs/router';
 import { Clock, Columns3, Settings as SettingsIcon } from 'lucide-solid';
 import { can, type Capability } from '../../lib/platform';
 import type { IconComponent } from '../../lib/panes/kinds';
+import { reservedGate } from '../../ui/slots/reserved';
 
-export type RailItem = { id: string; label: string; href: string; icon: IconComponent; cap?: Capability; order: number };
+export type RailItem = {
+  id: string;
+  label: string;
+  href: string;
+  icon: IconComponent;
+  cap?: Capability;
+  /** Reserved id this page renders (ui-protocol §8): the owner's gate shows/hides it. */
+  reserved?: string;
+  order: number;
+};
 
 export const BUILTIN_RAIL: RailItem[] = [
-  { id: 'board', label: 'Board', href: '/board', icon: Columns3, cap: 'board', order: 10 },
-  { id: 'cron', label: 'Cron', href: '/cron', icon: Clock, order: 20 },
+  { id: 'board', label: 'Board', href: '/board', icon: Columns3, cap: 'board', reserved: 'unipi.kanboard/board', order: 10 },
+  { id: 'cron', label: 'Cron', href: '/cron', icon: Clock, reserved: 'unipi.cron/jobs', order: 20 },
 ];
 
 const [extPages, setExtPages] = createSignal<RailItem[]>([]);
@@ -34,7 +45,8 @@ export function setRailGate(id: string, visible: boolean): void {
 }
 
 export function railItems(): RailItem[] {
-  return [...BUILTIN_RAIL.filter((i) => gates()[i.id] !== false), ...extPages()];
+  // §8 rule 2: a reserved page appears only while its owner is enabled (U12).
+  return [...BUILTIN_RAIL.filter((i) => gates()[i.id] !== false && (!i.reserved || reservedGate(i.reserved))), ...extPages()];
 }
 
 /** Extension page component for `/x/:entryId` (U10 registers the renderer). */
