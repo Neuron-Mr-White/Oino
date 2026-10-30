@@ -2671,7 +2671,6 @@ dependencies = [
  "oino-agent",
  "oino-ai",
  "oino-browser",
- "oino-bundle",
  "oino-client",
  "oino-core",
  "oino-cron",
@@ -2793,17 +2792,6 @@ dependencies = [
  "base64 0.22.1",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "oino-bundle"
-version = "1.0.0-alpha.5"
-dependencies = [
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "zstd",
 ]
 
 [[package]]
@@ -3079,7 +3067,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "unipi-kanboard",
  "wasmtime",
  "wasmtime-wasi",
 ]

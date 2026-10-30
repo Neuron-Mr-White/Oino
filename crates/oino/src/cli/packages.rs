@@ -8,7 +8,8 @@
 //! `extension.json` (at the source root or in its only subdirectory); it is validated
 //! (manifest, `apiVersion`, `checksums`) before it is copied to `<agent>/extensions/<id>/`
 //! (or `.oino/extensions/<id>/` with `--project`) next to a `.source.json` record that
-//! `update` re-installs from.
+//! `update` re-installs from. `list` also shows the distribution share-dir packages
+//! (`OINO_DIST_EXTENSIONS`), which the installers own and `remove` refuses to touch.
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -402,13 +403,14 @@ pub async fn install(
 ///
 /// # Errors
 ///
-/// Unknown or bundled ids, I/O failures.
+/// Unknown, distribution-owned ids, I/O failures.
 pub fn remove(id: &str, project: bool, context: &PackageContext) -> Result<PathBuf, PackageError> {
     let target = context.root(project).join(id);
     if !target.join("extension.json").is_file() {
-        if oino_bundle::get(id).is_some() {
+        let share = oino_core::extensions::sources::dist_share_dir();
+        if share.is_some_and(|dir| dir.join(id).join("extension.json").is_file()) {
             return Err(PackageError::Usage(format!(
-                "{id} is bundled and cannot be removed; disable it with \"disabledExtensions\" in settings.json"
+                "{id} is a distribution package and cannot be removed; disable it with \"disabledExtensions\" in settings.json"
             )));
         }
         return Err(PackageError::Usage(format!("Not installed: {id}")));
@@ -417,14 +419,14 @@ pub fn remove(id: &str, project: bool, context: &PackageContext) -> Result<PathB
     Ok(target)
 }
 
-/// One installed or bundled package for `list`.
+/// One distribution, installed or project package for `list`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Listed {
     /// Id.
     pub id: String,
     /// Version.
     pub version: String,
-    /// `global`, `project` or `bundled`.
+    /// `dist`, `global` or `project`.
     pub scope: &'static str,
     /// Recorded source.
     pub source: Option<String>,
@@ -434,10 +436,19 @@ fn read_record(dir: &Path) -> Option<SourceRecord> {
     serde_json::from_str(&std::fs::read_to_string(dir.join(SOURCE_FILE)).ok()?).ok()
 }
 
-/// Installed packages (global, then project) and the bundled set.
+/// Distribution (share dir), installed packages (global, then project).
 #[must_use]
 pub fn list(context: &PackageContext) -> Vec<Listed> {
     let mut out = Vec::new();
+    if let Some(share) = oino_core::extensions::sources::dist_share_dir() {
+        let (packages, _) = oino_wasm_host::packages::discover(std::slice::from_ref(&share), true);
+        out.extend(packages.into_iter().map(|p| Listed {
+            id: p.manifest.id.to_string(),
+            version: p.manifest.version.clone(),
+            scope: "dist",
+            source: None,
+        }));
+    }
     for (project, scope) in [(false, "global"), (true, "project")] {
         let (packages, _) = oino_wasm_host::packages::discover(&[context.root(project)], false);
         out.extend(packages.into_iter().map(|p| Listed {
@@ -447,12 +458,6 @@ pub fn list(context: &PackageContext) -> Vec<Listed> {
             source: p.root.as_deref().and_then(read_record).map(|r| r.source),
         }));
     }
-    out.extend(oino_bundle::BUNDLED.iter().map(|b| Listed {
-        id: b.id.to_owned(),
-        version: b.version.to_owned(),
-        scope: "bundled",
-        source: None,
-    }));
     out
 }
 

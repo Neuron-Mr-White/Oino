@@ -1,7 +1,7 @@
 //! `--mode acp`: an Agent Client Protocol agent on stdio ([`oino_acp::serve_stdio`]).
 //!
-//! Every ACP session gets the same extension set as the other modes (bundled, installed and
-//! `-e` packages, see [`crate::loader`]); services are shared per working directory. Logs and
+//! Every ACP session gets the same extension set as the other modes (share-dir, installed
+//! and `-e` packages, see [`crate::loader`]); services are shared per working directory. Logs and
 //! diagnostics go to stderr because stdout carries the protocol.
 
 use std::path::PathBuf;

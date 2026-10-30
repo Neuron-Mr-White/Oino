@@ -2,7 +2,7 @@
 //!
 //! pi 1.4.0 command line (same flags and semantics): interactive mode (the `oino-tui`
 //! client), print mode, JSON event stream mode, RPC mode and ACP mode on stdio. Every mode
-//! loads the bundled provider and unipi components ([`loader`]). Package subcommands
+//! loads the share-dir, installed and `-e` extension packages ([`loader`]). Package subcommands
 //! (`install`, `remove`, `update`, `list`, `config`) and the self-update (`oino update`) run
 //! before flag parsing; `serve` is not available yet.
 //!
@@ -18,7 +18,7 @@
 //! | [`cli::self_update`] | — | `oino update [--check]` from the release manifest |
 //! | [`cli::cron`] | docs/cron.md | `oino cron …` (serve/install/list/add/run/…) |
 //! | [`startup`] | `main.ts` `createRuntime` | services, session selection, model/tool options |
-//! | [`loader`] | resource loader `-e` | bundled, installed and `-e` packages, `builtin:` components |
+//! | [`loader`] | resource loader `-e` | share-dir, installed and `-e` packages, `builtin:` components |
 //! | [`modes::print`] | `print-mode.ts` | text and JSON output |
 //! | [`modes::rpc`] | `rpc-mode.ts` | RPC server on stdio |
 //! | [`modes::interactive`] | `interactive-mode.ts` | the TUI over an in-process backend |

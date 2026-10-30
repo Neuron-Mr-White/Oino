@@ -24,7 +24,7 @@ Commands:
   oino uninstall <id> [-l]       Alias for remove
   oino update [--check]          Update Oino itself from the latest release
   oino update <id>|--extensions  Re-install extension packages from their recorded source
-  oino list                      List installed and bundled extension packages
+  oino list                      List distribution, installed and project extension packages
   oino config                    Print the settings.json paths
   oino auth <command>            Print credentials or check provider readiness
   oino serve                     Serve sessions to remote clients

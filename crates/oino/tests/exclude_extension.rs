@@ -1,7 +1,9 @@
 //! End-to-end: `--exclude-extension` (WP-X2) and the safe-mode banner/reset (X-SAFE) of the
-//! `oino` binary, with the bundled components (`extensions/dist`, built by `cargo xtask wasm`).
+//! `--exclude-extension` end-to-end against the `oino` binary, with the distribution
+//! packages staged through `OINO_DIST_EXTENSIONS` (`extensions/dist`, built by
+//! `cargo xtask wasm`).
 //!
-//! Skips (passes without running) when `extensions/dist` or the bundle is missing.
+//! Skips (passes without running) when `extensions/dist` is missing.
 
 #![allow(
     clippy::unwrap_used,
@@ -22,8 +24,8 @@ fn dist() -> PathBuf {
 
 fn faux_package() -> Option<PathBuf> {
     let package = dist().join("oino.fixture.provider-faux");
-    let bundled = dist().join("unipi.core").join("component.wasm").is_file();
-    (package.join("component.wasm").is_file() && bundled).then_some(package)
+    let dist_built = dist().join("unipi.core").join("component.wasm").is_file();
+    (package.join("component.wasm").is_file() && dist_built).then_some(package)
 }
 
 struct Sandbox {
@@ -60,6 +62,8 @@ impl Sandbox {
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("HOME", self.dir.path().join("home"))
             .env("OINO_AGENT_DIR", self.dir.path().join("agent"))
+            // The distribution share dir: the composed source the exclusions act on.
+            .env("OINO_DIST_EXTENSIONS", dist())
             .arg("-e")
             .arg(package)
             .args(["--model", "faux/faux-1"])
@@ -103,7 +107,7 @@ fn help_documents_the_exclusion_flag() {
 }
 
 #[test]
-fn exclusion_drops_bundled_packages_and_warns_on_misses() {
+fn exclusion_drops_distribution_packages_and_warns_on_misses() {
     let Some(package) = faux_package() else {
         let _ = writeln!(
             std::io::stderr(),

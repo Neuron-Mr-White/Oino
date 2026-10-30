@@ -349,12 +349,11 @@ pub(crate) fn acp_model_choice(args: &Args, services: &Services) -> oino_acp::Mo
     }
 }
 
-/// The bundled docs directory (`{docs_root}` of the system prompt); the agent dir when the
-/// docs cannot be extracted.
+/// The docs root of the system prompt (`{docs_root}`): `OINO_DOCS_ROOT` > `<share>/docs` >
+/// legacy `~/.oino/bundled/oino.docs@*`; empty when absent (the docs section is then
+/// omitted, P-DOCS).
 pub(crate) fn docs_root(agent_dir: &Path) -> PathBuf {
-    oino_bundle::DOCS
-        .extract(agent_dir)
-        .unwrap_or_else(|_| agent_dir.to_path_buf())
+    oino_core::extensions::sources::docs_root(agent_dir).unwrap_or_default()
 }
 
 /// pi resource flags from the command line.
