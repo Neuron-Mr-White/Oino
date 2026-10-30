@@ -56,7 +56,8 @@ const REPLY_CHARS: usize = 400_000;
 const CHUNKS: usize = 100;
 /// Per-chunk delay: 100 × 2 ms keeps the stream spread over several 16 ms flush windows.
 const CHUNK_DELAY: Duration = Duration::from_millis(2);
-/// A marker the terminal and the faux cron run print.
+/// A marker the terminal and the faux cron run print (Unix-only scenarios).
+#[cfg(unix)]
 const MARKER: &str = "H10-OK";
 
 fn repo_root() -> PathBuf {
@@ -563,6 +564,7 @@ async fn read_run(stream: &mut SessionStream, session_id: &str, base: u64) -> St
 }
 
 /// Reads kind-1 terminal output until `MARKER` shows up.
+#[cfg(unix)]
 async fn read_terminal(stream: &mut ipc::Stream) -> String {
     let mut output = Vec::new();
     let deadline = Instant::now() + Duration::from_secs(30);
