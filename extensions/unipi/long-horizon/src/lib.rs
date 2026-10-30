@@ -55,6 +55,7 @@ use std::time::Duration;
 use oino_extension::command::CompletionItem;
 use oino_extension::prelude::*;
 use oino_extension::session::{CustomMessage, Delivery, Provenance, SendOptions};
+use oino_extension::ui::widgets::prelude::*;
 use unipi_kit::services::{CompactionContext, fanout as fan, point};
 use unipi_kit::settings::Store;
 use unipi_kit::topics;
@@ -2400,13 +2401,26 @@ impl Lh {
             let _ = ui::notify("No long-horizon progress to visualize yet.", "info");
             return;
         }
-        let spec = json!({"t": "stack", "direction": "vertical", "gap": 1, "children": [
-            {"t": "code", "value": mermaid.join("\n"), "language": "mermaid"},
-            {"t": "markdown", "value": textv.join("\n")},
-        ]});
-        let _ = ui::panel_open(
-            &json!({"panelId": "unipi.long-horizon/visualize", "placement": "overlay", "title": "Long-horizon progress", "spec": spec, "focus": true, "closeOnEscape": true}),
-        );
+        let spec: Node = Layout::default()
+            .spacing(1)
+            .children([
+                Code::new(mermaid.join("\n")).language("mermaid").into(),
+                Markdown::new(textv.join("\n")).into(),
+            ])
+            .into();
+        // `unipi.long-horizon/visualize` is a reserved entry (§8): the app scrolls its Git pane
+        // to the long-horizon section; the tree above is the fallback for other frontends.
+        let Ok(id) = ui::Panel::new("unipi.long-horizon/visualize")
+            .placement(ui::Placement::SidePane)
+            .title("Long-horizon progress")
+            .icon(ui::Icon::Chart)
+            .focus(true)
+            .close_on_escape(true)
+            .open()
+        else {
+            return;
+        };
+        let _ = ui::Panel::update(&id).fallback(spec).send();
     }
 
     async fn runner(&'static self, name: &str, args: &str) -> Option<Value> {

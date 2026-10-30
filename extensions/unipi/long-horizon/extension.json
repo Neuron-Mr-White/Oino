@@ -6,6 +6,7 @@
   "kind": "extension",
   "description": "Multi-turn autonomous work: goal, ralph checklist loops, swarm and graph owners with an independent verifier.",
   "license": "MIT",
+  "ui": { "reserved": ["unipi.long-horizon/visualize"] },
   "limits": { "hookTimeoutMs": 90000 },
   "permissions": {
     "sessionControl": true,
