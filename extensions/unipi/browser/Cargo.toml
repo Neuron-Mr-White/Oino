@@ -1,18 +1,17 @@
 [package]
-name = "oino-browser-ext"
+name = "unipi-browser-ext"
 version = "1.0.0-alpha.5"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "oino.browser: browser_* agent tools over the host browser service, skill:browser, prompt line, turn-tail screenshot, /browser (browser-control.md §11)"
+description = "unipi.browser: browser_* agent tools over the host-service 'browser' (unipi-host), skill:browser, prompt line, turn-tail screenshot, /browser (browser.md §7, ext-abi §7.2)"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-base64.workspace = true
 oino-extension.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -1,9 +1,11 @@
-//! `oino.browser` — the agent surface of browser control (browser-control.md §11).
+//! `unipi.browser` — the agent surface of browser control (browser-control.md §11;
+//! browser.md §7).
 //!
-//! The host browser service (`oino-browser`, WIT `browser`) does the work; this component
-//! registers the 19 `browser_*` tools, turns `approval_required` answers into user dialogs,
-//! adds the static `oino-browser` system prompt section, appends the turn-tail screenshot
-//! entry, renders it, and provides `/browser`.
+//! The host service does the work: `host-service.call("browser", op, BrowserRequest
+//! JSON)` on an embedding host (unipi-host). This component registers the 19 `browser_*`
+//! tools (only when the service is available), turns `approval_required` answers into
+//! user dialogs, adds the static `oino-browser` system prompt section, appends the
+//! turn-tail screenshot entry, renders it, and provides `/browser`.
 //!
 //! | Module | Contents |
 //! |---|---|
@@ -22,12 +24,58 @@ use std::collections::HashSet;
 
 use oino_extension::bindings::oino::extension::registry::{RendererTarget, ToolAnnotations};
 use oino_extension::bindings::oino::extension::types::LogLevel;
-use oino_extension::browser;
 use oino_extension::host::log;
+use oino_extension::host_service;
 use oino_extension::prelude::*;
 
 /// Custom entry type of the turn-tail screenshot.
-pub const TURN_SHOT: &str = "oino.browser/turn-shot";
+pub const TURN_SHOT: &str = "unipi.browser/turn-shot";
+
+/// The host service this extension drives (ext-abi §7.2).
+pub const SERVICE: &str = "browser";
+
+/// A screenshot returned by a command, as carried in the reply JSON
+/// (`BrowserImage`: `data` is base64, browser.md §7).
+#[derive(Clone, Debug)]
+pub struct Image {
+    /// `image/png` / `image/jpeg`.
+    pub mime_type: String,
+    /// Bytes, base64.
+    pub data: String,
+    /// Absolute path of the saved original.
+    pub path: Option<String>,
+}
+
+/// Runs one command (`{"op": "...", ...args, "approval"?: "once"|"site"}`) through
+/// `host-service.call(SERVICE, op, command)`; returns the `BrowserResult` JSON and its
+/// image, if any.
+///
+/// # Errors
+/// The host denied the call, provides no `"browser"` service, or the transport failed
+/// (the message, for the `backend_unavailable` tool text).
+pub async fn execute(command: &Value) -> Result<(Value, Option<Image>), String> {
+    let op = command["op"].as_str().unwrap_or_default().to_owned();
+    let r = host_service::call(SERVICE, &op, command)
+        .await
+        .map_err(|e| e.to_string())?;
+    let image = r.get("image").filter(|i| i.is_object()).map(|i| Image {
+        mime_type: i["mimeType"].as_str().unwrap_or("image/png").to_owned(),
+        data: i["data"].as_str().unwrap_or_default().to_owned(),
+        path: i["path"].as_str().map(ToOwned::to_owned),
+    });
+    Ok((r, image))
+}
+
+/// `host-service.call(SERVICE, "status", {})` → `BrowserStatus` JSON. `available:false`
+/// with reason `no_host` when this oino has no unipi-host (plain TUI, ext-abi §3.5).
+pub async fn status() -> Value {
+    if !host_service::available(SERVICE) {
+        return json!({"available": false, "reason": "no_host"});
+    }
+    host_service::call(SERVICE, "status", &json!({})).await.unwrap_or_else(|e| {
+        json!({"available": false, "reason": "host_error", "error": e.to_string()})
+    })
+}
 
 /// Extension state.
 #[derive(Default)]
@@ -39,8 +87,8 @@ pub struct BrowserExt {
 }
 
 impl BrowserExt {
-    fn available() -> (bool, Value) {
-        let st = browser::status();
+    async fn available() -> (bool, Value) {
+        let st = status().await;
         (st["available"] == json!(true), st)
     }
 
@@ -85,8 +133,8 @@ impl BrowserExt {
         *self.registered.borrow_mut() = true;
     }
 
-    fn prompt_section(ev: &Event) -> Option<Value> {
-        let (available, st) = Self::available();
+    async fn prompt_section(ev: &Event) -> Option<Value> {
+        let (available, st) = Self::available().await;
         let mut opts = ev
             .get("systemPromptOptions")
             .cloned()
@@ -125,7 +173,7 @@ impl BrowserExt {
             return;
         }
         let turn = format!("turn-{}", timers::now_ms());
-        match browser::execute(&json!({"op": "turn_shot", "turn_id": turn})).await {
+        match execute(&json!({"op": "turn_shot", "turn_id": turn})).await {
             Ok((r, _)) if r["isError"] != json!(true) => {
                 let data = &r["details"]["data"];
                 if let Err(e) = session::append_entry(TURN_SHOT, Some(data)) {
@@ -174,7 +222,7 @@ pub fn render_turn_shot(data: &Value) -> Value {
 impl Extension for BrowserExt {
     #[allow(clippy::unused_async_trait_impl, reason = "trait signature")]
     async fn init(&'static self, cx: &mut Init<Self>) -> Result<()> {
-        let (available, _) = Self::available();
+        let (available, _) = Self::available().await;
         if available {
             for spec in tools::specs() {
                 cx.tool(Self::tool(spec));
@@ -182,22 +230,22 @@ impl Extension for BrowserExt {
             *self.registered.borrow_mut() = true;
         }
         cx.on(EventKind::SessionStart, |ext, _ev, _cx| async move {
-            if Self::available().0 {
+            if Self::available().await.0 {
                 ext.register_tools();
             }
             Ok(())
         });
         cx.on(EventKind::BeforeAgentStart, |_ext, ev, _cx| async move {
-            Ok(Self::prompt_section(&ev))
+            Ok(Self::prompt_section(&ev).await)
         });
         cx.on(EventKind::AgentEnd, |ext, ev, cx| async move {
             ext.turn_shot(&ev, &cx).await;
-            let _ = browser::execute(&json!({"op": "turn_ended"})).await;
+            let _ = execute(&json!({"op": "turn_ended"})).await;
             Ok(())
         });
         cx.on(EventKind::SessionShutdown, |_ext, _ev, cx| async move {
             if !cx.is_child() {
-                let _ = browser::execute(&json!({"op": "session_closed"})).await;
+                let _ = execute(&json!({"op": "session_closed"})).await;
             }
             Ok(())
         });

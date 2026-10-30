@@ -1,6 +1,6 @@
 {
   "apiVersion": "oino.extension/1",
-  "id": "oino.browser",
+  "id": "unipi.browser",
   "name": "Browser",
   "version": "1.0.0-alpha.5",
   "kind": "extension",
@@ -8,7 +8,7 @@
   "license": "MIT OR Apache-2.0",
   "resources": { "skills": ["skills"] },
   "permissions": {
-    "browser": true,
+    "hostServices": ["browser"],
     "sessionControl": false
   }
 }

@@ -156,10 +156,7 @@ impl CliLoader {
             // Resolves the process-shared engine (E-ENGINE): repeated loaders (ACP sessions,
             // a multi-cwd host) reuse one engine, one ticker thread and the compile caches.
             match WasmRuntime::new(WasmRuntimeOptions::new(config)) {
-                Ok(runtime) => {
-                    crate::browser::install(&runtime, &context.agent_dir);
-                    Some(CoreLoader::new(Arc::new(runtime), packages))
-                }
+                Ok(runtime) => Some(CoreLoader::new(Arc::new(runtime), packages)),
                 Err(error) => {
                     diagnostics.push(Diagnostic::error(format!(
                         "Failed to start the extension host: {error}"

@@ -573,26 +573,6 @@ pub trait HostServices: Send + Sync {
         HostContextInfo::default()
     }
 
-    // ── browser ──
-    /// `browser.execute`: one browser command (JSON of
-    /// [`crate::browser::BrowserRequest`]) in the caller's scope. Browser failures are
-    /// results with `isError`; `Err` is only for permission / transport problems.
-    fn browser_execute(
-        &self,
-        ext: &ExtensionId,
-        cx: &CallContext,
-        request: RawJson,
-        cancel: CancellationToken,
-    ) -> BoxFut<'_, Result<unipi_browser_protocol::BrowserResult, HostError>> {
-        Box::pin(async { unsupported!("browser") })
-    }
-    /// `browser.status` (JSON of `BrowserStatus`; disabled when no browser host).
-    fn browser_status(&self, ext: &ExtensionId, cx: &CallContext) -> RawJson {
-        RawJson::from_json_value(&serde_json::json!({
-            "enabled": false, "available": false, "reason": "disabled", "stealth": false, "display": "headless"
-        }))
-    }
-
     // ── cron ──
     /// `cron.call`: one scheduler op (unipi-port §3.24) in the caller's scope. The hub
     /// overrides this with the installed [`crate::cron::CronHost`] (or the daemon client)

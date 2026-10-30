@@ -1,18 +1,20 @@
-//! Browser capability (browser-control.md §8.2): the process-wide [`BrowserHost`] implemented
-//! by `oino-browser`, handed to the WASM host and frontends. Wire types live in
-//! [`unipi_browser_protocol`] (re-exported as [`protocol`]).
+//! Browser capability, host-internal since v2 (ext-abi §7.3, browser.md WP-B7): the
+//! process-wide [`BrowserHost`] implemented by `BrowserService`, linked and registered as
+//! the `"browser"` host service by an embedding host (unipi-host). It is no longer part of
+//! the oino extension ABI (`browser.wit` is gone; the guest calls
+//! `host-service.call("browser", …)`). Wire types live in [`unipi_browser_protocol`]
+//! (re-exported as [`protocol`]).
 
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
+pub use oino_extension_api::BoxFut;
 pub use unipi_browser_protocol as protocol;
 use unipi_browser_protocol::{
     BrowserCommand, BrowserResult, BrowserScope, BrowserStatus, BrowserViewEvent, FrontendRequest,
     Viewport,
 };
-
-use crate::runtime::BoxFut;
 
 /// User approval attached to a resent command (`approval_required` handshake, §10.2).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

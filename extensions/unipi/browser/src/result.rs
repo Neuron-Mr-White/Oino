@@ -1,8 +1,10 @@
 //! `BrowserResult` JSON → `ToolResult`; the `approval_required` handshake (§10.2).
+//! Transport since v2: `crate::execute` → `host-service.call("browser", op, command)`;
+//! the image rides inside the reply JSON as base64 (`BrowserImage`, browser.md §7).
 
-use base64::Engine as _;
-use oino_extension::browser::{self, Image};
 use oino_extension::prelude::*;
+
+use crate::Image;
 
 /// Approval choices shown to the user.
 pub const CHOICES: [&str; 3] = ["Allow once", "Allow for this site (this session)", "Deny"];
@@ -29,7 +31,7 @@ pub fn to_tool_result(r: &Value, image: Option<&Image>) -> ToolResult {
     if let Some(img) = image {
         out.content.push(json!({
             "type": "image",
-            "data": base64::engine::general_purpose::STANDARD.encode(&img.data),
+            "data": img.data,
             "mimeType": img.mime_type,
         }));
         if let Some(path) = &img.path {
@@ -66,7 +68,7 @@ pub async fn run_tool(name: &str, args: Value, has_ui: bool) -> ToolResult {
     };
     command["op"] = json!(op);
     for _ in 0..2 {
-        let (r, image) = match browser::execute(&command).await {
+        let (r, image) = match crate::execute(&command).await {
             Ok(x) => x,
             Err(e) => {
                 return ToolResult::error(format!("backend_unavailable: {e} (no side effect)"));
@@ -116,7 +118,7 @@ mod tests {
         assert_eq!(t.details.unwrap()["error"]["code"], "ref_stale");
         let img = Image {
             mime_type: "image/png".into(),
-            data: vec![1, 2, 3],
+            data: "AQID".into(),
             path: Some("/tmp/s.png".into()),
         };
         let t = to_tool_result(

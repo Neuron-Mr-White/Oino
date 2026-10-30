@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use futures::stream::BoxStream;
 use oino_extension_api::BoxFut;
-use oino_extension_api::browser::{BrowserHost, BrowserRequest, ViewStream};
+use crate::host::{BrowserHost, BrowserRequest, ViewStream};
 use tokio_util::sync::CancellationToken;
 use unipi_browser_protocol::{
     BrowserResult, BrowserScope, BrowserStatus, BrowserViewEvent, FrontendRequest, ProfileInfo,

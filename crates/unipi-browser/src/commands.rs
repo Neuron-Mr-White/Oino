@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oino_extension_api::browser::{Approval, BrowserRequest};
+use crate::host::{Approval, BrowserRequest};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 use unipi_browser_protocol::command::{
@@ -52,7 +52,7 @@ fn into_result(e: ActionError) -> BrowserResult {
     BrowserResult::error(e.code, e.message, e.side)
 }
 
-/// Entry point of [`oino_extension_api::browser::BrowserHost::execute`].
+/// Entry point of [`crate::host::BrowserHost::execute`].
 pub(crate) async fn execute(
     svc: &BrowserService,
     scope: BrowserScope,
@@ -132,7 +132,7 @@ impl BrowserService {
         &self,
         scope: &BrowserScope,
     ) -> unipi_browser_protocol::BrowserStatus {
-        oino_extension_api::browser::BrowserHost::status(self, Some(scope))
+        crate::host::BrowserHost::status(self, Some(scope))
     }
 }
 

@@ -1,13 +1,14 @@
-//! `oino-browser`: the host browser service (browser-control.md §3–§10, WP2).
+//! `unipi-browser`: the host browser service (browser-control.md §3–§10, WP2).
 //!
 //! # Boundary
 //!
 //! Mechanism only: it launches Chromium-family browsers (system Chrome / Chromium / Edge /
 //! Brave, Playwright's Chromium, or an installed `CloakBrowser`), talks CDP over
 //! `--remote-debugging-pipe` (Unix) or a loopback WebSocket (Windows), keeps a logical tab
-//! registry scoped by `(profile, workspace, session)`, and implements
-//! [`oino_extension_api::browser::BrowserHost`]. The model-facing tools live in the bundled
-//! `oino.browser` extension; frontends attach screencast views.
+//! registry scoped by `(profile, workspace, session)`, and implements the host-internal
+//! [`BrowserHost`] ([`host`]; v2 ext-abi §7.3 — an embedding host registers it as the
+//! `"browser"` host service). The model-facing tools live in the bundled
+//! `unipi.browser` extension; frontends attach screencast views.
 //!
 //! # API map
 //!
@@ -44,6 +45,7 @@ pub mod config;
 mod display;
 pub mod engine;
 mod frontend;
+pub mod host;
 mod hub;
 mod keys;
 mod launch;
@@ -58,5 +60,6 @@ mod snapshot;
 mod tab;
 
 pub use config::BrowserSettings;
+pub use host::{Approval, BrowserHost, BrowserRequest, ViewStream};
 pub use service::{BrowserOptions, BrowserService};
 pub use unipi_browser_protocol as protocol;

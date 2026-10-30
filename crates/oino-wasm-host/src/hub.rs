@@ -15,7 +15,6 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use oino_cron::paths::CronPaths;
-use oino_extension_api::browser::{BrowserHost, BrowserRequest};
 use oino_extension_api::cron::CronHost;
 use oino_extension_api::host_service::HostService;
 use oino_extension_api::ops::{
@@ -31,7 +30,6 @@ use oino_extension_api::{
     ExtensionInstance, HostError, HostServices, RawJson, Registration,
 };
 use serde_json::json;
-use unipi_browser_protocol::{BrowserResult, BrowserScope};
 
 use crate::instance::WasmInstance;
 use crate::secrets::SecretStore;
@@ -57,7 +55,6 @@ pub struct LocalServices {
     sticky: Mutex<HashMap<String, RawJson>>,
     secrets: SecretStore,
     tasks: Arc<TaskService>,
-    browser: std::sync::RwLock<Option<Arc<dyn BrowserHost>>>,
     cron: std::sync::RwLock<Option<Arc<dyn CronHost>>>,
     /// Host-provided services (`host-service.wit`): name → service (v2 ext-abi §3).
     host_services: std::sync::RwLock<BTreeMap<String, Arc<dyn HostService>>>,
@@ -90,20 +87,10 @@ impl LocalServices {
             sticky: Mutex::new(HashMap::new()),
             secrets: SecretStore::new(agent_dir),
             tasks: Arc::new(TaskService::new(agent_dir)),
-            browser: std::sync::RwLock::new(None),
             cron: std::sync::RwLock::new(None),
             host_services: std::sync::RwLock::new(BTreeMap::new()),
             agent_parents: Mutex::new(HashMap::new()),
         }
-    }
-
-    /// Installs the process-wide browser service served to extensions with the `browser`
-    /// permission (browser-control.md §8.2); `None` disables it.
-    pub fn set_browser(&self, browser: Option<Arc<dyn BrowserHost>>) {
-        *self
-            .browser
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = browser;
     }
 
     /// Installs the process-wide cron scheduler host served to extensions with the `cron`
@@ -130,15 +117,6 @@ impl LocalServices {
         CronPaths::from_agent_dir()
             .ok()
             .map(|paths| Arc::new(oino_cron::host::DaemonCronHost { paths }) as Arc<dyn CronHost>)
-    }
-
-    /// The browser service, if installed.
-    #[must_use]
-    pub fn browser(&self) -> Option<Arc<dyn BrowserHost>> {
-        self.browser
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
     }
 
     /// Registers (replaces) one host-provided service served to extensions with a
@@ -184,13 +162,6 @@ impl LocalServices {
             }
         }
         cur
-    }
-
-    fn browser_scope(&self, cx: &CallContext) -> BrowserScope {
-        BrowserScope::session(
-            self.root_session(&cx.session_id),
-            cx.cwd.display().to_string(),
-        )
     }
 
     /// Service names `id` registered (`registry.register-service` and `init`).
@@ -707,44 +678,6 @@ impl HostServices for Composite {
             Ok(handle)
         })
     }
-    fn browser_execute(
-        &self,
-        ext: &ExtensionId,
-        cx: &CallContext,
-        request: RawJson,
-        cancel: CancellationToken,
-    ) -> BoxFut<'_, Result<BrowserResult, HostError>> {
-        let Some(hub) = self.hub() else {
-            return self.inner.browser_execute(ext, cx, request, cancel);
-        };
-        let Some(browser) = hub.browser() else {
-            return Box::pin(async {
-                Ok(BrowserResult::unavailable(
-                    "disabled",
-                    "the in-app browser is not available in this host",
-                ))
-            });
-        };
-        let scope = hub.browser_scope(cx);
-        Box::pin(async move {
-            let request: BrowserRequest = request
-                .decode()
-                .map_err(|e| HostError::InvalidArgument(format!("browser command: {e}")))?;
-            Ok(browser.execute(scope, request, cancel).await)
-        })
-    }
-    fn browser_status(&self, ext: &ExtensionId, cx: &CallContext) -> RawJson {
-        match self.hub().and_then(|h| h.browser().map(|b| (h, b))) {
-            Some((hub, browser)) => {
-                let scope = hub.browser_scope(cx);
-                RawJson::from(
-                    serde_json::to_value(browser.status(Some(&scope))).unwrap_or_default(),
-                )
-            }
-            None => self.inner.browser_status(ext, cx),
-        }
-    }
-
     fn cron_call(
         &self,
         _ext: &ExtensionId,

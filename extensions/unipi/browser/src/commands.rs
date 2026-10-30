@@ -1,8 +1,7 @@
-//! `/browser` (browser-control.md §11.2).
+//! `/browser` (browser-control.md §11.2; browser.md §7: `no_host` under a plain oino).
 
 use std::fmt::Write as _;
 
-use oino_extension::browser;
 use oino_extension::prelude::*;
 
 use crate::BrowserExt;
@@ -13,6 +12,9 @@ pub fn status_text(st: &Value) -> String {
     if st["available"] != json!(true) {
         let reason = st["reason"].as_str().unwrap_or("unknown");
         let hint = match reason {
+            "no_host" => {
+                "browser unavailable — this oino has no unipi-host (host service \"browser\" not provided)."
+            }
             "disabled" => "Browser control is off (Settings → Browser).",
             "no_engine" => {
                 "No Chrome-family browser found: install Google Chrome or Chromium, or set browser.executablePath."
@@ -66,7 +68,7 @@ async fn run(args: String) -> Result<()> {
     let sub = words.next().unwrap_or("");
     let arg = words.next();
     let reply = match sub {
-        "" | "status" => status_text(&browser::status()),
+        "" | "status" => status_text(&crate::status().await),
         "profile" => match arg {
             Some(name) => op(json!({"op": "profile", "action": "use", "name": name})).await,
             None => op(json!({"op": "profile", "action": "status"})).await,
@@ -74,7 +76,7 @@ async fn run(args: String) -> Result<()> {
         "release" => op(json!({"op": "release", "tab": arg})).await,
         "close-tabs" => op(json!({"op": "close_agent_tabs"})).await,
         "show" | "hide" | "install-cloak" => format!(
-            "/browser {sub}: use Settings → Browser in Oino Desktop (or `oino browser {sub}`)."
+            "/browser {sub}: use Settings → Browser in UniPi (or `unipi-host browser {sub}`)."
         ),
         other => format!(
             "Unknown /browser subcommand {other:?}. Try: status, profile [name], release [tab], close-tabs."
@@ -85,7 +87,7 @@ async fn run(args: String) -> Result<()> {
 }
 
 async fn op(cmd: Value) -> String {
-    match browser::execute(&cmd).await {
+    match crate::execute(&cmd).await {
         Ok((r, _)) => r["text"].as_str().unwrap_or_default().to_owned(),
         Err(e) => format!("Browser unavailable: {e}"),
     }

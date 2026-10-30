@@ -662,16 +662,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oino-browser-ext"
-version = "1.0.0-alpha.5"
-dependencies = [
- "base64",
- "oino-extension",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "oino-extension"
 version = "1.0.0-alpha.5"
 dependencies = [
@@ -1367,6 +1357,15 @@ dependencies = [
  "serde",
  "serde_json",
  "unipi-kit",
+]
+
+[[package]]
+name = "unipi-browser-ext"
+version = "1.0.0-alpha.5"
+dependencies = [
+ "oino-extension",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

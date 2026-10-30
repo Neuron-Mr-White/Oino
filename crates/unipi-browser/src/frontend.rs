@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oino_extension_api::browser::ViewStream;
+use crate::host::ViewStream;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use unipi_browser_protocol::view::modifiers;

@@ -5,7 +5,6 @@
 //!
 //! [`CallContext`]: oino_extension_api::CallContext
 
-mod browser;
 mod core;
 mod cron;
 mod host_service;
