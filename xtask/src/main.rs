@@ -5,6 +5,7 @@
 //! | `wasm [--debug] [-p <crate>…]` | builds every component under `extensions/{providers,unipi,fixtures}` for `wasm32-wasip2` and writes `extensions/dist/<id>/{extension.json, component.wasm, resources}` + `extensions/dist/checksums.json` |
 //! | `checksums` | verifies `extensions/dist` against `checksums.json` |
 //! | `wit` | validates `wit/oino-extension` with `wasm-tools component wit` |
+//! | `bench <suite> [--n N] [--out dir]` | core benchmarks (WP-C11): runs a suite via `crates/oino-bench --release`; results land under `bench/results/` (currently: `subagents`) |
 //! | `remote-build <host\|local> [opts] [-- build-host args]` | release build over SSH (or locally) via `scripts/release/build-host.sh`; artifacts in `target/release-artifacts/<target>/` (see `remote.rs`) |
 //! | `ti <sync\|build>` | release build host on the `ti` Ubuntu box: `sync` the tree there, `build` the CLI (see `ti.rs`; docs/dev/v1/ti.md is historical — its GUI-test-host commands went with the GPUI desktop app on v2) |
 //! | `gui <list\|suite> <name>` | the driver's regression suites: runs every scenario of `docs/dev/v1/gui/suites/<name>.json` through `scripts/gui-drive.py` (see `gui.rs`, docs/dev/v1/gui-driver.md) |
@@ -18,6 +19,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+mod bench;
 mod gui;
 mod remote;
 mod ti;
@@ -242,11 +244,13 @@ fn main() -> Result<()> {
         Some("wasm") => wasm(&args[1..]),
         Some("checksums") => checksums(),
         Some("wit") => wit(),
+        Some("bench") => bench::bench(&args[1..]),
         Some("remote-build") => remote::remote_build(&args[1..]),
         Some("ti") => ti::ti(&args[1..]),
         Some("gui") => gui::gui(&args[1..]),
         _ => bail!(
             "usage: cargo xtask <wasm [--debug] [-p crate]… | checksums | wit | \
+             bench <subagents --n N> [--out dir] | \
              remote-build <host|local> … | ti <sync|build> … | \
              gui <list|suite> <name> …>"
         ),

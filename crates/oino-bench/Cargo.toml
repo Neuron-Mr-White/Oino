@@ -1,0 +1,31 @@
+[package]
+name = "oino-bench"
+version = "1.0.0-alpha.5"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Core benchmarks (WP-C11): subagent RSS/CPU (B-1) and durability barrier micro-cost"
+
+[features]
+default = ["faux"]
+## Faux provider doubles (`oino-core` `testing`) — the bench never talks to a real provider.
+faux = ["oino-core/testing"]
+
+[dependencies]
+anyhow = "1"
+chrono.workspace = true
+futures.workspace = true
+indexmap.workspace = true
+nix = { workspace = true, features = ["feature"] }
+oino-ai = { path = "../oino-ai" }
+oino-core = { path = "../oino-core" }
+oino-models = { path = "../oino-models" }
+oino-session = { path = "../oino-session" }
+oino-settings = { path = "../oino-settings" }
+serde_json.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

@@ -8,6 +8,10 @@ OINO_TARGET_GC_AGE_HOURS = "6"
 description = "Run the Oino TUI app"
 run = "cargo run -p oino --bin oino"
 
+[tasks.bench]
+description = "Core benchmarks (WP-C11), e.g. `mise run bench -- subagents --n 50`"
+run = "cargo xtask bench"
+
 [tasks.gc]
 description = "Trim build caches back under OINO_TARGET_BUDGET_GB (stale tmp, incremental, old artifacts)"
 run = "scripts/target-gc.sh"
