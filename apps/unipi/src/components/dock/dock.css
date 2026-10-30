@@ -19,7 +19,6 @@
 .dock-dialog-waiting-icon { color: var(--color-claw); }
 .dock-dialog-waiting-label { font-weight: 600; }
 .dock-dialog-body { min-width: 0; }
-.dock-dialog-bar + .dock-dialog-body .dlg { border-radius: 18px; }
 
 /* ── approval (Z-47) ────────────────────────────────────────────────── */
 .dlg-approval .dlg-head { gap: 8px; }

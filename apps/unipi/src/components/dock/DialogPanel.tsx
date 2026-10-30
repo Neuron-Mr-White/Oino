@@ -65,31 +65,31 @@ export function DialogPanel(props: {
           when={props.phone && collapsed()}
           fallback={
             <Show when={count() > 1 || props.phone}>
-            <div class="dock-dialog-bar">
-              <Show when={count() > 1}>
-                <button type="button" class="dock-dialog-page" aria-label="Previous dialog" disabled={index() === 0} onClick={() => step(-1)}>
-                  <ChevronLeft size={16} />
-                </button>
-                <span class="dock-dialog-count" data-testid="dialog-count">
-                  {index() + 1} of {count()}
-                </span>
-                <button
-                  type="button"
-                  class="dock-dialog-page"
-                  aria-label="Next dialog"
-                  disabled={index() >= count() - 1}
-                  onClick={() => step(1)}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </Show>
-              <span class="flex-1" />
-              <Show when={props.phone}>
-                <button type="button" class="dock-dialog-collapse" aria-expanded="true" onClick={() => setCollapsed(true)} data-testid="dialog-collapse">
-                  Hide <ChevronDown size={15} />
-                </button>
-              </Show>
-            </div>
+              <div class="dock-dialog-bar">
+                <Show when={count() > 1}>
+                  <button type="button" class="dock-dialog-page" aria-label="Previous dialog" disabled={index() === 0} onClick={() => step(-1)}>
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span class="dock-dialog-count" data-testid="dialog-count">
+                    {index() + 1} of {count()}
+                  </span>
+                  <button
+                    type="button"
+                    class="dock-dialog-page"
+                    aria-label="Next dialog"
+                    disabled={index() >= count() - 1}
+                    onClick={() => step(1)}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </Show>
+                <span class="flex-1" />
+                <Show when={props.phone}>
+                  <button type="button" class="dock-dialog-collapse" aria-expanded="true" onClick={() => setCollapsed(true)} data-testid="dialog-collapse">
+                    Hide <ChevronDown size={15} />
+                  </button>
+                </Show>
+              </div>
             </Show>
           }
         >
