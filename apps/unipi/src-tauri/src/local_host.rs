@@ -127,7 +127,7 @@ pub async fn connect(local: &LocalHost) -> std::io::Result<(OpSend, OpRecv)> {
     #[cfg(windows)]
     {
         use tokio::net::windows::named_pipe::ClientOptions;
-        /// Another process is still connecting to the pipe.
+        // Another process is still connecting to the pipe.
         const ERROR_PIPE_BUSY: i32 = 231;
         let mut attempt = 0u32;
         let client = loop {

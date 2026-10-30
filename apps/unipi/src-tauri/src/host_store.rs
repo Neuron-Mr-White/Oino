@@ -32,8 +32,9 @@ pub struct HostInfo {
     /// any (`null`/absent before the first successful connection).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_path: Option<PathKind>,
-    /// UNI-231: "local" for this PC's own host reached over `app.sock`
-    /// (never persisted — added by `local_host::merge`); absent = iroh.
+    /// UNI-231 + v2: "local" for this PC's own host reached over its local
+    /// transport (`app.sock`, or the named pipe on Windows — never
+    /// persisted, added by `local_host::merge`); absent = iroh.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<String>,
 }

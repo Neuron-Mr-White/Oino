@@ -1,11 +1,11 @@
 # unipi-proto
 
-Wire protocol types and framing for `unipi/app/1` (serde mirror of
-`packages/protocol`). See `unipi-app/DESIGN.md` §5.4–5.5.
+Wire protocol types and framing for `unipi/oino/1` (serde mirror of
+`apps/unipi/packages/protocol`). See `docs/dev/v2/specs/host.md` §5.1, §7.
 
 ## API
 
-- `PROTO_VERSION` — `"1.0.0"`.
+- `PROTO_VERSION` — `"2.0.0"` (v2: the chat/session layer rewrite is breaking).
 - `is_strict_semver(&str) -> bool`, `Semver` — strict semver newtype,
   validated on deserialize.
 - `AppErrorCode` — the 14 stable error codes (`E_*`, including

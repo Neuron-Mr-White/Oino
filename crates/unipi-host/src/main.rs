@@ -634,15 +634,31 @@ async fn main() -> anyhow::Result<()> {
                     }
                 })
             };
-            // UNI-229: this PC's own UniPi app reaches the host here (no iroh, works offline).
-            let local = unipi_host::local::serve(handler.clone())?;
+            // UNI-229 + v2: this PC's own UniPi app reaches the host here —
+            // `app.sock` or the Windows named pipe, no iroh, works offline.
+            // A local listener that can't start (another host of this user
+            // owns the pipe name) is not fatal: iroh stays the transport
+            // (spec §6.1 / risk R2).
+            let local = match unipi_host::local::serve(handler.clone()) {
+                Ok(listener) => Some(listener),
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        addr = %paths_for_cleanup.local_addr(),
+                        "local listener unavailable; the host is reachable over iroh only"
+                    );
+                    None
+                }
+            };
             let router = iroh::protocol::Router::builder(endpoint)
                 .accept(ALPN, handler)
                 .spawn();
             tracing::info!(relay_only, "host ready");
             shutdown_signal().await?;
             router.shutdown().await?;
-            local.abort();
+            if let Some(local) = local {
+                local.abort();
+            }
             unipi_host::local::cleanup(&paths_for_cleanup);
             sweeper.abort();
             updater.abort();
