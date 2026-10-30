@@ -561,7 +561,8 @@ impl UiProbe {
                 .map_err(failed)?;
             return self.notify(cx, format!("probe:editor-text:{text}")).await;
         }
-        let spec = json!({"type": "button", "label": "Go", "actionId": "go"});
+        // v2 node (ui-protocol §4.5): PascalCase kind, camelCase props.
+        let spec = json!({"t": "Button", "label": "Go", "action": "go"});
         let params: JsonObject = serde_json::from_value(
             json!({"panelId": "ui-probe/panel-0", "title": title, "placement": "overlay", "spec": spec}),
         )
