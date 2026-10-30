@@ -6,6 +6,7 @@
   "kind": "extension",
   "description": "A persistent task board per project: /kanboard (open the board panel, onboard, status, show, doctor), -add, -do budgets and autowork; a write guard on the agent's unipi-kanboard calls, a settle monitor that nudges unfinished claims, progress reminders and transcript badges.",
   "license": "MIT",
+  "ui": { "reserved": ["unipi.kanboard/board"] },
   "binaries": ["unipi-kanboard"],
   "resources": { "skills": ["skills"] },
   "permissions": {

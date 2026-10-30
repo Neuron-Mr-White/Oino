@@ -88,7 +88,7 @@ impl Core {
         });
         if let Some(id) = &panel {
             let i = tray::active_index(&tabs, active.as_deref());
-            let _ = ui::panel_update(id, &serde_json::json!({"spec": tray::spec(&tabs, i)}));
+            let _ = tray::update(id, &tabs, i);
         }
         let _ = ui::fire(&tray::strip_request(&tabs, panel.is_some()));
     }
@@ -106,10 +106,8 @@ impl Core {
             .with(cx.session_id(), |s| (s.panel.clone(), s.active.clone()));
         let i = tray::active_index(&tabs, request.tab.as_deref().or(remembered.as_deref()));
         let id = match panel {
-            Some(id) => ui::panel_update(&id, &serde_json::json!({"spec": tray::spec(&tabs, i)}))
-                .ok()
-                .map(|()| id),
-            None => ui::panel_open(&tray::open_request(&tabs, i)).ok(),
+            Some(id) => tray::update(&id, &tabs, i).ok().map(|()| id),
+            None => tray::open(&tabs, i).ok(),
         };
         let Some(id) = id else { return false };
         let active = tabs.get(i).map(|t| t.id.clone());

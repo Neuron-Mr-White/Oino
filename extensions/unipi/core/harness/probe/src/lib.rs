@@ -22,7 +22,9 @@ impl Extension for Probe {
                 "counts": {"total": 2, "running": 1},
             });
             if open {
-                tab["body"] = json!({"t": "list", "items": [{"id": "t1", "label": "npm test"}], "selectable": "bg:open"});
+                tab["body"] = json!({"t": "List",
+                    "items": [{"key": "t1", "content": "npm test"}],
+                    "onActivate": "bg:open"});
             }
             Ok(json!([tab]))
         });

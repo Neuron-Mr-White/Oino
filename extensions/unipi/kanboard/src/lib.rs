@@ -546,7 +546,7 @@ impl Kanboard {
             return;
         }
         if cx.has_ui() {
-            self.open_panel(cx);
+            self.open_panel(cx).await;
         } else {
             notify("kanboard: no UI here — the board tab opens in Oino", "info");
         }
@@ -946,11 +946,12 @@ impl Kanboard {
 
     // ── panel ───────────────────────────────────────────────────────────
 
-    /// Opens the native board tab (round-5 #7): the panel is a marker — the
-    /// pane renders `unipi.kanboard/board` itself from the in-process kanboard
-    /// service, so there is no spec to send and no SSE to follow.
-    fn open_panel(&self, cx: &Ctx) {
-        if ui::panel_open(&panel::open_request()).is_ok() {
+    /// Opens the native board tab (round-5 #7): `unipi.kanboard/board` is a reserved
+    /// entry (ui-protocol §8) — the app renders the board component itself, other
+    /// frontends draw the task-list fallback the open installs.
+    async fn open_panel(&self, cx: &Ctx) {
+        let tasks = self.cached_tasks(cx).await;
+        if panel::open(&tasks).is_ok() {
             self.sessions.with(cx.session_id(), |s| s.panel_open = true);
         }
     }

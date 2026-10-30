@@ -260,9 +260,10 @@ async fn work_tray_with_a_producer() {
     assert_eq!(open["panelId"], "unipi.core/tray");
     assert_eq!(open["placement"], "editorReplace");
     let tabs = &open["spec"]["children"][0];
-    assert_eq!(tabs["active"], "bg");
-    assert_eq!(tabs["tabs"][0]["title"], "Background tasks (2 · 1 running)");
-    assert_eq!(tabs["tabs"][0]["body"]["selectable"], "bg:open");
+    assert_eq!(tabs["t"], "Tabs");
+    assert_eq!(tabs["selected"], "bg");
+    assert_eq!(tabs["titles"][0]["title"], "Background tasks (2 · 1 running)");
+    assert_eq!(tabs["panes"]["bg"]["onActivate"], "bg:open");
     assert!(
         env.fired("setWidget", Some("work-tray-strip"))
             .last()
@@ -399,5 +400,6 @@ async fn kill_and_restart_rebuilds_the_work_tray_from_the_bus() {
     let panels = env.panels();
     let open = &panels.last().unwrap()["open"];
     assert_eq!(open["panelId"], "unipi.core/tray");
-    assert_eq!(open["spec"]["children"][0]["active"], "bg");
+    assert_eq!(open["spec"]["children"][0]["t"], "Tabs");
+    assert_eq!(open["spec"]["children"][0]["selected"], "bg");
 }
