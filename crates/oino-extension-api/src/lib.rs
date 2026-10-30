@@ -19,6 +19,7 @@
 //! | [`ops`] | `session`, `control`, `models`, `ui`, `tasks`, `secrets`, `provider-host` | one enum variant per WIT function |
 //! | [`runtime`] | — | [`ExtensionRuntime`], [`ExtensionInstance`], [`ProviderInstance`], [`HostServices`], [`AgentHandle`] |
 //! | [`manifest`] | — | `extension.json`, [`manifest::Permissions`], package validation |
+//! | [`host_service`] | `host-service` | [`host_service::HostService`] (capabilities an embedding host registers) |
 //! | [`browser`] | `browser` | [`browser::BrowserHost`], [`browser::BrowserRequest`], wire types |
 //! | [`cron`] | `cron` | [`cron::CronHost`] (daemon client or embedded scheduler) |
 //! | `testing` (feature) | — | `RecordingHostServices`, `FakeExtensionRuntime` |
@@ -37,6 +38,7 @@
 pub mod browser;
 pub mod cron;
 pub mod guest;
+pub mod host_service;
 pub mod json;
 pub mod manifest;
 pub mod ops;
@@ -47,6 +49,7 @@ pub mod testing;
 pub mod types;
 
 pub use guest::{CompletionItem, InitInput, ToolInvocation};
+pub use host_service::HostService;
 pub use json::RawJson;
 pub use manifest::{ExtensionKind, Manifest};
 pub use registry::{EventKind, Registration};

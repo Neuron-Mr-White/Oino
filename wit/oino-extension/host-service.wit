@@ -1,0 +1,22 @@
+package oino:extension@1.0.0;
+
+/// Host-provided services (v2 §3.4.2): named capabilities an embedding host
+/// (unipi-host) registers with the runtime — "browser", "cron", … . Oino
+/// itself registers none: under a plain TUI every name is unavailable and
+/// extensions degrade (typically: tools report unavailable).
+interface host-service {
+    use types.{json, host-error, cancel-token};
+
+    /// Names of the services this host provides (sorted). Not permission-gated
+    /// (discovery); service names are not secret.
+    %list: func() -> list<string>;
+    /// Whether `name` is provided by this host. Cheap, never traps.
+    available: func(name: string) -> bool;
+    /// Runs one operation of a host service. `payload` and the reply are the
+    /// service's own JSON contract (documented by the service, not by WIT):
+    /// user-facing failures travel inside the reply; `host-error` is only for
+    /// permission (`denied("hostServices:<name>")`), missing services
+    /// (`not-found`) and transport/timeout problems.
+    call: async func(name: string, op: string, payload: json,
+                     cancel: option<borrow<cancel-token>>) -> result<json, host-error>;
+}

@@ -226,6 +226,8 @@ pub struct Permissions {
     pub edit_externally: bool,
     /// `services.call`.
     pub services: ServicesPermission,
+    /// `hostServices`: host-service names an extension may call, or `"*"` (bundled only).
+    pub host_services: Vec<String>,
     /// `browser.*`: control the in-app browser (browser-control.md §8.4).
     pub browser: bool,
     /// `cron.*`: control the scheduled-runs scheduler (unipi-port §3.24).
@@ -252,6 +254,7 @@ impl Default for Permissions {
             clipboard: ClipboardPermission::default(),
             edit_externally: false,
             services: ServicesPermission::default(),
+            host_services: Vec::new(),
             browser: false,
             cron: false,
         }
@@ -433,6 +436,14 @@ impl Permissions {
     #[must_use]
     pub fn allows_env(&self, name: &str) -> bool {
         self.env.iter().any(|e| e == name)
+    }
+
+    /// `hostServices` allows calling host service `name` (`"*"` only when `bundled`).
+    #[must_use]
+    pub fn allows_host_service(&self, name: &str, bundled: bool) -> bool {
+        self.host_services
+            .iter()
+            .any(|grant| if grant == "*" { bundled } else { grant == name })
     }
 }
 
@@ -638,7 +649,8 @@ mod tests {
         let m = Manifest::parse(&manifest(
             r#","permissions":{"network":{"hosts":["ntfy.sh","*.example.com","*"]},
                "process":{"spawn":true,"allow":["git","rg*"]},
-               "credentials":["openai"],"services":{"call":["unipi.memory/save","a/*"]},"env":["HOME"]}"#,
+               "credentials":["openai"],"services":{"call":["unipi.memory/save","a/*"]},"env":["HOME"],
+               "hostServices":["browser"]}"#,
         ))
         .unwrap();
         let p = &m.permissions;
@@ -656,6 +668,23 @@ mod tests {
         assert!(p.allows_service(Some("a"), "anything"));
         assert!(!p.allows_service(Some("b"), "save"));
         assert!(p.allows_env("HOME") && !p.allows_env("PATH"));
+        assert!(p.allows_host_service("browser", false));
+        assert!(p.allows_host_service("browser", true)); // name grants are bundle-independent
+        assert!(!p.allows_host_service("cron", false));
+    }
+
+    #[test]
+    fn host_services_wildcard_is_bundled_only() {
+        let m = Manifest::parse(&manifest(r#","permissions":{"hostServices":["*"]}"#)).unwrap();
+        assert!(!m.permissions.allows_host_service("cron", false));
+        assert!(m.permissions.allows_host_service("cron", true));
+        // Default: denied.
+        assert!(
+            !Manifest::parse(&manifest(""))
+                .unwrap()
+                .permissions
+                .allows_host_service("cron", true)
+        );
     }
 
     #[test]

@@ -9,7 +9,7 @@
 //! entries go dead instead of keeping it alive, and a later service registering the same
 //! extension id replaces the entry (last one wins).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
@@ -18,6 +18,7 @@ use oino_browser_protocol::{BrowserResult, BrowserScope};
 use oino_cron::paths::CronPaths;
 use oino_extension_api::browser::{BrowserHost, BrowserRequest};
 use oino_extension_api::cron::CronHost;
+use oino_extension_api::host_service::HostService;
 use oino_extension_api::ops::{
     ControlOp, ControlReply, Delivery, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply,
     PanelOp, ProviderHook, ProviderHookReply, SecretOp, SendOptions, SessionQuery, SessionWrite,
@@ -58,6 +59,8 @@ pub struct LocalServices {
     tasks: Arc<TaskService>,
     browser: std::sync::RwLock<Option<Arc<dyn BrowserHost>>>,
     cron: std::sync::RwLock<Option<Arc<dyn CronHost>>>,
+    /// Host-provided services (`host-service.wit`): name → service (v2 ext-abi §3).
+    host_services: std::sync::RwLock<BTreeMap<String, Arc<dyn HostService>>>,
     /// Nested agent session → its parent session (browser scope = root conversation).
     agent_parents: Mutex<HashMap<String, String>>,
 }
@@ -89,6 +92,7 @@ impl LocalServices {
             tasks: Arc::new(TaskService::new(agent_dir)),
             browser: std::sync::RwLock::new(None),
             cron: std::sync::RwLock::new(None),
+            host_services: std::sync::RwLock::new(BTreeMap::new()),
             agent_parents: Mutex::new(HashMap::new()),
         }
     }
@@ -135,6 +139,37 @@ impl LocalServices {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
+    }
+
+    /// Registers (replaces) one host-provided service served to extensions with a
+    /// matching `hostServices` permission (`host-service.wit`, v2 ext-abi §3).
+    pub fn register_host_service(&self, name: &str, service: Arc<dyn HostService>) {
+        self.host_services
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(name.to_owned(), service);
+    }
+
+    /// The registered host service `name`, if any (the hub registry an embedding host
+    /// installs; `inner.host_service` is the fallback below it).
+    #[must_use]
+    pub fn host_service(&self, name: &str) -> Option<Arc<dyn HostService>> {
+        self.host_services
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(name)
+            .cloned()
+    }
+
+    /// Names of the registered host services (sorted).
+    #[must_use]
+    pub fn host_service_names(&self) -> Vec<String> {
+        self.host_services
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .keys()
+            .cloned()
+            .collect()
     }
 
     /// Root conversation session of `session` (walks nested-agent parents, §6.1).
@@ -727,6 +762,43 @@ impl HostServices for Composite {
                 )),
             }
         })
+    }
+
+    fn host_service(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        name: &str,
+        op: &str,
+        payload: RawJson,
+        cancel: CancellationToken,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        // Registry first (the hub an embedding host installed services into), then the
+        // inner host; a name neither provides is `not-found` (v2 ext-abi §3.2).
+        if let Some(service) = self.hub().and_then(|hub| hub.host_service(name)) {
+            let op = op.to_owned();
+            return Box::pin(async move { service.call(&op, payload, cancel).await });
+        }
+        if !self
+            .inner
+            .host_services()
+            .iter()
+            .any(|provided| provided == name)
+        {
+            let err = HostError::NotFound(format!("host service {name}"));
+            return Box::pin(async { Err(err) });
+        }
+        self.inner.host_service(ext, cx, name, op, payload, cancel)
+    }
+
+    fn host_services(&self) -> Vec<String> {
+        let mut names = self.inner.host_services();
+        if let Some(hub) = self.hub() {
+            names.extend(hub.host_service_names());
+        }
+        names.sort();
+        names.dedup();
+        names
     }
     fn agents_list(&self, cx: &CallContext) -> RawJson {
         self.inner.agents_list(cx)

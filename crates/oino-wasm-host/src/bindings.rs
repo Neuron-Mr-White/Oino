@@ -52,6 +52,7 @@ pub(crate) fn add_oino_to_linker(
     e::browser::add_to_linker::<HostState, HostState>(linker, get)?;
     e::kanboard::add_to_linker::<HostState, HostState>(linker, get)?;
     e::cron::add_to_linker::<HostState, HostState>(linker, get)?;
+    e::host_service::add_to_linker::<HostState, HostState>(linker, get)?;
     e::provider_host::add_to_linker::<HostState, HostState>(linker, get)?;
     Ok(())
 }

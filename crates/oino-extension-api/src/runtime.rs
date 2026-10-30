@@ -607,6 +607,30 @@ pub trait HostServices: Send + Sync {
         Box::pin(async { unsupported!("cron") })
     }
 
+    // ── host-service ──
+    /// `host-service.call`: one op of a host-provided service (`"browser"`, `"cron"`, …)
+    /// in the caller's scope. The WASM host's hub serves this from its registered
+    /// [`crate::host_service::HostService`]s first; an embedding host that does not use
+    /// the hub implements this and [`HostServices::host_services`] instead. A name absent
+    /// from both never reaches this method (the import answers `not-found`).
+    fn host_service(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        name: &str,
+        op: &str,
+        payload: RawJson,
+        cancel: CancellationToken,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        Box::pin(async { unsupported!("host-service.call") })
+    }
+    /// `host-service.list` / `host-service.available`: names this host provides (sorted;
+    /// not permission-gated — discovery). Implement together with
+    /// [`HostServices::host_service`].
+    fn host_services(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     // ── host-produced events ──
     /// Delivers an event produced by the runtime host itself (timers, process exits, tasks).
     fn deliver_event(

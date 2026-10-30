@@ -15,6 +15,7 @@ world extension {
     import browser;
     import kanboard;
     import cron;
+    import host-service;
     export guest;
 }
 
