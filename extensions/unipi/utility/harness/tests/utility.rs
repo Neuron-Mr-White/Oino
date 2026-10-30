@@ -888,7 +888,7 @@ async fn render_specs_follow_the_style() {
         .render(RawJson::from(req.clone()), env.cx(CallKind::Render))
         .unwrap()
         .to_value();
-    assert_eq!(simple["t"], "text");
+    assert_eq!(simple["t"], "Paragraph");
     let msg = json!({"target": "customMessage", "key": "unipi-watchdog", "density": "regular", "expanded": false, "width": "normal", "data": {"customType": "unipi-watchdog", "content": "slow tool"}});
     let card = ext
         .render(RawJson::from(msg), env.cx(CallKind::Render))
@@ -920,7 +920,8 @@ async fn render_specs_follow_the_style() {
         .await
         .unwrap()
         .to_value();
-    assert_eq!(panel["t"], "card");
+    assert_eq!(panel["t"], "Block");
+    assert_eq!(panel["rail"], "info");
 }
 
 #[tokio::test(flavor = "multi_thread")]

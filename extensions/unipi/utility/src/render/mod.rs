@@ -58,6 +58,7 @@ impl Request {
 /// Delegated-work steps (fusion sidekick, subagent transcripts) as one panel.
 pub mod delegated {
     use super::{RenderStyle, Value, json, tools};
+    use oino_extension::ui::widgets::prelude::*;
 
     /// One step: `{kind: "tool", name, arg, output, isError, args?}` or `{kind: "text", text}`.
     #[must_use]
@@ -67,7 +68,14 @@ pub mod delegated {
         style: RenderStyle,
         expanded: bool,
     ) -> Value {
-        let mut children = Vec::new();
+        let next_is_tool = |i: usize| {
+            steps
+                .get(i + 1)
+                .and_then(|s| s.get("kind"))
+                .and_then(Value::as_str)
+                == Some("tool")
+        };
+        let mut children: Vec<Node> = Vec::new();
         for (i, step) in steps.iter().enumerate() {
             match step.get("kind").and_then(Value::as_str) {
                 Some("text") => {
@@ -77,7 +85,7 @@ pub mod delegated {
                     } else {
                         text.to_owned()
                     };
-                    children.push(json!({"t": "markdown", "value": text}));
+                    children.push(Markdown::new(text).into());
                 }
                 Some("tool") => {
                     let name = step.get("name").and_then(Value::as_str).unwrap_or("tool");
@@ -108,29 +116,29 @@ pub mod delegated {
                         cwd: String::new(),
                         home: None,
                     };
-                    let mut node = if style == RenderStyle::Advanced || expanded {
+                    // Simple rows are the only paragraphs; a following tool row gets `├ `.
+                    let node = if style == RenderStyle::Advanced || expanded {
                         tools::advanced(&view, expanded)
+                    } else if next_is_tool(i) {
+                        tools::simple_row_marked(&view, "├ ")
                     } else {
                         tools::simple_row(&view)
                     };
-                    let next_is_tool = steps
-                        .get(i + 1)
-                        .and_then(|s| s.get("kind"))
-                        .and_then(Value::as_str)
-                        == Some("tool");
-                    if node["t"] == "text" && next_is_tool {
-                        node["value"][0]["text"] = json!("├ ");
-                    }
                     children.push(node);
                 }
                 _ => {}
             }
         }
-        let mut card = json!({"t": "card", "rail": "info", "body": {"t": "stack", "direction": "vertical", "children": children}});
+        let mut card = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .rail(Color::Info)
+            .child(Layout::default().children(children));
         if let Some(l) = label {
-            card["title"] = json!([{"text": format!("◆ {l}"), "tone": "info", "bold": true}]);
+            card = card.title(Line::from(
+                Span::from(format!("◆ {l}")).fg(Color::Info).bold(),
+            ));
         }
-        card
+        serde_json::to_value(Node::from(card)).unwrap_or(Value::Null)
     }
 }
 
@@ -195,7 +203,7 @@ mod tests {
         );
         assert_eq!(
             render(&msg, RenderStyle::Simple, "/w", None, true).map(|v| v["t"].clone()),
-            Some(json!("card"))
+            Some(json!("Block"))
         );
         let entry = Request::parse(
             &json!({"target": "customEntry", "key": "unipi:attachments", "data": {"data": {"items": [{"id": 1, "kind": "file", "name": "a.pdf"}]}}}),
@@ -211,16 +219,16 @@ mod tests {
             json!({"kind": "text", "text": "Done."}),
         ];
         let v = delegated::render(&steps, Some("sidekick"), RenderStyle::Simple, false);
-        let kids = v["body"]["children"]
+        let kids = v["child"]["children"]
             .as_array()
             .cloned()
             .unwrap_or_default();
-        assert_eq!(kids[0]["value"][0]["text"], "├ ");
-        assert_eq!(kids[1]["value"][0]["text"], "└ ");
-        assert_eq!(kids[2]["value"], "● Done.");
-        assert_eq!(v["title"][0]["text"], "◆ sidekick");
+        assert_eq!(kids[0]["text"][0][0]["content"], "├ ");
+        assert_eq!(kids[1]["text"][0][0]["content"], "└ ");
+        assert_eq!(kids[2]["source"], "● Done.");
+        assert_eq!(v["title"][0]["content"], "◆ sidekick");
         let adv = delegated::render(&steps, None, RenderStyle::Advanced, false);
-        assert_eq!(adv["body"]["children"][0]["t"], "stack");
+        assert_eq!(adv["child"]["children"][0]["t"], "Layout");
         assert!(adv.get("title").is_none());
     }
 }

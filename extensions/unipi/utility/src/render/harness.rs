@@ -5,7 +5,8 @@
 //! the message text unchanged. Meta comes from `details.unipiHarness` / `details.oinoProvenance`
 //! when present, else a stable per-type fallback (never text detection).
 
-use serde_json::{Value, json};
+use oino_extension::ui::widgets::prelude::*;
+use serde_json::Value;
 
 use crate::settings::RenderStyle;
 
@@ -154,17 +155,19 @@ pub fn read_meta(custom_type: &str, details: Option<&Value>) -> Meta {
     m
 }
 
-fn dim(text: impl Into<String>) -> Value {
-    json!({"t": "text", "value": [{"text": text.into(), "dim": true}]})
+fn dim(text: impl Into<String>) -> Node {
+    Paragraph::new(Line::from(Span::from(text.into()).dim()))
+        .wrap(Wrap::Disabled(false))
+        .into()
 }
 
-fn md(text: &str) -> Value {
-    json!({"t": "markdown", "value": text})
+fn md(text: &str) -> Node {
+    Markdown::new(text).into()
 }
 
-/// The panel for a harness message.
+/// The panel for a harness message (§12.1: `card` → `Block` with a bottom `source` title).
 #[must_use]
-pub fn panel(content: &str, meta: &Meta, style: RenderStyle, expanded: bool) -> Value {
+pub fn panel(content: &str, meta: &Meta, style: RenderStyle, expanded: bool) -> Node {
     let rows = content.lines().count();
     let hint = |n: usize| dim(format!("Expand: full message ({n} lines)"));
     let label = format!(
@@ -174,10 +177,14 @@ pub fn panel(content: &str, meta: &Meta, style: RenderStyle, expanded: bool) -> 
         meta.title
     );
     let synopsis = meta.synopsis.clone().unwrap_or_else(|| meta.title.clone());
-    let mut body: Vec<Value> = Vec::new();
+    let mut body: Vec<Node> = Vec::new();
     if meta.warning {
         if style != RenderStyle::Simple || expanded {
-            body.push(json!({"t": "text", "value": [{"text": synopsis, "tone": "warning"}]}));
+            body.push(
+                Paragraph::new(Line::from(Span::from(synopsis.as_str()).fg(Color::Warning)))
+                    .wrap(Wrap::Disabled(false))
+                    .into(),
+            );
         }
         if expanded {
             body.push(md(content));
@@ -224,13 +231,20 @@ pub fn panel(content: &str, meta: &Meta, style: RenderStyle, expanded: bool) -> 
             }
         }
     }
-    json!({
-        "t": "card",
-        "title": [{"text": label, "tone": if meta.warning { "warning" } else { "harness" }}],
-        "rail": if meta.warning { "warning" } else { "harness" },
-        "source": format!("UniPi · {}", meta.source),
-        "body": {"t": "stack", "direction": "vertical", "children": body},
-    })
+    let rail = if meta.warning {
+        Color::Warning
+    } else {
+        Color::Harness
+    };
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .rail(rail.clone())
+        .title(vec![
+            Title::top(Line::from(Span::from(label).fg(rail))),
+            Title::bottom(format!("UniPi · {}", meta.source)),
+        ])
+        .child(Layout::default().children(body))
+        .into()
 }
 
 /// Text of message content.
@@ -251,12 +265,13 @@ pub fn content_text(content: &Value) -> String {
 #[must_use]
 pub fn render(custom_type: &str, message: &Value, style: RenderStyle, expanded: bool) -> Value {
     let meta = read_meta(custom_type, message.get("details"));
-    panel(
+    let node = panel(
         &content_text(message.get("content").unwrap_or(&Value::Null)),
         &meta,
         style,
         expanded,
-    )
+    );
+    serde_json::to_value(node).unwrap_or(Value::Null)
 }
 
 #[cfg(test)]
@@ -274,9 +289,15 @@ pub fn render(custom_type: &str, message: &Value, style: RenderStyle, expanded: 
 )]
 mod tests {
     use super::*;
+    use serde_json::json;
 
-    fn kids(v: &Value) -> Vec<Value> {
-        v["body"]["children"]
+    /// A node as the JSON the renderer emits.
+    fn wire(node: Node) -> Value {
+        serde_json::to_value(node).unwrap_or_default()
+    }
+
+    fn kids(node: Node) -> Vec<Value> {
+        wire(node)["child"]["children"]
             .as_array()
             .cloned()
             .unwrap_or_default()
@@ -321,46 +342,46 @@ mod tests {
     fn densities() {
         let body = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6";
         let m = fallback("unipi-response");
-        let simple = panel(body, &m, RenderStyle::Simple, false);
+        let simple = wire(panel(body, &m, RenderStyle::Simple, false));
         assert_eq!(simple["rail"], "harness");
-        assert_eq!(kids(&simple).len(), 2);
+        assert_eq!(kids(panel(body, &m, RenderStyle::Simple, false)).len(), 2);
         assert!(
-            kids(&simple)[1]["value"][0]["text"]
+            kids(panel(body, &m, RenderStyle::Simple, false))[1]["text"][0][0]["content"]
                 .as_str()
                 .is_some_and(|t| t.contains("6 lines"))
         );
         assert_eq!(
-            kids(&panel(body, &m, RenderStyle::Simple, true))[1]["t"],
-            "markdown"
+            kids(panel(body, &m, RenderStyle::Simple, true))[1]["t"],
+            "Markdown"
         );
-        assert_eq!(kids(&panel(body, &m, RenderStyle::Regular, false)).len(), 1);
-        assert_eq!(kids(&panel(body, &m, RenderStyle::Regular, true)).len(), 2);
-        let adv = kids(&panel(body, &m, RenderStyle::Advanced, false));
+        assert_eq!(kids(panel(body, &m, RenderStyle::Regular, false)).len(), 1);
+        assert_eq!(kids(panel(body, &m, RenderStyle::Regular, true)).len(), 2);
+        let adv = kids(panel(body, &m, RenderStyle::Advanced, false));
         assert!(
-            adv[1]["value"][0]["text"]
+            adv[1]["text"][0][0]["content"]
                 .as_str()
                 .is_some_and(|t| t.contains("2 more lines"))
         );
         assert!(
-            adv[2]["value"][0]["text"]
+            adv[2]["text"][0][0]["content"]
                 .as_str()
                 .is_some_and(|t| t.contains("delivery: followUp"))
         );
         let w = fallback("unipi-watchdog");
         assert_eq!(
-            kids(&panel(body, &w, RenderStyle::Simple, false)).len(),
+            kids(panel(body, &w, RenderStyle::Simple, false)).len(),
             0,
             "simple warnings collapse to the label"
         );
         assert_eq!(
-            panel(body, &w, RenderStyle::Regular, false)["rail"],
+            wire(panel(body, &w, RenderStyle::Regular, false))["rail"],
             "warning"
         );
-        assert_eq!(kids(&panel(body, &w, RenderStyle::Advanced, true)).len(), 2);
+        assert_eq!(kids(panel(body, &w, RenderStyle::Advanced, true)).len(), 2);
         let mut lines = m.clone();
         lines.lines = vec!["skill-a".into(), "skill-b".into()];
         assert_eq!(
-            kids(&panel(body, &lines, RenderStyle::Advanced, false)).len(),
+            kids(panel(body, &lines, RenderStyle::Advanced, false)).len(),
             3
         );
     }
@@ -369,7 +390,7 @@ mod tests {
     fn renders_messages() {
         let msg = json!({"customType": "unipi-response", "content": [{"type": "text", "text": "## Cleanup"}]});
         let v = render("unipi-response", &msg, RenderStyle::Regular, false);
-        assert_eq!(kids(&v)[0]["value"], "## Cleanup");
+        assert_eq!(v["child"]["children"][0]["source"], "## Cleanup");
         assert_eq!(content_text(&json!("x")), "x");
     }
 }

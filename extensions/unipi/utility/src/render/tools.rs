@@ -7,7 +7,8 @@
 //! | `advanced` | `◆ Ran command` + command / diff / content blocks + output tail + exit line | full output |
 //! | `regular` | `None` (the frontend's own rendering) | same |
 
-use serde_json::{Value, json};
+use oino_extension::ui::widgets::prelude::*;
+use serde_json::Value;
 
 use super::parse::{
     as_json, diff_stats, exit_code, lang_for_path, parse_diff, split_command, strip_status,
@@ -233,17 +234,45 @@ impl ToolView {
     }
 }
 
-fn span(text: impl Into<String>, tone: Option<&str>) -> Value {
-    let mut v = json!({"text": text.into()});
-    if let Some(t) = tone {
-        v["tone"] = json!(t);
+fn span(text: impl Into<String>, tone: Option<&str>) -> Span {
+    let span = Span::from(text.into());
+    match tone {
+        Some(t) => span.fg(Color::parse(t)),
+        None => span,
     }
-    v
+}
+
+/// A nowrap paragraph from spans.
+fn paragraph(spans: Vec<Span>) -> Paragraph {
+    Paragraph::new(Line::from(spans)).wrap(Wrap::Disabled(false))
+}
+
+/// One dim line.
+fn dim(text: impl Into<String>) -> Paragraph {
+    paragraph(vec![Span::from(text.into()).dim()])
+}
+
+fn code(value: &str, lang: Option<&str>, line_numbers: bool) -> Code {
+    let mut c = Code::new(value).line_numbers(line_numbers);
+    if let Some(l) = lang {
+        c = c.language(l);
+    }
+    c
+}
+
+fn stack(children: &[Node]) -> Layout {
+    Layout::default().children(children.iter().cloned())
 }
 
 /// The simple-style row.
 #[must_use]
-pub fn simple_row(v: &ToolView) -> Value {
+pub fn simple_row(v: &ToolView) -> Node {
+    simple_row_marked(v, "└ ")
+}
+
+/// The simple-style row with a tree marker (`├ ` when a tool row follows).
+#[must_use]
+pub fn simple_row_marked(v: &ToolView, marker: &str) -> Node {
     let [running_v, done_v, failed_v] = verbs_for(&v.name);
     let verb = if v.failed {
         failed_v
@@ -252,7 +281,7 @@ pub fn simple_row(v: &ToolView) -> Value {
     } else {
         done_v
     };
-    let marker = span(
+    let mark = span(
         if v.failed { "×" } else { "•" },
         Some(if v.failed {
             "error"
@@ -268,10 +297,10 @@ pub fn simple_row(v: &ToolView) -> Value {
         None => output_meta(v.result.as_ref()),
     };
     let mut spans = vec![
-        span("└ ", Some("muted")),
-        marker,
+        span(marker, Some("muted")),
+        mark,
         span(" ", None),
-        json!({"text": verb, "bold": true}),
+        Span::from(verb).bold(),
     ];
     if !target.is_empty() {
         if v.name == "bash" || v.name == "powershell" {
@@ -292,10 +321,10 @@ pub fn simple_row(v: &ToolView) -> Value {
     } else if !meta.is_empty() {
         spans.push(span(meta, Some(if v.failed { "error" } else { "muted" })));
     }
-    json!({"t": "text", "value": spans, "wrap": false})
+    paragraph(spans).into()
 }
 
-fn header(title: &str, detail: &str, running: bool, bad: bool, meta: Option<&str>) -> Value {
+fn header(title: &str, detail: &str, running: bool, bad: bool, meta: Option<&str>) -> Paragraph {
     let mut spans = vec![
         span(
             "◆ ",
@@ -307,7 +336,7 @@ fn header(title: &str, detail: &str, running: bool, bad: bool, meta: Option<&str
                 "accent"
             }),
         ),
-        json!({"text": title, "bold": true}),
+        Span::from(title).bold(),
     ];
     if !detail.is_empty() {
         spans.push(span(format!(" {detail}"), Some("accent")));
@@ -318,26 +347,10 @@ fn header(title: &str, detail: &str, running: bool, bad: bool, meta: Option<&str
             Some(if bad { "error" } else { "muted" }),
         ));
     }
-    json!({"t": "text", "value": spans})
+    paragraph(spans)
 }
 
-fn dim(text: impl Into<String>) -> Value {
-    json!({"t": "text", "value": [{"text": text.into(), "dim": true}]})
-}
-
-fn code(value: &str, lang: Option<&str>, line_numbers: bool) -> Value {
-    let mut v = json!({"t": "code", "value": value, "lineNumbers": line_numbers});
-    if let Some(l) = lang {
-        v["language"] = json!(l);
-    }
-    v
-}
-
-fn stack(children: &[Value]) -> Value {
-    json!({"t": "stack", "direction": "vertical", "children": children})
-}
-
-fn command_nodes(command: &str, expanded: bool) -> Vec<Value> {
+fn command_nodes(command: &str, expanded: bool) -> Vec<Node> {
     let lines: Vec<&str> = command.split('\n').collect();
     let shown = if expanded {
         lines.len()
@@ -356,35 +369,41 @@ fn command_nodes(command: &str, expanded: bool) -> Vec<Value> {
         for seg in segs {
             let body = seg.text.trim_end_matches('\n');
             if !body.is_empty() {
-                out.push(code(
-                    body,
-                    Some(if seg.code { seg.lang.as_str() } else { "bash" }),
-                    false,
-                ));
+                out.push(
+                    code(
+                        body,
+                        Some(if seg.code { seg.lang.as_str() } else { "bash" }),
+                        false,
+                    )
+                    .into(),
+                );
             }
         }
     } else {
-        out.push(code(&text, Some("bash"), false));
+        out.push(code(&text, Some("bash"), false).into());
     }
     if shown < lines.len() {
-        out.push(dim(format!("  … {} more lines", lines.len() - shown)));
+        out.push(dim(format!("  … {} more lines", lines.len() - shown)).into());
     }
     out
 }
 
-fn bash_advanced(v: &ToolView, expanded: bool) -> Value {
+fn bash_advanced(v: &ToolView, expanded: bool) -> Node {
     let command = s(&v.args, "command").unwrap_or_default();
-    let mut out = vec![header(
-        if v.running {
-            "Running command"
-        } else {
-            "Ran command"
-        },
-        "",
-        v.running,
-        v.failed,
-        None,
-    )];
+    let mut out: Vec<Node> = vec![
+        header(
+            if v.running {
+                "Running command"
+            } else {
+                "Ran command"
+            },
+            "",
+            v.running,
+            v.failed,
+            None,
+        )
+        .into(),
+    ];
     out.extend(command_nodes(command, expanded));
     let text = v.result.as_ref().map(text_of).unwrap_or_default();
     let output = strip_status(&text);
@@ -398,18 +417,28 @@ fn bash_advanced(v: &ToolView, expanded: bool) -> Value {
             lines.len().min(OUTPUT_TAIL)
         };
         if shown < lines.len() {
-            out.push(dim(format!("… {} earlier lines", lines.len() - shown)));
+            out.push(dim(format!("… {} earlier lines", lines.len() - shown)).into());
         }
         let tail = lines[lines.len() - shown..].join("\n");
         if pretty.is_some() {
-            out.push(code(&tail, Some("json"), false));
+            out.push(code(&tail, Some("json"), false).into());
         } else {
-            out.push(json!({"t": "log", "lines": lines[lines.len() - shown..], "tail": true}));
+            out.push(
+                Log::new(lines[lines.len() - shown..].iter().map(|l| Line::from(*l)))
+                    .follow(true)
+                    .into(),
+            );
         }
     }
     if !v.running {
         if let Some((p, f)) = test_summary(&output) {
-            out.push(json!({"t": "text", "value": [span(format!("{} {p} passed · {f} failed", if f > 0 { "✗" } else { "✓" }), Some(if f > 0 { "error" } else { "success" }))]}));
+            out.push(
+                paragraph(vec![span(
+                    format!("{} {p} passed · {f} failed", if f > 0 { "✗" } else { "✓" }),
+                    Some(if f > 0 { "error" } else { "success" }),
+                )])
+                .into(),
+            );
         }
         let detached = v.detached();
         let code = exit_code(&text, v.failed);
@@ -419,11 +448,9 @@ fn bash_advanced(v: &ToolView, expanded: bool) -> Value {
             (None, Some(0)) => ("Exited with code 0".to_owned(), "success"),
             (None, Some(c)) => (format!("Exited with code {c}"), "error"),
         };
-        out.push(
-            json!({"t": "text", "value": [span("└ ", Some("muted")), span(status, Some(tone))]}),
-        );
+        out.push(paragraph(vec![span("└ ", Some("muted")), span(status, Some(tone))]).into());
     }
-    stack(&out)
+    stack(&out).into()
 }
 
 fn read_range(args: &Value) -> String {
@@ -439,7 +466,7 @@ fn read_range(args: &Value) -> String {
     }
 }
 
-fn edit_view(v: &ToolView, verb: &str, shown_path: &str, expanded: bool) -> Value {
+fn edit_view(v: &ToolView, verb: &str, shown_path: &str, expanded: bool) -> Node {
     let diff = v
         .details("diff")
         .and_then(Value::as_str)
@@ -447,40 +474,37 @@ fn edit_view(v: &ToolView, verb: &str, shown_path: &str, expanded: bool) -> Valu
     let rows = parse_diff(diff);
     let (a, r) = diff_stats(&rows);
     let meta = (!v.running).then(|| format!("+{a} -{r}"));
-    let mut out = vec![header(verb, shown_path, v.running, false, meta.as_deref())];
+    let mut out: Vec<Node> =
+        vec![header(verb, shown_path, v.running, false, meta.as_deref()).into()];
     if !rows.is_empty() {
         let shown = if expanded {
             rows.len()
         } else {
             rows.len().min(DIFF_ROWS)
         };
-        out.push(json!({"t": "diff", "patch": to_patch(&rows[..shown]), "path": v.path()}));
+        out.push(Diff::patch(to_patch(&rows[..shown])).path(v.path()).into());
         if shown < rows.len() {
-            out.push(dim(format!("   … {} more lines", rows.len() - shown)));
+            out.push(dim(format!("   … {} more lines", rows.len() - shown)).into());
         }
     }
-    stack(&out)
+    stack(&out).into()
 }
 
-fn write_view(v: &ToolView, verb: &str, shown_path: &str, expanded: bool) -> Value {
+fn write_view(v: &ToolView, verb: &str, shown_path: &str, expanded: bool) -> Node {
     let content = s(&v.args, "content").unwrap_or_default();
     let lines: Vec<&str> = content.split('\n').collect();
     let n = lines.len();
     let meta = format!("{n} line{}", if n == 1 { "" } else { "s" });
-    let mut out = vec![header(verb, shown_path, v.running, false, Some(&meta))];
+    let mut out: Vec<Node> = vec![header(verb, shown_path, v.running, false, Some(&meta)).into()];
     let shown = if expanded { n } else { n.min(WRITE_LINES) };
-    out.push(code(
-        &lines[..shown].join("\n"),
-        lang_for_path(&v.path()),
-        true,
-    ));
+    out.push(code(&lines[..shown].join("\n"), lang_for_path(&v.path()), true).into());
     if shown < n {
-        out.push(dim(format!("… {} more lines", n - shown)));
+        out.push(dim(format!("… {} more lines", n - shown)).into());
     }
-    stack(&out)
+    stack(&out).into()
 }
 
-fn read_view(v: &ToolView, verb: &str, shown_path: &str, text: &str, expanded: bool) -> Value {
+fn read_view(v: &ToolView, verb: &str, shown_path: &str, text: &str, expanded: bool) -> Node {
     let lines: Vec<&str> = text.split('\n').collect();
     let meta = format!(
         "{} line{}",
@@ -488,13 +512,16 @@ fn read_view(v: &ToolView, verb: &str, shown_path: &str, text: &str, expanded: b
         if lines.len() == 1 { "" } else { "s" }
     );
     let detail = format!("{shown_path}{}", read_range(&v.args));
-    let mut out = vec![header(
-        verb,
-        &detail,
-        v.running,
-        false,
-        (!v.running).then_some(meta.as_str()),
-    )];
+    let mut out: Vec<Node> = vec![
+        header(
+            verb,
+            &detail,
+            v.running,
+            false,
+            (!v.running).then_some(meta.as_str()),
+        )
+        .into(),
+    ];
     let content = v
         .result
         .as_ref()
@@ -505,24 +532,33 @@ fn read_view(v: &ToolView, verb: &str, shown_path: &str, text: &str, expanded: b
         .flatten()
         .filter(|c| c.get("type").and_then(Value::as_str) == Some("image"))
     {
-        out.push(json!({"t": "image", "data": img.get("data"), "mimeType": img.get("mimeType"), "alt": shown_path}));
+        let (Some(data), Some(mime)) = (
+            img.get("data").and_then(Value::as_str),
+            img.get("mimeType").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        out.push(Image::new(ImageSource::data(data, mime), shown_path).into());
     }
     if expanded && !text.is_empty() {
-        let mut c = code(
+        let c = code(
             &lines[..lines.len().min(READ_LINES)].join("\n"),
             lang_for_path(&v.path()),
             true,
+        )
+        .start_line(
+            u32::try_from(v.args.get("offset").and_then(Value::as_u64).unwrap_or(1))
+                .unwrap_or(u32::MAX),
         );
-        c["startLine"] = json!(v.args.get("offset").and_then(Value::as_u64).unwrap_or(1));
-        out.push(c);
+        out.push(c.into());
         if lines.len() > READ_LINES {
-            out.push(dim(format!("… {} more lines", lines.len() - READ_LINES)));
+            out.push(dim(format!("… {} more lines", lines.len() - READ_LINES)).into());
         }
     }
-    stack(&out)
+    stack(&out).into()
 }
 
-fn file_advanced(v: &ToolView, expanded: bool) -> Value {
+fn file_advanced(v: &ToolView, expanded: bool) -> Node {
     let shown_path = short_path(&v.path(), &v.cwd, v.home.as_deref());
     let [running_v, done_v, _] = verbs_for(&v.name);
     let verb = if v.running && v.name != "read" {
@@ -532,12 +568,13 @@ fn file_advanced(v: &ToolView, expanded: bool) -> Value {
     };
     let text = v.result.as_ref().map(text_of).unwrap_or_default();
     if v.failed {
-        let mut out = vec![header(&verb, &shown_path, false, true, Some("failed"))];
+        let mut out: Vec<Node> =
+            vec![header(&verb, &shown_path, false, true, Some("failed")).into()];
         out.extend(
             text.split('\n')
-                .map(|l| json!({"t": "text", "value": [span(format!("  {l}"), Some("error"))]})),
+                .map(|l| paragraph(vec![span(format!("  {l}"), Some("error"))]).into()),
         );
-        return stack(&out);
+        return stack(&out).into();
     }
     match v.name.as_str() {
         "edit" => edit_view(v, &verb, &shown_path, expanded),
@@ -545,18 +582,18 @@ fn file_advanced(v: &ToolView, expanded: bool) -> Value {
         "read" => read_view(v, &verb, &shown_path, &text, expanded),
         _ => {
             let target = target_arg(&v.name, &v.args, &v.cwd, v.home.as_deref());
-            let mut out = vec![header(&verb, &target, v.running, false, None)];
+            let mut out: Vec<Node> = vec![header(&verb, &target, v.running, false, None).into()];
             if expanded && !text.is_empty() {
-                out.push(json!({"t": "log", "lines": text.split('\n').collect::<Vec<_>>()}));
+                out.push(Log::new(text.split('\n').map(Line::from)).into());
             }
-            stack(&out)
+            stack(&out).into()
         }
     }
 }
 
 /// The advanced view.
 #[must_use]
-pub fn advanced(v: &ToolView, expanded: bool) -> Value {
+pub fn advanced(v: &ToolView, expanded: bool) -> Node {
     if v.name == "bash" {
         bash_advanced(v, expanded)
     } else {
@@ -566,7 +603,7 @@ pub fn advanced(v: &ToolView, expanded: bool) -> Value {
 
 /// Harness annotation header (`details.unipiHarnessAnnotations` / `oinoProvenance`).
 #[must_use]
-pub fn annotation(result: Option<&Value>) -> Option<Value> {
+pub fn annotation(result: Option<&Value>) -> Option<Node> {
     let d = result?.get("details")?;
     let list = d
         .get("unipiHarnessAnnotations")
@@ -588,7 +625,11 @@ pub fn annotation(result: Option<&Value>) -> Option<Value> {
             .unwrap_or_default()
     );
     Some(
-        json!({"t": "text", "value": [span(label, Some(if warn { "warning" } else { "harness" }))]}),
+        paragraph(vec![span(
+            label,
+            Some(if warn { "warning" } else { "harness" }),
+        )])
+        .into(),
     )
 }
 
@@ -600,10 +641,11 @@ pub fn render(style: RenderStyle, v: &ToolView, expanded: bool) -> Option<Value>
         RenderStyle::Simple if !expanded => simple_row(v),
         RenderStyle::Simple | RenderStyle::Advanced => advanced(v, expanded),
     };
-    Some(match annotation(v.result.as_ref()) {
-        Some(a) => stack(&[a, body]),
+    let node = match annotation(v.result.as_ref()) {
+        Some(a) => stack(&[a, body]).into(),
         None => body,
-    })
+    };
+    Some(serde_json::to_value(node).unwrap_or(Value::Null))
 }
 
 #[cfg(test)]
@@ -621,6 +663,7 @@ pub fn render(style: RenderStyle, v: &ToolView, expanded: bool) -> Option<Value>
 )]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn view(name: &str, args: Value, result: Option<Value>) -> ToolView {
         let mut data = json!({"args": args});
@@ -630,6 +673,7 @@ mod tests {
         ToolView::from_data(name, &data, "/w", Some("/home/u"))
     }
 
+    /// Plain text of a v2 node (§12.1 keys: `text`/`source`/`content`/`children`/`lines`/`patch`).
     fn text(v: &Value) -> String {
         fn walk(v: &Value, out: &mut String) {
             match v {
@@ -640,7 +684,7 @@ mod tests {
                     .filter(|(k, _)| {
                         matches!(
                             k.as_str(),
-                            "value" | "text" | "children" | "lines" | "patch"
+                            "text" | "source" | "content" | "children" | "lines" | "patch"
                         )
                     })
                     .for_each(|(_, x)| walk(x, out)),
@@ -650,6 +694,11 @@ mod tests {
         let mut s = String::new();
         walk(v, &mut s);
         s
+    }
+
+    /// A node as the JSON the renderer emits.
+    fn wire(node: impl Into<Node>) -> Value {
+        serde_json::to_value(node.into()).unwrap_or_default()
     }
 
     #[test]
@@ -706,25 +755,25 @@ mod tests {
             Some(json!({"content": [{"type": "text", "text": "a\nb"}]})),
         );
         assert_eq!(
-            text(&simple_row(&done)),
+            text(&wire(simple_row(&done))),
             "└ • Ran  npm test · 2 output lines"
         );
         let running = view("read", json!({"path": "/w/a.rs"}), None);
-        assert_eq!(text(&simple_row(&running)), "└ • Reading (./a.rs) …");
+        assert_eq!(text(&wire(simple_row(&running))), "└ • Reading (./a.rs) …");
         let failed = view(
             "edit",
             json!({"path": "/w/a.rs"}),
             Some(json!({"content": [{"type": "text", "text": "no match"}], "isError": true})),
         );
-        let row = simple_row(&failed);
-        assert_eq!(row["value"][1]["text"], "×");
+        let row = wire(simple_row(&failed));
+        assert_eq!(row["text"][0][1]["content"], "×");
         assert!(text(&row).contains("Edit failed"));
         let detached = view(
             "bash",
             json!({"command": "sleep 99"}),
             Some(json!({"content": [], "details": {"detachedToTask": "t1"}})),
         );
-        assert!(text(&simple_row(&detached)).ends_with("→ background task t1"));
+        assert!(text(&wire(simple_row(&detached))).ends_with("→ background task t1"));
     }
 
     #[test]
@@ -740,7 +789,7 @@ mod tests {
                 json!({"content": [{"type": "text", "text": format!("{out}\ntest result: ok. 12 passed; 0 failed\n\nCommand exited with code 0")}]}),
             ),
         );
-        let r = advanced(&v, false);
+        let r = wire(advanced(&v, false));
         let t = text(&r);
         assert!(t.contains("Ran command"));
         assert!(t.contains("… 6 earlier lines"));
@@ -751,7 +800,7 @@ mod tests {
             json!({"command": "python - <<'EOF'\nprint(1)\nEOF"}),
             None,
         );
-        let nodes = advanced(&heredoc, true);
+        let nodes = wire(advanced(&heredoc, true));
         assert!(
             nodes["children"]
                 .as_array()
@@ -765,7 +814,7 @@ mod tests {
             Some(json!({"content": [{"type": "text", "text": "{\"a\":1}"}]})),
         );
         assert!(
-            advanced(&json_out, false)["children"]
+            wire(advanced(&json_out, false))["children"]
                 .as_array()
                 .unwrap()
                 .iter()
@@ -780,15 +829,15 @@ mod tests {
             json!({"path": "/w/a.rs"}),
             Some(json!({"content": [], "details": {"diff": " 1 a\n+2 b\n-3 c"}})),
         );
-        let e = advanced(&edit, false);
+        let e = wire(advanced(&edit, false));
         assert!(text(&e).contains("Edited ./a.rs · +1 -1"));
-        assert_eq!(e["children"][1]["t"], "diff");
+        assert_eq!(e["children"][1]["t"], "Diff");
         let write = view(
             "write",
             json!({"path": "/w/a.rs", "content": (0..20).map(|i| i.to_string()).collect::<Vec<_>>().join("\n")}),
             Some(json!({"content": []})),
         );
-        let w = advanced(&write, false);
+        let w = wire(advanced(&write, false));
         assert_eq!(w["children"][1]["language"], "rust");
         assert!(text(&w).contains("… 8 more lines"));
         let read = view(
@@ -796,14 +845,14 @@ mod tests {
             json!({"path": "/w/a.md", "offset": 5, "limit": 3}),
             Some(json!({"content": [{"type": "text", "text": "x\ny"}]})),
         );
-        assert!(text(&advanced(&read, false)).contains("./a.md (L5–7) · 2 lines"));
-        assert_eq!(advanced(&read, true)["children"][1]["startLine"], 5);
+        assert!(text(&wire(advanced(&read, false))).contains("./a.md (L5–7) · 2 lines"));
+        assert_eq!(wire(advanced(&read, true))["children"][1]["startLine"], 5);
         let bad = view(
             "write",
             json!({"path": "/w/a"}),
             Some(json!({"content": [{"type": "text", "text": "EACCES"}], "isError": true})),
         );
-        assert!(text(&advanced(&bad, false)).contains("EACCES"));
+        assert!(text(&wire(advanced(&bad, false))).contains("EACCES"));
     }
 
     #[test]
@@ -820,7 +869,7 @@ mod tests {
         assert!(text(&r).starts_with("⚠ UniPi · Watchdog · Slow"));
         assert_eq!(
             render(RenderStyle::Simple, &v, true).unwrap()["children"][1]["t"],
-            "stack"
+            "Layout"
         );
         assert!(
             render(
