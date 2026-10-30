@@ -365,13 +365,18 @@ async fn test_notify_sends_through_the_hosts_channels() {
     };
     store::save_jobs(&cron_paths, &[job]).unwrap();
 
-    let cron = CronHost::new(&paths);
-    let reply = cron
-        .control(unipi_cron::control::CronControl::TestNotify {
-            id: "digest".into(),
-        })
+    // The extension-facing `"cron"` host service (op strings, WP-X1 trait).
+    use oino_extension_api::host_service::HostService;
+    let service = CronHost::new(&paths);
+    let reply = service
+        .call(
+            "test-notify",
+            oino_extension_api::RawJson::from_json_value(&serde_json::json!({"id":"digest"})),
+            tokio_util::sync::CancellationToken::new(),
+        )
         .await
-        .unwrap();
+        .unwrap()
+        .to_value();
     assert_eq!(reply["channels"][0], "gotify");
     assert_eq!(reply["errors"].as_array().unwrap().len(), 0, "{reply}");
     let request = tokio::time::timeout(Duration::from_secs(5), rx)

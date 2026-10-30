@@ -678,10 +678,10 @@ async fn main() -> anyhow::Result<()> {
                         host_name: hostname(),
                         mode: mode.as_str().to_owned(),
                         kanboard_bin: unipi_host::sessions::services::kanboard_bin(),
-                        cron: cron_scheduler.as_ref().map(|scheduler| {
-                            std::sync::Arc::new(unipi_cron::host_service::CronHostService::new(
-                                std::sync::Arc::clone(scheduler),
-                            ))
+                        // The host's own `"cron"` service (not the library's plain one):
+                        // `test-notify` must send through the same channels as a run.
+                        cron: cron_scheduler.as_ref().map(|_| {
+                            std::sync::Arc::new(cron.clone())
                                 as std::sync::Arc<dyn oino_extension_api::host_service::HostService>
                         }),
                         // Registered by its own WP (`spec-browser` WP-B7).

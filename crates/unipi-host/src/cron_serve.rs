@@ -15,6 +15,11 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use oino_extension_api::host_service::HostService;
+use oino_extension_api::runtime::BoxFut;
+use oino_extension_api::{HostError, RawJson};
+use tokio_util::sync::CancellationToken;
+
 use unipi_cron::control::{self, CronControl, EditJob, NewJob, SettingsPatch};
 use unipi_cron::model::{CronSettings, Job, NotifySpec, Run, RunStatus, SessionLink};
 use unipi_cron::{schedule, store, CronPaths, Scheduler};
@@ -110,7 +115,12 @@ impl CronHost {
             .map_err(|e| e.to_string())
     }
 
-    async fn test_notify(&self, id: &str) -> Result<serde_json::Value, String> {
+    /// One real test notification on the job's channels, through the host's own senders
+    /// (the same a run uses, §9.5).
+    ///
+    /// # Errors
+    /// The user-facing failure (no job, no channels configured).
+    pub async fn test_notify(&self, id: &str) -> Result<serde_json::Value, String> {
         let jobs = store::load_jobs(&self.paths).map_err(|e| e.to_string())?;
         let job = jobs
             .iter()
@@ -147,6 +157,26 @@ impl CronHost {
         };
         let errors = crate::cron_notify::dispatch_forced(job, &run, &channels).await;
         Ok(serde_json::json!({ "id": id, "channels": selected, "errors": errors }))
+    }
+}
+
+/// The `"cron"` host service (WP-X1 trait) the `unipi.cron` extension calls: unipi-cron's
+/// op set, through [`CronHost::control`], so `test-notify` uses the host's channels like a
+/// real run does.
+impl HostService for CronHost {
+    fn call(
+        &self,
+        op: &str,
+        payload: RawJson,
+        _cancel: CancellationToken,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        let op = op.to_owned();
+        Box::pin(async move {
+            let request = unipi_cron::host_service::control_from_op(&op, &payload.to_value())
+                .map_err(HostError::Failed)?;
+            let value = self.control(request).await.map_err(HostError::Failed)?;
+            Ok(RawJson::from_json_value(&value))
+        })
     }
 }
 
@@ -643,7 +673,11 @@ pub fn apply_settings_patch(
     paths: &CronPaths,
     patch: CronSettingsSetRequest,
 ) -> Result<CronSettings, String> {
-    if patch.ntfy_topic.is_some() {
+    if patch
+        .ntfy_topic
+        .as_deref()
+        .is_some_and(|topic| !topic.trim().is_empty())
+    {
         return Err(
             "the ntfy topic moved to the notify settings (extensionSettings.notify.ntfy.topic); `cron_settings_set` no longer stores one"
                 .to_owned(),

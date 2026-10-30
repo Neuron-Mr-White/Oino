@@ -28,6 +28,8 @@ oino-ui = { path = "../oino-ui" }
 unipi-cron = { path = "../unipi-cron" }
 oino-wasm-host = { path = "../oino-wasm-host" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# The `"cron"` host service trait signature (cancellation token, boxed future).
+tokio-util.workspace = true
 
 tokio = { version = "1", features = ["full"] }
 dunce = "1"
