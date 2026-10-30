@@ -117,6 +117,7 @@ const BUILTIN: Record<string, MockOp> = {
 
 const APP_BUILTIN: Record<string, MockOp> = {
   forward_list: () => [],
+  local_requests: () => [],
   local_host: () => ({ installed: false }),
   push_save_as: () => null,
   push_open: () => null,

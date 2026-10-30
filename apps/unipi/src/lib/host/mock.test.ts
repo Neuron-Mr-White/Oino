@@ -103,3 +103,23 @@ describe('mock host (WP-A1)', () => {
     expect(got).toEqual(['host_notice']);
   });
 });
+
+describe('mock generators + scenarios (WP-A1)', () => {
+  it('genEntries is deterministic and chains parent ids', async () => {
+    const { genEntries, genCards } = await import('../../dev/mock/gen');
+    const a = genEntries({ seed: 3, turns: 4, thinking: true, diffs: true, compaction: true, error: true });
+    expect(genEntries({ seed: 3, turns: 4, thinking: true, diffs: true, compaction: true, error: true })).toEqual(a);
+    a.slice(1).forEach((e, i) => expect(e.parentId).toBe(a[i].id));
+    expect(a.some((e) => e.type === 'compaction')).toBe(true);
+    expect(genCards(5).map((c) => c.id)).toEqual(['s001', 's002', 's003', 's004', 's005']);
+  });
+
+  it('the A1 scenarios load into a world', async () => {
+    const { SCENARIOS } = await import('../../dev/mock/scenarios');
+    expect(Object.keys(SCENARIOS)).toEqual(expect.arrayContaining(['empty', 'no-host', 'offline']));
+    const off = createMockHost(SCENARIOS.offline);
+    expect(off.client('pc-coffee').conn().state).toBe('offline');
+    const none = createMockHost(SCENARIOS['no-host']);
+    expect(await none.client('app').request('list_hosts')).toEqual([]);
+  });
+});

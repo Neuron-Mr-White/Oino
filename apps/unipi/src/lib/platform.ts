@@ -152,7 +152,8 @@ type TauriWindow = {
   __TAURI_OS_PLUGIN_INTERNALS__?: { platform?: string };
   /** Dev-only design-capture mocks (the docs capture scripts + their vite configs). */
   __UNIPI_MOCK__?: unknown;
-  __UNIPI_CHAT__?: unknown;
+  /** Capture harness mock host (vite.config.capture.ts, src/dev/mock/boot.ts). */
+  __UNIPI_HOST__?: unknown;
   __UNIPI_MOCK_PLATFORM__?: PlatformMode;
 };
 
@@ -181,10 +182,10 @@ export function detectPlatform(win: unknown = typeof window !== 'undefined' ? wi
   const os = osFrom(w.__TAURI_OS_PLUGIN_INTERNALS__?.platform, ua);
   if (!tauri) {
     // Design captures mock the native side in a plain browser (IPC through
-    // `__UNIPI_MOCK__`, chat through `__UNIPI_CHAT__`): they render the
+    // `__UNIPI_MOCK__`, or the whole host through `__UNIPI_HOST__`): they render the
     // phone app, so keep its capabilities. `tauri` stays false, so the
     // transports still pick their browser/dev paths exactly as before.
-    if (w.__UNIPI_MOCK__ || w.__UNIPI_CHAT__) return { mode: w.__UNIPI_MOCK_PLATFORM__ ?? 'tauri-mobile', os, tauri: false };
+    if (w.__UNIPI_MOCK__ || w.__UNIPI_HOST__) return { mode: w.__UNIPI_MOCK_PLATFORM__ ?? 'tauri-mobile', os, tauri: false };
     return { mode: 'web', os, tauri: false };
   }
   // Inside Tauri an unknown OS is treated as desktop unless the UA says phone.
