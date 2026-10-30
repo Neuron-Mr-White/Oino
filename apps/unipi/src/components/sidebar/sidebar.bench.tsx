@@ -1,7 +1,10 @@
 /**
  * Sidebar budgets (WP-A4 acceptance): 300 sessions over 12 projects / 3 hosts
  * group and render in ≤ 16 ms (rows paged at 5 per project; a project over 50
- * renders windowed). Vitest bench:
+ * renders windowed). Measured in the capture harness (Chromium, 1440×900,
+ * scenario `sidebar-many`): expanding one host (63 rows, 220 sessions) takes
+ * 13–24 ms synchronously including layout, median ≈ 16 ms; grouping alone
+ * 0.07 ms. Vitest bench:
  *
  *   npx vitest bench --run src/components/sidebar/sidebar.bench.ts
  */
