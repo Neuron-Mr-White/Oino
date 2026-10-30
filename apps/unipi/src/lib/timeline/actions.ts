@@ -4,9 +4,9 @@
  * the composer handoff (text/quotes/images the composer shows) and the
  * message / edit menus (one instance per timeline).
  *
- * The composer is still WP-A6's minimal dock; WP-A12 replaces the consumer.
- * Everything the actions put there goes through this module so A12 can port
- * it to `lib/composer/*` without touching the timeline again:
+ * The composer's draft store lives in `lib/composer/drafts.ts` (WP-A12);
+ * everything the actions put there goes through this module's re-exports so
+ * the timeline never imports the composer's internals:
  *
  *   tail Quote / selection Quote / swipe Quote → quoteIntoComposer()
  *   user bubble Edit / row menu Edit          → editMessage() (tree jump)
@@ -23,6 +23,7 @@ import { imagesOf, textOf, type Part } from '../chat/model';
 import type { SessionEntry, SessionState, OutboxImage } from '../session/types';
 import type { SessionHandle } from '../session/store';
 import type { Turn } from '../session/turns';
+import { addComposerQuote, focusComposer, restoreComposer } from '../composer/drafts';
 import { hostClient } from '../host/factory';
 
 /* ── turn text ──────────────────────────────────────────────────── */
@@ -85,90 +86,30 @@ export function entryIdOfKey(state: Pick<SessionState, 'byId'>, key: string | un
   return id && state.byId[id] !== undefined ? id : undefined;
 }
 
-/* ── composer handoff (A12 replaces the consumer) ────────────────── */
+/* ── composer handoff (the store lives in lib/composer/drafts.ts) ── */
 
-export type QuoteChip = { id: string; text: string };
-export type ComposerDraft = { text: string; quotes: QuoteChip[]; images: OutboxImage[] };
-
-const EMPTY: ComposerDraft = { text: '', quotes: [], images: [] };
-const [drafts, setDrafts] = createSignal<Record<string, ComposerDraft>>({});
-let quoteSeq = 0;
-
-export function composerDraft(key: string): ComposerDraft {
-  return drafts()[key] ?? EMPTY;
-}
-
-const update = (key: string, fn: (draft: ComposerDraft) => ComposerDraft): void => {
-  setDrafts((all) => ({ ...all, [key]: fn(all[key] ?? EMPTY) }));
-};
-
-export function setComposerText(key: string, text: string): void {
-  update(key, (draft) => ({ ...draft, text }));
-}
-
-export function addComposerQuote(key: string, text: string): QuoteChip {
-  const quote = { id: `q${++quoteSeq}`, text: text.trim() };
-  update(key, (draft) => ({ ...draft, quotes: [...draft.quotes, quote] }));
-  return quote;
-}
-
-export function removeComposerQuote(key: string, id: string): void {
-  update(key, (draft) => ({ ...draft, quotes: draft.quotes.filter((quote) => quote.id !== id) }));
-}
-
-export function removeComposerImage(key: string, index: number): void {
-  update(key, (draft) => ({ ...draft, images: draft.images.filter((_, i) => i !== index) }));
-}
-
-/** Edit / tree jump: replaces the composer's text and images. */
-export function restoreComposer(key: string, draft: { text: string; images?: OutboxImage[] }): void {
-  setDrafts((all) => ({ ...all, [key]: { text: draft.text, quotes: [], images: draft.images ?? [] } }));
-}
-
-export function clearComposer(key: string): void {
-  setDrafts((all) => {
-    if (!(key in all)) return all;
-    const next = { ...all };
-    delete next[key];
-    return next;
-  });
-}
-
-/** The message text a send produces: quote chips as blockquotes, then the draft. */
-export function composerSendText(draft: ComposerDraft): string {
-  const quoted = draft.quotes
-    .map((quote) =>
-      quote.text
-        .split('\n')
-        .map((line) => `> ${line}`)
-        .join('\n'),
-    )
-    .join('\n\n');
-  return [quoted, draft.text].filter((part) => part.trim()).join('\n\n');
-}
+export type { QuoteChip, ComposerChip, ComposerDraft } from '../composer/drafts';
+export {
+  composerDraft,
+  setComposerText,
+  addComposerQuote,
+  removeComposerQuote,
+  removeComposerImage,
+  setComposerImages,
+  restoreComposer,
+  clearComposer,
+  addComposerChip,
+  removeComposerChip,
+  composerSendText,
+  registerComposerFocus,
+  focusComposer,
+} from '../composer/drafts';
 
 /** Quote into the composer and put the caret there (selection + tail actions). */
 export function quoteIntoComposer(key: string, text: string): void {
   if (!text.trim()) return;
   addComposerQuote(key, text);
   focusComposer(key);
-}
-
-const focusers = new Map<string, Set<() => void>>();
-
-/** Wires a composer input to focus requests (returns the cleanup). */
-export function registerComposerFocus(key: string, focus: () => void): () => void {
-  const set = focusers.get(key) ?? new Set();
-  set.add(focus);
-  focusers.set(key, set);
-  return () => {
-    set.delete(focus);
-    if (!set.size) focusers.delete(key);
-  };
-}
-
-export function focusComposer(key: string): void {
-  for (const focus of focusers.get(key) ?? []) focus();
 }
 
 /* ── transient action feedback (A19 owns real toasts) ─────────────── */

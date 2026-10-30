@@ -188,7 +188,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                               phone={!layout().desktop()}
                               widgets={<WidgetStack entries={widgets()} target={target()} phone={!layout().desktop()} />}
                               widgetBelow={<WidgetStack entries={widgetBelow()} target={target()} />}
-                              composerTray={<ComposerTray stack={trayStack()} target={target()} />}
+                              composerTray={trayStack().length ? <ComposerTray stack={trayStack()} target={target()} /> : undefined}
                               composer={
                                 <Composer
                                   session={s()}

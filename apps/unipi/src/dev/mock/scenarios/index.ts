@@ -23,6 +23,7 @@ import { slots, slotsDialogs } from './slots';
 import { composerPaste, composerSlash, composerStates } from './composer';
 import { editorConflict, editorLsp, filesPreview, filesSearch, filesTree } from './files';
 import { cmdkEmpty, cmdkFiles, findBar, shortcutsList } from './command';
+import { settingsExtensions, settingsNav, settingsSafeMode, settingsSearch } from './settings';
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
@@ -88,4 +89,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'composer-states': composerStates,
   'composer-paste': composerPaste,
   'composer-slash': composerSlash,
+  'settings-nav': settingsNav,
+  'settings-search': settingsSearch,
+  'settings-extensions': settingsExtensions,
+  'settings-safe-mode': settingsSafeMode,
 };

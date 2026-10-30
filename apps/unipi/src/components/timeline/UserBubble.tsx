@@ -24,7 +24,7 @@ import { fileRefLabel } from '../../lib/chat/fileRefs';
 import { attachFileRefGestures } from '../../lib/chat/fileRefGestures';
 import { openFileRef } from '../../lib/chat/fileRefOpen';
 import { openFilePath, resolvePathToken } from '../../lib/media/pathTokens';
-import { tokenize, type Chip, type Seg } from '../../lib/chat/chips';
+import { tokenize, type Chip, type Seg } from '../../lib/composer/chips';
 import type { ImageRef } from '../../lib/chat/model';
 import { knownPrefixes, splitTaskRefs } from '../../lib/board/portal';
 import { openTaskFromChat } from '../../lib/session/open';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { attachmentToken, chipSpans, imageChipIds, imageToken, insertToken, pathCandidates, removeToken, resolveAttachmentTokens, resolveImageTokens, restoredImageText, tokenize } from './chips';
-import { appendFileMentions, fileMentionsOf, formatFileMention } from './attachments';
+import { appendFileMentions, fileMentionsOf, formatFileMention } from '../chat/attachments';
 
 const cmds = new Set(['skill:review', 'unipi:goal']);
 
@@ -95,7 +95,7 @@ describe('resolveAttachmentTokens: the wire format stays the UNI-203 mention', (
 });
 
 describe('bubbleSegments (UNI-212 sent bubbles)', async () => {
-  const { bubbleSegments } = await import('../../components/chat/Transcript');
+  const { bubbleSegments } = await import('../../components/timeline/UserBubble');
   it('many attachment mentions collapse into one wrap of chips (no line per file)', () => {
     const text = 'look\n\n' + ['a', 'b', 'c'].map((n) => `[file: ${n}.txt]@/blobs/${n}`).join('\n');
     const segs = bubbleSegments(text, new Set());
@@ -166,7 +166,7 @@ describe('image chips (UNI-285)', () => {
   });
 
   it('bubbleSegments champs `[image N]` back to a chip (UNI-285 sent bubble)', async () => {
-    const { bubbleSegments } = await import('../../components/chat/Transcript');
+    const { bubbleSegments } = await import('../../components/timeline/UserBubble');
     const segs = bubbleSegments('compare [image 1] with [image 2]', new Set());
     expect(segs.map((s) => ('chip' in s ? `image ${(s.chip as { n: number }).n}` : s.text)).join('|')).toBe('compare |image 1| with |image 2');
   });

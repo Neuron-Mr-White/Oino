@@ -62,11 +62,20 @@ describe('dialog dock (acceptance)', () => {
     fireEvent.click(screen.getByLabelText('Previous dialog'));
 
     // Typing during the waiting dialog still sends (the run is live → steer).
-    const input = screen.getByTestId('tl-composer').querySelector('input') as HTMLInputElement;
-    expect(input).not.toBeDisabled();
-    fireEvent.input(input, { target: { value: 'skip the README for now' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'steer')).toBe(true));
+    const field = screen.getByTestId('tl-composer').querySelector('.chip-field') as HTMLDivElement;
+    expect(field.getAttribute('contenteditable')).toBe('true');
+    field.focus();
+    field.textContent = 'skip the README for now';
+    const range = document.createRange();
+    range.selectNodeContents(field);
+    range.collapse(false);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    fireEvent.input(field);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    // WP-A11's matrix: Enter while running = the global default (queue ⇒ follow_up).
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'follow_up')).toBe(true));
 
     // The answer goes back as the pi response form; the dialog disappears.
     fireEvent.click(screen.getByText('src/math.ts — the failing test'));

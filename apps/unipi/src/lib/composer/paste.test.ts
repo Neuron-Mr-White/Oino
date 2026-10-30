@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyPaste, dropPoint, isInlineImage, mimeForName, planLocalFiles, type PasteData } from './paste';
+import { classifyPaste, dropPoint, isInlineImage, isLongPaste, mimeForName, pastedTextLabel, planLocalFiles, type PasteData } from './paste';
 
 function dt(data: Record<string, string>, files: File[] = []): PasteData {
   return { types: Object.keys(data), getData: (t: string) => data[t] ?? '', files };
@@ -62,5 +62,17 @@ describe('local files (drop / copied files)', () => {
   it('drop position: physical px → CSS px', () => {
     expect(dropPoint({ x: 200, y: 100 }, 2)).toEqual({ x: 100, y: 50 });
     expect(dropPoint({ x: 200, y: 100 }, 0)).toEqual({ x: 200, y: 100 });
+  });
+});
+
+describe('long paste → chip (WP-A12, Z-61)', () => {
+  it('the threshold is 5120: 5119 stays inline, 5120 becomes a chip', () => {
+    expect(isLongPaste('x'.repeat(5119))).toBe(false);
+    expect(isLongPaste('x'.repeat(5120))).toBe(true);
+  });
+
+  it('the label counts lines ("Pasted text · 128 lines")', () => {
+    expect(pastedTextLabel('a\n'.repeat(127) + 'b')).toBe('Pasted text · 128 lines');
+    expect(pastedTextLabel('one line only')).toBe('Pasted text · 1 line');
   });
 });

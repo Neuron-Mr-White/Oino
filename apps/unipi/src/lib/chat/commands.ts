@@ -1,5 +1,13 @@
 /** Slash-command suggestions (UNI-113): subsequence ranking, prefix first. */
-import type { CommandInfo } from './store';
+import type { CommandInfo } from '../session/types';
+
+/** The command sources the rows label (`SOURCE_LABEL`). */
+export type CommandSource = 'extension' | 'prompt' | 'skill' | 'builtin';
+
+/** `source` narrowed to the label set (unknown sources fall back to `extension`). */
+export function sourceOf(c: CommandInfo): CommandSource {
+  return c.source === 'prompt' || c.source === 'skill' || c.source === 'builtin' ? c.source : 'extension';
+}
 
 /**
  * UNI-276: pi's own built-in commands the bridge doesn't list (it sends the
@@ -101,7 +109,7 @@ function score(name: string, query: string): number | null {
 }
 
 /** Group order for ties (same match score): extension commands, then prompts, then skills; `builtin` (app commands like /model) sorts first — they're what a bare `/` is usually typed for. */
-const SOURCE_RANK: Record<CommandInfo['source'], number> = { builtin: 0, extension: 1, prompt: 2, skill: 3 };
+const SOURCE_RANK: Record<CommandSource, number> = { builtin: 0, extension: 1, prompt: 2, skill: 3 };
 
 export function rankCommands(commands: readonly CommandInfo[], query: string, limit = 40): CommandInfo[] {
   const scored: Array<{ c: CommandInfo; s: number }> = [];
@@ -110,7 +118,7 @@ export function rankCommands(commands: readonly CommandInfo[], query: string, li
     if (s !== null) scored.push({ c, s });
   });
   // Terminal-only pi built-ins sink below everything the app can run (UNI-276).
-  const rank = (c: CommandInfo) => (c.source === 'builtin' && TERMINAL_ONLY.has(c.name) ? 9 : SOURCE_RANK[c.source]);
+  const rank = (c: CommandInfo) => (c.source === 'builtin' && TERMINAL_ONLY.has(c.name) ? 9 : SOURCE_RANK[sourceOf(c)]);
   scored.sort((a, b) => a.s - b.s || rank(a.c) - rank(b.c) || a.c.name.localeCompare(b.c.name));
   return scored.slice(0, limit).map((x) => x.c);
 }
@@ -121,11 +129,11 @@ export function rankCommands(commands: readonly CommandInfo[], query: string, li
  * empty, but listing them here costs nothing and keeps the rule in one
  * place. Built-ins with their own args (`/model`, `/thinking`, `/resume`)
  * are driven by dedicated UI, not this generic completer. */
-export function wantsArgCompletions(source: CommandInfo['source']): boolean {
+export function wantsArgCompletions(source: string | undefined): boolean {
   return source === 'extension' || source === 'skill';
 }
 
-export const SOURCE_LABEL: Record<CommandInfo['source'], string> = {
+export const SOURCE_LABEL: Record<CommandSource, string> = {
   builtin: 'app',
   extension: 'command',
   prompt: 'prompt',

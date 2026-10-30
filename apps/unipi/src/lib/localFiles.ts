@@ -11,7 +11,7 @@
  * The core only reads back paths the user dropped or pasted.
  */
 import { invoke } from '@tauri-apps/api/core';
-import { dropPoint, mimeForName, type LocalFile } from './chat/paste';
+import { dropPoint, mimeForName, type LocalFile } from './composer/paste';
 import { isTauriDesktop } from './platform';
 
 export type { LocalFile };

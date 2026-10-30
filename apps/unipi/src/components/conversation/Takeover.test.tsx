@@ -86,14 +86,14 @@ describe('taken over while open', () => {
     const banner = await screen.findByTestId('tl-readonly-banner');
     expect(banner).toHaveTextContent('Taken over from the terminal.');
     // The composer is disabled while another runner holds the session.
-    const input = (await screen.findByTestId('tl-composer')).querySelector('input') as HTMLInputElement;
-    await waitFor(() => expect(input).toBeDisabled());
+    const field = (await screen.findByTestId('tl-composer')).querySelector('.chip-field') as HTMLDivElement;
+    await waitFor(() => expect(field.getAttribute('contenteditable')).toBe('false'));
 
     const opens = () => world.log.filter((e) => e.kind === 'open' && e.op === 'session_open').length;
     const before = opens();
     fireEvent.click(screen.getByTestId('tl-take-back'));
     await waitFor(() => expect(opens()).toBe(before + 1));
     await waitFor(() => expect(screen.queryByTestId('tl-readonly-banner')).toBeNull());
-    await waitFor(() => expect(input).not.toBeDisabled());
+    await waitFor(() => expect(field.getAttribute('contenteditable')).toBe('true'));
   });
 });

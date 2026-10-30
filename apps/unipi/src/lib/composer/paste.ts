@@ -102,3 +102,25 @@ export function dropPoint(position: { x: number; y: number }, scale: number): { 
   const s = scale > 0 ? scale : 1;
   return { x: position.x / s, y: position.y / s };
 }
+
+/* ── long paste → chip (WP-A12, Z-61; RULINGS: ≥ 5120 chars, expanded
+      inline on send — pi parity: the model receives the text) ───── */
+
+/** A paste at least this long becomes a "Pasted text" chip (Z-61). */
+export const PASTE_CHIP_MIN = 5120;
+
+/** Whether a pasted plain text becomes a chip instead of inline text. */
+export function isLongPaste(text: string): boolean {
+  return text.length >= PASTE_CHIP_MIN;
+}
+
+/** The line count the chip's label shows ("Pasted text · 42 lines"). */
+export function pasteLineCount(text: string): number {
+  return text.split('\n').length;
+}
+
+/** The chip label for a long paste. */
+export function pastedTextLabel(text: string): string {
+  const lines = pasteLineCount(text);
+  return `Pasted text · ${lines} line${lines === 1 ? '' : 's'}`;
+}
