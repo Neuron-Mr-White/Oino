@@ -102,6 +102,8 @@ export function TooltipHost() {
   let trigger: Element | undefined;
   /** The trigger's own `aria-describedby`, restored when the tip hides. */
   let described: string | null = null;
+  /** A native `title` is hidden while the shared bubble shows (one tooltip, not two). */
+  let savedTitle: string | null = null;
 
   const reducedMotion = () => typeof matchMedia !== 'undefined' && !!matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -114,8 +116,10 @@ export function TooltipHost() {
     if (!trigger) return;
     if (described === null) trigger.removeAttribute('aria-describedby');
     else trigger.setAttribute('aria-describedby', described);
+    if (savedTitle !== null) trigger.setAttribute('title', savedTitle);
     trigger = undefined;
     described = null;
+    savedTitle = null;
   };
 
   const hide = (fadeOut = true) => {
@@ -139,6 +143,8 @@ export function TooltipHost() {
     trigger = el;
     described = el.getAttribute('aria-describedby');
     el.setAttribute('aria-describedby', TIP_ID);
+    savedTitle = el.getAttribute('title');
+    if (savedTitle !== null) el.removeAttribute('title');
     setTip({ text, el, rect: el.getBoundingClientRect() });
   };
 

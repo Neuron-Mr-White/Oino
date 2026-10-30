@@ -123,8 +123,8 @@ describe('shared tooltip (Z-116)', () => {
     try {
       const view = render(() => (
         <>
-          <button aria-label="One"><svg /></button>
-          <button aria-label="Two"><svg /></button>
+          <button aria-label="One" title="One"><svg /></button>
+          <button aria-label="Two" title="Two"><svg /></button>
           <TooltipHost />
         </>
       ));
@@ -136,6 +136,7 @@ describe('shared tooltip (Z-116)', () => {
       vi.advanceTimersByTime(30);
       expect(currentTip()?.text).toBe('One');
       expect(screen.getByRole('tooltip').textContent).toBe('One');
+      expect(one!.hasAttribute('title')).toBe(false); // one tooltip, not two
       // The trigger carries aria-describedby while the tip is up.
       expect(one!.getAttribute('aria-describedby')).toBe('unipi-tooltip');
 
@@ -146,6 +147,7 @@ describe('shared tooltip (Z-116)', () => {
       vi.advanceTimersByTime(TIP_DELAY_MS);
       expect(currentTip()?.text).toBe('Two');
       expect(one!.hasAttribute('aria-describedby')).toBe(false);
+      expect(one!.getAttribute('title')).toBe('One'); // the native one is back
 
       // Escape dismisses it (through its short exit fade).
       fireEvent.keyDown(document, { key: 'Escape' });
