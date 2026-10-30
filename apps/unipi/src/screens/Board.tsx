@@ -57,7 +57,6 @@ import { FilterSheet, DisplaySheet } from '../components/board/FilterDisplayShee
 import { PcSheet, ProjectMenu, ProjectSheet } from '../components/board/PickerSheets';
 import { SearchSheet } from '../components/board/SearchSheet';
 import { NewTaskSheet } from '../components/board/NewTaskSheet';
-import { BoardToasts } from '../components/board/BoardToasts';
 import { AnchoredMenu, MenuLabel, MenuRow, MenuSeparator } from '../components/board/AnchoredMenu';
 import { ProjectTile } from '../components/board/Glyphs';
 import { TaskDetail } from '../components/board/TaskDetail';
@@ -671,9 +670,6 @@ export default function Board() {
           >
             <Plus size={26} strokeWidth={2.2} />
           </button>
-        </Show>
-        <Show when={!ui.openedTask()}>
-          <BoardToasts />
         </Show>
       </div>
 

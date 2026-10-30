@@ -24,6 +24,7 @@ import { resetBoardActions } from '../lib/board/actions';
 import type { Task } from '../lib/board/api';
 import type { AppError } from '@unipi/protocol';
 import type { Closable, HostClient, HubEvent } from '../lib/host/client';
+import { Toasts } from '../components/Toasts';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 
@@ -120,6 +121,8 @@ function setup(overrides: Record<string, CliHandler> = {}) {
           <SettingsProvider>
             <HostsProvider>
               <Board />
+              {/* Z-85: board toasts render on the app-wide stack */}
+              <Toasts />
             </HostsProvider>
           </SettingsProvider>
         )}

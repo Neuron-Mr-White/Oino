@@ -458,8 +458,6 @@
 .path-box { display: flex; align-items: center; width: 100%; min-height: 44px; margin-top: 12px; padding: 0 12px; box-sizing: border-box; border-radius: 12px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-dim); font-family: var(--font-mono); font-size: 12px; text-align: left; }
 
 /* composer (pinned above the keyboard) */
-.task-toasts { position: relative; z-index: 3; height: 0; }
-.task-toasts .board-toasts { left: 12px; right: 12px; bottom: 10px; }
 .task-composer { flex: 0 0 auto; position: relative; padding: 8px 10px calc(10px + max(var(--inset-ime, 0px), var(--vv-bottom, 0px), env(safe-area-inset-bottom), var(--inset-bottom, 0px))); background: var(--color-surface-1); border-top: 1px solid rgb(46 40 37 / 70%); }
 .task-composer .mention-strip { padding: 2px 2px 8px; }
 .composer-row { display: flex; align-items: flex-end; gap: 8px; }

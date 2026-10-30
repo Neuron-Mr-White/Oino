@@ -26,6 +26,7 @@ import { cancelCardDrag } from '../components/board/cardDrag';
 import { resetLayout } from '../lib/layout';
 import { setPlatformOverride } from '../lib/platform';
 import type { Task } from '../lib/board/api';
+import { Toasts } from '../components/Toasts';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 
@@ -68,6 +69,8 @@ function setup(overrides: Record<string, CliHandler> = {}) {
           <SettingsProvider>
             <HostsProvider>
               <Board />
+              {/* Z-85: board toasts render on the app-wide stack */}
+              <Toasts />
             </HostsProvider>
           </SettingsProvider>
         )}

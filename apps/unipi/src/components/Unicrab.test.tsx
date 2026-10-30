@@ -10,8 +10,8 @@ import { BUBBLE_MS, LONG_PRESS_MS } from '../lib/mascot';
 vi.mock('../hosts/context', () => ({
   useHosts: () => ({ hosts: () => [{ id: 'h1', name: 'Workstation', ticket: 'x', paired_at: 0, last_path: 'lan' }] }),
 }));
-const opened: unknown[] = [];
-vi.mock('../lib/session/open', () => ({ openChat: (...args: unknown[]) => opened.push(args) }));
+const opened: string[] = [];
+vi.mock('../lib/notifyInit', () => ({ openSessionRoute: (hostId: string, sessionId: string) => opened.push(`#/s/${hostId}/${sessionId}`) }));
 
 import { FloatingMascot } from './FloatingMascot';
 
@@ -151,7 +151,7 @@ describe('<FloatingMascot>', () => {
     expect(bubble).toHaveTextContent('auth: token refresh done, 42 tests pass.');
     fireEvent.click(bubble);
     expect(opened).toHaveLength(1);
-    expect((opened[0] as [{ session: string }])[0].session).toBe('auth');
+    expect(opened[0]).toBe('#/s/h1/auth');
     expect(needsYou().isRead('h1:7:agent_end:5')).toBe(true);
     expect(screen.queryByTestId('mascot-bubble')).toBeNull();
 

@@ -16,8 +16,12 @@ import { modalLimits } from './modal-limits';
 import { modalRunning } from './modal-running';
 import { boardDashboard, boardLanes } from './board';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
+import { capsuleScenario, statusLhGraph, statusRunning, statusTodos } from './status';
 import { crashBoundary, dialogApproval, dialogDock, errorRow, takenOver } from './dock';
 import { filesPreview, filesSearch, filesTree } from './files';
+import { needsYou, toastsScenario, unread } from './notify';
+import { cronBadge, cronForm, cronList } from './cron';
+import { rendererCards, toolsGroups, toolsMix } from './tools';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -46,12 +50,25 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'git-last-turn': gitLastTurn,
   'git-history': gitHistory,
   'git-pane-many': gitPaneMany,
+  'status-lh-graph': statusLhGraph,
+  'status-todos': statusTodos,
+  'status-running': statusRunning,
+  capsule: capsuleScenario,
   'files-tree': filesTree,
+  'tools-mix': toolsMix,
+  'tools-groups': toolsGroups,
+  'renderer-cards': rendererCards,
   'files-search': filesSearch,
   'files-preview': filesPreview,
+  'cron-list': cronList,
+  'cron-form': cronForm,
+  'cron-badge': cronBadge,
   'dialog-dock': dialogDock,
   'dialog-approval': dialogApproval,
   'error-row': errorRow,
   'taken-over': takenOver,
   'crash-boundary': crashBoundary,
+  'needs-you': needsYou,
+  toasts: toastsScenario,
+  unread,
 };

@@ -4,11 +4,11 @@
  * Flow: `registerPush()` asks the native side to register with the
  * distributor → PushServiceImpl.onNewEndpoint stores the endpoint URL →
  * `syncPushEndpoint()` reads it and sends it to each paired host
- * (`notify_register`), which writes ~/.unipi/config/notify/app-endpoints.json
- * so the PC's notify publishes there too. Messages are our `unipi1:`
+ * (`notify_register` over the HostClient seam, G-12), which writes the
+ * host-owned app-endpoints fan-out list. Messages are our `unipi1:`
  * envelope (encrypted with the per-pairing key), decrypted natively.
  */
-import { invoke } from '@tauri-apps/api/core';
+import { hostClient } from './host/factory';
 
 export type PushState = 'registered' | 'not_registered' | 'no_distributor' | 'unsupported';
 export type PushStatus = { state: PushState; distributor?: string; endpoint?: string };
@@ -76,4 +76,6 @@ export async function syncPushEndpoint(hostIds: readonly string[], send: (hostId
   return n;
 }
 
-const defaultSend = (hostId: string, endpoint: string) => invoke('notify_register', { hostId, endpoint });
+// G-12 (WP-A19): through the HostClient seam like every host op, so the
+// mock host stands in for captures/tests.
+const defaultSend = (hostId: string, endpoint: string) => hostClient(hostId).request('notify_register', { endpoint });

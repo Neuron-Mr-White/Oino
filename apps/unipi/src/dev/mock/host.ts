@@ -48,6 +48,10 @@ export type MockSession = {
   cmd?: Record<string, (cmd: RpcCommand, host: MockHost) => unknown>;
 };
 
+export type MockFsNode =
+  | { kind: 'dir'; children: Record<string, MockFsNode>; git?: 'M' | 'A' | 'D' | '?'; ignored?: boolean }
+  | { kind: 'file'; text: string; mtime?: number; git?: 'M' | 'A' | 'D' | '?'; ignored?: boolean };
+
 /** One changed file of a mock repo (the `git status` row the Git pane draws). */
 export type MockGitFile = {
   path: string;
@@ -86,7 +90,34 @@ export type MockGit = {
   diffs?: Record<string, string>;
 };
 
-export type MockFsNode = { kind: 'dir'; children: Record<string, MockFsNode> } | { kind: 'file'; text: string; mtime?: number };
+/** One row of the `extensions` host_cmd answer (`ExtensionInfo`). */
+export type MockExtension = {
+  id: string;
+  kind?: string;
+  enabled?: boolean;
+  loaded?: boolean;
+  path?: string;
+  /** Row-level note ("trapped in a session: …"), shown under the toggle. */
+  note?: string;
+};
+
+/** One OSS-2 settings namespace of the `get_settings_schema` answer. */
+export type MockNamespace = {
+  namespace: string;
+  title?: string;
+  description?: string;
+  extensionId?: string;
+  fields?: Array<{ key: string; type?: string; title?: string; description?: string }>;
+};
+
+/** The settings fixtures a scenario seeds (WP-A24): the host's `config.json`,
+ * the merged pi agent settings, the extension namespaces and the list. */
+export type MockSettings = {
+  host?: Record<string, unknown>;
+  pi?: Record<string, unknown>;
+  namespaces?: MockNamespace[];
+  extensions?: MockExtension[];
+};
 
 export type MockHostSpec = {
   id: string;
@@ -102,6 +133,17 @@ export type MockHostSpec = {
   cron?: unknown[];
   /** Board projects + tasks behind `board_cli`/`board_watch` (WP-A22). */
   board?: MockBoardProject[];
+  /** Settings fixtures (WP-A24): host config, pi settings, namespaces, extensions. */
+  settings?: MockSettings;
+  /** Retained host notices (§7.4): replayed to every `events_open` subscriber
+   *  first (the safe-mode banner names its suspects, G-19). */
+  notices?: Array<{ level?: 'info' | 'warning'; text: string }>;
+  /** Hub events replayed on the world clock from the first `events_open`
+   *  (WP-A19): card transitions for needs-you / unread / finished captures. */
+  hub?: Array<{ at: number; event: HubEvent }>;
+  /** `_oino/render` answers, keyed `"<target>/<key>"` → node | null | `{never:true}` (WP-A8).
+   *  `never` never resolves, so the app's 2 s render timeout path can be captured. */
+  renderers?: Record<string, unknown>;
   ops?: Record<string, MockOp>;
 };
 
@@ -126,6 +168,22 @@ declare global {
 
 type Err = { code: string; message: string; hint?: string; retryable: boolean };
 const err = (code: string, message: string, hint?: string): Err => ({ code, message, hint, retryable: code === 'E_TRANSPORT' || code === 'E_TIMEOUT' });
+
+const MIME: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+  pdf: 'application/pdf', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav',
+  md: 'text/markdown', json: 'application/json', txt: 'text/plain', ts: 'text/x-typescript', rs: 'text/rust',
+};
+function mimeOf(path: string): string {
+  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+  return MIME[ext] ?? 'application/octet-stream';
+}
+
+/** 1×1 transparent PNG (same as `gen.ts` `TINY_PNG`), as bytes. */
+const TINY_PNG_BYTES = Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='),
+  (ch) => ch.charCodeAt(0),
+);
 
 function walk(root: Record<string, MockFsNode> | undefined, path: string): MockFsNode | undefined {
   if (!root) return undefined;
@@ -206,6 +264,10 @@ function mockGitOp(cmd: { action: string; [k: string]: unknown }, g: MockGit): u
       const asked = new Set((cmd.files as string[] | undefined) ?? []);
       return { ...mockRepo(g), files: files.filter((f) => asked.has(f.path)).map(withDiff) };
     }
+    case 'shortstat': {
+      const sum = files.reduce((t, f) => ({ add: t.add + (f.add ?? 0), del: t.del + (f.del ?? 0) }), { add: 0, del: 0 });
+      return { repo: g.repo !== false, ...sum, capped: g.more ?? false };
+    }
     case 'branch_files':
       return {
         ...mockRepo(g),
@@ -280,10 +342,98 @@ function mockGitOp(cmd: { action: string; [k: string]: unknown }, g: MockGit): u
   }
 }
 
+/** Sets one dotted path of a plain object (mock settings writes). */
+function setDotted(target: Record<string, unknown>, key: string, value: unknown): void {
+  const parts = key.split('.').filter(Boolean);
+  if (!parts.length) return;
+  let node: Record<string, unknown> = target;
+  for (const part of parts.slice(0, -1)) {
+    if (typeof node[part] !== 'object' || node[part] === null) node[part] = {};
+    node = node[part] as Record<string, unknown>;
+  }
+  const leaf = parts.at(-1)!;
+  if (value === undefined || value === null) delete node[leaf];
+  else node[leaf] = value;
+}
+
+/** Reads one dotted path of a plain object (`get_settings{key}`). */
+function getDotted(source: Record<string, unknown>, key: string): unknown {
+  let node: unknown = source;
+  for (const part of key.split('.').filter(Boolean)) {
+    if (typeof node !== 'object' || node === null) return null;
+    node = (node as Record<string, unknown>)[part];
+  }
+  return node === undefined ? null : node;
+}
+
+/** `host_cmd` (WP-A24): the hub-level `_oino/*` subset over the scenario's
+ *  settings fixtures — pi settings, extension namespaces, the extension list
+ *  (toggles mutate it, so a round trip is observable) and the auth shell. */
+function mockHostCmd(cmd: { kind: string } & Record<string, unknown>, h: MockHost): unknown {
+  const fixtures = h.spec.settings ?? {};
+  const pi = (fixtures.pi ??= {});
+  const namespaces = fixtures.namespaces ?? [];
+  switch (cmd.kind) {
+    case 'get_settings':
+      return cmd.key === undefined || cmd.key === null
+        ? { settings: pi }
+        : { value: getDotted(pi, String(cmd.key)) };
+    case 'set_setting': {
+      if (!String(cmd.key ?? '')) throw err('E_SCHEMA', 'Setting key cannot be empty');
+      setDotted(pi, String(cmd.key), cmd.value ?? null);
+      return null;
+    }
+    case 'get_settings_schema':
+      return { namespaces };
+    case 'get_extension_settings': {
+      const ns = String(cmd.namespace ?? '');
+      if (!namespaces.some((n) => n.namespace === ns)) throw err('E_FAILED', `Unknown settings namespace: ${ns}`);
+      const values = getDotted(pi, `extensionSettings.${ns}`);
+      return { values: typeof values === 'object' && values !== null ? values : {}, diagnostics: [] };
+    }
+    case 'set_extension_setting':
+    case 'unset_extension_setting': {
+      const ns = String(cmd.namespace ?? '');
+      if (!namespaces.some((n) => n.namespace === ns)) throw err('E_FAILED', `Unknown settings namespace: ${ns}`);
+      const values = (getDotted(pi, `extensionSettings.${ns}`) as Record<string, unknown>) ?? {};
+      const next = { ...values };
+      if (cmd.kind === 'set_extension_setting' && cmd.value !== undefined && cmd.value !== null) {
+        next[String(cmd.key)] = cmd.value;
+      } else delete next[String(cmd.key)];
+      setDotted(pi, `extensionSettings.${ns}`, next);
+      return null;
+    }
+    case 'extensions': {
+      const list = (fixtures.extensions ??= []);
+      return { extensions: list.map((e) => ({ id: e.id, kind: e.kind ?? 'extension', enabled: e.enabled !== false, loaded: e.loaded !== false && e.enabled !== false, ...(e.path ? { path: e.path } : {}) })) };
+    }
+    case 'set_extension_enabled': {
+      const list = (fixtures.extensions ??= []);
+      const row = list.find((e) => e.id === cmd.id);
+      if (!row) throw err('E_NOT_FOUND', `No extension ${String(cmd.id)}`);
+      row.enabled = cmd.enabled === true;
+      row.loaded = cmd.enabled === true;
+      return null;
+    }
+    case 'auth_providers':
+      return { providers: [] };
+    case 'login':
+      throw err('E_UNSUPPORTED', 'OAuth sign-in opens from a chat session; set an API key instead');
+    case 'logout':
+    case 'set_api_key':
+      return null;
+    case 'get_shortcuts':
+      return { shortcuts: [] };
+    default:
+      throw err('E_SCHEMA', `Unknown host_cmd: ${cmd.kind}`);
+  }
+}
+
 const BUILTIN: Record<string, MockOp> = {
   host_info: (_a, h) => ({ name: h.spec.name, version: '2.0.0', proto: '2.0.0', tools: ['oino', 'unipi-kanboard'] }),
   // host.md §7.2: a bare array of cards, newest activity first.
   sessions_list: (_a, h) => h.spec.cards ?? [],
+  // App spec §3.14 (WP-A4): patch the card, tell the hub stream, return the card.
   session_meta_set: (a, h) => {
     const card = h.spec.cards?.find((c) => c.session_id === a.session);
     if (!card) throw err('E_NOT_FOUND', `No session ${String(a.session)}`);
@@ -294,6 +444,8 @@ const BUILTIN: Record<string, MockOp> = {
     h.emit({ kind: 'session_changed', card: { ...card } });
     return { ...card };
   },
+  // WP-A19 (G-12): `notify_register` on the host seam records the endpoint.
+  notify_register: () => ({ registered: true }),
   fs_roots: (_a, h) => ({ roots: Object.keys(h.spec.fs ?? {}) }),
   fs_list: (a, h) => {
     const path = String(a.path ?? '');
@@ -301,9 +453,11 @@ const BUILTIN: Record<string, MockOp> = {
     if (node?.kind !== 'dir') throw err('E_NOT_FOUND', `No folder ${path}`);
     const entries = Object.entries(node.children).map(([name, child]) => ({
       name,
-      kind: child.kind === 'dir' ? 'dir' : 'file',
+      kind: child.kind,
       size: child.kind === 'file' ? child.text.length : 0,
       mtime: child.kind === 'file' ? (child.mtime ?? 0) : 0,
+      ...(child.git ? { git: child.git } : {}),
+      ...(child.ignored ? { ignored: true } : {}),
     }));
     return { entries, more: false };
   },
@@ -313,23 +467,132 @@ const BUILTIN: Record<string, MockOp> = {
     return { kind: node.kind, size: node.kind === 'file' ? node.text.length : 0, mtime: 0 };
   },
   fs_read: (a, h) => {
-    const node = walk(h.spec.fs, String(a.path ?? ''));
+    const path = String(a.path ?? '');
+    const node = walk(h.spec.fs, path);
     if (node?.kind !== 'file') throw err('E_NOT_FOUND', 'Not found');
+    // Binary fixtures stay binary (the editor routes them to the previewer).
+    if (/\.(png|jpe?g|gif|webp|pdf|mp4|mp3)$/i.test(path) && a.as_text !== true) throw err('E_BINARY', `${path.slice(path.lastIndexOf('/') + 1)} isn't text`);
     return { size: node.text.length, hash: `h${node.text.length}`, mtime: node.mtime ?? 0, truncated: false, text: node.text };
   },
-  fs_search: () => ({ results: [], more: false }),
+  fs_write: (a, h) => {
+    const path = String(a.path ?? '');
+    const text = String(a.text ?? '');
+    const dir = walk(h.spec.fs, path.slice(0, path.lastIndexOf('/')));
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    if (!dir || dir.kind !== 'dir') throw err('E_NOT_FOUND', `No folder ${path}`);
+    if (!(name in dir.children) && a.create !== true) throw err('E_NOT_FOUND', 'Not found');
+    dir.children[name] = { kind: 'file', text, mtime: Date.now(), git: 'M' };
+    return { hash: `h${text.length}`, mtime: Date.now() };
+  },
+  fs_mkdir: (a, h) => {
+    const path = String(a.path ?? '');
+    const dir = walk(h.spec.fs, path.slice(0, path.lastIndexOf('/')));
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    if (!dir || dir.kind !== 'dir') throw err('E_NOT_FOUND', `No folder ${path}`);
+    dir.children[name] = { kind: 'dir', children: {}, git: '?' };
+    return null;
+  },
+  fs_rename: (a, h) => {
+    const from = String(a.from ?? '');
+    const to = String(a.to ?? '');
+    const node = walk(h.spec.fs, from);
+    const dir = walk(h.spec.fs, from.slice(0, from.lastIndexOf('/')));
+    const name = from.slice(from.lastIndexOf('/') + 1);
+    const toDir = walk(h.spec.fs, to.slice(0, to.lastIndexOf('/')));
+    const toName = to.slice(to.lastIndexOf('/') + 1);
+    if (!node || !dir || dir.kind !== 'dir' || !(name in dir.children)) throw err('E_NOT_FOUND', 'Not found');
+    if (!toDir || toDir.kind !== 'dir') throw err('E_NOT_FOUND', `No folder ${to}`);
+    if (toName in toDir.children) throw err('E_CONFLICT', `${toName} already exists`);
+    delete dir.children[name];
+    toDir.children[toName] = node;
+    return null;
+  },
+  fs_delete: (a, h) => {
+    const path = String(a.path ?? '');
+    if (a.confirm !== true) throw err('E_CONFIRM', 'Pass confirm: true');
+    const dir = walk(h.spec.fs, path.slice(0, path.lastIndexOf('/')));
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    if (!dir || dir.kind !== 'dir' || !(name in dir.children)) throw err('E_NOT_FOUND', 'Not found');
+    delete dir.children[name];
+    return null;
+  },
+  fs_import: (a, h) => {
+    const to = String(a.to ?? '');
+    const blob = h.blobs.get(String(a.sha256 ?? ''));
+    const dir = walk(h.spec.fs, to.slice(0, to.lastIndexOf('/')));
+    const name = to.slice(to.lastIndexOf('/') + 1);
+    if (!blob) throw err('E_NOT_FOUND', 'No such blob');
+    if (!dir || dir.kind !== 'dir') throw err('E_NOT_FOUND', `No folder ${to}`);
+    if (name in dir.children && a.overwrite !== true) throw err('E_CONFLICT', `${name} already exists`);
+    dir.children[name] = { kind: 'file', text: blob.text, mtime: Date.now(), git: 'A' };
+    return null;
+  },
+  fs_search: (a, h) => {
+    const root = String(a.root ?? '');
+    const query = String(a.query ?? '').toLowerCase();
+    const kind = a.kind === 'content' ? 'content' : 'name';
+    const results: Array<{ path: string; line?: number; preview?: string }> = [];
+    const scan = (path: string, node: MockFsNode) => {
+      if (results.length >= 200) return;
+      if (node.kind === 'dir') {
+        for (const [name, child] of Object.entries(node.children)) scan(`${path}/${name}`, child);
+        return;
+      }
+      if (kind === 'name') {
+        if (path.toLowerCase().includes(query)) results.push({ path });
+      } else {
+        node.text.split('\n').forEach((line, at) => {
+          if (results.length < 200 && line.toLowerCase().includes(query)) results.push({ path, line: at + 1, preview: line.trim().slice(0, 160) });
+        });
+      }
+    };
+    const base = Object.keys(h.spec.fs ?? {}).find((r) => root === r || root.startsWith(`${r}/`));
+    const node = base !== undefined ? walk(h.spec.fs, root) : undefined;
+    if (node) scan(root, node);
+    return { results, more: false };
+  },
+  blob_put_bytes: (a, h) => {
+    const bytes = Array.isArray(a.bytes) ? (a.bytes as number[]) : [];
+    const text = bytes.map((b) => String.fromCharCode(b)).join('');
+    const sha256 = `b${bytes.length}-${text.slice(0, 8)}`;
+    h.blobs.set(sha256, { text });
+    return { sha256, size: bytes.length, deduped: false, path: `/tmp/${sha256}` };
+  },
+  blob_get_bytes: (a, h) => {
+    if (a.path) {
+      const path = String(a.path);
+      const node = walk(h.spec.fs, path);
+      if (node?.kind !== 'file') throw err('E_NOT_FOUND', 'Not found');
+      // A real 1×1 transparent PNG so image previews have something to render.
+      if (path.endsWith('.png')) return { mime: 'image/png', bytes: TINY_PNG_BYTES };
+      return { mime: mimeOf(path), bytes: Array.from(new TextEncoder().encode(node.text)) };
+    }
+    const blob = h.blobs.get(String(a.sha256 ?? ''));
+    if (!blob) throw err('E_NOT_FOUND', 'No such blob');
+    return { mime: 'application/octet-stream', bytes: Array.from(new TextEncoder().encode(blob.text)) };
+  },
   // WP-A15: the whole `git` op family answers from the one mock repo.
   git_op: (a, h) => mockGitOp(a.cmd as { action: string }, h.spec.git ?? {}),
+  // host.md §9.9 (WP-A24): the host's `config.json`, mutations in place.
+  host_settings_get: (_a, h) => h.spec.settings?.host ?? {},
+  host_settings_set: (a, h) => {
+    const settings = (h.spec.settings ??= {});
+    const host = (settings.host ??= {});
+    setDotted(host, String(a.key ?? ''), a.value);
+    return host;
+  },
+  // App spec §3.14 (WP-A24): the hub-level `_oino/*` subset over the fixtures.
+  host_cmd: (a, h) => mockHostCmd(a.cmd as { kind: string } & Record<string, unknown>, h),
+  // WP-A22 (app.md §3.14): one `unipi-kanboard` process per call, §5.5 outcome.
+  board_cli: (a, h) => h.board.cli((a.args as string[] | undefined) ?? [], (a.project as string | undefined) ?? undefined),
+  // WP-A22: the refcounted file watcher (writes then answer `board_changed`).
+  board_watch: (a, h) => ({ watching: h.setBoardWatching(a.on !== false) }),
   // WP-A15 (Z-98): the refcounted watcher; the root `git_changed` events carry.
   git_watch: (a, h) => {
     const g = h.spec.git ?? {};
     h.watch(String(a.root ?? g.root ?? ''), a.on !== false);
     return { root: g.repo === false ? null : (g.root ?? a.root ?? null) };
   },
-  // WP-A22 (app.md 3.14): one `unipi-kanboard` process per call, the 5.5 outcome.
-  board_cli: (a, h) => h.board.cli((a.args as string[] | undefined) ?? [], (a.project as string | undefined) ?? undefined),
-  // WP-A22: the refcounted file watcher (writes then answer `board_changed`).
-  board_watch: (a, h) => ({ watching: h.setBoardWatching(a.on !== false) }),
   cron_list: (_a, h) => ({ jobs: h.spec.cron ?? [], paused: false }),
   cron_status: () => ({ paused: false, concurrency: 1, jobs: [] }),
   ports_list: () => ({ ports: [], any: true, allowed: [] }),
@@ -344,13 +607,28 @@ const APP_BUILTIN: Record<string, MockOp> = {
   local_host: () => ({ installed: false }),
   push_save_as: () => null,
   push_open: () => null,
+  // WP-A24 (D-20): the H9 lifetime commands, in memory for captures/tests.
+  close_action_state: (_a, h) => h.world.appState.closeAction ?? 'ask',
+  close_action_set: (a, h) => (h.world.appState.closeAction = a.action === 'tray' || a.action === 'quit' ? a.action : 'ask'),
+  autostart_state: (_a, h) => h.world.appState.autostart ?? false,
+  autostart_set: (a, h) => (h.world.appState.autostart = a.enabled === true),
+  // WP-A19 (G-12): the host's notify path answers — the phone push settings
+  // and `notify_register` fan-out work against the mock too.
+  notify_config: () => ({ server: 'https://ntfy.example', topic: 'unipi-test', key: 'a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5', app_detail: 'minimal' }),
+  notify_register: (_a, h) => {
+    h.emit({ kind: 'host_notice', level: 'info', text: 'Phone push registered' });
+    return { registered: true };
+  },
+  notify_test: () => null,
 };
 
 export class MockHost implements HostClient {
   readonly hostId: string;
   readonly conn;
   private readonly setConn;
-  /** Repo roots a `git_watch{on:true}` asked for (off drops them, like the host's refcount). */
+  /** In-memory blob store behind `blob_put_bytes`/`blob_get_bytes` (uploads, previews). */
+  readonly blobs = new Map<string, { text: string }>();
+  /** Repo roots a `git_watch{on:true}` asked for (off drops them), like the host's refcount. */
   readonly watched = new Set<string>();
   /** The in-memory board behind `board_cli`; every write emits `board_changed`. */
   readonly board: MockBoard;
@@ -358,7 +636,8 @@ export class MockHost implements HostClient {
   boardWatching = false;
   constructor(
     readonly spec: MockHostSpec,
-    private readonly world: MockWorld,
+    /** The shared world (recorded log, event sinks): public for the builtin ops. */
+    readonly world: MockWorld,
   ) {
     this.hostId = spec.id;
     this.board = createMockBoard(spec.board ?? [], (project) => this.emit({ kind: 'board_changed', project }));
@@ -447,6 +726,13 @@ export class MockHost implements HostClient {
         const handler = session?.cmd?.[cmd.type];
         if (handler) return (await handler(cmd, this)) as T;
         if (cmd.type === 'get_commands') return { commands: session?.snapshot.commands ?? [] } as T;
+        // The sticky topics the scenario seeded (subscribing merges them into the store).
+        if (cmd.type === '_oino/topics') return { topics: session?.snapshot.topics ?? [] } as T;
+        if (cmd.type === '_oino/render') {
+          const spec = this.spec.renderers?.[`${String(cmd.target)}/${String(cmd.key)}`];
+          if (spec && typeof spec === 'object' && 'never' in (spec as Record<string, unknown>)) return new Promise<never>(() => {});
+          return { node: spec === undefined ? null : spec } as T;
+        }
         if (cmd.type === 'get_entries' && session?.entries) {
           const since = typeof cmd.since === 'string' ? cmd.since : undefined;
           const all = session.entries.entries as Array<{ id?: string }>;
@@ -468,6 +754,11 @@ export class MockHost implements HostClient {
     this.world.eventSinks.add(sink);
     const hostSinks = this.world.hostSinks.get(this.hostId) ?? this.world.hostSinks.set(this.hostId, new Set()).get(this.hostId)!;
     hostSinks.add(sink);
+    // §7.4: retained notices first (the safe-mode banner, G-19), like the real host.
+    for (const notice of this.spec.notices ?? []) {
+      queueMicrotask(() => sink({ kind: 'host_notice', level: notice.level ?? 'info', text: notice.text }));
+    }
+    this.playHubScript();
     return {
       // §3.14: the mock clears the focused card's `unread` like the host does (Z-82).
       focus: (session) => {
@@ -483,16 +774,6 @@ export class MockHost implements HostClient {
         hostSinks.delete(sink);
       },
     };
-  }
-
-  openTerm(req: Parameters<HostClient['openTerm']>[0]): TermStream {
-    this.world.record({ host: this.hostId, kind: 'open', op: 'term_open', args: req });
-    return { write() {}, resize() {}, close() {} };
-  }
-
-  openLsp(req: Parameters<HostClient['openLsp']>[0]): LspStream {
-    this.world.record({ host: this.hostId, kind: 'open', op: 'lsp_open', args: req });
-    return { send() {}, close() {} };
   }
 
   /** `git_watch`: remembers the watched roots (off drops, like the host's refcount). */
@@ -511,6 +792,34 @@ export class MockHost implements HostClient {
   emit(event: HubEvent): void {
     for (const sink of this.world.hostSinks.get(this.hostId) ?? []) sink(event);
   }
+
+  /** WP-A19: replays `spec.hub` steps once, on the world clock, from the
+   *  first `events_open`. Speed 0 still uses the step delays as real
+   *  milliseconds — the cold `sessions_list` reconcile settles first, then
+   * the transitions arrive (the order the real host guarantees). */
+  private playHubScript(): void {
+    const script = this.spec.hub ?? [];
+    if (script.length === 0 || this.hubPlayed) return;
+    this.hubPlayed = true;
+    const elapsed = Date.now() - this.world.t0;
+    const speed = this.world.scenario.speed ?? 0;
+    for (const step of script) {
+      const delay = speed > 0 ? Math.max(0, (step.at - elapsed) / speed) : Math.max(0, step.at - elapsed);
+      this.hubTimers.push(setTimeout(() => this.emit(step.event), delay));
+    }
+  }
+  private hubPlayed = false;
+  private hubTimers: ReturnType<typeof setTimeout>[] = [];
+
+  openTerm(req: Parameters<HostClient['openTerm']>[0]): TermStream {
+    this.world.record({ host: this.hostId, kind: 'open', op: 'term_open', args: req });
+    return { write() {}, resize() {}, close() {} };
+  }
+
+  openLsp(req: Parameters<HostClient['openLsp']>[0]): LspStream {
+    this.world.record({ host: this.hostId, kind: 'open', op: 'lsp_open', args: req });
+    return { send() {}, close() {} };
+  }
 }
 
 type StreamHandle = { push(items: SessionEventDto[]): void; drop(error?: Err): void };
@@ -522,11 +831,13 @@ export class MockWorld {
   readonly hostSinks = new Map<string, Set<(event: HubEvent) => void>>();
   /** Open session streams by `host/session` (tests push events / drop them). */
   readonly streams = new Map<string, Set<StreamHandle>>();
+  /** App-level state behind the app builtin ops (WP-A24 lifetime commands). */
+  readonly appState: { closeAction?: 'ask' | 'tray' | 'quit'; autostart?: boolean } = {};
   private readonly clocks = new Map<string, number>();
   private readonly down = new Map<string, number>();
   private readonly firedSteps = new Set<string>();
   private readonly clients = new Map<string, MockHost>();
-  private readonly t0 = Date.now();
+  readonly t0 = Date.now();
 
   constructor(readonly scenario: MockScenario) {
     for (const spec of scenario.hosts) this.clients.set(spec.id, new MockHost(spec, this));

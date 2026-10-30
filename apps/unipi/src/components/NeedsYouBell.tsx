@@ -1,19 +1,29 @@
 /**
- * The "needs you" bell + drawer (UNI-161 §3): a bell in the app header,
- * all screens, with an unread badge; tapping it opens a bottom sheet
- * grouped Waiting / Finished / Other. Tapping an item opens that chat;
- * swipe/✕ dismisses one, header actions mark-all-read / clear everything.
+ * The "needs you" bell + drawer (UNI-161 §3; WP-A19): the animated Unicrab
+ * with its unread badge opens a bottom sheet grouped Waiting / Finished /
+ * Other. Tapping an item opens that session's route; swipe/✕ dismisses one,
+ * header actions mark-all-read / clear everything.
+ *
+ * `NeedsYouFeed` (WP-A19, Z-83/Z-84/Z-86) is the hub-driven source: every
+ * paired host's `session_changed` cards run through the notification router
+ * (`lib/notifications/route`) into this store, the OS notifications and the
+ * Z-86 foreground-completion bookkeeping. No polling anywhere.
  */
-import { createMemo, For, Show } from 'solid-js';
+import { createEffect, createMemo, For, onCleanup, Show } from 'solid-js';
+import { useLocation } from '@solidjs/router';
 import { X } from 'lucide-solid';
 import { Unicrab } from './Unicrab';
 import { mascotLive } from '../lib/mascotLive';
 import './mascot.css';
 import { BoardSheet } from './board/BoardSheet';
 import { groupNeedsYou, needsYou, type NeedsYouGroup, type NeedsYouItem } from '../lib/needsYou';
-import { openChat } from '../lib/session/open';
-import { bareTarget } from '../lib/session/list';
+import { sessionHref, routeSession } from './shell/Sidebar';
 import { useHosts, useHostsOptional } from '../hosts/context';
+import { hubs } from '../lib/session/hub';
+import { can } from '../lib/platform';
+import { desktopNotifyOn, nativeNotify } from '../lib/desktop';
+import { openSessionRoute } from '../lib/notifyInit';
+import { attentionItem, NotifyRouter, planNotifications, type Attention, type SessionRef } from '../lib/notifications/route';
 import './needsYou.css';
 
 const GROUP_LABEL: Record<NeedsYouGroup, string> = { waiting: 'Waiting', finished: 'Finished', other: 'Other' };
@@ -54,15 +64,7 @@ export function NeedsYouDrawer(props: { open: boolean; onClose: () => void }) {
 
   const open = (item: NeedsYouItem) => {
     store.markRead(item.id);
-    const host = hosts.hosts().find((h) => h.id === item.hostId);
-    if (!item.session || !host) {
-      props.onClose();
-      return;
-    }
-    openChat(
-      bareTarget(item.hostId, item.session, item.title),
-      host.name,
-    );
+    openNeedsYouItem(item, hosts.hosts(), () => undefined);
     props.onClose();
   };
 
@@ -119,4 +121,116 @@ export function NeedsYouBell(props: { onOpen: () => void }) {
       </Show>
     </button>
   );
+}
+
+/** Opens the session an item points at (the `/s/:host/:session` route), or the fallback when its host is gone. */
+export function openNeedsYouItem(item: NeedsYouItem, hosts: readonly { id: string }[], fallback: () => void): void {
+  const host = hosts.find((h) => h.id === item.hostId);
+  if (!item.session || !host) return fallback();
+  openSessionRoute(item.hostId, item.session);
+}
+
+/**
+ * The hub-driven needs-you + notification source (WP-A19): mounted once by
+ * the shell. Every paired host's hub cards run through `NotifyRouter`:
+ * - transitions feed the drawer (`needsYou`) and, on the desktop, become OS
+ *   notifications (Z-84: event-driven, seeded, max 3, focused session and
+ *   focused window suppressed);
+ * - a completion seen in front of the user is remembered and marked unread
+ *   when the window blurs right after (Z-86); returning to it clears the
+ *   dot again (`session_focus`).
+ */
+export function NeedsYouFeed() {
+  const hosts = useHosts();
+  const location = useLocation();
+  const store = needsYou();
+  const router = new NotifyRouter();
+  /** The item ids this feed added, per session (so an ended wait leaves the drawer). */
+  const added = new Map<string, { waiting?: string; finished?: string }>();
+
+  const shown = createMemo(() => routeSession(location.pathname));
+  const windowFocused = () => (typeof document === 'undefined' ? true : document.hasFocus() && !document.hidden);
+
+  const key = (hostId: string, sessionId: string) => `${hostId}/${sessionId}`;
+  const sinceOf = (card: { last_activity?: number; updated_at?: number }) => card.last_activity ?? card.updated_at ?? Date.now();
+
+  createEffect(() => {
+    const attentions: Attention[] = [];
+    const focus = shown();
+    for (const host of hosts.hosts()) {
+      const hub = hubs().ensure(host.id);
+      const cards = Object.values(hub.state.cards);
+      for (const card of cards) {
+        const { attention } = router.observe(host.id, host.name, card);
+        const k = key(host.id, card.session_id);
+        // The wait ended / a new run started: its drawer item goes, transition or not.
+        const have = added.get(k);
+        if (have?.waiting && !card.needs_you) {
+          store.remove(have.waiting);
+          have.waiting = undefined;
+        }
+        if (have?.finished && card.run_state === 'working') {
+          store.remove(have.finished);
+          have.finished = undefined;
+        }
+        if (!attention) continue;
+        const item = attentionItem(attention, sinceOf(card));
+        store.upsert(item);
+        const slot = attention.kind === 'waiting' ? 'waiting' : 'finished';
+        added.set(k, { ...(have ?? {}), [slot]: item.id });
+        attentions.push(attention);
+        // Z-86: a completion watched in this window isn't unread — until the user leaves.
+        if (attention.kind === 'finished' && windowFocused() && focus && focus.hostId === host.id && focus.sessionId === card.session_id) {
+          router.foreground.record({ hostId: host.id, sessionId: card.session_id });
+        }
+      }
+      // Sessions that vanished (archived/deleted) leave the drawer.
+      for (const [k, ids] of [...added]) {
+        if (!k.startsWith(`${host.id}/`)) continue;
+        const sessionId = k.slice(host.id.length + 1);
+        if (!hub.state.cards[sessionId]) {
+          if (ids.waiting) store.remove(ids.waiting);
+          if (ids.finished) store.remove(ids.finished);
+          added.delete(k);
+          router.forget(host.id, sessionId);
+        }
+      }
+    }
+
+    const plan = planNotifications(attentions, { focused: focus, windowFocused: windowFocused() });
+    if (can('nativeNotifications') && desktopNotifyOn()) {
+      for (const n of plan) void nativeNotify(n.title, n.body);
+    }
+  });
+
+  // Leaving the shown session moots its pending foreground completion (the
+  // user moved on inside the app; only a blur right after marks it, Z-86).
+  createEffect((prev?: SessionRef) => {
+    const now = shown();
+    if (prev) router.foreground.forget(prev);
+    return now;
+  });
+
+  const onLeave = (fromBlur: boolean) => () => {
+    if (!fromBlur && !document.hidden) return; // visibilitychange: only when hidden
+    for (const ref of router.foreground.takeAll()) void hubs().ensure(ref.hostId).setMeta(ref.sessionId, { unread: true });
+  };
+  const onReturn = () => {
+    // Back in front: a still-shown session clears the dot the blur marked.
+    const s = shown();
+    if (s) hubs().ensure(s.hostId).focus(s.sessionId);
+  };
+  const onBlur = onLeave(true);
+  const onHide = onLeave(false);
+  window.addEventListener('blur', onBlur);
+  document.addEventListener('visibilitychange', onHide);
+  window.addEventListener('focus', onReturn);
+  document.addEventListener('visibilitychange', onReturn);
+  onCleanup(() => {
+    window.removeEventListener('blur', onBlur);
+    window.removeEventListener('focus', onReturn);
+    document.removeEventListener('visibilitychange', onHide);
+    document.removeEventListener('visibilitychange', onReturn);
+  });
+  return null;
 }

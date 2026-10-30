@@ -1,16 +1,14 @@
 /**
- * UNI-161 §2/§3: wires the native notification bridge into the app at
- * startup — pushes the stored E2E key down to the native side (for
- * background decrypt), listens for `unipi://chat` deep links (notification
- * taps while the app runs), and replays one pending action queued while
- * the app was closed (an ask_user option / permission allow-deny tapped
- * from a notification): opens the right chat and sends `answer` once the
- * bridge connects.
+ * UNI-161 §2/§3 + G-12 (WP-A19): wires the native notification bridge into
+ * the app at startup — pushes the stored E2E key down to the native side
+ * (for background decrypt), listens for `unipi://s/<host>/<session>` deep
+ * links (notification taps while the app runs: needs-you, cron runs and
+ * completions all open their session's route), and replays one pending
+ * action queued while the app was closed (an ask_user option or permission
+ * allow-deny) on the open chat.
  */
-import { openChat, updateOpenTarget } from './session/open';
-import { bareTarget, chatGroups, chatLists, type ChatTarget } from './session/list';
-import type { SessionListData } from './session/link';
 import { parseChatDeepLink, readPendingAction } from './notifyDeepLink';
+import { sessionHref } from '../components/shell/Sidebar';
 import type { HostInfo } from './schemas';
 
 type NativeNotifyBridge = {
@@ -41,36 +39,26 @@ export function resolveHostId(hosts: readonly HostInfo[], host: string | undefin
   return byName?.id ?? hosts[0]?.id;
 }
 
-/** The session-list row for `session` on `hostId`. */
-export function findChatTarget(hostId: string, data: SessionListData | undefined, session: string): ChatTarget | undefined {
-  for (const group of chatGroups(hostId, data)) {
-    const hit = group.items.find((t) => t.session === session);
-    if (hit) return hit;
-  }
-  return undefined;
+/** Opens a session's route from anywhere (the HashRouter follows the hash
+ *  change; `useNavigate` needs a component scope). */
+export function openSessionRoute(hostId: string, sessionId: string): void {
+  location.hash = `#${sessionHref(hostId, sessionId)}`;
 }
 
-/** Opens the chat a `unipi://chat?host=&session=&dialog=` link points at.
- *  Only `hostId`/`session` are known from the link itself, so the chat opens
- *  at once with placeholders, then takes its labels from the cached session
- *  list and again after a fresh `sessions_list`. A v1 link (`pid=` only) has
- *  no session to open: it just shows the list. */
+/** Opens the session a `unipi://s/<host>/<session>` (or v1
+ *  `unipi://chat?host=&session=`) link points at — the conversation route;
+ *  the hub fills its title. A v1 link (`pid=` only) has no session: it just
+ *  goes to the Chat list. */
 export function openChatFromDeepLink(hosts: readonly HostInfo[], url: string): void {
   const parsed = parseChatDeepLink(url);
   if (!parsed) return;
   const hostId = resolveHostId(hosts, parsed.host);
   const session = parsed.session;
-  if (!hostId || !session) return;
-  const hostName = hosts.find((h) => h.id === hostId)?.name ?? '';
-  const target = bareTarget(hostId, session, hostName);
-  const lists = chatLists();
-  const fill = () => {
-    const known = findChatTarget(hostId, lists.get(hostId)?.data, session);
-    if (known) updateOpenTarget(known);
-    return known;
-  };
-  openChat(findChatTarget(hostId, lists.get(hostId)?.data, session) ?? target, hostName);
-  void lists.load(hostId).then(fill, () => undefined);
+  if (!hostId || !session) {
+    location.hash = '#/chat';
+    return;
+  }
+  openSessionRoute(hostId, session);
 }
 
 /** Replays one pending action (ask_user option tapped from a notification

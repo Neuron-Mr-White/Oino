@@ -6,8 +6,7 @@
  * the desktop shell is on (`desktopShell()`) or the platform has the
  * capability (`can('tray')` …); the phone never reaches it.
  *
- * The full list of shortcuts lives in `SHORTCUTS` (shown by Ctrl+/ and
- * quoted in DESIGN §5.8).
+ * The shortcut list itself moved to `lib/shortcuts/` (WP-A18, Z-94).
  */
 import { can, platform } from './platform';
 
@@ -214,85 +213,4 @@ export function setDesktopNotifyOn(on: boolean): void {
   } catch {
     // not remembered
   }
-}
-
-export type NotifyItem = { id: string; group: 'waiting' | 'finished' | 'other'; title: string; hostName: string; what?: string; kind: string };
-
-/**
- * Which "needs you" items deserve an OS notification now: new since the
- * last look (not in `seen`), unread, waiting or finished, and only while
- * the window isn't in front (you'd see the bell otherwise). The first
- * look (`seen === undefined`) only seeds — no burst for old items at
- * launch.
- */
-export function notifyPlan(seen: ReadonlySet<string> | undefined, items: readonly NotifyItem[], opts: { focused: boolean; isRead: (id: string) => boolean }): NotifyItem[] {
-  if (!seen || opts.focused) return [];
-  return items.filter((i) => !seen.has(i.id) && !opts.isRead(i.id) && (i.group === 'waiting' || i.group === 'finished'));
-}
-
-export function notifyText(item: NotifyItem): { title: string; body: string } {
-  const title = item.group === 'finished' ? `${item.title} finished` : `${item.title} needs you`;
-  const body = item.what?.trim() || (item.group === 'finished' ? `pi on ${item.hostName} is done.` : `pi on ${item.hostName} is waiting for your answer.`);
-  return { title, body };
-}
-
-// ── The shortcut sheet ─────────────────────────────────────────────────
-
-export type Shortcut = { keys: string; what: string };
-export type ShortcutGroup = { title: string; items: Shortcut[] };
-
-export function shortcuts(m = 'Ctrl'): ShortcutGroup[] {
-  return [
-    {
-      title: 'Anywhere',
-      items: [
-        { keys: `${m} K`, what: 'Command palette' },
-        { keys: `${m} B`, what: 'Show / hide the sidebar' },
-        { keys: `${m} Alt B`, what: 'Show / hide the side pane' },
-        { keys: `${m} J`, what: 'Show / hide the terminal panel' },
-        { keys: `${m} Shift F`, what: 'Side pane full view (Esc leaves it)' },
-        { keys: `${m} Shift T`, what: 'Reopen the last closed tab' },
-        { keys: `${m} /`, what: 'This list' },
-        { keys: 'Esc', what: 'Back: close the menu, dialog or pane' },
-        { keys: 'Right-click', what: 'The same menu a long-press opens on the phone' },
-      ],
-    },
-    {
-      title: 'Chat',
-      items: [
-        { keys: 'Enter', what: 'Send (while pi works: your last Steer/Queue choice, Steer at first)' },
-        { keys: 'Shift Enter', what: 'New line' },
-        { keys: `${m} Enter`, what: 'While pi works: choose Steer or Queue (after it finishes)' },
-        { keys: 'S / Q', what: 'In the choice: Steer / Queue (←/→ switch, Enter picks)' },
-        { keys: 'Esc', what: 'Stop pi (in the message box while it works), else close the chat' },
-        { keys: `${m} L`, what: 'Focus the message box' },
-        { keys: `${m} Shift B`, what: 'Show / hide the PC browser beside the chat' },
-        { keys: 'Alt ↑ / Alt ↓', what: 'Previous / next chat' },
-        { keys: `${m} V`, what: 'Paste an image from the clipboard as an attachment' },
-        { keys: 'Drop files', what: 'Attach files dropped on the chat' },
-      ],
-    },
-    {
-      title: 'Terminal',
-      items: [
-        { keys: `${m} Shift C`, what: 'Copy the selection' },
-        { keys: `${m} Shift V`, what: 'Paste' },
-        { keys: `${m} = / ${m} - / ${m} 0`, what: 'Bigger / smaller / default font' },
-        { keys: `${m} Shift K`, what: 'Command palette (plain Ctrl K goes to the shell)' },
-        { keys: 'Shift drag', what: 'Select text while the app uses the mouse' },
-      ],
-    },
-    {
-      title: 'Files',
-      items: [
-        { keys: '↑ ↓ Home End', what: 'Move' },
-        { keys: 'Enter', what: 'Open' },
-        { keys: 'Backspace', what: 'Up one folder' },
-        { keys: 'F2', what: 'Rename' },
-        { keys: 'Delete', what: 'Delete (asks first)' },
-        { keys: 'Drop files', what: 'Upload to the folder you are in' },
-        { keys: `${m} S / ${m} F`, what: 'Editor: save / find' },
-      ],
-    },
-  ];
 }

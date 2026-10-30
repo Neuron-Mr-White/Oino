@@ -161,8 +161,11 @@ export type MascotFeed = {
   size?: number;
 };
 
-/** `unipi://chat?host=&pid=` for an item (the deep link the overlay / notification taps open). */
-export function chatLink(item: Pick<NeedsYouItem, 'hostId' | 'pid'>): string {
+/** The deep link an item's tap opens (G-12): `unipi://s/<host>/<session>`
+ *  when the session is known (v2 hub items), else the v1
+ *  `unipi://chat?host=&pid=` form. */
+export function chatLink(item: Pick<NeedsYouItem, 'hostId' | 'pid'> & { session?: string }): string {
+  if (item.session) return `unipi://s/${encodeURIComponent(item.hostId)}/${encodeURIComponent(item.session)}`;
   const q = new URLSearchParams();
   q.set('host', item.hostId);
   if (item.pid !== null) q.set('pid', String(item.pid));

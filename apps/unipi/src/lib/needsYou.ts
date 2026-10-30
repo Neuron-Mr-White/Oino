@@ -159,6 +159,11 @@ export function needsYou() {
   return shared;
 }
 
+/** Tests: drop the shared store (its persistence lives in localStorage). */
+export function resetNeedsYou(): void {
+  shared = undefined;
+}
+
 /** A stable item id: one wait, across polls, until it ends or a fresh one replaces it. */
 export function needsYouId(hostId: string, pid: number | null, kind: string, since: number): string {
   return `${hostId}:${pid ?? '-'}:${kind}:${since}`;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { adjacentIndex, choiceKey, composerKey, dragHasFiles, filesKey, inTextField, nextFontSize, notifyPlan, notifyText, shortcuts, splitDropped, termKey, windowTitle, type NotifyItem } from './desktop';
+import { adjacentIndex, choiceKey, composerKey, dragHasFiles, filesKey, inTextField, nextFontSize, shortcuts, splitDropped, termKey, windowTitle } from './desktop';
 import { setPlatformOverride } from './platform';
 
 const k = (key: string, m: Partial<{ ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean }> = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...m });
@@ -121,28 +121,10 @@ describe('filesKey', () => {
   });
 });
 
-describe('notifications', () => {
-  const item = (id: string, group: NotifyItem['group'] = 'waiting'): NotifyItem => ({ id, group, title: 'math helpers', hostName: 'coffee', kind: 'select' });
-  it('first look only seeds; only new unread waiting/finished while unfocused', () => {
-    const items = [item('a'), item('b', 'finished'), item('c', 'other'), item('d')];
-    expect(notifyPlan(undefined, items, { focused: false, isRead: () => false })).toEqual([]);
-    expect(notifyPlan(new Set(['a']), items, { focused: false, isRead: (id) => id === 'd' }).map((i) => i.id)).toEqual(['b']);
-    expect(notifyPlan(new Set(), items, { focused: true, isRead: () => false })).toEqual([]);
-  });
-  it('wording', () => {
-    expect(notifyText({ ...item('a'), what: 'Pick a model' })).toEqual({ title: 'math helpers needs you', body: 'Pick a model' });
-    expect(notifyText(item('b', 'finished'))).toEqual({ title: 'math helpers finished', body: 'pi on coffee is done.' });
-  });
+describe('window title', () => {
   it('window title', () => {
     expect(windowTitle(['Chat', 'math helpers'])).toBe('Chat — math helpers — UniPi');
     expect(windowTitle([undefined, ' '])).toBe('UniPi');
   });
 });
 
-describe('shortcut list', () => {
-  it('uses the platform modifier', () => {
-    const all = shortcuts('⌘').flatMap((g) => g.items.map((i) => i.keys));
-    expect(all).toContain('⌘ K');
-    expect(all.some((x) => x.includes('Ctrl'))).toBe(false);
-  });
-});

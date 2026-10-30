@@ -8,6 +8,12 @@ import { createRoot, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { Task } from './api';
 import { DEFAULT_DISPLAY, EMPTY_FILTERS, type DisplayPrefs, type Filters, type Scope, type View } from './view';
+import { toasts as appToasts } from '../toasts';
+import type { ToastAction, ToastKind } from '../toasts';
+
+// Z-85: the board's toasts are the one app-wide stack (lib/toasts), rendered
+// by components/Toasts in the shell; the kinds and actions are shared types.
+export type { ToastAction, ToastKind };
 
 const DISPLAY_KEY = 'unipi.board.display';
 const VIEW_KEY = 'unipi.board.view';
@@ -55,9 +61,6 @@ export function rememberLast(hostId: string, slug: string | null): void {
 }
 
 export type NewTaskRequest = { lane: 'backlog' | 'todo'; recreateFrom?: Task };
-export type ToastKind = 'info' | 'success' | 'warning' | 'error';
-export type ToastAction = { label: string; run: () => void | Promise<void> };
-export type Toast = { id: number; kind: ToastKind; message: string; action?: ToastAction; count?: number };
 
 /** A move that needs (or invites) a note first — the web's CommentDialog. */
 export type CommentRequest = {
@@ -87,7 +90,6 @@ function createUi() {
   const [activeLane, setActiveLane] = createSignal<string>('todo');
   const [newTask, setNewTask] = createSignal<NewTaskRequest | null>(null);
   const [sheet, setSheet] = createSignal<'pc' | 'project' | 'filter' | 'display' | 'search' | null>(null);
-  const [toasts, setToasts] = createSignal<Toast[]>([]);
   /** Task detail history: the last id is shown; Back pops (dep jumps push). */
   const [detail, setDetail] = createSignal<string[]>([]);
   const [cardMenu, setCardMenu] = createSignal<{ taskId: string; anchor: DOMRect } | null>(null);
@@ -127,26 +129,13 @@ function createUi() {
     setQuery('');
   }
 
-  let toastId = 0;
-  const timers = new Map<number, ReturnType<typeof setTimeout>>();
+  /** Z-85: board toasts land on the one app-wide stack (lib/toasts). */
+  const toastStack = appToasts();
   function dismissToast(id: number): void {
-    clearTimeout(timers.get(id));
-    timers.delete(id);
-    setToasts((current) => current.filter((item) => item.id !== id));
+    toastStack.dismiss(id);
   }
-  /** Web parity: identical toasts fold into ×N, at most 3 visible. */
   function toast(message: string, kind: ToastKind = 'info', action?: ToastAction): void {
-    const ttl = action ? 8000 : kind === 'error' ? 9000 : 4500;
-    const same = !action ? toasts().find((item) => !item.action && item.kind === kind && item.message === message) : undefined;
-    if (same) {
-      setToasts((current) => current.map((item) => (item.id === same.id ? { ...item, count: (item.count ?? 1) + 1 } : item)));
-      clearTimeout(timers.get(same.id));
-      timers.set(same.id, setTimeout(() => dismissToast(same.id), ttl));
-      return;
-    }
-    const entry: Toast = { id: ++toastId, kind, message, action };
-    setToasts((current) => [...current, entry].slice(-3));
-    timers.set(entry.id, setTimeout(() => dismissToast(entry.id), ttl));
+    toastStack.push(message, kind, action);
   }
 
   return {
@@ -170,7 +159,7 @@ function createUi() {
     closeNewTask: () => setNewTask(null),
     sheet,
     setSheet,
-    toasts,
+    toasts: () => toastStack.list(),
     toast,
     dismissToast,
     /** Ids of the open task detail pages (last = shown). */

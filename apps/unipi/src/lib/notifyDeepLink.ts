@@ -1,8 +1,9 @@
 /**
- * UNI-161 §2/§3: routes a `unipi://chat?host=&session=&dialog=` deep link
- * (`pid=` is the v1 bridge key, still parsed for old notifications)
- * (tapped from a notification, native or a UnifiedPush background
- * delivery) to the right chat, and reads one pending action queued by
+ * G-12 (WP-A19): routes a `unipi://s/<host>/<session>` deep link — the form
+ * every push (needs-you, cron run, finished) and the mascot overlay tap
+ * opens — to that session's route. The v1 `unipi://chat?host=&session=`
+ * query form (and its `pid=`/`dialog=` keys) is still parsed for old
+ * notifications, and `readPendingAction()` reads the one action queued by
  * the native side (`NotificationBridge.takePendingAction`) — an ask_user
  * answer or permission allow/deny tapped while the app was closed.
  */
@@ -17,7 +18,7 @@ export const ChatDeepLinkSchema = z.object({
 });
 export type ChatDeepLink = z.infer<typeof ChatDeepLinkSchema>;
 
-/** Parses `unipi://chat?host=&pid=&dialog=`; `undefined` for any other URL. */
+/** Parses `unipi://s/<host>/<session>` (G-12) or `unipi://chat?host=&pid=&dialog=`; `undefined` for any other URL. */
 export function parseChatDeepLink(raw: string): ChatDeepLink | undefined {
   let url: URL;
   try {
@@ -25,7 +26,14 @@ export function parseChatDeepLink(raw: string): ChatDeepLink | undefined {
   } catch {
     return undefined;
   }
-  if (url.protocol !== 'unipi:' || url.hostname !== 'chat') return undefined;
+  if (url.protocol !== 'unipi:') return undefined;
+  // v2 path form: unipi://s/<host>/<session> (both URL-encoded).
+  if (url.hostname === 's') {
+    const [host, session, ...rest] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    if (!host || !session || rest.length > 0) return undefined;
+    return { host, session };
+  }
+  if (url.hostname !== 'chat') return undefined;
   const result = ChatDeepLinkSchema.safeParse({
     host: url.searchParams.get('host') ?? undefined,
     session: url.searchParams.get('session') ?? undefined,

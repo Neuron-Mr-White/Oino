@@ -42,7 +42,6 @@ import { api } from '../../lib/board/api';
 import { pushBack } from '../../lib/back';
 import { highlightTask } from '../../lib/board/actions';
 import { BoardSheet } from './BoardSheet';
-import { BoardToasts } from './BoardToasts';
 import { PriorityGlyph, StatusGlyph } from './Glyphs';
 import { now } from './TaskCard';
 import { Markdown, openFile, taskFilePath } from './Markdown';
@@ -347,9 +346,6 @@ function TaskPage(props: { id: string }) {
                 </Section>
               </div>
 
-              <div class="task-toasts">
-                <BoardToasts />
-              </div>
               <TaskComposer task={current()} value={note()} onInput={setNote} uploading={uploading()} setUploading={setUploading} />
 
               <Show when={editing()}>

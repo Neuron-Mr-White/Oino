@@ -23,7 +23,7 @@ describe('buildFeed', () => {
     expect(buildFeed('done', 2, item({ what: 'auth: all green' }))).toEqual({
       state: 'done',
       count: 2,
-      bubble: { id: 'h:3:agent_end:9', text: 'auth: all green', link: 'unipi://chat?host=h&pid=3' },
+      bubble: { id: 'h:3:agent_end:9', text: 'auth: all green', link: 'unipi://s/h/s' },
       size: 96,
     });
   });

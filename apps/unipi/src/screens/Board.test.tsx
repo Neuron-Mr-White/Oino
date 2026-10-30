@@ -15,6 +15,7 @@ import { resetBoardUi } from '../lib/board/ui';
 import { resetPcAvailability } from '../lib/board/pcs';
 import { resetBoardActions, setBoardActions } from '../lib/board/actions';
 import type { Task } from '../lib/board/api';
+import { Toasts } from '../components/Toasts';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 
@@ -83,6 +84,8 @@ function setup(options: { hostList?: typeof hosts; availability?: Record<string,
           <SettingsProvider>
             <HostsProvider>
               <Board />
+              {/* Z-85: board toasts render on the app-wide stack */}
+              <Toasts />
             </HostsProvider>
           </SettingsProvider>
         )}

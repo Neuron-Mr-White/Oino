@@ -1,0 +1,94 @@
+/* App-wide toasts (WP-A19, Z-85): the BoardToasts look, one stack for every
+   surface. Fixed bottom-left, clearing the desktop sidebar; on the phone they
+   sit above the bottom tab bar. Exit fade ≤ 200 ms, none under reduced motion. */
+.app-toasts {
+  position: fixed;
+  left: calc(var(--sidebar-w, 0px) + 12px);
+  right: 12px;
+  bottom: 18px;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+[data-shell='phone'] .app-toasts {
+  bottom: calc(76px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px)));
+  left: 12px;
+}
+.app-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 4px 6px 14px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: var(--color-surface-3);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 55%);
+  font-size: 14px;
+  line-height: 19px;
+  color: var(--color-text);
+  animation: app-toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.app-toast[data-leaving] {
+  animation: app-toast-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+@keyframes app-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes app-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.app-toast-icon {
+  flex: 0 0 auto;
+}
+.app-toast[data-kind='success'] .app-toast-icon {
+  color: var(--color-wm-green);
+}
+.app-toast[data-kind='warning'] .app-toast-icon {
+  color: var(--color-amber);
+}
+.app-toast[data-kind='error'] .app-toast-icon {
+  color: var(--color-wm-red);
+}
+.app-toast[data-kind='info'] .app-toast-icon {
+  color: var(--color-wm-cyan);
+}
+.app-toast-action {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: var(--color-gold);
+  font-weight: 600;
+  background: transparent;
+}
+.app-toast-close {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--color-text-dim);
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-toast,
+  .app-toast[data-leaving] {
+    animation: none;
+  }
+  .app-toast[data-leaving] {
+    opacity: 0;
+  }
+}

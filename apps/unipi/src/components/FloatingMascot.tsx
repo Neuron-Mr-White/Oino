@@ -14,8 +14,7 @@ import { AnchoredMenu, MenuRow, MenuSeparator } from './board/AnchoredMenu';
 import { needsYou, type NeedsYouItem } from '../lib/needsYou';
 import { mascotLive } from '../lib/mascotLive';
 import { useHosts } from '../hosts/context';
-import { openChat } from '../lib/session/open';
-import { bareTarget } from '../lib/session/list';
+import { openNeedsYouItem } from './NeedsYouBell';
 import {
   BUBBLE_MS,
   DRAG_SLOP,
@@ -23,7 +22,7 @@ import {
   LONG_PRESS_MS,
   bubbleText,
   freshBubbles,
-  hostForItem,
+
   loadPos,
   place,
   savePos,
@@ -45,12 +44,7 @@ function bounds(): Bounds {
 /** Opens the chat an item points at (or the drawer when it has no reachable pi). */
 export function openItem(item: NeedsYouItem, hosts: ReturnType<typeof useHosts>, fallback: () => void): void {
   needsYou().markRead(item.id);
-  const host = hostForItem(hosts.hosts(), item);
-  if (!item.session || !host) return fallback();
-  openChat(
-    bareTarget(host.id, item.session, item.title),
-    host.name,
-  );
+  openNeedsYouItem(item, hosts.hosts(), fallback);
 }
 
 export function FloatingMascot(props: { onOpenDrawer: () => void; onHide: () => void }) {

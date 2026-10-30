@@ -134,8 +134,9 @@ describe('remembered position + prefs', () => {
 });
 
 describe('chatLink', () => {
-  it('builds the unipi://chat deep link the overlay opens', () => {
-    expect(chatLink({ hostId: 'my pc', pid: 42 })).toBe('unipi://chat?host=my+pc&pid=42');
-    expect(chatLink({ hostId: 'h', pid: null })).toBe('unipi://chat?host=h');
+  it('builds the v2 session deep link when the session is known, else the v1 chat form', () => {
+    expect(chatLink({ hostId: 'my pc', pid: 42, session: 's-9' })).toBe(`unipi://s/${encodeURIComponent('my pc')}/s-9`);
+    expect(chatLink({ hostId: 'h', pid: null, session: undefined })).toBe('unipi://chat?host=h');
+    expect(chatLink({ hostId: 'my pc', pid: 42, session: undefined })).toBe('unipi://chat?host=my+pc&pid=42');
   });
 });

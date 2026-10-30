@@ -1,12 +1,14 @@
 /**
- * Cron (UNI-317 "cron — scheduled runs"): the PC's scheduled, unattended
- * pi runs. List → detail (prompt, folder, run history) → add/edit form
- * with a live schedule preview (`cron_parse`). Pause all switch. Needs
- * the `cron` sharing feature on a phone (FeatureOff, same pattern as
- * Browser/Desktop/Forward); the PC's own app always has it.
+ * Cron (WP-A23, G-17/Z-112): the PC's scheduled, unattended runs — job files
+ * the `unipi.cron` extension or this screen write, fired by `unipi-host
+ * serve`'s embedded scheduler. List → detail (prompt, folder, run history) →
+ * add/edit form with a live schedule preview (`cron_parse`). Pause all
+ * switch. `/cron` in the composer opens this page (`?form=new` from
+ * `/cron add`). Needs the `cron` sharing feature on a phone (FeatureOff,
+ * same pattern as Browser/Forward); the PC's own app always has it.
  */
 import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
-import { useNavigate } from '@solidjs/router';
+import { useNavigate, useSearchParams } from '@solidjs/router';
 import { Bell, ChevronRight, Clock, MessageSquare, Pause, Play, Plus, RefreshCw, Square, Trash2 } from 'lucide-solid';
 import type { AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
@@ -34,9 +36,7 @@ import {
   type NotifyMode,
 } from '../lib/cron';
 import { folderName } from '../lib/session/newSession';
-import { bareTarget, chatLists } from '../lib/session/list';
-import { openChat } from '../lib/session/open';
-import { findChatTarget } from '../lib/notifyInit';
+import { openSessionRoute } from '../lib/notifyInit';
 import { useHosts } from '../hosts/context';
 import { PageHeader } from '../components/PageHeader';
 import { PcChip } from '../components/PcChip';
@@ -103,6 +103,7 @@ function viewFrom(result: Result<{ jobs: CronJob[]; paused: boolean }> | undefin
 export default function Cron() {
   const hosts = useHosts();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [hostId, setHostId] = createSignal<string | undefined>(hosts.selectedId());
   createEffect(() => {
     if (!hostId() && hosts.selectedId()) setHostId(hosts.selectedId());
@@ -114,6 +115,15 @@ export default function Cron() {
   const [hostSheetOpen, setHostSheetOpen] = createSignal(false);
   const [detail, setDetail] = createSignal<string | undefined>(undefined);
   const [formOpen, setFormOpen] = createSignal<CronJob | 'new' | undefined>(undefined);
+
+  // `/cron add` lands here with ?form=new: open the add form once, then clear
+  // the param so Back/refresh from the form is the plain list (G-17).
+  createEffect(() => {
+    if (searchParams.form === 'new') {
+      setFormOpen('new');
+      void setSearchParams({ form: undefined }, { replace: true });
+    }
+  });
 
   async function refresh() {
     const id = hostId();
@@ -404,12 +414,10 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
       setOpenError(r.error.message);
       return;
     }
-    // The host opens the run's saved session in its hub and names it (WP-H8/A23).
-    const lists = chatLists();
-    await lists.load(props.hostId).catch(() => undefined);
-    const chat = findChatTarget(props.hostId, lists.get(props.hostId)?.data, r.value.session) ?? bareTarget(props.hostId, r.value.session, props.job.name);
+    // The host opens the run's saved session in its hub and names it (WP-H8/A23):
+    // the conversation route takes it from here (G-12: cron runs open the session).
     props.onOpened();
-    openChat(chat, props.hostName);
+    openSessionRoute(props.hostId, r.value.session);
   }
   createEffect(() => {
     void cronLog(props.hostId, props.run.id).then(setData);
