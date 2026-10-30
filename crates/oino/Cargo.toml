@@ -24,7 +24,6 @@ oino-agent = { path = "../oino-agent" }
 oino-ai = { path = "../oino-ai" }
 oino-client = { path = "../oino-client" }
 oino-core = { path = "../oino-core" }
-oino-cron = { path = "../oino-cron" }
 oino-extension-api = { path = "../oino-extension-api" }
 oino-models = { path = "../oino-models" }
 oino-rpc = { path = "../oino-rpc" }

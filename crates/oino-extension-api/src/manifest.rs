@@ -235,8 +235,6 @@ pub struct Permissions {
     pub host_services: Vec<String>,
     /// `browser.*`: control the in-app browser (browser-control.md §8.4).
     pub browser: bool,
-    /// `cron.*`: control the scheduled-runs scheduler (unipi-port §3.24).
-    pub cron: bool,
 }
 
 impl Default for Permissions {
@@ -261,7 +259,6 @@ impl Default for Permissions {
             services: ServicesPermission::default(),
             host_services: Vec::new(),
             browser: false,
-            cron: false,
         }
     }
 }

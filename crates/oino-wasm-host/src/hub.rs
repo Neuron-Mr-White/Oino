@@ -14,8 +14,6 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use oino_cron::paths::CronPaths;
-use oino_extension_api::cron::CronHost;
 use oino_extension_api::host_service::HostService;
 use oino_extension_api::ops::{
     ControlOp, ControlReply, Delivery, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply,
@@ -55,7 +53,6 @@ pub struct LocalServices {
     sticky: Mutex<HashMap<String, RawJson>>,
     secrets: SecretStore,
     tasks: Arc<TaskService>,
-    cron: std::sync::RwLock<Option<Arc<dyn CronHost>>>,
     /// Host-provided services (`host-service.wit`): name → service (v2 ext-abi §3).
     host_services: std::sync::RwLock<BTreeMap<String, Arc<dyn HostService>>>,
     /// Nested agent session → its parent session (browser scope = root conversation).
@@ -87,36 +84,9 @@ impl LocalServices {
             sticky: Mutex::new(HashMap::new()),
             secrets: SecretStore::new(agent_dir),
             tasks: Arc::new(TaskService::new(agent_dir)),
-            cron: std::sync::RwLock::new(None),
             host_services: std::sync::RwLock::new(BTreeMap::new()),
             agent_parents: Mutex::new(HashMap::new()),
         }
-    }
-
-    /// Installs the process-wide cron scheduler host served to extensions with the `cron`
-    /// permission (unipi-port §3.24); `None` falls back to the daemon client.
-    pub fn set_cron(&self, cron: Option<Arc<dyn CronHost>>) {
-        *self
-            .cron
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = cron;
-    }
-
-    /// The installed cron host; a lazily created daemon client when none was installed.
-    #[must_use]
-    pub fn cron(&self) -> Option<Arc<dyn CronHost>> {
-        if let Some(installed) = self
-            .cron
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
-        {
-            return Some(installed);
-        }
-        // Default: talk to the running daemon (`oino cron serve` / the user service).
-        CronPaths::from_agent_dir()
-            .ok()
-            .map(|paths| Arc::new(oino_cron::host::DaemonCronHost { paths }) as Arc<dyn CronHost>)
     }
 
     /// Registers (replaces) one host-provided service served to extensions with a
@@ -676,24 +646,6 @@ impl HostServices for Composite {
                 lock(&hub.agent_parents).insert(handle.id(), parent);
             }
             Ok(handle)
-        })
-    }
-    fn cron_call(
-        &self,
-        _ext: &ExtensionId,
-        _cx: &CallContext,
-        op: &str,
-        payload: RawJson,
-    ) -> BoxFut<'_, Result<RawJson, HostError>> {
-        let host = self.hub().and_then(|hub| hub.cron());
-        let op = op.to_owned();
-        Box::pin(async move {
-            match host {
-                Some(host) => host.call(&op, payload).await,
-                None => Err(HostError::Failed(
-                    "the cron scheduler is not available in this host".to_owned(),
-                )),
-            }
         })
     }
 

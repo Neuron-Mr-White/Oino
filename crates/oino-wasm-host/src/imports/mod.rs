@@ -6,7 +6,6 @@
 //! [`CallContext`]: oino_extension_api::CallContext
 
 mod core;
-mod cron;
 mod host_service;
 mod io;
 mod runtime;

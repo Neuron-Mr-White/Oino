@@ -11,6 +11,17 @@
 //! top, never a replacement. `croner` (with its `chrono` backend) does the cron math;
 //! `chrono-tz` resolves the IANA zone name.
 
+#![forbid(unsafe_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests assert by unwrapping"
+    )
+)]
+
 use chrono::{DateTime, Days, Duration, SecondsFormat, TimeZone, Utc};
 use chrono_tz::Tz;
 use croner::Cron;

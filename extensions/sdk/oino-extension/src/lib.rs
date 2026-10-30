@@ -21,7 +21,6 @@
 //! | [`settings`] | `registry` | extension settings reads and writes |
 //! | [`secrets`], [`bus`], [`services`] | same | secrets, pub/sub, inter-extension calls |
 //! | [`host_service`] | `host-service` | embedding-host services (`"browser"`, `"cron"`, …) |
-//! | [`cron`] | `cron` | scheduled-run scheduler control |
 //! | [`host`] | `host-info`, `log` | platform, workspace, env, logging |
 //! | [`provider`] (feature `provider`) | `provider`, `provider-host` | provider components |
 //!
@@ -97,7 +96,6 @@ pub mod bus;
 pub mod command;
 pub mod context;
 pub mod control;
-pub mod cron;
 mod error;
 pub mod events;
 pub mod fs;

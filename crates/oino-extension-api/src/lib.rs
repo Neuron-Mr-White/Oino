@@ -20,7 +20,6 @@
 //! | [`runtime`] | — | [`ExtensionRuntime`], [`ExtensionInstance`], [`ProviderInstance`], [`HostServices`], [`AgentHandle`] |
 //! | [`manifest`] | — | `extension.json`, [`manifest::Permissions`], package validation |
 //! | [`host_service`] | `host-service` | [`host_service::HostService`] (capabilities an embedding host registers) |
-//! | [`cron`] | `cron` | [`cron::CronHost`] (daemon client or embedded scheduler) |
 //! | `testing` (feature) | — | `RecordingHostServices`, `FakeExtensionRuntime` |
 
 #![forbid(unsafe_code)]
@@ -34,7 +33,6 @@
     )
 )]
 
-pub mod cron;
 pub mod guest;
 pub mod host_service;
 pub mod json;

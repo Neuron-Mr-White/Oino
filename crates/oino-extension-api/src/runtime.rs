@@ -573,20 +573,6 @@ pub trait HostServices: Send + Sync {
         HostContextInfo::default()
     }
 
-    // ── cron ──
-    /// `cron.call`: one scheduler op (unipi-port §3.24) in the caller's scope. The hub
-    /// overrides this with the installed [`crate::cron::CronHost`] (or the daemon client)
-    /// before it reaches the inner host.
-    fn cron_call(
-        &self,
-        ext: &ExtensionId,
-        cx: &CallContext,
-        op: &str,
-        payload: RawJson,
-    ) -> BoxFut<'_, Result<RawJson, HostError>> {
-        Box::pin(async { unsupported!("cron") })
-    }
-
     // ── host-service ──
     /// `host-service.call`: one op of a host-provided service (`"browser"`, `"cron"`, …)
     /// in the caller's scope. The WASM host's hub serves this from its registered

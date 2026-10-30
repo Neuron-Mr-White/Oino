@@ -1,9 +1,15 @@
 //! Atomic storage for cron jobs and run records.
 //!
-//! See [`crate::paths`] for the layout. `jobs.json` writes happen under a lock file so
-//! the daemon, the CLI and the desktop never interleave a read-modify-write.
+//! See [`crate::paths`] for the layout. **One JSON file per job** (`jobs/<id>.json`,
+//! schema `"v": 2`, camelCase, `id` = file stem — ext-abi §6.2); every writer (the cron
+//! extension, the `unipi-host cron` CLI, the host) writes atomically under the jobs
+//! lock. Unknown files (stem ≠ `id` field, malformed JSON, wrong `v`) are ignored with a
+//! diagnostic. A pre-v2 monolithic `jobs.json` is split into `jobs/*.json` on first open
+//! ([`migrate_jobs_json`], idempotent).
 
 use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 
 use crate::error::{CronError, Result};
 use crate::model::{CronSettings, Job, Run, RunStatus};
@@ -12,29 +18,231 @@ use crate::paths::{CronPaths, atomic_write_json, read_json};
 /// The output tail kept per run.
 pub const LOG_CAP_BYTES: usize = 64 * 1024;
 
-/// Loads every job (missing file = empty).
-///
-/// # Errors
-/// [`CronError::Io`]/[`CronError::Json`] when the file exists but can't be read/parsed.
-pub fn load_jobs(paths: &CronPaths) -> Result<Vec<Job>> {
-    Ok(read_json(&paths.jobs())?.unwrap_or_default())
+/// The job-file schema version (`"v": 2`).
+pub const JOB_FILE_VERSION: u8 = 2;
+
+/// A `jobs/<id>.json` envelope: `{"v": 2, …job fields (camelCase)}`.
+#[derive(Debug, Serialize, Deserialize)]
+struct JobFile {
+    v: u8,
+    #[serde(flatten)]
+    job: Job,
 }
 
-/// Saves every job atomically under the jobs lock.
+/// The v2 wire form of `job` (what a job file holds, without the `v`).
+#[must_use]
+pub fn job_file_json(job: &Job) -> serde_json::Value {
+    serde_json::to_value(JobFile {
+        v: JOB_FILE_VERSION,
+        job: job.clone(),
+    })
+    .unwrap_or_else(|_| serde_json::json!({}))
+}
+
+/// Splits a legacy `jobs.json` (pre-v2 monolithic list) into `jobs/<id>.json` files under
+/// the jobs lock and renames it to `jobs.json.imported`. A no-op when no legacy file
+/// exists; job files already present win over their legacy copy. Returns how many jobs
+/// were written.
+///
+/// # Errors
+/// [`CronError::Io`]/[`CronError::Json`] from the read/writes.
+pub fn migrate_jobs_json(paths: &CronPaths) -> Result<usize> {
+    if !paths.legacy_jobs().exists() {
+        return Ok(0);
+    }
+    paths.ensure()?;
+    let _guard = JobsLock::acquire(paths)?;
+    // Re-check under the lock: another process may have migrated meanwhile.
+    if !paths.legacy_jobs().exists() {
+        return Ok(0);
+    }
+    let Some(legacy): Option<Vec<Job>> = read_json(&paths.legacy_jobs())? else {
+        let _ = std::fs::rename(paths.legacy_jobs(), paths.root.join("jobs.json.imported"));
+        return Ok(0);
+    };
+    let mut written = 0;
+    for job in legacy {
+        let target = paths.job_file(&job.id);
+        if target.exists() {
+            continue; // the split file is newer
+        }
+        atomic_write_json(
+            &target,
+            &JobFile {
+                v: JOB_FILE_VERSION,
+                job,
+            },
+        )?;
+        written += 1;
+    }
+    std::fs::rename(paths.legacy_jobs(), paths.root.join("jobs.json.imported"))
+        .map_err(|e| CronError::io(e, paths.legacy_jobs()))?;
+    Ok(written)
+}
+
+/// Loads every job, migrating a legacy `jobs.json` first and ignoring broken files
+/// (their diagnostics are dropped; [`scan_jobs`] reports them).
+///
+/// # Errors
+/// [`CronError::Io`]/[`CronError::Json`] when the jobs dir can't be read.
+pub fn load_jobs(paths: &CronPaths) -> Result<Vec<Job>> {
+    Ok(scan_jobs(paths)?.0)
+}
+
+/// Loads every job plus one diagnostic per ignored file (unknown id, malformed JSON,
+/// wrong schema version).
+///
+/// # Errors
+/// [`CronError::Io`] when the jobs dir can't be read.
+pub fn scan_jobs(paths: &CronPaths) -> Result<(Vec<Job>, Vec<String>)> {
+    let _ = migrate_jobs_json(paths)?;
+    let dir = paths.jobs_dir();
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((Vec::new(), Vec::new())),
+        Err(e) => return Err(CronError::io(e, &dir)),
+    };
+    let mut jobs = Vec::new();
+    let mut diagnostics = Vec::new();
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let diagnostic = |what: &str| format!("ignored job file {}: {what}", path.display());
+        match read_json::<JobFile>(&path) {
+            Ok(Some(file)) if file.v != JOB_FILE_VERSION => {
+                diagnostics.push(diagnostic(&format!(
+                    "schema version {} ≠ {JOB_FILE_VERSION}",
+                    file.v
+                )));
+            }
+            Ok(Some(file)) if file.job.id != stem => {
+                diagnostics.push(diagnostic(&format!("id {:?} ≠ file name", file.job.id)));
+            }
+            Ok(Some(file)) => jobs.push(file.job),
+            Ok(None) => {}
+            Err(e) => diagnostics.push(diagnostic(&e.to_string())),
+        }
+    }
+    jobs.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok((jobs, diagnostics))
+}
+
+/// Saves one job atomically (`jobs/<id>.json`) under the jobs lock.
 ///
 /// # Errors
 /// [`CronError::Io`] when the lock or the write fails.
+pub fn save_job(paths: &CronPaths, job: &Job) -> Result<()> {
+    paths.ensure()?;
+    let _guard = JobsLock::acquire(paths)?;
+    atomic_write_json(
+        &paths.job_file(&job.id),
+        &JobFile {
+            v: JOB_FILE_VERSION,
+            job: job.clone(),
+        },
+    )
+}
+
+/// Saves every job (one file each) under one lock acquisition (migration, tests).
+///
+/// # Errors
+/// [`CronError::Io`] when the lock or a write fails.
 pub fn save_jobs(paths: &CronPaths, jobs: &[Job]) -> Result<()> {
     paths.ensure()?;
     let _guard = JobsLock::acquire(paths)?;
-    atomic_write_json(&paths.jobs(), &jobs.to_vec())
+    for job in jobs {
+        atomic_write_json(
+            &paths.job_file(&job.id),
+            &JobFile {
+                v: JOB_FILE_VERSION,
+                job: job.clone(),
+            },
+        )?;
+    }
+    Ok(())
 }
 
-/// Serialises `jobs.json` read-modify-write cycles (CLI, daemon, desktop).
+/// Read-modify-write of one job file under the jobs lock: `apply` mutates the job; its
+/// error aborts without writing. `Ok(None)` = no such file.
+///
+/// # Errors
+/// [`CronError::Io`]/[`CronError::Json`] from the file; the closure's message otherwise.
+pub fn update_job<R>(
+    paths: &CronPaths,
+    id: &str,
+    apply: impl FnOnce(&mut Job) -> std::result::Result<R, String>,
+) -> Result<std::result::Result<Option<(R, Job)>, String>> {
+    paths.ensure()?;
+    let _guard = JobsLock::acquire(paths)?;
+    let Some(file) = read_json::<JobFile>(&paths.job_file(id))? else {
+        return Ok(Ok(None));
+    };
+    let mut job = file.job;
+    match apply(&mut job) {
+        Ok(value) => {
+            atomic_write_json(
+                &paths.job_file(id),
+                &JobFile {
+                    v: JOB_FILE_VERSION,
+                    job: job.clone(),
+                },
+            )?;
+            Ok(Ok(Some((value, job))))
+        }
+        Err(message) => Ok(Err(message)),
+    }
+}
+
+/// Inserts a job unless its id is taken (checked under the jobs lock).
+///
+/// # Errors
+/// [`CronError::Io`]/[`CronError::Json`]; a user-facing message when the id exists.
+pub fn insert_job(paths: &CronPaths, job: &Job) -> std::result::Result<(), String> {
+    let write = || -> Result<()> {
+        paths.ensure()?;
+        let _guard = JobsLock::acquire(paths)?;
+        if paths.job_file(&job.id).exists() || load_jobs(paths)?.iter().any(|j| j.id == job.id) {
+            return Err(CronError::control(format!(
+                "a job {:?} already exists",
+                job.id
+            )));
+        }
+        atomic_write_json(
+            &paths.job_file(&job.id),
+            &JobFile {
+                v: JOB_FILE_VERSION,
+                job: job.clone(),
+            },
+        )
+    };
+    write().map_err(|e| e.to_string())
+}
+
+/// Removes a job file. `Ok(false)` when it didn't exist.
+///
+/// # Errors
+/// [`CronError::Io`] on the delete.
+pub fn remove_job_file(paths: &CronPaths, id: &str) -> Result<bool> {
+    match std::fs::remove_file(paths.job_file(id)) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(CronError::io(e, paths.job_file(id))),
+    }
+}
+
+/// Serialises job-file writes (extension, CLI, host).
 struct JobsLock(#[allow(dead_code)] std::fs::File);
 
 impl JobsLock {
     fn acquire(paths: &CronPaths) -> Result<Self> {
+        std::fs::create_dir_all(paths.jobs_dir())
+            .map_err(|e| CronError::io(e, paths.jobs_dir()))?;
         let file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -322,21 +530,23 @@ mod tests {
     }
 
     #[test]
-    fn jobs_round_trip_atomically() {
+    fn jobs_round_trip_as_one_file_each() {
         let (_tmp, paths) = paths();
         let jobs = vec![job("a"), job("b")];
         save_jobs(&paths, &jobs).unwrap();
         assert_eq!(load_jobs(&paths).unwrap(), jobs);
-        // No stray lock or tmp files in the root besides the expected ones.
-        let names: Vec<String> = std::fs::read_dir(&paths.root)
+        assert!(paths.job_file("a").is_file());
+        // Only the job files and the lock live in jobs/.
+        let mut names: Vec<String> = std::fs::read_dir(paths.jobs_dir())
             .unwrap()
             .filter_map(std::result::Result::ok)
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
-        assert!(names.contains(&"jobs.json".to_owned()));
-        assert!(!names.iter().any(|n| {
-            n.starts_with(".tmp") || Path::new(n).extension().is_some_and(|e| e == "tmp")
-        }));
+        names.sort();
+        assert_eq!(
+            names,
+            vec![".lock".to_owned(), "a.json".to_owned(), "b.json".to_owned()]
+        );
     }
 
     #[test]

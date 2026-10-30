@@ -16,7 +16,6 @@
 //! | [`cli::list_models`] | `list-models.ts` | `--list-models` table |
 //! | [`cli::packages`] | `package-manager.ts` | `install`/`remove`/`update`/`list`/`config` |
 //! | [`cli::self_update`] | — | `oino update [--check]` from the release manifest |
-//! | [`cli::cron`] | docs/cron.md | `oino cron …` (serve/install/list/add/run/…) |
 //! | [`startup`] | `main.ts` `createRuntime` | services, session selection, model/tool options |
 //! | [`loader`] | resource loader `-e` | share-dir, installed and `-e` packages, `builtin:` components |
 //! | [`modes::print`] | `print-mode.ts` | text and JSON output |
@@ -179,9 +178,6 @@ pub async fn run(command_line: Vec<String>) -> i32 {
         .filter(|c| PACKAGE_COMMANDS.contains(&c.as_str()))
     {
         return package_command(command, &command_line[1..]).await;
-    }
-    if command_line.first().is_some_and(|c| c == "cron") {
-        return cli::cron::run(&command_line[1..]).await;
     }
     if let Some(command) = command_line
         .first()

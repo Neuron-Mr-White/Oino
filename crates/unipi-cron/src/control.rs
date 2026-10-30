@@ -1,7 +1,8 @@
-//! Every cron control operation ([`CronControl`]), handled identically by the daemon
-//! (over its TCP socket) and by any process reading the store directly (CLI without a
-//! daemon, the desktop). Ops that need a live scheduler (`run`, `stop`, `status`)
-//! fail with a clear message when none is attached.
+//! Every cron control operation ([`CronControl`]), handled against the job files and
+//! an optional live scheduler: unipi-host's embedded scheduler serves the live ops
+//! (`run`, `stop`, live `status` running flags), any process reading the store serves the
+//! rest (`unipi-host cron` CLI storage ops, tests). Ops that need a live scheduler fail
+//! with a clear message when none is attached.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -434,7 +435,7 @@ pub async fn handle_control(
     match request {
         CronControl::List => {
             let jobs = store::load_jobs(paths)?;
-            let running = running_set(scheduler).await;
+            let running = running_set(paths, scheduler).await;
             let now = dt_now(scheduler);
             let jobs: Vec<Value> = jobs
                 .iter()
@@ -460,7 +461,7 @@ pub async fn handle_control(
                 .find(|j| j.id == id)
                 .ok_or_else(|| not_found(&format!("no job {id:?}")))?;
             let runs = store::load_runs(paths, &id)?;
-            let running = running_set(scheduler).await;
+            let running = running_set(paths, scheduler).await;
             let mut value = job_json(job);
             if let Some(obj) = value.as_object_mut()
                 && let Some(extra) =
@@ -479,37 +480,30 @@ pub async fn handle_control(
             let mut jobs = store::load_jobs(paths)?;
             let job = add_job(paths, &mut jobs, *new, now_ms)
                 .map_err(crate::error::CronError::control)?;
-            store::save_jobs(paths, &jobs)?;
+            store::insert_job(paths, &job).map_err(crate::error::CronError::control)?;
             Ok(job_json(&job))
         }
         CronControl::Edit { id, patch } => {
-            let mut jobs = store::load_jobs(paths)?;
-            let job = jobs
-                .iter_mut()
-                .find(|j| j.id == id)
-                .ok_or_else(|| not_found(&format!("no job {id:?}")))?;
-            edit_job(job, patch, now_ms).map_err(crate::error::CronError::control)?;
-            let result = job_json(job);
-            store::save_jobs(paths, &jobs)?;
-            Ok(result)
+            let result = store::update_job(paths, &id, |job| edit_job(job, patch, now_ms))?;
+            match result {
+                Ok(Some((_value, job))) => Ok(job_json(&job)),
+                Ok(None) => Err(not_found(&format!("no job {id:?}"))),
+                Err(message) => Err(crate::error::CronError::control(message)),
+            }
         }
         CronControl::Remove { id } => {
-            let mut jobs = store::load_jobs(paths)?;
-            let before = jobs.len();
-            jobs.retain(|j| j.id != id);
-            if jobs.len() == before {
+            if !store::remove_job_file(paths, &id)? {
                 return Err(not_found(&format!("no job {id:?}")));
             }
-            store::save_jobs(paths, &jobs)?;
             store::remove_runs(paths, &id);
             Ok(json!({ "removed": id }))
         }
         CronControl::Enable { id } => {
-            set_enabled(paths, scheduler, &id, true)?;
+            set_enabled(paths, &id, true)?;
             Ok(json!({ "id": id, "enabled": true }))
         }
         CronControl::Disable { id } => {
-            set_enabled(paths, scheduler, &id, false)?;
+            set_enabled(paths, &id, false)?;
             Ok(json!({ "id": id, "enabled": false }))
         }
         CronControl::RunNow { id } => {
@@ -572,7 +566,7 @@ pub async fn handle_control(
         CronControl::Status => {
             let jobs = store::load_jobs(paths)?;
             let settings = store::load_settings(paths)?;
-            let running = running_set(scheduler).await;
+            let running = running_set(paths, scheduler).await;
             let now = dt_now(scheduler);
             let jobs: Vec<Value> = jobs
                 .iter()
@@ -636,9 +630,7 @@ pub async fn handle_control(
                 started_at: Some(stamp),
                 ended_at: Some(stamp),
                 exit_code: Some(0),
-                summary: Some(
-                    "This is a test notification from `oino cron test-notify`.".to_owned(),
-                ),
+                summary: Some("This is a test notification from `cron test-notify`.".to_owned()),
                 reason: None,
                 session_path: None,
                 cost_usd: None,
@@ -688,45 +680,32 @@ fn not_found(message: &str) -> crate::error::CronError {
     crate::error::CronError::control(message.to_owned())
 }
 
-async fn running_set(scheduler: Option<&Scheduler>) -> Vec<String> {
-    match scheduler {
-        Some(s) => s.running_job_ids().await,
-        None => {
-            // Without a live scheduler, a run still marked running in the store counts.
-            match CronPaths::from_agent_dir() {
-                Ok(paths) => {
-                    let mut ids: Vec<String> = store::load_all_runs(&paths)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|r| !r.status.is_finished())
-                        .map(|r| r.job_id)
-                        .collect();
-                    ids.sort();
-                    ids.dedup();
-                    ids
-                }
-                Err(_) => Vec::new(),
-            }
-        }
+async fn running_set(paths: &CronPaths, scheduler: Option<&Scheduler>) -> Vec<String> {
+    if let Some(s) = scheduler {
+        return s.running_job_ids().await;
     }
+    // Without a live scheduler, a run still marked running in the store counts.
+    let mut ids: Vec<String> = store::load_all_runs(paths)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| !r.status.is_finished())
+        .map(|r| r.job_id)
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
 }
 
-fn set_enabled(
-    paths: &CronPaths,
-    scheduler: Option<&Scheduler>,
-    id: &str,
-    enabled: bool,
-) -> crate::error::Result<()> {
-    if let Some(s) = scheduler {
-        s.set_enabled(id, enabled)
-    } else {
-        let mut jobs = store::load_jobs(paths)?;
-        let Some(job) = jobs.iter_mut().find(|j| j.id == id) else {
-            return Err(not_found(&format!("no job {id:?}")));
-        };
+fn set_enabled(paths: &CronPaths, id: &str, enabled: bool) -> crate::error::Result<()> {
+    let now_ms = now_ms();
+    match store::update_job(paths, id, move |job| {
         job.enabled = enabled;
-        job.updated = now_ms();
-        store::save_jobs(paths, &jobs)
+        job.updated = now_ms;
+        Ok::<(), String>(())
+    })? {
+        Ok(Some((_value, _job))) => Ok(()),
+        Ok(None) => Err(not_found(&format!("no job {id:?}"))),
+        Err(message) => Err(crate::error::CronError::control(message)),
     }
 }
 
@@ -765,7 +744,7 @@ mod tests {
         .unwrap();
         assert_eq!(value["id"], "daily-digest");
         assert_eq!(value["schedule"], "0 0 9 * * *");
-        assert_eq!(value["time_limit_s"], DEFAULT_TIME_LIMIT_S);
+        assert_eq!(value["timeLimitS"], DEFAULT_TIME_LIMIT_S);
         // edit: human schedule resolved against the job's zone
         let value = handle_control(
             &paths,

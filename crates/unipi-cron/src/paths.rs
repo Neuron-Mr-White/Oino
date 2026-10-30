@@ -1,12 +1,15 @@
 //! Every file the scheduler owns, under `<agent dir>/cron/` (`~/.oino/cron/` by default).
 //!
-//! Layout:
-//! - `jobs.json` — every job, written atomically under a lock.
+//! Layout (v2 ext-abi §6.2 — one file per job):
+//! - `jobs/<id>.json` — one job per file, written atomically under the jobs lock.
+//! - `jobs/.lock` — serialises job-file writes (extension, CLI, host; lives inside
+//!   `jobs/` so the extension's write preopen can take it too).
 //! - `runs/<job id>/<run id>.json` — one run record.
 //! - `runs/<job id>/<run id>.log` — the run's output tail (capped at 64 KiB).
-//! - `settings.json` — the scheduler's own settings block.
+//! - `settings.json` — the scheduler's own settings block (unipi-host owned).
 //! - `scheduler.lock` — the single-owner lock held while a scheduler ticks.
-//! - `serve.json` — `{pid, port}` of the running daemon (its control socket).
+//! - `jobs.json` / `jobs.json.imported` — the pre-v2 monolithic job list and its
+//!   post-migration remains (see [`crate::store::migrate_jobs_json`]).
 
 use std::path::{Path, PathBuf};
 
@@ -63,15 +66,22 @@ impl CronPaths {
         agent_dir().map(Self::new)
     }
 
-    /// `jobs.json`.
+    /// `jobs/` (one `<id>.json` file per job).
     #[must_use]
-    pub fn jobs(&self) -> PathBuf {
-        self.root.join("jobs.json")
+    pub fn jobs_dir(&self) -> PathBuf {
+        self.root.join("jobs")
     }
-    /// The lock serialising `jobs.json` writes.
+    /// `jobs/<id>.json`.
+    #[must_use]
+    pub fn job_file(&self, job_id: &str) -> PathBuf {
+        self.jobs_dir().join(format!("{job_id}.json"))
+    }
+    /// The lock serialising job-file writes. Inside `jobs/` (not `cron/jobs.lock`) so
+    /// the cron extension's write preopen on `~/.oino/cron/jobs` can acquire it too —
+    /// every writer (extension, CLI, host) must share one lock file.
     #[must_use]
     pub fn jobs_lock(&self) -> PathBuf {
-        self.root.join("jobs.lock")
+        self.jobs_dir().join(".lock")
     }
     /// `settings.json`.
     #[must_use]
@@ -83,10 +93,10 @@ impl CronPaths {
     pub fn owner_lock(&self) -> PathBuf {
         self.root.join("scheduler.lock")
     }
-    /// `serve.json` (the running daemon's pid and port).
+    /// The pre-v2 monolithic job list, if a migration never ran.
     #[must_use]
-    pub fn serve_info(&self) -> PathBuf {
-        self.root.join("serve.json")
+    pub fn legacy_jobs(&self) -> PathBuf {
+        self.root.join("jobs.json")
     }
     /// `runs/`.
     #[must_use]
@@ -166,7 +176,10 @@ mod tests {
     fn paths_are_under_the_agent_dir() {
         let paths = CronPaths::new("/tmp/agent");
         assert_eq!(paths.root, PathBuf::from("/tmp/agent/cron"));
-        assert_eq!(paths.jobs(), PathBuf::from("/tmp/agent/cron/jobs.json"));
+        assert_eq!(
+            paths.job_file("j"),
+            PathBuf::from("/tmp/agent/cron/jobs/j.json")
+        );
         assert_eq!(
             paths.run_log("j", "r"),
             PathBuf::from("/tmp/agent/cron/runs/j/r.log")

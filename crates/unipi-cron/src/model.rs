@@ -65,10 +65,12 @@ pub struct NotifySpec {
     pub events: Option<Vec<String>>,
 }
 
-/// A scheduled job (`<agent dir>/cron/jobs.json`).
+/// A scheduled job (`<agent dir>/cron/jobs/<id>.json`, schema `"v": 2`, camelCase —
+/// ext-abi §6.2; the legacy `snake_case` keys stay readable for the `jobs.json` migration).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Job {
-    /// A short slug, unique among jobs.
+    /// A short slug, unique among jobs (must equal the file stem).
     pub id: String,
     /// Human-readable name.
     pub name: String,
@@ -90,10 +92,14 @@ pub struct Job {
     #[serde(default = "default_true")]
     pub enabled: bool,
     /// Per-job wall-clock limit for one run.
-    #[serde(default = "default_time_limit")]
+    #[serde(default = "default_time_limit", alias = "time_limit_s")]
     pub time_limit_s: u64,
     /// A run that costs more than this is recorded `failed` (`None` = no cap).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "cost_cap_usd"
+    )]
     pub cost_cap_usd: Option<f64>,
     /// What to do when a fire overlaps the previous run.
     #[serde(default)]
@@ -105,8 +111,10 @@ pub struct Job {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notify: Option<NotifySpec>,
     /// Unix ms.
+    #[serde(alias = "created")]
     pub created: u64,
     /// Unix ms.
+    #[serde(alias = "updated")]
     pub updated: u64,
 }
 
@@ -294,6 +302,29 @@ mod tests {
         assert_eq!(job.missed, MissedPolicy::RunLatest);
         assert!(job.enabled);
         assert_eq!(job.time_limit_s, DEFAULT_TIME_LIMIT_S);
+    }
+
+    #[test]
+    fn job_file_fields_are_camel_case_and_legacy_snake_case_loads() {
+        let job = Job::new("j", "n", "p", "0 0 * * * *", "UTC", "/tmp");
+        let value = serde_json::to_value(&job).unwrap();
+        assert_eq!(value["timeLimitS"], DEFAULT_TIME_LIMIT_S);
+        assert!(value.get("time_limit_s").is_none());
+        assert!(value.get("costCapUsd").is_none());
+        // The pre-v2 `jobs.json` wrote snake_case with `created`/`updated`.
+        let legacy = r#"{
+            "id": "digest", "name": "Digest", "prompt": "p", "schedule": "0 0 9 * * *",
+            "tz": "UTC", "cwd": "/tmp", "time_limit_s": 600, "cost_cap_usd": 1.5,
+            "created": 1, "updated": 2
+        }"#;
+        let job: Job = serde_json::from_str(legacy).unwrap();
+        assert_eq!(job.time_limit_s, 600);
+        assert_eq!(job.cost_cap_usd, Some(1.5));
+        assert_eq!(job.created, 1);
+        // Re-serialising writes the v2 camelCase form.
+        let value = serde_json::to_value(&job).unwrap();
+        assert_eq!(value["timeLimitS"], 600);
+        assert_eq!(value["costCapUsd"], 1.5);
     }
 
     #[test]

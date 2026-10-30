@@ -45,7 +45,9 @@ pub struct OinoCommand {
 }
 
 /// Resolves the `oino` binary to spawn: `$OINO_CRON_BIN`, then this process's own
-/// executable (the daemon *is* `oino`), then `oino` on `PATH`. `None` when nothing found.
+/// executable **when it is `oino` itself**, then `oino` on `PATH`. `None` when nothing
+/// found. (The owner is no longer the `oino` binary — under v2 it is unipi-host — so a
+/// foreign current executable must not be used.)
 #[must_use]
 pub fn resolve_oino(
     env_bin: Option<std::ffi::OsString>,
@@ -58,8 +60,10 @@ pub fn resolve_oino(
             args: Vec::new(),
         });
     }
+    let oino_name = if cfg!(windows) { "oino.exe" } else { "oino" };
     if let Some(exe) = exe
         && exe.is_file()
+        && exe.file_name().is_some_and(|n| n == oino_name)
     {
         return Some(OinoCommand {
             program: exe.to_path_buf(),
@@ -495,6 +499,10 @@ mod tests {
         std::fs::write(&exe, b"#! /bin/sh\n").unwrap();
         let found = resolve_oino(None, None, Some(&exe)).unwrap();
         assert_eq!(found.program, exe);
+        // A foreign current executable (the v2 owner is unipi-host) must not be spawned.
+        let foreign = tmp.path().join("unipi-host");
+        std::fs::write(&foreign, b"#! /bin/sh\n").unwrap();
+        assert!(resolve_oino(None, None, Some(&foreign)).is_none());
         // No exe → PATH search.
         let on_path = tmp.path().join("oino");
         std::fs::write(&on_path, b"#! /bin/sh\n").unwrap();

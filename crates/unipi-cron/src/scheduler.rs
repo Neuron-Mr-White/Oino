@@ -210,7 +210,7 @@ pub struct Scheduler {
     run_seq: Arc<AtomicU32>,
     /// Notified after every finished run (bus publish), if installed.
     event_sink: Option<RunEventSink>,
-    /// How often [`Scheduler::tick`] is called by the owner ([`crate::serve`]); used as
+    /// How often [`Scheduler::tick`] is called by the owner ([`crate::embedded`]); used as
     /// the on-time tolerance for [`next_due_fire`].
     pub tick_interval: Duration,
 }
@@ -286,7 +286,7 @@ impl Scheduler {
     }
 
     /// One scheduling pass: checks every enabled job, starts due fires (respecting
-    /// overlap/pause/concurrency). Called on a timer by [`crate::serve`]; harmless to call
+    /// overlap/pause/concurrency). Called on a timer by [`crate::embedded`]; harmless to call
     /// back-to-back in tests.
     pub async fn tick(&self) {
         let settings = self.settings();
@@ -617,17 +617,19 @@ impl Scheduler {
         Ok(run_id)
     }
 
-    /// Sets `enabled` on a job.
+    /// Sets `enabled` on a job (rewrites its file under the jobs lock).
     ///
     /// # Errors
     /// [`crate::error::CronError`] from the store.
     pub fn set_enabled(&self, job_id: &str, enabled: bool) -> Result<()> {
-        let mut jobs = store::load_jobs(&self.paths)?;
-        if let Some(job) = jobs.iter_mut().find(|j| j.id == job_id) {
+        let now = self.clock.now_ms();
+        store::update_job(&self.paths, job_id, move |job| {
             job.enabled = enabled;
-            job.updated = self.clock.now_ms();
-        }
-        store::save_jobs(&self.paths, &jobs)
+            job.updated = now;
+            Ok::<(), String>(())
+        })?
+        .map(|_| ())
+        .map_err(crate::error::CronError::control)
     }
 
     /// Waits until no runs are active (daemon shutdown), at most `grace`.

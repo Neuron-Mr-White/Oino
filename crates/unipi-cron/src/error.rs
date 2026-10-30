@@ -17,10 +17,8 @@ pub enum CronError {
     /// Another scheduler process owns the tick loop already.
     #[error("another scheduler already owns cron ({0})")]
     AlreadyOwned(String),
-    /// The daemon is not running (ops that need it fail with this).
-    #[error(
-        "the cron scheduler is not running — start it with `oino cron serve` or `oino cron install`"
-    )]
+    /// No scheduler is running (ops that need one fail with this).
+    #[error("the cron scheduler is not running (unipi-host is not running)")]
     NotRunning,
     /// A control request failed (message meant to be shown).
     #[error("{0}")]
