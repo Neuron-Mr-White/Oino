@@ -178,7 +178,7 @@ async fn second_runtime_takes_the_session_over() {
     )
     .await
     .unwrap();
-    let first_id = first.session().session_id().to_owned();
+    let first_id = first.session().session_id().clone();
     let first_events = first.subscribe();
 
     // The second open takes the first over (in-process holders go through the same
