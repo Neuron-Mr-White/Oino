@@ -705,12 +705,26 @@ impl App {
                     NoticeLevel::Warning,
                     format!("Display fell behind; {dropped} events were dropped"),
                 ),
+                OinoEvent::ExtensionDisabled {
+                    extension_id,
+                    reason,
+                    ..
+                } => self.notice(
+                    NoticeLevel::Warning,
+                    format!("Extension {extension_id} crashed and was disabled for this session ({reason:?})"),
+                ),
+                OinoEvent::SessionCrashed { error } => self.notice(
+                    NoticeLevel::Error,
+                    format!("Session task crashed: {error}"),
+                ),
                 // Topic / agent feeds are GUI surfaces; shutdown is handled by the mode loop.
+                // Takeover is handled there too (the mode shows the notice and exits).
                 OinoEvent::ToolsChanged { .. }
                 | OinoEvent::Topic { .. }
                 | OinoEvent::AgentsChanged { .. }
                 | OinoEvent::AgentEvent { .. }
-                | OinoEvent::ShutdownRequested => {}
+                | OinoEvent::ShutdownRequested
+                | OinoEvent::SessionTakenOver { .. } => {}
             },
         }
     }

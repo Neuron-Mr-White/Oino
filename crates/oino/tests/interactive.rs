@@ -142,9 +142,14 @@ fn interactive_mode_runs_a_prompt_and_exits() {
         std::thread::sleep(Duration::from_millis(50));
     };
     assert!(status.success(), "exit status {status}");
+    // `*.jsonl` only: D-LOCK leaves a `<file>.lock` sidecar next to each session file.
     let sessions = std::fs::read_dir(sandbox.agent().join("sessions"))
         .unwrap()
         .flat_map(|d| std::fs::read_dir(d.unwrap().path()).unwrap())
+        .filter(|f| {
+            f.as_ref()
+                .is_ok_and(|f| f.path().extension().is_some_and(|e| e == "jsonl"))
+        })
         .count();
     assert_eq!(sessions, 1, "the prompt was persisted to a session file");
 }
