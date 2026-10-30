@@ -19,10 +19,10 @@
 //!
 //! | Item | Contents |
 //! |---|---|
-//! | [`WasmRuntime`], [`WasmRuntimeOptions`] | engine (async component model, epoch ticks, compile cache), linker, loading |
+//! | [`WasmRuntime`], [`WasmRuntimeOptions`], [`EngineRegistry`], [`EngineShared`] | process-shared engine (async component model, epoch ticker, compile/`InstancePre` caches), linker, loading |
 //! | [`WasmInstance`] | one instance per extension; actor-driven concurrent calls, trap restart |
 //! | [`HostConfig`] | agent dir, cwd, proxy, versions |
-//! | [`LocalServices`] | bus, services, secrets, background tasks, host event delivery |
+//! | [`LocalServices`] | bus, services, secrets, background tasks, host event delivery (one per agent dir per process) |
 //! | [`packages`] | package discovery (`extension.json` + component) |
 //! | [`core_bridge`] (feature `core`) | adapters to `oino_core::extensions` and `services::ExtensionLoader` |
 //! | `testing` (feature) | fixture builder + harness |
@@ -66,7 +66,9 @@ pub mod testing;
 mod timers;
 mod wasi;
 
-pub use engine::{EPOCH_TICK, WasmHostError, WasmRuntime, WasmRuntimeOptions};
+pub use engine::{
+    EPOCH_TICK, EngineRegistry, EngineShared, WasmHostError, WasmRuntime, WasmRuntimeOptions,
+};
 pub use hub::{LocalServices, TASK_NOTIFICATION_TYPE, topic_matches};
 pub use instance::WasmInstance;
 pub use kv::KV_MAX_BYTES;

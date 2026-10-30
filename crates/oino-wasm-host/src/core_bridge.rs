@@ -1551,6 +1551,14 @@ impl CoreLoader {
         }
     }
 
+    /// The runtime backing this loader. Its engine is the process-shared one
+    /// ([`crate::EngineRegistry`], E-ENGINE): loaders of several services (cwds) resolve the
+    /// same engine and compile each distinct component once per process.
+    #[must_use]
+    pub fn runtime(&self) -> &Arc<WasmRuntime> {
+        &self.runtime
+    }
+
     /// Packages from `global_dirs` (always) and `project_dirs` (trust-gated), discovered with
     /// [`crate::packages::discover`].
     #[must_use]

@@ -5,6 +5,11 @@
 //! Load order: bundled packages in bundle order (providers, then unipi `LOAD_ORDER`); an
 //! installed or `-e` package with the id of an earlier one replaces it in place, others are
 //! appended (global, project, then `-e`). `OINO_BUNDLED=0` skips the bundled packages.
+//!
+//! Every `CliLoader` builds its own [`WasmRuntime`] (the cwd is per instance), but the
+//! engine, epoch-ticker thread, compile caches and local-services hub are process-shared
+//! (`oino_wasm_host::EngineRegistry`, E-ENGINE): the startup path, every ACP session and a
+//! multi-cwd host share one engine and compile each distinct component once per process.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError};
@@ -225,6 +230,8 @@ impl CliLoader {
             None
         } else {
             let config = HostConfig::new(context.agent_dir.clone(), context.cwd.clone());
+            // Resolves the process-shared engine (E-ENGINE): repeated loaders (ACP sessions,
+            // a multi-cwd host) reuse one engine, one ticker thread and the compile caches.
             match WasmRuntime::new(WasmRuntimeOptions::new(config)) {
                 Ok(runtime) => {
                     crate::browser::install(&runtime, &context.agent_dir);

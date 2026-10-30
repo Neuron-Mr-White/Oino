@@ -2,6 +2,12 @@
 //! `oino-core` does not implement them (core-runtime deviations "Deferred"): the event bus,
 //! services, secrets, the background-task service and delivery of host-produced `oino_*`
 //! events. Every other [`HostServices`] method passes through to the wrapped host.
+//!
+//! One hub is shared process-wide per agent dir ([`crate::EngineRegistry`], E-ENGINE), so
+//! the task store, secrets and sticky bus topics stay coherent across every service of one
+//! host. Instances and wrapped hosts are held weakly: when a service is disposed its
+//! entries go dead instead of keeping it alive, and a later service registering the same
+//! extension id replaces the entry (last one wins).
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -37,13 +43,14 @@ pub const TASK_NOTIFICATION_TYPE: &str = "background-task-notification";
 #[derive(Default)]
 struct ExtEntry {
     instance: Option<Weak<WasmInstance>>,
-    inner: Option<Arc<dyn HostServices>>,
+    inner: Option<Weak<dyn HostServices>>,
     events: HashSet<EventKind>,
     services: HashSet<String>,
     bus: HashSet<String>,
 }
 
-/// Process-wide local services shared by all instances of one [`crate::WasmRuntime`].
+/// Process-wide local services shared by all instances of one [`crate::WasmRuntime`] (one
+/// hub per agent dir per process, [`crate::EngineRegistry`]).
 pub struct LocalServices {
     exts: Mutex<HashMap<ExtensionId, ExtEntry>>,
     sticky: Mutex<HashMap<String, RawJson>>,
@@ -168,13 +175,14 @@ impl LocalServices {
         &self.tasks
     }
 
-    /// Wraps the host given to extension `id`.
+    /// Wraps the host given to extension `id` (held weakly: a disposed service must not be
+    /// kept alive by the shared hub).
     pub(crate) fn wrap(
         self: &Arc<Self>,
         id: &ExtensionId,
         inner: Arc<dyn HostServices>,
     ) -> Arc<dyn HostServices> {
-        lock(&self.exts).entry(id.clone()).or_default().inner = Some(Arc::clone(&inner));
+        lock(&self.exts).entry(id.clone()).or_default().inner = Some(Arc::downgrade(&inner));
         Arc::new(Composite {
             inner,
             hub: Arc::downgrade(self),
@@ -205,7 +213,10 @@ impl LocalServices {
     }
 
     fn inner(&self, id: &ExtensionId) -> Option<Arc<dyn HostServices>> {
-        lock(&self.exts).get(id).and_then(|e| e.inner.clone())
+        lock(&self.exts)
+            .get(id)
+            .and_then(|e| e.inner.as_ref())
+            .and_then(Weak::upgrade)
     }
 
     /// Delivers a host-produced event to `id` when it subscribed to `kind`.
