@@ -49,13 +49,13 @@ fn parse_host_settings(value: &Value) -> bool {
                     return false;
                 }
             }
-            "update" => {
+            "update"
                 if !matches!(
                     block.get("mode").and_then(Value::as_str),
                     None | Some("prompt") | Some("auto")
-                ) {
-                    return false;
-                }
+                ) =>
+            {
+                return false;
             }
             // Unknown top-level keys are preserved by host.md §9.9's schema
             // ("unknown keys are kept"); the app ignores them.

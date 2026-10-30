@@ -8,9 +8,18 @@
 //!   devices.json   0600  paired device allowlist
 //!   pairing.json   0600  single in-flight pairing attempt (if any)
 //!   endpoint.json  0600  cached iroh ticket/address for `pair` display
-//!   config.json    0600  owner settings (port forwarding, UNI-213; off by default;
-//!                        `fs` allow/deny extra Files roots, UNI-220)
+//!   config.json    0600  owner settings (host.md §9.9, `settings.rs`): `relay`,
+//!                        `relay_only`, `forwarding`, `push`, `fs` (allow/deny extra
+//!                        Files roots), `browser`, `sharing`, `cron`, `term` (max
+//!                        terminals, default 16), `update` (prompt/auto) — read
+//!                        fresh on every request, so no restart after a change
+//!   notify-key     0600  per-pairing E2E notify key (UNI-161)
+//!   app-endpoints.json   UnifiedPush fan-out list (`notify_register`)
+//!   requests.json  0600  "ask the owner" feature requests (`sharing.rs`)
+//!   update.json          last update-check state (`update.rs`)
+//!   blobs/               content-addressed uploads (`blob.rs`)
 //!   host.lock      0600  one host per user (`instance.rs`)
+//!   start-history.json   safe-mode start outcomes (host.md §4.4)
 //!   host.log             the daemon's stdout/stderr (app-spawned hosts)
 //!   app.sock / pipe     the local listener (`local.rs`)
 //!   control.sock  0600  the CLI's control socket (`push.rs`)
@@ -87,6 +96,12 @@ impl HostPaths {
     /// Where uploaded/cached blobs live (`crate::blob`).
     pub fn blobs(&self) -> PathBuf {
         self.root.join("blobs")
+    }
+
+    /// The UnifiedPush endpoint fan-out list `notify_register` maintains
+    /// (`crate::notify::app_endpoints_path`).
+    pub fn app_endpoints(&self) -> PathBuf {
+        self.root.join("app-endpoints.json")
     }
 
     /// Ensures the data directory exists (created with restrictive

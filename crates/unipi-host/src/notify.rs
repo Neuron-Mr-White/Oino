@@ -419,7 +419,7 @@ pub fn app_endpoints_path(paths: &HostPaths) -> PathBuf {
             return PathBuf::from(dir);
         }
     }
-    paths.root.join("app-endpoints.json")
+    paths.app_endpoints()
 }
 
 /// Adds (or refreshes) one endpoint's `addedAt`, de-duplicated by URL.
