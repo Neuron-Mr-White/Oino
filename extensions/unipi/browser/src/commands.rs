@@ -112,6 +112,11 @@ mod tests {
             status_text(&json!({"available": false, "reason": "no_engine"}))
                 .contains("install Google Chrome")
         );
+        // Plain oino (no unipi-host): the host-service registry is empty (browser.md §7).
+        assert!(
+            status_text(&json!({"available": false, "reason": "no_host"}))
+                .contains("this oino has no unipi-host")
+        );
         let s = status_text(
             &json!({"available": true, "product": "Chromium", "version": "Chrome/146", "display": "headless",
             "sessionProfile": "default", "stealth": false,
