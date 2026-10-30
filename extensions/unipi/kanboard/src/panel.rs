@@ -51,7 +51,11 @@ pub fn fallback(tasks: &[Task]) -> Node {
     });
     List::new(rows)
         .highlight_symbol("› ")
-        .block(Block::bordered().title("Board").border_type(BorderType::Rounded))
+        .block(
+            Block::bordered()
+                .title("Board")
+                .border_type(BorderType::Rounded),
+        )
         .into()
 }
 
