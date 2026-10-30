@@ -1,0 +1,67 @@
+{
+  "bench": "subagents",
+  "wp": "C11",
+  "spec": "docs/dev/v2/specs/core.md §4 B-1",
+  "n": 10,
+  "roots": 1,
+  "childrenPerRootCap": 16,
+  "model": "faux/faux-1",
+  "provider": "faux (in-process double, no unipi set)",
+  "startedAt": "2026-10-30T12:57:38.052161851+08:00",
+  "durationMs": 124,
+  "host": {
+    "os": "linux",
+    "arch": "x86_64",
+    "kernel": "7.0.0-38-generic",
+    "hostname": "oi",
+    "cpus": 32,
+    "clkTck": 100
+  },
+  "git": {
+    "head": "f9ec7b46ad9bc2b9c1717bfc51502ed66f26d40c"
+  },
+  "workdir": {
+    "path": "/home/oi/Projects/Personal/llm/oino/target/bench/oino-bench-e3hxsZ",
+    "fs": "ext4 (/dev/nvme0n1p1)"
+  },
+  "phasesMs": {
+    "services": 0,
+    "roots": 1,
+    "spawn": 12,
+    "turns": 3,
+    "barrier": 106
+  },
+  "rssKib": {
+    "supported": true,
+    "atStart": 6148,
+    "afterServices": 9704,
+    "afterRoots": 11320,
+    "afterSpawn": 13216,
+    "afterTurns": 18156,
+    "vmHwm": 18156,
+    "perChildSpawnKib": 189.6,
+    "perChildTurnKib": 494.0,
+    "perChildTotalKib": 683.6
+  },
+  "cpuMs": {
+    "supported": true,
+    "clkTck": 100,
+    "duringSpawn": 0,
+    "duringTurns": 10,
+    "duringSpawnTicks": 0,
+    "duringTurnsTicks": 1
+  },
+  "children": {
+    "spawned": 10,
+    "persistedFiles": 10,
+    "answered": 10
+  },
+  "barrier": {
+    "supported": true,
+    "impl": "SessionManager::sync() after each append (WP-C1 barrier)",
+    "appends": 100,
+    "meanMicros": 1043.97,
+    "minMicros": 907,
+    "maxMicros": 1134
+  }
+}
