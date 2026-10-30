@@ -175,6 +175,11 @@ pub fn status(key: &str, text: impl Into<StatusText>) -> Result<()> {
     fire(&status_request(key, text.into())?)
 }
 
+/// Clears the status segment `key` (no `None::<&str>` type annotation needed).
+pub fn clear_status(key: &str) -> Result<()> {
+    status(key, StatusText::Clear)
+}
+
 fn status_request(key: &str, text: StatusText) -> Result<Value> {
     let mut request = json!({"method": "setStatus", "statusKey": key});
     match text {
@@ -575,6 +580,7 @@ mod tests {
         for clear in [
             status_request("mode", StatusText::Clear).unwrap_or_default(),
             status_request("mode", None::<&str>.into()).unwrap_or_default(),
+            status_request("mode", StatusText::from(Option::<Line>::None)).unwrap_or_default(),
         ] {
             assert_eq!(clear["method"], "setStatus");
             assert_eq!(clear.get("statusText"), None);
