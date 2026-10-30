@@ -39,6 +39,7 @@ use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource};
 use oino_core::services::{ResourceFlags, Services, ServicesOptions, StaticLoader};
 use oino_core::testing::{FauxComponent, FauxProvider, FauxResponse};
 use oino_models::ModelRegistry;
+use oino_session::LeaseInfo;
 
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// Core's D-TAKEOVER deadline (spec-core §D-TAKEOVER step 2): an open replies only after
@@ -216,6 +217,38 @@ fn from_of(event: &Value) -> String {
 
 fn target(id: &str) -> unipi_proto::SessionTarget {
     id.to_owned().try_into().unwrap()
+}
+
+/// §8.2's `from` vocabulary from the previous holder's lease label (core labels every
+/// lease `oino <mode>`; a host process is the only `desktop`/`mobile` holder).
+#[test]
+fn takeover_labels_follow_the_holder_mode() {
+    let holder = |client: &str, host: &str| LeaseInfo {
+        pid: 1,
+        boot_id: "boot".into(),
+        host: host.into(),
+        client: client.into(),
+    };
+    assert_eq!(
+        unipi_host::sessions::takeover_from(&holder("oino tui", "laptop")),
+        "tui"
+    );
+    assert_eq!(
+        unipi_host::sessions::takeover_from(&holder("oino desktop", "laptop")),
+        "host:laptop"
+    );
+    assert_eq!(
+        unipi_host::sessions::takeover_from(&holder("unipi-host 2.0.0", "laptop")),
+        "host:laptop"
+    );
+    assert_eq!(
+        unipi_host::sessions::takeover_from(&holder("oino rpc", "laptop")),
+        "cli"
+    );
+    assert_eq!(
+        unipi_host::sessions::takeover_from(&holder("oino print", "laptop")),
+        "cli"
+    );
 }
 
 /// (b) Two hosts, one session: the second open takes the lease over and the first host's
