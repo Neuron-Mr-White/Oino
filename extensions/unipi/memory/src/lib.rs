@@ -10,6 +10,7 @@
 //! | recall reminder (+ wake-up), save pass `side \| reminder \| off` | `before_agent_start`, `agent_end` (side = nested agent) |
 //! | tools `memory_store/search/delete/list`, `global_memory_search/list` | tools (exact names, schemas, texts) |
 //! | `/memory …`, `-process`, `-consolidate`, `-search`, `global-memory-search`, `-forget`, `global-memory-list` | commands |
+//! | memory work-tray / browse overlay (list, search, forget, consolidate, project vs all) | [`panel`] (`/memory`) |
 //! | cards, reminders renderers, status `unipi-memory`, info group, move handler, `MEMORY_STORED/DELETED` | renderers, status, services, bus |
 
 #![allow(
@@ -19,11 +20,13 @@
 
 pub mod files;
 pub mod palace;
+pub mod panel;
 pub mod reader;
 pub mod search;
 pub mod settings;
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
@@ -203,6 +206,8 @@ pub struct Memory {
     save_collect: RefCell<Vec<String>>,
     replaying: Cell<bool>,
     neutral: Cell<bool>,
+    /// The browse panel's state per session (WP-A25, G-9).
+    panels: RefCell<HashMap<String, panel::View>>,
 }
 
 fn spawn(fut: impl Future<Output = ()> + 'static) {
@@ -1220,13 +1225,21 @@ impl Memory {
 
     async fn memory_command(&self, args: &str, cx: &CommandCtx) {
         let parts: Vec<&str> = args.split_whitespace().collect();
-        let sub = parts.first().copied().unwrap_or("status");
+        let sub = parts.first().copied().unwrap_or("browse");
         let say = |m: &str, l: &str| {
             if cx.has_ui() {
                 let _ = ui::notify(m, l);
             }
         };
         match sub {
+            // WP-A25 (G-9): the browse panel — list, search, forget, consolidate.
+            "browse" | "list" => {
+                if cx.has_ui() {
+                    let _ = self.open_browse(&cx.cx).await;
+                } else {
+                    say("Memory needs an interactive UI to browse.", "warning");
+                }
+            }
             "status" => say(&self.status_text(&cx.cx).await, "info"),
             "recall" | "write" => {
                 let Some(on) = parts.get(1).and_then(|v| match *v {
@@ -1260,10 +1273,116 @@ impl Memory {
                 }
             }
             _ => say(
-                "Usage: /memory status | recall on|off | write on|off",
+                "Usage: /memory [browse] | status | recall on|off | write on|off",
                 "info",
             ),
         }
+    }
+
+    // ── the browse panel (WP-A25, G-9) ──────────────────────────────────────
+
+    /// The rows a view asks for: search hits, every project, or this one.
+    async fn panel_entries(&self, view: &panel::View, project: &str) -> Vec<panel::Entry> {
+        if view.searched && !view.query.is_empty() {
+            let hits = self
+                .search(&view.query, 20, (!view.global).then_some(project))
+                .await;
+            return panel::entries_of_hits(&hits);
+        }
+        if view.global {
+            return panel::entries_of_all(&Self::all_projects());
+        }
+        panel::entries_of_project(&Self::list(project))
+    }
+
+    /// `/memory`: open the browse panel (a second call re-renders and focuses it).
+    async fn open_browse(&self, cx: &Ctx) -> Result<()> {
+        let session = cx.session_id().to_owned();
+        let project = Self::project(cx);
+        let view = self
+            .panels
+            .borrow()
+            .get(&session)
+            .cloned()
+            .unwrap_or_else(panel::View::fresh);
+        let entries = self.panel_entries(&view, &project).await;
+        self.panels.borrow_mut().insert(session, view.clone());
+        panel::open(&view, &project, &entries)?;
+        Ok(())
+    }
+
+    /// One `_oino/ui_action` from the browse panel (search / open / forget / …).
+    async fn panel_action(&self, event: &Value, cx: &Ctx) -> Result<()> {
+        let action = event
+            .get("actionId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let session = cx.session_id().to_owned();
+        let project = Self::project(cx);
+        let mut view = self
+            .panels
+            .borrow()
+            .get(&session)
+            .cloned()
+            .unwrap_or_else(panel::View::fresh);
+        match panel::op_of(&action) {
+            panel::Op::Search => {
+                view.query = panel::search_query(event);
+                view.searched = !view.query.is_empty();
+                view.open = None;
+                view.notice = None;
+            }
+            panel::Op::Scope => {
+                view.global = !view.global;
+                view.query.clear();
+                view.searched = false;
+                view.open = None;
+                view.notice = None;
+            }
+            panel::Op::Open => {
+                view.open = event
+                    .get("value")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned);
+            }
+            panel::Op::Back => view.to_list(),
+            panel::Op::Forget => {
+                let Some(key) = view.open.clone() else {
+                    view.notice = Some("Open a memory first.".into());
+                    self.panels.borrow_mut().insert(session, view.clone());
+                    let entries = self.panel_entries(&view, &project).await;
+                    return panel::update(&view, &project, &entries);
+                };
+                let (_, found) = self.delete(&project, &key).await;
+                if found {
+                    unipi_kit::bus::emit(&MemoryDeleted {
+                        id: key.clone(),
+                        title: key.clone(),
+                        project: project.clone(),
+                    });
+                }
+                view.open = None;
+                view.notice = Some(if found {
+                    format!("Forgot {key}.")
+                } else {
+                    format!("Memory not found: {key}")
+                });
+            }
+            panel::Op::Consolidate => {
+                send_harness_user("Review the current session and identify any memory-worthy items:\n- User preferences discovered\n- Project decisions made\n- Code patterns learned\n- Important context to remember\n\nFor each item, use the memory_store tool to save it with an appropriate title and type.".into(), "Consolidate session", "Generated from the memory panel").await;
+                view.notice = Some("Wrote this chat's memories.".into());
+            }
+            panel::Op::Close => {
+                ui::panel_close(panel::PANEL_ID);
+                self.panels.borrow_mut().remove(&session);
+                return Ok(());
+            }
+            panel::Op::Unknown => return Ok(()),
+        }
+        self.panels.borrow_mut().insert(session, view.clone());
+        let entries = self.panel_entries(&view, &project).await;
+        panel::update(&view, &project, &entries)
     }
 
     // ── services ─────────────────────────────────────────────────────────────
@@ -1851,6 +1970,14 @@ impl Extension for Memory {
             let _ = ext.settings.on_changed(&ev.payload);
             Ok(())
         });
+        // WP-A25 (G-9): the browse panel's buttons.
+        cx.on(EventKind::OinoUiAction, |ext, ev, cx| async move {
+            let payload = ev.payload.clone();
+            if payload.get("panelId").and_then(Value::as_str) == Some(panel::PANEL_ID) {
+                ext.panel_action(&payload, &cx).await?;
+            }
+            Ok(())
+        });
         cx.on(EventKind::SessionShutdown, |ext, _ev, cx| async move {
             ext.sessions.remove(cx.session_id());
             if !cx.is_child() {
@@ -2125,7 +2252,7 @@ impl Extension for Memory {
 
         cx.command(
             Command::<Self>::new("memory")
-                .description("Memory status and session overrides: /memory status|recall on|off|write on|off")
+                .description("Browse memories (list, search, forget, consolidate); /memory status|recall on|off|write on|off")
                 .run(|ext, args, cx| async move {
                     ext.memory_command(&args, &cx).await;
                     Ok(())
