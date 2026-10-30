@@ -434,6 +434,7 @@ dependencies = [
  "oino-extension",
  "schemars",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
