@@ -10,7 +10,7 @@
 mod app_update;
 #[cfg(desktop)]
 pub mod setup;
-/// Mobile stand-in for the two PATH helpers always_on/host_supervisor use
+/// Mobile stand-in for the PATH helpers `host_supervisor`/`setup` use
 /// (they compile everywhere but only run on desktop; setup needs reqwest).
 #[cfg(mobile)]
 pub mod setup {
@@ -34,7 +34,6 @@ mod forward;
 mod fs;
 mod host_store;
 mod host_supervisor;
-mod always_on;
 mod lifecycle;
 mod hosts_commands;
 mod local_files;
@@ -47,7 +46,6 @@ mod pair_phone;
 mod path_kind;
 mod push;
 mod retry;
-mod screen;
 mod sharing;
 mod term;
 
@@ -62,7 +60,6 @@ pub fn run() {
         .manage(chat::ChatStreams::default())
         .manage(forward::ForwardRegistry::default())
         .manage(browser::BrowserStreams::default())
-        .manage(screen::ScreenStreams::default())
         .manage(pair_phone::PairPhone::default())
         .manage(host_supervisor::Shared::default())
         .plugin(tauri_plugin_deep_link::init())
@@ -151,8 +148,6 @@ pub fn run() {
             browser::browser_window,
             browser::browser_profiles,
             browser::browser_takeover,
-            screen::screen_status,
-            screen::screen_open,
             #[cfg(desktop)]
             setup::setup_detect,
             #[cfg(desktop)]
@@ -168,14 +163,12 @@ pub fn run() {
             host_supervisor::host_runtime,
             host_supervisor::host_log,
             host_supervisor::host_restart,
-            host_supervisor::host_update_service,
-            always_on::always_on_state,
-            always_on::always_on_set,
+            lifecycle::close_action_state,
+            lifecycle::close_action_set,
+            lifecycle::close_answer,
             lifecycle::quit_now,
             lifecycle::autostart_state,
             lifecycle::autostart_set,
-            screen::screen_cmd,
-            screen::screen_stop,
             push::push_list,
             push::push_fetch,
             push::fs_download,
@@ -254,16 +247,15 @@ pub fn run() {
             if let Err(error) = desktop::setup_tray(app.handle()) {
                 log::warn!("tray unavailable: {error}");
             }
-            // UNI-235 (A5): this PC's host — adopt, start the service, or run our own.
+            // v2 §5.1: this PC's host — adopt a running one or run our own child.
             #[cfg(desktop)]
             {
                 use tauri::Manager;
                 if let Some(dir) = local_host::host_dir() {
                     let shared = app.state::<host_supervisor::Shared>().inner().clone();
                     let bin = host_supervisor::host_bin(Some(app.handle()));
-                    let installed = always_on::installed(&host_supervisor::home_dir());
                     tauri::async_runtime::spawn(async move {
-                        let (plan, supervisor) = host_supervisor::decide(&dir, bin.as_deref(), installed);
+                        let (plan, supervisor) = host_supervisor::decide(&dir, bin.as_deref());
                         if let Some(s) = supervisor {
                             *shared.0.lock().await = Some(s);
                         }
@@ -279,22 +271,51 @@ pub fn run() {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 local_files::grant(paths.iter().cloned());
             }
-            // UNI-237 (A6): closing the window hides it to the tray (the app and
-            // an app-managed host keep running). Never a question — decision 2.
+            // v2 §5.4: the remembered `closeAction` decides — `ask` (the
+            // default) shows the tray/quit dialog once, `tray` hides, `quit`
+            // quits (with the phone warning when it applies, §5.5).
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     use tauri::Manager;
                     desktop::save_window_size(window.app_handle());
-                    // UNI-237 (A6): always to the tray, never a question.
-                    if matches!(lifecycle::close_action(host_supervisor::app_managed_blocking()), lifecycle::CloseAction::ToTray) {
-                        api.prevent_close();
-                        let _ = window.hide();
+                    match lifecycle::close_decision(lifecycle::close_action()) {
+                        lifecycle::CloseDecision::Hide => {
+                            api.prevent_close();
+                            let _ = window.hide();
+                        }
+                        lifecycle::CloseDecision::Ask => {
+                            api.prevent_close();
+                            use tauri::Emitter;
+                            let _ = window.app_handle().emit_to(
+                                "main",
+                                lifecycle::CLOSE_ASK_EVENT,
+                                serde_json::json!({ "message": lifecycle::CLOSE_ASK_MESSAGE }),
+                            );
+                        }
+                        lifecycle::CloseDecision::Quit => {
+                            api.prevent_close();
+                            lifecycle::request_quit(window.app_handle());
+                        }
                     }
                 }
             }
         });
+    // §5.6: a login start passes `--hidden` (tauri-plugin-autostart); the window
+    // is created hidden so it never flashes, and the tray is the way in.
+    let context = tauri::generate_context!();
     #[cfg(desktop)]
-    let result = builder.build(tauri::generate_context!()).map(|app| {
+    let context = {
+        let mut context = context;
+        if lifecycle::start_hidden(std::env::args().skip(1)) {
+            if let Some(window) = context.config_mut().app.windows.first_mut() {
+                window.visible = false;
+            }
+            log::info!("started with --hidden: in the tray, no window");
+        }
+        context
+    };
+    #[cfg(desktop)]
+    let result = builder.build(context).map(|app| {
         app.run(|handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 desktop::save_window_size(handle);
@@ -302,7 +323,7 @@ pub fn run() {
         })
     });
     #[cfg(not(desktop))]
-    let result = builder.run(tauri::generate_context!());
+    let result = builder.run(context);
 
     if let Err(error) = result {
         eprintln!("fatal: tauri application failed to run: {error}");

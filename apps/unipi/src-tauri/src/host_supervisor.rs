@@ -1,17 +1,23 @@
-//! UNI-235 (plan A5, docs/m8/SELF-INSTALL-AND-EMBEDDED-HOST.md §3.2): the
-//! desktop app's host supervisor. At start it decides, in this order:
+//! The desktop app's host supervisor (UNI-235; v2 host.md §5.1). At start it
+//! decides, in this order:
 //!
-//! 1. **Adopt** — this PC's host answers on `app.sock`: it is already running
-//!    (system service or a manual `serve`), so start nothing.
-//! 2. **Start the service** — a systemd user unit is installed but stopped:
-//!    `systemctl --user start unipi-host` owns the host from now on.
-//! 3. **Spawn** — the app runs the host itself as a child:
+//! 1. **Adopt** — this PC's host answers on `app.sock` (or the Windows named
+//!    pipe): it is already running (another app instance, or a manual
+//!    `unipi-host serve`), so start nothing.
+//! 2. **Spawn** — the app runs the host itself as a child:
 //!    `unipi-host serve --mode app --exit-with-parent <our pid>`, logging to
-//!    `<host dir>/host.log`, restarted with a 1, 2, 4 … 30 s backoff.
+//!    `<host dir>/host.log`, restarted with a 1, 2, 4 … 30 s backoff and a
+//!    banner after 3 crashes in a row.
+//! 3. **Unsupported** — no host binary anywhere (client-only mode).
+//!
+//! v2 has **no service install**: the systemd unit / LaunchAgent / logon task
+//! branch (`StartService`) and `always_on.rs` are gone with DIRECTION §2
+//! (owner Q4). A manual `unipi-host serve --mode manual` keeps working and is
+//! adopted like any other running host.
 //!
 //! Everything that touches the real world (`Command`, a Tauri `AppHandle`) is
 //! behind a small edge so the decision and the timing are unit-tested with fake
-//! host binaries and a fake `systemctl` on `PATH`.
+//! host binaries.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -23,8 +29,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
 use unipi_proto::{AppErrorCode, AppErrorDto};
 
-/// The systemd user unit's name (`install.sh` uses the same one).
-pub const UNIT_NAME: &str = "unipi-host";
 /// The app-managed host takes this lock-less-but-visible marker in host.log.
 pub const LOG_NAME: &str = "host.log";
 /// Restart delays grow 1, 2, 4 … 30 s; after this many failures the UI shows a
@@ -39,8 +43,6 @@ pub const EXIT_ALREADY_RUNNING: i32 = 75;
 pub enum Plan {
     /// A host answers on `app.sock`: leave it alone.
     Adopt,
-    /// A service unit is installed but not running: start it.
-    StartService,
     /// Run the host as our own child.
     Spawn,
     /// No host binary anywhere (client-only mode).
@@ -52,18 +54,14 @@ pub enum Plan {
 pub struct HostState {
     /// `app.sock` answers a connection.
     pub socket_alive: bool,
-    /// `systemctl --user is-enabled unipi-host` says it is installed.
-    pub service_installed: bool,
     /// A host binary we could spawn (the bundled sidecar or one on PATH).
     pub bin: Option<PathBuf>,
 }
 
-/// §3.2's decision, in order.
+/// §5.1's decision, in order: adopt a running host, else spawn our own.
 pub fn plan(state: &HostState) -> Plan {
     if state.socket_alive {
         Plan::Adopt
-    } else if state.service_installed && !cfg!(target_os = "windows") {
-        Plan::StartService
     } else if state.bin.is_some() {
         Plan::Spawn
     } else {
@@ -118,8 +116,6 @@ pub fn skew(ours: &str, theirs: Option<&str>) -> Option<Skew> {
 pub enum SupervisorState {
     /// Nothing to do: a host is running (adopted).
     Adopted,
-    /// We started (or are starting) the systemd service.
-    StartingService,
     /// We run the host ourselves.
     AppManaged,
     /// The child keeps dying; `failures` in a row (banner at [`BANNER_AFTER`]).
@@ -225,7 +221,8 @@ pub fn log_tail(dir: &Path, lines: usize) -> String {
     text.lines().rev().take(lines.max(1)).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
 }
 
-/// Where the unit's `ExecStart` copies the host to (`install.sh`'s `$BIN_DIR`).
+/// `~/.local/bin`, where the setup engine puts the tools it installs (the
+/// host itself runs from the app bundle — v2 has no service and no `ExecStart`).
 pub fn bin_dir(home: &Path) -> PathBuf {
     home.join(".local").join("bin")
 }
@@ -241,61 +238,6 @@ pub fn is_executable(path: &Path) -> bool {
     {
         path.is_file()
     }
-}
-
-/// Where `systemctl` lives when the GUI's PATH doesn't have it (mise/nvm PATHs
-/// are invisible to an app started from the desktop).
-pub const SYSTEMCTL_STANDARD: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin"];
-
-/// `systemctl` on this PC: PATH first (the apps/tests put a fake one there),
-/// then the standard locations.
-pub fn systemctl_in(path_var: Option<&std::ffi::OsStr>, standard: &[&Path]) -> Option<PathBuf> {
-    let exe = if cfg!(windows) { "systemctl.exe" } else { "systemctl" };
-    path_var
-        .map(std::env::split_paths)
-        .into_iter()
-        .flatten()
-        .map(|dir| dir.join(exe))
-        .chain(standard.iter().map(|dir| dir.join(exe)))
-        .find(|p| is_executable(p))
-}
-
-/// [`systemctl_in`] with [`SYSTEMCTL_STANDARD`].
-pub fn systemctl(path_var: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
-    systemctl_in(path_var, &SYSTEMCTL_STANDARD.iter().map(Path::new).collect::<Vec<_>>())
-}
-
-/// Runs `systemctl --user <args…>` and says whether it succeeded.
-pub async fn systemctl_user(path_var: Option<&std::ffi::OsStr>, args: &[&str]) -> Result<(), AppErrorDto> {
-    let Some(bin) = systemctl(path_var) else {
-        return Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "systemctl isn't on this PC", false));
-    };
-    let out = tokio::process::Command::new(&bin)
-        .arg("--user")
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| io_err("run systemctl", e))?;
-    if out.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    Err(AppErrorDto::new(
-        AppErrorCode::E_INTERNAL,
-        format!("systemctl --user {} failed: {}", args.join(" "), stderr.trim()),
-        false,
-    ))
-}
-
-/// Is the `unipi-host` systemd user unit installed? (`is-enabled`; a unit that
-/// is disabled or missing is not installed.)
-pub fn unit_installed(path_var: Option<&std::ffi::OsStr>, unit_dir: &Path) -> bool {
-    unit_dir.join(format!("{UNIT_NAME}.service")).exists()
-        || std::process::Command::new(systemctl(path_var).unwrap_or_else(|| PathBuf::from("systemctl")))
-            .args(["--user", "is-enabled", UNIT_NAME])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
 }
 
 // ------------------------------------------------------------- decide
@@ -343,17 +285,19 @@ pub fn socket_alive(socket: &Path) -> bool {
     }
     #[cfg(not(unix))]
     {
-        socket.exists()
+        // Windows: the local transport is the named pipe (§6.1); opening it is
+        // the "answers" test (a pipe has no file to stat).
+        std::fs::OpenOptions::new().read(true).write(true).open(socket).is_ok()
     }
 }
 
-/// Applies §3.2's decision to this PC right now and reports what it did.
+/// Applies §5.1's decision to this PC right now and reports what it did.
 /// Desktop only: the phone has no local host to supervise.
-pub fn decide(host_dir: &Path, bin: Option<&Path>, service_installed: bool) -> (Plan, Option<Arc<Supervisor>>) {
-    let state =
-        HostState { socket_alive: socket_alive(&host_dir.join("app.sock")), service_installed, bin: bin.map(Path::to_path_buf) };
+pub fn decide(host_dir: &Path, bin: Option<&Path>) -> (Plan, Option<Arc<Supervisor>>) {
+    // `app.sock` on Unix, `\\.\pipe\unipi-oino-app` on Windows (§6.1).
+    let state = HostState { socket_alive: socket_alive(&crate::local_host::listen_addr(host_dir)), bin: bin.map(Path::to_path_buf) };
     match plan(&state) {
-        Plan::Adopt | Plan::Unsupported | Plan::StartService => (plan(&state), None),
+        Plan::Adopt | Plan::Unsupported => (plan(&state), None),
         Plan::Spawn => {
             let supervisor = Supervisor::new(host_dir.to_path_buf(), bin.expect("spawn needs a binary").to_path_buf());
             supervisor.spawn();
@@ -440,8 +384,8 @@ impl Supervisor {
                 };
                 *me.child.lock().await = None;
                 if status.code() == Some(EXIT_ALREADY_RUNNING) {
-                    // Another serve owns the dir (a manual one, or a service we
-                    // just started): adopt it instead of fighting.
+                    // Another serve owns the dir (a manual one, or the app's
+                    // other instance): adopt it instead of fighting.
                     me.set_state(SupervisorState::Held).await;
                     return;
                 }
@@ -478,17 +422,14 @@ mod tests {
     }
 
     #[test]
-    fn the_decision_follows_the_spec_order() {
+    fn the_decision_is_adopt_or_spawn_only() {
         let dir = tempfile::tempdir().unwrap();
         let bin = fake_bin(dir.path(), "unipi-host", "exit 0");
-        // A live socket always wins.
-        let alive = HostState { socket_alive: true, service_installed: true, bin: Some(bin.clone()) };
+        // A live socket always wins (someone else's serve is adopted).
+        let alive = HostState { socket_alive: true, bin: Some(bin.clone()) };
         assert_eq!(plan(&alive), Plan::Adopt);
-        // Installed but stopped → start the service, not a child.
-        let stopped = HostState { socket_alive: false, service_installed: true, bin: Some(bin.clone()) };
-        assert_eq!(plan(&stopped), Plan::StartService);
-        // No service → spawn.
-        let none = HostState { socket_alive: false, service_installed: false, bin: Some(bin.clone()) };
+        // Nothing listening and a binary: run it as our child.
+        let none = HostState { socket_alive: false, bin: Some(bin) };
         assert_eq!(plan(&none), Plan::Spawn);
         // Nothing to run.
         let no_bin = HostState::default();
@@ -615,25 +556,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn systemctl_and_the_unit_dir_are_found() {
-        let tmp = tempfile::tempdir().unwrap();
-        let fakesys = tmp.path().join("bin");
-        std::fs::create_dir_all(&fakesys).unwrap();
-        // Nothing on PATH and no standard locations: not found.
-        assert_eq!(systemctl_in(Some(fakesys.as_os_str()), &[]), None);
-        // …but the real one is found through the standard locations (a GUI app
-        // usually has a PATH without it).
-        assert!(systemctl_in(Some(fakesys.as_os_str()), &SYSTEMCTL_STANDARD.iter().map(Path::new).collect::<Vec<_>>()).is_some());
-        let fake = fake_bin(&fakesys, "systemctl", "exit 0");
-        assert_eq!(systemctl_in(Some(fakesys.as_os_str()), &[&fakesys]), Some(fake.clone()));
-        // The unit counts as installed once the file is there or systemctl says so.
-        let units = tmp.path().join("units");
-        std::fs::create_dir_all(&units).unwrap();
-        assert!(unit_installed(Some(fakesys.as_os_str()), &units), "the fake systemctl says yes");
-        std::fs::write(units.join("unipi-host.service"), "[Unit]\n").unwrap();
-        assert!(unit_installed(Some(fakesys.as_os_str()), &units));
-    }
 }
 
 // ---------------------------------------------------------------- commands
@@ -647,9 +569,9 @@ pub struct Shared(pub Arc<tokio::sync::Mutex<Option<Arc<Supervisor>>>>);
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostRuntime {
-    /// `adopt` | `start-service` | `spawn` | `unsupported`.
+    /// `adopt` | `spawn` | `unsupported`.
     pub plan: String,
-    /// `service` | `app` | `manual`, from `host.lock` (absent when nobody runs).
+    /// `app` | `manual`, from `host.lock` (absent when nobody runs; v2 has no service).
     pub run_by: Option<String>,
     /// The running host's version, from `host.lock`.
     pub version: Option<String>,
@@ -677,7 +599,6 @@ fn lock_owner(dir: &Path) -> Option<(String, String)> {
 fn plan_name(plan: Plan) -> &'static str {
     match plan {
         Plan::Adopt => "adopt",
-        Plan::StartService => "start-service",
         Plan::Spawn => "spawn",
         Plan::Unsupported => "unsupported",
     }
@@ -697,25 +618,18 @@ pub fn host_bin_in(sidecar: Option<PathBuf>, otherwise: impl FnOnce() -> Option<
 }
 
 /// Starts the host for this PC (called from `setup`, and again by
-/// `host_restart`). Adopts a running one, starts the service, or spawns our own.
+/// `host_restart`). Adopts a running one, or spawns our own child.
 pub async fn start(app: Option<&tauri::AppHandle>, dir: &Path, shared: &Shared) -> Plan {
-    // The sidecar is what this build ships (§3.2 step 3); a PATH host is only
+    // The sidecar is what this build ships (§5.1 step 2); a PATH host is only
     // ever the fallback.
     let bundled = app.and_then(sidecar);
     if let Some(bin) = &bundled {
         log::info!("host: using the bundled sidecar {}", bin.display());
     }
     let bin = host_bin_in(bundled, crate::sharing::bin);
-    let installed = unit_installed(std::env::var_os("PATH").as_deref(), &crate::always_on::unit_dir(&home_dir()));
-    let (plan, supervisor) = decide(dir, bin.as_deref(), installed);
+    let (plan, supervisor) = decide(dir, bin.as_deref());
     if let Some(s) = supervisor {
         *shared.0.lock().await = Some(s);
-    }
-    if plan == Plan::StartService {
-        // The service owns the host from now on (§3.2 step 2) — we only start it.
-        if let Err(error) = systemctl_user(std::env::var_os("PATH").as_deref(), &["start", UNIT_NAME]).await {
-            log::warn!("could not start the {UNIT_NAME} service: {}", error.message);
-        }
     }
     plan
 }
@@ -743,19 +657,18 @@ pub async fn host_runtime(
         Some(s) => Some(s.state().await),
         None => None,
     };
-    let socket_up = socket_alive(&dir.join("app.sock"));
+    let socket_up = socket_alive(&crate::local_host::listen_addr(&dir));
     let (plan, supervisor_state) = match &state {
         Some(SupervisorState::Held) => (Plan::Adopt, Some(SupervisorState::Adopted)),
         Some(other) => (Plan::Spawn, Some(other.clone())),
         None if socket_up => (Plan::Adopt, Some(SupervisorState::Adopted)),
-        None if crate::always_on::installed(&home_dir()) => (Plan::StartService, Some(SupervisorState::StartingService)),
+        None if bin.is_some() => (Plan::Spawn, Some(SupervisorState::AppManaged)),
         None => (Plan::Unsupported, Some(SupervisorState::Unsupported)),
     };
-    // The tray's phone line follows the host (UNI-237).
+    // The tray's §5.3 line follows the host: how many phones are paired.
     #[cfg(desktop)]
     if let Some(handle) = app_handle() {
-        let running = state.is_some() || socket_alive(&dir.join("app.sock"));
-        crate::desktop::set_phones_line(&handle, running, crate::local_host::paired_devices());
+        crate::desktop::set_phone_count(&handle, crate::local_host::paired_devices());
     }
     let _ = &supervisor_state;
     Ok(HostRuntime {
@@ -787,29 +700,6 @@ pub async fn host_restart(shared: tauri::State<'_, Shared>, host_dir: Option<Str
     Ok(plan_name(start(None, &dir, &shared).await).to_string())
 }
 
-/// `host_update_service` (the version-skew card): copy the newer host binary
-/// over `~/.local/bin/unipi-host` and restart the service that runs it. Only
-/// ever from the user's button, or automatically when the owner set
-/// `update.mode: auto` (user decision 6).
-#[tauri::command]
-pub async fn host_update_service(shared: tauri::State<'_, Shared>, app: tauri::AppHandle) -> Result<(), AppErrorDto> {
-    let home = home_dir();
-    let bin = host_bin(Some(&app)).ok_or_else(|| AppErrorDto::new(AppErrorCode::E_NOT_FOUND, "no host binary to install", false))?;
-    let target = bin_dir(&home).join("unipi-host");
-    std::fs::create_dir_all(bin_dir(&home)).map_err(|e| io_err("create ~/.local/bin", e))?;
-    std::fs::copy(&bin, &target).map_err(|e| io_err("copy the host binary", e))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755));
-    }
-    // Our own child (if any) is in the way: the service takes the same lock.
-    if let Some(s) = shared.0.lock().await.take() {
-        s.stop();
-    }
-    systemctl_user(std::env::var_os("PATH").as_deref(), &["restart", UNIT_NAME]).await
-}
-
 /// Against the real `unipi-host` binary and a throwaway host dir: the spawn
 /// path runs it as our own child (`--mode app`), `host.lock` says so, and the
 /// local socket answers (so the next decision is "adopt").
@@ -828,7 +718,7 @@ mod e2e {
         let host_dir = dir.path().join("host");
         std::fs::create_dir_all(&host_dir).unwrap();
         let socket = host_dir.join("app.sock");
-        assert_eq!(plan(&HostState { socket_alive: socket_alive(&socket), service_installed: false, bin: Some(bin.clone()) }), Plan::Spawn);
+        assert_eq!(plan(&HostState { socket_alive: socket_alive(&socket), bin: Some(bin.clone()) }), Plan::Spawn);
 
         let supervisor = Supervisor::new(host_dir.clone(), bin.clone());
         supervisor.spawn();
@@ -838,7 +728,7 @@ mod e2e {
         }
         assert!(socket_alive(&socket), "the app-managed host never answered on app.sock");
         assert!(matches!(supervisor.state().await, SupervisorState::AppManaged), "{:?}", supervisor.state().await);
-        assert_eq!(plan(&HostState { socket_alive: socket_alive(&socket), service_installed: false, bin: Some(bin.clone()) }), Plan::Adopt);
+        assert_eq!(plan(&HostState { socket_alive: socket_alive(&socket), bin: Some(bin.clone()) }), Plan::Adopt);
         let (mode, version) = lock_owner(&host_dir).expect("host.lock owner");
         assert_eq!(mode, "app", "the host records who started it");
         assert!(!version.is_empty());
@@ -889,7 +779,7 @@ mod e2e {
         std::fs::create_dir_all(&host_dir).unwrap();
         let socket = host_dir.join("app.sock");
         assert_eq!(
-            plan(&HostState { socket_alive: socket_alive(&socket), service_installed: false, bin: Some(bundled.clone()) }),
+            plan(&HostState { socket_alive: socket_alive(&socket), bin: Some(bundled.clone()) }),
             Plan::Spawn
         );
         let supervisor = Supervisor::new(host_dir.clone(), bundled.clone());
@@ -902,7 +792,7 @@ mod e2e {
         assert_eq!(lock_owner(&host_dir).expect("host.lock owner").0, "app", "the host records who started it");
         // The next decision adopts it: nothing is spawned twice.
         assert_eq!(
-            plan(&HostState { socket_alive: socket_alive(&socket), service_installed: false, bin: Some(bundled) }),
+            plan(&HostState { socket_alive: socket_alive(&socket), bin: Some(bundled) }),
             Plan::Adopt
         );
         supervisor.stop();

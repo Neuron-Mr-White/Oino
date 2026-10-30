@@ -3,9 +3,11 @@
 //! is `#[cfg(desktop)]`; the commands still exist on Android (so the
 //! handler list is the same everywhere) and answer `E_UNSUPPORTED` / no-op.
 //!
-//! - Tray: the app icon with "Show UniPi" / "Hide UniPi" and "Quit", and a
-//!   status line (tooltip + a disabled first menu row) the UI keeps up to
-//!   date via `desktop_status` ("2 agents need you", "All quiet").
+//! - Tray: the app icon labelled **UniPi (oino)** (host.md §5.1: the owner's old
+//!   unipi has a tray icon too), with "Show UniPi" / "Hide UniPi" and "Quit",
+//!   and a status line + tooltip — "2 phones · 3 sessions running · 1 needs
+//!   you" (§5.3) — fed by `desktop_status` (needs-you/running counts) and
+//!   `host_runtime` (paired phones).
 //! - `desktop_notify { title, body }`: a native notification
 //!   (tauri-plugin-notification). The UI decides when (needs you / finished).
 //! - `desktop_set_title { title }`: the window title follows the screen/chat.
@@ -17,9 +19,34 @@ use unipi_proto::{AppErrorCode, AppErrorDto};
 #[cfg(desktop)]
 pub const TRAY_ID: &str = "main";
 
+/// The tray label: both the old unipi and this app can sit in a tray, so the
+/// title and the tooltip differ from the old app's plain "UniPi" (§5.1, §14 Q1).
+pub const TRAY_TITLE: &str = "UniPi (oino)";
+
 /// The event the UI listens for to show the "Quit UniPi?" sheet (UNI-237):
 /// `{message, paired}`, sent only when quitting really needs asking.
 pub const QUIT_CONFIRM_EVENT: &str = "unipi-quit-confirm";
+
+/// Pure: the tray's §5.3 status line — paired phones, running sessions and the
+/// needs-you count ("2 phones · 3 sessions running · 1 needs you").
+pub fn tray_line(phones: usize, running: u32, needs: u32) -> String {
+    let phones = match phones {
+        0 => "No phones".to_string(),
+        1 => "1 phone".to_string(),
+        n => format!("{n} phones"),
+    };
+    let running = match running {
+        0 => "No sessions running".to_string(),
+        1 => "1 session running".to_string(),
+        n => format!("{n} sessions running"),
+    };
+    let needs = match needs {
+        0 => "Nobody needs you".to_string(),
+        1 => "1 needs you".to_string(),
+        n => format!("{n} need you"),
+    };
+    format!("{phones} · {running} · {needs}")
+}
 
 /// Pure: the tray's status line for `needs` waiting agents and `running` working ones.
 pub fn status_line(needs: u32, running: u32) -> String {
@@ -31,18 +58,16 @@ pub fn status_line(needs: u32, running: u32) -> String {
     }
 }
 
-/// Pure: the tray tooltip.
+/// Pure: the tray tooltip (the label first, then the status line).
 #[cfg_attr(not(desktop), allow(dead_code))]
 pub fn tooltip(status: &str) -> String {
-    format!("UniPi — {status}")
+    format!("{TRAY_TITLE} — {status}")
 }
 
 #[cfg(desktop)]
-fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, status: &str, visible: bool) -> tauri::Result<tauri::menu::Menu<R>> {
+fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: bool) -> tauri::Result<tauri::menu::Menu<R>> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-    let phones = phones_line();
-    let status_text = if phones.is_empty() { status.to_string() } else { format!("{status}\n{phones}") };
-    let status_item = MenuItem::with_id(app, "status", &status_text, false, None::<&str>)?;
+    let status_item = MenuItem::with_id(app, "status", current_line(), false, None::<&str>)?;
     let toggle = MenuItem::with_id(app, "toggle", toggle_label(visible), true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
     let mascot = tauri::menu::CheckMenuItem::with_id(app, "mascot", "Mascot window", true, mascot_visible(app), None::<&str>)?;
@@ -88,36 +113,37 @@ pub fn toggle_label(visible: bool) -> &'static str {
     }
 }
 
-/// Current status text (kept so the menu can be rebuilt after show/hide).
+// The three numbers behind the tray's status line (atomics: the tray menu is
+// rebuilt from any thread and a poisoned lock must never break the tray).
 #[cfg(desktop)]
-static STATUS: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static NEEDS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+#[cfg(desktop)]
+static RUNNING: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+#[cfg(desktop)]
+static PHONES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// The tray's §5.3 line right now (status item + tooltip).
 #[cfg(desktop)]
-fn current_status() -> String {
-    let s = STATUS.lock().map(|s| s.clone()).unwrap_or_default();
-    if s.is_empty() {
-        status_line(0, 0)
-    } else {
-        s
-    }
+fn current_line() -> String {
+    use std::sync::atomic::Ordering::Relaxed;
+    tray_line(PHONES.load(Relaxed), RUNNING.load(Relaxed), NEEDS.load(Relaxed))
 }
 
-/// Sets the tray's phone line (UNI-237): "Phones can connect" / "Phones can't
-/// reach this PC".
+/// Sets how many phones are paired (from `host_runtime`, §5.3).
 #[cfg(desktop)]
-pub fn set_phones_line<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host_running: bool, paired: usize) {
-    if let Ok(mut current) = PHONES.lock() {
-        *current = crate::lifecycle::phones_line(host_running, paired);
-    }
+pub fn set_phone_count<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paired: usize) {
+    PHONES.store(paired, std::sync::atomic::Ordering::Relaxed);
     refresh_menu(app);
 }
 
+/// Shows (`true`) or hides the main window — the close dialog's "Minimize to
+/// tray" and the tray toggle share it (§5.4).
 #[cfg(desktop)]
-static PHONES: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
-
-#[cfg(desktop)]
-fn phones_line() -> String {
-    PHONES.lock().map(|l| l.clone()).unwrap_or_default()
+pub fn hide_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Manager;
+    let Some(window) = app.get_webview_window("main") else { return };
+    let _ = window.hide();
+    refresh_menu_as(app, Some(false));
 }
 
 #[cfg(desktop)]
@@ -132,7 +158,7 @@ static VISIBLE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
 #[cfg(desktop)]
 fn refresh_menu_as<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: Option<bool>) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
-    let status = current_status();
+    let line = current_line();
     let visible = match visible {
         Some(v) => {
             if let Ok(mut known) = VISIBLE.lock() {
@@ -142,11 +168,13 @@ fn refresh_menu_as<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: Option
         }
         None => VISIBLE.lock().ok().and_then(|k| *k).unwrap_or_else(|| main_visible(app)),
     };
-    if let Ok(menu) = build_menu(app, &status, visible) {
+    if let Ok(menu) = build_menu(app, visible) {
         let _ = tray.set_menu(Some(menu));
     }
-    // UNI-237: the tooltip also says whether phones can reach this PC.
-    let _ = tray.set_tooltip(Some(crate::lifecycle::tray_tooltip(&tooltip(&status), true, 1)));
+    // §5.1/§5.3: the label and the line, so this tray is distinguishable from
+    // the owner's old unipi one.
+    let _ = tray.set_title(Some(TRAY_TITLE));
+    let _ = tray.set_tooltip(Some(tooltip(&line)));
 }
 
 /// Creates the tray icon. Called from `setup` on desktop; a failure (no
@@ -154,11 +182,11 @@ fn refresh_menu_as<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: Option
 #[cfg(desktop)]
 pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-    let status = current_status();
-    let menu = build_menu(app, &status, true)?;
+    let menu = build_menu(app, true)?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
-        .tooltip(tooltip(&status))
+        .title(TRAY_TITLE)
+        .tooltip(tooltip(&current_line()))
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "toggle" => toggle_main(app),
@@ -332,9 +360,8 @@ pub fn desktop_status(app: tauri::AppHandle, needs: u32, running: u32) -> Result
     let line = status_line(needs, running);
     #[cfg(desktop)]
     {
-        if let Ok(mut s) = STATUS.lock() {
-            *s = line.clone();
-        }
+        NEEDS.store(needs, std::sync::atomic::Ordering::Relaxed);
+        RUNNING.store(running, std::sync::atomic::Ordering::Relaxed);
         refresh_menu(&app);
     }
     #[cfg(not(desktop))]
@@ -460,7 +487,18 @@ mod tests {
         assert_eq!(status_line(1, 0), "1 agent needs you");
         assert_eq!(status_line(2, 0), "2 agents need you");
         assert_eq!(status_line(2, 1), "2 agents need you · 1 working");
-        assert_eq!(tooltip("All quiet"), "UniPi — All quiet");
+        assert_eq!(tooltip("All quiet"), "UniPi (oino) — All quiet");
+    }
+
+    #[test]
+    fn the_tray_line_is_phones_sessions_and_needs_you() {
+        // §5.3: "N phones · M sessions running · needs-you count".
+        assert_eq!(tray_line(2, 3, 1), "2 phones · 3 sessions running · 1 needs you");
+        assert_eq!(tray_line(1, 1, 2), "1 phone · 1 session running · 2 need you");
+        assert_eq!(tray_line(0, 0, 0), "No phones · No sessions running · Nobody needs you");
+        // §5.1: the tray label differs from the owner's old unipi one.
+        assert_eq!(TRAY_TITLE, "UniPi (oino)");
+        assert!(tooltip(&tray_line(2, 3, 1)).starts_with("UniPi (oino)"));
     }
 
     #[test]

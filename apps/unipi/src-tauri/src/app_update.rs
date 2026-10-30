@@ -100,6 +100,8 @@ pub async fn app_update_check(app: tauri::AppHandle) -> Result<UpdateInfo, AppEr
 
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+// `Progress::Progress` is the wire's `{kind:"progress"}` the UI already reads.
+#[allow(clippy::enum_variant_names)]
 pub enum Progress {
     Progress { done: u64, total: Option<u64> },
     Verifying,

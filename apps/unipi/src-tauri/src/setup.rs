@@ -13,8 +13,9 @@
 //!    `~/.local/share/pi-node/current/bin`, `~/.local/bin`, …).
 //!
 //! The merged result is also what the host gets: the app-managed spawn
-//! (`host_supervisor`) and the always-on unit (`always_on`) both use it, so
-//! herdr, tmux, kanboard and pi resolve the same way as in the user's shell.
+//! (`host_supervisor`, v2 has no service install any more) puts it on the
+//! host's PATH, so `oino`, kanboard and pi resolve the same way as in the
+//! user's shell.
 //!
 //! Version rules (user decision 4): newest wins. A **newer** version the user
 //! has is left alone; an **older** one is `outdated` and offered for update.
