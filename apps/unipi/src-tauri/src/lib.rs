@@ -57,7 +57,7 @@ pub fn run() {
         .manage(net::NetState::default())
         .manage(term::TermRegistry::new())
         .manage(board::BoardStreams::default())
-        .manage(chat::ChatStreams::default())
+        .manage(chat::SessionStreams::default())
         .manage(forward::ForwardRegistry::default())
         .manage(browser::BrowserStreams::default())
         .manage(pair_phone::PairPhone::default())
@@ -100,13 +100,17 @@ pub fn run() {
             blob::blob_put_bytes,
             blob::blob_get_file,
             blob::blob_get_bytes,
-            chat::chat_list,
-            chat::chat_open,
-            chat::chat_send,
-            chat::chat_close,
-            chat::chat_new_session,
-            chat::chat_stop,
-            chat::chat_config,
+            chat::sessions_list,
+            chat::session_open,
+            chat::session_new,
+            chat::session_fork,
+            chat::session_cmd,
+            chat::session_stream_close,
+            chat::session_archive,
+            chat::session_rename,
+            chat::session_close,
+            chat::events_open,
+            chat::events_close,
             fs::fs_roots,
             fs::fs_list,
             fs::fs_stat,
