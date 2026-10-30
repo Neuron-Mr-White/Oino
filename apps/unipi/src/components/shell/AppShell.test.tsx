@@ -10,7 +10,8 @@ import { resetPanes } from '../../lib/panes';
 import { registerPaneKind } from '../../lib/panes/kinds';
 import { resetHubs } from '../../lib/session/hub';
 import { registerChatAction } from './ConversationHeader';
-import { shellKeyOf } from './AppShell';
+import { runBinding } from './AppShell';
+import { bindingForEvent, resetShortcuts } from '../../lib/shortcuts/registry';
 
 // The desktop app's native listeners (quit sheet, tray, window title) have no Tauri here.
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
@@ -50,22 +51,34 @@ afterEach(() => {
   resetHubs();
   resetPanes();
   resetLayout();
+  resetShortcuts();
   location.hash = '';
   width(1024);
   delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 });
 
-describe('shell keys', () => {
+describe('shell keys (shortcut registry, Z-94)', () => {
+  const k = (key: string, mods: Partial<KeyboardEvent> = {}) => bindingForEvent({ key, code: `Key${key.toUpperCase()}`, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
   it('maps chords (Cmd or Ctrl)', () => {
-    const k = (key: string, mods: Partial<KeyboardEvent> = {}) => shellKeyOf({ key, code: `Key${key.toUpperCase()}`, ctrlKey: false, metaKey: true, altKey: false, shiftKey: false, ...mods });
-    expect(k('b')).toBe('sidebar');
-    expect(k('j')).toBe('bottom');
-    expect(k('b', { altKey: true })).toBe('side');
-    expect(k('f', { shiftKey: true })).toBe('fullview');
-    expect(k('t', { shiftKey: true })).toBe('reopen');
-    expect(k('k')).toBe('palette');
-    expect(k('1')).toBeUndefined(); // the old Ctrl+1…6 screens are gone
-    expect(shellKeyOf({ key: 'b', code: 'KeyB', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false })).toBeUndefined();
+    expect(k('b', { metaKey: true })).toEqual({ kind: 'app', id: 'shell.sidebar' });
+    expect(k('j', { metaKey: true })).toEqual({ kind: 'app', id: 'shell.bottom' });
+    expect(k('b', { metaKey: true, altKey: true })).toEqual({ kind: 'app', id: 'shell.side' });
+    expect(k('f', { metaKey: true, shiftKey: true })).toEqual({ kind: 'app', id: 'shell.fullview' });
+    expect(k('t', { metaKey: true, shiftKey: true })).toEqual({ kind: 'app', id: 'shell.reopen' });
+    expect(k('k', { metaKey: true })).toEqual({ kind: 'app', id: 'shell.palette' });
+    expect(k('p', { metaKey: true, shiftKey: true })).toEqual({ kind: 'app', id: 'shell.palette' });
+    expect(k('p', { metaKey: true })).toEqual({ kind: 'app', id: 'shell.files' }); // Z-81
+    expect(k('f', { metaKey: true })).toEqual({ kind: 'app', id: 'find.open' }); // Z-79
+    expect(k('1', { metaKey: true })).toBeUndefined(); // the old Ctrl+1…6 screens are gone
+    expect(k('b')).toBeUndefined();
+  });
+
+  it('conversation-scoped bindings need a conversation (Z-79)', () => {
+    const ctx = { navigate: () => {}, newChatHost: () => 'local', hosts: [] };
+    location.hash = '';
+    expect(runBinding({ kind: 'app', id: 'find.open' }, ctx)).toBe(false);
+    location.hash = `#/s/${HOST}/${SESSION}`;
+    expect(runBinding({ kind: 'app', id: 'chat.prev' }, ctx)).toBe(false); // no hub cards → no order yet
   });
 });
 

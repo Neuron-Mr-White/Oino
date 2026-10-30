@@ -32,7 +32,7 @@ import { IncomingPushRunner } from '../IncomingPush';
 import { SharingRequestsRunner } from '../SharingSettings';
 import { QuitRunner } from '../LifecycleUi';
 import { PairPhoneDialog } from '../PairPhone';
-import { DesktopUpdatePrompt } from '../DesktopUpdate';
+import { DesktopUpdatePrompt } from '../UpdateCard';
 import { LinkAnchorMenu } from '../LinkAnchorMenu';
 import { MermaidViewer } from '../chat/MermaidViewer';
 import { ReviewViewer } from '../chat/ReviewViewer';
@@ -56,7 +56,7 @@ import { can } from '../../lib/platform';
 import { layout } from '../../lib/layout';
 import { panes } from '../../lib/panes';
 import { modKey, paletteOpen, registerCommands, setPaletteOpen } from '../../lib/shell';
-import { CommandPalette } from './CommandPalette';
+import { CommandCenter } from '../command/CommandCenter';
 import { BuiltinPanes } from './builtins';
 import { DesktopNative } from './DesktopNative';
 import { SessionModalLayer } from '../session/SessionModal';
@@ -285,20 +285,25 @@ function ShellAttr() {
   return null;
 }
 
-/** The router root: providers, the frame of this shell, and the app-wide layers. */
-export function AppShell(props: ParentProps) {
-  const location = useLocation();
-  const desktop = () => layout().desktop();
-  const onEditor = () => location.pathname === '/files/edit';
-  // Z-94: the shortcut registry persists user chords in app settings.
+/** Z-94: the shortcut registry persists user chords in app settings (inside the provider). */
+function ShortcutPersistence() {
   const [settings, update] = useSettings();
   createEffect(() => {
     const chords = settings.shortcuts.chords;
     installShortcutsPersistence({ read: () => chords, write: (next) => update('shortcuts.chords', next) });
   });
+  return null;
+}
+
+/** The router root: providers, the frame of this shell, and the app-wide layers. */
+export function AppShell(props: ParentProps) {
+  const location = useLocation();
+  const desktop = () => layout().desktop();
+  const onEditor = () => location.pathname === '/files/edit';
   return (
     <SettingsProvider>
       <HostsProvider>
+        <ShortcutPersistence />
         <RelaySettings />
         <ShellAttr />
         <Show when={desktop()} fallback={<PhoneFrame>{props.children}</PhoneFrame>}>

@@ -15,7 +15,7 @@
  * `Timeline` is keyed per session by `Conversation`; scroll memory +
  * height cache live and die with it.
  */
-import { createEffect, createSignal, Index, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createSignal, Index, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { measureElement as defaultMeasure, observeElementOffset, observeElementRect, type Virtualizer } from '@tanstack/virtual-core';
 import { createBottomLock, distanceToBottom } from '../../lib/timeline/bottomLock';
@@ -29,6 +29,9 @@ import { TurnNavigator } from './TurnNavigator';
 import { SelectionQuote } from './SelectionQuote';
 import { TurnMenus } from './TurnActions';
 import { actionNotice } from '../../lib/timeline/actions';
+import { FindBar } from '../command/FindBar';
+import { activateFindMark, applyFindHighlights, clearFindHighlights } from '../../lib/find/highlight';
+import { buildFindIndex, closeFind, findState, locateMatch, setFindAdapter } from '../../lib/find';
 import type { Turn } from '../../lib/session/turns';
 import type { TimelineCtx } from './context';
 
@@ -49,7 +52,7 @@ function perf(name: string, start: number): void {
   (window.__UNIPI_PERF__ ??= []).push({ name, ms });
 }
 
-export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element }) {
+export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10: the `header` slot band (scrolls with the transcript). */ header?: JSX.Element; /** U10: the `overlay` slot host (below the dock, §6.4). */ overlay?: JSX.Element }) {
   const session = () => props.ctx.session;
   const turns = () => session().turns();
   /** The running turn (outside the list); everything before it is virtualized. */
@@ -253,8 +256,68 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element }) {
     updateActive();
   };
 
+  // ── find in chat (WP-A18, Z-79) ─────────────────────────────────
+  const findIdx = createMemo(() => buildFindIndex(turns(), findState().query));
+  /** The hit entry id's turn (whole-session results jump through this). */
+  const turnOfEntry = (entryId: string) => turns().find((t) => t.entries.some((e) => e.id === entryId))?.turnId;
+  onMount(() => {
+    setFindAdapter({ jumpToTurn });
+    onCleanup(() => setFindAdapter(undefined));
+  });
+  // Rows mount/unmount under the virtualizer: re-highlight what is mounted.
+  const [findDomRev, setFindDomRev] = createSignal(0);
+  createEffect(() => {
+    const root = contentEl;
+    const open = findState().open;
+    if (!root || !open) return;
+    const mo = new MutationObserver(() => setFindDomRev((n) => n + 1));
+    mo.observe(root, { childList: true, subtree: true });
+    onCleanup(() => mo.disconnect());
+  });
+  createEffect(() => {
+    const root = contentEl;
+    const s = findState();
+    const index = findIdx();
+    findDomRev();
+    if (!root) return;
+    clearFindHighlights(root);
+    if (!s.open || !index.query) return;
+    applyFindHighlights(root, index.query);
+    const target = locateMatch(index, s.active);
+    if (!target) return;
+    if (!activateFindMark(root, target.turnId, target.occurrence)) {
+      // The turn is outside the virtual window: mount + centre it, then mark.
+      const at = settled().findIndex((t) => t.turnId === target.turnId);
+      if (at >= 0) {
+        const el = scrollEl();
+        if (el) {
+          userScrolled = true;
+          lock.detach();
+        }
+        virt()?.scrollToIndex(at, { align: 'center' });
+        const retry = () => {
+          // jsdom (and smooth-scroll setups) deliver no scroll event for a
+          // programmatic offset: dispatch it, then force the virtualizer to
+          // recompute its window from the new offset.
+          scrollEl()?.dispatchEvent(new Event('scroll'));
+          virt()?.measure();
+          const fresh = findIdx();
+          clearFindHighlights(root);
+          applyFindHighlights(root, fresh.query);
+          const again = locateMatch(fresh, findState().active);
+          if (again) activateFindMark(root, again.turnId, again.occurrence);
+        };
+        queueMicrotask(retry);
+        requestAnimationFrame(() => queueMicrotask(retry));
+      }
+    }
+  });
+  // Leaving the conversation closes find (one surface, scoped to the chat).
+  onCleanup(() => closeFind());
+
   return (
     <div class="tl-outer">
+      <FindBar session={props.ctx.session} index={findIdx} turnOf={turnOfEntry} jump={jumpToTurn} />
       <TurnNavigator turns={turns} width={props.ctx.columnWidth} activeId={activeTurn} onJump={jumpToTurn} />
       <SelectionQuote root={scrollEl} sessionKey={() => props.ctx.session.key} />
       <TurnMenus ctx={props.ctx} />
@@ -272,6 +335,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element }) {
         }}
       >
       <div class="tl-content" ref={contentEl}>
+        {props.header}
         <Show when={loading()}>
           <ChatSkeleton />
         </Show>
@@ -295,6 +359,9 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element }) {
         </Show>
         <JumpButton show={lock.detached() && overflowing()} unread={lock.unread()} onJump={() => scrollEl() && lock.jump(scrollEl()!)} />
         {props.dock}
+        <div class="tl-overlay-host" data-testid="tl-overlay-host">
+          {props.overlay}
+        </div>
       </div>
       </div>
     </div>

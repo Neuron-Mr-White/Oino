@@ -8,7 +8,7 @@
  *
  * Draft (`/new/:host`) renders its empty state until A5's draft composer.
  */
-import { createMemo, createSignal, onCleanup, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createSignal, on, onCleanup, Show, type JSX } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { CircleAlert, RefreshCw } from 'lucide-solid';
 import { hubs } from '../../lib/session/hub';
@@ -19,19 +19,29 @@ import { layout } from '../../lib/layout';
 import type { RefChat } from '../../lib/chat/pathStat';
 import { dialogResponse } from '../../ui/dialogs/adapter';
 import { installUiSinks, sessionUi } from '../../ui/registries';
+import { installConversationSlots } from '../../ui/slots';
+import { ComposerTray } from '../../ui/slots/ComposerTray';
+import { HeaderBand } from '../../ui/slots/HeaderBand';
+import { PhonePaneLayer } from '../../ui/slots/paneTabs';
+import { SlotModal } from '../../ui/slots/SlotModal';
+import { WidgetStack } from '../../ui/slots/WidgetStack';
+import { installUiEffects } from '../../ui/slots/effects';
+import { parseExtShortcutSpecs, setExtensionShortcuts } from '../../lib/shortcuts/registry';
 import { commandNames, type TimelineCtx } from '../timeline/context';
 import { Timeline } from '../timeline/Timeline';
 import { FileRefMenu } from '../chat/FileRefMenu';
 import { EmptyState } from '../EmptyState';
 import { ConversationBoundary } from '../ErrorBoundaries';
 import { BottomDock } from '../dock/BottomDock';
-import { ComposerBridge } from './ComposerBridge';
+import { Composer } from '../composer/Composer';
 import { ReadOnlyBanner, isTakenOverReadOnly } from './ReadOnlyBanner';
 import '../timeline/timeline.css';
 
 // The session store's ui sink must be wired before any stream opens, or
 // `extension_ui_request`s (the dock's dialogs, Z-46) never reach the registry.
 installUiSinks();
+// U10's app-wide effect handlers (notify → toasts, set_editor_text, …).
+installUiEffects();
 
 /** The session's banners: connection loss (Z-50), takeover (Z-51), host crashes/reloads. */
 function Banners(props: { session: SessionHandle }) {
@@ -105,6 +115,25 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
 
   // ── dialogs (Z-46): pending pi/Oino dialogs, answered over the session ──
   const registry = createMemo(() => (props.sessionId ? sessionUi(props.hostId, props.sessionId) : undefined));
+  // The session's extension shortcuts feed the registry (G-7): `setShortcuts`
+  // ui requests arrive on the stream; hosts that never push them are asked once.
+  createEffect(() => {
+    const meta = registry()?.state.meta as { shortcuts?: unknown } | undefined;
+    setExtensionShortcuts(parseExtShortcutSpecs(meta?.shortcuts));
+  });
+  createEffect(
+    on(
+      () => props.sessionId,
+      (id) => {
+        if (!id) return;
+        void session()
+          ?.cmd<unknown>({ type: '_oino/get_shortcuts' })
+          .then((reply) => setExtensionShortcuts(parseExtShortcutSpecs(reply)))
+          .catch(() => undefined);
+      },
+    ),
+  );
+  onCleanup(() => setExtensionShortcuts(undefined));
   const dialogs = () => registry()?.dialogs() ?? [];
   const answer = (id: string, value: unknown) => {
     const s = session();
@@ -113,6 +142,22 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
     registry()?.dismissDialog(id);
     void s.cmd(dialogResponse(id, value)).catch((error: unknown) => console.warn('[dialog] answer failed', id, error));
   };
+
+  // ── U10 slot feeds + hosts (ui-protocol §6.2) ─────────────────────
+  const target = () => ({ scope: 'session' as const, hostId: props.hostId, sessionId: props.sessionId });
+  const widgets = () => {
+    const reg = registry();
+    const phone = !layout().desktop();
+    const list = phone
+      ? [...reg?.entriesFor('widgetBelow')() ?? [], ...(reg?.entriesFor('widget')() ?? [])] // §6.2: phone folds belowEditor into the stack
+      : (reg?.entriesFor('widget')() ?? []);
+    return list;
+  };
+  const widgetBelow = () => (layout().desktop() ? (registry()?.entriesFor('widgetBelow')() ?? []) : []);
+  const overlayStack = () => registry()?.stack('overlay')() ?? [];
+  const trayStack = () => registry()?.stack('editorReplace')() ?? [];
+  const headerEntries = () => registry()?.entriesFor('header')() ?? [];
+  installConversationSlots({ hostId: props.hostId, sessionId: props.sessionId ?? '', cwd, registry, session });
 
   return (
     <div class="conv-tl" data-testid="conversation">
@@ -132,6 +177,8 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                       {(_sid) => (
                         <Timeline
                           ctx={c()}
+                          header={<HeaderBand entries={headerEntries()} target={target()} />}
+                          overlay={<SlotModal stack={overlayStack()} target={target()} phone={!layout().desktop()} />}
                           dock={
                             <BottomDock
                               session={s()}
@@ -139,10 +186,15 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                               onAnswer={answer}
                               readOnly={isTakenOverReadOnly(s().state)}
                               phone={!layout().desktop()}
+                              widgets={<WidgetStack entries={widgets()} target={target()} phone={!layout().desktop()} />}
+                              widgetBelow={<WidgetStack entries={widgetBelow()} target={target()} />}
+                              composerTray={<ComposerTray stack={trayStack()} target={target()} />}
                               composer={
-                                <ComposerBridge
+                                <Composer
                                   session={s()}
+                                  cwd={cwd}
                                   readOnly={isTakenOverReadOnly(s().state)}
+                                  phone={!layout().desktop()}
                                 />
                               }
                             />
@@ -154,6 +206,9 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                 )}
               </Show>
               <FileRefMenu />
+              <Show when={!layout().desktop() && registry()}>
+                {(reg) => <PhonePaneLayer registry={reg()} target={target()} />}
+              </Show>
             </ConversationBoundary>
           )}
         </Show>

@@ -63,7 +63,7 @@ export function Sidebar() {
           <SquarePen size={16} />
           <span>New chat</span>
         </button>
-        <button type="button" class="sb-action" onClick={() => setPaletteOpen(true)} aria-label="Search" data-testid="sb-search">
+        <button type="button" class="sb-action" onClick={() => setPaletteOpen(true, 'sessions')} aria-label="Search sessions" data-testid="sb-search">
           <Search size={16} />
           <span>Search</span>
           <span class="sb-keys">

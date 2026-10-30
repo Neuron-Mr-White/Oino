@@ -42,6 +42,15 @@ describe('SettingsV1Schema', () => {
       editor: {
         vim: false,
       },
+      appearance: {
+        uiFontSize: 15,
+        codeFontSize: 13,
+        codeWrap: true,
+        codeLineNumbers: true,
+      },
+      shortcuts: {
+        chords: {},
+      },
     });
     expect(parsed).toEqual(DEFAULT_SETTINGS);
   });

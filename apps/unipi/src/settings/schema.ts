@@ -97,6 +97,23 @@ export const EditorSettingsSchema = z.object({
 });
 export type EditorSettings = z.infer<typeof EditorSettingsSchema>;
 
+/**
+ * Appearance (WP-A24, Z-114): UI font size drives `--ui-font-size` app-wide;
+ * code settings cover code blocks, the file editor and diffs. No light theme
+ * (brand, Z-114 ruling). Terminal/chat keep their own size settings.
+ */
+export const AppearanceSettingsSchema = z.object({
+  /** Prose/UI text size, 12–20 px (ZCode `--ui-font-size`; the app's body text is 15 px today). */
+  uiFontSize: z.number().int().min(12).max(20).default(15),
+  /** Code font size, 12–20 px (code blocks, the editor, diffs). Default 13: between today's chat blocks (12.5) and the editor (14). */
+  codeFontSize: z.number().int().min(12).max(20).default(13),
+  /** Wrap long code lines instead of scrolling sideways. */
+  codeWrap: z.boolean().default(true),
+  /** Line numbers in the file editor. */
+  codeLineNumbers: z.boolean().default(true),
+});
+export type AppearanceSettings = z.infer<typeof AppearanceSettingsSchema>;
+
 /** Phone notifications (UNI-161 §4b): the user's own ntfy server/topic/token,
  *  pasted or scanned, so the app can poll it ("Keep listening", no
  *  distributor) and/or register a UnifiedPush endpoint with it. Never
@@ -121,6 +138,16 @@ export const NotifySettingsSchema = z.object({
 export type NotifySettings = z.infer<typeof NotifySettingsSchema>;
 
 /**
+ * Keyboard shortcuts (WP-A18, Z-94): user chord overrides, id → canonical
+ * chord ("Mod+Shift+S"). App ids (`shell.sidebar`) and extension ids
+ * (`ext:unipi.permission.cycle`); missing ids fall back to their default.
+ */
+export const ShortcutSettingsSchema = z.object({
+  chords: z.record(z.string(), z.string()).default({}),
+});
+export type ShortcutSettings = z.infer<typeof ShortcutSettingsSchema>;
+
+/**
  * Every group schema of [`SettingsV1Schema`], in schema order — the ONE
  * list of settings groups, which both `load.ts` (validation) and
  * `context.tsx` (`update('group.key')`) derive their group handling from.
@@ -138,6 +165,8 @@ export const SETTINGS_GROUP_SCHEMAS = {
   board: BoardSettingsSchema,
   notify: NotifySettingsSchema,
   editor: EditorSettingsSchema,
+  shortcuts: ShortcutSettingsSchema,
+  appearance: AppearanceSettingsSchema,
 } as const;
 export type SettingsGroup = keyof typeof SETTINGS_GROUP_SCHEMAS;
 
@@ -160,6 +189,8 @@ export const SettingsV1Schema = z.object({
   board: BoardSettingsSchema.prefault({}),
   notify: NotifySettingsSchema.prefault({}),
   editor: EditorSettingsSchema.prefault({}),
+  shortcuts: ShortcutSettingsSchema.prefault({}),
+  appearance: AppearanceSettingsSchema.prefault({}),
 });
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 

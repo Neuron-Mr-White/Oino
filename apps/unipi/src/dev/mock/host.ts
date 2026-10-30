@@ -12,6 +12,7 @@
  */
 import { createSignal } from 'solid-js';
 import { createMockBoard, type MockBoard, type MockBoardProject } from './board';
+import { mockLspServers, openMockLsp, type MockLspSpec } from './lsp';
 import {
   APP_HOST,
   type Closable,
@@ -131,6 +132,8 @@ export type MockHostSpec = {
   fs?: Record<string, MockFsNode>;
   git?: MockGit;
   cron?: unknown[];
+  /** Scripted language server behind `openLsp`/`lsp_servers` (WP-A21). */
+  lsp?: MockLspSpec;
   /** Board projects + tasks behind `board_cli`/`board_watch` (WP-A22). */
   board?: MockBoardProject[];
   /** Settings fixtures (WP-A24): host config, pi settings, namespaces, extensions. */
@@ -158,7 +161,7 @@ export type MockScenario = {
   setup?: () => void;
 };
 
-export type MockLogEntry = { host: string; kind: 'request' | 'cmd' | 'open'; op: string; args?: unknown; unhandled?: true; at: number };
+export type MockLogEntry = { host: string; kind: 'request' | 'cmd' | 'open' | 'lsp'; op: string; args?: unknown; unhandled?: true; at: number };
 
 declare global {
   interface Window {
@@ -447,6 +450,8 @@ const BUILTIN: Record<string, MockOp> = {
   // WP-A19 (G-12): `notify_register` on the host seam records the endpoint.
   notify_register: () => ({ registered: true }),
   fs_roots: (_a, h) => ({ roots: Object.keys(h.spec.fs ?? {}) }),
+  // The UI's `lsp_list` command → the wire `lsp_servers` reply.
+  lsp_list: (_a, h) => mockLspServers(h.spec.lsp, Object.keys(h.spec.fs ?? {})[0]),
   fs_list: (a, h) => {
     const path = String(a.path ?? '');
     const node = walk(h.spec.fs, path);
@@ -726,6 +731,10 @@ export class MockHost implements HostClient {
         const handler = session?.cmd?.[cmd.type];
         if (handler) return (await handler(cmd, this)) as T;
         if (cmd.type === 'get_commands') return { commands: session?.snapshot.commands ?? [] } as T;
+        // WP-A18 (Z-79): whole-session search over the mock's entries.
+        if (cmd.type === 'search') return { hits: mockSearch(String(cmd.query ?? ''), session) } as T;
+        // WP-A18 (G-7): the extension shortcuts the real unipi extensions register.
+        if (cmd.type === '_oino/get_shortcuts') return { shortcuts: MOCK_SHORTCUTS } as T;
         // The sticky topics the scenario seeded (subscribing merges them into the store).
         if (cmd.type === '_oino/topics') return { topics: session?.snapshot.topics ?? [] } as T;
         if (cmd.type === '_oino/render') {
@@ -816,13 +825,57 @@ export class MockHost implements HostClient {
     return { write() {}, resize() {}, close() {} };
   }
 
-  openLsp(req: Parameters<HostClient['openLsp']>[0]): LspStream {
+  openLsp(req: Parameters<HostClient['openLsp']>[0], sink: Parameters<HostClient['openLsp']>[1]): LspStream {
     this.world.record({ host: this.hostId, kind: 'open', op: 'lsp_open', args: req });
-    return { send() {}, close() {} };
+    return openMockLsp(this.spec.lsp, sink, {
+      record: (entry) => this.world.record({ ...entry, kind: 'lsp', op: entry.op } as Omit<MockLogEntry, 'at'>),
+      hostId: this.hostId,
+    });
   }
 }
 
 type StreamHandle = { push(items: SessionEventDto[]): void; drop(error?: Err): void };
+
+/** `{id, defaultKeys, description, extensionId}` — what the unipi extensions register (G-7). */
+const MOCK_SHORTCUTS = [
+  { id: 'unipi.permission.cycle', defaultKeys: ['alt+m'], description: 'Cycle permission mode (ask → auto → full)', extensionId: 'unipi.workflow' },
+  { id: 'unipi.plan.toggle', defaultKeys: ['alt+p'], description: 'Toggle plan mode', extensionId: 'unipi.workflow' },
+  { id: 'unipi.tray.open', defaultKeys: ['shift+down'], description: 'Open the work tray', extensionId: 'unipi.core' },
+  { id: 'unipi.subagents.foreground', defaultKeys: ['ctrl+b'], description: 'Move foreground subagents to the background', extensionId: 'unipi.subagents' },
+  { id: 'unipi.bg.clear', defaultKeys: ['ctrl+alt+c'], description: 'Clear finished background task footer notices', extensionId: 'unipi.background-tasks' },
+];
+
+/** The `search` reply: hits over message texts (the old bridge shape, Z-79 fallback). */
+function mockSearch(query: string, session: MockSession | undefined): unknown[] {
+  const q = query.trim().toLowerCase();
+  if (!q || !session) return [];
+  const hits: Array<{ id: string; role: string; snippet: string; marks: Array<[number, number]>; score: number; timestamp?: string }> = [];
+  const entries = [...(session.snapshot.entries ?? []), ...((session.entries?.entries as unknown[] | undefined) ?? [])] as Array<Record<string, unknown>>;
+  for (const entry of entries) {
+    const message = entry.message as { role?: string; content?: unknown } | undefined;
+    if (!message || typeof message.role !== 'string') continue;
+    const parts = Array.isArray(message.content)
+      ? (message.content as Array<{ type?: string; text?: string }>)
+      : [{ type: 'text', text: typeof message.content === 'string' ? message.content : '' }];
+    for (const part of parts) {
+      const text = typeof part?.text === 'string' ? part.text : '';
+      const at = text.toLowerCase().indexOf(q);
+      if (at < 0) continue;
+      const from = Math.max(0, at - 40);
+      const snippet = `${from > 0 ? '…' : ''}${text.slice(from, at + q.length + 60)}`;
+      const offset = snippet.toLowerCase().indexOf(q);
+      hits.push({
+        id: String(entry.id ?? ''),
+        role: message.role,
+        snippet,
+        marks: [[Math.max(0, offset), Math.max(0, offset) + q.length]],
+        score: 1,
+        ...(typeof entry.timestamp === 'string' ? { timestamp: entry.timestamp } : {}),
+      });
+    }
+  }
+  return hits.slice(0, 60);
+}
 
 export class MockWorld {
   readonly log: MockLogEntry[] = [];

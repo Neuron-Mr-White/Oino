@@ -6,6 +6,7 @@ import { offline } from './offline';
 import { streamBasic } from './stream-basic';
 import { streamReconnect } from './stream-reconnect';
 import { streamSteer } from './stream-steer';
+import { queueHeld, queuePanel } from './queue';
 import { shellDesktop, shellFullview, shellNarrow, shellSidepaneTabs } from './shell';
 import { sidebarMany, sidebarStates } from './sidebar';
 import { timelineMany } from './timeline';
@@ -18,7 +19,10 @@ import { boardDashboard, boardLanes } from './board';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
 import { capsuleScenario, statusLhGraph, statusRunning, statusTodos } from './status';
 import { crashBoundary, dialogApproval, dialogDock, errorRow, takenOver } from './dock';
-import { filesPreview, filesSearch, filesTree } from './files';
+import { slots, slotsDialogs } from './slots';
+import { composerPaste, composerSlash, composerStates } from './composer';
+import { editorConflict, editorLsp, filesPreview, filesSearch, filesTree } from './files';
+import { cmdkEmpty, cmdkFiles, findBar, shortcutsList } from './command';
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
@@ -62,6 +66,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'renderer-cards': rendererCards,
   'files-search': filesSearch,
   'files-preview': filesPreview,
+  'editor-lsp': editorLsp,
+  'editor-conflict': editorConflict,
   'cron-list': cronList,
   'cron-form': cronForm,
   'cron-badge': cronBadge,
@@ -70,7 +76,16 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'error-row': errorRow,
   'taken-over': takenOver,
   'crash-boundary': crashBoundary,
+  slots,
+  'slots-dialogs': slotsDialogs,
   'needs-you': needsYou,
   toasts: toastsScenario,
   unread,
+  'cmdk-empty': cmdkEmpty,
+  'cmdk-files': cmdkFiles,
+  'find-bar': findBar,
+  'shortcuts-list': shortcutsList,
+  'composer-states': composerStates,
+  'composer-paste': composerPaste,
+  'composer-slash': composerSlash,
 };

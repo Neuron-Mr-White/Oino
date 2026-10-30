@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { adjacentIndex, choiceKey, composerKey, dragHasFiles, filesKey, inTextField, nextFontSize, shortcuts, splitDropped, termKey, windowTitle } from './desktop';
+import { adjacentIndex, choiceKey, composerKey, dragHasFiles, filesKey, inTextField, nextFontSize, splitDropped, termKey, windowTitle } from './desktop';
 import { setPlatformOverride } from './platform';
 
 const k = (key: string, m: Partial<{ ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean }> = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...m });

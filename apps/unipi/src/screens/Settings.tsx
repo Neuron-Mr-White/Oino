@@ -4,6 +4,8 @@ import { HostsSettings } from '../components/HostsSettings';
 import { SwitchField } from '../components/Switch';
 import { SharingSettings } from '../components/SharingSettings';
 import { PushAccess } from '../components/PushAccess';
+import { ShortcutsSettings } from '../components/command/ShortcutsSettings';
+import { LanguageServers } from '../components/LanguageServers';
 import { For, Show, createContext, createResource, createSignal, onCleanup, onMount, useContext, type JSX } from 'solid-js';
 import { desktopShell } from '../lib/layout';
 import { can } from '../lib/platform';
@@ -643,6 +645,12 @@ export default function Settings() {
         <ToolbarEditor />
       </Section>
       </Requires>
+
+      <Show when={desktopShell()}>
+        <Section title="Keyboard shortcuts" icon={<Keyboard size={14} />}>
+          <ShortcutsSettings />
+        </Section>
+      </Show>
 
       <Requires cap="files" fallback={null}>
       <Section title="Editor" icon={<Type size={14} />}>

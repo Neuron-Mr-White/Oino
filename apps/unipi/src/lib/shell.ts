@@ -71,10 +71,25 @@ function subsequence(needle: string, hay: string): boolean {
   return at === needle.length;
 }
 
-const [paletteOpen, setPaletteOpenSignal] = createSignal(false);
-export { paletteOpen };
-export function setPaletteOpen(open: boolean): void {
-  setPaletteOpenSignal(open);
+const [palette, setPaletteSignal] = createSignal<{ open: boolean; scope: PaletteScope }>({ open: false, scope: 'all' });
+
+/** Command-center scopes (Z-77): All / Actions / Sessions / Files. */
+export type PaletteScope = 'all' | 'actions' | 'sessions' | 'files';
+
+/** The palette's open flag (the command center, WP-A18). */
+export const paletteOpen = () => palette().open;
+
+/** Opens / closes the command center (`scope` seeds the scope tab; Z-81: Mod+P → files). */
+export function setPaletteOpen(open: boolean, scope: PaletteScope = 'all'): void {
+  setPaletteSignal({ open, scope: open ? scope : palette().scope });
+}
+
+/** The scope tab the center opens with (or switches to while open). */
+export const paletteScope = () => palette().scope;
+
+/** Switches the open center's scope tab. */
+export function setPaletteScope(scope: PaletteScope): void {
+  setPaletteSignal((p) => (p.open ? { ...p, scope } : p));
 }
 
 /** "Ctrl" or "⌘" for shortcut hints. */
