@@ -1961,6 +1961,70 @@ mod tests {
     }
 
     #[test]
+    fn host_scope_registry_mirrors_settings_and_reserved_entries() {
+        let mut mirror = RegistryMirror::new(Scope::Host);
+        let board = UiEntry {
+            extension_id: "unipi.kanboard".into(),
+            scope: Scope::Host,
+            slot: Slot::Fullscreen,
+            order: 1000,
+            title: Some("Board".into()),
+            view: UiView::Reserved {
+                component: ReservedComponent::Board,
+                fallback: None,
+                params: None,
+            },
+            ..entry("unipi.kanboard/board", Slot::Fullscreen, 1)
+        };
+        let settings = UiEntry {
+            extension_id: "host".into(),
+            scope: Scope::Host,
+            slot: Slot::Settings,
+            title: Some("App".into()),
+            view: UiView::Settings {
+                namespace: serde_json::from_value(json!({
+                    "namespace": "app.ui", "title": "App", "extensionId": "host",
+                    "sections": [{"id": "main", "title": "Main", "fields": [
+                        {"key": "density", "type": "enum", "label": "Density",
+                         "options": [{"value": "cozy", "label": "Cozy"}]}
+                    ]}]
+                }))
+                .expect("descriptor parses"),
+            },
+            ..entry("host/settings:app.ui", Slot::Settings, 2)
+        };
+        let snapshot = UiSnapshot {
+            scope: Scope::Host,
+            session_id: None,
+            rev: 1,
+            entries: vec![board.clone(), settings.clone()],
+            dialogs: Vec::new(),
+            meta: UiMeta::default(),
+        };
+        mirror
+            .apply_snapshot(snapshot)
+            .expect("host snapshot applies");
+        assert_eq!(mirror.scope(), Scope::Host);
+        assert_eq!(mirror.session_id(), None);
+        let settings_namespaces: Vec<crate::settings_hub::HubNamespace> = mirror
+            .entries_for(Slot::Settings)
+            .iter()
+            .filter_map(|entry| crate::settings_hub::HubNamespace::from_entry(entry))
+            .collect();
+        assert_eq!(settings_namespaces.len(), 1);
+        assert_eq!(settings_namespaces[0].namespace, "app.ui");
+
+        // A host-scope patch (first event after `events_open` was the snapshot, §9.2).
+        let mut patch = patch_at(2, vec![RegistryOp::Del { id: board.id }]);
+        patch.scope = Scope::Host;
+        patch.session_id = None;
+        mirror.apply_patch(&patch).expect("host patch applies");
+        assert_eq!(mirror.entries_for(Slot::Fullscreen).len(), 0);
+        assert_eq!(mirror.entries_for(Slot::Settings).len(), 1);
+        assert_eq!(mirror.rev(), 2);
+    }
+
+    #[test]
     fn dialogs_effects_and_entry_reconciliation() {
         let mut mirror = mirrored("ordering.json");
         // Unknown effects and retained methods carry nothing for the frontend.
