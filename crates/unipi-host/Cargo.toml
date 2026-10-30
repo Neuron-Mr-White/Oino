@@ -95,3 +95,11 @@ tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 base64 = "0.22"
 aes-gcm = "0.11"
+
+[lints.clippy]
+# The host's error type is `AppErrorDto`, the wire envelope it shares with the
+# TS app (code, message, hint, path, detail, retryable). Linking oino-core in
+# process (WP-H3) turns on serde_json's `preserve_order` for the whole build,
+# which grows it past clippy's 128-byte threshold — boxing it would change the
+# protocol, so the lint is off here.
+result_large_err = "allow"
