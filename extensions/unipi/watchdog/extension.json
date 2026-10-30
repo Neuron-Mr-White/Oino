@@ -1,5 +1,5 @@
 {
-  "apiVersion": "oino.extension/1",
+  "apiVersion": "oino.extension/2",
   "id": "unipi.watchdog",
   "name": "Watchdog",
   "version": "3.0.0",

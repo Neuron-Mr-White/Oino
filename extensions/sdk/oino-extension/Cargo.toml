@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Guest SDK for Oino WASM component extensions (oino:extension@1.0.0)"
+description = "Guest SDK for Oino WASM component extensions (oino:extension@2.0.0)"
 
 [features]
 ## Build against world `provider-extension` (exports `provider`, imports `provider-host`).

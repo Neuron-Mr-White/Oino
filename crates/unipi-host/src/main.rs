@@ -22,8 +22,9 @@ enum Command {
         #[arg(long)]
         relay_only: bool,
         /// Who runs this host (shown by `status` and the desktop app):
-        /// service | app | manual. Default: service under systemd, else manual.
-        #[arg(long, value_parser = ["service", "app", "manual"])]
+        /// app (started by the app's supervisor) or manual (a terminal).
+        /// v2 has no service install, so there is no `service` mode.
+        #[arg(long, value_parser = ["app", "manual"])]
         mode: Option<String>,
         /// Exit when this process exits (the desktop app's sidecar).
         #[arg(long, value_name = "PID")]
@@ -83,15 +84,9 @@ enum Command {
         #[command(subcommand)]
         action: SharingAction,
     },
-    /// Keep `unipi-host serve` running after you log out and start it at boot
-    /// (systemd "linger"; asks for your password once via polkit).
-    Linger {
-        #[command(subcommand)]
-        action: LingerAction,
-    },
-    /// Update unipi-host from https://unipi.nrn.one (sha256-checked, atomic
-    /// replace), then restart its service (systemd user unit, LaunchAgent
-    /// dev.unipi.host or the "UniPi Host" logon task).
+    /// Update unipi-host from the release feed (sha256-checked, atomic
+    /// replace). v2 has no service install: the app restarts the host it
+    /// spawned itself (`specs/host.md` §9.7).
     Update {
         /// Only say whether a newer version exists (exit 0 either way).
         #[arg(long, conflicts_with = "mode")]
@@ -165,13 +160,6 @@ enum SharingAction {
         #[arg(long)]
         json: bool,
     },
-}
-#[derive(Subcommand)]
-enum LingerAction {
-    /// Is linger on for this user?
-    Status,
-    /// Turn it on (`pkexec loginctl enable-linger $USER`; polkit asks for your password).
-    Enable,
 }
 #[derive(Subcommand)]
 enum FsAction {
@@ -721,7 +709,6 @@ async fn main() -> anyhow::Result<()> {
         Command::Sharing {
             action: SharingAction::Status { json },
         } => sharing_status(&paths, json)?,
-        Command::Linger { action } => linger_command(action)?,
         Command::Update {
             check,
             no_restart,
@@ -2233,31 +2220,6 @@ fn sharing_status(paths: &HostPaths, json: bool) -> anyhow::Result<()> {
     );
     Ok(())
 }
-fn linger_command(action: LingerAction) -> anyhow::Result<()> {
-    use unipi_host::sharing;
-    let user = sharing::current_user()
-        .ok_or_else(|| anyhow::anyhow!("can't tell who you are ($USER is empty)"))?;
-    match action {
-        LingerAction::Status => match sharing::linger_enabled(&user) {
-            Some(true) => println!("Linger: on — unipi-host keeps running after you log out and starts at boot."),
-            Some(false) => println!("Linger: off — unipi-host stops when you log out.\nTurn it on: unipi-host linger enable"),
-            None => println!("Linger: unknown (no loginctl / systemd here)."),
-        },
-        LingerAction::Enable => {
-            if sharing::linger_enabled(&user) == Some(true) {
-                println!("Linger is already on for {user}.");
-                return Ok(());
-            }
-            let argv = sharing::linger_enable_argv(&user);
-            let status = std::process::Command::new(&argv[0]).args(&argv[1..]).status()
-                .map_err(|e| anyhow::anyhow!("couldn't run pkexec ({e}). Run `sudo loginctl enable-linger {user}` instead."))?;
-            anyhow::ensure!(status.success(), "not changed (the password prompt was cancelled or refused)");
-            println!("Linger is on: unipi-host keeps running after you log out and starts at boot.");
-        }
-    }
-    Ok(())
-}
-
 /// One background check from `serve` (UNI-263). Never restarts anything in
 /// prompt mode (the default, user decision 6).
 async fn background_update(paths: &HostPaths) {

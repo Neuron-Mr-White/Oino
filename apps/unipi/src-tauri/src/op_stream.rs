@@ -1,19 +1,34 @@
-//! UNI-230 (plan A1, docs/m8 §3.3): one logical op's two halves, whatever
-//! carries them — a QUIC bi-stream to a host over iroh, or (desktop, this
-//! PC's own host) one connection to its local socket `app.sock`. Both speak
-//! the same `u8 kind · u32 len` frames, so callers only need AsyncRead /
-//! AsyncWrite plus `finish()` (QUIC: no more data; Unix: shutdown(Write)).
+//! UNI-230 (plan A1, docs/m8 §3.3) + v2 (spec host.md §6.1): one logical
+//! op's two halves, whatever carries them — a QUIC bi-stream to a host over
+//! iroh, or (desktop, this PC's own host) one connection to its local
+//! transport: `<dir>/app.sock` on Linux/macOS, the named pipe
+//! `\\.\pipe\unipi-oino-app` on Windows. All speak the same
+//! `u8 kind · u32 len` frames, so callers only need AsyncRead / AsyncWrite
+//! plus `finish()` (QUIC: no more data; Unix: shutdown(Write); a Windows pipe
+//! has no half-close — `finish()` flushes and the host sees EOF when the
+//! connection goes away).
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
+/// The writing half of a local op: the unix socket's write half on
+/// Linux/macOS, the pipe's on Windows.
+#[cfg(unix)]
+pub type LocalWrite = tokio::net::unix::OwnedWriteHalf;
+/// The reading half of a local op (see [`LocalWrite`]).
+#[cfg(unix)]
+pub type LocalRead = tokio::net::unix::OwnedReadHalf;
+#[cfg(windows)]
+pub type LocalWrite = tokio::io::WriteHalf<tokio::net::windows::named_pipe::NamedPipeClient>;
+#[cfg(windows)]
+pub type LocalRead = tokio::io::ReadHalf<tokio::net::windows::named_pipe::NamedPipeClient>;
+
 /// The sending half of an op.
 pub enum OpSend {
     Iroh(iroh::endpoint::SendStream),
-    #[cfg(unix)]
-    Local(tokio::net::unix::OwnedWriteHalf),
+    Local(LocalWrite),
     /// Tests: an in-memory pipe.
     #[cfg(test)]
     Duplex(tokio::io::WriteHalf<tokio::io::DuplexStream>),
@@ -22,8 +37,7 @@ pub enum OpSend {
 /// The receiving half of an op.
 pub enum OpRecv {
     Iroh(iroh::endpoint::RecvStream),
-    #[cfg(unix)]
-    Local(tokio::net::unix::OwnedReadHalf),
+    Local(LocalRead),
     #[cfg(test)]
     Duplex(tokio::io::ReadHalf<tokio::io::DuplexStream>),
 }
@@ -49,6 +63,10 @@ impl OpSend {
                 let sock: &tokio::net::UnixStream = w.as_ref();
                 shutdown_write(sock).map_err(|e| FinishError(e.to_string()))
             }
+            // A named pipe has no half-close: flush and let the host see EOF
+            // when the connection goes away (it frames by length meanwhile).
+            #[cfg(windows)]
+            OpSend::Local(_) => Ok(()),
             #[cfg(test)]
             OpSend::Duplex(_) => Ok(()),
         }
@@ -82,7 +100,6 @@ impl AsyncWrite for OpSend {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
         match self.get_mut() {
             OpSend::Iroh(s) => Pin::new(s).poll_write(cx, buf).map_err(std::io::Error::other),
-            #[cfg(unix)]
             OpSend::Local(w) => Pin::new(w).poll_write(cx, buf),
             #[cfg(test)]
             OpSend::Duplex(w) => Pin::new(w).poll_write(cx, buf),
@@ -91,7 +108,6 @@ impl AsyncWrite for OpSend {
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             OpSend::Iroh(s) => Pin::new(s).poll_flush(cx).map_err(std::io::Error::other),
-            #[cfg(unix)]
             OpSend::Local(w) => Pin::new(w).poll_flush(cx),
             #[cfg(test)]
             OpSend::Duplex(w) => Pin::new(w).poll_flush(cx),
@@ -100,7 +116,6 @@ impl AsyncWrite for OpSend {
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             OpSend::Iroh(s) => Pin::new(s).poll_shutdown(cx).map_err(std::io::Error::other),
-            #[cfg(unix)]
             OpSend::Local(w) => Pin::new(w).poll_shutdown(cx),
             #[cfg(test)]
             OpSend::Duplex(w) => Pin::new(w).poll_shutdown(cx),
@@ -112,7 +127,6 @@ impl AsyncRead for OpRecv {
     fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             OpRecv::Iroh(r) => Pin::new(r).poll_read(cx, buf).map_err(std::io::Error::other),
-            #[cfg(unix)]
             OpRecv::Local(r) => Pin::new(r).poll_read(cx, buf),
             #[cfg(test)]
             OpRecv::Duplex(r) => Pin::new(r).poll_read(cx, buf),

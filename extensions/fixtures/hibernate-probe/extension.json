@@ -1,5 +1,5 @@
 {
-  "apiVersion": "oino.extension/1",
+  "apiVersion": "oino.extension/2",
   "id": "oino.fixture.hibernate-probe",
   "name": "Hibernate probe fixture",
   "version": "1.0.0",

@@ -1,5 +1,5 @@
 {
-  "apiVersion": "oino.extension/1",
+  "apiVersion": "oino.extension/2",
   "id": "oino.google",
   "name": "Google Gemini and Vertex AI",
   "version": "1.0.0",

@@ -65,9 +65,18 @@ iana-time-zone = "0.1.65"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# UNI-247: Windows — named-pipe detection in `pair_cli`.
+# UNI-247: Windows — named-pipe detection in `pair_cli`; v2 — the owner-only
+# named-pipe listener in `local.rs` (spec host.md §6.1).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Pipes",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

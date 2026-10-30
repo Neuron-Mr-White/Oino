@@ -1,4 +1,4 @@
-//! `oino-wasm-host`: the wasmtime component host for `oino:extension@1.0.0` (extension-api §5).
+//! `oino-wasm-host`: the wasmtime component host for `oino:extension@2.0.0` (extension-api §5).
 //!
 //! # Boundary
 //!

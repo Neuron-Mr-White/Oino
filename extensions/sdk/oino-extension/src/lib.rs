@@ -1,4 +1,4 @@
-//! Guest SDK for Oino WASM component extensions (`oino:extension@1.0.0`).
+//! Guest SDK for Oino WASM component extensions (`oino:extension@2.0.0`).
 //!
 //! An extension is a type implementing [`Extension`]; [`export_extension!`] turns it into a
 //! component. `init` registers events, tools, commands, shortcuts, flags, services, settings,

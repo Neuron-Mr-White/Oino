@@ -96,7 +96,7 @@ impl<T: Send> wh::HostWithStore<T> for HostState {
         let ctx = ext.host.host_context(&cx);
         ready(wh::Info {
             oino_version: ext.config.oino_version.clone(),
-            api_version: "1.0.0".into(),
+            api_version: oino_extension_api::manifest::WIT_VERSION.into(),
             platform: platform().into(),
             arch: std::env::consts::ARCH.into(),
             mode: convert::mode(cx.mode),

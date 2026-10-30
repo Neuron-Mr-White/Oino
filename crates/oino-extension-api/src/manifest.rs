@@ -11,14 +11,30 @@ use sha2::{Digest, Sha256};
 
 use crate::types::ExtensionId;
 
-/// Required `apiVersion`.
-pub const API_VERSION: &str = "oino.extension/1";
+/// Required `apiVersion` (v2, ext-abi §8 D7): a manifest written for the 1.x ABI is rejected.
+pub const API_VERSION: &str = "oino.extension/2";
+/// The WIT package version every component is built against (`host-info.info.api-version`).
+pub const WIT_VERSION: &str = "2.0.0";
 /// Manifest file name inside a package.
 pub const MANIFEST_FILE: &str = "extension.json";
 /// Default component file name.
 pub const DEFAULT_COMPONENT: &str = "component.wasm";
 /// Maximum `limits.memoryMiB`.
 pub const MAX_MEMORY_MIB: u32 = 2048;
+
+/// Reserved entry ids (ui-protocol §8) with their owner: `host` ids are created by the host
+/// from its advertised services, every other id may only be declared by that extension.
+pub const RESERVED_IDS: [(&str, &str); 9] = [
+    ("unipi.kanboard/board", "unipi.kanboard"),
+    ("unipi.cron/jobs", "unipi.cron"),
+    ("host/files", "host"),
+    ("host/git", "host"),
+    ("unipi.browser/browser", "unipi.browser"),
+    ("host/terminal", "host"),
+    ("unipi.info-screen/dashboard", "unipi.info-screen"),
+    ("unipi.long-horizon/visualize", "unipi.long-horizon"),
+    ("unipi.file-summary/turn-files", "unipi.file-summary"),
+];
 
 /// Manifest `kind` (D15): `-ne` disables only `Extension`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -78,9 +94,37 @@ pub struct Manifest {
     /// Limits.
     #[serde(default)]
     pub limits: Limits,
+    /// UI declarations (ui-protocol §8/§9.1): reserved entry ids this extension owns and the
+    /// settings namespaces it contributes. Optional.
+    #[serde(default, skip_serializing_if = "UiManifest::is_empty")]
+    pub ui: UiManifest,
     /// Permissions.
     #[serde(default)]
     pub permissions: Permissions,
+}
+
+/// `ui` (ui-protocol §8 rule 1, §7 static settings): `{"reserved": [id…], "settings":
+/// [SettingsNamespace…]}`.
+///
+/// `reserved` names entries the app renders as a native component; only ids from
+/// [`RESERVED_IDS`] whose owner is this extension are accepted. `settings` is the static path
+/// for settings namespaces; the runtime `registry.register-settings` declaration stays valid
+/// alongside it (both accepted in 2.x).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UiManifest {
+    /// Reserved entry ids (ui-protocol §8), e.g. `unipi.kanboard/board`.
+    pub reserved: Vec<String>,
+    /// `oino_protocol::ext::SettingsNamespace` JSON values (one Settings section each).
+    pub settings: Vec<serde_json::Value>,
+}
+
+impl UiManifest {
+    /// Whether nothing is declared (omitted from the serialized manifest).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.reserved.is_empty() && self.settings.is_empty()
+    }
 }
 
 fn default_component() -> String {
@@ -233,8 +277,6 @@ pub struct Permissions {
     pub services: ServicesPermission,
     /// `hostServices`: host-service names an extension may call, or `"*"` (bundled only).
     pub host_services: Vec<String>,
-    /// `browser.*`: control the in-app browser (browser-control.md §8.4).
-    pub browser: bool,
 }
 
 impl Default for Permissions {
@@ -258,7 +300,6 @@ impl Default for Permissions {
             edit_externally: false,
             services: ServicesPermission::default(),
             host_services: Vec::new(),
-            browser: false,
         }
     }
 }
@@ -456,9 +497,18 @@ pub enum ManifestError {
     /// Not JSON / wrong shape.
     #[error("invalid manifest: {0}")]
     Parse(#[from] serde_json::Error),
-    /// Wrong `apiVersion`.
-    #[error("apiVersion must be `{API_VERSION}`, found `{0}`")]
+    /// Wrong `apiVersion` (e.g. a package built for the 1.x ABI).
+    #[error(
+        "apiVersion `{0}` is not supported by oino 2.x (expected `{API_VERSION}`): rebuild the \
+         extension against oino:extension@{WIT_VERSION}"
+    )]
     ApiVersion(String),
+    /// Reserved entry id not in the ui-protocol §8 table, or owned by another extension.
+    #[error("ui.reserved entry `{0}` is not a reserved id of this extension (ui-protocol §8)")]
+    ReservedId(String),
+    /// Malformed `ui.settings` declaration.
+    #[error("ui.settings entry `{0}` is not a settings namespace declaration")]
+    SettingsNamespace(String),
     /// Bad semver.
     #[error("version `{0}` is not semver")]
     Version(String),
@@ -504,6 +554,19 @@ pub fn sha256_tag(bytes: &[u8]) -> String {
         let _ = write!(out, "{b:02x}");
     }
     out
+}
+
+/// Settings namespace name rule (ui-protocol §7: `[a-z0-9][a-z0-9.-]*`).
+fn valid_namespace(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.'))
+        && name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
 }
 
 fn safe_relative(path: &str) -> Result<&Path, ManifestError> {
@@ -556,7 +619,32 @@ impl Manifest {
                 return Err(ManifestError::PathEscape(name.clone()));
             }
         }
+        for id in &self.ui.reserved {
+            if !self.owns_reserved(id) {
+                return Err(ManifestError::ReservedId(id.clone()));
+            }
+        }
+        for namespace in &self.ui.settings {
+            let name = namespace
+                .get("namespace")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            if !valid_namespace(name) || namespace.get("sections").is_none() {
+                return Err(ManifestError::SettingsNamespace(name.to_owned()));
+            }
+        }
         Ok(())
+    }
+
+    /// Whether [`RESERVED_IDS`] lists `id` as owned by this extension (ui-protocol §8 rule 1).
+    ///
+    /// Host-owned ids (`host/*`) are created by the host from its advertised services, never
+    /// declared by an extension.
+    #[must_use]
+    pub fn owns_reserved(&self, id: &str) -> bool {
+        RESERVED_IDS.iter().any(|(reserved, owner)| {
+            *reserved == id && *owner == self.id.as_str() && *owner != "host"
+        })
     }
 
     /// Reads `<root>/extension.json`, validates it, checks that the component and declared
@@ -644,7 +732,7 @@ mod tests {
 
     fn manifest(extra: &str) -> String {
         format!(
-            r#"{{"apiVersion":"oino.extension/1","id":"unipi.notify","name":"Notify","version":"3.0.0"{extra}}}"#
+            r#"{{"apiVersion":"oino.extension/2","id":"unipi.notify","name":"Notify","version":"3.0.0"{extra}}}"#
         )
     }
 
@@ -664,11 +752,17 @@ mod tests {
             Manifest::parse(&manifest(r#","kind":"provider""#)),
             Err(ManifestError::ProviderWithoutApis)
         ));
-        let bad = manifest("").replace("oino.extension/1", "x");
+        let bad = manifest("").replace("oino.extension/2", "x");
         assert!(matches!(
             Manifest::parse(&bad),
             Err(ManifestError::ApiVersion(_))
         ));
+        // A 1.x package names the rebuild in the diagnostic (ext-abi §8).
+        let v1 = manifest("").replace("oino.extension/2", "oino.extension/1");
+        let message = Manifest::parse(&v1).unwrap_err().to_string();
+        assert!(message.contains("oino.extension/1"), "{message}");
+        assert!(message.contains("oino:extension@2.0.0"), "{message}");
+        assert!(message.contains("rebuild"), "{message}");
         let bad = manifest("").replace("3.0.0", "3");
         assert!(matches!(
             Manifest::parse(&bad),
@@ -679,6 +773,63 @@ mod tests {
             Err(ManifestError::PathEscape(_))
         ));
         assert!(Manifest::parse(&manifest("").replace("unipi.notify", "Bad")).is_err());
+    }
+
+    #[test]
+    fn ui_section() {
+        // Omitted by default and not serialized when empty.
+        let m = Manifest::parse(&manifest("")).unwrap();
+        assert!(m.ui.is_empty());
+        assert!(!manifest("").contains("\"ui\""));
+
+        // Reserved ids are accepted only from the ui-protocol §8 table, owned by this package.
+        let kanban = r#"{"apiVersion":"oino.extension/2","id":"unipi.kanboard","name":"K","version":"1.0.0",
+            "ui":{"reserved":["unipi.kanboard/board"]}}"#;
+        let m = Manifest::parse(kanban).unwrap();
+        assert_eq!(m.ui.reserved, ["unipi.kanboard/board"]);
+        assert!(m.owns_reserved("unipi.kanboard/board"));
+        assert!(!m.owns_reserved("unipi.cron/jobs"));
+        let foreign = kanban.replace("unipi.kanboard/board", "unipi.cron/jobs");
+        assert!(matches!(
+            Manifest::parse(&foreign),
+            Err(ManifestError::ReservedId(_))
+        ));
+        // Host-owned ids are created by the host, never declared by an extension.
+        let host = kanban.replace("unipi.kanboard/board", "host/git");
+        assert!(matches!(
+            Manifest::parse(&host),
+            Err(ManifestError::ReservedId(_))
+        ));
+        // Unknown ids are rejected too.
+        let unknown = kanban.replace("unipi.kanboard/board", "unipi.kanboard/other");
+        assert!(matches!(
+            Manifest::parse(&unknown),
+            Err(ManifestError::ReservedId(_))
+        ));
+
+        // Static settings namespaces (both manifest and init-time are accepted).
+        let settings = manifest(
+            r#","ui":{"settings":[{"namespace":"unipi.notify","title":"Notify",
+               "sections":[{"id":"s","title":"S","fields":[]}]}]}"#,
+        );
+        let m = Manifest::parse(&settings).unwrap();
+        assert_eq!(m.ui.settings.len(), 1);
+        let missing = manifest(r#","ui":{"settings":[{"namespace":"a"}]}"#);
+        assert!(matches!(
+            Manifest::parse(&missing),
+            Err(ManifestError::SettingsNamespace(_))
+        ));
+        let bad_name = settings.replace("\"unipi.notify\",\"title\"", "\"Bad Name\",\"title\"");
+        assert!(matches!(
+            Manifest::parse(&bad_name),
+            Err(ManifestError::SettingsNamespace(_))
+        ));
+        // Round-trips through serde with the camelCase key `ui`.
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(
+            json.contains(r#""ui":{"reserved":[],"settings":["#),
+            "{json}"
+        );
     }
 
     #[test]

@@ -96,15 +96,10 @@ pub fn parse_ttl(ttl: &str) -> anyhow::Result<u64> {
 pub const NOT_RUNNING: &str =
     "`unipi-host serve` isn't running on this PC — start unipi-host serve first";
 
-/// The hint for "serve isn't running": the command for this OS.
+/// The hint for "serve isn't running": v2 has no service install, so the
+/// host is either the app's own sidecar or one started by hand.
 pub fn start_hint() -> &'static str {
-    if cfg!(windows) {
-        "Start it: schtasks /Run /TN \"UniPi Host\" (or run `unipi-host serve` in a terminal)"
-    } else if cfg!(target_os = "macos") {
-        "Start it: launchctl kickstart gui/$(id -u)/dev.unipi.host (or run `unipi-host serve` in a terminal)"
-    } else {
-        "Start it: systemctl --user start unipi-host (or run `unipi-host serve` in a terminal)"
-    }
+    "Start it: open the UniPi app (it starts its host), or run `unipi-host serve` in a terminal"
 }
 
 /// Is a `serve` answering on this data dir's control channel?

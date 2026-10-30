@@ -92,7 +92,7 @@ mod tests {
         std::fs::create_dir_all(&good).unwrap();
         std::fs::write(
             good.join("extension.json"),
-            r#"{"apiVersion":"oino.extension/1","id":"x.a","name":"A","version":"1.0.0"}"#,
+            r#"{"apiVersion":"oino.extension/2","id":"x.a","name":"A","version":"1.0.0"}"#,
         )
         .unwrap();
         std::fs::write(good.join("component.wasm"), b"").unwrap();

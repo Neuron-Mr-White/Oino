@@ -452,8 +452,9 @@ impl WasmRuntime {
                 .map_err(|e| fail(e.to_string()))?
                 .map_err(|e| ExtensionError::new(id.as_str(), "load", e))?
         };
+        let wit = oino_extension_api::manifest::WIT_VERSION;
         let exports_provider = component
-            .get_export_index(None, "oino:extension/provider@1.0.0")
+            .get_export_index(None, &format!("oino:extension/provider@{wit}"))
             .is_some();
         if package.manifest.kind == ExtensionKind::Provider && !exports_provider {
             return Err(fail(
@@ -461,12 +462,13 @@ impl WasmRuntime {
             ));
         }
         if component
-            .get_export_index(None, "oino:extension/guest@1.0.0")
+            .get_export_index(None, &format!("oino:extension/guest@{wit}"))
             .is_none()
         {
-            return Err(fail(
-                "component does not export oino:extension/guest@1.0.0".into(),
-            ));
+            return Err(fail(format!(
+                "component does not export oino:extension/guest@{wit}: a 1.x extension must be \
+                 rebuilt against oino:extension@{wit}"
+            )));
         }
         let config = self.options.config.clone();
         let ext_paths = ExtPaths::new(&config.agent_dir, &id);

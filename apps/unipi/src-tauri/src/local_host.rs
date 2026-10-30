@@ -1,10 +1,12 @@
-//! UNI-231 (plan A2, docs/m8 §3.3 "This computer"): on the desktop app, this
-//! PC's own unipi-host is reached over its local socket `app.sock` — no
-//! iroh, no relay, works offline. When the socket is there, `hosts()` adds a
-//! synthetic, unpersisted host "This computer" (id = the host's endpoint id
-//! from its `endpoint.json`); a paired iroh entry with the same id (this PC
-//! paired the old way) merges into it instead of showing twice. `open_op`
-//! prefers the socket for that id and falls back to iroh if it is gone.
+//! UNI-231 + v2 (plan A2, docs/m8 §3.3 "This computer", spec host.md §6.1):
+//! on the desktop app, this PC's own unipi-host is reached over its local
+//! transport — `<dir>/app.sock` on Linux/macOS, the named pipe
+//! `\\.\pipe\unipi-oino-app` on Windows (new in v2) — no iroh, no relay,
+//! works offline. When the transport is there, `hosts()` adds a synthetic,
+//! unpersisted host "This computer" (id = the host's endpoint id from its
+//! `endpoint.json`); a paired iroh entry with the same id (this PC paired
+//! the old way) merges into it instead of showing twice. `open_op` prefers
+//! the local transport for that id and falls back to iroh if it is gone.
 //! Phone builds never see any of this.
 
 use std::path::{Path, PathBuf};
@@ -12,17 +14,23 @@ use std::path::{Path, PathBuf};
 use unipi_proto::AppErrorDto;
 
 use crate::host_store::{self, HostInfo};
+use crate::op_stream::{OpRecv, OpSend};
 
 /// Name of the synthetic host.
 pub const THIS_COMPUTER: &str = "This computer";
 
-/// The local host's data dir: `$UNIPI_HOST_DIR`, else `~/.unipi/app-host`
-/// (same rule as `unipi-host`'s `HostPaths::resolve`).
+/// The Windows named pipe the host listens on (spec host.md §5.1 coexistence
+/// table: the old unipi has no pipe, so the names can't clash).
+#[cfg(windows)]
+pub const LOCAL_PIPE: &str = r"\\.\pipe\unipi-oino-app";
+
+/// The local host's data dir: `$OINO_HOST_DIR`, else `~/.oino/host` (same
+/// rule as `unipi-host`'s `HostPaths::resolve`; never the old `~/.unipi`).
 pub fn host_dir() -> Option<PathBuf> {
     if !cfg!(desktop) {
         return None;
     }
-    // UNI-298: the same rule as unipi-host (incl. the Windows legacy dir).
+    // The same rule as unipi-host (shared crate `unipi_proto::paths`).
     Some(unipi_proto::paths::default_host_dir())
 }
 
@@ -31,12 +39,34 @@ pub fn host_dir() -> Option<PathBuf> {
 pub struct LocalHost {
     pub id: String,
     pub ticket: String,
+    /// Where the host listens: `<dir>/app.sock` (Unix) or the pipe name
+    /// (Windows) — see [`connect`].
     pub socket: PathBuf,
 }
 
-/// The local host, when its socket file exists and it has published an endpoint.
+/// The local transport of `dir`'s host: `app.sock` on Unix, the pipe on
+/// Windows (a pipe has no path to stat).
+pub fn listen_addr(dir: &Path) -> PathBuf {
+    #[cfg(unix)]
+    {
+        dir.join("app.sock")
+    }
+    #[cfg(windows)]
+    {
+        let _ = dir;
+        PathBuf::from(LOCAL_PIPE)
+    }
+}
+
+/// The local host, when it is there and has published an endpoint.
+///
+/// Unix: the socket file must exist (its presence is the adopt signal).
+/// Windows: a pipe has nothing to stat, so `endpoint.json` is the signal —
+/// if the pipe is gone, [`connect`] fails and callers fall back to iroh
+/// (`net.rs`), exactly like a stale socket would.
 pub fn detect_in(dir: &Path) -> Option<LocalHost> {
-    let socket = dir.join("app.sock");
+    let socket = listen_addr(dir);
+    #[cfg(unix)]
     if !socket.exists() {
         return None;
     }
@@ -80,9 +110,42 @@ pub fn hosts(dir: &Path) -> Result<Vec<HostInfo>, AppErrorDto> {
     Ok(merge(host_store::read_hosts(dir)?, detect().as_ref()))
 }
 
-/// The local socket for `remote_id`, when it is this PC's host.
-pub fn socket_for(remote_id: &str) -> Option<PathBuf> {
-    detect().filter(|l| l.id == remote_id).map(|l| l.socket)
+/// This PC's host, when `remote_id` is its endpoint id.
+pub fn socket_for(remote_id: &str) -> Option<LocalHost> {
+    detect().filter(|l| l.id == remote_id)
+}
+
+/// Connects to this PC's host: `app.sock` on Unix, the named pipe on Windows
+/// (`ERROR_PIPE_BUSY` is retried while the host rolls the next instance over).
+pub async fn connect(local: &LocalHost) -> std::io::Result<(OpSend, OpRecv)> {
+    #[cfg(unix)]
+    {
+        let stream = tokio::net::UnixStream::connect(&local.socket).await?;
+        let (read, write) = stream.into_split();
+        Ok((OpSend::Local(write), OpRecv::Local(read)))
+    }
+    #[cfg(windows)]
+    {
+        use tokio::net::windows::named_pipe::ClientOptions;
+        /// Another process is still connecting to the pipe.
+        const ERROR_PIPE_BUSY: i32 = 231;
+        let mut attempt = 0u32;
+        let client = loop {
+            match ClientOptions::new().open(&local.socket) {
+                Ok(client) => break client,
+                Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY) && attempt < 20 => {
+                    attempt += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(25 * u64::from(attempt)))
+                        .await;
+                }
+                Err(error) => return Err(error),
+            }
+        };
+        // One pipe, both directions: `split` hands out the halves without
+        // closing the handle (pipes have no half-close; `finish()` flushes).
+        let (read, write) = tokio::io::split(client);
+        Ok((OpSend::Local(write), OpRecv::Local(read)))
+    }
 }
 
 #[cfg(test)]
@@ -103,10 +166,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(detect_in(dir.path()), None);
         std::fs::write(dir.path().join("endpoint.json"), r#"{"addr":{"id":"abc"},"ticket":"t"}"#).unwrap();
+        // Unix: the socket file is the adopt signal. Windows has a pipe and
+        // nothing to stat, so `endpoint.json` is it (a dead pipe falls back to
+        // iroh in `connect`, spec host.md §6.1).
+        #[cfg(unix)]
         assert_eq!(detect_in(dir.path()), None, "no socket = host not running");
+        #[cfg(windows)]
+        assert!(detect_in(dir.path()).is_some(), "no pipe file to stat: endpoint.json");
         write_host_dir(dir.path(), "abc");
         let l = detect_in(dir.path()).unwrap();
         assert_eq!((l.id.as_str(), l.ticket.as_str()), ("abc", "endpointlocal"));
+        #[cfg(unix)]
+        assert_eq!(l.socket, dir.path().join("app.sock"));
+        #[cfg(windows)]
+        assert_eq!(l.socket, PathBuf::from(LOCAL_PIPE));
     }
 
     #[test]
@@ -158,7 +231,7 @@ mod offline_e2e {
             assert!(Instant::now() < deadline, "host never published app.sock + endpoint.json");
             std::thread::sleep(Duration::from_millis(100));
         }
-        std::env::set_var("UNIPI_HOST_DIR", host_dir.path());
+        std::env::set_var("OINO_HOST_DIR", host_dir.path());
         let hosts = super::hosts(app_dir.path()).unwrap();
         assert_eq!(hosts.len(), 1);
         assert_eq!(hosts[0].name, "This computer");
@@ -182,16 +255,16 @@ mod offline_e2e {
         let reply: Control = serde_json::from_slice(&bytes).unwrap();
         assert!(matches!(reply, Control::Ok { .. }), "{reply:?}");
 
-        std::env::remove_var("UNIPI_HOST_DIR");
+        std::env::remove_var("OINO_HOST_DIR");
         let _ = child.kill();
         let _ = child.wait();
     }
 }
 
 /// UNI-233: one local-only admin op (host_info, pair_begin, pair_status,
-/// devices_list, device_revoke) over this PC's `app.sock`. `E_NOT_FOUND`
-/// when no local host is running (or its version has no socket).
-#[cfg(unix)]
+/// devices_list, device_revoke) over this PC's local transport (`app.sock`,
+/// or the named pipe on Windows). `E_NOT_FOUND` when no local host is
+/// running (or its version has no local transport).
 pub async fn admin(req: serde_json::Value) -> Result<serde_json::Value, AppErrorDto> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use unipi_proto::{frame::{encode, FrameKind}, AppErrorCode, Control, PROTO_VERSION};
@@ -199,16 +272,18 @@ pub async fn admin(req: serde_json::Value) -> Result<serde_json::Value, AppError
         return Err(AppErrorDto::new(AppErrorCode::E_NOT_FOUND, "unipi-host isn't running on this PC (or is too old to manage from here)", false));
     };
     let fut = async {
-        let mut s = tokio::net::UnixStream::connect(&local.socket).await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, format!("can't reach this PC's host: {e}"), true))?;
+        let (mut s, mut reply) = connect(&local).await.map_err(|e| {
+            AppErrorDto::new(AppErrorCode::E_TRANSPORT, format!("can't reach this PC's host: {e}"), true)
+        })?;
         let hello = serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":req});
         s.write_all(&encode(FrameKind::Control, &serde_json::to_vec(&hello).unwrap_or_default())).await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
-        let kind = s.read_u8().await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
-        let len = s.read_u32().await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))? as usize;
+        let kind = reply.read_u8().await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
+        let len = reply.read_u32().await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))? as usize;
         if kind != 0 || len > unipi_proto::MAX_FRAME {
             return Err(AppErrorDto::new(AppErrorCode::E_INTERNAL, "bad reply from this PC's host", false));
         }
         let mut bytes = vec![0; len];
-        s.read_exact(&mut bytes).await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
+        reply.read_exact(&mut bytes).await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
         match serde_json::from_slice::<Control>(&bytes).map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))? {
             Control::Ok { data } => Ok(data.unwrap_or(serde_json::Value::Null)),
             Control::Err { error } => Err(error),
@@ -218,11 +293,6 @@ pub async fn admin(req: serde_json::Value) -> Result<serde_json::Value, AppError
     tokio::time::timeout(std::time::Duration::from_secs(10), fut)
         .await
         .map_err(|_| AppErrorDto::new(unipi_proto::AppErrorCode::E_TIMEOUT, "this PC's host didn't answer", true))?
-}
-
-#[cfg(not(unix))]
-pub async fn admin(_req: serde_json::Value) -> Result<serde_json::Value, AppErrorDto> {
-    Err(AppErrorDto::new(unipi_proto::AppErrorCode::E_UNSUPPORTED, "Managing this PC's host from the app needs Linux or macOS for now", false))
 }
 
 /// Ops the UI may send through `local_admin` (nothing else reaches the host this way).
@@ -261,12 +331,12 @@ mod paired_tests {
     #[test]
     fn counts_devices_from_the_hosts_allowlist() {
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("UNIPI_HOST_DIR", dir.path());
+        std::env::set_var("OINO_HOST_DIR", dir.path());
         assert_eq!(paired_devices(), 0, "no file = no phones");
         std::fs::write(dir.path().join("devices.json"), r#"[{"id":"a"},{"id":"b"}]"#).unwrap();
         assert_eq!(paired_devices(), 2);
         std::fs::write(dir.path().join("devices.json"), r#"{"devices":[{"id":"a"}]}"#).unwrap();
         assert_eq!(paired_devices(), 1);
-        std::env::remove_var("UNIPI_HOST_DIR");
+        std::env::remove_var("OINO_HOST_DIR");
     }
 }

@@ -1,9 +1,10 @@
 //! iroh endpoint bootstrap: relay-only transport (no local IP
 //! transports — see `docs/m1/host-notes.md` for the evidence this
 //! actually routes traffic end to end over an n0 relay), ALPN
-//! `unipi/app/1`, and `endpoint.json` caching with a freshness
-//! watcher so `unipi-host pair` always displays an up to date
-//! ticket.
+//! `unipi/oino/1` (v2 — distinct from the old unipi's `unipi/app/1`, so
+//! the two hosts and their phones never cross), and `endpoint.json`
+//! caching with a freshness watcher so `unipi-host pair` always
+//! displays an up to date ticket.
 
 use std::path::{Path, PathBuf};
 
@@ -12,8 +13,9 @@ use iroh::{Endpoint, EndpointAddr, SecretKey, Watcher};
 use iroh_tickets::endpoint::EndpointTicket;
 use serde::{Deserialize, Serialize};
 
-/// ALPN for `unipi/app/1`.
-pub const ALPN: &[u8] = b"unipi/app/1";
+/// ALPN for `unipi/oino/1` (v2; the old unipi app-host used `unipi/app/1` —
+/// spec §5.1 coexistence table).
+pub const ALPN: &[u8] = b"unipi/oino/1";
 
 /// Builds a relay-only endpoint: the n0 default relays provide
 /// rendezvous and fallback relaying, but no local IP transport is

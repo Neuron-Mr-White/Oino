@@ -385,8 +385,21 @@ impl ExtensionInstance for WasmInstance {
                 .await?;
             match r {
                 Ok(reg) => {
-                    let reg =
+                    let mut reg =
                         convert::registration(reg).map_err(|e| self.err("init", e.to_string()))?;
+                    // Manifest-declared namespaces (`ui.settings`, ui-protocol §9.1) ride the same
+                    // registration path as the init-time `registry.register-settings` calls
+                    // (both accepted in 2.x); an init-time declaration of the same namespace wins.
+                    for namespace in &self.shared.manifest.ui.settings {
+                        let name = namespace.get("namespace");
+                        if !reg
+                            .settings
+                            .iter()
+                            .any(|s| s.to_value().get("namespace") == name)
+                        {
+                            reg.settings.push(RawJson::from(namespace));
+                        }
+                    }
                     if let Some(hub) = self.hub.get().and_then(std::sync::Weak::upgrade) {
                         hub.note_registration(&self.shared.id, &reg);
                     }

@@ -23,8 +23,9 @@ use unipi_proto::{AppErrorDto, ProtoError};
 use crate::op_stream::{OpRecv, OpSend};
 use crate::path_kind::{classify_with_local, PathKind};
 
-/// The ALPN for `unipi/app/1` (DESIGN.md §5.4).
-pub const ALPN: &[u8] = b"unipi/app/1";
+/// The ALPN for `unipi/oino/1` (v2: the old unipi app-host speaks
+/// `unipi/app/1`, so the two generations never cross; spec host.md §5.1).
+pub const ALPN: &[u8] = b"unipi/oino/1";
 
 const SECRET_KEY_FILE: &str = "iroh-secret-key";
 
@@ -110,26 +111,23 @@ impl NetState {
         Ok(conn)
     }
 
-    /// UNI-230: one fresh op stream to the host behind `ticket` — the single
-    /// entry point every command uses (the transport is chosen here: iroh
-    /// today, this PC's local socket for its own host — UNI-231).
+    /// UNI-230 + v2: one fresh op stream to the host behind `ticket` — the
+    /// single entry point every command uses (the transport is chosen here:
+    /// this PC's own host over its local transport (`app.sock`, or the named
+    /// pipe on Windows — spec host.md §6.1), everything else over iroh).
     pub async fn open_op(
         &self,
         app_data_dir: &Path,
         relay: Option<&str>,
         ticket: &str,
     ) -> Result<(OpSend, OpRecv), AppErrorDto> {
-        // UNI-231: this PC's own host → its local socket (offline-proof);
-        // if the socket is gone, fall back to iroh.
-        #[cfg(unix)]
+        // UNI-231: this PC's own host → its local transport (offline-proof);
+        // if it is gone, fall back to iroh.
         if let Ok(parsed) = parse_ticket(ticket) {
-            if let Some(socket) = crate::local_host::socket_for(&parsed.endpoint_addr().id.to_string()) {
-                match tokio::net::UnixStream::connect(&socket).await {
-                    Ok(stream) => {
-                        let (read, write) = stream.into_split();
-                        return Ok((OpSend::Local(write), OpRecv::Local(read)));
-                    }
-                    Err(error) => log::warn!("local host socket {}: {error}; using iroh", socket.display()),
+            if let Some(local) = crate::local_host::socket_for(&parsed.endpoint_addr().id.to_string()) {
+                match crate::local_host::connect(&local).await {
+                    Ok(halves) => return Ok(halves),
+                    Err(error) => log::warn!("local host {}: {error}; using iroh", local.socket.display()),
                 }
             }
         }
@@ -141,7 +139,7 @@ impl NetState {
     pub fn path_for(&self, ticket: &str) -> PathKind {
         let Ok(parsed) = parse_ticket(ticket) else { return PathKind::Unknown };
         let id = parsed.endpoint_addr().id.to_string();
-        if cfg!(unix) && crate::local_host::socket_for(&id).is_some() {
+        if crate::local_host::socket_for(&id).is_some() {
             return PathKind::Local;
         }
         self.cached_live(&id).map(|c| selected_path(&c).0).unwrap_or(PathKind::Unknown)

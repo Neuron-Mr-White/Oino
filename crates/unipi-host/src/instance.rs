@@ -4,7 +4,11 @@
 //! `<dir>/host.lock` for its whole life (the OS drops it when the process
 //! dies — no stale-lock cleanup needed). The file also records who runs it:
 //! `{pid, version, mode, started_at}`, which `unipi-host status` and the
-//! desktop app read ("Run by: system service / this app / a terminal").
+//! desktop app read ("Run by: this app / a terminal").
+//!
+//! v2 (spec §5.2): modes are `App` (the desktop app's sidecar) and `Manual`
+//! (a terminal). There is no service install any more — systemd/LaunchAgent/
+//! logon-task modes are gone with the `linger` subcommand.
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -21,8 +25,6 @@ pub const EXIT_ALREADY_RUNNING: i32 = 75;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    /// systemd user unit / LaunchAgent / logon task (`install.sh`, "Always on").
-    Service,
     /// Spawned by the UniPi desktop app (bundled sidecar).
     App,
     /// Started by hand in a terminal.
@@ -33,28 +35,21 @@ pub enum Mode {
 impl Mode {
     pub fn as_str(self) -> &'static str {
         match self {
-            Mode::Service => "service",
             Mode::App => "app",
             Mode::Manual => "manual",
         }
     }
     pub fn parse(s: &str) -> Option<Mode> {
         match s {
-            "service" => Some(Mode::Service),
             "app" => Some(Mode::App),
             "manual" => Some(Mode::Manual),
             _ => None,
         }
     }
-    /// The mode when `--mode` isn't given: a systemd unit sets INVOCATION_ID.
+    /// The mode when `--mode` isn't given. v2 has no service install, so a
+    /// host not started by the app is always a manual one.
     pub fn detect() -> Mode {
-        if std::env::var_os("INVOCATION_ID").is_some()
-            || std::env::var_os("UNIPI_HOST_SERVICE").is_some()
-        {
-            Mode::Service
-        } else {
-            Mode::Manual
-        }
+        Mode::Manual
     }
 }
 
@@ -277,8 +272,8 @@ mod tests {
             st = status(&paths).unwrap();
         }
         assert!(matches!(st, Status::NotRunning { last: Some(_) }), "{st:?}");
-        let again = acquire(&paths, Mode::Service).unwrap();
-        assert_eq!(again.owner.mode, Mode::Service);
+        let again = acquire(&paths, Mode::Manual).unwrap();
+        assert_eq!(again.owner.mode, Mode::Manual);
     }
 
     #[test]
@@ -292,9 +287,11 @@ mod tests {
 
     #[test]
     fn modes_round_trip() {
-        for m in [Mode::Service, Mode::App, Mode::Manual] {
+        for m in [Mode::App, Mode::Manual] {
             assert_eq!(Mode::parse(m.as_str()), Some(m));
         }
         assert_eq!(Mode::parse("x"), None);
+        assert_eq!(Mode::parse("service"), None, "no service install in v2");
+        assert_eq!(Mode::detect(), Mode::Manual);
     }
 }

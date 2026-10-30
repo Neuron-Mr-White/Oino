@@ -1,5 +1,5 @@
 {
-  "apiVersion": "oino.extension/1",
+  "apiVersion": "oino.extension/2",
   "id": "oino.fixture.async-probe",
   "name": "Async probe fixture",
   "version": "1.0.0",

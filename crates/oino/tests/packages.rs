@@ -42,7 +42,7 @@ fn package(dir: &Path, version: &str) {
     std::fs::write(
         dir.join("extension.json"),
         json!({
-            "apiVersion": "oino.extension/1",
+            "apiVersion": "oino.extension/2",
             "id": "test.pkg",
             "name": "Test package",
             "version": version,

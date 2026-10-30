@@ -1,5 +1,5 @@
 {
-  "apiVersion": "oino.extension/1",
+  "apiVersion": "oino.extension/2",
   "id": "unipi.cron",
   "name": "Cron",
   "version": "3.1.0",

@@ -1,7 +1,7 @@
 # oino-extension — guest SDK
 
 Write Oino extensions in Rust, compiled to WASM components (`wasm32-wasip2`) for the WIT
-package `oino:extension@1.0.0` (`wit/oino-extension`). Component-model async: tool calls,
+package `oino:extension@2.0.0` (`wit/oino-extension`). Component-model async: tool calls,
 commands and event handlers of one extension run concurrently.
 
 ## Crate setup

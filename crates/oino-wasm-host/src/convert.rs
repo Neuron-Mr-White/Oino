@@ -239,6 +239,7 @@ pub(crate) fn renderer_spec(s: wr::RendererSpec) -> ar::RendererSpec {
             wr::RendererTarget::CustomMessage => ar::RendererTarget::CustomMessage,
             wr::RendererTarget::CustomEntry => ar::RendererTarget::CustomEntry,
             wr::RendererTarget::Tool => ar::RendererTarget::Tool,
+            wr::RendererTarget::TurnFooter => ar::RendererTarget::TurnFooter,
         },
         key: s.key,
     }

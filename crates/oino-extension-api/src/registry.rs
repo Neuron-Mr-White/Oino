@@ -360,6 +360,9 @@ pub enum RendererTarget {
     CustomEntry,
     /// Tool (tool name).
     Tool,
+    /// End-of-turn footer (ui-protocol §6.7): core creates the entry
+    /// `<extensionId>/turnFooter:<key>`.
+    TurnFooter,
 }
 
 /// `renderer-spec`.

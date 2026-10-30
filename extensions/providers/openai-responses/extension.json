@@ -1,5 +1,5 @@
 {
-  "apiVersion": "oino.extension/1",
+  "apiVersion": "oino.extension/2",
   "id": "oino.openai-responses",
   "name": "OpenAI Responses",
   "version": "1.0.0",

@@ -1,13 +1,13 @@
 //! Where the host's own logs go.
 //!
-//! Linux/macOS: stderr, as before (systemd/journald, a terminal, launchd).
+//! Linux/macOS: stderr, as before (a terminal or the app's pipe).
 //!
-//! Windows: the installer's logon task runs
-//! `conhost.exe --headless unipi-host.exe serve --mode service`, so stderr
-//! goes nowhere — a fresh install had no logs at all, and every phone-side
-//! failure was undebuggable. `serve` now also writes
-//! `<data dir>\logs\host.log` (no ANSI colours, `info,unipi_host=info` unless
-//! `RUST_LOG` says otherwise), rotated to `host.log.1` past 5 MB.
+//! Windows: an app-spawned host has no console, so stderr goes nowhere — a
+//! fresh install had no logs at all, and every phone-side failure was
+//! undebuggable. `serve` now also writes `<dir>\host.log` (no ANSI colours,
+//! `info,unipi_host=info` unless `RUST_LOG` says otherwise), rotated to
+//! `host.log.1` past 5 MB. v2: `host.log` sits directly in the data dir
+//! (`specs/host.md` §5.8), next to `start-history.json`.
 
 use std::io;
 use std::path::PathBuf;
@@ -19,9 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::data_dir::HostPaths;
 
-/// Sub-directory of the data dir that holds `host.log`.
-pub const LOG_DIR: &str = "logs";
-/// The live log file's name.
+/// The live log file's name (directly in the data dir, spec §5.8).
 pub const LOG_FILE: &str = "host.log";
 /// Rotate `host.log` to `host.log.1` once it grows past this at startup.
 #[cfg(windows)]
@@ -31,9 +29,9 @@ const MAX_BYTES: u64 = 5 * 1024 * 1024;
 #[cfg(windows)]
 const DEFAULT_FILTER: &str = "info,unipi_host=info";
 
-/// `<data dir>\logs\host.log`.
+/// `<data dir>/host.log`.
 pub fn log_path(paths: &HostPaths) -> PathBuf {
-    paths.root.join(LOG_DIR).join(LOG_FILE)
+    paths.root.join(LOG_FILE)
 }
 
 /// Installs the global tracing subscriber once, as early as the data dir is
@@ -144,7 +142,7 @@ mod tests {
         let paths = HostPaths::from_dir("/tmp/unipi-test-host");
         assert_eq!(
             log_path(&paths),
-            std::path::Path::new("/tmp/unipi-test-host/logs/host.log")
+            std::path::Path::new("/tmp/unipi-test-host/host.log")
         );
     }
 }

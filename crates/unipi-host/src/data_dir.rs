@@ -1,15 +1,19 @@
 //! Data directory resolution and atomic, permission-restricted file
 //! I/O for `unipi-host`.
 //!
-//! Layout (see `docs/m1/host-notes.md`):
+//! Layout (v2 spec host.md §5.8):
 //! ```text
-//! $UNIPI_HOST_DIR/ (default: ~/.unipi/app-host)
+//! $OINO_HOST_DIR/ (default: ~/.oino/host)
 //!   secret.key     0600  raw 32-byte iroh secret key
 //!   devices.json   0600  paired device allowlist
 //!   pairing.json   0600  single in-flight pairing attempt (if any)
 //!   endpoint.json  0600  cached iroh ticket/address for `pair` display
 //!   config.json    0600  owner settings (port forwarding, UNI-213; off by default;
 //!                        `fs` allow/deny extra Files roots, UNI-220)
+//!   host.lock      0600  one host per user (`instance.rs`)
+//!   host.log             the daemon's stdout/stderr (app-spawned hosts)
+//!   app.sock / pipe     the local listener (`local.rs`)
+//!   control.sock  0600  the CLI's control socket (`push.rs`)
 //! ```
 //!
 //! All writes are atomic: content is written to a sibling `.tmp-*`
@@ -19,8 +23,9 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Env var overriding the data directory. See `docs/m1/host-notes.md`.
-pub const UNIPI_HOST_DIR_ENV: &str = "UNIPI_HOST_DIR";
+/// Env var overriding the data directory (v2: `$OINO_HOST_DIR`; the old
+/// unipi read `$UNIPI_HOST_DIR` and keeps its own `~/.unipi/app-host`).
+pub const OINO_HOST_DIR_ENV: &str = "OINO_HOST_DIR";
 
 /// Resolved paths for all files `unipi-host` persists.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,11 +41,11 @@ impl HostPaths {
         HostPaths { root: root.into() }
     }
 
-    /// Resolves the data directory from `$UNIPI_HOST_DIR`, falling
-    /// back to `~/.unipi/app-host`. This reads the environment and
+    /// Resolves the data directory from `$OINO_HOST_DIR`, falling
+    /// back to `~/.oino/host`. This reads the environment and
     /// `$HOME`; it performs no I/O itself.
     pub fn resolve() -> Self {
-        if let Ok(dir) = std::env::var(UNIPI_HOST_DIR_ENV) {
+        if let Ok(dir) = std::env::var(OINO_HOST_DIR_ENV) {
             if !dir.is_empty() {
                 return HostPaths::from_dir(dir);
             }
@@ -72,8 +77,9 @@ impl HostPaths {
         self.root.join("notify-key")
     }
 
-    /// Host settings the owner edits (`crate::forward::HostConfig`):
-    /// `{"forwarding":{"enabled":true,"ports":"any"|[..],"devices":[..]}}`.
+    /// Host settings the owner edits (`crate::forward::HostConfig`,
+    /// `crate::fs_scope::FsAccessConfig`, …): see the module docs for the
+    /// v2 keys (`relay`, `term`, `update`, …).
     pub fn config(&self) -> PathBuf {
         self.root.join("config.json")
     }
@@ -92,49 +98,18 @@ impl HostPaths {
     }
 }
 
-/// `~/.unipi/app-host`, or `.unipi/app-host` relative to the current
+/// `~/.oino/host`, or `.oino/host` relative to the current
 /// directory if `$HOME` is unset (should not happen on supported
-/// platforms, but we never panic over it).
+/// platforms, but we never panic over it). The v1 `~/.unipi` tree is
+/// never touched (coexistence, spec §5.1).
 fn default_data_dir() -> PathBuf {
-    // UNI-298: the shared rule (also used by the desktop app).
+    // The shared rule (also used by the desktop app's `local_host.rs`).
     let env = |k: &str| {
         std::env::var_os(k)
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
     };
-    unipi_proto::paths::host_dir_from(
-        cfg!(windows),
-        None,
-        env("HOME"),
-        env("USERPROFILE"),
-        env("LOCALAPPDATA"),
-        &|d| d.join("secret.key").exists(),
-    )
-}
-
-/// UNI-266: Windows has no `HOME` outside ssh/Git Bash, so the logon task's
-/// `serve` (cwd `%LOCALAPPDATA%\UniPi`) and a PowerShell `unipi-host pair`
-/// used to resolve *different* relative dirs. Windows now falls back to
-/// `%USERPROFILE%`; an identity already created in the old place
-/// (`%LOCALAPPDATA%\UniPi\.unipi\app-host`) is kept so paired phones stay paired.
-pub fn default_data_dir_from(
-    windows: bool,
-    home: Option<PathBuf>,
-    profile: Option<PathBuf>,
-    local_app_data: Option<PathBuf>,
-) -> PathBuf {
-    let sub = |p: PathBuf| p.join(".unipi").join("app-host");
-    if !windows {
-        return home.map(sub).unwrap_or_else(|| sub(PathBuf::new()));
-    }
-    let preferred = home.or(profile).map(sub);
-    let legacy = local_app_data.map(|l| sub(l.join("UniPi")));
-    match (preferred, legacy) {
-        (Some(p), Some(l)) if !p.join("secret.key").exists() && l.join("secret.key").exists() => l,
-        (Some(p), _) => p,
-        (None, Some(l)) => l,
-        (None, None) => sub(PathBuf::new()),
-    }
+    unipi_proto::paths::host_dir_from(cfg!(windows), None, env("HOME"), env("USERPROFILE"))
 }
 
 #[cfg(unix)]
@@ -242,64 +217,40 @@ mod tests {
 
     #[test]
     fn resolves_default_dir_from_home_without_touching_disk() {
-        let _guard = EnvGuard::unset(UNIPI_HOST_DIR_ENV);
+        let _guard = EnvGuard::unset(OINO_HOST_DIR_ENV);
         let home = std::env::var_os("HOME");
         let paths = HostPaths::resolve();
         if let Some(home) = home {
-            assert_eq!(
-                paths.root,
-                PathBuf::from(home).join(".unipi").join("app-host")
-            );
+            assert_eq!(paths.root, PathBuf::from(home).join(".oino").join("host"));
         }
     }
 
     #[test]
-    fn windows_default_dir_without_home() {
+    fn windows_default_dir_has_no_legacy_fallback() {
+        // The shared rule is pure and unit-tested in `unipi-proto::paths`;
+        // here we only pin that a v1 legacy identity never wins.
         let tmp = tempfile::tempdir().expect("tempdir");
         let profile = tmp.path().join("profile");
-        let lad = tmp.path().join("lad");
-        let sub = |p: &Path| p.join(".unipi").join("app-host");
-        // Unix: HOME only.
-        assert_eq!(
-            default_data_dir_from(false, Some(profile.clone()), None, Some(lad.clone())),
-            sub(&profile)
-        );
-        // Windows, no HOME: USERPROFILE.
-        assert_eq!(
-            default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())),
-            sub(&profile)
-        );
-        // …unless the old logon-task dir already holds the identity.
-        let legacy = sub(&lad.join("UniPi"));
+        let legacy = tmp
+            .path()
+            .join("lad")
+            .join("UniPi")
+            .join(".unipi")
+            .join("app-host");
         std::fs::create_dir_all(&legacy).unwrap();
         std::fs::write(legacy.join("secret.key"), [0u8; 32]).unwrap();
+        // Even with a legacy identity on disk, a v2 host always takes its own
+        // dir under USERPROFILE (coexistence with the old unipi, spec §5.1).
         assert_eq!(
-            default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())),
-            legacy
-        );
-        // ssh sets HOME = the profile: same answer.
-        assert_eq!(
-            default_data_dir_from(
-                true,
-                Some(profile.clone()),
-                Some(profile.clone()),
-                Some(lad.clone())
-            ),
-            legacy
-        );
-        // Once the profile dir has its own identity it wins.
-        std::fs::create_dir_all(sub(&profile)).unwrap();
-        std::fs::write(sub(&profile).join("secret.key"), [0u8; 32]).unwrap();
-        assert_eq!(
-            default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())),
-            sub(&profile)
+            unipi_proto::paths::host_dir_from(true, None, None, Some(profile.clone())),
+            profile.join(".oino").join("host")
         );
     }
 
     #[test]
     fn env_var_overrides_default_dir() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let _guard = EnvGuard::set(UNIPI_HOST_DIR_ENV, tmp.path());
+        let _guard = EnvGuard::set(OINO_HOST_DIR_ENV, tmp.path());
         let paths = HostPaths::resolve();
         assert_eq!(paths.root, tmp.path());
     }
@@ -340,7 +291,7 @@ mod tests {
 
     /// Minimal env var guard: serializes access to the one var it
     /// touches via a global mutex so tests can run in parallel
-    /// without clobbering each other's `UNIPI_HOST_DIR`.
+    /// without clobbering each other's `OINO_HOST_DIR`.
     pub struct EnvGuard {
         key: &'static str,
         previous: Option<std::ffi::OsString>,
