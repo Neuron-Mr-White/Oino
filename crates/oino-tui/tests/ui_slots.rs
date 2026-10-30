@@ -134,3 +134,29 @@ async fn a_rev_gap_asks_for_a_resync() {
         .expect("ui_resync command");
     assert_eq!(resync["rev"], 0);
 }
+
+#[tokio::test]
+async fn render_specs_accept_v2_nodes() {
+    let host = TestHost {
+        render_reply: Some(json!({"t": "Paragraph", "text": "rendered v2 row"})),
+        ..TestHost::default()
+    };
+    let mut h = Harness::new(host).await;
+    h.json_event(json!({"type": "tool_execution_start", "toolCallId": "t1",
+        "toolName": "read", "args": {"path": "a.rs"}}))
+        .await;
+    h.json_event(json!({"type": "tool_execution_end", "toolCallId": "t1",
+        "toolName": "read",
+        "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": false}))
+        .await;
+    let frame = h.frame(60, 24);
+    assert!(frame.contains("rendered v2 row"), "{frame}");
+    assert!(
+        h.host
+            .renders
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|request| request.target == "tool")
+    );
+}

@@ -383,10 +383,31 @@ fn bash_lines(bash: &oino_view::transcript::BashRow, cx: &RenderCtx<'_>) -> Vec<
     out
 }
 
-/// Renders an extension-supplied OUS spec (custom renderers).
+/// Renders an extension-supplied render spec: a v2 node tree (`PascalCase` `t`, §4) or,
+/// while WP-U7b migrates the remaining emitters, an OUS v1 spec.
 pub(crate) fn spec_lines(node: &JsonValue, cx: &RenderCtx<'_>) -> Vec<OLine> {
-    let node = oino_view::ous::OusNode::from_json(node);
     let inner = cx.width.saturating_sub(2).max(10);
+    let is_v2 = node
+        .get("t")
+        .and_then(JsonValue::as_str)
+        .is_some_and(|tag| tag.chars().next().is_some_and(char::is_uppercase));
+    if is_v2 && let Ok(tree) = serde_json::from_value::<oino_ui::node::Node>(node.clone()) {
+        let local = crate::render::ui::focus::UiLocalState::default();
+        let measure_ctx = crate::render::ui::Ctx {
+            theme: cx.theme,
+            tick: cx.tick,
+            local: &local,
+        };
+        let width = u16::try_from(inner).unwrap_or(u16::MAX);
+        let height = crate::render::ui::measure::height(&tree, width, &measure_ctx);
+        return boxed(
+            crate::render::ui::render_v2_node(&tree, width, height, cx.theme),
+            cx.width,
+            1,
+            None,
+        );
+    }
+    let node = oino_view::ous::OusNode::from_json(node);
     boxed(
         ous::render(&node, inner, cx.theme, Focus::default(), cx.tick),
         cx.width,
