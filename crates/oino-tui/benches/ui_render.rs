@@ -15,29 +15,22 @@ use oino_tui::render::{measure_v2_node, render_v2_node};
 use oino_tui::theme::DARK;
 use oino_ui::node::Node;
 
-/// A 1 000-node panel: 170 rows of a `Layout` with three nodes (Block title + Paragraph +
-/// `KeyHints`) ≈ 1 000 nodes.
+/// A 1 000-node panel: a `List` of 1 000 items (items count as nodes, §4.8).
 fn panel() -> Node {
-    let mut children = Vec::new();
-    for index in 0..170 {
-        children.push(serde_json::json!({
-            "t": "Layout",
-            "constraints": [{"Length": 1}, {"Fill": 1}],
-            "children": [
-                {"t": "Block", "title": format!("row {index}"), "borders": ["TOP"],
-                 "child": {"t": "Paragraph", "text": format!("row {index} body text")}},
-                {"t": "KeyHints", "hints": [{"keys": "r", "label": "refresh"},
-                                            {"keys": "enter", "label": "open"}]}
-            ]
-        }));
-    }
-    let constraints: Vec<serde_json::Value> = (0..children.len())
-        .map(|_| serde_json::json!({"Length": 3}))
+    let items: Vec<serde_json::Value> = (0..1_000)
+        .map(|index| {
+            serde_json::json!({
+                "key": format!("task-{index}"),
+                "content": format!("task {index}: render a row of the panel"),
+                "detail": "open · p1",
+                "badge": "new"
+            })
+        })
         .collect();
     serde_json::from_value(serde_json::json!({
-        "t": "Layout",
-        "constraints": constraints,
-        "children": children
+        "t": "List",
+        "highlightSymbol": "› ",
+        "items": items
     }))
     .expect("panel tree parses")
 }

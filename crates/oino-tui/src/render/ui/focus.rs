@@ -319,7 +319,7 @@ pub(crate) fn collect(node: &Node, path: &str, local: &UiLocalState, out: &mut V
                 });
             }
             if let Some(child) = &block.child
-                && !block.collapsed.unwrap_or(false)
+                && !local.collapsed(path, block.collapsed.unwrap_or(false))
             {
                 collect(child, &join(path, "child"), local, out);
             }
