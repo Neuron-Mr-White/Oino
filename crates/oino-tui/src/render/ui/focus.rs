@@ -235,6 +235,8 @@ pub(crate) enum FocusKind {
         key: Option<String>,
         /// `onSubmit` action.
         on_submit: Option<String>,
+        /// `onChange` action (fires with the new text).
+        on_change: Option<String>,
     },
     /// Boolean switch.
     Toggle {
@@ -392,6 +394,7 @@ pub(crate) fn collect(node: &Node, path: &str, local: &UiLocalState, out: &mut V
                     kind: FocusKind::Input {
                         key: input.common.key.clone(),
                         on_submit: input.on_submit.clone(),
+                        on_change: input.on_change.clone(),
                     },
                 });
             }
@@ -633,16 +636,33 @@ pub(crate) fn key_action(
                         );
                     }
                 } else if (key.key == Key::Enter || keys.matches("tui.select.confirm", key))
-                    && let Some(action) = on_activate.or(on_select)
+                    && let Some(action) = on_activate.as_ref().or(on_select.as_ref())
                     && let Some(item) = items.get(current)
                 {
-                    out.push(Action::with_value(action, JsonValue::String(item.clone())).at(&path));
+                    out.push(
+                        Action::with_value(action.clone(), JsonValue::String(item.clone()))
+                            .at(&path),
+                    );
                 } else if key.key == Key::Space && multi {
-                    let entry = local.multi.entry(path.clone()).or_default();
-                    if let Some(pos) = entry.iter().position(|i| *i == current) {
-                        entry.remove(pos);
+                    let selected = local.multi.entry(path.clone()).or_default();
+                    if let Some(pos) = selected.iter().position(|i| *i == current) {
+                        selected.remove(pos);
                     } else {
-                        entry.push(current);
+                        selected.push(current);
+                    }
+                    if let Some(action) = &on_select {
+                        let keys: Vec<JsonValue> = local
+                            .multi
+                            .get(&path)
+                            .map(|selected| {
+                                selected
+                                    .iter()
+                                    .filter_map(|index| items.get(*index))
+                                    .map(|key| JsonValue::String(key.clone()))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        out.push(Action::with_value(action, JsonValue::Array(keys)).at(&path));
                     }
                 }
             }
@@ -712,26 +732,42 @@ pub(crate) fn key_action(
                 }
             }
         }
-        FocusKind::Input { key: _, on_submit } => {
-            let text = local.input.entry(path.clone()).or_default();
-            match key.key {
-                Key::Backspace => {
-                    text.pop();
-                }
-                Key::Enter if !key.mods.shift => {
-                    let value = text.clone();
-                    let mut action = on_submit.map_or_else(
-                        || Action::with_value("$key", JsonValue::String(value.clone())),
-                        |action| Action::with_value(action, JsonValue::String(value.clone())),
-                    );
-                    action.values = Some(values(entry, local));
-                    out.push(action.at(&path));
-                }
-                _ => {
-                    if let Some(c) = key.printable() {
-                        text.push(c);
+        FocusKind::Input {
+            key: _,
+            on_submit,
+            on_change,
+        } => {
+            let mut changed = false;
+            let mut submitted = None;
+            {
+                let text = local.input.entry(path.clone()).or_default();
+                match key.key {
+                    Key::Backspace => {
+                        changed = text.pop().is_some();
+                    }
+                    Key::Enter if !key.mods.shift => {
+                        submitted = Some(text.clone());
+                    }
+                    _ => {
+                        if let Some(c) = key.printable() {
+                            text.push(c);
+                            changed = true;
+                        }
                     }
                 }
+            }
+            if let Some(value) = submitted {
+                let mut action = on_submit.map_or_else(
+                    || Action::with_value("$key", JsonValue::String(value.clone())),
+                    |action| Action::with_value(action, JsonValue::String(value.clone())),
+                );
+                action.values = Some(values(entry, local));
+                out.push(action.at(&path));
+            } else if changed && let Some(action) = on_change {
+                let value = local.input.get(&path).cloned().unwrap_or_default();
+                let mut action = Action::with_value(action, JsonValue::String(value));
+                action.values = Some(values(entry, local));
+                out.push(action.at(&path));
             }
         }
         FocusKind::Toggle { key: _, on_change } => {
@@ -776,6 +812,26 @@ pub(crate) fn key_action(
             value,
             confirm,
         } => {
+            if confirm.is_some() && local.confirm.get(&path).copied().unwrap_or(false) {
+                match key.key {
+                    Key::Char('y') => {
+                        local.confirm.remove(&path);
+                        let action = Action {
+                            action_id: action,
+                            value,
+                            values: Some(values(entry, local)),
+                            path: None,
+                        };
+                        out.push(action.at(&path));
+                        return out;
+                    }
+                    Key::Char('n') => {
+                        local.confirm.remove(&path);
+                        return out;
+                    }
+                    _ => {}
+                }
+            }
             if matches!(key.key, Key::Enter) || keys.matches("tui.select.confirm", key) {
                 if confirm.is_some() && !local.confirm.get(&path).copied().unwrap_or(false) {
                     local.confirm.insert(path.clone(), true);

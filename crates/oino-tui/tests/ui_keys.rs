@@ -219,3 +219,35 @@ async fn collapsible_block_toggles_locally() {
     h.key("enter").await;
     assert_eq!(delivered(&h)[1]["value"], false);
 }
+
+#[tokio::test]
+async fn input_change_fires_while_typing() {
+    let mut h = open(json!({"kind": "tree", "root": {
+        "t": "Input", "key": "name", "onChange": "edit"
+    }}))
+    .await;
+    h.type_text("ab").await;
+    let acted = delivered(&h);
+    assert_eq!(acted.len(), 2);
+    assert_eq!(acted[0]["action"], "edit");
+    assert_eq!(acted[0]["value"], "a");
+    assert_eq!(acted[1]["value"], "ab");
+}
+
+#[tokio::test]
+async fn multi_list_space_sends_the_selected_keys() {
+    let mut h = open(json!({"kind": "tree", "root": {
+        "t": "List",
+        "multi": true,
+        "items": [{"key": "a", "content": "A"}, {"key": "b", "content": "B"}],
+        "onSelect": "pick"
+    }}))
+    .await;
+    h.key("space").await;
+    h.key("down").await;
+    h.key("space").await;
+    let acted = delivered(&h);
+    let last = acted.last().expect("multi select action");
+    assert_eq!(last["action"], "pick");
+    assert_eq!(last["value"], json!(["a", "b"]));
+}
