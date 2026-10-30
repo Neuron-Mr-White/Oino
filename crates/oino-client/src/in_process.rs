@@ -776,7 +776,12 @@ impl Shared {
                         "Unknown settings namespace: {namespace}"
                     )));
                 }
-                data(json!({ "values": registry.values(&namespace, scope) }))
+                // `diagnostics` lists stored values `resolve` rejected (ui-protocol §7.1).
+                let resolved = registry.resolved(&namespace, scope);
+                data(json!({
+                    "values": resolved.values,
+                    "diagnostics": resolved.diagnostics,
+                }))
             }
             OinoCommand::SetExtensionSetting {
                 namespace,

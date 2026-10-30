@@ -98,7 +98,22 @@ async fn registry_serves_guests_and_frontends() {
     ));
     let services = services(dir.path(), Arc::clone(&owner)).await;
     let registry = &services.extension_settings;
-    assert_eq!(registry.schema().len(), 1);
+    // Core `oino.*` namespaces (pi settings groups) are registered up front; the extension
+    // namespaces follow.
+    let namespaces = registry.schema();
+    assert_eq!(
+        namespaces
+            .iter()
+            .filter(|ns| ns["extensionId"] != "oino")
+            .count(),
+        1,
+        "{namespaces:?}"
+    );
+    assert!(
+        namespaces
+            .iter()
+            .any(|ns| ns["namespace"] == "oino.compaction")
+    );
     assert_eq!(registry.owner("acme").as_deref(), Some("acme.ext"));
     assert_eq!(
         registry.values("acme", SettingsLayer::Effective),

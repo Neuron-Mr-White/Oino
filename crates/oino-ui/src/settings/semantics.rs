@@ -14,7 +14,8 @@ use serde_json::{Map as JsonMap, Value as Json};
 use crate::settings::{Cond, Field, FieldScope, FieldType, SettingsNamespace};
 
 /// A stored value that was ignored by [`resolve`] in favour of the layer below.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
     /// Namespace the value belongs to.
     pub namespace: String,
