@@ -15,7 +15,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 const CDP = process.env.UNIPI_CDP ?? 'http://127.0.0.1:45859';
 const APP = 'http://127.0.0.1:1450';
 const OUT = new URL('.', import.meta.url).pathname;
-const READY_TIMEOUT_MS = 30000;
+const READY_TIMEOUT_MS = 45000;
 const AFTER_READY_MS = 700;
 const AFTER_ACTION_MS = 600;
 /** Menus paint in a compositor layer: give the capture a beat after its action
@@ -162,8 +162,15 @@ async function shoot(name, scenario, shell, width, height, route, ready, action,
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: shell === 'phone' }, sessionId);
     await send('Page.enable', {}, sessionId);
+    // A hidden target may be throttled by the browser (Chrome freezes background
+    // tabs): front it so the module graph loads and the shot paints.
+    await send('Page.bringToFront', {}, sessionId).catch(() => {});
     if (!(await waitForSelector(sessionId, ready))) return false;
     await sleep(AFTER_READY_MS);
+    // Let the dialog/menu animations finish and force one painted frame: a
+    // screenshot taken straight after a mount can catch half-composited layers.
+    await sleep(SETTLE_MS);
+    await send('Runtime.evaluate', { expression: "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))", awaitPromise: true }, sessionId);
     if (action) {
       await send('Runtime.evaluate', { expression: action, awaitPromise: false }, sessionId);
       await sleep(AFTER_ACTION_MS);
@@ -186,8 +193,8 @@ async function shoot(name, scenario, shell, width, height, route, ready, action,
 }
 
 // `A14_ONLY=mode-menu` re-shoots one entry (iterating on a single pane).
-const only = process.env.A14_ONLY;
-for (const shot of only ? SHOTS.filter((s) => s[0] === only) : SHOTS) {
+const only = process.env.A14_ONLY?.split(',').map((x) => x.trim());
+for (const shot of only ? SHOTS.filter((s) => only.includes(s[0])) : SHOTS) {
   // A concurrent HMR update from another worker can kill a page mid-boot;
   // one retry with a fresh target settles it.
   for (let attempt = 1; attempt <= 3; attempt += 1) {
