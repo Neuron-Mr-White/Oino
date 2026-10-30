@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn shared_pair_link_fixtures() {
         let fixtures: serde_json::Value =
-            serde_json::from_str(include_str!("../../../../protocol/fixtures/pairlink.json"))
+            serde_json::from_str(include_str!("../../protocol/fixtures/pairlink.json"))
                 .unwrap();
         for fixture in fixtures.as_array().unwrap() {
             let result = parse_pair_link(fixture["input"].as_str().unwrap());
