@@ -34,6 +34,8 @@ use oino_extension::command::CompletionItem;
 use oino_extension::prelude::*;
 use oino_extension::session::SessionsScope;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::KeyBinding;
+use oino_extension::ui::widgets::prelude::*;
 use serde_json::Map;
 use unipi_kit::bus::Delivery;
 use unipi_kit::settings::Store;
@@ -494,10 +496,10 @@ impl InfoScreen {
         })
     }
 
-    fn render(&self, g: &Group, data: &Map<String, Value>, loading: bool) -> Value {
+    fn render(&self, g: &Group, data: &Map<String, Value>, loading: bool) -> Node {
         if data.is_empty() {
             return if loading {
-                json!({"t": "spinner", "label": "loading…"})
+                Spinner::new("loading…").into()
             } else {
                 kit::empty("No data yet", "press r to refresh")
             };
@@ -528,37 +530,58 @@ impl InfoScreen {
         }
     }
 
-    fn dashboard_spec(&self, groups: &[Group], active: &str, loading: &[String]) -> Value {
-        let tabs: Vec<Value> = groups
-            .iter()
-            .map(|g| {
-                let data = self
-                    .cache
-                    .borrow_mut()
-                    .cached(&g.id)
-                    .map(|p| p.data)
-                    .unwrap_or_default();
-                let body = if g.id == active || !data.is_empty() {
-                    self.render(g, &data, loading.contains(&g.id))
-                } else {
-                    json!({"t": "spinner"})
-                };
-                json!({"id": g.id, "title": g.short, "tone": g.accent, "body": body})
-            })
-            .collect();
-        json!({"t": "tabs", "key": "pages", "tabs": tabs, "active": active, "onChange": "page"})
+    fn dashboard_spec(&self, groups: &[Group], active: &str, loading: &[String]) -> Node {
+        let panes = groups.iter().map(|g| {
+            let data = self
+                .cache
+                .borrow_mut()
+                .cached(&g.id)
+                .map(|p| p.data)
+                .unwrap_or_default();
+            let body = if g.id == active || !data.is_empty() {
+                self.render(g, &data, loading.contains(&g.id))
+            } else {
+                Spinner::new("").into()
+            };
+            (g.id.clone(), body)
+        });
+        Tabs::new(
+            groups
+                .iter()
+                .map(|g| TabTitle::new(g.id.clone(), g.short.as_str())),
+        )
+        .panes(panes)
+        .selected(active)
+        .on_select("page")
+        .into()
     }
 
-    fn keys() -> Value {
+    fn keys() -> Vec<KeyBinding> {
         let mut keys = vec![
-            json!({"key": "r", "actionId": "refresh", "label": "Refresh"}),
-            json!({"key": "R", "actionId": "refreshAll", "label": "Refresh all"}),
-            json!({"key": "q", "actionId": "close", "label": "Close"}),
+            KeyBinding {
+                key: "r".into(),
+                action: Some("refresh".into()),
+                label: "Refresh".into(),
+            },
+            KeyBinding {
+                key: "R".into(),
+                action: Some("refreshAll".into()),
+                label: "Refresh all".into(),
+            },
+            KeyBinding {
+                key: "q".into(),
+                action: Some("close".into()),
+                label: "Close".into(),
+            },
         ];
         for n in 1..=9 {
-            keys.push(json!({"key": n.to_string(), "actionId": format!("page:{n}"), "label": format!("Page {n}")}));
+            keys.push(KeyBinding {
+                key: n.to_string(),
+                action: Some(format!("page:{n}")),
+                label: format!("Page {n}"),
+            });
         }
-        Value::Array(keys)
+        keys
     }
 
     /// `/info [page]`.
@@ -575,9 +598,18 @@ impl InfoScreen {
             .unwrap_or("session")
             .to_owned();
         let spec = self.dashboard_spec(&groups, &active, std::slice::from_ref(&active));
-        let id = ui::panel_open(
-            &json!({"panelId": PANEL, "placement": "overlay", "title": "Info", "spec": spec, "keys": Self::keys(), "focus": true, "closeOnEscape": true}),
-        )?;
+        // `unipi.info-screen/dashboard` is a reserved entry (§8): the app renders the native
+        // session sheet, other frontends get this tree as the fallback.
+        let id = ui::Panel::new(PANEL)
+            .placement(ui::Placement::Overlay)
+            .title("Info")
+            .icon(ui::Icon::Info)
+            .keys(Self::keys())
+            .focus(true)
+            .close_on_escape(true)
+            .open()?;
+        // The tree is the *fallback*: a reserved entry has no tree of its own (§8 rule 3).
+        let _ = ui::Panel::update(&id).fallback(spec).send();
         self.dash.with(cx.session_id(), |d| {
             *d = Dash {
                 panel: Some(id),
@@ -610,10 +642,8 @@ impl InfoScreen {
             .filter(|g| s.group_shown(&g.id))
             .cloned()
             .collect();
-        let _ = ui::panel_update(
-            &panel,
-            &json!({"spec": self.dashboard_spec(&groups, &active, &loading)}),
-        );
+        let spec = self.dashboard_spec(&groups, &active, &loading);
+        let _ = ui::Panel::update(&panel).fallback(spec).send();
     }
 
     async fn on_action(&self, ev: &Event, cx: &Ctx) {
@@ -937,7 +967,7 @@ mod tests {
         assert_eq!(ids, ["session", "usage", "tools", "skills", "extensions"]);
         assert_eq!(g[4].short, "Modules");
         assert_eq!(g[1].stats.len(), 4);
-        assert_eq!(InfoScreen::keys().as_array().map(Vec::len), Some(12));
+        assert_eq!(InfoScreen::keys().len(), 12);
         assert_eq!(home_short("/nowhere"), "/nowhere");
     }
 }

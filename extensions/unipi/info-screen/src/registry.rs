@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use oino_extension::ui::Node;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
@@ -108,8 +109,8 @@ pub struct Group {
     pub stats: Vec<StatInfo>,
     /// Owning extension (`None` = built-in).
     pub owner: Option<String>,
-    /// Provider-rendered OUS body (overrides the built-in renderer).
-    pub render: Option<Value>,
+    /// Provider-rendered v2 body (overrides the built-in renderer).
+    pub render: Option<Node>,
 }
 
 impl Group {
@@ -141,7 +142,7 @@ impl Group {
         priority: i32,
         stats: Vec<StatInfo>,
         owner: Option<String>,
-        render: Option<Value>,
+        render: Option<Node>,
     ) -> Self {
         let style = PAGE_STYLES.iter().find(|(k, ..)| *k == id);
         Self {
@@ -180,7 +181,8 @@ impl Group {
             priority,
             stats,
             Some(owner.to_owned()),
-            v.get("render").filter(|r| r.is_object()).cloned(),
+            v.get("render")
+                .and_then(|r| serde_json::from_value::<Node>(r.clone()).ok()),
         );
         Some((g, data))
     }

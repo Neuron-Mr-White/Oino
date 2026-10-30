@@ -5,11 +5,12 @@
 //! `info-screen.groups` fan-out and are drawn here, keyed by page id, like unipi
 //! (`MODULE_RENDERERS`); unknown pages fall back to their visible stats as key/value rows.
 
+use oino_extension::ui::widgets::prelude::*;
 use serde_json::{Map, Value, json};
 
 use crate::kit::{
-    Scope, Tile, ago, bold, compact, dim, duration, empty, health, kv, legend, line, money, page,
-    section, share_bar, span, tiles,
+    Scope, Tile, ago, area, bold, color, compact, dim, duration, empty, health, kv, kv_row,
+    kv_table, legend, line, meter, money, page, section, share_bar, span, tiles, units,
 };
 use crate::registry::StatInfo;
 use crate::stats::{PARTS, SessionRaw};
@@ -78,7 +79,7 @@ fn pressure(pct: f64) -> &'static str {
     clippy::too_many_lines,
     reason = "one linear layout mirroring the unipi renderer"
 )]
-pub fn render_session(data: &Map<String, Value>, now: i64) -> Value {
+pub fn render_session(data: &Map<String, Value>, now: i64) -> Node {
     let Some(r) = raw(data).and_then(|v| serde_json::from_value::<SessionRaw>(v.clone()).ok())
     else {
         return empty("No session yet", "send a prompt and come back");
@@ -160,18 +161,33 @@ pub fn render_session(data: &Map<String, Value>, now: i64) -> Value {
                     })
                     .collect::<Vec<_>>(),
             ));
-            out.push(json!({"t": "meter", "value": used, "max": r.ctx_window, "tone": pressure(pct), "label": format!("{pct:.0}%")}));
-            let rows: Vec<Value> = PARTS
+            out.push(meter(
+                used,
+                r.ctx_window,
+                pressure(pct),
+                format!("{pct:.0}%"),
+            ));
+            let rows: Vec<Row> = PARTS
                 .iter()
                 .filter_map(|(id, label, glyph, tone)| {
                     let t = c.parts.get(*id).copied().unwrap_or(0.0);
                     (t >= 1.0).then(|| {
-                        let share = if c.used > 0.0 { t / c.used * 100.0 } else { 0.0 };
-                        json!({"key": [span(*glyph, Some(tone)), span(format!(" {label}"), Some("muted"))], "value": [bold(compact(t), None), dim(format!(" {share:.0}%"))]})
+                        let share = if c.used > 0.0 {
+                            t / c.used * 100.0
+                        } else {
+                            0.0
+                        };
+                        kv_row(
+                            Line::from(vec![
+                                span(*glyph, Some(tone)),
+                                span(format!(" {label}"), Some("muted")),
+                            ]),
+                            Line::from(vec![bold(compact(t), None), dim(format!(" {share:.0}%"))]),
+                        )
                     })
                 })
                 .collect();
-            out.push(json!({"t": "kv", "items": rows}));
+            out.push(kv_table(rows));
             if c.heavy.first().is_some_and(|h| h.1 >= 500.0) {
                 let mut sp = vec![dim("heaviest: ")];
                 for (i, (n, t)) in c.heavy.iter().enumerate() {
@@ -236,7 +252,7 @@ pub fn render_session(data: &Map<String, Value>, now: i64) -> Value {
             vec![dim(format!("peak {}", compact(peak)))],
             None,
         ));
-        out.push(json!({"t": "area", "series": [{"label": "tokens", "values": r.per_reply}]}));
+        out.push(area("tokens", &r.per_reply));
         out.push(line(vec![dim(format!(
             "{} replies · last {}",
             r.per_reply.len(),
@@ -258,9 +274,24 @@ pub fn render_session(data: &Map<String, Value>, now: i64) -> Value {
             ],
             None,
         ));
-        #[allow(clippy::cast_precision_loss, reason = "display")]
-        let bars: Vec<Value> = r.tools.iter().take(6).map(|(n, c, e)| json!({"label": if *e > 0 { format!("{n} ✗{e}") } else { n.clone() }, "value": *c as f64, "tone": if *e > 0 { "error" } else { "accent" }})).collect();
-        out.push(json!({"t": "barChart", "bars": bars}));
+        let bars: Vec<Bar> = r
+            .tools
+            .iter()
+            .take(6)
+            .map(|(n, c, e)| {
+                let tone = if *e > 0 { "error" } else { "accent" };
+                let label = if *e > 0 {
+                    format!("{n} ✗{e}")
+                } else {
+                    n.clone()
+                };
+                #[allow(clippy::cast_precision_loss, reason = "display")]
+                Bar::new(units(*c as f64))
+                    .label(Line::from(label))
+                    .style(Style::new().fg(color(tone)))
+            })
+            .collect();
+        out.push(BarChart::new([BarGroup::new(bars)]).into());
         if r.tools.len() > 6 {
             out.push(line(vec![dim(format!("   + {} more", r.tools.len() - 6))]));
         }
@@ -273,22 +304,22 @@ pub fn render_session(data: &Map<String, Value>, now: i64) -> Value {
         r.cwd.clone()
     };
     out.push(kv(&[
-        ("directory", json!(cwd)),
+        ("directory", Line::from(cwd)),
         (
             "branch",
-            json!(r.branch.clone().unwrap_or_else(|| "—".into())),
+            Line::from(r.branch.clone().unwrap_or_else(|| "—".into())),
         ),
-        ("files edited", json!(r.files.to_string())),
-        ("compactions", json!(r.compactions.to_string())),
+        ("files edited", Line::from(r.files.to_string())),
+        ("compactions", Line::from(r.compactions.to_string())),
         (
             "provider",
-            json!(if r.provider.is_empty() {
+            Line::from(if r.provider.is_empty() {
                 "—".to_owned()
             } else {
                 r.provider.clone()
             }),
         ),
-        ("prompts", json!(r.prompts.to_string())),
+        ("prompts", Line::from(r.prompts.to_string())),
     ]));
     page(out)
 }
@@ -340,7 +371,7 @@ const MODEL_TONES: &[&str] = &[
     clippy::too_many_lines,
     reason = "one linear layout mirroring the unipi renderer"
 )]
-pub fn render_usage(data: &Map<String, Value>) -> Value {
+pub fn render_usage(data: &Map<String, Value>) -> Node {
     let Some(r) = raw(data) else {
         return empty(
             "No usage yet",
@@ -445,8 +476,27 @@ pub fn render_usage(data: &Map<String, Value>) -> Value {
             Some(Scope::Global),
         ));
         let n = series.len();
-        let bars: Vec<Value> = series.iter().enumerate().map(|(i, v)| json!({"label": if i + 1 == n { "today".to_owned() } else { format!("-{}", n - 1 - i) }, "value": v, "tone": if i + 1 == n { "c3" } else { "warning" }})).collect();
-        out.push(json!({"t": "barChart", "bars": bars, "columns": true}));
+        let bars: Vec<Bar> = series
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let tone = if i + 1 == n { "c3" } else { "warning" };
+                let label = if i + 1 == n {
+                    "today".to_owned()
+                } else {
+                    format!("-{}", n - 1 - i)
+                };
+                Bar::new(units(*v))
+                    .label(Line::from(label))
+                    .text_value(fmt(*v))
+                    .style(Style::new().fg(color(tone)))
+            })
+            .collect();
+        out.push(
+            BarChart::new([BarGroup::new(bars)])
+                .direction(Direction::Horizontal)
+                .into(),
+        );
     }
     let models = r
         .get("models")
@@ -499,19 +549,36 @@ pub fn render_usage(data: &Map<String, Value>) -> Value {
                     .map(|(i, m)| (name(m), metric(m), MODEL_TONES[i % MODEL_TONES.len()]))
                     .collect::<Vec<_>>(),
             ));
-            let items: Vec<Value> = models
+            let items: Vec<ListItem> = models
                 .iter()
                 .take(6)
                 .enumerate()
-                .map(|(i, m)| json!({"id": name(m), "label": name(m), "badge": format!("{} {:.0}%", if use_cost { money(metric(m)) } else { compact(metric(m)) }, metric(m) / total * 100.0), "tone": MODEL_TONES[i % MODEL_TONES.len()]}))
+                .map(|(i, m)| {
+                    let tone = MODEL_TONES[i % MODEL_TONES.len()];
+                    ListItem::new(name(m)).key(name(m)).badge(
+                        Line::from(format!(
+                            "{} {:.0}%",
+                            if use_cost {
+                                money(metric(m))
+                            } else {
+                                compact(metric(m))
+                            },
+                            metric(m) / total * 100.0
+                        ))
+                        .fg(color(tone)),
+                    )
+                })
                 .collect();
-            out.push(json!({"t": "list", "items": items}));
+            out.push(List::new(items).into());
             if models.len() > 6 {
-                out.push(legend(&[(
-                    format!("{} more models", models.len() - 6),
-                    "muted",
-                    None,
-                )]));
+                out.push(
+                    Paragraph::new(legend(&[(
+                        format!("{} more models", models.len() - 6),
+                        "muted",
+                        None,
+                    )]))
+                    .into(),
+                );
             }
         }
     }
@@ -628,7 +695,7 @@ pub fn render_inventory(
     noun: &str,
     empty_hint: &str,
     header_scope: Option<Scope>,
-) -> Value {
+) -> Node {
     let Some(r) = raw(data) else {
         return empty(&format!("No {noun} loaded"), empty_hint);
     };
@@ -690,32 +757,41 @@ pub fn render_inventory(
             .map(|(g, c)| (g.clone(), *c, tone_of(g)))
             .collect::<Vec<_>>(),
     ));
-    out.push(legend(
-        &groups
-            .iter()
-            .map(|(g, c)| {
-                (
-                    format!("{g} {c}"),
-                    tone_of(g),
-                    scopes.get(g).and_then(Value::as_str).and_then(scope_tag),
-                )
-            })
-            .collect::<Vec<_>>(),
-    ));
+    out.push(
+        Paragraph::new(legend(
+            &groups
+                .iter()
+                .map(|(g, c)| {
+                    (
+                        format!("{g} {c}"),
+                        tone_of(g),
+                        scopes.get(g).and_then(Value::as_str).and_then(scope_tag),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        ))
+        .into(),
+    );
     out.push(section(
         &format!("all {noun}"),
         vec![dim("● active  ○ off")],
         header_scope,
     ));
-    let list: Vec<Value> = items
+    let list: Vec<ListItem> = items
         .iter()
         .map(|i| {
             let off = i.get("active").and_then(Value::as_bool) == Some(false);
             let name = s(i, "name");
-            json!({"id": name, "label": [span(if off { "○ " } else { "● " }, Some(tone_of(s(i, "group")))), if off { dim(name) } else { span(name, None) }]})
+            let glyph = span(if off { "○ " } else { "● " }, Some(tone_of(s(i, "group"))));
+            let label = if off {
+                Line::from(vec![glyph, dim(name)])
+            } else {
+                Line::from(vec![glyph, span(name, None)])
+            };
+            ListItem::new(label).key(name)
         })
         .collect();
-    out.push(json!({"t": "list", "items": list, "columns": "auto"}));
+    out.push(List::new(list).multi(true).into());
     page(out)
 }
 
@@ -755,7 +831,7 @@ pub fn modules_data(
     clippy::too_many_lines,
     reason = "one linear layout mirroring the unipi renderer"
 )]
-pub fn render_modules(data: &Map<String, Value>) -> Value {
+pub fn render_modules(data: &Map<String, Value>) -> Node {
     let Some(r) = raw(data) else {
         return empty(
             "No modules announced yet",
@@ -841,18 +917,35 @@ pub fn render_modules(data: &Map<String, Value>) -> Value {
                 .total_cmp(&(f(a, "tools") + f(a, "commands") + f(a, "services")))
                 .then_with(|| s(a, "name").cmp(s(b, "name")))
         });
-        let table_rows: Vec<Value> = rows
+        let table_rows: Vec<Row> = rows
             .iter()
             .map(|m| {
-                json!([
-                    s(m, "name"),
-                    f(m, "tools").to_string(),
-                    f(m, "commands").to_string(),
-                    f(m, "services").to_string()
+                Row::new([
+                    Cell::new(s(m, "name")),
+                    Cell::new(right(f(m, "tools").to_string())),
+                    Cell::new(right(f(m, "commands").to_string())),
+                    Cell::new(right(f(m, "services").to_string())),
                 ])
             })
             .collect();
-        out.push(json!({"t": "table", "columns": [{"title": "module", "width": "fill"}, {"title": "tools", "align": "right"}, {"title": "commands", "align": "right"}, {"title": "services", "align": "right"}], "rows": table_rows}));
+        out.push(
+            Table::new(
+                table_rows,
+                [
+                    Constraint::Fill(1),
+                    Constraint::Min(0),
+                    Constraint::Min(0),
+                    Constraint::Min(0),
+                ],
+            )
+            .header(Row::new([
+                Cell::new("module"),
+                Cell::new(right("tools")),
+                Cell::new(right("commands")),
+                Cell::new(right("services")),
+            ]))
+            .into(),
+        );
     }
     if !others.is_empty() {
         out.push(section(
@@ -860,15 +953,25 @@ pub fn render_modules(data: &Map<String, Value>) -> Value {
             vec![dim("tools · commands")],
             None,
         ));
-        let items: Vec<Value> = others.iter().map(|o| json!({"id": s(o, "name"), "label": [span("◆ ", Some("c7")), span(s(o, "name"), None), dim(format!(" {}·{}", f(o, "tools"), f(o, "commands")))]})).collect();
-        out.push(json!({"t": "list", "items": items, "columns": "auto"}));
+        let items: Vec<ListItem> = others
+            .iter()
+            .map(|o| {
+                ListItem::new(Line::from(vec![
+                    span("◆ ", Some("c7")),
+                    span(s(o, "name"), None),
+                    dim(format!(" {}·{}", f(o, "tools"), f(o, "commands"))),
+                ]))
+                .key(s(o, "name"))
+            })
+            .collect();
+        out.push(List::new(items).into());
     }
     page(out)
 }
 
 // ── module pages ────────────────────────────────────────────────────────────
 
-fn on(v: bool) -> Value {
+fn on(v: bool) -> Span {
     if v {
         span("● on", Some("success"))
     } else {
@@ -876,7 +979,16 @@ fn on(v: bool) -> Value {
     }
 }
 
-fn render_mcp(r: &Value) -> Value {
+/// Right-aligned cell text.
+fn right(text: impl Into<Text>) -> Text {
+    Text::Full {
+        lines: text.into().lines(),
+        style: None,
+        alignment: Some(Alignment::Right),
+    }
+}
+
+fn render_mcp(r: &Value) -> Node {
     let servers = r
         .get("servers")
         .and_then(Value::as_array)
@@ -934,18 +1046,36 @@ fn render_mcp(r: &Value) -> Value {
         ],
         None,
     ));
-    let items: Vec<Value> = servers
+    let items: Vec<ListItem> = servers
         .iter()
         .map(|x| {
-            let scope = if matches!(s(x, "scope"), "" | "global") { Scope::Global } else { Scope::Project };
-            let mut v = json!({"id": s(x, "name"), "label": [span("● ", Some(health(h(s(x, "status"))))), span(scope.tag(), Some(scope.tone())), span(" ", None), bold(s(x, "name"), None)], "badge": format!("{} · {} tools", s(x, "status"), f(x, "tools")), "tone": health(h(s(x, "status")))});
-            if let Some(e) = x.get("error").and_then(Value::as_str) {
-                v["detail"] = json!(e.split_whitespace().collect::<Vec<_>>().join(" "));
+            let scope = if matches!(s(x, "scope"), "" | "global") {
+                Scope::Global
+            } else {
+                Scope::Project
+            };
+            let tone = health(h(s(x, "status")));
+            let item = ListItem::new(Line::from(vec![
+                span("● ", Some(tone)),
+                span(scope.tag(), Some(scope.tone())),
+                span(" ", None),
+                bold(s(x, "name"), None),
+            ]))
+            .key(s(x, "name"))
+            .badge(Line::from(format!(
+                "{} · {} tools",
+                s(x, "status"),
+                f(x, "tools")
+            )));
+            match x.get("error").and_then(Value::as_str) {
+                Some(e) => item.detail(Line::from(
+                    e.split_whitespace().collect::<Vec<_>>().join(" "),
+                )),
+                None => item,
             }
-            v
         })
         .collect();
-    out.push(json!({"t": "list", "items": items}));
+    out.push(List::new(items).into());
     page(out)
 }
 
@@ -953,7 +1083,7 @@ fn render_mcp(r: &Value) -> Value {
     clippy::too_many_lines,
     reason = "one linear layout mirroring the unipi renderer"
 )]
-fn render_compactor(r: &Value, history: &Value, now: i64) -> Value {
+fn render_compactor(r: &Value, history: &Value, now: i64) -> Node {
     let sess = r.get("session").cloned().unwrap_or_else(|| json!({"count": r.get("history").and_then(Value::as_array).map_or(0, Vec::len), "saved": f(r, "saved"), "avoided": 0, "dollars": 0, "sent": 0}));
     let money_short = |n: f64| {
         if n >= 1000.0 {
@@ -1007,7 +1137,16 @@ fn render_compactor(r: &Value, history: &Value, now: i64) -> Value {
             ))],
             Some(sc),
         ));
-        out.push(json!({"t": "meter", "value": f(best, "sent"), "max": without, "label": format!("with {} · without {}", compact(f(best, "sent")), compact(without)), "tone": "accent"}));
+        out.push(meter(
+            f(best, "sent"),
+            without,
+            "accent",
+            format!(
+                "with {} · without {}",
+                compact(f(best, "sent")),
+                compact(without)
+            ),
+        ));
     }
     out.push(section(
         "this session",
@@ -1025,7 +1164,7 @@ fn render_compactor(r: &Value, history: &Value, now: i64) -> Value {
         )]));
     } else {
         let start = items.len().saturating_sub(6);
-        let rows: Vec<Value> = items[start..]
+        let rows: Vec<Row> = items[start..]
             .iter()
             .enumerate()
             .map(|(i, h)| {
@@ -1040,15 +1179,32 @@ fn render_compactor(r: &Value, history: &Value, now: i64) -> Value {
                 } else {
                     0.0
                 };
-                json!([
-                    format!("#{}", start + i + 1),
-                    format!("{} → {}", compact(f(h, "before")), compact(after)),
-                    format!("×{}", f(h, "replies")),
-                    money_short(saved)
+                Row::new([
+                    Cell::new(format!("#{}", start + i + 1)),
+                    Cell::new(format!("{} → {}", compact(f(h, "before")), compact(after))),
+                    Cell::new(right(format!("×{}", f(h, "replies")))),
+                    Cell::new(right(money_short(saved))),
                 ])
             })
             .collect();
-        out.push(json!({"t": "table", "columns": [{"title": "#"}, {"title": "before → after", "width": "fill"}, {"title": "replies", "align": "right"}, {"title": "saved", "align": "right"}], "rows": rows}));
+        out.push(
+            Table::new(
+                rows,
+                [
+                    Constraint::Min(0),
+                    Constraint::Fill(1),
+                    Constraint::Min(0),
+                    Constraint::Min(0),
+                ],
+            )
+            .header(Row::new([
+                Cell::new("#"),
+                Cell::new("before → after"),
+                Cell::new(right("replies")),
+                Cell::new(right("saved")),
+            ]))
+            .into(),
+        );
     }
     #[allow(clippy::cast_possible_truncation, reason = "ms")]
     let last = items
@@ -1056,15 +1212,15 @@ fn render_compactor(r: &Value, history: &Value, now: i64) -> Value {
         .map_or_else(|| "—".into(), |h| ago(f(h, "at") as i64, now));
     out.push(section("settings", vec![], None));
     out.push(kv(&[
-        ("method", json!([bold(s(r, "method"), None)])),
-        ("runs", json!(s(r, "trigger"))),
-        ("Oino's /compact", json!(s(r, "piCompact"))),
-        ("last", json!(last)),
+        ("method", Line::from(vec![bold(s(r, "method"), None)])),
+        ("runs", Line::from(s(r, "trigger"))),
+        ("Oino's /compact", Line::from(s(r, "piCompact"))),
+        ("last", Line::from(last)),
     ]));
     page(out)
 }
 
-fn render_updater(r: &Value, now: i64) -> Value {
+fn render_updater(r: &Value, now: i64) -> Node {
     let latest = r.get("latest").and_then(Value::as_str);
     let available = r.get("available").and_then(Value::as_bool).unwrap_or(false);
     let state = if latest.is_none() || available {
@@ -1103,13 +1259,16 @@ fn render_updater(r: &Value, now: i64) -> Value {
         ]),
         section("details", vec![], None),
         kv(&[
-            ("last check", json!(ago(checked, now))),
+            ("last check", Line::from(ago(checked, now))),
             (
                 "auto update",
-                json!(r.get("mode").and_then(Value::as_str).unwrap_or("—")),
+                Line::from(r.get("mode").and_then(Value::as_str).unwrap_or("—")),
             ),
-            ("update", json!(if available { "oino update" } else { "—" })),
-            ("changelog", json!("/changelog")),
+            (
+                "update",
+                Line::from(if available { "oino update" } else { "—" }),
+            ),
+            ("changelog", Line::from("/changelog")),
         ]),
     ])
 }
@@ -1118,7 +1277,7 @@ fn render_updater(r: &Value, now: i64) -> Value {
     clippy::too_many_lines,
     reason = "one linear layout mirroring the unipi renderer"
 )]
-fn render_web(r: &Value) -> Value {
+fn render_web(r: &Value) -> Node {
     let providers = r
         .get("providers")
         .and_then(Value::as_array)
@@ -1153,7 +1312,7 @@ fn render_web(r: &Value) -> Value {
         },
     ])];
     out.push(section("tools", vec![], None));
-    let chips: Vec<Value> = r
+    let chips: Vec<Span> = r
         .get("tools")
         .and_then(Value::as_object)
         .into_iter()
@@ -1172,7 +1331,7 @@ fn render_web(r: &Value) -> Value {
         .collect();
     out.push(line(chips));
     out.push(section("providers", vec![], None));
-    let rows: Vec<Value> = providers
+    let rows: Vec<Row> = providers
         .iter()
         .map(|p| {
             let enabled = p.get("enabled").and_then(Value::as_bool) == Some(true);
@@ -1194,21 +1353,40 @@ fn render_web(r: &Value) -> Value {
                 .filter_map(Value::as_str)
                 .collect();
             let cell = |c: &str| if caps.contains(&c) { "■" } else { "·" };
-            json!([
-                s(p, "name"),
-                note,
-                cell("search"),
-                cell("read"),
-                cell("summarize")
+            Row::new([
+                Cell::new(s(p, "name")),
+                Cell::new(note),
+                Cell::new(cell("search")),
+                Cell::new(cell("read")),
+                Cell::new(cell("summarize")),
             ])
         })
         .collect();
-    out.push(json!({"t": "table", "columns": [{"title": "provider", "width": "fill"}, {"title": ""}, {"title": "search"}, {"title": "read"}, {"title": "sum"}], "rows": rows}));
+    out.push(
+        Table::new(
+            rows,
+            [
+                Constraint::Fill(1),
+                Constraint::Min(0),
+                Constraint::Min(0),
+                Constraint::Min(0),
+                Constraint::Min(0),
+            ],
+        )
+        .header(Row::new([
+            Cell::new("provider"),
+            Cell::new(""),
+            Cell::new("search"),
+            Cell::new("read"),
+            Cell::new("sum"),
+        ]))
+        .into(),
+    );
     if r.get("smartFetch").is_some_and(|v| !v.is_null()) || r.get("wigolo").is_some() {
         let sf = r.get("smartFetch").and_then(Value::as_array).map_or_else(
-            || json!([span("ready", Some("success"))]),
+            || Line::from(vec![span("ready", Some("success"))]),
             |m| {
-                json!([span(
+                Line::from(vec![span(
                     format!(
                         "missing {}",
                         m.iter()
@@ -1216,19 +1394,22 @@ fn render_web(r: &Value) -> Value {
                             .collect::<Vec<_>>()
                             .join(", ")
                     ),
-                    Some("error")
+                    Some("error"),
                 )])
             },
         );
         out.push(kv(&[
             ("smart-fetch", sf),
-            ("wigolo", json!(s(r, "wigolo").trim_start_matches("✓ "))),
+            (
+                "wigolo",
+                Line::from(s(r, "wigolo").trim_start_matches("✓ ")),
+            ),
         ]));
     }
     page(out)
 }
 
-fn render_memory(r: &Value) -> Value {
+fn render_memory(r: &Value) -> Node {
     let total = f(r, "total");
     let proj = f(r, "projectCount");
     let mut out = vec![tiles(&[
@@ -1289,13 +1470,17 @@ fn render_memory(r: &Value) -> Value {
     out.push(kv(&[
         (
             "recall at start",
-            json!([on(r.get("recall").and_then(Value::as_bool) == Some(true))]),
+            Line::from(vec![on(
+                r.get("recall").and_then(Value::as_bool) == Some(true)
+            )]),
         ),
         (
             "save prompts",
-            json!([on(r.get("write").and_then(Value::as_bool) == Some(true))]),
+            Line::from(vec![on(
+                r.get("write").and_then(Value::as_bool) == Some(true)
+            )]),
         ),
-        ("pending writes", json!(f(r, "pending").to_string())),
+        ("pending writes", Line::from(f(r, "pending").to_string())),
     ]));
     page(out)
 }
@@ -1306,8 +1491,8 @@ pub fn render_generic(
     data: &Map<String, Value>,
     stats: &[StatInfo],
     visible: impl Fn(&str) -> bool,
-) -> Value {
-    let rows: Vec<Value> = stats
+) -> Node {
+    let rows: Vec<Row> = stats
         .iter()
         .filter(|st| st.show && visible(&st.id))
         .filter_map(|st| {
@@ -1316,13 +1501,16 @@ pub fn render_generic(
             if let Some(detail) = d.get("detail").and_then(Value::as_str) {
                 value.push(dim(format!("  {detail}")));
             }
-            Some(json!({"key": st.label, "value": value}))
+            Some(kv_row(
+                Line::from(vec![span(st.label.as_str(), Some("muted"))]),
+                Line::from(value),
+            ))
         })
         .collect();
     if rows.is_empty() {
         return empty("Nothing to show", "this page has no visible stats");
     }
-    json!({"t": "kv", "items": rows})
+    kv_table(rows)
 }
 
 /// Module page renderer by id (`None` = generic view).
@@ -1332,7 +1520,7 @@ pub fn render_module(
     data: &Map<String, Value>,
     compactor_history: &Value,
     now: i64,
-) -> Option<Value> {
+) -> Option<Node> {
     let r = raw(data)?;
     Some(match id {
         "mcp" => render_mcp(r),
@@ -1349,13 +1537,16 @@ mod tests {
     use super::*;
     use crate::stats::collect;
 
-    fn texts(v: &Value) -> String {
-        v.to_string()
+    fn texts(node: &Node) -> String {
+        serde_json::to_string(node).unwrap_or_default()
     }
 
     #[test]
     fn session_page() {
-        assert_eq!(render_session(&Map::new(), 0)["t"], "empty");
+        assert_eq!(
+            serde_json::to_value(render_session(&Map::new(), 0)).unwrap_or_default()["t"],
+            "Empty"
+        );
         let mut r = collect(&[], Some(0), 0);
         r.model = "Opus".into();
         r.cost = 1.5;
@@ -1477,7 +1668,7 @@ mod tests {
             &[],
             json!({"total": 10, "projectCount": 4, "project": "p", "types": {"decision": 3}, "recall": true, "write": false, "pending": 0}),
         );
-        let t = texts(&render_module("memory", &mem, &Value::Null, 0).unwrap_or_default());
+        let t = render_module("memory", &mem, &Value::Null, 0).map_or(String::new(), |n| texts(&n));
         assert!(
             t.find("GLOBAL").unwrap_or(9999) < t.find("PROJECT").unwrap_or(0)
                 && t.contains("project / global")
@@ -1488,7 +1679,7 @@ mod tests {
             json!({"method": "vcc", "trigger": "70%", "piCompact": "vcc", "history": [], "items": []}),
         );
         let hist = json!({"global": {"count": 2, "dollars": 1.0, "avoided": 100, "sent": 50}, "project": {"count": 1, "dollars": 0.5, "avoided": 10, "sent": 5}});
-        let t = texts(&render_module("compactor", &comp, &hist, 0).unwrap_or_default());
+        let t = render_module("compactor", &comp, &hist, 0).map_or(String::new(), |n| texts(&n));
         let (g, p, s) = (
             t.find("GLOBAL").unwrap_or(0),
             t.find("PROJECT").unwrap_or(0),
@@ -1496,7 +1687,7 @@ mod tests {
         );
         assert!(g < p && p < s, "tile order global < project < session");
         assert!(render_module("zzz", &mem, &Value::Null, 0).is_none());
-        let generic = render_generic(
+        let generic: Value = serde_json::to_value(render_generic(
             &group_data(&[("a", "1".into())], json!({})),
             &[StatInfo {
                 id: "a".into(),
@@ -1504,7 +1695,11 @@ mod tests {
                 show: true,
             }],
             |_| true,
+        ))
+        .unwrap_or_default();
+        assert_eq!(
+            generic["rows"][0]["cells"][0]["content"][0][0]["content"],
+            "A"
         );
-        assert_eq!(generic["items"][0]["key"], "A");
     }
 }

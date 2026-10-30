@@ -1,9 +1,10 @@
-//! The Unicrab startup splash (unipi `tui/splash.ts`) as an OUS header.
+//! The Unicrab startup splash (unipi `tui/splash.ts`) as a v2 header node.
 //!
-//! Large layout (22-column crab) from 76 columns, compact (14-column crab) from 44, nothing
-//! below. The shimmer and the draining countdown bar are frontend animations (`effect`
-//! hints, ui-protocol §6.3).
+//! Big splash (22-column crab beside the facts) from 76 columns; below that the `Layout`
+//! collapses to a column (ui-protocol §4.3). The shimmer and the draining countdown bar were
+//! v1 `effect` hints with no v2 equivalent — the bar renders full (`§12.1`: effects dropped).
 
+use oino_extension::ui::widgets::prelude::*;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -15,14 +16,10 @@ pub const HEADER_KEY: &str = "splash";
 #[derive(Deserialize)]
 struct Crab {
     grid22: Vec<Vec<u8>>,
-    grid14: Vec<Vec<u8>>,
 }
 
 fn crab() -> Crab {
-    serde_json::from_str(include_str!("../assets/crab.json")).unwrap_or(Crab {
-        grid22: Vec::new(),
-        grid14: Vec::new(),
-    })
+    serde_json::from_str(include_str!("../assets/crab.json")).unwrap_or(Crab { grid22: Vec::new() })
 }
 
 fn tone_of(i: u8) -> Option<&'static str> {
@@ -34,15 +31,20 @@ fn tone_of(i: u8) -> Option<&'static str> {
     }
 }
 
-/// Half-block art (two grid rows per line) as `text` nodes.
+/// Half-block art (two grid rows per line) as unwrapped `Paragraph` nodes.
 #[must_use]
-pub fn art(grid: &[Vec<u8>]) -> Vec<Value> {
+pub fn art(grid: &[Vec<u8>]) -> Vec<Node> {
     let width = grid.iter().map(Vec::len).max().unwrap_or(0);
     grid.chunks(2)
         .map(|pair| {
             let mut spans: Vec<(String, Option<&str>)> = Vec::new();
             for c in 0..width {
-                let cell = |r: usize| pair.get(r).and_then(|row| row.get(c)).copied().and_then(tone_of);
+                let cell = |r: usize| {
+                    pair.get(r)
+                        .and_then(|row| row.get(c))
+                        .copied()
+                        .and_then(tone_of)
+                };
                 let (g, t) = match (cell(0), cell(1)) {
                     (None, None) => (' ', None),
                     (None, Some(b)) => ('▄', Some(b)),
@@ -54,7 +56,14 @@ pub fn art(grid: &[Vec<u8>]) -> Vec<Value> {
                     _ => spans.push((g.to_string(), t)),
                 }
             }
-            json!({"t": "text", "wrap": false, "value": spans.into_iter().map(|(s, t)| span(s, t)).collect::<Vec<_>>()})
+            Paragraph::new(Line::from(
+                spans
+                    .into_iter()
+                    .map(|(s, t)| span(s, t))
+                    .collect::<Vec<_>>(),
+            ))
+            .wrap(Wrap::Disabled(false))
+            .into()
         })
         .collect()
 }
@@ -130,8 +139,10 @@ pub struct Facts {
     pub update: Option<String>,
 }
 
-fn txt(spans: Vec<Value>) -> Value {
-    json!({"t": "text", "wrap": false, "value": Value::Array(spans)})
+fn txt(spans: Vec<Span>) -> Node {
+    Paragraph::new(Line::from(spans))
+        .wrap(Wrap::Disabled(false))
+        .into()
 }
 
 /// The splash spec.
@@ -147,22 +158,24 @@ pub fn spec(
     hour: i64,
     interactive: bool,
     auto_close_ms: Option<u64>,
-) -> Value {
+) -> Node {
     let word = wordmark_rows();
-    let chip = json!({"text": short_version(unipi_version), "bold": true, "tone": "warning", "code": true});
+    let chip = Span::from_string(short_version(unipi_version))
+        .bold()
+        .fg(Color::Warning);
     let mut right = vec![
         txt(vec![
-            json!({"text": word[0], "bold": true, "tone": "warning"}),
+            bold(word[0].clone(), Some("warning")),
             span("   ", None),
             chip,
         ]),
         txt(vec![
-            json!({"text": word[1], "bold": true, "tone": "warning"}),
+            bold(word[1].clone(), Some("warning")),
             span("   ", None),
             dim(format!("v{unipi_version}")),
         ]),
         txt(vec![
-            json!({"text": word[2], "bold": true, "tone": "warning"}),
+            bold(word[2].clone(), Some("warning")),
             span("   ", None),
             dim(format!("Oino {oino_version}")),
         ]),
@@ -245,27 +258,40 @@ pub fn spec(
         hint.extend([span("   any key", Some("muted")), dim(" close")]);
     }
     right.push(txt(hint));
-    let column = |children: Vec<Value>| json!({"t": "stack", "direction": "vertical", "gap": 0, "children": children});
+    let column = |children: Vec<Node>| -> Node { Layout::default().children(children).into() };
     let c = crab();
-    let layout = |grid: &[Vec<u8>], gap: u32| json!({"t": "stack", "direction": "horizontal", "gap": gap, "children": [column(art(grid)), column(right.clone())]});
-    let mut bar = json!({"t": "divider"});
-    if let Some(ms) = auto_close_ms {
-        bar = json!({"t": "meter", "value": 1, "max": 1, "tone": "warning", "effect": "drain", "durationMs": ms});
-    }
-    let card = |body: Value| json!({"t": "card", "rail": "warning", "effect": "shimmer", "body": column(vec![body, bar.clone()])});
-    json!({
-        "t": "responsive",
-        "key": HEADER_KEY,
-        "variants": [{"minWidth": 76, "node": card(layout(&c.grid22, 4))}, {"minWidth": 44, "node": card(layout(&c.grid14, 2))}],
-        "fallback": {"t": "empty"},
-    })
+    // v1 `divider` → a top-rule `Block`; the auto-close countdown is a full gauge (`effect`
+    // `drain` and `durationMs` have no v2 node prop, §12.1).
+    let bar: Node = if auto_close_ms.is_some() {
+        LineGauge::new(1.0)
+            .label(Line::from(""))
+            .filled_style(Style::new().fg(Color::Warning))
+            .into()
+    } else {
+        Block::default()
+            .borders(Borders::Sides(vec![BorderSide::TOP]))
+            .border_style(Style::new().fg(Color::BorderMuted))
+            .into()
+    };
+    let splash = Layout::horizontal([Constraint::Length(22), Constraint::Fill(1)])
+        .spacing(4)
+        .collapse(76)
+        .children([column(art(&c.grid22)), column(right)]);
+    Block::default()
+        .key(HEADER_KEY)
+        .borders(Borders::All)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(Color::Border))
+        .rail(Color::Warning)
+        .child(column(vec![splash.into(), bar]))
+        .into()
 }
 
 /// `setHeader` request.
 #[must_use]
-pub fn header_request(spec: Value) -> Value {
+pub fn header_request(spec: Node) -> Value {
     let mut r = json!({"method": "setHeader", "key": HEADER_KEY});
-    r["spec"] = spec;
+    r["spec"] = serde_json::to_value(spec).unwrap_or(Value::Null);
     r
 }
 
@@ -301,10 +327,13 @@ mod tests {
             update: Some("3.1.0".into()),
             ..Facts::default()
         };
-        let s = spec("3.0.0", "0.1.0", &f, 20, false, Some(2500));
-        assert_eq!(s["variants"][0]["minWidth"], 76);
-        assert_eq!(s["variants"][1]["minWidth"], 44);
-        assert_eq!(s["fallback"]["t"], "empty", "nothing below 44 columns");
+        let s: Value = serde_json::to_value(spec("3.0.0", "0.1.0", &f, 20, false, Some(2500)))
+            .unwrap_or_default();
+        assert_eq!(s["t"], "Block");
+        assert_eq!(s["key"], HEADER_KEY);
+        assert_eq!(s["rail"], "warning");
+        assert_eq!(s["child"]["children"][0]["collapse"], 76);
+        assert_eq!(s["child"]["children"][1]["t"], "LineGauge");
         let t = s.to_string();
         for needle in [
             "ready in 412ms · 21 modules · 64 tools",
@@ -314,17 +343,16 @@ mod tests {
             "across 12 sessions",
             "update 3.1 available",
             "Good evening",
-            "\"drain\"",
         ] {
             assert!(t.contains(needle), "{needle}");
         }
         assert!(!t.contains("any key"));
         assert!(
-            spec("3.0.0", "0.1.0", &Facts::default(), 9, true, None)
-                .to_string()
+            serde_json::to_string(&spec("3.0.0", "0.1.0", &Facts::default(), 9, true, None))
+                .unwrap_or_default()
                 .contains("any key")
         );
         assert_eq!(art(&crab().grid22).len(), 10);
-        assert_eq!(header_request(json!(1))["key"], "splash");
+        assert_eq!(header_request(Paragraph::new("x").into())["key"], "splash");
     }
 }

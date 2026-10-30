@@ -1,8 +1,8 @@
 //! Work tray rendering (unipi `src/work/tray.ts`): one `editorReplace` panel with a tab per
 //! producer, and the dim closed-tray hint line under the editor.
 
-use oino_extension::ui::{self, widgets::prelude::*};
 use oino_extension::Result;
+use oino_extension::ui::{self, widgets::prelude::*};
 use serde_json::{Value, json};
 use unipi_kit::tray::{TRAY_HINT, TrayTab, pick_initial_tab, tab_text, tray_hint_text};
 
@@ -32,9 +32,12 @@ fn body(tab: &TrayTab) -> Node {
 /// Panel spec: tab strip (`tabs` node) + key hints.
 #[must_use]
 pub fn spec(tabs: &[TrayTab], active: usize) -> Node {
-    let tabs_node = Tabs::new(tabs.iter().map(|t| TabTitle::new(t.id.clone(), tab_text(t, 0))))
-        .panes(tabs.iter().map(|t| (t.id.clone(), body(t))))
-        .on_select(TAB_ACTION);
+    let tabs_node = Tabs::new(
+        tabs.iter()
+            .map(|t| TabTitle::new(t.id.clone(), tab_text(t, 0))),
+    )
+    .panes(tabs.iter().map(|t| (t.id.clone(), body(t))))
+    .on_select(TAB_ACTION);
     let tabs_node = match tabs.get(active) {
         Some(t) => tabs_node.selected(t.id.clone()),
         None => tabs_node,
@@ -144,6 +147,9 @@ mod tests {
         );
         let mut no_body = tab("x", 1, 0);
         no_body.body = None;
-        assert_eq!(json_of(&spec(&[no_body], 0))["children"][0]["panes"]["x"]["t"], "Empty");
+        assert_eq!(
+            json_of(&spec(&[no_body], 0))["children"][0]["panes"]["x"]["t"],
+            "Empty"
+        );
     }
 }

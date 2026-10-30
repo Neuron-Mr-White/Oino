@@ -6,6 +6,7 @@
   "kind": "extension",
   "description": "The /info dashboard (this session, context bucket, usage history, tools, skills, modules and module pages) and the Unicrab startup splash.",
   "license": "MIT",
+  "ui": { "reserved": ["unipi.info-screen/dashboard"] },
   "permissions": {
     "sessions": { "readAll": true },
     "fs": { "project": "read" },
