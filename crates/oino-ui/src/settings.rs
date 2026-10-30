@@ -1,10 +1,24 @@
-//! Settings schema dialect OSS-2 (§7) — wire types.
+//! Settings schema dialect OSS-2 (§7) — wire types and semantics.
 //!
 //! This module holds the namespace / section / field types needed by
-//! [`UiView::Settings`](crate::slot::UiView::Settings) and the registry schema.
-//! The `resolve` / `simplify` semantics (Schemastery layering) land in WP-U8.
+//! [`UiView::Settings`](crate::slot::UiView::Settings) and the registry schema, plus the
+//! Schemastery semantics every contributor shares ([`resolve`], [`simplify`], [`check_value`],
+//! [`Cond::eval`]). Core, the TUI hub and the app form engine (via a port) use the same rules,
+//! so a namespace resolves identically everywhere.
+//!
+//! Parsing is tolerant on purpose: v1 §6.6 namespaces (`unipi-kit` `schema`/`oss2` output) load
+//! unchanged — bare-string enum options and v1 `order.items` (`{value, label}` objects) are
+//! accepted, and an unknown field `type` parses as [`FieldType::Unknown`] instead of failing
+//! the namespace.
 
-use serde::{Deserialize, Serialize};
+mod semantics;
+
+pub use semantics::{
+    Diagnostic, Layer, Layers, Resolved, Write, check_value, resolve, resolve_with, simplify,
+    simplify_key,
+};
+
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as Json;
 
 use crate::extras::icon::Icon;
@@ -182,6 +196,10 @@ pub enum FieldType {
     Dict,
     /// JSON escape hatch with optional schema.
     Json,
+    /// A type this build does not know: kept, displayed read-only, never validated
+    /// (D-U14 forward compatibility). Serializes back as `"unknown"`.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Type-specific props of a field (§7). Which props are meaningful depends on
@@ -190,8 +208,12 @@ pub enum FieldType {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FieldProps {
-    /// Enum / multiselect options.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Enum / multiselect options (`"value"` or `{value, label}`).
+    #[serde(
+        default,
+        deserialize_with = "choices",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub options: Vec<Choice>,
     /// Enum accepts a custom value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -232,8 +254,12 @@ pub struct FieldProps {
     /// String format with a dedicated editor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<StringFormat>,
-    /// Order field universe.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Order field universe (v1 `order.items` objects keep their `value`).
+    #[serde(
+        default,
+        deserialize_with = "strings",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub items: Vec<String>,
     /// Model picker filter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -368,4 +394,64 @@ impl Field {
     pub fn number(key: impl Into<String>, label: impl Into<String>) -> Self {
         Self::new(key, FieldType::Number, label)
     }
+}
+
+impl Field {
+    /// The value layer this field writes to (`both` when unset).
+    #[must_use]
+    pub const fn scope(&self) -> FieldScope {
+        match self.scope {
+            Some(scope) => scope,
+            None => FieldScope::Both,
+        }
+    }
+
+    /// Whether the field has a value to edit at all (`action` / `page` / unknown types do not).
+    #[must_use]
+    pub const fn stores_value(&self) -> bool {
+        !matches!(
+            self.type_,
+            FieldType::Action | FieldType::Page | FieldType::Unknown
+        )
+    }
+
+    /// Effective value of `key` for condition evaluation: dot path, tolerating v1 flat
+    /// dotted keys.
+    #[must_use]
+    pub fn value_at<'a>(&self, values: &'a Json) -> Option<&'a Json> {
+        semantics::lookup(values, &self.key)
+    }
+}
+
+/// Tolerant `options` parsing: `"value"` and `{value, label, description?}`.
+fn choices<'de, D: Deserializer<'de>>(de: D) -> Result<Vec<Choice>, D::Error> {
+    let raw = Vec::<Json>::deserialize(de)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|option| match option {
+            Json::String(value) => Some(Choice {
+                label: value.clone(),
+                value: Json::String(value),
+                description: None,
+            }),
+            object @ Json::Object(_) => serde_json::from_value(object).ok(),
+            _ => None,
+        })
+        .collect())
+}
+
+/// Tolerant `order.items` parsing: `"value"` and v1 `{value, label}`.
+fn strings<'de, D: Deserializer<'de>>(de: D) -> Result<Vec<String>, D::Error> {
+    let raw = Vec::<Json>::deserialize(de)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|item| match item {
+            Json::String(value) => Some(value),
+            Json::Object(object) => object
+                .get("value")
+                .and_then(Json::as_str)
+                .map(ToOwned::to_owned),
+            _ => None,
+        })
+        .collect())
 }
