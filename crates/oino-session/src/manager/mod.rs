@@ -5,6 +5,7 @@
 
 mod files;
 mod list;
+mod repair;
 mod tree;
 
 use std::collections::HashMap;
@@ -21,6 +22,7 @@ pub use files::{
     encode_cwd, migrate_legacy_file, resolve_path, session_file_name, validate_session_id,
 };
 pub use list::{ProgressSink, SessionInfo, session_info};
+pub use repair::{INTERRUPTED_TOOL_TEXT, RESUME_REPAIR_TYPE, RepairReport, TOOL_DISPATCH_TYPE};
 pub use tree::SessionTreeNode;
 
 use crate::context::{

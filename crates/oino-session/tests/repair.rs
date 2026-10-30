@@ -1,0 +1,388 @@
+//! D-DISPATCH / D-REPAIR (core spec §2.1, WP-C2): the tool-dispatch record and the
+//! interrupted-turn repair on resume — dangling tool calls closed with unknown-outcome
+//! toolResults, torn tails terminated, balanced transcripts, no repair on read paths,
+//! and the fixture for the pi oracle (`scripts/pi-oracle/core/session-load.mjs`).
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "tests assert by unwrapping"
+)]
+
+mod common;
+
+use std::path::Path;
+
+use oino_ai::{
+    AgentMessage, AssistantContent, AssistantMessage, JsonObject, StopReason, UserContent,
+    UserContentField, UserMessage,
+};
+use oino_session::{
+    CreateOptions, EntryKind, INTERRUPTED_TOOL_TEXT, RepairReport, SessionManager,
+    TOOL_DISPATCH_TYPE,
+};
+use serde_json::{Value, json};
+
+const CWD: &str = "/work/wp-c2";
+
+fn user(text: &str) -> AgentMessage {
+    AgentMessage::User(UserMessage {
+        content: UserContentField::Text(text.into()),
+        timestamp: 1,
+    })
+}
+
+/// Assistant message issuing `(id, name)` tool calls (`stopReason: "toolUse"`).
+fn assistant_tool_use(calls: &[(&str, &str)]) -> AgentMessage {
+    let mut message = AssistantMessage::empty("faux", "faux", "faux-1", 2);
+    message.content = calls
+        .iter()
+        .map(|(id, name)| {
+            AssistantContent::ToolCall(oino_ai::ToolCall {
+                id: (*id).to_owned(),
+                name: (*name).to_owned(),
+                arguments: JsonObject::new(),
+                ..oino_ai::ToolCall::default()
+            })
+        })
+        .collect();
+    message.stop_reason = StopReason::ToolUse;
+    AgentMessage::Assistant(message)
+}
+
+fn tool_result(call_id: &str, text: &str) -> AgentMessage {
+    AgentMessage::ToolResult(oino_ai::ToolResultMessage {
+        tool_call_id: call_id.to_owned(),
+        tool_name: "bash".into(),
+        content: vec![UserContent::text(text)],
+        details: None,
+        usage: None,
+        nested_calls: None,
+        is_error: false,
+        timestamp: 3,
+        duration_ms: None,
+    })
+}
+
+/// The crash-truncated session: two tool calls issued, `c1` answered, `c2` dispatched
+/// (its D-DISPATCH record is on the log) but never finished.
+fn interrupted_session(dir: &Path) -> SessionManager {
+    let mut manager =
+        SessionManager::create(Path::new(CWD), dir, CreateOptions::default()).unwrap();
+    manager.append_message(user("run the tests")).unwrap();
+    manager
+        .append_message(assistant_tool_use(&[("c1", "bash"), ("c2", "bash")]))
+        .unwrap();
+    manager.append_message(tool_result("c1", "ok")).unwrap();
+    manager
+        .append_tool_dispatch(
+            "c2",
+            "bash",
+            &serde_json::from_value(json!({"command": "make test"})).unwrap(),
+        )
+        .unwrap();
+    manager
+}
+
+fn entry_shapes(manager: &SessionManager) -> Vec<Value> {
+    manager
+        .entries()
+        .iter()
+        .map(|entry| match &entry.kind {
+            EntryKind::Message { message } => {
+                let (tool_call_id, is_error, text) = match message {
+                    AgentMessage::ToolResult(result) => (
+                        Some(result.tool_call_id.clone()),
+                        Some(result.is_error),
+                        result.content.first().and_then(|block| match block {
+                            UserContent::Text(text) => Some(text.text.clone()),
+                            UserContent::Image(_) => None,
+                        }),
+                    ),
+                    _ => (None, None, None),
+                };
+                json!({
+                    "kind": "message",
+                    "role": message.role(),
+                    "toolCallId": tool_call_id,
+                    "isError": is_error,
+                    "text": text,
+                })
+            }
+            EntryKind::Custom { custom_type, data } => json!({
+                "kind": "custom",
+                "customType": custom_type,
+                "toolCallId": data
+                    .as_ref()
+                    .and_then(|d| d.get("toolCallId"))
+                    .cloned()
+                    .unwrap_or(Value::Null),
+            }),
+            _ => json!({"kind": entry.kind.type_name()}),
+        })
+        .collect()
+}
+
+/// Dangling tool calls are closed with the unknown-outcome toolResult, one repair record
+/// follows, and the transcript is balanced for the next provider request.
+#[test]
+fn dangling_tool_calls_repaired_with_unknown_outcome() {
+    let root = common::tempdir();
+    let dir = root.path().join("sessions");
+    std::fs::create_dir(&dir).unwrap();
+    let mut manager = interrupted_session(&dir);
+
+    let report = manager.repair_interrupted_turn().unwrap();
+    assert_eq!(
+        report,
+        RepairReport {
+            closed_tool_calls: vec!["c2".into()],
+            torn_tail: false,
+        }
+    );
+
+    // Reopen from disk: the file holds the closer and the repair record, in order.
+    let file = manager.session_file().unwrap().to_path_buf();
+    let reopened = SessionManager::open(&file, &dir, None).unwrap();
+    let shapes = entry_shapes(&reopened);
+    let repair_tool_result = json!({
+        "kind": "message", "role": "toolResult", "toolCallId": "c2", "isError": true,
+        "text": INTERRUPTED_TOOL_TEXT,
+    });
+    let repair_record = json!({
+        "kind": "custom", "customType": "oino.resume-repair", "toolCallId": Value::Null,
+    });
+    let dispatch = json!({
+        "kind": "custom", "customType": TOOL_DISPATCH_TYPE, "toolCallId": "c2",
+    });
+    assert!(
+        shapes.contains(&dispatch),
+        "dispatch record kept: {shapes:?}"
+    );
+    assert_eq!(
+        &shapes[shapes.len() - 2..],
+        &[repair_tool_result, repair_record]
+    );
+
+    // Balanced transcript: every call of the trailing assistant is answered and the
+    // projection ends in the repair toolResult.
+    let projection = reopened.build_session_projection();
+    let messages = &projection.messages;
+    let last_assistant = messages
+        .iter()
+        .rev()
+        .find_map(|m| match m {
+            AgentMessage::Assistant(a) => Some(a.clone()),
+            _ => None,
+        })
+        .unwrap();
+    let answered: Vec<&str> = messages
+        .iter()
+        .filter_map(|m| match m {
+            AgentMessage::ToolResult(result) => Some(result.tool_call_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    for block in &last_assistant.content {
+        if let AssistantContent::ToolCall(call) = block {
+            assert!(
+                answered.contains(&call.id.as_str()),
+                "{} unanswered",
+                call.id
+            );
+        }
+    }
+    assert!(matches!(messages.last(), Some(AgentMessage::ToolResult(_))));
+
+    // Repair is idempotent: a second run finds nothing.
+    let mut reopened = reopened;
+    assert_eq!(
+        reopened.repair_interrupted_turn().unwrap(),
+        RepairReport::default()
+    );
+    assert_eq!(reopened.entry_count(), 6, "nothing appended");
+}
+
+/// A balanced session repairs to nothing and appends no record.
+#[test]
+fn balanced_session_repairs_to_nothing() {
+    let root = common::tempdir();
+    let dir = root.path().join("sessions");
+    std::fs::create_dir(&dir).unwrap();
+    let mut manager = interrupted_session(&dir);
+    manager
+        .append_message(tool_result("c2", "also ok"))
+        .unwrap();
+    let file = manager.session_file().unwrap().to_path_buf();
+    let before = std::fs::read_to_string(&file).unwrap();
+
+    let report = manager.repair_interrupted_turn().unwrap();
+    assert_eq!(report, RepairReport::default());
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        before,
+        "file untouched"
+    );
+    assert!(
+        !manager
+            .entries()
+            .iter()
+            .any(|e| matches!(&e.kind, EntryKind::Custom { custom_type, .. } if custom_type == "oino.resume-repair")),
+        "no repair record"
+    );
+}
+
+/// A torn physical tail is terminated with `"\n"` (pi's own repair): the fragment stays a
+/// permanently skipped line, and a closer never concatenates onto it.
+#[test]
+fn torn_tail_terminated_before_closers() {
+    let root = common::tempdir();
+    let dir = root.path().join("sessions");
+    std::fs::create_dir(&dir).unwrap();
+    let mut manager = interrupted_session(&dir);
+    let file = manager.session_file().unwrap().to_path_buf();
+    // Simulate the torn write of the next line (no trailing newline).
+    std::fs::write(
+        &file,
+        format!("{}`", std::fs::read_to_string(&file).unwrap()),
+    )
+    .unwrap();
+
+    let report = manager.repair_interrupted_turn().unwrap();
+    assert_eq!(
+        report,
+        RepairReport {
+            closed_tool_calls: vec!["c2".into()],
+            torn_tail: true,
+        }
+    );
+
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.ends_with('\n'), "tail terminated");
+    // The closer is its own line, not glued onto the fragment.
+    let reopened = SessionManager::open(&file, &dir, None).unwrap();
+    assert_eq!(
+        reopened.entry_count(),
+        6,
+        "header + 5 entries, fragment skipped"
+    );
+    assert!(matches!(
+        reopened.entries().last().map(|e| &e.kind),
+        Some(EntryKind::Custom { custom_type, .. }) if custom_type == "oino.resume-repair"
+    ));
+}
+
+/// Read paths never repair: a plain `SessionManager::open` leaves a dangling session
+/// byte-identical (repair is the write owner's job, D-REPAIR rule 4).
+#[test]
+fn open_alone_does_not_repair() {
+    let root = common::tempdir();
+    let dir = root.path().join("sessions");
+    std::fs::create_dir(&dir).unwrap();
+    let manager = interrupted_session(&dir);
+    let file = manager.session_file().unwrap().to_path_buf();
+    let before = std::fs::read_to_string(&file).unwrap();
+
+    let reopened = SessionManager::open(&file, &dir, None).unwrap();
+    assert_eq!(
+        reopened.entry_count(),
+        4,
+        "dangling call survives a read open"
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+}
+
+/// In-memory sessions have nothing to repair.
+#[test]
+fn in_memory_session_repairs_to_nothing() {
+    let mut manager =
+        SessionManager::in_memory(Path::new(CWD), CreateOptions::default(), Vec::new());
+    manager.append_message(user("hi")).unwrap();
+    manager
+        .append_message(assistant_tool_use(&[("c1", "bash")]))
+        .unwrap();
+    assert_eq!(
+        manager.repair_interrupted_turn().unwrap(),
+        RepairReport::default()
+    );
+    assert_eq!(manager.entry_count(), 2, "nothing appended");
+}
+
+/// Blesses/verifies the pi-oracle fixture (`scripts/pi-oracle/core/fixtures/`): the
+/// post-repair file this test produces from the committed crash-truncated input is
+/// exactly what `session-load.mjs` feeds to pi's own `SessionManager`. `OINO_BLESS=1`
+/// rewrites the fixtures.
+#[test]
+fn pi_oracle_fixture_matches_repair_output() {
+    let root = common::tempdir();
+    let dir = root.path().join("sessions");
+    std::fs::create_dir(&dir).unwrap();
+    let repo_fixture = Path::new("../../scripts/pi-oracle/core/fixtures");
+    if std::env::var("OINO_BLESS").is_ok() {
+        std::fs::create_dir_all(repo_fixture).unwrap();
+        std::fs::write(
+            repo_fixture.join("interrupted.jsonl"),
+            interrupted_fixture_text(),
+        )
+        .unwrap();
+    }
+
+    // The interrupted fixture repairs to the committed repaired fixture (entry shapes
+    // only: entry ids and timestamps are not stable across runs).
+    let mut repaired = SessionManager::open(
+        &write_fixture_file(&dir, "interrupted.jsonl", &interrupted_fixture_text()),
+        &dir,
+        None,
+    )
+    .unwrap();
+    let report = repaired.repair_interrupted_turn().unwrap();
+    assert_eq!(report.closed_tool_calls, vec!["call_2".to_owned()]);
+    if std::env::var("OINO_BLESS").is_ok() {
+        std::fs::write(
+            repo_fixture.join("resume-repair.jsonl"),
+            std::fs::read_to_string(repaired.session_file().unwrap()).unwrap(),
+        )
+        .unwrap();
+        return;
+    }
+    let committed = std::fs::read_to_string(repo_fixture.join("resume-repair.jsonl"))
+        .unwrap_or_else(|e| panic!("fixture missing (run with OINO_BLESS=1): {e}"));
+    let committed = SessionManager::in_memory(
+        Path::new(CWD),
+        CreateOptions::default(),
+        parse_entries(&committed),
+    );
+    assert_eq!(entry_shapes(&repaired), entry_shapes(&committed));
+}
+
+/// Writes `text` as `<dir>/fixture-<name>` and returns its path.
+fn write_fixture_file(dir: &Path, name: &str, text: &str) -> std::path::PathBuf {
+    let path = dir.join(format!("fixture-{name}"));
+    std::fs::write(&path, text).unwrap();
+    path
+}
+
+/// The committed crash-truncated fixture text (stable ids/timestamps, mirrors
+/// `fixtures/interrupted.jsonl`).
+fn interrupted_fixture_text() -> String {
+    let mut text = String::new();
+    text.push_str(r#"{"type":"session","version":3,"id":"019b1f00-0000-7000-8000-0000000000c2","timestamp":"2026-11-02T10:00:00.000Z","cwd":"/work/wp-c2"}"#);
+    text.push('\n');
+    text.push_str(r#"{"type":"message","id":"e0000001","parentId":null,"timestamp":"2026-11-02T10:00:01.000Z","message":{"role":"user","content":"run the tests","timestamp":1762000801000}}"#);
+    text.push('\n');
+    text.push_str(r#"{"type":"message","id":"e0000002","parentId":"e0000001","timestamp":"2026-11-02T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"running both"},{"type":"toolCall","id":"call_1","name":"bash","arguments":{"command":"make build"}},{"type":"toolCall","id":"call_2","name":"bash","arguments":{"command":"make test"}}],"api":"faux","provider":"faux","model":"faux-1","usage":{"input":1,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":2,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":1762000802000}}"#);
+    text.push('\n');
+    text.push_str(r#"{"type":"message","id":"e0000003","parentId":"e0000002","timestamp":"2026-11-02T10:00:03.000Z","message":{"role":"toolResult","toolCallId":"call_1","toolName":"bash","content":[{"type":"text","text":"ok"}],"isError":false,"timestamp":1762000803000}}"#);
+    text.push('\n');
+    text.push_str(r#"{"type":"custom","id":"e0000004","parentId":"e0000003","timestamp":"2026-11-02T10:00:03.500Z","customType":"oino.tool-dispatch","data":{"toolCallId":"call_2","toolName":"bash","input":{"command":"make test"},"readOnly":false}}"#);
+    text.push('\n');
+    text
+}
+
+/// Parses a session file's text into entries (header check included).
+fn parse_entries(text: &str) -> Vec<oino_session::SessionEntry> {
+    oino_session::migrate::parse_session_text(text)
+        .unwrap()
+        .expect("fixture parses with a header")
+        .entries
+}

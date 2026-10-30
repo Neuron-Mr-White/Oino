@@ -52,8 +52,9 @@ pub use entry::{
 pub use error::SessionError;
 #[cfg(feature = "manager")]
 pub use manager::{
-    BranchSummaryDraft, CompactionDraft, CreateOptions, MigratedSession, ProgressSink,
-    ReadonlySession, SessionInfo, SessionManager, SessionTreeNode,
+    BranchSummaryDraft, CompactionDraft, CreateOptions, INTERRUPTED_TOOL_TEXT, MigratedSession,
+    ProgressSink, RESUME_REPAIR_TYPE, ReadonlySession, RepairReport, SessionInfo, SessionManager,
+    SessionTreeNode, TOOL_DISPATCH_TYPE,
 };
 pub use messages::{
     BRANCH_SUMMARY_PREFIX, BRANCH_SUMMARY_SUFFIX, COMPACTION_SUMMARY_PREFIX,
