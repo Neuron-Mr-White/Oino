@@ -50,6 +50,9 @@ export type SessionHandle = {
   dismiss(ref: string): void;
   abort(): Promise<void>;
   cmd<T = unknown>(cmd: RpcCommand): Promise<T>;
+  /** Subscribes the stream to bus topics (`_oino/topics`); the returned sticky
+   *  values are merged into `state.topics`, later `topic` events follow. */
+  subscribeTopics(patterns: readonly string[]): void;
   /** Full entries by id (tool outputs the snapshot truncated, §3.4 step 7). */
   getEntries(ids: readonly string[]): Promise<SessionEntry[]>;
   /** The "Lost the connection · Retry" action. */
@@ -256,6 +259,23 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     },
     abort: () => stream.cmd({ type: 'abort' }).then(() => undefined),
     cmd: (cmd) => stream.cmd(cmd),
+    subscribeTopics(patterns) {
+      if (!stream.live) return;
+      stream
+        .cmd<{ topics?: unknown[] }>({ type: '_oino/topics', subscribe: [...patterns], unsubscribe: [] })
+        .then((reply) => {
+          const list = Array.isArray(reply?.topics) ? reply!.topics! : [];
+          if (!list.length) return;
+          mutate((s) => {
+            for (const raw of list) {
+              const t = raw as { topic?: unknown; data?: unknown; sticky?: unknown; publisher?: unknown };
+              if (typeof t.topic !== 'string' || !t.topic) continue;
+              s.topics[t.topic] = { data: t.data, sticky: t.sticky !== false, publisher: typeof t.publisher === 'string' ? t.publisher : '' };
+            }
+          });
+        })
+        .catch(() => {});
+    },
     async getEntries(ids) {
       const reply = await stream.cmd<{ entries?: SessionEntry[] }>({ type: 'get_entries', ids: [...ids] });
       return Array.isArray(reply?.entries) ? reply.entries : [];

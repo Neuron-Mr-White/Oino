@@ -2,11 +2,10 @@
  * UNI-269: the chat's working-mode chip (header, next to the title) and its
  * small popover. The chip shows the long-horizon mode the session runs in —
  * icon + name, tinted per mode, with a live count (`3/7`, `#4`, `45%`) and a
- * pulse while the run goes — and is hidden in plain mode. The popover
- * (anchored, not a sheet) says what the mode does, its live state, opens the
- * Progress sheet, and switches the mode or turns it off (`set_lh_mode`,
- * docs/m5/PROTOCOL.md §7.1). In plain mode the same popover opens from
- * ⋯ → Working mode.
+ * pulse while the run goes — and is hidden in plain mode. Since WP-A16
+ * (§3.10) the popover only switches the mode (`set_lh_mode`, docs/m5/
+ * PROTOCOL.md §7.1) — no live-state body: the LH section of the status pane
+ * owns that. In plain mode the same popover opens from ⋯ → Working mode.
  */
 import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
 import { Boxes, Check, CircleOff, LoaderCircle, Network, Repeat, Target, Workflow } from 'lucide-solid';
@@ -18,16 +17,12 @@ import {
   modeChipCount,
   modeErrorText,
   modeLabel,
-  modeLiveText,
-  modePercent,
   modeView,
   PHASE_WORD,
   switchHint,
   type LhModeChoice,
   type ModeView,
 } from '../status/lhMode';
-import { RUN_LABEL } from '../status/lhProgress';
-import { StatusBar } from './StatusBar';
 
 /** Mode icon (unknown future ids get the generic one). */
 export function ModeIcon(props: { mode: string; size?: number }): JSX.Element {
@@ -87,7 +82,7 @@ export function ModeChip(props: { chat: Chat; onOpen: (anchor: DOMRect) => void 
   );
 }
 
-export function ModePopover(props: { anchor: DOMRect; chat: Chat; onDismiss: () => void; onProgress: () => void }) {
+export function ModePopover(props: { anchor: DOMRect; chat: Chat; onDismiss: () => void }) {
   const view = createMemo(() => chatModeView(props.chat));
   const current = (): LhModeChoice | string => view()?.mode ?? 'none';
   /** The mode a switch is in flight to. */
@@ -132,36 +127,10 @@ export function ModePopover(props: { anchor: DOMRect; chat: Chat; onDismiss: () 
           </span>
         </div>
         <p class="mode-pop-desc">{MODE_DESCRIPTION[(view()?.mode as LhModeChoice) ?? 'none'] ?? ''}</p>
-        <Show when={view()?.run}>
-          {(run) => (
-            <div class="mode-pop-live" data-testid="mode-live">
-              <span class="mode-pop-run truncate">{run().title}</span>
-              <span class="mode-pop-state">
-                {RUN_LABEL[run().status]} · {modeLiveText(run())}
-              </span>
-              <Show when={(run().mode === 'graph' || run().mode === 'swarm') && run().counts.total > 0}>
-                <StatusBar class="mode-pop-status" counts={run().counts} live={run().status === 'running'} label={`${view()!.label} progress`} />
-              </Show>
-              <Show when={run().mode !== 'graph' && run().mode !== 'swarm' && modePercent(run()) !== undefined}>
-                <span class="mode-pop-bar" role="progressbar" aria-label={`${view()!.label} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={modePercent(run())}>
-                  <span style={{ width: `${Math.max(0, Math.min(100, modePercent(run())!))}%` }} data-mode={run().mode} />
-                </span>
-              </Show>
-            </div>
-          )}
-        </Show>
         <Show when={view()?.phase === 'paused'}>
           <p class="mode-pop-desc" data-testid="mode-paused-note">
             Parked. Send <code>/unipi:{view()!.mode === 'ralph' ? 'ralph' : view()!.mode} resume</code> to pick it up again.
           </p>
-        </Show>
-        <Show when={view()}>
-          <button type="button" role="menuitem" class="recent-popover-row board-menu-row mode-pop-row" onClick={() => (props.onDismiss(), props.onProgress())}>
-            <span class="board-menu-icon">
-              <Network size={18} />
-            </span>
-            <span class="min-w-0 flex-1 truncate text-left">Show progress</span>
-          </button>
         </Show>
       </div>
       <MenuSeparator />

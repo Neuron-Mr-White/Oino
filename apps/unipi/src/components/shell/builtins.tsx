@@ -7,13 +7,14 @@
 import { onCleanup } from 'solid-js';
 import { useLocation } from '@solidjs/router';
 import { MessagesSquare, Plus, Search, SlidersHorizontal, LayoutGrid, List, Monitor, FolderOpen, RefreshCw, X, Server, LayoutDashboard, Keyboard, Network, QrCode } from 'lucide-solid';
-import { setProgressSheetOpen } from '../status/lhProgress';
 import { chatVisible, hideChat } from '../../lib/session/open';
 import { boardUi } from '../../lib/board/ui';
 import { registerCommands } from '../../lib/shell';
 import { can, isTauri } from '../../lib/platform';
 import { setAddHostOpen } from '../Pairing';
 import { openPairPhone } from '../../lib/pairPhone';
+import { currentWorkspace } from './Workspace';
+import { openStatusSection } from '../status/StatusPane';
 
 export function BuiltinPanes() {
   const location = useLocation();
@@ -34,7 +35,12 @@ export function BuiltinPanes() {
       { id: 'board.pc', title: 'Switch PC', group: 'Board', keywords: 'host computer', icon: () => <Monitor size={16} />, when: () => boardReady() && isTauri(), run: () => ui.setSheet('pc') },
       { id: 'board.project', title: 'Switch project', group: 'Board', keywords: 'project', icon: () => <FolderOpen size={16} />, when: boardReady, run: () => ui.setSheet('project') },
       { id: 'board.closeTask', title: 'Close task', group: 'Board', icon: () => <X size={16} />, keys: 'Esc', when: () => onBoard() && !!ui.openedTask(), run: () => ui.closeTask() },
-      { id: 'chat.progress', title: 'Show long-horizon progress', group: 'Chat', keywords: 'goal ralph swarm graph progress mermaid', icon: () => <Network size={16} />, when: () => chatVisible(), run: () => setProgressSheetOpen(true) },
+      { id: 'chat.progress', title: 'Show long-horizon progress', group: 'Chat', keywords: 'goal ralph swarm graph progress status pane', icon: () => <Network size={16} />, when: () => chatVisible(), run: () => {
+        // §3.10: the Progress sheet is gone — the LH section of the status pane owns it.
+        const ws = currentWorkspace();
+        if (!ws) return;
+        openStatusSection({ hostId: ws.scope.hostId, sessionId: ws.view.sessionId, path: ws.scope.projectKey }, 'lh');
+      } },
       { id: 'chat.close', title: 'Back to the chat list', group: 'Chat', keywords: 'close leave', icon: () => <X size={16} />, keys: 'Esc', when: () => chatVisible(), run: () => hideChat() },
       { id: 'hosts.add', title: 'Add a PC (pair)', group: 'PCs', keywords: 'pair computer host add a host', icon: () => <Server size={16} />, when: () => can('hosts'), run: () => setAddHostOpen(true) },
       { id: 'hosts.pairPhone', title: 'Pair a phone', group: 'PCs', keywords: 'qr code phone pair this pc computer scan', icon: () => <QrCode size={16} />, when: () => can('localSharing'), run: () => openPairPhone() },

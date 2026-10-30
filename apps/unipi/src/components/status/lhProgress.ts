@@ -6,11 +6,6 @@
  * as subgraphs) and small formatters.
  */
 
-import { createSignal } from 'solid-js';
-
-/** The Progress sheet's open state — module-level so the desktop palette can open it too. */
-export const [progressSheetOpen, setProgressSheetOpen] = createSignal(false);
-
 export type LhItemStatus = 'queued' | 'ready' | 'running' | 'done' | 'failed' | 'aborted';
 export type LhRunStatus = 'running' | 'paused' | 'done' | 'failed' | 'stopped';
 export type LhMode = 'goal' | 'ralph' | 'swarm' | 'graph';

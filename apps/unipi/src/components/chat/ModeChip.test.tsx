@@ -66,34 +66,29 @@ describe('ModeChip', () => {
     expect(chip.dataset.phase).toBe('paused');
     expect(chip.textContent).toBe('Goalpaused');
     expect(chip.querySelector('.mode-chip-pulse')).toBeNull();
-    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} onProgress={() => {}} />);
+    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} />);
     expect(screen.getByTestId('mode-paused-note').textContent).toContain('/unipi:goal resume');
   });
 });
 
 describe('ModePopover', () => {
-  it('shows the description, live state and progress link; current mode is checked', () => {
+  it('shows the description (the live state lives in the status pane now); current mode is checked', () => {
     const f = fakeChat(activeGraph());
-    const onProgress = vi.fn();
     const onDismiss = vi.fn();
-    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={onDismiss} onProgress={onProgress} />);
+    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={onDismiss} />);
     const pop = screen.getByTestId('mode-popover');
     expect(pop.textContent).toContain('Graph mode');
     expect(pop.textContent).toContain('later steps depend on earlier results');
-    expect(screen.getByTestId('mode-live').textContent).toContain('Repo health');
-    expect(screen.getByTestId('mode-live').textContent).toContain('3/7 settled · 2 running');
-    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('3');
+    expect(screen.queryByTestId('mode-live')).toBeNull();
     expect(screen.getByTestId('mode-pick-graph').getAttribute('aria-checked')).toBe('true');
     expect(screen.getByTestId('mode-pick-goal').textContent).toContain('Pauses the graph');
-    fireEvent.click(screen.getByText('Show progress'));
-    expect(onDismiss).toHaveBeenCalled();
-    expect(onProgress).toHaveBeenCalled();
+    expect(screen.queryByText('Show progress')).toBeNull();
   });
 
   it('switching sends set_lh_mode and closes on ack; tapping the current mode does nothing', async () => {
     const f = fakeChat(activeGraph());
     const onDismiss = vi.fn();
-    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={onDismiss} onProgress={() => {}} />);
+    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={onDismiss} />);
     fireEvent.click(screen.getByTestId('mode-pick-graph'));
     expect(f.setLhMode).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('mode-pick-swarm'));
@@ -103,7 +98,7 @@ describe('ModePopover', () => {
 
   it('turning running work off asks for a second tap', async () => {
     const f = fakeChat(activeGraph());
-    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} onProgress={() => {}} />);
+    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} />);
     expect(screen.getByTestId('mode-pick-none').textContent).toContain('Stops the graph');
     fireEvent.click(screen.getByTestId('mode-pick-none'));
     expect(f.setLhMode).not.toHaveBeenCalled();
@@ -114,7 +109,7 @@ describe('ModePopover', () => {
 
   it('plain mode: picking a mode needs no confirm', () => {
     const f = fakeChat({ lhMode: { mode: 'none' } });
-    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} onProgress={() => {}} />);
+    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} />);
     expect(screen.getByTestId('mode-popover').textContent).toContain('Plain chat');
     expect(screen.queryByText('Show progress')).toBeNull();
     expect(screen.getByTestId('mode-pick-none').getAttribute('aria-checked')).toBe('true');
@@ -125,7 +120,7 @@ describe('ModePopover', () => {
   it('a refused switch shows the reason inline and stays open', async () => {
     const f = fakeChat(activeGraph(), vi.fn(async () => Promise.reject(new Error('A goal ("x") is already parked — resume or clear it first.'))));
     const onDismiss = vi.fn();
-    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={onDismiss} onProgress={() => {}} />);
+    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={onDismiss} />);
     fireEvent.click(screen.getByTestId('mode-pick-ralph'));
     await waitFor(() => expect(screen.getByTestId('mode-error').textContent).toContain('already parked'));
     expect(onDismiss).not.toHaveBeenCalled();
@@ -136,7 +131,7 @@ describe('ModePopover', () => {
     render(() => (
       <>
         <ModeChip chat={f.chat} onOpen={() => {}} />
-        <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} onProgress={() => {}} />
+        <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} />
       </>
     ));
     expect(screen.getByTestId('mode-chip').textContent).toContain('Graph');
@@ -146,7 +141,7 @@ describe('ModePopover', () => {
 
   it('offline: switching disabled', () => {
     const f = fakeChat({ ...activeGraph(), conn: 'connecting' });
-    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} onProgress={() => {}} />);
+    render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} />);
     expect((screen.getByTestId('mode-pick-swarm') as HTMLButtonElement).disabled).toBe(true);
   });
 });

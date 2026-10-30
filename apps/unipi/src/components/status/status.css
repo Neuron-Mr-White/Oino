@@ -1,0 +1,96 @@
+/*
+ * Status pane sections + capsule (WP-A16, §3.10). Unipi tokens (DESIGN §1):
+ * surface-1 cards, 1 px rules, claw accents for live work.
+ */
+
+/* The pane's scroll column: Git section grows, sections stack below. */
+.status-pane-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.status-pane .status-pane-scroll .git-section,
+.status-pane-layer .status-pane-scroll .git-section { flex: 1 0 340px; min-height: 340px; }
+.status-pane-scroll .status-sections { flex: 0 0 auto; }
+
+.status-sections { display: flex; flex-direction: column; gap: 10px; padding: 10px var(--page-gutter) 18px; }
+
+.status-section { border-radius: 14px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 60%); padding: 10px 12px 12px; }
+.status-section-head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.status-section-title { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-dim); }
+.status-section-title > svg { flex: none; }
+
+.status-chip { flex: none; height: 18px; padding: 0 7px; border-radius: 9999px; font-size: 11px; line-height: 18px; font-weight: 600; background: var(--color-surface-3); color: var(--color-text-muted); }
+.status-chip[data-phase='active'] { background: rgb(240 120 24 / 16%); color: var(--color-claw); }
+.status-chip[data-phase='selected'] { background: rgb(40 190 240 / 14%); color: var(--color-wm-cyan); }
+
+.status-dim { font-size: 12px; color: var(--color-text-dim); }
+.status-empty { margin: 4px 0 0; font-size: 12.5px; line-height: 18px; color: var(--color-text-dim); }
+button.status-empty { padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }
+.status-empty-link:hover { color: var(--color-text-muted); text-decoration: underline; }
+
+.status-bar { height: 5px; border-radius: 9999px; background: var(--color-surface-3); overflow: hidden; margin-top: 6px; }
+.status-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--color-claw); transition: width 0.3s ease; }
+.status-bar > span[data-mode='goal'] { background: var(--color-wm-cyan); }
+.status-bar > span[data-mode='ralph'] { background: var(--color-claw); }
+.status-bar > span[data-mode='todo'] { background: var(--color-wm-green); }
+.status-bar > span[data-mode='graph'], .status-bar > span[data-mode='swarm'] { background: var(--color-wm-cyan); }
+
+.status-actions { display: flex; gap: 6px; margin-top: 10px; }
+.status-action, .status-link { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 11px; border-radius: 9px; border: 1px solid var(--color-line); background: transparent; color: var(--color-text-muted); font-size: 12px; }
+.status-action:hover, .status-link:hover { color: var(--color-text); border-color: var(--color-text-dim); }
+.status-action[data-tone='danger'] { color: #f3b3ad; border-color: rgb(240 60 50 / 55%); }
+.status-link { min-height: 24px; padding: 0 8px; font-size: 11.5px; }
+
+/* ── Long-horizon ─────────────────────────────────────────────────────── */
+.lh-body { margin-top: 6px; }
+.lh-mode-line { display: flex; align-items: baseline; gap: 8px; margin: 0; min-width: 0; }
+.lh-mode-name { flex: none; font-size: 14px; font-weight: 600; color: var(--color-text); }
+.lh-mode-objective { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--color-text-muted); }
+.lh-line { margin: 6px 0 0; font-size: 12px; color: var(--color-claw); }
+.lh-metric { margin-top: 10px; }
+.lh-metric-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--color-text-muted); }
+.capitalize { text-transform: capitalize; }
+
+/* ── Plan & todos ─────────────────────────────────────────────────────── */
+.plan-body { margin-top: 6px; }
+.plan-mode-line { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; min-width: 0; }
+.todo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; max-height: 264px; overflow-y: auto; }
+.todo-item { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 2px 2px; font-size: 13px; line-height: 18px; color: var(--color-text); }
+.todo-item[data-status='completed'] { color: var(--color-text-dim); text-decoration: line-through; text-decoration-color: var(--color-text-dim); }
+.todo-item[data-status='cancelled'] { color: var(--color-text-dim); text-decoration: line-through; }
+.todo-glyph { flex: none; display: inline-flex; width: 15px; height: 15px; align-items: center; justify-content: center; color: var(--color-text-dim); }
+.todo-item[data-status='completed'] .todo-glyph { color: var(--color-wm-green); }
+.todo-item[data-status='in_progress'] .todo-glyph { color: var(--color-claw); }
+.todo-item[data-status='cancelled'] .todo-glyph { color: var(--color-text-dim); }
+.todo-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.todo-priority { flex: none; height: 16px; padding: 0 6px; border-radius: 9999px; font-size: 10.5px; line-height: 16px; font-weight: 600; background: rgb(240 60 50 / 14%); color: #f3b3ad; }
+.todo-pulse { width: 8px; height: 8px; border-radius: 9999px; background: var(--color-claw); animation: status-pulse 1.4s ease-in-out infinite; }
+@keyframes status-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ── Running summary rows (sm-row spirit, compact) ────────────────────── */
+.status-rows { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.status-row { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 0; border-radius: 10px; background: transparent; text-align: left; cursor: pointer; }
+.status-row:hover { background: var(--color-surface-2); }
+.status-dot { flex: none; width: 7px; height: 7px; border-radius: 9999px; background: var(--color-wm-green); }
+.status-dot[data-state='idle'] { background: var(--color-amber); }
+.status-dot[data-state='hibernated'], .status-dot[data-state='closed'] { background: var(--color-text-dim); }
+.status-row-main { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.status-row-title { font-size: 13px; font-family: var(--font-mono); color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-row-sub { font-size: 11.5px; color: var(--color-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-row-more { padding: 6px 8px; font-size: 12px; color: var(--color-text-dim); justify-content: center; }
+.status-row-more:hover { color: var(--color-text-muted); }
+
+/* ── The collapsed-pane capsule (top-right of the timeline) ───────────── */
+.status-capsule { position: absolute; top: 64px; right: 14px; z-index: 12; pointer-events: auto; }
+.status-capsule-btn { display: inline-flex; align-items: center; gap: 0; max-width: min(60vw, 420px); padding: 0; border-radius: 9999px; background: var(--color-surface-2); box-shadow: 0 6px 22px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(46 40 37 / 80%); cursor: pointer; overflow: hidden; }
+.status-capsule-btn:hover { background: var(--color-surface-3); }
+.cap-seg { display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; font-size: 12px; line-height: 16px; color: var(--color-text-muted); white-space: nowrap; }
+.cap-seg + .cap-seg { border-left: 1px solid var(--color-line); }
+.cap-branch { font-family: var(--font-mono); }
+.cap-add { color: var(--color-wm-green); }
+.cap-del { color: #f3b3ad; }
+.cap-lh { color: var(--color-text); }
+.cap-lh-count { font-weight: 600; color: var(--color-claw); }
+.cap-lh[data-phase='paused'] .cap-lh-count { color: var(--color-text-dim); }
+.cap-running { color: var(--color-wm-green); }
+.cap-pulse { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-claw); animation: status-pulse 1.4s ease-in-out infinite; }
+
+html[data-shell=phone] .status-capsule { top: 60px; right: 10px; }
+html[data-shell=phone] .cap-lh-label { display: none; }

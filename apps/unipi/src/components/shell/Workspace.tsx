@@ -16,18 +16,16 @@
  */
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { MessagesSquare } from 'lucide-solid';
 import { useHostsOptional } from '../../hosts/context';
 import { backDepth } from '../../lib/back';
 import { layout, SIDE_DEFAULT, BOTTOM_DEFAULT } from '../../lib/layout';
 import { panes, type PaneScope, type PaneView } from '../../lib/panes';
 import { hubs } from '../../lib/session/hub';
 import { sessionCwd, sessionTitle, shortCwd } from '../../lib/session/selectors';
-import { relativeTimeMs } from '../chat/SessionMenus';
-import { EmptyState, NoHostState } from '../EmptyState';
-import { setAddHostOpen } from '../Pairing';
+import { Conversation } from '../conversation/Conversation';
 import { BottomPanel } from '../panes/BottomPanel';
 import { SidePane } from '../panes/SidePane';
+import { Capsule } from '../status/Capsule';
 import { ConversationHeader } from './ConversationHeader';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusStrip } from './StatusStrip';
@@ -134,12 +132,17 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
           onBack={desktop() ? undefined : () => navigate('/chat')}
           onNewChat={newChat}
         />
+        {/* §3.10: the collapsed-pane capsule — top-right of the timeline, visible while the
+            pane is closed or overlaying (a pushing pane owns the status). */}
+        <Show when={!desktop() || !sideShown() || mode() === 'overlay'}>
+          <Capsule hostId={props.hostId} sessionId={props.sessionId} cwd={cwd() || undefined} />
+        </Show>
         {/* §3.10: on the phone the strip sits under the header (≤ 4 segments); on the desktop it is the bottom row. */}
         <Show when={!desktop()}>
           <StatusStrip scope={`${props.hostId}/${props.sessionId ?? 'draft'}`} />
         </Show>
         <div class="conv-body" data-testid="conv-body">
-          {props.body ?? <ConversationPlaceholder hostId={props.hostId} sessionId={props.sessionId} />}
+          {props.body ?? <Conversation hostId={props.hostId} sessionId={props.sessionId} cwd={props.cwd} />}
         </div>
         <Show when={desktop()}>
           <StatusStrip scope={`${props.hostId}/${props.sessionId ?? 'draft'}`} />
@@ -180,28 +183,3 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
   );
 }
 
-/** Until the timeline (WP-A6) mounts here: what the card knows. */
-function ConversationPlaceholder(props: { hostId: string; sessionId?: string }) {
-  const hosts = useHostsOptional();
-  const hub = createMemo(() => hubs().ensure(props.hostId));
-  const card = () => (props.sessionId ? hub().state.cards[props.sessionId] : undefined);
-  const noHosts = () => !!hosts && !hosts.loading() && hosts.hosts().length === 0;
-  return (
-    <Show
-      when={props.sessionId}
-      fallback={
-        <Show when={!noHosts()} fallback={<NoHostState what="its sessions" onAdd={() => setAddHostOpen(true)} />}>
-          <EmptyState title="New chat" body="Start a chat in a project folder on this PC." testId="draft-empty" />
-        </Show>
-      }
-    >
-      <EmptyState
-        compact
-        icon={<MessagesSquare size={22} />}
-        title={card() ? `${card()!.message_count ?? 0} messages` : 'Loading the session…'}
-        body={card()?.updated_at ? `Last active ${relativeTimeMs(card()!.updated_at)}` : undefined}
-        testId="conv-placeholder"
-      />
-    </Show>
-  );
-}

@@ -17,6 +17,7 @@ import type { SessionHandle } from '../../lib/session/store';
 import { EntryContext, type EntryActions, type UiTarget } from '../../ui/actions';
 import { NodeView } from '../../ui/NodeView';
 import { formatDurationMs, liveSource, parseAgents, parseExtensions, parseRunningBash, parseTrayTabs, serviceCall, type AgentInfo, type TrayTab } from './modalData';
+import { liveAgentsOf, visibleTrayTabsOf } from '../../lib/status/running';
 
 /** Now, ticking once a second while the tab is mounted (durations). */
 export function useClock(): Accessor<number> {
@@ -116,9 +117,9 @@ export function RunningTab(props: { s: SessionHandle }) {
     }
   });
   const agents = () => data.latest?.agents ?? [];
-  const liveAgents = () => agents().filter((a) => a.state === 'running' || a.state === 'idle');
+  const liveAgents = () => liveAgentsOf(agents());
   const bash = () => data.latest?.bash ?? [];
-  const tabs = () => (data.latest?.tabs ?? []).filter((t) => t.visible !== false && t.counts.total > 0);
+  const tabs = () => visibleTrayTabsOf(data.latest?.tabs ?? []);
   const toBackground = () => void s().cmd({ type: '_oino/invoke_shortcut', shortcutId: 'unipi.subagents.foreground' }).catch(() => {});
   const stopAgent = (id: string) => void s().cmd({ type: '_oino/agent_abort', agentId: id }).then(() => refetch()).catch(() => {});
 
