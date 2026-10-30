@@ -39,6 +39,15 @@ Wire protocol types and framing for `unipi/oino/1` (serde mirror of
   host.md §9.3): a validated terminal id and shell, the `term_list` row
   (`term_id, cwd, shell, alive, last_activity`) and the
   `ok{data}` reply both attach ops send before the stream starts.
+- `GitTurnFilesData`, `GitTurnFile` — the Git pane's "Last turn" source
+  (`GitCmd::TurnFiles`, host.md §9.4): `status` rows restricted to the
+  files a turn touched, each with its diff.
+- `HostSettingsKey`, `HostSettingsSetRequest`, `RelaySetting`,
+  `HOST_SETTINGS_KEYS`, `SECRET_MASK` — the host settings layer
+  (`host_settings_get`/`host_settings_set`, host.md §9.9): a dotted key
+  from a closed list (plus open `browser.*`/`sharing.*`/`cron.*` leaves),
+  the `relay` value (`"n0"` or an https URL) and the mask replies use for
+  secret-looking values. The object itself is the host's `config.json`.
 - `frame` module: `FrameKind`, `FRAME_HEADER_LEN`, `MAX_FRAME`,
   `encode(kind, &[u8]) -> Result<Vec<u8>, FrameError>`, `Decoder`
   (`push`/`pop`) for incremental decoding.
