@@ -223,24 +223,27 @@ mod tests {
     use crate::questions::prepare_args;
     use serde_json::json;
 
+    /// The spans of one `Paragraph` line (`text` is `Line[]`, a line is `Span[]`).
+    fn line_text(line: &Value) -> String {
+        let mut out = String::new();
+        for line in line["text"].as_array().into_iter().flatten() {
+            for span in line.as_array().into_iter().flatten() {
+                if let Some(text) = span.as_str() {
+                    out.push_str(text);
+                } else if let Some(text) = span["content"].as_str() {
+                    out.push_str(text);
+                }
+            }
+        }
+        out
+    }
+
     fn plain(node: &Value) -> String {
         node["children"]
             .as_array()
             .into_iter()
             .flatten()
-            .map(|line| {
-                line["text"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .flat_map(|l| l.as_array().into_iter().flatten())
-                    .filter_map(|s| {
-                        s.as_str()
-                            .map(ToOwned::to_owned)
-                            .or_else(|| s["content"].as_str().map(ToOwned::to_owned))
-                    })
-                    .collect::<String>()
-            })
+            .map(line_text)
             .collect::<Vec<_>>()
             .join("\n")
     }
