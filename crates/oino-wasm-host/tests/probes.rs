@@ -28,6 +28,20 @@ fn inv(name: &str, id: &str) -> ToolInvocation {
     }
 }
 
+/// Collects the `t` tags of every node in `value`.
+fn kinds(value: &Value, out: &mut std::collections::BTreeSet<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(t) = map.get("t").and_then(Value::as_str) {
+                out.insert(t.to_owned());
+            }
+            map.values().for_each(|v| kinds(v, out));
+        }
+        Value::Array(items) => items.iter().for_each(|v| kinds(v, out)),
+        _ => {}
+    }
+}
+
 async fn loaded(h: &Harness, name: &str) -> Arc<dyn ExtensionInstance> {
     let ext = h.load(name, None).await.unwrap();
     ext.init(InitInput::default(), h.cx("s1", CallKind::Init))
@@ -106,18 +120,6 @@ async fn ui_probe_round_trips_every_request() {
         "the probe opens a node tree"
     );
     // Every node kind of §4.5 appears in an opened or updated spec.
-    fn kinds(value: &Value, out: &mut std::collections::BTreeSet<String>) {
-        match value {
-            Value::Object(map) => {
-                if let Some(t) = map.get("t").and_then(Value::as_str) {
-                    out.insert(t.to_owned());
-                }
-                map.values().for_each(|v| kinds(v, out));
-            }
-            Value::Array(items) => items.iter().for_each(|v| kinds(v, out)),
-            _ => {}
-        }
-    }
     let mut found = std::collections::BTreeSet::new();
     for call in &panels {
         kinds(&call.detail, &mut found);
@@ -161,9 +163,10 @@ async fn ui_probe_round_trips_every_request() {
         assert!(methods.contains(&method), "ui-probe never fires {method}");
     }
     assert!(
-        fires.iter().any(|c| c.detail["widgetPlacement"]
-            == json!("belowEditor")
-            && c.detail["widgetSpec"]["t"] == json!("Layout")),
+        fires
+            .iter()
+            .any(|c| c.detail["widgetPlacement"] == json!("belowEditor")
+                && c.detail["widgetSpec"]["t"] == json!("Layout")),
         "the widget slot carries a node tree"
     );
     assert_eq!(h.host.calls_named("ui_device").len(), 2);
