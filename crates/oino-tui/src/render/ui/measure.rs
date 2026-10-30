@@ -113,10 +113,24 @@ pub(crate) fn height(node: &Node, width: u16, cx: &Ctx<'_>) -> u16 {
             .unwrap_or(u16::MAX)
             .max(1)
             .saturating_add(chrome),
-        Node::List(list) => u16::try_from(list.items.len())
-            .unwrap_or(u16::MAX)
-            .max(1)
-            .saturating_add(chrome),
+        Node::List(list) => {
+            // An item is its content lines plus one muted detail line (§4.5.1).
+            let rows: u16 = list
+                .items
+                .iter()
+                .map(|item| match item {
+                    oino_ui::widgets::list::ListItem::Text(text) => {
+                        u16::try_from(text.lines().len()).unwrap_or(u16::MAX)
+                    }
+                    oino_ui::widgets::list::ListItem::Full {
+                        content, detail, ..
+                    } => u16::try_from(content.lines().len())
+                        .unwrap_or(u16::MAX)
+                        .saturating_add(u16::from(detail.is_some())),
+                })
+                .sum();
+            rows.max(1).saturating_add(chrome)
+        }
         Node::Table(table) => {
             let rows = |row: &oino_ui::widgets::table::Row| {
                 row.height.unwrap_or(1) + row.bottom_margin.unwrap_or(0)
