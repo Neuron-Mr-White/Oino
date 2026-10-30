@@ -1,0 +1,8 @@
+{
+ "scope": "session",
+ "sessionId": "s-2",
+ "rev": 3,
+ "ops": [
+  {"op": "put", "entry": {"id": "ext/widget:late", "extensionId": "ext", "scope": "session", "slot": "widget", "order": 0, "seq": 7, "view": {"kind": "lines", "lines": ["late"]}, "rev": 1}}
+ ]
+}

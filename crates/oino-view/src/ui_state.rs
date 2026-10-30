@@ -947,7 +947,7 @@ pub enum MirrorError {
 }
 
 impl MirrorError {
-    fn patch(id: &str, error: PatchError) -> Self {
+    fn patch(id: &str, error: &PatchError) -> Self {
         Self::Patch {
             id: id.to_owned(),
             message: error.to_string(),
@@ -1233,11 +1233,14 @@ impl RegistryMirror {
                 got: patch.rev,
             });
         }
-        let prepared = patch
-            .ops
-            .iter()
-            .map(|op| self.prepare(op))
-            .collect::<Result<Vec<_>, _>>()?;
+        // Ops are validated against the state the batch itself produces, so a `put`
+        // followed by `tree` / `meta` for the same entry is applicable (§9.2).
+        let mut puts: IndexMap<String, UiEntry> = IndexMap::new();
+        let mut removed: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut prepared = Vec::with_capacity(patch.ops.len());
+        for op in &patch.ops {
+            prepared.push(self.prepare(op, &mut puts, &mut removed)?);
+        }
         let mut outcome = PatchOutcome::default();
         for step in prepared {
             self.commit(step, &mut outcome);
@@ -1246,38 +1249,64 @@ impl RegistryMirror {
         Ok(outcome)
     }
 
+    /// The entry `id` holds once the ops prepared so far have committed.
+    fn batch_entry<'a>(
+        &'a self,
+        id: &str,
+        puts: &'a IndexMap<String, UiEntry>,
+        removed: &std::collections::HashSet<String>,
+    ) -> Option<&'a UiEntry> {
+        if let Some(entry) = puts.get(id) {
+            return Some(entry);
+        }
+        if removed.contains(id) {
+            return None;
+        }
+        self.entries.get(id)
+    }
+
     /// Validates and computes one op without touching the mirror (atomicity).
-    fn prepare(&self, op: &RegistryOp) -> Result<Prepared, MirrorError> {
+    fn prepare(
+        &self,
+        op: &RegistryOp,
+        puts: &mut IndexMap<String, UiEntry>,
+        removed: &mut std::collections::HashSet<String>,
+    ) -> Result<Prepared, MirrorError> {
         Ok(match op {
-            RegistryOp::Put { entry } => Prepared::Put(Box::new(entry.clone())),
-            RegistryOp::Del { id } => Prepared::Del(id.clone()),
+            RegistryOp::Put { entry } => {
+                puts.insert(entry.id.clone(), entry.clone());
+                removed.remove(&entry.id);
+                Prepared::Put(Box::new(entry.clone()))
+            }
+            RegistryOp::Del { id } => {
+                puts.shift_remove(id);
+                removed.insert(id.clone());
+                Prepared::Del(id.clone())
+            }
             RegistryOp::Meta { id, set } => {
-                if !self.entries.contains_key(id) {
+                if self.batch_entry(id, puts, removed).is_none() {
                     return Err(MirrorError::MissingEntry(id.clone()));
                 }
                 Prepared::Meta(id.clone(), set.clone())
             }
             RegistryOp::Tree { id, rev, ops } => {
-                let Some(entry) = self.entries.get(id) else {
+                let Some(entry) = self.batch_entry(id, puts, removed) else {
                     return Err(MirrorError::MissingEntry(id.clone()));
                 };
                 let UiView::Tree { root } = &entry.view else {
                     return Err(MirrorError::NotATree(id.clone()));
                 };
-                let root =
-                    apply(root, ops).map_err(|error| MirrorError::patch(id, error))?;
+                let root = apply(root, ops).map_err(|error| MirrorError::patch(id, &error))?;
                 Prepared::Tree {
                     id: id.clone(),
                     rev: *rev,
                     root: Box::new(root),
                 }
             }
-            RegistryOp::Invalidate { id, turns } => {
-                Prepared::Invalidate(TurnFooterInvalidation {
-                    entry_id: id.clone(),
-                    turns: turns.clone(),
-                })
-            }
+            RegistryOp::Invalidate { id, turns } => Prepared::Invalidate(TurnFooterInvalidation {
+                entry_id: id.clone(),
+                turns: turns.clone(),
+            }),
             RegistryOp::Dialog { request } => {
                 Prepared::Dialog(Box::new(parse_registry_dialog(request)))
             }
@@ -1496,5 +1525,498 @@ mod tests {
             ui.active_dialog().unwrap().kind,
             DialogKind::Confirm { .. }
         ));
+    }
+
+    // ── registry mirror, driven by the shared `fixtures/registry/*.json` corpus (WP-U5 /
+    //    WP-U9) ──
+
+    use oino_ui::extras::icon::Icon;
+    use oino_ui::node::Node;
+    use oino_ui::slot::{
+        EntryMetaPatch, RegistryOp, ReservedComponent, Scope, Slot, UiEntry, UiPatch, UiSnapshot,
+        UiView,
+    };
+
+    fn fixture(name: &str) -> JsonValue {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../oino-ui/fixtures/registry/",
+            "{}"
+        )
+        .replace("{}", name);
+        serde_json::from_str(
+            &std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("read {path}: {error}")),
+        )
+        .expect("registry fixture is JSON")
+    }
+
+    fn snapshot(name: &str) -> UiSnapshot {
+        serde_json::from_value(fixture(name)).expect("snapshot fixture parses")
+    }
+
+    fn patch(name: &str) -> UiPatch {
+        serde_json::from_value(fixture(name)).expect("patch fixture parses")
+    }
+
+    fn entry(id: &str, slot: Slot, seq: u64) -> UiEntry {
+        UiEntry {
+            id: id.into(),
+            extension_id: "ext".into(),
+            scope: Scope::Session,
+            slot,
+            order: 0,
+            seq,
+            title: None,
+            icon: None,
+            badge: None,
+            tone: None,
+            view: UiView::Tree {
+                root: serde_json::from_value(json!({"t": "Paragraph", "text": id}))
+                    .unwrap_or(Node::Unknown(oino_ui::node::Unknown::default())),
+            },
+            keys: Vec::new(),
+            focus: None,
+            close_on_escape: None,
+            size: None,
+            rev: 1,
+        }
+    }
+
+    fn patch_at(rev: u64, ops: Vec<RegistryOp>) -> UiPatch {
+        UiPatch {
+            scope: Scope::Session,
+            session_id: Some("s-2".into()),
+            rev,
+            ops,
+        }
+    }
+
+    fn mirrored(name: &str) -> RegistryMirror {
+        let mut mirror = RegistryMirror::new(Scope::Session);
+        mirror
+            .apply_snapshot(snapshot(name))
+            .expect("snapshot applies");
+        mirror
+    }
+
+    #[test]
+    fn snapshot_fixture_mirrors_entries_dialogs_and_meta() {
+        let mut mirror = RegistryMirror::new(Scope::Session);
+        let change = mirror
+            .apply_snapshot(snapshot("snapshot.json"))
+            .expect("snapshot applies");
+        assert_eq!(change.added.len(), 3);
+        assert!(change.changed.is_empty() && change.removed.is_empty());
+        assert_eq!(mirror.rev(), 4);
+        assert_eq!(mirror.session_id(), Some("s-1"));
+        assert_eq!(mirror.len(), 3);
+        assert!(!mirror.is_empty());
+        assert_eq!(mirror.scope(), Scope::Session);
+
+        // Slot selectors (§6.4) and the reserved fallback (§8).
+        let widget: Vec<&str> = mirror
+            .entries_for(Slot::Widget)
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect();
+        assert_eq!(widget, ["ext/widget:progress"]);
+        let board = mirror.entry("unipi.kanboard/board").expect("board entry");
+        assert_eq!(board.order, 1000);
+        assert!(matches!(
+            &board.view,
+            UiView::Reserved {
+                component: ReservedComponent::Board,
+                fallback: Some(fallback),
+                ..
+            } if matches!(**fallback, Node::List { .. })
+        ));
+
+        // Meta (§9.2 `meta`).
+        assert_eq!(mirror.meta().title.as_deref(), Some("fix: bug"));
+        assert_eq!(mirror.meta().working_message.as_deref(), Some("running"));
+        assert_eq!(mirror.meta().working_visible, Some(true));
+        assert_eq!(mirror.meta().shortcuts.len(), 1);
+
+        // The dialog queue (§3.2).
+        assert_eq!(mirror.dialogs().len(), 1);
+        assert_eq!(mirror.dialogs().position(), Some((1, 1)));
+        let active = mirror.active_dialog().expect("one open dialog");
+        assert_eq!(active.id, "1");
+        assert_eq!(active.extension_id, None);
+        assert!(matches!(
+            &active.kind,
+            DialogKind::Select { title, options } if title == "Pick" && options.len() == 2
+        ));
+
+        // Re-applying the same snapshot changes nothing (ids are matched).
+        let change = mirror
+            .apply_snapshot(snapshot("snapshot.json"))
+            .expect("snapshot applies");
+        assert!(change.added.is_empty() && change.changed.is_empty() && change.removed.is_empty());
+        assert_eq!(mirror.rev(), 4);
+    }
+
+    #[test]
+    fn patch_fixture_applies_every_op_kind() {
+        let mut mirror = mirrored("snapshot.json");
+        let fixture_patch = patch("patch.json");
+
+        // The fixture's `tree` op is a vocabulary sample: its five node ops address different
+        // node kinds (a Paragraph root, a `main` child, a Table), so no single tree satisfies
+        // them all. The mirror therefore refuses the patch whole — the resync case of §9.2.
+        assert!(matches!(
+            mirror.apply_patch(&fixture_patch),
+            Err(MirrorError::Patch { ref id, .. }) if id == "ext/panel-1"
+        ));
+        assert_eq!(mirror.rev(), 4, "a refused patch changes nothing");
+        assert!(mirror.entry("ext/panel-1").is_none());
+        assert_eq!(mirror.dialogs().len(), 1);
+
+        // Without that sample op the rest of the fixture applies op kind by op kind.
+        let mut applicable = fixture_patch.clone();
+        applicable
+            .ops
+            .retain(|op| !matches!(op, RegistryOp::Tree { .. }));
+        let outcome = mirror.apply_patch(&applicable).expect("patch applies");
+        assert_eq!(mirror.rev(), 5);
+        // put → tree → meta → del of `ext/panel-1` leaves nothing behind.
+        assert!(mirror.entry("ext/panel-1").is_none());
+        assert_eq!(mirror.entries_for(Slot::SidePane).len(), 0);
+        // One-shot effect and the turnFooter invalidation are handed to the frontend.
+        assert_eq!(
+            outcome.effects,
+            vec![UiEffect::Notify {
+                level: NotifyLevel::Info,
+                message: "done".into(),
+            }]
+        );
+        assert_eq!(
+            outcome.invalidations,
+            vec![TurnFooterInvalidation {
+                entry_id: "ext/turnFooter:files".into(),
+                turns: Some(vec!["t-9".into()]),
+            }]
+        );
+        // `sessionMeta` patches only the fields it carries.
+        assert_eq!(mirror.meta().working_visible, Some(false));
+        assert_eq!(mirror.meta().title.as_deref(), Some("fix: bug"));
+        // `dialog` then `dismiss` of "9" leaves the snapshot's dialog queued.
+        assert_eq!(mirror.dialogs().len(), 1);
+        assert_eq!(mirror.active_dialog().map(|d| d.id.as_str()), Some("1"));
+        // Unchanged entries keep their rev; the deleted one is gone.
+        assert_eq!(mirror.entry("ext/widget:progress").map(|e| e.rev), Some(1));
+    }
+
+    #[test]
+    fn ordering_fixture_sorts_slots_and_stacks() {
+        let mut mirror = mirrored("ordering.json");
+        assert_eq!(mirror.rev(), 1);
+        let side: Vec<&str> = mirror
+            .entries_for(Slot::SidePane)
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect();
+        assert_eq!(
+            side,
+            ["ext/side-z", "ext/side-x", "ext/side-y"],
+            "order desc, then seq asc (§6.4)"
+        );
+        let stack: Vec<&str> = mirror
+            .stack(Slot::Overlay)
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect();
+        assert_eq!(
+            stack,
+            ["ext/panel-a", "ext/panel-b", "ext/panel-c"],
+            "bottom → top: seq asc, a focused entry last"
+        );
+        assert_eq!(
+            mirror
+                .stack_top(Slot::Overlay)
+                .map(|entry| entry.id.as_str()),
+            Some("ext/panel-c")
+        );
+        assert!(mirror.stack_top(Slot::BottomPane).is_none());
+
+        // Two dialogs queue with a "1 of N" pager (§3.2).
+        assert_eq!(mirror.dialogs().position(), Some((1, 2)));
+        assert_eq!(
+            mirror.active_dialog().and_then(|d| d.timeout_ms),
+            Some(5_000)
+        );
+        let dismissed = mirror.dismiss_dialog("dlg-1").expect("front dialog");
+        assert_eq!(dismissed.id, "dlg-1");
+        assert_eq!(mirror.dialogs().position(), Some((1, 1)));
+        assert!(matches!(
+            mirror.active_dialog().map(|dialog| &dialog.kind),
+            Some(DialogKind::Confirm { message, .. }) if message == "really"
+        ));
+        assert!(mirror.dismiss_dialog("dlg-2").is_some());
+        assert!(mirror.dialogs().is_empty());
+        assert_eq!(mirror.dialogs().position(), None);
+        assert_eq!(mirror.active_dialog(), None);
+    }
+
+    #[test]
+    fn gap_fixture_requires_resync_and_a_snapshot_recovers() {
+        let mut mirror = mirrored("ordering.json");
+        let entries = mirror.len();
+        let gap = patch("resync-gap.json");
+        assert_eq!(gap.rev, 3);
+        assert!(mirror.needs_resync(gap.rev));
+        assert_eq!(
+            mirror.apply_patch(&gap),
+            Err(MirrorError::RevGap {
+                expected: 2,
+                got: 3,
+            })
+        );
+        assert_eq!(mirror.rev(), 1, "a refused patch changes nothing");
+        assert_eq!(mirror.len(), entries);
+        assert!(mirror.entry("ext/widget:late").is_none());
+
+        // Another session's snapshot replaces the registry (§6.6: nothing to replay).
+        let change = mirror
+            .apply_snapshot(snapshot("snapshot.json"))
+            .expect("resync snapshot applies");
+        assert_eq!(change.removed.len(), entries);
+        assert_eq!(change.added.len(), 3);
+        assert_eq!(mirror.rev(), 4);
+        assert_eq!(mirror.session_id(), Some("s-1"));
+    }
+
+    #[test]
+    fn patches_apply_atomically() {
+        let mut mirror = mirrored("ordering.json");
+        // The put is fine, the tree op is not: neither is applied.
+        let ops = vec![
+            RegistryOp::Put {
+                entry: entry("ext/panel-new", Slot::Overlay, 9),
+            },
+            RegistryOp::Tree {
+                id: "ext/missing".into(),
+                rev: 2,
+                ops: Vec::new(),
+            },
+        ];
+        assert_eq!(
+            mirror.apply_patch(&patch_at(2, ops)),
+            Err(MirrorError::MissingEntry("ext/missing".into()))
+        );
+        assert!(mirror.entry("ext/panel-new").is_none());
+        assert_eq!(mirror.rev(), 1);
+
+        // A tree op on a non-tree entry is refused too.
+        let mut with_settings = mirrored("snapshot.json");
+        let ops = vec![RegistryOp::Tree {
+            id: "ext/settings:ext".into(),
+            rev: 2,
+            ops: Vec::new(),
+        }];
+        assert_eq!(
+            with_settings.apply_patch(&patch_at(5, ops)),
+            Err(MirrorError::NotATree("ext/settings:ext".into()))
+        );
+        // A malformed node op is refused with its diagnostic.
+        let ops = vec![RegistryOp::Tree {
+            id: "ext/widget:progress".into(),
+            rev: 2,
+            ops: vec![oino_ui::patch::NodeOp::Splice {
+                path: Vec::new(),
+                field: oino_ui::patch::PatchField::Children,
+                index: 0,
+                remove: 1,
+                insert: Vec::new(),
+            }],
+        }];
+        let error = with_settings
+            .apply_patch(&patch_at(5, ops))
+            .expect_err("Gauge has no children");
+        assert!(matches!(
+            error,
+            MirrorError::Patch { id, .. } if id == "ext/widget:progress"
+        ));
+        assert_eq!(with_settings.rev(), 4);
+    }
+
+    #[test]
+    fn tree_ops_reach_the_entry_root() {
+        let mut mirror = mirrored("ordering.json");
+        let list: Node =
+            serde_json::from_value(json!({"t": "List", "items": []})).expect("List parses");
+        mirror
+            .apply_patch(&patch_at(
+                2,
+                vec![RegistryOp::Tree {
+                    id: "ext/panel-a".into(),
+                    rev: 2,
+                    ops: vec![oino_ui::patch::NodeOp::Replace {
+                        path: Vec::new(),
+                        node: list,
+                    }],
+                }],
+            ))
+            .expect("root replace applies");
+        mirror
+            .apply_patch(&patch_at(
+                3,
+                vec![RegistryOp::Tree {
+                    id: "ext/panel-a".into(),
+                    rev: 3,
+                    ops: vec![oino_ui::patch::NodeOp::Append {
+                        path: Vec::new(),
+                        field: oino_ui::patch::PatchField::Items,
+                        items: vec![oino_ui::patch::PatchItem::Item(
+                            json!({"key": "b", "content": "B"}),
+                        )],
+                    }],
+                }],
+            ))
+            .expect("append applies");
+        let entry = mirror.entry("ext/panel-a").expect("entry");
+        assert_eq!(entry.rev, 3, "tree ops carry the entry rev");
+        let UiView::Tree { root } = &entry.view else {
+            panic!("the entry keeps a tree view");
+        };
+        let value = serde_json::to_value(root).unwrap_or_default();
+        assert_eq!(value["items"][0]["key"], "b");
+    }
+
+    #[test]
+    fn scope_duplicates_and_meta_ops() {
+        let mut mirror = RegistryMirror::new(Scope::Host);
+        let session = patch_at(1, Vec::new());
+        assert_eq!(
+            mirror.apply_patch(&session),
+            Err(MirrorError::Scope {
+                expected: Scope::Host,
+                got: Scope::Session,
+            })
+        );
+        let snapshot = snapshot("snapshot.json");
+        assert!(matches!(
+            mirror.apply_snapshot(snapshot),
+            Err(MirrorError::Scope {
+                expected: Scope::Host,
+                got: Scope::Session
+            })
+        ));
+
+        // A repeated patch is a revision gap (never applied twice).
+        let mut mirror = mirrored("ordering.json");
+        let mut ops = vec![RegistryOp::Put {
+            entry: entry("ext/panel-new", Slot::Overlay, 9),
+        }];
+        ops.push(RegistryOp::Meta {
+            id: "ext/panel-new".into(),
+            set: EntryMetaPatch {
+                title: Some("Renamed".into()),
+                icon: Some(Icon::Gear),
+                order: Some(3),
+                focus: Some(true),
+                ..EntryMetaPatch::default()
+            },
+        });
+        ops.push(RegistryOp::Meta {
+            id: "ext/panel-c".into(),
+            set: EntryMetaPatch {
+                badge: Some("3".into()),
+                ..EntryMetaPatch::default()
+            },
+        });
+        mirror
+            .apply_patch(&patch_at(2, ops.clone()))
+            .expect("meta patch applies");
+        let new = mirror.entry("ext/panel-new").expect("put applied");
+        assert_eq!(new.title.as_deref(), Some("Renamed"));
+        assert_eq!(new.icon, Some(Icon::Gear));
+        assert_eq!(new.order, 3);
+        assert_eq!(new.focus, Some(true));
+        assert_eq!(
+            new.rev, 2,
+            "`meta` has no rev on the wire; the mirror bumps it"
+        );
+        let focused = mirror.entry("ext/panel-c").expect("entry");
+        assert_eq!(
+            focused
+                .badge
+                .as_ref()
+                .and_then(|badge| serde_json::to_value(badge).ok()),
+            Some(json!("3"))
+        );
+        assert_eq!(
+            mirror
+                .stack_top(Slot::Overlay)
+                .map(|entry| entry.id.as_str()),
+            Some("ext/panel-new")
+        );
+        assert_eq!(
+            mirror.apply_patch(&patch_at(2, ops)),
+            Err(MirrorError::RevGap {
+                expected: 3,
+                got: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn dialogs_effects_and_entry_reconciliation() {
+        let mut mirror = mirrored("ordering.json");
+        // Unknown effects and retained methods carry nothing for the frontend.
+        let ops = vec![
+            RegistryOp::Effect {
+                request: oino_ui::slot::UiRequest {
+                    id: "e1".into(),
+                    fields: serde_json::from_value(
+                        json!({"method": "openUrl", "url": "https://oino.dev"}),
+                    )
+                    .unwrap_or_default(),
+                },
+            },
+            RegistryOp::Effect {
+                request: oino_ui::slot::UiRequest {
+                    id: "e2".into(),
+                    fields: serde_json::from_value(
+                        json!({"method": "setStatus", "statusKey": "k"}),
+                    )
+                    .unwrap_or_default(),
+                },
+            },
+            // A dialog op twice queues once (first answer wins, §3).
+            RegistryOp::Dialog {
+                request: oino_ui::slot::UiRequest {
+                    id: "dlg-1".into(),
+                    fields: serde_json::from_value(json!({"method": "input", "title": "Name"}))
+                        .unwrap_or_default(),
+                },
+            },
+        ];
+        let outcome = mirror
+            .apply_patch(&patch_at(2, ops))
+            .expect("patch applies");
+        assert_eq!(
+            outcome.effects,
+            vec![UiEffect::OpenUrl("https://oino.dev".into())]
+        );
+        assert_eq!(mirror.dialogs().len(), 2, "dlg-1 was already queued");
+
+        // Snapshot reconciliation: `changed` for a fresh rev, `removed` for a dropped entry.
+        let mut snapshot = snapshot("ordering.json");
+        snapshot.rev = 9;
+        snapshot.entries.retain(|entry| entry.id != "ext/side-y");
+        let changed = snapshot.entries.get_mut(0).expect("entry");
+        changed.rev = 2;
+        changed.title = Some("A2".into());
+        let change = mirror.apply_snapshot(snapshot).expect("snapshot applies");
+        assert_eq!(change.removed, ["ext/side-y"]);
+        assert_eq!(change.changed, ["ext/panel-a"]);
+        assert_eq!(change.added.len(), 0);
+        assert_eq!(mirror.rev(), 9);
+        assert_eq!(
+            mirror.entry("ext/panel-a").and_then(|e| e.title.clone()),
+            Some("A2".into())
+        );
+        assert_eq!(mirror.dialogs().len(), 2, "snapshot dialogs are re-queued");
     }
 }
