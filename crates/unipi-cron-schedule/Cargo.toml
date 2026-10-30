@@ -1,0 +1,25 @@
+[package]
+name = "unipi-cron-schedule"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The cron schedule parser shared by the unipi-cron scheduler, the unipi-host cron CLI and the unipi.cron extension (6-field cron, at:, plain language, tz/DST; no I/O, wasm32-wasip2-safe)"
+
+[lib]
+name = "unipi_cron_schedule"
+path = "src/lib.rs"
+
+[dependencies]
+chrono.workspace = true
+chrono-tz.workspace = true
+croner.workspace = true
+iana-time-zone.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
