@@ -1,0 +1,12 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.fixture.hibernate-probe",
+  "name": "Hibernate probe fixture",
+  "version": "1.0.0",
+  "kind": "extension",
+  "description": "Records every session_shutdown reason as a session entry, so tests can observe subagent hibernation (E-HIBERNATE).",
+  "license": "MIT",
+  "permissions": {
+    "sessionControl": true
+  }
+}

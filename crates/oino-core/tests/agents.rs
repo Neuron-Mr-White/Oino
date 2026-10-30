@@ -127,9 +127,18 @@ async fn child_agent_runs_streams_and_records_usage() {
         .spawn_agent("probe", &cx(&parent, CallKind::Tool), spec)
         .await
         .unwrap();
-    assert!(child.session().is_child());
-    assert_eq!(child.session().active_tool_names(), vec!["read"]);
-    assert!(child.session().system_prompt().contains("CHILD-ONLY"));
+    assert!(child.session().expect("awake").is_child());
+    assert_eq!(
+        child.session().expect("awake").active_tool_names(),
+        vec!["read"]
+    );
+    assert!(
+        child
+            .session()
+            .expect("awake")
+            .system_prompt()
+            .contains("CHILD-ONLY")
+    );
     assert!(!parent.system_prompt().contains("CHILD-ONLY"));
     let mut events = child.events();
     assert_eq!(child.prompt("go".into(), None).await.unwrap(), "started");
@@ -201,19 +210,21 @@ async fn spawn_limits_depth_and_concurrency() {
     let a = spawn(&parent, json!({"label": "a", "maxDepth": 1}))
         .await
         .unwrap();
-    let nested = spawn(a.session(), json!({"label": "a1"})).await;
+    let nested = spawn(a.session().as_ref().expect("awake"), json!({"label": "a1"})).await;
     assert!(
         matches!(&nested, Err(HostError::Failed(m)) if m.contains("depth")),
         "{nested:?}"
     );
     let b = spawn(&parent, json!({"label": "b"})).await.unwrap();
-    let b1 = spawn(b.session(), json!({"label": "b1"})).await;
+    let b1 = spawn(b.session().as_ref().expect("awake"), json!({"label": "b1"})).await;
     assert!(
         matches!(&b1, Err(HostError::Failed(m)) if m.contains("Too many")),
         "{b1:?}"
     );
     a.close(Duration::ZERO).await;
-    let b1 = spawn(b.session(), json!({"label": "b1"})).await.unwrap();
+    let b1 = spawn(b.session().as_ref().expect("awake"), json!({"label": "b1"}))
+        .await
+        .unwrap();
     // Closing a parent closes its children.
     b.close(Duration::ZERO).await;
     assert!(b1.is_closed());
@@ -355,8 +366,14 @@ async fn child_dialogs_follow_the_ui_policy() {
         )
         .await
         .unwrap();
-    assert!(deny.session().runner().call_context().has_ui);
-    let (c, op) = approval(deny.session());
+    assert!(
+        deny.session()
+            .expect("awake")
+            .runner()
+            .call_context()
+            .has_ui
+    );
+    let (c, op) = approval(&deny.session().expect("awake"));
     let answer = services.host.call("x", &c, op).await.unwrap();
     assert_eq!(
         answer,
@@ -367,8 +384,15 @@ async fn child_dialogs_follow_the_ui_policy() {
         .spawn_agent("x", &cx(&parent, CallKind::Tool), json!({"label": "s"}))
         .await
         .unwrap();
-    assert!(!silent.session().runner().call_context().has_ui);
-    let (c, op) = approval(silent.session());
+    assert!(
+        !silent
+            .session()
+            .expect("awake")
+            .runner()
+            .call_context()
+            .has_ui
+    );
+    let (c, op) = approval(&silent.session().expect("awake"));
     assert_eq!(
         services.host.call("x", &c, op).await.unwrap(),
         json!({"cancelled": true})
@@ -384,7 +408,7 @@ async fn child_dialogs_follow_the_ui_policy() {
         .await
         .unwrap();
     let mut parent_events = parent.subscribe();
-    let (c, op) = approval(forward.session());
+    let (c, op) = approval(&forward.session().expect("awake"));
     let host = Arc::clone(&services.host);
     let pending = tokio::spawn(async move { host.call("x", &c, op).await });
     let request = loop {

@@ -49,6 +49,7 @@ pub fn build_fixtures() -> Result<(), String> {
                     "fixture-async-probe",
                     "fixture-agent-probe",
                     "fixture-panic-probe",
+                    "fixture-hibernate-probe",
                 ],
                 &["fixture-provider-faux"],
             ];
@@ -82,7 +83,7 @@ pub fn build_fixtures() -> Result<(), String> {
         .clone()
 }
 
-/// Path of a built fixture component (`echo`, `ui-probe`, `async-probe`, `agent-probe`, `panic-probe`, `provider-faux`).
+/// Path of a built fixture component (`echo`, `ui-probe`, `async-probe`, `agent-probe`, `panic-probe`, `hibernate-probe`, `provider-faux`).
 #[must_use]
 pub fn fixture_wasm(name: &str) -> PathBuf {
     repo_root()

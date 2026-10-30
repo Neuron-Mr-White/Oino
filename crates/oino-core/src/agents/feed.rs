@@ -23,6 +23,9 @@ pub enum AgentRunState {
     Running,
     /// Waiting for input.
     Idle,
+    /// Hibernated (E-HIBERNATE): the live session was disposed; the next handle
+    /// operation rebuilds it from the session file.
+    Hibernated,
     /// Closed (final).
     Closed,
 }
@@ -74,7 +77,9 @@ impl ChildAgent {
     pub fn run_state(&self) -> AgentRunState {
         if self.is_closed() {
             AgentRunState::Closed
-        } else if self.session().is_idle() {
+        } else if self.is_hibernated() {
+            AgentRunState::Hibernated
+        } else if self.session().is_some_and(|session| session.is_idle()) {
             AgentRunState::Idle
         } else {
             AgentRunState::Running
@@ -82,15 +87,14 @@ impl ChildAgent {
     }
 
     fn info(&self, parent_id: Option<&str>) -> AgentInfo {
-        let inner = &self.session().inner;
         AgentInfo {
             id: self.id().to_owned(),
             parent_id: parent_id.map(str::to_owned),
             label: self.label().to_owned(),
             owner: self.owner().to_owned(),
-            role: inner.agents.link.as_ref().and_then(|l| l.role.clone()),
+            role: self.role().map(str::to_owned),
             state: self.run_state(),
-            depth: inner.agents.depth,
+            depth: self.depth(),
             session_file: self.session_file().map(|p| p.display().to_string()),
         }
     }
@@ -99,7 +103,11 @@ impl ChildAgent {
 fn collect(session: &AgentSession, parent_id: Option<&str>, out: &mut Vec<AgentInfo>) {
     for child in session.child_agents() {
         out.push(child.info(parent_id));
-        collect(child.session(), Some(child.id()), out);
+        // A hibernated child has no live session — and no open children (its session's
+        // `dispose` closed them at hibernation).
+        if let Some(live) = child.session() {
+            collect(&live, Some(child.id()), out);
+        }
     }
 }
 
@@ -119,7 +127,9 @@ impl AgentSession {
             if child.id() == id {
                 return Some(child);
             }
-            if let Some(found) = child.session().find_agent(id) {
+            if let Some(live) = child.session()
+                && let Some(found) = live.find_agent(id)
+            {
                 return Some(found);
             }
         }

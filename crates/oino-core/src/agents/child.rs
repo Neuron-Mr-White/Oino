@@ -1,24 +1,26 @@
 //! Spawning and driving one nested agent session.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-use std::time::Duration;
+use std::task::{Context as PollContext, Poll};
+use std::time::{Duration, Instant};
 
-use futures::StreamExt;
-use futures::stream::BoxStream;
+use futures::stream::{BoxStream, empty, once};
+use futures::{Stream, StreamExt};
 use oino_ai::{AgentMessage, JsonValue, Model, ThinkingLevel};
 use oino_session::{CreateOptions, SessionLease, SessionManager};
 use serde_json::json;
 use tokio::task::JoinHandle;
 
 use super::spec::{
-    AgentSpec, CLOSE_GRACE_CAP, DEFAULT_MAX_CONCURRENT, DEFAULT_MAX_DEPTH, ExtensionPolicy,
-    HARD_MAX_CONCURRENT, HARD_MAX_DEPTH, Persistence, Seed,
+    AgentSpec, CLOSE_GRACE_CAP, DEFAULT_HIBERNATE_AFTER_SEC, DEFAULT_MAX_CONCURRENT,
+    DEFAULT_MAX_DEPTH, ExtensionPolicy, HARD_MAX_CONCURRENT, HARD_MAX_DEPTH, Persistence, Seed,
 };
 use super::{ChildConfig, ChildLink, Tree};
 use crate::builtin::{SessionToolContext, builtin_tool_entries};
-use crate::events::{AgentSessionEvent, ClientEvent, OinoEvent};
+use crate::events::{AgentSessionEvent, ClientEvent, OinoEvent, RunState};
 use crate::extensions::api::CallContext;
 use crate::extensions::host::HostError;
 use crate::extensions::runner::ExtensionSet;
@@ -29,24 +31,60 @@ use crate::session::{
 };
 use oino_session::LeaseInfo;
 
+/// How often the hibernation watcher re-examines an idle child (E-HIBERNATE).
+const HIBERNATE_POLL: Duration = Duration::from_millis(500);
+
 fn failed(error: impl std::fmt::Display) -> HostError {
     HostError::Failed(error.to_string())
 }
 
 /// A nested agent session owned by an extension (`agents.agent`).
+///
+/// A file-persisted child that stays idle hibernates (E-HIBERNATE): the live
+/// [`AgentSession`] is disposed and this shell keeps `{id, label, owner, session_file,
+/// spec}` plus the file lease; the next handle operation rebuilds the session from the
+/// file (cold resume + D-REPAIR) with the same session id.
 pub struct ChildAgent {
     id: String,
     label: String,
     owner: String,
-    session: AgentSession,
+    /// The live child session (`None` while hibernated).
+    session: Mutex<Option<AgentSession>>,
     parent: Weak<Inner>,
     tree: Arc<Tree>,
     closed: AtomicBool,
     forward: Mutex<Option<JoinHandle<()>>>,
     /// Single-writer lease of the child's session file (D-LOCK); children hold their own.
+    /// Hibernation keeps it: the shell owns the file until it closes.
     lease: Mutex<Option<SessionLease>>,
     /// Bumped whenever `lease` changes; a stale takeover watcher exits on a mismatch.
     lease_epoch: AtomicU64,
+    /// Serializes hibernation and wake against handle operations; a tokio mutex because
+    /// it is held across awaits.
+    gate: tokio::sync::Mutex<()>,
+    /// The spawn spec, stored for the wake rebuild (E-HIBERNATE).
+    spec: AgentSpec,
+    /// Model resolved at spawn; reused on every wake so the child keeps its model.
+    model: Model,
+    /// Thinking level; updated by `set_thinking` so a wake restores the latest level.
+    thinking: Mutex<ThinkingLevel>,
+    /// Working directory resolved at spawn.
+    cwd: PathBuf,
+    /// Nesting depth (feed cache while hibernated).
+    depth: u8,
+    /// Child role visible to extensions (feed cache while hibernated).
+    role: Option<String>,
+    /// The child session file (`None` for memory-persisted children).
+    file: Option<PathBuf>,
+    /// Last-known usage JSON and assistant text, cached at hibernation.
+    last_usage: Mutex<Option<JsonValue>>,
+    last_text: Mutex<Option<String>>,
+    /// Live `events()` subscriptions; while any exists the child must not hibernate.
+    events_clients: Arc<AtomicUsize>,
+    /// When the hibernation preconditions first held (watcher bookkeeping).
+    idle_since: Mutex<Option<Instant>>,
+    /// Weak self reference for spawning per-child tasks (`Arc::new` + immediate set).
+    watch_self: std::sync::OnceLock<Weak<ChildAgent>>,
 }
 
 impl std::fmt::Debug for ChildAgent {
@@ -56,6 +94,32 @@ impl std::fmt::Debug for ChildAgent {
             .field("label", &self.label)
             .finish_non_exhaustive()
     }
+}
+
+/// Decrements the `events()` client count when the stream is dropped (E-HIBERNATE guard).
+struct EventsGuard(Arc<AtomicUsize>);
+
+impl Drop for EventsGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// An `events()` stream that keeps the child awake while it lives.
+struct CountedEvents {
+    inner: BoxStream<'static, JsonValue>,
+    _live: EventsGuard,
+}
+
+impl Stream for CountedEvents {
+    type Item = JsonValue;
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut PollContext<'_>) -> Poll<Option<Self::Item>> {
+        self.inner.as_mut().poll_next(cx)
+    }
+}
+
+fn event_json(event: impl serde::Serialize) -> JsonValue {
+    serde_json::to_value(&event).unwrap_or(JsonValue::Null)
 }
 
 impl ChildAgent {
@@ -77,22 +141,34 @@ impl ChildAgent {
         &self.owner
     }
 
-    /// The child session (transcript, entries, stats).
+    /// The live child session (`None` while hibernated — E-HIBERNATE; the transcript
+    /// lives in the session file and returns on wake). Cheap clone (`Arc` inside).
     #[must_use]
-    pub fn session(&self) -> &AgentSession {
-        &self.session
+    pub fn session(&self) -> Option<AgentSession> {
+        lock(&self.session).clone()
     }
 
-    /// The child's transcript.
+    /// Clones the live child session out of the shell, if awake.
+    fn session_slot(&self) -> Option<AgentSession> {
+        lock(&self.session).clone()
+    }
+
+    /// The child's transcript (empty while hibernated; the next waking handle
+    /// operation rebuilds it, or read the session file directly).
     #[must_use]
     pub fn messages(&self) -> Vec<AgentMessage> {
-        self.session.messages()
+        self.session_slot()
+            .map(|session| session.messages())
+            .unwrap_or_default()
     }
 
-    /// Child session file (`None` in memory).
+    /// Child session file (`None` in memory; stable across hibernation).
     #[must_use]
     pub fn session_file(&self) -> Option<PathBuf> {
-        self.session.session_file()
+        match self.session_slot() {
+            Some(session) => session.session_file(),
+            None => self.file.clone(),
+        }
     }
 
     /// Whether [`ChildAgent::close`] ran.
@@ -101,16 +177,35 @@ impl ChildAgent {
         self.closed.load(Ordering::SeqCst)
     }
 
-    /// `running`, `idle` or `closed`.
+    /// Whether the child hibernated (E-HIBERNATE): the live session was disposed and the
+    /// next handle operation rebuilds it from the session file.
+    #[must_use]
+    pub fn is_hibernated(&self) -> bool {
+        !self.is_closed() && self.session_slot().is_none()
+    }
+
+    /// `running`, `idle`, `hibernated` or `closed`.
     #[must_use]
     pub fn state(&self) -> &'static str {
         if self.is_closed() {
             "closed"
-        } else if self.session.is_idle() {
-            "idle"
+        } else if let Some(session) = self.session_slot() {
+            if session.is_idle() { "idle" } else { "running" }
         } else {
-            "running"
+            "hibernated"
         }
+    }
+
+    /// Nesting depth of the child.
+    #[must_use]
+    pub(crate) fn depth(&self) -> u8 {
+        self.depth
+    }
+
+    /// Role visible to extensions (`AgentSpec.childRole`, else the owner).
+    #[must_use]
+    pub(crate) fn role(&self) -> Option<&str> {
+        self.role.as_deref()
     }
 
     fn ensure_open(&self) -> Result<(), HostError> {
@@ -121,12 +216,168 @@ impl ChildAgent {
         }
     }
 
+    /// The live session, waking the child if it hibernated (E-HIBERNATE). Callers that
+    /// hold `gate` get the no-lock variant.
+    async fn session_or_wake(&self) -> Result<AgentSession, HostError> {
+        let _gate = self.gate.lock().await;
+        self.session_or_wake_locked().await
+    }
+
+    /// [`Self::session_or_wake`] for callers already holding `gate`.
+    async fn session_or_wake_locked(&self) -> Result<AgentSession, HostError> {
+        if let Some(session) = self.session_slot() {
+            return Ok(session);
+        }
+        self.wake_locked().await
+    }
+
+    /// Rebuilds the hibernated session (E-HIBERNATE): exactly the `spawn_agent` build
+    /// with `Seed::SessionFile(child_file)` plus D-REPAIR, reusing the lease the shell
+    /// never dropped. The session id — hence the agent id — is stable.
+    async fn wake_locked(&self) -> Result<AgentSession, HostError> {
+        if self.is_closed() {
+            return Err(HostError::Failed(format!("Agent {} is closed", self.id)));
+        }
+        let Some(parent_inner) = self.parent.upgrade() else {
+            return Err(HostError::Failed(format!(
+                "Agent {} cannot wake: its parent session is gone",
+                self.id
+            )));
+        };
+        let parent = AgentSession::from_inner(parent_inner);
+        let Some(file) = self.file.clone() else {
+            return Err(HostError::Failed(format!(
+                "Agent {} has no session file to wake from",
+                self.id
+            )));
+        };
+        let mut spec = self.spec.clone();
+        spec.seed = Seed::SessionFile(file);
+        let thinking = *lock(&self.thinking);
+        let built = parent
+            .build_child(
+                &self.owner,
+                &spec,
+                self.model.clone(),
+                thinking,
+                self.cwd.as_path(),
+                self.depth,
+                ChildOpen::Wake,
+            )
+            .await;
+        let (session, _lease_replaced_none, _file) = match built {
+            Ok(built) => built,
+            Err(error) => {
+                tracing::warn!(session = %self.id, "subagent wake failed: {error}");
+                return Err(error);
+            }
+        };
+        if session.session_id() != self.id {
+            return Err(HostError::Failed(format!(
+                "Agent {} woke to a different session ({})",
+                self.id,
+                session.session_id()
+            )));
+        }
+        if self.is_closed() {
+            // `close` raced the rebuild: do not install a session into a closed shell.
+            session.dispose().await;
+            return Err(HostError::Failed(format!("Agent {} is closed", self.id)));
+        }
+        if let Some(router) = parent.inner.agents.router() {
+            router.attach(&session);
+        }
+        session.bind_extensions("resume", None).await;
+        let forward = parent.spawn_isolated(
+            IsolatedTask::ChildEvents,
+            forward_child_events(
+                session.subscribe(),
+                Arc::downgrade(&parent.inner),
+                session.inner.agents.link.clone(),
+                self.owner.clone(),
+                session.session_id(),
+                parent.runner().call_context().clone(),
+            ),
+        );
+        *lock(&self.forward) = Some(forward);
+        *lock(&self.session) = Some(session.clone());
+        *lock(&self.idle_since) = None;
+        if let Some(me) = self.watch_self.get().and_then(Weak::upgrade) {
+            tokio::spawn(hibernate_watcher(Arc::downgrade(&me)));
+        }
+        tracing::info!(session = %self.id, "subagent woke from hibernation (E-HIBERNATE)");
+        parent.publish_agents_changed();
+        Ok(session)
+    }
+
+    /// Hibernates the child (E-HIBERNATE): emits `session_shutdown{hibernate}` to its
+    /// extensions, makes the session log durable, disposes the live session (transcript
+    /// projection, subscriptions, forward task) and keeps the shell with
+    /// `state() == "hibernated"`. Called by [`hibernate_watcher`] after the idle window.
+    async fn hibernate(&self) {
+        let _gate = self.gate.lock().await;
+        if self.is_closed() {
+            return;
+        }
+        let Some(session) = lock(&self.session).take() else {
+            return; // already hibernated
+        };
+        if !Self::hibernatable(&session, &self.events_clients) {
+            *lock(&self.session) = Some(session);
+            return;
+        }
+        // Serve read-only handle operations from the shell while hibernated.
+        *lock(&self.last_usage) = Some(event_json(session.session_stats()));
+        *lock(&self.last_text) = session.last_assistant_text();
+        let runner = session.runner();
+        if runner.has_handlers("session_shutdown") {
+            runner
+                .emit(json!({"type": "session_shutdown", "reason": "hibernate"}))
+                .await;
+        }
+        // Wake resumes from this very file: make every appended line durable first
+        // (best-effort — the lines are already in the page cache, fsync only guards a
+        // machine crash while the child sleeps).
+        if let Err(error) = session.with_manager(SessionManager::sync) {
+            tracing::warn!(session = %self.id, "hibernate fsync failed: {error}");
+        }
+        if let Some(router) = session.inner.agents.router() {
+            router.detach(&self.id);
+        }
+        session.dispose().await;
+        session.hub().close();
+        if let Some(task) = lock(&self.forward).take() {
+            task.abort();
+        }
+        *lock(&self.idle_since) = None;
+        tracing::info!(session = %self.id, "subagent hibernated (E-HIBERNATE)");
+        if let Some(parent) = self.parent.upgrade() {
+            AgentSession::from_inner(parent).publish_agents_changed();
+        }
+    }
+
+    /// Whether `session` may hibernate now (E-HIBERNATE preconditions): file-persisted,
+    /// no run, compaction, retry, wait or `!` command, no open dialog and no live
+    /// `events()` subscriber.
+    fn hibernatable(session: &AgentSession, events_clients: &AtomicUsize) -> bool {
+        session.session_file().is_some()
+            && session.run_state() == RunState::Idle
+            && !session.is_bash_running()
+            && !session
+                .ui()
+                .snapshot()
+                .iter()
+                .any(|request| crate::ui::is_dialog(&request.method))
+            && events_clients.load(Ordering::SeqCst) == 0
+    }
+
     /// Prompts the child; while it runs the text is queued (`steer`, else follow-up).
-    /// Returns the disposition (`started`, `queued`, `handled`).
+    /// Wakes a hibernated child first (E-HIBERNATE). Returns the disposition
+    /// (`started`, `queued`, `handled`).
     ///
     /// # Errors
     ///
-    /// Closed agent and pi prompt errors (no model, no API key, …).
+    /// Closed agent, wake failures (session file, repair) and pi prompt errors.
     pub async fn prompt(&self, text: String, delivery: Option<&str>) -> Result<String, HostError> {
         self.ensure_open()?;
         let behavior = if delivery == Some("steer") {
@@ -134,8 +385,9 @@ impl ChildAgent {
         } else {
             StreamingBehavior::FollowUp
         };
-        let disposition = self
-            .session
+        let _gate = self.gate.lock().await;
+        let session = self.session_or_wake_locked().await?;
+        let disposition = session
             .prompt(
                 text,
                 PromptOptions {
@@ -172,13 +424,16 @@ impl ChildAgent {
         self.prompt(text, Some("followUp")).await.map(|_| ())
     }
 
-    /// Aborts the current run (returns at once).
+    /// Aborts the current run (returns at once). A hibernated child is idle by
+    /// definition, so this is a no-op there.
     pub fn abort(&self) {
-        let session = self.session.clone();
-        tokio::spawn(async move { session.abort().await });
+        if let Some(session) = self.session_slot() {
+            tokio::spawn(async move { session.abort().await });
+        }
     }
 
-    /// Sets the thinking level; returns the level clamped to the child's model.
+    /// Sets the thinking level; returns the level clamped to the child's model. On a
+    /// hibernated child the level is stored and applied at wake.
     ///
     /// # Errors
     ///
@@ -187,48 +442,83 @@ impl ChildAgent {
         let level: ThinkingLevel = level
             .parse()
             .map_err(|_| HostError::Invalid(format!("thinking level `{level}`")))?;
-        let clamped = level.clamp(&self.session.available_thinking_levels());
-        let session = self.session.clone();
-        tokio::spawn(async move {
-            session.set_thinking_level(clamped, false).await;
-        });
-        Ok(clamped.to_string())
+        if let Some(session) = self.session_slot() {
+            let clamped = level.clamp(&session.available_thinking_levels());
+            *lock(&self.thinking) = clamped;
+            tokio::spawn(async move {
+                session.set_thinking_level(clamped, false).await;
+            });
+            Ok(clamped.to_string())
+        } else {
+            // Hibernated: clamp against the spawn model and store the level; the wake
+            // build records it (`thinkingLevelChange`) and arms the woken session with it.
+            let clamped = level.clamp(&self.model.available_thinking_levels());
+            *lock(&self.thinking) = clamped;
+            Ok(clamped.to_string())
+        }
     }
 
-    /// Text of the child's last assistant message.
+    /// Text of the child's last assistant message (last-known while hibernated).
     #[must_use]
     pub fn last_assistant_text(&self) -> Option<String> {
-        self.session.last_assistant_text()
-    }
-
-    /// Resolves once the child is idle (immediately when closed).
-    pub async fn wait_idle(&self) {
-        if !self.is_closed() {
-            self.session.wait_for_idle().await;
+        match self.session_slot() {
+            Some(session) => session.last_assistant_text(),
+            None => lock(&self.last_text).clone(),
         }
     }
 
-    /// The child's `SessionStats` JSON.
+    /// Resolves once the child is idle (immediately when closed or hibernated).
+    pub async fn wait_idle(&self) {
+        if let Some(session) = self.session_slot() {
+            session.wait_for_idle().await;
+        }
+    }
+
+    /// The child's `SessionStats` JSON (the shell's last-known stats while hibernated;
+    /// child usage entries are mirrored into the parent at every `MessageEnd` anyway).
     #[must_use]
     pub fn usage(&self) -> JsonValue {
-        serde_json::to_value(self.session.session_stats()).unwrap_or(JsonValue::Null)
+        match self.session_slot() {
+            Some(session) => event_json(session.session_stats()),
+            None => lock(&self.last_usage).clone().unwrap_or(JsonValue::Null),
+        }
     }
 
-    /// Child client events (pi `AgentSessionEvent` JSON and friends) from now until close.
+    /// Child client events (pi `AgentSessionEvent` JSON and friends) from now until
+    /// close. A live subscription keeps the child awake (E-HIBERNATE); on a hibernated
+    /// child the first poll wakes it.
     pub fn events(&self) -> BoxStream<'static, JsonValue> {
         if self.is_closed() {
-            return Box::pin(futures::stream::empty());
+            return Box::pin(empty());
         }
-        Box::pin(
-            self.session
-                .subscribe()
-                .map(|event| serde_json::to_value(&event).unwrap_or(JsonValue::Null)),
-        )
+        let count = Arc::clone(&self.events_clients);
+        count.fetch_add(1, Ordering::SeqCst);
+        let me = self.watch_self.get().cloned();
+        let inner: BoxStream<'static, JsonValue> = match self.session_slot() {
+            Some(session) => Box::pin(session.subscribe().map(event_json)),
+            None => Box::pin(
+                once(async move {
+                    let Some(me) = me.as_ref().and_then(Weak::upgrade) else {
+                        return empty::<JsonValue>().boxed();
+                    };
+                    match me.session_or_wake().await {
+                        Ok(session) => session.subscribe().map(event_json).boxed(),
+                        Err(_) => empty::<JsonValue>().boxed(),
+                    }
+                })
+                .flatten(),
+            ),
+        };
+        Box::pin(CountedEvents {
+            inner,
+            _live: EventsGuard(count),
+        })
     }
 
     /// Closes the agent: waits up to `grace` (≤ 5 s) for idle, aborts, emits
-    /// `session_shutdown{reason:"quit"}` to the child's extensions, disposes the session and
-    /// ends its event streams. Idempotent.
+    /// `session_shutdown{reason:"quit"}` to the child's extensions, disposes the session
+    /// and ends its event streams. Idempotent; a hibernated shell closes without
+    /// rebuilding its session.
     pub async fn close(&self, grace: Duration) {
         self.close_with_reason(grace, "quit").await;
     }
@@ -239,25 +529,37 @@ impl ChildAgent {
         if self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
+        // Serialize against hibernate/wake so a rebuild can never install a session into
+        // a closed shell (and a close never disposes a session another path owns).
+        let _gate = self.gate.lock().await;
         let grace = grace.min(CLOSE_GRACE_CAP);
-        if !self.session.is_idle()
-            && tokio::time::timeout(grace, self.session.wait_for_idle())
-                .await
-                .is_err()
-        {
-            self.session.abort().await;
+        let live = lock(&self.session).take();
+        if let Some(session) = live {
+            if !session.is_idle()
+                && tokio::time::timeout(grace, session.wait_for_idle())
+                    .await
+                    .is_err()
+            {
+                session.abort().await;
+            }
+            let runner = session.runner();
+            if runner.has_handlers("session_shutdown") {
+                runner
+                    .emit(json!({"type": "session_shutdown", "reason": reason}))
+                    .await;
+            }
+            if let Some(router) = session.inner.agents.router() {
+                router.detach(&self.id);
+            }
+            session.dispose().await;
+            session.hub().close();
+        } else {
+            // Hibernated: shutdown was emitted at hibernation and the session is
+            // gone; only shell bookkeeping remains.
+            if let Some(router) = self.parent.upgrade().and_then(|p| p.agents.router()) {
+                router.detach(&self.id);
+            }
         }
-        let runner = self.session.runner();
-        if runner.has_handlers("session_shutdown") {
-            runner
-                .emit(json!({"type": "session_shutdown", "reason": reason}))
-                .await;
-        }
-        if let Some(router) = self.session.inner.agents.router() {
-            router.detach(&self.id);
-        }
-        self.session.dispose().await;
-        self.session.hub().close();
         if let Some(task) = lock(&self.forward).take() {
             task.abort();
         }
@@ -267,6 +569,7 @@ impl ChildAgent {
             AgentSession::from_inner(parent).publish_agents_changed();
         }
         self.tree.release();
+        *lock(&self.idle_since) = None;
     }
 
     /// Releases the child's single-writer lease and retires its watcher (D-LOCK).
@@ -275,8 +578,8 @@ impl ChildAgent {
         drop(lock(&self.lease).take());
     }
 
-    /// D-TAKEOVER holder side: the child's session file was taken over by another runner;
-    /// close the child here (releasing the lease) and notify its subscribers. The
+    /// D-TAKEOVER holder side: the child's session file was taken over by another
+    /// runner; close the child here (releasing the lease) and notify its subscribers. The
     /// `epoch` + `session_file` guard ignores a stale watcher (one tick behind a lease
     /// change) closing the child that replaced its own session file.
     async fn on_taken_over(&self, epoch: u64, session_file: &Path, by: LeaseInfo) {
@@ -290,27 +593,54 @@ impl ChildAgent {
                 return;
             }
         }
-        self.session
-            .hub()
-            .publish(OinoEvent::SessionTakenOver { by });
+        match self.session_slot() {
+            Some(session) => session.hub().publish(OinoEvent::SessionTakenOver { by }),
+            // Hibernated: the child hub is closed; surface the takeover on the parent.
+            None => {
+                if let Some(parent) = self.parent.upgrade() {
+                    parent.hub.publish(OinoEvent::SessionTakenOver { by });
+                }
+            }
+        }
         self.close_with_reason(Duration::ZERO, "takeover").await;
     }
 }
 
 /// `extensionSettings.subagents.maxConcurrent` (default 8, hard cap 16).
 fn max_concurrent(session: &AgentSession) -> usize {
-    session
-        .with_settings(|s| {
-            s.settings()
-                .merged()
-                .get("extensionSettings")
-                .and_then(|e| e.get("subagents"))
-                .and_then(|e| e.get("maxConcurrent"))
-                .and_then(JsonValue::as_u64)
-        })
+    subagents_setting(session, "maxConcurrent")
         .and_then(|n| usize::try_from(n).ok())
         .unwrap_or(DEFAULT_MAX_CONCURRENT)
         .clamp(1, HARD_MAX_CONCURRENT)
+}
+
+/// `extensionSettings.subagents.hibernateAfterSec` (default 120, 0 = never; E-HIBERNATE).
+fn hibernate_after_sec(session: &AgentSession) -> u64 {
+    subagents_setting(session, "hibernateAfterSec").unwrap_or(DEFAULT_HIBERNATE_AFTER_SEC)
+}
+
+/// A u64 under `extensionSettings.subagents.<key>`.
+fn subagents_setting(session: &AgentSession, key: &str) -> Option<u64> {
+    session.with_settings(|s| {
+        s.settings()
+            .merged()
+            .get("extensionSettings")
+            .and_then(|e| e.get("subagents"))
+            .and_then(|e| e.get(key))
+            .and_then(JsonValue::as_u64)
+    })
+}
+
+/// How [`AgentSession::build_child`] opens the child session.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChildOpen {
+    /// Fresh spawn (`agents.spawn`): acquire the file lease and record the model and
+    /// thinking selection in the new session.
+    Spawn,
+    /// Hibernation wake (E-HIBERNATE): the shell still holds the lease of the very same
+    /// file, so no lease is acquired (or returned); the session resumes the file in
+    /// place with D-REPAIR.
+    Wake,
 }
 
 impl AgentSession {
@@ -435,7 +765,15 @@ impl AgentSession {
             )));
         }
         let built = self
-            .build_child(extension, &spec, model, thinking, &cwd, depth)
+            .build_child(
+                extension,
+                &spec,
+                model.clone(),
+                thinking,
+                &cwd,
+                depth,
+                ChildOpen::Spawn,
+            )
             .await;
         let (child, child_lease, child_file) = match built {
             Ok(built) => built,
@@ -459,21 +797,41 @@ impl AgentSession {
                 self.runner().call_context().clone(),
             ),
         );
-        let handle = Arc::new(ChildAgent {
+        let handle = Arc::new_cyclic(|watch_self| ChildAgent {
             id: child.session_id(),
             label: spec.label.clone(),
             owner: extension.to_owned(),
-            session: child,
+            session: Mutex::new(Some(child.clone())),
             parent: Arc::downgrade(&self.inner),
             tree: Arc::clone(&agents.tree),
             closed: AtomicBool::new(false),
             forward: Mutex::new(Some(forward)),
             lease: Mutex::new(child_lease),
             lease_epoch: AtomicU64::new(0),
+            gate: tokio::sync::Mutex::new(()),
+            spec,
+            model,
+            thinking: Mutex::new(thinking),
+            cwd,
+            depth,
+            role: child
+                .inner
+                .agents
+                .link
+                .as_ref()
+                .and_then(|link| link.role.clone()),
+            file: child_file.clone(),
+            last_usage: Mutex::new(None),
+            last_text: Mutex::new(None),
+            events_clients: Arc::new(AtomicUsize::new(0)),
+            idle_since: Mutex::new(None),
+            watch_self: std::sync::OnceLock::from(watch_self.clone()),
         });
         if let Some(file) = child_file {
             let epoch = handle.lease_epoch.fetch_add(1, Ordering::SeqCst) + 1;
             tokio::spawn(child_lease_watcher(Arc::downgrade(&handle), epoch, file));
+            // E-HIBERNATE: file-persisted children hibernate after the idle window.
+            tokio::spawn(hibernate_watcher(Arc::downgrade(&handle)));
         }
         lock(&agents.children).push(Arc::clone(&handle));
         self.publish_agents_changed();
@@ -484,6 +842,14 @@ impl AgentSession {
         clippy::type_complexity,
         reason = "(session, its lease, the leased file)"
     )]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one parameter per spawn input; mirrors pi createAgentSession"
+    )]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one step per SessionConfig field, exactly like pi"
+    )]
     async fn build_child(
         &self,
         extension: &str,
@@ -492,26 +858,45 @@ impl AgentSession {
         thinking: ThinkingLevel,
         cwd: &Path,
         depth: u8,
+        open: ChildOpen,
     ) -> Result<(AgentSession, Option<SessionLease>, Option<PathBuf>), HostError> {
         let agents = &self.inner.agents;
         let mut manager = self.child_manager(spec, cwd)?;
         // D-LOCK: children acquire the lease of their own file when `Persistence::File`
         // (fresh files are uniquely named, so this only contends on a `SessionFile` seed) —
-        // before the child writes anything to it.
-        let lease = match manager.session_file().filter(|_| manager.is_persisted()) {
-            Some(file) => {
-                let holder = process_lease_info(self.agent_dir(), self.mode());
-                Some(
-                    acquire_lease(file, &holder, manager.session_id())
-                        .await
-                        .map_err(failed)?,
-                )
-            }
-            None => None,
+        // before the child writes anything to it. A hibernation wake (E-HIBERNATE) keeps
+        // the shell's lease instead: the child never stopped owning its file.
+        let lease = match open {
+            ChildOpen::Spawn => match manager.session_file().filter(|_| manager.is_persisted()) {
+                Some(file) => {
+                    let holder = process_lease_info(self.agent_dir(), self.mode());
+                    Some(
+                        acquire_lease(file, &holder, manager.session_id())
+                            .await
+                            .map_err(failed)?,
+                    )
+                }
+                None => None,
+            },
+            ChildOpen::Wake => None,
         };
         let file = lease
             .as_ref()
             .map(|lease| lease.session_file().to_path_buf());
+        // D-REPAIR: a resumed child file is repaired under the lease before use, so the
+        // woken child (or a child spawned from a `SessionFile` seed) always starts from a
+        // balanced transcript.
+        if matches!(spec.seed, Seed::SessionFile(_)) && manager.is_persisted() {
+            let report = manager.repair_interrupted_turn().map_err(failed)?;
+            if report.torn_tail || !report.closed_tool_calls.is_empty() {
+                tracing::info!(
+                    session = manager.session_id(),
+                    closed_tool_calls = ?report.closed_tool_calls,
+                    torn_tail = report.torn_tail,
+                    "child resume repair appended closers (D-REPAIR)"
+                );
+            }
+        }
         manager
             .append_model_change(&model.provider, &model.id)
             .map_err(failed)?;
@@ -615,7 +1000,8 @@ impl AgentSession {
         lock(&self.inner.agents.children).clone()
     }
 
-    /// Closes every nested agent (session disposal).
+    /// Closes every nested agent (session disposal); hibernated shells close without
+    /// rebuilding.
     pub(crate) async fn close_children(&self) {
         let children = std::mem::take(&mut *lock(&self.inner.agents.children));
         for child in children {
@@ -633,6 +1019,7 @@ impl AgentSession {
 /// Holder-side takeover watcher of a child's lease (D-TAKEOVER): polls the child session
 /// file's `.takeover` request while the lease identified by `epoch` is current; on a
 /// request the child is closed here (releasing the lease) so the other runner reloads it.
+/// Runs through hibernation — the shell keeps the lease while it sleeps.
 async fn child_lease_watcher(child: Weak<ChildAgent>, epoch: u64, session_file: PathBuf) {
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -647,6 +1034,38 @@ async fn child_lease_watcher(child: Weak<ChildAgent>, epoch: u64, session_file: 
                 .on_taken_over(epoch, &session_file, request.requester)
                 .await;
             return; // close released the lease; the epoch moved on
+        }
+    }
+}
+
+/// Hibernation watcher (E-HIBERNATE): polls a file-persisted child; once it stayed
+/// hibernatable for `hibernateAfterSec` (watcher re-armed at every wake), the child
+/// hibernates. Exits when the child closes or hibernates.
+async fn hibernate_watcher(child: Weak<ChildAgent>) {
+    loop {
+        tokio::time::sleep(HIBERNATE_POLL).await;
+        let Some(child) = child.upgrade() else {
+            return; // child gone
+        };
+        if child.is_closed() {
+            return;
+        }
+        let Some(session) = child.session_slot() else {
+            return; // hibernated (this watcher's job is done) or closing
+        };
+        let after = Duration::from_secs(hibernate_after_sec(&session));
+        if after.is_zero() || !ChildAgent::hibernatable(&session, &child.events_clients) {
+            *lock(&child.idle_since) = None;
+            continue;
+        }
+        let due = {
+            let mut since = lock(&child.idle_since);
+            let start = *since.get_or_insert_with(Instant::now);
+            start.elapsed() >= after
+        };
+        if due {
+            child.hibernate().await;
+            return;
         }
     }
 }
@@ -707,5 +1126,57 @@ async fn forward_child_events(
                 tracing::debug!("oino_agent delivery failed: {}", error.message);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::{FauxProvider, FauxResponse, TestSession};
+    use serde_json::json;
+
+    /// E-HIBERNATE acceptance core: an idle file-persisted child hibernates within the
+    /// window and the live `AgentSession` (its `Inner`) is actually dropped — observed
+    /// through a weak reference, the strongest drop evidence available.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hibernation_drops_the_child_session_inner() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider = FauxProvider::new(vec![FauxResponse::Text("child reply".into())]);
+        let parent = TestSession {
+            settings: json!({"extensionSettings": {"subagents": {"hibernateAfterSec": 1}}})
+                .as_object()
+                .unwrap()
+                .clone(),
+            cwd: dir.path().to_path_buf(),
+            session_dir: Some(dir.path().join("sessions")),
+            ..TestSession::default()
+        }
+        .build(Arc::clone(&provider))
+        .await;
+        let spec = serde_json::from_value(json!({
+            "label": "sleeper",
+            "persistence": {"file": {}},
+            "tools": {"builtin": []},
+        }))
+        .unwrap();
+        let child = parent.spawn_agent("test", spec).await.unwrap();
+        assert_eq!(
+            child.prompt("task one".into(), None).await.unwrap(),
+            "started"
+        );
+        child.wait_idle().await;
+        let inner: Weak<Inner> = Arc::downgrade(&child.session().unwrap().inner);
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+        while !child.is_hibernated() {
+            assert!(tokio::time::Instant::now() < deadline, "never hibernated");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(child.state(), "hibernated");
+        assert!(child.session().is_none());
+        // The only strong reference was the shell's: the whole AgentSession deallocated.
+        assert!(
+            inner.upgrade().is_none(),
+            "child Inner survived hibernation"
+        );
     }
 }

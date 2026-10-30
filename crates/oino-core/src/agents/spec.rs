@@ -13,6 +13,9 @@ pub const HARD_MAX_DEPTH: u8 = 4;
 pub const DEFAULT_MAX_CONCURRENT: usize = 8;
 /// Hard cap of concurrent children per root session.
 pub const HARD_MAX_CONCURRENT: usize = 16;
+/// Default idle seconds before a file-persisted child hibernates (E-HIBERNATE); 0 disables
+/// hibernation (`extensionSettings.subagents.hibernateAfterSec`).
+pub const DEFAULT_HIBERNATE_AFTER_SEC: u64 = 120;
 /// Upper bound of the close grace period (`ChildAgent::close`).
 pub const CLOSE_GRACE_CAP: std::time::Duration = std::time::Duration::from_secs(5);
 

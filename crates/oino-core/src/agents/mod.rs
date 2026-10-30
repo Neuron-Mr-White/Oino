@@ -13,7 +13,11 @@
 //! Limits: depth ≤ the parent's allowance (child default 2, hard cap 4); concurrent open
 //! children per root ≤ `extensionSettings.subagents.maxConcurrent` (default 8, hard cap 16);
 //! close grace ≤ 5 s. Child usage is appended to the parent as `usage` entries of kind
-//! `child:<label>`. The turn arbiter is disabled in children.
+//! `child:<label>`. The turn arbiter is disabled in children. A file-persisted child idle
+//! for `extensionSettings.subagents.hibernateAfterSec` (default 120, 0 = never)
+//! hibernates (E-HIBERNATE): the live session is disposed, the shell keeps
+//! `{id, label, owner, session_file, spec}` and the next handle operation rebuilds it
+//! from the file; memory-persisted children never hibernate.
 
 mod child;
 mod feed;

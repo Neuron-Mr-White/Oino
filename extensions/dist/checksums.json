@@ -18,6 +18,8 @@
     "oino.fixture.async-probe/extension.json": "sha256:9d2a8f924e4f28d814ca16f1295bd9b3db5fa5c4f0183ff0b4c25203324c6187",
     "oino.fixture.echo/component.wasm": "sha256:5567c6a15c8749a1c3467c5b5810f1cfde306aa7fcbc5fdba4c27fa2b4762fbb",
     "oino.fixture.echo/extension.json": "sha256:5ad106f560f9d4afe52cfb92d0c53fa351be16367a7394f9002f4c401a5067a8",
+    "oino.fixture.hibernate-probe/component.wasm": "sha256:4c471eab83cfe89a8165039f166ca57362d6651c4b1dcf7d54a7226c7b92c23b",
+    "oino.fixture.hibernate-probe/extension.json": "sha256:562c0982c2964c7c9255bb313046cc5c40488d3196cf4943de54e671e18e18a8",
     "oino.fixture.panic-probe/component.wasm": "sha256:dc0910d1b01b0e5e5feb0e333b70d29c354e73042902a5b070802306f853c9ae",
     "oino.fixture.panic-probe/extension.json": "sha256:43ca0630881d24f3f3ffcbdd7573d5d22bb3f52e7f28bb2dd223fb1662011f0a",
     "oino.fixture.provider-faux/component.wasm": "sha256:9dc97ea4f2f210ddcc4237a863c70eba31bb75669a36cab0df6590601e4ef4f2",
