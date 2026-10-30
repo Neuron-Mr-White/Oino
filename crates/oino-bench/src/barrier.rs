@@ -1,10 +1,6 @@
-//! Durability barrier micro-cost (core.md §4 B-1): mean µs of the fsync barrier over 100
-//! appends on a real `SessionManager` file.
-//!
-//! WP-C1 will add `SessionManager::sync()` as the barrier; until it lands, this module
-//! measures the primitive that barrier performs — `sync_all` on the session file right
-//! after each append — and labels the result with the exact method in `impl`. When C1
-//! lands, switch [`measure`] to call `SessionManager::sync()` and update the label.
+//! Durability barrier micro-cost (core.md §4 B-1): mean µs of `SessionManager::sync()`
+//! over 100 appends on a real session file (the WP-C1 fail-closed barrier — held writer,
+//! `sync_all`, one-time parent-dir fsync).
 
 use std::path::Path;
 use std::time::Instant;
@@ -17,7 +13,7 @@ use serde_json::json;
 /// Micro-cost of one durability barrier over N appends.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BarrierCost {
-    /// `true` (std `sync_all` is portable; the number is disk-dependent).
+    /// `true` (std fsync is portable; the number is disk-dependent).
     pub(crate) supported: bool,
     /// The measured call, verbatim (kept in the JSON so method changes are explicit).
     pub(crate) impl_label: &'static str,
@@ -46,41 +42,33 @@ impl BarrierCost {
     }
 }
 
-/// Appends `appends` entries to a fresh session file and times `sync_all` after each.
+/// Appends `appends` entries to a fresh session file and times `SessionManager::sync()`
+/// after each.
 ///
 /// # Errors
 ///
 /// Session-file or fsync I/O failures.
 pub(crate) fn measure(cwd: &Path, session_dir: &Path, appends: usize) -> Result<BarrierCost> {
-    const IMPL_LABEL: &str =
-        "append + sync_all on held handle (stand-in for SessionManager::sync(), lands with WP-C1)";
+    const IMPL_LABEL: &str = "SessionManager::sync() after each append (WP-C1 barrier)";
     let mut manager =
         SessionManager::create(cwd, session_dir, CreateOptions::default()).context("session")?;
-    // The first message flushes the file (header + entries) — the writer state WP-C1's
-    // barrier will run under.
+    // The first message flushes the file (header + entries) — the writer state the barrier
+    // runs under.
     manager
         .append_message(AgentMessage::User(UserMessage {
             content: UserContentField::Text("barrier".into()),
             ..UserMessage::default()
         }))
         .context("seed message")?;
-    let path = manager
-        .session_file()
-        .context("barrier session has no file")?
-        .to_path_buf();
-    let handle = std::fs::OpenOptions::new()
-        .append(true)
-        .open(&path)
-        .with_context(|| format!("open {}", path.display()))?;
     let mut micros = Vec::with_capacity(appends);
     for i in 0..appends {
         manager
             .append_custom_entry("bench.barrier", Some(json!({ "i": i })))
             .context("barrier append")?;
         let start = Instant::now();
-        handle
-            .sync_all()
-            .with_context(|| format!("sync_all {} (append {i})", path.display()))?;
+        manager
+            .sync()
+            .with_context(|| format!("SessionManager::sync() (append {i})"))?;
         micros.push(start.elapsed().as_micros());
     }
     let count = micros.len();
