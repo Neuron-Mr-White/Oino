@@ -28,6 +28,7 @@
     "@fontsource-variable/jetbrains-mono": "latest",
     "@kobalte/core": "~0.13.0",
     "@lezer/highlight": "^1.2.5",
+    "@lume/kiwi": "0.4.4",
     "@replit/codemirror-vim": "^6.4.0",
     "@solidjs/router": "latest",
     "@tanstack/solid-virtual": "^3.13.40",
