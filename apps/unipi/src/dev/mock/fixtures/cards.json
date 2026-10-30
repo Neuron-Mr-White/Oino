@@ -1,0 +1,360 @@
+{
+  "_comment": "U7b card render fixtures (WP-A8): the node each unipi extension's render spec answers for `_oino/render` — faithful shapes of the migrated builders (utility harness panels, subagents/bg cards, compactor, memory). Used by the renderer-cards scenario and the RendererCard golden test.",
+  "harnessCard": {
+    "t": "Block",
+    "borders": "ALL",
+    "borderType": "Rounded",
+    "rail": "harness",
+    "title": [
+      {
+        "content": {
+          "spans": [
+            "UniPi · Long-horizon · Continuation"
+          ]
+        },
+        "position": "Top"
+      },
+      {
+        "content": "unipi.long-horizon",
+        "position": "Bottom"
+      }
+    ],
+    "padding": {
+      "left": 1,
+      "right": 1
+    },
+    "child": {
+      "t": "Markdown",
+      "source": "Continuing the run: iteration 4 of 12, `router.rs` still fails its snapshot test."
+    }
+  },
+  "harnessWarning": {
+    "t": "Block",
+    "borders": "ALL",
+    "borderType": "Rounded",
+    "rail": "warning",
+    "title": [
+      {
+        "content": {
+          "spans": [
+            "⚠ UniPi · Watchdog · Warning"
+          ]
+        },
+        "position": "Top"
+      },
+      {
+        "content": "unipi.watchdog",
+        "position": "Bottom"
+      }
+    ],
+    "padding": {
+      "left": 1,
+      "right": 1
+    },
+    "child": {
+      "t": "Layout",
+      "direction": "Vertical",
+      "children": [
+        {
+          "t": "Paragraph",
+          "text": {
+            "spans": [
+              {
+                "content": "The run burned 40 turns without a user turn.",
+                "style": {
+                  "fg": "warning"
+                }
+              }
+            ]
+          },
+          "wrap": true
+        },
+        {
+          "t": "Markdown",
+          "source": "It was paused. Resume or narrow the goal."
+        }
+      ]
+    }
+  },
+  "subagentCompletion": {
+    "t": "Block",
+    "borders": "ALL",
+    "borderType": "Rounded",
+    "title": [
+      {
+        "content": {
+          "spans": [
+            {
+              "content": "Subagent",
+              "style": {
+                "fg": "claw"
+              }
+            },
+            " · Mapped the reducer call sites"
+          ]
+        },
+        "position": "Top"
+      },
+      {
+        "content": "completed · 10s · 3 tool calls · $0.012",
+        "position": "Bottom"
+      }
+    ],
+    "padding": {
+      "left": 1,
+      "right": 1
+    },
+    "child": {
+      "t": "Markdown",
+      "source": "**Done.** `buildTurns` has 6 call sites; only the tail recomputes.\n\n- `store.ts` — the memo\n- `Timeline.tsx` — the window"
+    }
+  },
+  "sidekickCompletion": {
+    "t": "Block",
+    "borders": "ALL",
+    "borderType": "Rounded",
+    "title": [
+      {
+        "content": {
+          "spans": [
+            {
+              "content": "Sidekick",
+              "style": {
+                "fg": "claw"
+              }
+            },
+            " · Checked the failing test"
+          ]
+        },
+        "position": "Top"
+      },
+      {
+        "content": "completed · 4s",
+        "position": "Bottom"
+      }
+    ],
+    "padding": {
+      "left": 1,
+      "right": 1
+    },
+    "child": {
+      "t": "Markdown",
+      "source": "The test compares `-1` with `3`; `add` subtracts."
+    }
+  },
+  "backgroundTask": {
+    "t": "Block",
+    "borders": "ALL",
+    "borderType": "Rounded",
+    "title": [
+      {
+        "content": {
+          "spans": [
+            {
+              "content": "BG   build-watch",
+              "style": {
+                "addModifier": [
+                  "BOLD"
+                ]
+              }
+            },
+            " ···· started · notifies"
+          ]
+        },
+        "position": "Top"
+      },
+      {
+        "content": "npm run watch",
+        "position": "Bottom"
+      }
+    ],
+    "padding": {
+      "left": 1,
+      "right": 1
+    },
+    "child": {
+      "t": "Paragraph",
+      "text": {
+        "spans": [
+          {
+            "content": "  logs/ext/unipi.core/bg-build-watch.log",
+            "style": {
+              "fg": "tool"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "memorySession": {
+    "t": "Block",
+    "borders": "ALL",
+    "borderType": "Rounded",
+    "rail": "muted",
+    "title": {
+      "spans": [
+        {
+          "content": "Memory",
+          "style": {
+            "fg": "claw"
+          }
+        },
+        " · unipi · 4 memories"
+      ]
+    },
+    "padding": {
+      "left": 1,
+      "right": 1
+    },
+    "child": {
+      "t": "Markdown",
+      "source": "Wake-up: this repo prefers `solid-js` stores; tests live next to sources."
+    }
+  },
+  "memorySave": {
+    "t": "Block",
+    "borders": "ALL",
+    "borderType": "Rounded",
+    "rail": "ok",
+    "title": {
+      "spans": [
+        "Saved 2 memories"
+      ]
+    },
+    "padding": {
+      "left": 1,
+      "right": 1
+    },
+    "child": {
+      "t": "Markdown",
+      "source": "- Prefers solid stores over signals\n- Tests colocated"
+    }
+  },
+  "compaction": {
+    "t": "Block",
+    "borders": "ALL",
+    "borderType": "Rounded",
+    "title": [
+      {
+        "content": {
+          "spans": [
+            "48k → 12k tokens"
+          ]
+        },
+        "position": "Top"
+      },
+      {
+        "content": "compactor · auto",
+        "position": "Bottom"
+      }
+    ],
+    "padding": {
+      "left": 1,
+      "right": 1
+    },
+    "child": {
+      "t": "Markdown",
+      "source": "- Earlier: fixed the math test\n- Kept: the reducer plan"
+    }
+  },
+  "kanboardBadge": {
+    "t": "Paragraph",
+    "text": {
+      "lines": [
+        {
+          "spans": [
+            {
+              "content": "UNI-42 ",
+              "style": {
+                "addModifier": [
+                  "BOLD"
+                ]
+              }
+            },
+            "moved to Doing",
+            {
+              "content": "  · kanboard",
+              "style": {
+                "fg": "muted"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "attachments": {
+    "t": "Paragraph",
+    "text": {
+      "lines": [
+        {
+          "spans": [
+            {
+              "content": "▌ ",
+              "style": {
+                "fg": "accent"
+              }
+            },
+            {
+              "content": "[Image #1]",
+              "style": {
+                "fg": "accent"
+              }
+            },
+            " cat.png",
+            {
+              "content": "  ·  12 kB",
+              "style": {
+                "fg": "muted"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "toolBashAdvanced": {
+    "t": "Layout",
+    "direction": "Vertical",
+    "children": [
+      {
+        "t": "Paragraph",
+        "text": {
+          "spans": [
+            {
+              "content": "◆ Ran command",
+              "style": {
+                "addModifier": [
+                  "BOLD"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "t": "Code",
+        "source": "npm test -- --run\n",
+        "language": "bash"
+      },
+      {
+        "t": "Code",
+        "source": "RUN v5.0.3\n✓ src/cli.test.ts (8)\n× src/math.test.ts > add (1)",
+        "wrap": false
+      },
+      {
+        "t": "Paragraph",
+        "text": {
+          "spans": [
+            {
+              "content": "exit 1 · 14 output lines",
+              "style": {
+                "fg": "error"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

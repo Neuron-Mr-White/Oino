@@ -1,0 +1,1466 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`RendererCard goldens (U7b corpus) > attachments answers for "unipi:attachments" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi:attachments"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <div
+      class="ui-p"
+      data-mode="auto"
+    >
+      <div
+        class="ui-line"
+      >
+        <span
+          style="color: var(--ui-accent);"
+        >
+          ▌ 
+        </span>
+        <span
+          style="color: var(--ui-accent);"
+        >
+          [Image #1]
+        </span>
+        <span>
+           cat.png
+        </span>
+        <span
+          style="color: var(--ui-muted);"
+        >
+            ·  12 kB
+        </span>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > backgroundTask answers for "background-task-notification" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="background-task-notification"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span
+              class="ui-m-bold"
+            >
+              BG   build-watch
+            </span>
+            <span>
+               ···· started · notifies
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="ui-p"
+          data-mode="auto"
+        />
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              npm run watch
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > compaction answers for "unipi-compaction" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi-compaction"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              48k → 12k tokens
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <ul>
+              
+
+              <li>
+                Earlier: fixed the math test
+              </li>
+              
+
+              <li>
+                Kept: the reducer plan
+              </li>
+              
+
+            </ul>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              compactor · auto
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "compactor-recall" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="compactor-recall"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "unipi:kanboard-continue" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi:kanboard-continue"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "unipi:kanboard-next" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi:kanboard-next"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "unipi:lh-continue" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi:lh-continue"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "unipi:plan-mode-message" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi:plan-mode-message"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "unipi-memory-recall-reminder" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi-memory-recall-reminder"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "unipi-memory-retro-reminder" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi-memory-retro-reminder"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "unipi-response" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi-response"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessCard answers for "unipi-skills-revealed" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi-skills-revealed"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              UniPi · Long-horizon · Continuation
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Continuing the run: iteration 4 of 12, 
+              <code>
+                router.rs
+              </code>
+               still fails its snapshot test.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.long-horizon
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > harnessWarning answers for "unipi-watchdog" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi-watchdog"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-warning);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              ⚠ UniPi · Watchdog · Warning
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="ui-layout"
+          data-dir="v"
+          data-mode="auto"
+          style="flex-direction: column; justify-content: flex-start;"
+        >
+          <div
+            class="ui-layout-item"
+            data-mode="auto"
+            style="flex: 0 0 auto;"
+          >
+            <div
+              class="ui-p"
+              data-mode="auto"
+            />
+          </div>
+          <div
+            class="ui-layout-item"
+            data-mode="auto"
+            style="flex: 0 0 auto;"
+          >
+            <div
+              class="md ui-md"
+              data-mode="auto"
+            >
+              <div>
+                <p>
+                  It was paused. Resume or narrow the goal.
+                </p>
+                
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              unipi.watchdog
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > kanboardBadge answers for "unipi:kanboard-badge" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi:kanboard-badge"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <div
+      class="ui-p"
+      data-mode="auto"
+    >
+      <div
+        class="ui-line"
+      >
+        <span
+          class="ui-m-bold"
+        >
+          UNI-42 
+        </span>
+        <span>
+          moved to Doing
+        </span>
+        <span
+          style="color: var(--ui-muted);"
+        >
+            · kanboard
+        </span>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > memorySave answers for "unipi-memory-save-card" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi-memory-save-card"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              Saved 2 memories
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <ul>
+              
+
+              <li>
+                Prefers solid stores over signals
+              </li>
+              
+
+              <li>
+                Tests colocated
+              </li>
+              
+
+            </ul>
+            
+
+          </div>
+        </div>
+      </div>
+      
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > memorySession answers for "unipi-memory-session-card" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="unipi-memory-session-card"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-rail=""
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-muted);"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              Memory
+            </span>
+            <span>
+               · unipi · 4 memories
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              Wake-up: this repo prefers 
+              <code>
+                solid-js
+              </code>
+               stores; tests live next to sources.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > sidekickCompletion answers for "sidekick-completion" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="sidekick-completion"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              Sidekick
+            </span>
+            <span>
+               · Checked the failing test
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              The test compares 
+              <code>
+                -1
+              </code>
+               with 
+              <code>
+                3
+              </code>
+              ; 
+              <code>
+                add
+              </code>
+               subtracts.
+            </p>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              completed · 4s
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
+
+exports[`RendererCard goldens (U7b corpus) > subagentCompletion answers for "subagent-completion" through NodeView 1`] = `
+<div
+  class="tl-cardwrap"
+  data-custom-type="subagent-completion"
+  data-testid="tl-card"
+>
+  <div
+    class="tl-card-render"
+    data-testid="tl-card-render"
+  >
+    <section
+      aria-labelledby="id0"
+      class="ui-block"
+      data-bordered=""
+      data-mode="auto"
+      data-type="rounded"
+      style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+    >
+      <div
+        class="ui-block-title"
+        id="id0"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              Subagent
+            </span>
+            <span>
+               · Mapped the reducer call sites
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+      <div
+        class="ui-block-body"
+      >
+        <div
+          class="md ui-md"
+          data-mode="auto"
+        >
+          <div>
+            <p>
+              <strong>
+                Done.
+              </strong>
+               
+              <code>
+                buildTurns
+              </code>
+               has 6 call sites; only the tail recomputes.
+            </p>
+            
+
+            <ul>
+              
+
+              <li>
+                <code>
+                  store.ts
+                </code>
+                 — the memo
+              </li>
+              
+
+              <li>
+                <code>
+                  Timeline.tsx
+                </code>
+                 — the window
+              </li>
+              
+
+            </ul>
+            
+
+          </div>
+        </div>
+      </div>
+      <div
+        class="ui-block-title ui-block-title-bottom"
+      >
+        
+        <span
+          class="ui-block-t ui-block-t-left"
+        >
+          <span>
+            <span>
+              completed · 10s · 3 tool calls · $0.012
+            </span>
+          </span>
+        </span>
+        <span
+          class="ui-block-t ui-block-t-center"
+        />
+        <span
+          class="ui-block-t ui-block-t-right"
+        />
+      </div>
+    </section>
+  </div>
+</div>
+`;
