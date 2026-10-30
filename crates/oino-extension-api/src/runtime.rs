@@ -583,7 +583,7 @@ pub trait HostServices: Send + Sync {
         cx: &CallContext,
         request: RawJson,
         cancel: CancellationToken,
-    ) -> BoxFut<'_, Result<oino_browser_protocol::BrowserResult, HostError>> {
+    ) -> BoxFut<'_, Result<unipi_browser_protocol::BrowserResult, HostError>> {
         Box::pin(async { unsupported!("browser") })
     }
     /// `browser.status` (JSON of `BrowserStatus`; disabled when no browser host).

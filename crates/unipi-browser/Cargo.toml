@@ -1,5 +1,5 @@
 [package]
-name = "oino-browser"
+name = "unipi-browser"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,7 +13,7 @@ dirs.workspace = true
 futures.workspace = true
 globset.workspace = true
 image.workspace = true
-oino-browser-protocol = { path = "../oino-browser-protocol" }
+unipi-browser-protocol = { path = "../unipi-browser-protocol" }
 oino-extension-api = { path = "../oino-extension-api" }
 regex.workspace = true
 serde.workspace = true

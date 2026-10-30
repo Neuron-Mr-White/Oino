@@ -14,7 +14,6 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use oino_browser_protocol::{BrowserResult, BrowserScope};
 use oino_cron::paths::CronPaths;
 use oino_extension_api::browser::{BrowserHost, BrowserRequest};
 use oino_extension_api::cron::CronHost;
@@ -32,6 +31,7 @@ use oino_extension_api::{
     ExtensionInstance, HostError, HostServices, RawJson, Registration,
 };
 use serde_json::json;
+use unipi_browser_protocol::{BrowserResult, BrowserScope};
 
 use crate::instance::WasmInstance;
 use crate::secrets::SecretStore;

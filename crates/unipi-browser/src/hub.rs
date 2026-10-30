@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use oino_browser_protocol::BrowserViewEvent;
 use tokio::sync::broadcast;
+use unipi_browser_protocol::BrowserViewEvent;
 
 use crate::tab::lock;
 

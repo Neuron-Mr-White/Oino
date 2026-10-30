@@ -17,15 +17,15 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use futures::StreamExt as _;
-use oino_browser::config::EngineChoice;
-use oino_browser::protocol::{
-    BrowserCommand, BrowserResult, BrowserScope, BrowserViewEvent, FrontendRequest,
-};
-use oino_browser::{BrowserOptions, BrowserService, BrowserSettings};
 use oino_extension_api::browser::{Approval, BrowserHost, BrowserRequest};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio_util::sync::CancellationToken;
+use unipi_browser::config::EngineChoice;
+use unipi_browser::protocol::{
+    BrowserCommand, BrowserResult, BrowserScope, BrowserViewEvent, FrontendRequest,
+};
+use unipi_browser::{BrowserOptions, BrowserService, BrowserSettings};
 
 fn browser() -> Option<PathBuf> {
     std::env::var_os("OINO_TEST_BROWSER").map(PathBuf::from)
@@ -532,7 +532,7 @@ async fn port_transport_and_drop_cleanup() {
         settings: BrowserSettings {
             engine: EngineChoice::Path,
             executable_path: Some(exe),
-            transport: oino_browser::config::TransportChoice::Port,
+            transport: unipi_browser::config::TransportChoice::Port,
             ..BrowserSettings::default()
         },
         ephemeral: false,

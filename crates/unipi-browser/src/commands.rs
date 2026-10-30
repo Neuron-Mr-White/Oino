@@ -5,17 +5,17 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oino_browser_protocol::command::{
+use oino_extension_api::browser::{Approval, BrowserRequest};
+use serde_json::{Value, json};
+use tokio_util::sync::CancellationToken;
+use unipi_browser_protocol::command::{
     DownloadsAction, KeepAs, LogKind, ProfileAction, RefStateKind, TabsAction,
 };
-use oino_browser_protocol::{
+use unipi_browser_protocol::{
     BrowserCommand, BrowserDetails, BrowserErrorCode, BrowserImage, BrowserResult, BrowserScope,
     BrowserToolDetails, BrowserViewEvent, ControlledBy, HistoryAction, Modifier, MouseButton,
     SideEffect, TabLifecycle, TabOwner, ToolEvent, WaitLoad, redact_url,
 };
-use oino_extension_api::browser::{Approval, BrowserRequest};
-use serde_json::{Value, json};
-use tokio_util::sync::CancellationToken;
 
 use crate::config::{Approvals, EvaluatePolicy, Humanize};
 use crate::page::{self, ActionError, ActionResult, Human};
@@ -131,7 +131,7 @@ impl BrowserService {
     pub(crate) fn status_for_scope(
         &self,
         scope: &BrowserScope,
-    ) -> oino_browser_protocol::BrowserStatus {
+    ) -> unipi_browser_protocol::BrowserStatus {
         oino_extension_api::browser::BrowserHost::status(self, Some(scope))
     }
 }
@@ -279,7 +279,7 @@ fn approval_required(message: String) -> ActionError {
 }
 
 fn mod_bits(mods: &[Modifier]) -> u8 {
-    use oino_browser_protocol::view::modifiers as m;
+    use unipi_browser_protocol::view::modifiers as m;
     mods.iter().fold(0, |b, x| {
         b | match x {
             Modifier::Alt => m::ALT,

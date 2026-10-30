@@ -7,10 +7,10 @@
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use oino_browser::config::DisplayChoice;
-use oino_browser::{BrowserOptions, BrowserService};
 use oino_extension_api::browser::BrowserHost;
 use oino_wasm_host::WasmRuntime;
+use unipi_browser::config::DisplayChoice;
+use unipi_browser::{BrowserOptions, BrowserService};
 
 static SERVICE: OnceLock<Option<BrowserService>> = OnceLock::new();
 

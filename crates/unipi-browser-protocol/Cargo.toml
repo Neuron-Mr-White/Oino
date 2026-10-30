@@ -1,11 +1,11 @@
 [package]
-name = "oino-browser-protocol"
+name = "unipi-browser-protocol"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Browser-control wire types shared by oino-browser, hosts, frontends and the oino.browser guest (browser-control.md §8.1)"
+description = "Browser-control wire types shared by unipi-browser, hosts, frontends and the unipi.browser guest (browser-control.md §8.1; v2 ext-abi §7)"
 
 [dependencies]
 base64.workspace = true

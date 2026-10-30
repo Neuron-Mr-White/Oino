@@ -8,11 +8,11 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use base64::Engine as _;
-use oino_browser_protocol::{
-    BrowserViewEvent, FrameData, TabLifecycle, TabOwner, ToolEvent, redact_url,
-};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
+use unipi_browser_protocol::{
+    BrowserViewEvent, FrameData, TabLifecycle, TabOwner, ToolEvent, redact_url,
+};
 
 use crate::cdp::{Cdp, CdpError, CdpEvent};
 use crate::hub::{Hub, sanitize};
@@ -331,7 +331,7 @@ impl ProfileRt {
     pub(crate) fn session_tabs(
         &self,
         session: Option<&str>,
-    ) -> Vec<oino_browser_protocol::TabInfo> {
+    ) -> Vec<unipi_browser_protocol::TabInfo> {
         self.all_tabs()
             .iter()
             .map(|t| t.info())

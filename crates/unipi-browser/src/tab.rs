@@ -4,10 +4,10 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use oino_browser_protocol::{
+use tokio::sync::{Notify, mpsc, oneshot};
+use unipi_browser_protocol::{
     BrowserViewEvent, ControlledBy, TabInfo, TabLifecycle, TabOwner, ToolEvent, Viewport,
 };
-use tokio::sync::{Notify, mpsc, oneshot};
 
 use crate::snapshot::RefMap;
 

@@ -1,13 +1,13 @@
 //! Browser capability (browser-control.md §8.2): the process-wide [`BrowserHost`] implemented
 //! by `oino-browser`, handed to the WASM host and frontends. Wire types live in
-//! [`oino_browser_protocol`] (re-exported as [`protocol`]).
+//! [`unipi_browser_protocol`] (re-exported as [`protocol`]).
 
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-pub use oino_browser_protocol as protocol;
-use oino_browser_protocol::{
+pub use unipi_browser_protocol as protocol;
+use unipi_browser_protocol::{
     BrowserCommand, BrowserResult, BrowserScope, BrowserStatus, BrowserViewEvent, FrontendRequest,
     Viewport,
 };

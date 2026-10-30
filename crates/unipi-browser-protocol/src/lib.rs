@@ -1,8 +1,8 @@
 //! Browser-control wire types (browser-control.md §8.1).
 //!
-//! One definition shared by the host service (`oino-browser`), the extension contract
-//! (`oino-extension-api`), the WASM host, frontends and the `oino.browser` guest. Everything is
-//! plain serde data and builds for `wasm32-wasip2`.
+//! One definition shared by the host service (`unipi-browser`), an embedding host
+//! (unipi-host), the WASM host, frontends and the `unipi.browser` guest. Everything is
+//! plain serde data and builds for `wasm32-wasip2` (v2 ext-abi §7.1).
 //!
 //! # API map
 //!

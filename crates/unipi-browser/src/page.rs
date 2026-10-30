@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use oino_browser_protocol::{BrowserErrorCode, MouseButton, SideEffect};
 use serde_json::{Value, json};
+use unipi_browser_protocol::{BrowserErrorCode, MouseButton, SideEffect};
 
 use crate::cdp::{Cdp, CdpError};
 use crate::keys::Chord;

@@ -1,7 +1,7 @@
 //! Playwright key names → CDP `Input.dispatchKeyEvent` fields, shared by `browser_press_key`
 //! and viewer input (browser-control.md §7.2).
 
-use oino_browser_protocol::view::modifiers;
+use unipi_browser_protocol::view::modifiers;
 
 /// CDP fields of one key.
 #[derive(Clone, Debug, PartialEq, Eq)]

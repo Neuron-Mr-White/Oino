@@ -5,14 +5,14 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oino_browser_protocol::view::modifiers;
-use oino_browser_protocol::{
-    BrowserInput, BrowserViewEvent, ControlledBy, FrontendRequest, KeyEventType, MouseButton,
-    MouseEventType, TabLifecycle, TabOwner, Viewport,
-};
 use oino_extension_api::browser::ViewStream;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
+use unipi_browser_protocol::view::modifiers;
+use unipi_browser_protocol::{
+    BrowserInput, BrowserViewEvent, ControlledBy, FrontendRequest, KeyEventType, MouseButton,
+    MouseEventType, TabLifecycle, TabOwner, Viewport,
+};
 
 use crate::page;
 use crate::policy;
@@ -108,7 +108,7 @@ async fn first_frame(rt: &ProfileRt, tab: &Tab) {
     let vp = lock(&tab.state).viewport;
     push_frame(
         tab,
-        &oino_browser_protocol::FrameData(Arc::new(data)),
+        &unipi_browser_protocol::FrameData(Arc::new(data)),
         f64::from(vp.width),
         f64::from(vp.height),
     );
@@ -218,7 +218,7 @@ pub(crate) async fn handle(
                 svc.hub().session_tx(s, workspace);
             }
             let scope =
-                oino_browser_protocol::BrowserScope::session(session.unwrap_or("-"), workspace);
+                unipi_browser_protocol::BrowserScope::session(session.unwrap_or("-"), workspace);
             let rt = svc
                 .ensure(&svc.profile_of(&scope))
                 .await

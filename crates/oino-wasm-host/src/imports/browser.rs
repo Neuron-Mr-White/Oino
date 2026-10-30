@@ -2,8 +2,8 @@
 
 use std::future::Future;
 
-use oino_browser_protocol::BrowserResult;
 use oino_extension_api::{CancellationToken, HostError};
+use unipi_browser_protocol::BrowserResult;
 use wasmtime::component::{Access, Accessor, Resource};
 
 use super::ready;

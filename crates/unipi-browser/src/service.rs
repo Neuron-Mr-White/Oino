@@ -8,13 +8,13 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use futures::stream::BoxStream;
-use oino_browser_protocol::{
-    BrowserResult, BrowserScope, BrowserStatus, BrowserViewEvent, FrontendRequest, ProfileInfo,
-    TabOwner, UnavailableReason, Viewport,
-};
 use oino_extension_api::BoxFut;
 use oino_extension_api::browser::{BrowserHost, BrowserRequest, ViewStream};
 use tokio_util::sync::CancellationToken;
+use unipi_browser_protocol::{
+    BrowserResult, BrowserScope, BrowserStatus, BrowserViewEvent, FrontendRequest, ProfileInfo,
+    TabOwner, UnavailableReason, Viewport,
+};
 
 use crate::config::{BrowserSettings, DisplayChoice, TransportChoice, valid_profile_name};
 use crate::display::{self, Displays};
@@ -429,7 +429,7 @@ impl BrowserService {
             for tab in p.all_tabs() {
                 let expired = {
                     let s = lock(&tab.state);
-                    s.controlled_by == oino_browser_protocol::ControlledBy::User
+                    s.controlled_by == unipi_browser_protocol::ControlledBy::User
                         && s.handoff.is_none()
                         && s.last_user_input
                             .is_none_or(|t| t.elapsed() > Duration::from_secs(600))

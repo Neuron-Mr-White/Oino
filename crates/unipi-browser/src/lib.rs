@@ -58,5 +58,5 @@ mod snapshot;
 mod tab;
 
 pub use config::BrowserSettings;
-pub use oino_browser_protocol as protocol;
 pub use service::{BrowserOptions, BrowserService};
+pub use unipi_browser_protocol as protocol;

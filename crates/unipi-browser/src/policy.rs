@@ -5,7 +5,7 @@ use std::path::Path;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
-use oino_browser_protocol::{BrowserCommand, ControlledBy};
+use unipi_browser_protocol::{BrowserCommand, ControlledBy};
 
 /// Why a URL is refused.
 #[derive(Clone, Debug, PartialEq, Eq)]
