@@ -8,6 +8,7 @@ import { createSignal } from 'solid-js';
 import { z } from 'zod';
 import {
   GitBranchesDataSchema,
+  GitBranchFilesDataSchema,
   GitCommitDataSchema,
   GitDiffDataSchema,
   GitLogDataSchema,
@@ -16,16 +17,24 @@ import {
   GitStatusDataSchema,
   GitSyncDataSchema,
   GitShortstatDataSchema,
+  GitTurnFilesDataSchema,
+  GitWatchDataSchema,
+  GIT_PATHS_MAX,
   type AppError,
+  type GitBranchFilesData,
   type GitCmd,
   type GitFileChange,
   type GitRepoData,
   type GitStatusData,
+  type GitTurnFilesData,
 } from '@unipi/protocol';
 import type { Result } from './ipc';
 import { hostCall } from './host/factory';
+import { desktopShell } from './layout';
+import { toolCategory } from './chat/model';
+import type { Turn } from './session/turns';
 
-export type { GitFileChange, GitRepoData, GitStatusData, GitCommitInfo, GitBranch, GitShowData, GitDiffData } from '@unipi/protocol';
+export type { GitFileChange, GitRepoData, GitStatusData, GitCommitInfo, GitBranch, GitShowData, GitDiffData, GitTurnFile, GitTurnFilesData, GitBranchFilesData } from '@unipi/protocol';
 
 function op<T>(hostId: string, path: string, cmd: GitCmd, schema: z.ZodType<T>, outside?: boolean): Promise<Result<T>> {
   return hostCall(hostId, 'git_op', { path, outside, cmd }, schema);
@@ -38,6 +47,12 @@ export const git = {
   status: (h: string, p: string) => op(h, p, { action: 'status' }, GitStatusDataSchema),
   diff: (h: string, p: string, file: string, staged: boolean, untracked: boolean) =>
     op(h, p, { action: 'diff', file, staged, untracked }, GitDiffDataSchema),
+  /** Z-96 "Last turn": rows + diffs of the files the last turn touched. */
+  turnFiles: (h: string, p: string, files: string[], opts?: { staged?: boolean; untracked?: boolean }) =>
+    op(h, p, { action: 'turn_files', files, ...opts }, GitTurnFilesDataSchema),
+  /** Z-96 "Branch (vs base)": rows + diffs vs the base ref (upstream, else main/master). */
+  branchFiles: (h: string, p: string, base?: string) =>
+    op(h, p, base ? { action: 'branch_files', base } : { action: 'branch_files' }, GitBranchFilesDataSchema),
   stage: (h: string, p: string, paths: string[] | 'all') =>
     op(h, p, paths === 'all' ? { action: 'stage', all: true } : { action: 'stage', paths }, Nothing),
   unstage: (h: string, p: string, paths: string[] | 'all') =>
@@ -55,6 +70,8 @@ export const git = {
   stashPop: (h: string, p: string) => op(h, p, { action: 'stash_pop' }, GitSyncDataSchema),
   /** UNI-257: total +/- (staged + unstaged + untracked) for the chat menu's Git row. */
   shortstat: (h: string, p: string) => op(h, p, { action: 'shortstat' }, GitShortstatDataSchema),
+  /** Z-98: refcount the host's repo watcher; `git_changed` hub events follow. */
+  watch: (h: string, root: string, on = true) => hostCall(h, 'git_watch', { root, on }, GitWatchDataSchema),
 };
 
 // ── Chat menu's Git row (UNI-257) ─────────────────────────────────────────
@@ -91,17 +108,82 @@ export function compactCount(n: number): string {
 
 export const LOG_PAGE = 50;
 
-// ── Where the Git view opens (Files toolbar chip, chat menu) ─────────────
+// ── Where the Git view opens (Z-100: one Git UI) ───────────────────────
 
-export type GitTarget = { hostId: string; path: string; /** Where Back returns to. */ from?: 'files' | 'chat' };
+export type GitTarget = {
+  hostId: string;
+  path: string;
+  /** Where Back returns to (phone layer). */
+  from?: 'files' | 'chat';
+  /** The shown session: the "Last turn" source reads its turns index (phone layer). */
+  sessionId?: string;
+  /** Open on a review source / tab (the turn footer's "Last turn" entry, captures). */
+  source?: GitSource;
+  tab?: 'changes' | 'history';
+};
 const [target, setTarget] = createSignal<GitTarget | undefined>(undefined);
-/** The open Git view's target (undefined = closed). */
+/** The phone layer's target (undefined = closed); the desktop pane owns its own tab. */
 export const gitTarget = target;
+
+/** Opens the `git` tab in the workspace's side pane; installed by the shell
+ *  (AppShell) so `lib/git` stays free of component imports. Returns false
+ *  when no conversation workspace is shown (fall back to the layer). */
+let desktopOpener: ((target: GitTarget) => boolean) | undefined;
+export function setGitDesktopOpener(open: ((target: GitTarget) => boolean) | undefined): void {
+  desktopOpener = open;
+}
+
+/** Opens the Git view: the `git` side-pane tab on the desktop, this PC's
+ *  full-screen layer on the phone (§3.9). One Git UI, however it is opened
+ *  (Files branch chip, chat ⋯ Git, capsule, `+` launcher, Cmd/Ctrl+Alt+B). */
 export function openGit(next: GitTarget): void {
+  if (desktopShell() && desktopOpener?.(next)) return;
   setTarget(next);
+}
+
+/** `gitTarget` as the pane/section params (source/tab ride to the section). */
+export function gitParams(target: GitTarget): Record<string, unknown> {
+  return {
+    path: target.path,
+    ...(target.source ? { source: target.source } : {}),
+    ...(target.tab ? { tab: target.tab } : {}),
+  };
 }
 export function closeGit(): void {
   setTarget(undefined);
+}
+
+/** Z-96 "Last turn": the repo-relative paths the last turn's write/edit
+ *  tools touched, deduped, capped at the protocol's path limit. Absolute
+ *  paths outside `cwd` (another repo, the editor's temp file) are skipped. */
+export function lastTurnFiles(turns: readonly Turn[], cwd?: string): string[] {
+  const turn = [...turns].reverse().find((t) => t.kind === 'turn');
+  if (!turn) return [];
+  const base = cwd?.replace(/\/+$/, '');
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const segment of turn.segments) {
+    for (const item of segment.work) {
+      if (out.length >= GIT_PATHS_MAX) return out;
+      if (item.kind !== 'tool' || toolCategory(item.tool.name) !== 'edit') continue;
+      const args = item.tool.args;
+      const raw = typeof args.path === 'string' && args.path.trim()
+        ? args.path
+        : typeof args.file_path === 'string' && args.file_path.trim()
+          ? args.file_path
+          : '';
+      if (!raw) continue;
+      let rel = raw.trim();
+      if (base && rel.startsWith(`${base}/`)) rel = rel.slice(base.length + 1);
+      else if (rel.startsWith('/') || rel.startsWith('~')) continue;
+      if (!rel || rel.startsWith('../') || rel === '..') continue;
+      if (!seen.has(rel)) {
+        seen.add(rel);
+        out.push(rel);
+      }
+    }
+  }
+  return out;
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────
@@ -126,6 +208,48 @@ export function groupChanges(files: GitFileChange[]): GitGroup[] {
       files: files.filter((f) => f.area === key).sort((a, b) => a.path.localeCompare(b.path)),
     }))
     .filter((g) => g.files.length > 0);
+}
+
+// ── Review sources (Z-96: ZCode sources + unipi grouping) ─────────────────
+
+export type GitSource = 'unstaged' | 'staged' | 'branch' | 'turn';
+export type SourceGroup = { key: string; label: string; files: GitFileChange[] };
+
+export const GIT_SOURCES: { id: GitSource; label: string; hint: string }[] = [
+  { id: 'unstaged', label: 'Unstaged', hint: 'Changes in the working tree' },
+  { id: 'staged', label: 'Staged', hint: 'Changes in the index' },
+  { id: 'branch', label: 'Branch', hint: 'This branch vs its base' },
+  { id: 'turn', label: 'Last turn', hint: 'Files the last turn touched' },
+];
+
+/** The unipi grouping (Conflicts/Staged/Changes/Untracked) inside a source:
+ *  Unstaged = worktree + untracked + conflicts; Branch/Last turn = one group
+ *  of their rows (no stage semantics, sorted by path). */
+export function sourceGroups(source: GitSource, files: GitFileChange[], label?: string): SourceGroup[] {
+  if (source === 'unstaged') return groupChanges(files.filter((f) => f.area !== 'staged'));
+  if (source === 'staged') return groupChanges(files.filter((f) => f.area === 'staged'));
+  const rows = [...files].sort((a, b) => a.path.localeCompare(b.path));
+  return rows.length ? [{ key: source, label: label ?? (source === 'branch' ? 'Branch' : 'Last turn'), files: rows }] : [];
+}
+
+/** One flattened row of the virtualized changes list. */
+export type GitRow =
+  | { kind: 'group'; key: `g:${string}`; label: string; files: GitFileChange[] }
+  | { kind: 'file'; key: `f:${string}`; change: GitFileChange; diffKey: string }; // diffKey: inline-diff row id
+
+/** Groups + files flattened for the virtualizer, a find filter applied. */
+export function flattenGroups(groups: SourceGroup[], query = ''): { rows: GitRow[]; matches: number } {
+  const q = query.trim().toLowerCase();
+  const rows: GitRow[] = [];
+  let matches = 0;
+  for (const g of groups) {
+    const kept = q ? g.files.filter((f) => f.path.toLowerCase().includes(q)) : g.files;
+    matches += kept.length;
+    if (!kept.length) continue;
+    rows.push({ kind: 'group', key: `g:${g.key}`, label: g.label, files: kept });
+    for (const f of kept) rows.push({ kind: 'file', key: `f:${g.key}:${changeKey(f)}`, change: f, diffKey: `d:${g.key}:${changeKey(f)}` });
+  }
+  return { rows, matches };
 }
 
 /** Sum of +/- over a list (binary files count 0). */

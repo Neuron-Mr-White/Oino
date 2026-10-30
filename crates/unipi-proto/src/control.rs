@@ -406,6 +406,16 @@ pub enum Request {
         outside: Option<bool>,
         cmd: crate::git::GitCmd,
     },
+    /// v2 (app.md §3.14, WP-A15): turn the git watcher of the repo containing
+    /// `root` on or off. Fs changes under the repo's git metadata (and, on
+    /// macOS/Windows, the worktree) then emit `GitChanged{root}` on every
+    /// open `events_open` stream (Z-98: no polling). `root` goes through the
+    /// same scope check as `git`.
+    GitWatch {
+        root: FsPath,
+        #[serde(default)]
+        on: bool,
+    },
     /// UNI-161 §1: "Get from this PC" — returns the host's own ntfy
     /// server/topic/token plus the per-pairing E2E key (`NotifyConfigData`).
     NotifyConfig,

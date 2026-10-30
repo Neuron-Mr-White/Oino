@@ -8,6 +8,7 @@ import { streamReconnect } from './stream-reconnect';
 import { streamSteer } from './stream-steer';
 import { shellDesktop, shellFullview, shellNarrow, shellSidepaneTabs } from './shell';
 import { sidebarMany, sidebarStates } from './sidebar';
+import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -22,4 +23,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'shell-fullview': shellFullview,
   'sidebar-many': sidebarMany,
   'sidebar-states': sidebarStates,
+  'git-pane': gitPane,
+  'git-last-turn': gitLastTurn,
+  'git-history': gitHistory,
+  'git-pane-many': gitPaneMany,
 };

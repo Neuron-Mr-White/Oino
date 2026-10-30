@@ -7,9 +7,9 @@
  *   shell-sidepane-tabs  side pane with tabs (Git active) + the bottom panel
  *   shell-fullview       the same tabs; press Ctrl+Shift+F for full view
  *
- * Files / Git / Tree views are other WPs (A10, A15, A20): `setup` plugs in
- * **capture stand-ins** so the container can be judged with real-looking
- * content. Never part of the app.
+ * Files / Tree views are other WPs (A20, A10): `setup` plugs in **capture
+ * stand-ins** so the container can be judged with real-looking content. Never
+ * part of the app. The Git tab is the real WP-A15 section (`git.ts` scenarios).
  */
 import { For } from 'solid-js';
 import { FileText, Folder } from 'lucide-solid';
@@ -60,7 +60,6 @@ function StandIn(props: { rows: ReturnType<typeof row>[] }) {
 
 function plugStandIns(): void {
   setPaneComponent('files', () => <StandIn rows={[row('dir', 'src'), row('file', 'math.ts', 1), row('file', 'cli.ts', 1), row('file', 'README.md'), row('file', 'package.json')]} />);
-  setPaneComponent('git', () => <StandIn rows={[row('file', 'src/math.ts', 0, '+12 −3'), row('file', 'src/cli.ts', 0, '+40'), row('file', 'README.md', 0, '+2 −1')]} />);
   setPaneComponent('tree', () => <StandIn rows={[row('file', 'Fix the failing test'), row('file', 'Run the suite', 1), row('file', 'Steer: also check cli', 1)]} />);
 }
 

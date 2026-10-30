@@ -58,6 +58,9 @@ export const GitCmdSchema = z.discriminatedUnion("action", [
   // v2 (host.md §9.4): the Git pane's "Last turn" source — status rows plus
   // each file's diff, restricted to the files the last turn touched.
   z.object({ action: z.literal("turn_files"), files: Paths, staged: z.boolean().optional(), untracked: z.boolean().optional() }),
+  // v2 (WP-A15, Z-96 "Branch (vs base)"): files HEAD changed vs the base
+  // ref (upstream, else main/master), rows plus each file's diff.
+  z.object({ action: z.literal("branch_files"), base: GitRefNameSchema.optional() }),
 ]);
 export type GitCmd = z.infer<typeof GitCmdSchema>;
 
@@ -119,6 +122,31 @@ export const GitTurnFilesDataSchema = GitRepoDataSchema.extend({
   files: z.array(GitTurnFileSchema).default([]),
 });
 export type GitTurnFilesData = z.infer<typeof GitTurnFilesDataSchema>;
+
+/** One file of `branch_files`: its change row vs the base plus the diff. */
+export const GitBranchFileSchema = GitFileChangeSchema.extend({ diff: GitDiffDataSchema });
+export type GitBranchFile = z.infer<typeof GitBranchFileSchema>;
+
+/** `ok.data` for `branch_files` (v2 WP-A15, Z-96): `base` null = no base ref
+ *  (no upstream, no main/master, no commits) — not an error. */
+export const GitBranchFilesDataSchema = GitRepoDataSchema.extend({
+  base: z.string().nullable().default(null),
+  files: z.array(GitBranchFileSchema).default([]),
+});
+export type GitBranchFilesData = z.infer<typeof GitBranchFilesDataSchema>;
+
+/** `ok.data` for `git_watch` (v2 WP-A15): the repo root the watcher watches
+ *  (the root `git_changed` hub events carry); null = not a repo. */
+export const GitWatchDataSchema = z.object({ root: z.string().nullable().default(null) });
+export type GitWatchData = z.infer<typeof GitWatchDataSchema>;
+
+/** `git_watch{root, on}` (v2 app.md §3.14): refcount the repo watcher. */
+export const GitWatchRequestSchema = z.object({
+  op: z.literal("git_watch"),
+  root: FsPathSchema,
+  on: z.boolean().default(true),
+});
+export type GitWatchRequest = z.infer<typeof GitWatchRequestSchema>;
 
 export const GitCommitDataSchema = z.object({ hash: z.string(), subject: z.string() });
 export type GitCommitData = z.infer<typeof GitCommitDataSchema>;

@@ -724,6 +724,9 @@ where
     }
     let focus = hub.focus_connection();
     let mut events = hub.subscribe();
+    // WP-A15 (app.md §3.14): the git watcher rides this stream too — a
+    // `GitChanged{root}` per repo change, after the watcher's debounce.
+    let mut git = crate::git_watch::GitWatchers::shared().subscribe();
     loop {
         tokio::select! {
             event = events.recv() => match event {
@@ -731,6 +734,22 @@ where
                 // Only host notices/cards ride this channel; a lagging client gets the next
                 // card again (cards are whole values, notices are retained).
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    hub.release_focus(focus).await;
+                    return Ok(());
+                }
+            },
+            changed = git.recv() => match changed {
+                Ok(changed) => write_json(
+                    write,
+                    &WireHubEvent::GitChanged {
+                        root: changed.root,
+                    },
+                )
+                .await?,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                // The global watcher registry outlives every connection; a
+                // closed channel means the host is shutting down.
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     hub.release_focus(focus).await;
                     return Ok(());

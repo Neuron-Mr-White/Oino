@@ -24,6 +24,7 @@
 //! | `stash_push` / `stash_pop` | [`GitSyncData`] |
 //! | `shortstat` | [`GitShortstatData`] (UNI-257: total +/- vs HEAD incl. staged + untracked, capped; proto 1.12.0) |
 //! | `turn_files` | [`GitTurnFilesData`] (v2: `status` + per-file diffs, restricted to `files`) |
+//! | `branch_files` | [`GitBranchFilesData`] (v2 A15: files + per-file diffs of `HEAD` vs the base ref) |
 
 use serde::{Deserialize, Serialize};
 
@@ -238,6 +239,14 @@ pub enum GitCmd {
         #[serde(default)]
         untracked: bool,
     },
+    /// v2 (app.md §3.14 / Z-96 "Branch (vs base)"): what the current branch
+    /// changed vs its base — the upstream tracking branch when there is one,
+    /// else the first of `main` / `master` that exists. Rows plus the diff of
+    /// each file, one round trip.
+    BranchFiles {
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        base: Option<GitRefName>,
+    },
 }
 
 impl GitCmd {
@@ -261,6 +270,7 @@ impl GitCmd {
             GitCmd::StashPop => "stash_pop",
             GitCmd::Shortstat => "shortstat",
             GitCmd::TurnFiles { .. } => "turn_files",
+            GitCmd::BranchFiles { .. } => "branch_files",
         }
     }
 
@@ -404,6 +414,36 @@ pub struct GitTurnFilesData {
     pub repo: GitRepoData,
     #[serde(default)]
     pub files: Vec<GitTurnFile>,
+}
+
+/// One file of `branch_files`: a change row vs the base ref plus its diff.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitBranchFile {
+    #[serde(flatten)]
+    pub change: GitFileChange,
+    pub diff: GitDiffData,
+}
+
+/// `ok.data` for `branch_files` (v2 A15): the base ref that was used and the
+/// files `HEAD` changed vs it, each with its diff (≤ [`GIT_DIFF_CAP`]). No
+/// base ref (no upstream, no main/master, no commits) answers `base: null`
+/// with no rows — not an error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GitBranchFilesData {
+    #[serde(flatten)]
+    pub repo: GitRepoData,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub base: Option<String>,
+    #[serde(default)]
+    pub files: Vec<GitBranchFile>,
+}
+
+/// `ok.data` for `git_watch` (v2 A15): the repo root the watcher watches (the
+/// root `GitChanged` events carry), `null` when the folder is not a repo.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GitWatchData {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub root: Option<String>,
 }
 
 /// `ok.data` for `commit`.

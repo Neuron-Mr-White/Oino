@@ -839,3 +839,91 @@ async fn turn_files_restricts_status_and_diffs_to_the_given_paths() {
     assert_eq!(data["repo"], false);
     assert_eq!(data["files"].as_array().unwrap().len(), 0);
 }
+
+/// WP-A15 (Z-96 "Branch (vs base)"): `branch_files` lists what `HEAD` changed
+/// vs the upstream, else `main`/`master`; rows carry their diffs, and no base
+/// (no upstream, no main/master, no commits) is `base: null`, not an error.
+#[tokio::test]
+async fn branch_files_diffs_head_against_the_base_ref() {
+    isolate_env();
+    let temp = tempfile::tempdir().unwrap();
+    let scope = scope_for(temp.path());
+    let dir = repo(temp.path(), "r");
+
+    // On `main` with no upstream: the base resolves to `main` itself, so the
+    // branch is even with it.
+    let data = run(&dir, &scope, GitCmd::BranchFiles { base: None })
+        .await
+        .unwrap();
+    assert_eq!(data["repo"], true);
+    assert_eq!(data["base"], "main");
+    assert_eq!(data["files"].as_array().unwrap().len(), 0, "{data}");
+
+    // A feature branch: one modified file, one added, one deleted.
+    git(&dir, &["switch", "-q", "-c", "feat/review"]);
+    std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
+    std::fs::write(dir.join("b.txt"), "new\nfile\n").unwrap();
+    git(&dir, &["add", "a.txt", "b.txt"]);
+    git(&dir, &["commit", "-q", "-m", "work"]);
+    git(&dir, &["branch", "base-snap"]);
+    git(&dir, &["rm", "-q", "a.txt"]);
+    std::fs::write(dir.join("c.txt"), "third\n").unwrap();
+    git(&dir, &["add", "c.txt"]);
+    git(&dir, &["commit", "-q", "-m", "more"]);
+
+    let data = run(&dir, &scope, GitCmd::BranchFiles { base: None })
+        .await
+        .unwrap();
+    assert_eq!(data["base"], "main");
+    let files = data["files"].as_array().unwrap();
+    assert_eq!(files.len(), 3, "{data}");
+    let by_path = |path: &str| {
+        files
+            .iter()
+            .find(|f| f["path"] == path)
+            .unwrap_or_else(|| panic!("{path} in {data}"))
+    };
+    assert_eq!(by_path("a.txt")["area"], "staged");
+    assert_eq!(by_path("a.txt")["status"], "D");
+    assert!(by_path("b.txt")["diff"]["text"]
+        .as_str()
+        .unwrap()
+        .contains("+new"));
+    assert_eq!(by_path("c.txt")["status"], "A");
+    for f in files {
+        assert!(
+            f["diff"]["text"].is_string(),
+            "each row carries its diff: {f}"
+        );
+    }
+
+    // An explicit base wins over the upstream / main guess (`base-snap` is
+    // the first feature commit: only the second commit's files remain).
+    let data = run(
+        &dir,
+        &scope,
+        GitCmd::BranchFiles {
+            base: Some(GitRefName::try_from("base-snap".to_string()).unwrap()),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(data["base"], "base-snap");
+    let files = data["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2, "only the last commit's files: {data}");
+    assert!(files.iter().all(|f| f["path"] != "b.txt"));
+
+    // A branch with no commits has no base to compare.
+    let empty = temp.path().join("empty");
+    std::fs::create_dir_all(&empty).unwrap();
+    git(&empty, &["init", "-q", "-b", "main"]);
+    let data = run(&empty, &scope, GitCmd::BranchFiles { base: None })
+        .await
+        .unwrap();
+    assert_eq!(data["repo"], true);
+    assert!(
+        data.get("base").is_none() || data["base"].is_null(),
+        "no base: {data}"
+    );
+    assert_eq!(data["files"].as_array().unwrap().len(), 0);
+}

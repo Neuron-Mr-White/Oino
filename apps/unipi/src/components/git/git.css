@@ -1,7 +1,7 @@
-/* Git view (UNI-217). Phone: full-screen layer; desktop: right of the sidebar,
-   list | detail inside. Uses the shared tokens (ui.css, DESIGN.md §1.6). */
-.git-view { position: fixed; inset: 0; z-index: 17; display: flex; flex-direction: column; background: var(--color-bg); padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px)); padding-bottom: max(env(safe-area-inset-bottom), var(--inset-bottom, 0px)); }
-html[data-shell=desktop] .git-view { left: var(--sidebar-w); padding: 0; border-left: 1px solid rgb(46 40 37 / 70%); }
+/* Git view (WP-A15): the status pane's Git section — the `git` side-pane
+   tab on the desktop, a full-screen layer on the phone. Uses the shared
+   tokens (ui.css, DESIGN.md §1.6). */
+.git-view { position: fixed; inset: 0; z-index: 41; /* above the phone workspace layer (z 40, §3.9), below sheets */ display: flex; flex-direction: column; background: var(--color-bg); padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px)); padding-bottom: max(env(safe-area-inset-bottom), var(--inset-bottom, 0px)); }
 
 .git-head, .git-detail-head { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; min-height: 56px; padding: 6px 6px 6px 4px; border-bottom: 1px solid rgb(46 40 37 / 70%); box-sizing: border-box; }
 .git-head-title { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; padding-left: 2px; }
@@ -9,14 +9,46 @@ html[data-shell=desktop] .git-view { left: var(--sidebar-w); padding: 0; border-
 .git-head-sub { font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
 .git-sync-btn { position: relative; }
 .git-sync-btn:disabled { opacity: .45; }
-.git-sync-count { position: absolute; top: 3px; right: 1px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9999px; background: var(--color-shell); color: var(--color-face, #fff); font-size: 10.5px; line-height: 16px; font-weight: 700; text-align: center; box-sizing: border-box; }
+.git-sync-count { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text); font-size: 10px; line-height: 15px; font-weight: 700; text-align: center; box-sizing: border-box; box-shadow: 0 0 0 1px rgb(46 40 37 / 80%); }
 .git-mono { font-family: var(--font-mono); }
 
 .git-split { flex: 1 1 auto; min-height: 0; display: flex; }
 .git-list-pane { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
-html[data-shell=desktop] .git-list-pane { flex: 0 0 var(--git-list-w, 420px); border-right: 1px solid rgb(46 40 37 / 70%); }
 .git-detail-pane { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .git-detail-pane > .empty-state { margin-top: 0; }
+
+/* The section inside the pane tab / phone layer. The pane tab body scrolls
+   by default; the status pane owns its scrolling (the changes list scrolls,
+   the composer stays at the bottom), so it becomes a flex column. */
+.pane-tab-body[data-kind='git'] { display: flex; flex-direction: column; overflow: hidden; }
+.status-pane, .status-pane-layer { flex: 1 1 auto; min-height: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+.status-pane .git-section, .status-pane-layer .git-section { flex: 1 1 auto; min-height: 0; }
+.git-section { display: flex; flex-direction: column; min-height: 0; position: relative; }
+.git-section-head { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; min-height: 48px; padding: 4px 6px 0 4px; box-sizing: border-box; }
+.git-section-head .git-head-title { flex: 1 1 auto; }
+.git-section-head .git-head-name { font-size: 14.5px; }
+.git-section-head-actions { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.git-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 6px var(--page-gutter) 0; }
+.git-source-wrap { flex: 1 1 auto; min-width: 0; }
+.git-source { width: 100%; max-width: 220px; height: 30px; min-height: 30px; padding: 0 8px; border-radius: 9px; background: var(--color-surface-2); color: var(--color-text); font-size: 13px; border: 1px solid rgb(46 40 37 / 70%); box-sizing: border-box; }
+.git-find { flex: 1 1 auto; min-width: 0; height: 30px; min-height: 30px; }
+.git-find-count { flex: none; font-size: 12px; color: var(--color-text-dim); white-space: nowrap; }
+.git-toolbar .ghost-icon-button { width: 30px; height: 30px; min-height: 30px; }
+.git-toolbar .ghost-icon-button[data-active] { color: var(--color-wm-cyan); }
+
+/* The virtualized lists (Z-96: 2 000 files at 60 fps). */
+.git-virtual { position: relative; }
+.git-virtual-inner { position: relative; width: 100%; }
+.git-vrow { position: absolute; top: 0; left: 0; width: 100%; box-sizing: border-box; }
+.git-vrow.git-group-head { min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 2px 4px 8px; }
+.git-vrow.git-inline-diff { padding: 0 0 4px; }
+.git-inline-diff .git-detail { border-radius: 12px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 60%); overflow: hidden; }
+.git-inline-diff .git-detail-head { min-height: 40px; border-bottom: 1px solid rgb(46 40 37 / 50%); }
+.git-inline-diff .git-detail-body { padding: 4px 6px 8px; }
+.git-inline-diff .git-detail .empty-state, .git-inline-diff .git-detail .git-note { padding: 6px; margin: 0; }
+.git-detail-overlay { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; background: var(--color-bg); }
+.git-detail-overlay .git-detail { flex: 1 1 auto; }
+html[data-shell=desktop] .git-list-scroll { padding: 0 6px 16px; }
 
 .git-tabs-row { flex: 0 0 auto; padding: 10px var(--page-gutter) 6px; }
 .git-tabs { width: 100%; max-width: 360px; }

@@ -21,10 +21,10 @@ use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use unipi_proto::{
-    AppErrorCode, AppErrorDto, GitArea, GitBranch, GitBranchesData, GitCmd, GitCommitData,
-    GitCommitInfo, GitDiffData, GitFileChange, GitLogData, GitPath, GitRepoData, GitShortstatData,
-    GitShowData, GitShowFile, GitStatusData, GitSyncData, GitTurnFile, GitTurnFilesData,
-    GIT_DIFF_CAP, GIT_SHORTSTAT_UNTRACKED_MAX,
+    AppErrorCode, AppErrorDto, GitArea, GitBranch, GitBranchFile, GitBranchFilesData,
+    GitBranchesData, GitCmd, GitCommitData, GitCommitInfo, GitDiffData, GitFileChange, GitLogData,
+    GitPath, GitRepoData, GitShortstatData, GitShowData, GitShowFile, GitStatusData, GitSyncData,
+    GitTurnFile, GitTurnFilesData, GIT_DIFF_CAP, GIT_SHORTSTAT_UNTRACKED_MAX,
 };
 
 use crate::fs::FsScope;
@@ -55,10 +55,10 @@ pub struct Out {
 }
 
 impl Out {
-    fn ok(&self) -> bool {
+    pub(crate) fn ok(&self) -> bool {
         self.code == 0
     }
-    fn text(&self) -> String {
+    pub(crate) fn text(&self) -> String {
         String::from_utf8_lossy(&self.stdout).into_owned()
     }
 }
@@ -603,6 +603,10 @@ pub async fn handle(
             staged,
             untracked,
         } => json(turn_files(&git, &gitdir, &files, staged, untracked).await?),
+        GitCmd::BranchFiles { base } => {
+            let base = base.as_ref().map(|b| b.as_str().to_string());
+            json(branch_files(&git, &gitdir, base.as_deref()).await?)
+        }
         GitCmd::Diff {
             file,
             staged,
@@ -890,6 +894,166 @@ async fn turn_files(
         repo: st.repo,
         files: out,
     })
+}
+
+/// Z-96 "Branch (vs base)" (WP-A15): the files `HEAD` changed vs the base
+/// ref — the given one, else the upstream tracking branch, else the first of
+/// `main` / `master` that exists. Rows carry their diffs: one `--name-status`
+/// run plus one whole-diff run (git emits files in the same order in both, so
+/// the sections zip onto the rows), capped like every diff.
+async fn branch_files(
+    git: &Git,
+    gitdir: &Path,
+    base: Option<&str>,
+) -> Result<GitBranchFilesData, AppErrorDto> {
+    let info = repo_info(git, gitdir).await?;
+    let has_head = git
+        .run(&["rev-parse", "-q", "--verify", "HEAD"], LOCAL_TIMEOUT)
+        .await?
+        .ok();
+    let base_ref = match base {
+        Some(given) => Some(given.to_string()),
+        None => {
+            if let Some(upstream) = &info.upstream {
+                Some(upstream.clone())
+            } else if ref_exists(git, "refs/heads/main").await {
+                Some("main".to_string())
+            } else if ref_exists(git, "refs/heads/master").await {
+                Some("master".to_string())
+            } else {
+                None
+            }
+        }
+    };
+    let Some(base_ref) = base_ref.filter(|_| has_head) else {
+        return Ok(GitBranchFilesData {
+            repo: info,
+            base: None,
+            files: Vec::new(),
+        });
+    };
+    let merge_base = format!("{base_ref}...HEAD");
+    let names = git
+        .ok(
+            &[
+                "diff",
+                "--name-status",
+                "-M",
+                "-z",
+                "--no-ext-diff",
+                &merge_base,
+            ],
+            LOCAL_TIMEOUT,
+        )
+        .await?;
+    let numstat = git
+        .ok(
+            &[
+                "diff",
+                "--numstat",
+                "-M",
+                "-z",
+                "--no-ext-diff",
+                &merge_base,
+            ],
+            LOCAL_TIMEOUT,
+        )
+        .await?;
+    let counts = parse_numstat(&numstat.stdout);
+    let mut rows: Vec<GitFileChange> = Vec::new();
+    let records: Vec<String> = names
+        .stdout
+        .split(|b| *b == 0)
+        .map(|r| String::from_utf8_lossy(r).into_owned())
+        .filter(|r| !r.is_empty())
+        .collect();
+    let mut rec = records.into_iter();
+    while let Some(status) = rec.next() {
+        let Some(path) = rec.next() else { break };
+        if path.is_empty() {
+            continue;
+        }
+        // rename: `R100\0old\0new\0` — the new path is the row.
+        let (orig, path) = if status.starts_with('R') || status.starts_with('C') {
+            let new = rec.next().unwrap_or(path.clone());
+            (Some(path), new)
+        } else {
+            (None, path)
+        };
+        let status_char = status
+            .trim_start_matches(|c: char| c.is_ascii_digit())
+            .chars()
+            .next()
+            .unwrap_or('M');
+        let (add, del, binary) = match counts.get(&path) {
+            Some(Some((a, d))) => (Some(*a), Some(*d), false),
+            Some(None) => (None, None, true),
+            None => (None, None, false),
+        };
+        rows.push(GitFileChange {
+            path,
+            orig,
+            area: GitArea::Staged,
+            status: status_char.to_string(),
+            add,
+            del,
+            binary,
+        });
+        if rows.len() >= STATUS_CAP {
+            break;
+        }
+    }
+    let whole = git
+        .run(&["diff", "-M", "--no-ext-diff", &merge_base], LOCAL_TIMEOUT)
+        .await?;
+    // Sections in emission order; rows and sections pair one to one until the
+    // cap cuts the text — the rest show as truncated.
+    let sections: Vec<String> = whole
+        .text()
+        .split("\ndiff --git ")
+        .enumerate()
+        .map(|(i, s)| {
+            if i == 0 {
+                s.to_string()
+            } else {
+                format!("diff --git {s}")
+            }
+        })
+        .filter(|s| s.starts_with("diff --git "))
+        .collect();
+    let mut files = Vec::with_capacity(rows.len());
+    for (i, row) in rows.into_iter().enumerate() {
+        let diff = match sections.get(i) {
+            Some(text) => {
+                let binary = is_binary_diff(text);
+                let (text, truncated) = cap(text.clone());
+                GitDiffData {
+                    text,
+                    truncated,
+                    binary,
+                }
+            }
+            None => GitDiffData {
+                text: String::new(),
+                truncated: true,
+                binary: row.binary,
+            },
+        };
+        files.push(GitBranchFile { change: row, diff });
+    }
+    Ok(GitBranchFilesData {
+        repo: info,
+        base: Some(base_ref),
+        files,
+    })
+}
+
+/// Whether a local branch exists (base-ref defaulting).
+async fn ref_exists(git: &Git, reference: &str) -> bool {
+    git.run(&["rev-parse", "-q", "--verify", reference], LOCAL_TIMEOUT)
+        .await
+        .map(|out| out.ok())
+        .unwrap_or(false)
 }
 
 /// UNI-257: total +/- of the work tree vs HEAD (staged + unstaged) plus

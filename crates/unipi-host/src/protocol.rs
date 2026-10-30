@@ -555,6 +555,20 @@ impl Handler {
                     .await
                     .map_err(internal)?;
             }
+            Request::GitWatch { root, on } => {
+                tracing::info!(op = "git_watch", root = root.as_str(), on, "request");
+                let scope = crate::fs::FsScope::load(&self.paths.config())?;
+                let dir = crate::git::resolve_dir(root.as_str(), &scope, false)?;
+                let root = crate::git_watch::GitWatchers::shared()
+                    .set(dir, on)
+                    .await
+                    .map(|root| unipi_proto::GitWatchData { root: Some(root) })
+                    .unwrap_or_default();
+                let data = serde_json::to_value(root).map_err(internal)?;
+                write_control(write, &Control::Ok { data: Some(data) })
+                    .await
+                    .map_err(internal)?;
+            }
             Request::BoardCli { args, project } => {
                 let joined = args.join(" ");
                 tracing::info!(op = "board_cli", argv = %joined, "request");

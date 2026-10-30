@@ -35,12 +35,12 @@ import { LinkAnchorMenu } from '../LinkAnchorMenu';
 import { ChatLayer } from '../chat/ChatView';
 import { MermaidViewer } from '../chat/MermaidViewer';
 import { ReviewViewer } from '../chat/ReviewViewer';
-import { GitView } from '../git/GitView';
+import { StatusPaneLayer } from '../status/StatusPane';
 import { Previewer } from '../media/Previewer';
 import Editor from '../../screens/Editor';
 import { SetupGate } from '../../lib/setupGate';
 import { getEditorTarget } from '../../lib/editorTarget';
-import { gitTarget } from '../../lib/git';
+import { gitParams, gitTarget, setGitDesktopOpener } from '../../lib/git';
 import { chatVisible } from '../../lib/session/open';
 import { boardUi } from '../../lib/board/ui';
 import { can } from '../../lib/platform';
@@ -55,6 +55,17 @@ import { ResizeHandle } from './ResizeHandle';
 import { Sidebar, useNewChatHost } from './Sidebar';
 import { currentWorkspace } from './Workspace';
 import { SIDEBAR_DEFAULT } from '../../lib/layout';
+
+// Z-100: every Git entry point opens the one `git` side-pane tab; the phone
+// keeps the full-screen layer (§3.9). Installed here so `lib/git` stays free
+// of component imports.
+setGitDesktopOpener((target) => {
+  const ws = currentWorkspace();
+  if (!ws) return false;
+  panes().open(ws.scope, 'side', ws.view, { kind: 'git', params: gitParams(target) });
+  layout().toggleSide(true);
+  return true;
+});
 
 /** Keyed editor: a new target (another file picked in the Files list) remounts it. */
 const NO_EDITOR_TARGET = {};
@@ -248,7 +259,7 @@ export function AppShell(props: ParentProps) {
         </Show>
         <MermaidViewer />
         <ReviewViewer />
-        <GitView />
+        <StatusPaneLayer />
         <Previewer />
         <LinkAnchorMenu />
         <CommandPalette />

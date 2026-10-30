@@ -473,6 +473,13 @@ pub enum HubEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         patch: Option<Value>,
     },
+    /// v2 (app.md §3.14, WP-A15): the repo at `root` changed on disk (the git
+    /// watcher fired after its debounce). The app re-runs `git status` — no
+    /// polling (Z-98).
+    GitChanged {
+        /// Absolute work-tree root, as `git_watch` answered it.
+        root: String,
+    },
     /// App spec §3.14 (WP-A22): a board project's files changed on disk (CLI
     /// or agent writes land here too — the watcher is on the files, not the
     /// writer). The Board re-reads the project; no payload beyond the slug.
@@ -599,6 +606,13 @@ mod tests {
             })
             .unwrap(),
             json!({"kind": "session_removed", "session": "s1"})
+        );
+        assert_eq!(
+            serde_json::to_value(HubEvent::GitChanged {
+                root: "/home/me/oino".into()
+            })
+            .unwrap(),
+            json!({"kind": "git_changed", "root": "/home/me/oino"})
         );
         assert_eq!(
             serde_json::to_value(HubEvent::HostNotice {

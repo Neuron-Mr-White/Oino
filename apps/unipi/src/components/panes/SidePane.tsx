@@ -20,6 +20,7 @@ import { LauncherList, PaneLauncher, type LaunchSpec } from './PaneLauncher';
 import { TabOverview } from './TabOverview';
 import { TabStrip } from './TabStrip';
 import './ForwardTab';
+import '../status/StatusPane';
 
 export type SidePaneMode = 'push' | 'overlay' | 'full';
 

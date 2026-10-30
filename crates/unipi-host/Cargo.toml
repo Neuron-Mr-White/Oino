@@ -31,6 +31,8 @@ unipi-cron = { path = "../unipi-cron" }
 unipi-kanboard = { path = "../unipi-kanboard" }
 oino-wasm-host = { path = "../oino-wasm-host" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# WP-A15 (app.md §3.14): fsnotify for the git watcher (Z-98 auto-refresh).
+notify = "8"
 # The `"cron"` host service trait signature (cancellation token, boxed future).
 tokio-util.workspace = true
 

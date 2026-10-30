@@ -47,6 +47,44 @@ export type MockSession = {
   cmd?: Record<string, (cmd: RpcCommand, host: MockHost) => unknown>;
 };
 
+/** One changed file of a mock repo (the `git status` row the Git pane draws). */
+export type MockGitFile = {
+  path: string;
+  area: 'staged' | 'unstaged' | 'untracked' | 'conflict';
+  /** Porcelain letter (`M`, `A`, `D`, `?`, `U`; default `M`, `?` for untracked). */
+  status?: string;
+  add?: number;
+  del?: number;
+  binary?: boolean;
+  /** Rename source. */
+  orig?: string;
+};
+
+/** A mock repo (WP-A15): every `git_op` action answers from this one spec. */
+export type MockGit = {
+  repo?: boolean;
+  root?: string;
+  branch?: string;
+  head?: string;
+  detached?: boolean;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+  remotes?: string[];
+  stashes?: number;
+  operation?: string;
+  /** `git status` rows, in the grouping the pane shows. */
+  files?: MockGitFile[];
+  /** Branch source: the base ref; `null` = no base (the pane's empty state). */
+  base?: string | null;
+  /** `git log` (newest first); `short`/`author`/`time`/`refs` default. */
+  commits?: Array<{ hash: string; short?: string; subject: string; author?: string; time?: number; refs?: string[] }>;
+  /** The status list was capped ("Showing the first 2 000 changed files"). */
+  more?: boolean;
+  /** Diff text per path (default: a plausible hunk). */
+  diffs?: Record<string, string>;
+};
+
 export type MockFsNode = { kind: 'dir'; children: Record<string, MockFsNode> } | { kind: 'file'; text: string; mtime?: number };
 
 export type MockHostSpec = {
@@ -59,7 +97,7 @@ export type MockHostSpec = {
   sessions?: Record<string, MockSession>;
   /** Root folders → tree. */
   fs?: Record<string, MockFsNode>;
-  git?: unknown;
+  git?: MockGit;
   cron?: unknown[];
   ops?: Record<string, MockOp>;
 };
@@ -95,6 +133,148 @@ function walk(root: Record<string, MockFsNode> | undefined, path: string): MockF
     node = node?.kind === 'dir' ? node.children[part] : undefined;
   }
   return node;
+}
+
+/** The repo half of every `git_op` answer (proto `GitRepoData`). */
+function mockRepo(g: MockGit) {
+  return {
+    repo: g.repo !== false,
+    root: g.root,
+    branch: g.branch ?? 'main',
+    head: g.head ?? 'a1b2c3d4',
+    detached: g.detached ?? false,
+    upstream: g.upstream,
+    ahead: g.ahead ?? 0,
+    behind: g.behind ?? 0,
+    remotes: g.remotes ?? ['origin'],
+    stashes: g.stashes ?? 0,
+    operation: g.operation,
+  };
+}
+
+/** A plausible unified diff for a row (rows may carry `diffs[path]` instead). */
+function mockDiff(g: MockGit, path: string, file?: MockGitFile) {
+  if (g.diffs?.[path]) return { text: g.diffs[path]!, truncated: false, binary: false };
+  if (file?.binary) return { text: '', truncated: false, binary: true };
+  const old = `const total = items.length;\nreturn total;\n`;
+  const next = `const total = items.reduce((n, item) => n + item.weight, 0);\nreturn total;\n`;
+  return {
+    text: [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      `@@ -12,7 +12,9 @@ export function tally(items: Item[]): number {`,
+      '   // Count what the list weighs, not how many rows it has.',
+      ...old.split('\n').slice(0, -1).map((line) => `-${line}`),
+      ...next.split('\n').slice(0, -1).map((line) => `+${line}`),
+      ' }',
+      '',
+    ].join('\n'),
+    truncated: false,
+    binary: false,
+  };
+}
+
+const mockRow = (g: MockGit, f: MockGitFile) => ({
+  path: f.path,
+  area: f.area,
+  status: f.status ?? (f.area === 'untracked' ? '?' : f.area === 'conflict' ? 'U' : 'M'),
+  add: f.add ?? 0,
+  del: f.del ?? 0,
+  binary: f.binary ?? false,
+  ...(f.orig ? { orig: f.orig } : {}),
+});
+
+/** `git_op` (WP-A15): every action answers from the spec, writes mutate `files`. */
+function mockGitOp(cmd: { action: string; [k: string]: unknown }, g: MockGit): unknown {
+  const files = g.files ?? [];
+  const withDiff = (f: MockGitFile) => ({ ...mockRow(g, f), diff: mockDiff(g, f.path, f) });
+  switch (cmd.action) {
+    case 'repo':
+      return mockRepo(g);
+    case 'status':
+      return { ...mockRepo(g), files: files.map((f) => mockRow(g, f)), more: g.more ?? false };
+    case 'diff': {
+      const path = String(cmd.file ?? '');
+      const file = files.find((f) => f.path === path);
+      return mockDiff(g, path, file);
+    }
+    case 'turn_files': {
+      const asked = new Set((cmd.files as string[] | undefined) ?? []);
+      return { ...mockRepo(g), files: files.filter((f) => asked.has(f.path)).map(withDiff) };
+    }
+    case 'branch_files':
+      return {
+        ...mockRepo(g),
+        base: g.base === undefined ? (g.upstream ?? 'main') : g.base,
+        files: g.base === null ? [] : files.map(withDiff),
+      };
+    case 'log': {
+      const all = g.commits ?? [];
+      const skip = Number(cmd.skip ?? 0);
+      const limit = Number(cmd.limit ?? 50);
+      return {
+        commits: all.slice(skip, skip + limit).map((c) => ({
+          hash: c.hash,
+          short: c.short ?? c.hash.slice(0, 7),
+          subject: c.subject,
+          author: c.author ?? 'You',
+          time: c.time ?? 1_760_000_000,
+          refs: c.refs ?? [],
+        })),
+        more: skip + limit < all.length,
+      };
+    }
+    case 'show': {
+      const rev = String(cmd.rev ?? '');
+      const commit = (g.commits ?? []).find((c) => c.hash === rev || c.hash.startsWith(rev));
+      const row = { hash: rev, short: rev.slice(0, 7), subject: commit?.subject ?? 'Commit', author: commit?.author ?? 'You', time: commit?.time ?? 1_760_000_000, refs: commit?.refs ?? [] };
+      return {
+        commit: row,
+        body: '',
+        files: files.slice(0, 4).map((f) => ({ path: f.path, status: f.status ?? 'M', add: f.add ?? 0, del: f.del ?? 0 })),
+        diff: files.slice(0, 4).map((f) => mockDiff(g, f.path, f).text).join(''),
+        truncated: false,
+      };
+    }
+    case 'branches':
+      return {
+        branches: [
+          { name: g.branch ?? 'main', current: true, upstream: g.upstream, ahead: g.ahead ?? 0, behind: g.behind ?? 0, time: 1_760_000_000, subject: g.commits?.[0]?.subject ?? 'Commit' },
+          { name: 'feat/review-pane', time: 1_759_000_000, subject: 'Add the review pane' },
+          ...(g.remotes ?? []).map((r) => ({ name: `${r}/${g.branch ?? 'main'}`, remote: true })),
+        ],
+      };
+    case 'stage': {
+      const paths = (cmd.paths as string[] | undefined) ?? files.map((f) => f.path);
+      for (const f of files) if (paths.includes(f.path) && f.area !== 'conflict') f.area = 'staged';
+      return null;
+    }
+    case 'unstage': {
+      const paths = (cmd.paths as string[] | undefined) ?? files.map((f) => f.path);
+      for (const f of files) if (paths.includes(f.path) && f.area === 'staged') f.area = f.status === 'A' ? 'untracked' : 'unstaged';
+      return null;
+    }
+    case 'discard':
+      g.files = files.filter((f) => !((cmd.paths as string[] | undefined) ?? []).includes(f.path));
+      return null;
+    case 'commit': {
+      const subject = String(cmd.message ?? '').split('\n')[0];
+      g.files = files.filter((f) => f.area !== 'staged');
+      const head = { hash: g.head ?? 'a1b2c3d4', subject, author: 'You', time: Math.floor(Date.now() / 1000), refs: [`HEAD -> ${g.branch ?? 'main'}`] };
+      g.commits = [head, ...(g.commits ?? [])];
+      return { hash: head.hash, subject };
+    }
+    case 'switch':
+      g.branch = String(cmd.branch ?? g.branch ?? 'main');
+      return null;
+    case 'pull':
+      return { output: 'Already up to date.' };
+    case 'push':
+      return { output: `To origin\n   ${g.branch ?? 'main'} -> ${g.branch ?? 'main'}` };
+    default:
+      return { output: 'Done.' };
+  }
 }
 
 const BUILTIN: Record<string, MockOp> = {
@@ -135,7 +315,14 @@ const BUILTIN: Record<string, MockOp> = {
     return { size: node.text.length, hash: `h${node.text.length}`, mtime: node.mtime ?? 0, truncated: false, text: node.text };
   },
   fs_search: () => ({ results: [], more: false }),
-  git_op: (_a, h) => h.spec.git ?? { branch: 'main', ahead: 0, behind: 0, files: [] },
+  // WP-A15: the whole `git` op family answers from the one mock repo.
+  git_op: (a, h) => mockGitOp(a.cmd as { action: string }, h.spec.git ?? {}),
+  // WP-A15 (Z-98): the refcounted watcher; the root `git_changed` events carry.
+  git_watch: (a, h) => {
+    const g = h.spec.git ?? {};
+    h.watch(String(a.root ?? g.root ?? ''), a.on !== false);
+    return { root: g.repo === false ? null : (g.root ?? a.root ?? null) };
+  },
   cron_list: (_a, h) => ({ jobs: h.spec.cron ?? [], paused: false }),
   cron_status: () => ({ paused: false, concurrency: 1, jobs: [] }),
   ports_list: () => ({ ports: [], any: true, allowed: [] }),
@@ -156,6 +343,8 @@ export class MockHost implements HostClient {
   readonly hostId: string;
   readonly conn;
   private readonly setConn;
+  /** Repo roots a `git_watch{on:true}` asked for (off drops them, like the host's refcount). */
+  readonly watched = new Set<string>();
   constructor(
     readonly spec: MockHostSpec,
     private readonly world: MockWorld,
@@ -286,6 +475,18 @@ export class MockHost implements HostClient {
   openLsp(req: Parameters<HostClient['openLsp']>[0]): LspStream {
     this.world.record({ host: this.hostId, kind: 'open', op: 'lsp_open', args: req });
     return { send() {}, close() {} };
+  }
+
+  /** `git_watch`: remembers the watched roots (off drops, like the host's refcount). */
+  watch(root: string, on: boolean): void {
+    if (!root) return;
+    if (on) this.watched.add(root);
+    else this.watched.delete(root);
+  }
+
+  /** Test control: one host-side `git_changed` for a watched root (WP-A15, Z-98). */
+  gitChanged(root = [...this.watched][0]): void {
+    if (root) this.emit({ kind: 'git_changed', root });
   }
 
   /** Sends a hub event to this host's `openEvents` subscribers only (like the real host). */

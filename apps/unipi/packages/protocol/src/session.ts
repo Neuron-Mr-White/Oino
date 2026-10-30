@@ -250,6 +250,7 @@ export const HubEventSchema = z.discriminatedUnion("kind", [
       patch: UiPatchEnvelopeSchema.optional(),
     })
     .passthrough(),
+  z.object({ kind: z.literal("git_changed"), root: z.string() }).passthrough(),
 ]);
 export type HubEvent = z.infer<typeof HubEventSchema>;
 
