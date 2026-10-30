@@ -566,6 +566,22 @@ impl Agent {
         }
     }
 
+    /// Clears a run orphaned by a crashed driver task (X-PANIC): a panic's unwind dropped
+    /// the run future before `finish_run` ran, leaving the run "active" and the session
+    /// forever busy. Discards streaming state and pending tool calls; the transcript is
+    /// kept — callers rebuild from the session log. No-op when no run is active.
+    pub fn recover_orphaned_run(&self) {
+        if lock(&self.inner.active).take().is_some() {
+            {
+                let mut state = lock(&self.inner.state);
+                state.is_streaming = false;
+                state.streaming_message = None;
+                state.pending_tool_calls.clear();
+            }
+            self.inner.idle.send_replace(true);
+        }
+    }
+
     /// Resolves once no run is active and every `agent_end` listener has returned.
     pub async fn wait_for_idle(&self) {
         let mut idle = self.inner.idle.subscribe();

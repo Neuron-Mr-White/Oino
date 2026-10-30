@@ -6,18 +6,21 @@
 //! `tool_call` and `user_bash` failures block. Every call has a deadline.
 
 use std::collections::HashSet;
+use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use futures::FutureExt;
 use indexmap::{IndexMap, IndexSet};
 use oino_ai::{AgentMessage, ImageContent, JsonObject, JsonValue};
 use serde_json::json;
 
 use super::api::{
-    ArbiterRoles, CallContext, CommandSpec, ExtensionCallError, ExtensionInstance, FlagSpec,
-    Registration, ShortcutSpec, ToolSpec,
+    ArbiterRoles, CallContext, CommandSpec, ExtensionCallError, ExtensionId, ExtensionInstance,
+    FlagSpec, Registration, ShortcutSpec, ToolSpec,
 };
-use crate::events::ExtensionErrorEvent;
+use crate::events::{ExtensionDisabledReason, ExtensionErrorEvent, OinoEvent};
+use crate::session::panic_message;
 
 /// Default handler deadline.
 pub const HOOK_DEADLINE: Duration = Duration::from_secs(5);
@@ -50,6 +53,10 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 pub trait ErrorSink: Send + Sync {
     /// Reports one failure.
     fn report(&self, error: ExtensionErrorEvent);
+
+    /// Reports that an extension was disabled for the session (X-TRAP), published as
+    /// `extension_disabled`.
+    fn disabled(&self, event: OinoEvent);
 }
 
 /// Mutable registrations of one extension (static + dynamic).
@@ -255,6 +262,9 @@ pub struct ExtensionRunner {
     flag_values: Arc<Mutex<IndexMap<String, JsonValue>>>,
     stale: Arc<Mutex<Option<String>>>,
     dialogs: Option<crate::ui::UiBridge>,
+    /// Extensions disabled for this session (X-TRAP); shared by every clone of this
+    /// session's runner.
+    disabled: Arc<Mutex<IndexSet<ExtensionId>>>,
 }
 
 impl std::fmt::Debug for ExtensionRunner {
@@ -285,6 +295,7 @@ impl ExtensionRunner {
             flag_values: Arc::new(Mutex::new(flag_values)),
             stale: Arc::new(Mutex::new(None)),
             dialogs: None,
+            disabled: Arc::new(Mutex::new(IndexSet::new())),
         }
     }
 
@@ -338,7 +349,10 @@ impl ExtensionRunner {
     }
 
     fn active(&self) -> impl Iterator<Item = &Arc<LoadedExtension>> {
-        self.set.extensions().iter()
+        self.set
+            .extensions()
+            .iter()
+            .filter(|extension| !self.is_disabled(extension.instance.id()))
     }
 
     fn handlers(&self, kind: &str) -> Vec<Arc<LoadedExtension>> {
@@ -354,6 +368,37 @@ impl ExtensionRunner {
         self.active().any(|extension| extension.subscribed(kind))
     }
 
+    /// Whether `id` is disabled for this session (X-TRAP).
+    #[must_use]
+    pub fn is_disabled(&self, id: &str) -> bool {
+        lock(&self.disabled).contains(id)
+    }
+
+    /// Extensions disabled for this session (X-TRAP), in disable order.
+    #[must_use]
+    pub fn disabled_extensions(&self) -> Vec<ExtensionId> {
+        lock(&self.disabled).iter().cloned().collect()
+    }
+
+    /// Disables `extension` for this session (X-TRAP): one trap or panic is enough — cheap
+    /// and reversible, since the runner is per session and a session replacement starts
+    /// with a fresh one. The instance-level circuit breaker (3 restarts / 10 min → disabled
+    /// for the process, instance.rs) stays as the last resort.
+    fn disable(&self, extension: &LoadedExtension, reason: ExtensionDisabledReason) {
+        let id = extension.instance.id().to_owned();
+        if !lock(&self.disabled).insert(id.clone()) {
+            return; // already disabled for this session; the event was emitted
+        }
+        if let Some(ui) = &self.dialogs {
+            ui.cancel_for(&id);
+        }
+        self.errors.disabled(OinoEvent::ExtensionDisabled {
+            session_id: self.cx.session_id.clone(),
+            extension_id: id,
+            reason,
+        });
+    }
+
     async fn call(
         &self,
         extension: &LoadedExtension,
@@ -364,25 +409,49 @@ impl ExtensionRunner {
             || deadline_for(kind),
             |d| d.min(MAX_MANIFEST_DEADLINE).max(deadline_for(kind)),
         );
-        let call = extension.instance.on_event(kind, payload, self.cx.clone());
         let id = extension.instance.id();
         let waiting = || {
             self.dialogs
                 .as_ref()
                 .is_some_and(|ui| ui.pending_for(id) > 0)
         };
-        if let Some(result) =
+        // X-TRAP: a Rust-side panic is contained to this call instead of taking the task
+        // down; it becomes an `ExtensionCallError` and disables the extension for the
+        // session. The async block covers the synchronous prefix too — some instances
+        // run handler bodies while building the call future.
+        let outcome = AssertUnwindSafe(async {
+            let call = extension.instance.on_event(kind, payload, self.cx.clone());
             crate::extensions::deadline::with_deadline(call, deadline, waiting).await
-        {
-            return result;
+        })
+        .catch_unwind()
+        .await;
+        match outcome {
+            Ok(Some(result)) => {
+                if let Err(error) = &result
+                    && error.trap
+                {
+                    self.disable(extension, ExtensionDisabledReason::Trap);
+                }
+                result
+            }
+            Ok(None) => {
+                if let Some(ui) = &self.dialogs {
+                    ui.cancel_for(id);
+                }
+                Err(ExtensionCallError::new(format!(
+                    "Extension handler for {kind} timed out after {}ms",
+                    deadline.as_millis()
+                )))
+            }
+            Err(panic) => {
+                let error = ExtensionCallError {
+                    message: format!("extension panicked: {}", panic_message(&*panic)),
+                    trap: true,
+                };
+                self.disable(extension, ExtensionDisabledReason::Panic);
+                Err(error)
+            }
         }
-        if let Some(ui) = &self.dialogs {
-            ui.cancel_for(id);
-        }
-        Err(ExtensionCallError::new(format!(
-            "Extension handler for {kind} timed out after {}ms",
-            deadline.as_millis()
-        )))
     }
 
     fn report(&self, extension: &LoadedExtension, kind: &str, error: &ExtensionCallError) {

@@ -23,9 +23,13 @@ mod stats;
 mod tools;
 mod tree;
 
+use std::any::Any;
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 
+use futures::FutureExt;
 use oino_agent::{Agent, AgentOptions, StreamFn, Subscription};
 use oino_ai::transcript::SystemState;
 use oino_ai::{
@@ -65,6 +69,43 @@ pub use tree::{ForkMessage, NavigateTreeOptions, NavigateTreeResult};
 
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Panic payload → message (`Box<dyn Any + Send>`).
+#[must_use]
+pub(crate) fn panic_message(panic: &(dyn Any + Send)) -> String {
+    if let Some(text) = panic.downcast_ref::<&str>() {
+        (*text).to_owned()
+    } else if let Some(text) = panic.downcast_ref::<String>() {
+        text.clone()
+    } else {
+        "unknown panic".to_owned()
+    }
+}
+
+/// Kinds of session-spawned tasks covered by panic isolation
+/// ([`AgentSession::spawn_isolated`], X-PANIC).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IsolatedTask {
+    /// The agent drive task (`drive_run`) and its deferred follow-up starts: a panic
+    /// resets the run book so the session accepts a new prompt.
+    Drive,
+    /// Child event forwarding (`forward_child_events`).
+    ChildEvents,
+    /// The arbiter wait-source poll timer.
+    ArbiterPoll,
+}
+
+impl IsolatedTask {
+    /// Task name used in logs.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Drive => "drive_run",
+            Self::ChildEvents => "forward_child_events",
+            Self::ArbiterPoll => "arbiter_poll",
+        }
+    }
 }
 
 /// pi `getCurrentSystemMessage` over agent messages.
@@ -266,6 +307,13 @@ impl ErrorSink for HubErrors {
     fn report(&self, error: ExtensionErrorEvent) {
         tracing::warn!(extension = %error.extension_path, event = %error.event, "{}", error.error);
         self.0.publish(error);
+    }
+
+    fn disabled(&self, event: OinoEvent) {
+        if let OinoEvent::ExtensionDisabled { extension_id, .. } = &event {
+            tracing::error!(extension = %extension_id, "extension disabled for this session");
+        }
+        self.0.publish(event);
     }
 }
 
@@ -908,6 +956,102 @@ impl AgentSession {
         self.runner().invalidate(None);
         self.inner.ui.cancel_all();
         *lock(&self.inner.subscription) = None;
+    }
+
+    /// Spawns a session task with per-session panic isolation (X-PANIC, core spec §2.3):
+    /// a panic is caught, logged with the session id and published as
+    /// [`OinoEvent::SessionCrashed`]. A crashed [`IsolatedTask::Drive`] task additionally
+    /// resets the run book and repairs dangling tool calls, so the session stays open and
+    /// the next prompt works — state is rebuilt from the log. Other sessions run as
+    /// separate tasks and are unaffected.
+    ///
+    /// Returns the wrapper task's handle; aborting it aborts `fut`.
+    pub fn spawn_isolated(
+        &self,
+        task: IsolatedTask,
+        fut: impl Future<Output = ()> + Send + 'static,
+    ) -> tokio::task::JoinHandle<()> {
+        let session = self.clone();
+        tokio::spawn(async move {
+            if let Err(panic) = AssertUnwindSafe(fut).catch_unwind().await {
+                session.on_isolated_panic(task, &*panic);
+            }
+        })
+    }
+
+    /// Panic recovery (X-PANIC): report, reset, publish.
+    fn on_isolated_panic(&self, task: IsolatedTask, panic: &(dyn Any + Send)) {
+        let error = panic_message(panic);
+        tracing::error!(
+            session = %self.session_id(),
+            task = task.name(),
+            "session task panicked: {error}"
+        );
+        if task == IsolatedTask::Drive {
+            self.recover_crashed_run();
+        }
+        self.inner.hub.publish(OinoEvent::SessionCrashed { error });
+        // The run is over however it ended: tell clients the session is idle again.
+        self.inner.hub.publish(OinoEvent::RunState {
+            state: RunState::Idle,
+            waiting_on: None,
+        });
+        self.set_idle_if_idle();
+    }
+
+    /// Resets a run crashed mid-flight (X-PANIC): closes dangling tool calls of the
+    /// trailing turn (unknown outcome, D-REPAIR semantics — a no-op for in-memory sessions
+    /// and balanced transcripts), clears the run book and cancellation state, and unsticks
+    /// the agent so the next `prompt` is accepted.
+    fn recover_crashed_run(&self) {
+        match self.with_manager(SessionManager::repair_interrupted_turn) {
+            Ok(report) if !report.closed_tool_calls.is_empty() || report.torn_tail => {
+                tracing::warn!(
+                    session = %self.session_id(),
+                    "crashed run repaired: {} dangling tool call(s) closed",
+                    report.closed_tool_calls.len()
+                );
+                self.refresh_context();
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(session = %self.session_id(), "repair after crash failed: {error}");
+            }
+        }
+        {
+            let mut book = lock(&self.inner.book);
+            book.run_active = false;
+            book.abort_requested = false;
+            book.overflow_recovery_attempted = false;
+            book.retry_attempt = 0;
+            book.failed_response = None;
+            book.is_before_settle = false;
+            book.abort_during_before_settle = false;
+            book.emitting_settled = false;
+            book.boundary_dispatched = false;
+            book.run_prompt_options = None;
+            book.tool_result_entries.clear();
+        }
+        {
+            let mut cancels = lock(&self.inner.cancels);
+            for token in [
+                &cancels.retry,
+                &cancels.compaction,
+                &cancels.auto_compaction,
+                &cancels.branch_summary,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                token.cancel();
+            }
+            cancels.retry = None;
+            cancels.compaction = None;
+            cancels.auto_compaction = None;
+            cancels.branch_summary = None;
+        }
+        lock(&self.inner.arbiter).waiting_on.clear();
+        self.inner.agent.recover_orphaned_run();
     }
 
     /// Sets the session name (pi `setSessionName`).

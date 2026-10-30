@@ -364,6 +364,18 @@ pub enum RunState {
     Waiting,
 }
 
+/// Why an extension was disabled for one session (X-TRAP, core spec §2.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExtensionDisabledReason {
+    /// The guest trapped.
+    Trap,
+    /// A Rust-side panic inside the instance call.
+    Panic,
+    /// Disabled explicitly (user toggle, process-level breaker).
+    Disabled,
+}
+
 /// Oino client events (runtime §6.2).
 #[allow(
     clippy::large_enum_variant,
@@ -448,6 +460,26 @@ pub enum OinoEvent {
     },
     /// An extension called `ctx.shutdown()`; the frontend exits once the session is idle.
     ShutdownRequested,
+    /// An extension was disabled for one session after a trap or panic (X-TRAP): it stops
+    /// dispatching for that session only; other sessions keep it. Frontends surface it as
+    /// a notice ("Extension X crashed and was disabled for this session").
+    #[serde(rename_all = "camelCase")]
+    ExtensionDisabled {
+        /// Session the extension is disabled for.
+        session_id: String,
+        /// Disabled extension id.
+        extension_id: String,
+        /// Why it was disabled.
+        reason: ExtensionDisabledReason,
+    },
+    /// A session task crashed and was contained (X-PANIC): the run book was reset and the
+    /// session stays usable; other sessions are unaffected. Frontends surface it as a
+    /// notice and can re-prompt.
+    #[serde(rename_all = "camelCase")]
+    SessionCrashed {
+        /// Panic message.
+        error: String,
+    },
 }
 
 impl From<crate::topics::TopicValue> for OinoEvent {
@@ -573,6 +605,24 @@ mod tests {
             }))
             .unwrap(),
             json!({"type":"queue_update","steering":["a"],"followUp":[]})
+        );
+        let disabled: ClientEvent = OinoEvent::ExtensionDisabled {
+            session_id: "s1".into(),
+            extension_id: "unipi.x".into(),
+            reason: ExtensionDisabledReason::Trap,
+        }
+        .into();
+        assert_eq!(
+            serde_json::to_value(&disabled).unwrap(),
+            json!({"type":"extension_disabled","sessionId":"s1","extensionId":"unipi.x","reason":"trap"})
+        );
+        let crashed: ClientEvent = OinoEvent::SessionCrashed {
+            error: "boom".into(),
+        }
+        .into();
+        assert_eq!(
+            serde_json::to_value(&crashed).unwrap(),
+            json!({"type":"session_crashed","error":"boom"})
         );
     }
 }

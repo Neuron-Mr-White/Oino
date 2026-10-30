@@ -23,8 +23,8 @@ use crate::extensions::api::CallContext;
 use crate::extensions::host::HostError;
 use crate::extensions::runner::ExtensionSet;
 use crate::session::{
-    AgentSession, Inner, InputSource, PromptDisposition, PromptOptions, SessionConfig,
-    StreamingBehavior, lock,
+    AgentSession, Inner, InputSource, IsolatedTask, PromptDisposition, PromptOptions,
+    SessionConfig, StreamingBehavior, lock,
 };
 
 fn failed(error: impl std::fmt::Display) -> HostError {
@@ -406,14 +406,17 @@ impl AgentSession {
             router.attach(&child);
         }
         child.bind_extensions("startup", None).await;
-        let forward = tokio::spawn(forward_child_events(
-            child.subscribe(),
-            Arc::downgrade(&self.inner),
-            child.inner.agents.link.clone(),
-            extension.to_owned(),
-            child.session_id(),
-            self.runner().call_context().clone(),
-        ));
+        let forward = self.spawn_isolated(
+            IsolatedTask::ChildEvents,
+            forward_child_events(
+                child.subscribe(),
+                Arc::downgrade(&self.inner),
+                child.inner.agents.link.clone(),
+                extension.to_owned(),
+                child.session_id(),
+                self.runner().call_context().clone(),
+            ),
+        );
         let handle = Arc::new(ChildAgent {
             id: child.session_id(),
             label: spec.label.clone(),

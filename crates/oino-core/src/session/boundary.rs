@@ -10,7 +10,7 @@ use serde_json::json;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-use super::{ActivityOutcome, AgentSession, Inner, lock};
+use super::{ActivityOutcome, AgentSession, Inner, IsolatedTask, lock};
 use crate::events::{OinoEvent, RunState};
 
 /// Which boundary is being built.
@@ -379,7 +379,7 @@ impl AgentSession {
         });
         if start_poll {
             let inner = Arc::downgrade(&self.inner);
-            tokio::spawn(poll_wait_sources(inner));
+            self.spawn_isolated(IsolatedTask::ArbiterPoll, poll_wait_sources(inner));
         }
     }
 

@@ -1,0 +1,17 @@
+[package]
+name = "fixture-panic-probe"
+version = "1.0.0-alpha.5"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Oino test fixture: panic-probe (traps on demand, X-TRAP)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oino-extension = { workspace = true }
+
+[lints]
+workspace = true

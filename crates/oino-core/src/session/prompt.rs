@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use super::{AgentSession, SessionOpError, lock};
+use super::{AgentSession, IsolatedTask, SessionOpError, lock};
 use crate::events::AgentSessionEvent;
 use crate::extensions::api::CallKind;
 use crate::extensions::host::{CustomMessageDraft, Delivery};
@@ -533,7 +533,7 @@ impl AgentSession {
 
     fn defer(&self, action: Deferred) {
         let session = self.clone();
-        tokio::spawn(async move {
+        self.spawn_isolated(IsolatedTask::Drive, async move {
             // Runs once the current agent_settled emission finished (pi deferred actions).
             while lock(&session.inner.book).emitting_settled {
                 tokio::task::yield_now().await;
@@ -567,7 +567,9 @@ impl AgentSession {
         self.record_selection();
         self.clear_pending_tools();
         let session = self.clone();
-        tokio::spawn(async move { session.drive_run(messages).await });
+        self.spawn_isolated(IsolatedTask::Drive, async move {
+            session.drive_run(messages).await;
+        });
         Ok(())
     }
 

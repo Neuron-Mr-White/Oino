@@ -267,6 +267,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fixture-panic-probe"
+version = "1.0.0-alpha.5"
+dependencies = [
+ "oino-extension",
+]
+
+[[package]]
 name = "fixture-provider-faux"
 version = "1.0.0-alpha.5"
 dependencies = [
