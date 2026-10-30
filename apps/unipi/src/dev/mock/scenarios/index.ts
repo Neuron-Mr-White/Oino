@@ -33,7 +33,7 @@ import { emptyChat, motionExits } from './empty-chat';
 import { u12Fallback, u12Native, u12Nav, u12OwnerOff, u12Phone, u12PhoneOff } from './reserved';
 import { modeChip, modelCycleSet, modelFusion, modelPicker, thinkingChip } from './model';
 import {
-  capAgents, capAgentsPanel, capMcp, capMcpNoChat, capMcpPanel, capMemory, capMemoryPanel, capSkills, capSkillsPanel,
+  capAgents, capAgentsPanel, capImport, capMcp, capMcpNoChat, capMcpPanel, capMemory, capMemoryPanel, capPalette, capSkills, capSkillsPanel,
   providers, providersNoChat,
 } from './capabilities';
 
@@ -142,6 +142,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'cap-skills-panel': capSkillsPanel,
   'cap-agents': capAgents,
   'cap-agents-panel': capAgentsPanel,
+  'cap-import': capImport,
+  'cap-palette': capPalette,
   providers,
   'providers-nochat': providersNoChat,
 };
