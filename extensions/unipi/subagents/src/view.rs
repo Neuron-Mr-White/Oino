@@ -264,6 +264,24 @@ pub fn render_items(items: &[Item], full_output: bool) -> Vec<Node> {
     out
 }
 
+/// A badge span: `{content, style:{fg:tone, bg:<tone>Bg}}` (§12.1 `badge` → `Span`).
+fn badge(text: &str, tone: &str) -> Span {
+    let color = Color::parse(tone);
+    let bg = match color {
+        Color::Accent => Some(Color::AccentBg),
+        Color::Info => Some(Color::InfoBg),
+        Color::Success => Some(Color::SuccessBg),
+        Color::Warning => Some(Color::WarningBg),
+        Color::Error => Some(Color::ErrorBg),
+        _ => None,
+    };
+    let span = Span::from_string(text).fg(color).bold();
+    match bg {
+        Some(fill) => span.bg(fill),
+        None => span,
+    }
+}
+
 /// A nowrap paragraph from spans.
 fn paragraph(spans: Vec<Span>) -> Paragraph {
     Paragraph::new(Line::from(spans)).wrap(Wrap::Disabled(false))
@@ -308,9 +326,7 @@ pub fn row(rec: &Record, tool_calls: u32, usage: Option<&Usage>, now: i64) -> Li
         tags.push(tok[3..].to_owned());
     }
     ListItem::new(Line::from(vec![
-        Span::from(rec.status.badge())
-            .fg(Color::parse(rec.status.tone()))
-            .bold(),
+        badge(rec.status.badge(), rec.status.tone()),
         Span::from(" "),
         Span::from(profile_label(&rec.profile)).dim(),
         Span::from(format!(" {}", rec.title)),
@@ -412,9 +428,7 @@ pub fn detail_body(
 ) -> Node {
     let mut children = vec![
         paragraph(vec![
-            Span::from(rec.status.badge())
-                .fg(Color::parse(rec.status.tone()))
-                .bold(),
+            badge(rec.status.badge(), rec.status.tone()),
             Span::from(" "),
             Span::from(profile_label(&rec.profile)).dim(),
             Span::from(" › ").dim(),
@@ -586,7 +600,6 @@ pub fn completion_card(d: &Value, expanded: bool) -> Node {
         right.push(plural(u32::try_from(n).unwrap_or(u32::MAX), "tool call"));
     }
     let profile = d.get("profile").and_then(Value::as_str).map(profile_label);
-    let color = Color::parse(status.tone());
     let head: Node = Layout::horizontal([
         Constraint::Min(0),
         Constraint::Fill(1),
@@ -595,7 +608,7 @@ pub fn completion_card(d: &Value, expanded: bool) -> Node {
     ])
     .spacing(1)
     .children([
-        paragraph(vec![Span::from(status.badge()).fg(color).bold()]).into(),
+        paragraph(vec![badge(status.badge(), status.tone())]).into(),
         paragraph(vec![
             Span::from(profile.unwrap_or_default()).bold(),
             Span::from(format!(

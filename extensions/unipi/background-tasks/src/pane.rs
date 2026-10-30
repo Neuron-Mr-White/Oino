@@ -331,8 +331,11 @@ fn header_row(t: &Snapshot, now: i64) -> Node {
     let chip_node: Node = if t.status == Status::Running {
         Spinner::new(crate::cards::chip(t.status)).into()
     } else {
-        let color = Color::parse(tone(t.status));
-        line_spans(vec![Span::from(crate::cards::chip(t.status)).fg(color)]).into()
+        line_spans(vec![crate::cards::badge(
+            crate::cards::chip(t.status),
+            tone(t.status),
+        )])
+        .into()
     };
     Layout::horizontal([
         Constraint::Min(0),

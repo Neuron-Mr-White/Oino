@@ -43,7 +43,7 @@ fn bg(tone: &Color) -> Option<Color> {
 }
 
 /// A badge span: `{content, style:{fg:tone, bg:<tone>Bg}}` (§12.1 `badge` → `Span`).
-fn badge(text: &str, tone: &str) -> Span {
+pub(crate) fn badge(text: &str, tone: &str) -> Span {
     let color = Color::parse(tone);
     match bg(&color) {
         Some(fill) => Span::from_string(text).fg(color).bg(fill),
