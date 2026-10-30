@@ -35,7 +35,7 @@ use crate::theme::Theme;
 
 pub(crate) use dialog::DialogUi;
 pub use frontend::SchemaPurpose;
-pub(crate) use frontend::{ExtSettingsPage, ProviderPicker};
+pub(crate) use frontend::{ExtSettingsPage, ExtSubPage, ProviderPicker};
 pub(crate) use overlay::Overlay;
 pub(crate) use submit::group;
 
@@ -183,6 +183,13 @@ pub enum EditPurpose {
     Dialog(String),
     /// An `editExternally` dialog.
     External(String),
+    /// A `json` settings field of an extension namespace (edited as JSON).
+    Setting {
+        /// Namespace of the field.
+        namespace: String,
+        /// Dot-path key inside the namespace.
+        key: String,
+    },
 }
 
 /// Side effect requested by the app.
@@ -1233,6 +1240,9 @@ impl App {
                     oino_core::ui::UiAnswer::Value(JsonValue::String(t))
                 });
                 self.answer(&id, answer);
+            }
+            EditPurpose::Setting { namespace, key } => {
+                self.on_setting_edited(&namespace, &key, text);
             }
         }
     }

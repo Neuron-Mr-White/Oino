@@ -236,3 +236,175 @@ async fn regular_mode_moves_finished_rows_to_the_scrollback() {
     );
     assert!(!h.frame(80, 14).contains("hello there"));
 }
+
+fn oss2_schema() -> Value {
+    json!({"namespaces": [{
+        "namespace": "unipi.mcp", "title": "MCP", "extensionId": "unipi.mcp",
+        "icon": "gear", "order": 5,
+        "sections": [{"id": "servers", "title": "Servers", "fields": [
+            {"key": "servers", "type": "list", "label": "Servers", "addLabel": "Add server",
+             "item": {"type": "string", "label": "URL"}},
+            {"key": "env", "type": "dict", "label": "Environment", "keyLabel": "Name",
+             "value": {"type": "string", "label": "Value"}},
+            {"key": "raw", "type": "json", "label": "Raw config"},
+            {"key": "mode", "type": "enum", "label": "Mode", "default": "simple",
+             "options": [{"value": "simple", "label": "Simple"}, {"value": "custom", "label": "Custom"}]},
+            {"key": "customCommand", "type": "string", "label": "Custom command",
+             "visibleIf": {"key": "mode", "eq": "custom"},
+             "disabledIf": {"key": "locked", "truthy": true},
+             "restart": "session", "description": "Runs for every turn"},
+            {"key": "neverShown", "type": "string", "label": "Never shown",
+             "visibleIf": {"key": "mode", "eq": "never"}}
+        ]}]
+    }]})
+}
+
+fn oss2_values(servers: &Value, env: &Value) -> Value {
+    json!({
+        "values": {
+            "servers": servers,
+            "env": env,
+            "raw": {"a": 1},
+            "mode": "custom",
+            "locked": true
+        },
+        "diagnostics": []
+    })
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines, reason = "one scenario per OSS-2 field type")]
+async fn oss2_fields_render_and_edit_in_sub_pages() {
+    let mut h = harness().await;
+    h.fake
+        .reply("_oino/get_settings_schema", Ok(Some(oss2_schema())));
+    h.fake.reply(
+        "_oino/get_extension_settings",
+        Ok(Some(json!({
+            "values": {
+                "servers": ["https://a"],
+                "env": {"TOKEN": "x"},
+                "raw": {"a": 1},
+                "mode": "custom",
+                "locked": true
+            },
+            "diagnostics": [{"namespace": "unipi.mcp", "key": "raw", "message": "expected an object"}]
+        }))),
+    );
+    h.type_text("/settings").await;
+    h.key("enter").await;
+    // The namespace row comes after the core rows; `up` wraps to it.
+    h.key("up").await;
+    h.key("enter").await;
+    let frame = h.frame(80, 24);
+    assert!(
+        frame.contains("1 item(s)") && frame.contains("1 key(s)"),
+        "{frame}"
+    );
+    assert!(
+        frame.contains("ignored: raw"),
+        "diagnostics are shown: {frame}"
+    );
+    assert!(
+        frame.contains("Custom command") && !frame.contains("Never shown"),
+        "visibleIf gates the rows: {frame}"
+    );
+    insta::assert_snapshot!("settings_hub_oss2", h.frame(80, 24));
+
+    // `list`: enter opens the row sub-page, `a` appends a row, editing writes the array.
+    h.key("enter").await;
+    let frame = h.frame(80, 24);
+    assert!(
+        frame.contains("Servers › rows") && frame.contains("https://a"),
+        "{frame}"
+    );
+    insta::assert_snapshot!("settings_hub_sub_page", frame);
+    // The reload after each write returns the stored value (a real backend resolves it).
+    h.fake.reply(
+        "_oino/get_extension_settings",
+        Ok(Some(oss2_values(
+            &json!(["https://a", ""]),
+            &json!({"TOKEN": "x"}),
+        ))),
+    );
+    h.key("a").await;
+    let set = sent(&h, "_oino/set_extension_setting").pop().unwrap();
+    assert_eq!(set["key"], "servers");
+    assert_eq!(set["value"], json!(["https://a", ""]));
+    h.fake.reply(
+        "_oino/get_extension_settings",
+        Ok(Some(oss2_values(
+            &json!(["https://a", "https://b"]),
+            &json!({"TOKEN": "x"}),
+        ))),
+    );
+    h.key("enter").await;
+    h.type_text("https://b").await;
+    h.key("enter").await;
+    let set = sent(&h, "_oino/set_extension_setting").pop().unwrap();
+    assert_eq!(set["value"], json!(["https://a", "https://b"]));
+    // `del` removes the selected row.
+    h.fake.reply(
+        "_oino/get_extension_settings",
+        Ok(Some(oss2_values(
+            &json!(["https://a"]),
+            &json!({"TOKEN": "x"}),
+        ))),
+    );
+    h.key("delete").await;
+    let set = sent(&h, "_oino/set_extension_setting").pop().unwrap();
+    assert_eq!(set["value"], json!(["https://a"]));
+    h.key("escape").await;
+
+    // `dict`: rows are keyed and a new row gets a fresh key.
+    h.key("down").await;
+    h.key("enter").await;
+    h.fake.reply(
+        "_oino/get_extension_settings",
+        Ok(Some(oss2_values(
+            &json!(["https://a"]),
+            &json!({"TOKEN": "x", "new": ""}),
+        ))),
+    );
+    h.key("a").await;
+    let set = sent(&h, "_oino/set_extension_setting").pop().unwrap();
+    assert_eq!(set["key"], "env");
+    assert_eq!(set["value"], json!({"TOKEN": "x", "new": ""}));
+    h.key("escape").await;
+
+    // `json`: opened in the external editor (`editExternally`), written back as JSON.
+    h.key("down").await;
+    h.key("enter").await;
+    assert!(
+        h.effects.iter().any(|effect| matches!(
+            effect,
+            oino_tui::Effect::ExternalEditor {
+                purpose: oino_tui::app::EditPurpose::Setting { key, .. },
+                ..
+            } if key == "raw"
+        )),
+        "the json field opens the external editor"
+    );
+    h.app.handle(AppEvent::Edited(
+        oino_tui::app::EditPurpose::Setting {
+            namespace: "unipi.mcp".into(),
+            key: "raw".into(),
+        },
+        Some("{\"b\": 2}".into()),
+    ));
+    h.pump().await;
+    let set = sent(&h, "_oino/set_extension_setting").pop().unwrap();
+    assert_eq!(set["key"], "raw");
+    assert_eq!(set["value"], json!({"b": 2}));
+
+    // A `disabledIf` row renders but rejects edits.
+    h.key("down").await;
+    h.key("down").await;
+    h.key("enter").await;
+    let frame = h.frame(80, 24);
+    assert!(frame.contains("is disabled here"), "{frame}");
+    assert!(
+        frame.contains("applies after the session restarts"),
+        "{frame}"
+    );
+}

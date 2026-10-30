@@ -539,7 +539,11 @@ pub(super) fn overlay_block(
     Block::new(lines)
 }
 
-/// One extension namespace page of the settings hub (ui-protocol §6.6).
+/// One extension namespace page of the settings hub (ui-protocol §7).
+#[allow(
+    clippy::too_many_lines,
+    reason = "one screen: header, rows, hints (mirrors the app form engine)"
+)]
 fn ext_settings(
     app: &App,
     page: &crate::app::ExtSettingsPage,
@@ -552,10 +556,15 @@ fn ext_settings(
     let theme = &app.theme;
     let muted = Style::default().fg(theme.muted);
     let text = Style::default().fg(theme.text);
+    let warning = Style::default().fg(theme.warning);
     let scope = match page.scope {
         SettingsScope::Global => "global",
         SettingsScope::Project => "project",
     };
+    if let Some(sub) = &page.sub {
+        ext_sub_page(app, sub, rows, width, lines);
+        return;
+    }
     lines.push(spread(
         vec![Span::styled(
             format!(" Settings › {}", page.namespace.title),
@@ -567,15 +576,28 @@ fn ext_settings(
     if page.fields.is_empty() {
         lines.push(Line::from(Span::styled("  No settings", muted)));
     }
-    let label_width = page
-        .fields
+    for diagnostic in &page.diagnostics {
+        lines.extend(wrap_plain(
+            &format!("  ignored: {diagnostic}"),
+            warning,
+            width,
+        ));
+    }
+    let visible = page.visible();
+    let label_width = visible
         .iter()
+        .filter_map(|index| page.fields.get(*index))
         .map(|f| text_width(&f.label))
         .max()
         .unwrap_or(0);
-    let (start, end) = window(page.selected, page.fields.len(), rows);
-    let mut section = None;
-    for (i, field) in page.fields.iter().enumerate().take(end).skip(start) {
+    let position = visible
+        .iter()
+        .position(|index| *index == page.selected)
+        .unwrap_or(0);
+    let (start, end) = window(position, visible.len(), rows);
+    let mut section: Option<&String> = None;
+    for index in visible.iter().skip(start).take(end - start) {
+        let field = &page.fields[*index];
         if section != Some(&field.section) && !field.section.is_empty() {
             lines.push(Line::from(Span::styled(
                 format!("  {}", field.section),
@@ -585,27 +607,43 @@ fn ext_settings(
         section = Some(&field.section);
         let value = value_at(&page.values, &field.key);
         let shown = field.display(value);
+        let enabled = field.is_enabled(&page.values);
         let pad = label_width.saturating_sub(text_width(&field.label));
         let mut left = vec![
             Span::styled(format!("{}{}  ", field.label, " ".repeat(pad)), text),
-            Span::styled(shown, Style::default().fg(theme.accent)),
+            Span::styled(
+                shown,
+                Style::default()
+                    .fg(if enabled { theme.accent } else { theme.dim })
+                    .add_modifier(if enabled {
+                        Modifier::empty()
+                    } else {
+                        Modifier::DIM
+                    }),
+            ),
         ];
-        let tag = match field.scope {
-            FieldScope::Global => " (global)",
-            FieldScope::Project => " (project)",
-            FieldScope::Both => "",
+        let mut tag = match field.scope {
+            FieldScope::Global => " (global)".to_owned(),
+            FieldScope::Project => " (project)".to_owned(),
+            FieldScope::Both => String::new(),
         };
+        if let Some(badge) = &field.badge {
+            tag.push_str(" [");
+            tag.push_str(badge);
+            tag.push(']');
+        }
+        if field.restart.is_some() {
+            tag.push_str(" (restart)");
+        }
         if !tag.is_empty() {
             left.push(Span::styled(tag, muted));
         }
-        lines.push(row_line(app, i == page.selected, left, None, width));
+        lines.push(row_line(app, *index == page.selected, left, None, width));
     }
     if let Some(input) = &page.editing {
         lines.push(input_line(" Value: ", &input.text(), app, width));
-    } else if let Some(field) = page.fields.get(page.selected)
-        && let Some(description) = &field.description
-    {
-        lines.extend(wrap_plain(&format!("  {description}"), muted, width));
+    } else if let Some(field) = page.selected_field() {
+        lines.extend(ext_field_help(app, field, width));
     }
     if let Some(status) = &page.status {
         lines.extend(wrap_plain(
@@ -621,6 +659,129 @@ fn ext_settings(
             ("enter/space", "change"),
             ("tab", "scope"),
             ("del", "reset"),
+            ("esc", "back"),
+        ]
+    };
+    lines.push(hint_line(app, hints, width));
+}
+
+/// Description, restart notice and per-kind edit hint of the selected field.
+fn ext_field_help(
+    app: &App,
+    field: &oino_view::settings_hub::HubField,
+    width: usize,
+) -> Vec<OLine> {
+    use oino_view::settings_hub::{FieldKind, Restart};
+    let muted = Style::default().fg(app.theme.muted);
+    let dim = Style::default().fg(app.theme.dim);
+    let mut lines = Vec::new();
+    if let Some(description) = &field.description {
+        lines.extend(wrap_plain(&format!("  {description}"), muted, width));
+    }
+    if let Some(hint) = &field.hint
+        && field.description.as_ref() != Some(hint)
+    {
+        lines.extend(wrap_plain(&format!("  {hint}"), dim, width));
+    }
+    match &field.kind {
+        FieldKind::List { add_label, .. } => lines.push(Line::from(Span::styled(
+            format!(
+                "  enter: edit rows ({})",
+                add_label.as_deref().unwrap_or("add")
+            ),
+            dim,
+        ))),
+        FieldKind::Dict { .. } => lines.push(Line::from(Span::styled(
+            "  enter: edit keys (a add · del remove)",
+            dim,
+        ))),
+        FieldKind::Json { .. } => lines.push(Line::from(Span::styled(
+            "  enter: edit JSON in $EDITOR",
+            dim,
+        ))),
+        FieldKind::Order { .. } => lines.push(Line::from(Span::styled(
+            "  order is edited in the desktop app",
+            dim,
+        ))),
+        _ => {}
+    }
+    if let Some(restart) = field.restart {
+        let when = match restart {
+            Restart::Session => "the session",
+            Restart::Host => "the host",
+        };
+        lines.push(Line::from(Span::styled(
+            format!("  applies after {when} restarts"),
+            Style::default().fg(app.theme.warning),
+        )));
+    }
+    lines
+}
+
+/// Rows of a `list` / `dict` settings field (§7 sub-page).
+fn ext_sub_page(
+    app: &App,
+    sub: &crate::app::ExtSubPage,
+    rows: usize,
+    width: usize,
+    lines: &mut Vec<OLine>,
+) {
+    use oino_view::settings_hub::FieldKind;
+    let theme = &app.theme;
+    let muted = Style::default().fg(theme.muted);
+    let text = Style::default().fg(theme.text);
+    lines.push(spread(
+        vec![Span::styled(
+            format!(" Settings › {} › rows", sub.title),
+            text.add_modifier(Modifier::BOLD),
+        )],
+        vec![Span::styled(format!("{} row(s) ", sub.rows.len()), muted)],
+        width,
+    ));
+    if sub.rows.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No rows — press a to add one",
+            muted,
+        )));
+    }
+    let keyed = matches!(sub.field.kind, FieldKind::Dict { .. });
+    let (start, end) = window(sub.selected, sub.rows.len(), rows);
+    for (index, (key, value)) in sub.rows.iter().enumerate().take(end).skip(start) {
+        let row = sub.field.row(value);
+        let label = if keyed {
+            format!("{key}  ")
+        } else {
+            format!("{}.  ", index + 1)
+        };
+        let shown = row.display(Some(value));
+        lines.push(row_line(
+            app,
+            index == sub.selected,
+            vec![
+                Span::styled(label, text),
+                Span::styled(shown, Style::default().fg(theme.accent)),
+            ],
+            None,
+            width,
+        ));
+    }
+    if let Some(input) = &sub.editing {
+        lines.push(input_line(" Value: ", &input.text(), app, width));
+    }
+    if let Some(status) = &sub.status {
+        lines.extend(wrap_plain(
+            &format!(" {status}"),
+            Style::default().fg(theme.warning),
+            width,
+        ));
+    }
+    let hints: &[(&str, &str)] = if sub.editing.is_some() {
+        &[("enter", "save"), ("esc", "cancel")]
+    } else {
+        &[
+            ("enter/space", "edit"),
+            ("a", "add"),
+            ("del", "remove"),
             ("esc", "back"),
         ]
     };

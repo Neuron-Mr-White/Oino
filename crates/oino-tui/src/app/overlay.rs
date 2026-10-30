@@ -444,7 +444,10 @@ impl App {
         self.settings = self.host.settings();
         let overlay = SettingsOverlay {
             items: settings_items(&self.settings),
-            namespaces: oino_view::settings_hub::namespaces(&self.settings_schema),
+            namespaces: oino_view::settings_hub::namespaces(&self.settings_schema)
+                .into_iter()
+                .filter(|namespace| namespace.extension_id != "oino")
+                .collect(),
             ..SettingsOverlay::default()
         };
         self.overlay = Some(Overlay::Settings(overlay));

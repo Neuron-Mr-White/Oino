@@ -15,10 +15,27 @@ use oino_view::settings_hub::{self, FieldKind, FieldScope, HubField, HubNamespac
 use oino_view::transcript::NoticeLevel;
 
 use super::overlay::{Overlay, line_edit};
-use super::{App, Completion, Tag};
+use super::{App, Completion, EditPurpose, Effect, Tag};
 
 /// `changed` intents are debounced (ui-protocol §7.2).
 const EDITOR_DEBOUNCE: Duration = Duration::from_millis(150);
+
+/// Owner id of the core `oino.*` settings namespaces (`oino_core::extensions::settings`).
+const CORE_SETTINGS_OWNER: &str = "oino";
+
+/// A fresh object key for a `dict` row (`new`, `new2`, …).
+fn next_key(rows: &[(String, JsonValue)]) -> String {
+    (1..=usize::MAX)
+        .map(|index| {
+            if index == 1 {
+                "new".to_owned()
+            } else {
+                format!("new{index}")
+            }
+        })
+        .find(|candidate| !rows.iter().any(|(key, _)| key == candidate))
+        .unwrap_or_else(|| "new".to_owned())
+}
 
 /// One extension namespace page of the settings hub.
 #[derive(Clone, Debug)]
@@ -29,6 +46,57 @@ pub(crate) struct ExtSettingsPage {
     pub(crate) values: JsonValue,
     /// Write target (Tab toggles).
     pub(crate) scope: SettingsScope,
+    pub(crate) selected: usize,
+    pub(crate) editing: Option<Composer>,
+    pub(crate) status: Option<String>,
+    /// Stored values `resolve` rejected (ui-protocol §7.1).
+    pub(crate) diagnostics: Vec<String>,
+    /// Open `list` / `dict` sub-page (rows of one field).
+    pub(crate) sub: Option<ExtSubPage>,
+}
+
+impl ExtSettingsPage {
+    /// Indices of the rows rendered for the current values (`visibleIf`, §7.4).
+    pub(crate) fn visible(&self) -> Vec<usize> {
+        self.fields
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| field.is_visible(&self.values))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// The selected field, if the selection points at a rendered row.
+    pub(crate) fn selected_field(&self) -> Option<&HubField> {
+        let field = self.fields.get(self.selected)?;
+        field.is_visible(&self.values).then_some(field)
+    }
+
+    /// Moves the selection by `delta` over the rendered rows (wrapping).
+    pub(crate) fn move_selection(&mut self, delta: isize) {
+        let visible = self.visible();
+        if visible.is_empty() {
+            return;
+        }
+        let position = visible
+            .iter()
+            .position(|index| *index == self.selected)
+            .unwrap_or(0);
+        let len = isize::try_from(visible.len()).unwrap_or(isize::MAX);
+        let next = (isize::try_from(position).unwrap_or(0) + delta).rem_euclid(len);
+        self.selected = visible[usize::try_from(next).unwrap_or(0)];
+    }
+}
+
+/// A `list` / `dict` field's rows, edited one row at a time (§7 TUI rendering).
+#[derive(Clone, Debug)]
+pub(crate) struct ExtSubPage {
+    /// Label of the parent field.
+    pub(crate) title: String,
+    /// Parent field (`FieldKind::List` / `FieldKind::Dict`).
+    pub(crate) field: HubField,
+    /// Rows in stored order (array index or dict key, value).
+    pub(crate) rows: Vec<(String, JsonValue)>,
     pub(crate) selected: usize,
     pub(crate) editing: Option<Composer>,
     pub(crate) status: Option<String>,
@@ -206,7 +274,13 @@ impl App {
         match purpose {
             SchemaPurpose::Hub => {
                 if let Some(Overlay::Settings(settings)) = &mut self.overlay {
-                    settings.namespaces = namespaces;
+                    // Core `oino.*` namespaces are the pi settings groups the rows above this
+                    // list already edit (no duplicates, DIRECTION §4.2.2); the app renders them
+                    // as its Agent group (ui-protocol §7.5).
+                    settings.namespaces = namespaces
+                        .into_iter()
+                        .filter(|namespace| namespace.extension_id != CORE_SETTINGS_OWNER)
+                        .collect();
                 }
             }
             SchemaPurpose::Namespace(query) => {
@@ -242,6 +316,8 @@ impl App {
             selected: 0,
             editing: None,
             status: None,
+            diagnostics: Vec::new(),
+            sub: None,
         }));
     }
 
@@ -253,6 +329,29 @@ impl App {
                 .and_then(|d| d.get("values"))
                 .cloned()
                 .unwrap_or(JsonValue::Null);
+            page.diagnostics = data
+                .and_then(|d| d.get("diagnostics"))
+                .and_then(JsonValue::as_array)
+                .map(|diagnostics| {
+                    diagnostics
+                        .iter()
+                        .map(|d| {
+                            let key = d.get("key").and_then(JsonValue::as_str).unwrap_or("?");
+                            let message = d
+                                .get("message")
+                                .and_then(JsonValue::as_str)
+                                .unwrap_or_default();
+                            format!("{key}: {message}")
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if let Some(sub) = &mut page.sub
+                && let Some(value) = settings_hub::value_at(&page.values, &sub.field.key)
+            {
+                sub.rows = sub.field.rows(Some(value));
+                sub.selected = sub.selected.min(sub.rows.len().saturating_sub(1));
+            }
         }
     }
 
@@ -293,8 +392,165 @@ impl App {
         );
     }
 
+    /// Open the row sub-page of a `list` / `dict` field.
+    fn open_sub_page(page: &mut ExtSettingsPage, field: &HubField) {
+        let value = settings_hub::value_at(&page.values, &field.key).cloned();
+        page.sub = Some(ExtSubPage {
+            title: field.label.clone(),
+            field: field.clone(),
+            rows: field.rows(value.as_ref()),
+            selected: 0,
+            editing: None,
+            status: None,
+        });
+    }
+
+    /// Writes the rows of an open sub-page back as the field's array / object.
+    fn write_sub_rows(&mut self, page: &mut ExtSettingsPage) {
+        let Some(sub) = &mut page.sub else {
+            return;
+        };
+        let field = sub.field.clone();
+        let value = field.container(&sub.rows);
+        self.write_ext_setting(page, &field, Some(value));
+    }
+
+    /// Edits `json` values in `$EDITOR` (`editExternally`, §7).
+    fn edit_json_externally(&mut self, page: &ExtSettingsPage, field: &HubField) {
+        let text = settings_hub::value_at(&page.values, &field.key)
+            .map(|value| serde_json::to_string_pretty(value).unwrap_or_default())
+            .unwrap_or_default();
+        self.effects.push(Effect::ExternalEditor {
+            text,
+            extension: "json".into(),
+            purpose: EditPurpose::Setting {
+                namespace: page.namespace.namespace.clone(),
+                key: field.key.clone(),
+            },
+        });
+    }
+
+    /// Keys of an open `list` / `dict` sub-page; `false` closes the whole overlay.
+    fn ext_sub_key(&mut self, page: &mut ExtSettingsPage, key: &KeyId) -> bool {
+        let up = self.keys.matches("tui.select.up", key);
+        let down = self.keys.matches("tui.select.down", key);
+        let confirm = self.keys.matches("tui.select.confirm", key);
+        let cancel = self.keys.matches("tui.select.cancel", key);
+        let Some(sub) = &mut page.sub else {
+            return true;
+        };
+        if let Some(input) = &mut sub.editing {
+            if cancel {
+                sub.editing = None;
+            } else if confirm {
+                let text = input.text();
+                sub.editing = None;
+                let selected = sub.selected;
+                if let Some((_, current)) = sub.rows.get(selected) {
+                    let row = sub.field.row(current);
+                    match row.parse(&text) {
+                        Ok(value) => {
+                            let value = value.unwrap_or(JsonValue::Null);
+                            if let Some((_, slot)) = sub.rows.get_mut(selected) {
+                                *slot = value;
+                            }
+                            self.write_sub_rows(page);
+                        }
+                        Err(error) => {
+                            if let Some(sub) = &mut page.sub {
+                                sub.status = Some(error);
+                            }
+                        }
+                    }
+                }
+            } else {
+                line_edit(input, key);
+            }
+            return true;
+        }
+        if cancel {
+            page.sub = None;
+            return true;
+        }
+        let len = sub.rows.len();
+        if up && len > 0 {
+            sub.selected = (sub.selected + len - 1) % len;
+        } else if down && len > 0 {
+            sub.selected = (sub.selected + 1) % len;
+        } else if key.key == Key::Char('a') && !key.mods.ctrl && !key.mods.alt {
+            let value = sub.field.new_row();
+            let name = match &sub.field.kind {
+                FieldKind::Dict { .. } => next_key(&sub.rows),
+                _ => sub.rows.len().to_string(),
+            };
+            sub.rows.push((name, value));
+            sub.selected = sub.rows.len() - 1;
+            self.write_sub_rows(page);
+        } else if (key.key == Key::Delete || (key.key == Key::Char('d') && key.mods.ctrl))
+            && let Some((key, _)) = sub.rows.get(sub.selected).cloned()
+        {
+            let _ = key;
+            sub.rows.remove(sub.selected);
+            sub.selected = sub.selected.min(sub.rows.len().saturating_sub(1));
+            self.write_sub_rows(page);
+        } else if confirm || key.key == Key::Space || key.key == Key::Right || key.key == Key::Left
+        {
+            let Some((_, current)) = sub.rows.get(sub.selected).cloned() else {
+                return true;
+            };
+            let row = sub.field.row(&current);
+            if row.is_text() || row.is_json() {
+                let mut input = Composer::new();
+                if !matches!(row.kind, FieldKind::Secret) {
+                    input.set_text(&match &current {
+                        JsonValue::String(text) => text.clone(),
+                        other => serde_json::to_string(other).unwrap_or_default(),
+                    });
+                }
+                sub.editing = Some(input);
+            } else if let Some(next) = row.cycle(Some(&current), key.key == Key::Left) {
+                if let Some((_, slot)) = sub.rows.get_mut(sub.selected) {
+                    *slot = next;
+                }
+                self.write_sub_rows(page);
+            } else if row.is_container()
+                && let Some(sub) = &mut page.sub
+            {
+                sub.status = Some(format!("{} rows are edited one level down", row.label));
+            }
+        }
+        true
+    }
+
+    /// Writes a `json` settings field after the external editor returned (§7).
+    pub(crate) fn on_setting_edited(&mut self, namespace: &str, key: &str, text: Option<String>) {
+        let Some(Overlay::ExtSettings(mut page)) = self.overlay.take() else {
+            return;
+        };
+        if page.namespace.namespace != namespace {
+            self.overlay = Some(Overlay::ExtSettings(page));
+            return;
+        }
+        match text {
+            Some(text) => match serde_json::from_str::<JsonValue>(&text) {
+                Ok(value) => {
+                    if let Some(field) = page.fields.iter().find(|field| field.key == key).cloned()
+                    {
+                        self.write_ext_setting(&mut page, &field, Some(value));
+                    }
+                }
+                Err(error) => page.status = Some(format!("{key}: {error}")),
+            },
+            None => page.status = Some("external editor cancelled".into()),
+        }
+        self.overlay = Some(Overlay::ExtSettings(page));
+    }
+
     /// Keys of a namespace page; returns whether the overlay stays open.
     pub(crate) fn ext_settings_key(&mut self, page: &mut ExtSettingsPage, key: &KeyId) -> bool {
+        if page.sub.is_some() {
+            return self.ext_sub_key(page, key);
+        }
         let up = self.keys.matches("tui.select.up", key);
         let down = self.keys.matches("tui.select.down", key);
         let confirm = self.keys.matches("tui.select.confirm", key);
@@ -305,7 +561,7 @@ impl App {
             } else if confirm {
                 let text = input.text();
                 page.editing = None;
-                if let Some(field) = page.fields.get(page.selected).cloned() {
+                if let Some(field) = page.selected_field().cloned() {
                     match field.parse(&text) {
                         Ok(value) => self.write_ext_setting(page, &field, value),
                         Err(error) => page.status = Some(error),
@@ -320,13 +576,12 @@ impl App {
             self.open_settings(None);
             return false;
         }
-        let len = page.fields.len();
-        if up && len > 0 {
-            page.selected = (page.selected + len - 1) % len;
+        if up {
+            page.move_selection(-1);
             return true;
         }
-        if down && len > 0 {
-            page.selected = (page.selected + 1) % len;
+        if down {
+            page.move_selection(1);
             return true;
         }
         if key.key == Key::Tab {
@@ -336,7 +591,7 @@ impl App {
             };
             return true;
         }
-        let Some(field) = page.fields.get(page.selected).cloned() else {
+        let Some(field) = page.selected_field().cloned() else {
             return true;
         };
         let current = settings_hub::value_at(&page.values, &field.key).cloned();
@@ -349,11 +604,27 @@ impl App {
         if !cycle {
             return true;
         }
-        if let FieldKind::Action { command } = &field.kind {
+        if !field.is_enabled(&page.values) {
+            page.status = Some(format!("{} is disabled here", field.label));
+            return true;
+        }
+        if let FieldKind::Action { command, .. } = &field.kind {
             if confirm {
                 let command = format!("/{}", command.trim_start_matches('/'));
                 self.submit_text(&command, Vec::new(), false);
                 return false;
+            }
+            return true;
+        }
+        if field.is_container() {
+            if confirm {
+                Self::open_sub_page(page, &field);
+            }
+            return true;
+        }
+        if field.is_json() {
+            if confirm {
+                self.edit_json_externally(page, &field);
             }
             return true;
         }

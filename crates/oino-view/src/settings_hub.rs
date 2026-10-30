@@ -9,8 +9,8 @@
 //! Pure data: the TUI and the desktop app render it natively.
 
 use oino_ai::JsonValue;
-pub use oino_ui::settings::{Cond, Dynamic, EnumDisplay, FieldScope, Restart, StringFormat};
 use oino_ui::settings::{Choice, Field, FieldProps, FieldType, SettingsNamespace, SettingsSection};
+pub use oino_ui::settings::{Cond, Dynamic, EnumDisplay, FieldScope, Restart, StringFormat};
 use oino_ui::slot::{UiEntry, UiView};
 
 use oino_ui::extras::icon::Icon;
@@ -290,13 +290,11 @@ fn normalise_field(field: &mut JsonValue) {
                     *option = serde_json::json!({"value": label, "label": label});
                 }
                 JsonValue::Object(option) => {
-                    if !option.contains_key("value") {
-                        let label = option
-                            .get("label")
-                            .cloned()
-                            .unwrap_or(JsonValue::String(String::new()));
-                        option.insert("value".to_owned(), label);
-                    }
+                    let label = option
+                        .get("label")
+                        .cloned()
+                        .unwrap_or(JsonValue::String(String::new()));
+                    option.entry("value").or_insert(label);
                 }
                 _ => {}
             }
@@ -328,10 +326,10 @@ fn choices(options: &[Choice]) -> Vec<HubChoice> {
         .map(|option| HubChoice {
             value: option.value.clone(),
             label: if option.label.is_empty() {
-                option.value.as_str().map_or_else(
-                    || option.value.to_string(),
-                    str::to_owned,
-                )
+                option
+                    .value
+                    .as_str()
+                    .map_or_else(|| option.value.to_string(), str::to_owned)
             } else {
                 option.label.clone()
             },
@@ -538,10 +536,18 @@ pub fn value_at<'a>(values: &'a JsonValue, key: &str) -> Option<&'a JsonValue> {
 }
 
 fn label_of(choices: &[HubChoice], value: &JsonValue) -> String {
-    let raw = value.as_str().map_or_else(|| value.to_string(), str::to_owned);
+    let raw = value
+        .as_str()
+        .map_or_else(|| value.to_string(), str::to_owned);
     choices
         .iter()
-        .find(|choice| choice.value.as_str().map_or_else(|| choice.value.to_string(), str::to_owned) == raw)
+        .find(|choice| {
+            choice
+                .value
+                .as_str()
+                .map_or_else(|| choice.value.to_string(), str::to_owned)
+                == raw
+        })
         .map_or(raw, |choice| choice.label.clone())
 }
 
@@ -582,8 +588,15 @@ impl HubField {
             (FieldKind::Json { .. }, Some(value)) => {
                 serde_json::to_string(value).unwrap_or_else(|_| value.to_string())
             }
-            (FieldKind::Number { unit: Some(unit), .. }, Some(number)) => {
-                let raw = number.as_str().map_or_else(|| number.to_string(), str::to_owned);
+            (
+                FieldKind::Number {
+                    unit: Some(unit), ..
+                },
+                Some(number),
+            ) => {
+                let raw = number
+                    .as_str()
+                    .map_or_else(|| number.to_string(), str::to_owned);
                 format!("{raw} {unit}")
             }
             (_, Some(JsonValue::String(s))) => s.clone(),
@@ -699,6 +712,132 @@ impl HubField {
             | FieldKind::List { .. }
             | FieldKind::Dict { .. } => Err(format!("{} is edited elsewhere", self.label)),
         }
+    }
+
+    /// Whether the value is a `list` / `dict` edited row by row in a sub-page (§7).
+    #[must_use]
+    pub const fn is_container(&self) -> bool {
+        matches!(self.kind, FieldKind::List { .. } | FieldKind::Dict { .. })
+    }
+
+    /// Whether the value is edited as JSON in the external editor / code editor (§7 `json`).
+    #[must_use]
+    pub const fn is_json(&self) -> bool {
+        matches!(self.kind, FieldKind::Json { .. })
+    }
+
+    /// The row template of a `list` (`item`) or `dict` (`value`) field.
+    #[must_use]
+    pub fn row_template(&self) -> Option<&Self> {
+        match &self.kind {
+            FieldKind::List { item, .. } => item.as_deref(),
+            FieldKind::Dict { value, .. } => value.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Rows of a `list` value (array indices as keys) or a `dict` value (object keys), in
+    /// stored order; empty for other kinds and unset values.
+    #[must_use]
+    pub fn rows(&self, value: Option<&JsonValue>) -> Vec<(String, JsonValue)> {
+        match (self.kind(), value) {
+            (FieldKind::List { .. }, Some(JsonValue::Array(items))) => items
+                .iter()
+                .enumerate()
+                .map(|(index, value)| (index.to_string(), value.clone()))
+                .collect(),
+            (FieldKind::Dict { .. }, Some(JsonValue::Object(entries))) => entries
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The `list` array / `dict` object built from `rows` (dict keys keep their order).
+    #[must_use]
+    pub fn container(&self, rows: &[(String, JsonValue)]) -> JsonValue {
+        match self.kind() {
+            FieldKind::Dict { .. } => JsonValue::Object(
+                rows.iter()
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect(),
+            ),
+            _ => JsonValue::Array(rows.iter().map(|(_, value)| value.clone()).collect()),
+        }
+    }
+
+    /// A new, empty row value: the `item` / `value` template default, else a per-kind zero.
+    #[must_use]
+    pub fn new_row(&self) -> JsonValue {
+        if let Some(default) = self.row_template().and_then(|row| row.default.clone()) {
+            return default;
+        }
+        match self.row_template().map(|row| &row.kind) {
+            Some(FieldKind::Boolean) => JsonValue::Bool(false),
+            Some(FieldKind::Number { .. }) => JsonValue::from(0),
+            Some(
+                FieldKind::MultiSelect { .. } | FieldKind::List { .. } | FieldKind::Order { .. },
+            ) => JsonValue::Array(Vec::new()),
+            Some(FieldKind::Dict { .. }) => JsonValue::Object(serde_json::Map::new()),
+            Some(FieldKind::Enum { choices, .. }) => choices
+                .first()
+                .map_or(JsonValue::String(String::new()), |choice| {
+                    choice.value.clone()
+                }),
+            Some(FieldKind::Json { .. } | FieldKind::Action { .. }) => JsonValue::Null,
+            Some(FieldKind::Text { .. } | FieldKind::Secret | FieldKind::Model { .. }) | None => {
+                JsonValue::String(String::new())
+            }
+        }
+    }
+
+    /// The editable field of one row: the `item` / `value` template, or a kind inferred from
+    /// the stored row value (rows without a template are edited as text / JSON).
+    #[must_use]
+    pub fn row(&self, value: &JsonValue) -> Self {
+        if let Some(template) = self.row_template() {
+            return template.clone();
+        }
+        let kind = match value {
+            JsonValue::Bool(_) => FieldKind::Boolean,
+            JsonValue::Number(_) => FieldKind::Number {
+                min: None,
+                max: None,
+                step: None,
+                unit: None,
+                integer: false,
+            },
+            JsonValue::Array(_) | JsonValue::Object(_) => FieldKind::Json { schema: None },
+            _ => FieldKind::Text {
+                multiline: false,
+                placeholder: None,
+                format: None,
+            },
+        };
+        Self {
+            key: self.key.clone(),
+            label: self.label.clone(),
+            description: None,
+            hint: None,
+            badge: None,
+            section: String::new(),
+            kind,
+            scope: self.scope,
+            default: None,
+            advanced: false,
+            restart: None,
+            visible_if: None,
+            disabled_if: None,
+            dynamic: None,
+        }
+    }
+}
+
+impl HubField {
+    /// The field kind, shared by the row helpers.
+    const fn kind(&self) -> &FieldKind {
+        &self.kind
     }
 }
 
@@ -834,14 +973,20 @@ mod tests {
             fields[1].cycle(Some(&json!("native")), true),
             Some(json!("ntfy"))
         );
-        assert_eq!(fields[1].cycle(Some(&json!("custom")), false), Some(json!("native")));
+        assert_eq!(
+            fields[1].cycle(Some(&json!("custom")), false),
+            Some(json!("native"))
+        );
         assert_eq!(fields[3].parse("5"), Ok(Some(json!(5))));
         assert!(fields[3].parse("50").is_err());
         assert!(fields[3].parse("x").is_err());
         assert_eq!(fields[3].parse(""), Ok(None));
         assert_eq!(fields[7].parse(r#"{"y":2}"#), Ok(Some(json!({"y": 2}))));
         assert!(fields[7].parse("{oops").is_err());
-        assert!(fields[5].parse("x").is_err(), "lists are edited in a sub-page");
+        assert!(
+            fields[5].parse("x").is_err(),
+            "lists are edited in a sub-page"
+        );
         assert!(fields[3].is_text() && !fields[0].is_text());
         assert!(!fields[5].is_text() && !fields[7].is_text());
     }
@@ -897,8 +1042,13 @@ mod tests {
         let rows = fields_of(&descriptor);
         let labels: Vec<&str> = rows.iter().map(|f| f.label.as_str()).collect();
         assert_eq!(labels, ["On", "Limit", "Servers"]);
-        assert!(matches!(&rows[2].kind, FieldKind::List { item: Some(item), .. } if item.key == "url"));
-        assert_eq!(rows[1].visible_if.as_ref().map(|c| c.key.as_str()), Some("on"));
+        assert!(
+            matches!(&rows[2].kind, FieldKind::List { item: Some(item), .. } if item.key == "url")
+        );
+        assert_eq!(
+            rows[1].visible_if.as_ref().map(|c| c.key.as_str()),
+            Some("on")
+        );
 
         // The typed path and the `get_settings_schema` JSON path agree.
         let json = vec![serde_json::to_value(&descriptor).unwrap_or_default()];
@@ -910,7 +1060,9 @@ mod tests {
     fn conditions_gate_rows() {
         let values = json!({"mode": "auto", "count": 0, "names": ["a"], "empty": []});
         let holds = |cond: JsonValue| {
-            serde_json::from_value::<Cond>(cond).unwrap_or_default().eval(&values)
+            serde_json::from_value::<Cond>(cond)
+                .unwrap_or_default()
+                .eval(&values)
         };
         assert!(holds(json!({"key": "mode", "eq": "auto"})));
         assert!(!holds(json!({"key": "mode", "eq": "manual"})));
@@ -943,8 +1095,13 @@ mod tests {
             default: None,
             advanced: false,
             restart: None,
-            visible_if: Some(serde_json::from_value(json!({"key": "mode", "eq": "auto"})).unwrap_or_default()),
-            disabled_if: Some(serde_json::from_value(json!({"key": "count", "truthy": false})).unwrap_or_default()),
+            visible_if: Some(
+                serde_json::from_value(json!({"key": "mode", "eq": "auto"})).unwrap_or_default(),
+            ),
+            disabled_if: Some(
+                serde_json::from_value(json!({"key": "count", "truthy": false}))
+                    .unwrap_or_default(),
+            ),
             dynamic: None,
         };
         assert!(field.is_visible(&values));
@@ -973,6 +1130,78 @@ mod tests {
         let UiView::Settings { namespace } = &snapshot.entries[2].view else {
             panic!("the fixture's third entry is a settings section");
         };
-        assert!(fields_of(namespace).is_empty());
+        assert_eq!(fields_of(namespace).len(), 0);
+    }
+
+    #[test]
+    fn list_and_dict_rows_edit_in_a_sub_page() {
+        let schema = schema();
+        let fields = fields(&schema, "notify");
+        let servers = &fields[5];
+        assert!(servers.is_container() && !servers.is_json());
+        assert!(fields[7].is_json() && !fields[7].is_container());
+        let rows = servers.rows(Some(&json!([{"url": "a"}, {"url": "b"}])));
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1].0, "1", "list rows are indexed");
+        assert_eq!(
+            servers.container(&rows),
+            json!([{"url": "a"}, {"url": "b"}])
+        );
+        assert_eq!(servers.new_row(), json!(""), "item template default");
+        let row = servers.row(&json!("a"));
+        assert_eq!(row.label, "URL");
+        assert_eq!(row.parse("https://x"), Ok(Some(json!("https://x"))));
+
+        let env = &fields[6];
+        let rows = env.rows(Some(&json!({"B": "2", "A": "1"})));
+        assert_eq!(
+            rows,
+            [("B".to_owned(), json!("2")), ("A".to_owned(), json!("1"))],
+            "dict rows keep the stored key order"
+        );
+        assert_eq!(env.container(&rows), json!({"B": "2", "A": "1"}));
+        assert_eq!(env.rows(None), Vec::new());
+
+        // Rows without a template infer an editor from the stored value.
+        let mut loose = HubField {
+            key: "loose".into(),
+            label: "Loose".into(),
+            description: None,
+            hint: None,
+            badge: None,
+            section: String::new(),
+            kind: FieldKind::List {
+                item: None,
+                min: None,
+                max: None,
+                add_label: None,
+            },
+            scope: FieldScope::Both,
+            default: None,
+            advanced: false,
+            restart: None,
+            visible_if: None,
+            disabled_if: None,
+            dynamic: None,
+        };
+        assert!(matches!(loose.row(&json!(true)).kind, FieldKind::Boolean));
+        assert!(matches!(
+            loose.row(&json!(3)).kind,
+            FieldKind::Number { .. }
+        ));
+        assert!(matches!(
+            loose.row(&json!({"a": 1})).kind,
+            FieldKind::Json { .. }
+        ));
+        assert!(matches!(
+            loose.row(&json!("x")).kind,
+            FieldKind::Text { .. }
+        ));
+        loose.kind = FieldKind::Dict {
+            value: None,
+            key_pattern: None,
+            key_label: None,
+        };
+        assert_eq!(loose.new_row(), json!(""));
     }
 }

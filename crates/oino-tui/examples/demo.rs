@@ -94,7 +94,8 @@ async fn main() {
         version: env!("CARGO_PKG_VERSION").to_owned(),
         ..TuiOptions::default()
     };
-    if let Err(error) = oino_tui::run(backend, Arc::new(DemoHost), options).await {
+    // Boxed: the app state makes `run`'s future large (clippy::large_future).
+    if let Err(error) = Box::pin(oino_tui::run(backend, Arc::new(DemoHost), options)).await {
         eprintln!("{error}");
     }
 }
