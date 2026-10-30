@@ -592,6 +592,35 @@ pub enum Request {
     CronSettingsGet,
     /// UNI-318: patch the `cron` block (validated). → `CronSettingsData`.
     CronSettingsSet(crate::cron::CronSettingsSetRequest),
+    /// host.md §9.3 (WP-H6): open a new terminal — a host-owned PTY — in
+    /// `cwd` (its workspace). Answers `ok{data:TermAttachData}` and then the
+    /// stream carries output (kind 1), input (kind 2) and the `resize` /
+    /// `exit` / `title` controls, exactly like `term_attach`.
+    TermOpen {
+        cwd: FsPath,
+        cols: Dimension,
+        rows: Dimension,
+        /// Shell to run; default `$SHELL -l` (login shell in `cwd`).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        shell: Option<crate::term::TermShell>,
+    },
+    /// host.md §9.3 (WP-H6): re-attach an open stream to an existing PTY
+    /// (resizes it through the host's resize throttle, then streams on).
+    /// New output only — the host keeps no scrollback.
+    /// → `ok{data:TermAttachData}` then the stream.
+    TermAttach {
+        term_id: crate::term::TermId,
+        cols: Dimension,
+        rows: Dimension,
+    },
+    /// host.md §9.3 (WP-H6): every terminal the host holds, live or
+    /// exited-and-not-yet-killed. → `ok{data:[TermInfo, …]}`.
+    TermList,
+    /// host.md §9.3 (WP-H6): close a terminal (kill its child, forget the
+    /// id). Idempotent. → `ok{data:null}`.
+    TermKill {
+        term_id: crate::term::TermId,
+    },
 }
 
 /// A UnifiedPush/ntfy endpoint URL: 1..=2048 characters, must look like an
