@@ -100,3 +100,22 @@
 .img-edit-hint { flex: 1; text-align: center; font-size: 12.5px; color: var(--color-text-dim); }
 html[data-shell=desktop] .img-edit-foot { flex-direction: row; justify-content: center; align-items: center; gap: 24px; }
 html[data-shell=desktop] .img-edit-tools { order: -1; }
+
+/* ── Preview tab (WP-A20, Z-103) ─────────────────────────────────────── */
+.ptab { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--color-surface-1); }
+.ptab-bar { flex: none; display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--color-line); }
+.ptab-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 12.5px; color: var(--color-text); }
+.ptab-body { position: relative; flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.ptab-body > .empty-state { height: 100%; justify-content: center; }
+.ptab-note { margin: 10px 12px; font-size: 12.5px; color: var(--color-text-dim); }
+.ptab-img { flex: 1; min-height: 0; display: grid; place-items: center; padding: 16px;
+  /* Images sit on a checkerboard so transparency reads (Z-103). */
+  background-image:
+    linear-gradient(45deg, var(--color-surface-3) 25%, transparent 25%, transparent 75%, var(--color-surface-3) 75%),
+    linear-gradient(45deg, var(--color-surface-3) 25%, transparent 25%, transparent 75%, var(--color-surface-3) 75%);
+  background-size: 18px 18px;
+  background-position: 0 0, 9px 9px;
+  background-color: var(--color-surface-2); }
+.ptab-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.ptab .reader-pre { margin: 0; }
+.ptab .chat-block { padding: 12px 16px; }

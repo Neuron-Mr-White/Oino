@@ -6,10 +6,10 @@
  * Opened via `openPreviewer()` (lib/media/previewerState.ts).
  */
 import { PdfView } from './PdfView';
-import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createResource, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { Portal } from 'solid-js/web';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, Share2, X } from 'lucide-solid';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, Eye, FileText, Share2, X } from 'lucide-solid';
 import { pushBack } from '../../lib/back';
 import { saveFile } from '../../lib/board/share';
 import { downloadToDevice, openWithExternal, progressLabel, transferMessage, type TransferProgress } from '../../lib/filesTransfer';
@@ -19,6 +19,10 @@ import { highlightHtml } from '../../lib/markdown/highlight';
 import { renderBlocks } from '../../lib/chat/markdown';
 import { MdBlock } from '../chat/MdBlock';
 import { closePreviewer, previewerRequest, type PreviewRequest } from '../../lib/media/previewerState';
+import { classifyMedia, languageOf } from '../../lib/media/previewer';
+import { blobTransport } from '../../lib/blob';
+import { fsRead } from '../../lib/fs';
+import { setPaneComponent, type PaneTabProps } from '../../lib/panes/kinds';
 import { MediaPager } from './MediaPager';
 import { desktopShell } from '../../lib/layout';
 
@@ -346,3 +350,159 @@ function CodeBlock(props: { text: string; lang: string }) {
   );
   return <pre class="reader-pre reader-code" innerHTML={html() ?? escapeHtml(props.text)} />;
 }
+
+// ── Preview tab (WP-A20, Z-103) ─────────────────────────────────────────────
+
+/**
+ * The `preview` pane tab: the same Previewer content hosted inside the
+ * side pane — images on a checkerboard, PDF, audio/video, markdown and
+ * SVG with a **preview ↔ source** toggle; no Office (the no-preview card
+ * with Edit-as-text / Download instead). The phone keeps the full-screen
+ * layer (`openPreviewer`); this is the desktop tab (§3.9). On the phone
+ * shell the tab body is never opened, but renders fine if it ever is.
+ */
+export function PreviewTab(props: PaneTabProps) {
+  const hostId = () => String(props.tab.params?.hostId ?? props.hostId);
+  const path = () => String(props.tab.params?.path ?? '');
+  const name = () => path().slice(path().lastIndexOf('/') + 1) || 'Preview';
+  // The extension alone decides text-vs-bytes (`readText`), so the load
+  // effect depends on the path only. The rendered kind prefers the blob's
+  // real mime once it lands; `.svg` stays `svg` so the source toggle works.
+  const TEXT_KINDS = new Set(['markdown', 'code', 'log', 'text']);
+  const readText = () => TEXT_KINDS.has(classifyMedia(undefined, path()));
+  const kind = () => {
+    if (path().toLowerCase().endsWith('.svg')) return 'svg';
+    const mime = bytes()?.mime;
+    return mime ? classifyMedia(mime, path()) : classifyMedia(undefined, path());
+  };
+  const [source, setSource] = createSignal(false);
+  const [bytes, setBytes] = createSignal<{ url: string; mime: string } | undefined>();
+  const [text, setText] = createSignal<string>();
+  const [state, setState] = createSignal<'loading' | 'ready' | 'error'>();
+  const [error, setError] = createSignal<string>();
+  const [toast, setToast] = createSignal<string | null>(null);
+  const flash = (t: string) => {
+    setToast(t);
+    setTimeout(() => setToast((cur) => (cur === t ? null : t)), 2500);
+  };
+
+  createEffect(() => {
+    const p = path();
+    if (!p) return;
+    setState('loading');
+    setBytes((b) => (b ? (URL.revokeObjectURL(b.url), undefined) : undefined));
+    setText(undefined);
+    setSource(false);
+    const token = {};
+    current = token;
+    void (async () => {
+      try {
+        if (!readText()) {
+          const got = await blobTransport().getBytes(hostId(), { path: p });
+          if (token !== current) return;
+          const mime = got.mime || 'application/octet-stream';
+          // IPC may hand the bytes over as a number array (the mock host and
+          // a plain `Vec<u8>` both do); a Blob would stringify that.
+          const raw = got.bytes as unknown;
+          const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw as ArrayLike<number>);
+          const blob = new Blob([bytes as BlobPart], { type: mime });
+          setBytes({ url: URL.createObjectURL(blob), mime });
+        } else {
+          const got = await fsRead(hostId(), p);
+          if (token !== current) return;
+          if (!got.ok) throw new Error(got.error.message);
+          setText(got.value.text);
+        }
+        setState('ready');
+      } catch (e) {
+        if (token !== current) return;
+        setError((e as Error).message || 'Could not load this file');
+        setState('error');
+      }
+    })();
+  });
+  let current: object | undefined;
+
+  async function download() {
+    setToast('Downloading…');
+    const result = await downloadToDevice(hostId(), path());
+    flash(transferMessage(result, name(), desktopShell()));
+  }
+  function editAsText() {
+    setEditorTarget({ hostId: hostId(), path: path(), asText: true });
+  }
+
+  const toggleSource = () => {
+    if (kind() === 'svg' && !source() && text() === undefined) {
+      void fsRead(hostId(), path()).then((got) => got.ok && setText(got.value.text));
+    }
+    setSource(!source());
+  };
+
+  return (
+    <div class="ptab" data-testid="preview-tab" data-kind={kind()}>
+      <div class="ptab-bar" role="toolbar" aria-label="Preview tools">
+        <span class="ptab-name" title={path()}>{name()}</span>
+        <span class="ftree-bar-fill" />
+        <Show when={kind() === 'markdown' || kind() === 'svg'}>
+          <button type="button" class={`ftree-tool${source() ? ' on' : ''}`} aria-pressed={source()} aria-label={source() ? 'Preview' : 'View source'} data-testid="preview-tab-source" onClick={toggleSource}>
+            <Show when={source()} fallback={<FileText size={15} />}>
+              <Eye size={15} />
+            </Show>
+          </button>
+        </Show>
+        <Show when={state() === 'ready'}>
+          <button type="button" class="ftree-tool" aria-label="Download" onClick={() => void download()}>
+            <Download size={15} />
+          </button>
+        </Show>
+      </div>
+      <div class="ptab-body">
+        <Show when={state() === 'loading'}>
+          <p class="ptab-note">Loading…</p>
+        </Show>
+        <Show when={state() === 'error'}>
+          <p class="ptab-note" role="alert" data-testid="preview-tab-error">{error()}</p>
+        </Show>
+        <Show when={state() === 'ready'}>
+          <Switch>
+            <Match when={(kind() === 'image' || (kind() === 'svg' && !source())) && bytes()}>
+              <div class="ptab-img">
+                <img src={bytes()!.url} alt={name()} data-testid="preview-tab-image" />
+              </div>
+            </Match>
+            <Match when={(kind() === 'markdown' || kind() === 'svg') && !source() && text() !== undefined}>
+              <For each={renderBlocks(text()!, false)}>{(html) => <MdBlock html={html} class="chat-block" />}</For>
+            </Match>
+            <Match when={kind() === 'pdf' && bytes()}>
+              {(b) => <PdfView url={b().url} name={name()} />}
+            </Match>
+            <Match when={kind() === 'audio' && bytes()}>
+              {(b) => <audio controls src={b().url} class="media-audio" />}
+            </Match>
+            <Match when={kind() === 'video' && bytes()}>
+              {(b) => <video controls src={b().url} class="media-video" />}
+            </Match>
+            <Match when={text() !== undefined}>
+              <CodeBlock text={text()!} lang={languageOf(path()) ?? 'text'} />
+            </Match>
+            <Match when={kind() === 'other'}>
+              <div class="media-nopreview" data-testid="preview-tab-nopreview">
+                <p class="media-nopreview-title">No preview for {name().split('.').pop()?.toUpperCase() || 'this file'}</p>
+                <div class="media-nopreview-actions">
+                  <button type="button" class="media-btn" onClick={editAsText}>Edit as text</button>
+                  <button type="button" class="media-btn primary" onClick={() => void download()}>Download</button>
+                </div>
+              </div>
+            </Match>
+          </Switch>
+        </Show>
+      </div>
+      <Show when={toast()}>
+        <div class="media-toast" role="status">{toast()}</div>
+      </Show>
+    </div>
+  );
+}
+
+setPaneComponent('preview', PreviewTab);

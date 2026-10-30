@@ -7,6 +7,7 @@
  */
 import { createMockHost } from './host';
 import { SCENARIOS } from './scenarios';
+import { setBlobTransport } from '../../lib/blob';
 
 type BootWindow = Window & { __UNIPI_MOCK_PLATFORM__?: 'tauri-desktop' | 'tauri-mobile' | 'web'; __UNIPI_MOCK_WORLD__?: unknown };
 
@@ -34,6 +35,18 @@ export function bootCapture(): void {
   w.__UNIPI_HOST__ = world.client;
   w.__UNIPI_MOCK_WORLD__ = world;
   w.__UNIPI_MOCK_PLATFORM__ = param('shell') === 'phone' ? 'tauri-mobile' : 'tauri-desktop';
+  // Blob channel over the same mock host (WP-A20 preview bytes, A9 image
+  // chips, A13 uploads): the capture runs in a browser, where the real
+  // transport has no iroh endpoint.
+  const off = () => {
+    throw new Error('File transfer needs the app (not available in a browser capture).');
+  };
+  setBlobTransport({
+    putFile: off,
+    getFile: off,
+    putBytes: (hostId, bytes, mime, name) => world.client(hostId).request('blob_put_bytes', { bytes: Array.from(bytes), mime, name }),
+    getBytes: (hostId, ref) => world.client(hostId).request('blob_get_bytes', ref),
+  });
   // Captures start clean: no settings/hidden-chat state from an earlier run.
   if (param('keep') !== '1') {
     try {

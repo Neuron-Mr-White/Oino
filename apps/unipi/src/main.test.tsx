@@ -10,11 +10,11 @@ it('Chat tab is a real link to /chat (UNI-113)', () => {
   expect(chat.getAttribute('href')).toMatch(/#\/chat$/);
 });
 
-it('Files tab is a real link to /files (UNI-155)', () => {
+// UNI-155's bottom-nav Files tab is gone: Files is a side-pane tab only
+// (Z-101, WP-A20); the phone reaches it through the chat header.
+it('Files is not a bottom-nav tab (Z-101)', () => {
   render(() => <Root />);
-  const files = screen.getByRole('link', { name: /Files/ });
-  expect(files).not.toHaveAttribute('aria-disabled');
-  expect(files.getAttribute('href')).toMatch(/#\/files$/);
+  expect(screen.queryByRole('link', { name: /Files/ })).toBeNull();
 });
 
 it('web mode (UNI-117): Chat shows the standard "needs the app" notice', async () => {

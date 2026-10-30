@@ -54,7 +54,11 @@ export function MediaPager(props: {
         currentUrl = undefined;
         const kind = classifyMedia(got.mime, path);
         const name = path.split('/').pop() ?? path;
-        const blob = new Blob([got.bytes as BlobPart], { type: got.mime || 'application/octet-stream' });
+        // IPC may hand the bytes over as a number array (see the preview tab's
+        // note); a Blob would stringify that instead of reading bytes.
+        const raw = got.bytes as unknown;
+        const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw as ArrayLike<number>);
+        const blob = new Blob([bytes as BlobPart], { type: got.mime || 'application/octet-stream' });
         if (kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video' || kind === 'other') {
           currentUrl = URL.createObjectURL(blob);
           setItem(kind === 'image' ? { kind: 'image', url: currentUrl, mime: got.mime, name } : { kind, name, mime: got.mime, url: currentUrl });
