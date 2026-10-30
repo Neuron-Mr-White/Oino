@@ -106,6 +106,27 @@ check(
   `torn last line skipped by pi: ${torn.getEntryCount()} entries`,
 );
 
+// 4. Lease sidecars (WP-C3 D-LOCK): `<file>.lock`, `<file>.lock.json` and
+//    `<file>.takeover` siblings of an open session are inert to pi's reader.
+writeFileSync(join(work, "twin.jsonl.lock"), "");
+writeFileSync(
+  join(work, "twin.jsonl.lock.json"),
+  JSON.stringify({ v: 1, pid: 4242, bootId: "b", host: "h", client: "oino test", startedAt: 0 }),
+);
+writeFileSync(
+  join(work, "twin.jsonl.takeover"),
+  JSON.stringify({ v: 1, requester: { pid: 4242, bootId: "b", host: "h", client: "oino test" }, at: 0 }),
+);
+const withSidecars = SessionManager.open(join(work, "twin.jsonl"), work);
+check(
+  withSidecars.getEntryCount() === bare.getEntryCount(),
+  `lease sidecar siblings change nothing for pi: ${withSidecars.getEntryCount()} entries`,
+);
+check(
+  JSON.stringify(withSidecars.buildSessionContext()) === ctxBare,
+  "context unchanged with lease sidecars present",
+);
+
 rmSync(work, { recursive: true, force: true });
 if (failed.length > 0) {
   console.error(`\n${failed.length} check(s) failed`);

@@ -8,3 +8,4 @@ AGENT.md
 .env.podman
 extensions/target/
 __pycache__/
+extensions/*/*/harness/target/

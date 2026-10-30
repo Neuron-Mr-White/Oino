@@ -13,18 +13,21 @@ struct HibernateProbe;
 
 impl Extension for HibernateProbe {
     async fn init(&'static self, cx: &mut Init<Self>) -> Result<()> {
-        cx.on(EventKind::SessionShutdown, |_ext, ev: Event, _cx| async move {
-            let reason = ev
-                .get("reason")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
-            session::append_entry(
-                "hibernate-probe.shutdown",
-                Some(&json!({"reason": reason})),
-            )?;
-            Ok(None::<Value>)
-        });
+        cx.on(
+            EventKind::SessionShutdown,
+            |_ext, ev: Event, _cx| async move {
+                let reason = ev
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                session::append_entry(
+                    "hibernate-probe.shutdown",
+                    Some(&json!({"reason": reason})),
+                )?;
+                Ok(None::<Value>)
+            },
+        );
         Ok(())
     }
 }

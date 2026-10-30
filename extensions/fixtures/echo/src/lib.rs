@@ -196,13 +196,9 @@ async fn probe(name: &str, arg: Value) -> Result<Value> {
             Value::Null
         }
         "host-service" => {
-            let reply = wit::host_service::call(
-                s("name"),
-                s("op"),
-                arg["payload"].to_string(),
-                None,
-            )
-            .await?;
+            let reply =
+                wit::host_service::call(s("name"), s("op"), arg["payload"].to_string(), None)
+                    .await?;
             oino_extension::serde_json::from_str(&reply).map_err(|e| Error::msg(e.to_string()))?
         }
         "host-service-available" => json!(wit::host_service::available(&s("name"))),
