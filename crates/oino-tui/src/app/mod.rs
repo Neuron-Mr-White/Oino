@@ -22,7 +22,7 @@ use oino_client::{ClientError, RpcResponseData};
 use oino_core::events::{AgentSessionEvent, ClientEvent, OinoEvent, RunState};
 use oino_core::ui::UiResponse;
 use oino_session::SessionEntry;
-use oino_ui::slot::{Scope as UiScope, Slot, UiEntry, UiPatch, UiSnapshot};
+use oino_ui::slot::{RegistryOp, Scope as UiScope, Slot, UiEntry, UiPatch, UiSnapshot};
 use oino_view::commands::{CommandItem, menu_items};
 use oino_view::composer::Composer;
 use oino_view::keys::{KeyId, Keybindings};
@@ -1351,8 +1351,20 @@ impl App {
                 // One-shot effects also arrive as pi records (`ClientEvent::Ui`), so they are
                 // not applied twice here (D-U1 keeps the pi records byte-for-byte).
                 for op in &patch.ops {
-                    if let oino_ui::slot::RegistryOp::Del { id } = op {
-                        self.local_drop(id);
+                    match op {
+                        RegistryOp::Del { id } => self.local_drop(id),
+                        RegistryOp::Put { entry } => {
+                            // A re-opened id gets a new view; its local state is dropped.
+                            self.ui_local.remove(&entry.id);
+                        }
+                        RegistryOp::Tree { id, ops, .. } => {
+                            if let Some(local) = self.ui_local.get_mut(id) {
+                                for node_op in ops {
+                                    crate::render::ui::focus::apply_node_op(local, node_op);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 self.after_registry_change();

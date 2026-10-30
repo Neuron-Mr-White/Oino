@@ -1020,3 +1020,60 @@ fn tree_key(
         }
     }
 }
+
+/// Drops local state when a node op replaces a view or changes a state prop, so the
+/// entry-declared `state`/`value`/`selected`/`expanded`/`collapsed` wins (§4.6).
+pub(crate) fn apply_node_op(local: &mut UiLocalState, op: &oino_ui::patch::NodeOp) {
+    use oino_ui::patch::NodeOp;
+    let join_path = |path: &[String]| path.join("/");
+    match op {
+        NodeOp::Replace { path, .. } => {
+            let key = join_path(path);
+            reset_prefix(local, &key);
+            local.epoch = local.epoch.wrapping_add(1);
+        }
+        NodeOp::Set { path, props } => {
+            const STATE_PROPS: [&str; 5] = ["state", "selected", "value", "expanded", "collapsed"];
+            if props
+                .keys()
+                .any(|prop| STATE_PROPS.contains(&prop.as_str()))
+            {
+                let key = join_path(path);
+                reset_exact(local, &key);
+                local.epoch = local.epoch.wrapping_add(1);
+            }
+        }
+        NodeOp::Splice { path, .. } => {
+            // A selection stored by index shifts when items before it move.
+            let key = join_path(path);
+            local.selection.remove(&key);
+            local.multi.remove(&key);
+            local.epoch = local.epoch.wrapping_add(1);
+        }
+        NodeOp::Append { .. } | NodeOp::Item { .. } => {}
+    }
+}
+
+fn reset_exact(local: &mut UiLocalState, key: &str) {
+    local.selection.remove(key);
+    local.multi.remove(key);
+    local.expanded.remove(key);
+    local.collapsed.remove(key);
+    local.input.remove(key);
+    local.toggles.remove(key);
+    local.selects.remove(key);
+    local.confirm.remove(key);
+}
+
+fn reset_prefix(local: &mut UiLocalState, key: &str) {
+    let prefix = format!("{key}/");
+    let keep = |candidate: &String| candidate != key && !candidate.starts_with(&prefix);
+    local.selection.retain(|candidate, _| keep(candidate));
+    local.multi.retain(|candidate, _| keep(candidate));
+    local.expanded.retain(|candidate, _| keep(candidate));
+    local.collapsed.retain(|candidate, _| keep(candidate));
+    local.input.retain(|candidate, _| keep(candidate));
+    local.toggles.retain(|candidate, _| keep(candidate));
+    local.selects.retain(|candidate, _| keep(candidate));
+    local.confirm.retain(|candidate, _| keep(candidate));
+}

@@ -278,3 +278,31 @@ async fn reserved_app_bindings_win_over_entry_keys() {
         "no entry action for a reserved key"
     );
 }
+
+#[tokio::test]
+async fn entry_state_wins_when_it_changes() {
+    let mut h = open(json!({"kind": "tree", "root": {
+        "t": "List",
+        "items": [{"key": "a", "content": "A"}, {"key": "b", "content": "B"}],
+        "onSelect": "pick"
+    }}))
+    .await;
+    h.key("down").await;
+    assert_eq!(delivered(&h)[0]["value"], "b");
+    // The extension now drives the selection back to "a" (§4.6: the prop wins).
+    h.json_event(
+        json!({"type": "oino_ui_patch", "scope": "session", "sessionId": "s-1",
+        "rev": 2, "ops": [
+            {"op": "meta", "id": "probe/panel", "set": {"title": "driven"}},
+            {"op": "tree", "id": "probe/panel", "rev": 2, "ops": [
+                {"op": "set", "path": [], "props": {"state": {"selected": "a"}}}
+            ]}
+        ]}),
+    )
+    .await;
+    h.key("enter").await;
+    let acted = delivered(&h);
+    let last = acted.last().expect("activation");
+    assert_eq!(last["action"], "pick");
+    assert_eq!(last["value"], "a");
+}
