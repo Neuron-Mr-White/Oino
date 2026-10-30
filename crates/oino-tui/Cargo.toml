@@ -40,6 +40,8 @@ nix.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+# WP-U2: regenerates crates/oino-ui/tests/layout_vectors.json from ratatui.
+oino-ui = { path = "../oino-ui" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]

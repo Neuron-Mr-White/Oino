@@ -23,6 +23,7 @@ jsonschema = { version = "0.30", default-features = false }
 # Criterion cannot build for wasip2 (rayon); keep it out of wasm dev builds.
 [target.'cfg(not(target_os = "wasi"))'.dev-dependencies]
 criterion = "0.5"
+proptest.workspace = true
 
 [[bench]]
 name = "validate"
