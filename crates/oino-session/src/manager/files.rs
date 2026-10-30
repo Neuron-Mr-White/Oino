@@ -168,18 +168,50 @@ pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<(), SessionError> 
     fs::rename(&tmp, path).map_err(|e| SessionError::io(path, e))
 }
 
-/// Appends one line (`O_APPEND`, single write).
+/// Appends one line by opening the file (`O_APPEND`, single write). For migration and
+/// repair code paths that do not own a [`SessionManager`](super::SessionManager) writer
+/// handle (D-WRITER: the manager itself appends through a held handle).
+#[allow(
+    dead_code,
+    reason = "kept for the migration/repair paths (core spec §2.1 D-WRITER); no caller yet"
+)]
 pub(crate) fn append_line(path: &Path, line: &str) -> Result<(), SessionError> {
-    let mut file = OpenOptions::new()
+    let mut file = open_append(path)?;
+    write_line(&mut file, path, line)
+}
+
+/// Opens `path` for appending: the held `O_APPEND` writer handle of a session file.
+pub(crate) fn open_append(path: &Path) -> Result<File, SessionError> {
+    OpenOptions::new()
         .append(true)
         .open(path)
-        .map_err(|e| SessionError::io(path, e))?;
+        .map_err(|e| SessionError::io(path, e))
+}
+
+/// Appends one line on a held `O_APPEND` handle (single `write_all`).
+pub(crate) fn write_line(file: &mut File, path: &Path, line: &str) -> Result<(), SessionError> {
     let mut buffer = String::with_capacity(line.len() + 1);
     buffer.push_str(line);
     buffer.push('\n');
     file.write_all(buffer.as_bytes())
         .and_then(|()| file.flush())
         .map_err(|e| SessionError::io(path, e))
+}
+
+/// fsync of the directory holding `path`, making the file's directory entry (create or
+/// rename) durable. POSIX only: Windows has no directory-fsync contract (the same
+/// exception deepseek's JSONL backend documents, `session-persistence-jsonl/src/win32.ts`).
+pub(crate) fn sync_dir(path: &Path) -> Result<(), SessionError> {
+    #[cfg(unix)]
+    {
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            let dir = File::open(parent).map_err(|e| SessionError::io(parent, e))?;
+            dir.sync_all().map_err(|e| SessionError::io(parent, e))?;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
 }
 
 /// Outcome of migrating one pre-v1 Oino file (D21).

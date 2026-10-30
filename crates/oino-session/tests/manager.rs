@@ -495,3 +495,133 @@ fn legacy_directory_migration() {
     assert!(!sessions.join("direct.jsonl").exists());
     let _ = EntryId::new("unused");
 }
+
+// ── D-WRITER / D-FLUSH (core spec §2.1, WP-C1) ──
+
+/// How many open file descriptors point at `file` (Linux `/proc/self/fd`).
+#[cfg(target_os = "linux")]
+fn fd_count(file: &Path) -> usize {
+    fs::read_dir("/proc/self/fd")
+        .unwrap()
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            path.read_link()
+                .ok()
+                .and_then(|target| target.to_str().map(str::to_owned))
+        })
+        .filter(|target| {
+            let prefix = file.display().to_string();
+            target.as_str() == prefix.as_str() || target.starts_with(&format!("{prefix} "))
+        })
+        .count()
+}
+
+/// D-WRITER: one open append handle per session file, reused for every appended line.
+#[cfg(target_os = "linux")]
+#[test]
+fn appends_reuse_one_open_handle() {
+    let root = common::tempdir();
+    let mut sm =
+        SessionManager::create(Path::new(CWD), root.path(), CreateOptions::default()).unwrap();
+    for i in 0..3 {
+        sm.append_message(user(&format!("m{i}"))).unwrap();
+    }
+    let file = sm.session_file().unwrap().to_path_buf();
+    assert_eq!(
+        fd_count(&file),
+        1,
+        "first flush leaves the append handle open"
+    );
+    for i in 0..3 {
+        sm.append_message(assistant(&format!("a{i}"))).unwrap();
+    }
+    assert_eq!(
+        fd_count(&file),
+        1,
+        "appends reuse the handle instead of reopening per line"
+    );
+    sm.sync().unwrap();
+    assert_eq!(fd_count(&file), 1, "sync uses the same handle");
+    assert_eq!(sm.entry_count(), 6, "six appended messages");
+    drop(sm);
+    assert_eq!(fd_count(&file), 0, "handle closes with the manager");
+}
+
+/// D-FLUSH: `sync()` is fail-closed — a session whose file cannot be persisted reports the
+/// I/O error at the barrier instead of pretending durability.
+#[test]
+fn sync_fails_closed_when_file_cannot_be_written() {
+    let root = common::tempdir();
+    let mut sm =
+        SessionManager::create(Path::new(CWD), root.path(), CreateOptions::default()).unwrap();
+    // No conversation yet: nothing to make durable, and the first flush is retried lazily.
+    sm.sync().unwrap();
+    sm.append_message(user("u1")).unwrap();
+    let file = sm.session_file().unwrap().to_path_buf();
+    sm.sync().unwrap();
+
+    // Writer invalidated (reset_leaf per D-WRITER) + file gone: sync must report Io.
+    sm.reset_leaf();
+    fs::remove_file(&file).unwrap();
+    let err = sm.sync().unwrap_err();
+    assert!(matches!(err, SessionError::Io { .. }), "{err}");
+    // A later append also fails closed instead of silently skipping the line.
+    let err = sm.append_message(user("u2")).unwrap_err();
+    assert!(matches!(err, SessionError::Io { .. }), "{err}");
+}
+
+/// D-FLUSH: a failed first flush is retried by `sync()` so barriers fail on the same error.
+#[cfg(unix)]
+#[test]
+fn sync_retries_failed_first_flush() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = common::tempdir();
+    let sessions = root.path().join("sessions");
+    fs::create_dir(&sessions).unwrap();
+    let mut sm =
+        SessionManager::create(Path::new(CWD), &sessions, CreateOptions::default()).unwrap();
+    // No conversation entry yet: sync is a no-op even on a read-only directory.
+    fs::set_permissions(&sessions, fs::Permissions::from_mode(0o555)).unwrap();
+    sm.sync().unwrap();
+    // The custom entry is not conversation: still no file, still Ok.
+    sm.append_session_info(Some("name")).unwrap();
+    sm.sync().unwrap();
+    assert!(!sm.session_file().unwrap().exists());
+    // The first conversation entry cannot be flushed: sync returns the error (fail-closed).
+    let err = sm.append_message(user("u1")).unwrap_err();
+    assert!(matches!(err, SessionError::Io { .. }), "{err}");
+    let err = sm.sync().unwrap_err();
+    assert!(matches!(err, SessionError::Io { .. }), "{err}");
+    fs::set_permissions(&sessions, fs::Permissions::from_mode(0o755)).unwrap();
+    // With the directory writable again the same manager recovers.
+    sm.sync().unwrap();
+    assert!(sm.session_file().unwrap().exists());
+}
+
+/// D-FLUSH: in-memory sessions have nothing to sync.
+#[test]
+fn sync_is_noop_for_in_memory_sessions() {
+    let mut sm = SessionManager::in_memory(Path::new(CWD), CreateOptions::default(), vec![]);
+    sm.append_message(user("u1")).unwrap();
+    sm.sync().unwrap();
+    assert!(!sm.is_persisted());
+}
+
+/// D-WRITER: the first flush (header + buffered entries) is itself durable — reopening a
+/// freshly flushed session sees every entry.
+#[test]
+fn first_flush_is_durable_and_reopens() {
+    let root = common::tempdir();
+    let mut sm =
+        SessionManager::create(Path::new(CWD), root.path(), CreateOptions::default()).unwrap();
+    sm.append_message(user("u1")).unwrap();
+    sm.append_message(assistant("a1")).unwrap();
+    sm.sync().unwrap();
+    let file = sm.session_file().unwrap().to_path_buf();
+    let reopened = SessionManager::open(&file, root.path(), None).unwrap();
+    assert_eq!(reopened.entry_count(), 2);
+    assert!(matches!(
+        reopened.entries()[1].kind,
+        EntryKind::Message { .. }
+    ));
+}

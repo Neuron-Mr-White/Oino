@@ -111,8 +111,20 @@ pub trait ReadonlySession {
     fn build_session_context(&self) -> SessionContext;
 }
 
+/// Held append handle of a session file (D-WRITER): one `O_APPEND` open per file, reused
+/// for every appended line and dropped whenever the file identity changes.
+#[derive(Debug)]
+struct SessionWriter {
+    file: std::fs::File,
+    path: PathBuf,
+}
+
 /// Session tree with append-only JSONL persistence.
-#[derive(Clone, Debug)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "flat bookkeeping flags; a state machine would obscure the pi-parity fields"
+)]
+#[derive(Debug)]
 pub struct SessionManager {
     cwd: PathBuf,
     session_dir: PathBuf,
@@ -124,6 +136,28 @@ pub struct SessionManager {
     index: EntryIndex,
     labels: HashMap<EntryId, (String, IsoTimestamp)>,
     leaf: Option<EntryId>,
+    writer: Option<SessionWriter>,
+    dir_synced: bool,
+}
+
+impl Clone for SessionManager {
+    fn clone(&self) -> Self {
+        Self {
+            cwd: self.cwd.clone(),
+            session_dir: self.session_dir.clone(),
+            persist: self.persist,
+            session_file: self.session_file.clone(),
+            flushed: self.flushed,
+            has_conversation: self.has_conversation,
+            header: self.header.clone(),
+            index: self.index.clone(),
+            labels: self.labels.clone(),
+            leaf: self.leaf.clone(),
+            // The append handle is per instance: a clone reopens lazily at its first append.
+            writer: None,
+            dir_synced: self.dir_synced,
+        }
+    }
 }
 
 fn new_header(cwd: &Path, opts: &CreateOptions) -> Result<SessionHeader, SessionError> {
@@ -184,6 +218,8 @@ impl SessionManager {
             index: EntryIndex::default(),
             labels: HashMap::new(),
             leaf: None,
+            writer: None,
+            dir_synced: false,
         }
     }
 
@@ -383,6 +419,8 @@ impl SessionManager {
         self.leaf = None;
         self.flushed = false;
         self.has_conversation = false;
+        self.writer = None;
+        self.dir_synced = false;
         if self.persist {
             self.session_file = Some(
                 cwd_session_dir(&self.session_dir, &self.cwd).join(session_file_name(&self.header)),
@@ -398,6 +436,8 @@ impl SessionManager {
     ///
     /// As [`SessionManager::open`].
     pub fn set_session_file(&mut self, path: &Path) -> Result<(), SessionError> {
+        self.writer = None;
+        self.dir_synced = false;
         let path = Self::migrate_if_legacy(&resolve_path(path), &self.session_dir)?;
         if !path.exists() {
             self.new_session(CreateOptions::default())?;
@@ -552,16 +592,95 @@ impl SessionManager {
             return Ok(());
         };
         if self.flushed {
-            return files::append_line(&path, line);
+            return self.write_appended(&path, line);
         }
         if !self.has_conversation {
             return Ok(());
         }
+        self.flush_initial(&path)
+    }
+
+    /// First flush: header + buffered entries via `write_new`, then `sync()` so the file and
+    /// its directory entry are durable before the caller proceeds (D-WRITER).
+    fn flush_initial(&mut self, path: &Path) -> Result<(), SessionError> {
         files::write_new(
-            &path,
+            path,
             &files::serialize_lines(&self.header, self.index.entries())?,
         )?;
         self.flushed = true;
+        self.writer = None;
+        self.dir_synced = false;
+        self.sync()
+    }
+
+    /// Appends `line` on the held `O_APPEND` handle, opening it for `path` first (D-WRITER:
+    /// one open handle per session file, reused for every line).
+    fn write_appended(&mut self, path: &Path, line: &str) -> Result<(), SessionError> {
+        self.ensure_writer(path)?;
+        self.with_writer(path, |file| files::write_line(file, path, line))
+    }
+
+    /// Opens the append handle for `path` unless the held one already matches.
+    fn ensure_writer(&mut self, path: &Path) -> Result<(), SessionError> {
+        if self
+            .writer
+            .as_ref()
+            .is_none_or(|writer| writer.path != path)
+        {
+            self.writer = Some(SessionWriter {
+                file: files::open_append(path)?,
+                path: path.to_path_buf(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Runs `f` on the append handle of `path`; fail-closed if the handle is somehow absent.
+    fn with_writer(
+        &mut self,
+        path: &Path,
+        f: impl FnOnce(&mut std::fs::File) -> Result<(), SessionError>,
+    ) -> Result<(), SessionError> {
+        match self.writer.as_mut().filter(|writer| writer.path == path) {
+            Some(writer) => f(&mut writer.file),
+            None => Err(SessionError::io(
+                path,
+                std::io::Error::other("session append writer handle missing"),
+            )),
+        }
+    }
+
+    /// Flush + fsync the session file. Also fsyncs the parent directory until the current
+    /// file's creation is known durable (POSIX). Fail-closed durability barrier (D-FLUSH):
+    /// callers treat [`SessionError::Io`] as "do not proceed".
+    ///
+    /// A session whose first flush never succeeded (for example an unwritable directory)
+    /// retries it here, so the error surfaces at the barrier instead of being silently
+    /// retried forever. In-memory sessions and sessions with nothing written yet succeed
+    /// without touching the file system.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::Io`] when the file cannot be opened for append, fsynced, or its
+    /// first flush retried.
+    pub fn sync(&mut self) -> Result<(), SessionError> {
+        let Some(path) = self.session_file.clone().filter(|_| self.persist) else {
+            return Ok(());
+        };
+        if !self.flushed {
+            if !self.has_conversation {
+                return Ok(());
+            }
+            return self.flush_initial(&path);
+        }
+        self.ensure_writer(&path)?;
+        self.with_writer(&path, |file| {
+            file.sync_all().map_err(|e| SessionError::io(&path, e))
+        })?;
+        if !self.dir_synced {
+            files::sync_dir(&path)?;
+            self.dir_synced = true;
+        }
         Ok(())
     }
 
@@ -906,6 +1025,7 @@ impl SessionManager {
     /// Clears the leaf; the next entry becomes a new root.
     pub fn reset_leaf(&mut self) {
         self.leaf = None;
+        self.writer = None;
     }
 
     /// Moves the leaf to `from` (`None` ⇒ new root) and appends a `branch_summary` there.
@@ -1027,6 +1147,8 @@ impl SessionManager {
         self.header = header;
         self.load_entries(entries);
         self.flushed = false;
+        self.writer = None;
+        self.dir_synced = false;
         if !self.persist {
             self.session_file = None;
             return Ok(None);

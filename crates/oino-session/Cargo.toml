@@ -36,5 +36,9 @@ required-features = ["manager"]
 name = "manager"
 required-features = ["manager"]
 
+[[test]]
+name = "writer_durability"
+required-features = ["manager"]
+
 [lints]
 workspace = true
