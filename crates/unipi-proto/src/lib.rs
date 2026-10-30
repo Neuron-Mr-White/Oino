@@ -63,6 +63,11 @@ pub use git::{
     GIT_DIFF_CAP, GIT_LOG_MAX, GIT_PATHS_MAX, GIT_SHORTSTAT_UNTRACKED_MAX,
 };
 pub use push::{PushId, PushItem, PushListData, PushOutcome, PushWait, PUSH_WAIT_MAX};
+pub use session::{
+    HubEvent, NoticeLevel, RunState, SessionCard, SessionEventDto, SessionEvents, SessionId,
+    SessionName, SessionReply, SessionSnapshot, SessionTarget, SessionsListData, HOST_EVENT_KINDS,
+    SESSION_ID_MAX, SESSION_NAME_MAX, SESSION_TARGET_MAX,
+};
 pub use settings::{
     HostSettingsKey, HostSettingsSetRequest, RelaySetting, HOST_SETTINGS_BLOCKS,
     HOST_SETTINGS_KEYS, SECRET_MASK,

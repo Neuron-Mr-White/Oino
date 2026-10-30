@@ -621,6 +621,72 @@ pub enum Request {
     TermKill {
         term_id: crate::term::TermId,
     },
+    /// host.md §7.2/§4.2 (WP-H4): every session the host knows, newest activity
+    /// first — a lazy list (headers only, no runtime loaded) merged with the
+    /// host's live cards. → `[SessionCard, …]` (bare array, like `term_list`).
+    SessionsList,
+    /// host.md §7.4 (WP-H4): the one per-connection hub event stream. The host
+    /// answers `ok{data:null}`, then pushes `session_changed` / `session_removed`
+    /// / `host_notice` / `ui` events (a retained safe-mode notice first) until
+    /// the stream closes. One per connection, not per session.
+    EventsOpen,
+    /// host.md §4.2/§7.3 (WP-H4): a new session (a fresh runtime over a new
+    /// session file; written on its first message). Answers
+    /// `ok{data:SessionSnapshot}` and keeps the bi-stream as the session's
+    /// stream, exactly like `session_open`.
+    SessionNew {
+        /// Project working directory; default: the host's primary cwd.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        cwd: Option<FsPath>,
+        /// Display name (`session_info` entry).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        name: Option<crate::session::SessionName>,
+    },
+    /// host.md §7.3 (WP-H4): open (or resume) a session as a live stream. Loads
+    /// or reuses the runtime (takeover per §8) and answers
+    /// `ok{data:SessionSnapshot}`: a full snapshot (`reset:true`) or, when the
+    /// hub still buffers everything after `since_seq`, a resume patch
+    /// (`reset:false, replay:[…]`).
+    SessionOpen {
+        /// Exact id, unique prefix (≥ 4 chars) or session file path.
+        session: crate::session::SessionTarget,
+        /// Last event seq the client saw; absent = full snapshot.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        since_seq: Option<u64>,
+    },
+    /// host.md §4.2/§7.3 (WP-H4): fork a session (before `entry_id`, pi
+    /// semantics; at the leaf when absent) and keep the fork as this stream's
+    /// session. Answers `ok{data:SessionSnapshot}` for the fork.
+    SessionFork {
+        /// The session to fork.
+        session: crate::session::SessionTarget,
+        /// Fork before this entry; absent = at the leaf (a clone).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        entry_id: Option<String>,
+        /// Name of the fork.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        name: Option<crate::session::SessionName>,
+    },
+    /// host.md §4.2 (WP-H4): move the session's file to `<agent dir>/trash/`
+    /// (restorable by hand / from the archived list). → the archived card.
+    SessionArchive {
+        /// Exact id, unique prefix or session file path.
+        session: crate::session::SessionTarget,
+    },
+    /// host.md §7.2 (WP-H4): set the session's display name (wakes the runtime
+    /// to write the `session_info` entry, then emits a card update). → `null`.
+    SessionRename {
+        /// Exact id, unique prefix or session file path.
+        session: crate::session::SessionTarget,
+        /// The new name.
+        name: crate::session::SessionName,
+    },
+    /// host.md §4.2 (WP-H4): dispose the runtime when idle and no other
+    /// subscriber; the session file stays. → `null`.
+    SessionClose {
+        /// Session id (or a unique prefix / file path).
+        session: crate::session::SessionTarget,
+    },
     /// v2 (host.md §9.9): the host settings object (`config.json`), secrets
     /// masked. Any paired device may read it; → the object.
     HostSettingsGet,
@@ -705,6 +771,21 @@ pub enum Control {
     BrowserEvent {
         event: crate::browser::BrowserEvent,
     },
+    /// host.md §7.3/§7.4 (WP-H4): one flush tick's batch of session events (≤ 1
+    /// frame per 16 ms per stream; delta events already coalesced).
+    Events {
+        items: Vec<crate::session::SessionEventDto>,
+    },
+    /// host.md §7.3 (WP-H4): any oino RPC command verbatim on a session stream,
+    /// correlated by the opaque `id` (echoed in the `ok`/`err` reply, after the
+    /// events the command caused).
+    SessionCmd {
+        /// Correlation id, echoed verbatim (`Option<serde_json::Value>`: string or number).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        id: Option<serde_json::Value>,
+        /// The command (`RpcRequest` JSON: pi commands + `_oino/*`).
+        cmd: serde_json::Value,
+    },
 }
 
 impl Control {
@@ -716,7 +797,28 @@ impl Control {
         })?;
         serde_path_to_error::deserialize::<_, Control>(value)
             .map(|_| ())
-            .map_err(ProtoError::from_path_error)
+            .map_err(ProtoError::from_path_error)?;
+        // v2 (host.md §7.3): a session command is an RPC command object with a `type`; the
+        // host forwards it verbatim and rejects anything else before it reaches a runtime.
+        match self {
+            Self::SessionCmd { cmd, .. }
+                if !cmd.is_object() || cmd.get("type").and_then(|t| t.as_str()).is_none() =>
+            {
+                Err(ProtoError::Schema {
+                    message: "cmd must be an RPC command object with a type".to_string(),
+                    path: vec![crate::error::PathSegment::Key("cmd".to_string())],
+                    detail: None,
+                })
+            }
+            Self::Events { items } if items.iter().any(|item| item.seq == 0) => {
+                Err(ProtoError::Schema {
+                    message: "session events are numbered from 1".to_string(),
+                    path: vec![crate::error::PathSegment::Key("items".to_string())],
+                    detail: None,
+                })
+            }
+            _ => Ok(()),
+        }
     }
 }
 

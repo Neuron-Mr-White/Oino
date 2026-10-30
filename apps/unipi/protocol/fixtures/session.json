@@ -1,0 +1,311 @@
+[
+  {
+    "name": "sessions_list card (idle)",
+    "schema": "SessionsListData",
+    "ok": true,
+    "value": [
+      {
+        "session_id": "2026-10-31T09-12-00-a1b2",
+        "file": "/home/o/.oino/sessions/2026-10-31T09-12-00-a1b2.jsonl",
+        "name": "Fix the parser",
+        "cwd": "/home/o/p/oino",
+        "updated_at": 1761905520000,
+        "message_count": 12,
+        "run_state": "idle",
+        "model": "claude-sonnet"
+      }
+    ]
+  },
+  {
+    "name": "sessions_list card (crashed, needs you)",
+    "schema": "SessionsListData",
+    "ok": true,
+    "value": [
+      {
+        "session_id": "s2",
+        "file": "",
+        "cwd": "/home/o/p/oino",
+        "updated_at": 1761905520000,
+        "message_count": 0,
+        "run_state": "crashed",
+        "needs_you": true,
+        "error": "tool body exploded"
+      }
+    ]
+  },
+  {
+    "name": "sessions_list card (taken over from the tui)",
+    "schema": "SessionsListData",
+    "ok": true,
+    "value": [{ "session_id": "s3", "cwd": "/tmp", "run_state": "taken_over", "from": "tui" }]
+  },
+  {
+    "name": "sessions_list rejects an unknown run state",
+    "schema": "SessionsListData",
+    "ok": false,
+    "value": [{ "session_id": "s1", "run_state": "blocked" }]
+  },
+  {
+    "name": "full snapshot",
+    "schema": "SessionSnapshot",
+    "ok": true,
+    "value": {
+      "session_id": "s1",
+      "reset": true,
+      "seq": 42,
+      "state": {
+        "sessionId": "s1",
+        "thinkingLevel": "off",
+        "isStreaming": false,
+        "isCompacting": false,
+        "steeringMode": "one-at-a-time",
+        "followUpMode": "one-at-a-time",
+        "autoCompactionEnabled": true,
+        "messageCount": 4,
+        "pendingMessageCount": 0
+      },
+      "entries": [{ "id": "e1", "type": "message", "role": "user" }],
+      "leaf_id": "e1",
+      "commands": [{ "name": "compact", "description": "Compact the context" }],
+      "ui": {
+        "scope": "session",
+        "sessionId": "s1",
+        "rev": 7,
+        "entries": [{ "id": "oino.core/status", "slot": "status" }],
+        "dialogs": [],
+        "meta": { "title": "Fix the parser", "shortcuts": [] }
+      },
+      "topics": [{ "topic": "plan", "data": { "items": [] }, "sticky": true, "publisher": "oino.core" }]
+    }
+  },
+  {
+    "name": "resume patch",
+    "schema": "SessionSnapshot",
+    "ok": true,
+    "value": {
+      "session_id": "s1",
+      "reset": false,
+      "seq": 45,
+      "replay": [
+        { "session": "s1", "seq": 43, "event": { "type": "agent_end", "messages": [] } },
+        {
+          "session": "s1",
+          "seq": 44,
+          "event": {
+            "type": "message_update",
+            "message": { "role": "assistant" },
+            "assistantMessageEvent": { "type": "text_delta", "contentIndex": 0, "delta": "hi" }
+          }
+        },
+        { "session": "s1", "seq": 45, "event": { "type": "crashed", "error": "tool body exploded" } }
+      ]
+    }
+  },
+  {
+    "name": "a resume patch without replay is rejected",
+    "schema": "SessionSnapshot",
+    "ok": false,
+    "value": { "session_id": "s1", "reset": false, "seq": 45 }
+  },
+  {
+    "name": "a full snapshot with replay is rejected",
+    "schema": "SessionSnapshot",
+    "ok": false,
+    "value": { "session_id": "s1", "reset": true, "seq": 1, "replay": [] }
+  },
+  {
+    "name": "events frame",
+    "schema": "SessionControl",
+    "ok": true,
+    "value": {
+      "type": "events",
+      "items": [
+        { "session": "s1", "seq": 1, "event": { "type": "agent_start" } },
+        { "session": "s1", "seq": 2, "event": { "type": "oino_ui_patch", "scope": "session", "rev": 8, "ops": [] } }
+      ]
+    }
+  },
+  {
+    "name": "events frame with an empty batch",
+    "schema": "SessionControl",
+    "ok": true,
+    "value": { "type": "events", "items": [] }
+  },
+  {
+    "name": "session_cmd envelope",
+    "schema": "SessionControl",
+    "ok": true,
+    "value": {
+      "type": "session_cmd",
+      "id": "c-7",
+      "cmd": { "type": "prompt", "message": "fix the parser" }
+    }
+  },
+  {
+    "name": "session_cmd without an id",
+    "schema": "SessionControl",
+    "ok": true,
+    "value": { "type": "session_cmd", "cmd": { "type": "_oino/render", "target": "turnFooter" } }
+  },
+  {
+    "name": "session_cmd rejects a command that is not an object",
+    "schema": "SessionControl",
+    "ok": false,
+    "value": { "type": "session_cmd", "id": 1, "cmd": "prompt" }
+  },
+  {
+    "name": "correlated ok reply",
+    "schema": "SessionReply",
+    "ok": true,
+    "value": { "type": "ok", "id": "c-7", "data": { "session_id": "s1" } }
+  },
+  {
+    "name": "correlated err reply",
+    "schema": "SessionReply",
+    "ok": true,
+    "value": {
+      "type": "err",
+      "id": 8,
+      "error": { "code": "E_INTERNAL", "message": "boom", "retryable": false }
+    }
+  },
+  {
+    "name": "err reply without an id (unsolicited)",
+    "schema": "SessionReply",
+    "ok": true,
+    "value": { "type": "err", "error": { "code": "E_TRANSPORT", "message": "gone", "retryable": true } }
+  },
+  {
+    "name": "reply of an unknown type is rejected",
+    "schema": "SessionReply",
+    "ok": false,
+    "value": { "type": "ok!", "id": "1" }
+  },
+  {
+    "name": "hub session_changed",
+    "schema": "HubEvent",
+    "ok": true,
+    "value": {
+      "kind": "session_changed",
+      "card": { "session_id": "s1", "cwd": "/home/o/p/oino", "run_state": "working", "message_count": 3 }
+    }
+  },
+  {
+    "name": "hub session_removed",
+    "schema": "HubEvent",
+    "ok": true,
+    "value": { "kind": "session_removed", "session": "s1" }
+  },
+  {
+    "name": "hub host_notice warning (safe mode)",
+    "schema": "HubEvent",
+    "ok": true,
+    "value": {
+      "kind": "host_notice",
+      "level": "warning",
+      "text": "Safe mode: extensions are off (unipi.notify failed twice)"
+    }
+  },
+  {
+    "name": "hub host_notice info",
+    "schema": "HubEvent",
+    "ok": true,
+    "value": { "kind": "host_notice", "level": "info", "text": "UniPi 2.0.1 is available." }
+  },
+  {
+    "name": "hub ui snapshot (host scope)",
+    "schema": "HubEvent",
+    "ok": true,
+    "value": {
+      "kind": "ui",
+      "snapshot": { "scope": "host", "rev": 1, "entries": [], "dialogs": [], "meta": {} }
+    }
+  },
+  {
+    "name": "hub ui patch (host scope)",
+    "schema": "HubEvent",
+    "ok": true,
+    "value": {
+      "kind": "ui",
+      "patch": { "scope": "host", "rev": 2, "ops": [{ "op": "del", "id": "x/settings" }] }
+    }
+  },
+  {
+    "name": "hub event with an unknown kind is rejected",
+    "schema": "HubEvent",
+    "ok": false,
+    "value": { "kind": "session_renamed", "session": "s1" }
+  },
+  {
+    "name": "hub host_notice needs a known level",
+    "schema": "HubEvent",
+    "ok": false,
+    "value": { "kind": "host_notice", "level": "error", "text": "boom" }
+  },
+  {
+    "name": "session_open request",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "session_open", "session": "2026-10-31T09-12-00-a1b2", "since_seq": 41 }
+  },
+  {
+    "name": "session_open without since_seq",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "session_open", "session": "a1b2" }
+  },
+  {
+    "name": "session_open rejects an empty target",
+    "schema": "SessionRequest",
+    "ok": false,
+    "value": { "op": "session_open", "session": "   " }
+  },
+  {
+    "name": "session_new request",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "session_new", "cwd": "/home/o/p/oino", "name": "Fix the parser" }
+  },
+  {
+    "name": "session_fork request",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "session_fork", "session": "s1", "entry_id": "e4", "name": "Try again" }
+  },
+  {
+    "name": "session_fork rejects a two-line name",
+    "schema": "SessionRequest",
+    "ok": false,
+    "value": { "op": "session_fork", "session": "s1", "name": "two\nlines" }
+  },
+  {
+    "name": "session_archive request",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "session_archive", "session": "s1" }
+  },
+  {
+    "name": "session_rename request",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "session_rename", "session": "s1", "name": "Fix the parser" }
+  },
+  {
+    "name": "session_close request",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "session_close", "session": "s1" }
+  },
+  {
+    "name": "sessions_list request",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "sessions_list" }
+  },
+  {
+    "name": "events_open request",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": { "op": "events_open" }
+  }
+]
