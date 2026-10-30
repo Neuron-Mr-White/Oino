@@ -59,6 +59,13 @@ impl<'de> Deserialize<'de> for TermId {
     }
 }
 
+impl Default for TermId {
+    /// The only id that always validates (a placeholder, never a real PTY).
+    fn default() -> Self {
+        TermId("0".to_string())
+    }
+}
+
 /// The shell a terminal runs (`$SHELL` by default): 1..=256 characters,
 /// no NUL.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -95,6 +102,13 @@ impl<'de> Deserialize<'de> for TermShell {
     {
         let raw = String::deserialize(deserializer)?;
         TermShell::try_from(raw).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Default for TermShell {
+    /// The fallback shell when `$SHELL` is unset or unusable: `sh`.
+    fn default() -> Self {
+        TermShell("sh".to_string())
     }
 }
 

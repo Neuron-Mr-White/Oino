@@ -34,6 +34,11 @@ Wire protocol types and framing for `unipi/oino/1` (serde mirror of
   chars.
 - `AttachData` — the typed `ok.data` payload for an `attach` request:
   `{ effective_size_policy: SizePolicy }`.
+- `TermId`, `TermShell`, `TermInfo`, `TermAttachData` — the host-owned
+  terminal layer (`term_open`/`term_attach`/`term_list`/`term_kill`,
+  host.md §9.3): a validated terminal id and shell, the `term_list` row
+  (`term_id, cwd, shell, alive, last_activity`) and the
+  `ok{data}` reply both attach ops send before the stream starts.
 - `frame` module: `FrameKind`, `FRAME_HEADER_LEN`, `MAX_FRAME`,
   `encode(kind, &[u8]) -> Result<Vec<u8>, FrameError>`, `Decoder`
   (`push`/`pop`) for incremental decoding.

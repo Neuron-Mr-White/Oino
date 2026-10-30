@@ -22,4 +22,5 @@ pub mod protocol;
 pub mod push;
 pub mod secret;
 pub mod sharing;
+pub mod term;
 pub mod update;

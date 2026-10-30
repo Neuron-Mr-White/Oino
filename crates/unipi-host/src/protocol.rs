@@ -985,96 +985,22 @@ impl Handler {
                 )
                 .await?;
             }
+            Request::TermOpen { .. }
+            | Request::TermAttach { .. }
+            | Request::TermList
+            | Request::TermKill { .. } => {
+                // host.md §9.3: the PTYs live in this host process, so a
+                // terminal outlives the stream that opened it.
+                crate::term::serve_request(
+                    crate::term::TermRegistry::shared(),
+                    &self.paths,
+                    req,
+                    read,
+                    write,
+                )
+                .await?;
+            }
         }
         Ok(())
     }
-}
-struct ClientGuard {
-    killer: Box<dyn portable_pty::ChildKiller + Send + Sync>,
-    waiter: Option<std::thread::JoinHandle<Option<i64>>>,
-}
-impl Drop for ClientGuard {
-    fn drop(&mut self) {
-        let _ = self.killer.kill();
-        if let Some(waiter) = self.waiter.take() {
-            let _ = waiter.join();
-        }
-    }
-}
-pub async fn attach_stream<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
-    read: &mut R,
-    write: &mut W,
-    command: portable_pty::CommandBuilder,
-    cols: u16,
-    rows: u16,
-) -> anyhow::Result<()> {
-    use portable_pty::{native_pty_system, PtySize};
-    use std::io::{Read, Write};
-    let pair = native_pty_system().openpty(PtySize {
-        cols,
-        rows,
-        pixel_width: 0,
-        pixel_height: 0,
-    })?;
-    tracing::info!(cols, rows, "pty attach");
-    let mut child = pair.slave.spawn_command(command).map_err(|error| {
-        tracing::error!("pty spawn failed: {error}");
-        error
-    })?;
-    let (exit_tx, mut exit_rx) = tokio::sync::oneshot::channel();
-    let mut guard = ClientGuard {
-        killer: child.clone_killer(),
-        waiter: None,
-    };
-    guard.waiter = Some(std::thread::spawn(move || {
-        let code = child.wait().map(|status| status.exit_code() as i64).ok();
-        let _ = exit_tx.send(code);
-        code
-    }));
-    drop(pair.slave);
-    let mut reader = pair.master.try_clone_reader()?;
-    let mut input = pair.master.take_writer()?;
-    // Windows: portable-pty opens ConPTY with INHERIT_CURSOR, so ConPTY's
-    // first output is a cursor-position query (ESC[6n) and it renders
-    // NOTHING until that is answered. The phone's terminal isn't attached
-    // yet when it arrives, so the host answers it (top-left) and keeps it
-    // off the wire — otherwise every herdr attach on Windows stays blank.
-    let mut awaiting_dsr = cfg!(windows);
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
-    tokio::task::spawn_blocking(move || {
-        let mut buf = [0; 8192];
-        let mut total = 0usize;
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    total += n;
-                    if tx.blocking_send(buf[..n].to_vec()).is_err() {
-                        break;
-                    }
-                }
-            }
-        }
-        // Silent before: a PTY that produced nothing looked exactly like a
-        // phone that couldn't render.
-        tracing::info!(bytes = total, "pty reader ended");
-    });
-    loop {
-        tokio::select! {
-         bytes=rx.recv()=>{if let Some(mut bytes)=bytes {
-             if awaiting_dsr {
-                 awaiting_dsr=false;
-                 if let Some(at)=bytes.windows(4).position(|w|w==b"\x1b[6n") {
-                     bytes.drain(at..at+4);
-                     if input.write_all(b"\x1b[1;1R").is_err() || input.flush().is_err() { break; }
-                 }
-                 if bytes.is_empty() { continue; }
-             }
-             if write.write_all(&unipi_proto::frame::encode(FrameKind::Output,&bytes)).await.is_err(){break;}}else{let code=(&mut exit_rx).await.unwrap_or(None);write_control(write,&Control::Exit{code}).await?;break;}}
-         frame=read_frame(read)=>{let Ok((kind,bytes))=frame else{break;};if kind==2 {if input.write_all(&bytes).is_err(){break;}}else if kind==0 {if let Ok(Control::Resize{cols,rows})=serde_json::from_slice(&bytes){pair.master.resize(PtySize{cols:cols.value() as u16,rows:rows.value() as u16,pixel_width:0,pixel_height:0})?;}}}
-         code=&mut exit_rx=>{while let Some(bytes)=rx.recv().await {write.write_all(&unipi_proto::frame::encode(FrameKind::Output,&bytes)).await?;}write_control(write,&Control::Exit{code:code.unwrap_or(None)}).await?;break;}
-        }
-    }
-    drop(guard);
-    Ok(())
 }
