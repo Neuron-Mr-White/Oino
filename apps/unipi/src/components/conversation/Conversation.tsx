@@ -128,18 +128,19 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
     const meta = registry()?.state.meta as { shortcuts?: unknown } | undefined;
     setExtensionShortcuts(parseExtShortcutSpecs(meta?.shortcuts));
   });
-  createEffect(
-    on(
-      () => props.sessionId,
-      (id) => {
-        if (!id) return;
-        void session()
-          ?.cmd<unknown>({ type: '_oino/get_shortcuts' })
-          .then((reply) => setExtensionShortcuts(parseExtShortcutSpecs(reply)))
-          .catch(() => undefined);
-      },
-    ),
-  );
+  // Ask once the stream is live: a command sent while it connects is rejected
+  // and would leave the registry without the extension chords (G-7).
+  const askedShortcuts = new Set<string>();
+  createEffect(() => {
+    const id = props.sessionId;
+    const s = session();
+    if (!id || !s || s.state.conn !== 'live' || askedShortcuts.has(id)) return;
+    askedShortcuts.add(id);
+    void s
+      .cmd<unknown>({ type: '_oino/get_shortcuts' })
+      .then((reply) => setExtensionShortcuts(parseExtShortcutSpecs(reply)))
+      .catch(() => askedShortcuts.delete(id));
+  });
   onCleanup(() => setExtensionShortcuts(undefined));
   const dialogs = () => registry()?.dialogs() ?? [];
   const answer = (id: string, value: unknown) => {

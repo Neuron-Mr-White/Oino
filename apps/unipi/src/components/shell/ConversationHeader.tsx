@@ -12,11 +12,12 @@
  *   registerChatAction('rename', { run: (ctx) => openRename(ctx) });
  */
 import { createSignal, For, Show, type JSX } from 'solid-js';
-import { ArrowLeft, Copy, Ellipsis, FileText, Folder, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Share, SquarePen, SquareTerminal } from 'lucide-solid';
+import { ArrowLeft, Copy, Ellipsis, FileText, Folder, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { copyText } from '../../lib/board/share';
 import { layout } from '../../lib/layout';
 import { modKey } from '../../lib/shell';
+import { openFind } from '../../lib/find';
 import type { IconComponent } from '../../lib/panes/kinds';
 
 export type ChatActionId = 'rename' | 'fork' | 'export' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'info';
@@ -159,8 +160,11 @@ export function ConversationHeader(props: {
       </div>
       <Show when={menu() && props.ctx}>
         <AnchoredMenu anchor={menu()!} alignEnd width={240} label="Chat actions" onDismiss={() => setMenu(undefined)}>
-          <Show when={props.extraMenu}>{(lead) => <>{lead()(() => setMenu(undefined))}</>}</Show>
-          <For each={rows()}>
+          {/* Find is a menu entry too (Z-79): the phone has no Cmd/Ctrl+F. */}
+          <Show when={props.ctx}>
+            <MenuRow icon={<Search size={18} />} label="Find in chat" onSelect={() => (setMenu(undefined), openFind())} />
+          </Show>
+          <Show when={props.extraMenu}>{(lead) => <>{lead()(() => setMenu(undefined))}</>}</Show>          <For each={rows()}>
             {(row, i) => {
               const Icon = row.icon;
               return (

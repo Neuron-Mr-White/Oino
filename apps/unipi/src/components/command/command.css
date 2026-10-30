@@ -32,7 +32,11 @@
 .cmdk-row-sub { font-size: 12px; color: var(--color-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmdk-dot { flex: 0 0 auto; width: 8px; height: 8px; margin-top: 6px; border-radius: 999px; background: var(--color-claw); box-shadow: 0 0 0 2px rgb(240 120 24 / 25%); }
 .cmdk-prefixes { margin-left: auto; }
-@media (max-width: 560px) { .cmdk-prefixes { display: none; } }
+/* Phone: no chord hint (touch) and no prefix legend — the scopes carry it. */
+@media (max-width: 560px) {
+  .palette-foot .cmdk-prefixes { display: none; }
+  .cmdk-search .kbd { display: none; }
+}
 
 /* ── Find bar (Z-79) ─────────────────────────────────────────────────── */
 /* ZCode placement: inside the conversation's visual bounds, above the chat
@@ -46,6 +50,9 @@
 .cfind-count { flex: 0 0 auto; min-width: 52px; text-align: center; font-size: 12px; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .cfind-count[data-none=''] { color: var(--color-text-dim); }
 .cfind-input { flex: 1; min-width: 0; height: 32px; border: 0; background: transparent; color: var(--color-text); font: inherit; font-size: 14px; outline: none; }
+/* The bar is the focus surface (ZCode CC-FOCUS): no inner rectangle. */
+.cfind:focus-within { box-shadow: 0 18px 50px rgb(0 0 0 / 55%), inset 0 0 0 2px rgb(240 48 24 / 45%); }
+.cfind-input:focus-visible { outline: none; }
 .cfind-btn { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: transparent; color: var(--color-text-muted); }
 .cfind-btn:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
 .cfind-btn:disabled { opacity: 0.4; }

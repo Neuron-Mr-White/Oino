@@ -164,6 +164,10 @@ describe('FindBar (Z-79)', () => {
     await waitFor(() => expect(document.querySelector('[data-testid="find-count"]')!.textContent).toBe('1/2'));
     fireEvent.keyDown(input(), { key: 'Enter', shiftKey: true }); // back
     await waitFor(() => expect(document.querySelector('[data-testid="find-count"]')!.textContent).toBe('2/2'));
+    fireEvent.keyDown(input(), { key: 'ArrowDown' }); // ↓ wraps like Enter
+    await waitFor(() => expect(document.querySelector('[data-testid="find-count"]')!.textContent).toBe('1/2'));
+    fireEvent.keyDown(input(), { key: 'ArrowUp' }); // ↑ wraps back
+    await waitFor(() => expect(document.querySelector('[data-testid="find-count"]')!.textContent).toBe('2/2'));
     fireEvent.keyDown(input(), { key: 'Escape' });
     await waitFor(() => expect(document.querySelector('[data-testid="find-bar"]')).toBeNull());
     expect(document.querySelectorAll('mark.find-hit').length).toBe(0);

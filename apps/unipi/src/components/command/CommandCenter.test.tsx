@@ -3,7 +3,8 @@ import { HashRouter, Route } from '@solidjs/router';
 import { HostsProvider } from '../../hosts/context';
 import { SettingsProvider } from '../../settings/context';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CommandCenter, buildRows, parsePrefixQuery, pushHistory, historyFor, scoreRows, openFileFromCenter, HISTORY_MAX } from './CommandCenter';
+import { CommandCenter, buildRows, parsePrefixQuery, pushHistory, historyFor, scoreRows, openFileFromCenter, HISTORY_MAX, type HistoryEntry, type SessionRow } from './CommandCenter';
+import type { SessionCard } from '../../lib/host/client';
 import { createMockHost } from '../../dev/mock/host';
 import { cmdkEmpty } from '../../dev/mock/scenarios/command';
 import { setHostClientFactory } from '../../lib/host/factory';
@@ -74,20 +75,20 @@ describe('scoreRows ranking', () => {
 
 describe('history (Z-78)', () => {
   it('pushes newest first, dedups by scope+query, caps at 20', () => {
-    let list: ReturnType<typeof historyFor> = [{ q: 'a', scope: 'all' }];
+    let list: HistoryEntry[] = [{ q: 'a', scope: 'all' }];
     list = pushHistory(list, { q: 'b', scope: 'all' });
     expect(list.map((e) => e.q)).toEqual(['b', 'a']);
     list = pushHistory(list, { q: 'a', scope: 'all' });
     expect(list.map((e) => e.q)).toEqual(['a', 'b']);
     list = pushHistory(list, { q: 'a', scope: 'sessions' }); // same query, other scope: kept
     expect(list).toHaveLength(3);
-    const many = Array.from({ length: 30 }, (_, i) => ({ q: `q${i}`, scope: 'all' as const })).reduce((l, e) => pushHistory(l, e), [] as ReturnType<typeof historyFor>);
+    const many = Array.from({ length: 30 }, (_, i) => ({ q: `q${i}`, scope: 'all' as const })).reduce((l, e) => pushHistory(l, e), [] as HistoryEntry[]);
     expect(many.length).toBe(HISTORY_MAX);
     expect(many[0]!.q).toBe('q29');
   });
 
   it('reads a workspace bucket only', () => {
-    const store = { 'a|proj': [{ q: 'x', scope: 'all' }], b: [{ q: 'y', scope: 'all' }] };
+    const store: Record<string, HistoryEntry[]> = { 'a|proj': [{ q: 'x', scope: 'all' }], b: [{ q: 'y', scope: 'all' }] };
     expect(historyFor(store, 'a|proj')).toEqual([{ q: 'x', scope: 'all' }]);
     expect(historyFor(store, 'zz')).toEqual([]);
   });
@@ -101,7 +102,7 @@ describe('buildRows (Z-77)', () => {
     { id: 'd', title: 'Go to Settings', group: 'Go to', run: () => {} },
     { id: 'e', title: 'Go to Files', group: 'Go to', run: () => {} },
   ];
-  const session = (id: string): { kind: 'session'; key: string; hostId: string; hostName: string; card: Record<string, unknown> } => ({ kind: 'session', key: id, hostId: HOST, hostName: 'This computer', card: { session_id: id, name: `Session ${id}`, cwd: '/p/x', updated_at: 1 } });
+  const session = (id: string): SessionRow => ({ kind: 'session', key: id, hostId: HOST, hostName: 'This computer', card: { session_id: id, name: `Session ${id}`, cwd: '/p/x', updated_at: 1 } as SessionCard });
 
   it('empty + All: recent sessions (3) + command groups with ≤ 3 + show more', () => {
     const rows = buildRows({ scope: 'all', query: '', commands, slash: [], sessions: [session('1'), session('2'), session('3'), session('4'), session('5')], files: [], expanded: new Set() });

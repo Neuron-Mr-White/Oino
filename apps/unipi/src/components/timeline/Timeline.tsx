@@ -31,7 +31,7 @@ import { TurnMenus } from './TurnActions';
 import { actionNotice } from '../../lib/timeline/actions';
 import { FindBar } from '../command/FindBar';
 import { activateFindMark, applyFindHighlights, clearFindHighlights } from '../../lib/find/highlight';
-import { buildFindIndex, closeFind, findState, locateMatch, setFindAdapter } from '../../lib/find';
+import { buildFindIndex, closeFind, findState, locateMatch, setFindAdapter, type FindIndex } from '../../lib/find';
 import type { Turn } from '../../lib/session/turns';
 import type { TimelineCtx } from './context';
 
@@ -265,6 +265,8 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     onCleanup(() => setFindAdapter(undefined));
   });
   // Rows mount/unmount under the virtualizer: re-highlight what is mounted.
+  // Re-applying is idempotent (text inside `mark.find-hit` is skipped), so the
+  // pass that our own marks trigger adds nothing and the loop stops there.
   const [findDomRev, setFindDomRev] = createSignal(0);
   createEffect(() => {
     const root = contentEl;
@@ -274,43 +276,56 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     mo.observe(root, { childList: true, subtree: true });
     onCleanup(() => mo.disconnect());
   });
+  /** Marks `target` active; `scroll` off when only new rows mounted. */
+  const showTarget = (root: HTMLElement, index: FindIndex, active: number, scroll: boolean) => {
+    const target = locateMatch(index, active);
+    if (!target) return;
+    if (activateFindMark(root, target.turnId, target.occurrence, scroll)) return;
+    // The turn is outside the virtual window: mount + centre it, then mark.
+    if (!scroll) return;
+    const at = settled().findIndex((t) => t.turnId === target.turnId);
+    if (at < 0) return;
+    const el = scrollEl();
+    if (el) {
+      userScrolled = true;
+      lock.detach();
+    }
+    virt()?.scrollToIndex(at, { align: 'center' });
+    const retry = () => {
+      // jsdom (and smooth-scroll setups) deliver no scroll event for a
+      // programmatic offset: dispatch it, then force the virtualizer to
+      // recompute its window from the new offset.
+      scrollEl()?.dispatchEvent(new Event('scroll'));
+      virt()?.measure();
+      const fresh = findIdx();
+      clearFindHighlights(root);
+      applyFindHighlights(root, fresh.query);
+      const again = locateMatch(fresh, findState().active);
+      if (again) activateFindMark(root, again.turnId, again.occurrence, true);
+    };
+    queueMicrotask(retry);
+    requestAnimationFrame(() => queueMicrotask(retry));
+  };
+  // The query/open/active changed: redo the highlights from scratch.
   createEffect(() => {
     const root = contentEl;
     const s = findState();
     const index = findIdx();
-    findDomRev();
     if (!root) return;
     clearFindHighlights(root);
     if (!s.open || !index.query) return;
     applyFindHighlights(root, index.query);
-    const target = locateMatch(index, s.active);
-    if (!target) return;
-    if (!activateFindMark(root, target.turnId, target.occurrence)) {
-      // The turn is outside the virtual window: mount + centre it, then mark.
-      const at = settled().findIndex((t) => t.turnId === target.turnId);
-      if (at >= 0) {
-        const el = scrollEl();
-        if (el) {
-          userScrolled = true;
-          lock.detach();
-        }
-        virt()?.scrollToIndex(at, { align: 'center' });
-        const retry = () => {
-          // jsdom (and smooth-scroll setups) deliver no scroll event for a
-          // programmatic offset: dispatch it, then force the virtualizer to
-          // recompute its window from the new offset.
-          scrollEl()?.dispatchEvent(new Event('scroll'));
-          virt()?.measure();
-          const fresh = findIdx();
-          clearFindHighlights(root);
-          applyFindHighlights(root, fresh.query);
-          const again = locateMatch(fresh, findState().active);
-          if (again) activateFindMark(root, again.turnId, again.occurrence);
-        };
-        queueMicrotask(retry);
-        requestAnimationFrame(() => queueMicrotask(retry));
-      }
-    }
+    showTarget(root, index, s.active, true);
+  });
+  // New rows mounted under the marks (virtualizer): highlight just those.
+  createEffect(() => {
+    findDomRev();
+    const root = contentEl;
+    const s = findState();
+    const index = findIdx();
+    if (!root || !s.open || !index.query) return;
+    applyFindHighlights(root, index.query);
+    showTarget(root, index, s.active, false);
   });
   // Leaving the conversation closes find (one surface, scoped to the chat).
   onCleanup(() => closeFind());

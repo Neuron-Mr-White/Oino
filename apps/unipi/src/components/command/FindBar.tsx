@@ -21,6 +21,7 @@ import {
   type SearchHit,
 } from '../../lib/find';
 import type { SessionHandle } from '../../lib/session/store';
+import { Tooltip } from '../Tooltip';
 import { agoText } from '../status/lhProgress';
 import './command.css';
 
@@ -58,10 +59,10 @@ export function FindBar(props: { session: SessionHandle; index: () => { total: n
       stepFind(props.index().total, event.shiftKey ? -1 : 1);
       return;
     }
-    if (event.key === 'ArrowDown' && event.altKey) {
+    if (event.key === 'ArrowDown') {
       event.preventDefault();
       stepFind(props.index().total, 1);
-    } else if (event.key === 'ArrowUp' && event.altKey) {
+    } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       stepFind(props.index().total, -1);
     }
@@ -86,16 +87,20 @@ export function FindBar(props: { session: SessionHandle; index: () => { total: n
             autocomplete="off"
             spellcheck={false}
           />
-          <button type="button" class="cfind-btn" aria-label="Previous match (Shift+Enter)" disabled={!props.index().total} onClick={() => stepFind(props.index().total, -1)}>
-            <ArrowUp size={15} />
-          </button>
-          <button type="button" class="cfind-btn" aria-label="Next match (Enter)" disabled={!props.index().total} onClick={() => stepFind(props.index().total, 1)}>
-            <ArrowDown size={15} />
-          </button>
+          <Tooltip label="Previous match (Shift+Enter)">
+            <button type="button" class="cfind-btn" aria-label="Previous match (Shift+Enter)" disabled={!props.index().total} onClick={() => stepFind(props.index().total, -1)}>
+              <ArrowUp size={15} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Next match (Enter)">
+            <button type="button" class="cfind-btn" aria-label="Next match (Enter)" disabled={!props.index().total} onClick={() => stepFind(props.index().total, 1)}>
+              <ArrowDown size={15} />
+            </button>
+          </Tooltip>
           <button type="button" class="cfind-whole" title="Search the whole session on the host (also covers older branches)" disabled={!state().query.trim()} onClick={() => void searchWholeSession(props.session, state().query)}>
             Search whole session
           </button>
-          <button type="button" class="cfind-btn" aria-label="Close find" onClick={() => closeFind()}>
+          <button type="button" class="cfind-btn" aria-label="Close find" data-tip="Close find" onClick={() => closeFind()}>
             <X size={15} />
           </button>
         </div>

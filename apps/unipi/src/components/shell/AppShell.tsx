@@ -31,7 +31,7 @@ import { TooltipHost } from '../Tooltip';
 import { NotifyInitRunner } from '../NotifyInitRunner';
 import { IncomingPushRunner } from '../IncomingPush';
 import { SharingRequestsRunner } from '../SharingSettings';
-import { QuitRunner } from '../LifecycleUi';
+import { CloseAskRunner, QuitRunner } from '../LifecycleUi';
 import { PairPhoneDialog } from '../PairPhone';
 import { DesktopUpdatePrompt } from '../UpdateCard';
 import { LinkAnchorMenu } from '../LinkAnchorMenu';
@@ -127,6 +127,7 @@ export function runBinding(hit: BindingHit, ctx: BindingCtx): boolean {
       setPaletteOpen(true, 'files');
       return true;
     case 'shell.shortcuts':
+      if (!L.desktop()) return false;
       setPaletteOpen(false);
       setShortcutsOpen(!shortcutsOpen());
       return true;
@@ -182,22 +183,6 @@ function DesktopFrame(props: ParentProps) {
   const navigate = useNavigate();
   const newChatHost = useNewChatHost();
   const hostsCtx = useHostsOptional();
-  onMount(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const hit = bindingForEvent(e);
-      if (!hit) return;
-      // Inside a terminal plain Ctrl+K / Ctrl+J / Ctrl+B belong to the shell program.
-      if (!(e.altKey || e.shiftKey) && (e.target as HTMLElement | null)?.closest?.('.term-layer, .xterm')) return;
-      // Chords without the primary modifier never fire inside a text field
-      // (Shift+↓ must keep extending a selection in the composer).
-      if (!(e.ctrlKey || e.metaKey) && inTextField(e.target)) return;
-      if (e.isComposing) return;
-      e.preventDefault();
-      runBinding(hit, { navigate, newChatHost, hosts: hostsCtx?.hosts() ?? [] });
-    };
-    window.addEventListener('keydown', onKey);
-    onCleanup(() => window.removeEventListener('keydown', onKey));
-  });
   onCleanup(
     registerCommands([
       { id: 'chat.new', title: 'New chat', group: 'Go to', keywords: 'start session folder project', icon: () => <SquarePen size={16} />, run: () => navigate(`/new/${encodeURIComponent(newChatHost())}`) },
@@ -297,6 +282,31 @@ function ShortcutPersistence() {
 }
 
 /** The router root: providers, the frame of this shell, and the app-wide layers. */
+/** The registry's window listener (WP-A18): both shells, so a phone with a
+ *  hardware keyboard gets the same Cmd/Ctrl chords (Z-94 is an app map). */
+function ShellShortcuts() {
+  const navigate = useNavigate();
+  const newChatHost = useNewChatHost();
+  const hostsCtx = useHostsOptional();
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const hit = bindingForEvent(e);
+      if (!hit) return;
+      // Inside a terminal plain Ctrl+K / Ctrl+J / Ctrl+B belong to the shell program.
+      if (!(e.altKey || e.shiftKey) && (e.target as HTMLElement | null)?.closest?.('.term-layer, .xterm')) return;
+      // Chords without the primary modifier never fire inside a text field
+      // (Shift+↓ must keep extending a selection in the composer).
+      if (!(e.ctrlKey || e.metaKey) && inTextField(e.target)) return;
+      if (e.isComposing) return;
+      e.preventDefault();
+      runBinding(hit, { navigate, newChatHost, hosts: hostsCtx?.hosts() ?? [] });
+    };
+    window.addEventListener('keydown', onKey);
+    onCleanup(() => window.removeEventListener('keydown', onKey));
+  });
+  return null;
+}
+
 export function AppShell(props: ParentProps) {
   const location = useLocation();
   // U10: extension `fullscreen` pages are registry entries of their session,
@@ -308,6 +318,7 @@ export function AppShell(props: ParentProps) {
   return (
     <SettingsProvider>
       <HostsProvider>
+        <ShellShortcuts />
         <ShortcutPersistence />
         <RelaySettings />
         <ShellAttr />
@@ -329,6 +340,7 @@ export function AppShell(props: ParentProps) {
         <IncomingPushRunner />
         <SharingRequestsRunner />
         <QuitRunner />
+        <CloseAskRunner />
         <SetupGate />
         <PairPhoneDialog />
         <Show when={can('desktopUpdater')}>
@@ -343,6 +355,8 @@ export function AppShell(props: ParentProps) {
         {/* Z-116: the one tooltip bubble for every icon-only control. */}
         <TooltipHost />
         <SessionModalLayer />
+        {/* The shortcuts table is the desktop keyboard reference (its sheet does
+            not paint in the phone capture shell; the phone has no chord UI). */}
         <Show when={desktop()}>
           <ShortcutsDialog />
         </Show>

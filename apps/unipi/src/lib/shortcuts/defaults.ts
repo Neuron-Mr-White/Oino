@@ -51,7 +51,8 @@ export type ScreenKeyGroup = { title: string; items: Array<{ keys: string; what:
 /** The unipi screen keys the Ctrl+/ list keeps (Z-94: screens own them). */
 export const SCREEN_KEYS: ScreenKeyGroup[] = [
   {
-    title: 'Chat',
+    // "Chat keys": the shell chords already have a "Chat" group above.
+    title: 'Chat keys',
     items: [
       { keys: 'S / Q', what: 'In the Steer/Queue choice: Steer / Queue (←/→ switch, Enter picks)' },
       { keys: 'Alt ↑ / Alt ↓', what: 'Previous / next chat' },

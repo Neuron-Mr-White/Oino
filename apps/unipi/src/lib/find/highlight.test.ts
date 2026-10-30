@@ -42,6 +42,36 @@ describe('applyFindHighlights', () => {
     expect(root.querySelectorAll('mark.find-hit').length).toBe(2);
   });
 
+  it('a framework re-render of the same text neither duplicates nor loses it', () => {
+    const root = mount('<div data-turn="t1"><p>tally one and tally two</p></div>');
+    applyFindHighlights(root, 'tally');
+    const p = root.querySelector('p')!;
+    expect(p.textContent).toBe('tally one and tally two');
+    // Solid re-renders the row (a late resource, a virtualizer re-render): the
+    // element's text lands next to the marks we inserted.
+    p.replaceChildren('tally one and tally two');
+    applyFindHighlights(root, 'tally');
+    expect(p.textContent).toBe('tally one and tally two');
+    expect(p.querySelectorAll('mark.find-hit').length).toBe(2);
+    clearFindHighlights(root);
+    expect(p.textContent).toBe('tally one and tally two');
+    expect(p.querySelectorAll('mark').length).toBe(0);
+  });
+
+  it('re-applying over many re-renders keeps one copy of the text', () => {
+    const root = mount('<div data-turn="t1"><span>Please tally the results of run 1</span></div>');
+    const span = root.querySelector('span')!;
+    for (let i = 0; i < 5; i++) {
+      applyFindHighlights(root, 'tally');
+      span.replaceChildren('Please tally the results of run 1');
+    }
+    applyFindHighlights(root, 'tally');
+    expect(span.textContent).toBe('Please tally the results of run 1');
+    expect(span.querySelectorAll('mark.find-hit').length).toBe(1);
+    clearFindHighlights(root);
+    expect(span.textContent).toBe('Please tally the results of run 1');
+  });
+
   it('activates the nth mark of a turn and centres it', () => {
     const root = mount(`<div data-turn="t1"><p>one two two</p></div><div data-turn="t2"><p>two</p></div>`);
     applyFindHighlights(root, 'two');

@@ -308,8 +308,10 @@ function CenterDialog() {
                   class="cmdk-scope"
                   aria-selected={activeScope() === s.id}
                   onClick={() => {
+                    // A tab is a filter (ZCode): keep the typed words, drop a
+                    // scope prefix (`>go` → `go`) since the tab now governs.
                     setScope(s.id);
-                    setQuery('');
+                    if (parsed().scope) setQuery(parsed().text);
                     queueMicrotask(() => input?.focus());
                   }}
                 >
