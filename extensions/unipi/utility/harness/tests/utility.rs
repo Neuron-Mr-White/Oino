@@ -669,7 +669,7 @@ async fn answer_web_form_over_the_loopback_listener() {
         "waiting panel opened"
     );
     let panel = env.details("ui_panel")[0]["open"].clone();
-    let url = panel["spec"]["children"][1]["value"][0]["text"]
+    let url = panel["spec"]["children"][1]["text"][0][0]["content"]
         .as_str()
         .unwrap()
         .to_owned();

@@ -16,6 +16,7 @@ use std::sync::LazyLock;
 
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::widgets::prelude::*;
 use regex::Regex;
 use unipi_kit::attach::{self, Attachment, Kind};
 
@@ -58,19 +59,20 @@ pub fn to_json(a: &Attachment) -> Value {
 
 /// Chip text of one attachment.
 #[must_use]
-pub fn chip(kind: &str, id: u64, name: &str, bytes: u64) -> Vec<Value> {
+pub fn chip(kind: &str, id: u64, name: &str, bytes: u64) -> Vec<Span> {
     let token = if kind == "image" {
         format!("[Image #{id}]")
     } else {
         format!("[File #{id}]")
     };
     let mut spans = vec![
-        json!({"text": token, "tone": "accent"}),
-        json!({"text": format!(" {name}")}),
+        Span::from_string(token).fg(Color::Accent),
+        Span::from_string(format!(" {name}")),
     ];
     if bytes > 0 {
         spans.push(
-            json!({"text": format!(" · {}", unipi_kit::fmt::format_bytes(bytes)), "tone": "muted"}),
+            Span::from_string(format!(" · {}", unipi_kit::fmt::format_bytes(bytes)))
+                .fg(Color::Muted),
         );
     }
     spans
@@ -78,11 +80,11 @@ pub fn chip(kind: &str, id: u64, name: &str, bytes: u64) -> Vec<Value> {
 
 /// Chip row + optional previews (widget and transcript entry share it).
 #[must_use]
-pub fn view(items: &[Value], preview: bool, hint: &str) -> Value {
-    let mut spans = vec![json!({"text": "▌ ", "tone": "accent"})];
+pub fn view(items: &[Value], preview: bool, hint: &str) -> Node {
+    let mut spans = vec![Span::from_string("▌ ").fg(Color::Accent)];
     for (i, a) in items.iter().enumerate() {
         if i > 0 {
-            spans.push(json!({"text": "  ·  ", "tone": "muted"}));
+            spans.push(Span::from_string("  ·  ").fg(Color::Muted));
         }
         spans.extend(chip(
             a.get("kind").and_then(Value::as_str).unwrap_or("file"),
@@ -92,28 +94,32 @@ pub fn view(items: &[Value], preview: bool, hint: &str) -> Value {
         ));
     }
     if !hint.is_empty() {
-        spans.push(json!({"text": format!("   {hint}"), "tone": "muted"}));
+        spans.push(Span::from_string(format!("   {hint}")).fg(Color::Muted));
     }
-    let mut children = vec![json!({"t": "text", "value": spans, "wrap": false})];
-    if preview {
-        for a in items
-            .iter()
-            .filter(|a| a.get("kind").and_then(Value::as_str) == Some("image"))
-            .take(PREVIEW_MAX)
-        {
-            children.push(json!({
-                "t": "image",
-                "path": a.get("path"),
-                "mimeType": a.get("mimeType"),
-                "alt": a.get("name"),
-                "maxWidth": 32,
-            }));
-        }
+    let row: Node = Paragraph::new(Line::from(spans))
+        .wrap(Wrap::Disabled(false))
+        .into();
+    if !preview {
+        return row;
     }
-    if children.len() == 1 {
-        return children.remove(0);
+    let images: Vec<Node> = items
+        .iter()
+        .filter(|a| a.get("kind").and_then(Value::as_str) == Some("image"))
+        .take(PREVIEW_MAX)
+        .map(|a| {
+            let path = a.get("path").and_then(Value::as_str).unwrap_or_default();
+            let alt = a.get("name").and_then(Value::as_str).unwrap_or_default();
+            Image::new(ImageSource::path(path), alt)
+                .max_width(32)
+                .into()
+        })
+        .collect();
+    if images.is_empty() {
+        return row;
     }
-    json!({"t": "stack", "direction": "vertical", "children": children})
+    let mut children = vec![row];
+    children.extend(images);
+    Layout::default().children(children).into()
 }
 
 /// Plain chip line (frontends without OUS).
@@ -199,7 +205,7 @@ impl Attachments {
             "widgetKey": WIDGET,
             "widgetLines": [line(&items, hint)],
             "widgetPlacement": "aboveEditor",
-            "widgetSpec": view(&items, preview, hint),
+            "widgetSpec": serde_json::to_value(view(&items, preview, hint)).unwrap_or(Value::Null),
         }));
     }
 
@@ -311,7 +317,9 @@ impl Attachments {
             .get("items")
             .and_then(Value::as_array)
             .filter(|a| !a.is_empty())?;
-        Some(view(items, preview, ""))
+        // The render dispatcher (`render/mod.rs`) still hands frontends `Value` trees; it
+        // moves to `Node` with WP-U7b.
+        serde_json::to_value(view(items, preview, "")).ok()
     }
 }
 
@@ -354,11 +362,14 @@ mod tests {
             line(&items, "hint"),
             "▌ [Image #1] a.png · 2 KB  ·  [File #2] b.pdf   hint"
         );
-        let v = view(&items, true, "");
-        assert_eq!(v["t"], "stack");
-        assert_eq!(v["children"][1]["t"], "image");
-        assert_eq!(v["children"][1]["path"], "/x/a.png");
-        assert_eq!(view(&items, false, "")["t"], "text");
+        let v: Value = serde_json::to_value(view(&items, true, "")).unwrap_or_default();
+        assert_eq!(v["t"], "Layout");
+        assert_eq!(v["children"][1]["t"], "Image");
+        assert_eq!(v["children"][1]["src"]["path"], "/x/a.png");
+        assert_eq!(
+            serde_json::to_value(view(&items, false, "")).unwrap_or_default()["t"],
+            "Paragraph"
+        );
         assert!(Attachments::render_entry(&json!({"items": []}), true).is_none());
         assert!(Attachments::render_entry(&json!({"items": items}), false).is_some());
     }

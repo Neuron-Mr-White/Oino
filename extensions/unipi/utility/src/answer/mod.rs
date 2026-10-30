@@ -18,6 +18,8 @@ use oino_extension::command::CompletionItem;
 use oino_extension::http::Listener;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::KeyBinding;
+use oino_extension::ui::widgets::prelude::*;
 use oino_extension::wit::session as ws;
 
 use self::extract::{
@@ -173,26 +175,49 @@ pub fn questions_dialog(questions: &[String]) -> Value {
     d
 }
 
-/// The web form waiting panel.
+/// One unwrapped text line.
+fn line(span: Span) -> Node {
+    Paragraph::new(Line::from(span))
+        .wrap(Wrap::Disabled(false))
+        .into()
+}
+
+/// The web form waiting spec.
 #[must_use]
-pub fn web_panel(lines: &[String]) -> Value {
-    let mut children: Vec<Value> = lines
+pub fn web_spec(lines: &[String]) -> Node {
+    let mut children: Vec<Node> = lines
         .iter()
         .enumerate()
         .map(|(i, l)| {
-            json!({"t": "text", "value": [{"text": l, "bold": i == 0, "dim": lines.len() == 4 && i == 2}]})
+            let span = Span::from_string(l.clone());
+            let span = if lines.len() == 4 && i == 2 {
+                span.dim()
+            } else {
+                span
+            };
+            line(if i == 0 { span.bold() } else { span })
         })
         .collect();
-    children.push(json!({"t": "text", "value": [{"text": "Waiting for your answers… esc cancels", "dim": true}]}));
-    json!({
-        "panelId": WEB_PANEL,
-        "placement": "overlay",
-        "title": "answer — web form",
-        "focus": true,
-        "closeOnEscape": true,
-        "keys": [{"key": "escape", "actionId": "cancel", "label": "Cancel"}],
-        "spec": {"t": "stack", "direction": "vertical", "children": children},
-    })
+    children.push(line(
+        Span::from_string("Waiting for your answers… esc cancels").dim(),
+    ));
+    Layout::default().children(children).into()
+}
+
+/// The web form waiting panel.
+#[must_use]
+pub fn web_panel(lines: &[String]) -> ui::Panel {
+    ui::Panel::new(WEB_PANEL)
+        .placement(ui::Placement::Overlay)
+        .title("answer — web form")
+        .spec(web_spec(lines))
+        .keys([KeyBinding {
+            key: "escape".into(),
+            action: Some("cancel".into()),
+            label: "Cancel".into(),
+        }])
+        .focus(true)
+        .close_on_escape(true)
 }
 
 /// `/answer` state.
@@ -218,12 +243,13 @@ impl Answerer {
             return;
         }
         let text = hint_text(n);
+        let spec: Node = line(Span::from_string(text.clone()).dim());
         let _ = ui::fire(&json!({
             "method": "setWidget",
             "widgetKey": HINT_WIDGET,
             "widgetLines": [text],
             "widgetPlacement": "aboveEditor",
-            "widgetSpec": {"t": "text", "value": [{"text": text, "dim": true}]},
+            "widgetSpec": serde_json::to_value(spec).unwrap_or(Value::Null),
         }));
         self.hinted.with(cx.session_id(), |h| *h = true);
     }
@@ -328,7 +354,7 @@ impl Answerer {
             let _ = ui::open_url(&url);
         }
         let page = form_page(reply, questions, &token);
-        let panel = ui::panel_open(&web_panel(&waiting_lines(&url, port, ssh, &host)))?;
+        let panel = web_panel(&waiting_lines(&url, port, ssh, &host)).open()?;
         let (tx, mut rx) = oneshot::channel();
         self.waiters.borrow_mut().insert(panel.clone(), tx);
         let mut result = None;
@@ -459,8 +485,10 @@ mod tests {
 
     #[test]
     fn web_panel_shape() {
-        let p = web_panel(&waiting_lines("http://x", 1, false, "h"));
-        assert_eq!(p["panelId"], WEB_PANEL);
-        assert_eq!(p["spec"]["children"].as_array().map(Vec::len), Some(3));
+        let p: Value = serde_json::to_value(web_spec(&waiting_lines("http://x", 1, false, "h")))
+            .unwrap_or_default();
+        assert_eq!(p["t"], "Layout");
+        assert_eq!(p["children"].as_array().map(Vec::len), Some(3));
+        assert_eq!(WEB_PANEL, "unipi.utility/answer-web");
     }
 }
