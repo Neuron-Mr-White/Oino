@@ -186,6 +186,10 @@ pub enum EditPurpose {
 }
 
 /// Side effect requested by the app.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "one effect at a time; the RPC command variant carries the full action payload"
+)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Effect {
     /// Send a command; `concurrent` commands may run alongside others (long-running).
@@ -723,8 +727,8 @@ impl App {
                 // runtime never evicts).
                 // Registry patches drive the v2 slot renderers (WP-U4); the line compositor
                 // still renders the v1 replay of `_oino/ui_snapshot`.
-                OinoEvent::UiPatch { .. } => {}
-                OinoEvent::ToolsChanged { .. }
+                OinoEvent::UiPatch { .. }
+                | OinoEvent::ToolsChanged { .. }
                 | OinoEvent::Topic { .. }
                 | OinoEvent::AgentsChanged { .. }
                 | OinoEvent::AgentEvent { .. }

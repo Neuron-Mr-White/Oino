@@ -17,8 +17,8 @@ use oino_ai::JsonObject;
 use oino_core::events::{ClientEvent, OinoEvent};
 use oino_core::extensions::api::Registration;
 use oino_core::hub::EventStream;
-use oino_core::session::{AgentSession, RenderRequest, RenderTarget};
-use oino_core::testing::{FakeExtension, FauxProvider, TestSession};
+use oino_core::session::{AgentSession, PromptOptions, RenderRequest, RenderTarget};
+use oino_core::testing::{FakeExtension, FauxProvider, FauxResponse, TestSession};
 use oino_core::ui::UiAction;
 use oino_ui::slot::{RegistryOp, Slot, UiSnapshot, UiView};
 use serde_json::{Value, json};
@@ -234,4 +234,88 @@ async fn dispose_clears_the_registry() {
     );
     session.dispose().await;
     assert_eq!(session.ui_snapshot().entries.len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_disabled_extension_loses_its_entries() {
+    // A trapping handler disables the extension for the session (core §2.3); its entries
+    // are disposed with it (§6.6) while other extensions keep theirs.
+    let trapping = Arc::new(
+        FakeExtension::new(
+            "probe",
+            Registration {
+                events: vec!["input".into()],
+                ..Registration::default()
+            },
+        )
+        .on_event(|_kind, payload| {
+            if payload["text"]
+                .as_str()
+                .is_some_and(|text| text.starts_with("trap"))
+            {
+                panic!("handler exploded");
+            }
+            Ok(None)
+        }),
+    );
+    let other = Arc::new(FakeExtension::new("other", Registration::default()));
+    let session = TestSession {
+        extensions: vec![
+            trapping as Arc<dyn oino_core::extensions::api::ExtensionInstance>,
+            other as Arc<dyn oino_core::extensions::api::ExtensionInstance>,
+        ],
+        has_ui: true,
+        ..TestSession::default()
+    }
+    .build(FauxProvider::new(vec![FauxResponse::Text("ok".into())]))
+    .await;
+    session
+        .ui_fire(
+            "probe",
+            "openPanel",
+            args(json!({"placement": "sidePane", "spec": {"t": "Paragraph", "text": "hi"}})),
+        )
+        .unwrap();
+    session
+        .ui_fire(
+            "other",
+            "openPanel",
+            args(json!({"placement": "sidePane", "spec": {"t": "Paragraph", "text": "keep"}})),
+        )
+        .unwrap();
+    assert_eq!(session.ui_snapshot().entries.len(), 2);
+
+    let mut stream = session.subscribe();
+    session
+        .prompt(
+            "trap me".into(),
+            PromptOptions {
+                expand_prompt_templates: false,
+                ..PromptOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+    loop {
+        let event = tokio::time::timeout(Duration::from_secs(10), stream.next())
+            .await
+            .expect("timed out waiting for the disable")
+            .expect("stream ended");
+        if matches!(
+            event,
+            ClientEvent::Oino(OinoEvent::ExtensionDisabled { .. })
+        ) {
+            break;
+        }
+    }
+    tokio::time::timeout(Duration::from_secs(10), session.wait_for_idle())
+        .await
+        .unwrap();
+    let owners: Vec<String> = session
+        .ui_snapshot()
+        .entries
+        .iter()
+        .map(|entry| entry.extension_id.clone())
+        .collect();
+    assert_eq!(owners, ["other"]);
 }

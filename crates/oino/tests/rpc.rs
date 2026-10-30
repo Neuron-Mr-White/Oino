@@ -676,3 +676,104 @@ fn concurrent_commands_answer_while_a_dialog_blocks() {
     );
     assert!(rpc.try_next(Duration::from_millis(100)).is_none());
 }
+
+/// The `ui` capabilities of a full v2 frontend (ui-protocol §10).
+fn v2_caps() -> Value {
+    json!({
+        "protocol": 2,
+        "dialogs": ["select", "confirm", "input", "editor", "multiSelect", "form",
+                    "approval", "custom", "clipboardReadImage", "editExternally"],
+        "slots": ["overlay", "sidePane", "bottomPane", "editorReplace", "fullscreen",
+                  "widget", "widgetBelow", "status", "turnFooter", "header", "footer",
+                  "settings"],
+        "reserved": ["board", "cron", "files", "git", "browser", "terminal", "sessionInfo",
+                     "lhStatus", "turnFiles"],
+        "nodes": "all", "images": true, "osNotify": true, "clipboard": true
+    })
+}
+
+#[test]
+fn v2_hello_receives_registry_patches_and_resyncs() {
+    let sandbox = Sandbox::new();
+    let mut rpc = sandbox.rpc(
+        &json!([text("one")]),
+        &["--no-session", "-e", "builtin:ui-probe"],
+    );
+    rpc.ok(json!({
+        "type": "_oino/hello",
+        "client": {"name": "app", "version": "1"},
+        "protocol": 1,
+        "ui": v2_caps()
+    }));
+
+    // A retained producer reaches a v2 client as `oino_ui_patch`, not as a raw record.
+    let id = rpc.send(json!({"type": "prompt", "message": "/probe panel Board"}));
+    let (_, patch) = rpc.response_and(&id, |value| value["type"] == "oino_ui_patch");
+    assert_eq!(patch["rev"], 1, "{patch:#}");
+    assert_eq!(patch["scope"], "session");
+    let put = patch["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|op| op["op"] == "put" && op["entry"]["id"] == "ui-probe/panel-0")
+        .expect("no put for the panel");
+    assert_eq!(put["entry"]["slot"], "overlay");
+    assert_eq!(put["entry"]["view"]["kind"], "tree");
+    assert_eq!(put["entry"]["view"]["root"]["t"], "Button");
+    assert_eq!(put["entry"]["extensionId"], "ui-probe");
+
+    // `_oino/ui_snapshot` and `_oino/ui_resync` return the v2 snapshot at the same rev.
+    let snapshot = rpc.ok(json!({"type": "_oino/ui_snapshot"}));
+    assert_eq!(snapshot["rev"], patch["rev"]);
+    assert!(
+        snapshot["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["id"] == "ui-probe/panel-0")
+    );
+    let resync = rpc.ok(json!({"type": "_oino/ui_resync", "scope": "session", "rev": 0}));
+    assert_eq!(resync["rev"], snapshot["rev"]);
+    assert_eq!(resync["entries"], snapshot["entries"]);
+
+    // Visibility aggregates and reaches the owner as `$show` (`notify` travels as an
+    // `effect` op for a v2 client).
+    rpc.ok(json!({
+        "type": "_oino/ui_visible",
+        "entryId": "ui-probe/panel-0",
+        "visible": true,
+        "frontend": "app"
+    }));
+    let (effect, _) = rpc.until(|value| {
+        value["type"] == "oino_ui_patch"
+            && value["ops"]
+                .as_array()
+                .is_some_and(|ops| ops.iter().any(|op| op["op"] == "effect"))
+    });
+    assert_eq!(effect["ops"][0]["request"]["method"], "notify");
+    assert_eq!(
+        effect["ops"][0]["request"]["message"],
+        "probe:action:$show:null"
+    );
+
+    // The v2 action payload is delivered to the owner.
+    rpc.ok(json!({
+        "type": "_oino/ui_action",
+        "panelId": "ui-probe/panel-0",
+        "actionId": "go",
+        "value": "x",
+        "values": {"filter": "open"},
+        "path": ["main"],
+        "source": "app"
+    }));
+    let (effect, _) = rpc.until(|value| {
+        value["type"] == "oino_ui_patch"
+            && value["ops"]
+                .as_array()
+                .is_some_and(|ops| ops.iter().any(|op| op["op"] == "effect"))
+    });
+    assert_eq!(
+        effect["ops"][0]["request"]["message"],
+        "probe:action:go:\"x\""
+    );
+}
