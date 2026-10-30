@@ -190,11 +190,6 @@ export function focusReservedEntry(entry: UiEntry, ctx: ReservedFocusContext): b
   }
 }
 
-/** Whether a reserved entry's native view was already focused (or is in place). */
-export function reservedEntryFocused(entry: UiEntry): boolean {
-  return focused.has(`${entry.id}:${entry.seq}`);
-}
-
 /** Is this a reserved entry whose native surface is a side/bottom pane tab? */
 export function isReservedPaneEntry(entry: UiEntry): boolean {
   const row = reservedRowFor(entry);

@@ -82,12 +82,43 @@ async function shot(sessionId) {
   return undefined;
 }
 
+/** The app is up: the shell on screen and the splash gone (lib/splash.ts). */
+const READY = `(() => {
+  const splash = document.getElementById('splash');
+  const up = splash === null || splash.classList.contains('splash-out') || getComputedStyle(splash).opacity === '0';
+  return up && !!document.querySelector('[data-testid=workspace],[data-testid=files-layer],[data-testid=chat-tab],[data-testid=app-shell],[data-testid=phone-shell]');
+})()`;
+
+/** Waits for `READY` (the mock host boots async: splash, hub, session card, gates). */
+async function settled(sessionId) {
+  for (let i = 0; i < 60; i++) {
+    const r = await send('Runtime.evaluate', { expression: READY, returnByValue: true }, sessionId);
+    if (r.result.value === true) return true;
+    await sleep(250);
+  }
+  return false;
+}
+
 mkdirSync(OUT, { recursive: true });
 // Leftovers from an earlier aborted run would keep the browser busy.
 for (const target of (await send('Target.getTargets')).targetInfos ?? []) {
   if (target.type === 'page' && target.url.includes('127.0.0.1:1450')) await send('Target.closeTarget', { targetId: target.targetId }).catch(() => {});
 }
+// Warm the dev server first (Vite's first load optimizes deps and reloads, which
+// would otherwise land a screenshot on the splash).
+{
+  const { targetId } = await send('Target.createTarget', { url: `${APP}/?scenario=u12-nav&shell=desktop#/chat`, background: true });
+  const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
+  await send('Page.enable', {}, sessionId);
+  await settled(sessionId);
+  await sleep(1500);
+  await send('Target.closeTarget', { targetId });
+  await sleep(400);
+}
+
 for (const [scenario, shell, width, height, name, hash, action, settle] of SHOTS) {
+  // A CDP session can be dropped right after the previous target closed: retry once.
+  for (let attempt = 0; attempt < 2; attempt++) {
   try {
     const url = `${APP}/?scenario=${scenario}&shell=${shell}${hash}`;
     const { targetId } = await send('Target.createTarget', { url, background: true });
@@ -96,13 +127,8 @@ for (const [scenario, shell, width, height, name, hash, action, settle] of SHOTS
     await send('Page.enable', {}, sessionId);
     // Wait for the shell to be on screen (the splash is up until the mock host
     // answers), then let the <= 1 s registry patch and the gate fetch settle.
-    const ready = `!!document.querySelector('[data-testid=workspace],[data-testid=files-layer],[data-testid=chat-tab]')`;
-    for (let i = 0; i < 48; i++) {
-      const r = await send('Runtime.evaluate', { expression: ready, returnByValue: true }, sessionId);
-      if (r.result.value === true) break;
-      await sleep(250);
-    }
-    await sleep(3200);
+    await settled(sessionId);
+    await sleep(2600);
     if (action) {
       const expression = `(() => { (${action.toString()})(); return true; })()`;
       await send('Runtime.evaluate', { expression, awaitPromise: true }, sessionId);
@@ -113,9 +139,12 @@ for (const [scenario, shell, width, height, name, hash, action, settle] of SHOTS
     writeFileSync(`${OUT}/${file}`, Buffer.from(data, 'base64'));
     console.log(file);
     await send('Target.closeTarget', { targetId });
-    await sleep(300);
+    await sleep(500);
+    break;
   } catch (error) {
-    console.warn(`skip ${name}-${shell}: ${error.message}`);
+    if (attempt === 1) console.warn(`skip ${name}-${shell}: ${error.message}`);
+    else await sleep(1200);
+  }
   }
 }
 browser.close();

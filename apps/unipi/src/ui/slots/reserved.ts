@@ -86,11 +86,6 @@ export function isReservedEntry(entry: Pick<UiEntry, 'id' | 'view'>): boolean {
   return reservedRowFor(entry) !== undefined;
 }
 
-/** The row of a pane kind (`git` → `host/git`), for the native tabs. */
-export function reservedRowForPane(kind: string): ReservedRow | undefined {
-  return RESERVED_ROWS.find((row) => row.pane === kind);
-}
-
 // ── native surfaces (§10 `reserved` capabilities) ────────────────────────
 
 type Availability = () => boolean;
@@ -210,9 +205,15 @@ export function reservedGate(rowOrComponent: ReservedRow | ReservedComponent | s
   if (!reservedImplemented(row.component)) return false;
   if (row.owner === 'host') return row.cap ? can(row.cap) : true;
   const lists = Object.values(owners());
-  if (lists.length === 0) return row.cap ? can(row.cap) : can('chat');
   const states = lists.map((list) => list[row.owner]).filter((state) => state !== undefined);
-  if (!states.length) return false; // the extensions are installed nowhere reachable
+  if (!states.length) {
+    // Not listed: an owner that is missing from a host's list is not installed
+    // there. An empty answer means the host could not tell us (web build, an
+    // older host) — then the platform decides, never a silently hidden surface.
+    const listable = lists.some((list) => Object.keys(list).length > 0);
+    if (!listable) return row.cap ? can(row.cap) : can('chat');
+    return false;
+  }
   if (!states.some(Boolean)) return false;
   if (row.component === 'board') {
     const cli = Object.values(tools()).map((entry) => entry.kanboard).filter((present) => present !== undefined);
@@ -221,8 +222,3 @@ export function reservedGate(rowOrComponent: ReservedRow | ReservedComponent | s
   return true;
 }
 
-/** The gate of an entry (its row), `false` for non-reserved entries. */
-export function reservedEntryGate(entry: Pick<UiEntry, 'id' | 'view'>): boolean {
-  const row = reservedRowFor(entry);
-  return !!row && reservedGate(row);
-}
