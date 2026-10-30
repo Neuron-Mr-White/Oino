@@ -45,6 +45,7 @@ use futures::StreamExt;
 use oino_extension::agents::Agent;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::widgets::prelude::*;
 use oino_extension::wit::registry::RendererTarget;
 use unipi_kit::services::point;
 use unipi_kit::settings::{Field, Kind, Namespace, Section, Store, plain};
@@ -587,9 +588,20 @@ impl Fusion {
                     )
                 })
                 .unwrap_or_default();
-            let _ = ui::fire(
-                &json!({"method": "setWidget", "widgetKey": WAKE_WIDGET, "widgetLines": [text], "widgetPlacement": "aboveEditor", "widgetSpec": {"t": "stack", "direction": "horizontal", "gap": 1, "children": [{"t": "spinner"}, {"t": "text", "value": text}]}}),
-            );
+            let spec: Node = Layout::horizontal([Constraint::Min(0), Constraint::Fill(1)])
+                .spacing(1)
+                .children([
+                    Spinner::new("").into(),
+                    Paragraph::new(Line::from(text.clone())).into(),
+                ])
+                .into();
+            let _ = ui::fire(&json!({
+                "method": "setWidget",
+                "widgetKey": WAKE_WIDGET,
+                "widgetLines": [text],
+                "widgetPlacement": "aboveEditor",
+                "widgetSpec": serde_json::to_value(spec).unwrap_or(Value::Null),
+            }));
         } else if was {
             let _ = ui::fire(&json!({"method": "setWidget", "widgetKey": WAKE_WIDGET}));
         }
@@ -1749,11 +1761,19 @@ impl Fusion {
             .get("expanded")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        let line = |glyph: &str, tone: &str, label: &str, meta: String| json!({"t": "text", "value": [{"text": format!("{glyph} "), "tone": tone}, {"text": label, "bold": true, "tone": "tool"}, {"text": meta, "dim": true}]});
+        let line = |glyph: &str, tone: &str, label: &str, meta: String| -> Node {
+            Paragraph::new(Line::from(vec![
+                Span::from_string(format!("{glyph} ")).fg(Color::parse(tone)),
+                Span::from_string(label).bold().fg(Color::Tool),
+                Span::from_string(meta).dim(),
+            ]))
+            .wrap(Wrap::Disabled(false))
+            .into()
+        };
         match key {
             "sidekick-step" => {
                 let d = data.get("data")?;
-                let body = match d.get("kind").and_then(Value::as_str) {
+                let body: Node = match d.get("kind").and_then(Value::as_str) {
                     Some("tool") => {
                         let mut c = vec![line(
                             "●",
@@ -1770,17 +1790,22 @@ impl Fusion {
                                 .and_then(Value::as_str)
                                 .filter(|o| !o.is_empty())
                         {
-                            c.push(json!({"t": "log", "lines": o.split('\n').collect::<Vec<_>>()}));
+                            c.push(Log::new(o.split('\n')).follow(true).into());
                         }
-                        json!({"t": "stack", "direction": "vertical", "gap": 0, "children": c})
+                        Layout::default().children(c).into()
                     }
-                    _ => {
-                        json!({"t": "markdown", "value": d.get("text").and_then(Value::as_str).unwrap_or_default()})
-                    }
+                    _ => Markdown::new(d.get("text").and_then(Value::as_str).unwrap_or_default())
+                        .into(),
                 };
-                Some(
-                    json!({"t": "card", "title": d.get("label").and_then(Value::as_str).unwrap_or("Sidekick"), "rail": "tool", "body": body}),
-                )
+                let card: Node = Block::default()
+                    .borders(Borders::All)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::new().fg(Color::Border))
+                    .rail(Color::Tool)
+                    .title(d.get("label").and_then(Value::as_str).unwrap_or("Sidekick"))
+                    .child(body)
+                    .into();
+                Some(serde_json::to_value(card).ok()?)
             }
             "sidekick-completion" => {
                 let r: Option<Report> = data
@@ -1793,24 +1818,41 @@ impl Fusion {
                     .as_ref()
                     .map(|r| format!(" · {} steps · {}", r.tool_calls, duration(r.duration_ms)))
                     .unwrap_or_default();
-                Some(
-                    json!({"t": "text", "value": [{"text": if failed { "✗ " } else { "◆ " }, "tone": if failed { "error" } else { "accent" }}, {"text": format!("{}{meta}", if failed { "sidekick failed" } else { "sidekick finished" }), "dim": true}]}),
-                )
+                let line: Node = Paragraph::new(Line::from(vec![
+                    Span::from(if failed { "✗ " } else { "◆ " }).fg(if failed {
+                        Color::Error
+                    } else {
+                        Color::Accent
+                    }),
+                    Span::from_string(format!(
+                        "{}{meta}",
+                        if failed {
+                            "sidekick failed"
+                        } else {
+                            "sidekick finished"
+                        }
+                    ))
+                    .dim(),
+                ]))
+                .wrap(Wrap::Disabled(false))
+                .into();
+                Some(serde_json::to_value(line).ok()?)
             }
             "sidekick" => {
                 let res = data.get("result").or_else(|| data.get("partialResult"))?;
                 let d = res.get("details").cloned().unwrap_or_default();
                 if d.get("background").and_then(Value::as_bool) == Some(true) {
-                    return Some(line(
+                    return serde_json::to_value(line(
                         "◆",
                         "accent",
                         "sidekick",
                         " · continuing in background".into(),
-                    ));
+                    ))
+                    .ok();
                 }
                 if let Some(p) = d.get("progress") {
                     let started = p.get("startedAt").and_then(Value::as_i64).unwrap_or(0);
-                    return Some(line(
+                    return serde_json::to_value(line(
                         "◆",
                         "accent",
                         "sidekick",
@@ -1819,7 +1861,8 @@ impl Fusion {
                             p.get("toolCalls").and_then(Value::as_u64).unwrap_or(0),
                             duration(timers::now_ms() - started)
                         ),
-                    ));
+                    ))
+                    .ok();
                 }
                 let failed = res.get("isError").and_then(Value::as_bool) == Some(true)
                     || d.get("status")
@@ -1842,7 +1885,7 @@ impl Fusion {
                         )
                     })
                     .unwrap_or_default();
-                Some(line(
+                serde_json::to_value(line(
                     if failed { "✗" } else { "◆" },
                     if failed { "error" } else { "accent" },
                     if failed {
@@ -1852,6 +1895,7 @@ impl Fusion {
                     },
                     meta,
                 ))
+                .ok()
             }
             _ => None,
         }
