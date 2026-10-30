@@ -74,10 +74,11 @@ describe('UNI-276: every command is suggested', () => {
   });
 });
 
-describe('UNI-308: every PI_BUILTINS entry is handled, a command, or terminal-only', () => {
-  it('APP_HANDLED_BUILTINS \u222a TERMINAL_ONLY covers exactly PI_BUILTINS \u2014 none silently falls through', async () => {
-    const { APP_HANDLED_BUILTINS, PI_BUILTINS, TERMINAL_ONLY } = await import('./commands');
-    const union = new Set([...APP_HANDLED_BUILTINS, ...TERMINAL_ONLY]);
+describe('UNI-308 / WP-A25: every PI_BUILTINS entry has an app surface', () => {
+  it('APP_HANDLED_BUILTINS \u222a BUILTIN_ROUTES covers exactly PI_BUILTINS \u2014 none falls through to a prompt', async () => {
+    const { APP_HANDLED_BUILTINS, PI_BUILTINS } = await import('./commands');
+    const { routedBuiltinNames } = await import('../composer/builtins');
+    const union = new Set([...APP_HANDLED_BUILTINS, ...routedBuiltinNames()]);
     for (const c of PI_BUILTINS) expect(union.has(c.name)).toBe(true);
     expect(union.size).toBe(PI_BUILTINS.length);
   });
@@ -90,7 +91,7 @@ describe('UNI-308: isKnownCommand', () => {
     expect(isKnownCommand('skill:find-docs', cmds)).toBe(true);
     expect(isKnownCommand('release-notes', cmds)).toBe(true);
   });
-  it('a pi built-in is known (terminal-only or app-handled)', async () => {
+  it('a pi built-in is known (routed or app-handled)', async () => {
     const { isKnownCommand } = await import('./commands');
     expect(isKnownCommand('reload', cmds)).toBe(true);
     expect(isKnownCommand('settings', cmds)).toBe(true);

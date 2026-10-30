@@ -7,16 +7,23 @@
  */
 import { createSignal } from 'solid-js';
 
-export type ModelPickerTarget = { hostId: string; sessionId: string };
+export type ModelPickerTarget = {
+  hostId: string;
+  sessionId: string;
+  /** `/scoped-models` opens the **Cycle set** block (WP-A25, G-15). */
+  focus?: 'cycle';
+};
 
 const [target, setTarget] = createSignal<ModelPickerTarget | undefined>();
 
 /** The open picker's target (`undefined` = closed). */
 export const modelPickerTarget = target;
 
-/** Opens the picker for a session (already open = no-op). */
+/** Opens the picker for a session (already open = no-op unless the focus changes). */
 export function openModelPicker(next: ModelPickerTarget): void {
-  setTarget((cur) => (cur && cur.hostId === next.hostId && cur.sessionId === next.sessionId ? cur : { ...next }));
+  setTarget((cur) =>
+    cur && cur.hostId === next.hostId && cur.sessionId === next.sessionId && cur.focus === next.focus ? cur : { ...next },
+  );
 }
 
 /** Closes it. */

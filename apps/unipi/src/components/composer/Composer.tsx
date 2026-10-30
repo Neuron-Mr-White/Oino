@@ -35,6 +35,16 @@ import {
   withAttachmentMentions,
 } from '../../lib/composer/attachments';
 import { allCommands, applyAt, atQuery, isKnownCommand, rankCommands, slashQuery } from '../../lib/chat/commands';
+import { builtinPlan, runBuiltin, type BuiltinDeps } from '../../lib/composer/builtins';
+import { chatActionsFor } from '../shell/ConversationHeader';
+import { openImportSession } from '../command/ImportSession';
+import { openSettingsAt } from '../../lib/settings/open';
+import { ABOUT_ANCHORS } from '../../screens/settings/anchors';
+import { setShortcutsOpen } from '../shell/ShortcutsDialog';
+import { openExternal } from '../../lib/board/share';
+import { can } from '../../lib/platform';
+import { z } from 'zod';
+import { call } from '../../lib/ipc';
 import { commandNames } from '../timeline/context';
 import { fsList, fsSearch, fsStat } from '../../lib/fs';
 import { openBtwTab } from '../panes/tabs/sessionTabs';
@@ -324,6 +334,50 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     onCleanup(cleanup);
   });
 
+  /* ── pi built-ins (WP-A25, G-15) ──────────────────────────────────── */
+  /** The effects a built-in needs. The chat is always this session (a built-in
+   *  is typed into a chat); the rest are app surfaces. */
+  const builtinDeps = (): BuiltinDeps => {
+    const chat = { hostId: hostId(), sessionId: props.session.sessionId() };
+    const ctx = { hostId: chat.hostId, sessionId: chat.sessionId, title: '', cwd: cwd() || undefined };
+    return {
+      chat,
+      openChatAction: (id) => {
+        const row = chatActionsFor(ctx).find((entry) => entry.id === id);
+        if (row) {
+          row.action.run(ctx);
+          return true;
+        }
+        // No ⋯ row plugged in yet: `/export` still exports (one surface, one call).
+        if (id === 'export') {
+          void import('../../lib/session/exportSession').then((m) => m.exportSession(chat.hostId, chat.sessionId));
+          return true;
+        }
+        return false;
+      },
+      openImport: () => openImportSession(),
+      openPickerCycleSet: () => {
+        openModelPicker({ ...chat, focus: 'cycle' });
+        return true;
+      },
+      openSettings: (section, anchor) => openSettingsAt(section, anchor),
+      openHotkeys: () => setShortcutsOpen(true),
+      reportBug: (url) => {
+        openSettingsAt('about', ABOUT_ANCHORS['report-bug']);
+        openExternal(url);
+      },
+      notice: showActionNotice,
+      quit: () => {
+        if (can('tray')) void call('quit_now', undefined, z.null());
+        else showActionNotice('Quit is in the app window’s menu');
+      },
+      runInChat: (command) => {
+        props.session.send(`/${command}`, { mode: 'prompt' });
+        return true;
+      },
+    };
+  };
+
   /* ── send ─────────────────────────────────────────────────────────── */
   const send = (mode?: 'prompt' | 'steer' | 'followUp') => {
     if (props.readOnly) return;
@@ -344,6 +398,14 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     // `/btw` opens the side question instead of sending to the main chat (Z-31).
     if (cmd && (cmd[1] === 'btw' || cmd[1] === 'unipi:btw')) {
       openSideQuestion(cmd[2]?.trim() || undefined);
+      afterSend(text);
+      return;
+    }
+    // WP-A25 (G-15): every pi built-in the app can show has a surface — the
+    // "terminal only" toast is gone. An extension command of the same name wins.
+    const builtin = cmd ? builtinPlan(cmd[1]!) : undefined;
+    const sessionOwns = cmd ? props.session.state.commands.some((c) => c.name.replace(/^\//, '') === cmd[1]) : false;
+    if (cmd && builtin && !sessionOwns && runBuiltin(cmd[1]!, builtinDeps())) {
       afterSend(text);
       return;
     }

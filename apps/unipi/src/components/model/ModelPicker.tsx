@@ -15,7 +15,7 @@
  * Dismissing sends nothing.
  */
 import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import { Check, X } from 'lucide-solid';
+import { Check, ChevronDown, ChevronRight, X } from 'lucide-solid';
 import { BoardSheet } from '../board/BoardSheet';
 import { layout } from '../../lib/layout';
 import { wrapTab } from '../../lib/focusTrap';
@@ -44,6 +44,7 @@ import {
   type Selection,
 } from '../../lib/model/picker';
 import { closeModelPicker, modelPickerTarget, type ModelPickerTarget } from './target';
+import { cycleKeyOf, cycleKeysOf, cycleLabel, toggleCycleKey } from '../../lib/model/cycle';
 import '../session/session-modal.css';
 import './model.css';
 
@@ -52,16 +53,19 @@ const LIST_CAP = 120;
 
 const errText = (e: unknown): string => String((e as { message?: unknown })?.message ?? e);
 
-type PickerData = { models: ModelInfo[]; fusion?: FusionState };
+type PickerData = { models: ModelInfo[]; fusion?: FusionState; cycle?: unknown };
 
-/** Loads the catalogue and (when enabled) the Fusion pair for the session. */
+/** Loads the catalogue, the Fusion pair (when enabled) and the cycle set (`enabledModels`). */
 async function loadPicker(s: SessionHandle): Promise<PickerData> {
   const fusionOn = await fusionAvailable(s);
-  const [modelsReply, fusion] = await Promise.all([
+  const [modelsReply, fusion, settings] = await Promise.all([
     s.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined),
     fusionOn ? fetchFusion(s) : Promise.resolve(undefined),
+    // WP-A25 (G-15 `/scoped-models`): pi's `enabledModels` — the cycle set.
+    s.cmd<unknown>({ type: '_oino/get_settings', key: 'enabledModels' }).catch(() => undefined),
   ]);
-  return { models: parseModels(modelsReply), ...(fusion ? { fusion } : {}) };
+  const cycle = (settings as { value?: unknown } | undefined)?.value;
+  return { models: parseModels(modelsReply), ...(fusion ? { fusion } : {}), cycle };
 }
 
 /** Scrolls the chosen row of each Fusion column into view (often below its fold). */
@@ -111,12 +115,16 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
   const [sidekickEffort, setSidekickEffort] = createSignal('medium');
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  // WP-A25: the cycle-set block (`/scoped-models` opens it).
+  const [cycleOpen, setCycleOpen] = createSignal(props.target.focus === 'cycle');
+  const [cycle, setCycle] = createSignal<{ exact: string[]; custom: string[] }>({ exact: [], custom: [] });
 
   // The first load opens the tab (and the effort pills) the running selection implies.
   let settled = false;
   createEffect(() => {
     if (settled || !data.latest) return;
     settled = true;
+    setCycle(cycleKeysOf(data.latest.cycle));
     setMode(current()?.kind === 'fusion' ? 'fusion' : 'single');
     const pair = activePair();
     const st = fusion()?.status;
@@ -175,6 +183,21 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
       toasts().push(pairToast(from, nowLabel({ kind: 'fusion', lead, sidekick }, nameOf)), 'success');
     });
   };
+
+  /** Flip one model in the cycle set: `_oino/set_setting{key:'enabledModels'}` (global). */
+  const setInCycle = async (key: string, on: boolean) => {
+    const cur = cycle();
+    const nextExact = on ? [...new Set([...cur.exact, key])] : cur.exact.filter((k) => k !== key);
+    const value = toggleCycleKey(cur.exact, cur.custom, key, on);
+    setError(null);
+    try {
+      await s().cmd({ type: '_oino/set_setting', key: 'enabledModels', value: value ?? null, scope: 'global' });
+      setCycle({ exact: nextExact, custom: cur.custom });
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
+  const cycleOf = (m: ModelInfo) => cycle().exact.includes(cycleKeyOf(m.provider, m.id));
 
   return (
     <div class="mp" data-testid="model-picker">
@@ -331,6 +354,55 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
           </div>
         </Show>
       </Show>
+
+      <div class="mp-cycle" data-testid="model-picker-cycle">
+        <button
+          type="button"
+          class="mp-cycle-toggle"
+          aria-expanded={cycleOpen()}
+          onClick={() => setCycleOpen((v) => !v)}
+          data-testid="model-picker-cycle-toggle"
+        >
+          <Show when={cycleOpen()} fallback={<ChevronRight size={14} />}>
+            <ChevronDown size={14} />
+          </Show>
+          <span>{cycleLabel(cycle().exact, cycle().custom, models().length)}</span>
+        </button>
+        <Show when={cycleOpen()}>
+          <div class="mp-cycle-body">
+            <p class="mp-hint">The set Ctrl+P cycles in the terminal (pi’s <code>enabledModels</code>). Every model stays selectable here.</p>
+            <div class="mp-cycle-list" role="group" aria-label="Cycle set">
+              <For each={models().slice(0, LIST_CAP)}>
+                {(m) => {
+                  const key = cycleKeyOf(m.provider, m.id);
+                  return (
+                    <button
+                      type="button"
+                      class="mp-cycle-row"
+                      aria-pressed={cycleOf(m) ? 'true' : 'false'}
+                      data-testid={`cycle-${key}`}
+                      onClick={() => void setInCycle(key, !cycleOf(m))}
+                    >
+                      <span class="mp-cycle-box" aria-hidden="true">
+                        <Show when={cycleOf(m)}>
+                          <Check size={12} />
+                        </Show>
+                      </span>
+                      <span class="truncate">{modelName(m)}</span>
+                      <span class="mp-cycle-key">{key}</span>
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+            <Show when={cycle().custom.length > 0}>
+              <p class="mp-hint" data-testid="model-picker-cycle-custom">
+                Custom patterns (kept as written): {cycle().custom.join(', ')}
+              </p>
+            </Show>
+          </div>
+        </Show>
+      </div>
 
       <Show when={error()}>
         <p class="mp-error" role="alert" data-testid="model-picker-error">

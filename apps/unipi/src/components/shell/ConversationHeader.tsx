@@ -12,7 +12,7 @@
  *   registerChatAction('rename', { run: (ctx) => openRename(ctx) });
  */
 import { createSignal, For, Show, type JSX } from 'solid-js';
-import { ArrowLeft, Copy, Ellipsis, FileText, Folder, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
+import { ArrowLeft, Copy, CopyPlus, Ellipsis, FileText, Folder, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { copyText } from '../../lib/board/share';
 import { layout } from '../../lib/layout';
@@ -20,7 +20,7 @@ import { modKey } from '../../lib/shell';
 import { openFind } from '../../lib/find';
 import type { IconComponent } from '../../lib/panes/kinds';
 
-export type ChatActionId = 'rename' | 'fork' | 'export' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'info';
+export type ChatActionId = 'rename' | 'fork' | 'duplicate' | 'export' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'info';
 
 export type ChatActionCtx = { hostId: string; sessionId: string; title: string; cwd?: string; file?: string };
 
@@ -30,6 +30,7 @@ export type ChatAction = { run: (ctx: ChatActionCtx) => void; when?: (ctx: ChatA
 export const CHAT_ACTIONS: Array<{ id: ChatActionId; label: string; icon: IconComponent; group: number }> = [
   { id: 'rename', label: 'Rename…', icon: Pencil, group: 0 },
   { id: 'fork', label: 'Fork', icon: GitFork, group: 0 },
+  { id: 'duplicate', label: 'Duplicate', icon: CopyPlus, group: 0 },
   { id: 'export', label: 'Export…', icon: Share, group: 0 },
   { id: 'copy-id', label: 'Copy session id', icon: Copy, group: 1 },
   { id: 'copy-path', label: 'Copy path', icon: Folder, group: 1 },

@@ -65,6 +65,7 @@ import { cycleThinkingLevel } from '../../lib/model/thinking';
 import { composerDraft, setComposerText } from '../../lib/composer/drafts';
 import { cycleStarter } from '../../lib/status/modeStarter';
 import { setShortcutsOpen, ShortcutsDialog, shortcutsOpen } from './ShortcutsDialog';
+import { BuiltinActions } from '../command/BuiltinActions';
 import { ResizeHandle } from './ResizeHandle';
 import { Sidebar, useNewChatHost } from './Sidebar';
 import { currentWorkspace } from './Workspace';
@@ -348,6 +349,9 @@ export function AppShell(props: ParentProps) {
         <TooltipHost />
         <SessionModalLayer />
         <ModelPickerLayer />
+        {/* WP-A25: the ⋯ Export/Duplicate rows, the capability palettes and the
+            Import session… dialog (the harness reachability surfaces). */}
+        <BuiltinActions />
         {/* The shortcuts table is the desktop keyboard reference (its sheet does
             not paint in the phone capture shell; the phone has no chord UI). */}
         <Show when={desktop()}>

@@ -183,12 +183,14 @@ describe('header ⋯ (Z-2)', () => {
     // "Find in chat" leads (WP-A18: the phone's touch entry for Cmd/Ctrl+F).
     // The mock cards have no session file: no "Copy log path". "Session info" is
     // always there: WP-A17's modal plugs it in with the shell (`SessionModalLayer`).
-    expect(labels()).toEqual(['Find in chat', 'Copy session id', 'Copy path', 'Session info']);
+    // WP-A25's `BuiltinActions` registers Duplicate (`/clone`) and Export
+    // (`/export`) with the shell, so both are there without another WP.
+    expect(labels()).toEqual(['Find in chat', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Session info']);
     fireEvent.click(screen.getByTestId('anchored-menu-backdrop'));
     const offs = (['rename', 'fork', 'export', 'reveal'] as const).map((id) => registerChatAction(id, { run: () => {} }));
     try {
       fireEvent.click(screen.getByTestId('conv-more'));
-      expect(labels()).toEqual(['Find in chat', 'Rename…', 'Fork', 'Export…', 'Copy session id', 'Copy path', 'Reveal folder', 'Session info']);
+      expect(labels()).toEqual(['Find in chat', 'Rename…', 'Fork', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Reveal folder', 'Session info']);
     } finally {
       offs.forEach((o) => o());
     }

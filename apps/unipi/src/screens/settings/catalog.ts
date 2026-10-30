@@ -9,8 +9,8 @@
  */
 import type { Component } from 'solid-js';
 import {
-  Blocks, Bell, Cpu, FolderKanban, Info, KanbanSquare, Keyboard, MonitorSmartphone,
-  Puzzle, Server, Settings2, Smartphone, TerminalSquare, Type, Unplug, Waypoints,
+  Blocks, Bell, Bot, Brain, Cpu, FolderKanban, Info, KanbanSquare, Keyboard, MonitorSmartphone,
+  Plug, Puzzle, Server, Settings2, Smartphone, Sparkles, TerminalSquare, Type, Unplug, Waypoints,
 } from 'lucide-solid';
 import { can, type Capability } from '../../lib/platform';
 
@@ -18,7 +18,7 @@ export type SettingsGroupId = 'basics' | 'agent' | 'hosts' | 'data' | 'about';
 
 export type SettingsSectionId =
   | 'general' | 'appearance' | 'input' | 'shortcuts' | 'terminal' | 'editor' | 'board'
-  | 'extensions' | 'agent'
+  | 'extensions' | 'agent' | 'mcp' | 'memory' | 'skills' | 'subagents' | 'providers'
   | 'hosts' | 'connection' | 'sharing' | 'notifications' | 'unicrab'
   | 'host'
   | 'about';
@@ -156,6 +156,68 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     keywords: ['pi', 'agent', 'settings', 'model', 'defaults', 'core'],
     rows: [
       { key: 'agent.settings', label: 'Agent settings', description: "The pi agent's settings.json (this PC)" },
+    ],
+  },
+  {
+    id: 'mcp',
+    title: 'MCP',
+    group: 'agent',
+    icon: Plug,
+    cap: 'hosts',
+    keywords: ['mcp', 'model context protocol', 'servers', 'tools', 'catalog', 'json'],
+    rows: [
+      { key: 'mcp.servers', label: 'Servers', description: 'Every configured server; enable, edit its JSON or remove it' },
+      { key: 'mcp.status', label: 'Server status', description: 'What each server offers and whether it connected' },
+      { key: 'mcp.catalog', label: 'Catalog', description: 'Add a server from the catalog, sync it, reload every server' },
+    ],
+  },
+  {
+    id: 'memory',
+    title: 'Memory',
+    group: 'agent',
+    icon: Brain,
+    cap: 'hosts',
+    keywords: ['memory', 'remember', 'recall', 'mempalace', 'browse', 'forget', 'consolidate'],
+    rows: [
+      { key: 'memory.form', label: 'Recall and write', description: 'When the agent reads and writes memories, and the palace paths' },
+      { key: 'memory.browse', label: 'Browse memories', description: 'List, search and forget what this project remembers' },
+      { key: 'memory.consolidate', label: 'Consolidate this session', description: 'Let the agent write what this chat is worth remembering' },
+    ],
+  },
+  {
+    id: 'skills',
+    title: 'Skills',
+    group: 'agent',
+    icon: Sparkles,
+    cap: 'hosts',
+    keywords: ['skills', 'exposure', 'judged', 'pins', 'vault', 'editor'],
+    rows: [
+      { key: 'skills.form', label: 'Exposure and pins', description: 'Judged / all / off, pinned skills and the vault' },
+      { key: 'skills.hub', label: 'Skills hub', description: 'The extension’s own panel' },
+      { key: 'skills.editor', label: 'Skill editor', description: 'Enabled / Must show, per skill' },
+    ],
+  },
+  {
+    id: 'subagents',
+    title: 'Subagents',
+    group: 'agent',
+    icon: Bot,
+    cap: 'hosts',
+    keywords: ['subagents', 'agents', 'profiles', 'background', 'delegate', 'concurrency'],
+    rows: [
+      { key: 'subagents.form', label: 'Concurrency and defaults', description: 'How many run at once and which model they use' },
+      { key: 'subagents.profiles', label: 'Agent profiles', description: 'List, create, edit, copy or delete custom agents' },
+    ],
+  },
+  {
+    id: 'providers',
+    title: 'Providers',
+    group: 'agent',
+    icon: Plug,
+    cap: 'hosts',
+    keywords: ['providers', 'login', 'logout', 'sign in', 'oauth', 'api key', 'credentials', 'models'],
+    rows: [
+      { key: 'providers.list', label: 'Model providers', description: 'Sign in, save an API key or sign out' },
     ],
   },
   {

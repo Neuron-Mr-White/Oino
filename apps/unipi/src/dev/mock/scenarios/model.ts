@@ -84,10 +84,27 @@ const seedPicker = () => {
   openModelPicker({ hostId: HOST, sessionId: SID });
 };
 
+/** `/scoped-models`: the picker with the Cycle set block open (WP-A25, G-15). */
+const seedCyclePicker = () => {
+  seedRoute();
+  openModelPicker({ hostId: HOST, sessionId: SID, focus: 'cycle' });
+};
+
 export const modelPicker: MockScenario = {
   name: 'model-picker',
   hosts: [host(makeSession({ cmd: { ...CONTEXT_CMD, '_oino/extensions': () => ({ extensions: [WORKFLOW_EXTENSION] }) } }))],
   setup: seedPicker,
+};
+
+export const modelCycleSet: MockScenario = {
+  name: 'model-cycle-set',
+  hosts: [
+    {
+      ...host(makeSession({ cmd: { ...CONTEXT_CMD, '_oino/extensions': () => ({ extensions: [WORKFLOW_EXTENSION] }) } })),
+      settings: { pi: { enabledModels: ['anthropic/claude-sonnet-4-5', 'anthropic/*'] } },
+    },
+  ],
+  setup: seedCyclePicker,
 };
 
 export const modelFusion: MockScenario = {

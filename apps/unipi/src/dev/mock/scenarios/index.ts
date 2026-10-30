@@ -31,7 +31,11 @@ import { rendererCards, toolsGroups, toolsMix } from './tools';
 import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreePhone } from './tabs';
 import { emptyChat, motionExits } from './empty-chat';
 import { u12Fallback, u12Native, u12Nav, u12OwnerOff, u12Phone, u12PhoneOff } from './reserved';
-import { modeChip, modelFusion, modelPicker, thinkingChip } from './model';
+import { modeChip, modelCycleSet, modelFusion, modelPicker, thinkingChip } from './model';
+import {
+  capAgents, capAgentsPanel, capMcp, capMcpNoChat, capMcpPanel, capMemory, capMemoryPanel, capSkills, capSkillsPanel,
+  providers, providersNoChat,
+} from './capabilities';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -125,7 +129,19 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'settings-form-advanced': settingsFormAdvanced,
   'settings-form-agent': settingsFormAgent,
   'model-picker': modelPicker,
+  'model-cycle-set': modelCycleSet,
   'model-fusion': modelFusion,
   'thinking-chip': thinkingChip,
   'mode-chip': modeChip,
+  'cap-mcp': capMcp,
+  'cap-mcp-nochat': capMcpNoChat,
+  'cap-mcp-panel': capMcpPanel,
+  'cap-memory': capMemory,
+  'cap-memory-panel': capMemoryPanel,
+  'cap-skills': capSkills,
+  'cap-skills-panel': capSkillsPanel,
+  'cap-agents': capAgents,
+  'cap-agents-panel': capAgentsPanel,
+  providers,
+  'providers-nochat': providersNoChat,
 };

@@ -134,3 +134,32 @@ describe('Fusion (Z-76)', () => {
     expect(screen.queryByTestId('model-tab-fusion')).toBeNull();
   });
 });
+
+describe('the Cycle set (WP-A25, G-15 /scoped-models)', () => {
+  it('opens expanded, shows the stored references and writes `enabledModels`', async () => {
+    const world = await boot('model-cycle-set');
+    render(() => <ModelPicker target={{ hostId: HOST, sessionId: SESSION, focus: 'cycle' }} />);
+    await waitFor(() => expect(screen.getByTestId('model-picker-cycle-toggle')).toBeTruthy());
+    const toggle = screen.getByTestId('model-picker-cycle-toggle');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    // A custom pattern (a glob) is kept as written, not turned into a checkbox.
+    await waitFor(() => expect(screen.getByTestId('model-picker-cycle-custom').textContent).toContain('anthropic/*'));
+    expect(toggle.textContent).toContain('Cycle set · 1 of');
+    const row = screen.getByTestId('cycle-anthropic/claude-sonnet-4-5');
+    expect(row.getAttribute('aria-pressed')).toBe('true');
+    // Untick it: the setting keeps the glob, the checked reference goes.
+    fireEvent.click(row);
+    await waitFor(() => expect(cmds(world, '_oino/set_setting').length).toBeGreaterThan(0));
+    const call = cmds(world, '_oino/set_setting').at(-1)!;
+    expect(call.args).toMatchObject({ key: 'enabledModels', value: ['anthropic/*'], scope: 'global' });
+    await waitFor(() => expect(screen.getByTestId('cycle-anthropic/claude-sonnet-4-5').getAttribute('aria-pressed')).toBe('false'));
+  });
+
+  it('starts collapsed from the normal picker entry point', async () => {
+    await boot('model-picker');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-cycle-toggle')).toBeTruthy());
+    expect(screen.getByTestId('model-picker-cycle-toggle').getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByTestId('model-picker-cycle-list')).toBeNull();
+  });
+});

@@ -31,6 +31,11 @@ import { AboutSection } from './settings/AboutSection';
 import { LifetimeSection } from './settings/LifetimeSection';
 import { HostSettingsSection } from './settings/HostSettingsSection';
 import { AgentSection } from './settings/AgentSection';
+import { McpPage } from './settings/McpPage';
+import { MemoryPage } from './settings/MemoryPage';
+import { SkillsPage } from './settings/SkillsPage';
+import { SubagentsPage } from './settings/SubagentsPage';
+import { ProvidersPage } from './settings/ProvidersPage';
 import { NotificationsSection } from './settings/NotificationsSection';
 import { UnicrabSection } from './settings/UnicrabSection';
 import { sectionById } from './settings/catalog';
@@ -185,6 +190,12 @@ export default function Settings() {
       case 'board': return <BoardSection />;
       case 'extensions': return <ExtensionsSection namespace={namespace()} onNamespace={setNamespace} />;
       case 'agent': return <AgentSection />;
+      // WP-A25 (G-8..G-11, G-15): the harness capability pages.
+      case 'mcp': return <McpPage />;
+      case 'memory': return <MemoryPage />;
+      case 'skills': return <SkillsPage />;
+      case 'subagents': return <SubagentsPage />;
+      case 'providers': return <ProvidersPage />;
       case 'hosts': return <HostsSection hosts={hostsList()} />;
       case 'connection': return <ConnectionSection relayUrl={relayUrl()} onRelayUrlChange={onRelayUrlChange} />;
       case 'sharing': return <SharingSection />;

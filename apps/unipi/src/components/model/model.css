@@ -156,3 +156,28 @@
    its dock, like the Session modal's and the session tabs' sheets. */
 body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 69; }
 .sheet.model-picker-sheet { z-index: 70; }
+
+/* ── Cycle set (WP-A25, /scoped-models) ─────────────────────────────── */
+.mp-cycle { border-top: 1px solid var(--color-line); padding-top: 6px; margin-top: 2px; }
+.mp-cycle-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 6px 4px; background: none; border: 0; cursor: pointer;
+  color: var(--color-text-muted); font-size: 12.5px; text-align: left;
+}
+.mp-cycle-toggle:hover { color: var(--color-text); }
+.mp-cycle-body { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 6px; }
+.mp-cycle-body .mp-hint { margin: 0; }
+.mp-cycle-list { display: flex; flex-direction: column; max-height: 168px; overflow-y: auto; gap: 1px; }
+.mp-cycle-row {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  padding: 5px 6px; border: 0; border-radius: 8px; background: none; cursor: pointer;
+  color: var(--color-text); font-size: 13px; text-align: left;
+}
+.mp-cycle-row:hover { background: var(--color-surface-2); }
+.mp-cycle-box {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 5px;
+  border: 1.5px solid var(--color-text-dim); color: var(--color-face);
+}
+.mp-cycle-row[aria-pressed='true'] .mp-cycle-box { background: var(--color-shell); border-color: var(--color-shell); }
+.mp-cycle-key { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-dim); }

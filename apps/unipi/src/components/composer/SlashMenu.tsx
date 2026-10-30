@@ -9,11 +9,11 @@
  */
 import { For, Show } from 'solid-js';
 import type { CommandInfo } from '../../lib/session/types';
-import { SOURCE_LABEL, TERMINAL_ONLY, sourceOf } from '../../lib/chat/commands';
+import { SOURCE_LABEL, sourceOf } from '../../lib/chat/commands';
 
-/** The source tag one row shows (terminal-only pi built-ins say "terminal"). */
+/** The source tag one row shows (`app` for pi built-ins: each has an app surface, G-15). */
 export function commandSource(c: CommandInfo): string {
-  return TERMINAL_ONLY.has(c.name) && c.source === 'builtin' ? 'terminal' : SOURCE_LABEL[sourceOf(c)];
+  return SOURCE_LABEL[sourceOf(c)];
 }
 
 export function SlashMenu(props: {

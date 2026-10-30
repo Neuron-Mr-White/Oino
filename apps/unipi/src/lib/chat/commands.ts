@@ -13,8 +13,9 @@ export function sourceOf(c: CommandInfo): CommandSource {
  * UNI-276: pi's own built-in commands the bridge doesn't list (it sends the
  * handful the app acts on: model, thinking, compact, new, resume, fork, tree).
  * Typing `/` suggests every command pi has; these are the rest. The app acts
- * on name / copy / session / reload itself; the others open terminal-only
- * screens, so their row says "terminal".
+ * on name / copy / session / reload itself; every other one is routed to an
+ * app surface by `lib/composer/builtins.ts` (WP-A25, G-15) — there is no
+ * "terminal only" leftover.
  */
 export const PI_BUILTINS: readonly CommandInfo[] = [
   { name: 'name', description: 'Rename this session', source: 'builtin' },
@@ -35,16 +36,16 @@ export const PI_BUILTINS: readonly CommandInfo[] = [
   { name: 'bug', description: 'Report a bug to the Pi developers', source: 'builtin' },
   { name: 'quit', description: 'Quit pi', source: 'builtin' },
 ];
-/** Built-ins with no app action: they open a screen only the terminal can show. */
-export const TERMINAL_ONLY = new Set(['settings', 'scoped-models', 'export', 'import', 'share', 'clone', 'changelog', 'hotkeys', 'trust', 'login', 'logout', 'bug', 'quit']);
-
 /**
- * UNI-308: built-ins `ChatView.onCommand` acts on itself (name/copy/session/
- * reload). Kept here, not just inline in ChatView, so a test can assert
- * `APP_HANDLED_BUILTINS \u222a TERMINAL_ONLY === PI_BUILTINS` \u2014 no built-in is
- * ever left to silently fall through to a plain prompt.
+ * UNI-308: built-ins the app acts on itself — `copy` here, the rest in the
+ * session store/shell. Kept here, not just inline in the composer, so a test
+ * can assert `APP_HANDLED_BUILTINS \u222a BUILTIN_ROUTES === PI_BUILTINS` (WP-A25:
+ * every built-in has somewhere to go; none silently becomes a prompt).
  */
 export const APP_HANDLED_BUILTINS = new Set(['name', 'copy', 'session', 'reload']);
+
+/** pi's built-ins by name (the rows a bare `/` lists after the session's own). */
+const PI_ONLY = new Set(PI_BUILTINS.map((c) => c.name));
 
 /** Everything `/` suggests: the session's list plus pi built-ins it doesn't carry (a same-named extension command wins). */
 export function allCommands(session: readonly CommandInfo[]): CommandInfo[] {
@@ -56,8 +57,7 @@ export function allCommands(session: readonly CommandInfo[]): CommandInfo[] {
  * UNI-308: true when `name` (no leading `/`) is something pi or the app
  * actually knows about — the session's own list (extension/prompt/skill
  * commands, which pi expands or runs itself) or one of `PI_BUILTINS` (pi's
- * own built-ins, whether or not the app has UI for it — TERMINAL_ONLY ones
- * still run in pi, the app just can't show their screen).
+ * own built-ins — each one routes to an app surface (`lib/composer/builtins.ts`)).
  *
  * A `/name` that fails this check must never be sent as a plain prompt —
  * typing a slash is a command, not an opinion about pi's design; the app
@@ -117,8 +117,10 @@ export function rankCommands(commands: readonly CommandInfo[], query: string, li
     const s = score(c.name, query);
     if (s !== null) scored.push({ c, s });
   });
-  // Terminal-only pi built-ins sink below everything the app can run (UNI-276).
-  const rank = (c: CommandInfo) => (c.source === 'builtin' && TERMINAL_ONLY.has(c.name) ? 9 : SOURCE_RANK[sourceOf(c)]);
+  // pi's own built-ins that the session does not list are filler for a bare
+  // `/`: they sink below the session's commands (the old "terminal" rows did,
+  // and they are what the user rarely wants mid-task). WP-A25.
+  const rank = (c: CommandInfo) => (c.source === 'builtin' && PI_ONLY.has(c.name) ? 9 : SOURCE_RANK[sourceOf(c)]);
   scored.sort((a, b) => a.s - b.s || rank(a.c) - rank(b.c) || a.c.name.localeCompare(b.c.name));
   return scored.slice(0, limit).map((x) => x.c);
 }

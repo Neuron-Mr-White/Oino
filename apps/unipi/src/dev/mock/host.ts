@@ -131,6 +131,8 @@ export type MockSettings = {
   pi?: Record<string, unknown>;
   namespaces?: MockNamespace[];
   extensions?: MockExtension[];
+  /** `_oino/auth_providers` rows (WP-A25 Providers page). */
+  providers?: Array<{ id: string; name?: string; oauth?: boolean; configured?: boolean; stored?: string; env?: string[] }>;
 };
 
 export type MockHostSpec = {
@@ -160,6 +162,9 @@ export type MockHostSpec = {
   /** `_oino/render` answers, keyed `"<target>/<key>"` → node | null | `{never:true}` (WP-A8).
    *  `never` never resolves, so the app's 2 s render timeout path can be captured. */
   renderers?: Record<string, unknown>;
+  /** WP-A25: what a typed `/command` opens — the extension's UI v2 panel as an
+   *  overlay entry (real extensions push the same entry from `openPanel`). */
+  panels?: Record<string, { id: string; title: string; extensionId?: string; root: unknown }>;
   ops?: Record<string, MockOp>;
 };
 
@@ -184,6 +189,9 @@ declare global {
 
 type Err = { code: string; message: string; hint?: string; retryable: boolean };
 const err = (code: string, message: string, hint?: string): Err => ({ code, message, hint, retryable: code === 'E_TRANSPORT' || code === 'E_TIMEOUT' });
+
+/** The sign-in URL the mock's `_oino/login` dialog carries (the app opens it externally). */
+export const MOCK_OAUTH_URL = 'https://auth.example.com/authorize?client=unipi';
 
 const MIME: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
@@ -453,12 +461,34 @@ function mockHostCmd(cmd: { kind: string } & Record<string, unknown>, h: MockHos
       return null;
     }
     case 'auth_providers':
-      return { providers: [] };
+      return {
+        providers: (fixtures.providers ?? []).map((p) => ({
+          id: p.id,
+          name: p.name ?? p.id,
+          oauth: p.oauth ?? false,
+          configured: p.configured ?? false,
+          ...(p.stored ? { stored: p.stored } : {}),
+          env: p.env ?? [],
+        })),
+      };
     case 'login':
       throw err('E_UNSUPPORTED', 'OAuth sign-in opens from a chat session; set an API key instead');
-    case 'logout':
-    case 'set_api_key':
+    case 'logout': {
+      const row = (fixtures.providers ?? []).find((p) => p.id === cmd.provider);
+      if (row) {
+        row.configured = false;
+        delete row.stored;
+      }
       return null;
+    }
+    case 'set_api_key': {
+      const row = (fixtures.providers ?? []).find((p) => p.id === cmd.provider);
+      if (row) {
+        row.configured = true;
+        row.stored = 'api_key';
+      }
+      return null;
+    }
     case 'get_shortcuts':
       return { shortcuts: [] };
     default:
@@ -678,6 +708,8 @@ export class MockHost implements HostClient {
    *  reuse a seq the store already applied. */
   readonly picked = new Map<string, { provider: string; id: string; level: string }>();
   private readonly seqTop = new Map<string, number>();
+  /** WP-A25: the registry rev per session, for the panels a typed `/command` opens. */
+  private readonly uiRev = new Map<string, number>();
 
   /** The next event seq for a session (its snapshot and any script steps included). */
   private topSeq(key: string, session: MockSession): number {
@@ -819,6 +851,65 @@ export class MockHost implements HostClient {
           const at = since ? all.findIndex((e) => e.id === since) : -1;
           return { entries: since ? all.slice(at + 1) : all, leafId: session.entries.leafId } as T;
         }
+        // WP-A25: a typed `/command` is the app's "Manage…" route into an
+        // extension panel — the scenario says which panel it opens.
+        if (cmd.type === 'prompt' || cmd.type === 'steer' || cmd.type === 'follow_up') {
+          const m = /^\/(\S+)/.exec(String(cmd.message ?? '').trim());
+          const panel = m ? this.spec.panels?.[m[1]!] : undefined;
+          if (panel && session) {
+            const base = session.snapshot.ui as { rev?: number } | undefined;
+            const rev = (this.uiRev.get(key) ?? Number(base?.rev ?? 0)) + 1;
+            this.uiRev.set(key, rev);
+            this.emitSession(key, session, {
+              type: 'oino_ui_patch',
+              scope: 'session',
+              rev,
+              ops: [
+                {
+                  op: 'put',
+                  entry: { id: panel.id, extensionId: panel.extensionId ?? 'extension', scope: 'session', slot: 'overlay', order: 0, seq: 100, rev: 1, title: panel.title, view: { kind: 'tree', root: panel.root } },
+                },
+              ],
+            });
+          }
+          return {} as T;
+        }
+        // WP-A25: the session-level settings / auth / export commands the app's
+        // built-in routing and the picker's cycle set use. Settings read and
+        // write the scenario's pi fixture, so a round trip is observable.
+        if (cmd.type === '_oino/get_settings') {
+          const settings = (this.spec.settings ??= {});
+          const pi = (settings.pi ??= {});
+          return (cmd.key === undefined ? { settings: pi } : { value: getDotted(pi, String(cmd.key)) }) as T;
+        }
+        if (cmd.type === '_oino/set_setting') {
+          const settings = (this.spec.settings ??= {});
+          const pi = (settings.pi ??= {});
+          if (cmd.value === undefined || cmd.value === null) removePath(pi, String(cmd.key));
+          else setDotted(pi, String(cmd.key), cmd.value);
+          return null as T;
+        }
+        if (cmd.type === '_oino/export_jsonl') {
+          const file = String((session?.snapshot.state as { sessionFile?: string } | undefined)?.sessionFile ?? '');
+          return { path: file || `/home/you/.oino/sessions/${key}.jsonl` } as T;
+        }
+        if (cmd.type === '_oino/import_jsonl') return { cancelled: false } as T;
+        if (cmd.type === '_oino/login') {
+          // The real provider asks its questions on this session (U10 docks them);
+          // the capture shows a URL-carrying dialog so the app opens the browser.
+          if (session) {
+            this.emitSession(key, session, {
+              type: 'extension_ui_request',
+              id: `login-${String(cmd.provider)}`,
+              method: 'input',
+              title: 'Sign in',
+              message: `Open ${MOCK_OAUTH_URL} and paste the code`,
+              placeholder: 'code',
+            });
+          }
+          return null as T;
+        }
+        if (cmd.type === '_oino/logout' || cmd.type === '_oino/set_api_key') return null as T;
         // WP-A14: the model / thinking commands answer from the catalogue and
         // push the event the real host emits, so the chips follow a switch.
         if (cmd.type === 'get_available_models') return { models: MOCK_MODELS } as T;
