@@ -125,11 +125,11 @@ fn unknown_builtin(source: &str, id: &str) -> Diagnostic {
 impl CliLoader {
     /// Resolves the package set; unknown `-e` sources become `Failed to load extension` errors.
     #[must_use]
-    pub fn new(sources: Vec<String>, context: &LoaderContext) -> Self {
+    pub fn new(sources: &[String], context: &LoaderContext) -> Self {
         let mut builtins = Vec::new();
         let mut explicit = Vec::new();
         let mut diagnostics = Vec::new();
-        for source in &sources {
+        for source in sources {
             if let Some(id) = source.strip_prefix("builtin:") {
                 match Builtin::parse(id) {
                     Some(builtin) => builtins.push(builtin),

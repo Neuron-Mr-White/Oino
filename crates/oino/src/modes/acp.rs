@@ -21,6 +21,7 @@ pub async fn run(args: &Args, env: &Environment) -> i32 {
     let agent_dir = env.agent_dir.clone();
     let docs = docs_root(&agent_dir);
     let sources = args.extensions.clone().unwrap_or_default();
+
     let mut flags = resource_flags(args, &env.cwd);
     // X-SAFE: apply the plan's effect (extensions off, providers on) and surface the banner;
     // failure/success recording runs on the `startup::start` paths (unipi-host joins later).
@@ -33,7 +34,7 @@ pub async fn run(args: &Args, env: &Environment) -> i32 {
     let factory = oino_acp::CoreSessionFactory::new(
         move |cwd| {
             let loader = CliLoader::new(
-                sources.clone(),
+                &sources,
                 &LoaderContext {
                     agent_dir: agent_dir.clone(),
                     cwd: cwd.to_path_buf(),

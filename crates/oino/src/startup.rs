@@ -527,7 +527,7 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
     safe_mode.begin_start();
     let plan = safe_mode.plan();
     let loader = Arc::new(CliLoader::new(
-        args.extensions.clone().unwrap_or_default(),
+        args.extensions.as_deref().unwrap_or_default(),
         &LoaderContext {
             agent_dir: env.agent_dir.clone(),
             cwd: env.cwd.clone(),

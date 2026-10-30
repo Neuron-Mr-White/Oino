@@ -1,8 +1,9 @@
 //! End-to-end distribution tests (WP-C10, dist.md §5): no bundle in the binary; the share
 //! dir feeds the packages (`OINO_DIST_EXTENSIONS`), user copies shadow by id, and the docs
 //! root chain (`OINO_DOCS_ROOT` > `<share root>/docs` > legacy `~/.oino/bundled/oino.docs@*`
-//! > absent with the docs section omitted) holds. Print, JSON and ACP modes answer through
-//! the `provider-faux` fixture package.
+//! > absent with the docs section omitted) holds.
+//!
+//! Print, JSON and ACP modes answer through the `provider-faux` fixture package.
 //!
 //! Skips (passes without running) when `extensions/dist` is missing (`cargo xtask wasm`).
 
@@ -277,7 +278,7 @@ fn docs_root_chain_env_share_legacy_absent() {
     );
 
     // Absent: the section is omitted instead of pointing at a missing path (P-DOCS).
-    std::fs::remove_dir_all(&legacy.parent().unwrap()).unwrap();
+    std::fs::remove_dir_all(legacy.parent().unwrap()).unwrap();
     let sections = system_sections(&sandbox, &package, &[]);
     assert!(
         sections.as_object().unwrap().contains_key("preamble"),
