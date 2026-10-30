@@ -15,6 +15,7 @@
     "network": { "hosts": ["openrouter.ai", "api.typesafe.ai"] },
     "env": ["TYPESAFE_API_KEY", "OPENROUTER_API_KEY"],
     "secrets": true,
+    "osNotify": true,
     "services": { "call": ["unipi.subagents/*", "*/evidence.contribute"] }
   }
 }

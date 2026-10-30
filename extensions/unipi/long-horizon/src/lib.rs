@@ -8,6 +8,7 @@
 //! | goal machine, verifier, continuation, task gate, wait backoff, recovery outbox (`goal.json`) | [`goal`]; verifier through `models.complete` |
 //! | ralph task files `.unipi/ralph/<name>.md` | `.oino/ralph/<name>.md` (+ `.state.json`) ([`ralph`]) |
 //! | agent graph (`graph.json`, history 20) over the subagents graph-run port | [`graph`]; service `subagents.graph-run`, bus `unipi:subagents:run-done` |
+//! | transient-failure recovery (D6): classify, 3 retries from the node's own session (backoff 30 s/2 m/10 m), Retry-After honored without budget (1 h cap), then failed + blocked downstream + nudge + notify | [`graph`] ([`graph::classify_failure`], retry fields in [`graph::Work`]); timer wiring in `run_done`/`reconcile`; sticky `unipi:long-horizon:work-failed` |
 //! | runaway guard (6 detectors, one steer per turn) | [`ralph::detect`] |
 //! | nudge provider (priority 100) with a one-slot stash | arbiter `propose-nudge` |
 //! | compaction brief / evidence | services `compaction-context.provide`, fan-out `evidence.contribute` |
@@ -67,8 +68,32 @@ use crate::ralph::{LoopState, RALPH_DIR, RALPH_GUEST_DIR};
 const WAIT_TIMER: &str = "lh-goal-wait";
 const GRAPH_WAKE_TIMER: &str = "lh-graph-wake";
 const GRAPH_RETRY_TIMER: &str = "lh-graph-retry";
+/// D6 §9.2: per-work transient-retry timers are `<prefix><work id>`.
+const RETRY_TIMER_PREFIX: &str = "lh-retry-";
+/// D6 §9.3: sticky terminal-failure topic (published directly — not a unipi-kit topic).
+const WORK_FAILED_TOPIC: &str = "unipi:long-horizon:work-failed";
 const VERIFIER_TIMEOUT_MS: u64 = 30_000;
 const REMIND_AFTER: usize = 3;
+
+/// Subagents run-done outcomes that mean the worker crashed / the process went away
+/// without a settle (D6 §9.1 row 1: transient, no retry-after).
+const WORKER_CRASHED_NEEDLES: &[&str] = &["session ended", "interrupted"];
+
+fn worker_crashed(error: Option<&str>) -> bool {
+    error.is_some_and(|e| {
+        let lower = e.to_lowercase();
+        WORKER_CRASHED_NEEDLES.iter().any(|n| lower.contains(n))
+    })
+}
+
+/// The operator session cannot be resumed at all (D6 §9.2): its record is gone
+/// ("No subagent found … — can't resume.") or its session file is unreadable —
+/// a retry may spawn a fresh operator, once.
+fn resume_unrecoverable(error: &str) -> bool {
+    const NEEDLES: &[&str] = &["can't resume", "session file", "corrupt", "unreadable"];
+    let lower = error.to_lowercase();
+    NEEDLES.iter().any(|n| lower.contains(n))
+}
 
 /// The stashed continuation (one slot).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1622,38 +1647,14 @@ impl Lh {
         text(lines.join("\n"))
     }
 
-    /// Starts every runnable work item through `subagents.graph-run`.
+    /// Starts every runnable work item through `subagents.graph-run` (work waiting on a
+    /// scheduled transient retry runs only once its fire time is due, D6 §9.2).
     async fn reconcile(&self, _cx: &Ctx) -> Vec<String> {
-        let runnable = self.state.borrow().graph.runnable();
+        let runnable = self.state.borrow().graph.runnable(timers::now_ms());
         let mut started = Vec::new();
         for (work_id, profile, resume) in runnable {
-            let (title, task) = {
-                let st = self.state.borrow();
-                let mode = st.graph.open().map_or(GraphMode::Graph, |g| g.mode);
-                (
-                    format!(
-                        "{} · {work_id}",
-                        if mode == GraphMode::Swarm {
-                            "Swarm"
-                        } else {
-                            "Graph"
-                        }
-                    ),
-                    st.graph.render_task(&work_id),
-                )
-            };
-            let mut payload = json!({"title": title, "task": task, "profile": profile});
-            if let Some(r) = resume {
-                payload["resume"] = json!(r);
-            }
-            let reply = services::call(
-                Some(unipi_kit::suite::pkg::SUBAGENTS.id),
-                point::SUBAGENTS_GRAPH_RUN,
-                &payload,
-                Some(Duration::from_secs(30)),
-            )
-            .await;
-            match reply {
+            let (title, task) = self.run_payload(&work_id);
+            match Self::graph_run(&title, &task, &profile, resume.as_deref()).await {
                 Ok(v) if v.get("runId").and_then(Value::as_str).is_some() => {
                     self.state.borrow_mut().graph.started(
                         &work_id,
@@ -1665,23 +1666,174 @@ impl Lh {
                     timers::set(GRAPH_RETRY_TIMER, Duration::from_secs(5), false);
                     break;
                 }
-                Ok(v) => self.state.borrow_mut().graph.started(
-                    &work_id,
-                    Err(v
+                Ok(v) => {
+                    let error = v
                         .get("error")
                         .and_then(Value::as_str)
                         .unwrap_or("could not start")
-                        .to_owned()),
-                ),
-                Err(e) => self
-                    .state
-                    .borrow_mut()
-                    .graph
-                    .started(&work_id, Err(e.to_string())),
+                        .to_owned();
+                    if let Some(id) = self
+                        .start_after_unrecoverable(&work_id, &profile, &error)
+                        .await
+                    {
+                        started.push(id);
+                    }
+                }
+                Err(e) => {
+                    if let Some(id) = self
+                        .start_after_unrecoverable(&work_id, &profile, &e.to_string())
+                        .await
+                    {
+                        started.push(id);
+                    }
+                }
             }
         }
         self.save();
         started
+    }
+
+    /// `(title, task)` for a graph-run of `work_id`.
+    fn run_payload(&self, work_id: &str) -> (String, String) {
+        let st = self.state.borrow();
+        let mode = st.graph.open().map_or(GraphMode::Graph, |g| g.mode);
+        (
+            format!(
+                "{} · {work_id}",
+                if mode == GraphMode::Swarm {
+                    "Swarm"
+                } else {
+                    "Graph"
+                }
+            ),
+            st.graph.render_task(work_id),
+        )
+    }
+
+    /// One `subagents.graph-run` call.
+    async fn graph_run(
+        title: &str,
+        task: &str,
+        profile: &str,
+        resume: Option<&str>,
+    ) -> Result<Value> {
+        let mut payload = json!({"title": title, "task": task, "profile": profile});
+        if let Some(r) = resume {
+            payload["resume"] = json!(r);
+        }
+        services::call(
+            Some(unipi_kit::suite::pkg::SUBAGENTS.id),
+            point::SUBAGENTS_GRAPH_RUN,
+            &payload,
+            Some(Duration::from_secs(30)),
+        )
+        .await
+    }
+
+    /// A graph-run start failed (D6 §9.2). During a retry, an unrecoverable operator
+    /// session spawns a **fresh** operator with the original instruction — once; a second
+    /// unrecoverable loss is a permanent failure. Returns the work id when the fresh
+    /// operator started, so `reconcile` can report it.
+    async fn start_after_unrecoverable(
+        &self,
+        work_id: &str,
+        profile: &str,
+        error: &str,
+    ) -> Option<String> {
+        let retry_context = {
+            let st = self.state.borrow();
+            st.graph
+                .open()
+                .and_then(|g| g.work.iter().find(|w| w.work_id == work_id))
+                .filter(|w| w.retry_count > 0 && w.resume_operator_id.is_some())
+                .is_some_and(|_| resume_unrecoverable(error))
+        };
+        if retry_context {
+            let note = format!(
+                "transient (crashed), operator session unrecoverable — retrying with a fresh operator: {error}"
+            );
+            if self
+                .state
+                .borrow_mut()
+                .graph
+                .fresh_spawn_once(work_id, &note)
+            {
+                let (title, task) = self.run_payload(work_id);
+                match Self::graph_run(&title, &task, profile, None).await {
+                    Ok(v) if v.get("runId").and_then(Value::as_str).is_some() => {
+                        let op = v["runId"].as_str().unwrap_or_default().to_owned();
+                        self.state.borrow_mut().graph.started(work_id, Ok(op));
+                        self.save();
+                        return Some(work_id.to_owned());
+                    }
+                    Ok(v) if v.get("retryable").and_then(Value::as_bool) == Some(true) => {
+                        // Capacity: the fresh start re-runs on the next reconcile pass
+                        // (retryable start errors already arm GRAPH_RETRY_TIMER there).
+                        self.save();
+                        timers::set(GRAPH_RETRY_TIMER, Duration::from_secs(5), false);
+                        return None;
+                    }
+                    outcome => {
+                        let e = match outcome {
+                            Ok(v) => v
+                                .get("error")
+                                .and_then(Value::as_str)
+                                .unwrap_or("could not start")
+                                .to_owned(),
+                            Err(e) => e.to_string(),
+                        };
+                        self.fail_start(work_id, &e);
+                        return None;
+                    }
+                }
+            }
+            // Second unrecoverable loss: permanent.
+            self.fail_start(
+                work_id,
+                &format!("transient (crashed), operator session lost twice: {error}"),
+            );
+            return None;
+        }
+        self.fail_start(work_id, error);
+        None
+    }
+
+    /// Marks a start failure terminal (existing path) and notifies (D6 §9.3).
+    fn fail_start(&self, work_id: &str, error: &str) {
+        self.state
+            .borrow_mut()
+            .graph
+            .started(work_id, Err(error.to_owned()));
+        self.save();
+        self.notify_work_failed(work_id);
+    }
+
+    /// D6 §9.3: user notification once per terminal work failure — `ui.fire(notify)` +
+    /// `ui.os-notify` (both land only when a frontend is attached; errors ignored) and a
+    /// sticky bus publish for `unipi.notify` / the app.
+    fn notify_work_failed(&self, work_id: &str) {
+        let Some((graph_id, error)) = (|| {
+            let st = self.state.borrow();
+            let g = st.graph.current.as_ref()?;
+            let w = g.work.iter().find(|w| w.work_id == work_id)?;
+            Some((
+                g.graph_id.clone(),
+                w.failure.clone().unwrap_or_else(|| "failed".into()),
+            ))
+        })() else {
+            return;
+        };
+        let message = format!(
+            "Agent graph work {work_id} failed: {error}. Downstream work is blocked; the operator was nudged to replace, skip or re-plan."
+        );
+        let _ = ui::notify(&message, "warning");
+        let _ = ui::os_notify("Agent graph work failed", &message, "normal", None);
+        // Sticky by name (unipi-kit's sticky table covers its own topics only).
+        let _ = oino_extension::bus::publish(
+            WORK_FAILED_TOPIC,
+            &json!({"graphId": graph_id, "workId": work_id, "error": error}),
+            true,
+        );
     }
 
     async fn run_done(&self, data: &Value, cx: &Ctx) {
@@ -1689,15 +1841,33 @@ impl Lh {
             return;
         };
         let r = data.get("result").cloned().unwrap_or_default();
-        let ok = self.state.borrow_mut().graph.settle(
+        let error = r.get("error").and_then(Value::as_str);
+        let crashed = worker_crashed(error);
+        let outcome = self.state.borrow_mut().graph.settle(
             run,
             r.get("status").and_then(Value::as_str).unwrap_or("failed"),
             r.get("text").and_then(Value::as_str).unwrap_or_default(),
-            r.get("error").and_then(Value::as_str),
+            error,
             u32::try_from(r.get("toolCalls").and_then(Value::as_u64).unwrap_or(0)).unwrap_or(0),
+            timers::now_ms(),
+            crashed,
         );
-        if !ok {
-            return;
+        match &outcome {
+            graph::SettleOutcome::Unknown => return,
+            // D6 §9.2: arm the durable retry timer (the schedule also persists in
+            // graph.json, so a dead timer is re-armed on the next bind).
+            graph::SettleOutcome::Retried { work_id, delay_ms } => timers::set(
+                &format!("{RETRY_TIMER_PREFIX}{work_id}"),
+                Duration::from_millis(*delay_ms),
+                false,
+            ),
+            // D6 §9.3: notify once per terminal failure; downstream stays blocked and
+            // the checkpoint (below) nudges the supervisor.
+            graph::SettleOutcome::Settled { work_id, status } if status == "failed" => {
+                self.save();
+                self.notify_work_failed(work_id);
+            }
+            graph::SettleOutcome::Settled { .. } => {}
         }
         self.save();
         self.reconcile(cx).await;
@@ -2426,7 +2596,7 @@ impl Lh {
         Some(out)
     }
 
-    async fn session_start(&self, ev: &Event) {
+    async fn session_start(&self, ev: &Event, cx: &Ctx) {
         {
             let mut st = self.state.borrow_mut();
             st.loaded = false;
@@ -2533,7 +2703,24 @@ impl Lh {
                 }
             }
         }
+        // D6 §9.2: the retry schedule is the file — on bind, overdue retries fire
+        // immediately and future ones re-arm their timers.
+        let retries_due = {
+            let st = self.state.borrow();
+            let (due, future) = st.graph.retry_schedule(timers::now_ms());
+            for (work_id, delay_ms) in future {
+                timers::set(
+                    &format!("{RETRY_TIMER_PREFIX}{work_id}"),
+                    Duration::from_millis(delay_ms),
+                    false,
+                );
+            }
+            !due.is_empty()
+        };
         self.save();
+        if retries_due {
+            self.reconcile(cx).await;
+        }
         if let Some(t) = redeliver {
             self.send(&t, "Recovery").await;
         }
@@ -2720,6 +2907,37 @@ impl Extension for Lh {
                 Some(GRAPH_RETRY_TIMER) => {
                     ext.reconcile(&cx).await;
                 }
+                // D6 §9.2: a per-work transient retry came due — start it (the due
+                // check is `runnable(now)`; a stale early fire re-arms itself).
+                Some(id) if id.starts_with(RETRY_TIMER_PREFIX) => {
+                    let work_id = &id[RETRY_TIMER_PREFIX.len()..];
+                    let now = timers::now_ms();
+                    let due = {
+                        let st = ext.state.borrow();
+                        st.graph
+                            .open()
+                            .and_then(|g| g.work.iter().find(|w| w.work_id == work_id))
+                            .is_some_and(|w| {
+                                w.status == "queued" && w.next_retry_at.is_some_and(|at| at <= now)
+                            })
+                    };
+                    if due {
+                        ext.reconcile(&cx).await;
+                    } else {
+                        let remaining = {
+                            let st = ext.state.borrow();
+                            st.graph
+                                .open()
+                                .and_then(|g| g.work.iter().find(|w| w.work_id == work_id))
+                                .and_then(|w| w.next_retry_at)
+                                .filter(|at| *at > now)
+                                .map(|at| u64::try_from(at - now).unwrap_or(1))
+                        };
+                        if let Some(ms) = remaining {
+                            timers::set(id, Duration::from_millis(ms), false);
+                        }
+                    }
+                }
                 _ => {}
             }
             Ok(())
@@ -2732,8 +2950,8 @@ impl Extension for Lh {
             Ok(())
         });
         bus::subscribe(topics::SUBAGENTS_RUN_DONE);
-        cx.on(EventKind::SessionStart, |ext, ev, _cx| async move {
-            ext.session_start(&ev).await;
+        cx.on(EventKind::SessionStart, |ext, ev, scx| async move {
+            ext.session_start(&ev, &scx).await;
             Ok(())
         });
         cx.on(EventKind::SessionShutdown, |ext, _ev, _cx| async move {
@@ -2769,5 +2987,33 @@ mod tests {
         assert_eq!(&u[14..15], "4");
         assert_eq!(task_path("My Loop"), ".oino/ralph/my-loop.md");
         assert_eq!(RUNNERS.len(), 9);
+    }
+
+    #[test]
+    fn wp_x7_helpers() {
+        // Worker-crash detection from subagents run-done outcomes.
+        assert!(worker_crashed(Some("Subagent session ended")));
+        assert!(worker_crashed(Some("session ended while it ran")));
+        assert!(worker_crashed(Some(
+            "interrupted — Oino exited while it ran"
+        )));
+        assert!(!worker_crashed(Some("HTTP 429 too many requests")));
+        assert!(!worker_crashed(None));
+        assert!(!worker_crashed(Some("boom")));
+        // Unrecoverable operator sessions.
+        assert!(resume_unrecoverable(
+            "No subagent found for ab12 — can't resume."
+        ));
+        assert!(resume_unrecoverable(
+            "failed to read session file: corrupt jsonl"
+        ));
+        assert!(resume_unrecoverable("session file unreadable"));
+        assert!(!resume_unrecoverable(
+            "Maximum 8 concurrent subagents running"
+        ));
+        assert!(!resume_unrecoverable("unknown subagent profile \"x\""));
+        // D6 §9.2 timer ids.
+        assert_eq!(format!("{RETRY_TIMER_PREFIX}scan-api"), "lh-retry-scan-api");
+        assert_eq!(WORK_FAILED_TOPIC, "unipi:long-horizon:work-failed");
     }
 }
