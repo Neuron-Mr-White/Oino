@@ -521,9 +521,14 @@ impl AgentSession {
 
     pub(crate) fn flush_pending_custom_messages(&self) {
         let pending = std::mem::take(&mut lock(&self.inner.book).pending_custom);
+        if pending.is_empty() {
+            return;
+        }
         for message in pending {
             self.append_custom_message(message);
         }
+        // D-FLUSH barrier 3: flushed custom messages are durable before the run continues.
+        self.boundary_sync("flush pending custom messages");
     }
 
     fn defer(&self, action: Deferred) {

@@ -565,6 +565,8 @@ pub struct TestSession {
     pub cwd: PathBuf,
     /// Dialog UI attached.
     pub has_ui: bool,
+    /// Sessions root for a file-persisted session (`None` = in-memory session).
+    pub session_dir: Option<PathBuf>,
 }
 
 impl Default for TestSession {
@@ -575,6 +577,7 @@ impl Default for TestSession {
             settings: JsonObject::new(),
             cwd: std::env::temp_dir(),
             has_ui: false,
+            session_dir: None,
         }
     }
 }
@@ -612,8 +615,15 @@ impl TestSession {
         }
         models.set_runtime_api_key("faux", "test-key");
         let set = Arc::new(ExtensionSet::new(loaded));
-        let mut manager =
-            SessionManager::in_memory(&self.cwd, CreateOptions::default(), Vec::new());
+        let mut manager = match self.session_dir.as_deref() {
+            // File-persisted session (durability tests): the file appears at the first
+            // conversation entry, exactly like a real session.
+            Some(dir) => match SessionManager::create(&self.cwd, dir, CreateOptions::default()) {
+                Ok(manager) => manager,
+                Err(error) => std::unreachable!("persisted test session: {error}"),
+            },
+            None => SessionManager::in_memory(&self.cwd, CreateOptions::default(), Vec::new()),
+        };
         // New sessions record the initial selection (pi `createAgentSession`).
         let model = FauxProvider::model();
         let _ = manager.append_model_change(&model.provider, &model.id);

@@ -24,6 +24,33 @@ use tokio_util::sync::CancellationToken;
 
 use super::{AgentSession, Inner, current_system_message, lock};
 
+/// Where the session log must be durable before the run proceeds (D-FLUSH, core spec
+/// §2.1): the three fsync barriers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Barrier {
+    /// Before each model request (the failed request never leaves the process).
+    Request,
+    /// Before a tool with side effects runs (its body must be attributable to a record).
+    Tool,
+    /// At a step boundary (diagnostics only; the next request barrier fails closed).
+    Step,
+}
+
+impl Barrier {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Request => "request",
+            Self::Tool => "tool",
+            Self::Step => "step",
+        }
+    }
+}
+
+/// Built-in tools with no side effects: they are exempt from the tool barrier (D-FLUSH
+/// barrier 2; pi's read-only set `read`, `grep`, `find`, `ls`) — nothing to repair and no
+/// effect to attribute, so no fsync (and, from WP-C2 on, no dispatch record).
+const READ_ONLY_BUILTIN_TOOLS: [&str; 4] = ["read", "grep", "find", "ls"];
+
 pub(crate) struct SessionHooks {
     inner: Weak<Inner>,
 }
@@ -70,6 +97,10 @@ impl BeforeToolCall for SessionHooks {
                     .and_then(|r| r.input.as_ref())
                     .unwrap_or(cx.args);
                 session.checkpoint_tool_call(&cx.tool_call.name, args);
+                // D-FLUSH barrier 2: the tool runs only on top of a durable log. The error
+                // becomes the tool's error result (pi's hook-failure path), so the body
+                // never runs unpersisted.
+                session.tool_durability_barrier(&cx.tool_call.name)?;
             }
             Ok(result)
         })
@@ -149,6 +180,54 @@ impl TransformContext for SessionHooks {
 }
 
 impl AgentSession {
+    /// Fsync barrier (D-FLUSH): flushes the session file; `Err` is the fail-closed signal
+    /// the caller turns into a request error event (barrier 1), a `HookError` tool result
+    /// (barrier 2) or a diagnostic log (barrier 3). In-memory sessions always pass.
+    pub(crate) fn durability_barrier(&self, barrier: Barrier) -> Result<(), String> {
+        lock(&self.inner.manager)
+            .sync()
+            .map_err(|error| format!("session durability barrier failed: {error}"))
+            .inspect_err(|error| {
+                tracing::error!(barrier = barrier.name(), session = %self.session_id(), "{error}");
+            })
+    }
+
+    /// D-FLUSH barrier 2: tools with side effects run only on a durable log; read-only
+    /// tools (`read`/`grep`/`find`/`ls` built-ins and `annotations.readOnly == true`
+    /// extension tools) skip the fsync.
+    pub(crate) fn tool_durability_barrier(&self, tool_name: &str) -> Result<(), HookError> {
+        if self.tool_is_read_only(tool_name) {
+            return Ok(());
+        }
+        self.durability_barrier(Barrier::Tool)
+            .map_err(HookError::new)
+    }
+
+    /// Side-effect classification of a tool (D-FLUSH barrier 2).
+    fn tool_is_read_only(&self, tool_name: &str) -> bool {
+        if READ_ONLY_BUILTIN_TOOLS.contains(&tool_name) {
+            return true;
+        }
+        self.runner().tools().iter().any(|tool| {
+            tool.spec.name == tool_name
+                && tool
+                    .spec
+                    .annotations
+                    .as_ref()
+                    .and_then(|annotations| annotations.get("readOnly"))
+                    .and_then(JsonValue::as_bool)
+                    .unwrap_or(false)
+        })
+    }
+
+    /// D-FLUSH barrier 3: sync at a step boundary. Failures are diagnostics — the already
+    /// finished turn stands; the next request barrier fails closed on the same error.
+    pub(crate) fn boundary_sync(&self, at: &'static str) {
+        if let Err(error) = self.durability_barrier(Barrier::Step) {
+            tracing::error!(boundary = at, session = %self.session_id(), "{error}");
+        }
+    }
+
     /// `tool_call` handlers (pi `_beforeToolCall`).
     pub(crate) async fn before_tool_call(
         &self,
@@ -385,7 +464,15 @@ impl StreamFn for SessionStream {
                 };
                 let session = AgentSession::from_inner(inner);
                 let model = request.model.clone();
-                match session.authorize(request).await {
+                // D-FLUSH barrier 1: the log is durable before each model request (first
+                // request, steering, retries, compaction continuations). A failure returns
+                // a single error event shaped like an authorize failure, so the request
+                // never leaves the process.
+                let authorized = match session.durability_barrier(Barrier::Request) {
+                    Ok(()) => session.authorize(request).await,
+                    Err(message) => Err(message),
+                };
+                match authorized {
                     Ok(request) => base.stream(request),
                     Err(message) => {
                         let mut error = AssistantMessage::empty(

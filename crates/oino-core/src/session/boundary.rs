@@ -175,6 +175,8 @@ impl AgentSession {
             return;
         }
         let appended = apply_drafts(&mut lock(&self.inner.manager), drafts);
+        // D-FLUSH barrier 3: boundary entries are durable before the run continues.
+        self.boundary_sync("boundary drafts");
         self.refresh_context();
         match appended {
             Ok(ids) => {
