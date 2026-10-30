@@ -545,6 +545,25 @@ fn resolve_trust(
     }
 }
 
+/// X-SAFE: the plan carried in [`ResourceFlags::safe_mode`] — its `-ne` effect (providers
+/// stay), whether extensions are off, and the banner diagnostic for a tripped plan.
+fn safe_mode_start(
+    flags: &ResourceFlags,
+    diagnostics: &mut Vec<String>,
+) -> (Option<SafeModePlan>, bool) {
+    let safe_mode = flags.safe_mode.clone();
+    let no_extensions = flags.no_extensions
+        || safe_mode
+            .as_ref()
+            .is_some_and(|plan| plan.disable_extensions);
+    if let Some(plan) = &safe_mode
+        && plan.disable_extensions
+    {
+        diagnostics.push(safe_mode_banner(plan));
+    }
+    (safe_mode, no_extensions)
+}
+
 impl Services {
     /// Startup (runtime §4): trust → settings/resources → extensions (`init`) → providers.
     ///
@@ -553,18 +572,7 @@ impl Services {
     /// Trust store failures.
     pub async fn create(mut options: ServicesOptions) -> Result<Arc<Self>, ServicesError> {
         let mut diagnostics = Vec::new();
-        // X-SAFE: a tripped plan disables `kind: "extension"` packages like `-ne` (providers
-        // stay) and surfaces the suspects banner as a startup diagnostic.
-        let safe_mode = options.flags.safe_mode.clone();
-        let no_extensions = options.flags.no_extensions
-            || safe_mode
-                .as_ref()
-                .is_some_and(|plan| plan.disable_extensions);
-        if let Some(plan) = &safe_mode
-            && plan.disable_extensions
-        {
-            diagnostics.push(safe_mode_banner(plan));
-        }
+        let (safe_mode, no_extensions) = safe_mode_start(&options.flags, &mut diagnostics);
         let mut settings = options
             .settings
             .take()

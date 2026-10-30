@@ -119,7 +119,11 @@ pub fn banner(plan: &SafeModePlan) -> String {
     let mut text = format!(
         "Safe mode: extensions are off after {} failed start{}",
         plan.consecutive_failures,
-        if plan.consecutive_failures == 1 { "" } else { "s" }
+        if plan.consecutive_failures == 1 {
+            ""
+        } else {
+            "s"
+        }
     );
     if !plan.suspects.is_empty() {
         let suspects = plan
@@ -128,7 +132,8 @@ pub fn banner(plan: &SafeModePlan) -> String {
             .map(|(id, error)| format!("{id} ({error})"))
             .collect::<Vec<_>>()
             .join(", ");
-        text.push_str(&format!("; suspects: {suspects}"));
+        text.push_str("; suspects: ");
+        text.push_str(&suspects);
     }
     text
 }
@@ -169,7 +174,9 @@ impl SafeMode {
                 let mut suspects = Vec::new();
                 for entry in &self.state.last_failures {
                     if let Some(id) = &entry.extension_id
-                        && !suspects.iter().any(|(known, _): &(String, String)| known == id)
+                        && !suspects
+                            .iter()
+                            .any(|(known, _): &(String, String)| known == id)
                     {
                         suspects.push((id.clone(), entry.error.clone()));
                     }
@@ -232,8 +239,7 @@ impl SafeMode {
 
     fn save(&self) {
         if let Ok(text) = serde_json::to_string(&self.state)
-            && let Err(error) =
-                oino_settings::storage::write_atomic(&self.path, text.as_bytes())
+            && let Err(error) = oino_settings::storage::write_atomic(&self.path, text.as_bytes())
             && let Some(parent) = self.path.parent()
         {
             tracing::warn!(
@@ -258,7 +264,7 @@ mod tests {
         let plan = load(dir.path()).plan();
         assert!(!plan.disable_extensions);
         assert_eq!(plan.consecutive_failures, 0);
-        assert!(plan.suspects.is_empty());
+        assert_eq!(plan.suspects.len(), 0);
     }
 
     #[test]
@@ -280,13 +286,16 @@ mod tests {
         );
         let banner = banner(&plan);
         assert!(banner.starts_with("Safe mode: extensions are off after 2 failed starts"));
-        assert!(banner.contains("suspects: unipi.notify (init failed: boom)"), "{banner}");
+        assert!(
+            banner.contains("suspects: unipi.notify (init failed: boom)"),
+            "{banner}"
+        );
 
         safe.record_success();
         drop(safe);
         let plan = load(dir.path()).plan();
         assert!(!plan.disable_extensions);
-        assert!(plan.suspects.is_empty());
+        assert_eq!(plan.suspects.len(), 0);
     }
 
     #[test]
@@ -325,7 +334,10 @@ mod tests {
         let mut safe = load(dir.path());
         for i in 0..6 {
             safe.note_suspect(&format!("unipi.ext{i}"), "boom");
-            safe.record_failure(FailureEntry::new(FailureStage::Services, format!("Error: {i}")));
+            safe.record_failure(FailureEntry::new(
+                FailureStage::Services,
+                format!("Error: {i}"),
+            ));
         }
         assert_eq!(safe.state.last_failures.len(), ENTRY_LIMIT);
         let reloaded = load(dir.path());
@@ -345,10 +357,8 @@ mod tests {
         safe.record_failure(FailureEntry::new(FailureStage::Session, "Error: crash"));
         drop(safe);
 
-        let text = std::fs::read_to_string(
-            dir.path().join("agent/state").join(STATE_FILE),
-        )
-        .unwrap();
+        let text =
+            std::fs::read_to_string(dir.path().join("agent/state").join(STATE_FILE)).unwrap();
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(value["v"], 1);
         assert_eq!(value["consecutiveFailures"], 1);

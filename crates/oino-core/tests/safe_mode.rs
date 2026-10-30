@@ -31,9 +31,8 @@ async fn create_services(
 ) -> Arc<Services> {
     let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
     models.set_runtime_api_key("faux", "k");
-    let mut instances: Vec<Arc<dyn ExtensionInstance>> = vec![Arc::new(FauxComponent(
-        Arc::new(FauxProvider::default()),
-    ))];
+    let mut instances: Vec<Arc<dyn ExtensionInstance>> =
+        vec![Arc::new(FauxComponent(Arc::new(FauxProvider::default())))];
     instances.extend(extra);
     Services::create(ServicesOptions {
         cwd: dir.to_path_buf(),
@@ -105,9 +104,15 @@ async fn two_failures_disable_extensions_keep_providers_and_name_suspects() {
         banner.starts_with("Safe mode: extensions are off after 2 failed starts"),
         "{banner}"
     );
-    assert!(banner.contains("unipi.notify (init failed: boom)"), "{banner}");
+    assert!(
+        banner.contains("unipi.notify (init failed: boom)"),
+        "{banner}"
+    );
     assert_eq!(
-        services.safe_mode.as_ref().map(|plan| plan.disable_extensions),
+        services
+            .safe_mode
+            .as_ref()
+            .map(|plan| plan.disable_extensions),
         Some(true),
         "the plan is carried for the `_oino/hello` `safeMode` flag"
     );
@@ -118,16 +123,20 @@ async fn two_failures_disable_extensions_keep_providers_and_name_suspects() {
     drop(safe);
     let plan = SafeMode::load(&agent_dir(dir.path())).plan();
     assert!(!plan.disable_extensions);
-    assert!(plan.suspects.is_empty());
+    assert_eq!(plan.suspects.len(), 0);
 
     // Without the plan the extension loads again (`-ne`-style behavior, nothing latched).
     let suspect = Arc::new(oino_core::testing::FakeExtension::new(
         "unipi.notify",
         Registration::default(),
     ));
-    let plain = create_services(dir.path(), vec![suspect as Arc<dyn ExtensionInstance>], None)
-        .await;
-    let ids: Vec<&str> = plain
+    let fresh = create_services(
+        dir.path(),
+        vec![suspect as Arc<dyn ExtensionInstance>],
+        None,
+    )
+    .await;
+    let ids: Vec<&str> = fresh
         .extensions
         .extensions()
         .iter()
