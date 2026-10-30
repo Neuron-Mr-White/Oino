@@ -32,6 +32,7 @@ use std::time::Duration;
 use oino_extension::command::item;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::Node;
 use unipi_kit::settings::Store;
 use unipi_kit::topics::{UpdateApplied, UpdateAvailable, UpdateCheck};
 
@@ -285,7 +286,7 @@ impl Updater {
             release.as_ref(),
         )
         .await;
-        let id = ui::panel_open(&view::update_panel(result, &md))?;
+        let id = view::update_panel(result, &md).open()?;
         self.sessions.with(cx.session_id(), |s| {
             s.panels.insert(id, View::Update(result.clone(), md));
         });
@@ -316,11 +317,11 @@ impl Updater {
         }
     }
 
-    fn open_view(&self, cx: &Ctx, name: &str, title: &str, spec: &Value, v: View) -> Result<()> {
+    fn open_view(&self, cx: &Ctx, name: &str, title: &str, spec: Node, v: View) -> Result<()> {
         if !cx.has_ui() {
             return Ok(());
         }
-        let id = ui::panel_open(&view::browser_panel(name, title, spec))?;
+        let id = view::browser_panel(name, title, spec).open()?;
         self.sessions.with(cx.session_id(), |s| {
             s.panels.insert(id, v);
         });
@@ -339,7 +340,7 @@ impl Updater {
                         &cx.cx,
                         "readme",
                         &format!("README — {} {}", r.name, r.version),
-                        &view::doc_spec(&text),
+                        view::doc_spec(&text),
                         View::Readme(readmes),
                     );
                 }
@@ -349,7 +350,7 @@ impl Updater {
             }
         }
         let spec = view::readme_list_spec(&readmes);
-        self.open_view(&cx.cx, "readme", "READMEs", &spec, View::Readmes(readmes))
+        self.open_view(&cx.cx, "readme", "READMEs", spec, View::Readmes(readmes))
     }
 
     #[allow(
@@ -396,10 +397,10 @@ impl Updater {
         match (current, action) {
             (View::Update(r, md), "how") => {
                 let text = channel::update_instructions(&r.latest_version);
-                ui::panel_update(
-                    &panel,
-                    &json!({"spec": view::instructions_spec(&text), "title": "How to update"}),
-                )?;
+                ui::Panel::update(&panel)
+                    .spec(view::instructions_spec(&text))
+                    .title("How to update")
+                    .send()?;
                 set(Some(View::Instructions(r, md)));
             }
             (View::Update(r, _) | View::Instructions(r, _), "open") => {
@@ -427,45 +428,45 @@ impl Updater {
                 );
             }
             (View::Instructions(r, md), "back") => {
-                ui::panel_update(
-                    &panel,
-                    &json!({"spec": view::update_panel(&r, &md)["spec"], "title": "Update available"}),
-                )?;
+                ui::Panel::update(&panel)
+                    .spec(view::update_spec(&r, &md))
+                    .title("Update available")
+                    .send()?;
                 set(Some(View::Update(r, md)));
             }
             (View::Readmes(list), "open") => {
                 if let Some(r) = list.iter().find(|r| r.name == value)
                     && let Some(text) = unipi_kit::paths::try_read(&r.path)
                 {
-                    ui::panel_update(
-                        &panel,
-                        &json!({"spec": view::doc_spec(&text), "title": format!("README — {} {}", r.name, r.version)}),
-                    )?;
+                    ui::Panel::update(&panel)
+                        .spec(view::doc_spec(&text))
+                        .title(format!("README — {} {}", r.name, r.version))
+                        .send()?;
                     set(Some(View::Readme(list)));
                 }
             }
             (View::Readme(list), "back") => {
-                ui::panel_update(
-                    &panel,
-                    &json!({"spec": view::readme_list_spec(&list), "title": "READMEs"}),
-                )?;
+                ui::Panel::update(&panel)
+                    .spec(view::readme_list_spec(&list))
+                    .title("READMEs")
+                    .send()?;
                 set(Some(View::Readmes(list)));
             }
             (View::Changelog(entries), "open") => {
                 if let Some(i) = value.parse::<usize>().ok().filter(|i| *i < entries.len()) {
                     let title = format!("Changelog — {}", entries[i].version);
-                    ui::panel_update(
-                        &panel,
-                        &json!({"spec": view::doc_spec(&entries[i].body), "title": title}),
-                    )?;
+                    ui::Panel::update(&panel)
+                        .spec(view::doc_spec(&entries[i].body))
+                        .title(title)
+                        .send()?;
                     set(Some(View::Changelog(entries)));
                 }
             }
             (View::Changelog(entries), "back") => {
-                ui::panel_update(
-                    &panel,
-                    &json!({"spec": view::changelog_list_spec(&entries), "title": "Changelog"}),
-                )?;
+                ui::Panel::update(&panel)
+                    .spec(view::changelog_list_spec(&entries))
+                    .title("Changelog")
+                    .send()?;
                 set(Some(View::Changelog(entries)));
             }
             _ => {}
@@ -493,7 +494,7 @@ impl Updater {
             entries = release_notes_changelog().await;
         }
         let spec = view::changelog_list_spec(&entries);
-        let Ok(id) = ui::panel_open(&view::browser_panel("changelog", "Changelog", &spec)) else {
+        let Ok(id) = view::browser_panel("changelog", "Changelog", spec).open() else {
             return;
         };
         self.sessions.with(cx.session_id(), |s| {

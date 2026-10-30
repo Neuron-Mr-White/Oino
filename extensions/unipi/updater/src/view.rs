@@ -1,5 +1,7 @@
-//! Panels (unipi `src/tui/*-overlay.ts` → OUS, ui-protocol §5/§6) and the settings namespace.
+//! Panels (unipi `src/tui/*-overlay.ts`, ui-protocol v2 §6) and the settings namespace.
 
+use oino_extension::ui::{self, widgets::prelude::*};
+use oino_extension::ui::{KeyBinding, Placement};
 use serde_json::{Value, json};
 use unipi_kit::settings::{Choice, Field, Namespace, Section, choice};
 
@@ -86,116 +88,177 @@ pub(crate) fn interval_label(ms: u64) -> String {
 
 /// Update-available screen (unipi `renderUpdateOverlay`): versions, changelog since the
 /// installed version, and the actions that replace `[Y] Update / [n] Skip`.
-pub(crate) fn update_panel(r: &CheckResult, changelog: &str) -> Value {
-    json!({
-        "panelId": "unipi.updater/update",
-        "placement": "overlay",
-        "title": "Update available",
-        "spec": update_spec(r, changelog),
-        "keys": [
-            {"key": "y", "actionId": "how", "label": "How to update"},
-            {"key": "o", "actionId": "open", "label": "Open release page"},
-            {"key": "n", "actionId": "skip", "label": "Skip this version"},
-            {"key": "q", "actionId": "$close", "label": "Later"},
-        ],
-        "focus": true,
-        "closeOnEscape": true,
-    })
+pub(crate) fn update_panel(r: &CheckResult, changelog: &str) -> ui::Panel {
+    ui::Panel::new(PANEL_UPDATE)
+        .placement(Placement::Overlay)
+        .title("Update available")
+        .spec(update_spec(r, changelog))
+        .keys([
+            key("y", "how", "How to update"),
+            key("o", "open", "Open release page"),
+            key("n", "skip", "Skip this version"),
+            key("q", "close", "Later"),
+        ])
+        .focus(true)
+        .close_on_escape(true)
 }
 
-fn update_spec(r: &CheckResult, changelog: &str) -> Value {
-    let body = if changelog.trim().is_empty() {
-        json!({"t": "empty", "message": "No changelog for this release."})
+/// One entry key binding.
+fn key(key: &str, action: &str, label: &str) -> KeyBinding {
+    KeyBinding {
+        key: key.to_owned(),
+        action: Some(action.to_owned()),
+        label: label.to_owned(),
+    }
+}
+
+/// A section header: a top rule with the title (`section` in the §12.1 mapping).
+fn section(title: &str, body: Node) -> Node {
+    Block::default()
+        .borders(Borders::Sides(vec![BorderSide::TOP]))
+        .border_style(Style::new().fg(Color::BorderMuted))
+        .title(title)
+        .child(body)
+        .into()
+}
+
+/// Key/value rows (`kv` → 2-column `Table`, §12.1).
+fn kv(items: &[(&str, &str)]) -> Node {
+    let rows = items.iter().map(|(key, value)| {
+        Row::new([
+            Cell::new(Line::from(Span::from_string(*key).fg(Color::Muted))),
+            Cell::new(*value),
+        ])
+    });
+    Table::new(rows, [Constraint::Max(24), Constraint::Fill(1)]).into()
+}
+
+pub(crate) fn update_spec(r: &CheckResult, changelog: &str) -> Node {
+    let body: Node = if changelog.trim().is_empty() {
+        Empty::new()
+            .message("No changelog for this release.")
+            .into()
     } else {
-        json!({"t": "markdown", "value": changelog})
+        Markdown::new(changelog).into()
     };
-    json!({"t": "stack", "direction": "vertical", "gap": 1, "children": [
-        {"t": "text", "value": [
-            {"text": "Oino "}, {"text": r.latest_version, "bold": true, "tone": "success"},
-            {"text": " is available (installed "}, {"text": r.current_version, "tone": "muted"}, {"text": ")."}
-        ]},
-        {"t": "kv", "items": [
-            {"key": "Installed", "value": r.current_version},
-            {"key": "Latest", "value": r.latest_version},
-            {"key": "Channel", "value": r.channel},
-        ]},
-        {"t": "section", "title": "What's new", "body": body},
-        {"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-            {"t": "button", "label": "How to update", "actionId": "how", "primary": true},
-            {"t": "button", "label": "Release page", "actionId": "open"},
-            {"t": "button", "label": "Skip this version", "actionId": "skip"},
-            {"t": "button", "label": "Later", "actionId": "$close"},
-        ]},
-    ]})
+    Layout::default()
+        .spacing(1)
+        .children([
+            Paragraph::new(Line::from(vec![
+                Span::from("Oino "),
+                Span::from_string(r.latest_version.clone())
+                    .bold()
+                    .fg(Color::Success),
+                Span::from(" is available (installed "),
+                Span::from_string(r.current_version.clone()).fg(Color::Muted),
+                Span::from(")."),
+            ]))
+            .into(),
+            kv(&[
+                ("Installed", &r.current_version),
+                ("Latest", &r.latest_version),
+                ("Channel", &r.channel),
+            ]),
+            section("What's new", body),
+            Layout::horizontal([
+                Constraint::Min(0),
+                Constraint::Min(0),
+                Constraint::Min(0),
+                Constraint::Min(0),
+            ])
+            .spacing(1)
+            .children([
+                Button::new("How to update", "how")
+                    .variant(ButtonVariant::Primary)
+                    .into(),
+                Button::new("Release page", "open").into(),
+                Button::new("Skip this version", "skip").into(),
+                Button::new("Later", "close").into(),
+            ])
+            .into(),
+        ])
+        .into()
 }
 
 /// Instructions view after "How to update".
-pub(crate) fn instructions_spec(text: &str) -> Value {
-    json!({"t": "stack", "direction": "vertical", "gap": 1, "children": [
-        {"t": "markdown", "value": text},
-        {"t": "keyHints", "hints": [{"keys": "b", "label": "back"}, {"keys": "q", "label": "close"}]},
-    ]})
+pub(crate) fn instructions_spec(text: &str) -> Node {
+    Layout::default()
+        .spacing(1)
+        .children([
+            Markdown::new(text).into(),
+            KeyHints::new([("b", "back"), ("q", "close")]).into(),
+        ])
+        .into()
 }
 
 /// README list (unipi `renderReadmeOverlay`).
-pub(crate) fn readme_list_spec(readmes: &[Readme]) -> Value {
+pub(crate) fn readme_list_spec(readmes: &[Readme]) -> Node {
     if readmes.is_empty() {
-        return json!({"t": "empty", "message": "No bundled READMEs found."});
+        return Empty::new().message("No bundled READMEs found.").into();
     }
-    let items: Vec<Value> = readmes
-        .iter()
-        .map(|r| json!({"id": r.name, "label": r.name, "detail": r.id, "badge": r.version}))
-        .collect();
-    json!({"t": "stack", "direction": "vertical", "children": [
-        {"t": "list", "items": items, "selectable": "open"},
-        {"t": "keyHints", "hints": [{"keys": "enter", "label": "open"}, {"keys": "q", "label": "close"}]},
-    ]})
+    let items = readmes.iter().map(|r| {
+        ListItem::new(r.name.clone())
+            .key(r.name.clone())
+            .detail(Line::from(r.id.clone()))
+            .badge(Line::from(r.version.clone()))
+    });
+    Layout::default()
+        .children([
+            List::new(items).on_activate("open").into(),
+            KeyHints::new([("enter", "open"), ("q", "close")]).into(),
+        ])
+        .into()
 }
 
 /// One document (README or changelog entry) with a back hint.
-pub(crate) fn doc_spec(markdown: &str) -> Value {
-    json!({"t": "stack", "direction": "vertical", "children": [
-        {"t": "markdown", "value": markdown},
-        {"t": "keyHints", "hints": [{"keys": "b", "label": "back"}, {"keys": "q", "label": "close"}]},
-    ]})
+pub(crate) fn doc_spec(markdown: &str) -> Node {
+    Layout::default()
+        .children([
+            Markdown::new(markdown).into(),
+            KeyHints::new([("b", "back"), ("q", "close")]).into(),
+        ])
+        .into()
 }
 
 /// Changelog version list (unipi `renderChangelogOverlay`; the `/changelog` hidden runner).
-pub(crate) fn changelog_list_spec(entries: &[crate::changelog::Entry]) -> Value {
+pub(crate) fn changelog_list_spec(entries: &[crate::changelog::Entry]) -> Node {
     if entries.is_empty() {
-        return json!({"t": "empty", "message": "No changelog found yet — check from Settings → About once online."});
+        return Empty::new()
+            .message("No changelog found yet — check from Settings → About once online.")
+            .into();
     }
-    let items: Vec<Value> = entries
-        .iter()
-        .enumerate()
-        .map(|(i, e)| {
-            let count: usize = e.sections.iter().map(|(_, items)| items.len()).sum();
-            let sections: Vec<&str> = e.sections.iter().map(|(s, _)| s.as_str()).collect();
-            json!({
-                "id": i.to_string(),
-                "label": e.version,
-                "detail": if e.date.is_empty() { sections.join(", ") } else { format!("{} · {}", e.date, sections.join(", ")) },
-                "badge": count.to_string(),
-            })
-        })
-        .collect();
-    json!({"t": "stack", "direction": "vertical", "children": [
-        {"t": "list", "items": items, "selectable": "open"},
-        {"t": "keyHints", "hints": [{"keys": "enter", "label": "open"}, {"keys": "q", "label": "close"}]},
-    ]})
+    let items = entries.iter().enumerate().map(|(i, e)| {
+        let count: usize = e.sections.iter().map(|(_, items)| items.len()).sum();
+        let sections: Vec<&str> = e.sections.iter().map(|(s, _)| s.as_str()).collect();
+        ListItem::new(e.version.clone())
+            .key(i.to_string())
+            .detail(Line::from(if e.date.is_empty() {
+                sections.join(", ")
+            } else {
+                format!("{} · {}", e.date, sections.join(", "))
+            }))
+            .badge(Line::from(count.to_string()))
+    });
+    Layout::default()
+        .children([
+            List::new(items).on_activate("open").into(),
+            KeyHints::new([("enter", "open"), ("q", "close")]).into(),
+        ])
+        .into()
 }
 
+/// Panel id of the update screen.
+pub(crate) const PANEL_UPDATE: &str = "unipi.updater/update";
+
 /// Browser panel shell.
-pub(crate) fn browser_panel(id: &str, title: &str, spec: &Value) -> Value {
-    json!({
-        "panelId": format!("{EXTENSION_ID}/{id}"),
-        "placement": "overlay",
-        "title": title,
-        "spec": spec,
-        "keys": [{"key": "b", "actionId": "back", "label": "Back"}],
-        "focus": true,
-        "closeOnEscape": true,
-    })
+pub(crate) fn browser_panel(id: &str, title: &str, spec: Node) -> ui::Panel {
+    ui::Panel::new(format!("{EXTENSION_ID}/{id}"))
+        .placement(Placement::Overlay)
+        .title(title)
+        .spec(spec)
+        .keys([key("b", "back", "Back")])
+        .focus(true)
+        .close_on_escape(true)
 }
 
 /// Info-screen group (unipi `infoRegistry.registerGroup({id: "updater"})`).
@@ -273,13 +336,12 @@ mod tests {
     #[test]
     fn update_panel_shape() {
         let r = CheckResult::new("1.1.0", "1.0.0", "latest", "latest");
-        let p = update_panel(&r, "## 1.1.0\n\n### Added\n- x");
-        assert_eq!(p["placement"], "overlay");
-        assert_eq!(p["keys"][0]["actionId"], "how");
-        let s = p["spec"].to_string();
-        assert!(s.contains("\"markdown\"") && s.contains("1.1.0"));
-        let empty = update_panel(&r, "");
-        assert!(empty["spec"].to_string().contains("No changelog"));
+        let s = serde_json::to_string(&update_spec(&r, "## 1.1.0\n\n### Added\n- x"))
+            .unwrap_or_default();
+        assert!(s.contains("\"Markdown\"") && s.contains("1.1.0"));
+        assert!(s.contains("\"action\":\"how\""));
+        let empty = serde_json::to_string(&update_spec(&r, "")).unwrap_or_default();
+        assert!(empty.contains("No changelog"));
     }
 
     /// GA-19: the hidden `/changelog` runner's version list.
@@ -291,12 +353,9 @@ mod tests {
             sections: vec![("Added".into(), vec!["x".into()])],
             body: "## 1.1.0".into(),
         };
-        let spec = changelog_list_spec(&[e]);
-        assert!(
-            spec.to_string().contains("\"selectable\":\"open\"")
-                && spec.to_string().contains("1.1.0")
-        );
-        let empty = changelog_list_spec(&[]);
+        let spec = serde_json::to_string(&changelog_list_spec(&[e])).unwrap_or_default();
+        assert!(spec.contains("\"onActivate\":\"open\"") && spec.contains("1.1.0"));
+        let empty: Value = serde_json::to_value(changelog_list_spec(&[])).unwrap_or_default();
         assert!(
             empty["message"]
                 .as_str()
