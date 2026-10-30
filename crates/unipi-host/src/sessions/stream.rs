@@ -409,14 +409,6 @@ async fn is_busy(backend: &Arc<dyn SessionBackend>) -> bool {
     }
 }
 
-/// One event of a session stream before it is numbered (the client's `SessionCmd`).
-pub struct SessionCommand {
-    /// Correlation id, echoed in the reply.
-    pub id: Option<Value>,
-    /// The command.
-    pub command: RpcCommand,
-}
-
 /// The host's session streams: the hub plus one [`Feed`] per session id (§7.4).
 pub struct SessionService {
     hub: Arc<SessionHub>,
