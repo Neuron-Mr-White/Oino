@@ -6,8 +6,9 @@
 //!  └ Last book: Dune
 //! ```
 
+use oino_extension::ui::widgets::prelude::*;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::questions::{Answer, AskQuestion, answer_summary};
 
@@ -95,33 +96,30 @@ fn status_row(d: &Details) -> Option<(&'static str, &'static str)> {
 #[must_use]
 pub fn render_result(d: &Details) -> Value {
     if d.questions.is_empty() {
-        return json!({"t": "empty"});
+        return value(Empty::new());
     }
     let single = d.questions.len() == 1;
-    let title: Value = if single {
-        json!(
-            d.questions[0]
-                .question
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-        )
-    } else {
-        json!([{"text": d.questions.len().to_string(), "dim": true}, {"text": " questions"}])
-    };
     let failed = matches!(
         d.outcome,
         Outcome::Cancelled | Outcome::Clarify | Outcome::Unavailable
     );
-    let bullet = if failed { "error" } else { "success" };
+    let bullet = if failed { Color::Error } else { Color::Success };
     let mut head = vec![
-        json!({"text": " "}),
-        json!({"text": "●", "tone": bullet}),
-        json!({"text": " Asked user "}),
+        Span::from(" "),
+        Span::from("●").fg(bullet),
+        Span::from(" Asked user "),
     ];
-    match title {
-        Value::Array(spans) => head.extend(spans),
-        other => head.push(json!({"text": other})),
+    if single {
+        head.push(Span::from(
+            d.questions[0]
+                .question
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        ));
+    } else {
+        head.push(Span::from(d.questions.len().to_string()).dim());
+        head.push(Span::from(" questions"));
     }
     let rows: Vec<(String, &str)> = match status_row(d) {
         Some((text, tone)) => vec![(text.to_owned(), tone)],
@@ -144,14 +142,22 @@ pub fn render_result(d: &Details) -> Value {
             .collect(),
     };
     let n = rows.len();
-    let mut lines = vec![json!({"t": "text", "value": head, "wrap": false})];
+    let mut lines: Vec<Node> = vec![
+        Paragraph::new(Line::from(head))
+            .wrap(Wrap::Disabled(false))
+            .into(),
+    ];
     for (i, (text, tone)) in rows.into_iter().enumerate() {
         let rail = if i + 1 == n { "└" } else { "│" };
-        lines.push(json!({"t": "text", "wrap": false, "value": [
-            {"text": " "}, {"text": rail, "tone": "muted"}, {"text": " "}, {"text": text, "tone": tone},
-        ]}));
+        let line = Line::from(vec![
+            Span::from(" "),
+            Span::from(rail).fg(Color::Muted),
+            Span::from(" "),
+            Span::from(text).fg(Color::parse(tone)),
+        ]);
+        lines.push(Paragraph::new(line).wrap(Wrap::Disabled(false)).into());
     }
-    json!({"t": "stack", "direction": "vertical", "gap": 0, "children": lines})
+    value(Layout::default().children(lines))
 }
 
 /// Compact rows for the simple density (unipi `askRows`).
@@ -189,22 +195,33 @@ pub fn render_request(request: &Value) -> Option<Value> {
         .and_then(|d| serde_json::from_value::<Details>(d.clone()).ok())
     else {
         // The call itself renders as nothing (unipi `renderCall` = empty text).
-        return Some(json!({"t": "text", "value": ""}));
+        return Some(value(Paragraph::new("")));
     };
     if request.get("density").and_then(Value::as_str) == Some("simple") {
         let rows = ask_rows(&details);
-        return Some(
-            json!({"t": "stack", "direction": "vertical", "gap": 0, "children":
-            rows.into_iter().map(|r| json!({"t": "text", "value": [{"text": r, "tone": "muted"}], "wrap": false})).collect::<Vec<_>>()}),
-        );
+        let lines: Vec<Node> = rows
+            .into_iter()
+            .map(|r| {
+                Paragraph::new(Line::from(Span::from(r).fg(Color::Muted)))
+                    .wrap(Wrap::Disabled(false))
+                    .into()
+            })
+            .collect();
+        return Some(value(Layout::default().children(lines)));
     }
     Some(render_result(&details))
+}
+
+/// A built node as the wire JSON the renderer callback returns.
+fn value(node: impl Into<Node>) -> Value {
+    serde_json::to_value(node.into()).unwrap_or(Value::Null)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::questions::prepare_args;
+    use serde_json::json;
 
     fn plain(node: &Value) -> String {
         node["children"]
@@ -212,11 +229,16 @@ mod tests {
             .into_iter()
             .flatten()
             .map(|line| {
-                line["value"]
+                line["text"]
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .filter_map(|s| s["text"].as_str())
+                    .flat_map(|l| l.as_array().into_iter().flatten())
+                    .filter_map(|s| {
+                        s.as_str()
+                            .map(ToOwned::to_owned)
+                            .or_else(|| s["content"].as_str().map(ToOwned::to_owned))
+                    })
                     .collect::<String>()
             })
             .collect::<Vec<_>>()
@@ -312,7 +334,7 @@ mod tests {
         )
         .unwrap_or_default();
         assert_eq!(
-            simple["children"][0]["value"][0]["text"],
+            simple["children"][0]["text"][0][0]["content"],
             "   Canceled by the user"
         );
         let full =
@@ -321,7 +343,7 @@ mod tests {
         assert!(plain(&full).contains("Canceled by the user"));
         assert_eq!(
             render_request(&json!({"data": {"toolCall": {}}})),
-            Some(json!({"t": "text", "value": ""}))
+            Some(json!({"t": "Paragraph", "text": ""}))
         );
     }
 }
