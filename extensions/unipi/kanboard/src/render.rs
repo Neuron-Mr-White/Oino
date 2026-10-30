@@ -2,8 +2,8 @@
 //! bar (unipi `commands.ts` show renderer, `badges.ts`, `notice-buffer.ts`, `progress.ts` +
 //! core `progress.ts`). Plain text stays the stored content; renderers return OUS nodes.
 
+use oino_extension::ui::widgets::prelude::*;
 use serde_json::{Value, json};
-use unipi_kit::ous;
 
 use crate::shapes::Task;
 use crate::shell::invocations;
@@ -214,7 +214,7 @@ pub fn show_plain(project: &str, tasks: &[Task], all: bool, filter: Option<&str>
     lines.join("\n")
 }
 
-/// OUS rendering of the show message (`details = {project, tasks, all, lane}`). Frontends
+/// v2 rendering of the show message (`details = {project, tasks, all, lane}`). Frontends
 /// truncate rows to the width (unipi's width budget is a frontend concern).
 #[must_use]
 pub fn show_node(details: &Value) -> Option<Value> {
@@ -229,35 +229,48 @@ pub fn show_node(details: &Value) -> Option<Value> {
         .into_iter()
         .filter(|t| filter.is_none_or(|f| t.status == f))
         .collect();
-    let mut children = vec![ous::text_nowrap(vec![
-        json!({"text": format!("{project} · {} tasks", tasks.len()), "bold": true}),
-    ])];
+    let mut children: Vec<Node> = vec![
+        line(vec![
+            Span::from(format!("{project} · {} tasks", tasks.len())).bold(),
+        ])
+        .into(),
+    ];
     for (id, label) in show_lanes(all, filter) {
         let lane: Vec<Task> = tasks.iter().filter(|t| t.status == id).cloned().collect();
         if lane.is_empty() {
-            children.push(ous::text_nowrap(vec![ous::dim(&format!(
-                "  {label} — empty"
-            ))]));
+            children.push(line(vec![Span::from(format!("  {label} — empty")).dim()]).into());
             continue;
         }
-        children.push(ous::text_nowrap(vec![ous::span(label, Some("accent"))]));
+        children.push(line(vec![Span::from(label).fg(Color::Accent)]).into());
         for row in lane_rows(&lane, id) {
             let mut spans = vec![
-                json!({"text": format!("  {}{}", row.branch, row.number.map(|n| format!("{n} ")).unwrap_or_default())}),
-                ous::span(&row.id, Some("muted")),
-                json!({"text": format!(" {} {}", row.prio, row.title)}),
+                Span::from(format!(
+                    "  {}{}",
+                    row.branch,
+                    row.number.map(|n| format!("{n} ")).unwrap_or_default()
+                )),
+                Span::from(row.id.as_str()).fg(Color::Muted),
+                Span::from(format!(" {} {}", row.prio, row.title)),
             ];
             if let Some(extra) = row.extra {
                 spans.push(if row.tone == Some("error") {
-                    ous::span(&format!("  {extra}"), Some("error"))
+                    Span::from(format!("  {extra}")).fg(Color::Error)
                 } else {
-                    ous::dim(&format!("  {extra}"))
+                    Span::from(format!("  {extra}")).dim()
                 });
             }
-            children.push(ous::text_nowrap(spans));
+            children.push(line(spans).into());
         }
     }
-    Some(ous::stack("vertical", 0, &children))
+    Some(
+        serde_json::to_value(Node::from(Layout::default().children(children)))
+            .unwrap_or(Value::Null),
+    )
+}
+
+/// A nowrap paragraph from spans.
+fn line(spans: Vec<Span>) -> Paragraph {
+    Paragraph::new(Line::from(spans)).wrap(Wrap::Disabled(false))
 }
 
 // ── badges ──────────────────────────────────────────────────────────────
@@ -340,7 +353,7 @@ pub fn badge_text(kind: &str, id: &str, text: Option<&str>) -> String {
     }
 }
 
-/// OUS for a badge entry.
+/// v2 node for a badge entry.
 #[must_use]
 pub fn badge_node(data: &Value) -> Option<Value> {
     let id = data.get("id")?.as_str()?;
@@ -349,24 +362,30 @@ pub fn badge_node(data: &Value) -> Option<Value> {
         .and_then(Value::as_str)
         .unwrap_or("started");
     let tone = match kind {
-        "started" => "accent",
-        "finished" => "success",
-        _ => "warning",
+        "started" => Color::Accent,
+        "finished" => Color::Success,
+        _ => Color::Warning,
     };
     let text = badge_text(kind, id, data.get("text").and_then(Value::as_str));
-    Some(ous::text_nowrap(vec![ous::bold(&text, tone)]))
+    Some(
+        serde_json::to_value(Node::from(line(vec![Span::from(text).fg(tone).bold()])))
+            .unwrap_or(Value::Null),
+    )
 }
 
-/// OUS for a notice entry (`{text, level}`).
+/// v2 node for a notice entry (`{text, level}`).
 #[must_use]
 pub fn notice_node(data: &Value) -> Option<Value> {
     let text = data.get("text")?.as_str()?;
     let tone = if data.get("level").and_then(Value::as_str) == Some("warning") {
-        "warning"
+        Color::Warning
     } else {
-        "muted"
+        Color::Muted
     };
-    Some(ous::text(vec![ous::span(text, Some(tone))]))
+    Some(
+        serde_json::to_value(Node::from(line(vec![Span::from(text).fg(tone)])))
+            .unwrap_or(Value::Null),
+    )
 }
 
 // ── progress ────────────────────────────────────────────────────────────
@@ -414,13 +433,13 @@ pub fn progress_bar(done: u64, active: u64, total: u64, width: u64) -> String {
     format!("{}{}{}", rep("█", solid), rep("▒", shade), rep("░", light))
 }
 
-/// OUS for a `unipi-progress` entry (core `progressLines`).
+/// v2 node for a `unipi-progress` entry (core `progressLines`).
 #[must_use]
 pub fn progress_node(d: &Value) -> Option<Value> {
     let label = d.get("label")?.as_str()?;
     let u = |k: &str| d.get(k).and_then(Value::as_u64).unwrap_or(0);
     let (done, active, total) = (u("done"), u("active"), u("total"));
-    let tone = d.get("color").and_then(Value::as_str).unwrap_or("accent");
+    let tone = Color::parse(d.get("color").and_then(Value::as_str).unwrap_or("accent"));
     let count = if let Some(unit) = d.get("unit").and_then(Value::as_str) {
         format!("{done}/{total} {unit}")
     } else {
@@ -433,26 +452,34 @@ pub fn progress_node(d: &Value) -> Option<Value> {
         format!("{est}{pct}%")
     };
     let mut spans = vec![
-        ous::span(
-            d.get("icon").and_then(Value::as_str).unwrap_or("◎"),
-            Some(tone),
-        ),
-        json!({"text": format!(" {label}"), "bold": true}),
-        json!({"text": "  "}),
-        ous::span(&progress_bar(done, active, total, 20), Some(tone)),
-        json!({"text": format!("  {count}")}),
+        Span::from(
+            d.get("icon")
+                .and_then(Value::as_str)
+                .unwrap_or("◎")
+                .to_owned(),
+        )
+        .fg(tone.clone()),
+        Span::from(format!(" {label}")).bold(),
+        Span::from("  "),
+        Span::from(progress_bar(done, active, total, 20)).fg(tone),
+        Span::from(format!("  {count}")),
     ];
     if let Some(detail) = d.get("detail").and_then(Value::as_str) {
-        spans.push(ous::dim(&format!("  {detail}")));
+        spans.push(Span::from(format!("  {detail}")).dim());
     }
-    let mut children = vec![ous::text_nowrap(spans)];
+    let mut children: Vec<Node> = vec![line(spans).into()];
     if let Some(summary) = d.get("summary").and_then(Value::as_str) {
-        children.push(ous::text(vec![ous::span(
-            &format!("  {}", summary.trim()),
-            Some("muted"),
-        )]));
+        children.push(
+            line(vec![
+                Span::from(format!("  {}", summary.trim())).fg(Color::Muted),
+            ])
+            .into(),
+        );
     }
-    Some(ous::stack("vertical", 0, &children))
+    Some(
+        serde_json::to_value(Node::from(Layout::default().children(children)))
+            .unwrap_or(Value::Null),
+    )
 }
 
 #[cfg(test)]
@@ -515,7 +542,8 @@ mod tests {
     fn show_node_renders_lanes() {
         let details = json!({"project": "p", "tasks": [t("A-1", "todo")], "all": false});
         let node = show_node(&details).unwrap();
-        assert_eq!(node["t"], "stack");
+        assert_eq!(node["t"], "Layout");
+        assert_eq!(node["children"][0]["text"][0][0]["content"], "p · 1 tasks");
         assert_eq!(node["children"].as_array().unwrap().len(), 1 + 5 + 2);
         assert!(show_node(&json!({})).is_none());
     }
@@ -551,11 +579,12 @@ mod tests {
                 .is_none()
         );
         assert_eq!(
-            badge_node(&b.to_json()).unwrap()["value"][0]["tone"],
+            badge_node(&b.to_json()).unwrap()["text"][0][0]["style"]["fg"],
             "warning"
         );
         assert_eq!(
-            notice_node(&json!({"text": "x", "level": "warning"})).unwrap()["value"][0]["tone"],
+            notice_node(&json!({"text": "x", "level": "warning"})).unwrap()["text"][0][0]["style"]
+                ["fg"],
             "warning"
         );
     }

@@ -334,7 +334,7 @@ async fn board_flow_guard_and_env() {
         .render(RawJson::from(json!({"target": "customMessage", "key": "unipi:kanboard-show", "data": msg["sendMessage"]})), env.cx(CallKind::Render))
         .unwrap()
         .to_value();
-    assert_eq!(node["t"], "stack");
+    assert_eq!(node["t"], "Layout");
 
     // Help is display-only and filtered from the context.
     env.command(&ext, "kanboard", "").await;
