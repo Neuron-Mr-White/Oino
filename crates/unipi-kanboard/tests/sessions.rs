@@ -23,9 +23,9 @@
 mod common;
 
 use common::{Fixture, cli, id_of, task_from};
-use oino_kanboard::commands::{self, Common, EditArgs, StartArgs};
-use oino_kanboard::model::{Actor, ChainGate, Priority, Status};
-use oino_kanboard::store::Project;
+use unipi_kanboard::commands::{self, Common, EditArgs, StartArgs};
+use unipi_kanboard::model::{Actor, ChainGate, Priority, Status};
+use unipi_kanboard::store::Project;
 use serde_json::Value;
 
 /// `start <ID>` for `session` (pid owns the claim).
@@ -34,7 +34,7 @@ fn start_id(
     session: &str,
     pid: u32,
     id: &str,
-) -> Result<Value, oino_kanboard::error::Error> {
+) -> Result<Value, unipi_kanboard::error::Error> {
     fixture.try_start(id, session, pid)
 }
 
@@ -379,7 +379,7 @@ fn activity_entries_carry_the_session_tag() {
         "FIX-901",
         "---\nid: FIX-901\ntitle: old\nstatus: todo\npriority: none\norder: 1000\ndeps: []\nlabels: []\ncreated: 2026-09-24T10:00:00Z\nupdated: 2026-09-24T10:00:00Z\nrun:\n---\n\nB.\n\n## Activity\n- 2026-09-24T10:00:00Z [agent] created\n",
     );
-    let (parsed, _) = oino_kanboard::format::parse(
+    let (parsed, _) = unipi_kanboard::format::parse(
         &legacy.file_name().unwrap().to_string_lossy(),
         &std::fs::read_to_string(&legacy).unwrap(),
     );
@@ -544,7 +544,7 @@ fn add_attach_embeds_markdown_for_bare_and_wrapped_paths() {
     let id = id_of(&value);
     let listed = task_from(&value);
     assert_eq!(listed.id, id);
-    let attachments = oino_kanboard::attachments::list(&fixture.layout, &fixture.project.slug, &id);
+    let attachments = unipi_kanboard::attachments::list(&fixture.layout, &fixture.project.slug, &id);
     assert_eq!(attachments.len(), 1);
 }
 
@@ -565,7 +565,7 @@ fn max_sessions_env_limits_other_sessions() {
             "--pid",
             &pid.to_string(),
         ],
-        &[("OINO_KANBOARD_MAX_SESSIONS", "1")],
+        &[("UNIPI_KANBOARD_MAX_SESSIONS", "1")],
     );
     assert!(
         output.status.success(),
@@ -584,7 +584,7 @@ fn max_sessions_env_limits_other_sessions() {
             "--pid",
             &pid.to_string(),
         ],
-        &[("OINO_KANBOARD_MAX_SESSIONS", "1")],
+        &[("UNIPI_KANBOARD_MAX_SESSIONS", "1")],
     );
     assert!(!output.status.success());
     assert!(
@@ -623,11 +623,11 @@ fn in_review_to_archived_is_user_only_and_bulk_lane_works() {
 
     // The rule table allows user in_review → archived.
     assert!(
-        oino_kanboard::transitions::allowed_targets(Status::InReview, Actor::User)
+        unipi_kanboard::transitions::allowed_targets(Status::InReview, Actor::User)
             .contains(&Status::Archived)
     );
     assert!(
-        !oino_kanboard::transitions::allowed_targets(Status::InReview, Actor::Agent)
+        !unipi_kanboard::transitions::allowed_targets(Status::InReview, Actor::Agent)
             .contains(&Status::Archived)
     );
 
@@ -642,7 +642,7 @@ fn in_review_to_archived_is_user_only_and_bulk_lane_works() {
     let archived: Vec<String> = serde_json::from_value(value["archived"].clone()).unwrap();
     assert_eq!(archived.len(), 2, "{value}");
     let board =
-        oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+        unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
     assert_eq!(board.get(&a.id).unwrap().status, Status::Archived);
     let task = board.get(&a.id).unwrap();
     assert!(

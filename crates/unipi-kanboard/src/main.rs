@@ -1,4 +1,4 @@
-//! `oino-kanboard` entry point — parse, dispatch, print.
+//! `unipi-kanboard` entry point — parse, dispatch, print.
 
 #![allow(
     clippy::print_stdout,
@@ -8,9 +8,9 @@
 
 use clap::Parser;
 
-use oino_kanboard::cli::Cli;
-use oino_kanboard::error::Error;
-use oino_kanboard::run;
+use unipi_kanboard::cli::Cli;
+use unipi_kanboard::error::Error;
+use unipi_kanboard::run;
 
 fn main() {
     let cli = Cli::parse();
@@ -20,7 +20,7 @@ fn main() {
                 match serde_json::to_string_pretty(&payload) {
                     Ok(text) => println!("{text}"),
                     Err(err) => {
-                        eprintln!("oino-kanboard: cannot serialise output: {err}");
+                        eprintln!("unipi-kanboard: cannot serialise output: {err}");
                         std::process::exit(1);
                     }
                 }
@@ -51,6 +51,6 @@ fn report(cli: &Cli, err: &Error) {
         });
         eprintln!("{payload}");
     } else {
-        eprintln!("oino-kanboard: {err}");
+        eprintln!("unipi-kanboard: {err}");
     }
 }

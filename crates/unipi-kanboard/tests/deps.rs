@@ -21,12 +21,12 @@
 mod common;
 
 use common::Fixture;
-use oino_kanboard::model::{ChainGate, Priority, Status};
-use oino_kanboard::{commands, deps};
+use unipi_kanboard::model::{ChainGate, Priority, Status};
+use unipi_kanboard::{commands, deps};
 
 fn by_id(
-    tasks: &[oino_kanboard::model::Task],
-) -> impl Fn(&str) -> Option<oino_kanboard::model::Task> + '_ {
+    tasks: &[unipi_kanboard::model::Task],
+) -> impl Fn(&str) -> Option<unipi_kanboard::model::Task> + '_ {
     move |id: &str| tasks.iter().find(|task| task.id == id).cloned()
 }
 
@@ -243,7 +243,7 @@ fn a_missing_dependency_blocks_readiness() {
         .unwrap();
     stored.deps = vec!["FIX-404".into()];
     let board =
-        oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+        unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
     board.save(&stored).expect("save");
 
     let tasks = fixture.tasks();
@@ -410,7 +410,7 @@ fn find_cycles_detects_a_closed_loop() {
     // Write the back-edge by hand (the CLI refuses it).
     let mut stored = fixture.tasks().into_iter().find(|t| t.id == a.id).unwrap();
     stored.deps = vec![b.id.clone()];
-    oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone())
+    unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone())
         .unwrap()
         .save(&stored)
         .unwrap();

@@ -1,6 +1,6 @@
-# oino-kanboard
+# unipi-kanboard
 
-The Rust binary `oino-kanboard` holds the Kanboard task files, the transition rules and the
+The Rust binary `unipi-kanboard` holds the Kanboard task files, the transition rules and the
 board daemon (JSON API + SSE). It is the only program that writes board files. The Oino
 extension `unipi.kanboard` (`extensions/unipi/kanboard`) drives it; ported from unipi
 `crates/kanboard` (differences: `docs/dev/v1/deviations/unipi-kanboard.md`).
@@ -8,9 +8,9 @@ extension `unipi.kanboard` (`extensions/unipi/kanboard`) drives it; ported from 
 ## Build and test
 
 ```bash
-cargo build -p oino-kanboard
-cargo test -p oino-kanboard
-cargo clippy -p oino-kanboard --all-targets -- -D warnings
+cargo build -p unipi-kanboard
+cargo test -p unipi-kanboard
+cargo clippy -p unipi-kanboard --all-targets -- -D warnings
 ```
 
 Global settings the board panel edits live in Oino's `<agent dir>/settings.json` under
@@ -19,7 +19,7 @@ Global settings the board panel edits live in Oino's `<agent dir>/settings.json`
 
 ## Storage
 
-The root is `<agent dir>/state/unipi.kanboard/` (agent dir: `$OINO_AGENT_DIR`, else `~/.oino`). `OINO_KANBOARD_HOME` overrides it.
+The root is `<agent dir>/state/unipi.kanboard/` (agent dir: `$OINO_AGENT_DIR`, else `~/.oino`). `UNIPI_KANBOARD_HOME` overrides it.
 
 ```
 daemon.json  daemon.lock  token  settings.json
@@ -58,11 +58,11 @@ serve [--host A] [--port N] [--idle-min N] [--require-auth] [--keep-token]   sta
 ```text
 ```
 
-Global flags: `--project` (else `OINO_KANBOARD_PROJECT`, else the project of the git root), `--actor user|agent|system` (else `OINO_KANBOARD_ACTOR`, else `user`), `--session` (else `OINO_KANBOARD_SESSION`), `--gate in_review|done` and `--json`.
+Global flags: `--project` (else `UNIPI_KANBOARD_PROJECT`, else the project of the git root), `--actor user|agent|system` (else `UNIPI_KANBOARD_ACTOR`, else `user`), `--session` (else `UNIPI_KANBOARD_SESSION`), `--gate in_review|done` and `--json`.
 
 Exit codes: `0` success, `1` rule or validation error, `2` usage error. With `--json`, errors go to stderr as `{"ok": false, "kind": "rule|usage|not_found|io", "error": "…"}`. The message names the rule, for example `in_review → todo requires --comment (rework note)`.
 
-`settings set` and `rotate-token` refuse the `agent` actor. `OINO_KANBOARD_MAX_SESSIONS` (default 2) limits the sessions that can hold In Progress tasks in one project.
+`settings set` and `rotate-token` refuse the `agent` actor. `UNIPI_KANBOARD_MAX_SESSIONS` (default 2) limits the sessions that can hold In Progress tasks in one project.
 
 ## Transitions
 

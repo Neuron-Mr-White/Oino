@@ -1,4 +1,4 @@
-//! The kanboard bridge (round-5 #7): runs an `oino-kanboard` argv **in the
+//! The kanboard bridge (round-5 #7): runs an `unipi-kanboard` argv **in the
 //! host process** through `oino:extension/kanboard.exec` — no binary, no
 //! daemon, no HTTP port; writes still serialise on the library's file locks
 //! (the CLI binary and the agent's own calls share them). `binary` is kept in
@@ -73,7 +73,7 @@ pub fn interpret(
                 format!("exited with code {code}")
             };
             return Err(CliError {
-                message: format!("oino-kanboard {why}"),
+                message: format!("unipi-kanboard {why}"),
                 code,
                 kind: "io".into(),
             });
@@ -85,7 +85,7 @@ pub fn interpret(
                 message: payload
                     .get("error")
                     .and_then(Value::as_str)
-                    .unwrap_or("oino-kanboard failed")
+                    .unwrap_or("unipi-kanboard failed")
                     .to_owned(),
                 code,
                 kind: payload
@@ -107,7 +107,7 @@ pub fn interpret(
     }
     serde_json::from_str(out).map_err(|_| CliError {
         message: format!(
-            "unexpected output from oino-kanboard: {}",
+            "unexpected output from unipi-kanboard: {}",
             out.chars().take(200).collect::<String>()
         ),
         code: 1,
@@ -125,7 +125,7 @@ pub fn argv(args: &[String], json: bool) -> Vec<String> {
     out
 }
 
-/// Runs `oino-kanboard args` in the host process. `env` comes on top of the
+/// Runs `unipi-kanboard args` in the host process. `env` comes on top of the
 /// host environment; the actor defaults to `user` (the extension acts as the
 /// user; only the agent's own calls say `agent`). `binary` and `timeout_ms`
 /// are ignored — an in-process call cannot be killed or go missing.
@@ -139,7 +139,7 @@ pub async fn run(
     _timeout_ms: Option<u64>,
 ) -> Result<Value, CliError> {
     let mut vars = std::collections::BTreeMap::from_iter(env.iter().cloned());
-    vars.entry("OINO_KANBOARD_ACTOR".to_owned())
+    vars.entry("UNIPI_KANBOARD_ACTOR".to_owned())
         .or_insert_with(|| "user".to_owned());
     let request = oino_extension::kanboard::Request {
         argv: argv(args, json),
@@ -154,7 +154,7 @@ pub async fn run(
             message: payload
                 .get("error")
                 .and_then(Value::as_str)
-                .unwrap_or("oino-kanboard failed")
+                .unwrap_or("unipi-kanboard failed")
                 .to_owned(),
             code: 1,
             kind: payload
@@ -220,7 +220,7 @@ mod tests {
         let e = interpret("", "boom", Some(2), false, true).unwrap_err();
         assert_eq!((e.message.as_str(), e.kind.as_str()), ("boom", "io"));
         let e = interpret("", "", None, true, true).unwrap_err();
-        assert_eq!(e.message, "oino-kanboard timed out");
+        assert_eq!(e.message, "unipi-kanboard timed out");
         let e = interpret("not json", "", Some(0), false, true).unwrap_err();
         assert_eq!(e.kind, "parse");
         assert_eq!(

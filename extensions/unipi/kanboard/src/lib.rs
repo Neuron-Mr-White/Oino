@@ -1,6 +1,6 @@
 //! `unipi.kanboard` — the unipi 3.0.0 kanboard package as an Oino component (unipi-port
-//! §3.16). The board is written only by the native `oino-kanboard` binary (crate
-//! `crates/oino-kanboard`); this component never edits task files.
+//! §3.16). The board is written only by the native `unipi-kanboard` binary (crate
+//! `crates/unipi-kanboard`); this component never edits task files.
 //!
 //! | unipi | here |
 //! |---|---|
@@ -12,7 +12,7 @@
 //! | R1 reminders, badges, notices, progress bar | [`reminders`], [`render`] (+ OUS renderers) |
 //! | in-chat board (message renderer) | [`render::show_node`] |
 //! | web board | [`panel`] (`sidePane`, refreshed from the daemon's SSE) |
-//! | `process.env.UNIPI_KANBOARD_*` for the agent's bash | `tool_call` prepends `export OINO_KANBOARD_SESSION=… PID=… PROJECT=… MAX_SESSIONS=…` to commands that call the binary |
+//! | `process.env.UNIPI_KANBOARD_*` for the agent's bash | `tool_call` prepends `export UNIPI_KANBOARD_SESSION=… PID=… PROJECT=… MAX_SESSIONS=…` to commands that call the binary |
 //! | sticky `KANBOARD_STATUS` | `unipi:kanboard:status` |
 
 #![cfg_attr(
@@ -96,7 +96,7 @@ pub struct Kanboard {
     slugs: RefCell<HashMap<String, String>>,
     /// Last non-empty `--actor agent --project` prefix (survives re-attach gaps).
     last_prefix: RefCell<Option<String>>,
-    /// Running as kanboard's own child (`OINO_KANBOARD_CHILD`, the daemon's summarizer).
+    /// Running as kanboard's own child (`UNIPI_KANBOARD_CHILD`, the daemon's summarizer).
     own_child: Cell<bool>,
     /// This machine's host name (`status.hostname`).
     host_name: RefCell<Option<String>>,
@@ -146,7 +146,7 @@ impl Kanboard {
     }
 
     fn binary(&self) -> String {
-        if let Ok(Some(path)) = host::env("OINO_KANBOARD_BIN")
+        if let Ok(Some(path)) = host::env("UNIPI_KANBOARD_BIN")
             && !path.trim().is_empty()
         {
             return path.trim().to_owned();
@@ -165,18 +165,18 @@ impl Kanboard {
     fn base_env(&self, cx: &Ctx, slug: Option<&str>) -> Vec<(String, String)> {
         let cfg = self.config();
         let mut env = vec![
-            ("OINO_KANBOARD_SESSION".to_owned(), Self::session_tag(cx)),
+            ("UNIPI_KANBOARD_SESSION".to_owned(), Self::session_tag(cx)),
             (
-                "OINO_KANBOARD_MAX_SESSIONS".to_owned(),
+                "UNIPI_KANBOARD_MAX_SESSIONS".to_owned(),
                 cfg.max_sessions.to_string(),
             ),
             (
-                "OINO_KANBOARD_CHAIN_GATE".to_owned(),
+                "UNIPI_KANBOARD_CHAIN_GATE".to_owned(),
                 cfg.chain_gate.as_str().to_owned(),
             ),
         ];
         if let Some(slug) = slug {
-            env.push(("OINO_KANBOARD_PROJECT".to_owned(), slug.to_owned()));
+            env.push(("UNIPI_KANBOARD_PROJECT".to_owned(), slug.to_owned()));
         }
         env
     }
@@ -589,7 +589,7 @@ impl Kanboard {
                         && !problems.is_empty()
                     {
                         lines.push(format!(
-                            "⚠ {} task file(s) need repair — oino-kanboard validate --fix",
+                            "⚠ {} task file(s) need repair — unipi-kanboard validate --fix",
                             problems.len()
                         ));
                     }
@@ -637,7 +637,7 @@ impl Kanboard {
         };
         let mut lines = vec!["kanboard doctor".to_owned()];
         let attached = self.attach(cx).await;
-        let source = if host::env("OINO_KANBOARD_BIN").ok().flatten().is_some() {
+        let source = if host::env("UNIPI_KANBOARD_BIN").ok().flatten().is_some() {
             "env"
         } else {
             "install"
@@ -1008,12 +1008,12 @@ impl Kanboard {
         }
         // The agent's own calls carry the session identity (unipi: process env).
         let mut vars = vec![
-            ("OINO_KANBOARD_SESSION", tag),
-            ("OINO_KANBOARD_PID", process::self_pid().to_string()),
-            ("OINO_KANBOARD_MAX_SESSIONS", cfg.max_sessions.to_string()),
+            ("UNIPI_KANBOARD_SESSION", tag),
+            ("UNIPI_KANBOARD_PID", process::self_pid().to_string()),
+            ("UNIPI_KANBOARD_MAX_SESSIONS", cfg.max_sessions.to_string()),
         ];
         if let Some(slug) = slug {
-            vars.push(("OINO_KANBOARD_PROJECT", slug));
+            vars.push(("UNIPI_KANBOARD_PROJECT", slug));
         }
         let mut input = input;
         input["command"] = json!(format!("{}{command}", env_prefix(&tool, &vars)));
@@ -1293,7 +1293,7 @@ impl Kanboard {
         };
         let slug = s(project, "slug");
         log.push(format!(
-            "kanboard: project {slug}: rebind root {} → {} via oino-kanboard project rebind",
+            "kanboard: project {slug}: rebind root {} → {} via unipi-kanboard project rebind",
             req.old_root, req.new_root
         ));
         if req.dry_run {
@@ -1513,7 +1513,7 @@ impl Extension for Kanboard {
             Ok(())
         });
         self.own_child.set(
-            host::env("OINO_KANBOARD_CHILD")
+            host::env("UNIPI_KANBOARD_CHILD")
                 .ok()
                 .flatten()
                 .is_some_and(|v| !v.is_empty()),
@@ -1555,7 +1555,7 @@ mod tests {
             "$env:A='x''y'; $env:B='2'; "
         );
         // The rewritten command still parses as the same invocation.
-        let cmd = format!("{}oino-kanboard start A-1", env_prefix("bash", &vars));
+        let cmd = format!("{}unipi-kanboard start A-1", env_prefix("bash", &vars));
         assert_eq!(shell::invocations(&cmd)[0].sub, "start");
     }
 

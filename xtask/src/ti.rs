@@ -8,7 +8,7 @@
 //! | Command | Does |
 //! |---|---|
 //! | `sync` | `HEAD` as a git bundle + `extensions/dist` → `ti:~/oino-test/oino` |
-//! | `build [--jobs 6]` | `cargo build --release` of `oino` + `oino-kanboard` there |
+//! | `build [--jobs 6]` | `cargo build --release` of `oino` + `unipi-kanboard` there |
 
 use std::time::{Duration, Instant};
 
@@ -52,7 +52,7 @@ fn build(jobs: u32, timeout: Duration) -> Result<()> {
          cd ~/{CODE_DIR} || exit 1\n\
          rm -f ~/{RUN_DIR}/build.exit\n\
          echo $$ > ~/{RUN_DIR}/build.pid\n\
-         {{ nice -n 10 cargo build --release -j {jobs} -p oino -p oino-kanboard; }} \
+         {{ nice -n 10 cargo build --release -j {jobs} -p oino -p unipi-kanboard; }} \
 > ~/{RUN_DIR}/build.log 2>&1\n\
          echo $? > ~/{RUN_DIR}/build.exit\n"
     );

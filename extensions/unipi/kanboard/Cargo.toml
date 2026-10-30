@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.kanboard: per-project task board over the oino-kanboard binary (commands, write guard, settle monitor, reminders, badges, board panel)"
+description = "unipi.kanboard: per-project task board over the unipi-kanboard binary (commands, write guard, settle monitor, reminders, badges, board panel)"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

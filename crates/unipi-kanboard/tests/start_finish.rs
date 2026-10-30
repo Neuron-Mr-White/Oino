@@ -23,8 +23,8 @@
 mod common;
 
 use common::{Fixture, cli_with_env};
-use oino_kanboard::commands::{self, StartArgs};
-use oino_kanboard::model::{Actor, ChainGate, Priority, RunOwner, Status};
+use unipi_kanboard::commands::{self, StartArgs};
+use unipi_kanboard::model::{Actor, ChainGate, Priority, RunOwner, Status};
 use serde_json::Value;
 
 fn start(
@@ -32,7 +32,7 @@ fn start(
     id: &str,
     session: &str,
     pid: u32,
-) -> oino_kanboard::error::Result<Value> {
+) -> unipi_kanboard::error::Result<Value> {
     let host = commands::hostname();
     commands::start(
         &fixture.layout,
@@ -54,7 +54,7 @@ fn finish(
     id: &str,
     session: &str,
     comment: &str,
-) -> oino_kanboard::error::Result<Value> {
+) -> unipi_kanboard::error::Result<Value> {
     commands::finish(
         &fixture.layout,
         fixture.project.clone(),
@@ -67,7 +67,7 @@ fn finish(
     )
 }
 
-fn stored(fixture: &Fixture, id: &str) -> oino_kanboard::model::Task {
+fn stored(fixture: &Fixture, id: &str) -> unipi_kanboard::model::Task {
     fixture.tasks().into_iter().find(|t| t.id == id).unwrap()
 }
 
@@ -156,7 +156,7 @@ fn a_session_may_start_several_tasks_but_the_session_cap_holds() {
 /// session-cap rules as a fresh todo claim.
 #[test]
 fn start_resumes_a_blocked_task_with_the_same_claim_and_cap_rules() {
-    use oino_kanboard::commands;
+    use unipi_kanboard::commands;
     let fixture = Fixture::new();
     let task = fixture.add_with("work", Status::Todo, Priority::None, &[]);
     start(&fixture, &task.id, "sess-a", alive()).expect("start");
@@ -289,7 +289,7 @@ fn a_dead_agent_claim_is_reaped_back_to_todo() {
     start(&fixture, &task.id, "gone", 999_999).unwrap();
     assert_eq!(
         commands::staleness_of(&stored(&fixture, &task.id)),
-        oino_kanboard::model::Staleness::Stale
+        unipi_kanboard::model::Staleness::Stale
     );
     let reaped = commands::reap(
         &fixture.layout,
@@ -312,15 +312,15 @@ fn cli_start_and_finish_round_trip() {
     let task = fixture.add_with("work", Status::Todo, Priority::None, &[]);
     let pid = alive().to_string();
     let env = [
-        ("OINO_KANBOARD_ACTOR", "agent"),
-        ("OINO_KANBOARD_SESSION", "cli-s"),
+        ("UNIPI_KANBOARD_ACTOR", "agent"),
+        ("UNIPI_KANBOARD_SESSION", "cli-s"),
     ];
 
     // `start` without a session fails loudly.
     let output = cli_with_env(
         &fixture,
         &["start", &task.id],
-        &[("OINO_KANBOARD_ACTOR", "agent")],
+        &[("UNIPI_KANBOARD_ACTOR", "agent")],
     );
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("needs a session"));
@@ -339,15 +339,15 @@ fn cli_start_and_finish_round_trip() {
     assert_eq!(json["status"], "in_progress");
     assert_eq!(json["run"]["session"], "cli-s");
 
-    // `OINO_KANBOARD_PID` names the owner when --pid is absent.
+    // `UNIPI_KANBOARD_PID` names the owner when --pid is absent.
     let other = fixture.add_with("other", Status::Todo, Priority::None, &[]);
     let output = cli_with_env(
         &fixture,
         &["--json", "start", &other.id],
         &[
-            ("OINO_KANBOARD_ACTOR", "agent"),
-            ("OINO_KANBOARD_SESSION", "cli-s"),
-            ("OINO_KANBOARD_PID", &pid),
+            ("UNIPI_KANBOARD_ACTOR", "agent"),
+            ("UNIPI_KANBOARD_SESSION", "cli-s"),
+            ("UNIPI_KANBOARD_PID", &pid),
         ],
     );
     assert!(
@@ -382,9 +382,9 @@ fn finish_and_block_can_attach_evidence_files() {
     let b = fixture.add_with("b", Status::Todo, Priority::None, &[]);
     let pid = alive().to_string();
     let env = [
-        ("OINO_KANBOARD_ACTOR", "agent"),
-        ("OINO_KANBOARD_SESSION", "cli-att"),
-        ("OINO_KANBOARD_PID", pid.as_str()),
+        ("UNIPI_KANBOARD_ACTOR", "agent"),
+        ("UNIPI_KANBOARD_SESSION", "cli-att"),
+        ("UNIPI_KANBOARD_PID", pid.as_str()),
     ];
     let shot = fixture.root().join("after.png");
     std::fs::write(&shot, b"\x89PNG\r\n\x1a\nfake").unwrap();

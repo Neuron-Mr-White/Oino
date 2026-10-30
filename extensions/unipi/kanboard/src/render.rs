@@ -522,7 +522,7 @@ mod tests {
 
     #[test]
     fn badges() {
-        let b = badge_from_tool_call("bash", &json!({"command": "oino-kanboard --actor agent move A-1 blocked --comment 'need creds'"}), false).unwrap();
+        let b = badge_from_tool_call("bash", &json!({"command": "unipi-kanboard --actor agent move A-1 blocked --comment 'need creds'"}), false).unwrap();
         assert_eq!(
             b,
             Badge {
@@ -538,12 +538,12 @@ mod tests {
         assert_eq!(badge_text("started", "A-1", None), "▣ A-1 started");
         assert_eq!(badge_text("finished", "A-1", None), "✓ A-1 → In Review");
         assert!(
-            badge_from_tool_call("bash", &json!({"command": "oino-kanboard start A-1"}), true)
+            badge_from_tool_call("bash", &json!({"command": "unipi-kanboard start A-1"}), true)
                 .is_none()
         );
         assert!(badge_from_tool_call("read", &json!({}), false).is_none());
         assert!(
-            badge_from_tool_call("bash", &json!({"command": "oino-kanboard list"}), false)
+            badge_from_tool_call("bash", &json!({"command": "unipi-kanboard list"}), false)
                 .is_none()
         );
         assert_eq!(

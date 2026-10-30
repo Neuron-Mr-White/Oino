@@ -22,10 +22,10 @@
 mod common;
 
 use common::Fixture;
-use oino_kanboard::commands;
-use oino_kanboard::error::Error;
-use oino_kanboard::model::{Actor, Priority, Staleness, Status};
-use oino_kanboard::transitions::{self, RULES, comment_required, rule_for};
+use unipi_kanboard::commands;
+use unipi_kanboard::error::Error;
+use unipi_kanboard::model::{Actor, Priority, Staleness, Status};
+use unipi_kanboard::transitions::{self, RULES, comment_required, rule_for};
 
 fn allowed(
     from: Status,

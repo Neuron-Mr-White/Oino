@@ -23,14 +23,14 @@
 mod common;
 
 use common::{Fixture, task_from, write_task_file};
-use oino_kanboard::commands;
-use oino_kanboard::model::{Priority, Status, Task};
+use unipi_kanboard::commands;
+use unipi_kanboard::model::{Priority, Status, Task};
 
 fn add(
     fixture: &Fixture,
     title: &str,
     body: Option<&str>,
-) -> Result<serde_json::Value, oino_kanboard::error::Error> {
+) -> Result<serde_json::Value, unipi_kanboard::error::Error> {
     commands::add(
         &fixture.layout,
         fixture.project.clone(),
@@ -166,16 +166,16 @@ fn format_round_trips_an_empty_and_a_missing_title() {
     );
     task.body = "the body carries it".into();
 
-    let text = oino_kanboard::format::render(&task);
+    let text = unipi_kanboard::format::render(&task);
     assert!(
         text.contains("title: \"\""),
         "canonical empty title: {text}"
     );
-    let (parsed, problems) = oino_kanboard::format::parse("FIX-1.md", &text);
+    let (parsed, problems) = unipi_kanboard::format::parse("FIX-1.md", &text);
     assert!(problems.is_empty(), "unexpected problems: {problems:?}");
     let parsed = parsed.expect("task");
     assert_eq!(parsed.title, "");
-    assert_eq!(oino_kanboard::format::render(&parsed), text);
+    assert_eq!(unipi_kanboard::format::render(&parsed), text);
 
     // A hand-written file without a title key parses clean and re-renders
     // with the canonical empty title.
@@ -186,7 +186,7 @@ fn format_round_trips_an_empty_and_a_missing_title() {
         "---\nid: FIX-2\nstatus: backlog\npriority: none\norder: 1000\ndeps: []\nlabels: []\ncreated: 2026-09-24T10:00:00Z\nupdated: 2026-09-24T10:00:00Z\nrun:\n---\n\nbody line\n\n## Activity\n",
     );
     let text = std::fs::read_to_string(&file).unwrap();
-    let (parsed, problems) = oino_kanboard::format::parse("FIX-2.md", &text);
+    let (parsed, problems) = unipi_kanboard::format::parse("FIX-2.md", &text);
     assert!(
         problems.is_empty(),
         "missing title must not be a problem: {problems:?}"

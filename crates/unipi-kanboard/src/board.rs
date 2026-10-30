@@ -177,7 +177,7 @@ impl<'a> Board<'a> {
         let (task, problems) = format::parse(&file, &text);
         if let Some(first) = problems.first() {
             return Err(Error::rule(format!(
-                "{id} is unreadable: {} (line {}); run `oino-kanboard validate --fix`",
+                "{id} is unreadable: {} (line {}); run `unipi-kanboard validate --fix`",
                 first.message, first.line
             )));
         }

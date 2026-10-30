@@ -1,13 +1,13 @@
 ---
 name: kanboard
-description: "Kanboard — the project's deferred-work board. Use when the user asks to note a task for later, to see what is on the board, or to work board tasks (e.g. do UNI-5): `start` a task before working on it and `finish` it with a summary when done; while working a board task: read it with `oino-kanboard show`, add notes, block with a question, or file follow-up work."
+description: "Kanboard — the project's deferred-work board. Use when the user asks to note a task for later, to see what is on the board, or to work board tasks (e.g. do UNI-5): `start` a task before working on it and `finish` it with a summary when done; while working a board task: read it with `unipi-kanboard show`, add notes, block with a question, or file follow-up work."
 ---
 
 # Kanboard
 
 The board is a per-project list of deferred work: backlog, todo, in progress, in
 review, blocked, done, cancelled (and an archive). **The board files are owned by
-the `oino-kanboard` binary** — never edit `task.md` files by hand; every write
+the `unipi-kanboard` binary** — never edit `task.md` files by hand; every write
 goes through the CLI so the format and the transition rules hold.
 
 ## The CLI
@@ -105,7 +105,7 @@ lists them — read the files there directly if you need one.
    once — if the board refuses a `start`, that is why (this cap covers resuming
    a blocked task too). You may
    block only the task your own session is running (`move <ID> blocked` checks
-   `--session`/`OINO_KANBOARD_SESSION` against the claim).
+   `--session`/`UNIPI_KANBOARD_SESSION` against the claim).
 6. **Sidekicks and subagents can read the board but never write it** — every
    write is refused with "board writes are the lead's job". Brief them with the
    task, then update the board yourself from their reports. (The lead session

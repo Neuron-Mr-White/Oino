@@ -4,10 +4,10 @@
 //! The parsing mirrors unipi's regular expressions exactly, including their backtracking
 //! quirks, so a command line is classified the same way it was in unipi.
 
-/// The binary the agent calls (`oino-kanboard`, optionally `.exe`).
-pub const BINARY: &str = "oino-kanboard";
+/// The binary the agent calls (`unipi-kanboard`, optionally `.exe`).
+pub const BINARY: &str = "unipi-kanboard";
 
-/// Every subcommand the CLI understands (`crates/oino-kanboard/src/cli.rs` `Command`,
+/// Every subcommand the CLI understands (`crates/unipi-kanboard/src/cli.rs` `Command`,
 /// kebab-case as clap spells it). Anything else — a typo like `done`, a bare binary with no
 /// subcommand — is the binary's own usage error; the guard neither charges nor blocks it.
 pub const KNOWN_SUBCOMMANDS: &[&str] = &[
@@ -207,7 +207,7 @@ pub fn shell_segments(command: &str) -> Vec<String> {
     out
 }
 
-/// One `oino-kanboard` invocation inside a shell command line.
+/// One `unipi-kanboard` invocation inside a shell command line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Invocation {
     /// First positional after the binary name (`""` when absent).
@@ -236,10 +236,10 @@ pub fn is_binary_token(token: &str) -> bool {
     token.ends_with(BINARY) || token.ends_with(&format!("{BINARY}.exe"))
 }
 
-/// Every `oino-kanboard` invocation inside a shell command line. A token counts only when it
+/// Every `unipi-kanboard` invocation inside a shell command line. A token counts only when it
 /// is positioned like a command: the first word of its segment, past leading `VAR=value`
-/// assignments and the `exec`/`command`/`env` wrappers. `which oino-kanboard` or
-/// `find -name "oino-kanboard"` merely mention the binary and are not invocations.
+/// assignments and the `exec`/`command`/`env` wrappers. `which unipi-kanboard` or
+/// `find -name "unipi-kanboard"` merely mention the binary and are not invocations.
 #[must_use]
 pub fn invocations(command: &str) -> Vec<Invocation> {
     let mut out = Vec::new();
@@ -373,28 +373,28 @@ mod tests {
 
     #[test]
     fn cut_positions_keep_content_intact() {
-        let cmd = "oino-kanboard note KB-1 'one | two' | cat";
+        let cmd = "unipi-kanboard note KB-1 'one | two' | cat";
         let segs = shell_segments(cmd);
-        assert_eq!(segs[0], "oino-kanboard note KB-1 'one | two' ");
+        assert_eq!(segs[0], "unipi-kanboard note KB-1 'one | two' ");
         assert_eq!(segs[1], " cat");
     }
 
     #[test]
     fn finds_command_position_invocations() {
         assert_eq!(
-            subs("FOO=1 env /opt/oino/oino-kanboard --actor agent --project p start KB-1"),
+            subs("FOO=1 env /opt/oino/unipi-kanboard --actor agent --project p start KB-1"),
             ["start"]
         );
-        assert_eq!(subs("exec oino-kanboard.exe list"), ["list"]);
-        assert_eq!(subs("which oino-kanboard"), [] as [std::string::String; 0]);
+        assert_eq!(subs("exec unipi-kanboard.exe list"), ["list"]);
+        assert_eq!(subs("which unipi-kanboard"), [] as [std::string::String; 0]);
         assert_eq!(
-            subs(r#"find . -name "oino-kanboard""#),
+            subs(r#"find . -name "unipi-kanboard""#),
             [] as [std::string::String; 0]
         );
-        assert_eq!(subs("oino-kanboard --json --gate=done show KB-2"), ["show"]);
-        assert_eq!(subs("oino-kanboard"), [""]);
+        assert_eq!(subs("unipi-kanboard --json --gate=done show KB-2"), ["show"]);
+        assert_eq!(subs("unipi-kanboard"), [""]);
         assert_eq!(
-            subs("oino-kanboard show A-1 && oino-kanboard finish A-1 --comment 'x'"),
+            subs("unipi-kanboard show A-1 && unipi-kanboard finish A-1 --comment 'x'"),
             ["show", "finish"]
         );
     }
@@ -412,7 +412,7 @@ mod tests {
             "status",
         ] {
             assert!(
-                inv(&format!("oino-kanboard {read}")).is_readonly(),
+                inv(&format!("unipi-kanboard {read}")).is_readonly(),
                 "{read}"
             );
         }
@@ -424,37 +424,37 @@ mod tests {
             "finish A-1",
         ] {
             assert!(
-                !inv(&format!("oino-kanboard {write}")).is_readonly(),
+                !inv(&format!("unipi-kanboard {write}")).is_readonly(),
                 "{write}"
             );
         }
-        assert!(inv("oino-kanboard project list").is_readonly());
-        assert!(inv("oino-kanboard project show").is_readonly());
-        assert!(!inv("oino-kanboard project archive s").is_readonly());
-        assert!(!inv("oino-kanboard project rebind s --root /x").is_readonly());
-        assert!(inv("oino-kanboard settings").is_readonly());
-        assert!(inv("oino-kanboard settings show").is_readonly());
-        assert!(!inv("oino-kanboard settings set a b").is_readonly());
-        assert!(inv("oino-kanboard validate").is_readonly());
-        assert!(!inv("oino-kanboard validate --fix").is_readonly());
+        assert!(inv("unipi-kanboard project list").is_readonly());
+        assert!(inv("unipi-kanboard project show").is_readonly());
+        assert!(!inv("unipi-kanboard project archive s").is_readonly());
+        assert!(!inv("unipi-kanboard project rebind s --root /x").is_readonly());
+        assert!(inv("unipi-kanboard settings").is_readonly());
+        assert!(inv("unipi-kanboard settings show").is_readonly());
+        assert!(!inv("unipi-kanboard settings set a b").is_readonly());
+        assert!(inv("unipi-kanboard validate").is_readonly());
+        assert!(!inv("unipi-kanboard validate --fix").is_readonly());
     }
 
     #[test]
     fn move_blocked_and_removed_edit() {
         let inv = |c: &str| invocations(c).remove(0);
-        assert!(inv("oino-kanboard move A-1 blocked --comment x").is_move_blocked());
-        assert!(!inv("oino-kanboard move A-1 done").is_move_blocked());
-        assert!(!inv("oino-kanboard list").is_move_blocked());
-        assert!(!inv("oino-kanboard move A-1 todo").is_move_blocked());
-        assert!(!inv("oino-kanboard note A-1 blocked").is_move_blocked());
-        assert!(inv("oino-kanboard edit A-1 --strategy goal").is_removed_edit());
-        assert!(inv("oino-kanboard edit A-1 --plan=yes").is_removed_edit());
-        assert!(!inv("oino-kanboard add x --strategy goal").is_removed_edit());
+        assert!(inv("unipi-kanboard move A-1 blocked --comment x").is_move_blocked());
+        assert!(!inv("unipi-kanboard move A-1 done").is_move_blocked());
+        assert!(!inv("unipi-kanboard list").is_move_blocked());
+        assert!(!inv("unipi-kanboard move A-1 todo").is_move_blocked());
+        assert!(!inv("unipi-kanboard note A-1 blocked").is_move_blocked());
+        assert!(inv("unipi-kanboard edit A-1 --strategy goal").is_removed_edit());
+        assert!(inv("unipi-kanboard edit A-1 --plan=yes").is_removed_edit());
+        assert!(!inv("unipi-kanboard add x --strategy goal").is_removed_edit());
         assert_eq!(
-            inv("oino-kanboard note -x A-1 t").first_positional(),
+            inv("unipi-kanboard note -x A-1 t").first_positional(),
             Some("A-1")
         );
-        assert_eq!(inv("oino-kanboard --json list").first_positional(), None);
+        assert_eq!(inv("unipi-kanboard --json list").first_positional(), None);
     }
 
     #[test]
@@ -469,7 +469,7 @@ mod tests {
         ] {
             assert!(KNOWN_SUBCOMMANDS.contains(&sub));
         }
-        assert!(!invocations("oino-kanboard done A-1")[0].is_known());
+        assert!(!invocations("unipi-kanboard done A-1")[0].is_known());
     }
 
     #[test]

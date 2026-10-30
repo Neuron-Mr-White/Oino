@@ -12,11 +12,11 @@ use std::process::Command;
 use crate::error::{Error, Result};
 
 /// Environment override for the state root (tests use it).
-pub const HOME_ENV: &str = "OINO_KANBOARD_HOME";
+pub const HOME_ENV: &str = "UNIPI_KANBOARD_HOME";
 /// Environment override for the project slug (the pi extension sets it for the agent).
-pub const PROJECT_ENV: &str = "OINO_KANBOARD_PROJECT";
+pub const PROJECT_ENV: &str = "UNIPI_KANBOARD_PROJECT";
 /// Environment override for the actor.
-pub const ACTOR_ENV: &str = "OINO_KANBOARD_ACTOR";
+pub const ACTOR_ENV: &str = "UNIPI_KANBOARD_ACTOR";
 
 /// Where the kanboard home lives.
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ pub struct Layout {
 }
 
 impl Layout {
-    /// `OINO_KANBOARD_HOME`, else `<agent dir>/state/unipi.kanboard` (agent dir =
+    /// `UNIPI_KANBOARD_HOME`, else `<agent dir>/state/unipi.kanboard` (agent dir =
     /// `$OINO_AGENT_DIR`, else `~/.oino`).
     pub fn from_env() -> Result<Layout> {
         if let Ok(home) = std::env::var(HOME_ENV)
@@ -37,7 +37,7 @@ impl Layout {
             });
         }
         let base = crate::sys::agent_dir()
-            .ok_or_else(|| Error::usage("neither OINO_KANBOARD_HOME nor HOME is set"))?;
+            .ok_or_else(|| Error::usage("neither UNIPI_KANBOARD_HOME nor HOME is set"))?;
         Ok(Layout {
             home: base.join("state").join("unipi.kanboard"),
         })
@@ -208,7 +208,7 @@ impl Project {
         let path = layout.project_meta_path(slug);
         let text = fs::read_to_string(&path).map_err(|_| {
             Error::not_found(format!(
-                "unknown project \"{slug}\" ({} not found) — run `oino-kanboard project add`",
+                "unknown project \"{slug}\" ({} not found) — run `unipi-kanboard project add`",
                 path.display()
             ))
         })?;
@@ -336,7 +336,7 @@ pub fn resolve_root(cwd: &Path) -> PathBuf {
     cwd.to_path_buf()
 }
 
-/// `--project`, else `OINO_KANBOARD_PROJECT`, else the project registered for
+/// `--project`, else `UNIPI_KANBOARD_PROJECT`, else the project registered for
 /// the cwd's git toplevel (process env + cwd).
 pub fn resolve_project(layout: &Layout, explicit: Option<&str>) -> Result<Project> {
     let env_project = std::env::var(PROJECT_ENV)
@@ -369,7 +369,7 @@ pub fn resolve_project_in(
         }
     }
     Err(Error::not_found(format!(
-        "no project registered for {} — run `oino-kanboard project add` (or pass --project <slug>)",
+        "no project registered for {} — run `unipi-kanboard project add` (or pass --project <slug>)",
         root.display()
     )))
 }

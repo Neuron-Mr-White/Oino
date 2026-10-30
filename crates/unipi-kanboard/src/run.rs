@@ -25,7 +25,7 @@ pub struct Exec<'e> {
     /// What a `-` argument reads; `None` falls back to real stdin (CLI).
     pub stdin: Option<&'e str>,
     /// The pid a `start` claim belongs to when neither `--pid` nor
-    /// `OINO_KANBOARD_PID` says otherwise (the host process, in-process).
+    /// `UNIPI_KANBOARD_PID` says otherwise (the host process, in-process).
     pub owner_pid: u32,
 }
 
@@ -80,7 +80,7 @@ pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
     common.session = cli
         .session
         .clone()
-        .or_else(|| exec.var_string("OINO_KANBOARD_SESSION"))
+        .or_else(|| exec.var_string("UNIPI_KANBOARD_SESSION"))
         .filter(|value| !value.is_empty());
     let env_project = exec.var_string(store::PROJECT_ENV);
     let project = |layout: &Layout, explicit: Option<&str>| -> Result<store::Project> {
@@ -384,13 +384,13 @@ pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
             let project = project(&layout, cli.project.as_deref())?;
             let days = after_days
                 .or_else(|| {
-                    exec.var_string("OINO_KANBOARD_ARCHIVE_AFTER_DAYS")
+                    exec.var_string("UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS")
                         .and_then(|value| value.parse().ok())
                 })
                 .unwrap_or(0);
             let retention = retention_days
                 .or_else(|| {
-                    exec.var_string("OINO_KANBOARD_RETENTION_DAYS")
+                    exec.var_string("UNIPI_KANBOARD_RETENTION_DAYS")
                         .and_then(|value| value.parse().ok())
                 })
                 .unwrap_or(0);
@@ -432,7 +432,7 @@ fn existing_files(paths: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The board home `OINO_KANBOARD_HOME`/`OINO_AGENT_DIR` resolves to — under
+/// The board home `UNIPI_KANBOARD_HOME`/`OINO_AGENT_DIR` resolves to — under
 /// `exec`'s environment, so in-process hosts see the request's home.
 fn layout_in(exec: &Exec<'_>) -> Result<Layout> {
     if let Some(home) = exec.var_string(store::HOME_ENV).filter(|h| !h.is_empty()) {
@@ -450,7 +450,7 @@ fn layout_in(exec: &Exec<'_>) -> Result<Layout> {
     Layout::from_env()
 }
 
-/// `--actor`, else `$OINO_KANBOARD_ACTOR` (under `exec`), else `user`.
+/// `--actor`, else `$UNIPI_KANBOARD_ACTOR` (under `exec`), else `user`.
 fn resolve_actor_in(explicit: Option<&str>, exec: &Exec<'_>) -> Actor {
     if let Some(value) = explicit
         && let Ok(actor) = value.trim().parse()
@@ -465,7 +465,7 @@ fn resolve_actor_in(explicit: Option<&str>, exec: &Exec<'_>) -> Actor {
     Actor::User
 }
 
-/// The pid that owns a `start` claim: `--pid`, else `$OINO_KANBOARD_PID`
+/// The pid that owns a `start` claim: `--pid`, else `$UNIPI_KANBOARD_PID`
 /// (the pi extension exports its own pid), else `exec.owner_pid` — the
 /// caller's parent for the CLI, the host process for in-process calls.
 #[allow(
@@ -477,7 +477,7 @@ fn owner_pid(explicit: Option<u32>, exec: &Exec<'_>) -> Result<u32> {
         return Ok(pid);
     }
     if let Some(pid) = exec
-        .var_string("OINO_KANBOARD_PID")
+        .var_string("UNIPI_KANBOARD_PID")
         .and_then(|value| value.parse::<u32>().ok())
         .filter(|pid| *pid > 0)
     {
@@ -490,7 +490,7 @@ fn owner_pid(explicit: Option<u32>, exec: &Exec<'_>) -> Result<u32> {
 fn require_session(common: &Common, command: &str) -> Result<String> {
     common.session.clone().ok_or_else(|| {
         Error::usage(format!(
-            "{command} needs a session: pass --session or set OINO_KANBOARD_SESSION"
+            "{command} needs a session: pass --session or set UNIPI_KANBOARD_SESSION"
         ))
     })
 }
@@ -687,7 +687,7 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             }
             if problems > 0 {
                 lines.push(format!(
-                    "⚠ {problems} task file(s) need repair — oino-kanboard validate --fix"
+                    "⚠ {problems} task file(s) need repair — unipi-kanboard validate --fix"
                 ));
             }
             lines.join("\n")

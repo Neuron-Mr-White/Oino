@@ -2837,6 +2837,7 @@ dependencies = [
  "oino-agent",
  "oino-ai",
  "oino-core",
+ "oino-extension-api",
  "oino-models",
  "oino-resources",
  "oino-session",
@@ -2888,23 +2889,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio-util",
-]
-
-[[package]]
-name = "oino-kanboard"
-version = "1.0.0-alpha.5"
-dependencies = [
- "chrono",
- "clap",
- "mime_guess",
- "nix 0.29.0",
- "notify",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -3083,7 +3067,6 @@ dependencies = [
  "oino-core",
  "oino-cron",
  "oino-extension-api",
- "oino-kanboard",
  "oino-models",
  "oino-settings",
  "oino-wasm-host",
@@ -3096,6 +3079,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "unipi-kanboard",
  "wasmtime",
  "wasmtime-wasi",
 ]
@@ -4703,6 +4687,23 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "unipi-kanboard"
+version = "1.0.0-alpha.5"
+dependencies = [
+ "chrono",
+ "clap",
+ "mime_guess",
+ "nix 0.29.0",
+ "notify",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "unsafe-libyaml"

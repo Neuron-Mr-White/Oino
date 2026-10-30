@@ -94,7 +94,7 @@ pub const NOT_PORTED: &[(&str, &str)] = &[
     ("@pi-unipi/unipi", "replaced by bundling and LOAD_ORDER"),
     (
         "@pi-unipi/kanboard-bin",
-        "replaced by the Oino installer shipping `oino-kanboard`",
+        "replaced by the Oino installer shipping `unipi-kanboard`",
     ),
     (
         "unipi.footer",

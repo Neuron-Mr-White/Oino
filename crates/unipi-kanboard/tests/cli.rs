@@ -22,12 +22,12 @@
 mod common;
 
 use common::{AMBIENT_KANBOARD_ENV, Fixture, VALID_TASK};
-use oino_kanboard::store::Layout;
+use unipi_kanboard::store::Layout;
 use serde_json::Value;
 use std::process::Command;
 
 fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_oino-kanboard")
+    env!("CARGO_BIN_EXE_unipi-kanboard")
 }
 
 #[derive(Debug)]
@@ -38,7 +38,7 @@ struct Run {
     json: Value,
 }
 
-/// Run the binary with `OINO_KANBOARD_HOME` pointed at the fixture (naming it
+/// Run the binary with `UNIPI_KANBOARD_HOME` pointed at the fixture (naming it
 /// `kb` keeps `let run = kb(..)` shadowing legal).
 fn kb(fixture: &Fixture, args: &[&str]) -> Run {
     let mut command = Command::new(bin());
@@ -47,12 +47,12 @@ fn kb(fixture: &Fixture, args: &[&str]) -> Run {
         command.env_remove(var);
     }
     let output = command
-        .env("OINO_KANBOARD_HOME", &fixture.layout.home)
-        .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
-        .env("OINO_KANBOARD_ACTOR", "user")
+        .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+        .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+        .env("UNIPI_KANBOARD_ACTOR", "user")
         .current_dir(fixture.root())
         .output()
-        .expect("run oino-kanboard");
+        .expect("run unipi-kanboard");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let json = if stdout.trim().is_empty() {
@@ -108,14 +108,14 @@ fn list_ready_uses_the_gate_flag() {
     let fixture = Fixture::new();
     let dep = fixture.add_with(
         "dep",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     let dependent = fixture.add_with(
         "dependent",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         std::slice::from_ref(&dep.id),
     );
 
@@ -129,13 +129,13 @@ fn list_ready_uses_the_gate_flag() {
 
     // Move the dep to in_review via the library (start, then a system release).
     fixture.start(&dep.id, "s", std::process::id());
-    oino_kanboard::commands::release(
+    unipi_kanboard::commands::release(
         &fixture.layout,
         fixture.project.clone(),
         &dep.id,
-        oino_kanboard::model::Status::InReview,
+        unipi_kanboard::model::Status::InReview,
         "ready",
-        oino_kanboard::model::ChainGate::InReview,
+        unipi_kanboard::model::ChainGate::InReview,
         fixture.common.now,
     )
     .unwrap();
@@ -165,8 +165,8 @@ fn move_denied_reports_the_rule_and_exits_one() {
     let fixture = Fixture::new();
     let task = fixture.add_with(
         "t",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     fixture.start(&task.id, "s", std::process::id());
@@ -180,13 +180,13 @@ fn move_denied_reports_the_rule_and_exits_one() {
 
     // UNI-106: in_review → todo no longer requires a comment — it goes
     // through clean, and the bare activity text carries no colon.
-    oino_kanboard::commands::release(
+    unipi_kanboard::commands::release(
         &fixture.layout,
         fixture.project.clone(),
         &task.id,
-        oino_kanboard::model::Status::InReview,
+        unipi_kanboard::model::Status::InReview,
         "for review",
-        oino_kanboard::model::ChainGate::InReview,
+        unipi_kanboard::model::ChainGate::InReview,
         fixture.common.now,
     )
     .unwrap();
@@ -199,13 +199,13 @@ fn move_denied_reports_the_rule_and_exits_one() {
     // With the comment it still goes through (back to in_progress and
     // in_review first — the earlier move landed it back in todo).
     fixture.start(&task.id, "s2", std::process::id());
-    oino_kanboard::commands::release(
+    unipi_kanboard::commands::release(
         &fixture.layout,
         fixture.project.clone(),
         &task.id,
-        oino_kanboard::model::Status::InReview,
+        unipi_kanboard::model::Status::InReview,
         "for review again",
-        oino_kanboard::model::ChainGate::InReview,
+        unipi_kanboard::model::ChainGate::InReview,
         fixture.common.now,
     )
     .unwrap();
@@ -231,8 +231,8 @@ fn move_to_a_final_lane_is_refused_with_a_hint() {
     let fixture = Fixture::new();
     let task = fixture.add_with(
         "t",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     let run = kb(&fixture, &["move", &task.id, "done", "--json"]);
@@ -256,14 +256,14 @@ fn next_json_reports_waiting_reasons_and_start_claims_it() {
     let fixture = Fixture::new();
     let dep = fixture.add_with(
         "dep",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     let dependent = fixture.add_with(
         "dependent",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         std::slice::from_ref(&dep.id),
     );
 
@@ -385,7 +385,7 @@ fn project_rebind_points_the_slug_at_a_new_root() {
     // The rebind is durable — `project show` after reload reflects it, and
     // the task files/counters are untouched (same slug, same board).
     let reloaded =
-        oino_kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
+        unipi_kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
     assert_eq!(reloaded.root, canonical);
     assert_eq!(reloaded.next_id, fixture.project.next_id);
 }
@@ -460,13 +460,13 @@ fn project_rebind_is_user_only() {
     let fixture = Fixture::new();
     let new_root = tempfile::TempDir::new().expect("new root");
     let output = Command::new(bin())
-        .env_remove("OINO_KANBOARD_ACTOR")
-        .env_remove("OINO_KANBOARD_SESSION")
-        .env_remove("OINO_KANBOARD_PID")
-        .env_remove("OINO_KANBOARD_MAX_SESSIONS")
-        .env_remove("OINO_KANBOARD_ARCHIVE_AFTER_DAYS")
-        .env_remove("OINO_KANBOARD_RETENTION_DAYS")
-        .env_remove("OINO_KANBOARD_CHAIN_GATE")
+        .env_remove("UNIPI_KANBOARD_ACTOR")
+        .env_remove("UNIPI_KANBOARD_SESSION")
+        .env_remove("UNIPI_KANBOARD_PID")
+        .env_remove("UNIPI_KANBOARD_MAX_SESSIONS")
+        .env_remove("UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS")
+        .env_remove("UNIPI_KANBOARD_RETENTION_DAYS")
+        .env_remove("UNIPI_KANBOARD_CHAIN_GATE")
         .args([
             "project",
             "rebind",
@@ -475,12 +475,12 @@ fn project_rebind_is_user_only() {
             new_root.path().to_str().unwrap(),
             "--json",
         ])
-        .env("OINO_KANBOARD_HOME", &fixture.layout.home)
-        .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
-        .env("OINO_KANBOARD_ACTOR", "agent")
+        .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+        .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+        .env("UNIPI_KANBOARD_ACTOR", "agent")
         .current_dir(fixture.root())
         .output()
-        .expect("run oino-kanboard");
+        .expect("run unipi-kanboard");
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("user only"), "{stderr}");
@@ -509,14 +509,14 @@ fn show_includes_deps_status_and_staleness() {
     let fixture = Fixture::new();
     let dep = fixture.add_with(
         "dep",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     let task = fixture.add_with(
         "t",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::High,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::High,
         std::slice::from_ref(&dep.id),
     );
     let run = kb(&fixture, &["show", &task.id, "--json"]);
@@ -593,18 +593,18 @@ fn actor_env_is_honoured_and_reported_in_activity() {
     let fixture = Fixture::new();
     let task = fixture.add("t");
     let output = Command::new(bin())
-        .env_remove("OINO_KANBOARD_ACTOR")
-        .env_remove("OINO_KANBOARD_SESSION")
-        .env_remove("OINO_KANBOARD_PID")
-        .env_remove("OINO_KANBOARD_MAX_SESSIONS")
-        .env_remove("OINO_KANBOARD_ARCHIVE_AFTER_DAYS")
-        .env_remove("OINO_KANBOARD_RETENTION_DAYS")
-        .env_remove("OINO_KANBOARD_CHAIN_GATE")
+        .env_remove("UNIPI_KANBOARD_ACTOR")
+        .env_remove("UNIPI_KANBOARD_SESSION")
+        .env_remove("UNIPI_KANBOARD_PID")
+        .env_remove("UNIPI_KANBOARD_MAX_SESSIONS")
+        .env_remove("UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS")
+        .env_remove("UNIPI_KANBOARD_RETENTION_DAYS")
+        .env_remove("UNIPI_KANBOARD_CHAIN_GATE")
         .args(["note", &task.id, "from the agent"])
-        .env("OINO_KANBOARD_HOME", &fixture.layout.home)
-        .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
-        .env("OINO_KANBOARD_ACTOR", "agent")
-        .env_remove("OINO_KANBOARD_ACTOR_OVERRIDE")
+        .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+        .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+        .env("UNIPI_KANBOARD_ACTOR", "agent")
+        .env_remove("UNIPI_KANBOARD_ACTOR_OVERRIDE")
         .current_dir(fixture.root())
         .output()
         .expect("run");
@@ -616,7 +616,7 @@ fn actor_env_is_honoured_and_reported_in_activity() {
         .unwrap();
     assert_eq!(
         stored.activity.last().unwrap().actor,
-        oino_kanboard::model::Actor::Agent
+        unipi_kanboard::model::Actor::Agent
     );
 }
 
@@ -625,17 +625,17 @@ fn the_agent_actor_cannot_cancel_and_the_message_forbids_actor_override() {
     let fixture = Fixture::new();
     let task = fixture.add("t");
     let output = Command::new(bin())
-        .env_remove("OINO_KANBOARD_ACTOR")
-        .env_remove("OINO_KANBOARD_SESSION")
-        .env_remove("OINO_KANBOARD_PID")
-        .env_remove("OINO_KANBOARD_MAX_SESSIONS")
-        .env_remove("OINO_KANBOARD_ARCHIVE_AFTER_DAYS")
-        .env_remove("OINO_KANBOARD_RETENTION_DAYS")
-        .env_remove("OINO_KANBOARD_CHAIN_GATE")
+        .env_remove("UNIPI_KANBOARD_ACTOR")
+        .env_remove("UNIPI_KANBOARD_SESSION")
+        .env_remove("UNIPI_KANBOARD_PID")
+        .env_remove("UNIPI_KANBOARD_MAX_SESSIONS")
+        .env_remove("UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS")
+        .env_remove("UNIPI_KANBOARD_RETENTION_DAYS")
+        .env_remove("UNIPI_KANBOARD_CHAIN_GATE")
         .args(["move", &task.id, "cancelled", "--json"])
-        .env("OINO_KANBOARD_HOME", &fixture.layout.home)
-        .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
-        .env("OINO_KANBOARD_ACTOR", "agent")
+        .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+        .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+        .env("UNIPI_KANBOARD_ACTOR", "agent")
         .current_dir(fixture.root())
         .output()
         .expect("run");
@@ -653,8 +653,8 @@ fn eight_processes_race_but_at_most_two_sessions_claim() {
             fixture
                 .add_with(
                     &format!("task {index}"),
-                    oino_kanboard::model::Status::Todo,
-                    oino_kanboard::model::Priority::None,
+                    unipi_kanboard::model::Status::Todo,
+                    unipi_kanboard::model::Priority::None,
                     &[],
                 )
                 .id
@@ -678,9 +678,9 @@ fn eight_processes_race_but_at_most_two_sessions_claim() {
                 &pid,
                 "--json",
             ])
-            .env("OINO_KANBOARD_HOME", &fixture.layout.home)
-            .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
-            .env_remove("OINO_KANBOARD_MAX_SESSIONS")
+            .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+            .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
+            .env_remove("UNIPI_KANBOARD_MAX_SESSIONS")
             .current_dir(fixture.root())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -720,7 +720,7 @@ fn eight_processes_race_but_at_most_two_sessions_claim() {
     let in_progress = fixture
         .tasks()
         .into_iter()
-        .filter(|task| task.status == oino_kanboard::model::Status::InProgress)
+        .filter(|task| task.status == unipi_kanboard::model::Status::InProgress)
         .count();
     assert_eq!(in_progress, 2);
 }
@@ -742,8 +742,8 @@ fn unknown_project_errors_mention_project_add() {
     let empty = tempfile::TempDir::new().unwrap();
     let output = Command::new(bin())
         .args(["list", "--json"])
-        .env("OINO_KANBOARD_HOME", &layout.home)
-        .env_remove("OINO_KANBOARD_PROJECT")
+        .env("UNIPI_KANBOARD_HOME", &layout.home)
+        .env_remove("UNIPI_KANBOARD_PROJECT")
         .current_dir(empty.path())
         .output()
         .expect("run");
@@ -761,14 +761,14 @@ fn list_prints_tasks_and_warns_about_problems() {
     let fixture = Fixture::new();
     fixture.add_with(
         "first",
-        oino_kanboard::model::Status::Backlog,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Backlog,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     fixture.add_with(
         "second",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::High,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::High,
         &[],
     );
 
@@ -819,41 +819,41 @@ fn bare_list_defaults_to_active_lanes_and_status_overrides() {
     let fixture = Fixture::new();
     fixture.add_with(
         "in backlog",
-        oino_kanboard::model::Status::Backlog,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Backlog,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     fixture.add_with(
         "in todo",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     let done = fixture.add_with(
         "in done",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     fixture.start(&done.id, "s", std::process::id());
-    oino_kanboard::commands::release(
+    unipi_kanboard::commands::release(
         &fixture.layout,
         fixture.project.clone(),
         &done.id,
-        oino_kanboard::model::Status::InReview,
+        unipi_kanboard::model::Status::InReview,
         "ready",
-        oino_kanboard::model::ChainGate::InReview,
+        unipi_kanboard::model::ChainGate::InReview,
         fixture.common.now,
     )
     .unwrap();
-    fixture.move_to(&done.id, oino_kanboard::model::Status::Done);
+    fixture.move_to(&done.id, unipi_kanboard::model::Status::Done);
     let gone = fixture.add_with(
         "gone",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
-    fixture.move_to(&gone.id, oino_kanboard::model::Status::Cancelled);
+    fixture.move_to(&gone.id, unipi_kanboard::model::Status::Cancelled);
 
     let titles = |args: &[&str]| -> Vec<String> {
         let run = kb(&fixture, args);
@@ -898,11 +898,11 @@ fn cli_add_label_reuses_or_refuses_by_exact_wording() {
                 command.env_remove(var);
             }
             command
-                .env("OINO_KANBOARD_HOME", &fixture.layout.home)
-                .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
+                .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+                .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
                 .current_dir(fixture.root())
                 .output()
-                .expect("run oino-kanboard")
+                .expect("run unipi-kanboard")
         }
     };
     let error_of = |out: &std::process::Output| -> String {
@@ -975,11 +975,11 @@ fn cli_edit_labels_reuses_or_refuses_and_keeps_canonical_spelling() {
                 command.env_remove(var);
             }
             command
-                .env("OINO_KANBOARD_HOME", &fixture.layout.home)
-                .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
+                .env("UNIPI_KANBOARD_HOME", &fixture.layout.home)
+                .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
                 .current_dir(fixture.root())
                 .output()
-                .expect("run oino-kanboard")
+                .expect("run unipi-kanboard")
         }
     };
 
@@ -1043,14 +1043,14 @@ fn start_refuses_to_resume_a_blocked_task_whose_dep_is_unsatisfied() {
     let fixture = Fixture::new();
     let dep = fixture.add_with(
         "dep",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         &[],
     );
     let task = fixture.add_with(
         "blocked with a dep",
-        oino_kanboard::model::Status::Todo,
-        oino_kanboard::model::Priority::None,
+        unipi_kanboard::model::Status::Todo,
+        unipi_kanboard::model::Priority::None,
         std::slice::from_ref(&dep.id),
     );
     // The dep is unsatisfied, so `task` cannot be started fresh either —
@@ -1064,9 +1064,9 @@ fn start_refuses_to_resume_a_blocked_task_whose_dep_is_unsatisfied() {
     // blocked path) to set up the regression scenario: a blocked task whose
     // dep is still unsatisfied.
     let board =
-        oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+        unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
     let mut forced = board.get(&task.id).unwrap();
-    forced.status = oino_kanboard::model::Status::Blocked;
+    forced.status = unipi_kanboard::model::Status::Blocked;
     board.save(&forced).unwrap();
 
     // Resuming it must not bypass the dependency gate.
@@ -1085,34 +1085,34 @@ fn start_refuses_to_resume_a_blocked_task_whose_dep_is_unsatisfied() {
 #[test]
 fn blocked_to_in_progress_is_agent_only_not_system() {
     assert!(
-        oino_kanboard::transitions::check(
-            oino_kanboard::model::Status::Blocked,
-            oino_kanboard::model::Status::InProgress,
-            oino_kanboard::model::Actor::Agent,
+        unipi_kanboard::transitions::check(
+            unipi_kanboard::model::Status::Blocked,
+            unipi_kanboard::model::Status::InProgress,
+            unipi_kanboard::model::Actor::Agent,
             None,
-            oino_kanboard::model::Staleness::Running,
+            unipi_kanboard::model::Staleness::Running,
         )
         .is_ok(),
         "agent may resume"
     );
     assert!(
-        oino_kanboard::transitions::check(
-            oino_kanboard::model::Status::Blocked,
-            oino_kanboard::model::Status::InProgress,
-            oino_kanboard::model::Actor::System,
+        unipi_kanboard::transitions::check(
+            unipi_kanboard::model::Status::Blocked,
+            unipi_kanboard::model::Status::InProgress,
+            unipi_kanboard::model::Actor::System,
             None,
-            oino_kanboard::model::Staleness::Running,
+            unipi_kanboard::model::Staleness::Running,
         )
         .is_err(),
         "system is not in the actor list for blocked → in_progress"
     );
     assert!(
-        oino_kanboard::transitions::check(
-            oino_kanboard::model::Status::Blocked,
-            oino_kanboard::model::Status::InProgress,
-            oino_kanboard::model::Actor::User,
+        unipi_kanboard::transitions::check(
+            unipi_kanboard::model::Status::Blocked,
+            unipi_kanboard::model::Status::InProgress,
+            unipi_kanboard::model::Actor::User,
             None,
-            oino_kanboard::model::Staleness::Running,
+            unipi_kanboard::model::Staleness::Running,
         )
         .is_err(),
         "user may not resume either"
@@ -1148,6 +1148,6 @@ fn status_reports_the_binary_path_and_hostname() {
     let run = kb(&fixture, &["status", "--json"]);
     assert_eq!(run.code, 0, "{}", run.stderr);
     let binary = run.json["binary"].as_str().unwrap();
-    assert!(binary.ends_with("oino-kanboard"), "{binary}");
+    assert!(binary.ends_with("unipi-kanboard"), "{binary}");
     assert!(run.json["hostname"].as_str().is_some_and(|h| !h.is_empty()));
 }

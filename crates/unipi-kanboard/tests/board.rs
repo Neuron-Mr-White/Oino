@@ -22,8 +22,8 @@
 mod common;
 
 use common::Fixture;
-use oino_kanboard::commands::{self, OrderTarget};
-use oino_kanboard::model::{Actor, ChainGate, Priority, RunMode, Staleness, Status};
+use unipi_kanboard::commands::{self, OrderTarget};
+use unipi_kanboard::model::{Actor, ChainGate, Priority, RunMode, Staleness, Status};
 use std::sync::Arc;
 
 /// The id `next` suggests (None when nothing is ready).
@@ -207,17 +207,17 @@ fn a_dead_pid_on_this_host_reads_as_stale_and_can_be_released_by_a_user() {
         .unwrap();
     // A pid that cannot exist.
     stored.status = Status::InProgress;
-    stored.run = Some(oino_kanboard::model::Run {
+    stored.run = Some(unipi_kanboard::model::Run {
         session: "gone".into(),
         pid: 0x7fff_fffe,
         host: commands::hostname(),
         mode: RunMode::None,
         goal: None,
         started: fixture.common.now,
-        owner: oino_kanboard::model::RunOwner::Agent,
+        owner: unipi_kanboard::model::RunOwner::Agent,
     });
     let board =
-        oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+        unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
     board.save(&stored).unwrap();
 
     let reloaded = fixture
@@ -287,16 +287,16 @@ fn a_run_claimed_on_another_host_is_unknown() {
         .find(|t| t.id == task.id)
         .unwrap();
     stored.status = Status::InProgress;
-    stored.run = Some(oino_kanboard::model::Run {
+    stored.run = Some(unipi_kanboard::model::Run {
         session: "elsewhere".into(),
         pid: 1,
         host: "some-other-host".into(),
         mode: RunMode::None,
         goal: None,
         started: fixture.common.now,
-        owner: oino_kanboard::model::RunOwner::Agent,
+        owner: unipi_kanboard::model::RunOwner::Agent,
     });
-    oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone())
+    unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone())
         .unwrap()
         .save(&stored)
         .unwrap();
@@ -395,7 +395,7 @@ fn exhausted_gaps_trigger_a_rebalance() {
 
     // Squeeze the lane: give every task adjacent orders by hand.
     let board =
-        oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+        unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
     for (index, id) in [&a.id, &b.id, &c.id, &d.id].iter().enumerate() {
         let mut task = board.get(id).unwrap();
         task.order = index as i64 + 1;
@@ -507,7 +507,7 @@ fn archive_sweep_moves_old_done_and_cancelled_tasks() {
 
     // Age the two "old" tasks by rewriting their `updated` stamps.
     let board =
-        oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+        unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
     for id in [&old.id, &old_cancelled.id] {
         let mut task = board.get(id).unwrap();
         task.updated = fixture.common.now - chrono::Duration::days(30);
@@ -675,12 +675,12 @@ fn reserve_id_skips_ids_that_already_exist_on_disk() {
     let task = fixture.add("existing");
     // Force the counter back to 1, as a stale/hand-edited project.json would.
     let mut project =
-        oino_kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
+        unipi_kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
     project.next_id = 1;
     project.save(&fixture.layout).unwrap();
 
     let mut project =
-        oino_kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
+        unipi_kanboard::store::Project::load(&fixture.layout, &fixture.project.slug).unwrap();
     let reserved = project.reserve_id(&fixture.layout).unwrap();
     assert_ne!(reserved, task.id);
     assert_eq!(reserved, "FIX-2");
@@ -1019,7 +1019,7 @@ fn routine_moves_carry_no_undo_and_claims_are_never_snapshotted() {
     // A claimed task: undo_worthy may say yes in principle, but the run block
     // excludes it from snapshots (defence in depth — terminal moves from a
     // live claim are refused by the table anyway).
-    assert!(!oino_kanboard::transitions::undo_worthy(
+    assert!(!unipi_kanboard::transitions::undo_worthy(
         Status::InProgress,
         Status::Archived,
         Actor::User
@@ -1091,14 +1091,14 @@ fn undo_refuses_non_user_actors_foreign_snapshots_and_claims() {
     // A snapshot carrying a live claim is refused.
     let claimed_snapshot = {
         let mut snapshot = undo.before.clone();
-        snapshot.run = Some(oino_kanboard::model::Run {
+        snapshot.run = Some(unipi_kanboard::model::Run {
             session: "s".into(),
             pid: std::process::id(),
             host: commands::hostname(),
             mode: RunMode::None,
             goal: None,
             started: fixture.common.now,
-            owner: oino_kanboard::model::RunOwner::Agent,
+            owner: unipi_kanboard::model::RunOwner::Agent,
         });
         snapshot
     };

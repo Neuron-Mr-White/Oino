@@ -29,13 +29,13 @@ fn exec(ext: &ExtShared, cx: &CallContext, request: &str) -> Result<String, Host
     let invalid =
         |e: &dyn std::fmt::Display| HostError::InvalidArgument(format!("kanboard.exec: {e}"));
     let value: serde_json::Value = serde_json::from_str(request).map_err(|e| invalid(&e))?;
-    let mut req = oino_kanboard::service::parse_request(&value).map_err(|e| invalid(&e))?;
+    let mut req = unipi_kanboard::service::parse_request(&value).map_err(|e| invalid(&e))?;
     if req.cwd.is_none() {
         req.cwd = Some(cx.cwd.clone());
     }
     // The board home follows the host's agent dir unless the caller pinned a
     // home explicitly (tests do).
-    if !req.env.contains_key(oino_kanboard::store::HOME_ENV)
+    if !req.env.contains_key(unipi_kanboard::store::HOME_ENV)
         && !req.env.contains_key("OINO_AGENT_DIR")
     {
         req.env.insert(
@@ -43,6 +43,6 @@ fn exec(ext: &ExtShared, cx: &CallContext, request: &str) -> Result<String, Host
             ext.config.agent_dir.display().to_string(),
         );
     }
-    let payload = oino_kanboard::service::exec(&req);
+    let payload = unipi_kanboard::service::exec(&req);
     Ok(payload.to_string())
 }

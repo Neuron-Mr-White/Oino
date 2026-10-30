@@ -24,8 +24,8 @@
 mod common;
 
 use common::{Fixture, task_from};
-use oino_kanboard::commands::{self, Common, EditArgs};
-use oino_kanboard::model::{Actor, Priority, Status};
+use unipi_kanboard::commands::{self, Common, EditArgs};
+use unipi_kanboard::model::{Actor, Priority, Status};
 
 fn agent(fixture: &Fixture) -> Common {
     let mut common = fixture.common.clone();

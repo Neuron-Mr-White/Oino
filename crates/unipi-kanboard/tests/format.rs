@@ -22,10 +22,10 @@ mod common;
 
 use chrono::{TimeZone, Utc};
 use common::{Fixture, VALID_TASK};
-use oino_kanboard::commands;
-use oino_kanboard::error::Problem;
-use oino_kanboard::format;
-use oino_kanboard::model::{Actor, Priority, Run, RunMode, Status, Task};
+use unipi_kanboard::commands;
+use unipi_kanboard::error::Problem;
+use unipi_kanboard::format;
+use unipi_kanboard::model::{Actor, Priority, Run, RunMode, Status, Task};
 
 fn sample() -> Task {
     let mut task = Task::new(
@@ -46,7 +46,7 @@ fn sample() -> Task {
         mode: RunMode::Goal,
         goal: Some("goal-7".into()),
         started: Utc.with_ymd_and_hms(2026, 9, 24, 10, 5, 0).unwrap(),
-        owner: oino_kanboard::model::RunOwner::Agent,
+        owner: unipi_kanboard::model::RunOwner::Agent,
     });
     task.push_activity(
         Utc.with_ymd_and_hms(2026, 9, 24, 10, 5, 0).unwrap(),

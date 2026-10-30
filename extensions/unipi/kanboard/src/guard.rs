@@ -1,6 +1,6 @@
 //! The session budget and the write gate (unipi `guard.ts`).
 //!
-//! Bash calls into `oino-kanboard` are split into always-allowed reads and writes. A
+//! Bash calls into `unipi-kanboard` are split into always-allowed reads and writes. A
 //! `/kanboard-do` grants task SLOTS (each `start` uses one) and a WRITE budget (add,
 //! edit, link, order, move backlog↔todo, note on tasks you don't hold). Always free: reads,
 //! and `finish`, `move <ID> blocked`, `note <ID>` and `attach <ID>` on claims this session
@@ -201,7 +201,7 @@ impl WriteGuard {
 mod tests {
     use super::*;
 
-    const B: &str = "oino-kanboard --actor agent --project p";
+    const B: &str = "unipi-kanboard --actor agent --project p";
 
     fn none() -> HashMap<String, bool> {
         HashMap::new()

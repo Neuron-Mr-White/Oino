@@ -22,16 +22,16 @@
 )]
 #![allow(dead_code)]
 
-use oino_kanboard::commands::{self, Common};
-use oino_kanboard::model::{Actor, ChainGate, Priority, Status, Task};
-use oino_kanboard::store::{Layout, Project};
+use unipi_kanboard::commands::{self, Common};
+use unipi_kanboard::model::{Actor, ChainGate, Priority, Status, Task};
+use unipi_kanboard::store::{Layout, Project};
 use serde_json::Value;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-// In-process tests read `OINO_KANBOARD_MAX_SESSIONS` & co. from the process
+// In-process tests read `UNIPI_KANBOARD_MAX_SESSIONS` & co. from the process
 // environment (`commands::max_sessions()`); run them from a shell that does not
-// export the `OINO_KANBOARD_*` tuning vars (an Oino session sets them only for
+// export the `UNIPI_KANBOARD_*` tuning vars (an Oino session sets them only for
 // the agent's own bash calls). Child-process helpers override them explicitly.
 
 pub(crate) struct Fixture {
@@ -104,7 +104,7 @@ impl Fixture {
 
     pub(crate) fn tasks(&self) -> Vec<Task> {
         let board =
-            oino_kanboard::board::Board::open(&self.layout, self.project.clone()).expect("board");
+            unipi_kanboard::board::Board::open(&self.layout, self.project.clone()).expect("board");
         board.tasks().expect("tasks")
     }
 
@@ -148,7 +148,7 @@ impl Fixture {
         id: &str,
         session: &str,
         pid: u32,
-    ) -> oino_kanboard::error::Result<Value> {
+    ) -> unipi_kanboard::error::Result<Value> {
         let host = commands::hostname();
         commands::start(
             &self.layout,
@@ -214,25 +214,25 @@ pub(crate) fn alive_pid() -> u32 {
 
 /// The compiled CLI binary.
 pub(crate) fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_oino-kanboard")
+    env!("CARGO_BIN_EXE_unipi-kanboard")
 }
 
 /// Run the CLI against this fixture's home.
-/// Every `OINO_KANBOARD_*` the binary reads that a test might need to be
+/// Every `UNIPI_KANBOARD_*` the binary reads that a test might need to be
 /// absent by default (actor/session/pid/limits) — cleared on every spawn
 /// before the test's own `.env(...)` calls, so an ambient value exported by
 /// the *caller's* shell (e.g. a wrapping agent session with its own
-/// `OINO_KANBOARD_SESSION`/`OINO_KANBOARD_MAX_SESSIONS` set for its own
+/// `UNIPI_KANBOARD_SESSION`/`UNIPI_KANBOARD_MAX_SESSIONS` set for its own
 /// board) never leaks into a child process the test spawns. `HOME` and
 /// `PROJECT` are not here: every test sets them explicitly right after.
 pub(crate) const AMBIENT_KANBOARD_ENV: &[&str] = &[
-    "OINO_KANBOARD_ACTOR",
-    "OINO_KANBOARD_SESSION",
-    "OINO_KANBOARD_PID",
-    "OINO_KANBOARD_MAX_SESSIONS",
-    "OINO_KANBOARD_ARCHIVE_AFTER_DAYS",
-    "OINO_KANBOARD_RETENTION_DAYS",
-    "OINO_KANBOARD_CHAIN_GATE",
+    "UNIPI_KANBOARD_ACTOR",
+    "UNIPI_KANBOARD_SESSION",
+    "UNIPI_KANBOARD_PID",
+    "UNIPI_KANBOARD_MAX_SESSIONS",
+    "UNIPI_KANBOARD_ARCHIVE_AFTER_DAYS",
+    "UNIPI_KANBOARD_RETENTION_DAYS",
+    "UNIPI_KANBOARD_CHAIN_GATE",
 ];
 
 pub(crate) fn cli(fixture: &Fixture, args: &[&str]) -> std::process::Output {
@@ -243,11 +243,11 @@ pub(crate) fn cli(fixture: &Fixture, args: &[&str]) -> std::process::Output {
     }
     command
         .env("HOME", fixture.layout.home.as_os_str())
-        .env("OINO_KANBOARD_HOME", fixture.layout.home.as_os_str())
-        .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
+        .env("UNIPI_KANBOARD_HOME", fixture.layout.home.as_os_str())
+        .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
         .current_dir(fixture.root())
         .output()
-        .expect("run oino-kanboard")
+        .expect("run unipi-kanboard")
 }
 
 /// Like `cli` but with extra environment overrides (limits, session) — those
@@ -265,11 +265,11 @@ pub(crate) fn cli_with_env(
     }
     command
         .env("HOME", fixture.layout.home.as_os_str())
-        .env("OINO_KANBOARD_HOME", fixture.layout.home.as_os_str())
-        .env("OINO_KANBOARD_PROJECT", &fixture.project.slug)
+        .env("UNIPI_KANBOARD_HOME", fixture.layout.home.as_os_str())
+        .env("UNIPI_KANBOARD_PROJECT", &fixture.project.slug)
         .current_dir(fixture.root());
     for (name, value) in env {
         command.env(name, value);
     }
-    command.output().expect("run oino-kanboard")
+    command.output().expect("run unipi-kanboard")
 }

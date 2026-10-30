@@ -413,7 +413,7 @@ mod tests {
             "rg x && wc -l f",
             "node --version",
             "npx tsx --version",
-            "oino-kanboard start KB-1",
+            "unipi-kanboard start KB-1",
             "FOO=1 grep x f",
             "echo hi 2>&1",
             "cat f >/dev/null",
@@ -421,7 +421,7 @@ mod tests {
             r#"echo "a > b""#,
             "sort f",
             "sed -n 1p f",
-            "/usr/bin/oino-kanboard list",
+            "/usr/bin/unipi-kanboard list",
         ] {
             assert!(!shell_changes_files(read), "{read}");
         }
@@ -471,7 +471,7 @@ mod tests {
     fn keeps_nudging_the_unstarted_task() {
         let mut t = Tracker::default();
         t.on_prompt("KB-1 then KB-2");
-        t.observe("bash", &bash("oino-kanboard start KB-1"), false, false);
+        t.observe("bash", &bash("unipi-kanboard start KB-1"), false, false);
         assert_eq!(t.started(), ["KB-1"]);
         let board = [task("KB-1", "in_progress"), task("KB-2", "todo")];
         let c = t.observe("edit", &json!({}), false, false).unwrap();
@@ -502,7 +502,7 @@ mod tests {
         assert_eq!(t.mentioned(), [] as [String; 0]);
         t.observe(
             "bash",
-            &bash("oino-kanboard --json show KB-4"),
+            &bash("unipi-kanboard --json show KB-4"),
             false,
             false,
         );

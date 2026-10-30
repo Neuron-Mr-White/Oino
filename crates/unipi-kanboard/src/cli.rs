@@ -1,4 +1,4 @@
-//! clap definitions for `oino-kanboard`.
+//! clap definitions for `unipi-kanboard`.
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
@@ -7,23 +7,23 @@ use crate::model::{ChainGate, Priority, Status};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "oino-kanboard",
+    name = "unipi-kanboard",
     version,
     about = "Oino kanboard — deferred-work board for a project",
     long_about = "Every write goes through this binary: it validates the task format and transition rules and writes atomically under a per-project lock."
 )]
-/// Command line of `oino-kanboard`.
+/// Command line of `unipi-kanboard`.
 pub struct Cli {
     /// Project slug (defaults to the project registered for the current git root).
     #[arg(long, global = true, value_name = "SLUG")]
     pub project: Option<String>,
 
-    /// Who is acting: user | agent | system (defaults to $`OINO_KANBOARD_ACTOR`, else user).
+    /// Who is acting: user | agent | system (defaults to $`UNIPI_KANBOARD_ACTOR`, else user).
     #[arg(long, global = true, value_name = "ACTOR")]
     pub actor: Option<String>,
 
     /// Session identity for `start`/`finish` claims and activity tags
-    /// (defaults to $`OINO_KANBOARD_SESSION`).
+    /// (defaults to $`UNIPI_KANBOARD_SESSION`).
     #[arg(long, global = true, value_name = "ID")]
     pub session: Option<String>,
 
@@ -217,7 +217,7 @@ pub enum Command {
         /// Task id.
         id: String,
         /// The long-lived process that owns the claim (defaults to
-        /// $`OINO_KANBOARD_PID`, else the parent process). The stale-claim
+        /// $`UNIPI_KANBOARD_PID`, else the parent process). The stale-claim
         /// reaper releases the task when it dies.
         #[arg(long)]
         pid: Option<u32>,

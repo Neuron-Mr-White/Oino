@@ -1,4 +1,4 @@
-//! `unipi.kanboard` as a real component in the wasm host, driving the real `oino-kanboard`
+//! `unipi.kanboard` as a real component in the wasm host, driving the real `unipi-kanboard`
 //! binary (built by `run.sh` into the root `target/debug`).
 
 #![allow(
@@ -85,16 +85,16 @@ impl Env {
         // The extension runs kanboard in-process now (`kanboard.exec`); the
         // binary only simulates the agent's own calls in `settle_nudges`.
         assert!(
-            root_dir().join("target/debug/oino-kanboard").exists(),
-            "build oino-kanboard first (run.sh does)"
+            root_dir().join("target/debug/unipi-kanboard").exists(),
+            "build unipi-kanboard first (run.sh does)"
         );
         let home = tempfile::tempdir().unwrap();
         // SAFETY: set before the runtime starts; tests run with --test-threads=1.
         unsafe {
-            std::env::remove_var("OINO_KANBOARD_BIN");
-            std::env::set_var("OINO_KANBOARD_HOME", home.path());
-            std::env::set_var("OINO_KANBOARD_NO_WATCH", "1");
-            std::env::remove_var("OINO_KANBOARD_CHILD");
+            std::env::remove_var("UNIPI_KANBOARD_BIN");
+            std::env::set_var("UNIPI_KANBOARD_HOME", home.path());
+            std::env::set_var("UNIPI_KANBOARD_NO_WATCH", "1");
+            std::env::remove_var("UNIPI_KANBOARD_CHILD");
         }
         let agent = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
@@ -111,7 +111,7 @@ impl Env {
 
     /// SIGKILL of the host process for the guest (core.md §2.1.8 restart gate): the runtime
     /// and its guest instances die; the kanboard CLI's locked board files (under
-    /// `OINO_KANBOARD_HOME`), the agent/project dirs and the recorded host calls survive, and
+    /// `UNIPI_KANBOARD_HOME`), the agent/project dirs and the recorded host calls survive, and
     /// a fresh runtime is rebuilt over them. The process-global env vars stay as `new` set
     /// them.
     fn restart(&mut self) {
@@ -264,7 +264,7 @@ async fn board_flow_guard_and_env() {
 
     // No -do budget: a write through bash is refused, a read passes.
     let blocked = env
-        .event(&ext, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c1", "input": {"command": "oino-kanboard --actor agent add x"}}))
+        .event(&ext, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c1", "input": {"command": "unipi-kanboard --actor agent add x"}}))
         .await
         .unwrap();
     assert_eq!(blocked["block"], true);
@@ -275,16 +275,16 @@ async fn board_flow_guard_and_env() {
             .starts_with("kanboard write budget used up")
     );
     let read = env
-        .event(&ext, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c2", "input": {"command": format!("oino-kanboard --actor agent show {id}")}}))
+        .event(&ext, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c2", "input": {"command": format!("unipi-kanboard --actor agent show {id}")}}))
         .await
         .unwrap();
     let cmd = read["input"]["command"].as_str().unwrap();
     assert!(
-        cmd.starts_with("export OINO_KANBOARD_SESSION='oino-s1' OINO_KANBOARD_PID="),
+        cmd.starts_with("export UNIPI_KANBOARD_SESSION='oino-s1' UNIPI_KANBOARD_PID="),
         "{cmd}"
     );
     assert!(
-        cmd.ends_with(&format!("oino-kanboard --actor agent show {id}")),
+        cmd.ends_with(&format!("unipi-kanboard --actor agent show {id}")),
         "{cmd}"
     );
     // Non-kanboard commands are untouched.
@@ -304,13 +304,13 @@ async fn board_flow_guard_and_env() {
     );
     assert!(text.ends_with("Request: triage the board"));
     let allowed = env
-        .event(&ext, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c4", "input": {"command": "oino-kanboard --actor agent add x"}}))
+        .event(&ext, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c4", "input": {"command": "unipi-kanboard --actor agent add x"}}))
         .await
         .unwrap();
     assert!(allowed.get("block").is_none(), "{allowed}");
 
     // Badge on a successful start.
-    env.event(&ext, EventKind::ToolResult, json!({"type": "tool_result", "toolName": "bash", "toolCallId": "c5", "input": {"command": format!("oino-kanboard start {id}")}, "content": [], "isError": false})).await;
+    env.event(&ext, EventKind::ToolResult, json!({"type": "tool_result", "toolName": "bash", "toolCallId": "c5", "input": {"command": format!("unipi-kanboard start {id}")}, "content": [], "isError": false})).await;
     let badge = env
         .host
         .entries()
@@ -377,13 +377,13 @@ async fn capture_service_and_claims_nudge() {
     let id = ok["id"].as_str().unwrap().to_owned();
 
     // Claim it as this session through the binary (todo first), then settle: the monitor nudges.
-    let bin = root_dir().join("target/debug/oino-kanboard");
+    let bin = root_dir().join("target/debug/unipi-kanboard");
     let run = |args: &[&str]| {
         let out = Command::new(&bin)
             .args(args)
             .current_dir(env.project.path())
-            .env("OINO_KANBOARD_SESSION", "oino-s1")
-            .env("OINO_KANBOARD_PID", std::process::id().to_string())
+            .env("UNIPI_KANBOARD_SESSION", "oino-s1")
+            .env("UNIPI_KANBOARD_PID", std::process::id().to_string())
             .output()
             .unwrap();
         assert!(
@@ -394,7 +394,7 @@ async fn capture_service_and_claims_nudge() {
     };
     run(&["move", &id, "todo"]);
     run(&["--actor", "agent", "start", &id]);
-    env.event(&ext, EventKind::ToolResult, json!({"type": "tool_result", "toolName": "bash", "toolCallId": "c1", "input": {"command": format!("oino-kanboard start {id}")}, "content": [], "isError": false})).await;
+    env.event(&ext, EventKind::ToolResult, json!({"type": "tool_result", "toolName": "bash", "toolCallId": "c1", "input": {"command": format!("unipi-kanboard start {id}")}, "content": [], "isError": false})).await;
     env.event(&ext, EventKind::AgentStart, json!({"type": "agent_start"}))
         .await;
     env.event(&ext, EventKind::AgentEnd, json!({"type": "agent_end", "messages": [{"role": "assistant", "content": [{"type": "text", "text": "working on it"}], "stopReason": "stop"}]})).await;
@@ -453,13 +453,13 @@ async fn capture_service_and_claims_nudge() {
 #[tokio::test(flavor = "multi_thread")]
 async fn kill_and_restart_rebuilds_from_the_board() {
     let mut env = Env::new();
-    let bin = root_dir().join("target/debug/oino-kanboard");
+    let bin = root_dir().join("target/debug/unipi-kanboard");
     let run = |args: &[&str]| {
         let out = Command::new(&bin)
             .args(args)
             .current_dir(env.project.path())
-            .env("OINO_KANBOARD_SESSION", "oino-s1")
-            .env("OINO_KANBOARD_PID", std::process::id().to_string())
+            .env("UNIPI_KANBOARD_SESSION", "oino-s1")
+            .env("UNIPI_KANBOARD_PID", std::process::id().to_string())
             .output()
             .unwrap();
         assert!(
@@ -514,7 +514,7 @@ async fn kill_and_restart_rebuilds_from_the_board() {
         .event(
             &ext,
             EventKind::ToolCall,
-            json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c1", "input": {"command": "oino-kanboard --actor agent add x"}}),
+            json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c1", "input": {"command": "unipi-kanboard --actor agent add x"}}),
         )
         .await
         .unwrap();
@@ -534,7 +534,7 @@ async fn kill_and_restart_rebuilds_from_the_board() {
     env.event(
         &ext,
         EventKind::ToolResult,
-        json!({"type": "tool_result", "toolName": "bash", "toolCallId": "c2", "input": {"command": format!("oino-kanboard start {id}")}, "content": [], "isError": false}),
+        json!({"type": "tool_result", "toolName": "bash", "toolCallId": "c2", "input": {"command": format!("unipi-kanboard start {id}")}, "content": [], "isError": false}),
     )
     .await;
     env.event(&ext, EventKind::AgentStart, json!({"type": "agent_start"}))

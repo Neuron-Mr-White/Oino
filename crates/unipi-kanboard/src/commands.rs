@@ -20,7 +20,7 @@ pub struct Common {
     pub actor: Actor,
     /// When a dependency counts as satisfied.
     pub gate: ChainGate,
-    /// Session id from --session / $`OINO_KANBOARD_SESSION` (agent calls carry it).
+    /// Session id from --session / $`UNIPI_KANBOARD_SESSION` (agent calls carry it).
     pub session: Option<String>,
     /// Timestamp for the activity entries this command writes.
     pub now: DateTime<Utc>,
@@ -1442,12 +1442,12 @@ fn env_usize(name: &str, default: usize, min: usize) -> usize {
 }
 
 /// Env var naming the per-project session cap.
-pub const SESSION_CAP_ENV: &str = "OINO_KANBOARD_MAX_SESSIONS";
+pub const SESSION_CAP_ENV: &str = "UNIPI_KANBOARD_MAX_SESSIONS";
 /// Default per-project session cap.
 pub const SESSION_CAP_DEFAULT: usize = 2;
 
 /// Distinct sessions that may hold `in_progress` tasks per project.
-/// `OINO_KANBOARD_MAX_SESSIONS`, default 2, minimum 1.
+/// `UNIPI_KANBOARD_MAX_SESSIONS`, default 2, minimum 1.
 #[must_use]
 pub fn max_sessions() -> usize {
     env_usize(SESSION_CAP_ENV, SESSION_CAP_DEFAULT, 1)

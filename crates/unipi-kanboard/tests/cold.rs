@@ -22,11 +22,11 @@
 mod common;
 
 use common::{Fixture, cli};
-use oino_kanboard::model::{Priority, Status};
+use unipi_kanboard::model::{Priority, Status};
 
 fn set_updated(fixture: &Fixture, id: &str, days_ago: i64) {
     let board =
-        oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
+        unipi_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
     let mut task = board.get(id).unwrap();
     task.updated = fixture.common.now - chrono::Duration::days(days_ago);
     board.save(&task).unwrap();

@@ -2,7 +2,7 @@
 //! `kanboard.exec` host import (every extension host that embeds the wasm
 //! runtime) and the desktop's board service. There is no daemon, HTTP port or
 //! SSE stream any more — a caller sends the same argv/environment it used to
-//! give the `oino-kanboard` binary and gets the same `--json` payload back,
+//! give the `unipi-kanboard` binary and gets the same `--json` payload back,
 //! computed under the library's file locks.
 //!
 //! Request shape (`exec` takes the same JSON over the WIT boundary):
@@ -10,7 +10,7 @@
 //! ```json
 //! {
 //!   "argv":  ["list", "--all"],
-//!   "env":   {"OINO_KANBOARD_PROJECT": "demo-a1b2c3", "OINO_KANBOARD_SESSION": "…"},
+//!   "env":   {"UNIPI_KANBOARD_PROJECT": "demo-a1b2c3", "UNIPI_KANBOARD_SESSION": "…"},
 //!   "cwd":   "/the/project/dir",
 //!   "stdin": "text for a `-` argument (optional)"
 //! }
@@ -32,14 +32,14 @@ use crate::run;
 use crate::store::Layout;
 
 /// One `exec` request: argv of the command (without the program name), the
-/// `OINO_KANBOARD_*` environment the caller would have exported, the working
+/// `UNIPI_KANBOARD_*` environment the caller would have exported, the working
 /// directory project resolution happens in, and optional stdin text.
 #[derive(Debug, Clone, Default)]
 pub struct ExecRequest {
     /// Subcommand argv (`["list", "--all"]`); global flags like `--actor` may
     /// be given here or through `env`.
     pub argv: Vec<String>,
-    /// Environment on top of the host's (`OINO_KANBOARD_*` variables).
+    /// Environment on top of the host's (`UNIPI_KANBOARD_*` variables).
     pub env: BTreeMap<String, String>,
     /// Working directory (defaults to the host's cwd).
     pub cwd: Option<PathBuf>,
@@ -95,10 +95,10 @@ pub fn parse_request(value: &Value) -> Result<ExecRequest, Error> {
 /// them to argv when the caller passed them through `env` (the extension
 /// exports the same variables for the agent's own binary calls).
 const ENV_FLAGS: [(&str, &str); 4] = [
-    ("OINO_KANBOARD_ACTOR", "--actor"),
-    ("OINO_KANBOARD_SESSION", "--session"),
-    ("OINO_KANBOARD_PROJECT", "--project"),
-    ("OINO_KANBOARD_CHAIN_GATE", "--gate"),
+    ("UNIPI_KANBOARD_ACTOR", "--actor"),
+    ("UNIPI_KANBOARD_SESSION", "--session"),
+    ("UNIPI_KANBOARD_PROJECT", "--project"),
+    ("UNIPI_KANBOARD_CHAIN_GATE", "--gate"),
 ];
 
 /// The flag's long name, when `argv` already sets it.
@@ -112,7 +112,7 @@ fn has_flag(argv: &[String], flag: &str) -> bool {
 #[must_use]
 pub fn exec(request: &ExecRequest) -> Value {
     let mut argv = Vec::with_capacity(request.argv.len() + ENV_FLAGS.len() * 2 + 1);
-    argv.push("oino-kanboard".to_owned());
+    argv.push("unipi-kanboard".to_owned());
     argv.extend(request.argv.iter().cloned());
     // Environment variables alias their global flag when argv leaves it unset.
     for (var, flag) in ENV_FLAGS {
@@ -151,7 +151,7 @@ pub fn exec(request: &ExecRequest) -> Value {
     };
     match run::dispatch_in(&cli, &exec) {
         Ok(mut payload) => {
-            // Text callers (the extension's chat replies, `oino-kanboard`
+            // Text callers (the extension's chat replies, `unipi-kanboard`
             // without --json) read `output` — the same rendering the binary
             // prints.
             if !cli.json {
@@ -289,7 +289,7 @@ mod tests {
         let home = tmp.path().join("kb");
         let request = json!({
             "argv": ["project", "add", "--root", tmp.path().to_string_lossy(), "--name", "Demo"],
-            "env": {"OINO_KANBOARD_HOME": home.to_string_lossy()},
+            "env": {"UNIPI_KANBOARD_HOME": home.to_string_lossy()},
             "cwd": tmp.path().to_string_lossy(),
         });
         let payload = exec_json(&request);
@@ -298,7 +298,7 @@ mod tests {
 
         let payload = exec_json(&json!({
             "argv": ["add", "First task", "--status", "todo"],
-            "env": {"OINO_KANBOARD_HOME": home.to_string_lossy(), "OINO_KANBOARD_PROJECT": slug},
+            "env": {"UNIPI_KANBOARD_HOME": home.to_string_lossy(), "UNIPI_KANBOARD_PROJECT": slug},
             "cwd": tmp.path().to_string_lossy(),
         }));
         assert!(!is_error(&payload), "{payload}");
@@ -306,7 +306,7 @@ mod tests {
 
         let payload = exec_json(&json!({
             "argv": ["list", "--all"],
-            "env": {"OINO_KANBOARD_HOME": home.to_string_lossy(), "OINO_KANBOARD_PROJECT": slug},
+            "env": {"UNIPI_KANBOARD_HOME": home.to_string_lossy(), "UNIPI_KANBOARD_PROJECT": slug},
         }));
         let tasks = payload["tasks"].as_array().expect("tasks");
         assert_eq!(tasks.len(), 1);
@@ -319,7 +319,7 @@ mod tests {
         let home = tmp.path().join("kb");
         let payload = exec_json(&json!({
             "argv": ["list"],
-            "env": {"OINO_KANBOARD_HOME": home.to_string_lossy()},
+            "env": {"UNIPI_KANBOARD_HOME": home.to_string_lossy()},
             "cwd": tmp.path().to_string_lossy(),
         }));
         assert!(is_error(&payload));

@@ -1,20 +1,20 @@
 [package]
-name = "oino-kanboard"
+name = "unipi-kanboard"
 version = "1.0.0-alpha.5"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "Kanboard for Oino: task format, transition rules, dependency graph, in-process service and CLI"
-keywords = ["kanboard", "oino", "tasks"]
+description = "Kanboard for UniPi: task format, transition rules, dependency graph, in-process service and the `unipi-kanboard` CLI"
+keywords = ["kanboard", "unipi", "tasks"]
 categories = ["command-line-utilities"]
 
 [[bin]]
-name = "oino-kanboard"
+name = "unipi-kanboard"
 path = "src/main.rs"
 
 [lib]
-name = "oino_kanboard"
+name = "unipi_kanboard"
 path = "src/lib.rs"
 
 [dependencies]
