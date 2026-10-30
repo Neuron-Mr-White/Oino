@@ -159,9 +159,9 @@ impl Client {
         let mut all = Vec::new();
         loop {
             let batch = self.events().await;
-            let found = batch.iter().any(|event| {
-                event.event.get("kind").and_then(Value::as_str) == Some(kind)
-            });
+            let found = batch
+                .iter()
+                .any(|event| event.event.get("kind").and_then(Value::as_str) == Some(kind));
             all.extend(batch);
             if found {
                 return all;
