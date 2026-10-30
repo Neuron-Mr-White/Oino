@@ -30,7 +30,8 @@ function stubMotion(reduce: boolean): void {
 
 afterEach(() => {
   cleanup();
-  vi.unstubAllGlobals();
+  // restore only matchMedia: unstubAllGlobals would drop test-setup's ResizeObserver
+  vi.stubGlobal('matchMedia', undefined);
 });
 
 describe('prefersReducedMotion', () => {

@@ -5,19 +5,19 @@
  * visible at 0 % and opening Session → Context (Z-73), and the A14 chords in
  * the shortcut registry (Ctrl/Cmd+M, Ctrl/Cmd+T, Ctrl/Cmd+Shift+M).
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { resetHubs } from '../../lib/session/hub';
 import { resetSessions, sessions } from '../../lib/session/store';
 import { resetLayout, setDesktopOverride } from '../../lib/layout';
 import { bindingForEvent } from '../../lib/shortcuts/registry';
-import { resetThinkingLevels } from '../../lib/model/thinking';
+import { cycleThinkingLevel, resetThinkingLevels } from '../../lib/model/thinking';
 import { resetComposerDrafts } from '../../lib/composer/drafts';
 import { Composer } from '../composer/Composer';
 import { createMockHost, type MockScenario, type MockWorld } from '../../dev/mock/host';
 import { SCENARIOS } from '../../dev/mock/scenarios';
-import { sessionModal } from '../session/modalTarget';
+import { sessionModal, setSessionModalTarget } from '../session/modalTarget';
 import { ModelChip } from './ModelChip';
 import { ThinkingChip } from './ThinkingChip';
 import { ContextRing } from './ContextRing';
@@ -72,6 +72,8 @@ afterEach(() => {
   resetThinkingLevels();
   resetComposerDrafts();
   closeModelPicker();
+  setSessionModalTarget(undefined);
+  location.hash = '';
   setHostClientFactory(undefined);
   window.localStorage.clear();
 });
@@ -125,6 +127,37 @@ describe('ContextRing (Z-73)', () => {
     expect(screen.getByTestId('context-ring').getAttribute('aria-label')).toContain('37%');
     fireEvent.click(screen.getByTestId('context-ring'));
     expect(sessionModal()).toMatchObject({ hostId: HOST, sessionId: SESSION, tab: 'context' });
+  });
+
+  it('opens Context on a desktop hover after the delay (Z-73)', async () => {
+    await open('thinking-chip');
+    vi.stubGlobal(
+      'matchMedia',
+      (query: string) =>
+        ({
+          matches: query.includes('hover'),
+          media: query,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          addListener: () => undefined,
+          removeListener: () => undefined,
+          dispatchEvent: () => false,
+        }) as unknown as MediaQueryList,
+    );
+    const s = sessions().ensure(HOST, SESSION);
+    render(() => <ContextRing session={s} />);
+    await waitFor(() => expect(screen.getByTestId('context-ring').getAttribute('data-percent')).toBe('37'));
+    fireEvent.mouseEnter(screen.getByTestId('context-ring'));
+    await waitFor(() => expect(sessionModal()).toMatchObject({ hostId: HOST, sessionId: SESSION, tab: 'context' }), { timeout: 2000 });
+    // restore only matchMedia: unstubAllGlobals would drop test-setup's ResizeObserver
+    vi.stubGlobal('matchMedia', undefined);
+    // leaving before the timer fires never opens it
+    setSessionModalTarget(undefined);
+    fireEvent.mouseEnter(screen.getByTestId('context-ring'));
+    fireEvent.mouseLeave(screen.getByTestId('context-ring'));
+    await new Promise((r) => setTimeout(r, 700));
+    expect(sessionModal()).toBeUndefined();
   });
 
   it('stays visible at 0 % (QA#8): a track and a 2 % arc floor', async () => {
@@ -182,5 +215,15 @@ describe('A14 shortcuts (Z-69..Z-74)', () => {
     expect(press('m')).toEqual({ kind: 'app', id: 'model.open' });
     expect(press('t')).toEqual({ kind: 'app', id: 'thinking.cycle' });
     expect(press('m', true)).toEqual({ kind: 'app', id: 'mode.cycle' });
+  });
+
+  it('Ctrl/Cmd+T\'s action cycles on the host (cycle_thinking_level, MockHost log)', async () => {
+    const world = await open('thinking-chip');
+    const handle = sessions().peek(HOST, SESSION)!;
+    await waitFor(() => expect(handle.state.thinkingLevel).toBe('high'));
+    await cycleThinkingLevel(handle);
+    expect(cmdArgs(world, 'cycle_thinking_level')).toHaveLength(1);
+    // the host's thinking_level_changed event rolls the chip to the next level
+    await waitFor(() => expect(handle.state.thinkingLevel).not.toBe('high'));
   });
 });
