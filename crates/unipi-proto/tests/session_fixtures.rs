@@ -44,7 +44,8 @@ fn parses(schema: &str, value: &Value) -> Result<(), String> {
                 | Request::SessionFork { .. }
                 | Request::SessionArchive { .. }
                 | Request::SessionRename { .. }
-                | Request::SessionClose { .. },
+                | Request::SessionClose { .. }
+                | Request::SessionMetaSet { .. },
             ) => Ok(()),
             Ok(_) => Err("not a session request".into()),
             Err(error) => Err(error.to_string()),
@@ -96,6 +97,31 @@ fn shared_session_fixtures_agree() {
             fixture.name
         );
     }
+}
+
+#[test]
+fn meta_fields_round_trip_the_shared_card_fixture() {
+    // WP-A4 (app spec §3.14): the meta fixture the vitest suite parses too.
+    let fixtures = fixtures();
+    let fixture = fixtures
+        .iter()
+        .find(|fixture| {
+            fixture.name == "sessions_list card (pinned, unread, title locked, changes, cron)"
+        })
+        .expect("the meta fixture exists");
+    let cards: SessionsListData = serde_json::from_value(fixture.value.clone()).expect("parses");
+    let card = cards.first().expect("one card");
+    assert!(card.pinned && card.unread && card.title_locked);
+    assert_eq!(card.source.as_deref(), Some("cron"));
+    assert_eq!(
+        card.changes,
+        Some(unipi_proto::session::CardChanges { add: 128, del: 14 })
+    );
+    assert_eq!(card.last_activity, 1_761_905_520_000);
+    // …and serializes back with the same shape (false/unset omitted).
+    let value = serde_json::to_value(cards).unwrap();
+    assert_eq!(value[0]["pinned"], serde_json::json!(true));
+    assert!(value[0].get("needs_you").is_none());
 }
 
 #[test]

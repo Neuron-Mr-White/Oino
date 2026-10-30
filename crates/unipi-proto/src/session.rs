@@ -167,10 +167,23 @@ pub enum RunState {
     TakenOver,
 }
 
+/// Line changes of a session (app spec §3.14): the sidebar row's `+N −M`.
+/// Unset until a later WP feeds it (the `unipi.file-summary` turns or cron runs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct CardChanges {
+    /// Lines added.
+    pub add: u64,
+    /// Lines removed.
+    pub del: u64,
+}
+
 /// One row of `sessions_list` and of `HubEvent::SessionChanged` (host.md §4.2).
 ///
 /// Field names are the wire's (`snake_case`, as everywhere in v2); `run_state` is the
 /// enum §4.2 names, and the crash/takeover details travel beside it (`error`, `from`).
+/// The §3.14 meta fields (`pinned`, `unread`, `title_locked`, `source`, `changes`,
+/// `last_activity`) are stored host-side in `session-meta.json` and merged into every
+/// card (WP-A4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionCard {
     /// Session id (header).
@@ -205,6 +218,39 @@ pub struct SessionCard {
     /// Who took the session over, for `run_state = "taken_over"` (`tui`, `host:<name>`, `cli`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
+    /// Pinned by the user (sidebar "Pinned" group, Z-14; app spec §3.14).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pinned: bool,
+    /// The session ended a run / needed the user while no connection had it focused
+    /// (Z-86); cleared when a connection focuses it again.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub unread: bool,
+    /// A manual name locks out auto-rename (Z-15; set by `session_meta_set`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub title_locked: bool,
+    /// Who runs the session when it is not the user (`"cron"`; A22 fills it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Line changes (`+N −M` of the row, Z-12) when a summary exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<CardChanges>,
+    /// Last activity the host knows (epoch ms); the row's relative time (Z-10).
+    #[serde(default)]
+    pub last_activity: u64,
+}
+
+/// The patch of `session_meta_set` (app spec §3.14): only the fields present change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SessionMetaPatch {
+    /// Pin/unpin (Z-14).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned: Option<bool>,
+    /// Mark (un)read (Z-82/Z-86).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unread: Option<bool>,
+    /// Lock/unlock the title against auto-rename (Z-15).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_locked: Option<bool>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -525,13 +571,25 @@ mod tests {
             model: Some("faux-1".into()),
             error: Some("tool body exploded".into()),
             from: None,
+            pinned: true,
+            unread: false,
+            title_locked: true,
+            source: None,
+            changes: Some(CardChanges { add: 12, del: 4 }),
+            last_activity: 1_700_000_000_000,
         };
         let changed = HubEvent::SessionChanged { card };
         let value = serde_json::to_value(&changed).unwrap();
         assert_eq!(value["kind"], "session_changed");
         assert_eq!(value["card"]["run_state"], "crashed");
         assert_eq!(value["card"]["message_count"], 4);
+        assert_eq!(value["card"]["pinned"], true);
+        assert_eq!(value["card"]["title_locked"], true);
+        assert_eq!(value["card"]["changes"], json!({"add": 12, "del": 4}));
+        assert_eq!(value["card"]["last_activity"], 1_700_000_000_000u64);
         assert!(value["card"].get("needs_you").is_none(), "false is omitted");
+        assert!(value["card"].get("unread").is_none(), "false is omitted");
+        assert!(value["card"].get("source").is_none(), "unset is omitted");
         let parsed: HubEvent = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, changed);
 
@@ -558,6 +616,30 @@ mod tests {
             .unwrap(),
             json!({"kind": "ui", "snapshot": {"scope": "host", "rev": 1, "entries": []}})
         );
+    }
+
+    /// A meta patch round-trips with absent fields omitted (§3.14 `session_meta_set`).
+    #[test]
+    fn meta_patch_wire_shape() {
+        let patch = SessionMetaPatch {
+            pinned: Some(true),
+            unread: None,
+            title_locked: None,
+        };
+        assert_eq!(
+            serde_json::to_value(patch).unwrap(),
+            json!({"pinned": true})
+        );
+        let parsed: SessionMetaPatch = serde_json::from_value(json!({"unread": false})).unwrap();
+        assert_eq!(
+            parsed,
+            SessionMetaPatch {
+                unread: Some(false),
+                ..SessionMetaPatch::default()
+            }
+        );
+        let empty: SessionMetaPatch = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(empty, SessionMetaPatch::default());
     }
 
     #[test]

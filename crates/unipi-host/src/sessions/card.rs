@@ -37,6 +37,10 @@ impl HubState {
     pub const UNKNOWN_CRASH: &'static str = "the session task crashed (see the host log)";
 }
 
+/// Line changes of one session (app spec §3.14): the sidebar row's `+N −M`.
+/// Unset until a later WP feeds it.
+pub use unipi_proto::session::CardChanges;
+
 /// One row of the Sessions list (§4.2): the record's header facts plus the host's live state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,6 +66,24 @@ pub struct SessionCard {
     /// Model selected in the session, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Pinned by the user (app spec §3.14, Z-14).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pinned: bool,
+    /// Ended a run / needed the user while unfocused (Z-86).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub unread: bool,
+    /// Manual name beats auto-rename (Z-15).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub title_locked: bool,
+    /// Who runs the session when it is not the user (`"cron"`; A22 fills it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Line changes (`+N −M`) when a summary exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<CardChanges>,
+    /// Last activity the host knows (epoch ms; the row's relative time).
+    #[serde(default)]
+    pub last_activity: u64,
 }
 
 impl SessionCard {
@@ -153,6 +175,12 @@ mod tests {
             state: HubState::Idle,
             needs_you: false,
             model: None,
+            pinned: false,
+            unread: false,
+            title_locked: false,
+            source: None,
+            changes: None,
+            last_activity: updated_at,
         }
     }
 

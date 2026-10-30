@@ -14,6 +14,7 @@ import { createSignal } from 'solid-js';
 import {
   APP_HOST,
   type Closable,
+  type EventsStream,
   type HostClient,
   type HostConn,
   type HubEvent,
@@ -100,6 +101,16 @@ const BUILTIN: Record<string, MockOp> = {
   host_info: (_a, h) => ({ name: h.spec.name, version: '2.0.0', proto: '2.0.0', tools: ['oino', 'unipi-kanboard'] }),
   // host.md §7.2: a bare array of cards, newest activity first.
   sessions_list: (_a, h) => h.spec.cards ?? [],
+  session_meta_set: (a, h) => {
+    const card = h.spec.cards?.find((c) => c.session_id === a.session);
+    if (!card) throw err('E_NOT_FOUND', `No session ${String(a.session)}`);
+    for (const key of ['pinned', 'unread', 'title_locked'] as const) {
+      if (typeof a[key] === 'boolean') (card as Record<string, unknown>)[key] = a[key];
+    }
+    // Like the real host, the card goes to *this* host's connections only.
+    h.emit({ kind: 'session_changed', card: { ...card } });
+    return { ...card };
+  },
   fs_roots: (_a, h) => ({ roots: Object.keys(h.spec.fs ?? {}) }),
   fs_list: (a, h) => {
     const path = String(a.path ?? '');
@@ -245,10 +256,26 @@ export class MockHost implements HostClient {
     };
   }
 
-  openEvents(sink: (event: HubEvent) => void): Closable {
+  openEvents(sink: (event: HubEvent) => void): EventsStream {
     this.world.record({ host: this.hostId, kind: 'open', op: 'events_open' });
     this.world.eventSinks.add(sink);
-    return { close: () => this.world.eventSinks.delete(sink) };
+    const hostSinks = this.world.hostSinks.get(this.hostId) ?? this.world.hostSinks.set(this.hostId, new Set()).get(this.hostId)!;
+    hostSinks.add(sink);
+    return {
+      // §3.14: the mock clears the focused card's `unread` like the host does (Z-82).
+      focus: (session) => {
+        this.world.record({ host: this.hostId, kind: 'request', op: 'session_focus', args: { session } });
+        const card = session ? this.spec.cards?.find((c) => c.session_id === session) : undefined;
+        if (card?.unread) {
+          card.unread = false;
+          this.emit({ kind: 'session_changed', card: { ...card } });
+        }
+      },
+      close: () => {
+        this.world.eventSinks.delete(sink);
+        hostSinks.delete(sink);
+      },
+    };
   }
 
   openTerm(req: Parameters<HostClient['openTerm']>[0]): TermStream {
@@ -260,6 +287,11 @@ export class MockHost implements HostClient {
     this.world.record({ host: this.hostId, kind: 'open', op: 'lsp_open', args: req });
     return { send() {}, close() {} };
   }
+
+  /** Sends a hub event to this host's `openEvents` subscribers only (like the real host). */
+  emit(event: HubEvent): void {
+    for (const sink of this.world.hostSinks.get(this.hostId) ?? []) sink(event);
+  }
 }
 
 type StreamHandle = { push(items: SessionEventDto[]): void; drop(error?: Err): void };
@@ -267,6 +299,8 @@ type StreamHandle = { push(items: SessionEventDto[]): void; drop(error?: Err): v
 export class MockWorld {
   readonly log: MockLogEntry[] = [];
   readonly eventSinks = new Set<(event: HubEvent) => void>();
+  /** Per-host event sinks: `MockHost.emit` reaches only its own host's subscribers. */
+  readonly hostSinks = new Map<string, Set<(event: HubEvent) => void>>();
   /** Open session streams by `host/session` (tests push events / drop them). */
   readonly streams = new Map<string, Set<StreamHandle>>();
   private readonly clocks = new Map<string, number>();

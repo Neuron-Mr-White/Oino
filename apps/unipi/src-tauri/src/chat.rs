@@ -760,6 +760,58 @@ pub async fn session_close(
     .await
 }
 
+/// `session_meta_set` (app spec §3.14, WP-A4): pin / unread / title-lock flags,
+/// persisted by the host in `session-meta.json`. → the updated `SessionCard`.
+#[tauri::command]
+pub async fn session_meta_set(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    session: SessionTarget,
+    pinned: Option<bool>,
+    unread: Option<bool>,
+    title_locked: Option<bool>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    let patch = unipi_proto::session::SessionMetaPatch {
+        pinned,
+        unread,
+        title_locked,
+    };
+    if patch == unipi_proto::session::SessionMetaPatch::default() {
+        return Err(schema("session_meta_set needs at least one flag"));
+    }
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionMetaSet { session, patch },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
+/// `events_focus` (app spec §3.14, WP-A4): which session the connection behind
+/// `stream_id` focuses (`null` = none); the host clears that session's `unread`
+/// and counts the focus for its Z-86 rule. Fire-and-forget by design.
+#[tauri::command]
+pub async fn events_focus(
+    streams: State<'_, SessionStreams>,
+    stream_id: String,
+    session: Option<String>,
+) -> Result<(), AppErrorDto> {
+    let Some((_, send)) = pending(&streams, &stream_id) else {
+        // The stream is gone (host flap): nothing to report on; the next
+        // `events_open` connection starts focused on nothing again.
+        return Ok(());
+    };
+    let frame = control_frame(&Control::Focus { session })?;
+    let mut send = send.lock().await;
+    send.write_all(&frame)
+        .await
+        .map_err(|error| transport(error))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

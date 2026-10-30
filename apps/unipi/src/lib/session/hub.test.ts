@@ -84,6 +84,39 @@ describe('hub store', () => {
     hub.close();
     dispose();
   });
+
+  it('setMeta patches optimistically and sends session_meta_set (§3.14)', async () => {
+    const scenario: MockScenario = { name: 't', hosts: [{ id: 'h1', name: 'coffee', cards: [card('a'), card('b', { pinned: true })] }] };
+    const w = createMockHost(scenario);
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client: w.client('h1') }), dispose }));
+    await tick();
+    await hub.setMeta('a', { pinned: true });
+    expect(hub.state.meta.a).toEqual({ pinned: true });
+    expect(w.log.at(-1)).toMatchObject({ host: 'h1', kind: 'request', op: 'session_meta_set', args: { session: 'a', pinned: true } });
+    // The mock's session_changed lands with the flag set.
+    await tick();
+    expect(hub.state.cards.a?.pinned).toBe(true);
+    await hub.setMeta('b', { pinned: false, titleLock: true });
+    expect(w.log.at(-1)).toMatchObject({ op: 'session_meta_set', args: { session: 'b', pinned: false, title_locked: true } });
+    expect(hub.state.meta.b).toEqual({ titleLock: true });
+    hub.close();
+    dispose();
+  });
+
+  it('focus forwards onto the events connection (§3.14)', async () => {
+    const focused: Array<string | null> = [];
+    const client = {
+      request: async () => [card('a', { unread: true })],
+      openEvents: (_sink: unknown, _onClosed?: unknown) => ({ close() {}, focus: (s: string | null) => focused.push(s) }),
+    } as never;
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client }), dispose }));
+    await tick();
+    hub.focus('a');
+    hub.focus(null);
+    expect(focused).toEqual(['a', null]);
+    hub.close();
+    dispose();
+  });
 });
 
 describe('hub helpers', () => {

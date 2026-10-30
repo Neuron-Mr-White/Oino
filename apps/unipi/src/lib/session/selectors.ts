@@ -70,9 +70,18 @@ export type ProjectGroup = {
   lastActivity: number;
 };
 
+/** One host's sidebar sections (Z-8/Z-14): the Pinned group first, then the projects. */
+export type SessionGroups = { pinned: SessionCard[]; projects: ProjectGroup[] };
+
 /** Order inside a project: pinned → running → needs-you → most recent (Z-9 / D-9). */
 export function compareCards(a: SessionCard, b: SessionCard, meta: Readonly<Record<string, SessionMeta>> = {}): number {
   const rank = (c: SessionCard) => (meta[c.session_id]?.pinned ? 0 : c.run_state === 'working' ? 1 : c.needs_you ? 2 : 3);
+  return rank(a) - rank(b) || lastActivity(b) - lastActivity(a) || a.session_id.localeCompare(b.session_id);
+}
+
+/** Order inside the Pinned group (Z-14): running → needs-you → most recent. */
+function comparePinned(a: SessionCard, b: SessionCard): number {
+  const rank = (c: SessionCard) => (c.run_state === 'working' ? 0 : c.needs_you ? 1 : 2);
   return rank(a) - rank(b) || lastActivity(b) - lastActivity(a) || a.session_id.localeCompare(b.session_id);
 }
 
@@ -96,6 +105,27 @@ export function projectsOf(cards: Readonly<Record<string, SessionCard>> | readon
   for (const g of groups) g.cards.sort((a, b) => compareCards(a, b, meta));
   groups.sort((a, b) => b.lastActivity - a.lastActivity || a.label.localeCompare(b.label));
   return groups;
+}
+
+/**
+ * The sidebar's view of one host's cards (Z-8/Z-9/Z-14): pinned sessions in
+ * their own group on top (the projects do not repeat them), then the project
+ * groups with pinned → running → needs-you → recent inside.
+ */
+export function sessionGroups(cards: Readonly<Record<string, SessionCard>> | readonly SessionCard[], meta: Readonly<Record<string, SessionMeta>> = {}): SessionGroups {
+  const list = Array.isArray(cards) ? cards : Object.values(cards);
+  const pinned = list.filter((c) => meta[c.session_id]?.pinned).sort(comparePinned);
+  const pinnedIds = new Set(pinned.map((c) => c.session_id));
+  const rest = list.filter((c) => !pinnedIds.has(c.session_id));
+  return { pinned, projects: projectsOf(rest, meta) };
+}
+
+/** The card's line changes (`+N −M`, Z-12) when the host reports a summary. */
+export function changesOf(card: SessionCard): { add: number; del: number } | undefined {
+  const c = card as SessionCard & { changes?: { add?: unknown; del?: unknown } };
+  const changes = c.changes;
+  if (!changes || typeof changes.add !== 'number' || typeof changes.del !== 'number') return undefined;
+  return { add: changes.add, del: changes.del };
 }
 
 /** The connection banner (Z-50 "Lost the connection · Retry"); undefined while live / connecting. */

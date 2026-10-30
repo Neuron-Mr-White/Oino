@@ -90,6 +90,14 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
   createEffect(() => setCurrent({ scope: scope(), view: view() }));
   onCleanup(() => setCurrent(undefined));
 
+  // §3.14 (Z-86): the hub connection reports which session this workspace shows;
+  // leaving (or the draft) reports none. The host clears the session's `unread`.
+  createEffect(() => {
+    const hub = hubs().ensure(props.hostId);
+    hub.focus(props.sessionId ?? null);
+    onCleanup(() => hub.focus(null));
+  });
+
   // Esc leaves full view (after any open menu / dialog took its Esc).
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {

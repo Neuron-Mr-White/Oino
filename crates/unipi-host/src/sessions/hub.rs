@@ -56,6 +56,8 @@ use oino_settings::SettingsManager;
 
 use super::card::{HubState, ProjectGroup, SessionCard};
 use super::crash;
+use super::meta::{FocusRegistry, MetaStore};
+use unipi_proto::session::SessionMetaPatch;
 
 /// Event queue of one [`SessionHub::subscribe`] receiver.
 const EVENTS_CAPACITY: usize = 256;
@@ -162,6 +164,9 @@ pub struct HostHubOptions {
     pub tools: ToolSelection,
     /// `--exclude-tools` applied to every woken session.
     pub exclude_tools: Vec<String>,
+    /// Host data dir (`~/.oino/host`): where `session-meta.json` lives (app spec
+    /// §3.14). `None` falls back to `<agent_dir>/host` (hermetic tests).
+    pub host_data_dir: Option<PathBuf>,
 }
 
 /// One live session as the host hands it to a frontend (H4's stream, the tests).
@@ -286,6 +291,10 @@ struct Inner {
     /// Notices emitted before any client was listening (replayed by `events_open`).
     notices: Mutex<Vec<HubEvent>>,
     state: Mutex<State>,
+    /// Per-user session flags (`session-meta.json`, app spec §3.14).
+    meta: MetaStore,
+    /// Which session each live `events_open` connection focuses (Z-86).
+    focus: FocusRegistry,
     started: SystemTime,
 }
 
@@ -296,6 +305,8 @@ struct State {
     states: HashMap<String, HubState>,
     /// Sessions with a supervisor task.
     supervising: HashSet<String>,
+    /// Sessions with a dialog waiting for the user (the card's `needs_you`).
+    needs_you: HashSet<String>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -338,6 +349,11 @@ impl SessionHub {
         core_options.session_dir = Some(sessions_root.clone());
         let (events, _) = broadcast::channel(EVENTS_CAPACITY);
         let core = CoreHub::create(core_options)?;
+        let meta = MetaStore::open(
+            &options
+                .host_data_dir
+                .unwrap_or_else(|| agent_dir.join("host")),
+        );
         let inner = Arc::new(Inner {
             core,
             cwd,
@@ -346,6 +362,8 @@ impl SessionHub {
             events,
             notices: Mutex::new(Vec::new()),
             state: Mutex::new(State::default()),
+            meta,
+            focus: FocusRegistry::default(),
             started: SystemTime::now(),
         });
         Ok(Arc::new(Self { inner }))
@@ -435,6 +453,46 @@ impl SessionHub {
     /// changed): `SessionChanged` keeps the Sessions list live (§7.4).
     pub async fn refresh(&self, session_id: &str) {
         self.inner.changed(session_id).await;
+    }
+
+    /// `session_meta_set` (app spec §3.14, WP-A4): pin / unread / title-lock flags,
+    /// persisted in `session-meta.json`, carried on every card. Emits the updated
+    /// `SessionChanged` and returns its card.
+    ///
+    /// # Errors
+    ///
+    /// Unknown or ambiguous target, listing I/O failures.
+    pub async fn meta_set(
+        &self,
+        target: &str,
+        patch: SessionMetaPatch,
+    ) -> Result<SessionCard, HubError> {
+        self.inner.meta_set(target, patch).await
+    }
+
+    /// A dialog arrived for (or left) `session_id`: the card's `needs_you`. A session
+    /// that starts needing the user while no connection focuses it is marked `unread`
+    /// (§3.14, Z-86). Called by the dialog wiring (U10/A9); idempotent.
+    pub async fn set_needs_you(&self, session_id: &str, needs_you: bool) {
+        self.inner.set_needs_you(session_id, needs_you).await;
+    }
+
+    /// Registers a new `events_open` connection for focus reporting (§3.14); its
+    /// `Control::Focus` frames update the entry, [`SessionHub::release_focus`] ends it.
+    #[must_use]
+    pub fn focus_connection(&self) -> u64 {
+        self.inner.focus.acquire()
+    }
+
+    /// What `token`'s connection focuses now (`None` = nothing). Focusing a session
+    /// clears its `unread` (the user is looking at it, Z-82 "cleared on open").
+    pub async fn set_focus(&self, token: u64, session: Option<&str>) {
+        self.inner.set_focus(token, session).await;
+    }
+
+    /// The connection behind `token` ended: its focus stops counting (Z-86).
+    pub async fn release_focus(&self, token: u64) {
+        self.inner.release_focus(token).await;
     }
 
     /// Emits a host-scope ui registry event on `events_open` (ui-protocol §9.2: the host
@@ -570,7 +628,7 @@ impl Inner {
     /// The card of one record, with the host's live state merged in.
     fn card_from(&self, state: &State, record: &CoreHubSession) -> SessionCard {
         let info = &record.info;
-        SessionCard {
+        self.meta.onto(SessionCard {
             session_id: info.id.clone(),
             file: info.path.clone(),
             name: info.name.clone(),
@@ -580,9 +638,15 @@ impl Inner {
             state: Self::state_of(state, &info.id, record.state),
             // Extension dialogs (needs-you) ride H4's `UiRequest` stream; the card's field is
             // filled from there.
-            needs_you: false,
+            needs_you: state.needs_you.contains(&info.id),
             model: None,
-        }
+            pinned: false,
+            unread: false,
+            title_locked: false,
+            source: None,
+            changes: None,
+            last_activity: epoch_ms(info.modified),
+        })
     }
 
     /// The card state: the host's override when it has one, else the record's live-ness.
@@ -617,16 +681,23 @@ impl Inner {
                 return self.card_from(&state, record);
             }
         }
+        let now = epoch_ms(SystemTime::now());
         let mut card = SessionCard {
             session_id: id,
             file: PathBuf::new(),
             name: None,
             cwd: cwd.display().to_string(),
-            updated_at: epoch_ms(SystemTime::now()),
+            updated_at: now,
             message_count: 0,
             state: HubState::Idle,
             needs_you: false,
             model: None,
+            pinned: false,
+            unread: false,
+            title_locked: false,
+            source: None,
+            changes: None,
+            last_activity: now,
         };
         if let Ok(Some(data)) = backend.send(RpcCommand::Pi(PiCommand::GetState)).await {
             if let Ok(session) = serde_json::from_value::<RpcSessionState>(data) {
@@ -638,7 +709,7 @@ impl Inner {
             }
         }
         card.state = Self::state_of(&lock(&self.state), &card.session_id, CoreHubState::Live);
-        card
+        self.meta.onto(card)
     }
 
     /// Emits the current card of `session_id` (state/name changed).
@@ -646,6 +717,76 @@ impl Inner {
         if let Ok(Some(card)) = self.card(session_id).await {
             self.emit(HubEvent::SessionChanged { card });
         }
+    }
+
+    /// `session_meta_set` (§3.14): patch, persist, tell the clients.
+    async fn meta_set(
+        &self,
+        target: &str,
+        patch: SessionMetaPatch,
+    ) -> Result<SessionCard, HubError> {
+        let id = self.resolve(target).await?.info.id;
+        self.meta.patch(&id, patch);
+        self.card(&id)
+            .await?
+            .inspect(|card| self.emit(HubEvent::SessionChanged { card: card.clone() }))
+            .ok_or_else(|| HubError::failed(format!("No session found matching '{target}'")))
+    }
+
+    /// A dialog arrived/left: `needs_you` on the card; a session that starts needing the
+    /// user unfocused is `unread` (Z-86).
+    async fn set_needs_you(&self, session_id: &str, needs_you: bool) {
+        let became = {
+            let mut state = lock(&self.state);
+            if needs_you {
+                state.needs_you.insert(session_id.to_owned())
+            } else {
+                state.needs_you.remove(session_id)
+            }
+        };
+        if !became {
+            return;
+        }
+        if needs_you {
+            self.mark_unread_unfocused(session_id);
+        }
+        self.changed(session_id).await;
+    }
+
+    /// `Control::Focus` on an `events_open` connection (§3.14): the connection's focus
+    /// changes; a newly focused session drops its `unread` dot (Z-82 "cleared on open").
+    async fn set_focus(&self, token: u64, session: Option<&str>) {
+        self.focus.set(token, session);
+        if let Some(session) = session.filter(|s| self.meta.flags(s).unread) {
+            self.meta.patch(
+                session,
+                SessionMetaPatch {
+                    unread: Some(false),
+                    ..SessionMetaPatch::default()
+                },
+            );
+            self.changed(session).await;
+        }
+    }
+
+    /// The `events_open` connection behind `token` ended (its focus stops counting).
+    async fn release_focus(&self, token: u64) {
+        self.focus.release(token);
+    }
+
+    /// Z-86: `unread = true` while no connection focuses `session_id`; the caller
+    /// re-emits the card.
+    fn mark_unread_unfocused(&self, session_id: &str) {
+        if self.focus.is_focused(session_id) {
+            return;
+        }
+        self.meta.patch(
+            session_id,
+            SessionMetaPatch {
+                unread: Some(true),
+                ..SessionMetaPatch::default()
+            },
+        );
     }
 
     /// `session_new{cwd, name?}`.
@@ -976,10 +1117,14 @@ impl Inner {
     }
 
     /// Ends the supervision of `session_id`: idle again, or `crashed` when the supervisor
-    /// itself panicked or the session crashed.
+    /// itself panicked or the session crashed. A run that ends while no connection focuses
+    /// the session marks it `unread` (Z-86).
     async fn finish_supervisor(&self, session_id: &str, panic: Option<String>) {
+        let ended_run;
+        let had_panic = panic.is_some();
         {
             let mut state = lock(&self.state);
+            ended_run = matches!(state.states.get(session_id), Some(HubState::Working));
             state.supervising.remove(session_id);
             if let Some(error) = panic {
                 state
@@ -991,6 +1136,9 @@ impl Inner {
             ) {
                 state.states.remove(session_id);
             }
+        }
+        if ended_run && !had_panic {
+            self.mark_unread_unfocused(session_id);
         }
         self.changed(session_id).await;
     }

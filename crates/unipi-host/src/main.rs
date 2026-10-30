@@ -621,6 +621,9 @@ async fn main() -> anyhow::Result<()> {
                     models: None,
                     tools: oino_core::runtime::ToolSelection::Default,
                     exclude_tools: Vec::new(),
+                    // App spec §3.14 (WP-A4): `session-meta.json` lives with the host data
+                    // (`$OINO_HOST_DIR`, default `~/.oino/host`).
+                    host_data_dir: Some(paths.root.clone()),
                 })?;
             if safe_plan.disable_extensions {
                 hub.notice(

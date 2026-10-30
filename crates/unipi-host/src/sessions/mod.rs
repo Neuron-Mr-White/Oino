@@ -5,6 +5,7 @@
 pub mod card;
 pub mod crash;
 pub mod hub;
+pub mod meta;
 pub mod services;
 pub mod stream;
 
@@ -12,4 +13,5 @@ pub use card::{HubState, ProjectGroup, SessionCard};
 pub use hub::{
     takeover_from, HostHubOptions, HubError, HubEvent, HubSession, NoticeLevel, SessionHub,
 };
+pub use meta::{FocusRegistry, MetaStore, SessionMetaFlags};
 pub use stream::{Feed, SessionService, Subscription};

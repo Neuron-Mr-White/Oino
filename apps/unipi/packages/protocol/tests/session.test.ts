@@ -8,6 +8,7 @@ import {
   SessionArchiveRequestSchema,
   SessionCloseRequestSchema,
   SessionCmdControlSchema,
+  SessionMetaSetRequestSchema,
   SessionForkRequestSchema,
   SessionNewRequestSchema,
   SessionOpenRequestSchema,
@@ -34,6 +35,7 @@ const SessionRequestSchema = z.union([
   SessionArchiveRequestSchema,
   SessionRenameRequestSchema,
   SessionCloseRequestSchema,
+  SessionMetaSetRequestSchema,
 ]);
 
 const schemas: Record<string, z.ZodTypeAny> = {

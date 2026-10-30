@@ -307,5 +307,92 @@
     "schema": "SessionRequest",
     "ok": true,
     "value": { "op": "events_open" }
+  },
+  {
+    "name": "sessions_list card (pinned, unread, title locked, changes, cron)",
+    "schema": "SessionsListData",
+    "ok": true,
+    "value": [
+      {
+        "session_id": "2026-11-01T09-00-00-a1b2c3d4",
+        "file": "/home/o/.oino/sessions/2026-11-01T09-00-00-a1b2c3d4.jsonl",
+        "name": "Nightly docs build",
+        "cwd": "/home/o/p/website",
+        "updated_at": 1761905520000,
+        "message_count": 12,
+        "run_state": "idle",
+        "model": "claude-sonnet-4-5",
+        "pinned": true,
+        "unread": true,
+        "title_locked": true,
+        "source": "cron",
+        "changes": {
+          "add": 128,
+          "del": 14
+        },
+        "last_activity": 1761905520000
+      }
+    ]
+  },
+  {
+    "name": "sessions_list card (meta flags absent = defaults)",
+    "schema": "SessionsListData",
+    "ok": true,
+    "value": [
+      {
+        "session_id": "s9",
+        "cwd": "/home/o/p/oino",
+        "updated_at": 1,
+        "run_state": "idle"
+      }
+    ]
+  },
+  {
+    "name": "session_meta_set request (pin)",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": {
+      "op": "session_meta_set",
+      "session": "2026-11-01T09-00-00-a1b2c3d4",
+      "pinned": true
+    }
+  },
+  {
+    "name": "session_meta_set request (unread + title lock)",
+    "schema": "SessionRequest",
+    "ok": true,
+    "value": {
+      "op": "session_meta_set",
+      "session": "s9",
+      "unread": false,
+      "title_locked": true
+    }
+  },
+  {
+    "name": "session_meta_set rejects a non-boolean flag",
+    "schema": "SessionRequest",
+    "ok": false,
+    "value": {
+      "op": "session_meta_set",
+      "session": "s9",
+      "pinned": "yes"
+    }
+  },
+  {
+    "name": "hub session_changed with meta",
+    "schema": "HubEvent",
+    "ok": true,
+    "value": {
+      "kind": "session_changed",
+      "card": {
+        "session_id": "s3",
+        "cwd": "/home/o/p/oino",
+        "updated_at": 1761905520000,
+        "run_state": "idle",
+        "pinned": true,
+        "unread": true,
+        "last_activity": 1761905520000
+      }
+    }
   }
 ]

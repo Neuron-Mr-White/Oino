@@ -687,6 +687,16 @@ pub enum Request {
         /// Session id (or a unique prefix / file path).
         session: crate::session::SessionTarget,
     },
+    /// App spec §3.14 (WP-A4): set the per-user session meta (pin / unread /
+    /// title lock), stored in `session-meta.json` and carried on every card.
+    /// Only the fields present change. → the updated `SessionCard`.
+    SessionMetaSet {
+        /// Session id (or a unique prefix / file path).
+        session: crate::session::SessionTarget,
+        /// The patch.
+        #[serde(flatten)]
+        patch: crate::session::SessionMetaPatch,
+    },
     /// v2 (host.md §9.9): the host settings object (`config.json`), secrets
     /// masked. Any paired device may read it; → the object.
     HostSettingsGet,
@@ -806,6 +816,14 @@ pub enum Control {
         id: Option<serde_json::Value>,
         /// The command (`RpcRequest` JSON: pi commands + `_oino/*`).
         cmd: serde_json::Value,
+    },
+    /// App spec §3.14 (WP-A4): which session the **connection** it is sent on has
+    /// focused (`null` = none). Sent on an `events_open` stream; the host drops
+    /// the focus when that stream ends. Focusing a session clears its `unread`.
+    Focus {
+        /// The focused session id, or `null` when the connection focuses none.
+        #[serde(default)]
+        session: Option<String>,
     },
 }
 

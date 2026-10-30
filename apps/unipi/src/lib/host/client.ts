@@ -91,6 +91,14 @@ export interface LspStream extends Closable {
   send(json: unknown): void;
 }
 
+/** The hub event stream of one host (`events_open`), plus the connection's focus. */
+export interface EventsStream extends Closable {
+  /** Reports which session this connection has focused (`null` = none, app spec §3.14);
+  *  the host clears the session's `unread` and counts the focus for Z-86. Optional so a
+  *  minimal test double (a bare `Closable`) still satisfies the seam. */
+  focus?(session: string | null): void;
+}
+
 export interface HostClient {
   /** `local` = This computer, `app` = app-level ops, else a paired host id. */
   readonly hostId: string;
@@ -102,7 +110,7 @@ export interface HostClient {
   request<T = unknown>(op: string, args?: Record<string, unknown>): Promise<T>;
   openSession(req: OpenSessionRequest, sink: SessionSink): SessionStream;
   /** The hub event stream; `closed` fires once when it ends (`error` when it failed). */
-  openEvents(sink: (event: HubEvent) => void, closed?: (error?: AppError) => void): Closable;
+  openEvents(sink: (event: HubEvent) => void, closed?: (error?: AppError) => void): EventsStream;
   openTerm(req: TermRequest, sink: TermSink): TermStream;
   openLsp(req: LspRequest, sink: LspSink): LspStream;
 }

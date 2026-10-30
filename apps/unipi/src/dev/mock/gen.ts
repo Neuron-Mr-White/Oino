@@ -191,20 +191,52 @@ export function recMathSession(): MockSession {
   return recMath as unknown as MockSession;
 }
 
-/** `n` session cards spread over a few project folders (host.md §4.2 `SessionCard`). */
-export function genCards(n: number, opts: { seed?: number; root?: string } = {}): SessionCard[] {
+export type GenCardsOptions = {
+  seed?: number;
+  root?: string;
+  /** Project folder names (default `['unipi', 'oino', 'website']`). */
+  folders?: string[];
+  /** A share of the cards that need the user (Z-12's states). */
+  needsYou?: number;
+  /** The first N cards are pinned (Z-14), the next M unread (Z-86). */
+  pinned?: number;
+  unread?: number;
+  /** Sprinkle `+N −M` change summaries (Z-12). */
+  changes?: boolean;
+  /** Every 7th card is cron-run (the clock badge slot; A22 fills `source` for real). */
+  cron?: boolean;
+  /** A few very long titles (the fade mask, Z-12). */
+  longTitles?: boolean;
+  /** Session id prefix (batches on one host must not collide). */
+  prefix?: string;
+};
+
+/** `n` session cards spread over project folders (host.md §4.2 `SessionCard`, + §3.14 meta). */
+export function genCards(n: number, opts: GenCardsOptions = {}): SessionCard[] {
   const r = rng(opts.seed ?? 7);
   const root = opts.root ?? '/home/you/projects';
-  const folders = ['unipi', 'oino', 'website'];
-  const states: SessionCard['run_state'][] = ['idle', 'idle', 'working', 'idle'];
-  return Array.from({ length: n }, (_, i) => ({
-    session_id: `s${String(i + 1).padStart(3, '0')}`,
-    name: PROMPTS[i % PROMPTS.length],
-    cwd: `${root}/${folders[i % folders.length]}`,
-    run_state: pick(r, states),
-    updated_at: BASE_TIME - i * 3_600_000,
-    message_count: 4 + i * 2,
-  }));
+  const folders = opts.folders ?? ['unipi', 'oino', 'website'];
+  const states: SessionCard['run_state'][] = ['idle', 'idle', 'working', 'idle', 'idle', 'crashed', 'idle', 'taken_over'];
+  const long = 'Investigate the flaky workspace restore test and pin down the race between the sidebar store and the resize observer';
+  const prefix = opts.prefix ?? 's';
+  return Array.from({ length: n }, (_, i) => {
+    const card: SessionCard = {
+      session_id: `${prefix}${String(i + 1).padStart(3, '0')}`,
+      name: opts.longTitles && i % 9 === 4 ? long : PROMPTS[i % PROMPTS.length]!,
+      cwd: `${root}/${folders[i % folders.length]}`!,
+      run_state: pick(r, states),
+      updated_at: BASE_TIME - i * 3_600_000,
+      message_count: 4 + i * 2,
+    };
+    if (opts.needsYou && i % opts.needsYou === 2) card.needs_you = true;
+    const pinnedCount = opts.pinned ?? 0;
+    const unreadCount = opts.unread ?? 0;
+    if (pinnedCount > 0 && i < pinnedCount) card.pinned = true;
+    if (unreadCount > 0 && i >= pinnedCount && i < pinnedCount + unreadCount) card.unread = true;
+    if (opts.changes && i % 3 === 1) card.changes = { add: 4 + (i % 60) * 7, del: (i % 23) * 2 };
+    if (opts.cron && i % 7 === 3) card.source = 'cron';
+    return card;
+  });
 }
 
 /** A small project tree for fs ops. */

@@ -375,11 +375,14 @@ export {
   SessionArchiveRequestSchema,
   SessionRenameRequestSchema,
   SessionCloseRequestSchema,
+  SessionMetaSetRequestSchema,
   hostEventBanner,
 } from "./session.js";
 export type {
   RunState,
   SessionCard,
+  CardChanges,
+  SessionMetaPatch,
   SessionsListData,
   SessionEventDto,
   SessionEvents,

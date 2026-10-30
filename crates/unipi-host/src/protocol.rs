@@ -1041,7 +1041,8 @@ impl Handler {
             | Request::SessionFork { .. }
             | Request::SessionArchive { .. }
             | Request::SessionRename { .. }
-            | Request::SessionClose { .. } => {
+            | Request::SessionClose { .. }
+            | Request::SessionMetaSet { .. } => {
                 let Some(service) = crate::sessions::SessionService::shared() else {
                     return Err(error(
                         AppErrorCode::E_UNSUPPORTED,

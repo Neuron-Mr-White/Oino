@@ -521,6 +521,12 @@ fn wire_card(card: &HostCard) -> SessionCard {
         model: card.model.clone(),
         error,
         from,
+        pinned: card.pinned,
+        unread: card.unread,
+        title_locked: card.title_locked,
+        source: card.source.clone(),
+        changes: card.changes,
+        last_activity: card.last_activity,
     }
 }
 
@@ -654,6 +660,19 @@ where
             service.feed(&card.session_id).mark_disposed();
             write_control(write, &Control::Ok { data: None }).await
         }
+        Request::SessionMetaSet { session, patch } => {
+            tracing::info!(
+                op = "session_meta_set",
+                session = session.as_str(),
+                "request"
+            );
+            let card = hub
+                .meta_set(session.as_str(), patch)
+                .await
+                .map_err(hub_error)?;
+            let data = serde_json::to_value(wire_card(&card)).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
         _ => Err(AppErrorDto::new(
             AppErrorCode::E_UNSUPPORTED,
             "not a session-layer request",
@@ -687,7 +706,9 @@ where
 }
 
 /// `events_open` (§7.4): the retained notices first (the safe-mode banner fires before any
-/// client connects), then every hub event until the connection goes away.
+/// client connects), then every hub event until the connection goes away. The connection
+/// reports its focused session with `Control::Focus` frames (app spec §3.14, WP-A4): the
+/// host counts it for Z-86's unread rule and drops it when the stream ends.
 async fn pump_events<R, W>(
     hub: &Arc<SessionHub>,
     read: &mut R,
@@ -701,6 +722,7 @@ where
     for notice in hub.notices() {
         write_json(write, &wire_hub_event(&notice)).await?;
     }
+    let focus = hub.focus_connection();
     let mut events = hub.subscribe();
     loop {
         tokio::select! {
@@ -709,12 +731,26 @@ where
                 // Only host notices/cards ride this channel; a lagging client gets the next
                 // card again (cards are whole values, notices are retained).
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => return Ok(()),
-            },
-            frame = crate::protocol::read_frame(read) => {
-                if frame.is_err() {
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    hub.release_focus(focus).await;
                     return Ok(());
                 }
+            },
+            frame = crate::protocol::read_frame(read) => {
+                let frame = match frame {
+                    Ok(frame) => frame,
+                    Err(_) => {
+                        hub.release_focus(focus).await;
+                        return Ok(());
+                    }
+                };
+                if frame.0 != 0 {
+                    continue;
+                }
+                if let Ok(Control::Focus { session }) = serde_json::from_slice::<Control>(&frame.1) {
+                    hub.set_focus(focus, session.as_deref()).await;
+                }
+                // Anything else on an events stream is meaningless: ignore it.
             }
         }
     }

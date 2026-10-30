@@ -12,7 +12,7 @@ import { batch, createRoot } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { toAppError, type AppError } from '@unipi/protocol';
 import { hostClient } from '../host/factory';
-import type { Closable, HostClient, HubEvent, SessionCard } from '../host/client';
+import type { Closable, EventsStream, HostClient, HubEvent, SessionCard } from '../host/client';
 
 /** Visible host notices kept at once (oldest drop first). */
 export const MAX_NOTICES = 5;
@@ -89,6 +89,10 @@ export type HubHandle = {
   readonly state: HubState;
   /** Re-runs `sessions_list` (the events stream keeps it current after that). */
   reload(): Promise<void>;
+  /** `session_meta_set` (§3.14): pin / unread / title lock — optimistic here, persisted by the host. */
+  setMeta(sessionId: string, patch: { pinned?: boolean; unread?: boolean; titleLock?: boolean }): Promise<void>;
+  /** Reports the focused session on this hub's events connection (`null` = none, §3.14); the host clears its `unread` (Z-82). */
+  focus(session: string | null): void;
   dismissNotice(id: string): void;
   close(): void;
 };
@@ -106,6 +110,7 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
   const clearTimer = opts.clearTimer ?? ((h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>));
   const [state, setState] = createStore<HubState>({ hostId, cards: {}, notices: [], meta: {}, loaded: false, loading: false, live: false });
   let events: Closable | undefined;
+  let eventsFocus: ((session: string | null) => void) | undefined;
   let retry: unknown;
   let attempt = 0;
   let closed = false;
@@ -152,6 +157,7 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
       (error) => {
         // The stream dropped: retry with backoff, then resync the list (events may be lost).
         events = undefined;
+        eventsFocus = undefined;
         setState('live', false);
         if (closed) return;
         if (error) setState('error', toAppError(error));
@@ -164,6 +170,7 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
         });
       },
     );
+    eventsFocus = (session) => (events as EventsStream | undefined)?.focus?.(session);
     attempt = 0;
     setState('live', true);
   };
@@ -175,6 +182,24 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
     hostId,
     state,
     reload,
+    async setMeta(sessionId, patch) {
+      // Optimistic: the events stream will carry the host's card a moment later.
+      setState('meta', sessionId, (m) => ({ ...m, ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}), ...(patch.unread !== undefined ? { unread: patch.unread } : {}), ...(patch.titleLock !== undefined ? { titleLock: patch.titleLock } : {}) }));
+      try {
+        await client.request('session_meta_set', {
+          session: sessionId,
+          ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
+          ...(patch.unread !== undefined ? { unread: patch.unread } : {}),
+          ...(patch.titleLock !== undefined ? { title_locked: patch.titleLock } : {}),
+        });
+      } catch (error) {
+        setState('error', toAppError(error));
+        void reload();
+      }
+    },
+    focus(session) {
+      eventsFocus?.(session);
+    },
     dismissNotice(id) {
       setState('notices', (list) => list.filter((n) => n.id !== id));
     },

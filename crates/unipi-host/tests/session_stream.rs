@@ -71,6 +71,7 @@ async fn fixture() -> Fixture {
         models: Some(models),
         tools: ToolSelection::Default,
         exclude_tools: Vec::new(),
+        host_data_dir: None,
     })
     .unwrap();
     let session = hub.create_session(None, None).await.unwrap();

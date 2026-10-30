@@ -59,6 +59,10 @@ export const SessionNameSchema = trimmedString(SESSION_NAME_MAX, "name").refine(
 export const RunStateSchema = z.enum(["idle", "working", "crashed", "taken_over"]);
 export type RunState = z.infer<typeof RunStateSchema>;
 
+/** Line changes of a session (app spec §3.14): the sidebar row's `+N −M`. */
+export const CardChangesSchema = z.object({ add: z.number().int().min(0), del: z.number().int().min(0) });
+export type CardChanges = z.infer<typeof CardChangesSchema>;
+
 /** One row of `sessions_list` and of a `session_changed` hub event (host.md §4.2). */
 export const SessionCardSchema = z
   .object({
@@ -78,9 +82,31 @@ export const SessionCardSchema = z
     error: z.string().optional(),
     /** Who took over when `run_state` is `taken_over` (`tui`, `host:<name>`, `cli`). */
     from: z.string().optional(),
+    /** Pinned to the sidebar's Pinned group (Z-14, app spec §3.14). */
+    pinned: z.boolean().optional(),
+    /** Ended a run / needed the user while unfocused (Z-86). */
+    unread: z.boolean().optional(),
+    /** A manual name beats auto-rename (Z-15). */
+    title_locked: z.boolean().optional(),
+    /** Who runs the session when it is not the user (`"cron"`; A22 fills it). */
+    source: z.string().optional(),
+    /** Line changes (`+N −M`) when a summary exists. */
+    changes: CardChangesSchema.optional(),
+    /** Last activity the host knows (epoch ms); the row's relative time. */
+    last_activity: z.number().optional(),
   })
   .passthrough();
 export type SessionCard = z.infer<typeof SessionCardSchema>;
+
+/** The patch of `session_meta_set` (app spec §3.14): only the fields present change. */
+export const SessionMetaPatchSchema = z
+  .object({
+    pinned: z.boolean().optional(),
+    unread: z.boolean().optional(),
+    title_locked: z.boolean().optional(),
+  })
+  .strict();
+export type SessionMetaPatch = z.infer<typeof SessionMetaPatchSchema>;
 
 /** `sessions_list` → the cards, newest activity first (a bare array, like `term_list`). */
 export const SessionsListDataSchema = z.array(SessionCardSchema);
@@ -263,6 +289,12 @@ export const SessionRenameRequestSchema = z.object({
 
 export const SessionCloseRequestSchema = z.object({
   op: z.literal("session_close"),
+  session: SessionTargetSchema,
+});
+
+/** App spec §3.14 (WP-A4): pin / unread / title-lock flags, persisted host-side. */
+export const SessionMetaSetRequestSchema = SessionMetaPatchSchema.extend({
+  op: z.literal("session_meta_set"),
   session: SessionTargetSchema,
 });
 
