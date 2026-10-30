@@ -167,9 +167,9 @@ export function StatusPaneLayer() {
 
 function StatusLayerBody(props: { hostId: string; path: string; sessionId?: string; source?: GitSource; tab?: 'changes' | 'history'; onClose: () => void }) {
   const { toast, show } = useToast();
-  onMount(() => {
-    pushBack(props.onClose);
-  });
+  // Back closes the layer; the pop MUST ride the cleanup, or a stale handler
+  // stays on the stack and swallows the next Back after the layer is gone.
+  onMount(() => onCleanup(pushBack(props.onClose)));
   return (
     <div class="git-view status-pane-layer" role="dialog" aria-label="Git and status" data-testid="git-view">
       <div class="status-pane-scroll">

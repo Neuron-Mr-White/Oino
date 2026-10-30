@@ -7,12 +7,12 @@
  * (phone). Registered as the `files` kind's view below — one line, per
  * `lib/panes/kinds.ts`.
  */
-import { createEffect, createResource, createSignal, onMount, Show } from 'solid-js';
+import { createEffect, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { ArrowLeft } from 'lucide-solid';
 import { setEditorTarget, switchEditorTarget, getEditorTarget, type EditorTarget } from '../../lib/editorTarget';
 import { desktopShell } from '../../lib/layout';
-import { consumeFilesTarget } from '../../lib/filesTarget';
+import { consumeFilesTarget, peekFilesTarget } from '../../lib/filesTarget';
 import { fsRoots } from '../../lib/fs';
 import { openPreviewer } from '../../lib/media/previewerState';
 import type { PaneScope, PaneView } from '../../lib/panes';
@@ -139,15 +139,21 @@ setPaneComponent('files', FilesTab);
  * there): the same tree, full-bleed, on the phone's selected host, in the
  * unipi detail chrome (56 px header with Back, Android Back closes it) so
  * the layer can be left the same way the editor returns to it. Reached from
- * the chat header "Files here" until A29 adds the ⋯ "Panes" group; the
- * bottom-nav Files item is gone (Z-101: side-pane tab only).
+ * the chat ⋯ "Panes" group (WP-A29) and file refs; the bottom-nav Files item
+ * is gone (Z-101: side-pane tab only).
  */
 export function FilesLayer() {
   const hosts = useHostsOptional();
   const navigate = useNavigate();
-  const hostId = () => hosts?.selectedId() ?? LOCAL_HOST;
+  // A "Files here"/Panes-menu target names its host (a paired PC's chat):
+  // honour it instead of the sidebar selection. Captured once — FilesTab
+  // consumes the target on mount.
+  const targetHost = peekFilesTarget()?.hostId;
+  const hostId = () => targetHost ?? hosts?.selectedId() ?? LOCAL_HOST;
   const close = () => (window.history.length > 1 ? navigate(-1) : navigate('/'));
-  onMount(() => pushBack(close));
+  // Back closes the layer; the pop rides the cleanup or a stale handler
+  // swallows a Back after `/files` is left.
+  onMount(() => onCleanup(pushBack(close)));
   return (
     <div class="files-layer" role="dialog" aria-label="Files" data-testid="files-layer">
       <header class="files-layer-head">

@@ -40,6 +40,26 @@
   height: 0;
 }
 
+/* §3.9: on the phone the state placeholder never exceeds two lines. The
+   float trick can't line-clamp (its box is 0 px tall), so the phone paints
+   it absolutely, centred where the first line would sit. */
+html[data-shell=phone] .tl-composer .tl-composer-field {
+  position: relative;
+}
+html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placeholder]::before {
+  float: none;
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: auto;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
 .tl-composer .tl-composer-field .ichip {
   height: 24px;
   margin: 1px 1px;

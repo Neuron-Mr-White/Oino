@@ -16,6 +16,11 @@ export function setFilesTarget(next: FilesTarget): void {
   setTargetSignal(next);
 }
 
+/** Reads the pending target without clearing it (the `/files` layer picks its host). */
+export function peekFilesTarget(): FilesTarget | null {
+  return target();
+}
+
 /** Reads and clears the pending target, if any. */
 export function consumeFilesTarget(): FilesTarget | null {
   const current = target();

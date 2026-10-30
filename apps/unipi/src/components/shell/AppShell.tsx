@@ -11,19 +11,17 @@
  * gone.
  *
  * Phone: the unipi shell as before (Z-115): bottom tab bar, full-screen
- * layers; the conversation route is a full-screen layer. WP-A29 does the
- * phone pass.
+ * layers; the conversation route is a full-screen layer. WP-A29 moved the
+ * frame to `PhoneShell.tsx` (tab bar `TabBar.tsx`, ⋯ "Panes" group
+ * `PanesMenu.tsx`).
  */
 import { createEffect, onCleanup, onMount, Show, type ParentProps } from 'solid-js';
-import { A, useLocation, useNavigate } from '@solidjs/router';
-import { Columns3, Keyboard, MessagesSquare, PanelBottom, PanelLeft, PanelRight, Maximize2, Settings as SettingsIcon, SquarePen, Clock, History } from 'lucide-solid';
+import { useLocation, useNavigate } from '@solidjs/router';
+import { Columns3, Keyboard, PanelBottom, PanelLeft, PanelRight, Maximize2, Settings as SettingsIcon, SquarePen, Clock, History } from 'lucide-solid';
 import { RelaySettings } from '../RelaySettings';
 import { HostsProvider, useHostsOptional } from '../../hosts/context';
 import { SettingsProvider, useSettings } from '../../settings/context';
 import { Pairing } from '../Pairing';
-import { PageHeader } from '../PageHeader';
-import { SettingsNotices } from '../SettingsNotices';
-import { UpdateBanner } from '../UpdateCard';
 import { FloatingBell } from '../FloatingBell';
 import { NeedsYouFeed } from '../NeedsYouBell';
 import { Toasts } from '../Toasts';
@@ -34,6 +32,7 @@ import { SharingRequestsRunner } from '../SharingSettings';
 import { CloseAskRunner, QuitRunner } from '../LifecycleUi';
 import { PairPhoneDialog } from '../PairPhone';
 import { DesktopUpdatePrompt } from '../UpdateCard';
+import { PhoneShell } from './PhoneShell';
 import { LinkAnchorMenu } from '../LinkAnchorMenu';
 import { MermaidViewer } from '../chat/MermaidViewer';
 import { StatusPaneLayer } from '../status/StatusPane';
@@ -60,12 +59,19 @@ import { CommandCenter } from '../command/CommandCenter';
 import { BuiltinPanes } from './builtins';
 import { DesktopNative } from './DesktopNative';
 import { SessionModalLayer } from '../session/SessionModal';
+import { ModelPickerLayer } from '../model/ModelPicker';
+import { openModelPicker } from '../model/target';
+import { cycleThinkingLevel } from '../../lib/model/thinking';
+import { composerDraft, setComposerText } from '../../lib/composer/drafts';
+import { cycleStarter } from '../../lib/status/modeStarter';
 import { setShortcutsOpen, ShortcutsDialog, shortcutsOpen } from './ShortcutsDialog';
 import { ResizeHandle } from './ResizeHandle';
 import { Sidebar, useNewChatHost } from './Sidebar';
 import { currentWorkspace } from './Workspace';
 import { SIDEBAR_DEFAULT } from '../../lib/layout';
 import { installExtensionPageFeed } from '../../ui/slots/pages';
+import { installReservedRouting } from '../../ui/slots/ReservedHost';
+import { reservedGate } from '../../ui/slots/reserved';
 
 // Z-100: every Git entry point opens the one `git` side-pane tab; the phone
 // keeps the full-screen layer (§3.9). Installed here so `lib/git` stays free
@@ -146,6 +152,24 @@ export function runBinding(hit: BindingHit, ctx: BindingCtx): boolean {
     case 'chat.running':
       openSessionModal({ hostId: cur!.hostId, sessionId: cur!.sessionId, tab: 'running' });
       return true;
+    // WP-A14 (Z-69..Z-74): the model sheet, the thinking cycle and the
+    // working-mode starter cycle all act on the shown session.
+    case 'model.open':
+      openModelPicker({ hostId: cur!.hostId, sessionId: cur!.sessionId });
+      return true;
+    case 'thinking.cycle': {
+      const handle = sessions().peek(cur!.hostId, cur!.sessionId);
+      if (!handle) return false;
+      void cycleThinkingLevel(handle).catch(() => undefined);
+      return true;
+    }
+    case 'mode.cycle': {
+      const handle = sessions().peek(cur!.hostId, cur!.sessionId);
+      if (!handle) return false;
+      setComposerText(handle.key, cycleStarter(composerDraft(handle.key).text).text);
+      focusComposer(handle.key);
+      return true;
+    }
     case 'chat.prev':
     case 'chat.next': {
       const rows = orderedConversations(ctx.hosts);
@@ -186,7 +210,7 @@ function DesktopFrame(props: ParentProps) {
   onCleanup(
     registerCommands([
       { id: 'chat.new', title: 'New chat', group: 'Go to', keywords: 'start session folder project', icon: () => <SquarePen size={16} />, run: () => navigate(`/new/${encodeURIComponent(newChatHost())}`) },
-      { id: 'go.board', title: 'Go to Board', group: 'Go to', keywords: 'kanban tasks', icon: () => <Columns3 size={16} />, run: () => navigate('/board') },
+      { id: 'go.board', title: 'Go to Board', group: 'Go to', keywords: 'kanban tasks', icon: () => <Columns3 size={16} />, when: () => reservedGate('unipi.kanboard/board'), run: () => navigate('/board') },
       { id: 'go.cron', title: 'Go to Cron', group: 'Go to', keywords: 'schedule jobs', icon: () => <Clock size={16} />, run: () => navigate('/cron') },
       { id: 'go.settings', title: 'Go to Settings', group: 'Go to', keywords: 'preferences', icon: () => <SettingsIcon size={16} />, keys: `${modKey()} ,`, run: () => navigate('/settings') },
       { id: 'view.sidebar', title: 'Toggle sidebar', group: 'View', keys: `${modKey()} B`, icon: () => <PanelLeft size={16} />, run: () => runBinding({ kind: 'app', id: 'shell.sidebar' }, { navigate, newChatHost, hosts: hostsCtx?.hosts() ?? [] }) },
@@ -215,42 +239,6 @@ function DesktopFrame(props: ParentProps) {
         />
       </Show>
       <div class="ashell-main">{props.children}</div>
-    </div>
-  );
-}
-
-function PhoneFrame(props: ParentProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const onEditor = () => location.pathname === '/files/edit';
-  const bare = () => ['/', '/board', '/chat', '/files', '/preview', '/cron'].includes(location.pathname) || onEditor() || location.pathname.startsWith('/s/') || location.pathname.startsWith('/new/');
-  const title = () => (location.pathname.startsWith('/settings') ? 'Settings' : 'Chat');
-  return (
-    <div class="app-shell" inert={onEditor() ? true : undefined}>
-      <Show when={!bare()}>
-        <PageHeader title={title()} />
-      </Show>
-      <main class="app-content">
-        <Show when={!location.pathname.startsWith('/settings')}>
-          <UpdateBanner onOpen={() => navigate('/settings')} />
-        </Show>
-        <SettingsNotices />
-        {props.children}
-      </main>
-      <nav class="bottom-nav" aria-label="Main navigation">
-        <A href="/chat">
-          <MessagesSquare size={22} strokeWidth={1.5} />
-          <span>Chat</span>
-        </A>
-        <A href="/board">
-          <Columns3 size={22} strokeWidth={1.5} />
-          <span>Board</span>
-        </A>
-        <A href="/settings">
-          <SettingsIcon size={22} strokeWidth={1.5} />
-          <span>Settings</span>
-        </A>
-      </nav>
     </div>
   );
 }
@@ -309,10 +297,14 @@ function ShellShortcuts() {
 
 export function AppShell(props: ParentProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   // U10: extension `fullscreen` pages are registry entries of their session,
   // not of the conversation view — the rail feed sits in the shell so a page
   // keeps its nav item while the user is on Settings or a board (§6.2/§6.6).
   installExtensionPageFeed(() => location.pathname);
+  // U12: reserved ids route to native components — owner gates (live), the page a
+  // focused `openPanel` asks for, and closing a page whose owner went away (§8).
+  // TEMP-DEBUG installReservedRouting({ navigate: (href) => navigate(href), pathname: () => location.pathname });
   const desktop = () => layout().desktop();
   const onEditor = () => location.pathname === '/files/edit';
   return (
@@ -322,7 +314,7 @@ export function AppShell(props: ParentProps) {
         <ShortcutPersistence />
         <RelaySettings />
         <ShellAttr />
-        <Show when={desktop()} fallback={<PhoneFrame>{props.children}</PhoneFrame>}>
+        <Show when={desktop()} fallback={<PhoneShell>{props.children}</PhoneShell>}>
           <DesktopFrame>{props.children}</DesktopFrame>
         </Show>
         <BuiltinPanes />
@@ -355,6 +347,7 @@ export function AppShell(props: ParentProps) {
         {/* Z-116: the one tooltip bubble for every icon-only control. */}
         <TooltipHost />
         <SessionModalLayer />
+        <ModelPickerLayer />
         {/* The shortcuts table is the desktop keyboard reference (its sheet does
             not paint in the phone capture shell; the phone has no chord UI). */}
         <Show when={desktop()}>

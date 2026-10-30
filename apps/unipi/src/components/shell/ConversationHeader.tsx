@@ -158,7 +158,9 @@ export function ConversationHeader(props: {
           </button>
         </Show>
       </div>
-      <Show when={menu() && props.ctx}>
+      {/* ctx-gated rows hide in a draft; the phone's ⋯ Panes group (A29)
+          still opens there (Files/Git don't need a session). */}
+      <Show when={menu()}>
         <AnchoredMenu anchor={menu()!} alignEnd width={240} label="Chat actions" onDismiss={() => setMenu(undefined)}>
           {/* Find is a menu entry too (Z-79): the phone has no Cmd/Ctrl+F. */}
           <Show when={props.ctx}>

@@ -23,11 +23,12 @@ import { panes, type PaneScope, type PaneView } from '../../lib/panes';
 import { hubs } from '../../lib/session/hub';
 import { sessionCwd, sessionTitle, shortCwd } from '../../lib/session/selectors';
 import { Conversation } from '../conversation/Conversation';
+import { ModeChip } from '../conversation/ModeChip';
 import { BottomPanel } from '../panes/BottomPanel';
 import { SidePane } from '../panes/SidePane';
 import { Capsule, capsuleVisible } from '../status/Capsule';
 import { ConversationHeader } from './ConversationHeader';
-import { PhonePanesGroup } from '../../ui/slots/paneTabs';
+import { PanesMenu } from './PanesMenu';
 import { sessionUi } from '../../ui/registries';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusStrip } from './StatusStrip';
@@ -130,10 +131,23 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
           project={subline()}
           hostName={localHost() ? undefined : host()?.name}
           ctx={ctx()}
+          chips={
+            <Show when={props.sessionId}>
+              {(sessionId) => <ModeChip hostId={props.hostId} sessionId={sessionId()} />}
+            </Show>
+          }
           desktop={desktop()}
           extraMenu={
-            !desktop() && props.sessionId
-              ? (close) => <PhonePanesGroup registry={sessionUi(props.hostId, props.sessionId!)} onOpen={close} />
+            !desktop()
+              ? (close) => (
+                  <PanesMenu
+                    hostId={props.hostId}
+                    sessionId={props.sessionId}
+                    cwd={cwd() || undefined}
+                    registry={props.sessionId ? sessionUi(props.hostId, props.sessionId) : undefined}
+                    onOpen={close}
+                  />
+                )
               : undefined
           }
           onBack={desktop() ? undefined : () => navigate('/chat')}
