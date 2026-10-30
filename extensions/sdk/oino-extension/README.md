@@ -99,7 +99,7 @@ oino_extension::export_extension!(Notify);
 | `session` | entries, branch, tree, `append_entry`, `send_message`, `send_user_message`, sessions index |
 | `control` | model/thinking, tools, commands, `compact`, `execute_tool`, command-context ops (`new_session`, `fork`, …) |
 | `models` | `complete`, `stream`, `summarize_default`, `credential_for`, `classify`, `generate_image` |
-| `ui` | `dialog` (`select`/`confirm`/`input` helpers), `notify`, `status`, `widget`, panels, editor, OS notify, clipboard, open URL, external editor |
+| `ui` | `dialog` (`select`/`confirm`/`input` helpers), `notify`, `status`/`clear_status` (pi text or a v2 `Line`), `widget` (v2 node) / `widget_lines` (pi), `Panel` builder (open/update/patch/close), `register_turn_footer`, `register_settings`, editor, OS notify, clipboard, open URL, external editor; node trees come from `ui::widgets` (the `oino-ui` builder, ui-protocol §11) |
 | `agents` | nested agent sessions: `Agent::spawn(spec)`, `prompt`, `steer`, `wait_idle`, `events()` |
 | `process` | `exec`, `Child::spawn` with streaming stdio, signals, process trees/stats |
 | `tasks` | host background tasks (`start`, `list`, `logs`, `kill`) with `oino_task` events |

@@ -10,7 +10,7 @@ only on the `oino-extension` SDK. Add it with `unipi-kit.workspace = true`.
 | `bus` | `emit(&payload)` / `emit_raw(topic, &v)` (sticky applied automatically), `get::<T>()`, `subscribe(&[...])`, `Delivery::from_event(&ev)` for `oino_bus`, `route(name)` |
 | `services` | fan-out names (`evidence.contribute`, `compaction-context.provide`, `skill-condition.check`, `move.handle`, `work-tray.tab`, `info-screen.groups`), point names, payload structs |
 | `fanout` | `call_all(name, &payload, timeout, except)`, `gather_evidence(timeout)` |
-| `settings` | `Namespace`/`Section`/`Field` builder (ui-protocol §6.6), `Store` (defaults ⊕ host values, refresh on `oino_settings_changed`), `Values` accessors |
+| `settings` | v1-compatible `Namespace`/`Section`/`Field` builder (ui-protocol §6.6) + `settings::oss2` OSS-2 builder (list/dict/json fields, `visibleIf`/`disabledIf`, `restart`, namespace `icon`/`order`, §7), `Store` (defaults ⊕ host values, refresh on `oino_settings_changed`), `Values` accessors |
 | `jev` | `Settings::resolve(ext_settings, Some(ns))`, `ask(&settings, state, &questions)` (fail-open), `namespace()`, `consumer_section()` |
 | `provenance` | `Harness::new(source, title).synopsis(..).delivery(HarnessDelivery::FollowUp).send_custom(..)` |
 | `bounded` | `bound_model_output(text, &Options)` (64 KiB head/tail + 0600 artifact, host path shown) |
@@ -19,7 +19,7 @@ only on the `oino-extension` SDK. Add it with `unipi-kit.workspace = true`.
 | `tray` | work-tray contract (`TrayTab`, `TabRequest`, `Action`, `ActionReply`), `WorkItem`/`Dot`, `tray_hint_text` |
 | `paths` | `global/workspace/session/tmp/cache/logs(rel)`, `host_path`, `read_json`/`write_json` |
 | `fmt` | `format_tokens`, `format_bytes`, `compare_versions`, `parse_args`, `iso_from_ms`, `truncate_to_width` |
-| `ous` | small OUS node builders |
+| `ous` | small OUS v1 node builders — transitional: use `oino_extension::ui::widgets` (`oino-ui`, ui-protocol §11); removed by WP-U7a/U7b once the last v1 emitter is migrated |
 
 Serving a work-tray tab (background-tasks, subagents, dream):
 
