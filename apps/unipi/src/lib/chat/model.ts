@@ -17,8 +17,9 @@ export type Part =
   | { type: 'toolCall'; id: string; name: string; arguments: unknown }
   /** An image part (bridge `phoneSafe()`): small ones carry `data` (base64,
    *  `omitted:false`) and render right away; bigger ones are `omitted:true`
-   *  with a `mediaRef` the phone fetches with `media{mediaRef}`. */
-  | { type: 'image'; mime?: string; omitted?: boolean; bytes?: number; data?: string; mediaRef?: string }
+   *  with a `mediaRef` the phone fetches with `media{mediaRef}`. Oino session
+   *  entries carry pi's `mimeType`; the v1 bridge said `mime`. */
+  | { type: 'image'; mime?: string; mimeType?: string; omitted?: boolean; bytes?: number; data?: string; mediaRef?: string }
   | { type: string; [key: string]: unknown };
 
 /** One image reference extracted from a message/tool-result for the
@@ -158,7 +159,13 @@ export function imagesOf(content: string | Part[] | undefined): ImageRef[] {
   if (!Array.isArray(content)) return [];
   return content
     .filter((p): p is Extract<Part, { type: 'image' }> => p.type === 'image')
-    .map((p) => ({ mime: p.mime ?? 'image/*', data: p.data, mediaRef: p.mediaRef, bytes: p.bytes }));
+    .map((p) => ({
+      // Oino session entries carry pi's `mimeType`; the v1 bridge said `mime`.
+      mime: typeof p.mime === 'string' ? p.mime : typeof p.mimeType === 'string' ? p.mimeType : 'image/*',
+      data: typeof p.data === 'string' ? p.data : undefined,
+      mediaRef: typeof p.mediaRef === 'string' ? p.mediaRef : undefined,
+      bytes: typeof p.bytes === 'number' ? p.bytes : undefined,
+    }));
 }
 
 /** Live assistant message being streamed. */

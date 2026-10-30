@@ -1,0 +1,246 @@
+/* Timeline (WP-A6, §3.6): turn-unit virtual scroll, live tail, bottom lock,
+ * sticky bottom dock. Row/prose/tool/bubble styling is shared with the rest
+ * of the app in screens/chat.css + ui.css; only the timeline's own chrome
+ * lives here. */
+
+.conv-tl { place-self: stretch; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+.tl-frame { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* the one scroll viewport (composer docks inside it, Z-66) */
+.tl {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+.tl-content { display: flex; flex-direction: column; min-height: 100%; padding: 10px 0 8px; }
+.tl-virtual { position: relative; width: 100%; }
+.tl-vrow { will-change: transform; }
+
+/* column: the unipi 760 px chat column, centred */
+.tl-turn, .tl-tail, .tl-skeleton, .tl-empty { max-width: 760px; margin: 0 auto; padding: 0 16px; width: 100%; box-sizing: border-box; }
+.tl-tail-wrap { flex: none; }
+.tl-tail { display: flex; flex-direction: column; gap: 2px; }
+.tl-turn { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; padding-bottom: 4px; }
+.tl-segment { display: contents; }
+
+/* skeleton + empty (Z-88) */
+.tl-skeleton { padding-top: 24px; }
+.tl-empty { display: grid; place-items: center; flex: 1; color: var(--color-text-dim); font-size: 14px; text-align: center; }
+
+/* user + steer */
+.tl-user { margin-top: 6px; }
+.tl-user[data-steer] .chat-bubble { border-radius: 14px; font-size: 14px; padding: 6px 12px; background: var(--color-surface-2); }
+.tl-steer-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; line-height: 16px; color: var(--color-claw); margin-bottom: 2px; }
+.tl-cron { display: flex; align-items: center; justify-content: flex-end; gap: 5px; font-size: 11px; line-height: 16px; color: var(--color-text-dim); padding-right: 4px; }
+.tl-cron svg { color: var(--color-amber); }
+
+/* harness / command row (Z-36) */
+.tl-harness .chat-bubble.tl-harness-typed { font-family: var(--font-mono); font-size: 13px; }
+.tl-harness-cmd { align-self: flex-end; }
+
+/* folds + groups (unipi .proc look comes from chat.css) */
+.tl-fold-body { max-height: none; overflow: visible; }
+.tl-group-head { min-height: 28px; }
+.tl-group[data-open] .proc-chev { transform: rotate(90deg); }
+.tl-group-body { margin-left: 12px; padding-left: 10px; border-left: 1px solid rgb(46 40 37 / 80%); }
+
+/* light card rows inside work (model change, bash, custom — A8's renderers
+ * replace these) */
+.tl-card { display: flex; align-items: center; gap: 7px; min-height: 28px; padding: 3px 4px; color: var(--color-text-dim); font-size: 13px; }
+.tl-card .tool-icon { flex: 0 0 18px; display: grid; place-items: center; }
+.tl-card-text { min-width: 0; }
+
+/* compaction divider keeps chat.css .compaction look */
+.tl-compaction { margin: 6px 0; }
+
+/* outbox */
+.tl-outbox .chat-user-note { display: inline-flex; align-items: center; gap: 6px; }
+.tl-outbox-retry { align-self: flex-end; margin-top: 2px; padding: 3px 10px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-amber); font-size: 12px; }
+
+/* ── bottom dock (Z-66; regions arrive in A9–A12) ─────────────────── */
+.tl-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  margin-top: auto;
+  padding: 0 10px calc(8px + max(var(--inset-ime, 0px), var(--vv-bottom, 0px), env(safe-area-inset-bottom), var(--inset-bottom, 0px)));
+}
+/* the gradient fade above the dock (the "background token" upward mask) */
+.tl-dock::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: -28px; height: 28px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--color-bg));
+}
+.tl-composer { display: flex; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; padding: 8px 10px; border-radius: 20px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), 0 6px 22px rgb(0 0 0 / 30%); }
+.tl-composer-input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--color-text); font-size: 15px; line-height: 22px; padding: 6px 4px; }
+.tl-composer-input::placeholder { color: var(--color-text-dim); }
+.tl-composer-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--color-claw); color: #fff; }
+.tl-composer-send:active { transform: scale(0.94); }
+
+/* jump-to-bottom (Z-23/Z-24): above the dock, gradient behind it via ::before */
+.tl-jump {
+  position: absolute;
+  right: 16px;
+  top: -46px; /* floats above the dock, on its gradient fade */
+  width: 38px; height: 38px; min-height: 38px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 50%);
+  z-index: 7;
+}
+.tl-jump-dot { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--color-claw); box-shadow: 0 0 0 2px var(--color-bg); }
+
+/* banners sit above the scroll viewport */
+.tl-banner { margin: 6px 16px 0; }
+
+
+
+/* ── WP-A7: turn tail, fold, navigator, composer chips ───────────── */
+
+/* the rail + scroller wrapper (the rail must not scroll with the timeline) */
+.tl-outer { position: relative; flex: 1; min-height: 0; display: flex; }
+
+/* query navigator rail (Z-25): only ≥ 1100 px conversation width */
+.tl-nav {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  width: 16px;
+  height: auto;
+  max-height: min(56vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 2px;
+  scrollbar-width: none;
+}
+.tl-nav::-webkit-scrollbar { display: none; }
+.tl-nav-track { position: relative; width: 100%; }
+.tl-nav-bar {
+  position: absolute;
+  left: 2px;
+  width: 10px;
+  height: 6px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 3px;
+  background: var(--color-line);
+  transition: background 120ms ease-out, transform 120ms ease-out;
+}
+.tl-nav-bar:hover, .tl-nav-bar:focus-visible { background: var(--color-text-muted); transform: scaleX(1.35); }
+.tl-nav-bar[data-active] { background: var(--color-claw); }
+.tl-nav-bar[data-live] { background: var(--color-amber); }
+
+/* turn tail (Z-26/Z-27): actions bottom-left, done/cost/time on the same line */
+.tl-tail-line { display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 4px; margin-top: 2px; flex-wrap: wrap; }
+.tl-actions { display: flex; align-items: center; gap: 2px; }
+.tl-act { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--color-text-dim); }
+.tl-act:hover { background: var(--color-surface-2); color: var(--color-text); }
+.tl-act[data-copied] { color: var(--color-wm-green); }
+.tl-act:disabled { opacity: .45; }
+.tl-act-check { color: var(--color-wm-green); }
+.tl-done, .tl-time { font-size: 11.5px; line-height: 16px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-done-sep { color: var(--color-line); font-size: 11.5px; }
+.tl-time { margin-left: 0; }
+.tl-menu-check { display: inline-block; width: 16px; height: 16px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--color-line); }
+
+/* the phone's tail is compact so actions + done/cost/time stay on one line */
+html[data-shell=phone] .tl-actions { gap: 0; }
+html[data-shell=phone] .tl-act { width: 28px; height: 28px; min-height: 28px; }
+html[data-shell=phone] .tl-tail-line { gap: 5px; }
+
+/* actions are hover-revealed on the desktop, always visible on the phone (§3.9) */
+html[data-shell=desktop] .tl-actions,
+html[data-shell=desktop] .tl-user-actions { opacity: 0; pointer-events: none; transition: opacity 120ms ease-out; }
+html[data-shell=desktop] .tl-turn:hover .tl-actions,
+html[data-shell=desktop] .tl-turn:focus-within .tl-actions,
+html[data-shell=desktop] .tl-user:hover .tl-user-actions,
+html[data-shell=desktop] .tl-user:focus-within .tl-user-actions { opacity: 1; pointer-events: auto; }
+
+/* user bubble (Z-28/Z-29): 120 px fold + centred button; Edit under the bubble */
+.tl-user-actions { display: flex; justify-content: flex-end; margin-top: 2px; }
+.tl-bubble { position: relative; }
+.tl-bubble-body { display: block; }
+.tl-bubble[data-folded] .tl-bubble-body {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 64%, transparent);
+  mask-image: linear-gradient(to bottom, #000 64%, transparent);
+}
+.tl-fold-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  transform: translateX(-50%);
+  width: 26px; height: 26px; min-height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  box-shadow: inset 0 0 0 1px var(--color-line), 0 2px 10px rgb(0 0 0 / 40%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-bubble-body { transition: none !important; }
+}
+
+/* selection → Quote (Z-30): floating pill above the selection (desktop) */
+.tl-selection-quote {
+  position: fixed;
+  z-index: 60;
+  border-radius: 10px;
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px var(--color-line), 0 8px 24px rgb(0 0 0 / 50%);
+}
+.tl-selection-quote button {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 30px; padding: 0 10px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12.5px;
+}
+.tl-selection-quote button:hover { background: var(--color-surface-3); }
+
+/* action failures (A19 turns these into toasts) */
+.tl-notice {
+  width: max-content;
+  max-width: min(720px, calc(100vw - 32px));
+  margin: 0 auto 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-amber);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* composer handoff (A12 replaces the box, keeps the chips): quote + restored images */
+.tl-composer-wrap { display: flex; flex-direction: column; gap: 6px; max-width: 760px; margin: 0 auto; width: 100%; }
+.tl-composer-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding: 0 4px; }
+.tl-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  max-width: min(320px, 100%);
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border-radius: 8px;
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  font-size: 12px;
+  line-height: 26px;
+}
+.tl-chip svg { flex: 0 0 auto; color: var(--color-text-dim); }
+.tl-quote-chip svg:first-child { color: var(--color-claw); }
+.tl-chip-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-chip-x { flex: 0 0 auto; width: 20px; height: 20px; min-height: 20px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--color-text-dim); font-size: 13px; line-height: 1; }
+.tl-chip-x:hover { background: var(--color-surface-2); color: var(--color-text); }
+.tl-composer-send:disabled { opacity: .45; }

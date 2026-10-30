@@ -8,8 +8,16 @@ import { streamReconnect } from './stream-reconnect';
 import { streamSteer } from './stream-steer';
 import { shellDesktop, shellFullview, shellNarrow, shellSidepaneTabs } from './shell';
 import { sidebarMany, sidebarStates } from './sidebar';
-import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
+import { timelineMany } from './timeline';
+import { bubbleFold, turnActions, turnNavigator } from './turn';
+import { modalContext } from './modal-context';
+import { modalInfo } from './modal-info';
+import { modalLimits } from './modal-limits';
+import { modalRunning } from './modal-running';
 import { boardDashboard, boardLanes } from './board';
+import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
+import { crashBoundary, dialogApproval, dialogDock, errorRow, takenOver } from './dock';
+import { filesPreview, filesSearch, filesTree } from './files';
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
@@ -24,10 +32,26 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'shell-fullview': shellFullview,
   'sidebar-many': sidebarMany,
   'sidebar-states': sidebarStates,
+  'timeline-many': timelineMany,
+  'turn-actions': turnActions,
+  'turn-navigator': turnNavigator,
+  'bubble-fold': bubbleFold,
+  'modal-context': modalContext,
+  'modal-running': modalRunning,
+  'modal-info': modalInfo,
+  'modal-limits': modalLimits,
+  'board-lanes': boardLanes,
+  'board-dashboard': boardDashboard,
   'git-pane': gitPane,
   'git-last-turn': gitLastTurn,
   'git-history': gitHistory,
   'git-pane-many': gitPaneMany,
-  'board-lanes': boardLanes,
-  'board-dashboard': boardDashboard,
+  'files-tree': filesTree,
+  'files-search': filesSearch,
+  'files-preview': filesPreview,
+  'dialog-dock': dialogDock,
+  'dialog-approval': dialogApproval,
+  'error-row': errorRow,
+  'taken-over': takenOver,
+  'crash-boundary': crashBoundary,
 };
