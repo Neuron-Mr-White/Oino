@@ -1,28 +1,33 @@
-//! `unipi-host update` (UNI-263): self-update from the release feed.
+//! `unipi-host update` (UNI-263; host.md §9.7): self-update from the oino/UniPi
+//! release manifest on GitHub Releases.
 //!
-//! The feed is `https://unipi.nrn.one/latest.json` (written by
-//! `scripts/release.sh`); `host.files.<platform>` gives the binary URL and its
-//! sha256. One run:
+//! The feed is `release-manifest.json` — the same file `oino update` and
+//! `scripts/install.sh` read (`{version, artifacts:[{name, target, url,
+//! sha256}]}`). One run:
 //!
-//! 1. fetch the feed, pick this machine's platform (`linux-x64`, `linux-arm64`,
-//!    `darwin-x64`, `darwin-arm64`, `windows-x64`),
-//! 2. compare `host.version` with ours (semver; never downgrades),
-//! 3. download, check the sha256, run the new binary's `--version` (it must
+//! 1. fetch the manifest, compare `version` with ours (semver; never
+//!    downgrades),
+//! 2. pick the `unipi-host` artifact of this target triple,
+//! 3. download it, check the sha256, run the new binary's `--version` (it must
 //!    say the advertised version),
 //! 4. replace the running executable atomically (rename over it on Unix; on
-//!    Windows the running .exe is renamed aside first, which Windows allows),
-//! 5. restart the always-on service if there is one: systemd user unit
-//!    `unipi-host.service`, LaunchAgent `dev.unipi.host`, or the scheduled
-//!    task `UniPi Host`.
+//!    Windows the running .exe is renamed aside first, which Windows allows).
+//!
+//! **Restart without services** (v2 has no systemd unit / LaunchAgent / logon
+//! task): after the replace the host **exits**. An app-managed host is
+//! respawned by the desktop app's supervisor within its backoff; a manual
+//! `unipi-host serve` prints "restarted binary; rerun unipi-host serve".
 //!
 //! The owner setting `update.mode` in `config.json` ("prompt" | "auto",
-//! default prompt: user decision 6) is read by `serve`, which checks the feed
-//! every few hours and either just records "update available" (the desktop
-//! app shows it) or runs this same update itself.
+//! default prompt) is read by `serve`, which checks the feed every few hours.
+//! `auto` installs and exits (see above); `prompt` records the check and
+//! raises a [`Notice`] that `events_open` turns into a `HostNotice` for the
+//! app — no desktop-app-only hook.
 //!
-//! Tests point the feed at a local server with `UNIPI_UPDATE_FEED` and the
-//! target at a temp copy with `--exe`; the base-URL check is relaxed only for
-//! an explicit feed override.
+//! Tests point the feed at a local manifest with `UNIPI_UPDATE_FEED` (a
+//! `file://` URL works, so no server is needed) and the target at a temp copy
+//! with `--exe`; the release-origin check is relaxed only for an explicit feed
+//! override.
 
 use std::path::{Path, PathBuf};
 
@@ -30,40 +35,55 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
 use crate::data_dir::HostPaths;
+use crate::instance::Mode;
 
-pub const FEED_URL: &str = "https://unipi.nrn.one/latest.json";
+/// The oino/UniPi release repository (dist.md §8: public GitHub Releases).
+pub const ORIGIN: &str = "https://github.com/Neuron-Mr-White/Oino";
+/// `release-manifest.json` of the latest release (the same feed `oino update` reads).
+pub const FEED_URL: &str =
+    "https://github.com/Neuron-Mr-White/Oino/releases/latest/download/release-manifest.json";
+/// Overrides [`FEED_URL`] (tests, mirrors); relaxes the origin check.
 pub const FEED_ENV: &str = "UNIPI_UPDATE_FEED";
-pub const SERVICE_UNIT: &str = "unipi-host.service";
-pub const LAUNCH_AGENT: &str = "dev.unipi.host";
-pub const WINDOWS_TASK: &str = "UniPi Host";
+/// The host's file name inside a release (`artifact.name`).
+pub const ARTIFACT: &str = "unipi-host";
+/// How often `serve` checks the feed (the first check is a minute after start).
+pub const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+/// [`Notice::kind`] for "a newer host is on the feed" (prompt mode).
+pub const NOTICE_UPDATE: &str = "update-available";
 
-/// `host` block of `latest.json`.
+/// One binary in `release-manifest.json`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct HostRelease {
-    pub version: String,
+pub struct Artifact {
+    /// `oino` | `unipi-host` | `oino-kanboard` | `unipi-kanboard`.
     #[serde(default)]
-    pub files: std::collections::BTreeMap<String, HostFile>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct HostFile {
+    pub name: String,
+    /// Rust target triple (`x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, …).
+    pub target: String,
+    /// Download URL.
     pub url: String,
+    /// Lower-case hex sha256.
+    #[serde(default)]
     pub sha256: String,
 }
 
-#[derive(Deserialize)]
-struct Feed {
-    host: Option<HostRelease>,
+/// `release-manifest.json`.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Release {
+    /// Release version (tag without `v`).
+    pub version: String,
+    /// Released binaries.
+    #[serde(default)]
+    pub artifacts: Vec<Artifact>,
 }
 
-/// `config.json` → `update` block (owner setting, user decision 6).
+/// `config.json` → `update` block (owner setting).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateMode {
-    /// Tell the owner (desktop app, `unipi-host update --check`); never act alone.
+    /// Tell the owner (`events_open` → `HostNotice`, `unipi-host update --check`); never act alone.
     #[default]
     Prompt,
-    /// `serve` installs a newer host by itself and restarts.
+    /// `serve` installs a newer host by itself, exits, and the app restarts it.
     Auto,
 }
 
@@ -96,8 +116,8 @@ impl UpdateConfig {
     }
 }
 
-/// What `serve` last saw in the feed (`<host dir>/update.json`), read by
-/// `sharing status --json` → the desktop app's "update available".
+/// What `serve` last saw in the feed (`<host dir>/update.json`), also read by
+/// `unipi-host sharing status --json`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UpdateState {
     pub checked_at: u64,
@@ -111,15 +131,15 @@ pub fn state_path(paths: &HostPaths) -> PathBuf {
     paths.root.join("update.json")
 }
 
-/// This build's platform key in `host.files`.
-pub fn platform() -> Option<&'static str> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("linux", "x86_64") => Some("linux-x64"),
-        ("linux", "aarch64") => Some("linux-arm64"),
-        ("macos", "x86_64") => Some("darwin-x64"),
-        ("macos", "aarch64") => Some("darwin-arm64"),
-        ("windows", "x86_64") => Some("windows-x64"),
-        _ => None,
+/// This build's Rust target triple, the key in `artifacts[].target`
+/// (`x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`).
+pub fn current_target() -> String {
+    let arch = std::env::consts::ARCH;
+    match std::env::consts::OS {
+        "linux" => format!("{arch}-unknown-linux-gnu"),
+        "macos" => format!("{arch}-apple-darwin"),
+        "windows" => format!("{arch}-pc-windows-msvc"),
+        other => format!("{arch}-{other}"),
     }
 }
 
@@ -146,33 +166,33 @@ pub fn feed_url() -> (String, bool) {
     }
 }
 
-/// Parses `latest.json` and validates the host block. With the default feed,
-/// binaries must come from `https://unipi.nrn.one/`.
-pub fn parse_feed(bytes: &[u8], strict_origin: bool) -> anyhow::Result<HostRelease> {
-    let feed: Feed = serde_json::from_slice(bytes)
-        .map_err(|e| anyhow::anyhow!("the update feed is not valid JSON: {e}"))?;
-    let host = feed
-        .host
-        .ok_or_else(|| anyhow::anyhow!("the update feed has no host block"))?;
+/// Parses `release-manifest.json`. With the default feed, binaries must come
+/// from this repo's Releases (a tampered manifest can't point elsewhere).
+pub fn parse_manifest(bytes: &[u8], strict_origin: bool) -> anyhow::Result<Release> {
+    let release: Release = serde_json::from_slice(bytes)
+        .map_err(|e| anyhow::anyhow!("the release manifest is not valid JSON: {e}"))?;
     anyhow::ensure!(
-        parse_version(&host.version).is_some(),
-        "the update feed has a bad host version {:?}",
-        host.version
+        parse_version(&release.version).is_some(),
+        "the release manifest has a bad version {:?}",
+        release.version
     );
-    for (plat, file) in &host.files {
+    for artifact in &release.artifacts {
         anyhow::ensure!(
-            file.sha256.len() == 64 && file.sha256.bytes().all(|b| b.is_ascii_hexdigit()),
-            "bad sha256 for {plat}"
+            artifact.sha256.len() == 64 && artifact.sha256.bytes().all(|b| b.is_ascii_hexdigit()),
+            "bad sha256 for {} ({})",
+            artifact.name,
+            artifact.target
         );
         if strict_origin {
             anyhow::ensure!(
-                file.url.starts_with("https://unipi.nrn.one/"),
-                "refusing {plat} binary from {}",
-                file.url
+                artifact.url.starts_with(&format!("{ORIGIN}/releases/")),
+                "refusing {} from {}",
+                artifact.target,
+                artifact.url
             );
         }
     }
-    Ok(host)
+    Ok(release)
 }
 
 fn client() -> anyhow::Result<reqwest::Client> {
@@ -182,8 +202,32 @@ fn client() -> anyhow::Result<reqwest::Client> {
         .build()?)
 }
 
-pub async fn fetch_feed() -> anyhow::Result<HostRelease> {
+/// Reads a feed or artifact URL: `file://` (tests, mirrors) or https.
+async fn read_bytes(url: &str) -> anyhow::Result<Vec<u8>> {
+    if let Some(path) = url.strip_prefix("file://") {
+        return std::fs::read(path).map_err(|e| anyhow::anyhow!("{path}: {e}"));
+    }
+    let res = client()?
+        .get(url)
+        .header("cache-control", "no-cache")
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("couldn't reach {url}: {e}"))?;
+    anyhow::ensure!(res.status().is_success(), "{url}: HTTP {}", res.status());
+    Ok(res.bytes().await?.to_vec())
+}
+
+/// [`fetch_feed`] for an explicit URL (its origin is not checked).
+pub async fn fetch_feed_from(url: &str) -> anyhow::Result<Release> {
+    parse_manifest(&read_bytes(url).await?, false)
+}
+
+pub async fn fetch_feed() -> anyhow::Result<Release> {
     let (url, custom) = feed_url();
+    if custom {
+        return fetch_feed_from(&url).await;
+    }
+    // 20 s, not the 300 s artifact timeout: a check must not hang `serve`.
     let res = client()?
         .get(&url)
         .header("cache-control", "no-cache")
@@ -192,7 +236,7 @@ pub async fn fetch_feed() -> anyhow::Result<HostRelease> {
         .await
         .map_err(|e| anyhow::anyhow!("couldn't reach {url}: {e}"))?;
     anyhow::ensure!(res.status().is_success(), "{url}: HTTP {}", res.status());
-    parse_feed(&res.bytes().await?, !custom)
+    parse_manifest(&res.bytes().await?, true)
 }
 
 /// The outcome of a check.
@@ -205,22 +249,27 @@ pub enum Check {
     Available {
         current: String,
         latest: String,
-        file: HostFile,
+        file: Artifact,
     },
     NoBuild {
         latest: String,
-        platform: String,
+        target: String,
     },
 }
 
-pub fn decide(release: &HostRelease, current: &str, platform: Option<&str>) -> Check {
+/// Is `release` newer than `current`, and does it have this target's host?
+pub fn decide(release: &Release, current: &str, target: &str) -> Check {
     if !is_newer(&release.version, current) {
         return Check::UpToDate {
             current: current.into(),
             latest: release.version.clone(),
         };
     }
-    match platform.and_then(|p| release.files.get(p)) {
+    match release
+        .artifacts
+        .iter()
+        .find(|a| a.target == target && (a.name == ARTIFACT || a.name.is_empty()))
+    {
         Some(file) => Check::Available {
             current: current.into(),
             latest: release.version.clone(),
@@ -228,7 +277,7 @@ pub fn decide(release: &HostRelease, current: &str, platform: Option<&str>) -> C
         },
         None => Check::NoBuild {
             latest: release.version.clone(),
-            platform: platform.unwrap_or("unknown").into(),
+            target: target.into(),
         },
     }
 }
@@ -243,21 +292,13 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 /// Downloads `file` next to `exe`, checks it, swaps it in (on Windows the
 /// old exe stays as `<exe>.old` until the next run removes it).
 pub async fn download_and_replace(
-    file: &HostFile,
+    file: &Artifact,
     expect_version: &str,
     exe: &Path,
 ) -> anyhow::Result<()> {
-    let res = client()?
-        .get(&file.url)
-        .send()
+    let bytes = read_bytes(&file.url)
         .await
         .map_err(|e| anyhow::anyhow!("download failed: {e}"))?;
-    anyhow::ensure!(
-        res.status().is_success(),
-        "download failed: HTTP {}",
-        res.status()
-    );
-    let bytes = res.bytes().await?;
     let got = sha256_hex(&bytes);
     anyhow::ensure!(
         got.eq_ignore_ascii_case(&file.sha256),
@@ -322,159 +363,80 @@ pub fn install_bytes(bytes: &[u8], expect_version: &str, exe: &Path) -> anyhow::
     Ok(())
 }
 
-/// Which service manager runs `serve` here, if any.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Service {
-    Systemd,
-    LaunchAgent,
-    ScheduledTask,
+/// What the host says after it replaced its own binary (host.md §9.7): there
+/// is no service to restart — it exits, and whoever started it starts the new
+/// one (the app's supervisor, or the owner by hand).
+pub fn restart_hint(mode: Mode) -> String {
+    match mode {
+        Mode::App => "updated unipi-host; exiting so the app starts the new binary".to_string(),
+        Mode::Manual => "restarted binary; rerun unipi-host serve".to_string(),
+    }
 }
 
-pub fn detect_service() -> Option<Service> {
-    if cfg!(target_os = "linux") {
-        let ok = std::process::Command::new("systemctl")
-            .args(["--user", "is-enabled", "--quiet", SERVICE_UNIT])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        return ok.then_some(Service::Systemd);
-    }
-    if cfg!(target_os = "macos") {
-        let home = std::env::var_os("HOME").map(PathBuf::from)?;
-        return home
-            .join("Library/LaunchAgents")
-            .join(format!("{LAUNCH_AGENT}.plist"))
-            .exists()
-            .then_some(Service::LaunchAgent);
-    }
-    if cfg!(windows) {
-        let ok = std::process::Command::new("schtasks")
-            .args(["/Query", "/TN", WINDOWS_TASK])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        return ok.then_some(Service::ScheduledTask);
-    }
-    None
+/// A pending host→app notice (host.md §9.7): `serve` raises it in `prompt`
+/// mode and `events_open` (WP-H4) drains it as a `HostNotice`. Kept as a small
+/// JSON file so a check that finds an update before the app connects is not
+/// lost.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Notice {
+    /// [`NOTICE_UPDATE`]; further kinds arrive with the events stream.
+    pub kind: String,
+    /// One line for the app to show.
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
-/// Does the service start this exe? (Never restart a service that runs some
-/// other copy — e.g. a test replacing a temp binary on a PC whose real host
-/// runs as a service.)
-pub fn service_runs(service: Service, exe: &Path) -> bool {
-    let definition = match service {
-        Service::Systemd => std::process::Command::new("systemctl")
-            .args(["--user", "cat", SERVICE_UNIT])
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned()),
-        Service::LaunchAgent => std::env::var_os("HOME").map(PathBuf::from).and_then(|h| {
-            std::fs::read_to_string(
-                h.join("Library/LaunchAgents")
-                    .join(format!("{LAUNCH_AGENT}.plist")),
-            )
-            .ok()
+pub fn notices_path(paths: &HostPaths) -> PathBuf {
+    paths.root.join("notices.json")
+}
+
+/// The notice a `prompt`-mode check raises, or `None` when there is nothing
+/// newer (or no build for this target). Pure, so the text is testable.
+pub fn prompt_notice(check: &Check) -> Option<Notice> {
+    match check {
+        Check::Available {
+            current, latest, ..
+        } => Some(Notice {
+            kind: NOTICE_UPDATE.into(),
+            message: format!("UniPi host {latest} is available (this is {current})."),
+            version: Some(latest.clone()),
         }),
-        Service::ScheduledTask => std::process::Command::new("schtasks")
-            .args(["/Query", "/TN", WINDOWS_TASK, "/XML"])
-            .output()
-            .ok()
-            .map(|o| {
-                String::from_utf16_lossy(
-                    &o.stdout
-                        .chunks(2)
-                        .map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)]))
-                        .collect::<Vec<_>>(),
-                ) + &String::from_utf8_lossy(&o.stdout)
-            }),
-    };
-    definition.is_some_and(|d| definition_runs(&d, exe))
-}
-
-/// Text match of the exe path in a unit / plist / task XML (case-insensitive on Windows).
-pub fn definition_runs(definition: &str, exe: &Path) -> bool {
-    let exe = exe.to_string_lossy();
-    if cfg!(windows) {
-        definition.to_lowercase().contains(&exe.to_lowercase())
-    } else {
-        definition.contains(exe.as_ref())
+        _ => None,
     }
 }
 
-/// The command that restarts the service (argv).
-pub fn restart_argv(service: Service, uid: Option<u32>) -> Vec<String> {
-    restart_argv_for(service, uid, Path::new("unipi-host.exe"))
+/// Queues `notice` for the next `events_open` (newest last, duplicates of the
+/// same kind+version collapse).
+pub fn raise_notice(paths: &HostPaths, notice: Notice) -> anyhow::Result<()> {
+    let mut queued = pending_notices(paths);
+    queued.retain(|n| n.kind != notice.kind || n.version != notice.version);
+    queued.push(notice);
+    let keep = queued.len().saturating_sub(16);
+    queued.drain(..keep);
+    crate::data_dir::write_json(&notices_path(paths), &queued)
 }
 
-/// Like [`restart_argv`], for the scheduled task with the exe whose `serve`
-/// must be stopped: the task runs `conhost --headless unipi-host serve`, and
-/// `schtasks /End` only ends conhost — the old serve kept running (seen
-/// updating coffee 0.4.4 → 0.4.5), so the task's new serve couldn't start.
-pub fn restart_argv_for(service: Service, uid: Option<u32>, exe: &Path) -> Vec<String> {
-    if service == Service::ScheduledTask {
-        let exe = exe.to_string_lossy().replace('\'', "''");
-        // No double quotes inside: Windows argv quoting would strip them.
-        let script = format!(
-            "schtasks /End /TN '{WINDOWS_TASK}' | Out-Null; \
-             Get-CimInstance Win32_Process -Filter 'Name=''unipi-host.exe''' | \
-             Where-Object {{ $_.ExecutablePath -eq '{exe}' -and $_.CommandLine -match '\\sserve(\\s|$)' }} | \
-             ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}; \
-             Start-Sleep -Milliseconds 500; schtasks /Run /TN '{WINDOWS_TASK}' | Out-Null; exit $LASTEXITCODE"
-        );
-        return vec![
-            "powershell.exe".into(),
-            "-NoProfile".into(),
-            "-NonInteractive".into(),
-            "-Command".into(),
-            script,
-        ];
-    }
-    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-    match service {
-        Service::Systemd => s(&["systemctl", "--user", "restart", SERVICE_UNIT]),
-        Service::LaunchAgent => vec![
-            "launchctl".into(),
-            "kickstart".into(),
-            "-k".into(),
-            format!("gui/{}/{LAUNCH_AGENT}", uid.unwrap_or(0)),
-        ],
-        // /End then /Run: the task action starts the new exe.
-        Service::ScheduledTask => s(&[
-            "cmd",
-            "/C",
-            &format!("schtasks /End /TN \"{WINDOWS_TASK}\" & schtasks /Run /TN \"{WINDOWS_TASK}\""),
-        ]),
-    }
-}
-
-#[cfg(unix)]
-fn current_uid() -> Option<u32> {
-    std::process::Command::new("id")
-        .arg("-u")
-        .output()
+/// What `events_open` would deliver next (the file stays).
+pub fn pending_notices(paths: &HostPaths) -> Vec<Notice> {
+    crate::data_dir::read_json::<Vec<Notice>>(&notices_path(paths))
         .ok()
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
-}
-#[cfg(not(unix))]
-fn current_uid() -> Option<u32> {
-    None
+        .flatten()
+        .unwrap_or_default()
 }
 
-/// Restarts the service so it runs the new binary. The restart kills the
-/// process doing it when that process *is* the service (auto mode), which is fine.
-pub fn restart_service(service: Service) -> anyhow::Result<()> {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("unipi-host.exe"));
-    let argv = restart_argv_for(service, current_uid(), &exe);
-    let status = std::process::Command::new(&argv[0])
-        .args(&argv[1..])
-        .status()
-        .map_err(|e| anyhow::anyhow!("couldn't run {}: {e}", argv[0]))?;
-    anyhow::ensure!(status.success(), "`{}` failed", argv.join(" "));
-    Ok(())
+/// What `events_open` delivers and clears (host.md §9.7).
+pub fn take_notices(paths: &HostPaths) -> Vec<Notice> {
+    let queued = pending_notices(paths);
+    if !queued.is_empty() {
+        let _ = std::fs::remove_file(notices_path(paths));
+    }
+    queued
 }
 
 /// Records a check in `update.json` (errors are kept so the app can say why).
-pub fn record(paths: &HostPaths, now: u64, result: &anyhow::Result<HostRelease>) {
+pub fn record(paths: &HostPaths, now: u64, result: &anyhow::Result<Release>) {
     let state = match result {
         Ok(r) => UpdateState {
             checked_at: now,
@@ -535,12 +497,21 @@ pub fn cleanup_old(exe: &Path) {
     }
 }
 
-/// How often `serve` checks the feed (the first check is a minute after start).
-pub const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The feed as `cargo xtask dist publish` writes it.
+    fn manifest(version: &str, target: &str, url: &str, sha256: &str) -> String {
+        serde_json::json!({
+            "version": version,
+            "artifacts": [
+                { "name": "oino", "target": target, "url": format!("{ORIGIN}/releases/download/v{version}/oino-{target}"), "sha256": "c".repeat(64) },
+                { "name": ARTIFACT, "target": target, "url": url, "sha256": sha256 },
+            ]
+        })
+        .to_string()
+    }
 
     #[test]
     fn versions_compare_numerically() {
@@ -554,98 +525,204 @@ mod tests {
         assert_eq!(parse_version("0.4.4.1"), None);
     }
 
-    fn feed(url: &str) -> String {
-        format!(
-            r#"{{"app":{{"version":"0.4.4","build":4004,"url":"https://unipi.nrn.one/a.apk","sha256":"{}"}},
-               "host":{{"version":"0.4.4","files":{{"linux-x64":{{"url":"{url}","sha256":"{}"}}}}}}}}"#,
-            "a".repeat(64),
-            "b".repeat(64)
-        )
-    }
-
     #[test]
-    fn feed_parses_and_checks_origin() {
-        let ok = parse_feed(
-            feed("https://unipi.nrn.one/releases/host/0.4.4/unipi-host-linux-x64").as_bytes(),
+    fn manifest_parses_and_checks_origin() {
+        let good = format!(
+            "{ORIGIN}/releases/download/v2.0.0/unipi-host-{t}",
+            t = current_target()
+        );
+        let ok = parse_manifest(
+            manifest("2.0.0", &current_target(), &good, &"b".repeat(64)).as_bytes(),
             true,
         )
         .unwrap();
-        assert_eq!(ok.version, "0.4.4");
-        assert!(parse_feed(feed("https://evil.example/x").as_bytes(), true).is_err());
-        assert!(parse_feed(feed("http://127.0.0.1:1/x").as_bytes(), false).is_ok());
-        assert!(parse_feed(b"{}", true).is_err());
-        assert!(parse_feed(b"nope", true).is_err());
-        let bad_sha = feed("https://unipi.nrn.one/x").replace(&"b".repeat(64), "zz");
-        assert!(parse_feed(bad_sha.as_bytes(), true).is_err());
+        assert_eq!(ok.version, "2.0.0");
+        assert_eq!(ok.artifacts.len(), 2);
+        // A tampered manifest can't point the binary somewhere else.
+        assert!(parse_manifest(
+            manifest(
+                "2.0.0",
+                &current_target(),
+                "https://evil.example/x",
+                &"b".repeat(64)
+            )
+            .as_bytes(),
+            true
+        )
+        .is_err());
+        // An explicit feed (tests, mirrors) is not origin-checked.
+        assert!(parse_manifest(
+            manifest("2.0.0", &current_target(), "file:///tmp/x", &"b".repeat(64)).as_bytes(),
+            false
+        )
+        .is_ok());
+        assert!(parse_manifest(b"{}", true).is_err());
+        assert!(parse_manifest(b"nope", true).is_err());
+        let bad_sha = manifest("2.0.0", &current_target(), &good, &"b".repeat(64))
+            .replace(&"b".repeat(64), "zz");
+        assert!(parse_manifest(bad_sha.as_bytes(), true).is_err());
     }
 
     #[test]
-    fn decide_picks_platform_and_never_downgrades() {
-        let r = parse_feed(feed("https://unipi.nrn.one/x").as_bytes(), true).unwrap();
+    fn decide_picks_the_host_artifact_of_this_target() {
+        let r = parse_manifest(
+            manifest(
+                "2.0.0",
+                &current_target(),
+                "https://evil.example/x",
+                &"b".repeat(64),
+            )
+            .as_bytes(),
+            false,
+        )
+        .unwrap();
+        match decide(&r, "1.0.0", &current_target()) {
+            Check::Available { file, latest, .. } => {
+                assert_eq!(file.name, ARTIFACT, "the host, not the oino CLI");
+                assert_eq!(latest, "2.0.0");
+            }
+            other => panic!("{other:?}"),
+        }
         assert!(matches!(
-            decide(&r, "0.4.3", Some("linux-x64")),
-            Check::Available { .. }
-        ));
-        assert!(matches!(
-            decide(&r, "0.4.4", Some("linux-x64")),
+            decide(&r, "2.0.0", &current_target()),
             Check::UpToDate { .. }
         ));
         assert!(matches!(
-            decide(&r, "0.5.0", Some("linux-x64")),
+            decide(&r, "3.0.0", &current_target()),
             Check::UpToDate { .. }
         ));
+        // Another target has no build.
+        match decide(&r, "1.0.0", "aarch64-unknown-linux-gnu") {
+            Check::NoBuild { target, .. } => assert_eq!(target, "aarch64-unknown-linux-gnu"),
+            other => panic!("{other:?}"),
+        }
+        // A manifest with only the CLI never installs a wrong binary.
+        let cli_only = serde_json::json!({
+            "version": "2.0.0",
+            "artifacts": [{ "name": "oino", "target": current_target(), "url": "https://x/y", "sha256": "c".repeat(64) }]
+        })
+        .to_string();
+        let r = parse_manifest(cli_only.as_bytes(), false).unwrap();
         assert!(matches!(
-            decide(&r, "0.4.3", Some("darwin-arm64")),
+            decide(&r, "1.0.0", &current_target()),
             Check::NoBuild { .. }
         ));
     }
 
-    #[test]
-    fn service_match_is_by_exe_path() {
-        let unit = "[Service]\nExecStart=/home/u/.local/bin/unipi-host serve\n";
-        assert!(definition_runs(
-            unit,
-            Path::new("/home/u/.local/bin/unipi-host")
-        ));
-        assert!(!definition_runs(unit, Path::new("/tmp/qa/unipi-host")));
+    /// The faux feed end to end: a local `release-manifest.json` + a local
+    /// "binary", both `file://`; the check finds it, the download replaces the
+    /// target, and the restart hint says who restarts the host (§9.7).
+    #[tokio::test]
+    async fn faux_feed_installs_a_newer_host_and_says_how_to_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = current_target();
+        let script = b"#!/bin/sh\necho unipi-host 9.9.9\n";
+        let artifact = dir.path().join("unipi-host-9.9.9");
+        std::fs::write(&artifact, script).unwrap();
+        let exe = dir.path().join("unipi-host");
+        std::fs::write(&exe, "old").unwrap();
+        let feed = dir.path().join("release-manifest.json");
+        std::fs::write(
+            &feed,
+            manifest(
+                "9.9.9",
+                &target,
+                &format!("file://{}", artifact.display()),
+                &sha256_hex(script),
+            ),
+        )
+        .unwrap();
+        let url = format!("file://{}", feed.display());
+
+        let release = fetch_feed_from(&url).await.unwrap();
+        assert_eq!(release.version, "9.9.9");
+        let Check::Available { file, latest, .. } =
+            decide(&release, env!("CARGO_PKG_VERSION"), &target)
+        else {
+            panic!("the faux feed must be newer than this build");
+        };
+        download_and_replace(&file, &latest, &exe).await.unwrap();
+        assert_eq!(
+            std::fs::read(&exe).unwrap(),
+            script,
+            "the target was replaced"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter(|e| e
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".new-"))
+                .count(),
+            0,
+            "no temp files left"
+        );
+
+        // No service any more: the host exits and says who starts it again.
+        assert_eq!(
+            restart_hint(Mode::Manual),
+            "restarted binary; rerun unipi-host serve"
+        );
+        assert!(restart_hint(Mode::App).contains("the app starts the new binary"));
+        assert!(!restart_hint(Mode::App).contains("rerun"));
+
+        // A checksum that doesn't match changes nothing.
+        let bad = Artifact {
+            sha256: "0".repeat(64),
+            ..file
+        };
+        assert!(download_and_replace(&bad, &latest, &exe).await.is_err());
+        assert_eq!(
+            std::fs::read(&exe).unwrap(),
+            script,
+            "the old binary is untouched"
+        );
+
+        // `serve` records what it saw next to the data dir.
+        let paths = HostPaths::from_dir(dir.path().join("host").as_path());
+        record(&paths, 7, &Ok(release));
+        assert_eq!(status(&paths).latest.as_deref(), Some("9.9.9"));
+        assert!(status(&paths).available);
     }
 
     #[test]
-    fn restart_commands() {
-        assert_eq!(
-            restart_argv(Service::Systemd, None).join(" "),
-            "systemctl --user restart unipi-host.service"
-        );
-        assert_eq!(
-            restart_argv(Service::LaunchAgent, Some(501)).join(" "),
-            "launchctl kickstart -k gui/501/dev.unipi.host"
-        );
-        let win = restart_argv_for(
-            Service::ScheduledTask,
-            None,
-            Path::new(r"C:\Users\o'i\AppData\Local\UniPi\unipi-host.exe"),
-        );
-        assert_eq!(win[0], "powershell.exe");
-        let script = &win[4];
-        // Ends the task, stops that exe's `serve` (not this `update` CLI), runs the task again.
-        assert!(
-            script.starts_with("schtasks /End /TN 'UniPi Host'"),
-            "{script}"
-        );
-        assert!(
-            script.contains(
-                r"$_.ExecutablePath -eq 'C:\Users\o''i\AppData\Local\UniPi\unipi-host.exe'"
-            ),
-            "{script}"
-        );
-        assert!(
-            script.contains("serve(") && script.contains("schtasks /Run /TN 'UniPi Host'"),
-            "{script}"
-        );
-        assert!(
-            !script.contains('"'),
-            "no double quotes (Windows argv quoting strips them): {script}"
-        );
+    fn prompt_mode_queues_one_update_notice() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = HostPaths::from_dir(dir.path());
+        let check = Check::Available {
+            current: "1.0.0".into(),
+            latest: "2.0.0".into(),
+            file: Artifact {
+                name: ARTIFACT.into(),
+                target: current_target(),
+                url: "https://x/y".into(),
+                sha256: "b".repeat(64),
+            },
+        };
+        let notice = prompt_notice(&check).unwrap();
+        assert_eq!(notice.kind, NOTICE_UPDATE);
+        assert!(notice.message.contains("2.0.0") && notice.message.contains("1.0.0"));
+        // Two checks before the app connects: one notice, newest last.
+        raise_notice(&paths, notice.clone()).unwrap();
+        raise_notice(&paths, notice.clone()).unwrap();
+        assert_eq!(pending_notices(&paths), vec![notice.clone()]);
+        // `events_open` takes it once and clears it.
+        assert_eq!(take_notices(&paths), vec![notice]);
+        assert!(take_notices(&paths).is_empty());
+        // Auto mode / no build / up to date raise nothing.
+        assert!(prompt_notice(&Check::UpToDate {
+            current: "2.0.0".into(),
+            latest: "2.0.0".into()
+        })
+        .is_none());
+        assert!(prompt_notice(&Check::NoBuild {
+            latest: "2.0.0".into(),
+            target: current_target()
+        })
+        .is_none());
     }
 
     #[test]
@@ -672,9 +749,9 @@ mod tests {
         record(
             &paths,
             5,
-            &Ok(HostRelease {
+            &Ok(Release {
                 version: "999.0.0".into(),
-                files: Default::default(),
+                artifacts: Default::default(),
             }),
         );
         let s = status(&paths);

@@ -84,21 +84,19 @@ enum Command {
         #[command(subcommand)]
         action: SharingAction,
     },
-    /// Update unipi-host from the release feed (sha256-checked, atomic
-    /// replace). v2 has no service install: the app restarts the host it
-    /// spawned itself (`specs/host.md` §9.7).
+    /// Update unipi-host from the release manifest (sha256-checked, atomic
+    /// replace). v2 has no service install: after the replace the host exits —
+    /// the app restarts the host it spawned itself, a manual `serve` is rerun
+    /// (`specs/host.md` §9.7).
     Update {
         /// Only say whether a newer version exists (exit 0 either way).
         #[arg(long, conflicts_with = "mode")]
         check: bool,
-        /// Don't restart the service after replacing the binary.
-        #[arg(long)]
-        no_restart: bool,
         /// Replace this file instead of the running executable (tests).
         #[arg(long, hide = true)]
         exe: Option<std::path::PathBuf>,
-        /// Owner setting: when `serve` finds a newer host, `prompt` (tell the
-        /// desktop app; the default) or `auto` (install it and restart).
+        /// Owner setting: when `serve` finds a newer host, `prompt` (raise a
+        /// notice for the app; the default) or `auto` (install it and exit).
         #[arg(long, value_parser = ["prompt", "auto"])]
         mode: Option<String>,
         /// Print the result as JSON (for the desktop app).
@@ -619,8 +617,11 @@ async fn main() -> anyhow::Result<()> {
                     }
                 })
             };
-            // UNI-263: look for a newer host every few hours (prompt: record it
-            // for the desktop app; auto: install it and restart the service).
+            // UNI-263 / v2 §9.7: look for a newer host every few hours.
+            // `prompt` raises a notice for `events_open`; `auto` installs it and
+            // ends this process — the app's supervisor starts the new binary on
+            // its next backoff (no service to restart any more).
+            let (restart_tx, restart_rx) = tokio::sync::oneshot::channel::<()>();
             let updater = {
                 let paths = handler.paths.clone();
                 tokio::spawn(async move {
@@ -629,7 +630,10 @@ async fn main() -> anyhow::Result<()> {
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                     loop {
-                        background_update(&paths).await;
+                        if background_update(&paths, mode).await {
+                            let _ = restart_tx.send(());
+                            return;
+                        }
                         tokio::time::sleep(unipi_host::update::CHECK_EVERY).await;
                     }
                 })
@@ -654,7 +658,12 @@ async fn main() -> anyhow::Result<()> {
                 .accept(ALPN, handler)
                 .spawn();
             tracing::info!(relay_only, "host ready");
-            shutdown_signal().await?;
+            // A self-update ended the loop early: the binary on disk is the new
+            // one, so this process steps aside (the app supervisor respawns it).
+            tokio::select! {
+                result = shutdown_signal() => result?,
+                _ = restart_rx => tracing::info!("binary replaced; exiting for a restart"),
+            }
             router.shutdown().await?;
             if let Some(local) = local {
                 local.abort();
@@ -666,6 +675,9 @@ async fn main() -> anyhow::Result<()> {
             // UNI-215: never leave the dedicated browser running.
             unipi_host::browser::Manager::shutdown_all().await;
             unipi_host::browser::agent_endpoint::forget(&paths_for_cleanup.root);
+            // host.md §9.3: terminals die with the host (they outlive nothing
+            // but their own streams).
+            unipi_host::term::TermRegistry::shared().kill_all();
             #[cfg(unix)]
             let _ = std::fs::remove_file(unipi_host::push::socket_path(&paths_for_cleanup));
             #[cfg(not(unix))]
@@ -727,11 +739,10 @@ async fn main() -> anyhow::Result<()> {
         } => sharing_status(&paths, json)?,
         Command::Update {
             check,
-            no_restart,
             exe,
             mode,
             json,
-        } => update_command(&paths, check, no_restart, exe, mode, json).await?,
+        } => update_command(&paths, check, exe, mode, json).await?,
         Command::Push {
             action: Some(action),
             ..
@@ -2236,50 +2247,59 @@ fn sharing_status(paths: &HostPaths, json: bool) -> anyhow::Result<()> {
     );
     Ok(())
 }
-/// One background check from `serve` (UNI-263). Never restarts anything in
-/// prompt mode (the default, user decision 6).
-async fn background_update(paths: &HostPaths) {
+/// One background check from `serve` (UNI-263, host.md §9.7). In `prompt` mode
+/// (the default) it only records the check and raises a [`update::Notice`] for
+/// `events_open`; `auto` installs the newer host and answers `true` — the
+/// caller then ends this process (no service to restart any more).
+async fn background_update(paths: &HostPaths, instance_mode: unipi_host::instance::Mode) -> bool {
     use unipi_host::update;
     let result = update::fetch_feed().await;
     update::record(paths, now_unix(), &result);
-    let Ok(release) = result else { return };
-    let mode = update::UpdateConfig::load(&paths.config())
+    let Ok(release) = result else { return false };
+    let setting = update::UpdateConfig::load(&paths.config())
         .map(|c| c.mode)
         .unwrap_or_default();
-    if mode != update::UpdateMode::Auto {
-        return;
+    let decision = update::decide(
+        &release,
+        env!("CARGO_PKG_VERSION"),
+        &update::current_target(),
+    );
+    if setting != update::UpdateMode::Auto {
+        // "prompt": the app shows it (a `HostNotice` on `events_open`), never a
+        // side channel. Re-raising the same version is a no-op.
+        if let Some(notice) = update::prompt_notice(&decision) {
+            tracing::info!(latest = %release.version, "update available (prompt mode)");
+            if let Err(error) = update::raise_notice(paths, notice) {
+                tracing::warn!(%error, "couldn't queue the update notice");
+            }
+        }
+        return false;
     }
-    let update::Check::Available { latest, file, .. } =
-        update::decide(&release, env!("CARGO_PKG_VERSION"), update::platform())
-    else {
-        return;
+    let update::Check::Available { latest, file, .. } = decision else {
+        return false;
     };
-    // Only a service can bring us back after the restart.
     let Ok(exe) = std::env::current_exe() else {
-        return;
-    };
-    let Some(service) = update::detect_service().filter(|s| update::service_runs(*s, &exe)) else {
-        tracing::info!(
-            latest,
-            "update available; this host isn't run by a service, leaving it to the owner"
-        );
-        return;
+        return false;
     };
     match update::download_and_replace(&file, &latest, &exe).await {
         Ok(()) => {
-            tracing::info!(latest, "updated unipi-host; restarting the service");
-            if let Err(error) = update::restart_service(service) {
-                tracing::warn!(%error, "restart after update failed");
+            tracing::info!(latest, hint = %update::restart_hint(instance_mode), "updated unipi-host");
+            if instance_mode == unipi_host::instance::Mode::Manual {
+                // A manual `serve` has no supervisor: say what to run next.
+                println!("{}", update::restart_hint(instance_mode));
             }
+            true
         }
-        Err(error) => tracing::warn!(%error, "automatic update failed"),
+        Err(error) => {
+            tracing::warn!(%error, "automatic update failed");
+            false
+        }
     }
 }
 
 async fn update_command(
     paths: &HostPaths,
     check: bool,
-    no_restart: bool,
     exe: Option<std::path::PathBuf>,
     mode: Option<String>,
     json: bool,
@@ -2293,8 +2313,8 @@ async fn update_command(
         };
         update::UpdateConfig { mode }.save(&paths.config())?;
         match mode {
-            update::UpdateMode::Auto => println!("Updates: automatic — `unipi-host serve` installs a newer version by itself and restarts."),
-            update::UpdateMode::Prompt => println!("Updates: ask first — the UniPi desktop app shows when a newer version is out; run `unipi-host update` to install it."),
+            update::UpdateMode::Auto => println!("Updates: automatic — `unipi-host serve` installs a newer version by itself and exits; the app (or you) starts the new binary."),
+            update::UpdateMode::Prompt => println!("Updates: ask first — the UniPi app shows when a newer version is out (events_open notice); run `unipi-host update` to install it."),
         }
         return Ok(());
     }
@@ -2302,7 +2322,7 @@ async fn update_command(
     let result = update::fetch_feed().await;
     update::record(paths, now_unix(), &result);
     let release = result?;
-    let decision = update::decide(&release, current, update::platform());
+    let decision = update::decide(&release, current, &update::current_target());
     let say = |state: &str, text: String| {
         if json {
             println!(
@@ -2321,16 +2341,15 @@ async fn update_command(
                 release.version
             ),
         ),
-        update::Check::NoBuild { latest, platform } => {
-            anyhow::bail!("unipi-host {latest} is out, but there is no {platform} build of it");
+        update::Check::NoBuild { latest, target } => {
+            anyhow::bail!("unipi-host {latest} is out, but there is no {target} build of it");
         }
         update::Check::Available { latest, file, .. } if check => {
             let _ = file;
             say("available", format!("unipi-host {latest} is available (this is {current}). Install it: unipi-host update"));
         }
         update::Check::Available { latest, file, .. } => {
-            // --exe (tests): never restart anything.
-            let explicit = exe.is_some();
+            // --exe (tests): replace that file, never the running one.
             let target = match exe {
                 Some(p) => p,
                 None => std::env::current_exe()?,
@@ -2339,25 +2358,15 @@ async fn update_command(
                 println!("Downloading unipi-host {latest}…");
             }
             update::download_and_replace(&file, &latest, &target).await?;
-            let service = if no_restart || explicit {
-                None
-            } else {
-                update::detect_service().filter(|s| update::service_runs(*s, &target))
-            };
-            let restarted = match service {
-                Some(service) => match update::restart_service(service) {
-                    Ok(()) => " and restarted the service".to_string(),
-                    Err(e) => {
-                        format!("; restarting the service failed ({e}) — restart it yourself")
-                    }
-                },
-                None => "; restart `unipi-host serve` to use it".to_string(),
-            };
+            // v2 has no service: this process must not keep running the old
+            // image. A `serve` started by the app is respawned by the app; a
+            // manual one is rerun by the owner.
             say(
                 "updated",
                 format!(
-                    "Updated unipi-host {current} → {latest} ({}){restarted}.",
-                    target.display()
+                    "Updated unipi-host {current} → {latest} ({}). {}",
+                    target.display(),
+                    update::restart_hint(unipi_host::instance::Mode::Manual)
                 ),
             );
         }
