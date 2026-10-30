@@ -37,6 +37,8 @@ use std::rc::Rc;
 use futures::future::join_all;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::KeyBinding;
+use oino_extension::ui::widgets::prelude::*;
 use oino_extension::wit::registry::{Exposure, ToolAnnotations};
 use unipi_kit::bus::Delivery;
 use unipi_kit::settings::{Field, Namespace, Section};
@@ -62,6 +64,56 @@ enum View {
     Servers,
     Server(String),
     Catalog(String),
+}
+
+/// A row of action buttons.
+fn buttons(items: &[(&str, &str, Option<ButtonVariant>)]) -> Node {
+    let children = items.iter().map(|(label, action, variant)| {
+        let button = Button::new(*label, *action);
+        let button = match variant {
+            Some(v) => button.variant(*v),
+            None => button,
+        };
+        button.into()
+    });
+    Layout::horizontal(vec![Constraint::Min(0); items.len()])
+        .spacing(1)
+        .children(children)
+        .into()
+}
+
+/// A section header: a top rule with the title (`section` in the §12.1 mapping).
+fn section(title: &str, body: impl Into<Node>) -> Node {
+    Block::default()
+        .borders(Borders::Sides(vec![BorderSide::TOP]))
+        .border_style(Style::new().fg(Color::BorderMuted))
+        .title(title)
+        .child(body.into())
+        .into()
+}
+
+/// Key/value rows (`kv` → 2-column `Table`, §12.1).
+fn kv(items: &[(&str, String)]) -> Node {
+    let rows = items.iter().map(|(key, value)| {
+        let key_cell = oino_extension::ui::widgets::widgets::table::Cell::new(Line::from(
+            Span::from_string(*key).fg(Color::Muted),
+        ));
+        Row::new([
+            key_cell,
+            oino_extension::ui::widgets::widgets::table::Cell::new(value.clone()),
+        ])
+    });
+    Table::new(rows, [Constraint::Max(24), Constraint::Fill(1)]).into()
+}
+
+/// Status tone token.
+fn status_color(status: Status) -> Color {
+    match status {
+        Status::Running => Color::Success,
+        Status::Error => Color::Error,
+        Status::Starting => Color::Warning,
+        Status::Stopped => Color::Muted,
+    }
 }
 
 /// The extension.
@@ -613,9 +665,9 @@ impl Mcp {
 
     // ── panels ──────────────────────────────────────────────────────────────
 
-    fn servers_spec(&self) -> Value {
+    fn servers_spec(&self) -> Node {
         let reg = self.registry.borrow();
-        let items: Vec<Value> = reg
+        let items: Vec<ListItem> = reg
             .all()
             .iter()
             .map(|e| {
@@ -624,40 +676,45 @@ impl Mcp {
                     (Some(err), Status::Error) => format!("{} · {err}", e.resolved.source.as_str()),
                     _ => format!("{} · {} tools", e.resolved.source.as_str(), s.tool_count),
                 };
-                let tone = match s.status {
-                    Status::Running => "success",
-                    Status::Error => "error",
-                    Status::Starting => "warning",
-                    Status::Stopped => "muted",
-                };
-                json!({"id": e.resolved.name, "label": format!("{} {}", s.status.icon(), s.name), "detail": detail, "badge": s.status.as_str(), "tone": tone})
+                let tone = status_color(s.status);
+                ListItem::new(format!("{} {}", s.status.icon(), s.name))
+                    .key(e.resolved.name.clone())
+                    .detail(Line::from(detail))
+                    .badge(Line::from(s.status.as_str()).fg(tone))
             })
             .collect();
-        let list = if items.is_empty() {
-            json!({"t": "empty", "message": "No MCP servers configured. Add one from the catalog."})
+        let list: Node = if items.is_empty() {
+            Empty::new()
+                .message("No MCP servers configured. Add one from the catalog.")
+                .into()
         } else {
-            json!({"t": "list", "items": items, "selectable": "select"})
+            List::new(items).on_activate("select").into()
         };
         let mut children = vec![
             list,
-            json!({"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-                {"t": "button", "label": "Add server…", "actionId": "add", "primary": true},
-                {"t": "button", "label": "Reload all", "actionId": "reload"},
-                {"t": "button", "label": "Close", "actionId": "close"},
-            ]}),
+            buttons(&[
+                ("Add server…", "add", Some(ButtonVariant::Primary)),
+                ("Reload all", "reload", None),
+                ("Close", "close", None),
+            ]),
         ];
         let errors = self.errors.borrow();
         if !errors.is_empty() {
-            children.insert(1, json!({"t": "section", "title": "Config problems", "body": {"t": "log", "lines": *errors}}));
+            children.insert(
+                1,
+                section("Config problems", Log::new(errors.iter().cloned())),
+            );
         }
-        children.push(json!({"t": "keyHints", "hints": [{"keys": "enter", "label": "details"}, {"keys": "a", "label": "add"}, {"keys": "q", "label": "close"}]}));
-        json!({"t": "stack", "direction": "vertical", "gap": 1, "children": children})
+        children.push(KeyHints::new([("enter", "details"), ("a", "add"), ("q", "close")]).into());
+        Layout::default().spacing(1).children(children).into()
     }
 
-    fn server_spec(&self, name: &str) -> Value {
+    fn server_spec(&self, name: &str) -> Node {
         let reg = self.registry.borrow();
         let Some(e) = reg.get(name) else {
-            return json!({"t": "empty", "message": format!("Server \"{name}\" is gone.")});
+            return Empty::new()
+                .message(format!("Server \"{name}\" is gone."))
+                .into();
         };
         let def = &e.resolved.def;
         let target = match def.transport {
@@ -665,47 +722,62 @@ impl Mcp {
             Transport::Http => def.url.clone(),
         };
         let mut items = vec![
-            json!({"key": "Status", "value": e.state.status.as_str()}),
-            json!({"key": "Source", "value": e.resolved.source.as_str()}),
-            json!({"key": "Enabled", "value": if e.resolved.enabled { "yes" } else { "no" }}),
-            json!({"key": "Target", "value": target}),
-            json!({"key": "Tools", "value": e.state.tool_count.to_string()}),
+            ("Status", e.state.status.as_str().to_owned()),
+            ("Source", e.resolved.source.as_str().to_owned()),
+            (
+                "Enabled",
+                if e.resolved.enabled { "yes" } else { "no" }.to_owned(),
+            ),
+            ("Target", target),
+            ("Tools", e.state.tool_count.to_string()),
         ];
         if let Some(pid) = e.state.pid {
-            items.push(json!({"key": "PID", "value": pid.to_string()}));
+            items.push(("PID", pid.to_string()));
         }
         if let Some(err) = &e.state.error {
-            items.push(json!({"key": "Error", "value": err}));
+            items.push(("Error", err.clone()));
         }
-        let tools: Vec<Value> = e
+        let tools: Vec<ListItem> = e
             .tools
             .iter()
-            .map(|t| json!({"id": t.name, "label": t.name, "detail": config::tool_exposure(def, &t.mcp_name)}))
+            .map(|t| {
+                ListItem::new(t.name.clone())
+                    .key(t.name.clone())
+                    .detail(Line::from(config::tool_exposure(def, &t.mcp_name)))
+            })
             .collect();
+        let tools_body: Node = if tools.is_empty() {
+            Empty::new().message("No tools.").into()
+        } else {
+            List::new(tools).into()
+        };
         let toggle = if e.resolved.enabled {
             "Disable"
         } else {
             "Enable"
         };
-        json!({"t": "stack", "direction": "vertical", "gap": 1, "children": [
-            {"t": "kv", "items": items},
-            {"t": "section", "title": "Tools", "body": if tools.is_empty() { json!({"t": "empty", "message": "No tools."}) } else { json!({"t": "list", "items": tools}) }},
-            {"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-                {"t": "button", "label": toggle, "actionId": "toggle"},
-                {"t": "button", "label": "Edit…", "actionId": "edit"},
-                {"t": "button", "label": "Reconnect", "actionId": "reconnect"},
-                {"t": "button", "label": "Remove", "actionId": "remove", "tone": "error"},
-                {"t": "button", "label": "Back", "actionId": "back"},
-            ]},
-        ]})
+        Layout::default()
+            .spacing(1)
+            .children([
+                kv(&items),
+                section("Tools", tools_body),
+                buttons(&[
+                    (toggle, "toggle", None),
+                    ("Edit…", "edit", None),
+                    ("Reconnect", "reconnect", None),
+                    ("Remove", "remove", Some(ButtonVariant::Danger)),
+                    ("Back", "back", None),
+                ]),
+            ])
+            .into()
     }
 
-    fn catalog_spec(query: &str) -> Value {
+    fn catalog_spec(query: &str) -> Node {
         let cat = catalog::load(
             std::fs::read_to_string(CATALOG_CACHE).ok().as_deref(),
             &now_iso(),
         );
-        let items: Vec<Value> = catalog::search(&cat, query)
+        let items: Vec<ListItem> = catalog::search(&cat, query)
             .into_iter()
             .map(|e| {
                 let badge = format!(
@@ -714,36 +786,63 @@ impl Mcp {
                     e.scope,
                     e.language
                 );
-                json!({"id": e.id, "label": e.name, "detail": e.description, "badge": badge})
+                ListItem::new(e.name.clone())
+                    .key(e.id.clone())
+                    .detail(Line::from(e.description.clone()))
+                    .badge(Line::from(badge))
             })
             .collect();
-        let list = if items.is_empty() {
-            json!({"t": "empty", "message": "No servers match."})
+        let list: Node = if items.is_empty() {
+            Empty::new().message("No servers match.").into()
         } else {
-            json!({"t": "list", "items": items, "selectable": "pick"})
+            List::new(items).on_activate("pick").into()
         };
-        json!({"t": "stack", "direction": "vertical", "gap": 1, "children": [
-            {"t": "input", "id": "q", "value": query, "placeholder": "Search the catalog…", "onSubmit": "search"},
-            {"t": "text", "value": [{"text": format!("{} · {} servers · updated {}", cat.source, cat.total_servers, cat.last_updated), "dim": true}]},
-            list,
-            {"t": "stack", "direction": "horizontal", "gap": 1, "children": [
-                {"t": "button", "label": "Custom server…", "actionId": "custom"},
-                {"t": "button", "label": "Sync catalog", "actionId": "sync"},
-                {"t": "button", "label": "Close", "actionId": "close"},
-            ]},
-        ]})
+        Layout::default()
+            .spacing(1)
+            .children([
+                Input::new("q")
+                    .value(query)
+                    .placeholder("Search the catalog…")
+                    .on_submit("search")
+                    .into(),
+                Paragraph::new(Line::from(
+                    Span::from_string(format!(
+                        "{} · {} servers · updated {}",
+                        cat.source, cat.total_servers, cat.last_updated
+                    ))
+                    .dim(),
+                ))
+                .into(),
+                list,
+                buttons(&[
+                    ("Custom server…", "custom", None),
+                    ("Sync catalog", "sync", None),
+                    ("Close", "close", None),
+                ]),
+            ])
+            .into()
     }
 
-    fn open_panel(&self, cx: &Ctx, id: &str, title: &str, spec: &Value, view: View) -> Result<()> {
-        let panel = ui::panel_open(&json!({
-            "panelId": format!("{EXTENSION_ID}/{id}"),
-            "placement": "overlay",
-            "title": title,
-            "spec": spec,
-            "keys": [{"key": "a", "actionId": "add", "label": "Add"}, {"key": "r", "actionId": "reload", "label": "Reload"}],
-            "focus": true,
-            "closeOnEscape": true,
-        }))?;
+    fn open_panel(&self, cx: &Ctx, id: &str, title: &str, spec: Node, view: View) -> Result<()> {
+        let panel = ui::Panel::new(format!("{EXTENSION_ID}/{id}"))
+            .placement(ui::Placement::Overlay)
+            .title(title)
+            .spec(spec)
+            .keys([
+                KeyBinding {
+                    key: "a".into(),
+                    action: Some("add".into()),
+                    label: "Add".into(),
+                },
+                KeyBinding {
+                    key: "r".into(),
+                    action: Some("reload".into()),
+                    label: "Reload".into(),
+                },
+            ])
+            .focus(true)
+            .close_on_escape(true)
+            .open()?;
         self.panels.with(cx.session_id(), |p| {
             p.insert(panel, view);
         });
@@ -756,7 +855,7 @@ impl Mcp {
             View::Server(n) => (self.server_spec(n), format!("MCP server — {n}")),
             View::Catalog(q) => (Self::catalog_spec(q), "MCP catalog".to_owned()),
         };
-        let _ = ui::panel_update(panel, &json!({"spec": spec, "title": title}));
+        let _ = ui::Panel::update(panel).spec(spec).title(title).send();
         self.panels.with(cx.session_id(), |p| {
             p.insert(panel.to_owned(), view);
         });
@@ -1104,7 +1203,7 @@ impl Extension for Mcp {
                         &cx.cx,
                         "servers",
                         "MCP servers",
-                        &ext.servers_spec(),
+                        ext.servers_spec(),
                         View::Servers,
                     )
                 }),
@@ -1122,7 +1221,7 @@ impl Extension for Mcp {
                         &cx.cx,
                         "catalog",
                         "MCP catalog",
-                        &Self::catalog_spec(""),
+                        Self::catalog_spec(""),
                         View::Catalog(String::new()),
                     )
                 }),
