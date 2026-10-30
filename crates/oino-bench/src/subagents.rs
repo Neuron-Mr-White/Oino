@@ -49,6 +49,7 @@ const CHILD_ANSWER: &str = "ok";
 pub(crate) async fn run(args: &[String]) -> Result<()> {
     let mut n: Option<usize> = None;
     let mut out: Option<PathBuf> = None;
+    let mut workdir: Option<PathBuf> = None;
     let mut flags = args.iter();
     while let Some(flag) = flags.next() {
         match flag.as_str() {
@@ -62,7 +63,14 @@ pub(crate) async fn run(args: &[String]) -> Result<()> {
                 );
             }
             "--out" => out = Some(PathBuf::from(flags.next().context("--out needs a value")?)),
-            other => bail!("unknown flag '{other}' (usage: subagents --n <N> [--out dir])"),
+            "--workdir" => {
+                workdir = Some(PathBuf::from(
+                    flags.next().context("--workdir needs a value")?,
+                ));
+            }
+            other => bail!(
+                "unknown flag '{other}' (usage: subagents --n <N> [--out dir] [--workdir dir])"
+            ),
         }
     }
     let n = n.ok_or_else(|| anyhow::anyhow!("--n is required (1, 10, 50 for the record)"))?;
@@ -70,8 +78,14 @@ pub(crate) async fn run(args: &[String]) -> Result<()> {
         bail!("--n must be at least 1");
     }
     let out = out.unwrap_or_else(|| PathBuf::from("bench/results"));
+    // The temp agent dir must sit on real disk: on a tmpfs the fsync barrier costs 0 and
+    // session writes never leave RAM. `--workdir` > OINO_BENCH_WORKDIR (set by xtask to
+    // the repo's target dir) > the system temp dir.
+    let workdir = workdir
+        .or_else(|| std::env::var_os("OINO_BENCH_WORKDIR").map(PathBuf::from))
+        .unwrap_or_else(std::env::temp_dir);
 
-    let report = bench(n).await?;
+    let report = bench(n, &workdir).await?;
     let (json_path, md_path) = write_report(&out, n, &report)?;
     println!("wrote {}", json_path.display());
     println!("wrote {}", md_path.display());
@@ -81,13 +95,17 @@ pub(crate) async fn run(args: &[String]) -> Result<()> {
 
 /// The B-1 scenario itself, as one report value.
 #[allow(clippy::too_many_lines, reason = "one block per measured phase")]
-async fn bench(n: usize) -> Result<Value> {
+async fn bench(n: usize, workdir: &Path) -> Result<Value> {
     let clock = sample::Clock::detect();
     let started = Local::now();
     let run_started = Instant::now();
     let at_start = sample::Sample::take();
 
-    let temp = tempfile::tempdir().context("temp agent dir")?;
+    std::fs::create_dir_all(workdir).with_context(|| format!("work dir {}", workdir.display()))?;
+    let temp = tempfile::Builder::new()
+        .prefix("oino-bench-")
+        .tempdir_in(workdir)
+        .with_context(|| format!("temp agent dir under {}", workdir.display()))?;
     let services_started = Instant::now();
     let services = services(temp.path()).await?;
     let services_wall = services_started.elapsed();
@@ -181,6 +199,10 @@ async fn bench(n: usize) -> Result<Value> {
         "durationMs": as_u64(run_started.elapsed().as_millis()),
         "host": host(clock),
         "git": { "head": std::env::var("OINO_BENCH_GIT_HEAD").ok() },
+        "workdir": {
+            "path": temp.path().display().to_string(),
+            "fs": filesystem_of(temp.path()),
+        },
         "phasesMs": {
             "services": as_u64(services_wall.as_millis()),
             "roots": as_u64(roots_wall.as_millis()),
@@ -202,8 +224,17 @@ async fn bench(n: usize) -> Result<Value> {
         },
         "cpuMs": {
             "supported": cpu_before_turns.cpu_ticks.is_some(),
+            "clkTck": clock.ticks_per_sec,
             "duringSpawn": clock.ms_between(after_roots, after_spawn),
             "duringTurns": clock.ms_between(cpu_before_turns, cpu_after_turns),
+            "duringSpawnTicks": after_spawn
+                .cpu_ticks
+                .zip(after_roots.cpu_ticks)
+                .map(|(a, b)| a.saturating_sub(b)),
+            "duringTurnsTicks": cpu_after_turns
+                .cpu_ticks
+                .zip(cpu_before_turns.cpu_ticks)
+                .map(|(a, b)| a.saturating_sub(b)),
         },
         "children": {
             "spawned": children.len(),
@@ -287,10 +318,13 @@ pub(crate) fn markdown(report: &Value) -> String {
     let head = report["git"]["head"]
         .as_str()
         .map_or_else(|| "unknown".into(), ToString::to_string);
+    let workdir_fs = report["workdir"]["fs"]
+        .as_str()
+        .unwrap_or("unknown filesystem");
     format!(
         "# oino-bench — subagents (n = {n})\n\
          \n\
-         - {at} · HEAD `{head}` · {os}/{arch} · kernel {kernel} · {hostname} · {cpus} cpus\n\
+         - {at} · HEAD `{head}` · {os}/{arch} · kernel {kernel} · {hostname} · {cpus} cpus · workdir fs: {workdir_fs}\n\
          \n\
          | Metric | Value |\n\
          |---|---:|\n\
@@ -348,6 +382,7 @@ pub(crate) fn markdown(report: &Value) -> String {
         t_w = ms("turns"),
         b_w = ms("barrier"),
         barrier_impl = barrier["impl"].as_str().unwrap_or_default(),
+        workdir_fs = workdir_fs,
     )
 }
 
@@ -386,6 +421,30 @@ fn read_trimmed(path: &str) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()
         .map(|s| s.trim().to_owned())
+}
+
+/// Filesystem type backing `path` (longest mount-point prefix of `/proc/self/mounts`).
+fn filesystem_of(path: &Path) -> Option<String> {
+    let target = path.canonicalize().ok()?;
+    let mounts = std::fs::read_to_string("/proc/self/mounts").ok()?;
+    let mut best: Option<(usize, String)> = None;
+    for line in mounts.lines() {
+        let mut fields = line.split_whitespace();
+        let (Some(device), Some(mount), Some(fs_type)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        // `/proc/self/mounts` octal-escapes spaces in mount points; unescape them.
+        let mount = PathBuf::from(mount.replace("\\040", " "));
+        if target.starts_with(&mount) {
+            let depth = mount.components().count();
+            if best.as_ref().is_none_or(|(d, _)| depth > *d) {
+                best = Some((depth, format!("{fs_type} ({device})")));
+            }
+        }
+    }
+    best.map(|(_, fs_type)| fs_type)
 }
 
 /// Per-child KiB delta `(after − before) / n`, 1 decimal, negative allowed.

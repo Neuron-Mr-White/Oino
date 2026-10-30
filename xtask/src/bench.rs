@@ -51,6 +51,9 @@ fn subagents(args: &[String]) -> Result<()> {
         .arg(n.to_string())
         .arg("--out")
         .arg(&out);
+    // The bench's temp agent dir must live on real disk (a tmpfs system temp dir would
+    // zero the fsync barrier measurement); the repo target dir is the sane default.
+    cmd.env("OINO_BENCH_WORKDIR", root().join("target/bench"));
     if let Some(head) = &head {
         cmd.env("OINO_BENCH_GIT_HEAD", head);
     }
