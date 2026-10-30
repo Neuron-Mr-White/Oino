@@ -175,7 +175,9 @@ impl Host {
                 "RUST_LOG",
                 "unipi_host=info,oino_client=info,oino_wasm_host=warn",
             )
+            .env_remove("OINO_HOST_DIR")
             .env_remove("UNIPI_HOST_DIR")
+            .env_remove("UNIPI_UPDATE_FEED")
             .env_remove("UNIPI_NOTIFY_CONFIG_JSON")
             .env_remove("UNIPI_NOTIFY_ENDPOINTS_JSON")
             .env_remove("OINO_FAUX_RESPONSES")
