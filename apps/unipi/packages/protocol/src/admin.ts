@@ -25,7 +25,13 @@ export const PairStatusRequestSchema = z.object({
 export const DevicesListRequestSchema = z.object({ op: z.literal("devices_list") });
 export const DeviceRevokeRequestSchema = z.object({ op: z.literal("device_revoke"), id: z.string().min(8).max(64).regex(/^[0-9a-fA-F]+$/) });
 
-export const HostToolsSchema = z.object({ herdr: z.boolean(), tmux: z.boolean(), pi: z.boolean(), kanboard: z.boolean() });
+/** v2 (host.md §11.1): what the host can use — the v1 herdr/tmux/pi fields are gone. */
+export const HostToolsSchema = z.object({
+  oino: z.boolean(),
+  unipi_kanboard: z.boolean(),
+  browser_engines: z.array(z.string()),
+  cloak: z.boolean(),
+});
 
 export const HostInfoDataSchema = z.object({
   version: z.string(),

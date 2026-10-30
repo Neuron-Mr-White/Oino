@@ -38,10 +38,15 @@ pub struct HostInfoData {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostTools {
-    pub herdr: bool,
-    pub tmux: bool,
-    pub pi: bool,
-    pub kanboard: bool,
+    /// The `oino` binary (the agent core the host drives) is on the PATH.
+    pub oino: bool,
+    /// The `unipi-kanboard` CLI is on the PATH (the Board screen's backend).
+    pub unipi_kanboard: bool,
+    /// Chromium-based browsers installed here: `chrome`, `chromium`, `edge`,
+    /// `brave` (host.md §7.2 "browser engines").
+    pub browser_engines: Vec<String>,
+    /// A ready CloakBrowser build (nothing to download).
+    pub cloak: bool,
 }
 
 /// `pair_begin` reply: show `link` as a QR (and as text to copy).

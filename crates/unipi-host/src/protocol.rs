@@ -813,7 +813,7 @@ impl Handler {
                     host_id: self.host_id.to_string(),
                     host_name: self.host_name.clone(),
                     data_dir: self.paths.root.display().to_string(),
-                    tools: crate::admin::tools(),
+                    tools: crate::admin::tools(&self.paths),
                     devices,
                 };
                 write_control(
