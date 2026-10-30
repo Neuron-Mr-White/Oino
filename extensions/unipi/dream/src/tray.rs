@@ -1,8 +1,8 @@
-//! The work tray's Dream tab (unipi `src/tray-pane.ts`) as OUS: a run list, a run detail
+//! The work tray's Dream tab (unipi `src/tray-pane.ts`) as v2 nodes: a run list, a run detail
 //! (report summary, proposals 1–9, live trajectory, log tail) and the full report view.
 //! Actions are `dream:<verb>` (the tray strips the prefix before forwarding).
 
-use serde_json::{Value, json};
+use oino_extension::ui::widgets::prelude::*;
 
 use crate::store::{Run, Status, Step, summarize_report};
 
@@ -98,62 +98,97 @@ fn glyph(s: Status) -> &'static str {
     }
 }
 
-fn button(label: &str, action: &str) -> Value {
-    json!({"t": "button", "label": label, "actionId": format!("dream:{action}")})
+/// Colour token of a run status.
+fn color_of(s: Status) -> Color {
+    Color::parse(tone(s))
 }
 
-fn flash(view: &View) -> Option<Value> {
+fn button(label: &str, action: &str) -> Node {
+    Button::new(label, format!("dream:{action}")).into()
+}
+
+/// A row of buttons.
+fn button_row(buttons: Vec<Node>) -> Node {
+    Layout::horizontal(vec![Constraint::Min(0); buttons.len()])
+        .spacing(2)
+        .children(buttons)
+        .into()
+}
+
+/// One unwrapped text line.
+fn text_line(span: Span) -> Node {
+    Paragraph::new(Line::from(span))
+        .wrap(Wrap::Disabled(false))
+        .into()
+}
+
+/// A section: a top rule with the title above its body (§12.1 `section`).
+fn section(title: &str, body: Node) -> Node {
+    Block::default()
+        .borders(Borders::Sides(vec![BorderSide::TOP]))
+        .border_style(Style::new().fg(Color::BorderMuted))
+        .title(title)
+        .child(body)
+        .into()
+}
+
+fn flash(view: &View) -> Option<Node> {
     view.flash
         .as_ref()
-        .map(|f| json!({"t": "text", "value": [{"text": f, "tone": "warning"}]}))
+        .map(|f| text_line(Span::from_string(f.clone()).fg(Color::Warning)))
 }
 
 /// The list body.
 #[must_use]
-pub fn list_body(runs: &[Run], enabled: bool, view: &View, now: i64) -> Value {
+pub fn list_body(runs: &[Run], enabled: bool, view: &View, now: i64) -> Node {
     let mut children = Vec::new();
     if runs.is_empty() {
-        children.push(json!({"t": "empty", "message": if enabled {
-            "No dreams yet — one starts on its own when enough new sessions pile up. r runs one now."
-        } else {
-            "Background dreaming is off (turn it on in /settings → Dream). r runs one now."
-        }}));
+        children.push(
+            Empty::new()
+                .message(if enabled {
+                    "No dreams yet — one starts on its own when enough new sessions pile up. r runs one now."
+                } else {
+                    "Background dreaming is off (turn it on in /settings → Dream). r runs one now."
+                })
+                .into(),
+        );
     } else {
-        let items: Vec<Value> = runs
+        let items: Vec<ListItem> = runs
             .iter()
             .map(|r| {
-                json!({
-                    "id": r.id,
-                    "label": [
-                        {"text": format!("{} ", glyph(r.status)), "tone": tone(r.status)},
-                        {"text": "Dream ", "tone": "muted"},
-                        {"text": day(r.started_at, now), "bold": true},
-                        {"text": format!("  {}", if r.manual { "manual" } else { "scheduled" }), "dim": true},
-                    ],
-                    "detail": run_tags(r, now).join(" · "),
-                    "badge": r.status.as_str(),
-                    "tone": tone(r.status),
-                })
+                ListItem::new(Line::from(vec![
+                    Span::from_string(format!("{} ", glyph(r.status))).fg(color_of(r.status)),
+                    Span::from("Dream ").fg(Color::Muted),
+                    Span::from_string(day(r.started_at, now)).bold(),
+                    Span::from_string(format!(
+                        "  {}",
+                        if r.manual { "manual" } else { "scheduled" }
+                    ))
+                    .dim(),
+                ]))
+                .key(r.id.clone())
+                .detail(Line::from(run_tags(r, now).join(" · ")))
+                .badge(Line::from(r.status.as_str()).fg(color_of(r.status)))
             })
             .collect();
-        children.push(json!({"t": "list", "items": items, "selectable": "dream:open"}));
+        children.push(List::new(items).on_activate("dream:open").into());
     }
     if let Some(f) = flash(view) {
         children.push(f);
     }
-    children.push(json!({"t": "stack", "direction": "horizontal", "gap": 2, "children": [button("r Run now", "run")]}));
-    children.push(json!({"t": "keyHints", "hints": [{"keys": "", "label": LIST_HINT}]}));
-    json!({"t": "stack", "direction": "vertical", "gap": 1, "children": children})
+    children.push(button_row(vec![button("r Run now", "run")]));
+    children.push(KeyHints::new([("", LIST_HINT)]).into());
+    Layout::default().spacing(1).children(children).into()
 }
 
-fn step_line(s: &Step) -> Value {
+fn step_line(s: &Step) -> Node {
     let (g, t) = match s.kind.as_str() {
         "tool" => ("▸", "tool"),
         "error" => ("✗", "error"),
         "text" => ("·", "default"),
         _ => ("›", "muted"),
     };
-    json!({"t": "text", "wrap": false, "value": [{"text": format!("  {g} {}", s.text), "tone": t}]})
+    text_line(Span::from_string(format!("  {g} {}", s.text)).fg(Color::parse(t)))
 }
 
 /// The detail body (or the full report when `view.report`).
@@ -169,7 +204,7 @@ pub fn detail_body(
     log: &[String],
     view: &View,
     now: i64,
-) -> Value {
+) -> Node {
     let mut meta = vec![run.id.clone()];
     meta.push(if run.status == Status::Running {
         "running · never wakes the agent".into()
@@ -180,21 +215,35 @@ pub fn detail_body(
     if view.report {
         meta.push("report".into());
     }
-    let header = json!({"t": "text", "value": [
-        {"text": format!("{} ", glyph(run.status)), "tone": tone(run.status)},
-        {"text": "Dream › ", "tone": "muted"},
-        {"text": day(run.started_at, now), "bold": true},
-        {"text": format!("   {} · {}", elapsed(run.ended_at.unwrap_or(now) - run.started_at), plural(run.sessions as usize, "session")), "dim": true},
-    ]});
+    let header =
+        text_line(Span::from_string(format!("{} ", glyph(run.status))).fg(color_of(run.status)));
     let mut children = vec![
-        header,
-        json!({"t": "text", "value": [{"text": meta.join(" · "), "dim": true}]}),
+        Paragraph::new(Line::from(vec![
+            Span::from_string(format!("{} ", glyph(run.status))).fg(color_of(run.status)),
+            Span::from("Dream › ").fg(Color::Muted),
+            Span::from_string(day(run.started_at, now)).bold(),
+            Span::from_string(format!(
+                "   {} · {}",
+                elapsed(run.ended_at.unwrap_or(now) - run.started_at),
+                plural(run.sessions as usize, "session")
+            ))
+            .dim(),
+        ]))
+        .into(),
+        text_line(Span::from_string(meta.join(" · ")).dim()),
     ];
+    let _ = header;
     if view.report {
         children.push(if report.trim().is_empty() {
-            json!({"t": "empty", "message": if run.status == Status::Running { "The report is written at the end of the dream." } else { "This dream left no report." }})
+            Empty::new()
+                .message(if run.status == Status::Running {
+                    "The report is written at the end of the dream."
+                } else {
+                    "This dream left no report."
+                })
+                .into()
         } else {
-            json!({"t": "markdown", "value": report})
+            Markdown::new(report).into()
         });
     } else {
         let summary = if run.has_report {
@@ -209,43 +258,80 @@ pub fn detail_body(
         } else {
             "none".to_owned()
         };
-        children.push(
-            json!({"t": "section", "title": "Report", "body": {"t": "text", "value": summary}}),
-        );
-        let proposals = if run.proposals.is_empty() {
-            json!({"t": "empty", "message": if run.status == Status::Running { "none yet" } else { "none — memory edits apply on their own" }})
+        children.push(section("Report", Paragraph::new(summary).into()));
+        let proposals: Node = if run.proposals.is_empty() {
+            Empty::new()
+                .message(if run.status == Status::Running {
+                    "none yet"
+                } else {
+                    "none — memory edits apply on their own"
+                })
+                .into()
         } else {
-            json!({"t": "list", "selectable": "dream:pick", "selected": run.proposals.get(view.pick).map(|p| p.id.clone()),
-                "items": run.proposals.iter().enumerate().map(|(i, p)| json!({
-                    "id": p.id,
-                    "label": format!("{}. [{}] {}", i + 1, p.kind, p.name),
-                    "badge": p.decision,
-                    "tone": match p.decision.as_str() { "approved" => "success", "rejected" => "muted", _ => "warning" },
-                })).collect::<Vec<_>>()})
+            let items: Vec<ListItem> = run
+                .proposals
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    let tone = match p.decision.as_str() {
+                        "approved" => Color::Success,
+                        "rejected" => Color::Muted,
+                        _ => Color::Warning,
+                    };
+                    ListItem::new(format!("{}. [{}] {}", i + 1, p.kind, p.name))
+                        .key(p.id.clone())
+                        .badge(Line::from(p.decision.clone()).fg(tone))
+                })
+                .collect();
+            let list = List::new(items).on_activate("dream:pick");
+            match run.proposals.get(view.pick) {
+                Some(p) => list.state(ListState::with_selected(p.id.clone())).into(),
+                None => list.into(),
+            }
         };
         let title = if run.proposals.is_empty() {
             "Proposals".to_owned()
         } else {
             format!("Proposals ({} pending)", run.pending)
         };
-        children.push(json!({"t": "section", "title": title, "body": proposals}));
-        let traj: Vec<Value> = if steps.is_empty() {
-            vec![
-                json!({"t": "text", "value": [{"text": if run.status == Status::Running { "  starting…" } else { "  no steps recorded" }, "dim": true}]}),
-            ]
+        children.push(section(&title, proposals));
+        let traj: Vec<Node> = if steps.is_empty() {
+            vec![text_line(
+                Span::from_string(if run.status == Status::Running {
+                    "  starting…"
+                } else {
+                    "  no steps recorded"
+                })
+                .dim(),
+            )]
         } else {
             steps.iter().map(step_line).collect()
         };
-        children.push(json!({"t": "section", "title": "Trajectory", "body": {"t": "stack", "direction": "vertical", "children": traj}}));
+        children.push(section(
+            "Trajectory",
+            Layout::default().children(traj).into(),
+        ));
         if !log.is_empty() {
             let tail = &log[log.len().saturating_sub(20)..];
-            children.push(json!({"t": "section", "title": "Log", "body": {"t": "log", "lines": tail, "tail": true}}));
+            children.push(section(
+                "Log",
+                Log::new(tail.iter().cloned()).follow(true).into(),
+            ));
         }
         if run.status != Status::Running {
             children.push(match run.status {
-                Status::Finished => json!({"t": "text", "value": [{"text": "✓ Finished", "tone": "success"}]}),
-                Status::Stopped => json!({"t": "text", "value": [{"text": "⊘ Stopped", "tone": "warning"}]}),
-                _ => json!({"t": "text", "value": [{"text": format!("✗ Failed{}", run.error.as_ref().map(|e| format!(" · {e}")).unwrap_or_default()), "tone": "error"}]}),
+                Status::Finished => text_line(Span::from("✓ Finished").fg(Color::Success)),
+                Status::Stopped => text_line(Span::from("⊘ Stopped").fg(Color::Warning)),
+                _ => text_line(
+                    Span::from_string(format!(
+                        "✗ Failed{}",
+                        run.error
+                            .as_ref()
+                            .map(|e| format!(" · {e}"))
+                            .unwrap_or_default()
+                    ))
+                    .fg(Color::Error),
+                ),
             });
         }
     }
@@ -271,9 +357,9 @@ pub fn detail_body(
         buttons.push(button("a Approve", "approve"));
         buttons.push(button("x Reject", "reject"));
     }
-    children.push(json!({"t": "stack", "direction": "horizontal", "gap": 2, "children": buttons}));
-    children.push(json!({"t": "keyHints", "hints": [{"keys": "", "label": VIEW_HINT}]}));
-    json!({"t": "stack", "direction": "vertical", "gap": 1, "children": children})
+    children.push(button_row(buttons));
+    children.push(KeyHints::new([("", VIEW_HINT)]).into());
+    Layout::default().spacing(1).children(children).into()
 }
 
 #[cfg(test)]
@@ -317,27 +403,30 @@ mod tests {
         assert_eq!(elapsed(5_000), "5s");
         assert_eq!(clock(0), "00:00");
         assert_eq!(run_tags(&run(Status::Finished), 0), ["1m10s", "6 sessions"]);
-        let body = list_body(&[], false, &View::default(), 0).to_string();
+        let body =
+            serde_json::to_string(&list_body(&[], false, &View::default(), 0)).unwrap_or_default();
         assert!(body.contains("Background dreaming is off"));
-        let body = list_body(&[run(Status::Failed)], true, &View::default(), 0);
-        assert_eq!(body["children"][0]["selectable"], "dream:open");
-        let d = detail_body(
+        let body: serde_json::Value =
+            serde_json::to_value(list_body(&[run(Status::Failed)], true, &View::default(), 0))
+                .unwrap_or_default();
+        assert_eq!(body["children"][0]["onActivate"], "dream:open");
+        let d = serde_json::to_string(&detail_body(
             &run(Status::Running),
             "",
             &[],
             &[],
             &View::default(),
             80_000,
-        )
-        .to_string();
+        ))
+        .unwrap_or_default();
         assert!(d.contains("never wakes the agent") && d.contains("dream:stop"));
         let v = View {
             report: true,
             ..View::default()
         };
         assert!(
-            detail_body(&run(Status::Failed), "", &[], &[], &v, 0)
-                .to_string()
+            serde_json::to_string(&detail_body(&run(Status::Failed), "", &[], &[], &v, 0))
+                .unwrap_or_default()
                 .contains("This dream left no report.")
         );
     }

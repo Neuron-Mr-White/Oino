@@ -35,6 +35,7 @@ use oino_extension::agents::Agent;
 use oino_extension::command::CompletionItem;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
+use oino_extension::ui::widgets::prelude::*;
 use oino_extension::wit::registry::RendererTarget;
 use unipi_kit::services::{fanout as fan, point};
 use unipi_kit::settings::Store;
@@ -644,32 +645,36 @@ impl Dream {
             running: u32::try_from(runs.iter().filter(|r| r.status == Status::Running).count())
                 .unwrap_or(u32::MAX),
         };
-        let body = req.open.then(|| {
-            let view = self.views.with(cx.session_id(), |v| {
-                let snapshot = v.clone();
-                v.flash = None;
-                snapshot
-            });
-            let now = timers::now_ms();
-            match view
-                .open
-                .as_ref()
-                .and_then(|id| runs.iter().find(|r| &r.id == id))
-            {
-                Some(run) => {
-                    let (steps, log) = store::run_trajectory(&run.staging, 200);
-                    tray::detail_body(
-                        run,
-                        &store::read_report(&run.staging),
-                        &steps,
-                        &log,
-                        &view,
-                        now,
-                    )
+        let body = req
+            .open
+            .then(|| {
+                let view = self.views.with(cx.session_id(), |v| {
+                    let snapshot = v.clone();
+                    v.flash = None;
+                    snapshot
+                });
+                let now = timers::now_ms();
+                match view
+                    .open
+                    .as_ref()
+                    .and_then(|id| runs.iter().find(|r| &r.id == id))
+                {
+                    Some(run) => {
+                        let (steps, log) = store::run_trajectory(&run.staging, 200);
+                        tray::detail_body(
+                            run,
+                            &store::read_report(&run.staging),
+                            &steps,
+                            &log,
+                            &view,
+                            now,
+                        )
+                    }
+                    None => tray::list_body(&runs, cfg.enabled, &view, now),
                 }
-                None => tray::list_body(&runs, cfg.enabled, &view, now),
-            }
-        });
+            })
+            // `TrayTab.body` is still the wire `Value` (unipi-kit); the node goes over as v2 JSON.
+            .map(|node| serde_json::to_value(node).unwrap_or(Value::Null));
         json!(TrayTab {
             id: "dream".into(),
             label: "Dream".into(),
@@ -912,15 +917,41 @@ impl Extension for Dream {
             }
             Ok(())
         });
-        cx.renderer(RendererTarget::CustomEntry, REPORT_CARD, |_ext, req, _cx| {
-            let entry = req.get("data")?;
-            let d = entry.get("data").unwrap_or(entry);
-            let pending = d.get("pending").and_then(Value::as_u64)?;
-            Some(json!({"t": "card", "rail": "harness", "source": "Dream", "body": {"t": "stack", "direction": "vertical", "children": [
-                {"t": "text", "value": [{"text": "▌ Dream report ready", "bold": true}, {"text": format!(" {pending} proposal{} waiting", if pending == 1 { "" } else { "s" }), "dim": true}]},
-                {"t": "text", "value": [{"text": "/dream tray · /dream report · /dream approve <n>", "dim": true}]},
-            ]}}))
-        });
+        cx.renderer(
+            RendererTarget::CustomEntry,
+            REPORT_CARD,
+            |_ext, req, _cx| {
+                let entry = req.get("data")?;
+                let d = entry.get("data").unwrap_or(entry);
+                let pending = d.get("pending").and_then(Value::as_u64)?;
+                let card: Node = Block::default()
+                    .borders(Borders::All)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::new().fg(Color::Border))
+                    .rail(Color::Harness)
+                    .title(vec![Title::bottom(Line::from("Dream"))])
+                    .child(
+                        Layout::default().children([
+                            Paragraph::new(Line::from(vec![
+                                Span::from("▌ Dream report ready").bold(),
+                                Span::from_string(format!(
+                                    " {pending} proposal{} waiting",
+                                    if pending == 1 { "" } else { "s" }
+                                ))
+                                .dim(),
+                            ]))
+                            .into(),
+                            Paragraph::new(Line::from(
+                                Span::from("/dream tray · /dream report · /dream approve <n>")
+                                    .dim(),
+                            ))
+                            .into(),
+                        ]),
+                    )
+                    .into();
+                serde_json::to_value(card).ok()
+            },
+        );
         cx.service(fan::WORK_TRAY_TAB, |ext, payload, _caller, cx| async move {
             let req: TabRequest = serde_json::from_value(payload).unwrap_or_default();
             Ok(ext.tab(&req, &cx))
