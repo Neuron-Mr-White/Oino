@@ -29,9 +29,17 @@ fn main() {
         }
         Err(err) => {
             if std::env::args().any(|a| a == "--json") {
+                // First line only ("error: unrecognized subcommand 'frobnicate'") —
+                // the usage block below it is terminal furniture, not a message.
+                let error = err
+                    .to_string()
+                    .lines()
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned();
                 let payload = serde_json::json!({
                     "ok": false,
-                    "error": err.to_string().trim().to_owned(),
+                    "error": error,
                     "kind": "usage",
                 });
                 eprintln!("{payload}");
