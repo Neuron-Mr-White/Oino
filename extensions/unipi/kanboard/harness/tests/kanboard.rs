@@ -493,6 +493,55 @@ async fn spawn_resolves_the_package_bin_without_the_env_override() {
     );
 }
 
+/// §5.3: when nothing resolves (no env override, no package binary, not on
+/// PATH), a spawn failure surfaces unipi's `unavailableMessage` instead of a
+/// raw I/O error — the tools stay usable and say why.
+#[tokio::test(flavor = "multi_thread")]
+async fn missing_binary_surfaces_the_unavailable_message() {
+    let env = Env::new();
+    // SAFETY: the harness runs with --test-threads=1; restored before the
+    // assertions so later tests keep the debug-build override.
+    unsafe {
+        std::env::remove_var("UNIPI_KANBOARD_BIN");
+    }
+    let manifest = Manifest::parse(
+        &std::fs::read_to_string(extensions_dir().join("unipi/kanboard/extension.json")).unwrap(),
+    )
+    .unwrap();
+    let package = LoadedPackage {
+        manifest,
+        component: ComponentSource::Path(built().clone()),
+        root: None,
+        bundled: true,
+    };
+    let host: Arc<dyn HostServices> = Arc::clone(&env.host) as Arc<dyn HostServices>;
+    let ext = env.runtime.load(package, host).await.unwrap();
+    ext.init(InitInput::default(), env.cx(CallKind::Init))
+        .await
+        .unwrap();
+    env.event(
+        &ext,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    env.command(&ext, "kanboard", "onboard").await;
+    // SAFETY: restore before any assertion can early-return.
+    unsafe {
+        std::env::set_var(
+            "UNIPI_KANBOARD_BIN",
+            root_dir().join("target/debug/unipi-kanboard"),
+        );
+    }
+    let (platform, arch) = (std::env::consts::OS, std::env::consts::ARCH);
+    let expected = format!("kanboard binary unavailable for {platform}-{arch}");
+    assert!(
+        env.notices().iter().any(|n| n.contains(&expected)),
+        "expected the unavailable message, got {:?}",
+        env.notices()
+    );
+}
+
 /// The §2.1.8 restart gate for kanboard: session state (guard budget, monitor, tracker) is
 /// memory-only and safely resets; the board itself is durable in the kanboard CLI's locked
 /// files. A scripted session is SIGKILLed mid-turn with a card In Progress ([`Env::restart`]);
