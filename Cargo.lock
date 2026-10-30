@@ -3067,6 +3067,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "unipi-kanboard",
  "wasmtime",
  "wasmtime-wasi",
 ]

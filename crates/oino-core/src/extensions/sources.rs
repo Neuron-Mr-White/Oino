@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use oino_extension_api::LoadedPackage;
-use oino_extension_api::manifest::{ExtensionKind, Manifest, ManifestError, MANIFEST_FILE};
+use oino_extension_api::manifest::{ExtensionKind, MANIFEST_FILE, Manifest, ManifestError};
 
 /// Overrides the distribution share dir (points at the `extensions/` directory holding the
 /// `<id>/` packages); set to an empty value to disable the share source (dev/tests).
@@ -128,7 +128,10 @@ pub fn share_candidates(exe: &Path) -> Vec<PathBuf> {
             .map(|p| p.join("share").join("unipi-oino").join("extensions"))
     };
     if cfg!(windows) {
-        [Some(bin.join("extensions")), linux()].into_iter().flatten().collect()
+        [Some(bin.join("extensions")), linux()]
+            .into_iter()
+            .flatten()
+            .collect()
     } else if cfg!(target_os = "macos") {
         [
             Some(bin.join("../extensions")),
@@ -240,10 +243,7 @@ fn discover_dir(
 /// shadows an earlier one at the earlier position).
 fn place(packages: &mut Vec<SourcePackage>, package: SourcePackage) {
     let id = package.package.manifest.id.clone();
-    match packages
-        .iter_mut()
-        .find(|p| p.package.manifest.id == id)
-    {
+    match packages.iter_mut().find(|p| p.package.manifest.id == id) {
         Some(slot) => *slot = package,
         None => packages.push(package),
     }
@@ -319,7 +319,11 @@ fn explicit_package(
 /// the caller's (the CLI's) business, not discovery's.
 #[must_use]
 pub fn resolve(explicit: &[String], context: &SourcesContext) -> ResolvedSources {
-    resolve_with(explicit, context, std::env::var_os(DIST_EXTENSIONS_ENV))
+    resolve_with(
+        explicit,
+        context,
+        std::env::var_os(DIST_EXTENSIONS_ENV).as_deref(),
+    )
 }
 
 /// [`resolve`] with the `OINO_DIST_EXTENSIONS` override passed in (tests, embedders).
@@ -327,11 +331,11 @@ pub fn resolve(explicit: &[String], context: &SourcesContext) -> ResolvedSources
 pub fn resolve_with(
     explicit: &[String],
     context: &SourcesContext,
-    dist_env: Option<std::ffi::OsString>,
+    dist_env: Option<&std::ffi::OsStr>,
 ) -> ResolvedSources {
     let mut out = ResolvedSources::default();
-    let share = dist_share_dir_with(dist_env.as_deref(), &exe_path(), &mut out.diagnostics);
-    out.share_dir = share.clone();
+    let share = dist_share_dir_with(dist_env, &exe_path(), &mut out.diagnostics);
+    out.share_dir.clone_from(&share);
     let keep =
         |p: &LoadedPackage| !context.no_extensions || p.manifest.kind == ExtensionKind::Provider;
     // (1) distribution share dir — installer-owned, so its packages carry bundle trust.
@@ -354,13 +358,7 @@ pub fn resolve_with(
     for (dir, project) in context.scan_dirs() {
         for package in discover_dir(&dir, false, &mut out.diagnostics) {
             if keep(&package) {
-                place(
-                    &mut out.packages,
-                    SourcePackage {
-                        package,
-                        project,
-                    },
-                );
+                place(&mut out.packages, SourcePackage { package, project });
             }
         }
     }
@@ -377,7 +375,28 @@ pub fn resolve_with(
         }
     }
     apply_exclusions(&mut out.packages, &context.excluded, &mut out.diagnostics);
+    warn_missing_binaries(&mut out.packages, &mut out.diagnostics);
     out
+}
+
+/// Load-time binary check (ext-abi §5.2): a package declaring `binaries` whose
+/// `bin/<name>` is absent still loads — its tools report "binary unavailable" —
+/// but discovery says so (a wrong-platform dist is the usual cause).
+fn warn_missing_binaries(
+    packages: &mut [SourcePackage],
+    diagnostics: &mut Vec<SourceDiagnostic>,
+) {
+    for p in packages {
+        let Some(root) = p.package.root.clone() else {
+            continue;
+        };
+        for name in p.package.manifest.missing_binaries(&root) {
+            diagnostics.push(SourceDiagnostic::warning(format!(
+                "Extension {}: binary \"{name}\" missing from bin/ — its tools may report unavailable",
+                p.package.manifest.id
+            )));
+        }
+    }
 }
 
 /// The docs root of the system prompt's docs section (P-DOCS):
@@ -472,10 +491,7 @@ mod tests {
     }
 
     fn messages(out: &ResolvedSources) -> Vec<String> {
-        out.diagnostics
-            .iter()
-            .map(|d| d.message.clone())
-            .collect()
+        out.diagnostics.iter().map(|d| d.message.clone()).collect()
     }
 
     #[test]
@@ -516,18 +532,18 @@ mod tests {
     fn share_env_override_empty_disables_missing_silenced() {
         let mut diagnostics = Vec::new();
         assert!(
-            dist_share_dir_with(Some(std::ffi::OsStr::new("")), Path::new("/x"), &mut diagnostics)
-                .is_none()
-        );
-        assert!(diagnostics.is_empty());
-        let missing = Path::new("/does-not-exist-oino");
-        assert!(
             dist_share_dir_with(
-                Some(missing.as_os_str()),
+                Some(std::ffi::OsStr::new("")),
                 Path::new("/x"),
                 &mut diagnostics
             )
             .is_none()
+        );
+        assert_eq!(diagnostics.len(), 0);
+        let missing = Path::new("/does-not-exist-oino");
+        assert!(
+            dist_share_dir_with(Some(missing.as_os_str()), Path::new("/x"), &mut diagnostics)
+                .is_none()
         );
         assert_eq!(
             diagnostics,
@@ -542,8 +558,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut context = ctx(dir.path());
         context.cwd = dir.path().join("cwd-other");
-        package(&dir.path().join("agent/extensions/unipi.core"), "unipi.core", "extension");
-        package(&dir.path().join("cwd-other/.oino/extensions/unipi.proj"), "unipi.proj", "extension");
+        package(
+            &dir.path().join("agent/extensions/unipi.core"),
+            "unipi.core",
+            "extension",
+        );
+        package(
+            &dir.path().join("cwd-other/.oino/extensions/unipi.proj"),
+            "unipi.proj",
+            "extension",
+        );
         // Share dir: core shadowed by a newer agent copy in place, notify appended.
         package_versioned(
             &dir.path().join("dist/extensions/unipi.core"),
@@ -551,9 +575,13 @@ mod tests {
             "extension",
             "0.9.0",
         );
-        package(&dir.path().join("dist/extensions/unipi.notify"), "unipi.notify", "extension");
+        package(
+            &dir.path().join("dist/extensions/unipi.notify"),
+            "unipi.notify",
+            "extension",
+        );
         let share = dir.path().join("dist/extensions");
-        let out = resolve_with(&[], &context, Some(share.clone().into_os_string()));
+        let out = resolve_with(&[], &context, Some(share.as_os_str()));
         assert_eq!(out.share_dir, Some(share));
         assert_eq!(
             ids(&out),
@@ -564,7 +592,7 @@ mod tests {
             ]
         );
         // The agent copy (1.0.0) replaced the share copy (0.9.0) in place.
-        assert_eq!(out.packages[0].package.manifest.version.to_string(), "1.0.0");
+        assert_eq!(out.packages[0].package.manifest.version, "1.0.0");
         assert!(!out.packages[0].package.bundled);
         assert!(out.packages[1].package.bundled);
         assert!(out.packages[2].project);
@@ -574,7 +602,11 @@ mod tests {
     fn explicit_e_wins_over_every_source() {
         let dir = tempfile::tempdir().unwrap();
         let context = ctx(dir.path());
-        package(&dir.path().join("agent/extensions/unipi.core"), "unipi.core", "extension");
+        package(
+            &dir.path().join("agent/extensions/unipi.core"),
+            "unipi.core",
+            "extension",
+        );
         package_versioned(
             &dir.path().join("e/core"),
             "unipi.core",
@@ -583,10 +615,7 @@ mod tests {
         );
         let out = resolve(&[dir.path().join("e/core").display().to_string()], &context);
         assert_eq!(ids(&out), vec!["unipi.core".to_owned()]);
-        assert_eq!(
-            out.packages[0].package.manifest.version.to_string(),
-            "9.9.9"
-        );
+        assert_eq!(out.packages[0].package.manifest.version, "9.9.9");
         assert!(!out.packages[0].package.bundled);
     }
 
@@ -625,7 +654,11 @@ mod tests {
         let bad = dir.path().join("agent/extensions/bad");
         std::fs::create_dir_all(&bad).unwrap();
         std::fs::write(bad.join(MANIFEST_FILE), "{}").unwrap();
-        package(&dir.path().join("agent/extensions/good"), "good.one", "extension");
+        package(
+            &dir.path().join("agent/extensions/good"),
+            "good.one",
+            "extension",
+        );
         let out = resolve(&[], &context);
         assert_eq!(ids(&out), vec!["good.one".to_owned()]);
         assert_eq!(out.diagnostics.len(), 1);
@@ -647,7 +680,11 @@ mod tests {
             "oino.anthropic",
             "provider",
         );
-        package(&dir.path().join("agent/extensions/unipi.core"), "unipi.core", "extension");
+        package(
+            &dir.path().join("agent/extensions/unipi.core"),
+            "unipi.core",
+            "extension",
+        );
         let out = resolve(&[], &context);
         assert_eq!(ids(&out), vec!["oino.anthropic".to_owned()]);
     }
@@ -661,7 +698,11 @@ mod tests {
             "oino.anthropic",
             "provider",
         );
-        package(&dir.path().join("agent/extensions/unipi.notify"), "unipi.notify", "extension");
+        package(
+            &dir.path().join("agent/extensions/unipi.notify"),
+            "unipi.notify",
+            "extension",
+        );
         context.excluded = vec![
             "unipi.notify".to_owned(),
             "oino.anthropic".to_owned(),
@@ -685,6 +726,39 @@ mod tests {
     }
 
     #[test]
+    fn missing_declared_binaries_warn_but_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let pkg = dir.path().join("agent/extensions/unipi.kanboard");
+        package(&pkg, "unipi.kanboard", "extension");
+        let manifest = std::fs::read_to_string(pkg.join(MANIFEST_FILE)).unwrap();
+        std::fs::write(
+            pkg.join(MANIFEST_FILE),
+            manifest.replace("\"kind\"", "\"binaries\":[\"unipi-kanboard\"],\"kind\""),
+        )
+        .unwrap();
+        // Missing: one warning, the package still loads.
+        let out = resolve(&[], &ctx(dir.path()));
+        assert_eq!(ids(&out).len(), 1);
+        assert_eq!(
+            messages(&out),
+            vec![
+                "Extension unipi.kanboard: binary \"unipi-kanboard\" missing from bin/ — its tools may report unavailable"
+                    .to_owned(),
+            ]
+        );
+        assert!(out
+            .diagnostics
+            .iter()
+            .all(|d| d.severity == SourceSeverity::Warning));
+        // Present: silent.
+        std::fs::create_dir_all(pkg.join("bin")).unwrap();
+        std::fs::write(pkg.join("bin/unipi-kanboard"), b"#").unwrap();
+        let out = resolve(&[], &ctx(dir.path()));
+        assert_eq!(ids(&out).len(), 1);
+        assert_eq!(messages(&out).len(), 0);
+    }
+
+    #[test]
     fn docs_root_chain_env_share_legacy_absent() {
         let dir = tempfile::tempdir().unwrap();
         let agent = dir.path().join("agent");
@@ -698,7 +772,10 @@ mod tests {
         std::fs::create_dir_all(&new).unwrap();
         std::fs::write(old.join("README.md"), b"old").unwrap();
         std::fs::write(new.join("README.md"), b"new").unwrap();
-        assert_eq!(docs_root_with(&agent, None, None).as_deref(), Some(new.as_path()));
+        assert_eq!(
+            docs_root_with(&agent, None, None).as_deref(),
+            Some(new.as_path())
+        );
         // Share docs (a share dir without docs falls back to legacy).
         let share = dir.path().join("dist/extensions");
         std::fs::create_dir_all(&share).unwrap();
