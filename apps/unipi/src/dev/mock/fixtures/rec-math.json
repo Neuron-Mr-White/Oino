@@ -1,0 +1,1545 @@
+{
+ "source": "archived unipi-app docs/m5/fixtures/rec-math.json (converted by scripts/convert-rec-fixture.mjs)",
+ "snapshot": {
+  "session_id": "01a11631-6e84-77a7-a009-f653472c2820",
+  "cwd": "/tmp/c1-proj",
+  "reset": true,
+  "seq": 0,
+  "state": {
+   "running": false,
+   "model": {
+    "provider": "openrouter",
+    "id": "~deepseek/deepseek-flash-latest",
+    "name": "DeepSeek: DeepSeek Flash Latest",
+    "reasoning": true
+   },
+   "thinking": "low",
+   "thinkingLevels": [
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh"
+   ],
+   "context": {
+    "tokens": 9376,
+    "window": 1048576,
+    "percent": 0.8941650390625
+   },
+   "cost": 0.0036
+  },
+  "entries": [
+   {
+    "type": "model_change",
+    "id": "e3c46a9f",
+    "parentId": null,
+    "timestamp": "2026-10-07T11:48:23.683Z",
+    "provider": "openrouter",
+    "modelId": "~deepseek/deepseek-flash-latest"
+   },
+   {
+    "type": "custom",
+    "customType": "unipi-memory-session-card",
+    "data": {
+     "project": "c1_proj",
+     "count": 0,
+     "wakeUp": "Wake-up text (~24 tokens):\n==================================================\n## L0 — IDENTITY\nNo identity configured. Create ~/.mempalace/identity.txt\n\n## L1 — No memories yet.",
+     "needsMigrate": false
+    },
+    "id": "ab5b0d0e",
+    "parentId": "48389b92",
+    "timestamp": "2026-10-07T11:48:28.718Z"
+   },
+   {
+    "type": "custom",
+    "customType": "long-horizon-decision",
+    "data": {
+     "mode": "none",
+     "source": "default"
+    },
+    "id": "56ac26da",
+    "parentId": "50565c66",
+    "timestamp": "2026-10-07T11:48:46.275Z"
+   },
+   {
+    "type": "message",
+    "id": "8dd2c022",
+    "parentId": "aad23338",
+    "timestamp": "2026-10-07T11:48:46.282Z",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Use the ask_user tool to ask me ONE single-choice question: 'Pick a colour' with options Red, Green, Blue. After I answer, reply with only the colour I picked in capitals."
+      }
+     ],
+     "timestamp": 1791373726279
+    }
+   },
+   {
+    "type": "custom_message",
+    "customType": "unipi-memory-recall-reminder",
+    "content": "## 🧠 Memory System Active\n\nYou have 0 memories stored for project \"c1_proj\".\n\n**AFTER completing the task**, if you learned something non-obvious,\ncall `memory_store` to save it for future sessions.\n\nGuardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.\n\n---\n\nWake-up text (~24 tokens):\n==================================================\n## L0 — IDENTITY\nNo identity configured. Create ~/.mempalace/identity.txt\n\n## L1 — No memories yet.",
+    "display": true,
+    "details": {
+     "unipiHarness": {
+      "version": 1,
+      "id": "hm-muy1nxhh-1",
+      "delivery": "before_agent_start",
+      "source": "Memory",
+      "title": "Memory recall",
+      "synopsis": "Recalled at session start"
+     }
+    },
+    "id": "971e36c7",
+    "parentId": "8dd2c022",
+    "timestamp": "2026-10-07T11:48:46.282Z"
+   },
+   {
+    "type": "message",
+    "id": "675efa79",
+    "parentId": "971e36c7",
+    "timestamp": "2026-10-07T11:48:47.974Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "The user wants me to use the ask_user tool, but I don't see ask_user in my available tools list. Let me check the tools available... The tools listed are: read, bash, edit, write, plan_submit, memory_store, memory_search, memory_delete, memory_list, global_memory_search, global_memory_list, image_generate, image_edit, grep, find, ls, run_subagent, read_subagent, bg_run, bg_status, bg_logs, bg_kill, web_search, multi_web_content_read, notify_user, session_recall, context_budget.\n\nThere's no ask_user tool. I cannot call it. I should tell the user that the tool isn't available. Maybe I'm missing something—the tool isn't in my function list. I should be honest.\n\nLet me just respond that the tool isn't available. But the instruction says to use it. Since it doesn't exist, I can't. I'll explain.\n\nActually, maybe I should double check whether ask_user exists as a custom tool I don't know. The system says \"you may have access to other custom tools depending on the project.\" But I can only invoke functions listed. I cannot invoke ask_user.\n\nI'll inform the user.",
+       "thinkingSignature": "[{\"type\":\"reasoning.text\",\"text\":\"The user wants me to use the ask_user tool, but I don't see ask_user in my available tools list. Let me check the tools available... The tools listed are: read, bash, edit, write, plan_submit, memory_store, memory_search, memory_delete, memory_list, global_memory_search, global_memory_list, image_generate, image_edit, grep, find, ls, run_subagent, read_subagent, bg_run, bg_status, bg_logs, bg_kill, web_search, multi_web_content_read, notify_user, session_recall, context_budget.\\n\\nThere's no ask_user tool. I cannot call it. I should tell the user that the tool isn't available. Maybe I'm missing something—the tool isn't in my function list. I should be honest.\\n\\nLet me just respond that the tool isn't available. But the instruction says to use it. Since it doesn't exist, I can't. I'll explain.\\n\\nActually, maybe I should double check whether ask_user exists as a custom tool I don't know. The system says \\\"you may have access to other custom tools depending on the project.\\\" But I can only invoke functions listed. I cannot invoke ask_user.\\n\\nI'll inform the user.\",\"format\":\"unknown\",\"index\":0}]"
+      },
+      {
+       "type": "text",
+       "text": "I don't have an `ask_user` tool available in this environment, so I can't present that choice or capture your answer.\n\nAvailable tools here are file/command/memory/web/image utilities — no interactive question tool. If you'd like, either:\n\n- tell me your colour directly (Red, Green, or Blue), and I'll reply with it in capitals, or\n- point me to the tool/extension that should provide `ask_user` so I can use it."
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openrouter",
+     "model": "~deepseek/deepseek-flash-latest",
+     "usage": {
+      "input": 7378,
+      "output": 360,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "reasoning": 260,
+      "totalTokens": 7738,
+      "cost": {
+       "input": 0.0003689,
+       "output": 0.000432,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0008009
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1791373726290,
+     "responseId": "gen-1791373726-lQPNKE9ordFkcQKK36YO",
+     "responseModel": "deepseek/deepseek-v4.1-flash",
+     "rawStopReason": "stop",
+     "thinkingLevel": "low"
+    }
+   },
+   {
+    "type": "custom",
+    "customType": "unipi-memory-session-card",
+    "data": {
+     "project": "c1_proj",
+     "count": 0,
+     "wakeUp": "Wake-up text (~24 tokens):\n==================================================\n## L0 — IDENTITY\nNo identity configured. Create ~/.mempalace/identity.txt\n\n## L1 — No memories yet.",
+     "needsMigrate": false
+    },
+    "id": "298bb4f0",
+    "parentId": "675efa79",
+    "timestamp": "2026-10-07T11:49:16.078Z"
+   },
+   {
+    "type": "custom",
+    "customType": "long-horizon-decision",
+    "data": {
+     "mode": "none",
+     "source": "default"
+    },
+    "id": "c8b971c5",
+    "parentId": "6dfc7268",
+    "timestamp": "2026-10-07T11:49:26.948Z"
+   },
+   {
+    "type": "message",
+    "id": "1b5d953f",
+    "parentId": "5d8e9b24",
+    "timestamp": "2026-10-07T11:49:26.953Z",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Use the ask_user tool to ask me ONE single-choice question: 'Pick a colour' with options Red, Green, Blue. After I answer, reply with only the colour I picked in capitals."
+      }
+     ],
+     "timestamp": 1791373766951
+    }
+   },
+   {
+    "type": "message",
+    "id": "fae2f71d",
+    "parentId": "1b5d953f",
+    "timestamp": "2026-10-07T11:49:28.301Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "The user is asking again. Maybe the ask_user tool is available now? Let me check my function list again. I still don't see ask_user. But wait—the system prompt in the tools section does list ask_user:\n\n\"- ask_user: Ask the user multiple-choice questions and wait for the answers.\"\n\nYes! In the tools documentation at the top, ask_user is listed. And there's a function definition for ask_user in the functions list? Let me re-read. The functions provided include... Actually looking at the JSON schema list, I see memory, image, grep, find, ls, run_subagent, read_subagent, bg_*, web, notify_user, session_recall, context_budget, and ask_user? The last function in the list is ask_user with the questions schema. Yes it is there!\n\nI made an error before. Let me call ask_user now.",
+       "thinkingSignature": "[{\"type\":\"reasoning.text\",\"text\":\"The user is asking again. Maybe the ask_user tool is available now? Let me check my function list again. I still don't see ask_user. But wait—the system prompt in the tools section does list ask_user:\\n\\n\\\"- ask_user: Ask the user multiple-choice questions and wait for the answers.\\\"\\n\\nYes! In the tools documentation at the top, ask_user is listed. And there's a function definition for ask_user in the functions list? Let me re-read. The functions provided include... Actually looking at the JSON schema list, I see memory, image, grep, find, ls, run_subagent, read_subagent, bg_*, web, notify_user, session_recall, context_budget, and ask_user? The last function in the list is ask_user with the questions schema. Yes it is there!\\n\\nI made an error before. Let me call ask_user now.\",\"format\":\"unknown\",\"index\":0}]"
+      },
+      {
+       "type": "toolCall",
+       "id": "call_01a11632756d712da1a99034",
+       "name": "ask_user",
+       "arguments": {
+        "questions": [
+         {
+          "question": "Pick a colour",
+          "header": "Colour",
+          "options": [
+           {
+            "label": "Red"
+           },
+           {
+            "label": "Green"
+           },
+           {
+            "label": "Blue"
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openrouter",
+     "model": "~deepseek/deepseek-flash-latest",
+     "usage": {
+      "input": 8143,
+      "output": 259,
+      "cacheRead": 256,
+      "cacheWrite": 0,
+      "reasoning": 181,
+      "totalTokens": 8658,
+      "cost": {
+       "input": 0.00040715000000000006,
+       "output": 0.00031079999999999997,
+       "cacheRead": 0.000006144,
+       "cacheWrite": 0,
+       "total": 0.000724094
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1791373766955,
+     "responseId": "gen-1791373766-lpRItamz50dTliunqIhI",
+     "responseModel": "deepseek/deepseek-v4.1-flash",
+     "rawStopReason": "tool_calls",
+     "thinkingLevel": "low"
+    }
+   },
+   {
+    "type": "message",
+    "id": "ca9c2df5",
+    "parentId": "fae2f71d",
+    "timestamp": "2026-10-07T11:49:30.817Z",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_01a11632756d712da1a99034",
+     "toolName": "ask_user",
+     "content": [
+      {
+       "type": "text",
+       "text": "User answered your questions:\n{\n  \"Pick a colour\": {\n    \"selected\": [\n      \"Green\"\n    ],\n    \"skipped\": false\n  }\n}"
+      }
+     ],
+     "details": {
+      "questions": [
+       {
+        "question": "Pick a colour",
+        "header": "Colour",
+        "options": [
+         {
+          "label": "Red"
+         },
+         {
+          "label": "Green"
+         },
+         {
+          "label": "Blue"
+         }
+        ]
+       }
+      ],
+      "answers": [
+       {
+        "selected": [
+         "Green"
+        ],
+        "skipped": false
+       }
+      ],
+      "outcome": "answered",
+      "question": "Pick a colour"
+     },
+     "isError": false,
+     "timestamp": 1791373770817
+    }
+   },
+   {
+    "type": "message",
+    "id": "ce44d41c",
+    "parentId": "ca9c2df5",
+    "timestamp": "2026-10-07T11:49:31.196Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "GREEN"
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openrouter",
+     "model": "~deepseek/deepseek-flash-latest",
+     "usage": {
+      "input": 126,
+      "output": 4,
+      "cacheRead": 8576,
+      "cacheWrite": 0,
+      "reasoning": 0,
+      "totalTokens": 8706,
+      "cost": {
+       "input": 0.000006300000000000001,
+       "output": 0.0000048,
+       "cacheRead": 0.00020582399999999999,
+       "cacheWrite": 0,
+       "total": 0.00021692399999999999
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1791373770819,
+     "responseId": "gen-1791373770-RIVKx8To0mfsXl7pKCoS",
+     "responseModel": "deepseek/deepseek-v4.1-flash",
+     "rawStopReason": "stop",
+     "thinkingLevel": "low"
+    }
+   },
+   {
+    "type": "message",
+    "id": "4ad74034",
+    "parentId": "645ef693",
+    "timestamp": "2026-10-07T12:12:32.800Z",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Look at src/math.ts, then add a subtract function with the same style, run 'cat src/math.ts' to show it, and finally explain in a short markdown answer with one code block and a small table of the functions. Before editing, use ask_user to ask me whether subtract should be exported (options: Yes, No)."
+      }
+     ],
+     "timestamp": 1791375152799
+    }
+   },
+   {
+    "type": "message",
+    "id": "51d39ea6",
+    "parentId": "4ad74034",
+    "timestamp": "2026-10-07T12:12:33.937Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "Let me read the file first, then ask.",
+       "thinkingSignature": "[{\"type\":\"reasoning.text\",\"text\":\"Let me read the file first, then ask.\",\"format\":\"unknown\",\"index\":0}]"
+      },
+      {
+       "type": "toolCall",
+       "id": "call_01a116479a7273dca3c797dd",
+       "name": "read",
+       "arguments": {
+        "path": "src/math.ts"
+       }
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openrouter",
+     "model": "~deepseek/deepseek-flash-latest",
+     "usage": {
+      "input": 8780,
+      "output": 51,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "reasoning": 10,
+      "totalTokens": 8831,
+      "cost": {
+       "input": 0.00043900000000000005,
+       "output": 0.0000612,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0.0005002
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1791375152805,
+     "responseId": "gen-1791375153-Wsek97EbAyd4Vbo2JCxU",
+     "responseModel": "deepseek/deepseek-v4.1-flash",
+     "rawStopReason": "tool_calls",
+     "thinkingLevel": "low"
+    }
+   },
+   {
+    "type": "message",
+    "id": "309c9970",
+    "parentId": "51d39ea6",
+    "timestamp": "2026-10-07T12:12:33.941Z",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_01a116479a7273dca3c797dd",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "export function add(a: number, b: number) {\n  return a + b;\n}\n"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1791375153941
+    }
+   },
+   {
+    "type": "message",
+    "id": "e35ddbd3",
+    "parentId": "309c9970",
+    "timestamp": "2026-10-07T12:12:34.598Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "toolCall",
+       "id": "call_01a116479c6776f6ad201650",
+       "name": "ask_user",
+       "arguments": {
+        "questions": [
+         {
+          "header": "Export subtract",
+          "options": [
+           {
+            "label": "Yes"
+           },
+           {
+            "description": "Export the subtract function like add.",
+            "value": "Yes"
+           },
+           {
+            "label": "No",
+            "description": "Keep subtract internal (not exported).",
+            "value": "No"
+           }
+          ],
+          "question": "Should subtract be exported?"
+         }
+        ]
+       }
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openrouter",
+     "model": "~deepseek/deepseek-flash-latest",
+     "usage": {
+      "input": 157,
+      "output": 108,
+      "cacheRead": 8704,
+      "cacheWrite": 0,
+      "reasoning": 0,
+      "totalTokens": 8969,
+      "cost": {
+       "input": 0.000007850000000000001,
+       "output": 0.0001296,
+       "cacheRead": 0.000208896,
+       "cacheWrite": 0,
+       "total": 0.000346346
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1791375153942,
+     "responseId": "gen-1791375154-h52Vf1IrY69Zq1qLrXGi",
+     "responseModel": "deepseek/deepseek-v4.1-flash",
+     "rawStopReason": "tool_calls",
+     "thinkingLevel": "low"
+    }
+   },
+   {
+    "type": "message",
+    "id": "37c283fa",
+    "parentId": "e35ddbd3",
+    "timestamp": "2026-10-07T12:12:38.612Z",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_01a116479c6776f6ad201650",
+     "toolName": "ask_user",
+     "content": [
+      {
+       "type": "text",
+       "text": "User answered your questions:\n{\n  \"Should subtract be exported?\": {\n    \"selected\": [\n      \"Yes\"\n    ],\n    \"skipped\": false\n  }\n}"
+      }
+     ],
+     "details": {
+      "questions": [
+       {
+        "question": "Should subtract be exported?",
+        "header": "Export subtract",
+        "options": [
+         {
+          "label": "Yes"
+         },
+         {
+          "label": "Yes",
+          "description": "Export the subtract function like add."
+         },
+         {
+          "label": "No",
+          "description": "Keep subtract internal (not exported)."
+         }
+        ]
+       }
+      ],
+      "answers": [
+       {
+        "selected": [
+         "Yes"
+        ],
+        "skipped": false
+       }
+      ],
+      "outcome": "answered",
+      "question": "Should subtract be exported?"
+     },
+     "isError": false,
+     "timestamp": 1791375158611
+    }
+   },
+   {
+    "type": "message",
+    "id": "2f4a1682",
+    "parentId": "37c283fa",
+    "timestamp": "2026-10-07T12:12:39.381Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "User chose Yes, export it. Now edit.",
+       "thinkingSignature": "[{\"type\":\"reasoning.text\",\"text\":\"User chose Yes, export it. Now edit.\",\"format\":\"unknown\",\"index\":0}]"
+      },
+      {
+       "type": "toolCall",
+       "id": "call_01a11647aeec76cba840e195",
+       "name": "edit",
+       "arguments": {
+        "path": "src/math.ts",
+        "edits": [
+         {
+          "oldText": "export function add(a: number, b: number) {\n  return a + b;\n}",
+          "newText": "export function add(a: number, b: number) {\n  return a + b;\n}\n\nexport function subtract(a: number, b: number) {\n  return a - b;\n}"
+         }
+        ]
+       }
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openrouter",
+     "model": "~deepseek/deepseek-flash-latest",
+     "usage": {
+      "input": 55,
+      "output": 145,
+      "cacheRead": 8960,
+      "cacheWrite": 0,
+      "reasoning": 10,
+      "totalTokens": 9160,
+      "cost": {
+       "input": 0.0000027500000000000004,
+       "output": 0.000174,
+       "cacheRead": 0.00021504,
+       "cacheWrite": 0,
+       "total": 0.00039179000000000004
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1791375158613,
+     "responseId": "gen-1791375158-F9b7CEIClBRxHn1PvBm9",
+     "responseModel": "deepseek/deepseek-v4.1-flash",
+     "rawStopReason": "tool_calls",
+     "thinkingLevel": "low"
+    }
+   },
+   {
+    "type": "message",
+    "id": "eec2ebd7",
+    "parentId": "2f4a1682",
+    "timestamp": "2026-10-07T12:12:39.395Z",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_01a11647aeec76cba840e195",
+     "toolName": "edit",
+     "content": [
+      {
+       "type": "text",
+       "text": "Successfully replaced 1 block(s) in src/math.ts."
+      }
+     ],
+     "details": {
+      "diff": " 1 export function add(a: number, b: number) {\n 2   return a + b;\n 3 }\n+4 \n+5 export function subtract(a: number, b: number) {\n+6   return a - b;\n+7 }",
+      "patch": "--- src/math.ts\n+++ src/math.ts\n@@ -1,3 +1,7 @@\n export function add(a: number, b: number) {\n   return a + b;\n }\n+\n+export function subtract(a: number, b: number) {\n+  return a - b;\n+}\n",
+      "firstChangedLine": 4
+     },
+     "isError": false,
+     "timestamp": 1791375159395
+    }
+   },
+   {
+    "type": "message",
+    "id": "a9fa49ad",
+    "parentId": "eec2ebd7",
+    "timestamp": "2026-10-07T12:12:40.434Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "toolCall",
+       "id": "call_01a11647b3c2700c9fe224a9",
+       "name": "bash",
+       "arguments": {
+        "command": "cat src/math.ts"
+       }
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openrouter",
+     "model": "~deepseek/deepseek-flash-latest",
+     "usage": {
+      "input": 96,
+      "output": 42,
+      "cacheRead": 9088,
+      "cacheWrite": 0,
+      "reasoning": 0,
+      "totalTokens": 9226,
+      "cost": {
+       "input": 0.000004800000000000001,
+       "output": 0.0000504,
+       "cacheRead": 0.000218112,
+       "cacheWrite": 0,
+       "total": 0.000273312
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1791375159397,
+     "responseId": "gen-1791375159-4evTWrhrLixB1Lgxmhr6",
+     "responseModel": "deepseek/deepseek-v4.1-flash",
+     "rawStopReason": "tool_calls",
+     "thinkingLevel": "low"
+    }
+   },
+   {
+    "type": "message",
+    "id": "75c6deed",
+    "parentId": "a9fa49ad",
+    "timestamp": "2026-10-07T12:12:40.448Z",
+    "message": {
+     "role": "toolResult",
+     "toolCallId": "call_01a11647b3c2700c9fe224a9",
+     "toolName": "bash",
+     "content": [
+      {
+       "type": "text",
+       "text": "export function add(a: number, b: number) {\n  return a + b;\n}\n\nexport function subtract(a: number, b: number) {\n  return a - b;\n}\n"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1791375160448
+    }
+   },
+   {
+    "type": "message",
+    "id": "ff3f7bd8",
+    "parentId": "75c6deed",
+    "timestamp": "2026-10-07T12:12:41.050Z",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "`subtract` was added in the same style and exported (per your Yes).\n\n```ts\nexport function subtract(a: number, b: number) {\n  return a - b;\n}\n```\n\n| Function | Params | Returns | Exported |\n|----------|--------|---------|----------|\n| `add` | `a, b` | `a + b` | Yes |\n| `subtract` | `a, b` | `a - b` | Yes |"
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openrouter",
+     "model": "~deepseek/deepseek-flash-latest",
+     "usage": {
+      "input": 59,
+      "output": 101,
+      "cacheRead": 9216,
+      "cacheWrite": 0,
+      "reasoning": 0,
+      "totalTokens": 9376,
+      "cost": {
+       "input": 0.00000295,
+       "output": 0.00012119999999999999,
+       "cacheRead": 0.000221184,
+       "cacheWrite": 0,
+       "total": 0.000345334
+      }
+     },
+     "stopReason": "stop",
+     "timestamp": 1791375160449,
+     "responseId": "gen-1791375160-qyLmM4b6NGidUPQ2A7FA",
+     "responseModel": "deepseek/deepseek-v4.1-flash",
+     "rawStopReason": "stop",
+     "thinkingLevel": "low"
+    }
+   },
+   {
+    "type": "custom",
+    "customType": "unipi-memory-save-card",
+    "data": {
+     "titles": [
+      "math_module_style_and_export_pref"
+     ],
+     "usage": {
+      "input": 32103,
+      "cacheRead": 66688,
+      "cacheWrite": 0,
+      "output": 1636
+     }
+    },
+    "id": "a67aa3dc",
+    "parentId": "ff3f7bd8",
+    "timestamp": "2026-10-07T12:12:47.205Z"
+   },
+   {
+    "type": "custom",
+    "customType": "unipi-memory-session-card",
+    "data": {
+     "project": "c1_proj",
+     "count": 1,
+     "wakeUp": "Wake-up text (~88 tokens):\n==================================================\n## L0 — IDENTITY\nNo identity configured. Create ~/.mempalace/identity.txt\n\n## L1 — ESSENTIAL STORY\n\n[pattern]\n  - --- id: math_module_style_and_export_pref title: math_module_style_and_export_pref tags:   - typescript   - math   - style   - preference   - export project: c1_proj created: '2026-10-07T12:12:44.3...  (math_module_style_and_export_pref.md)",
+     "needsMigrate": false
+    },
+    "id": "53bdeec2",
+    "parentId": "a67aa3dc",
+    "timestamp": "2026-10-07T12:14:25.866Z"
+   }
+  ],
+  "leaf_id": "53bdeec2",
+  "commands": [
+   {
+    "name": "model",
+    "description": "Switch the model",
+    "source": "builtin"
+   },
+   {
+    "name": "thinking",
+    "description": "Set the thinking level",
+    "source": "builtin"
+   },
+   {
+    "name": "compact",
+    "description": "Compact the conversation",
+    "source": "builtin"
+   },
+   {
+    "name": "unipi:permission",
+    "description": "Permission mode — ask · auto (jev-judged) · full",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:plan",
+    "description": "Plan mode — plan with the user, then approve a plan",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:goal",
+    "description": "One objective until verifiably true. Use: medium-complex single deliverables. Cost/success: pareto per success. (<prompt> | status | stop | resume | clear)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:ralph",
+    "description": "Checklist grind over iterations. Use: enumerable chores, repo-scale plans. Cost/success: low cost, solid success. (start <name> | stop | status | resume | clear | <prompt>)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:swarm",
+    "description": "Parallel fan-out + one synthesis. Use: complex decomposable work. Cost/success: higher cost, high coverage. (<prompt> | status | stop | resume | clear)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:graph",
+    "description": "Dependent multi-step work. Use: later steps need earlier results. Cost/success: highest; run when the shape demands it. (<prompt> | status | stop | resume | clear)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:regular",
+    "description": "Regular mode — stop any active owner and run prompts without long-horizon routing",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:memory",
+    "description": "Memory status and session overrides: /unipi:memory status|recall on|off|write on|off|migrate",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:memory-process",
+    "description": "Analyze text and store extracted memories",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:memory-consolidate",
+    "description": "Consolidate current session into memory",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:memory-search",
+    "description": "Search project memories",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:global-memory-search",
+    "description": "Search memories across all projects",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:memory-forget",
+    "description": "Delete a memory by title",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:global-memory-list",
+    "description": "List all memories across all projects",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:settings",
+    "description": "Configure all unipi modules in one panel (global + project scopes); /unipi:settings <search> opens it filtered",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:continue",
+    "description": "Continue the agent from where it left off, without adding text (/unipi:retry)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:retry",
+    "description": "Retry the last turn — alias of /unipi:continue",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:cleanup",
+    "description": "Remove stale UniPi temp files and leftovers (preview first)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:doctor",
+    "description": "Check UniPi's runtime: folders, config, model cache, Decision Model, skills",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:move",
+    "description": "Re-link state after moving this project: [<old-path>] [--dry-run] (never moves the project itself)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:answer",
+    "description": "Answer the last reply — a fixed input box under the scrollable reply (reply), per question (questions), or a browser form (web)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:summarize",
+    "description": "Summarize this session for you (answer first, then findings, open items, questions); add text to set a focus",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:hint",
+    "description": "Browse and search Unicrab hints, or cycle/reset",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:skills",
+    "description": "Skill settings — proxy, exposure, and per-skill Enabled / Must show (opens /unipi:settings on Skills)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:info",
+    "description": "Dashboard: this session, usage, tools, skills, modules",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:subagents",
+    "description": "Open the subagent panel (also ↓ from an empty input)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:agents",
+    "description": "Manage subagent profiles: list, create, edit, copy, delete custom agents",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:bg",
+    "description": "Start a shell command as a tracked background task: /unipi:bg [--agent] [--name \"Task name\"] <command>",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:bg-tasks",
+    "description": "Open the background task manager UI",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:btw",
+    "description": "Ask a side question in an inline panel — read-only, never reaches the main agent.",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:mcp-status",
+    "description": "Show status of all configured MCP servers",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:notify-event",
+    "description": "Toggle a notify event without the TUI: <event> <on|off>",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:kanboard",
+    "description": "Kanboard — the board: open, onboard, status, doctor (bare = help)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:kanboard-add",
+    "description": "Add a board task — [-p 1-5] [--after ID] [--status backlog|todo] <title>; lines below are the description (paste file paths to attach)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:kanboard-do",
+    "description": "Grant the agent kanboard task slots and a write budget (/unipi:kanboard-do <request>; off revokes)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:kanboard-autowork",
+    "description": "Work ready board tasks one by one — start | stop (stop finishes the current task first)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:compact-vcc",
+    "description": "Lossless compaction now — instant structured summary, no model call (keep:N keeps N recent turns)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:compact-by-llm",
+    "description": "Compact now with a model-written summary (optional text focuses the summary)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:session-recall",
+    "description": "Recall earlier parts of this session. Plain keywords work best; add scope:all to reach edited or retried turns.",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:compact-stats",
+    "description": "Show this session's compaction savings",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:compact-doctor",
+    "description": "Check compaction settings and leftovers",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:compact-help",
+    "description": "Show compactor help",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:footer",
+    "description": "Toggle footer on/off",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:readme",
+    "description": "Browse package README files",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:changelog",
+    "description": "Browse changelog (Keep a Changelog format)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:fusion-stats",
+    "description": "Estimated Fusion savings (sidekick tokens priced at lead rates)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:model",
+    "description": "Pick a model or a Fusion lead+sidekick pair (Devin-style picker over your preset)",
+    "source": "extension"
+   },
+   {
+    "name": "unipi:bg-detach",
+    "description": "Move the currently running bash call to a background task",
+    "source": "extension"
+   }
+  ],
+  "ui": [],
+  "topics": []
+ },
+ "events": [
+  {
+   "at": 7,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 1,
+    "event": {
+     "type": "agent_start"
+    }
+   }
+  },
+  {
+   "at": 10,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 2,
+    "event": {
+     "type": "message_end",
+     "message": {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "Now run 'ls -la' and 'wc -l src/math.ts', then write a short markdown summary of the project with a heading, a bullet list and a ts code block of the whole file."
+       }
+      ],
+      "timestamp": 1791375278696
+     },
+     "entry": {
+      "type": "message",
+      "id": "7606983d",
+      "parentId": "3e58a870",
+      "timestamp": "2026-10-07T12:14:38.698Z",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "Now run 'ls -la' and 'wc -l src/math.ts', then write a short markdown summary of the project with a heading, a bullet list and a ts code block of the whole file."
+        }
+       ],
+       "timestamp": 1791375278696
+      }
+     }
+    }
+   }
+  },
+  {
+   "at": 637,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 3,
+    "event": {
+     "type": "message_start",
+     "message": {
+      "id": "s4061885-1",
+      "role": "assistant",
+      "content": []
+     }
+    }
+   }
+  },
+  {
+   "at": 731,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 4,
+    "event": {
+     "type": "message_update",
+     "message": {
+      "id": "s4061885-1"
+     },
+     "assistantMessageEvent": {
+      "type": "toolcall_delta",
+      "contentIndex": 0,
+      "delta": "{\"command\":\"ls -la\"}"
+     }
+    }
+   }
+  },
+  {
+   "at": 769,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 5,
+    "event": {
+     "type": "message_update",
+     "message": {
+      "id": "s4061885-1"
+     },
+     "assistantMessageEvent": {
+      "type": "toolcall_delta",
+      "contentIndex": 1,
+      "delta": "{\"command\":\"wc -l src/math.ts\"}"
+     }
+    }
+   }
+  },
+  {
+   "at": 770,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 6,
+    "event": {
+     "type": "tool_execution_start",
+     "toolCallId": "call_01a11649847d7260a05f27db",
+     "toolName": "bash",
+     "args": {
+      "command": "ls -la"
+     }
+    }
+   }
+  },
+  {
+   "at": 771,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 7,
+    "event": {
+     "type": "tool_execution_start",
+     "toolCallId": "call_01a1164984b27502a28ad720",
+     "toolName": "bash",
+     "args": {
+      "command": "wc -l src/math.ts"
+     }
+    }
+   }
+  },
+  {
+   "at": 772,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 8,
+    "event": {
+     "type": "message_end",
+     "message": {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "toolCall",
+        "id": "call_01a11649847d7260a05f27db",
+        "name": "bash",
+        "arguments": {
+         "command": "ls -la"
+        }
+       },
+       {
+        "type": "toolCall",
+        "id": "call_01a1164984b27502a28ad720",
+        "name": "bash",
+        "arguments": {
+         "command": "wc -l src/math.ts"
+        }
+       }
+      ],
+      "api": "openai-completions",
+      "provider": "openrouter",
+      "model": "~deepseek/deepseek-flash-latest",
+      "usage": {
+       "input": 79,
+       "output": 73,
+       "cacheRead": 9344,
+       "cacheWrite": 0,
+       "reasoning": 0,
+       "totalTokens": 9496,
+       "cost": {
+        "input": 0.00000395,
+        "output": 0.0000876,
+        "cacheRead": 0.000224256,
+        "cacheWrite": 0,
+        "total": 0.00031580599999999996
+       }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1791375278699,
+      "responseId": "gen-1791375278-RfUI2kPwDCdK4iviMOTw",
+      "responseModel": "deepseek/deepseek-v4.1-flash",
+      "rawStopReason": "tool_calls",
+      "thinkingLevel": "low"
+     },
+     "entry": {
+      "type": "message",
+      "id": "1c00ab50",
+      "parentId": "7606983d",
+      "timestamp": "2026-10-07T12:14:39.460Z",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "toolCall",
+         "id": "call_01a11649847d7260a05f27db",
+         "name": "bash",
+         "arguments": {
+          "command": "ls -la"
+         }
+        },
+        {
+         "type": "toolCall",
+         "id": "call_01a1164984b27502a28ad720",
+         "name": "bash",
+         "arguments": {
+          "command": "wc -l src/math.ts"
+         }
+        }
+       ],
+       "api": "openai-completions",
+       "provider": "openrouter",
+       "model": "~deepseek/deepseek-flash-latest",
+       "usage": {
+        "input": 79,
+        "output": 73,
+        "cacheRead": 9344,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 9496,
+        "cost": {
+         "input": 0.00000395,
+         "output": 0.0000876,
+         "cacheRead": 0.000224256,
+         "cacheWrite": 0,
+         "total": 0.00031580599999999996
+        }
+       },
+       "stopReason": "toolUse",
+       "timestamp": 1791375278699,
+       "responseId": "gen-1791375278-RfUI2kPwDCdK4iviMOTw",
+       "responseModel": "deepseek/deepseek-v4.1-flash",
+       "rawStopReason": "tool_calls",
+       "thinkingLevel": "low"
+      }
+     }
+    }
+   }
+  },
+  {
+   "at": 772,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 9,
+    "event": {
+     "type": "agent_start"
+    }
+   }
+  },
+  {
+   "at": 785,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 10,
+    "event": {
+     "type": "tool_execution_end",
+     "toolCallId": "call_01a11649847d7260a05f27db",
+     "isError": false,
+     "result": null
+    }
+   }
+  },
+  {
+   "at": 787,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 11,
+    "event": {
+     "type": "tool_execution_end",
+     "toolCallId": "call_01a1164984b27502a28ad720",
+     "isError": false,
+     "result": null
+    }
+   }
+  },
+  {
+   "at": 792,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 12,
+    "event": {
+     "type": "message_end",
+     "message": {
+      "role": "toolResult",
+      "toolCallId": "call_01a11649847d7260a05f27db",
+      "toolName": "bash",
+      "content": [
+       {
+        "type": "text",
+        "text": "total 8\ndrwxrwxr-x     6 oi   oi      160 Oct  7 20:12 .\ndrwxrwxrwt 10641 root root 252980 Oct  7 20:14 ..\ndrwxrwxr-x     6 oi   oi      180 Oct  7 19:48 .git\ndrwxrwxr-x     3 oi   oi       60 Oct  7 19:48 .unipi\n-rw-------     1 oi   oi       73 Oct  7 19:48 .unipi-workspace.json\n-rw-rw-r--     1 oi   oi       11 Oct  7 19:48 README.md\ndrwxrwxr-x     2 oi   oi       60 Oct  7 19:48 sessions\ndrwxrwxr-x     2 oi   oi       60 Oct  7 20:12 src\n"
+       }
+      ],
+      "isError": false,
+      "timestamp": 1791375279478
+     },
+     "entry": {
+      "type": "message",
+      "id": "live-1791375279483",
+      "timestamp": "2026-10-07T12:14:39.483Z",
+      "message": {
+       "role": "toolResult",
+       "toolCallId": "call_01a11649847d7260a05f27db",
+       "toolName": "bash",
+       "content": [
+        {
+         "type": "text",
+         "text": "total 8\ndrwxrwxr-x     6 oi   oi      160 Oct  7 20:12 .\ndrwxrwxrwt 10641 root root 252980 Oct  7 20:14 ..\ndrwxrwxr-x     6 oi   oi      180 Oct  7 19:48 .git\ndrwxrwxr-x     3 oi   oi       60 Oct  7 19:48 .unipi\n-rw-------     1 oi   oi       73 Oct  7 19:48 .unipi-workspace.json\n-rw-rw-r--     1 oi   oi       11 Oct  7 19:48 README.md\ndrwxrwxr-x     2 oi   oi       60 Oct  7 19:48 sessions\ndrwxrwxr-x     2 oi   oi       60 Oct  7 20:12 src\n"
+        }
+       ],
+       "isError": false,
+       "timestamp": 1791375279478
+      }
+     }
+    }
+   }
+  },
+  {
+   "at": 792,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 13,
+    "event": {
+     "type": "message_end",
+     "message": {
+      "role": "toolResult",
+      "toolCallId": "call_01a1164984b27502a28ad720",
+      "toolName": "bash",
+      "content": [
+       {
+        "type": "text",
+        "text": "7 src/math.ts\n"
+       }
+      ],
+      "isError": false,
+      "timestamp": 1791375279479
+     },
+     "entry": {
+      "type": "message",
+      "id": "39f291d6",
+      "parentId": "0b145348",
+      "timestamp": "2026-10-07T12:14:39.479Z",
+      "message": {
+       "role": "toolResult",
+       "toolCallId": "call_01a1164984b27502a28ad720",
+       "toolName": "bash",
+       "content": [
+        {
+         "type": "text",
+         "text": "7 src/math.ts\n"
+        }
+       ],
+       "isError": false,
+       "timestamp": 1791375279479
+      }
+     }
+    }
+   }
+  },
+  {
+   "at": 1191,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 14,
+    "event": {
+     "type": "message_start",
+     "message": {
+      "id": "s4061885-2",
+      "role": "assistant",
+      "content": []
+     }
+    }
+   }
+  },
+  {
+   "at": 1287,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 15,
+    "event": {
+     "type": "message_update",
+     "message": {
+      "id": "s4061885-2"
+     },
+     "assistantMessageEvent": {
+      "type": "text_delta",
+      "contentIndex": 0,
+      "delta": "# Project Summary\n\n- Root contains `README.md`, `src/`, and session/config dirs (`.git"
+     }
+    }
+   }
+  },
+  {
+   "at": 1371,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 16,
+    "event": {
+     "type": "message_update",
+     "message": {
+      "id": "s4061885-2"
+     },
+     "assistantMessageEvent": {
+      "type": "text_delta",
+      "contentIndex": 0,
+      "delta": "`, `.unipi`, `sessions`).\n- `src/math.ts` is"
+     }
+    }
+   }
+  },
+  {
+   "at": 1422,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 17,
+    "event": {
+     "type": "message_update",
+     "message": {
+      "id": "s4061885-2"
+     },
+     "assistantMessageEvent": {
+      "type": "text_delta",
+      "contentIndex": 0,
+      "delta": " 7 lines and holds the math helpers.\n- `add` and `subtract` both take `(a: number, b: number)` and are exported.\n\n```ts"
+     }
+    }
+   }
+  },
+  {
+   "at": 1511,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 18,
+    "event": {
+     "type": "message_update",
+     "message": {
+      "id": "s4061885-2"
+     },
+     "assistantMessageEvent": {
+      "type": "text_delta",
+      "contentIndex": 0,
+      "delta": "\nexport function add(a: number, b: number) {\n  return a + b;\n}\n\nexport function subtract(a: number, b: number) {\n  return a - b;\n}\n```"
+     }
+    }
+   }
+  },
+  {
+   "at": 1523,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 19,
+    "event": {
+     "type": "agent_end"
+    }
+   }
+  },
+  {
+   "at": 1524,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 20,
+    "event": {
+     "type": "message_end",
+     "message": {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "text",
+        "text": "# Project Summary\n\n- Root contains `README.md`, `src/`, and session/config dirs (`.git`, `.unipi`, `sessions`).\n- `src/math.ts` is 7 lines and holds the math helpers.\n- `add` and `subtract` both take `(a: number, b: number)` and are exported.\n\n```ts\nexport function add(a: number, b: number) {\n  return a + b;\n}\n\nexport function subtract(a: number, b: number) {\n  return a - b;\n}\n```"
+       }
+      ],
+      "api": "openai-completions",
+      "provider": "openrouter",
+      "model": "~deepseek/deepseek-flash-latest",
+      "usage": {
+       "input": 250,
+       "output": 119,
+       "cacheRead": 9472,
+       "cacheWrite": 0,
+       "reasoning": 0,
+       "totalTokens": 9841,
+       "cost": {
+        "input": 0.0000125,
+        "output": 0.0001428,
+        "cacheRead": 0.000227328,
+        "cacheWrite": 0,
+        "total": 0.000382628
+       }
+      },
+      "stopReason": "stop",
+      "timestamp": 1791375279481,
+      "responseId": "gen-1791375279-45YIquB2pIuQlL2fpTk5",
+      "responseModel": "deepseek/deepseek-v4.1-flash",
+      "rawStopReason": "stop",
+      "thinkingLevel": "low"
+     },
+     "entry": {
+      "type": "message",
+      "id": "cfc175cb",
+      "parentId": "39f291d6",
+      "timestamp": "2026-10-07T12:14:40.204Z",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "# Project Summary\n\n- Root contains `README.md`, `src/`, and session/config dirs (`.git`, `.unipi`, `sessions`).\n- `src/math.ts` is 7 lines and holds the math helpers.\n- `add` and `subtract` both take `(a: number, b: number)` and are exported.\n\n```ts\nexport function add(a: number, b: number) {\n  return a + b;\n}\n\nexport function subtract(a: number, b: number) {\n  return a - b;\n}\n```"
+        }
+       ],
+       "api": "openai-completions",
+       "provider": "openrouter",
+       "model": "~deepseek/deepseek-flash-latest",
+       "usage": {
+        "input": 250,
+        "output": 119,
+        "cacheRead": 9472,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 9841,
+        "cost": {
+         "input": 0.0000125,
+         "output": 0.0001428,
+         "cacheRead": 0.000227328,
+         "cacheWrite": 0,
+         "total": 0.000382628
+        }
+       },
+       "stopReason": "stop",
+       "timestamp": 1791375279481,
+       "responseId": "gen-1791375279-45YIquB2pIuQlL2fpTk5",
+       "responseModel": "deepseek/deepseek-v4.1-flash",
+       "rawStopReason": "stop",
+       "thinkingLevel": "low"
+      }
+     }
+    }
+   }
+  },
+  {
+   "at": 1524,
+   "dto": {
+    "session": "01a11631-6e84-77a7-a009-f653472c2820",
+    "seq": 21,
+    "event": {
+     "type": "agent_end"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,148 @@
+/**
+ * HostClient seam (app spec §3.2, WP-A1). Every call the UI makes to a host —
+ * one-shot ops (fs, git, blob, push, forward, sharing, cron, pairing), the
+ * session streams, the hub event stream, terminals and language servers —
+ * goes through one `HostClient` per host, so the capture harness and the
+ * component tests can stand in a mock host (`src/dev/mock/host.ts`).
+ *
+ * Components never call `invoke` directly. `lib/host/tauri.ts` implements
+ * this over the src-tauri commands; `lib/host/mock.ts` re-exports the mock.
+ *
+ * Session/hub types are stubbed from host.md §7.3–7.4 until WP-H4 lands the
+ * `@unipi/protocol` `session.ts` mirror; payloads stay `unknown`-typed and
+ * are narrowed by `type` in the session reducer (WP-A2).
+ */
+import type { Accessor } from 'solid-js';
+import { toAppError, type AppError } from '@unipi/protocol';
+import type { z } from 'zod';
+
+/** The pseudo host id for app-level ops (paired hosts list, local forwards,
+ *  this PC's sharing switches, save-as dialogs): no `hostId` is sent. */
+export const APP_HOST = 'app';
+/** "This computer" (the PC app's own host over its local socket). */
+export const LOCAL_HOST = 'local';
+
+/** A host connection, as every host-dependent screen shows it (Z-90). */
+export type HostConnState = 'connected' | 'connecting' | 'offline';
+export type HostConn = { state: HostConnState; message?: string; hint?: string };
+
+export interface Closable {
+  close(): void;
+}
+
+/** `session_open|new|fork` (host.md §7.3). */
+export type OpenSessionRequest = {
+  kind: 'open' | 'new' | 'fork';
+  session?: string;
+  sinceSeq?: number;
+  cwd?: string;
+  fromEntry?: string;
+};
+
+/** Any oino RPC command verbatim (`{type:'prompt', …}`, `{type:'_oino/render', …}`). */
+export type RpcCommand = { type: string; [key: string]: unknown };
+
+/** First frame of a session stream (host.md §7.3). Payloads are narrowed by WP-A2. */
+export type SessionSnapshot = {
+  session_id: string;
+  reset: boolean;
+  seq: number;
+  state?: unknown;
+  entries?: unknown[];
+  leaf_id?: string | null;
+  commands?: unknown[];
+  ui?: unknown[];
+  topics?: unknown[];
+  /** `reset:false` resumes: the buffered events after `sinceSeq`. */
+  replay?: SessionEventDto[];
+};
+
+/** `{session, seq, event: <ClientEvent JSON>}` (host.md §7.4). */
+export type SessionEventDto = { session: string; seq: number; event: { type?: string; kind?: string; [key: string]: unknown } };
+
+export interface SessionSink {
+  snapshot(snapshot: SessionSnapshot): void;
+  events(items: SessionEventDto[]): void;
+  /** The stream ended (`error` set when it failed; the store reconnects with `sinceSeq`). */
+  closed(error?: AppError): void;
+}
+
+export interface SessionStream extends Closable {
+  cmd<T = unknown>(cmd: RpcCommand): Promise<T>;
+}
+
+/** Hub events on the per-host `events_open` stream (host.md §7.4). */
+export type HubEvent =
+  | { kind: 'session_changed'; card: SessionCard }
+  | { kind: 'session_removed'; session: string }
+  | { kind: 'host_notice'; level: 'info' | 'warn' | 'error'; text: string };
+
+/** One row of `sessions_list` (host.md §7.2). Fields beyond `id` are optional until H4 fixes them. */
+export type SessionCard = {
+  id: string;
+  title?: string;
+  cwd?: string;
+  /** idle / working / blocked (needs you) / done. */
+  state?: 'idle' | 'working' | 'blocked' | 'done' | 'unknown';
+  needs_you?: { kind: string; title?: string; since: number };
+  updated_at?: number;
+  pending_work?: string;
+  lh_mode?: string;
+  lh_paused?: string;
+};
+
+export type TermRequest = { cwd?: string; cols: number; rows: number; id?: string };
+export interface TermSink {
+  data(bytes: Uint8Array | string): void;
+  exit(code?: number): void;
+}
+export interface TermStream extends Closable {
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+}
+
+export type LspRequest = { root: string; language: string };
+export interface LspSink {
+  message(json: unknown): void;
+  closed(error?: AppError): void;
+}
+export interface LspStream extends Closable {
+  send(json: unknown): void;
+}
+
+export interface HostClient {
+  /** `local` = This computer, `app` = app-level ops, else a paired host id. */
+  readonly hostId: string;
+  /** Connection state for the host-dependent screens (NoHost/Offline states, Z-90). */
+  readonly conn: Accessor<HostConn>;
+  /** Re-checks the connection (the Offline state's Retry). */
+  retry(): Promise<void>;
+  /** One-shot ops; rejects with an `AppError`-shaped value. */
+  request<T = unknown>(op: string, args?: Record<string, unknown>): Promise<T>;
+  openSession(req: OpenSessionRequest, sink: SessionSink): SessionStream;
+  openEvents(sink: (event: HubEvent) => void): Closable;
+  openTerm(req: TermRequest, sink: TermSink): TermStream;
+  openLsp(req: LspRequest, sink: LspSink): LspStream;
+}
+
+export type HostResult<T, E = AppError> = { ok: true; value: T } | { ok: false; error: E };
+
+/** `request()` + zod parse of the reply, as a Result (what the `lib/*` op wrappers return). */
+export async function requestParsed<T>(client: HostClient, op: string, args: Record<string, unknown> | undefined, schema: z.ZodType<T>): Promise<HostResult<T>> {
+  try {
+    const parsed = schema.safeParse(await client.request(op, args));
+    return parsed.success ? { ok: true, value: parsed.data } : { ok: false, error: toAppError(parsed.error) };
+  } catch (error) {
+    return { ok: false, error: toAppError(error) };
+  }
+}
+
+/** Error codes that mean "the host can't be reached" (Offline state, not a generic error). */
+export function isUnreachableCode(code: string | undefined): boolean {
+  return code === 'E_TRANSPORT' || code === 'E_TIMEOUT';
+}
+
+/** An `AppError` for a stream/op the current host build does not offer yet. */
+export function unavailableError(what: string): AppError {
+  return { code: 'E_UNSUPPORTED', message: `${what} needs a newer host.`, hint: 'Update UniPi on the PC, then try again.', retryable: false } as AppError;
+}

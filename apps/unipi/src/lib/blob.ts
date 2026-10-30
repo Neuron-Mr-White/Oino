@@ -7,7 +7,8 @@
  * Outside Tauri (vite dev in a browser) there is no iroh endpoint, so
  * `devBlobTransport` always rejects; blob features only run in the app.
  */
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
+import { appClient, hostClient } from './host/factory';
 import { isTauri } from './platform';
 
 export type BlobProgress = { sent: number; total: number };
@@ -91,34 +92,33 @@ export const tauriBlobTransport: BlobTransport = {
   async putFile(hostId, path, mime, name, onProgress) {
     const channel = new Channel<{ kind: 'progress'; sent: number; total: number }>();
     if (onProgress) channel.onmessage = (m) => onProgress({ sent: m.sent, total: m.total });
-    return (await invoke('blob_put_file', { hostId, path, mime, name, onProgress: channel })) as BlobPutResult;
+    return (await hostClient(hostId).request('blob_put_file', { path, mime, name, onProgress: channel })) as BlobPutResult;
   },
   async putBytes(hostId, bytes, mime, name, onProgress) {
     const channel = new Channel<{ kind: 'progress'; sent: number; total: number }>();
     if (onProgress) channel.onmessage = (m) => onProgress({ sent: m.sent, total: m.total });
-    return (await invoke('blob_put_bytes', { hostId, bytes: Array.from(bytes), mime, name, onProgress: channel })) as BlobPutResult;
+    return (await hostClient(hostId).request('blob_put_bytes', { bytes: Array.from(bytes), mime, name, onProgress: channel })) as BlobPutResult;
   },
   async putPicked(hostId, file, onProgress) {
-    const staged = (await invoke('upload_stage_begin', { name: file.name || 'upload.bin' })) as string;
+    const staged = (await appClient().request('upload_stage_begin', { name: file.name || 'upload.bin' })) as string;
     try {
       const total = Math.max(file.size, 1);
       for (let at = 0; at < file.size; at += STAGE_CHUNK) {
         const piece = file.slice(at, at + STAGE_CHUNK);
-        await invoke('upload_stage_chunk', { path: staged, data: await blobBase64(piece) });
+        await appClient().request('upload_stage_chunk', { path: staged, data: await blobBase64(piece) });
         onProgress?.({ sent: Math.round(((at + piece.size) / total) * file.size * STAGE_SHARE), total: file.size });
       }
       return await this.putFile(hostId, staged, file.type || 'application/octet-stream', file.name, (p) =>
         onProgress?.({ sent: Math.round(file.size * STAGE_SHARE + p.sent * (1 - STAGE_SHARE)), total: file.size }),
       );
     } finally {
-      void invoke('upload_stage_drop', { path: staged }).catch(() => {});
+      void appClient().request('upload_stage_drop', { path: staged }).catch(() => {});
     }
   },
   async getFile(hostId, ref, destPath, onProgress) {
     const channel = new Channel<{ kind: 'progress'; sent: number; total: number }>();
     if (onProgress) channel.onmessage = (m) => onProgress({ sent: m.sent, total: m.total });
-    return (await invoke('blob_get_file', {
-      hostId,
+    return (await hostClient(hostId).request('blob_get_file', {
       sha256: 'sha256' in ref ? ref.sha256 : undefined,
       path: 'path' in ref ? ref.path : undefined,
       destPath,
@@ -126,8 +126,7 @@ export const tauriBlobTransport: BlobTransport = {
     })) as BlobGetResult;
   },
   async getBytes(hostId, ref) {
-    const result = (await invoke('blob_get_bytes', {
-      hostId,
+    const result = (await hostClient(hostId).request('blob_get_bytes', {
       sha256: 'sha256' in ref ? ref.sha256 : undefined,
       path: 'path' in ref ? ref.path : undefined,
     })) as { mime: string; bytes: number[] };

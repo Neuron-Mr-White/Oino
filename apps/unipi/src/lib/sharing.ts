@@ -15,7 +15,7 @@
  *   nothing is switched on by itself. The asking screen polls
  *   `feature_requests` while the request is pending.
  *
- * Every call goes through `call()` (lib/ipc), so tests and the capture
+ * Every call goes through the HostClient seam (lib/host), so tests and the capture
  * mocks answer them like any other command.
  */
 import { createRoot, createSignal } from 'solid-js';
@@ -31,7 +31,8 @@ import {
   type FeatureRequestItem,
   type FeatureScope,
 } from '@unipi/protocol';
-import { call, type Result } from './ipc';
+import type { Result } from './ipc';
+import { appCall, hostCall } from './host/factory';
 import { can } from './platform';
 
 export type { FeatureKind, FeatureLeaveData, FeatureLeaveScope, FeatureRequestItem, FeatureScope };
@@ -142,17 +143,17 @@ export interface SharingTransport {
 }
 
 const ipcTransport: SharingTransport = {
-  localHost: () => call('local_host', undefined, LocalHostSchema),
-  status: () => call('sharing_status', undefined, SharingStatusSchema),
-  change: (change) => call('sharing_change', { change }, SharingStatusSchema),
-  ask: (hostId, feature, scope, note) => call('feature_request', { hostId, feature, scope, note }, FeatureRequestItemSchema),
+  localHost: () => appCall('local_host', undefined, LocalHostSchema),
+  status: () => appCall('sharing_status', undefined, SharingStatusSchema),
+  change: (change) => appCall('sharing_change', { change }, SharingStatusSchema),
+  ask: (hostId, feature, scope, note) => hostCall(hostId, 'feature_request', { feature, scope, note }, FeatureRequestItemSchema),
   requests: async (hostId) => {
-    const r = await call('feature_requests', { hostId }, FeatureRequestsDataSchema);
+    const r = await hostCall(hostId, 'feature_requests', {}, FeatureRequestsDataSchema);
     return r.ok ? { ok: true, value: r.value?.requests ?? [] } : r;
   },
   // `feature_leave` travels the pairing (proto 1.15); the host answers with what
   // is left of the feature afterwards.
-  leave: (hostId, feature, scope) => call('feature_leave', { hostId, feature, scope }, FeatureLeaveDataSchema),
+  leave: (hostId, feature, scope) => hostCall(hostId, 'feature_leave', { feature, scope }, FeatureLeaveDataSchema),
 };
 
 let override: SharingTransport | undefined;

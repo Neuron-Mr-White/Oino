@@ -115,7 +115,8 @@ describe('Git view (UNI-217) — phone', () => {
     expect(calls.find((c) => c.action === 'stage')).toEqual({ action: 'stage', paths: ['b.txt'] });
     fireEvent.click(screen.getByLabelText('Unstage src/a.ts'));
     await waitFor(() => expect(calls.some((c) => c.action === 'unstage')).toBe(true));
-    fireEvent.click(screen.getByRole('button', { name: 'Stage all' }));
+    await waitFor(() => expect(within(screen.getByRole('region', { name: 'Staged' })).getAllByTestId('git-row').length).toBe(1));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Changes' })).getByRole('button', { name: 'Stage all' }));
     await waitFor(() => expect(calls.filter((c) => c.action === 'stage').length).toBe(2));
   });
 

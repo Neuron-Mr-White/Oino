@@ -12,7 +12,8 @@
  */
 import { z } from 'zod';
 import { AppErrorSchema, PortsListDataSchema, type AppError, type ListeningPort, type PortsListData } from '@unipi/protocol';
-import { call, type Result } from './ipc';
+import type { Result } from './ipc';
+import { appCall, hostCall } from './host/factory';
 import { can } from './platform';
 
 /** Forwarding needs the native core (a loopback listener): lib/platform.ts `portForward`. */
@@ -41,16 +42,16 @@ export const ForwardInfoSchema = z.object({
 export type ForwardInfo = z.infer<typeof ForwardInfoSchema>;
 
 export function portsList(hostId: string): Promise<Result<PortsListData>> {
-  return call('ports_list', { hostId }, PortsListDataSchema);
+  return hostCall(hostId, 'ports_list', {}, PortsListDataSchema);
 }
 export function forwardStart(hostId: string, port: number, localPort?: number): Promise<Result<ForwardInfo>> {
-  return call('forward_start', { hostId, port, localPort }, ForwardInfoSchema);
+  return hostCall(hostId, 'forward_start', { port, localPort }, ForwardInfoSchema);
 }
 export function forwardStop(id: string): Promise<Result<boolean>> {
-  return call('forward_stop', { id }, z.boolean());
+  return appCall('forward_stop', { id }, z.boolean());
 }
 export function forwardList(): Promise<Result<ForwardInfo[]>> {
-  return call('forward_list', undefined, z.array(ForwardInfoSchema));
+  return appCall('forward_list', undefined, z.array(ForwardInfoSchema));
 }
 
 /** What the port picker shows. */

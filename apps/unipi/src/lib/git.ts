@@ -22,12 +22,13 @@ import {
   type GitRepoData,
   type GitStatusData,
 } from '@unipi/protocol';
-import { call, type Result } from './ipc';
+import type { Result } from './ipc';
+import { hostCall } from './host/factory';
 
 export type { GitFileChange, GitRepoData, GitStatusData, GitCommitInfo, GitBranch, GitShowData, GitDiffData } from '@unipi/protocol';
 
 function op<T>(hostId: string, path: string, cmd: GitCmd, schema: z.ZodType<T>, outside?: boolean): Promise<Result<T>> {
-  return call('git_op', { hostId, path, outside, cmd }, schema);
+  return hostCall(hostId, 'git_op', { path, outside, cmd }, schema);
 }
 
 const Nothing = z.unknown();

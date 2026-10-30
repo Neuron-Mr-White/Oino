@@ -77,6 +77,8 @@ function mockIpc() {
     if (cmd === 'fs_roots') return { ok: true, value: { roots: ['/home/u/proj'] } };
     if (cmd === 'fs_list') return { ok: true, value: listing };
     if (cmd === 'fs_stat') return { ok: false, error: { code: 'E_NOT_FOUND', message: 'not found', retryable: false } };
+    // Host replies are schema-checked behind the HostClient seam (WP-A1): a real FsWriteData.
+    if (cmd === 'fs_write') return { ok: true, value: { hash: 'h0', mtime: 0 } };
     return { ok: true, value: null };
   });
 }

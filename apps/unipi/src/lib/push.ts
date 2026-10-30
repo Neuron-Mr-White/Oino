@@ -15,7 +15,8 @@
  * `window.UniPiFiles` (UpdateBridge.kt / FilesBridge.kt).
  */
 import { createRoot, createSignal } from 'solid-js';
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
+import { appClient, hostClient } from './host/factory';
 import { AppErrorSchema, PushListDataSchema, type AppError, type PushItem, type PushListData, type PushOutcome } from '@unipi/protocol';
 import { toAppError } from '@unipi/protocol';
 import { can, isTauri, isTauriDesktop, isTauriMobile } from './platform';
@@ -38,13 +39,12 @@ export interface PushTransport {
 
 const tauriTransport: PushTransport = {
   async list(hostId, wait) {
-    return PushListDataSchema.parse(await invoke('push_list', { hostId, wait }));
+    return PushListDataSchema.parse(await hostClient(hostId).request('push_list', { wait }));
   },
   async fetch(hostId, item, onProgress) {
     const channel = new Channel<{ kind: 'progress'; sent: number; total: number }>();
     channel.onmessage = (m) => onProgress({ done: m.sent, total: m.total });
-    return (await invoke('push_fetch', {
-      hostId,
+    return (await hostClient(hostId).request('push_fetch', {
       id: item.id,
       path: item.path,
       sha256: item.sha256,
@@ -54,13 +54,13 @@ const tauriTransport: PushTransport = {
     })) as { localPath: string };
   },
   async done(hostId, id, outcome, detail) {
-    await invoke('push_done', { hostId, id, outcome, detail });
+    await hostClient(hostId).request('push_done', { id, outcome, detail });
   },
   async saveAs(localPath, name) {
-    return (await invoke('push_save_as', { src: localPath, name })) as string | null;
+    return (await appClient().request('push_save_as', { src: localPath, name })) as string | null;
   },
   async open(localPath) {
-    await invoke('push_open', { path: localPath });
+    await appClient().request('push_open', { path: localPath });
   },
 };
 

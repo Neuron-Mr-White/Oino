@@ -8,7 +8,7 @@
  * `lib/sharing.ts`), for every op below including the read-only ones.
  */
 import { z } from 'zod';
-import { call } from './ipc';
+import { hostCall } from './host/factory';
 import type { ChatNewTarget } from '@unipi/protocol';
 import {
   CronAddRequestSchema,
@@ -63,80 +63,80 @@ export type {
 };
 
 export async function cronList(hostId: string) {
-  return call('cron_list', { hostId }, CronJobsDataSchema);
+  return hostCall(hostId, 'cron_list', {}, CronJobsDataSchema);
 }
 
 export async function cronShow(hostId: string, id: string) {
-  return call('cron_show', { hostId, id }, CronShowDataSchema);
+  return hostCall(hostId, 'cron_show', { id }, CronShowDataSchema);
 }
 
 export async function cronRuns(hostId: string, id?: string, limit?: number) {
-  return call('cron_runs', { hostId, id, limit }, CronRunsDataSchema);
+  return hostCall(hostId, 'cron_runs', { id, limit }, CronRunsDataSchema);
 }
 
 export async function cronLog(hostId: string, runId: string) {
-  return call('cron_log', { hostId, runId }, CronLogDataSchema);
+  return hostCall(hostId, 'cron_log', { runId }, CronLogDataSchema);
 }
 
 export async function cronAdd(hostId: string, job: CronAddRequest) {
-  return call('cron_add', { hostId, job: CronAddRequestSchema.parse(job) }, CronJobSchema);
+  return hostCall(hostId, 'cron_add', { job: CronAddRequestSchema.parse(job) }, CronJobSchema);
 }
 
 export async function cronEdit(hostId: string, id: string, patch: CronEditRequest) {
-  return call('cron_edit', { hostId, id, patch: CronEditRequestSchema.parse(patch) }, CronJobSchema);
+  return hostCall(hostId, 'cron_edit', { id, patch: CronEditRequestSchema.parse(patch) }, CronJobSchema);
 }
 
 export async function cronRemove(hostId: string, id: string) {
-  return call('cron_rm', { hostId, id }, z.unknown());
+  return hostCall(hostId, 'cron_rm', { id }, z.unknown());
 }
 
 export async function cronEnable(hostId: string, id: string) {
-  return call('cron_enable', { hostId, id }, z.unknown());
+  return hostCall(hostId, 'cron_enable', { id }, z.unknown());
 }
 
 export async function cronDisable(hostId: string, id: string) {
-  return call('cron_disable', { hostId, id }, z.unknown());
+  return hostCall(hostId, 'cron_disable', { id }, z.unknown());
 }
 
 export async function cronRun(hostId: string, id: string) {
-  return call('cron_run', { hostId, id }, CronRunStartedDataSchema);
+  return hostCall(hostId, 'cron_run', { id }, CronRunStartedDataSchema);
 }
 
 export async function cronStop(hostId: string, id: string) {
-  return call('cron_stop', { hostId, id }, CronStoppedDataSchema);
+  return hostCall(hostId, 'cron_stop', { id }, CronStoppedDataSchema);
 }
 
 export async function cronPauseAll(hostId: string) {
-  return call('cron_pause_all', { hostId }, z.unknown());
+  return hostCall(hostId, 'cron_pause_all', {}, z.unknown());
 }
 
 export async function cronResumeAll(hostId: string) {
-  return call('cron_resume_all', { hostId }, z.unknown());
+  return hostCall(hostId, 'cron_resume_all', {}, z.unknown());
 }
 
 export async function cronStatus(hostId: string) {
-  return call('cron_status', { hostId }, CronStatusDataSchema);
+  return hostCall(hostId, 'cron_status', {}, CronStatusDataSchema);
 }
 
 /** The add/edit form's live preview: resolves `schedule`/`at` (plain
  * language or machine form) to its canonical expression + the next 3
  * fires in `tz`. */
 export async function cronParse(hostId: string, opts: { schedule?: string; at?: string; tz?: string }) {
-  return call('cron_parse', { hostId, ...opts }, CronParseDataSchema);
+  return hostCall(hostId, 'cron_parse', opts, CronParseDataSchema);
 }
 
 export async function cronSettingsGet(hostId: string) {
-  return call('cron_settings_get', { hostId }, CronSettingsDataSchema);
+  return hostCall(hostId, 'cron_settings_get', {}, CronSettingsDataSchema);
 }
 
 export async function cronSettingsSet(hostId: string, patch: CronSettingsSetRequest) {
-  return call('cron_settings_set', { hostId, patch: CronSettingsSetRequestSchema.parse(patch) }, CronSettingsDataSchema);
+  return hostCall(hostId, 'cron_settings_set', { patch: CronSettingsSetRequestSchema.parse(patch) }, CronSettingsDataSchema);
 }
 
 /** UNI-319: open a run's saved session as a live chat — a pi already on it,
  * or one started at `target` (a New chat place). */
 export async function cronOpenSession(hostId: string, runId: string, target: ChatNewTarget) {
-  return call('cron_open_session', { hostId, runId, target }, CronOpenSessionDataSchema);
+  return hostCall(hostId, 'cron_open_session', { runId, target }, CronOpenSessionDataSchema);
 }
 
 /** UNI-319: what the form shows for a job's notify outcomes. */

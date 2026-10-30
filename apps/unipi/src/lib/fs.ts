@@ -4,7 +4,7 @@
  * → `unipi-host`'s `fs_*` requests, `crates/host/src/fs.rs`).
  */
 import { z } from 'zod';
-import { call } from './ipc';
+import { hostCall } from './host/factory';
 import { FsEntrySchema, FsListDataSchema, FsSearchDataSchema, FsStatDataSchema, FsWriteDataSchema } from '@unipi/protocol';
 
 export type FsEntry = z.infer<typeof FsEntrySchema>;
@@ -12,31 +12,31 @@ export type FsEntry = z.infer<typeof FsEntrySchema>;
 const FsRootsResultSchema = z.object({ roots: z.array(z.string()) });
 
 export async function fsRoots(hostId: string) {
-  return call('fs_roots', { hostId }, FsRootsResultSchema);
+  return hostCall(hostId, 'fs_roots', {}, FsRootsResultSchema);
 }
 
 export async function fsList(hostId: string, path: string, hidden?: boolean, outside?: boolean) {
-  return call('fs_list', { hostId, path, hidden, outside }, FsListDataSchema);
+  return hostCall(hostId, 'fs_list', { path, hidden, outside }, FsListDataSchema);
 }
 
 export async function fsStat(hostId: string, path: string, outside?: boolean) {
-  return call('fs_stat', { hostId, path, outside }, FsStatDataSchema);
+  return hostCall(hostId, 'fs_stat', { path, outside }, FsStatDataSchema);
 }
 
 export async function fsMkdir(hostId: string, path: string, outside?: boolean) {
-  return call('fs_mkdir', { hostId, path, outside }, z.unknown());
+  return hostCall(hostId, 'fs_mkdir', { path, outside }, z.unknown());
 }
 
 export async function fsRename(hostId: string, from: string, to: string, outside?: boolean) {
-  return call('fs_rename', { hostId, from, to, outside }, z.unknown());
+  return hostCall(hostId, 'fs_rename', { from, to, outside }, z.unknown());
 }
 
 export async function fsDelete(hostId: string, path: string, confirm: boolean, outside?: boolean) {
-  return call('fs_delete', { hostId, path, confirm, outside }, z.unknown());
+  return hostCall(hostId, 'fs_delete', { path, confirm, outside }, z.unknown());
 }
 
 export async function fsSearch(hostId: string, root: string, query: string, kind: 'name' | 'content', outside?: boolean) {
-  return call('fs_search', { hostId, root, query, kind, outside }, FsSearchDataSchema);
+  return hostCall(hostId, 'fs_search', { root, query, kind, outside }, FsSearchDataSchema);
 }
 
 const FsReadResultSchema = z.object({
@@ -49,7 +49,7 @@ const FsReadResultSchema = z.object({
 export type FsReadResult = z.infer<typeof FsReadResultSchema>;
 
 export async function fsRead(hostId: string, path: string, outside?: boolean, asText?: boolean) {
-  return call('fs_read', { hostId, path, outside, asText }, FsReadResultSchema);
+  return hostCall(hostId, 'fs_read', { path, outside, asText }, FsReadResultSchema);
 }
 
 export async function fsWrite(
@@ -60,13 +60,13 @@ export async function fsWrite(
   create: boolean | undefined,
   outside?: boolean,
 ) {
-  return call('fs_write', { hostId, path, text, baseHash, create, outside }, FsWriteDataSchema);
+  return hostCall(hostId, 'fs_write', { path, text, baseHash, create, outside }, FsWriteDataSchema);
 }
 
 /** UNI-199: copies an already-uploaded blob (`blobTransport().putBytes`)
  * to a host path ("upload, choose the destination"). */
 export async function fsImport(hostId: string, sha256: string, to: string, overwrite?: boolean, outside?: boolean) {
-  return call('fs_import', { hostId, sha256, to, overwrite, outside }, z.unknown());
+  return hostCall(hostId, 'fs_import', { sha256, to, overwrite, outside }, z.unknown());
 }
 
 /** The default "Upload to…" destination: a shared folder the host
