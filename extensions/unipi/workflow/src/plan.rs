@@ -1,6 +1,7 @@
 //! Plan mode, pure parts (unipi `src/plan/{state,enforce,index,review}.ts`): plan file naming,
 //! session state restore, enforcement, instructions, the `plan_submit` gates, the review split.
 
+use oino_extension::ui::widgets::prelude::*;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -317,28 +318,56 @@ pub fn split_plan(plan: &str) -> Option<Sections> {
 /// and the three decisions.
 #[must_use]
 pub fn review_dialog(plan: &str, path: &str) -> Value {
-    let body = match split_plan(plan) {
+    let body: Node = match split_plan(plan) {
         Some(sec) => {
-            serde_json::json!({"t": "split", "direction": "horizontal", "ratios": [0.4, 0.6], "fallback": {"t": "markdown", "value": plan}, "children": [
-                {"t": "section", "title": "Summary", "body": {"t": "markdown", "value": sec.summary}},
-                {"t": "section", "title": "Implementation", "body": {"t": "markdown", "value": sec.implementation}},
-            ]})
+            let section = |title: &str, text: String| -> Node {
+                Block::default()
+                    .borders(Borders::Sides(vec![BorderSide::TOP]))
+                    .border_style(Style::new().fg(Color::BorderMuted))
+                    .title(title)
+                    .child(Markdown::new(text))
+                    .into()
+            };
+            Layout::horizontal([Constraint::Ratio(2, 5), Constraint::Ratio(3, 5)])
+                .spacing(1)
+                .children([
+                    section("Summary", sec.summary),
+                    section("Implementation", sec.implementation),
+                ])
+                .fallback(Markdown::new(plan))
+                .into()
         }
-        None => serde_json::json!({"t": "markdown", "value": plan}),
+        None => Markdown::new(plan).into(),
     };
+    let spec: Node = Layout::default()
+        .spacing(1)
+        .children([
+            body,
+            Layout::horizontal([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
+                .spacing(2)
+                .children([
+                    Button::new(format!("1 {APPROVE}"), "approve")
+                        .variant(ButtonVariant::Primary)
+                        .into(),
+                    Button::new(format!("2 {KEEP}"), "keep").into(),
+                    Button::new(format!("3 {DISCARD}"), "discard")
+                        .variant(ButtonVariant::Danger)
+                        .into(),
+                ])
+                .into(),
+            KeyHints::new([
+                ("←→", "choose"),
+                ("enter", "confirm"),
+                ("esc", "keep planning"),
+            ])
+            .into(),
+        ])
+        .into();
     serde_json::json!({
         "method": "custom",
         "title": format!("Review plan  {path}"),
         "size": "large",
-        "spec": {"t": "stack", "direction": "vertical", "gap": 1, "children": [
-            body,
-            {"t": "stack", "direction": "horizontal", "gap": 2, "children": [
-                {"t": "button", "label": format!("1 {APPROVE}"), "actionId": "approve", "primary": true, "tone": "accent"},
-                {"t": "button", "label": format!("2 {KEEP}"), "actionId": "keep"},
-                {"t": "button", "label": format!("3 {DISCARD}"), "actionId": "discard", "tone": "error"},
-            ]},
-            {"t": "keyHints", "hints": [{"keys": "←→", "label": "choose"}, {"keys": "enter", "label": "confirm"}, {"keys": "esc", "label": "keep planning"}]},
-        ]},
+        "spec": spec,
     })
 }
 
@@ -540,9 +569,7 @@ mod tests {
         assert_eq!(split_plan("## Implementation\nx\n## Summary\ny"), None);
         let d = review_dialog("plain", "p.md");
         assert_eq!(d["method"], "custom");
-        assert_eq!(
-            d["spec"]["children"][1]["children"][0]["actionId"],
-            "approve"
-        );
+        assert_eq!(d["spec"]["children"][1]["children"][0]["action"], "approve");
+        assert_eq!(d["spec"]["children"][0]["t"], "Markdown");
     }
 }

@@ -128,7 +128,7 @@ pub fn approval_request(tool: &str, summary: &str, reason: &str, pattern: &str) 
         "title": format!("Allow {tool}: {}?\n{}", clip(summary, 120), clip(reason, 120)),
         "toolName": tool,
         "summary": clip(summary, 120),
-        "detail": {"t": "text", "value": clip(reason, 120)},
+        "detail": {"t": "Paragraph", "text": clip(reason, 120), "wrap": false},
         "options": [
             {"optionId": "allow_once", "label": "Allow once", "kind": "allow_once"},
             {"optionId": "allow_always", "label": format!("Always allow `{}`", clip(pattern, 60)), "kind": "allow_always"},
