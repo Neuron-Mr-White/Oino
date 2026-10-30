@@ -8,6 +8,7 @@ import { createSignal, Show } from 'solid-js';
 import { PanelBottomClose } from 'lucide-solid';
 import { layout } from '../../lib/layout';
 import { panes, type PaneScope, type PaneView } from '../../lib/panes';
+import { paneKind } from '../../lib/panes/kinds';
 import { modKey } from '../../lib/shell';
 import { PaneBody } from './PaneBody';
 import { LauncherList, PaneLauncher, type LaunchSpec } from './PaneLauncher';
@@ -21,6 +22,8 @@ export function BottomPanel(props: { scope: PaneScope; view: PaneView; localHost
   const [launcher, setLauncher] = createSignal<DOMRect | undefined>();
   const [overview, setOverview] = createSignal<DOMRect | undefined>();
   const close = (id: string) => {
+    const tab = tabs().find((t) => t.id === id);
+    if (tab) paneKind(tab.kind)?.onUserClose?.(tab);
     store.close(props.scope, 'bottom', props.view, id);
     if (tabs().length === 0) layout().toggleBottom(false);
   };
@@ -32,6 +35,7 @@ export function BottomPanel(props: { scope: PaneScope; view: PaneView; localHost
         testId="bottom-strip"
         tabs={tabs()}
         activeId={active()?.id}
+        badge={(t) => t.badge}
         onActivate={(id) => store.activate(props.scope, 'bottom', props.view, id)}
         onClose={close}
         onMove={(id, before) => store.move(props.scope, 'bottom', id, before)}

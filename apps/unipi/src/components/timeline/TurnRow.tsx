@@ -27,6 +27,7 @@ import { UserBubble } from './UserBubble';
 import { Prose } from './Prose';
 import { Compaction } from './Compaction';
 import { TurnActions, requestEdit } from './TurnActions';
+import { TurnFooters } from '../../ui/slots/TurnFooters';
 import type { TimelineCtx } from './context';
 
 export function TurnRow(props: { turn: Turn; ctx: TimelineCtx; last?: boolean }) {
@@ -77,6 +78,8 @@ export function TurnRow(props: { turn: Turn; ctx: TimelineCtx; last?: boolean })
           )}
         </For>
         <TurnActions turn={t()} ctx={props.ctx} last={props.last} />
+        {/* U10: `turnFooter` renderer entries render inside the turn's row (§6.7). */}
+        <TurnFooters ctx={props.ctx} turn={t()} />
       </Show>
     </div>
   );

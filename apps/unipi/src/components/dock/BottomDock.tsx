@@ -80,11 +80,6 @@ export function BottomDock(props: {
       <div class="dock-region" data-region="queue">
         {props.queue ?? <QueuePanel session={props.session} phone={props.phone} />}
       </div>
-      <Show when={props.composerTray}>
-        <div class="dock-region" data-region="tray">
-          {props.composerTray}
-        </div>
-      </Show>
       <div class="dock-region dock-region-composer" data-region="composer">
         {/* §3.11 / §6.2: an `editorReplace` entry takes the composer's place
             (U10's tray); dialogs above it still win. */}

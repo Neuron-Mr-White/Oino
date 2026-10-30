@@ -15,7 +15,7 @@ import { setHubUiSink } from '../lib/session/hub';
 import { SESSION_LRU, setSessionUiSink } from '../lib/session/store';
 import { uiTransport, type UiTarget } from './actions';
 import { createUiRegistry, type Invalidation, type UiRegistry } from './registry';
-import type { UiRequest } from './types';
+import type { UiEntry, UiRequest } from './types';
 
 type Listener<T> = (target: UiTarget, value: T) => void;
 
@@ -52,6 +52,28 @@ function make(target: UiTarget): UiRegistry {
     onInvalidate: (inv) => invalidateListeners.forEach((l) => l(target, inv)),
   });
   return reg;
+}
+
+/** Looks an entry up across the open registries (U10's `/x/:entryId` page, `ext` tabs). */
+export function findUiEntry(target: UiTarget, entryId: string): UiEntry | undefined {
+  const reg = target.scope === 'session' && target.sessionId ? sessionRegs.get(`${target.hostId}\u0000${target.sessionId}`) : target.scope === 'host' ? hostRegs.get(target.hostId) : undefined;
+  return reg?.entry(entryId);
+}
+
+/** The entry + its target wherever an open registry holds it (the `/x/:id` page's lookup). */
+export function findUiEntryAnywhere(entryId: string): { entry: UiEntry; target: UiTarget } | undefined {
+  for (const [key, reg] of sessionRegs) {
+    const entry = reg.entry(entryId);
+    if (entry) {
+      const [hostId, sessionId] = key.split('\u0000');
+      return { entry, target: { scope: 'session', hostId, sessionId } };
+    }
+  }
+  for (const [hostId, reg] of hostRegs) {
+    const entry = reg.entry(entryId);
+    if (entry) return { entry, target: { scope: 'host', hostId } };
+  }
+  return undefined;
 }
 
 /** The session-scope registry of `(hostId, sessionId)` (created on first use). */
@@ -92,7 +114,7 @@ export function onUiInvalidate(listener: Listener<Invalidation>): () => void {
   return () => invalidateListeners.delete(listener);
 }
 
-/** Routes one session-stream ui message (`oino_ui_snapshot` / `oino_ui_patch` / `extension_ui_*`). */
+/** Routes every session-stream ui message (`oino_ui_snapshot` / `oino_ui_patch` / `extension_ui_*`). */
 export function routeSessionUi(hostId: string, sessionId: string, msg: Record<string, unknown>): void {
   const reg = sessionUi(hostId, sessionId);
   switch (msg.type) {

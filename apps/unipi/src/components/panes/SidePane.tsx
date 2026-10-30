@@ -13,6 +13,7 @@ import { createSignal, Show } from 'solid-js';
 import { Maximize2, MessagesSquare, Minimize2, PanelRightClose } from 'lucide-solid';
 import { layout } from '../../lib/layout';
 import { panes, type PaneScope, type PaneView } from '../../lib/panes';
+import { paneKind } from '../../lib/panes/kinds';
 import { modKey } from '../../lib/shell';
 import { SidebarReveal } from '../shell/ConversationHeader';
 import { PaneBody } from './PaneBody';
@@ -49,6 +50,8 @@ export function SidePane(props: {
   const full = () => props.mode === 'full';
 
   const close = (id: string) => {
+    const tab = tabs().find((t) => t.id === id);
+    if (tab) paneKind(tab.kind)?.onUserClose?.(tab);
     store.close(props.scope, 'side', props.view, id);
     if (tabs().length === 0) layout().toggleSide(false);
   };
@@ -69,6 +72,7 @@ export function SidePane(props: {
         tabs={tabs()}
         activeId={active()?.id}
         noneActive={full() && props.chatActive}
+        badge={(t) => t.badge}
         onActivate={activate}
         onClose={close}
         onMove={(id, before) => store.move(props.scope, 'side', id, before)}

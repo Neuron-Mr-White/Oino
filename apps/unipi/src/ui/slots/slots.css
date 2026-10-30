@@ -1,0 +1,88 @@
+/*
+ * U10 slot hosts (ui-protocol §6.2): widgets, tray, modal, header band,
+ * turn footers, extension page, phone pane layer. unipi tokens only.
+ */
+
+/* ── widget stack (above/below the composer, card-less, 1 px rules) ──── */
+.ui-widgets { display: flex; flex-direction: column; max-width: 760px; margin: 0 auto; }
+.ui-widget { padding: 6px 12px 8px; }
+.ui-widget + .ui-widget { border-top: 1px solid var(--color-line); }
+.ui-widget-title { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--color-text-dim); }
+.ui-widgets-more { align-self: center; margin: 2px 0 4px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 12px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: 12.5px; font-weight: 500; }
+
+/* ── composer tray (editorReplace): takes the composer's place ───────── */
+.ui-tray { max-width: 760px; margin: 0 auto; border-radius: 20px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%); overflow: hidden; }
+.ui-tray-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--color-line); }
+.ui-tray-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--color-text-dim); }
+.ui-tray-close { flex: none; width: 30px; height: 30px; min-height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--color-text-dim); }
+.ui-tray-body { max-height: 50vh; overflow: auto; padding: 10px 14px 12px; }
+
+/* ── overlay modal (desktop centred / phone bottom sheet) ────────────── */
+.tl-overlay-host { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.tl-overlay-host:not(:empty) { pointer-events: auto; }
+/* A modal is viewport-anchored: the timeline host it is mounted in scrolls with
+   the transcript, so an absolute scrim would sit wherever the content ends
+   (the phone sheet fell off-screen). */
+.ui-modal-scrim { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgb(12 10 9 / 55%); animation: ui-fade 120ms ease-out both; }
+/* §6.4: pending dialogs always sit above the overlay slot (and a phone sheet). */
+.dock-region-dialog { position: relative; z-index: 45; }
+.ui-modal { display: flex; flex-direction: column; width: min(var(--ui-modal-w, 560px), calc(100% - 32px)); max-height: min(72vh, 640px); border-radius: var(--radius-float, 18px); background: var(--color-surface-1); box-shadow: 0 30px 90px rgb(0 0 0 / 65%), inset 0 0 0 1px var(--color-line); overflow: hidden; animation: ui-modal-in 160ms cubic-bezier(.2, .8, .2, 1) both; }
+.ui-modal[data-full] { width: 100%; max-height: 100%; height: 100%; border-radius: 0; }
+.ui-modal-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--color-line); }
+.ui-modal-icon { color: var(--color-claw); }
+.ui-modal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: var(--color-text); }
+.ui-modal-badge { padding: 1px 8px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: 12px; }
+.ui-modal-x { flex: none; width: 34px; height: 34px; min-height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--color-text-dim); }
+.ui-modal-body { min-height: 0; overflow: auto; padding: 14px 16px; }
+.ui-modal-keys { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px; border-top: 1px solid var(--color-line); }
+.ui-modal-key { font-size: 11.5px; }
+@keyframes ui-fade { from { opacity: 0; } }
+@keyframes ui-modal-in { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+
+/* phone: bottom sheet (§13.6 row 6); large/full = full height */
+html:not([data-shell=desktop]) .ui-modal-scrim { place-items: end center; }
+html:not([data-shell=desktop]) .ui-modal { width: 100%; max-width: none; border-radius: 20px 20px 0 0; padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px); animation: ui-sheet-in 200ms cubic-bezier(.2, .8, .2, 1) both; }
+html:not([data-shell=desktop]) .ui-modal[data-full] { border-radius: 0; }
+@keyframes ui-sheet-in { from { transform: translateY(40%); opacity: .4; } }
+
+/* ── header band (top of the transcript, scrolls away) ───────────────── */
+.ui-headerband { display: flex; flex-direction: column; gap: 6px; margin: 8px 16px 0; }
+.ui-headerband-entry { padding: 6px 12px; border-radius: 12px; background: var(--color-surface-2); }
+
+/* ── turn footers (inside the turn's virtual row) ────────────────────── */
+.ui-turnfooters { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; }
+.ui-turnfooter { padding: 6px 12px; border-radius: 12px; background: var(--color-surface-2); max-height: 160px; overflow: auto; }
+
+/* ── extension page (/x/:id) ─────────────────────────────────────────── */
+.ui-extpage { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.ui-extpage-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 18px 24px; max-width: 980px; width: 100%; margin: 0 auto; }
+
+/* ── phone pane layer (§13.6 row 6) ──────────────────────────────────── */
+.ui-phone-pane { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--color-bg); padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px)); padding-bottom: max(env(safe-area-inset-bottom), var(--inset-bottom, 0px)); animation: ui-sheet-in 180ms cubic-bezier(.2, .8, .2, 1) both; }
+.ui-phone-pane-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--color-line); }
+.ui-phone-pane-title { font-size: 16px; font-weight: 600; color: var(--color-text); }
+.ui-phone-pane-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; }
+
+/* phone: touch targets ≥ 44 px for the hosts' own chrome (§13.6 rule 2) */
+html:not([data-shell=desktop]) .ui-modal-x,
+html:not([data-shell=desktop]) .ui-tray-close { width: 44px; height: 44px; min-height: 44px; }
+html:not([data-shell=desktop]) .ui-widgets-more { min-height: 44px; padding: 0 18px; }
+html:not([data-shell=desktop]) .ui-phone-pane-head .ghost-icon-button { min-width: 44px; min-height: 44px; }
+
+/* phone: the strip shares its row with A16's capsule chip (top-right) — keep clear of it */
+html:not([data-shell=desktop]) .conv > .status-strip { padding-right: 76px; }
+
+/* status strip node segment (footer entries render their tree, one row) */
+.status-seg:has(> .ui-entry) { display: inline-flex; align-items: center; max-width: 220px; overflow: hidden; }
+.status-seg > .ui-entry { max-height: 24px; overflow: hidden; }
+
+/* pane body fallback (entry gone while the tab lingers) */
+.ui-pane-missing { display: grid; place-items: center; height: 100%; color: var(--color-text-dim); font-size: 14px; }
+
+/* dialogs: editExternally monospace area + custom body */
+.dlg-edit-area { font-family: var(--font-mono, ui-monospace), monospace; font-size: 13px; line-height: 19px; max-height: 50vh; }
+.dlg-custom-body { max-height: 50vh; overflow: auto; padding: 2px 2px 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-modal-scrim, .ui-modal, .ui-phone-pane { animation: none; }
+}

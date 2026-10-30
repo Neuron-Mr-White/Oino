@@ -93,6 +93,8 @@ export function ConversationHeader(props: {
   ctx?: ChatActionCtx;
   /** Mode chip etc. (A14 / A16). */
   chips?: JSX.Element;
+  /** U10: the phone ⋯ menu's "Panes" group (sidePane/bottomPane entries). */
+  extraMenu?: (close: () => void) => JSX.Element;
   /** Phone: back to the list. */
   onBack?: () => void;
   onNewChat: () => void;
@@ -100,6 +102,7 @@ export function ConversationHeader(props: {
 }) {
   const [menu, setMenu] = createSignal<DOMRect | undefined>();
   const rows = () => (props.ctx ? chatActionsFor(props.ctx) : []);
+  const hasExtra = () => !!props.extraMenu;
   const sub = () => [props.project, props.hostName].filter(Boolean).join(' · ');
   return (
     <header class="conv-head" data-testid="conv-head">
@@ -124,7 +127,7 @@ export function ConversationHeader(props: {
       </div>
       <div class="conv-head-tools">
         {props.chips}
-        <Show when={rows().length > 0}>
+        <Show when={rows().length > 0 || hasExtra()}>
           <button type="button" class="shell-icon-btn" aria-label="Chat actions" aria-haspopup="menu" aria-expanded={!!menu()} onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())} data-testid="conv-more">
             <Ellipsis size={18} />
           </button>
@@ -156,6 +159,7 @@ export function ConversationHeader(props: {
       </div>
       <Show when={menu() && props.ctx}>
         <AnchoredMenu anchor={menu()!} alignEnd width={240} label="Chat actions" onDismiss={() => setMenu(undefined)}>
+          <Show when={props.extraMenu}>{(lead) => <>{lead()(() => setMenu(undefined))}</>}</Show>
           <For each={rows()}>
             {(row, i) => {
               const Icon = row.icon;

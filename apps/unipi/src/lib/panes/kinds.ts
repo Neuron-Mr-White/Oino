@@ -42,6 +42,8 @@ export type PaneKindDef = KindRule & {
   launcher?: { label: string; order: number; needsSession?: boolean; keywords?: string };
   /** Reserved slot id it stands for (ui-protocol reserved routing), for the record. */
   reserved?: string;
+  /** Runs before the store closes a tab of this kind (U10: `ext` sends the entry `$close`). */
+  onUserClose?: (tab: PaneTab) => void;
 };
 
 const str = (v: unknown, fallback: string): string => (typeof v === 'string' && v ? v : fallback);

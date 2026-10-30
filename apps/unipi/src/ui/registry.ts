@@ -15,7 +15,7 @@
  * Mirrors `oino-view`'s `RegistryMirror` (WP-U5) on the shared
  * `crates/oino-ui/fixtures/registry/*.json` corpus.
  */
-import { batch, createMemo, createRoot, type Accessor } from 'solid-js';
+import { batch, createMemo, createRoot, getOwner, runWithOwner, type Accessor } from 'solid-js';
 import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
 import { isEnvelopeError, parsePatch, parseSnapshot } from './envelope';
 import { dropLocal } from './localState';
@@ -62,6 +62,11 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
     const [state, setState] = createStore<RegistryState>({ rev: 0, sessionId: null, entries: {}, dialogs: [], meta: {}, resyncing: false });
     const slotMemos = new Map<Slot, Accessor<UiEntry[]>>();
     const stackMemos = new Map<Slot, Accessor<UiEntry[]>>();
+    // Slot memos must belong to this root, never to the first caller's
+    // computation (a memo parented by a caller is disposed when that caller
+    // re-runs — the Map would keep a frozen memo forever). U10 hit this with
+    // hosts rendering `entriesFor(...)` inside components.
+    const self = getOwner()!;
 
     const requestResync = (rev: number) => {
       if (state.resyncing) return;
@@ -150,11 +155,24 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
     const entriesFor = (slot: Slot): Accessor<UiEntry[]> => {
       let memo = slotMemos.get(slot);
       if (!memo) {
-        memo = createMemo(
-          () => Object.values(state.entries).filter((e) => e.slot === slot).sort(compareEntries),
-          [],
-          { equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) },
-        );
+        // A `meta` op mutates the entry proxy in place and leaves the key set
+        // alone, so the selector must track the per-entry fields it sorts and
+        // its hosts read (`meta` bumps `rev`); an identity comparator or a
+        // keys-only read would swallow title/badge/order/focus updates (U10:
+        // pane tabs never retitled, the strip never retoned). `For` keyed by
+        // item identity still keeps the DOM as is; only the memo re-runs.
+        memo = runWithOwner(self, () =>
+          createMemo(() => {
+            const all = Object.values(state.entries);
+            for (const e of all) {
+              void e.rev;
+              void e.order;
+              void e.seq;
+              void e.focus;
+            }
+            return all.filter((e) => e.slot === slot).sort(compareEntries);
+          }),
+        )!;
         slotMemos.set(slot, memo);
       }
       return memo;
@@ -164,11 +182,19 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
     const stack = (slot: Slot): Accessor<UiEntry[]> => {
       let memo = stackMemos.get(slot);
       if (!memo) {
-        memo = createMemo(() =>
-          Object.values(state.entries)
-            .filter((e) => e.slot === slot)
-            .sort((a, b) => Number(!!a.focus) - Number(!!b.focus) || (a.seq ?? 0) - (b.seq ?? 0)),
-        );
+        memo = runWithOwner(self, () =>
+          createMemo(() => {
+            const all = Object.values(state.entries);
+            for (const e of all) {
+              void e.rev;
+              void e.seq;
+              void e.focus;
+            }
+            return all
+              .filter((e) => e.slot === slot)
+              .sort((a, b) => Number(!!a.focus) - Number(!!b.focus) || (a.seq ?? 0) - (b.seq ?? 0));
+          }),
+        )!;
         stackMemos.set(slot, memo);
       }
       return memo;

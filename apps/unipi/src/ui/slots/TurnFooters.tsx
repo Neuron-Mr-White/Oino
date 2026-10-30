@@ -1,0 +1,65 @@
+/**
+ * `turnFooter` slot host (WP-U10, A27's feeder; ui-protocol §6.7): renderer
+ * entries render **inside the turn's virtual row**, after the turn tail —
+ * one `_oino/render{target:"turnFooter"}` per (entry, turn) through the
+ * session's render cache (keyed `(target, key, entryId, rev, width)`), so a
+ * virtual-scroll remount never re-asks. `null` renders nothing (§3.4);
+ * invalidations (§6.7) bump `footerRev` in the cache key; the running turn
+ * re-asks at most every 500 ms (§6.7). Footers never virtualize internally
+ * and the row's height change re-measures only that turn (§13.4).
+ */
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import type { Turn } from '../../lib/session/turns';
+import { sessionRenderCache, widthClassOf } from '../../lib/session/renderCache';
+import { NodeView } from '../NodeView';
+import { sessionUi } from '../registries';
+import { footerRev } from './effects';
+import type { TimelineCtx } from '../../components/timeline/context';
+import type { UiEntry } from '../types';
+
+const RUN_REFRESH_MS = 500;
+
+function rendererKey(entry: UiEntry): string {
+  return entry.view.kind === 'renderer' ? entry.view.key : entry.id;
+}
+
+export function TurnFooters(props: { ctx: TimelineCtx; turn: Turn }) {
+  const registry = () => sessionUi(props.ctx.hostId, props.ctx.sessionId());
+  const entries = () => registry().entriesFor('turnFooter')();
+  const [tick, setTick] = createSignal(0);
+
+  // The running turn re-requests at most every 500 ms while it changes (§6.7).
+  let timer: ReturnType<typeof setInterval> | undefined;
+  onMount(() => {
+    timer = setInterval(() => props.turn.live && setTick((t) => t + 1), RUN_REFRESH_MS);
+  });
+  onCleanup(() => clearInterval(timer));
+
+  const cache = () => sessionRenderCache(props.ctx.session);
+  const width = () => widthClassOf(props.ctx.columnWidth());
+
+  return (
+    <Show when={entries().length > 0}>
+      <div class="ui-turnfooters" data-testid="ui-turnfooters" data-turn={props.turn.turnId}>
+        <For each={entries()}>
+          {(entry) => {
+            const node = () =>
+              cache().node(
+                { target: 'turnFooter', key: rendererKey(entry), entryId: entry.id, rev: (entry.rev ?? 0) + footerRev(entry.id) + tick(), width: width() },
+                { turnEntryId: props.turn.turnId, running: props.turn.live, density: 'regular', data: null },
+              )();
+            return (
+              <Show when={node()} keyed>
+                {(n) => (
+                  <div class="ui-turnfooter" data-entry={entry.id}>
+                    <NodeView node={n} path={['turnFooter']} mode="auto" />
+                  </div>
+                )}
+              </Show>
+            );
+          }}
+        </For>
+      </div>
+    </Show>
+  );
+}

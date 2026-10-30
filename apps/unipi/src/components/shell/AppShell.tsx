@@ -65,6 +65,7 @@ import { ResizeHandle } from './ResizeHandle';
 import { Sidebar, useNewChatHost } from './Sidebar';
 import { currentWorkspace } from './Workspace';
 import { SIDEBAR_DEFAULT } from '../../lib/layout';
+import { installExtensionPageFeed } from '../../ui/slots/pages';
 
 // Z-100: every Git entry point opens the one `git` side-pane tab; the phone
 // keeps the full-screen layer (§3.9). Installed here so `lib/git` stays free
@@ -298,6 +299,10 @@ function ShortcutPersistence() {
 /** The router root: providers, the frame of this shell, and the app-wide layers. */
 export function AppShell(props: ParentProps) {
   const location = useLocation();
+  // U10: extension `fullscreen` pages are registry entries of their session,
+  // not of the conversation view — the rail feed sits in the shell so a page
+  // keeps its nav item while the user is on Settings or a board (§6.2/§6.6).
+  installExtensionPageFeed(() => location.pathname);
   const desktop = () => layout().desktop();
   const onEditor = () => location.pathname === '/files/edit';
   return (

@@ -24,6 +24,8 @@ export type PaneTab = {
   params?: Record<string, unknown>;
   /** A title the tab set itself (e.g. a page title); else the kind's title. */
   title?: string;
+  /** A strip badge (U10: a `sidePane` entry's `badge`, e.g. "3"). */
+  badge?: string;
   /** Session-scoped tabs: the session they belong to. */
   sessionId?: string;
 };
@@ -179,6 +181,12 @@ export function retitleTab(set: PaneSet, id: string, title: string | undefined):
   return { ...set, tabs: set.tabs.map((t) => (t.id === id ? { ...t, title } : t)) };
 }
 
+/** Pure: badges a tab (title kept; `undefined` clears). */
+export function badgeTab(set: PaneSet, id: string, badge: string | undefined): PaneSet {
+  if (!set.tabs.some((t) => t.id === id && t.badge !== badge)) return set;
+  return { ...set, tabs: set.tabs.map((t) => (t.id === id ? { ...t, badge } : t)) };
+}
+
 // ── The app store ───────────────────────────────────────────────────────
 
 export type ScopePanes = Record<PaneArea, PaneSet>;
@@ -293,6 +301,9 @@ export function createPanes(opts: PanesStoreOptions) {
     },
     retitle(scope: PaneScope, area: PaneArea, id: string, title: string | undefined): void {
       update(scope, area, (set) => retitleTab(set, id, title));
+    },
+    badge(scope: PaneScope, area: PaneArea, id: string, badge: string | undefined): void {
+      update(scope, area, (set) => badgeTab(set, id, badge));
     },
     /** Session gone (deleted / archived): drop its tabs in every loaded scope of that host. */
     dropSession(hostId: string, sessionId: string): void {
