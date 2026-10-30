@@ -1452,7 +1452,12 @@ pub(super) fn ui_modal(app: &mut App, width: usize, height: usize) -> Option<Blo
     };
     let box_width = (width * 4 / 5).max(30).min(width);
     let inner = box_width.saturating_sub(4);
-    let inner_height = height.saturating_sub(2);
+    // Overlay/custom max 90 % of the screen, side panes keep the pane height (§4.4).
+    let inner_height = if app.registry.stack_top(Slot::Overlay).is_some() {
+        (height * 9 / 10).saturating_sub(2)
+    } else {
+        height.saturating_sub(2)
+    };
     // Overlays are definite only when the root asks for it (§4.4); side panes are always
     // definite (§6.2). Otherwise the modal sizes to its content.
     let (definite, content_height) = {

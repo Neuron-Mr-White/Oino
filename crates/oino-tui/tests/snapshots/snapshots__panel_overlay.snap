@@ -2,13 +2,12 @@
 source: crates/oino-tui/tests/snapshots.rs
 expression: "h.frame(70, 22)"
 ---
-        ╭────────────────────────────────────────────────────╮
- oino v1│ Dashboard                                          │
- escape │ › Alpha  new                                       │bash · …
- Press c│   Beta                                             │
-        │   second                                           │
- Oino ca│                                                    │t how t…
-        │                                                    │
+
+ oino v1╭────────────────────────────────────────────────────╮
+ escape │ Dashboard                                          │bash · …
+ Press c│ › Alpha  new                                       │
+        │   Beta                                             │
+ Oino ca│   second                                           │t how t…
         │                                                    │
         │                                                    │
         │                                                    │
@@ -18,6 +17,7 @@ expression: "h.frame(70, 22)"
         │ r refresh                                          │
         │ r Refresh · esc close                              │
         ╰────────────────────────────────────────────────────╯
+
 
 ──────────────────────────────────────────────────────────────────────
 
