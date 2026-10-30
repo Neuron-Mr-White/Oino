@@ -184,49 +184,62 @@ for (const name of names) {
   }
 }
 
-// ── scripted ⋯ "Panes" shots (412) ─────────────────────────────────────
+// ── scripted ⋯ "Panes" shots (all requested sizes) ────────────────────
 const SESSION_URL = `${APP}/?scenario=stream-basic&shell=phone#/s/pc-coffee/s001`;
 const SCRIPTED = [
   ['chat', `${APP}/?scenario=stream-basic&shell=phone#/chat`, null],
   ['panes-menu', SESSION_URL, `document.querySelector('[data-testid=conv-more]')?.click()`],
-  [
-    'pane-git',
-    SESSION_URL,
-    `document.querySelector('[data-testid=conv-more]')?.click(); setTimeout(() => { [...document.querySelectorAll('[role=menuitem]')].find((el) => el.textContent?.trim() === 'Git')?.click(); }, 300)`,
-  ],
-  [
-    'pane-files',
-    `${APP}/?scenario=stream-basic&shell=phone#/new/pc-coffee`,
-    `document.querySelector('[data-testid=conv-more]')?.click(); setTimeout(() => { [...document.querySelectorAll('[role=menuitem]')].find((el) => el.textContent?.trim() === 'Files')?.click(); }, 300)`,
-  ],
-  [
-    'pane-tree',
-    SESSION_URL,
-    `document.querySelector('[data-testid=conv-more]')?.click(); setTimeout(() => { [...document.querySelectorAll('[role=menuitem]')].find((el) => el.textContent?.trim() === 'Tree')?.click(); }, 300)`,
-  ],
-  [
-    'pane-btw',
-    SESSION_URL,
-    `document.querySelector('[data-testid=conv-more]')?.click(); setTimeout(() => { [...document.querySelectorAll('[role=menuitem]')].find((el) => el.textContent?.trim() === 'Side chat')?.click(); }, 300)`,
-  ],
+  ['pane-git', SESSION_URL, 'label:Git'],
+  ['pane-files', `${APP}/?scenario=stream-basic&shell=phone#/new/pc-coffee`, 'label:Files'],
+  ['pane-tree', SESSION_URL, 'label:Tree'],
+  ['pane-btw', SESSION_URL, 'label:Side chat'],
 ];
 for (const [name, url, action] of noScripted ? [] : SCRIPTED) {
-  try {
-    const { targetId, sessionId } = await page(url);
-    await send('Emulation.setDeviceMetricsOverride', { width: 412, height: 915, deviceScaleFactor: 2, mobile: true }, sessionId);
-    await ready(sessionId);
-    if (action) {
-      await evalIn(sessionId, `(() => { ${action}; return true; })()`);
-      await sleep(1600);
+  for (const width of sizes) {
+    const height = width === 360 ? 780 : 915;
+    try {
+      const { targetId, sessionId } = await page(url);
+      await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: true }, sessionId);
+      await ready(sessionId);
+      if (action && !String(action).startsWith('label:')) {
+        await evalIn(sessionId, `(() => { ${action}; return true; })()`);
+        await sleep(1600);
+      } else if (action) {
+        const label = String(action).slice(6);
+        // Retry the whole menu→item click: the header buttons and menu mount async.
+        for (let i = 0; i < 20; i++) {
+          const done = await evalIn(
+            sessionId,
+            `(() => {
+              const more = document.querySelector('[data-testid=conv-more]');
+              if (!more) return false;
+              if (!document.querySelector('[role=menuitem]')) more.click();
+              const item = [...document.querySelectorAll('[role=menuitem]')].find((el) => el.textContent?.trim() === ${JSON.stringify(label)});
+              if (!item) return false;
+              item.click();
+              return true;
+            })()`,
+          );
+          if (done) break;
+          await sleep(400);
+        }
+        // Wait until a layer/sheet actually shows before shooting.
+        for (let i = 0; i < 15; i++) {
+          const open = await evalIn(sessionId, `!!document.querySelector('.ws-layer,[data-kind],.board-sheet')`);
+          if (open) break;
+          await sleep(400);
+        }
+        await sleep(600);
+      }
+      const file = `a29-${name}-phone-${width}.png`;
+      writeFileSync(`${OUT}/${file}`, Buffer.from(await shot(sessionId), 'base64'));
+      push({ scenario: `shot:${name}`, size: width, route: await evalIn(sessionId, 'location.hash') });
+      console.log(file);
+      await send('Target.closeTarget', { targetId });
+      await sleep(250);
+    } catch (error) {
+      console.warn(`skip ${name}-${width}: ${error.message}`);
     }
-    const file = `a29-${name}-phone-412.png`;
-    writeFileSync(`${OUT}/${file}`, Buffer.from(await shot(sessionId), 'base64'));
-    push({ scenario: `shot:${name}`, route: await evalIn(sessionId, 'location.hash') });
-    console.log(file);
-    await send('Target.closeTarget', { targetId });
-    await sleep(250);
-  } catch (error) {
-    console.warn(`skip ${name}: ${error.message}`);
   }
 }
 writeFileSync(`${OUT}/a29-report.json`, JSON.stringify(report, null, 2));

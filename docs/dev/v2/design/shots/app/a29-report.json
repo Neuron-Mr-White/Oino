@@ -2442,5 +2442,65 @@
       "testid": "phone-shell"
     },
     "file": "a29-unread-phone-360.png"
+  },
+  {
+    "scenario": "shot:chat",
+    "size": 360,
+    "route": "#/chat"
+  },
+  {
+    "scenario": "shot:panes-menu",
+    "size": 360,
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-git",
+    "size": 360,
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-files",
+    "size": 360,
+    "route": "#/files"
+  },
+  {
+    "scenario": "shot:pane-tree",
+    "size": 360,
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-btw",
+    "size": 360,
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:chat",
+    "size": 412,
+    "route": "#/chat"
+  },
+  {
+    "scenario": "shot:panes-menu",
+    "size": 412,
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-git",
+    "size": 412,
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-files",
+    "size": 412,
+    "route": "#/files"
+  },
+  {
+    "scenario": "shot:pane-tree",
+    "size": 412,
+    "route": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "shot:pane-btw",
+    "size": 412,
+    "route": "#/s/pc-coffee/s001"
   }
 ]
