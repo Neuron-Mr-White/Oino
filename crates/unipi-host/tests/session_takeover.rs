@@ -215,6 +215,28 @@ fn from_of(event: &Value) -> String {
         .to_owned()
 }
 
+/// Polls the hub until the card's state satisfies `done` (the card update follows the
+/// stream event by a scheduling hop).
+async fn card_until(
+    hub: &Arc<SessionHub>,
+    id: &str,
+    mut done: impl FnMut(&HubState) -> bool,
+) -> unipi_host::sessions::card::SessionCard {
+    let deadline = Instant::now() + READ_TIMEOUT;
+    loop {
+        if let Some(card) = hub.card(id).await.unwrap() {
+            if done(&card.state) {
+                return card;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the card never reached the expected state"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
 fn target(id: &str) -> unipi_proto::SessionTarget {
     id.to_owned().try_into().unwrap()
 }
@@ -312,15 +334,22 @@ async fn second_host_marks_the_first_stream_taken_over() {
     let events_a = stream_a.events_until("taken_over").await;
     let taken_a = host_event(&events_a, "taken_over").expect("A's stream sees the takeover");
     assert_eq!(from_of(&taken_a), from_b, "both sides name the same host");
-    let card_a = hub_a.card(&id).await.unwrap().expect("the record stays");
+    let card_a = card_until(&hub_a, &id, |state| {
+        matches!(state, HubState::TakenOver { .. })
+    })
+    .await;
     match &card_a.state {
         HubState::TakenOver { from } => assert_eq!(from, &from_b),
         other => panic!("A's card must be taken_over, got {other:?}"),
     }
-    assert!(
-        !service_a.feed(&id).can_resume(1),
-        "the taken-over feed must not resume: the other host wrote in between"
-    );
+    let deadline = Instant::now() + READ_TIMEOUT;
+    while service_a.feed(&id).can_resume(1) {
+        assert!(
+            Instant::now() < deadline,
+            "the taken-over feed must not resume: the other host wrote in between"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
 
     // Taking it back reopens the record (a reset, `since_seq` ignored) and clears the mark.
     let mut stream_a2 = Client::open(
