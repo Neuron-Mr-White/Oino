@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use oino_core::extensions::api::ExtensionMode;
+use oino_core::safe_mode::SafeMode;
 use oino_core::services::{ExtensionLoader, ServicesOptions};
 
 use crate::cli::args::Args;
@@ -20,10 +21,14 @@ pub async fn run(args: &Args, env: &Environment) -> i32 {
     let agent_dir = env.agent_dir.clone();
     let docs = docs_root(&agent_dir);
     let sources = args.extensions.clone().unwrap_or_default();
-    let flags = resource_flags(args, &env.cwd);
+    let mut flags = resource_flags(args, &env.cwd);
+    // X-SAFE: apply the plan's effect (extensions off, providers on) and surface the banner;
+    // failure/success recording runs on the `startup::start` paths (unipi-host joins later).
+    flags.safe_mode = Some(SafeMode::load(&env.agent_dir).plan());
     let values = args.unknown_flags.clone();
     let approve = args.project_trust_override;
     let no_extensions = args.no_extensions;
+    let exclude_extensions = args.exclude_extensions.clone().unwrap_or_default();
     let model_args = Arc::new(args.clone());
     let factory = oino_acp::CoreSessionFactory::new(
         move |cwd| {
@@ -33,6 +38,7 @@ pub async fn run(args: &Args, env: &Environment) -> i32 {
                     agent_dir: agent_dir.clone(),
                     cwd: cwd.to_path_buf(),
                     no_extensions,
+                    exclude_extensions: exclude_extensions.clone(),
                 },
             );
             for line in crate::report_lines(loader.diagnostics()) {

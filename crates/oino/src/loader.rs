@@ -5,6 +5,7 @@
 //! Load order: bundled packages in bundle order (providers, then unipi `LOAD_ORDER`); an
 //! installed or `-e` package with the id of an earlier one replaces it in place, others are
 //! appended (global, project, then `-e`). `OINO_BUNDLED=0` skips the bundled packages.
+//! `--exclude-extension <id>` drops composed packages by id before instantiation (WP-X2).
 //!
 //! Every `CliLoader` builds its own [`WasmRuntime`] (the cwd is per instance), but the
 //! engine, epoch-ticker thread, compile caches and local-services hub are process-shared
@@ -78,6 +79,9 @@ pub struct LoaderContext {
     pub cwd: PathBuf,
     /// `-ne`: skip bundled and installed `kind: "extension"` packages (providers stay).
     pub no_extensions: bool,
+    /// `--exclude-extension`: package ids dropped after composition, before instantiation
+    /// (WP-X2); `builtin:` test components are not subject.
+    pub exclude_extensions: Vec<String>,
 }
 
 impl LoaderContext {
@@ -109,6 +113,40 @@ fn place(packages: &mut Vec<SourcedPackage>, package: SourcedPackage) {
     match packages.iter_mut().find(|p| &p.package.manifest.id == id) {
         Some(slot) => *slot = package,
         None => packages.push(package),
+    }
+}
+
+/// X-EXCLUDE/WP-X2: drops every composed package whose id is excluded (one diagnostic per
+/// dropped id, `-e` paths included) and warns when an excluded id matched nothing (helps
+/// safe mode name the right suspect). Never fatal.
+fn apply_exclusions(
+    packages: &mut Vec<SourcedPackage>,
+    excluded: &[String],
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if excluded.is_empty() {
+        return;
+    }
+    let mut dropped = Vec::new();
+    packages.retain(|p| {
+        let id = p.package.manifest.id.as_str();
+        let hit = excluded.iter().any(|x| x == id);
+        if hit {
+            dropped.push(id.to_owned());
+        }
+        !hit
+    });
+    for id in &dropped {
+        diagnostics.push(Diagnostic::warning(format!(
+            "Excluded extension \"{id}\" not loaded"
+        )));
+    }
+    for id in excluded {
+        if !dropped.contains(id) {
+            diagnostics.push(Diagnostic::warning(format!(
+                "--exclude-extension \"{id}\" matched no extension package"
+            )));
+        }
     }
 }
 
@@ -226,6 +264,9 @@ impl CliLoader {
                 ))),
             }
         }
+        // X-EXCLUDE: by id after composition (`-e` replacement-in-place happened above),
+        // before instantiation; providers are excluded the same way.
+        apply_exclusions(&mut packages, &context.exclude_extensions, &mut diagnostics);
         let wasm = if packages.is_empty() {
             None
         } else {
@@ -303,5 +344,97 @@ impl ExtensionLoader for CliLoader {
             }
             instances
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn package(id: &str) -> SourcedPackage {
+        let manifest = oino_extension_api::manifest::Manifest::parse(&format!(
+            r#"{{"apiVersion":"{}","id":"{id}","name":"{id}","version":"1.0.0"}}"#,
+            oino_extension_api::manifest::API_VERSION
+        ))
+        .unwrap();
+        SourcedPackage {
+            package: LoadedPackage {
+                manifest,
+                component: oino_extension_api::ComponentSource::Bytes(Arc::from(&b""[..])),
+                root: None,
+                bundled: false,
+            },
+            project: false,
+        }
+    }
+
+    fn messages(diagnostics: &[Diagnostic]) -> Vec<String> {
+        diagnostics.iter().map(|d| d.message.clone()).collect()
+    }
+
+    #[test]
+    fn exclusion_drops_matching_ids_with_a_diagnostic() {
+        let mut packages = vec![package("unipi.notify"), package("oino.anthropic")];
+        let mut diagnostics = Vec::new();
+        apply_exclusions(
+            &mut packages,
+            &["unipi.notify".to_owned(), "oino.anthropic".to_owned()],
+            &mut diagnostics,
+        );
+        assert!(packages.is_empty());
+        assert_eq!(
+            messages(&diagnostics),
+            vec![
+                "Excluded extension \"unipi.notify\" not loaded".to_owned(),
+                "Excluded extension \"oino.anthropic\" not loaded".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn exclusion_of_an_unmatched_id_only_warns() {
+        let mut packages = vec![package("unipi.notify")];
+        let mut diagnostics = Vec::new();
+        apply_exclusions(
+            &mut packages,
+            &["does.not-exist".to_owned(), "unipi.notify".to_owned()],
+            &mut diagnostics,
+        );
+        assert!(packages.is_empty());
+        assert_eq!(
+            messages(&diagnostics),
+            vec![
+                "Excluded extension \"unipi.notify\" not loaded".to_owned(),
+                "--exclude-extension \"does.not-exist\" matched no extension package".to_owned(),
+            ]
+        );
+        // A warning, never an error: startup continues.
+        assert!(
+            diagnostics
+                .iter()
+                .all(|d| d.severity == crate::cli::args::Severity::Warning)
+        );
+    }
+
+    #[test]
+    fn duplicate_exclusions_do_not_warn() {
+        let mut packages = vec![package("unipi.notify")];
+        let mut diagnostics = Vec::new();
+        apply_exclusions(
+            &mut packages,
+            &["unipi.notify".to_owned(), "unipi.notify".to_owned()],
+            &mut diagnostics,
+        );
+        assert!(packages.is_empty());
+        assert_eq!(messages(&diagnostics).len(), 1);
+    }
+
+    #[test]
+    fn no_exclusions_is_a_noop() {
+        let mut packages = vec![package("unipi.notify")];
+        let mut diagnostics = Vec::new();
+        apply_exclusions(&mut packages, &[], &mut diagnostics);
+        assert_eq!(packages.len(), 1);
+        assert_eq!(diagnostics.len(), 0);
     }
 }

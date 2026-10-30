@@ -131,6 +131,8 @@ pub struct Args {
     pub no_builtin_tools: bool,
     /// `-e` (repeatable).
     pub extensions: Option<Vec<String>>,
+    /// `--exclude-extension` (repeatable, comma lists; WP-X2).
+    pub exclude_extensions: Option<Vec<String>>,
     /// `-ne`.
     pub no_extensions: bool,
     /// `--no-mcp` (accepted, no core MCP).
@@ -190,6 +192,11 @@ fn split_list(value: &str) -> Vec<String> {
 
 fn push(list: &mut Option<Vec<String>>, value: String) {
     list.get_or_insert_with(Vec::new).push(value);
+}
+
+/// Appends every id of one (possibly comma-separated) `--exclude-extension` value.
+fn push_ids(list: &mut Option<Vec<String>>, value: &str) {
+    list.get_or_insert_with(Vec::new).extend(split_list(value));
 }
 
 /// pi `normalizeSessionName`.
@@ -343,6 +350,10 @@ pub fn parse_args(args: &[String]) -> Args {
             "--extension" | "-e" if has_next => {
                 i += 1;
                 push(&mut result.extensions, args[i].clone());
+            }
+            "--exclude-extension" if has_next => {
+                i += 1;
+                push_ids(&mut result.exclude_extensions, &args[i]);
             }
             "--no-extensions" | "-ne" => result.no_extensions = true,
             "--no-mcp" => result.no_mcp = true,
@@ -538,5 +549,26 @@ mod tests {
             parse(&["--name"]).diagnostics[0].message,
             "--name requires a value"
         );
+    }
+
+    #[test]
+    fn exclude_extension_is_repeatable_and_takes_comma_lists() {
+        let args = parse(&[
+            "--exclude-extension",
+            "unipi.kanboard, oino.anthropic ,",
+            "--exclude-extension",
+            "unipi.notify",
+            "-ne",
+        ]);
+        assert_eq!(
+            args.exclude_extensions,
+            Some(vec![
+                "unipi.kanboard".to_owned(),
+                "oino.anthropic".to_owned(),
+                "unipi.notify".to_owned()
+            ])
+        );
+        assert!(args.no_extensions, "-ne is unchanged");
+        assert_eq!(parse(&["--exclude-extension"]).exclude_extensions, None);
     }
 }

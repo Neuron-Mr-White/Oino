@@ -426,6 +426,12 @@ impl Shared {
                     "server": {"name": self.server.name, "version": self.server.version},
                     "protocol": 1,
                     "sessionId": session.session_id(),
+                    "safeMode": self
+                        .runtime
+                        .services()
+                        .safe_mode
+                        .as_ref()
+                        .is_some_and(|plan| plan.disable_extensions),
                 }))
             }
             OinoCommand::UiSnapshot => data(json!({ "requests": session.ui().snapshot() })),

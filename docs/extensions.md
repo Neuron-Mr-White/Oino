@@ -18,8 +18,22 @@ Load order (later packages with the same id replace earlier ones in place):
 4. **Command line** — `-e <package dir>` (repeatable).
 
 `-ne/--no-extensions` skips every `kind: "extension"` package (providers stay loaded, explicit
-`-e` packages still load). `OINO_BUNDLED=0` drops the bundled set. `disabledExtensions` in
-settings disables ids.
+`-e` packages still load). `--exclude-extension <id>` drops composed packages by id —
+repeatable, comma-separated, applied after load-order replacement and before instantiation —
+including explicit `-e` paths and providers (`builtin:` test components are not subject). An
+id that matches nothing warns and is ignored; exclusion never writes settings. `OINO_BUNDLED=0`
+drops the bundled set. `disabledExtensions` in settings disables ids persistently; the CLI
+flag is an ephemeral union with it for one run (excluded either way: not loaded).
+
+## Safe mode
+
+After two consecutive failed starts (services or session creation errors, fatal startup
+diagnostics, or a process that died mid-start), the next start runs with extensions off and
+providers on — the agent stays usable — and a startup warning banner names the recorded
+suspects: `Safe mode: extensions are off after 2 failed starts; suspects: unipi.notify (…)`.
+A successful start resets the counter. The state lives in
+`~/.oino/state/oino.safe-mode.json`; `_oino/hello` reports it as `safeMode`. Manual levers
+are unaffected: `-ne` and `--exclude-extension` work as above in and out of safe mode.
 
 ## Sandbox
 

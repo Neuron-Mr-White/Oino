@@ -57,6 +57,8 @@ Options:
   --thinking <level>             Set thinking level: off, minimal, low, medium, high, xhigh, max
   --extension, -e <path>         Load an extension file or builtin:<name> (can be used multiple times)
   --no-extensions, -ne           Disable extension discovery and built-in extensions (explicit -e paths still work)
+  --exclude-extension <id>       Exclude an extension or provider package by id for this run (repeatable,
+                                 comma-separated; e.g. --exclude-extension unipi.notify,oino.anthropic)
   --skill <path>                 Load a skill file or directory (can be used multiple times)
   --no-skills, -ns               Disable skills discovery and loading
   --prompt-template <path>       Load a prompt template file or directory (can be used multiple times)
@@ -133,6 +135,9 @@ Examples:
 
   # Disable one tool while keeping the rest available
   oino --exclude-tools ask_question
+
+  # Exclude one extension package for this run
+  oino --exclude-extension unipi.kanboard -p "Summarize src/"
 
   # Export a session file to HTML
   oino --export ~/.oino/sessions/--path--/session.jsonl

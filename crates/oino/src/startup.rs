@@ -7,6 +7,7 @@ use oino_ai::{JsonValue, Model, ThinkingLevel};
 use oino_core::builtin::{SessionToolContext, builtin_tool_entries};
 use oino_core::extensions::api::{ExtensionMode, FlagType};
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource, ToolSelection};
+use oino_core::safe_mode::{FailureEntry, FailureStage, SafeMode};
 use oino_core::services::{ResourceFlags, Services, ServicesOptions};
 use oino_models::resolver::{
     CliModelRequest, ModelCatalog, ScopedModel, resolve_cli_model_in, resolve_model_scope_in,
@@ -369,6 +370,7 @@ pub(crate) fn resource_flags(args: &Args, cwd: &Path) -> ResourceFlags {
         system_prompt: args.system_prompt.clone(),
         append_system_prompt: args.append_system_prompt.clone(),
         no_extensions: args.no_extensions,
+        safe_mode: None,
         offline: args.offline,
     }
 }
@@ -446,6 +448,69 @@ pub struct Environment {
     pub agent_dir: PathBuf,
 }
 
+/// How many suspects one failed start may name (the state file keeps 8 entries total).
+const SUSPECT_LIMIT: usize = 3;
+
+/// Extension ids named by startup diagnostics (`Failed to load extension "id": …`,
+/// `Bundled extension "id": …`, `id: …` init/register failures), newest first, deduplicated.
+fn extension_suspects(lines: &[String]) -> Vec<(String, String)> {
+    let id = |text: &str| {
+        let text = text.trim();
+        let valid = |id: &str| {
+            !id.is_empty()
+                && id.split('.').all(|segment| {
+                    let mut chars = segment.chars();
+                    chars
+                        .next()
+                        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+                        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                })
+        };
+        for prefix in ["Failed to load extension \"", "Bundled extension \""] {
+            if let Some(rest) = text.strip_prefix(prefix)
+                && let Some((id, error)) = rest.split_once("\": ")
+                && valid(id)
+            {
+                return Some((id.to_owned(), error.to_owned()));
+            }
+        }
+        if let Some((id, error)) = text.split_once(": ")
+            && valid(id)
+            && !error.is_empty()
+        {
+            return Some((id.to_owned(), error.to_owned()));
+        }
+        None
+    };
+    let mut suspects = Vec::new();
+    for line in lines.iter().rev() {
+        if let Some((id, error)) = id(line)
+            && !suspects
+                .iter()
+                .any(|(known, _): &(String, String)| *known == id)
+        {
+            suspects.push((id, error));
+        }
+    }
+    suspects.truncate(SUSPECT_LIMIT);
+    suspects.reverse();
+    suspects
+}
+
+/// Records a failed start: extension-named diagnostics become the suspects, then the failure
+/// entry (X-SAFE).
+fn record_start_failure(
+    safe_mode: &mut SafeMode,
+    stage: FailureStage,
+    error: String,
+    suspect_lines: &[String],
+) {
+    for (id, error) in extension_suspects(suspect_lines) {
+        safe_mode.note_suspect(&id, error);
+    }
+    safe_mode.record_failure(FailureEntry::new(stage, error));
+}
+
 /// Creates services and the runtime (pi `createRuntime` + `createAgentSessionRuntime`).
 ///
 /// # Errors
@@ -457,22 +522,30 @@ pub struct Environment {
 )]
 pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Started, StartupError> {
     let metadata_only = args.help || args.list_models.is_some();
+    // X-SAFE: load the failed-start counter, mark this start begun (a process death before
+    // the next write counts as a failure) and plan `-ne` semantics (providers stay).
+    let mut safe_mode = SafeMode::load(&env.agent_dir);
+    safe_mode.begin_start();
+    let plan = safe_mode.plan();
     let loader = Arc::new(CliLoader::new(
         args.extensions.clone().unwrap_or_default(),
         &LoaderContext {
             agent_dir: env.agent_dir.clone(),
             cwd: env.cwd.clone(),
             no_extensions: args.no_extensions,
+            exclude_extensions: args.exclude_extensions.clone().unwrap_or_default(),
         },
     ));
     let mut diagnostics: Vec<Diagnostic> = loader.diagnostics().to_vec();
-    let services = Services::create(ServicesOptions {
+    let mut flags = resource_flags(args, &env.cwd);
+    flags.safe_mode = Some(plan);
+    let services = match Services::create(ServicesOptions {
         cwd: env.cwd.clone(),
         agent_dir: env.agent_dir.clone(),
         docs_root: docs_root(&env.agent_dir),
         mode: mode.extension_mode(),
         has_ui: matches!(mode, AppMode::Rpc | AppMode::Interactive),
-        flags: resource_flags(args, &env.cwd),
+        flags,
         extension_flag_values: args.unknown_flags.clone(),
         loader: Arc::clone(&loader) as Arc<dyn oino_core::services::ExtensionLoader>,
         approve: args.project_trust_override,
@@ -480,7 +553,23 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         settings: None,
     })
     .await
-    .map_err(|e| StartupError::one(format!("Error: {e}")))?;
+    {
+        Ok(services) => services,
+        Err(e) => {
+            let error = format!("Error: {e}");
+            record_start_failure(
+                &mut safe_mode,
+                FailureStage::Services,
+                error.clone(),
+                &loader
+                    .diagnostics()
+                    .iter()
+                    .map(|d| d.message.clone())
+                    .collect::<Vec<_>>(),
+            );
+            return Err(StartupError::one(error));
+        }
+    };
     diagnostics.extend(loader.load_errors());
     diagnostics.extend(
         services
@@ -491,7 +580,15 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
     let (extension_flags, boolean_flags) = check_extension_flags(args, &services, &mut diagnostics);
     let root = services.sessions_root(args.session_dir.as_deref().map(Path::new));
     let project_trusted = services.project_trusted;
-    let source = session_source(args, metadata_only, &env.cwd, &root)?;
+    // Session selection and `--name` are user input, not host failures (X-SAFE): they clear
+    // the begun marker without counting.
+    let source = match session_source(args, metadata_only, &env.cwd, &root) {
+        Ok(source) => source,
+        Err(error) => {
+            safe_mode.end_start();
+            return Err(error);
+        }
+    };
     let has_existing = has_existing_session(&source, &env.cwd, &root);
     let choice = choose_model(args, &services, has_existing, &mut diagnostics);
     if let Some(key) = &args.api_key {
@@ -503,10 +600,13 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         }
     }
     let name = match &args.name {
-        Some(raw) => Some(
-            normalize_session_name(raw)
-                .ok_or_else(|| StartupError::one("Error: --name requires a non-empty value"))?,
-        ),
+        Some(raw) if normalize_session_name(raw).is_none() => {
+            safe_mode.end_start();
+            return Err(StartupError::one(
+                "Error: --name requires a non-empty value",
+            ));
+        }
+        Some(raw) => normalize_session_name(raw),
         None => None,
     };
     let context = Arc::new(SessionToolContext::default());
@@ -529,9 +629,22 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         builtin_tools,
         custom_tools: Vec::new(),
     };
-    let runtime = AgentSessionRuntime::create(Arc::clone(&services), options)
-        .await
-        .map_err(|e| StartupError::one(format!("Error: {e}")))?;
+    let runtime = match AgentSessionRuntime::create(Arc::clone(&services), options).await {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            let error = format!("Error: {e}");
+            let mut lines = diagnostics
+                .iter()
+                .map(|d| d.message.clone())
+                .collect::<Vec<_>>();
+            lines.extend(loader.load_errors().iter().map(|d| d.message.clone()));
+            lines.extend(services.diagnostics.iter().cloned());
+            record_start_failure(&mut safe_mode, FailureStage::Session, error.clone(), &lines);
+            return Err(StartupError::one(error));
+        }
+    };
+    // First session bound: the start succeeded (X-SAFE success reset).
+    safe_mode.record_success();
     let session = runtime.session();
     context.bind(&session);
     let runner = session.runner();
@@ -559,6 +672,26 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
             lines.push(EXTENSION_LOAD_FAILURE_HINT.to_owned());
         }
         runtime.dispose().await;
+        // Fatal startup diagnostics (a broken `-e` package, an invalid flag value) failed the
+        // start: record it with the extension suspects (X-SAFE).
+        let mut suspect_lines = diagnostics
+            .iter()
+            .map(|d| d.message.clone())
+            .collect::<Vec<_>>();
+        suspect_lines.extend(loader.load_errors().iter().map(|d| d.message.clone()));
+        let error = diagnostics
+            .iter()
+            .find(|d| d.severity == crate::cli::args::Severity::Error)
+            .map_or_else(
+                || "startup diagnostics reported errors".to_owned(),
+                |d| d.message.clone(),
+            );
+        record_start_failure(
+            &mut safe_mode,
+            FailureStage::Services,
+            error,
+            &suspect_lines,
+        );
         return Err(StartupError(lines));
     }
     if mode != AppMode::Interactive && session.model().is_none() {
@@ -573,6 +706,8 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         let mut lines = crate::report_lines(&diagnostics);
         lines.push(message);
         runtime.dispose().await;
+        // A model-configuration problem, not a host failure (X-SAFE).
+        safe_mode.end_start();
         return Err(StartupError(lines));
     }
     Ok(Started {
@@ -582,4 +717,58 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         sessions_root: root,
         project_trusted,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extension_suspects_names_extension_failures() {
+        let lines = vec![
+            "unipi.notify: init failed: boom".to_owned(),
+            "Excluded extension \"unipi.notify\" not loaded".to_owned(),
+            "Failed to load extension \"unipi.kanboard\": no component.wasm".to_owned(),
+            "Bundled extension \"oino.docs\": extract failed".to_owned(),
+            "Unknown option: --nope".to_owned(),
+        ];
+        assert_eq!(
+            extension_suspects(&lines),
+            vec![
+                ("unipi.notify".to_owned(), "init failed: boom".to_owned()),
+                ("unipi.kanboard".to_owned(), "no component.wasm".to_owned()),
+                ("oino.docs".to_owned(), "extract failed".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extension_suspects_deduplicates_and_caps() {
+        let lines = vec![
+            "Failed to load extension \"a.b\": one".to_owned(),
+            "a.b: init failed: two".to_owned(),
+            "Failed to load extension \"c.d\": three".to_owned(),
+            "Failed to load extension \"e.f\": four".to_owned(),
+        ];
+        // Newest first, deduplicated by id (the newest error wins), capped at SUSPECT_LIMIT.
+        assert_eq!(
+            extension_suspects(&lines),
+            vec![
+                ("a.b".to_owned(), "init failed: two".to_owned()),
+                ("c.d".to_owned(), "three".to_owned()),
+                ("e.f".to_owned(), "four".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extension_suspects_ignores_unrelated_lines() {
+        let lines = vec![
+            "Duplicate extension id unipi.notify ignored".to_owned(),
+            "Skipped extension package /tmp/x: bad manifest".to_owned(),
+            "No session found matching 'zzz'".to_owned(),
+            "Uppercase Id: not an extension".to_owned(),
+        ];
+        assert_eq!(extension_suspects(&lines).len(), 0);
+    }
 }
