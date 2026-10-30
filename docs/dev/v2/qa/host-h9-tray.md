@@ -49,3 +49,26 @@ so the owner's real `~/.oino/host` and the live old unipi are never touched.
 | 12 | Host update in `prompt` mode (`unipi-host update --mode prompt`), then point `UNIPI_UPDATE_FEED` at a local manifest with a newer version and restart `serve` | Within a minute `<host dir>/notices.json` holds one `{"kind":"update-available", …}`; nothing is installed; `unipi-host update --check` says it is available |
 | 13 | Host update in `auto` mode with the same faux feed | `serve` replaces the binary, logs `binary replaced; exiting for a restart`; the app supervisor respawns it within its backoff and the new version reports `--version`; a **manual** `serve` prints `restarted binary; rerun unipi-host serve` and exits |
 | 14 | Crash banner | Kill the app-managed host 3× in a row: the UI banner appears after the third restart (`Failing { failures: 3 }`); restarting the app adopts/spawns again |
+
+## Live `serve` runs (this PC, Linux, 2026-10-30)
+
+A **copy** of `target/debug/unipi-host` run with
+`OINO_HOST_DIR=/tmp/h9e2e/host UNIPI_UPDATE_FEED=file:///tmp/h9e2e/feed/release-manifest.json
+./bin/unipi-host serve --mode manual --relay https://127.0.0.1:9 --relay-only`
+(no real `~/.oino/host`, nothing under `~/.unipi`/`~/.pi`; the throwaway dir was
+deleted afterwards):
+
+1. **`update.mode: auto`**, faux manifest `9.9.9` (a `file://` "binary" that
+   prints `unipi-host 9.9.9`): exactly 60 s after `host ready` the log shows
+   `updated unipi-host latest="9.9.9" hint=restarted binary; rerun unipi-host serve`,
+   the process prints `restarted binary; rerun unipi-host serve`, logs
+   `binary replaced; exiting for a restart` and exits **0** (the app supervisor's
+   respawn path); `./bin/unipi-host --version` then says `unipi-host 9.9.9`.
+   No `notices.json` (auto does not notify).
+2. **`update.mode: prompt`**, faux manifest `9.9.10`: `<host dir>/notices.json` gets
+   `[{"kind":"update-available","message":"UniPi host 9.9.10 is available (this is 1.0.0).","version":"9.9.10"}]`,
+   the log says `update available (prompt mode)`, the process **keeps running**
+   and `--version` still says `1.0.0` (nothing installed).
+
+`events_open`/`HostNotice` (WP-H4) is not in the tree yet: `update::take_notices(paths)`
+is the hook H4 drains, `update::pending_notices` inspects without clearing.
