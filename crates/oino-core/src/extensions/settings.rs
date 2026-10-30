@@ -631,7 +631,7 @@ impl ExtensionSettings {
             }
         }
         let owner = registered.as_ref().map(|n| n.owner.clone());
-        if field.is_some() && registered.as_ref().is_some_and(|ns| ns.is_secret(key)) {
+        if registered.as_ref().is_some_and(|ns| ns.is_secret(key)) {
             let Some(store) = &self.secrets else {
                 return Err(ExtensionSettingsError::Invalid(
                     "secret settings are not available in this host".into(),
