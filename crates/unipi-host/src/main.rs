@@ -6,7 +6,7 @@ use unipi_host::{
 #[command(
     name = "unipi-host",
     version,
-    about = "UniPi host: lets the UniPi app reach herdr/tmux sessions and pi chats on this machine"
+    about = "UniPi host: one per user — agent sessions, terminal, files, git, browser and cron for the UniPi app (this PC's app over app.sock, paired phones over iroh)"
 )]
 struct Cli {
     #[arg(long, global = true)]
