@@ -1065,6 +1065,19 @@ impl Handler {
                 };
                 crate::sessions::stream::serve_request(&service, req, read, write).await?;
             }
+            Request::LspServers { .. } | Request::LspOpen { .. } => {
+                // app spec §3.12 (WP-A21): like the PTYs, the language
+                // servers live in this host process — one per
+                // (root, language), outliving the stream that opened it.
+                crate::lsp::serve_request(
+                    crate::lsp::LspRegistry::shared(),
+                    &self.paths,
+                    req,
+                    read,
+                    write,
+                )
+                .await?;
+            }
             Request::TermOpen { .. }
             | Request::TermAttach { .. }
             | Request::TermList

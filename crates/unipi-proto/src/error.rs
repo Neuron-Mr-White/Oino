@@ -50,6 +50,10 @@ pub enum AppErrorCode {
     /// UNI-217: a git command failed (not a repo, conflict, push rejected,
     /// auth needed…); `message` is git's own text, `hint` the next step.
     E_GIT,
+    /// app spec §3.12 (WP-A21): another client attached to the language
+    /// server this stream was using — editing still works, the language
+    /// features moved ("Take back" re-attaches).
+    E_LSP_TAKEN,
 }
 
 impl AppErrorCode {

@@ -25,6 +25,7 @@ import {
 } from 'lucide-solid';
 import type { TreeRow } from '../../lib/files/tree';
 import type { IconComponent } from '../../lib/panes/kinds';
+import { diagFor } from '../../lib/lsp/diagnostics';
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif', 'ico']);
 const VIDEO_EXTS = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v']);
@@ -63,6 +64,7 @@ export function TreeRowView(props: {
 }) {
   const row = () => props.row;
   const isDir = () => row().kind === 'dir' || row().kind === 'root';
+  const diag = () => diagFor(row().path);
   return (
     <div
       class="ftree-row"
@@ -113,6 +115,15 @@ export function TreeRowView(props: {
           <span class="ftree-err" role="note">unavailable</span>
         </Match>
       </Switch>
+      <Show when={!isDir() && diag() !== undefined}>
+        <span
+          class="ftree-diag"
+          classList={{ err: !!diag()!.errors }}
+          aria-label={diag()!.errors ? `${diag()!.errors} errors` : `${diag()!.warnings} warnings`}
+        >
+          {diag()!.errors || diag()!.warnings}
+        </span>
+      </Show>
       <Show when={row().git}>
         <span class="ftree-git" data-git={row().git} aria-label={GIT_LABEL[row().git ?? ''] ?? row().git}>
           {row().git}

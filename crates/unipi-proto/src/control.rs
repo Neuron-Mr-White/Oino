@@ -634,6 +634,31 @@ pub enum Request {
     /// host.md §7.2/§4.2 (WP-H4): every session the host knows, newest activity
     /// first — a lazy list (headers only, no runtime loaded) merged with the
     /// host's live cards. → `[SessionCard, …]` (bare array, like `term_list`).
+    /// app spec §3.12 (WP-A21): the project root for `path` (nearest
+    /// ancestor with a marker, inside the fs scope) plus every language
+    /// server the host knows — configured or built-in — with its command
+    /// and whether the binary is on PATH. → `ok{data:LspServersData}`.
+    LspServers {
+        path: FsPath,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        outside: Option<bool>,
+    },
+    /// app spec §3.12 (WP-A21): attach to the host's language server for
+    /// `(root, language)` — spawned on first attach, one client at a time
+    /// (a second attach ends the previous stream with `E_LSP_TAKEN`).
+    /// → `ok{data:LspAttachData}` then raw LSP stdio bytes: kind-1 frames
+    /// server→app, kind-2 frames app→server, `exit` when the server dies.
+    /// `command` must stay absent: servers come from the host's settings
+    /// (`lsp.servers.<language>.command`), never from a request.
+    LspOpen {
+        root: FsPath,
+        language: crate::lsp::LspLanguage,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        outside: Option<bool>,
+        /// Rejected when present — the app names a language, not a binary.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        command: Option<String>,
+    },
     SessionsList,
     /// host.md §7.4 (WP-H4): the one per-connection hub event stream. The host
     /// answers `ok{data:null}`, then pushes `session_changed` / `session_removed`

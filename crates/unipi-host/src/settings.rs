@@ -120,6 +120,13 @@ fn validate(key: &str, merged: &Value) -> Result<(), AppErrorDto> {
         serde_json::from_value::<crate::fs_scope::FsAccessConfig>(fs.clone())
             .map_err(|e| bad(format!("fs: {e}")))?;
     }
+    if let Some(lsp) = object.get("lsp") {
+        // app spec §3.12 (WP-A21): `lsp.enabled`, `lsp.idle_minutes`,
+        // `lsp.servers.<language>.command` — the block's own loader is
+        // the schema, like browser/sharing/cron.
+        serde_json::from_value::<crate::lsp::LspConfig>(lsp.clone())
+            .map_err(|e| bad(format!("lsp: {e}")))?;
+    }
     if let Some(term) = object.get("term") {
         let term = serde_json::from_value::<crate::term::TermConfig>(term.clone())
             .map_err(|e| bad(format!("term: {e}")))?;
@@ -264,11 +271,13 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let paths = HostPaths::from_dir(temp.path());
         assert!(set(&paths, &request("relay", serde_json::json!("n0"))).is_ok());
-        assert!(set(
-            &paths,
-            &request("relay", serde_json::json!("https://relay.example"))
-        )
-        .is_ok());
+        assert!(
+            set(
+                &paths,
+                &request("relay", serde_json::json!("https://relay.example"))
+            )
+            .is_ok()
+        );
         let relay = RelayConfig::load(&paths);
         assert_eq!(relay.relay.as_deref(), Some("https://relay.example"));
         assert!(!relay.relay_only);

@@ -38,6 +38,7 @@ mod lifecycle;
 mod hosts_commands;
 mod local_files;
 mod local_host;
+mod lsp;
 #[cfg(target_os = "ios")]
 mod ios_webview;
 mod net;
@@ -56,6 +57,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .manage(net::NetState::default())
         .manage(term::TermRegistry::new())
+        .manage(lsp::LspRegistry::new())
         .manage(chat::SessionStreams::default())
         .manage(forward::ForwardRegistry::default())
         .manage(browser::BrowserStreams::default())
@@ -76,6 +78,10 @@ pub fn run() {
             hosts_commands::mux_preview,
             hosts_commands::mux_action,
             hosts_commands::shortcuts,
+            lsp::lsp_list,
+            lsp::lsp_open,
+            lsp::lsp_write,
+            lsp::lsp_close,
             term::term_open,
             term::term_input,
             term::term_resize,

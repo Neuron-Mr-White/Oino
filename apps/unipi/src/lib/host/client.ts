@@ -84,6 +84,10 @@ export interface TermStream extends Closable {
 
 export type LspRequest = { root: string; language: string };
 export interface LspSink {
+  /** The `lsp_open` reply's `LspAttachData` (`{server, attached,
+   *  initialize_result}` — app spec §3.12): fires once when the attach
+   *  succeeded, before any `message`. Optional for test doubles. */
+  attached?(data: unknown): void;
   message(json: unknown): void;
   closed(error?: AppError): void;
 }

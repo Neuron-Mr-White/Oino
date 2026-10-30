@@ -29,6 +29,10 @@
  --md-diff-hunk-fg: var(--color-text-dim);
 }
 :root { color-scheme: dark; font-family: var(--font-sans); background: var(--color-bg); color: var(--color-text); }
+/* Appearance (WP-A24, Z-114): the prose + code scale the settings drive.
+   Defaults match the pre-A24 sizes; `settings/appearance.ts` overrides them
+   on the root's inline style. The root font-size itself is never touched. */
+:root { --ui-font-size: 15px; --code-font-size: 13px; --code-wrap: pre; --md-font-size: var(--ui-font-size); }
 body { margin: 0; overflow: hidden; }
 @layer base { button, input, a { min-height: 44px; } }
 button, a, input { transition: background-color 180ms ease-out, color 180ms ease-out; }
@@ -36,7 +40,7 @@ button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--color-shell); outline-offset: 3px; }
 .app-shell { height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
-.app-content { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px; }
+.app-content { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px; font-size: var(--ui-font-size, 15px); }
 /* Main pages (Sessions, Board, Settings): the last row must scroll clear
    of the bottom nav, never end flush under it. */
 .app-content::after { content:''; display:block; height:32px; }
@@ -334,7 +338,7 @@ html.qr-scanning .app-shell, html.qr-scanning [data-corvu-drawer-content], html.
 .md .cb-lang { font-family: var(--font-mono); font-size: 11px; line-height: 18px; color: var(--color-text-dim); }
 .md .cb-copy { min-height: 28px; padding: 0 10px; border-radius: 9px; font-size: 12px; color: var(--color-text-muted); background: transparent; }
 .md .cb pre { margin: 0; padding: 10px 12px 12px; overflow-x: auto; background: transparent; box-shadow: none; border-radius: 0 0 14px 14px; -webkit-overflow-scrolling: touch; }
-.md .cb pre code { font-family: var(--font-mono); font-size: 12.5px; line-height: 19px; white-space: pre; padding: 0; background: none; }
+.md .cb pre code { font-family: var(--font-mono); font-size: var(--code-font-size, 12.5px); line-height: 19px; white-space: var(--code-wrap, pre); padding: 0; background: none; }
 .md .cb-head-actions { display: flex; align-items: center; gap: 2px; }
 .md .cb.line-numbers pre { counter-reset: cb-line; }
 .md .cb.line-numbers pre code { display: block; }
@@ -495,3 +499,15 @@ code.task-ref { text-decoration: underline dotted; }
 .chat-injected-chip .chat-chev { margin-left: 2px; }
 button.chat-injected-chip:active { background: var(--color-surface-2); }
 .chat-injected-body { align-self: stretch; max-width: 100%; margin-top: 2px; padding: 8px 12px; border-radius: 14px; box-shadow: inset 0 0 0 1px rgb(46 40 37 / 75%); font-size: 13px; line-height: 19px; color: var(--color-text-muted); max-height: 320px; overflow: auto; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+
+/* Settings › Editor › Language servers (WP-A21): the host's lsp roster. */
+.lsp-settings { padding: 4px 0 8px; }
+.lsp-list { list-style: none; margin: 0; padding: 0; }
+.lsp-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--color-line); }
+.lsp-row:last-child { border-bottom: 0; }
+.lsp-lang { flex: none; min-width: 72px; font-family: var(--font-mono); font-size: 12px; color: var(--color-text); }
+.lsp-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: var(--color-text-muted); }
+.lsp-state { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-text-muted); }
+.lsp-state.ok { color: var(--color-ok, #7fb069); }
+.lsp-state.missing { color: var(--color-warn, #d9a13b); }
+.lsp-note { margin: 8px 0 0; font-size: 12px; color: var(--color-text-dim); }

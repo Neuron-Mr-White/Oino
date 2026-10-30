@@ -236,3 +236,48 @@ export const filesPreview: MockScenario = {
     }, 400);
   },
 };
+
+/** The editor scenarios (WP-A21): `editor-lsp` opens `tree.ts` with the
+ *  scripted mock server — attach → didOpen → diagnostics badge on the tab
+ *  + the tree row, `LspStatus` shows `ready`; `editor-conflict` opens the
+ *  same file but the mock `E_LSP_TAKEN`s the attach 1.2 s later — the
+ *  chip shows `taken` (clicking it takes the attach back). */
+const lspHosts = (taken?: boolean) => [
+  {
+    id: HOST,
+    name: 'workstation',
+    transport: 'local' as const,
+    conn: { state: 'connected' as const },
+    cards,
+    fs: FS,
+    sessions: { f1: session },
+    lsp: {
+      name: 'typescript-language-server',
+      diagnostics: [
+        { severity: 1, message: "'mockUnused' is declared but never used" },
+        { severity: 2, message: 'mock warning — an unused import' },
+      ],
+      taken,
+    },
+  },
+];
+
+export const editorLsp: MockScenario = {
+  name: 'editor-lsp',
+  hosts: lspHosts(),
+  setup: () => {
+    seed();
+    openFiles();
+    expand(`${CWD}/src`, `${CWD}/src/lib`, `${CWD}/src/lib/files`);
+  },
+};
+
+export const editorConflict: MockScenario = {
+  name: 'editor-conflict',
+  hosts: lspHosts(true),
+  setup: () => {
+    seed();
+    openFiles();
+    expand(`${CWD}/src`, `${CWD}/src/lib`, `${CWD}/src/lib/files`);
+  },
+};

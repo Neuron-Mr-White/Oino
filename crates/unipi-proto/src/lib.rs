@@ -17,6 +17,7 @@ pub mod forward;
 pub mod frame;
 pub mod fs;
 pub mod git;
+pub mod lsp;
 pub mod paths;
 pub mod push;
 pub mod session;
@@ -53,6 +54,7 @@ pub use cron::{
     CronShowData, CronStatusData, CronStoppedData, CronWake, CRON_NAME_MAX, CRON_PARSE_PREVIEW,
     CRON_PROMPT_MAX, CRON_RUNS_LIMIT_MAX,
 };
+pub use lsp::{LspAttachData, LspLanguage, LspServerInfo, LspServersData, LSP_LANGUAGE_MAX};
 pub use error::{AppErrorCode, AppErrorDto, PathSegment, ProtoError};
 pub use forward::{ForwardPort, ListeningPort, PortsListData};
 pub use frame::{DecodedFrame, Decoder, FrameError, FrameKind, FRAME_HEADER_LEN, MAX_FRAME};

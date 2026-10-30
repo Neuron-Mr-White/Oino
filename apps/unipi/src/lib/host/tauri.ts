@@ -14,11 +14,14 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { createSignal } from 'solid-js';
 import { toAppError, type AppError } from '@unipi/protocol';
+import { LspFrameParser, encodeMessage } from '../lsp/framing';
 import {
   APP_HOST,
   isUnreachableCode,
   unavailableError,
+  type LspRequest,
   type Closable,
+  type EventsStream,
   type HostClient,
   type HostConn,
   type HubEvent,
@@ -71,9 +74,8 @@ export function createTauriHost(hostId: string): HostClient {
       queueMicrotask(() => sink.exit());
       return { write() {}, resize() {}, close() {} };
     },
-    openLsp(_req, sink: LspSink): LspStream {
-      queueMicrotask(() => sink.closed(unavailableError('Language servers')));
-      return { send() {}, close() {} };
+    openLsp(req: LspRequest, sink: LspSink): LspStream {
+      return openLspChannel(hostId, req, sink);
     },
   };
 }
@@ -164,7 +166,7 @@ function openSessionChannel(hostId: string, req: OpenSessionRequest, sink: Sessi
   };
 }
 
-function openEventsChannel(hostId: string, sink: (event: HubEvent) => void, closed?: (error?: AppError) => void): Closable {
+function openEventsChannel(hostId: string, sink: (event: HubEvent) => void, closed?: (error?: AppError) => void): EventsStream {
   let streamId: string | undefined;
   let ended = false;
   let closing = false;
@@ -180,18 +182,121 @@ function openEventsChannel(hostId: string, sink: (event: HubEvent) => void, clos
     else if (msg.kind === 'closed') end();
     else if (msg.kind === 'error') end(channelError(msg));
   };
+  // The focus of the moment, sent as soon as the stream id resolves (§3.14).
+  let pendingFocus: string | null | undefined;
+  const sendFocus = (id: string, session: string | null) =>
+    void invoke('events_focus', { streamId: id, session }).catch(() => {});
   void invoke<string>('events_open', { hostId, onEvent: channel }).then(
     (id) => {
       streamId = id;
+      if (pendingFocus !== undefined) sendFocus(id, pendingFocus);
       if (closing) hangUp('events_close', id);
     },
     (error: unknown) => end(toAppError(error)),
   );
   return {
+    focus(session: string | null) {
+      // §3.14: the focus rides this connection; a lost frame just means the
+      // host keeps last known state until the next route change reports again.
+      pendingFocus = session;
+      if (!streamId || ended) return;
+      sendFocus(streamId, session);
+    },
     close() {
       closing = true;
       ended = true;
       if (streamId) hangUp('events_close', streamId);
+    },
+  };
+}
+
+/** Events the `lsp.rs` reader task emits on `onEvent` (src-tauri lsp.rs `LspEvent`). */
+type LspEventMsg =
+  | { type: 'taken'; code: string; message: string }
+  | { type: 'exit'; code: number | null }
+  | { type: 'closed'; error?: AppError };
+
+let lspSeq = 0;
+
+/**
+ * One LSP stream (`lsp_open`): kind-1 bytes → `Content-Length` framed
+ * messages → `sink.message` as JSON strings; `send` frames the client's
+ * JSON-RPC and goes via `lsp_write`; `lsp_close` detaches (the host keeps
+ * the server warm). The `lsp_open` reply's attach data reaches
+ * `sink.attached` once (§3.12).
+ */
+function openLspChannel(hostId: string, req: LspRequest, sink: LspSink): LspStream {
+  const lspId = `lsp-${++lspSeq}`;
+  const parser = new LspFrameParser();
+  let ended = false;
+  let closing = false;
+  const pending: string[] = [];
+  let openedOk = false;
+  const end = (error?: AppError) => {
+    if (ended) return;
+    ended = true;
+    sink.closed(error);
+  };
+
+  const onData = new Channel<Uint8Array>();
+  onData.onmessage = (bytes) => {
+    if (ended) return;
+    try {
+      for (const message of parser.push(bytes)) sink.message(message);
+    } catch (error) {
+      end(toAppError(error));
+    }
+  };
+  const onEvent = new Channel<LspEventMsg>();
+  onEvent.onmessage = (event) => {
+    if (ended) return;
+    switch (event.type) {
+      case 'taken':
+        end({ code: 'E_LSP_TAKEN', message: event.message, retryable: false } as AppError);
+        return;
+      case 'exit':
+        end({ code: 'E_TRANSPORT', message: `The language server exited${event.code === null ? '' : ` (${event.code})`}`, retryable: false } as AppError);
+        return;
+      case 'closed':
+        end(event.error);
+        return;
+      default:
+        return;
+    }
+  };
+
+  const write = (body: string) => invoke('lsp_write', { lspId, data: Array.from(encodeMessage(body)) }).catch(() => {});
+  const opened = invoke<{ server: string; attached: boolean; initializeResult: unknown }>('lsp_open', {
+    hostId,
+    lspId,
+    root: req.root,
+    language: req.language,
+    onData,
+    onEvent,
+  }).then(
+    (result) => {
+      openedOk = true;
+      sink.attached?.({ server: result.server, attached: result.attached, initialize_result: result.initializeResult });
+      for (const body of pending.splice(0)) void write(body);
+      if (closing) void invoke('lsp_close', { lspId }).catch(() => {});
+    },
+    (error: unknown) => end(toAppError(error)),
+  );
+
+  return {
+    send(json: unknown) {
+      if (ended) return;
+      const body = typeof json === 'string' ? json : JSON.stringify(json);
+      if (openedOk) void write(body);
+      else {
+        pending.push(body);
+        void opened;
+      }
+    },
+    close() {
+      closing = true;
+      ended = true;
+      if (openedOk) void invoke('lsp_close', { lspId }).catch(() => {});
     },
   };
 }

@@ -101,7 +101,7 @@ export function FilesTab(props: PaneTabProps) {
           }
         >
           <div class="files-tab-editor">
-            <EditorArea onBinary={(path) => preview(path, [path])} />
+            <EditorArea root={root} onBinary={(path) => preview(path, [path])} />
           </div>
           <ResizeHandle
             axis="x"

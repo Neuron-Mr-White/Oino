@@ -17,6 +17,7 @@ pub mod instance;
 pub mod ipc;
 pub mod local;
 pub mod logging;
+pub mod lsp;
 pub mod notify;
 pub mod pair_cli;
 pub mod pair_link;

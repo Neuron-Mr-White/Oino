@@ -251,6 +251,19 @@ export type {
   GitSyncData,
   GitShortstatData,
 } from "./git.js";
+export {
+  LSP_LANGUAGE_MAX,
+  LspLanguageSchema,
+  LspServerInfoSchema,
+  LspServersDataSchema,
+  LspAttachDataSchema,
+} from "./lsp.js";
+export type {
+  LspLanguage,
+  LspServerInfo,
+  LspServersData,
+  LspAttachData,
+} from "./lsp.js";
 
 export {
   HOST_SETTINGS_KEYS,

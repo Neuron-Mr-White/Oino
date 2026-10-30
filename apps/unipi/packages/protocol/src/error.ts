@@ -28,6 +28,7 @@ export const AppErrorCodeSchema = z.enum([
   "E_DESKTOP_DISABLED",
   "E_DESKTOP_UNAVAILABLE",
   "E_GIT",
+  "E_LSP_TAKEN",
 ]);
 
 export type AppErrorCode = z.infer<typeof AppErrorCodeSchema>;
