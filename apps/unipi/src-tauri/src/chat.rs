@@ -149,6 +149,10 @@ async fn hello_reply<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 
 /// Sends `hello` and returns the host's `ok` data (or its error).
+/// Only the tests drive a bare request/response pair now (the commands
+/// all stream or use `hello_reply` through `open_reply`), so it lives
+/// with them.
+#[cfg(test)]
 pub(crate) async fn request<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     send: &mut W,
     recv: &mut R,
@@ -556,6 +560,7 @@ pub async fn session_new(
 
 /// `session_fork` (host.md §4.2): fork a session and keep the fork as the stream.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn session_fork(
     app: tauri::AppHandle,
     state: State<'_, NetState>,
@@ -866,9 +871,7 @@ pub async fn events_focus(
     };
     let frame = control_frame(&Control::Focus { session })?;
     let mut send = send.lock().await;
-    send.write_all(&frame)
-        .await
-        .map_err(|error| transport(error))?;
+    send.write_all(&frame).await.map_err(transport)?;
     Ok(())
 }
 

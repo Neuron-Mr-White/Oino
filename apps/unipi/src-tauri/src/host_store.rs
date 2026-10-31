@@ -109,18 +109,6 @@ pub fn remove_host(dir: &Path, id: &str) -> Result<bool, AppErrorDto> {
     Ok(removed)
 }
 
-/// Updates the `last_path` of the host with the given `id`, if
-/// present. No-op (not an error) if the host isn't found, since the
-/// connection may have outlived a `forget_host`.
-pub fn record_last_path(dir: &Path, id: &str, path: PathKind) -> Result<(), AppErrorDto> {
-    let mut hosts = read_hosts(dir)?;
-    if let Some(host) = hosts.iter_mut().find(|h| h.id == id) {
-        host.last_path = Some(path);
-        write_hosts(dir, &hosts)?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,23 +184,6 @@ mod tests {
         upsert_host(dir.path(), sample("a")).expect("upsert");
         let removed = remove_host(dir.path(), "nope").expect("remove");
         assert!(!removed);
-    }
-
-    #[test]
-    fn record_last_path_updates_matching_host() {
-        let dir = tempfile_dir();
-        upsert_host(dir.path(), sample("a")).expect("upsert");
-        record_last_path(dir.path(), "a", PathKind::Lan).expect("record");
-        let hosts = read_hosts(dir.path()).expect("read");
-        assert_eq!(hosts[0].last_path, Some(PathKind::Lan));
-    }
-
-    #[test]
-    fn record_last_path_on_missing_host_is_a_noop() {
-        let dir = tempfile_dir();
-        record_last_path(dir.path(), "nope", PathKind::Relay).expect("record");
-        let hosts = read_hosts(dir.path()).expect("read");
-        assert!(hosts.is_empty());
     }
 
     /// Minimal self-cleaning temp dir, so we don't need the `tempfile`

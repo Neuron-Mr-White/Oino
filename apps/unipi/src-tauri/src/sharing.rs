@@ -741,11 +741,11 @@ mod tests {
             .unwrap();
         assert_eq!(s["desktop"]["view_only"], true);
         let s = sharing_change(SharingChange::Disable {
-            feature: FeatureKind::Desktop,
+            feature: FeatureKind::Browser,
         })
         .await
         .unwrap();
-        assert_eq!(s["desktop"]["enabled"], false);
+        assert_eq!(s["browser"]["enabled"], false);
         let s = status_json(bin).await.unwrap();
         assert!(s["host_dir"].as_str().unwrap().starts_with("/tmp"));
     }

@@ -385,7 +385,7 @@ pub fn decode_frame(kind: u8, payload: &[u8]) -> Result<Decoded, Decoded> {
                 Control::Exit { code } => Ok(Decoded::Event(LspEvent::Exit { code })),
                 Control::Err { error } if error.code == AppErrorCode::E_LSP_TAKEN => {
                     Ok(Decoded::Event(LspEvent::Taken {
-                        code: serde_json::to_value(&error.code)
+                        code: serde_json::to_value(error.code)
                             .ok()
                             .and_then(|v| v.as_str().map(str::to_string))
                             .unwrap_or_else(|| "E_LSP_TAKEN".into()),
@@ -485,7 +485,7 @@ mod tests {
             Decoded::Event(LspEvent::Taken { .. })
         ));
         let gone = serde_json::to_vec(&Control::Err {
-            error: AppErrorDto::new(AppErrorCode::E_GONE, "gone", false),
+            error: AppErrorDto::new(AppErrorCode::E_NOT_FOUND, "gone", false),
         })
         .unwrap();
         assert!(matches!(

@@ -29,17 +29,12 @@ pub type LocalRead = tokio::io::ReadHalf<tokio::net::windows::named_pipe::NamedP
 pub enum OpSend {
     Iroh(iroh::endpoint::SendStream),
     Local(LocalWrite),
-    /// Tests: an in-memory pipe.
-    #[cfg(test)]
-    Duplex(tokio::io::WriteHalf<tokio::io::DuplexStream>),
 }
 
 /// The receiving half of an op.
 pub enum OpRecv {
     Iroh(iroh::endpoint::RecvStream),
     Local(LocalRead),
-    #[cfg(test)]
-    Duplex(tokio::io::ReadHalf<tokio::io::DuplexStream>),
 }
 
 /// Why `finish` failed (QUIC: the stream was already closed).
@@ -67,8 +62,6 @@ impl OpSend {
             // when the connection goes away (it frames by length meanwhile).
             #[cfg(windows)]
             OpSend::Local(_) => Ok(()),
-            #[cfg(test)]
-            OpSend::Duplex(_) => Ok(()),
         }
     }
 }
@@ -111,24 +104,18 @@ impl AsyncWrite for OpSend {
                 .poll_write(cx, buf)
                 .map_err(std::io::Error::other),
             OpSend::Local(w) => Pin::new(w).poll_write(cx, buf),
-            #[cfg(test)]
-            OpSend::Duplex(w) => Pin::new(w).poll_write(cx, buf),
         }
     }
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             OpSend::Iroh(s) => Pin::new(s).poll_flush(cx).map_err(std::io::Error::other),
             OpSend::Local(w) => Pin::new(w).poll_flush(cx),
-            #[cfg(test)]
-            OpSend::Duplex(w) => Pin::new(w).poll_flush(cx),
         }
     }
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             OpSend::Iroh(s) => Pin::new(s).poll_shutdown(cx).map_err(std::io::Error::other),
             OpSend::Local(w) => Pin::new(w).poll_shutdown(cx),
-            #[cfg(test)]
-            OpSend::Duplex(w) => Pin::new(w).poll_shutdown(cx),
         }
     }
 }
@@ -144,8 +131,6 @@ impl AsyncRead for OpRecv {
                 .poll_read(cx, buf)
                 .map_err(std::io::Error::other),
             OpRecv::Local(r) => Pin::new(r).poll_read(cx, buf),
-            #[cfg(test)]
-            OpRecv::Duplex(r) => Pin::new(r).poll_read(cx, buf),
         }
     }
 }

@@ -378,6 +378,7 @@ pub async fn fs_read(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn fs_write(
     app: tauri::AppHandle,
     state: tauri::State<'_, NetState>,

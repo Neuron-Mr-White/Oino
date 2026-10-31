@@ -244,9 +244,10 @@ mod offline_e2e {
     static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[tokio::test(flavor = "multi_thread")]
+    #[allow(clippy::await_holding_lock)] // deliberate: serialise env-mutating host tests
     async fn this_computer_works_with_no_network() {
-        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/debug/unipi-host");
+        let bin =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/unipi-host");
         if !bin.exists() {
             eprintln!("SKIP: build unipi-host first ({})", bin.display());
             return;

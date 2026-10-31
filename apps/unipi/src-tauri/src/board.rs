@@ -4,7 +4,7 @@
 //! one-shot command).
 //!
 //! The v1 daemon relay (`board_availability` / `board_request` / `board_events`
-//! + SSE) is gone with the daemon: the host runs the `unipi-kanboard` CLI, one
+//! and its SSE) is gone with the daemon: the host runs the `unipi-kanboard` CLI, one
 //! process per call, and answers with the §5.5 outcome.
 //!
 //! - `board_cli { hostId, args, project? }` → `BoardCliData`
