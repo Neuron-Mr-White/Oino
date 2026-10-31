@@ -14,6 +14,7 @@ import { hostClient } from '../../lib/host/factory';
 import { LONG_PRESS_MS } from '../../lib/gestures';
 import { changesOf } from '../../lib/session/selectors';
 import type { SessionMeta } from '../../lib/session/hub';
+import { sessions, type SessionHandle } from '../../lib/session/store';
 import { openRowMenu } from '../../lib/session/actions';
 import { relativeTimeMs } from '../../lib/time';
 
@@ -26,6 +27,16 @@ export function rowState(card: SessionCard): 'needs-you' | 'working' | 'crashed'
   if (card.run_state === 'crashed') return 'crashed';
   if (card.run_state === 'taken_over') return 'taken-over';
   return 'idle';
+}
+
+/** Reconciles the card's polled `run_state` with a live open session stream so opening an idle session never flashes "Working". */
+export function liveRowState(card: SessionCard, open: SessionHandle | undefined): ReturnType<typeof rowState> {
+  if (card.needs_you) return 'needs-you';
+  if (open?.state.conn === 'live') {
+    if (open.state.run.running) return 'working';
+    if (card.run_state === 'working') return 'idle';
+  }
+  return rowState(card);
 }
 
 export const STATE_WORD: Record<ReturnType<typeof rowState>, string> = {
@@ -67,7 +78,7 @@ export function SessionRow(props: {
   showFolder?: boolean;
   onPin?: (card: SessionCard, pinned: boolean) => void;
 }): JSX.Element {
-  const state = () => rowState(props.card);
+  const state = () => liveRowState(props.card, sessions().peek(props.hostId, props.card.session_id));
   const changes = () => changesOf(props.card);
   const at = () => props.card.last_activity ?? props.card.updated_at;
   const time = () => relativeTimeMs(at());
@@ -106,7 +117,11 @@ export function SessionRow(props: {
   const titleText = () => props.card.name?.trim() || folder() || props.card.session_id;
   const folder = () => props.card.cwd?.split(/[\\/]/).filter(Boolean).pop();
   const stateWord = () => STATE_WORD[state()];
-  const subFolder = () => ((!stateWord() && props.showFolder) || (props.variant === 'page' && !!stateWord()) ? folder() : undefined);
+  const subFolder = () => {
+    const f = folder();
+    if (!f || f === titleText()) return undefined;
+    return (!stateWord() && props.showFolder) || (props.variant === 'page' && !!stateWord()) ? f : undefined;
+  };
   const hasSub = () => Boolean(stateWord() || subFolder() || props.mode || changes() || props.card.source === 'cron');
   let titleEl: HTMLSpanElement | undefined;
   createEffect(() => {

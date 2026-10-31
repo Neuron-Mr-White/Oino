@@ -167,4 +167,13 @@ describe('SessionList', () => {
     await waitFor(() => expect(screen.getByTestId('srow-a').getAttribute('aria-current')).toBe('page'));
     expect(screen.getByTestId('srow-b').getAttribute('href')).toBe('#/s/this-pc/b');
   });
+
+  it('does not repeat folder name as subline when pinned session title already fell back to folder', async () => {
+    boot([card('nameless', { name: '', cwd: '/tmp', pinned: true })]);
+    await waitFor(() => expect(screen.getByTestId('srow-nameless')).toBeTruthy());
+    const row = screen.getByTestId('srow-nameless');
+    expect(row.getAttribute('title')).toBe('tmp');
+    expect(row.querySelector('.srow-cwd')).toBeNull();
+    expect(row.querySelector('.srow-sub')).toBeNull();
+  });
 });
