@@ -2,6 +2,13 @@
 //! from crates.io. In the monorepo the canonical tree is `<repo>/wit/oino-extension`; this
 //! test fails if the two drift. Outside the monorepo (packaged crate) it is a no-op.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "tests assert by unwrapping"
+)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

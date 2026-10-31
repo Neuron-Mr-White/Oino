@@ -39,7 +39,7 @@ pub struct LeaseInfo {
     pub boot_id: String,
     /// Host name (diagnostics; same-host comparison for [`LeaseInfo::dead`]).
     pub host: String,
-    /// Human label of the holding client, e.g. `oino rpc` or `unipi-host 2.0.0`.
+    /// Human label of the holding client, e.g. `oino rpc` or an embedding host.
     pub client: String,
 }
 

@@ -413,7 +413,7 @@ async fn gui_scenario(backend: Arc<dyn SessionBackend>) -> GuiObserved {
             .into_iter()
             .map(|e| (e.id, e.enabled))
             .collect(),
-        bus: backend.bus_get("unipi:bg:tasks").await.unwrap(),
+        bus: backend.bus_get("acme:bg:tasks").await.unwrap(),
     };
     backend.shutdown().await;
     observed

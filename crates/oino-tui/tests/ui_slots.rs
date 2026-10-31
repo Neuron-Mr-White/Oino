@@ -133,8 +133,8 @@ async fn a_reserved_entry_renders_its_fallback_tree() {
     h.json_event(patch(
         1,
         vec![json!({"op": "put", "entry": {
-            "id": "unipi.kanboard/board",
-            "extensionId": "unipi.kanboard",
+            "id": "acme.board/board",
+            "extensionId": "acme.board",
             "scope": "session",
             "slot": "sidePane",
             "order": 0,
@@ -159,8 +159,8 @@ async fn a_reserved_entry_without_fallback_has_no_body() {
     h.json_event(patch(
         1,
         vec![json!({"op": "put", "entry": {
-            "id": "unipi.browser/browser",
-            "extensionId": "unipi.browser",
+            "id": "acme.browse/browser",
+            "extensionId": "acme.browse",
             "scope": "session",
             "slot": "sidePane",
             "order": 0,
@@ -173,7 +173,7 @@ async fn a_reserved_entry_without_fallback_has_no_body() {
     .await;
     let frame = h.frame(80, 24);
     assert!(frame.contains("/work/project"), "{frame}");
-    assert!(!frame.contains("unipi.browser/browser"), "{frame}");
+    assert!(!frame.contains("acme.browse/browser"), "{frame}");
 }
 
 #[tokio::test]

@@ -222,8 +222,8 @@ impl LocalServices {
     /// Publishes `topic` on the bus on behalf of the embedding host (`publisher` = the
     /// extension identity the event speaks for): a sticky value is kept for late
     /// subscribers, and every extension subscribed to a matching pattern receives the
-    /// `oino_bus` event. Host-side counterpart of the `bus.publish` WIT import (the cron
-    /// scheduler's `unipi:cron:run-finished` uses it, ext-abi §6.3).
+    /// `oino_bus` event. Host-side counterpart of the `bus.publish` WIT import (an embedded
+    /// cron scheduler's `cron:run-finished` uses it, ext-abi §6.3).
     pub fn publish_host(
         &self,
         publisher: &ExtensionId,
@@ -427,8 +427,8 @@ impl LocalServices {
             let message = RawJson::from(
                 json!({"customType": TASK_NOTIFICATION_TYPE, "content": text, "display": true, "details": {"taskId": info.id}}),
             );
-            // pi/unipi deliver the notification as a follow-up so it lands after the running
-            // turn instead of steering it (unipi `notifyCompletion` → `deliverAs: 'followUp'`).
+            // The host delivers the notification as a follow-up so it lands after the running
+            // turn instead of steering it (`notifyCompletion` → `deliverAs: 'followUp'`).
             let options = SendOptions {
                 trigger_turn: info.spec.trigger_on_completion,
                 deliver_as: Some(Delivery::FollowUp),
@@ -865,7 +865,7 @@ mod tests {
     async fn bash_detach_and_adopt_become_host_tasks() {
         let dir = tempfile::tempdir().unwrap();
         let hub = Arc::new(LocalServices::new(dir.path()));
-        let ext = ExtensionId::new("unipi.watchdog").unwrap();
+        let ext = ExtensionId::new("acme.watchdog").unwrap();
         let host = hub.wrap(&ext, Arc::new(DetachingCore));
         let cx = CallContext {
             session_id: "s1".into(),
@@ -887,7 +887,7 @@ mod tests {
         };
         let info = hub.tasks().get(&task).unwrap();
         assert_eq!(info.pid, 7);
-        assert_eq!(info.owner, "unipi.watchdog");
+        assert_eq!(info.owner, "acme.watchdog");
         assert!(info.spec.command.contains("stuck"));
         assert_eq!(hub.tasks().running("s1"), 1);
         hub.tasks().kill(&task).unwrap();

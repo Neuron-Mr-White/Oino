@@ -92,7 +92,9 @@ fn reserved_registry() -> &'static RwLock<Vec<Arc<ReservedPanelSpec>>> {
 /// `allowed`) and titled `title`.
 pub fn register_reserved(spec: ReservedPanelSpec) {
     let spec = Arc::new(spec);
-    let mut table = reserved_registry().write().expect("reserved registry poisoned");
+    let mut table = reserved_registry()
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     match table.iter_mut().find(|entry| entry.id == spec.id) {
         Some(slot) => *slot = Arc::clone(&spec),
         None => table.push(Arc::clone(&spec)),
@@ -105,7 +107,7 @@ pub fn register_reserved(spec: ReservedPanelSpec) {
 pub fn clear_reserved_panels() {
     reserved_registry()
         .write()
-        .expect("reserved registry poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clear();
     oino_extension_api::manifest::clear_reserved_owners();
 }
@@ -115,7 +117,7 @@ pub fn clear_reserved_panels() {
 pub fn reserved_panels() -> Vec<Arc<ReservedPanelSpec>> {
     reserved_registry()
         .read()
-        .expect("reserved registry poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone()
 }
 
@@ -124,7 +126,7 @@ pub fn reserved_panels() -> Vec<Arc<ReservedPanelSpec>> {
 pub fn reserved(id: &str) -> Option<Arc<ReservedPanelSpec>> {
     reserved_registry()
         .read()
-        .expect("reserved registry poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .iter()
         .find(|entry| entry.id == id)
         .cloned()

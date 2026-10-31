@@ -25,7 +25,7 @@ oino-core = { path = "../oino-core", version = "1.0.0" }
 oino-resources = { path = "../oino-resources", version = "1.0.0", optional = true }
 oino-session = { path = "../oino-session", version = "1.0.0" }
 oino-settings = { path = "../oino-settings", version = "1.0.0", optional = true }
-oino-ui = { path = "../oino-ui", version = "1.0.0" }
+oino-ui = { path = "../oino-ui", version = "1.0.1" }
 oino-view = { path = "../oino-view", version = "1.0.0" }
 pulldown-cmark = { workspace = true, default-features = false }
 ratatui.workspace = true

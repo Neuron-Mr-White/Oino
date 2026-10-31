@@ -24,7 +24,7 @@ pub async fn run(args: &Args, env: &Environment) -> i32 {
 
     let mut flags = resource_flags(args, &env.cwd);
     // X-SAFE: apply the plan's effect (extensions off, providers on) and surface the banner;
-    // failure/success recording runs on the `startup::start` paths (unipi-host joins later).
+    // failure/success recording runs on the `startup::start` paths (the embedding host joins later).
     flags.safe_mode = Some(SafeMode::load(&env.agent_dir).plan());
     let values = args.unknown_flags.clone();
     let approve = args.project_trust_override;

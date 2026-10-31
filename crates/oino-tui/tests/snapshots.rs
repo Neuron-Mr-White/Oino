@@ -93,7 +93,7 @@ async fn errors_custom_messages_and_summaries() {
     h.json_event(json!({"type": "message_end", "message": failed}))
         .await;
     h.json_event(json!({"type": "auto_retry_end", "success": false, "attempt": 3, "finalError": "rate limited"})).await;
-    h.json_event(json!({"type": "extension_error", "extensionPath": "unipi.notify", "event": "agent_end", "error": "boom"})).await;
+    h.json_event(json!({"type": "extension_error", "extensionPath": "acme.notify", "event": "agent_end", "error": "boom"})).await;
     insta::assert_snapshot!(h.frame(80, 30));
 }
 

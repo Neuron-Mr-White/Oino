@@ -372,7 +372,7 @@ async fn services_bus_and_tasks_between_instances() {
 }
 
 /// `fs.agentDir: read` gives guests pi's `~/.oino/mcp.json` as `/agent/mcp.json` and nothing
-/// else from the agent dir (unipi-integrations R1).
+/// else from the agent dir (integration spec R1).
 #[tokio::test(flavor = "multi_thread")]
 async fn agent_preopen_exposes_pi_mcp_json_only() {
     let h = Harness::new().unwrap();

@@ -1,7 +1,7 @@
 package oino:extension@2.0.0;
 
 /// Host-provided services (v2 §3.4.2): named capabilities an embedding host
-/// (unipi-host) registers with the runtime — "browser", "cron", … . Oino
+/// registers with the runtime — "browser", "cron", … . Oino
 /// itself registers none: under a plain TUI every name is unavailable and
 /// extensions degrade (typically: tools report unavailable).
 interface host-service {

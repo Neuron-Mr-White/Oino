@@ -340,8 +340,8 @@ async fn bash_runs_in_client_terminal() {
     client.close().await;
 }
 
-/// `session/new` forwards the client's `mcpServers` on the bus topic `unipi.mcp` consumes
-/// (unipi-integrations R3).
+/// `session/new` forwards the client's `mcpServers` on the bus topic the MCP extension
+/// consumes (integration spec R3).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn session_new_publishes_mcp_servers() {
     let fixture = Fixture::new(Vec::new());

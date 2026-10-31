@@ -285,12 +285,7 @@ mod tests {
 
     #[test]
     fn id_grammar() {
-        for ok in [
-            "a",
-            "acme.background-tasks",
-            "oino.openai-compat",
-            "x1.y-2",
-        ] {
+        for ok in ["a", "acme.background-tasks", "oino.openai-compat", "x1.y-2"] {
             assert!(ExtensionId::new(ok).is_ok(), "{ok}");
         }
         for bad in ["", "A", "-a", "a..b", "a.", ".a", "a_b", "a/b"] {

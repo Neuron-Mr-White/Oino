@@ -1722,13 +1722,8 @@ mod tests {
         let mut batch = JsonObject::new();
         batch.insert("platform".into(), json!("native"));
         batch.insert("rules".into(), json!([{"tool": "bash"}]));
-        reg.set_many_as(
-            Some("acme.notify"),
-            "notify",
-            &batch,
-            SettingsScope::Global,
-        )
-        .unwrap();
+        reg.set_many_as(Some("acme.notify"), "notify", &batch, SettingsScope::Global)
+            .unwrap();
         assert_eq!(rx.try_recv().unwrap().keys, ["platform", "rules"]);
         assert_eq!(
             reg.values("notify", SettingsLayer::Global)["rules"],

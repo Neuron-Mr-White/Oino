@@ -27,7 +27,7 @@ type HostResult<T> = wasmtime::Result<Result<T, wt::HostError>>;
 
 /// Host-level dev override for [`resolve_program`] (ext-abi §5.2): a path
 /// list searched before the package `bin/` dir and `PATH`, so a stale package
-/// binary never shadows a fresh dev build (unipi's `bin.ts` rationale).
+/// binary never shadows a fresh dev build (the v1 app's `bin.ts` rationale).
 pub(crate) const EXT_BIN_DIR_ENV: &str = "OINO_EXT_BIN_DIR";
 
 /// `name` and, on Windows, `name.exe` (the install name drops the suffix).
@@ -43,7 +43,7 @@ fn bin_candidates(name: &str) -> Vec<String> {
 }
 
 /// Resolves a non-path `command` for `process.exec`/`child.spawn` (ext-abi
-/// §5.2), mirroring unipi `bin.ts`'s env-override → package → PATH order in a
+/// §5.2), mirroring the v1 app's `bin.ts` env-override → package → PATH order in a
 /// host-appropriate shape:
 /// 1. each entry of [`EXT_BIN_DIR_ENV`] (dev-only override),
 /// 2. `<package root>/bin/<name>[.exe]` when the calling extension's manifest

@@ -38,8 +38,13 @@ const LIST_PAGE: usize = 50;
 pub const OINO_EXTENSIONS: [&str; 2] = ["_oino/extension_ui", "_oino/rpc"];
 
 /// Bus topic carrying the client's `session/new` / `session/load` `mcpServers`
-/// (`{servers: [...]}`; consumed by `unipi.mcp`, unipi-integrations R3).
+/// (`{servers: [...]}`; consumed by the MCP extension).
 pub const MCP_SERVERS_TOPIC: &str = "oino:acp:mcp-servers";
+
+/// Capability an MCP extension declares in its manifest `provides.apis` to signal it
+/// consumes [`MCP_SERVERS_TOPIC`] (any extension may declare it — the capability, not an id,
+/// is what oino looks for).
+pub const MCP_CAPABILITY: &str = "mcp";
 
 /// Publisher id of the ACP frontend on the bus.
 pub const ACP_PUBLISHER: &str = "oino.acp";
@@ -317,11 +322,13 @@ impl AcpAgent {
         if servers.is_empty() {
             return;
         }
-        let has_mcp = services
-            .extensions
-            .extensions()
-            .iter()
-            .any(|extension| extension.instance.id() == "unipi.mcp");
+        let has_mcp = services.extensions.extensions().iter().any(|extension| {
+            extension
+                .state()
+                .apis
+                .iter()
+                .any(|api| api == MCP_CAPABILITY)
+        });
         if !has_mcp {
             let _ = session.shared.link().update(json!({
                 "sessionUpdate": "notice",

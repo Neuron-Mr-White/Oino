@@ -555,17 +555,17 @@ mod tests {
     fn exclude_extension_is_repeatable_and_takes_comma_lists() {
         let args = parse(&[
             "--exclude-extension",
-            "unipi.kanboard, oino.anthropic ,",
+            "acme.kanboard, oino.anthropic ,",
             "--exclude-extension",
-            "unipi.notify",
+            "acme.notify",
             "-ne",
         ]);
         assert_eq!(
             args.exclude_extensions,
             Some(vec![
-                "unipi.kanboard".to_owned(),
+                "acme.kanboard".to_owned(),
                 "oino.anthropic".to_owned(),
-                "unipi.notify".to_owned()
+                "acme.notify".to_owned()
             ])
         );
         assert!(args.no_extensions, "-ne is unchanged");

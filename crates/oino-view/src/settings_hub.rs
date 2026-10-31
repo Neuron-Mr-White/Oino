@@ -849,7 +849,7 @@ mod tests {
     fn schema() -> Vec<JsonValue> {
         vec![
             json!({
-                "namespace": "notify", "title": "Notify", "extensionId": "unipi.notify",
+                "namespace": "notify", "title": "Notify", "extensionId": "acme.notify",
                 "icon": "dot", "order": 5, "description": "Where finished turns go",
                 "sections": [{"id": "events", "title": "Events", "fields": [
                     {"key": "events.agentEnd", "type": "boolean", "label": "Agent finished", "default": true},

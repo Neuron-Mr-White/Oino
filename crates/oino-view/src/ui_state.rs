@@ -1620,15 +1620,16 @@ mod tests {
             .map(|entry| entry.id.as_str())
             .collect();
         assert_eq!(widget, ["ext/widget:progress"]);
-        let board = mirror.entry("unipi.kanboard/board").expect("board entry");
+        let board = mirror.entry("acme.board/board").expect("board entry");
         assert_eq!(board.order, 1000);
         assert!(matches!(
             &board.view,
             UiView::Reserved {
-                component: ReservedComponent::Board,
+                component,
                 fallback: Some(fallback),
                 ..
-            } if matches!(**fallback, Node::List { .. })
+            } if *component == ReservedComponent::new("board")
+                  && matches!(**fallback, Node::List { .. })
         ));
 
         // Meta (§9.2 `meta`).
@@ -1964,17 +1965,17 @@ mod tests {
     fn host_scope_registry_mirrors_settings_and_reserved_entries() {
         let mut mirror = RegistryMirror::new(Scope::Host);
         let board = UiEntry {
-            extension_id: "unipi.kanboard".into(),
+            extension_id: "acme.board".into(),
             scope: Scope::Host,
             slot: Slot::Fullscreen,
             order: 1000,
             title: Some("Board".into()),
             view: UiView::Reserved {
-                component: ReservedComponent::Board,
+                component: ReservedComponent::new("board"),
                 fallback: None,
                 params: None,
             },
-            ..entry("unipi.kanboard/board", Slot::Fullscreen, 1)
+            ..entry("acme.board/board", Slot::Fullscreen, 1)
         };
         let settings = UiEntry {
             extension_id: "host".into(),

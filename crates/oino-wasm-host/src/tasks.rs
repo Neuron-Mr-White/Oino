@@ -16,7 +16,7 @@ pub(crate) const DEFAULT_MAX_OUTPUT: u64 = 20 * 1024 * 1024;
 const MIN_MAX_OUTPUT: u64 = 1024;
 const KEEP_FINISHED: usize = 30;
 
-/// `TaskSpec` (unipi background-tasks).
+/// `TaskSpec` (the host's background tasks).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSpec {

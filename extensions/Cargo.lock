@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ai"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "indexmap",
  "serde",
@@ -886,7 +886,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ui"
-version = "1.0.0-alpha.5"
+version = "1.0.1"
 dependencies = [
  "serde",
  "serde_json",

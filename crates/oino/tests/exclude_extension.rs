@@ -24,7 +24,10 @@ fn dist() -> PathBuf {
 
 fn faux_package() -> Option<PathBuf> {
     let package = dist().join("oino.fixture.provider-faux");
-    let dist_built = dist().join("unipi.core").join("component.wasm").is_file();
+    let dist_built = dist()
+        .join("oino.openai-compat")
+        .join("component.wasm")
+        .is_file();
     (package.join("component.wasm").is_file() && dist_built).then_some(package)
 }
 
@@ -117,23 +120,27 @@ fn exclusion_drops_distribution_packages_and_warns_on_misses() {
     };
     let sandbox = Sandbox::new();
 
-    // Spec acceptance: `--exclude-extension unipi.kanboard,oino.anthropic -p "hi"` — neither
-    // loads, the log names both, the run still answers (`unipi.notify` too: WP-C6's example).
+    // Spec acceptance: `--exclude-extension oino.openai-compat,oino.anthropic -p "hi"` — neither
+    // loads, the log names both, the run still answers (WP-C6).
     let output = sandbox.run(
         &package,
         &[
             "-p",
             "hi",
             "--exclude-extension",
-            "unipi.kanboard,oino.anthropic",
+            "oino.openai-compat,oino.anthropic",
             "--exclude-extension",
-            "unipi.notify",
+            "oino.openai-responses",
         ],
     );
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     assert_eq!(stdout(&output), "Hello from faux.\n");
     let err = stderr(&output);
-    for id in ["unipi.kanboard", "oino.anthropic", "unipi.notify"] {
+    for id in [
+        "oino.openai-compat",
+        "oino.anthropic",
+        "oino.openai-responses",
+    ] {
         assert!(
             err.contains(&format!("Excluded extension \"{id}\" not loaded")),
             "{err}"
@@ -214,7 +221,7 @@ fn safe_mode_banner_names_suspects_and_resets_on_success() {
     std::fs::create_dir_all(&state).unwrap();
     std::fs::write(
         state.join("oino.safe-mode.json"),
-        r#"{"v":1,"consecutiveFailures":2,"lastFailures":[{"at":1,"where":"services","extensionId":"unipi.notify","error":"init failed: boom"},{"at":2,"where":"session","error":"crash"}]}"#,
+        r#"{"v":1,"consecutiveFailures":2,"lastFailures":[{"at":1,"where":"services","extensionId":"acme.notify","error":"init failed: boom"},{"at":2,"where":"session","error":"crash"}]}"#,
     )
     .unwrap();
 
@@ -225,7 +232,7 @@ fn safe_mode_banner_names_suspects_and_resets_on_success() {
     let err = stderr(&output);
     assert!(
         err.contains(
-            "Safe mode: extensions are off after 2 failed starts; suspects: unipi.notify (init failed: boom)"
+            "Safe mode: extensions are off after 2 failed starts; suspects: acme.notify (init failed: boom)"
         ),
         "{err}"
     );

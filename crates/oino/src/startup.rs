@@ -725,17 +725,17 @@ mod tests {
     #[test]
     fn extension_suspects_names_extension_failures() {
         let lines = vec![
-            "unipi.notify: init failed: boom".to_owned(),
-            "Excluded extension \"unipi.notify\" not loaded".to_owned(),
-            "Failed to load extension \"unipi.kanboard\": no component.wasm".to_owned(),
+            "acme.notify: init failed: boom".to_owned(),
+            "Excluded extension \"acme.notify\" not loaded".to_owned(),
+            "Failed to load extension \"acme.kanboard\": no component.wasm".to_owned(),
             "Bundled extension \"oino.docs\": extract failed".to_owned(),
             "Unknown option: --nope".to_owned(),
         ];
         assert_eq!(
             extension_suspects(&lines),
             vec![
-                ("unipi.notify".to_owned(), "init failed: boom".to_owned()),
-                ("unipi.kanboard".to_owned(), "no component.wasm".to_owned()),
+                ("acme.notify".to_owned(), "init failed: boom".to_owned()),
+                ("acme.kanboard".to_owned(), "no component.wasm".to_owned()),
                 ("oino.docs".to_owned(), "extract failed".to_owned()),
             ]
         );
@@ -763,7 +763,7 @@ mod tests {
     #[test]
     fn extension_suspects_ignores_unrelated_lines() {
         let lines = vec![
-            "Duplicate extension id unipi.notify ignored".to_owned(),
+            "Duplicate extension id acme.notify ignored".to_owned(),
             "Skipped extension package /tmp/x: bad manifest".to_owned(),
             "No session found matching 'zzz'".to_owned(),
             "Uppercase Id: not an extension".to_owned(),

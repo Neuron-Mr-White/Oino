@@ -30,35 +30,42 @@ pub const MAX_MEMORY_MIB: u32 = 2048;
 ///
 /// [`Manifest::owns_reserved`] derives ownership from it.
 pub fn register_reserved_owner(id: &str, owner: &str) {
-    reserved_owners()
-        .write()
-        .expect("reserved-owner registry poisoned")
-        .insert(id.to_owned(), owner.to_owned());
+    write_owners(|owners| {
+        owners.insert(id.to_owned(), owner.to_owned());
+    });
 }
 
 /// The registered owner of a reserved entry id, when any (see [`register_reserved_owner`]).
 #[must_use]
 pub fn reserved_owner(id: &str) -> Option<String> {
-    reserved_owners()
-        .read()
-        .expect("reserved-owner registry poisoned")
-        .get(id)
-        .cloned()
+    read_owners(|owners| owners.get(id).cloned())
 }
 
 /// Drops every registered reserved-owner pair (tests and embedder restarts).
 pub fn clear_reserved_owners() {
-    reserved_owners()
-        .write()
-        .expect("reserved-owner registry poisoned")
-        .clear();
+    write_owners(std::collections::HashMap::clear);
 }
 
-fn reserved_owners() -> &'static std::sync::RwLock<std::collections::HashMap<String, String>> {
-    static OWNERS: std::sync::OnceLock<
-        std::sync::RwLock<std::collections::HashMap<String, String>>,
-    > = std::sync::OnceLock::new();
-    OWNERS.get_or_init(|| std::sync::RwLock::new(std::collections::HashMap::new()))
+type ReservedOwners = std::collections::HashMap<String, String>;
+
+fn reserved_owners() -> &'static std::sync::RwLock<ReservedOwners> {
+    static OWNERS: std::sync::OnceLock<std::sync::RwLock<ReservedOwners>> =
+        std::sync::OnceLock::new();
+    OWNERS.get_or_init(|| std::sync::RwLock::new(ReservedOwners::new()))
+}
+
+fn read_owners<T>(read: impl FnOnce(&ReservedOwners) -> T) -> T {
+    let owners = reserved_owners()
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    read(&owners)
+}
+
+fn write_owners(write: impl FnOnce(&mut ReservedOwners)) {
+    let mut owners = reserved_owners()
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    write(&mut owners);
 }
 
 /// Manifest `kind` (D15): `-ne` disables only `Extension`.
@@ -670,9 +677,7 @@ impl Manifest {
     /// declared by an extension.
     #[must_use]
     pub fn owns_reserved(&self, id: &str) -> bool {
-        reserved_owner(id).is_some_and(|owner| {
-            owner == self.id.as_str() && owner != "host"
-        })
+        reserved_owner(id).is_some_and(|owner| owner == self.id.as_str() && owner != "host")
     }
 
     /// Whether `id` lies in this extension's own namespace (`<extensionId>/<name>`): a
@@ -681,7 +686,8 @@ impl Manifest {
     #[must_use]
     pub fn in_own_namespace(&self, id: &str) -> bool {
         self.id.as_str() != "host"
-            && id.strip_prefix(self.id.as_str())
+            && id
+                .strip_prefix(self.id.as_str())
                 .is_some_and(|rest| rest.starts_with('/'))
     }
 
@@ -828,7 +834,10 @@ mod tests {
             "ui":{"reserved":["acme.kanboard/board"]}}"#;
         let m = Manifest::parse(kanban).unwrap();
         assert_eq!(m.ui.reserved, ["acme.kanboard/board"]);
-        assert!(!m.owns_reserved("acme.kanboard/board"), "nothing registered");
+        assert!(
+            !m.owns_reserved("acme.kanboard/board"),
+            "nothing registered"
+        );
         register_reserved_owner("acme.kanboard/board", "acme.kanboard");
         register_reserved_owner("acme.cron/jobs", "acme.cron");
         register_reserved_owner("host/git", "host");

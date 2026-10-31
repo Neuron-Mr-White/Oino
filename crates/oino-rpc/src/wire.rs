@@ -463,13 +463,14 @@ mod tests {
 
         // A missing reserved component falls back to the owner's tree, else it is omitted.
         let mut no_board = base.clone();
-        no_board.reserved.retain(|c| *c != ReservedComponent::Board);
+        let board = ReservedComponent::new("board");
+        no_board.reserved.retain(|c| *c != board);
         let fallback = oino_ui::node::Node::from(Paragraph::new("tasks"));
         let reserved = patch(vec![RegistryOp::Put {
             entry: entry(
                 Slot::Fullscreen,
                 UiView::Reserved {
-                    component: ReservedComponent::Board,
+                    component: board.clone(),
                     fallback: Some(Box::new(fallback.clone())),
                     params: None,
                 },
@@ -483,7 +484,7 @@ mod tests {
             entry: entry(
                 Slot::Fullscreen,
                 UiView::Reserved {
-                    component: ReservedComponent::Board,
+                    component: board.clone(),
                     fallback: None,
                     params: None,
                 },

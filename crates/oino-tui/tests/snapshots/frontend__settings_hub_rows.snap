@@ -27,7 +27,7 @@ expression: "h.frame(80, 30)"
   Quiet startup         off
   TUI mode              fullscreen
   Cache-miss notices    on
-› Notify ›  unipi.notify
+› Notify ›  acme.notify
   Extension settings (enter to open)
  enter/space change · ←/→ cycle · esc close
 /work/project (main)

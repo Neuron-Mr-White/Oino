@@ -46,7 +46,7 @@ interface control {
     set-active-tools: func(names: list<string>) -> result<_, host-error>;
     all-tools: func() -> json;                                // Vec<ToolInfo>
     commands-list: func() -> json;                            // Vec<SlashCommandInfo>
-    /// Run any command (cross-extension) with a command context. Replaces unipi command runners.
+    /// Run any command (cross-extension) with a command context. Replaces the v1 command runners.
     command-invoke: async func(name: string, args: string) -> result<option<json>, host-error>;
     /// pi ctx.executeTool (tool-call context only). Returns AgentToolCallOutcome JSON.
     execute-tool: async func(name: string, args: json, cancel: option<borrow<cancel-token>>) -> result<json, host-error>;

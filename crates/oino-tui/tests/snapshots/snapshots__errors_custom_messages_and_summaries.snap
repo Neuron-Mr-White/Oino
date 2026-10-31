@@ -19,7 +19,7 @@ expression: "h.frame(80, 30)"
 
  Retry failed after 3 attempts: rate limited
 
- Extension error (unipi.notify): boom
+ Extension error (acme.notify): boom
 
 
 

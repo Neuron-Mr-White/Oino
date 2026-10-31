@@ -85,6 +85,7 @@ impl LoaderContext {
         SourcesContext {
             agent_dir: self.agent_dir.clone(),
             cwd: self.cwd.clone(),
+            dist_dirs: Vec::new(),
             no_extensions: self.no_extensions,
             excluded: self.exclude_extensions.clone(),
         }

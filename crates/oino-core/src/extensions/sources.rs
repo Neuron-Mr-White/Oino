@@ -568,7 +568,10 @@ mod tests {
         );
         let out = resolve_with(&[], &context, None);
         assert_eq!(out.share_dir, Some(dir.path().join("hostdist/extensions")));
-        assert_eq!(ids(&out), vec!["acme.core".to_owned(), "acme.user".to_owned()]);
+        assert_eq!(
+            ids(&out),
+            vec!["acme.core".to_owned(), "acme.user".to_owned()]
+        );
     }
 
     #[test]

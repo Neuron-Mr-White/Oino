@@ -27,7 +27,10 @@ fn dist() -> PathBuf {
 
 fn faux_package() -> Option<PathBuf> {
     let package = dist().join("oino.fixture.provider-faux");
-    let dist_built = dist().join("unipi.core").join("component.wasm").is_file();
+    let dist_built = dist()
+        .join("oino.openai-compat")
+        .join("component.wasm")
+        .is_file();
     (package.join("component.wasm").is_file() && dist_built).then_some(package)
 }
 
@@ -203,7 +206,7 @@ fn share_dir_feeds_packages_and_docs_root() {
     let list = sandbox.run_bare(&["list"], &[]);
     assert_eq!(list.status.code(), Some(0), "{}", stderr(&list));
     let listing = stdout(&list);
-    for id in ["unipi.core", "oino.anthropic"] {
+    for id in ["oino.openai-compat", "oino.anthropic"] {
         let line = listing
             .lines()
             .find(|l| l.starts_with(id))
@@ -211,17 +214,17 @@ fn share_dir_feeds_packages_and_docs_root() {
         assert!(line.contains("dist"), "{line}");
     }
     let emptied = sandbox.run_bare(&["list"], &[("OINO_DIST_EXTENSIONS", "")]);
-    assert!(!stdout(&emptied).contains("unipi.core"));
+    assert!(!stdout(&emptied).contains("oino.openai-compat"));
 
     // A user copy of the same id shadows the distribution one (dist.md §5).
     copy_dir(
-        &sandbox.share().join("unipi.notify"),
-        &sandbox.dir.path().join("agent/extensions/unipi.notify"),
+        &sandbox.share().join("oino.anthropic"),
+        &sandbox.dir.path().join("agent/extensions/oino.anthropic"),
     );
     let listing = stdout(&sandbox.run_bare(&["list"], &[]));
     let notify: Vec<&str> = listing
         .lines()
-        .filter(|l| l.starts_with("unipi.notify"))
+        .filter(|l| l.starts_with("oino.anthropic"))
         .collect();
     assert_eq!(
         notify.len(),

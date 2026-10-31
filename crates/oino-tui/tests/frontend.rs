@@ -29,7 +29,7 @@ fn sent(h: &Harness, kind: &str) -> Vec<Value> {
 
 fn schema() -> Value {
     json!({"namespaces": [{
-        "namespace": "notify", "title": "Notify", "extensionId": "unipi.notify",
+        "namespace": "notify", "title": "Notify", "extensionId": "acme.notify",
         "sections": [{"id": "events", "title": "Events", "fields": [
             {"key": "events.agentEnd", "type": "boolean", "label": "Agent finished", "default": true},
             {"key": "platform", "type": "enum", "label": "Platform", "default": "native",
@@ -144,7 +144,7 @@ async fn open_settings_for_a_namespace_opens_its_page() {
         .reply("_oino/get_settings_schema", Ok(Some(schema())));
     h.json_event(
         json!({"type": "extension_ui_request", "id": "o1", "method": "openSettings",
-        "namespace": "notify", "extensionId": "unipi.notify"}),
+        "namespace": "notify", "extensionId": "acme.notify"}),
     )
     .await;
     let frame = h.frame(80, 18);
@@ -239,7 +239,7 @@ async fn regular_mode_moves_finished_rows_to_the_scrollback() {
 
 fn oss2_schema() -> Value {
     json!({"namespaces": [{
-        "namespace": "unipi.mcp", "title": "MCP", "extensionId": "unipi.mcp",
+        "namespace": "acme.mcp", "title": "MCP", "extensionId": "acme.mcp",
         "icon": "gear", "order": 5,
         "sections": [{"id": "servers", "title": "Servers", "fields": [
             {"key": "servers", "type": "list", "label": "Servers", "addLabel": "Add server",
@@ -288,7 +288,7 @@ async fn oss2_fields_render_and_edit_in_sub_pages() {
                 "mode": "custom",
                 "locked": true
             },
-            "diagnostics": [{"namespace": "unipi.mcp", "key": "raw", "message": "expected an object"}]
+            "diagnostics": [{"namespace": "acme.mcp", "key": "raw", "message": "expected an object"}]
         }))),
     );
     h.type_text("/settings").await;
@@ -387,7 +387,7 @@ async fn oss2_fields_render_and_edit_in_sub_pages() {
     );
     h.app.handle(AppEvent::Edited(
         oino_tui::app::EditPurpose::Setting {
-            namespace: "unipi.mcp".into(),
+            namespace: "acme.mcp".into(),
             key: "raw".into(),
         },
         Some("{\"b\": 2}".into()),

@@ -634,11 +634,11 @@ mod tests {
     #[test]
     fn opt_in_skills_follow_states() {
         let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("unipi-migrate").join("SKILL.md");
+        let file = dir.path().join("acme-migrate").join("SKILL.md");
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(
             &file,
-            "---\nname: unipi-migrate\ndescription: d\ndefault-enabled: false\n---\nbody",
+            "---\nname: acme-migrate\ndescription: d\ndefault-enabled: false\n---\nbody",
         )
         .unwrap();
         let (skill, diagnostics) = load_skill_from_file(&file, SkillSource::Path);
@@ -650,14 +650,14 @@ mod tests {
         assert_eq!(json["defaultEnabled"], false);
         apply_opt_in(
             &mut skills,
-            &serde_json::json!({"states": {"unipi-migrate": {"mustShow": true}}}),
+            &serde_json::json!({"states": {"acme-migrate": {"mustShow": true}}}),
         );
         assert!(skills[0].enabled);
-        assert!(format_skills_for_prompt(&skills, SkillReader::Read).contains("unipi-migrate"));
+        assert!(format_skills_for_prompt(&skills, SkillReader::Read).contains("acme-migrate"));
         apply_opt_in(&mut skills, &serde_json::json!({}));
         assert!(!skills[0].enabled);
         assert!(
-            expand_skill_command("/skill:unipi-migrate", &skills)
+            expand_skill_command("/skill:acme-migrate", &skills)
                 .unwrap()
                 .is_some()
         );
