@@ -336,26 +336,82 @@ pub fn socket_alive(socket: &Path) -> bool {
     }
 }
 
+/// Is the host that owns `dir` another app's child whose app is gone? (The
+/// previous app instance after a restart: its host serves a few hundred ms more
+/// before `--exit-with-parent` ends it — adopting it means "Offline" a moment
+/// later.) Linux reads its `--exit-with-parent <pid>` from `/proc`; elsewhere
+/// this is never known (false) and the adopt watch covers it.
+pub fn orphaned_app_host(dir: &Path) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let Some(pid) = std::fs::read_to_string(dir.join("host.lock"))
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .filter(|v| v.get("mode").and_then(|m| m.as_str()) == Some("app"))
+            .and_then(|v| v.get("pid").and_then(serde_json::Value::as_u64))
+        else {
+            return false;
+        };
+        let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+            return false;
+        };
+        parent_of_cmdline(&raw).is_some_and(|parent| !pid_alive(parent))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = dir;
+        false
+    }
+}
+
+/// The `--exit-with-parent <pid>` of a NUL-separated command line.
+pub fn parent_of_cmdline(raw: &[u8]) -> Option<u32> {
+    let args: Vec<&[u8]> = raw.split(|b| *b == 0).collect();
+    let at = args.iter().position(|a| *a == b"--exit-with-parent")?;
+    std::str::from_utf8(args.get(at + 1)?).ok()?.parse().ok()
+}
+
+#[cfg(target_os = "linux")]
+fn pid_alive(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
+/// A host that answers and is not on its way out (see [`orphaned_app_host`]).
+fn serving(dir: &Path) -> bool {
+    socket_alive(&crate::local_host::listen_addr(dir)) && !orphaned_app_host(dir)
+}
+
 /// Applies §5.1's decision to this PC right now and reports what it did.
 /// Desktop only: the phone has no local host to supervise.
 pub fn decide(host_dir: &Path, bin: Option<&Path>) -> (Plan, Option<Arc<Supervisor>>) {
     // `app.sock` on Unix, `\\.\pipe\unipi-oino-app` on Windows (§6.1).
     let state = HostState {
-        socket_alive: socket_alive(&crate::local_host::listen_addr(host_dir)),
+        socket_alive: serving(host_dir),
         bin: bin.map(Path::to_path_buf),
     };
-    match plan(&state) {
-        Plan::Adopt | Plan::Unsupported => (plan(&state), None),
-        Plan::Spawn => {
-            let supervisor = Supervisor::new(
-                host_dir.to_path_buf(),
-                bin.expect("spawn needs a binary").to_path_buf(),
-            );
-            supervisor.spawn();
-            (Plan::Spawn, Some(supervisor))
-        }
-    }
+    let plan = plan(&state);
+    let Some(bin) = bin else {
+        return (plan, None);
+    };
+    // Adopt or spawn, one supervisor: an adopted host is watched, and when it goes
+    // away (the previous app's host shutting down after a restart, a manual serve
+    // stopped) ours takes over at once — never "Offline" until the next launch.
+    let supervisor = Supervisor::new(host_dir.to_path_buf(), bin.to_path_buf());
+    // Either way the first ops wait for the local socket a moment: ours is starting,
+    // or the adopted one may be the previous app's host on its way out.
+    crate::local_host::expect_host_soon();
+    supervisor.spawn();
+    (plan, Some(supervisor))
 }
+
+/// How often an adopted host's socket is checked (and how soon ours replaces it).
+pub const WATCH_EVERY: Duration = Duration::from_millis(250);
+/// Exit 75 while nobody answers the socket: the previous owner is still shutting
+/// down (or just starting). Retry this fast for [`LOCK_FAST_FOR`], then every
+/// [`LOCK_SLOW_EVERY`].
+pub const LOCK_FAST_EVERY: Duration = Duration::from_millis(200);
+pub const LOCK_FAST_FOR: Duration = Duration::from_secs(15);
+pub const LOCK_SLOW_EVERY: Duration = Duration::from_secs(2);
 
 // ------------------------------------------------------------- supervisor
 
@@ -436,7 +492,25 @@ impl Supervisor {
         let me = Arc::clone(self);
         tokio::spawn(async move {
             let mut failures: u32 = 0;
-            while !*me.stop.subscribe().borrow_and_update() {
+            // Since when the lock has been held by a host that does not answer.
+            let mut held_since: Option<std::time::Instant> = None;
+            let stopped = || *me.stop.subscribe().borrow_and_update();
+            let socket = crate::local_host::listen_addr(&me.dir);
+            while !stopped() {
+                // Someone already serves this dir (adopted at start, or a manual serve):
+                // watch it, and take over the moment it stops answering.
+                if serving(&me.dir) {
+                    me.set_state(SupervisorState::Held).await;
+                    held_since = None;
+                    while !stopped() && socket_alive(&socket) {
+                        tokio::time::sleep(WATCH_EVERY).await;
+                    }
+                    if stopped() {
+                        return;
+                    }
+                    log::info!("host: the adopted host stopped answering; starting ours");
+                }
+                crate::local_host::expect_host_soon();
                 let status = match run_child(ChildSpec {
                     dir: &me.dir,
                     bin: &me.bin,
@@ -458,15 +532,24 @@ impl Supervisor {
                     }
                 };
                 *me.child.lock().await = None;
+                if stopped() {
+                    return;
+                }
                 if status.code() == Some(EXIT_ALREADY_RUNNING) {
-                    // Another serve owns the dir (a manual one, or the app's
-                    // other instance): adopt it instead of fighting.
+                    // The lock is held. A host that answers is adopted (the top of the
+                    // loop watches it); one that does not is the previous owner still
+                    // shutting down — try again shortly instead of giving up.
+                    let since = *held_since.get_or_insert_with(std::time::Instant::now);
                     me.set_state(SupervisorState::Held).await;
-                    return;
+                    tokio::time::sleep(if since.elapsed() < LOCK_FAST_FOR {
+                        LOCK_FAST_EVERY
+                    } else {
+                        LOCK_SLOW_EVERY
+                    })
+                    .await;
+                    continue;
                 }
-                if *me.stop.subscribe().borrow_and_update() {
-                    return;
-                }
+                held_since = None;
                 failures += 1;
                 let delay = (me.backoff)(failures);
                 me.set_state(SupervisorState::Failing {
@@ -519,6 +602,43 @@ mod tests {
         // Nothing to run.
         let no_bin = HostState::default();
         assert_eq!(plan(&no_bin), Plan::Unsupported);
+    }
+
+    #[test]
+    fn reads_the_parent_of_an_app_host() {
+        assert_eq!(
+            parent_of_cmdline(
+                b"/usr/bin/unipi-oino-host\0serve\0--mode\0app\0--exit-with-parent\x00123\0"
+            ),
+            Some(123)
+        );
+        assert_eq!(
+            parent_of_cmdline(b"unipi-oino-host\0serve\0--mode\0manual\0"),
+            None
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_app_host_whose_app_is_gone_is_not_adopted() {
+        let dir = tempfile::tempdir().unwrap();
+        // Our own process stands in for the host: its cmdline has no parent flag.
+        std::fs::write(
+            dir.path().join("host.lock"),
+            format!(
+                r#"{{"pid":{},"version":"1","mode":"app","started_at":0}}"#,
+                std::process::id()
+            ),
+        )
+        .unwrap();
+        assert!(!orphaned_app_host(dir.path()));
+        // A manual host is never "orphaned".
+        std::fs::write(
+            dir.path().join("host.lock"),
+            r#"{"pid":1,"version":"1","mode":"manual","started_at":0}"#,
+        )
+        .unwrap();
+        assert!(!orphaned_app_host(dir.path()));
     }
 
     #[test]
@@ -665,6 +785,73 @@ mod tests {
         supervisor.stop();
         // The third child is still running: stop() ends the loop and kills it
         // (kill_on_drop), so no fake host survives the test.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    #[tokio::test]
+    async fn a_held_lock_is_retried_until_the_previous_host_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let host_dir = tempfile::tempdir().unwrap();
+        let mark = dir.path().join("runs.txt");
+        // The previous host is still shutting down for the first two starts (75), then ours runs.
+        let bin = fake_bin(
+            dir.path(),
+            "unipi-host",
+            &format!(
+                "n=$(cat {mark} 2>/dev/null | wc -l); n=$((n+1)); echo run >> {mark}; if [ $n -le 2 ]; then exit {code}; else sleep 30; fi",
+                mark = mark.display(),
+                code = EXIT_ALREADY_RUNNING
+            ),
+        );
+        let supervisor = Supervisor::with_backoff(
+            host_dir.path().to_path_buf(),
+            bin,
+            Arc::new(|_| Duration::from_millis(10)),
+        );
+        supervisor.spawn();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::fs::read_to_string(&mark).map_or(0, |m| m.lines().count()) < 3
+            && std::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(std::fs::read_to_string(&mark).unwrap().lines().count(), 3);
+        supervisor.stop();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_adopted_host_that_stops_answering_is_replaced_by_ours() {
+        let dir = tempfile::tempdir().unwrap();
+        let host_dir = tempfile::tempdir().unwrap();
+        let mark = dir.path().join("runs.txt");
+        let bin = fake_bin(
+            dir.path(),
+            "unipi-host",
+            &format!("echo run >> {}; sleep 30", mark.display()),
+        );
+        // Someone else's host answers on app.sock: adopted, not spawned.
+        let socket = crate::local_host::listen_addr(host_dir.path());
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let (plan, supervisor) = decide(host_dir.path(), Some(&bin));
+        assert_eq!(plan, Plan::Adopt);
+        let supervisor = supervisor.expect("an adopted host is watched");
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(
+            !mark.exists(),
+            "nothing spawned while the adopted host answers"
+        );
+        assert_eq!(supervisor.state().await, SupervisorState::Held);
+        // It goes away: ours starts within a watch tick or two.
+        drop(listener);
+        let _ = std::fs::remove_file(&socket);
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while !mark.exists() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(mark.exists(), "our host was not started");
+        supervisor.stop();
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 

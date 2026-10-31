@@ -81,6 +81,87 @@ pub fn detect() -> Option<LocalHost> {
     detect_in(&host_dir()?)
 }
 
+/// This PC's host identity from `endpoint.json` alone (stable across restarts:
+/// the secret key does not change), whether or not it is answering right now —
+/// so "This computer" stays listed, and its ops keep the local transport,
+/// while its host restarts.
+pub fn identity_in(dir: &Path) -> Option<LocalHost> {
+    let socket = listen_addr(dir);
+    let raw = std::fs::read(dir.join("endpoint.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_slice(&raw).ok()?;
+    let id = v.get("addr")?.get("id")?.as_str()?.to_string();
+    let ticket = v.get("ticket")?.as_str()?.to_string();
+    Some(LocalHost { id, ticket, socket })
+}
+
+pub fn identity() -> Option<LocalHost> {
+    identity_in(&host_dir()?)
+}
+
+/// How long the local transport is waited for after the supervisor (re)starts
+/// the host: its socket appears within a second or two of the spawn.
+pub const STARTING_WINDOW: std::time::Duration = std::time::Duration::from_secs(15);
+/// Longest a single op waits for the starting host's socket.
+pub const LOCAL_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+static STARTING_UNTIL: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// The supervisor is (re)starting this PC's host: ops wait for its socket a
+/// moment instead of falling back to iroh (which cannot reach a host that is
+/// not up either, and takes 10 s to say so — the "Offline" after a restart).
+pub fn expect_host_soon() {
+    *STARTING_UNTIL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+        Some(std::time::Instant::now() + STARTING_WINDOW);
+}
+
+/// How long an op may still wait for the local socket right now.
+pub fn starting_wait() -> std::time::Duration {
+    let until = *STARTING_UNTIL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    until
+        .map(|t| t.saturating_duration_since(std::time::Instant::now()))
+        .unwrap_or_default()
+        .min(LOCAL_WAIT)
+}
+
+/// [`connect`], retried while the host is starting (socket missing or refusing)
+/// for up to `wait`.
+pub async fn connect_waiting(
+    local: &LocalHost,
+    wait: std::time::Duration,
+) -> std::io::Result<(OpSend, OpRecv)> {
+    let deadline = std::time::Instant::now() + wait;
+    let dir = local.socket.parent().map(Path::to_path_buf);
+    loop {
+        // The previous app's host still answers for a moment after its app is gone:
+        // an op sent to it fails mid-reply. Wait for ours instead.
+        if std::time::Instant::now() < deadline
+            && dir
+                .as_deref()
+                .is_some_and(crate::host_supervisor::orphaned_app_host)
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            continue;
+        }
+        match connect(local).await {
+            Ok(halves) => return Ok(halves),
+            Err(error)
+                if std::time::Instant::now() < deadline
+                    && matches!(
+                        error.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+                    ) =>
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 /// `hosts.json` + "This computer" (merged by id; the paired entry keeps its
 /// name only if the user renamed it away from the default).
 pub fn merge(mut hosts: Vec<HostInfo>, local: Option<&LocalHost>) -> Vec<HostInfo> {
@@ -107,12 +188,12 @@ pub fn merge(mut hosts: Vec<HostInfo>, local: Option<&LocalHost>) -> Vec<HostInf
 
 /// Every host the app can reach: paired ones plus this PC's own (desktop).
 pub fn hosts(dir: &Path) -> Result<Vec<HostInfo>, AppErrorDto> {
-    Ok(merge(host_store::read_hosts(dir)?, detect().as_ref()))
+    Ok(merge(host_store::read_hosts(dir)?, identity().as_ref()))
 }
 
-/// This PC's host, when `remote_id` is its endpoint id.
+/// This PC's host, when `remote_id` is its endpoint id (answering or restarting).
 pub fn socket_for(remote_id: &str) -> Option<LocalHost> {
-    detect().filter(|l| l.id == remote_id)
+    identity().filter(|l| l.id == remote_id)
 }
 
 /// Connects to this PC's host: `app.sock` on Unix, the named pipe on Windows

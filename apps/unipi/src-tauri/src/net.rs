@@ -127,7 +127,11 @@ impl NetState {
             if let Some(local) =
                 crate::local_host::socket_for(&parsed.endpoint_addr().id.to_string())
             {
-                match crate::local_host::connect(&local).await {
+                // While the supervisor starts the host, wait for its socket (a few
+                // seconds at most) rather than dialing ourselves over iroh.
+                match crate::local_host::connect_waiting(&local, crate::local_host::starting_wait())
+                    .await
+                {
                     Ok(halves) => return Ok(halves),
                     Err(error) => {
                         log::warn!("local host {}: {error}; using iroh", local.socket.display())
