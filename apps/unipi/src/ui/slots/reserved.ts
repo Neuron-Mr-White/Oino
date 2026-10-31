@@ -92,8 +92,7 @@ type Availability = () => boolean;
 
 /**
  * The rows this bundle always renders, gated on the platform (`reserved` in the
- * app's `UiCapabilities`, §10). `turnFiles` is absent until A27 registers the
- * footer body: until then the owner's fallback tree renders (§8 rule 3), and
+ * app's `UiCapabilities`, §10). `turnFiles` joins them with WP-A27's footer body;
  * `ReservedHost` narrows the pane rows further to the pane components that are
  * actually registered (browser in B8, terminal in A29).
  */
@@ -106,6 +105,7 @@ const DEFAULT_AVAILABLE: Partial<Record<ReservedComponent, Availability>> = {
   terminal: () => can('terminal'),
   sessionInfo: () => can('chat'),
   lhStatus: () => can('chat'),
+  turnFiles: () => can('chat'),
 };
 
 const [surfaces, setSurfaces] = createSignal<Partial<Record<ReservedComponent, Availability>>>({});
@@ -113,8 +113,8 @@ const [surfaces, setSurfaces] = createSignal<Partial<Record<ReservedComponent, A
 /**
  * Declares that the app implements one component's native surface, and when
  * that surface is available (`false` ⇒ the owner's fallback tree renders, §8
- * rule 3). Append-only: browser (B8), terminal (A29) and the turn footer (A27)
- * register here when their components land.
+ * rule 3). Append-only: browser (B8) and terminal (A29) register here when
+ * their components land (the turn footer, A27, is in `DEFAULT_AVAILABLE`).
  */
 export function registerReservedSurface(component: ReservedComponent, available: Availability): () => void {
   setSurfaces((cur) => ({ ...cur, [component]: available }));

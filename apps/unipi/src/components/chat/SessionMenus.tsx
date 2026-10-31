@@ -48,6 +48,7 @@ import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { copyText } from '../../lib/board/share';
 import '../git/git.css';
 import { cachedMenuStat, compactCount, refreshMenuStat, type GitMenuStat } from '../../lib/git';
+import { relativeTimeMs } from '../../lib/time';
 
 /** UNI-257: "+120 −34" beside the Git row — last known value at once, then
  *  refreshed from the host every time the menu opens (mount). Nothing when
@@ -68,17 +69,7 @@ export function GitStatHint(props: { hostId: string; path: string }) {
 }
 
 /** "3m ago", "2h ago", "5d ago" — short, tabular-friendly (ms since epoch, unlike board's ISO relativeTime). */
-export function relativeTimeMs(ms: number | undefined, now = Date.now()): string {
-  if (!ms) return '';
-  const seconds = Math.max(0, Math.round((now - ms) / 1000));
-  if (seconds < 45) return 'just now';
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
+export { relativeTimeMs } from '../../lib/time';
 
 export type RunRequest = { title: string; detail: string; run: () => Promise<void>; /** The confirm button (default "Stop and continue"). */ confirm?: string };
 

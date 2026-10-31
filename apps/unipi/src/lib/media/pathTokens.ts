@@ -7,7 +7,7 @@
  * is registered on demand with `file_share{path}` first (refused outside
  * the session's cwd).
  */
-import type { Chat } from '../chat/store';
+import type { RefChat } from '../chat/pathStat';
 import { blobTransport } from '../blob';
 import { classifyMedia } from './previewer';
 import { openPreviewer, type PreviewItem } from './previewerState';
@@ -47,7 +47,7 @@ export function resolvePathToken(path: string, cwd: string | undefined): string 
 /** Opens `path` in the shared previewer: fetches its bytes via the blob
  * channel, registering it with the bridge first if the host refuses
  * (unauthorized = not yet allow-listed). */
-export async function openFilePath(chat: Chat, path: string): Promise<void> {
+export async function openFilePath(chat: RefChat, path: string): Promise<void> {
   const hostId = chat.hostId;
   const name = path.split('/').pop() ?? path;
   const fetchOnce = () => blobTransport().getBytes(hostId, { path });
@@ -56,7 +56,7 @@ export async function openFilePath(chat: Chat, path: string): Promise<void> {
     result = await fetchOnce();
   } catch (error) {
     const code = (error as { code?: string })?.code;
-    if (code !== 'E_UNAUTHORIZED' && code !== 'E_NOT_FOUND') throw error;
+    if ((code !== 'E_UNAUTHORIZED' && code !== 'E_NOT_FOUND') || !chat.shareFile) throw error;
     await chat.shareFile(path);
     result = await fetchOnce();
   }

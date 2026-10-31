@@ -29,6 +29,7 @@ import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
 import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreePhone } from './tabs';
+import { turnFiles, turnFilesConflict, turnFilesUndo } from './turn-files';
 import { emptyChat, motionExits } from './empty-chat';
 import { u12Fallback, u12Native, u12Nav, u12OwnerOff, u12Phone, u12PhoneOff } from './reserved';
 import { modeChip, modelCycleSet, modelFusion, modelPicker, thinkingChip } from './model';
@@ -39,6 +40,9 @@ import {
 
 export const SCENARIOS: Record<string, MockScenario> = {
   empty,
+  'turn-files': turnFiles,
+  'turn-files-undo': turnFilesUndo,
+  'turn-files-conflict': turnFilesConflict,
   'u12-native': u12Native,
   'u12-fallback': u12Fallback,
   'u12-owner-off': u12OwnerOff,

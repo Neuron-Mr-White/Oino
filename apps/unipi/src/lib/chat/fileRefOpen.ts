@@ -8,7 +8,7 @@
  * The path is always the bridge-resolved absolute one (`paths_stat`).
  */
 import { createSignal } from 'solid-js';
-import type { Chat } from './store';
+import type { RefChat } from './pathStat';
 import { openFilePath } from '../media/pathTokens';
 import { setEditorTarget } from '../editorTarget';
 import { setFilesTarget } from '../filesTarget';
@@ -21,7 +21,7 @@ const go = (hash: string) => {
   if (typeof location !== 'undefined') location.hash = hash;
 };
 
-export function openFileRef(chat: Chat, ref: FileRefTarget): Promise<void> {
+export function openFileRef(chat: RefChat, ref: FileRefTarget): Promise<void> {
   if (ref.kind === 'dir') {
     openInFiles(chat, ref);
     return Promise.resolve();
@@ -36,7 +36,7 @@ export function openFileRef(chat: Chat, ref: FileRefTarget): Promise<void> {
 }
 
 /** The Files screen at `ref` (a dir) or the folder holding it (a file). */
-export function openInFiles(chat: Chat, ref: FileRefTarget): void {
+export function openInFiles(chat: RefChat, ref: FileRefTarget): void {
   const dir = ref.kind === 'dir' ? ref.resolved.replace(/(.)\/+$/, '$1') : ref.resolved.replace(/\/[^/]*$/, '') || '/';
   setFilesTarget({ hostId: chat.hostId, path: dir });
   hideChat();
@@ -53,16 +53,16 @@ export function mentionText(resolved: string, kind: 'file' | 'dir', cwd?: string
   return /[\s"']/.test(p) ? `@"${p}"` : `@${p}`;
 }
 
-export function mentionFileRef(chat: Chat, ref: FileRefTarget): void {
-  queueMention(`${chat.hostId}:${chat.session}`, `${mentionText(ref.resolved, ref.kind, chat.state?.session?.cwd)} `);
+export function mentionFileRef(chat: RefChat, ref: FileRefTarget): void {
+  queueMention(`${chat.hostId}:${chat.session}`, `${mentionText(ref.resolved, ref.kind, chat.cwd?.())} `);
 }
 
 // ---- long-press menu state (rendered by components/chat/FileRefMenu.tsx) ----
 
-export type FileRefMenuState = { chat: Chat; ref: FileRefTarget; rect: DOMRect };
+export type FileRefMenuState = { chat: RefChat; ref: FileRefTarget; rect: DOMRect };
 const [menu, setMenu] = createSignal<FileRefMenuState | undefined>(undefined);
 export const fileRefMenu = menu;
-export function openFileRefMenu(chat: Chat, ref: FileRefTarget, anchor: Element): void {
+export function openFileRefMenu(chat: RefChat, ref: FileRefTarget, anchor: Element): void {
   setMenu({ chat, ref, rect: anchor.getBoundingClientRect() });
 }
 export function closeFileRefMenu(): void {

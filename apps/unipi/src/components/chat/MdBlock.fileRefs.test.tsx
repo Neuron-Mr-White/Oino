@@ -30,7 +30,7 @@ const EXIST: Record<string, 'file' | 'dir'> = { 'src/a.ts': 'file', 'packages/dr
 const statPaths = vi.fn(async (paths: string[]) =>
   paths.map((path) => ({ path, resolved: `${CWD}/${path.replace(/\/$/, '')}`, kind: EXIST[path] ?? ('missing' as const) })),
 );
-const mkChat = () => ({ hostId: 'h1', session: '7', statPaths, state: { session: { cwd: CWD } } }) as unknown as Chat;
+const mkChat = () => ({ hostId: 'h1', session: '7', statPaths, cwd: () => CWD }) as unknown as Chat;
 
 afterEach(() => {
   cleanup();

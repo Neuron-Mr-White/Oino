@@ -222,9 +222,12 @@ export function TurnMenus(props: { ctx: TimelineCtx }) {
   createEffect(on(currentEditRequest, () => setAlsoUndo(false)));
 
   const confirmEdit = async (request: NonNullable<ReturnType<typeof currentEditRequest>>) => {
+    // Read the toggle before closing: closing resets it through the
+    // `currentEditRequest` effect (Z-28 "Also undo file changes").
+    const withUndo = request.canUndo && alsoUndo();
     closeEditRequest();
     try {
-      if (request.canUndo && alsoUndo()) await props.ctx.undoFiles?.undoFrom(request.turnId);
+      if (withUndo) await props.ctx.undoFiles?.undoFrom(request.turnId);
       await treeJump(props.ctx.session, request.entryId);
       restoreComposer(props.ctx.session.key, { text: request.text, images: request.images });
       focusComposer(props.ctx.session.key);

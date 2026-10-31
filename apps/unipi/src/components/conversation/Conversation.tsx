@@ -27,6 +27,8 @@ import { PhonePaneLayer } from '../../ui/slots/paneTabs';
 import { SlotModal } from '../../ui/slots/SlotModal';
 import { WidgetStack } from '../../ui/slots/WidgetStack';
 import { installUiEffects } from '../../ui/slots/effects';
+import { reservedGate } from '../../ui/slots/reserved';
+import { TURN_FILES_ENTRY, fileSummaryCapability } from '../../lib/fileSummary';
 import { parseExtShortcutSpecs, setExtensionShortcuts } from '../../lib/shortcuts/registry';
 import { commandNames, type TimelineCtx } from '../timeline/context';
 import { Timeline } from '../timeline/Timeline';
@@ -116,6 +118,16 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
       columnWidth: () => colW() || 720,
       // A7 Fork: the host streams the fork's new id; route the workspace there.
       openSession: (id: string) => navigate(`/s/${encodeURIComponent(props.hostId)}/${encodeURIComponent(id)}`),
+      // Z-28 "Also undo file changes": A27's file-summary capability. The gate is
+      // read in the handler (not tracked), so disabling the owner hides the option
+      // without rebuilding the context; the summaries come from the mounted footers.
+      undoFiles: (() => {
+        const files = fileSummaryCapability(s);
+        return {
+          canUndo: (turnId: string) => reservedGate(TURN_FILES_ENTRY) && files.canUndo(turnId),
+          undoFrom: (turnId: string) => files.undoFrom(turnId),
+        };
+      })(),
     };
   });
   const [colW, setColW] = createSignal(0);

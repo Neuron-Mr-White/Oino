@@ -34,6 +34,7 @@ import { sessions } from '../../lib/session/store';
 import { listExtensions } from '../../settings/hostCmd';
 import { sessionUi } from '../registries';
 import { FilesTab } from '../../components/files/FilesTab';
+import { TurnFilesFooter } from '../../components/timeline/footers/TurnFilesFooter';
 import { openSessionModal } from '../../components/session/SessionModal';
 import { openStatusSection } from '../../components/status/StatusPane';
 import type { UiEntry } from '../types';
@@ -71,6 +72,15 @@ const FilesBody: Component<ReservedBodyProps> = (props) => (
   />
 );
 registerReservedBody('files', FilesBody);
+
+/**
+ * `unipi.file-summary/turn-files` drawn where it belongs: inside the turn's row
+ * (WP-A27). It reads the turn id off the target (`turnEntryId`, the row's
+ * `turnId`) and the data from the extension's `turn` / `diff` / `undo`
+ * services (§3.13); with the owner disabled the gate turns off and the owner's
+ * fallback tree renders instead (§8 rule 3).
+ */
+registerReservedBody('turnFiles', TurnFilesFooter);
 
 // ── owner gates (§8 rule 2) ──────────────────────────────────────────────
 

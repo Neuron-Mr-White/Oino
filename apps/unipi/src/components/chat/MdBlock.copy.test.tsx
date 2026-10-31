@@ -19,7 +19,7 @@ import { renderBlocks } from '../../lib/chat/markdown';
 import type { Chat } from '../../lib/chat/store';
 
 const statPaths = async (paths: string[]) => paths.map((path) => ({ path, resolved: `/home/u/proj/${path}`, kind: path === 'src/a.ts' ? 'file' : 'missing' }));
-const chat = { hostId: 'h1', statPaths, state: { session: { cwd: '/home/u/proj' } } } as unknown as Chat;
+const chat = { hostId: 'h1', statPaths, cwd: () => '/home/u/proj' } as unknown as Chat;
 
 afterEach(() => {
   cleanup();

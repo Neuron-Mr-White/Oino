@@ -11,7 +11,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-li
 import { HashRouter, Route } from '@solidjs/router';
 import { createMockHost, type MockScenario } from '../../../dev/mock/host';
 import { setHostClientFactory } from '../../../lib/host/factory';
-import { createSession, resetSessions } from '../../../lib/session/store';
+import { createSession, resetSessions, sessions } from '../../../lib/session/store';
 import { panes, resetPanes } from '../../../lib/panes';
 import { resetLayout, setDesktopOverride } from '../../../lib/layout';
 import { clearEditorTarget, getEditorTarget } from '../../../lib/editorTarget';
@@ -164,6 +164,40 @@ describe('pure diff helpers', () => {
 });
 
 describe('diff tab', () => {
+  it("renders a turn's file-summary diff by turn + path (A27's \"View diff\")", async () => {
+    const asked: Array<Record<string, unknown>> = [];
+    const sc = scenario();
+    const base = sc.hosts[0]!.sessions![S]!;
+    sc.hosts[0]!.sessions![S] = {
+      ...base,
+      cmd: {
+        '_oino/service_call': (cmd: unknown) => {
+          const c = cmd as { name?: string; payload?: Record<string, unknown> };
+          asked.push({ name: c.name, ...(c.payload ?? {}) });
+          return c.name === 'diff'
+            ? {
+                turnEntryId: c.payload?.turnEntryId,
+                path: c.payload?.path,
+                diff: '--- a/src/math.ts\n+++ b/src/math.ts\n@@ -1,2 +1,2 @@\n-return a - b;\n+return a + b;\n@@ -9,2 +9,2 @@\n-const x = 1;\n+const x = 2;\n',
+                truncated: false,
+              }
+            : {};
+        },
+      },
+    };
+    world = createMockHost(sc);
+    setHostClientFactory(world.client);
+    const handle = sessions().ensure(HOST, S);
+    await waitFor(() => expect(handle.state.conn).toBe('live'));
+    setDesktopOverride(true);
+    withRouter(() => <DiffTab {...props({ turnEntryId: 'u1' })} />);
+    await waitFor(() => expect(document.querySelector('.diffview')).toBeTruthy());
+    expect(document.querySelector('.diffview')!.textContent).toContain('return a + b;');
+    expect(asked).toEqual([{ name: 'diff', turnEntryId: 'u1', path: 'src/math.ts' }]);
+    // one page per hunk of the turn's diff
+    expect(document.body.textContent).toContain('edit 1 of 2');
+  });
+
   it('resolves the call from the session (a persisted tab has only the id)', async () => {
     await live();
     withRouter(() => <DiffTab {...props({ toolId: 'tc-edit' })} />);

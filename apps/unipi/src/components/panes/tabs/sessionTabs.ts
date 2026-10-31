@@ -73,7 +73,7 @@ export function openSessionTab(base: SessionTabBase, spec: LaunchSpec): void {
 /** Z-40 "View diff": the full diff of one edit/write tool call, at `line`. */
 export function openDiffTab(
   base: SessionTabBase,
-  source: { toolId?: string; entryId?: string; part?: number; path: string },
+  source: { toolId?: string; entryId?: string; part?: number; path: string; /** A27: a turn's file-summary diff (`diff` service) instead of a tool call. */ turnEntryId?: string },
   line?: number,
   opts?: { split?: boolean },
 ): void {
@@ -86,6 +86,7 @@ export function openDiffTab(
       ...(source.toolId ? { toolId: source.toolId } : {}),
       ...(source.entryId ? { entryId: source.entryId } : {}),
       ...(source.part !== undefined ? { part: source.part } : {}),
+      ...(source.turnEntryId ? { turnEntryId: source.turnEntryId } : {}),
       path,
       ...(line ? { line } : {}),
       ...(opts?.split ? { split: true } : {}),

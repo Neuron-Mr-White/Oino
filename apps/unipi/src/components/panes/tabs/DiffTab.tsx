@@ -9,14 +9,15 @@
  * re-resolves its diff from the session after a reload; `args` is the
  * capture/test escape hatch (a scenario seeds a call without a live session).
  */
-import { createMemo, createSignal, Show } from 'solid-js';
+import { createMemo, createResource, createSignal, Show } from 'solid-js';
 import { ChevronLeft, ChevronRight, Columns2, ExternalLink, Rows3 } from 'lucide-solid';
 import { setEditorTarget, switchEditorTarget, type EditorTarget } from '../../../lib/editorTarget';
 import { resolvePathToken } from '../../../lib/media/pathTokens';
-import { allAdditions, editDiff, renderDiffHtml, type DiffHunk, type DiffLine } from '../../../lib/markdown';
+import { allAdditions, editDiff, parseUnifiedDiff, renderDiffHtml, type DiffHunk, type DiffLine } from '../../../lib/markdown';
 import { escapeHtml } from '../../../lib/markdown/escape';
 import { desktopShell } from '../../../lib/layout';
 import { sessions } from '../../../lib/session/store';
+import { fetchTurnFileDiff } from '../../../lib/fileSummary';
 import type { SessionEntry } from '../../../lib/session/types';
 import { openSideTab } from '../SidePane';
 import { currentWorkspace } from '../../shell/Workspace';
@@ -93,6 +94,13 @@ export function pathOfArgs(args: Record<string, unknown> | undefined): string {
   return typeof p === 'string' ? p : '';
 }
 
+/** One page per hunk of a raw unified diff (A27's turn footer "View diff"). */
+export function hunksOfUnified(text: string): DiffEdit[] {
+  return parseUnifiedDiff(text)
+    .files.flatMap((file) => file.hunks)
+    .map((hunk) => ({ hunk, line: hunk.lines.find((line) => line.kind === 'add')?.newNo }));
+}
+
 /* ── split rendering: one row per old/new line pair, ctx on both sides ── */
 
 type SplitRow = { kind: 'hunk' | 'pair'; head?: string; old?: DiffLine; new?: DiffLine };
@@ -158,9 +166,23 @@ export function DiffTab(props: PaneTabProps) {
       entryId: typeof props.tab.params?.entryId === 'string' ? (props.tab.params.entryId as string) : undefined,
       part: typeof props.tab.params?.part === 'number' ? (props.tab.params.part as number) : -1,
       path: typeof props.tab.params?.path === 'string' ? (props.tab.params.path as string) : '',
+      /** A27: the turn whose file-summary `diff` service this tab renders. */
+      turn: typeof props.tab.params?.turnEntryId === 'string' ? (props.tab.params.turnEntryId as string) : undefined,
     };
   };
   const cwd = () => (props.projectKey && props.projectKey !== '~' ? props.projectKey : undefined);
+
+  // A turn footer's "View diff": the diff comes from the extension's `diff`
+  // service (the turn has no tool call to resolve), addressed by turn + path so
+  // a persisted tab re-resolves after a reload like `toolId` does.
+  const turnKey = createMemo(() => {
+    const b = base();
+    return b.turn && b.sessionId ? `${b.hostId}|${b.sessionId}|${b.turn}` : undefined;
+  });
+  const [turnDiff] = createResource(turnKey, async (key) => {
+    const [hostId, sessionId, turnId] = key.split('|') as [string, string, string];
+    return fetchTurnFileDiff(sessions().ensure(hostId, sessionId), turnId, base().path);
+  });
 
   const args = createMemo<Record<string, unknown> | undefined>(() => {
     const seeded = obj(props.tab.params?.args);
@@ -172,7 +194,10 @@ export function DiffTab(props: PaneTabProps) {
     if (b.entryId && b.part >= 0) return callArgsOf(entries.find((e) => e.id === b.entryId), b.part);
     return undefined;
   });
-  const edits = createMemo<DiffEdit[]>(() => editsOfArgs(args()));
+  const edits = createMemo<DiffEdit[]>(() => {
+    if (base().turn) return hunksOfUnified(turnDiff()?.diff ?? '');
+    return editsOfArgs(args());
+  });
   const path = () => base().path || pathOfArgs(args());
   const [index, setIndex] = createSignal(Math.max(0, typeof props.tab.params?.edit === 'number' ? (props.tab.params.edit as number) : 0));
   // `split` seeds the view (a persisted tab keeps the mode the user picked).
@@ -213,6 +238,13 @@ export function DiffTab(props: PaneTabProps) {
   };
 
   const noDiff = () => edits().length === 0;
+  /** Why there is nothing to show (a turn diff has no tool call to fall back to). */
+  const emptyText = (): string => {
+    if (!base().turn) return 'This edit has no diff to show.';
+    const reply = turnDiff();
+    if (!reply) return 'Reading the diff…';
+    return reply.reason ? `No diff to show: ${reply.reason}.` : 'No changes to show.';
+  };
 
   return (
     <div class="dtab" data-testid="diff-tab">
@@ -245,7 +277,7 @@ export function DiffTab(props: PaneTabProps) {
         </div>
       </header>
       <div class="dtab-body">
-        <Show when={!noDiff()} fallback={<p class="dtab-empty">This edit has no diff to show.</p>}>
+        <Show when={!noDiff()} fallback={<p class="dtab-empty">{emptyText()}</p>}>
           <div class="tool-diff diffview-wrap" innerHTML={html()} />
         </Show>
       </div>

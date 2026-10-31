@@ -23,7 +23,7 @@ import { openMermaidViewer } from './MermaidViewer';
 import { openLinkMenu } from '../LinkAnchorMenu';
 import { anchorFromEvent, isExternalHref, openLink } from '../../lib/markdown/links';
 import { copyText } from '../../lib/board/share';
-import type { Chat } from '../../lib/chat/store';
+import type { RefChat } from '../../lib/chat/pathStat';
 import { hydrateTaskRefs, knownPrefixes } from '../../lib/board/portal';
 import { openTaskFromChat } from '../../lib/session/open';
 import { hydrateFileRefs } from '../../lib/chat/fileRefs';
@@ -49,7 +49,7 @@ function ensurePathCopyButton(code: HTMLElement): void {
   code.after(btn);
 }
 
-export function MdBlock(props: { html: string; class?: string; chat?: Chat }) {
+export function MdBlock(props: { html: string; class?: string; chat?: RefChat }) {
   let el: HTMLDivElement | undefined;
   let pass = 0;
   createEffect(() => {
@@ -90,7 +90,7 @@ export function MdBlock(props: { html: string; class?: string; chat?: Chat }) {
     if (taskRef && props.chat && el?.contains(taskRef)) {
       event.preventDefault();
       event.stopPropagation();
-      openTaskFromChat(props.chat.hostId, taskRef.dataset.task!, props.chat.state?.session?.cwd);
+      openTaskFromChat(props.chat.hostId, taskRef.dataset.task!, props.chat.cwd?.());
       return;
     }
     // File refs (UNI-204): verified paths in prose, code and link targets.

@@ -11,6 +11,25 @@ import type { PathStatItem } from './store';
 
 export type StatChat = { statPaths?: (paths: string[]) => Promise<PathStatItem[] | null> };
 
+/**
+ * Everything file/image ref plumbing (`fileRefOpen`, `fileRefGestures`,
+ * `pathTokens`, `FileRefText`, `MdBlock`, `ImageChip`) actually reads off
+ * "a chat": the v1 `Chat` satisfies it, and the v2 timeline passes a
+ * `SessionHandle`-backed adapter (WP-A6) so bubbles and markdown keep
+ * verified refs without dragging the old store in.
+ */
+export type RefChat = StatChat & {
+  hostId: string;
+  session?: string;
+  state?: { conn?: string };
+  /** Session cwd (project folder) — ~/ display, mention text, relative opens. */
+  cwd?: () => string;
+  /** `ImageRef.mediaRef` bytes → data URL (inline `data` never calls this). */
+  media?: (mediaRef: string, mime: string) => Promise<{ mime: string; dataUrl: string }>;
+  /** Allow-lists a path for `blob_get` (previewing a text-seen path). */
+  shareFile?: (path: string) => Promise<unknown>;
+};
+
 const BATCH_MAX = 200;
 const HIT_TTL_MS = 5 * 60_000;
 const MISS_TTL_MS = 30_000;

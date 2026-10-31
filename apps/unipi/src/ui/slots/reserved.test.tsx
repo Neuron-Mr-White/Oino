@@ -158,9 +158,9 @@ const allOwnersOn = () => {
 
 describe('U12 reserved gates (§8 rule 2)', () => {
   it('every row follows its owner live: enabled → on, disabled → off', () => {
-    // The rows this build renders natively; browser/terminal/turn-files are the
-    // fallback rows (rule 3) and are covered separately.
-    const native = RESERVED_ROWS.filter((r) => ['board', 'cron', 'files', 'git', 'sessionInfo', 'lhStatus'].includes(r.component));
+    // The rows this build renders natively; browser/terminal are the fallback
+    // rows (rule 3) and are covered separately.
+    const native = RESERVED_ROWS.filter((r) => ['board', 'cron', 'files', 'git', 'sessionInfo', 'lhStatus', 'turnFiles'].includes(r.component));
     for (const row of RESERVED_ROWS.filter((r) => r.owner !== 'host')) {
       allOwnersOn();
       owner(row.owner, false);
@@ -207,8 +207,9 @@ describe('U12 reserved gates (§8 rule 2)', () => {
     expect(paneKind('terminal')?.component).toBeUndefined();
     expect(isReservedPaneEntry(reserved('unipi.browser/browser', 'browser', 'sidePane', 'browser fallback'))).toBe(false);
     expect(isReservedPaneEntry(reserved('host/terminal', 'terminal', 'bottomPane', 'terminal fallback'))).toBe(false);
-    // The turn footer renders in place and registers its body with A27.
-    expect(reservedGate('unipi.file-summary/turn-files')).toBe(false);
+    // The turn footer renders in place: A27 registered its native body, so the
+    // row is routed (the component itself hides on a turn without files).
+    expect(reservedGate('unipi.file-summary/turn-files')).toBe(true);
   });
 });
 
@@ -332,15 +333,33 @@ describe('U12 fallback trees elsewhere (§8 rule 3)', () => {
     expect(screen.getByText('git fallback rows')).toBeTruthy();
   });
 
-  it('a reserved turn-footer row renders its fallback and never pulls a renderer', async () => {
+  it('the reserved turn-footer row renders natively (never pulls a renderer) and hides on a turn without files', async () => {
     allOwnersOn();
     const s = await open();
     const ctx = { session: s, hostId: HOST, sessionId: () => 's1', columnWidth: () => 800 } as unknown as TimelineCtx;
     const turn: Turn = { turnId: 'e-user-1', kind: 'turn', entries: [], segments: [], live: false, stopped: false, source: 'user' };
     put(reserved('unipi.file-summary/turn-files', 'turnFiles', 'turnFooter', '3 files +12 −04'));
     render(() => <TurnFooters ctx={ctx} turn={turn} />);
-    await waitFor(() => expect(screen.getByText('3 files +12 −04')).toBeTruthy());
+    // A27's native body asks the extension for the turn (the mock answers `{}`):
+    // no owner fallback, no renderer, and an empty summary renders nothing at all.
+    await waitFor(() =>
+      expect(world_.log.some((e) => e.kind === 'cmd' && e.op === '_oino/service_call' && (e.args as { name?: string })?.name === 'turn')).toBe(true),
+    );
+    expect(screen.queryByText('3 files +12 −04')).toBeNull();
+    expect(screen.queryByTestId('turn-files')).toBeNull();
     expect(world_.log.some((e) => e.kind === 'cmd' && e.op === '_oino/render' && (e.args as { target?: string })?.target === 'turnFooter')).toBe(false);
+  });
+
+  it('a reserved turn-footer row with its owner off renders the owner fallback (rule 3)', async () => {
+    allOwnersOn();
+    owner('unipi.file-summary', false);
+    const s = await open();
+    const ctx = { session: s, hostId: HOST, sessionId: () => 's1', columnWidth: () => 800 } as unknown as TimelineCtx;
+    const turn: Turn = { turnId: 'e-user-1', kind: 'turn', entries: [], segments: [], live: false, stopped: false, source: 'user' };
+    put(reserved('unipi.file-summary/turn-files', 'turnFiles', 'turnFooter', '3 files +12 −04'));
+    render(() => <TurnFooters ctx={ctx} turn={turn} />);
+    await waitFor(() => expect(screen.getByText('3 files +12 −04')).toBeTruthy());
+    expect(screen.queryByTestId('turn-files')).toBeNull();
   });
 });
 

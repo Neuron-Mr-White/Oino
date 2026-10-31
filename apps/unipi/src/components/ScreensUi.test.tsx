@@ -16,7 +16,7 @@ describe('detail header (F39): one 56px bar on every detail pane', () => {
   });
 
   it.each([
-    ['components/chat/ChatView.tsx', 'chat-head detail-head'],
+    ['components/shell/ConversationHeader.tsx', 'conv-head'],
     ['screens/Editor.tsx', 'editor-head detail-head'],
     ['screens/Preview.tsx', 'preview-viewer-head detail-head'],
     ['screens/BrowserView.tsx', 'preview-viewer-head browser-head detail-head'],

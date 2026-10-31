@@ -9,7 +9,12 @@ import { createContext, onCleanup, useContext } from 'solid-js';
 import { sessions } from '../lib/session/store';
 import type { NodePath, Scope } from './types';
 
-export type UiTarget = { scope: Scope; hostId: string; sessionId?: string };
+/**
+ * Where a registry entry renders. `turnEntryId` is set only by a row that lives
+ * inside one turn (`turnFooter`, §6.7): the native component reads it as the
+ * turn's id, exactly the `turnEntryId` the render request carries (A27).
+ */
+export type UiTarget = { scope: Scope; hostId: string; sessionId?: string; turnEntryId?: string };
 
 export type UiActionPayload = { entryId: string; actionId: string; value?: unknown; values?: Record<string, unknown>; path?: NodePath };
 

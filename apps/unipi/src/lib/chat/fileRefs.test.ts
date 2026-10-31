@@ -19,7 +19,7 @@ function fakeChat(existing: Record<string, 'file' | 'dir'>) {
     return { resolved: clean, kind: 'missing' as const };
   };
   const statPaths = vi.fn(async (paths: string[]): Promise<PathStatItem[]> => paths.map((path) => ({ path, ...resolve(path) })));
-  return { statPaths, hostId: 'h1', pid: 1, state: { session: { cwd: CWD } } };
+  return { statPaths, hostId: 'h1', pid: 1, cwd: () => CWD };
 }
 
 describe('verification (UNI-204)', () => {

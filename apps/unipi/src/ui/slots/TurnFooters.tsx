@@ -50,7 +50,11 @@ export function TurnFooters(props: { ctx: TimelineCtx; turn: Turn }) {
             if (isReservedEntry(entry))
               return (
                 <div class="ui-turnfooter" data-entry={entry.id}>
-                  <EntryView entry={entry} target={{ scope: 'session', hostId: props.ctx.hostId, sessionId: props.ctx.sessionId() }} mode="auto" />
+                  <EntryView
+                    entry={entry}
+                    target={{ scope: 'session', hostId: props.ctx.hostId, sessionId: props.ctx.sessionId(), turnEntryId: props.turn.turnId }}
+                    mode="auto"
+                  />
                 </div>
               );
             const node = () =>

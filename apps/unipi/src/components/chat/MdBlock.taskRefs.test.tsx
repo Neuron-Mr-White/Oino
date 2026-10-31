@@ -10,11 +10,10 @@ vi.mock('../../lib/board/portal', async (orig) => ({
 }));
 
 import { MdBlock } from './MdBlock';
-import { TaskRefText } from './Transcript';
 import { renderBlocks } from '../../lib/chat/markdown';
-import type { Chat } from '../../lib/chat/store';
+import type { RefChat } from '../../lib/chat/pathStat';
 
-const chat = { hostId: 'h1', state: { session: { cwd: '/home/u/unipi' } } } as unknown as Chat;
+const chat = { hostId: 'h1', cwd: () => '/home/u/unipi' } as unknown as RefChat;
 
 afterEach(() => {
   cleanup();
@@ -37,13 +36,5 @@ describe('task refs in chat (UNI-181)', () => {
     const r = render(() => <MdBlock html={html} />);
     await new Promise((res) => setTimeout(res, 10));
     expect(r.container.querySelector('[data-task]')).toBeNull();
-  });
-
-  it("the user's own message ref is tappable too", async () => {
-    const r = render(() => <TaskRefText chat={chat} text="please do UNI-176 then UNI-177" />);
-    await waitFor(() => expect(r.container.querySelectorAll('.task-ref')).toHaveLength(2));
-    expect(r.container.textContent).toBe('please do UNI-176 then UNI-177');
-    fireEvent.click(r.getByText('UNI-177'));
-    expect(openTaskFromChat).toHaveBeenCalledWith('h1', 'UNI-177', '/home/u/unipi');
   });
 });

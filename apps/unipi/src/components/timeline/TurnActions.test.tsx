@@ -199,6 +199,28 @@ describe('turn tail', () => {
     await waitFor(() => expect(s.state.outbox.some((o) => o.text === 'Question two')).toBe(true));
   });
 
+  it('Edit offers "Also undo file changes" when the file summary can undo the turn (Z-28)', async () => {
+    const { s, w } = await open();
+    const undone: string[] = [];
+    const base = ctx(s);
+    const c: TimelineCtx = { ...base, undoFiles: { canUndo: (turnId) => turnId === 'u1', undoFrom: async (turnId) => void undone.push(turnId) } };
+    const r = render(() => <Timeline ctx={c} dock={dock} />);
+    const edit = await waitFor(() => r.getAllByTestId('tl-user-edit')[0]!);
+    fireEvent.click(edit);
+    const menu = await waitFor(() => {
+      const el = document.querySelector('[role=menu][aria-label="Edit message"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    const items = () => [...menu.querySelectorAll('[role=menuitem]')];
+    expect(items().some((el) => el.textContent?.includes('Also undo file changes'))).toBe(true);
+    fireEvent.click(items().find((el) => el.textContent?.includes('Also undo file changes'))!);
+    fireEvent.click(items().find((el) => el.textContent?.includes('Edit message'))!);
+    await waitFor(() => expect(undone).toEqual(['u1']));
+    await waitFor(() => expect(w.log.some((e) => e.op === '_oino/navigate_tree')).toBe(true));
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('Question one'));
+  });
+
   it('edits a user message: tree jump + text and images back in the composer (Z-28)', async () => {
     const { s, w } = await open();
     const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);

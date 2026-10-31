@@ -5,12 +5,12 @@
  * between refs go through `plain` (task refs in bubbles).
  */
 import { createEffect, createResource, For, onCleanup, type JSX } from 'solid-js';
-import type { Chat } from '../../lib/chat/store';
+import type { RefChat } from '../../lib/chat/pathStat';
 import type { ScanMode } from '../../lib/chat/fileRefScan';
 import { fileRefHits, splitByHits, type FileRefHit } from '../../lib/chat/fileRefs';
 import { attachFileRefGestures, handleFileRefClick } from '../../lib/chat/fileRefGestures';
 
-export function FileRefText(props: { chat?: Chat; text: string; mode: ScanMode; base?: string; plain?: (text: string) => JSX.Element; class?: string }) {
+export function FileRefText(props: { chat?: RefChat; text: string; mode: ScanMode; base?: string; plain?: (text: string) => JSX.Element; class?: string }) {
   let root: HTMLSpanElement | undefined;
   const [hits] = createResource(
     () => (props.chat && props.text ? { chat: props.chat, text: props.text, mode: props.mode, base: props.base } : undefined),

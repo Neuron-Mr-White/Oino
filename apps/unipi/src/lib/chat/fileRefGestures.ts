@@ -3,7 +3,7 @@
  * elements inside a container (UNI-204): MdBlock's rendered markdown, user
  * bubbles and tool output all attach this once to their root.
  */
-import type { Chat } from './store';
+import type { RefChat } from './pathStat';
 import { refFromElement } from './fileRefs';
 import { openFileRef, openFileRefMenu } from './fileRefOpen';
 
@@ -22,7 +22,7 @@ function flashError(el: HTMLElement): void {
 }
 
 /** Opens the ref under `event` if any; true when it handled the click. */
-export function handleFileRefClick(event: MouseEvent, root: HTMLElement, chat: Chat | undefined): boolean {
+export function handleFileRefClick(event: MouseEvent, root: HTMLElement, chat: RefChat | undefined): boolean {
   const el = refElementFrom(event.target, root);
   if (!el || !chat) return false;
   event.preventDefault();
@@ -46,7 +46,7 @@ function dropNativeSelection(): void {
 
 /** Wires long-press (touch) and right-click to the file-ref menu. Returns a cleanup. Clicks that end a
  * long-press are swallowed so the menu's ref doesn't also open. */
-export function attachFileRefGestures(root: HTMLElement, chat: () => Chat | undefined): () => void {
+export function attachFileRefGestures(root: HTMLElement, chat: () => RefChat | undefined): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let startX = 0;
   let startY = 0;

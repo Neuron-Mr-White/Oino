@@ -11,14 +11,14 @@
  */
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
 import { File as FileIcon, ImageIcon } from 'lucide-solid';
-import type { Chat } from '../../lib/chat/store';
+import type { RefChat } from '../../lib/chat/pathStat';
 import type { AttachmentRef, ImageRef } from '../../lib/chat/model';
 import type { FileMention } from '../../lib/composer/attachments';
 import { classifyMedia } from '../../lib/media/previewer';
 import { openPreviewer } from '../../lib/media/previewerState';
 import { openFilePath, resolvePathToken } from '../../lib/media/pathTokens';
 
-export function ImageChipRow(props: { chat: Chat; images: ImageRef[] }) {
+export function ImageChipRow(props: { chat: RefChat; images: ImageRef[] }) {
   return (
     <Show when={props.images.length > 0}>
       <div class="chat-image-row">
@@ -58,7 +58,7 @@ function slot(): Promise<() => void> {
 
 /** Fetches (once) the bytes behind an image chip. Failures aren't cached, so
  * a later tap or a reconnect retries. */
-export function loadImage(chat: Chat, image: ImageRef): Promise<string> {
+export function loadImage(chat: RefChat, image: ImageRef): Promise<string> {
   if (image.data) return Promise.resolve(`data:${image.mime};base64,${image.data}`);
   const ref = image.mediaRef;
   if (!ref) return Promise.reject(new Error('No image data'));
@@ -67,6 +67,7 @@ export function loadImage(chat: Chat, image: ImageRef): Promise<string> {
   const job = (async () => {
     const release = await slot();
     try {
+      if (!chat.media) throw new Error('No image channel');
       return (await chat.media(ref, image.mime)).dataUrl;
     } finally {
       release();
@@ -86,7 +87,7 @@ export function loadImage(chat: Chat, image: ImageRef): Promise<string> {
 
 /** Test seam. */
 /** UNI-290: an image ref (a sent message's) as a `File` again, to re-attach it to the composer. */
-export async function imageRefFile(chat: Chat, image: ImageRef, name: string): Promise<File> {
+export async function imageRefFile(chat: RefChat, image: ImageRef, name: string): Promise<File> {
   const url = await loadImage(chat, image);
   const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(url);
   if (!m) throw new Error('Not a data URL');
@@ -109,7 +110,7 @@ export function resetImageCacheForTests(): void {
 /** Opens the previewer on `images[index]` (UNI-285: an `[image N]` chip in a
  *  sent message), resolving the siblings too so swipe works. Best effort:
   *  an image whose bytes can't be fetched is skipped. */
-export async function openImagePreviewer(chat: Chat, images: readonly ImageRef[], index: number): Promise<void> {
+export async function openImagePreviewer(chat: RefChat, images: readonly ImageRef[], index: number): Promise<void> {
   if (index < 0 || index >= images.length) return;
   const want = images[index]!;
   const resolved = await loadImage(chat, want).catch(() => undefined);
@@ -128,7 +129,7 @@ export async function openImagePreviewer(chat: Chat, images: readonly ImageRef[]
   openPreviewer({ kind: 'image', items: resolvedItems, index: resolvedItems.findIndex((i) => i.url === resolved) });
 }
 
-function ImageChip(props: { chat: Chat; image: ImageRef; images: ImageRef[]; index: number }) {
+function ImageChip(props: { chat: RefChat; image: ImageRef; images: ImageRef[]; index: number }) {
   const [url, setUrl] = createSignal<string | undefined>(props.image.data ? `data:${props.image.mime};base64,${props.image.data}` : undefined);
   const [loading, setLoading] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
@@ -207,7 +208,7 @@ function ImageChip(props: { chat: Chat; image: ImageRef; images: ImageRef[]; ind
   );
 }
 
-export function AttachmentChipRow(props: { chat: Chat; attachments: AttachmentRef[] }) {
+export function AttachmentChipRow(props: { chat: RefChat; attachments: AttachmentRef[] }) {
   return (
     <Show when={props.attachments.length > 0}>
       <div class="chat-image-row">
@@ -217,7 +218,7 @@ export function AttachmentChipRow(props: { chat: Chat; attachments: AttachmentRe
   );
 }
 
-function AttachmentChip(props: { chat: Chat; attachment: AttachmentRef }) {
+function AttachmentChip(props: { chat: RefChat; attachment: AttachmentRef }) {
   const kind = () => classifyMedia(props.attachment.mime, props.attachment.path);
   const [loading, setLoading] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
@@ -228,6 +229,7 @@ function AttachmentChip(props: { chat: Chat; attachment: AttachmentRef }) {
     setFailed(false);
     try {
       if (props.attachment.mediaRef) {
+        if (!props.chat.media) throw new Error('No media channel');
         const result = await props.chat.media(props.attachment.mediaRef, props.attachment.mime);
         if (kind() === 'image') {
           openPreviewer({ kind: 'image', items: [{ url: result.dataUrl, mime: result.mime, name: name() }], index: 0 });
@@ -271,7 +273,7 @@ function AttachmentChip(props: { chat: Chat; attachment: AttachmentRef }) {
  * text instead of leaving a raw `@<blob path>` in the draft; the bubble
  * (Transcript.tsx UserBubble) strips the mention lines from its plain
  * text and renders each as a chip here instead, tap → `openFilePath`. */
-export function FileMentionChipRow(props: { chat: Chat; mentions: FileMention[] }) {
+export function FileMentionChipRow(props: { chat: RefChat; mentions: FileMention[] }) {
   return (
     <Show when={props.mentions.length > 0}>
       <div class="chat-user-files">
@@ -281,14 +283,14 @@ export function FileMentionChipRow(props: { chat: Chat; mentions: FileMention[] 
   );
 }
 
-function FileMentionChip(props: { chat: Chat; mention: FileMention }) {
+function FileMentionChip(props: { chat: RefChat; mention: FileMention }) {
   const [loading, setLoading] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
   const open = async () => {
     setLoading(true);
     setFailed(false);
     try {
-      const cwd = props.chat.state?.session?.cwd;
+      const cwd = props.chat.cwd?.();
       await openFilePath(props.chat, resolvePathToken(props.mention.path, cwd));
     } catch {
       setFailed(true);
