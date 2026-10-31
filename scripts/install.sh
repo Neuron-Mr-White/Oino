@@ -245,7 +245,7 @@ install_app_linux() {
       have sudo || err "--deb needs sudo (or run as root)"
       run sudo apt-get install -y "$tmp/unipi.deb"
     fi
-    say "Installed UniPi (.deb). Run: unipi"
+    say "Installed UniPi (.deb). Run: unipi-mobile (or launch UniPi from the menu)"
     return 0
   fi
   fetch_asset "UniPi_.*_amd64\\.AppImage\$" "$tmp/UniPi.AppImage" || err "no AppImage in the release (SHA256SUMS)"
