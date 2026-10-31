@@ -2,21 +2,20 @@
 # Keep Oino's cargo build caches inside a disk budget (app-convention: every build cache
 # needs a size limit or cleanup policy).
 #
-# Usage: scripts/target-gc.sh [--budget-gb N] [--age-hours H] [--dry-run]
-#   Budget defaults to $OINO_TARGET_BUDGET_GB (80). Covers target/ and
-#   extensions/target/. Steps, applied in order until the total is under budget:
-#     1. remove target*/tmp scratch entries older than AGE (default 6 h)
-#     2. remove incremental caches older than AGE
-#     3. remove deps/ and .fingerprint/ entries not touched for AGE*4 (stale hashed
-#        artifacts; cargo rebuilds anything it still needs)
-#     4. `cargo clean --profile dev` per workspace (last resort)
-# Safe to run while nothing is compiling; refuses to run while a cargo process is active
-# unless --force is given.
+# Usage: scripts/target-gc.sh [--budget-gb N] [--age-hours H] [--dry-run] [--force]
+#   Budget defaults to $OINO_TARGET_BUDGET_GB (30). Covers target/, extensions/target/,
+#   apps/unipi/src-tauri/target/, and standalone harness targets.
+#   Steps, applied in order until total is under budget:
+#     1. remove harness/target dirs, incremental caches, examples, and tmp scratch
+#     2. remove linked test executables in */deps/* older than AGE (keeps .rlib/.rmeta warm)
+#     3. remove all remaining linked test executables in */deps/* (except .so proc-macros)
+#     4. remove stale deps/ and .fingerprint/ entries older than AGE*3
+#     5. `cargo clean --profile dev` per workspace (last resort)
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-budget_gb="${OINO_TARGET_BUDGET_GB:-80}"
-age_h="${OINO_TARGET_GC_AGE_HOURS:-6}"
+budget_gb="${OINO_TARGET_BUDGET_GB:-30}"
+age_h="${OINO_TARGET_GC_AGE_HOURS:-1}"
 dry=0
 force=0
 while [ $# -gt 0 ]; do
@@ -25,12 +24,12 @@ while [ $# -gt 0 ]; do
     --age-hours) age_h="$2"; shift 2 ;;
     --dry-run) dry=1; shift ;;
     --force) force=1; shift ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-dirs=("$root/target" "$root/extensions/target")
+dirs=("$root/target" "$root/extensions/target" "$root/apps/unipi/src-tauri/target")
 
 total_gb() {
   local sum=0 d
@@ -55,23 +54,31 @@ echo "target-gc: ${before} GB used, budget ${budget_gb} GB"
 [ "$before" -le "$budget_gb" ] && { echo "target-gc: within budget"; exit 0; }
 
 age_min=$((age_h * 60))
-stale_min=$((age_min * 4))
+stale_min=$((age_min * 3))
 
-for d in "${dirs[@]}"; do
-  [ -d "$d/tmp" ] && run "find '$d/tmp' -mindepth 1 -maxdepth 1 -mmin +$age_min -exec rm -rf {} +"
-done
-[ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after tmp cleanup"; exit 0; }
-
-# `find … -exec find {} … -exec rm -rf {}` is not valid (a `+` form takes only one `{}`), so
-# the incremental dirs are listed first and cleaned one at a time.
+run "rm -rf '$root'/extensions/*/*/harness/target"
 for d in "${dirs[@]}"; do
   [ -d "$d" ] || continue
+  [ -d "$d/tmp" ] && run "rm -rf '$d/tmp'"
+  [ -d "$d/debug/examples" ] && run "rm -rf '$d/debug/examples'"
   while IFS= read -r inc; do
     [ -n "$inc" ] || continue
-    run "find '$inc' -mindepth 1 -maxdepth 1 -mmin +$age_min -exec rm -rf {} +"
+    run "rm -rf '$inc'"
   done <<<"$(find "$d" -type d -name incremental -prune 2>/dev/null)"
 done
-[ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after incremental cleanup"; exit 0; }
+[ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after incremental/tmp cleanup"; exit 0; }
+
+for d in "${dirs[@]}"; do
+  [ -d "$d/debug/deps" ] || continue
+  run "find '$d/debug/deps' -maxdepth 1 -type f -perm /111 ! -name '*.so' -mmin +$age_min -delete"
+done
+[ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after aged test-bin cleanup"; exit 0; }
+
+for d in "${dirs[@]}"; do
+  [ -d "$d/debug/deps" ] || continue
+  run "find '$d/debug/deps' -maxdepth 1 -type f -perm /111 ! -name '*.so' -delete"
+done
+[ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after all test-bin cleanup"; exit 0; }
 
 for d in "${dirs[@]}"; do
   [ -d "$d" ] || continue
@@ -80,7 +87,7 @@ for d in "${dirs[@]}"; do
 done
 [ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after stale artifact cleanup"; exit 0; }
 
-for ws in "$root" "$root/extensions"; do
-  run "(cd '$ws' && cargo clean --profile dev)"
+for ws in "$root" "$root/extensions" "$root/apps/unipi/src-tauri"; do
+  [ -f "$ws/Cargo.toml" ] && run "(cd '$ws' && cargo clean --profile dev)"
 done
 echo "target-gc: $(total_gb) GB after cargo clean --profile dev"

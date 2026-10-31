@@ -1,2 +1,20 @@
 [alias]
 xtask = "run --quiet --package xtask --"
+
+[build]
+# Keep target/ bounded across multi-agent waves (saves ~110 GB of incremental caches).
+incremental = false
+
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.test]
+debug = "line-tables-only"
+incremental = false
+
+[profile.test.package."*"]
+debug = false

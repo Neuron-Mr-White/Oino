@@ -19,7 +19,6 @@ const WEB_STUBS: Record<string, string> = {
   './screens/Chat': 'AppOnly.tsx',
   './screens/Files': 'AppOnly.tsx',
   './screens/Editor': 'AppOnly.tsx',
-  './components/chat/ChatView': 'AppOnly.tsx',
   './components/media/Previewer': 'AppOnly.tsx',
   '@xterm/xterm/css/xterm.css': 'empty.css',
 };
@@ -53,7 +52,9 @@ export function webStubs(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [...(mode === 'web' ? [webStubs()] : []), solid(), tailwind()],
+  // `hot: false` under vitest: the solid-refresh HMR wrappers add a component
+  // proxy per instance, which skews perf benches (and buys nothing in tests).
+  plugins: [...(mode === 'web' ? [webStubs()] : []), solid({ hot: mode !== 'test' }), tailwind()],
   base: mode === 'web' ? '/' : undefined,
   // The app build has a second page: the desktop mascot window (UNI-200, mascot.html).
   build: mode === 'web' ? { outDir: 'dist-web', emptyOutDir: true, sourcemap: false } : { rollupOptions: { input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), mascot: fileURLToPath(new URL('./mascot.html', import.meta.url)) } } },
@@ -73,6 +74,10 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
+    // Use worker_threads (single OS process) + capped concurrency so interrupted
+    // agent runs never orphan forked MainThread child processes across waves.
+    pool: 'threads',
+    maxWorkers: 4,
     // The app's own tests only — `packages/protocol` (a workspace member)
     // runs its suite in its own package context (`npm test --workspaces`).
     include: ['src/**/*.test.{ts,tsx}'],
