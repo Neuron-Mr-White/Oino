@@ -1,5 +1,21 @@
-import { describe, expect, it } from 'vitest';
-import { chatVisibilityOnScreenChange } from './open';
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  activeChatTargetFor,
+  chatVisibilityOnScreenChange,
+  clearReturnToChat,
+  hasMarkedReturnToChat,
+  markReturnToChat,
+  openChat,
+  openNewChat,
+  openTaskFromChat,
+  resumeChatAfterTerminal,
+} from './open';
+
+afterEach(() => {
+  clearReturnToChat();
+  location.hash = '#/';
+});
 
 describe('chatVisibilityOnScreenChange (UNI-312)', () => {
   it('leaves chatVisible alone on mount (no previous screen)', () => {
@@ -34,5 +50,45 @@ describe('chatVisibilityOnScreenChange (UNI-312)', () => {
   it('leaves chatVisible alone for non-chat-to-non-chat transitions', () => {
     expect(chatVisibilityOnScreenChange('board', 'files', true)).toBeUndefined();
     expect(chatVisibilityOnScreenChange('sessions', 'settings', false)).toBeUndefined();
+  });
+});
+
+describe('v2 chat routing & return-route (P0-07)', () => {
+  it('openChat navigates to #/s/<host>/<session> and openNewChat to #/new/<host>?cwd=', () => {
+    openChat({ hostId: 'local', session: 'sess-9' });
+    expect(location.hash).toBe('#/s/local/sess-9');
+    expect(activeChatTargetFor('local')).toMatchObject({
+      kind: 'session',
+      hostId: 'local',
+      sessionId: 'sess-9',
+      mentionKey: 'local:sess-9',
+      route: '/s/local/sess-9',
+    });
+
+    openNewChat('local', '/home/u/proj');
+    expect(location.hash).toBe('#/new/local?cwd=%2Fhome%2Fu%2Fproj');
+    expect(activeChatTargetFor('local')).toMatchObject({
+      kind: 'draft',
+      hostId: 'local',
+      cwd: '/home/u/proj',
+      mentionKey: 'draft:local',
+    });
+  });
+
+  it('returns to the exact v2 chat route when closing Board or Files', () => {
+    location.hash = '#/s/local/s42';
+    openTaskFromChat('local', 'UNI-10', '/home/u/proj');
+    expect(location.hash).toBe('#/board');
+    expect(hasMarkedReturnToChat()).toBe(true);
+    expect(activeChatTargetFor('local')).toMatchObject({ kind: 'session', sessionId: 's42' });
+
+    expect(resumeChatAfterTerminal()).toBe(true);
+    expect(location.hash).toBe('#/s/local/s42');
+    expect(hasMarkedReturnToChat()).toBe(false);
+
+    markReturnToChat('/new/local?cwd=%2Ftmp');
+    location.hash = '#/files';
+    expect(resumeChatAfterTerminal()).toBe(true);
+    expect(location.hash).toBe('#/new/local?cwd=%2Ftmp');
   });
 });

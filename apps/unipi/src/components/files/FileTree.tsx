@@ -38,7 +38,7 @@ import {
 } from '../../lib/fs';
 import { uploadPicked } from '../../lib/blob';
 import { queueMention } from '../../lib/chat/mention';
-import { openChat } from '../../lib/session/open';
+import { clearReturnToChat, openChatHref, openNewChat } from '../../lib/session/open';
 import type { ChatTarget } from '../../lib/session/list';
 import { useHostsOptional } from '../../hosts/context';
 import { createDirWatch } from '../../lib/files/watch';
@@ -202,13 +202,19 @@ export function FileTree(props: {
     const path = mentionFor();
     setMentionFor(undefined);
     if (!path) return;
-    // The composer (A12) drains this mailbox into an @path chip; until then
-    // the draft text is queued for the chat the user picked.
+    clearReturnToChat();
     queueMention(`${target.hostId}:${target.session}`, `@${path} `);
-    showToast('Added @path to the chat draft');
-    const pcName = hosts?.hosts().find((h) => h.id === target.hostId)?.name ?? 'PC';
-    if (desktopShell()) navigate(`/s/${encodeURIComponent(target.hostId)}/${encodeURIComponent(target.session)}`);
-    else openChat(target, pcName);
+    showToast(`Added @${basename(path)} to the chat draft`);
+    navigate(openChatHref(target.hostId, target.session));
+  }
+  function mentionNewChat(id: string, cwd?: string) {
+    const path = mentionFor();
+    setMentionFor(undefined);
+    if (!path) return;
+    clearReturnToChat();
+    queueMention(`draft:${id}`, `@${path} `);
+    showToast(`Added @${basename(path)} to the chat draft`);
+    openNewChat(id, cwd ?? dirname(path));
   }
 
   // ── Mutations (rename / delete / new / upload) ─────────────────────────
@@ -478,6 +484,7 @@ export function FileTree(props: {
             root={props.root}
             label={`Mention ${basename(path())} in…`}
             onPick={mentionPicked}
+            onNewChat={mentionNewChat}
             onClose={() => setMentionFor(undefined)}
           />
         )}

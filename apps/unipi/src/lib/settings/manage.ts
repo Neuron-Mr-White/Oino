@@ -14,6 +14,7 @@
  */
 import { sessions } from '../session/store';
 import { currentSessionRoute } from '../../components/shell/AppShell';
+import { openSettingsAt } from './open';
 
 /** One Manage action: a page, the extension command it runs, and its palette wording. */
 export type ManageAction = {
@@ -186,6 +187,20 @@ export function chatHasCommand(handle: { state: { commands: ReadonlyArray<{ name
  * the chat so the panel the extension opens is visible.
  */
 export function runManageAction(action: ManageAction, deps: { navigate: (href: string) => void }): ManageOutcome {
+  // `/skills` fires `openSettings{namespace:"skills"}` (the Skills page itself),
+  // never a chat-resident overlay: run it in place when a chat is open, and open
+  // Settings › Skills directly when none is.
+  if (action.id === 'skills.hub') {
+    const chat = manageChat();
+    const handle = chat ? sessions().peek(chat.hostId, chat.sessionId) : undefined;
+    if (handle) {
+      if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command)) return 'missing';
+      handle.send(`/${action.command}`, { mode: 'prompt' });
+      return 'sent';
+    }
+    openSettingsAt('skills', 'sec-skills');
+    return 'sent';
+  }
   const chat = manageChat();
   if (!chat) return 'no-chat';
   const handle = sessions().peek(chat.hostId, chat.sessionId);

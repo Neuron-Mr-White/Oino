@@ -7,7 +7,7 @@
  * hosts emit (`$close`, `_oino/ui_visible`, palette "Open <title>").
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
-import { createSignal, Show } from 'solid-js';
+import { createMemo, createSignal, Show } from 'solid-js';
 import { Route, Router } from '@solidjs/router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createMockHost, type MockWorld } from '../../dev/mock/host';
@@ -34,6 +34,10 @@ import { feedPaletteEntries } from './paletteFeed';
 import { feedStatusStrip } from './statusFeed';
 import { TurnFooters } from './TurnFooters';
 import { installUiEffects, resetUiEffects } from './effects';
+import { readyImages } from '../../lib/composer/attachments';
+import { subscribeEditorTokens, resetEditorTokens } from '../../lib/composer/tokens';
+import { consumePendingSettingsNamespace } from '../../lib/settings/open';
+import { setPlatformOverride } from '../../lib/platform';
 import { clearStatusScope, statusSegments, StatusStrip } from '../../components/shell/StatusStrip';
 import { BottomDock } from '../../components/dock/BottomDock';
 import { resetSessionRenderCaches } from '../../lib/session/renderCache';
@@ -62,6 +66,7 @@ beforeEach(() => {
   resetPanes();
   resetSessionRenderCaches();
   resetComposerDrafts();
+  resetEditorTokens();
   resetOverlayDismissals();
   resetTrayDismissals();
   resetPaneClosures();
@@ -104,6 +109,7 @@ afterEach(() => {
   resetSessions();
   setHostClientFactory(undefined);
   setDesktopOverride(undefined);
+  setPlatformOverride(undefined);
 });
 
 /** Opens the mock session through the app's session registry (as Conversation does). */
@@ -127,7 +133,7 @@ const put = (entry: Partial<UiEntry> & Pick<UiEntry, 'id' | 'slot' | 'view'>) =>
   pushOps([{ op: 'put', entry: { extensionId: 'ext', scope: 'session', order: 0, seq: ++entrySeq, rev: 1, ...entry } }]);
 const del = (id: string) => pushOps([{ op: 'del', id }]);
 const meta = (id: string, set: Record<string, unknown>) => pushOps([{ op: 'meta', id, set }]);
-const effect = (request: Record<string, unknown>) => pushOps([{ op: 'effect', request: { id: `e${++seq}`, ...request } }]);
+const effect = (request: Record<string, unknown>) => pushOps([{ op: 'effect', request: { id: `e${++entrySeq}`, ...request } }]);
 
 const tree = (text: string): EntryView => ({ kind: 'tree', root: { t: 'Paragraph', text } });
 
@@ -153,6 +159,79 @@ describe('U10 one-shot effects', () => {
     const s = await openTracking();
     effect({ method: 'set_editor_text', text: 'from the extension' });
     await waitFor(() => expect(composerDraft(s.key).text).toBe('from the extension'));
+  });
+
+  it('openSettings routes dedicated capability namespaces and extension namespaces', async () => {
+    await openTracking();
+    effect({ method: 'openSettings', namespace: 'skills' });
+    await waitFor(() => expect(location.hash).toBe('#/settings/skills'));
+
+    effect({ method: 'open_settings', namespace: 'updater' });
+    await waitFor(() => expect(location.hash).toBe('#/settings/extensions'));
+    expect(consumePendingSettingsNamespace()).toBe('updater');
+  });
+
+  it('openUrl / open_url opens external http(s) links', async () => {
+    await openTracking();
+    const openSpy = Object.assign(window, { open: (() => ({} as Window)) as typeof window.open });
+    let openedUrl = '';
+    openSpy.open = ((url?: string | URL) => {
+      openedUrl = String(url ?? '');
+      return {} as Window;
+    }) as typeof window.open;
+    effect({ method: 'openUrl', url: 'https://github.com/oino-dev/oino/releases/tag/v2.0.0' });
+    await waitFor(() => expect(openedUrl).toBe('https://github.com/oino-dev/oino/releases/tag/v2.0.0'));
+
+    effect({ method: 'open_url', url: 'http://127.0.0.1:41234/a/token123' });
+    await waitFor(() => expect(openedUrl).toBe('http://127.0.0.1:41234/a/token123'));
+  });
+
+  it('clipboardWrite writes text to the clipboard', async () => {
+    await openTracking();
+    let copied = '';
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: async (t: string) => {
+          copied = t;
+        },
+      },
+    });
+    effect({ method: 'clipboardWrite', text: 'copied-from-effect' });
+    await waitFor(() => expect(copied).toBe('copied-from-effect'));
+  });
+
+  it('osNotify dispatches to the native notification bridge', async () => {
+    setPlatformOverride('tauri-mobile');
+    const shown: Array<{ title: string; body: string }> = [];
+    Object.defineProperty(window, 'UniPiNotify', {
+      configurable: true,
+      writable: true,
+      value: {
+        show: (_id: number, title: string, body: string) => {
+          shown.push({ title, body });
+        },
+      },
+    });
+    await openTracking();
+    effect({ method: 'osNotify', title: 'Agent graph work failed', body: 'Node wp-1 exited 1' });
+    await waitFor(() => expect(shown).toEqual([{ title: 'Agent graph work failed', body: 'Node wp-1 exited 1' }]));
+  });
+
+  it('insertEditorToken updates the session draft/attachments and notifies composer subscribers', async () => {
+    const s = await openTracking();
+    effect({ method: 'insertEditorToken', token: { tokenId: 'tok1', kind: 'file', label: 'main.ts', path: 'src/main.ts' } });
+    effect({
+      method: 'insertEditorToken',
+      token: { tokenId: 'img1', kind: 'image', label: 'cap.png', data: { mimeType: 'image/png', data: 'aGVsbG8=' } },
+    });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('@src/main.ts '));
+    expect(readyImages(s.key)).toEqual([{ mimeType: 'image/png', data: 'aGVsbG8=' }]);
+
+    const liveTokens: string[] = [];
+    const off = subscribeEditorTokens(s.key, (tok) => liveTokens.push(tok.label));
+    effect({ method: 'insertEditorToken', token: { kind: 'text', label: 'live-caret' } });
+    await waitFor(() => expect(liveTokens).toEqual(['live-caret']));
+    off();
   });
 });
 
@@ -237,6 +316,30 @@ describe('U10 overlay slot', () => {
     await waitFor(() => expect(screen.getByText('first panel')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Close First' }));
     await waitFor(() => expect(sent).toContainEqual({ entryId: 'ext/panel:a', actionId: '$close' }));
+  });
+
+  it('unmounts cleanly inside a parent memo scope without throwing in Solid cleanNode', async () => {
+    await openTracking();
+    put({ id: 'ext/panel:unmount', slot: 'overlay', title: 'Unmount', view: tree('body') });
+    const [mounted, setMounted] = createSignal(true);
+    render(() => (
+      <Show when={mounted()}>
+        {(() => {
+          const reg = createMemo(() => sessionUi(HOST, 's1'));
+          const stack = () => reg().stack('overlay')();
+          const tray = () => reg().stack('editorReplace')();
+          return (
+            <>
+              <SlotModal stack={stack()} target={TARGET} />
+              <ComposerTray stack={tray()} target={TARGET} />
+            </>
+          );
+        })()}
+      </Show>
+    ));
+    await waitFor(() => expect(screen.getByTestId('ui-modal')).toBeTruthy());
+    expect(() => setMounted(false)).not.toThrow();
+    await waitFor(() => expect(sent).toContainEqual({ entryId: 'ext/panel:unmount', actionId: '$visible', visible: false }));
   });
 
   it('phone: an overlay is a bottom sheet, `large` fills it (§13.6 row 6)', async () => {

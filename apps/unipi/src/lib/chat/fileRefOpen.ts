@@ -10,16 +10,15 @@
 import { createSignal } from 'solid-js';
 import type { RefChat } from './pathStat';
 import { openFilePath } from '../media/pathTokens';
-import { setEditorTarget } from '../editorTarget';
+import { setEditorTarget, switchEditorTarget } from '../editorTarget';
 import { setFilesTarget } from '../filesTarget';
-import { hideChat, markReturnToChat } from '../session/open';
+import { desktopShell, layout } from '../layout';
+import { appNavigate } from '../nav';
+import { panes } from '../panes';
+import { markReturnToChat, openChatHref } from '../session/open';
 import { queueMention } from './mention';
 
 export type FileRefTarget = { resolved: string; kind: 'file' | 'dir'; line?: number };
-
-const go = (hash: string) => {
-  if (typeof location !== 'undefined') location.hash = hash;
-};
 
 export function openFileRef(chat: RefChat, ref: FileRefTarget): Promise<void> {
   if (ref.kind === 'dir') {
@@ -27,21 +26,34 @@ export function openFileRef(chat: RefChat, ref: FileRefTarget): Promise<void> {
     return Promise.resolve();
   }
   if (ref.line) {
-    // The editor overlays the chat; its Back returns here (Editor.leave → /chat).
-    setEditorTarget({ hostId: chat.hostId, path: ref.resolved, line: ref.line });
-    go('#/files/edit');
+    const next = { hostId: chat.hostId, path: ref.resolved, line: ref.line };
+    if (desktopShell()) {
+      const root = chat.cwd?.() || '~';
+      switchEditorTarget(next);
+      panes().open({ hostId: chat.hostId, projectKey: root }, 'side', { sessionId: chat.session }, { kind: 'files', params: { hostId: chat.hostId, root, path: ref.resolved } });
+      layout().toggleSide(true);
+      return Promise.resolve();
+    }
+    markReturnToChat(chat.session ? openChatHref(chat.hostId, chat.session) : undefined);
+    setEditorTarget(next);
+    appNavigate('/files/edit');
     return Promise.resolve();
   }
   return openFilePath(chat, ref.resolved);
 }
 
-/** The Files screen at `ref` (a dir) or the folder holding it (a file). */
+/** The Files surface at `ref` (a dir) or the folder holding it (a file). */
 export function openInFiles(chat: RefChat, ref: FileRefTarget): void {
   const dir = ref.kind === 'dir' ? ref.resolved.replace(/(.)\/+$/, '$1') : ref.resolved.replace(/\/[^/]*$/, '') || '/';
   setFilesTarget({ hostId: chat.hostId, path: dir });
-  hideChat();
-  markReturnToChat();
-  go('#/files');
+  if (desktopShell()) {
+    const root = chat.cwd?.() || dir;
+    panes().open({ hostId: chat.hostId, projectKey: root }, 'side', { sessionId: chat.session }, { kind: 'files', params: { hostId: chat.hostId, root: dir } });
+    layout().toggleSide(true);
+    return;
+  }
+  markReturnToChat(chat.session ? openChatHref(chat.hostId, chat.session) : undefined);
+  appNavigate('/files');
 }
 
 /** `@path` as pi's own `@` finder writes it: relative to the cwd when inside it, quoted with spaces. */

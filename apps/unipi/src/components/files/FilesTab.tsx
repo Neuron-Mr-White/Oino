@@ -26,6 +26,7 @@ import { LOCAL_HOST } from '../../lib/host/client';
 import { EditorArea } from './EditorArea';
 import { FileTree } from './FileTree';
 import { setPaneComponent, type PaneTabProps } from '../../lib/panes/kinds';
+import { resumeChatAfterTerminal } from '../../lib/session/open';
 import { pushBack } from '../../lib/back';
 import './files.css';
 
@@ -150,7 +151,11 @@ export function FilesLayer() {
   // consumes the target on mount.
   const targetHost = peekFilesTarget()?.hostId;
   const hostId = () => targetHost ?? hosts?.selectedId() ?? LOCAL_HOST;
-  const close = () => (window.history.length > 1 ? navigate(-1) : navigate('/'));
+  const close = () => {
+    if (resumeChatAfterTerminal()) return;
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/');
+  };
   // Back closes the layer; the pop rides the cleanup or a stale handler
   // swallows a Back after `/files` is left.
   onMount(() => onCleanup(pushBack(close)));

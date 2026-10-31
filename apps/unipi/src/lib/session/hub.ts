@@ -8,7 +8,7 @@
  *
  *   const h = hubs().ensure(hostId); h.state.cards · h.reload() · h.dismissNotice(id)
  */
-import { batch, createRoot } from 'solid-js';
+import { batch, createRoot, createSignal } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { toAppError, type AppError } from '@unipi/protocol';
 import { hostClient } from '../host/factory';
@@ -309,16 +309,19 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
 
 export function createHubRegistry(factory: (hostId: string) => HubHandle = createHub) {
   const open = new Map<string, { handle: HubHandle; dispose: () => void }>();
+  const [rev, setRev] = createSignal(0);
   return {
     ensure(hostId: string): HubHandle {
       let entry = open.get(hostId);
       if (!entry) {
         entry = createRoot((dispose) => ({ handle: factory(hostId), dispose }));
         open.set(hostId, entry);
+        setRev((n) => n + 1);
       }
       return entry.handle;
     },
     peek(hostId: string): HubHandle | undefined {
+      rev();
       return open.get(hostId)?.handle;
     },
     close(hostId: string): void {
@@ -327,6 +330,7 @@ export function createHubRegistry(factory: (hostId: string) => HubHandle = creat
       entry.handle.close();
       entry.dispose();
       open.delete(hostId);
+      setRev((n) => n + 1);
     },
     closeAll(): void {
       for (const entry of open.values()) {
@@ -334,6 +338,12 @@ export function createHubRegistry(factory: (hostId: string) => HubHandle = creat
         entry.dispose();
       }
       open.clear();
+      setRev((n) => n + 1);
+    },
+    /** Host ids with an open hub, in insertion order. */
+    keys(): string[] {
+      rev();
+      return [...open.keys()];
     },
   };
 }

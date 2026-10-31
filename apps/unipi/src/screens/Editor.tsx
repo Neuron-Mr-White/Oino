@@ -37,7 +37,7 @@ import { hapticTick } from '../lib/haptics';
 import { useSettings } from '../settings/context';
 import { useHosts } from '../hosts/context';
 import { queueMention } from '../lib/chat/mention';
-import { chatVisible, openChatState } from '../lib/session/open';
+import { activeChatTargetFor, clearReturnToChat, openNewChat, resumeChatAfterTerminal } from '../lib/session/open';
 import { BoardSheet } from '../components/board/BoardSheet';
 import { renderBlocks } from '../lib/chat/markdown';
 import { MdBlock } from '../components/chat/MdBlock';
@@ -135,13 +135,9 @@ export default function Editor() {
       return;
     }
     clearEditorTarget();
-    // Opened from a chat ("Open in editor" in Changes this turn): back
-    // returns to that chat — same layer, same scroll — instead of
-    // dropping into Files (UNI-172).
-    if (chatVisible()) {
-      navigate('/chat');
-      return;
-    }
+    // Opened from a chat ("Open in editor" / file:line ref): Back returns to
+    // that exact v2 chat route instead of dropping into Files (UNI-172, P0-07).
+    if (resumeChatAfterTerminal()) return;
     navigate('/files');
   }
 
@@ -427,16 +423,21 @@ export default function Editor() {
 
   function mentionInChat() {
     if (!target) return;
-    const open = openChatState();
-    if (open && open.target.hostId === target.hostId) {
-      queueMention(`${open.target.hostId}:${open.target.session}`, `@${target.path}`);
-      showToast('Added @path to the chat draft');
+    const leaf = target.path.split('/').pop() || target.path;
+    const active = activeChatTargetFor(target.hostId);
+    if (active) {
+      queueMention(active.mentionKey, `@${target.path} `);
+      showToast(`Added @${leaf} to the chat draft`);
+      clearEditorTarget();
+      clearReturnToChat();
+      navigate(active.route);
       return;
     }
-    void navigator.clipboard?.writeText(`@${target.path}`).then(
-      () => showToast('Copied @path — paste it into a chat'),
-      () => showToast('Could not copy'),
-    );
+    const cwd = target.path.replace(/\/[^/]*$/, '') || undefined;
+    queueMention(`draft:${target.hostId}`, `@${target.path} `);
+    showToast(`Added @${leaf} to the chat draft`);
+    clearEditorTarget();
+    openNewChat(target.hostId, cwd);
   }
 
   const fileName = () => (target ? target.path.split('/').pop() ?? target.path : '');

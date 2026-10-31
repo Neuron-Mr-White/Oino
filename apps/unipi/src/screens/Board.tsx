@@ -14,6 +14,7 @@ import { createEffect, createMemo, createSignal, on, onCleanup, Show, untrack } 
 import {
   Archive,
   ArchiveRestore,
+  ArrowLeft,
   ChevronDown,
   Columns3,
   EllipsisVertical,
@@ -44,7 +45,8 @@ import { boardStore, type ConnState } from '../lib/board/store';
 import { useBoardLive } from '../lib/board/live';
 import { boardUi, readLast, rememberLast } from '../lib/board/ui';
 import { clearBoardJump, clearChatPick, pendingBoardJump, pendingChatPick, pickProjectForCwd, pickProjectForRef, requestChatPick, type BoardJump } from '../lib/board/portal';
-import { clearReturnToChat, openChat, resumeChatAfterTerminal } from '../lib/session/open';
+import { clearReturnToChat, hasMarkedReturnToChat, openChat, openNewChat, resumeChatAfterTerminal } from '../lib/session/open';
+import { pushBack } from '../lib/back';
 import { queueMention } from '../lib/chat/mention';
 import type { ChatTarget } from '../lib/session/list';
 import { ChatPickSheet } from '../components/board/ChatPickSheet';
@@ -273,8 +275,22 @@ export default function Board() {
     if (pick?.mention) queueMention(`${target.hostId}:${target.session}`, pick.mention);
     // The task pane is a portal above the chat layer: close it so the chat shows.
     if (ui.openedTask()) ui.closeTask();
-    openChat(target, pcs().find((candidate) => candidate.id === target.hostId)?.name ?? '');
+    openChat(target);
   };
+  const pickNewChat = (id: string, cwd?: string) => {
+    const pick = pendingChatPick();
+    clearChatPick();
+    portal = null;
+    clearReturnToChat();
+    if (pick?.mention) queueMention(`draft:${id}`, pick.mention);
+    if (ui.openedTask()) ui.closeTask();
+    openNewChat(id, cwd);
+  };
+  createEffect(() => {
+    if (!hasMarkedReturnToChat() || ui.openedTask() || ui.newTask() || ui.sheet() || pendingChatPick()) return;
+    const off = pushBack(backToChat);
+    onCleanup(off);
+  });
   createEffect(
     on(pendingBoardJump, (jump) => {
       if (!jump) return;
@@ -412,6 +428,18 @@ export default function Board() {
           }
           tools={
             <>
+            <Show when={hasMarkedReturnToChat() && can('chat')}>
+              <button
+                type="button"
+                class="ghost-icon-button"
+                aria-label="Back to chat"
+                title="Back to chat"
+                data-testid="board-back-to-chat"
+                onClick={backToChat}
+              >
+                <ArrowLeft size={20} />
+              </button>
+            </Show>
             <Show when={hostId() && can('chat')}>
               <button type="button" class="ghost-icon-button" aria-label="Go to a chat" onClick={() => requestChatPick({ hostId: hostId()! })}>
                 <MessagesSquare size={20} />
@@ -724,6 +752,7 @@ export default function Board() {
         root={project()?.root}
         label={pendingChatPick()?.mention ? `Add ${pendingChatPick()!.mention!.trim()} to…` : 'Go to a chat'}
         onPick={pickToChat}
+        onNewChat={pickNewChat}
         onClose={clearChatPick}
       />
       <PcSheet open={ui.sheet() === 'pc'} onClose={() => ui.setSheet(null)} pcs={pcs()} current={hostId()} onPick={choosePc} />

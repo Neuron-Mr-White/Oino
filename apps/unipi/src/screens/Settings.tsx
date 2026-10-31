@@ -39,6 +39,7 @@ import { ProvidersPage } from './settings/ProvidersPage';
 import { NotificationsSection } from './settings/NotificationsSection';
 import { UnicrabSection } from './settings/UnicrabSection';
 import { sectionById } from './settings/catalog';
+import { consumePendingSettingsNamespace } from '../lib/settings/open';
 import { pushBack } from '../lib/back';
 
 const TOOLBAR_LABELS: Record<ToolbarKey, string> = {
@@ -119,6 +120,10 @@ export default function Settings() {
   const activeTitle = () => sections().find((s) => s.id === active())?.title;
 
   const [namespace, setNamespace] = createSignal<string | undefined>();
+  createEffect(() => {
+    const ns = consumePendingSettingsNamespace();
+    if (ns) setNamespace(ns);
+  });
 
   const pickSection = (id: string) => {
     setNamespace(undefined);

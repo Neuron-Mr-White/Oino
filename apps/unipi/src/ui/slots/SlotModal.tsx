@@ -36,18 +36,22 @@ const nativeOverlay = (entry: UiEntry): boolean => {
 
 export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: boolean }) {
   const top = () => [...props.stack].reverse().find((e) => !dismissed.has(`${e.id}:${e.seq}`) && !nativeOverlay(e));
+  let shown: { target: UiTarget; id: string } | undefined;
   createEffect(
     on(
       () => props.stack.map((e) => `${e.id}:${e.seq}`).join('|'),
       () => {
         const e = top();
+        shown = e ? { target: props.target, id: e.id } : undefined;
         if (e) uiTransport().visible(props.target, e.id, true).catch(() => {});
       },
     ),
   );
   onCleanup(() => {
-    const e = top();
-    if (e) uiTransport().visible(props.target, e.id, false).catch(() => {});
+    // Never read `props.stack` / `top()` here: during Conversation unmount,
+    // parent memos (`registry`) have already been cleaned by Solid's `cleanNode`.
+    if (shown) uiTransport().visible(shown.target, shown.id, false).catch(() => {});
+    shown = undefined;
   });
   const close = (entry: UiEntry) => {
     dismissed.add(`${entry.id}:${entry.seq}`);

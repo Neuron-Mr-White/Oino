@@ -8,10 +8,11 @@ import { can, isTauri } from '../lib/platform';
 import { createEffect, onMount, onCleanup } from 'solid-js';
 import { useHosts } from '../hosts/context';
 import { useSettings } from '../settings/context';
-import { syncNotifyKeyToNative, openChatFromDeepLink, replayPendingAction } from '../lib/notifyInit';
-import { openChatState } from '../lib/session/open';
+import { syncNotifyKeyToNative, openChatFromDeepLink } from '../lib/notifyInit';
+import { sessions } from '../lib/session/store';
 import { syncPushEndpoint } from '../lib/pushRegister';
-import { startRunningNotification } from '../lib/runningNotification';
+import { handlePendingAction, hasLatchedPendingAction, startRunningNotification } from '../lib/runningNotification';
+import { sessionUi } from '../ui/registries';
 import { MascotFeedRunner } from './MascotFeedRunner';
 
 export function NotifyInitRunner() {
@@ -57,15 +58,27 @@ export function NotifyInitRunner() {
       if (settings.notify.enabled) void syncPushEndpoint(hosts.hosts().map((h) => h.id));
     });
 
-    // Ongoing "Running … · Stop" notification while an open chat's pi works.
+    // Ongoing "Running … · Stop" notification while a v2 session works.
     onCleanup(startRunningNotification(() => settings.notify.enabled));
 
-    // One pending action (ask_user option tapped from a closed-app
-    // notification): replay once a chat is open and connected.
-    const pending = openChatState();
-    if (pending) {
-      replayPendingAction((dialogId, value) => pending.chat.answer(dialogId, value));
-    }
+    // Replay one pending notification action (Stop or ask_user/approval answer
+    // tapped while the app was closed): latch on mount, then dispatch as soon
+    // as the target v2 session stream is live and its dialogs arrive.
+    handlePendingAction();
+    createEffect(() => {
+      const keys = sessions().keys();
+      for (const key of keys) {
+        const slash = key.indexOf('/');
+        if (slash <= 0) continue;
+        const hostId = key.slice(0, slash);
+        const sessionId = key.slice(slash + 1);
+        const handle = sessions().peek(hostId, sessionId);
+        void handle?.state.conn;
+        void handle?.state.run.running;
+        void sessionUi(hostId, sessionId).dialogs().length;
+      }
+      if (hasLatchedPendingAction()) handlePendingAction();
+    });
 
     if (!isTauri() || !can('deepLinks')) return;
     let unlisten: (() => void) | undefined;

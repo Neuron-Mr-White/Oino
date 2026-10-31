@@ -5,10 +5,11 @@
  * straight away (no sheet).
  */
 import { createEffect, createMemo, For, on, Show } from 'solid-js';
-import { Check, MessagesSquare } from 'lucide-solid';
+import { Check, MessagesSquare, Plus } from 'lucide-solid';
 import { BoardSheet } from './BoardSheet';
 import { chatGroups, chatLists, STATUS_WORD, type ChatTarget } from '../../lib/session/list';
-import { openChatState } from '../../lib/session/open';
+import { activeChatTargetFor } from '../../lib/session/open';
+import { sessions } from '../../lib/session/store';
 import { rankChatsForProject } from '../../lib/board/portal';
 
 export function ChatPickSheet(props: {
@@ -19,6 +20,8 @@ export function ChatPickSheet(props: {
   /** "Add UNI-12 to…" or "Go to a chat". */
   label: string;
   onPick: (target: ChatTarget) => void;
+  /** Starts a new v2 chat (`/new/<host>?cwd=`) when chosen. */
+  onNewChat?: (hostId: string, cwd?: string) => void;
   onClose: () => void;
 }) {
   const lists = chatLists();
@@ -29,8 +32,9 @@ export function ChatPickSheet(props: {
     return rankChatsForProject(items, props.root);
   });
   const isOpen = (t: ChatTarget) => {
-    const open = openChatState();
-    return !!open && open.target.hostId === t.hostId && open.target.session === t.session;
+    const active = activeChatTargetFor(t.hostId);
+    if (active?.kind === 'session' && active.sessionId === t.session) return true;
+    return !!sessions().peek(t.hostId, t.session);
   };
   // Fresh list on open; a single candidate needs no question.
   createEffect(
@@ -66,7 +70,7 @@ export function ChatPickSheet(props: {
     <BoardSheet open={props.open} onClose={props.onClose} label={props.label} testId="chat-pick-sheet">
       <Show
         when={chats().length > 0}
-        fallback={<p class="sheet-label">{!entry() || entry()?.loading ? 'Loading chats…' : entry()?.error ? `Couldn't list chats: ${entry()!.error}` : 'No pi chats on this PC'}</p>}
+        fallback={<p class="sheet-label">{!entry() || entry()?.loading ? 'Loading chats…' : entry()?.error ? `Couldn't list chats: ${entry()!.error}` : 'No chats on this PC'}</p>}
       >
         <Show when={inProject().length > 0}>
           <p class="sheet-label">In this project</p>
@@ -80,6 +84,24 @@ export function ChatPickSheet(props: {
             <For each={others()}>{(chat) => Row(chat)}</For>
           </div>
         </Show>
+      </Show>
+      <Show when={props.onNewChat && props.hostId && !!entry() && !entry()?.loading}>
+        <div class="model-list mt-3">
+          <button
+            type="button"
+            class="model-row"
+            data-testid="chat-pick-new"
+            onClick={() => props.onNewChat!(props.hostId!, props.root)}
+          >
+            <Plus size={18} class="shrink-0 text-text-muted" />
+            <span class="min-w-0 flex-1 text-left">
+              <span class="block truncate">New chat</span>
+              <Show when={props.root}>
+                <span class="block truncate model-row-sub">{props.root}</span>
+              </Show>
+            </span>
+          </button>
+        </div>
       </Show>
     </BoardSheet>
   );

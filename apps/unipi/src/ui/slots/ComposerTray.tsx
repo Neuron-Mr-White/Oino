@@ -34,18 +34,20 @@ export function trayEntry(stack: UiEntry[]): UiEntry | undefined {
 
 export function ComposerTray(props: { stack: UiEntry[]; target: UiTarget }) {
   const top = () => trayEntry(props.stack);
+  let shown: { target: UiTarget; id: string } | undefined;
   createEffect(
     on(
       () => props.stack.map((e) => `${e.id}:${e.seq}`).join('|'),
       () => {
         const e = top();
+        shown = e ? { target: props.target, id: e.id } : undefined;
         if (e) uiTransport().visible(props.target, e.id, true).catch(() => {});
       },
     ),
   );
   onCleanup(() => {
-    const e = top();
-    if (e) uiTransport().visible(props.target, e.id, false).catch(() => {});
+    if (shown) uiTransport().visible(shown.target, shown.id, false).catch(() => {});
+    shown = undefined;
   });
   const close = (entry: UiEntry) => {
     dismissEntry(entry);

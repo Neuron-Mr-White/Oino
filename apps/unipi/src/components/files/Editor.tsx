@@ -22,7 +22,7 @@ import { languageForPath, renderDiffHtml, editDiff, type ParsedDiff } from '../.
 import { editorTheme } from '../../lib/editorTheme';
 import { fsRead, fsWrite } from '../../lib/fs';
 import { queueMention } from '../../lib/chat/mention';
-import { openChatState } from '../../lib/session/open';
+import { activeChatTargetFor, openNewChat } from '../../lib/session/open';
 import { useSettings } from '../../settings/context';
 import { hostClient } from '../../lib/host/factory';
 import { acquireLsp, type PooledLsp } from '../../lib/lsp/pool';
@@ -278,16 +278,17 @@ export function Editor(props: {
 
   function mention() {
     const t = tab();
-    const open = openChatState();
-    if (open && open.target.hostId === t.hostId) {
-      queueMention(`${open.target.hostId}:${open.target.session}`, `@${t.path} `);
-      showToast('Added @path to the chat draft');
+    const leaf = t.path.split('/').pop() || t.path;
+    const active = activeChatTargetFor(t.hostId);
+    if (active) {
+      queueMention(active.mentionKey, `@${t.path} `);
+      showToast(`Added @${leaf} to the chat draft`);
       return;
     }
-    void navigator.clipboard?.writeText(`@${t.path}`).then(
-      () => showToast('Copied @path — paste it into a chat'),
-      () => showToast('Could not copy'),
-    );
+    const cwd = props.root?.() ?? (t.path.replace(/\/[^/]*$/, '') || undefined);
+    queueMention(`draft:${t.hostId}`, `@${t.path} `);
+    openNewChat(t.hostId, cwd);
+    showToast(`Added @${leaf} to the chat draft`);
   }
 
   return (
