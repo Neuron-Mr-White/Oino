@@ -95,6 +95,7 @@ html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 38px; }
   bottom: 0;
   z-index: 6;
   margin-top: auto;
+  background: var(--color-bg);
   padding: 0 10px calc(8px + max(var(--inset-ime, 0px), var(--vv-bottom, 0px), env(safe-area-inset-bottom), var(--inset-bottom, 0px)));
 }
 /* the gradient fade above the dock (the "background token" upward mask) */
@@ -422,6 +423,9 @@ html:not([data-shell=desktop]) .tl .tool-body { margin-left: 8px; }
 .tool-view-diff > svg { color: var(--color-claw); }
 
 /* markdown code blocks, inline path copy & tables inside timeline */
+/* WebKitGTK mispositions `position: sticky` inside transformed `.tl-vrow` rows,
+   pushing `.cb-head` to the bottom of `.cb` — keep the header anchored at the top. */
+.tl .md .cb-head { position: relative; top: auto; }
 .tl .md .cb-copy,
 .tl .md .cb-wrap-toggle {
   transition: background-color 140ms ease-out, color 140ms ease-out;
