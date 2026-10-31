@@ -30,8 +30,24 @@ export type FusionStatus = {
   busy?: boolean;
 };
 
-/** `{active, status}` from `fusion.status`. */
-export type FusionState = { active?: FusionActive; status?: FusionStatus };
+/** One curated entry (`{key, name}`; the name resolved by the extension, id fallback). */
+export type CuratedEntry = { key: string; name: string };
+
+/**
+ * `curated` of `fusion.status` (P0-10): the lists `/fusion-preset` keeps.
+ * `ranked` = recent → curated leads → sidekicks, deduped, catalogue-validated
+ * (the TUI picker's head order); `effort` = the per-model default effort.
+ */
+export type FusionCurated = {
+  lead: CuratedEntry[];
+  sidekick: CuratedEntry[];
+  ranked: CuratedEntry[];
+  default: { lead?: string; sidekick?: string };
+  effort: Record<string, string>;
+};
+
+/** `{active, status, curated}` from `fusion.status`. */
+export type FusionState = { active?: FusionActive; status?: FusionStatus; curated?: FusionCurated };
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 const obj = (v: unknown): Record<string, unknown> | undefined =>
@@ -79,6 +95,36 @@ export function parseFusionStatus(raw: unknown): FusionStatus | undefined {
   };
 }
 
+const entries = (v: unknown): CuratedEntry[] => {
+  if (!Array.isArray(v)) return [];
+  const out: CuratedEntry[] = [];
+  const seen = new Set<string>();
+  for (const raw of v) {
+    const o = obj(raw);
+    const key = str(o?.key) ?? str(raw);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, name: str(o?.name) ?? key.slice(key.indexOf('/') + 1) });
+  }
+  return out;
+};
+
+/** The `curated` payload, leniently (`undefined` when absent — an older extension). */
+export function parseFusionCurated(raw: unknown): FusionCurated | undefined {
+  const o = obj(raw);
+  if (!o) return undefined;
+  const def = obj(o.default) ?? {};
+  const effort: Record<string, string> = {};
+  for (const [k, v] of Object.entries(obj(o.effort) ?? {})) if (str(v)) effort[k] = v as string;
+  return {
+    lead: entries(o.lead),
+    sidekick: entries(o.sidekick),
+    ranked: entries(o.ranked),
+    default: { ...(str(def.lead) ? { lead: str(def.lead) } : {}), ...(str(def.sidekick) ? { sidekick: str(def.sidekick) } : {}) },
+    effort,
+  };
+}
+
 const service = <T,>(s: SessionHandle, name: string, payload?: Record<string, unknown>): Promise<T> =>
   s.cmd<T>({ type: '_oino/service_call', name, ...(payload ? { payload } : {}) });
 
@@ -87,7 +133,8 @@ export async function fetchFusion(s: SessionHandle): Promise<FusionState | undef
   try {
     const reply = await service<unknown>(s, FUSION_STATUS);
     const o = obj(reply) ?? {};
-    return { active: parseFusionActive(o.active), status: parseFusionStatus(o.status) };
+    const curated = parseFusionCurated(o.curated);
+    return { active: parseFusionActive(o.active), status: parseFusionStatus(o.status), ...(curated ? { curated } : {}) };
   } catch {
     return undefined;
   }

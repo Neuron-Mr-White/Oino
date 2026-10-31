@@ -11,6 +11,15 @@
  * sends `set_model` (or the fusion pair), and a success toast says what
  * changed (Z-72).
  *
+ * P0-10: Fusion's curated preset (`fusion.status.curated`) ranks the list —
+ * a "Suggested" group (recent → curated leads → sidekicks, Lead / Sidekick
+ * badges, the curated default effort, applied with the pick) above the whole
+ * catalogue (searchable, no cap), and the Fusion columns put their curated
+ * lists first. Rows show display names; provider · id is the tooltip.
+ * "Use at startup" writes the model a fresh session opens with (pi
+ * `defaultProvider` / `defaultModel`, plus Fusion's `startup.model` when the
+ * extension is on — it wins on a fresh session), like the TUI's Alt+Enter.
+ *
  * Entry points (Z-70): the composer's model chip, Ctrl/Cmd+M and `/model`.
  * Dismissing sends nothing.
  */
@@ -38,34 +47,49 @@ import {
   selectionOf,
   shortModelName,
   singleAction,
-  singleModels,
   switchToast,
   type ModelInfo,
   type Selection,
 } from '../../lib/model/picker';
 import { closeModelPicker, modelPickerTarget, type ModelPickerTarget } from './target';
+import { curatedFirst, groupedModels, routeLabel, rowTitle, startupKey } from './suggested';
+import { thinkingLabel } from '../../lib/model/thinking';
 import { cycleKeyOf, cycleKeysOf, cycleLabel, toggleCycleKey } from '../../lib/model/cycle';
 import '../session/session-modal.css';
 import './model.css';
 
-/** Rows rendered per column (the catalogue can hold hundreds). */
-const LIST_CAP = 120;
+/** Rows rendered per list: the whole catalogue (P0-10 — no 120 cap); a guard only. */
+const LIST_CAP = 2000;
 
 const errText = (e: unknown): string => String((e as { message?: unknown })?.message ?? e);
 
-type PickerData = { models: ModelInfo[]; fusion?: FusionState; cycle?: unknown };
+type PickerData = { models: ModelInfo[]; fusion?: FusionState; cycle?: unknown; startup?: string };
+
+const valueOf = (reply: unknown): unknown => (reply as { value?: unknown } | undefined)?.value;
+
+/** Fusion's `startup.model` from `_oino/get_extension_settings` (nested or dotted values). */
+function fusionStartup(reply: unknown): string | undefined {
+  const values = (reply as { values?: Record<string, unknown> } | undefined)?.values;
+  const nested = (values?.startup as { model?: unknown } | undefined)?.model;
+  const v = nested ?? values?.['startup.model'];
+  return typeof v === 'string' && v ? v : undefined;
+}
 
 /** Loads the catalogue, the Fusion pair (when enabled) and the cycle set (`enabledModels`). */
 async function loadPicker(s: SessionHandle): Promise<PickerData> {
   const fusionOn = await fusionAvailable(s);
-  const [modelsReply, fusion, settings] = await Promise.all([
+  const [modelsReply, fusion, settings, provider, model, fusionSettings] = await Promise.all([
     s.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined),
     fusionOn ? fetchFusion(s) : Promise.resolve(undefined),
     // WP-A25 (G-15 `/scoped-models`): pi's `enabledModels` — the cycle set.
     s.cmd<unknown>({ type: '_oino/get_settings', key: 'enabledModels' }).catch(() => undefined),
+    s.cmd<unknown>({ type: '_oino/get_settings', key: 'defaultProvider' }).catch(() => undefined),
+    s.cmd<unknown>({ type: '_oino/get_settings', key: 'defaultModel' }).catch(() => undefined),
+    fusionOn ? s.cmd<unknown>({ type: '_oino/get_extension_settings', namespace: 'fusion' }).catch(() => undefined) : Promise.resolve(undefined),
   ]);
-  const cycle = (settings as { value?: unknown } | undefined)?.value;
-  return { models: parseModels(modelsReply), ...(fusion ? { fusion } : {}), cycle };
+  const cycle = valueOf(settings);
+  const startup = fusionStartup(fusionSettings) ?? startupKey(valueOf(provider), valueOf(model));
+  return { models: parseModels(modelsReply), ...(fusion ? { fusion } : {}), cycle, ...(startup ? { startup } : {}) };
 }
 
 /** Scrolls the chosen row of each Fusion column into view (often below its fold). */
@@ -137,11 +161,42 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
     setError(null);
   };
 
-  const rows = createMemo(() => singleModels(models(), current(), query()));
+  const curated = () => fusion()?.curated;
+  const groups = createMemo(() => groupedModels(models(), curated(), current(), query()));
   const colRows = createMemo(() => columnModels(models(), query()));
-  const leadKey = () => pendingLead() ?? activePair()?.lead ?? fusion()?.status?.leadKey ?? (models()[0] ? modelKey(models()[0]!) : undefined);
+  const leadRows = createMemo(() => curatedFirst(colRows(), (curated()?.lead ?? []).map((e) => e.key)));
+  const sidekickRows = createMemo(() => curatedFirst(colRows(), (curated()?.sidekick ?? []).map((e) => e.key)));
+  /** A key the catalogue knows (a curated default can name a provider this PC lacks). */
+  const known = (key: string | undefined): string | undefined => (key && byKey().has(key) ? key : undefined);
+  const firstKnown = (list: ReadonlyArray<{ key: string }> | undefined) => list?.find((e) => byKey().has(e.key))?.key;
+  const leadKey = () =>
+    pendingLead() ??
+    activePair()?.lead ??
+    fusion()?.status?.leadKey ??
+    known(curated()?.default.lead) ??
+    firstKnown(curated()?.lead) ??
+    (models()[0] ? modelKey(models()[0]!) : undefined);
   const sidekickKey = () =>
-    pendingSidekick() ?? activePair()?.sidekick ?? fusion()?.status?.sidekickKey ?? (models()[1] ? modelKey(models()[1]!) : models()[0] ? modelKey(models()[0]!) : undefined);
+    pendingSidekick() ??
+    activePair()?.sidekick ??
+    fusion()?.status?.sidekickKey ??
+    known(curated()?.default.sidekick) ??
+    firstKnown(curated()?.sidekick) ??
+    (models()[1] ? modelKey(models()[1]!) : models()[0] ? modelKey(models()[0]!) : undefined);
+  /** A curated effort the Fusion pills can show (they offer low / medium / high). */
+  const pillEffort = (key: string): string | undefined => {
+    const e = curated()?.effort[key];
+    return e && (FUSION_EFFORTS as readonly string[]).includes(e) ? e : undefined;
+  };
+  const [startup, setStartup] = createSignal<string | undefined>();
+  createEffect(() => setStartup(data.latest?.startup));
+  /** The model "Use at startup" acts on: the pending pick, else the running single model. */
+  const startupTarget = (): string | undefined => {
+    const p = pick();
+    if (p) return p;
+    const c = current();
+    return c?.kind === 'single' ? c.key : undefined;
+  };
   const action = () => singleAction(current(), pick());
   const unchanged = () => pairUnchanged(current(), leadKey(), sidekickKey(), leadEffort(), sidekickEffort());
 
@@ -170,6 +225,9 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
         const slash = key.indexOf('/');
         await s().cmd({ type: 'set_model', provider: key.slice(0, slash), modelId: key.slice(slash + 1) });
       }
+      // The curated default effort comes with a suggested pick (the TUI picker's per-model effort).
+      const effort = curated()?.effort[key];
+      if (effort) await s().cmd({ type: 'set_thinking_level', level: effort }).catch(() => undefined);
       toasts().push(switchToast(from, shortModelName(nameOf(key))), 'success');
     });
   };
@@ -182,6 +240,31 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
       await setFusionActive(s(), { kind: 'fusion', lead, sidekick, leadEffort: leadEffort(), sidekickEffort: sidekickEffort() });
       toasts().push(pairToast(from, nowLabel({ kind: 'fusion', lead, sidekick }, nameOf)), 'success');
     });
+  };
+
+  /** "Use at startup": the model a fresh session opens with (pi defaults + Fusion's startup.model). */
+  const useAtStartup = async () => {
+    const key = startupTarget();
+    if (!key || busy()) return;
+    const slash = key.indexOf('/');
+    const effort = curated()?.effort[key];
+    setBusy(true);
+    setError(null);
+    try {
+      await s().cmd({ type: '_oino/set_setting', key: 'defaultProvider', value: key.slice(0, slash), scope: 'global' });
+      await s().cmd({ type: '_oino/set_setting', key: 'defaultModel', value: key.slice(slash + 1), scope: 'global' });
+      if (effort) await s().cmd({ type: '_oino/set_setting', key: 'defaultThinkingLevel', value: effort, scope: 'global' });
+      if (fusionOn()) {
+        // Fusion's startup.model wins on a fresh session — keep it the same model.
+        await s().cmd({ type: '_oino/set_extension_setting', namespace: 'fusion', key: 'startup.model', value: key, scope: 'global' });
+      }
+      setStartup(key);
+      toasts().push(`New chats start on ${shortModelName(nameOf(key))}`, 'success');
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   /** Flip one model in the cycle set: `_oino/set_setting{key:'enabledModels'}` (global). */
@@ -198,6 +281,96 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
     }
   };
   const cycleOf = (m: ModelInfo) => cycle().exact.includes(cycleKeyOf(m.provider, m.id));
+
+  /** One Single-tab row: display name, route sub-line, badges; provider · id in the tooltip. */
+  const SingleRow = (p: { m: ModelInfo; lead?: boolean; sidekick?: boolean; effort?: string }) => {
+    const key = modelKey(p.m);
+    const name = modelName(p.m);
+    const isCurrent = () => current()?.kind === 'single' && (current() as { key: string }).key === key;
+    const picked = () => pick() === key;
+    return (
+      <button
+        type="button"
+        class="mp-row"
+        title={rowTitle(name, p.m)}
+        aria-current={isCurrent() ? 'true' : undefined}
+        aria-pressed={picked() ? 'true' : 'false'}
+        data-picked={picked() ? '' : undefined}
+        data-key={key}
+        onClick={() => {
+          setError(null);
+          setPick(nextSinglePick(current(), pick(), key));
+        }}
+      >
+        <span class="mp-row-main">
+          <span class="mp-row-name">{name}</span>
+          <span class="mp-row-sub">{routeLabel(p.m)}</span>
+        </span>
+        <Show when={p.lead}>
+          <span class="mp-badge mp-role" title="Curated Fusion lead">
+            Lead
+          </span>
+        </Show>
+        <Show when={p.sidekick}>
+          <span class="mp-badge mp-role" title="Curated Fusion sidekick">
+            Sidekick
+          </span>
+        </Show>
+        <Show when={p.effort}>
+          {(e) => (
+            <span class="mp-badge mp-effort-badge" title={`Curated thinking: ${thinkingLabel(e())} (applied with the switch)`}>
+              {thinkingLabel(e())}
+            </span>
+          )}
+        </Show>
+        <Show when={startup() === key}>
+          <span class="mp-badge mp-startup" title="New chats start on this model">
+            Startup
+          </span>
+        </Show>
+        <Show when={hasVision(p.m)}>
+          <span class="mp-badge" title="Accepts images">
+            Vision
+          </span>
+        </Show>
+        <Show when={contextBadge(p.m)}>{(badge) => <span class="mp-badge mp-ctx" title="Context window">{badge()}</span>}</Show>
+        <Show when={isCurrent()}>
+          <Check size={16} class="mp-check" aria-label="Current model" />
+        </Show>
+      </button>
+    );
+  };
+
+  /** One Fusion column row (`curated` = in the column's curated list). */
+  const ColRow = (p: { m: ModelInfo; side: 'lead' | 'sidekick' }) => {
+    const key = modelKey(p.m);
+    const name = shortModelName(modelName(p.m));
+    const chosen = () => (p.side === 'lead' ? leadKey() : sidekickKey()) === key;
+    return (
+      <button
+        type="button"
+        class="mp-row"
+        title={rowTitle(modelName(p.m), p.m)}
+        aria-current={chosen() ? 'true' : undefined}
+        onClick={() => {
+          setError(null);
+          const effort = pillEffort(key);
+          if (p.side === 'lead') {
+            setPendingLead(key);
+            if (effort) setLeadEffort(effort);
+          } else {
+            setPendingSidekick(key);
+            if (effort) setSidekickEffort(effort);
+          }
+        }}
+      >
+        <span class="mp-row-name">{name}</span>
+        <Show when={chosen()}>
+          <Check size={16} class="mp-check" />
+        </Show>
+      </button>
+    );
+  };
 
   return (
     <div class="mp" data-testid="model-picker">
@@ -237,41 +410,22 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
             fallback={<div class="mp-skeleton"><span /><span /><span /></div>}
           >
             <div class="mp-list" data-testid="model-picker-list">
-              <For each={rows().slice(0, LIST_CAP)} fallback={<p class="mp-empty">No model matches “{query().trim()}”.</p>}>
-                {(m) => {
-                  const key = modelKey(m);
-                  const isCurrent = () => current()?.kind === 'single' && (current() as { key: string }).key === key;
-                  const picked = () => pick() === key;
-                  return (
-                    <button
-                      type="button"
-                      class="mp-row"
-                      aria-current={isCurrent() ? 'true' : undefined}
-                      aria-pressed={picked() ? 'true' : 'false'}
-                      data-picked={picked() ? '' : undefined}
-                      onClick={() => {
-                        setError(null);
-                        setPick(nextSinglePick(current(), pick(), key));
-                      }}
-                    >
-                      <span class="mp-row-main">
-                        <span class="mp-row-name">{modelName(m)}</span>
-                        <span class="mp-row-sub">
-                          {m.provider}/{m.id}
-                        </span>
-                      </span>
-                      <Show when={hasVision(m)}>
-                        <span class="mp-badge" title="Accepts images">
-                          Vision
-                        </span>
-                      </Show>
-                      <Show when={contextBadge(m)}>{(badge) => <span class="mp-badge mp-ctx">{badge()}</span>}</Show>
-                      <Show when={isCurrent()}>
-                        <Check size={16} class="mp-check" aria-label="Current model" />
-                      </Show>
-                    </button>
-                  );
-                }}
+              <Show when={groups().suggested.length > 0}>
+                <p class="mp-group" data-testid="model-group-suggested">Suggested</p>
+                <For each={groups().suggested}>{(row) => <SingleRow m={row.model} lead={row.lead} sidekick={row.sidekick} effort={row.effort} />}</For>
+                <Show when={groups().rest.length > 0}>
+                  <p class="mp-group" data-testid="model-group-all">All models</p>
+                </Show>
+              </Show>
+              <For
+                each={groups().rest.slice(0, LIST_CAP)}
+                fallback={
+                  <Show when={groups().suggested.length === 0}>
+                    <p class="mp-empty">No model matches “{query().trim()}”.</p>
+                  </Show>
+                }
+              >
+                {(m) => <SingleRow m={m} />}
               </For>
             </div>
           </Show>
@@ -282,52 +436,26 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
             <div class="mp-col">
               <p class="mp-label">Lead</p>
               <div class="mp-list mp-col-list">
-                <For each={colRows().slice(0, LIST_CAP)} fallback={<p class="mp-empty">No model matches.</p>}>
-                  {(m) => {
-                    const key = modelKey(m);
-                    return (
-                      <button
-                        type="button"
-                        class="mp-row"
-                        aria-current={leadKey() === key ? 'true' : undefined}
-                        onClick={() => {
-                          setError(null);
-                          setPendingLead(key);
-                        }}
-                      >
-                        <span class="mp-row-name">{shortModelName(modelName(m))}</span>
-                        <Show when={leadKey() === key}>
-                          <Check size={16} class="mp-check" />
-                        </Show>
-                      </button>
-                    );
-                  }}
+                <Show when={leadRows().curated.length > 0}>
+                  <p class="mp-group">Curated</p>
+                  <For each={leadRows().curated}>{(m) => <ColRow m={m} side="lead" />}</For>
+                  <p class="mp-group">All models</p>
+                </Show>
+                <For each={leadRows().rest.slice(0, LIST_CAP)} fallback={<Show when={leadRows().curated.length === 0}><p class="mp-empty">No model matches.</p></Show>}>
+                  {(m) => <ColRow m={m} side="lead" />}
                 </For>
               </div>
             </div>
             <div class="mp-col">
               <p class="mp-label">Sidekick</p>
               <div class="mp-list mp-col-list">
-                <For each={colRows().slice(0, LIST_CAP)} fallback={<p class="mp-empty">No model matches.</p>}>
-                  {(m) => {
-                    const key = modelKey(m);
-                    return (
-                      <button
-                        type="button"
-                        class="mp-row"
-                        aria-current={sidekickKey() === key ? 'true' : undefined}
-                        onClick={() => {
-                          setError(null);
-                          setPendingSidekick(key);
-                        }}
-                      >
-                        <span class="mp-row-name">{shortModelName(modelName(m))}</span>
-                        <Show when={sidekickKey() === key}>
-                          <Check size={16} class="mp-check" />
-                        </Show>
-                      </button>
-                    );
-                  }}
+                <Show when={sidekickRows().curated.length > 0}>
+                  <p class="mp-group">Curated</p>
+                  <For each={sidekickRows().curated}>{(m) => <ColRow m={m} side="sidekick" />}</For>
+                  <p class="mp-group">All models</p>
+                </Show>
+                <For each={sidekickRows().rest.slice(0, LIST_CAP)} fallback={<Show when={sidekickRows().curated.length === 0}><p class="mp-empty">No model matches.</p></Show>}>
+                  {(m) => <ColRow m={m} side="sidekick" />}
                 </For>
               </div>
             </div>
@@ -412,9 +540,29 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
 
       <div class="mp-foot" data-testid="model-picker-foot">
         <Show when={mode() === 'single'}>
+          <Show when={!action()}>
+            <p class="mp-hint">{current()?.kind === 'fusion' ? 'Fusion is on. Pick a model to switch to it.' : 'Pick a model to switch.'}</p>
+          </Show>
+          <Show when={startupTarget()}>
+            {(target) => (
+              <button
+                type="button"
+                class="pair-secondary mp-apply mp-startup-btn"
+                disabled={busy() || startup() === target()}
+                title={
+                  startup() === target()
+                    ? `New chats already start on ${shortModelName(nameOf(target()))}`
+                    : `Start new chats on ${shortModelName(nameOf(target()))} (${target()})`
+                }
+                onClick={() => void useAtStartup()}
+                data-testid="model-use-startup"
+              >
+                {startup() === target() ? 'Startup model' : 'Use at startup'}
+              </button>
+            )}
+          </Show>
           <Show
             when={action()}
-            fallback={<p class="mp-hint">{current()?.kind === 'fusion' ? 'Fusion is on. Pick a model to switch to it.' : 'Pick a model to switch.'}</p>}
           >
             {(act) => (
               <button type="button" class="pair-primary mp-apply" disabled={busy()} aria-busy={busy() ? 'true' : undefined} onClick={applySingle}>

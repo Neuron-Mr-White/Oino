@@ -41,6 +41,8 @@ import Editor from '../../screens/Editor';
 import { SetupGate } from '../../lib/setupGate';
 import { inTextField } from '../../lib/desktop';
 import { bindingForEvent, installShortcutsPersistence, scopeOf, type BindingHit } from '../../lib/shortcuts/registry';
+import { hasForegroundSubagent, SUBAGENTS_SHORTCUT } from '../../lib/shortcuts/subagents';
+import { cycleSessionModel } from '../model/cycleModel';
 import { openFind } from '../../lib/find';
 import { focusComposer } from '../../lib/timeline/actions';
 import { openSessionModal } from '../session/SessionModal';
@@ -118,7 +120,7 @@ export function runBinding(hit: BindingHit, ctx: BindingCtx): boolean {
   const cur = currentSessionRoute();
   if (hit.kind === 'ext') {
     // Ruled (§4): Shift+↓ never reaches `unipi.tray.open` — the app opens Session · Running.
-    if (hit.intercepted) return runBinding({ kind: 'app', id: 'chat.running' }, ctx);
+    if (hit.intercepted) return runBinding({ kind: 'app', id: hit.interceptedBy ?? 'chat.running' }, ctx);
     if (!cur) return false;
     const handle = sessions().peek(cur.hostId, cur.sessionId);
     if (!handle) return false;
@@ -159,6 +161,12 @@ export function runBinding(hit: BindingHit, ctx: BindingCtx): boolean {
     case 'model.open':
       openModelPicker({ hostId: cur!.hostId, sessionId: cur!.sessionId });
       return true;
+    case 'model.cycle': {
+      const handle = sessions().peek(cur!.hostId, cur!.sessionId);
+      if (!handle) return false;
+      void cycleSessionModel(handle);
+      return true;
+    }
     case 'thinking.cycle': {
       const handle = sessions().peek(cur!.hostId, cur!.sessionId);
       if (!handle) return false;
@@ -181,9 +189,16 @@ export function runBinding(hit: BindingHit, ctx: BindingCtx): boolean {
       ctx.navigate(`/s/${encodeURIComponent(next.hostId)}/${encodeURIComponent(next.sessionId)}`);
       return true;
     }
-    case 'shell.sidebar':
+    case 'shell.sidebar': {
+      // P0-10: a foreground subagent in the shown session goes to the background first.
+      const handle = cur ? sessions().peek(cur.hostId, cur.sessionId) : undefined;
+      if (handle && hasForegroundSubagent(handle.state)) {
+        void handle.cmd({ type: '_oino/invoke_shortcut', shortcutId: SUBAGENTS_SHORTCUT }).catch((error: unknown) => console.warn('[shortcut] invoke failed', SUBAGENTS_SHORTCUT, error));
+        return true;
+      }
       L.toggleSidebar();
       return true;
+    }
     case 'shell.bottom':
       L.toggleBottom();
       return true;
@@ -215,7 +230,7 @@ function DesktopFrame(props: ParentProps) {
       { id: 'go.board', title: 'Go to Board', group: 'Go to', keywords: 'kanban tasks', icon: () => <Columns3 size={16} />, when: () => reservedGate('unipi.kanboard/board'), run: () => navigate('/board') },
       { id: 'go.cron', title: 'Go to Cron', group: 'Go to', keywords: 'schedule jobs', icon: () => <Clock size={16} />, run: () => navigate('/cron') },
       { id: 'go.settings', title: 'Go to Settings', group: 'Go to', keywords: 'preferences', icon: () => <SettingsIcon size={16} />, keys: `${modKey()} ,`, run: () => navigate('/settings') },
-      { id: 'view.sidebar', title: 'Toggle sidebar', group: 'View', keys: `${modKey()} B`, icon: () => <PanelLeft size={16} />, run: () => runBinding({ kind: 'app', id: 'shell.sidebar' }, { navigate, newChatHost, hosts: hostsCtx?.hosts() ?? [] }) },
+      { id: 'view.sidebar', title: 'Toggle sidebar', group: 'View', keys: `${modKey()} B`, icon: () => <PanelLeft size={16} />, run: () => L.toggleSidebar() },
       { id: 'view.side', title: 'Toggle side pane', group: 'View', keywords: 'files git panel right', keys: `${modKey()} Alt B`, icon: () => <PanelRight size={16} />, run: () => runBinding({ kind: 'app', id: 'shell.side' }, { navigate, newChatHost, hosts: hostsCtx?.hosts() ?? [] }) },
       { id: 'view.bottom', title: 'Toggle terminal panel', group: 'View', keywords: 'bottom panel', keys: `${modKey()} J`, icon: () => <PanelBottom size={16} />, run: () => runBinding({ kind: 'app', id: 'shell.bottom' }, { navigate, newChatHost, hosts: hostsCtx?.hosts() ?? [] }) },
       { id: 'view.fullview', title: 'Toggle full view', group: 'View', keywords: 'side pane maximize', keys: `${modKey()} ⇧ F`, icon: () => <Maximize2 size={16} />, run: () => runBinding({ kind: 'app', id: 'shell.fullview' }, { navigate, newChatHost, hosts: hostsCtx?.hosts() ?? [] }) },

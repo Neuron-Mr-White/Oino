@@ -133,6 +133,13 @@ export function chordTokens(chord: string, mac = isMac()): string[] {
   return chord.split('+').map((p) => (p === 'Mod' ? (mac ? '⌘' : 'Ctrl') : p === 'Alt' ? (mac ? '⌥' : 'Alt') : p));
 }
 
+const ARROWS: Record<string, string> = { Up: '↑', Down: '↓', Left: '←', Right: '→' };
+
+/** Tokens for an extension row (Ctrl+/, Settings): arrows as glyphs, `—` when unbound. */
+export function extChordTokens(chord: string, mac = isMac()): string[] {
+  return chord ? chordTokens(chord, mac).map((t) => ARROWS[t] ?? t) : ['—'];
+}
+
 export function displayChord(chord: string, mac = isMac()): string {
   return chordTokens(chord, mac).join(mac ? '' : '+');
 }
@@ -149,7 +156,7 @@ export type ExtEntry = ResolvedExt & { chord: string };
 /** How a key event resolved: an app binding or an extension shortcut. */
 export type BindingHit =
   | { kind: 'app'; id: string }
-  | { kind: 'ext'; id: string; extId: string; intercepted: boolean };
+  | { kind: 'ext'; id: string; extId: string; intercepted: boolean; interceptedBy?: string };
 
 const [userChords, setUserChords] = createSignal<Readonly<Record<string, string>>>({});
 const [extSpecs, setExtSpecs] = createSignal<readonly ExtShortcutSpec[]>([]);
@@ -175,8 +182,9 @@ export function appEntries(): AppEntry[] {
 
 /** Extension shortcuts as resolved against the app chords (conflicts.ts). */
 export function extEntries(): ExtEntry[] {
-  const app = appEntries().filter((e) => !e.displayOnly).flatMap((e) => e.chords);
-  return resolveExtShortcuts(app, extSpecs(), userChords());
+  const entries = appEntries();
+  const app = entries.filter((e) => !e.displayOnly).flatMap((e) => e.chords);
+  return resolveExtShortcuts(app, extSpecs(), userChords(), (id) => entries.find((e) => e.id === id)?.chord);
 }
 
 /** A user chord override; `null` resets to the default. */
@@ -206,7 +214,8 @@ export function bindingForEvent(e: Keyish): BindingHit | undefined {
     for (const chord of entry.chords) if (chordMatches(chord, e)) return { kind: 'app', id: entry.id };
   }
   for (const entry of extEntries()) {
-    if (entry.chord && chordMatches(entry.chord, e)) return { kind: 'ext', id: entry.id, extId: entry.extId, intercepted: !!entry.interceptedBy };
+    if (entry.chord && chordMatches(entry.chord, e))
+      return { kind: 'ext', id: entry.id, extId: entry.extId, intercepted: !!entry.interceptedBy, ...(entry.interceptedBy ? { interceptedBy: entry.interceptedBy } : {}) };
   }
   return undefined;
 }

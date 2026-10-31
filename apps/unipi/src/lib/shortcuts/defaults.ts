@@ -7,7 +7,10 @@
  *   ⌘, settings, B sidebar, J bottom panel, ⌥⌘B side pane, ⇧F full view,
  *   ⇧T reopen tab, N new chat, ⇧[ / ⇧] prev/next conversation) plus unipi's
  *   Ctrl+/ list and Ctrl+L focus composer, plus A14's ZCode set: Mod+M model
- *   menu, Mod+T thinking cycle, Mod+Shift+M working-mode cycle.
+ *   menu, Mod+T thinking cycle, Mod+Shift+M working-mode cycle. P0-10:
+ *   Mod+B also backgrounds a foreground subagent (the old harness's Ctrl+B)
+ *   before it toggles the sidebar; Mod+Alt+P cycles the model (the TUI's
+ *   Ctrl+P — Mod+P is Files here and Alt+P is the plan toggle).
  * - `SCREEN_KEYS` — display-only (Ctrl+/ list, Settings): the keys the
  *   screens handle inside themselves (unipi board/files/editor/terminal
  *   keys, kept per the Z-94 ruling).
@@ -31,7 +34,7 @@ export const APP_BINDINGS: AppBinding[] = [
   { id: 'find.open', title: 'Find in chat', group: 'Shell', chords: ['Mod+F'], scope: 'conversation' },
   { id: 'shell.shortcuts', title: 'Keyboard shortcuts', group: 'Shell', chords: ['Mod+/'], scope: 'app' },
   { id: 'shell.settings', title: 'Open Settings', group: 'Shell', chords: ['Mod+,'], scope: 'app' },
-  { id: 'shell.sidebar', title: 'Show / hide the sidebar', group: 'Panels', chords: ['Mod+B'], scope: 'app' },
+  { id: 'shell.sidebar', title: 'Show / hide the sidebar (backgrounds a running subagent first)', group: 'Panels', chords: ['Mod+B'], scope: 'app' },
   { id: 'shell.side', title: 'Show / hide the side pane', group: 'Panels', chords: ['Mod+Alt+B'], scope: 'app' },
   { id: 'shell.bottom', title: 'Show / hide the bottom panel', group: 'Panels', chords: ['Mod+J'], scope: 'app' },
   { id: 'shell.fullview', title: 'Side pane full view', group: 'Panels', chords: ['Mod+Shift+F'], scope: 'app' },
@@ -42,6 +45,7 @@ export const APP_BINDINGS: AppBinding[] = [
   { id: 'chat.next', title: 'Next conversation', group: 'Chat', chords: ['Mod+Shift+]'], scope: 'app' },
   { id: 'chat.running', title: 'Running work (Session modal)', group: 'Chat', chords: ['Shift+Down'], scope: 'conversation' },
   { id: 'model.open', title: 'Change model', group: 'Chat', chords: ['Mod+M'], scope: 'conversation' },
+  { id: 'model.cycle', title: 'Cycle the model (cycle set, else Fusion suggestions)', group: 'Chat', chords: ['Mod+Alt+P'], scope: 'conversation' },
   { id: 'thinking.cycle', title: 'Cycle the thinking level', group: 'Chat', chords: ['Mod+T'], scope: 'conversation' },
   { id: 'mode.cycle', title: 'Cycle the working-mode starter (Goal / Ralph / Graph)', group: 'Chat', chords: ['Mod+Shift+M'], scope: 'conversation' },
   { id: 'chat.send', title: 'Send (while running: last Steer/Queue choice)', group: 'Chat', chords: ['Enter'], scope: 'conversation', displayOnly: true },

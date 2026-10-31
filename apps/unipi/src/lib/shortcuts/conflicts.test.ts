@@ -9,11 +9,15 @@ describe('resolveExtShortcuts', () => {
     expect(out).toEqual([{ id: 'unipi.permission.cycle', chord: 'Alt+M', title: 'Cycle permission mode', extId: 'extension' }]);
   });
 
-  it('rebinds the ruled conflicts to their alternates (§4)', () => {
-    const out = resolveExtShortcuts(APP, [{ id: 'unipi.subagents.foreground', chord: 'ctrl+b', extId: 'unipi.subagents' }]);
-    expect(out[0]!.chord).toBe('Alt+B');
-    expect(out[0]!.reboundFrom).toBe('Mod+B');
-    expect(EXT_ALTERNATES['unipi.subagents.foreground']).toBe('Alt+B');
+  it('shares Ctrl+B with the sidebar: the subagents shortcut is intercepted by shell.sidebar (P0-10)', () => {
+    const out = resolveExtShortcuts(APP, [{ id: 'unipi.subagents.foreground', chord: 'ctrl+b', extId: 'unipi.subagents' }], {}, (id) => (id === 'shell.sidebar' ? 'Mod+B' : undefined));
+    expect(out[0]!.interceptedBy).toBe('shell.sidebar');
+    expect(out[0]!.chord).toBe('Mod+B');
+    expect(out[0]!.note).toContain('foreground');
+    expect(EXT_ALTERNATES['unipi.subagents.foreground']).toBeNull();
+    // a rebound sidebar takes the shared chord with it
+    const moved = resolveExtShortcuts(['Mod+Shift+B'], [{ id: 'unipi.subagents.foreground', chord: 'ctrl+b' }], {}, () => 'Mod+Shift+B');
+    expect(moved[0]!.chord).toBe('Mod+Shift+B');
   });
 
   it('marks the tray shortcut as intercepted (Shift+Down is the app\'s)', () => {

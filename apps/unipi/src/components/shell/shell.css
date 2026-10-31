@@ -193,6 +193,7 @@ html[data-shell=desktop] .sheet.shortcuts-dialog { width: min(760px, calc(100vw 
 .shortcuts-keys { flex: 0 0 132px; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
 .shortcuts-sep { font-size: 11px; color: var(--color-text-dim); }
 .shortcuts-what { flex: 1; min-width: 0; font-size: 13px; line-height: 18px; color: var(--color-text-muted); }
+.shortcuts-note.shortcuts-note-under { display: block; margin-top: 1px; line-height: 15px; }
 
 /* ── Terminal: physical keyboard, tabs, no phone chrome ─────────────── */
 html[data-shell=desktop] .term-tabs { position: fixed; z-index: 17; top: 0; left: var(--detail-left); right: 0; height: 38px; display: flex; align-items: stretch; gap: 2px; padding: 4px 8px 0; box-sizing: border-box; overflow-x: auto; scrollbar-width: none; background: var(--color-bg); border-left: 1px solid rgb(46 40 37 / 70%); border-bottom: 1px solid rgb(46 40 37 / 70%); }

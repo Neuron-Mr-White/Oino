@@ -163,3 +163,121 @@ describe('the Cycle set (WP-A25, G-15 /scoped-models)', () => {
     expect(screen.queryByTestId('model-picker-cycle-list')).toBeNull();
   });
 });
+
+// ── P0-10: Fusion's curated preset ranks the picker ─────────────────────
+const CURATED = {
+  lead: [{ key: 'openai/gpt-5', name: 'GPT-5' }, { key: 'anthropic/claude-opus-4-1', name: 'Claude Opus 4.1' }],
+  sidekick: [{ key: 'zai/glm-4.6', name: 'GLM-4.6' }],
+  ranked: [
+    { key: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+    { key: 'openai/gpt-5', name: 'GPT-5' },
+    { key: 'anthropic/claude-opus-4-1', name: 'Claude Opus 4.1' },
+    { key: 'zai/glm-4.6', name: 'GLM-4.6' },
+  ],
+  default: { lead: 'openai/gpt-5', sidekick: 'zai/glm-4.6' },
+  effort: { 'openai/gpt-5': 'high' },
+};
+
+async function bootCurated(active: unknown = { kind: 'single', model: 'anthropic/claude-sonnet-4-5' }): Promise<MockWorld> {
+  const base = SCENARIOS['model-fusion']!;
+  const host0 = base.hosts[0]!;
+  const sess = host0.sessions![SESSION]!;
+  const orig = sess.cmd!['_oino/service_call']!;
+  const spec = {
+    ...base,
+    hosts: [
+      {
+        ...host0,
+        sessions: {
+          [SESSION]: {
+            ...sess,
+            snapshot: { ...sess.snapshot, state: { ...(sess.snapshot.state as object), model: { provider: 'anthropic', id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' } } },
+            cmd: {
+              ...sess.cmd,
+              '_oino/service_call': (cmd: Parameters<typeof orig>[0], h: Parameters<typeof orig>[1]) =>
+                cmd.name === 'fusion.status' ? { active, status: undefined, curated: CURATED } : orig(cmd, h),
+            },
+          },
+        },
+      },
+    ],
+  };
+  const world = createMockHost({ ...spec, speed: 0 });
+  setHostClientFactory(world.client);
+  await tick();
+  return world;
+}
+
+describe('Suggested (P0-10, fusion.status.curated)', () => {
+  it('ranks `ranked` first with Lead / Sidekick badges and the curated effort, then the whole catalogue', async () => {
+    await bootCurated();
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-group-suggested')).toBeTruthy());
+    const list = screen.getByTestId('model-picker-list');
+    const keys = [...list.querySelectorAll<HTMLElement>('.mp-row')].map((r) => r.dataset.key);
+    expect(keys.slice(0, 4)).toEqual(['google/gemini-2.5-pro', 'openai/gpt-5', 'anthropic/claude-opus-4-1', 'zai/glm-4.6']);
+    // the rest: the running model first, no duplicate of a suggested row
+    expect(keys[4]).toBe('anthropic/claude-sonnet-4-5');
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(screen.getByTestId('model-group-all')).toBeTruthy();
+    const gpt = list.querySelector<HTMLElement>('[data-key="openai/gpt-5"]')!;
+    expect(gpt.textContent).toContain('Lead');
+    expect(gpt.textContent).toContain('High');
+    expect(list.querySelector('[data-key="zai/glm-4.6"]')!.textContent).toContain('Sidekick');
+    // display names on the row, provider · id in the tooltip, no raw id on the row
+    expect(gpt.textContent).not.toContain('openai/gpt-5');
+    expect(gpt.title).toContain('openai · gpt-5');
+  });
+
+  it('a search filters both groups', async () => {
+    await bootCurated();
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-group-suggested')).toBeTruthy());
+    fireEvent.input(screen.getByTestId('model-search'), { target: { value: 'gpt' } });
+    await tick();
+    const keys = [...screen.getByTestId('model-picker-list').querySelectorAll<HTMLElement>('.mp-row')].map((r) => r.dataset.key);
+    expect(keys).toEqual(['openai/gpt-5', 'openai/gpt-5-mini']);
+  });
+
+  it('a suggested pick applies its curated effort with the switch', async () => {
+    const world = await bootCurated();
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-group-suggested')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('model-picker-list').querySelector('[data-key="openai/gpt-5"]')!);
+    fireEvent.click(await screen.findByText('Turn Fusion off & switch').catch(() => screen.findByText('Switch model')));
+    await waitFor(() => expect(cmds(world, 'set_thinking_level').at(-1)?.args).toMatchObject({ level: 'high' }));
+  });
+
+  it('"Use at startup" writes the default model (and Fusion\'s startup.model)', async () => {
+    const world = await bootCurated();
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-group-suggested')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('model-picker-list').querySelector('[data-key="openai/gpt-5"]')!);
+    fireEvent.click(screen.getByTestId('model-use-startup'));
+    await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toBe('Startup model'));
+    const sets = cmds(world, '_oino/set_setting').map((l) => l.args as { key: string; value: unknown });
+    expect(sets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'defaultProvider', value: 'openai' }),
+        expect.objectContaining({ key: 'defaultModel', value: 'gpt-5' }),
+        expect.objectContaining({ key: 'defaultThinkingLevel', value: 'high' }),
+      ]),
+    );
+    expect(cmds(world, '_oino/set_extension_setting').at(-1)?.args).toMatchObject({ namespace: 'fusion', key: 'startup.model', value: 'openai/gpt-5' });
+    expect(screen.getByTestId('model-picker-list').querySelector('[data-key="openai/gpt-5"]')!.textContent).toContain('Startup');
+  });
+
+  it('the Fusion columns put their curated lists first and take the curated default pair', async () => {
+    await bootCurated({ kind: 'single', model: 'anthropic/claude-sonnet-4-5' });
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-tab-fusion')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('model-tab-fusion'));
+    await waitFor(() => expect(screen.getByTestId('model-picker-fusion')).toBeTruthy());
+    const [lead, side] = [...screen.getByTestId('model-picker-fusion').querySelectorAll('.mp-col-list')];
+    const names = (el: Element) => [...el.querySelectorAll('.mp-row-name')].map((n) => n.textContent);
+    expect(names(lead!).slice(0, 2)).toEqual(['GPT-5', 'Claude Opus 4.1']);
+    expect(names(side!)[0]).toBe('GLM-4.6');
+    expect(lead!.querySelector('[aria-current="true"]')?.textContent).toContain('GPT-5');
+    expect(side!.querySelector('[aria-current="true"]')?.textContent).toContain('GLM-4.6');
+  });
+});

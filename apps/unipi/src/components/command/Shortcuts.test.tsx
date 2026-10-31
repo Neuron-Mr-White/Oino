@@ -45,7 +45,7 @@ describe('ShortcutsDialog (Ctrl+/)', () => {
     expect(/was (Ctrl\+B|⌘B)/.test(row.textContent ?? '')).toBe(true);
   });
 
-  it('lists extension shortcuts: Alt+B rebind + the intercepted Shift+↓ (G-7)', async () => {
+  it('lists extension shortcuts: the Ctrl+B share with the sidebar + the intercepted Shift+↓ (G-7, P0-10)', async () => {
     setExtensionShortcuts([
       { id: 'unipi.subagents.foreground', chord: 'ctrl+b', title: 'Move foreground subagents to the background', extId: 'unipi.subagents' },
       { id: 'unipi.tray.open', chord: 'shift+down', title: 'Open the work tray', extId: 'unipi.core' },
@@ -54,8 +54,10 @@ describe('ShortcutsDialog (Ctrl+/)', () => {
     render(() => <ShortcutsDialog />);
     await waitFor(() => {
       const rows = screen.getAllByTestId('shortcut-row').map((r) => r.textContent ?? '');
-      expect(rows.some((t) => t.replace(/\s+/g, '').includes('Moveforegroundsubagentstothebackground') && t.includes('Alt') && t.includes('B'))).toBe(true);
-      expect(rows.some((t) => t.includes('extension wanted Ctrl+B') || t.includes('extension wanted ⌘B'))).toBe(true);
+      const sub = rows.find((t) => t.replace(/\s+/g, '').includes('Moveforegroundsubagentstothebackground'));
+      expect(sub && (sub.includes('Ctrl') || sub.includes('⌘')) && sub.includes('B') && !sub.includes('Alt')).toBe(true);
+      expect(sub).toContain('while a subagent runs in the foreground; else the sidebar');
+      expect(rows.some((t) => t.includes('Cycle the model'))).toBe(true);
       expect(rows.some((t) => t.includes('the app opens Session · Running instead'))).toBe(true);
     });
   });

@@ -8,7 +8,7 @@
  */
 import { createSignal, For, Show } from 'solid-js';
 import { BoardSheet } from '../board/BoardSheet';
-import { appEntries, chordTokens, extEntries, isMac, screenKeyGroups } from '../../lib/shortcuts/registry';
+import { appEntries, chordTokens, extChordTokens, extEntries, isMac, screenKeyGroups } from '../../lib/shortcuts/registry';
 
 const [open, setOpen] = createSignal(false);
 export const shortcutsOpen = open;
@@ -27,12 +27,15 @@ export function ShortcutsDialog() {
               <For each={group.items}>
                 {(item) => (
                   <div class="shortcuts-row" data-testid="shortcut-row">
-                    <span class="shortcuts-what">{item.title}</span>
+                    <span class="shortcuts-what">
+                      {item.title}
+                      {/* The note sits under the title: beside the keys it squeezed the title to one word a line. */}
+                      <Show when={item.note}>
+                        <span class="shortcuts-note shortcuts-note-under">{item.note}</span>
+                      </Show>
+                    </span>
                     <span class="shortcuts-keys">
                       <For each={item.tokens}>{(part) => <kbd class="kbd">{part}</kbd>}</For>
-                      <Show when={item.note}>
-                        <span class="shortcuts-note">{item.note}</span>
-                      </Show>
                     </span>
                   </div>
                 )}
@@ -81,9 +84,9 @@ function shellGroups(): Array<{ title: string; items: ShellRow[] }> {
       for (const ext of extEntries()) {
         items.push({
           title: ext.title,
-          tokens: ext.interceptedBy ? ['Shift', '↓'] : ext.chord ? chordTokens(ext.chord, mac) : ['—'],
-          ...(ext.interceptedBy
-            ? { note: 'the app opens Session · Running instead' }
+          tokens: extChordTokens(ext.chord, mac),
+          ...(ext.note
+            ? { note: ext.note }
             : ext.reboundFrom
               ? { note: `extension wanted ${chordTokens(ext.reboundFrom, mac).join(mac ? '' : '+')}` }
               : {}),

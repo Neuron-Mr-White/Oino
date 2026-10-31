@@ -5,9 +5,10 @@
  * `setShortcuts` ui request (`{id, defaultKeys, description, extensionId}`).
  * **No extension chord may shadow an app chord** — a collision is rebound:
  *
- * - the ruled alternates (§4): `unipi.subagents.foreground` → Alt+B
- *   (shell wins Cmd/Ctrl+B = sidebar), and `unipi.tray.open` is intercepted
- *   by the app (Shift+↓ opens Session modal → Running, never forwarded);
+ * - the ruled interceptions (§4, P0-10): `unipi.subagents.foreground` is
+ *   handled by the app's sidebar chord (Cmd/Ctrl+B backgrounds a foreground
+ *   subagent, else toggles the sidebar — `subagents.ts`), and
+ *   `unipi.tray.open` by Session modal → Running (Shift+↓, never forwarded);
  * - any other collision gets the first free app-chosen alternate
  *   (`Alt+<key>`, then `Alt+Shift+<key>`);
  * - a user-rebound extension chord wins over the automatic alternate (and is
@@ -19,8 +20,15 @@ import { chordsCollide, normalizeChord } from './registry';
 
 /** The ruled rebindings (§4). `null` = the app intercepts it natively. */
 export const EXT_ALTERNATES: Record<string, string | null> = {
-  'unipi.subagents.foreground': 'Alt+B',
+  'unipi.subagents.foreground': null,
   'unipi.tray.open': null,
+};
+
+/** Who intercepts an id (the app binding whose chord it shares) and the note Ctrl+/ shows. */
+export const EXT_INTERCEPTS: Record<string, { by: string; note: string; userMayBind?: boolean }> = {
+  // A user chord of its own (Settings) binds it directly as well.
+  'unipi.subagents.foreground': { by: 'shell.sidebar', note: 'while a subagent runs in the foreground; else the sidebar', userMayBind: true },
+  'unipi.tray.open': { by: 'chat.running', note: 'the app opens Session · Running instead' },
 };
 
 export type ExtShortcutSpec = {
@@ -41,6 +49,8 @@ export type ResolvedExt = {
   reboundFrom?: string;
   /** The app handles this id natively (shown in Ctrl+/ with its note). */
   interceptedBy?: string;
+  /** Why/when (Ctrl+/ and Settings show it next to the chord). */
+  note?: string;
 };
 
 /** The first free alternate chord for a colliding extension chord. */
@@ -54,7 +64,13 @@ function alternate(chord: string, busy: (candidate: string) => boolean): string 
  * Resolves every extension shortcut against the app's effective chords.
  * Deterministic: first-come for duplicates, spec order otherwise.
  */
-export function resolveExtShortcuts(appChords: readonly string[], specs: readonly ExtShortcutSpec[], userChords: Readonly<Record<string, string>> = {}): ResolvedExt[] {
+export function resolveExtShortcuts(
+  appChords: readonly string[],
+  specs: readonly ExtShortcutSpec[],
+  userChords: Readonly<Record<string, string>> = {},
+  /** The effective chord of an app binding (an intercepted id shows its interceptor's chord). */
+  appChordOf: (id: string) => string | undefined = () => undefined,
+): ResolvedExt[] {
   const taken = new Set<string>(appChords);
   const out: ResolvedExt[] = [];
   for (const spec of specs) {
@@ -65,8 +81,10 @@ export function resolveExtShortcuts(appChords: readonly string[], specs: readonl
     const user = userChords[`ext:${spec.id}`] !== undefined ? normalizeChord(userChords[`ext:${spec.id}`]!) : undefined;
 
     // Ruled: the app intercepts this id (never forwarded to the extension).
-    if (spec.id in EXT_ALTERNATES && EXT_ALTERNATES[spec.id] === null) {
-      out.push({ id: spec.id, chord: own, title, extId, interceptedBy: 'chat.running' });
+    const userOwn = !!user && !!EXT_INTERCEPTS[spec.id]?.userMayBind && ![...taken].some((t) => chordsCollide(t, user));
+    if (spec.id in EXT_ALTERNATES && EXT_ALTERNATES[spec.id] === null && !userOwn) {
+      const by = EXT_INTERCEPTS[spec.id] ?? { by: 'chat.running', note: '' };
+      out.push({ id: spec.id, chord: appChordOf(by.by) ?? own, title, extId, interceptedBy: by.by, ...(by.note ? { note: by.note } : {}) });
       continue;
     }
     const ruled = EXT_ALTERNATES[spec.id];

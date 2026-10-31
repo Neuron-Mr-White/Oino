@@ -5,6 +5,7 @@ import {
   chordOf,
   chordTokens,
   displayChord,
+  extEntries,
   installShortcutsPersistence,
   normalizeChord,
   rebindShortcut,
@@ -83,10 +84,12 @@ describe('registry', () => {
     const { setExtensionShortcuts } = await import('./registry');
     setExtensionShortcuts([{ id: 'unipi.permission.cycle', chord: 'alt+m', title: 'Cycle permission mode', extId: 'unipi.workflow' }]);
     expect(bindingForEvent(key({ key: 'm', code: 'KeyM', altKey: true }))).toEqual({ kind: 'ext', id: 'unipi.permission.cycle', extId: 'unipi.workflow', intercepted: false });
-    // the colliding ctrl+b is rebound (Alt+B), so Mod+B stays the sidebar's
+    // P0-10: ctrl+b is shared — Mod+B stays the sidebar's binding (which backgrounds a
+    // foreground subagent first); no separate Alt+B binding any more
     setExtensionShortcuts([{ id: 'unipi.subagents.foreground', chord: 'ctrl+b', extId: 'unipi.subagents' }]);
     expect(bindingForEvent(key({ key: 'b', code: 'KeyB', ctrlKey: true }))).toEqual({ kind: 'app', id: 'shell.sidebar' });
-    expect(bindingForEvent(key({ key: 'b', code: 'KeyB', altKey: true }))).toEqual({ kind: 'ext', id: 'unipi.subagents.foreground', extId: 'unipi.subagents', intercepted: false });
+    expect(bindingForEvent(key({ key: 'b', code: 'KeyB', altKey: true }))).toBeUndefined();
+    expect(extEntries().find((e) => e.id === 'unipi.subagents.foreground')).toMatchObject({ chord: 'Mod+B', interceptedBy: 'shell.sidebar' });
   });
 
   it('the tray shortcut is intercepted natively (never forwarded)', async () => {

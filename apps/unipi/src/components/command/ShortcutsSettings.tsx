@@ -7,7 +7,7 @@
  */
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { Keyboard, RotateCcw } from 'lucide-solid';
-import { appEntries, chordOf, chordTokens, extEntries, isMac, normalizeChord, rebindShortcut } from '../../lib/shortcuts/registry';
+import { appEntries, chordOf, chordTokens, extChordTokens, extEntries, isMac, normalizeChord, rebindShortcut } from '../../lib/shortcuts/registry';
 
 export function ShortcutsSettings() {
   const [recording, setRecording] = createSignal<string | undefined>();
@@ -65,7 +65,10 @@ export function ShortcutsSettings() {
             <div class="sc-set-row sc-set-row-ext">
               <span class="sc-set-title">{ext.title}</span>
               <span class="sc-set-keys">
-                <kbd class="kbd">{ext.interceptedBy ? 'Shift ↓' : ext.chord ? chordTokens(ext.chord, isMac()).join(isMac() ? '' : '+') : 'unbound'}</kbd>
+                <kbd class="kbd">{ext.chord ? extChordTokens(ext.chord, isMac()).join(isMac() ? '' : '+') : 'unbound'}</kbd>
+                <Show when={ext.note}>
+                  <span class="sc-set-note">{ext.note}</span>
+                </Show>
                 <Show when={ext.reboundFrom}>
                   <span class="sc-set-note">extension wanted {chordTokens(ext.reboundFrom!, isMac()).join(isMac() ? '' : '+')}</span>
                 </Show>
