@@ -124,10 +124,14 @@ impl NetState {
         // UNI-231: this PC's own host → its local transport (offline-proof);
         // if it is gone, fall back to iroh.
         if let Ok(parsed) = parse_ticket(ticket) {
-            if let Some(local) = crate::local_host::socket_for(&parsed.endpoint_addr().id.to_string()) {
+            if let Some(local) =
+                crate::local_host::socket_for(&parsed.endpoint_addr().id.to_string())
+            {
                 match crate::local_host::connect(&local).await {
                     Ok(halves) => return Ok(halves),
-                    Err(error) => log::warn!("local host {}: {error}; using iroh", local.socket.display()),
+                    Err(error) => {
+                        log::warn!("local host {}: {error}; using iroh", local.socket.display())
+                    }
                 }
             }
         }
@@ -137,12 +141,16 @@ impl NetState {
 
     /// The path the op streams to `ticket`'s host take right now (the chip).
     pub fn path_for(&self, ticket: &str) -> PathKind {
-        let Ok(parsed) = parse_ticket(ticket) else { return PathKind::Unknown };
+        let Ok(parsed) = parse_ticket(ticket) else {
+            return PathKind::Unknown;
+        };
         let id = parsed.endpoint_addr().id.to_string();
         if crate::local_host::socket_for(&id).is_some() {
             return PathKind::Local;
         }
-        self.cached_live(&id).map(|c| selected_path(&c).0).unwrap_or(PathKind::Unknown)
+        self.cached_live(&id)
+            .map(|c| selected_path(&c).0)
+            .unwrap_or(PathKind::Unknown)
     }
 
     pub fn drop_connection(&self, id: &str) {
@@ -393,8 +401,7 @@ mod tests {
     #[test]
     fn shared_pair_link_fixtures() {
         let fixtures: serde_json::Value =
-            serde_json::from_str(include_str!("../../protocol/fixtures/pairlink.json"))
-                .unwrap();
+            serde_json::from_str(include_str!("../../protocol/fixtures/pairlink.json")).unwrap();
         for fixture in fixtures.as_array().unwrap() {
             let result = parse_pair_link(fixture["input"].as_str().unwrap());
             assert_eq!(

@@ -26,7 +26,10 @@ const CLI_TIMEOUT: Duration = Duration::from_secs(35);
 
 /// Turns `(args, project)` into a `BoardCli` request, validating both the way
 /// the host would so a bad call fails fast with `E_SCHEMA` (not a round trip).
-pub(crate) fn cli_request(args: Vec<String>, project: Option<String>) -> Result<Request, AppErrorDto> {
+pub(crate) fn cli_request(
+    args: Vec<String>,
+    project: Option<String>,
+) -> Result<Request, AppErrorDto> {
     if let Some(reason) = unipi_proto::board::board_args_error(&args) {
         return Err(schema_err("args", reason));
     }
@@ -67,7 +70,9 @@ pub async fn board_watch(
         &app,
         &state,
         &host_id,
-        Request::BoardWatch { on: on.unwrap_or(true) },
+        Request::BoardWatch {
+            on: on.unwrap_or(true),
+        },
         Duration::from_secs(30),
     )
     .await?;
@@ -105,17 +110,24 @@ mod tests {
     fn cli_request_validates_args_and_slug() {
         assert!(schema_reason(cli_request(Vec::new(), None).unwrap_err())
             .contains("needs a subcommand"));
-        assert!(schema_reason(cli_request(vec!["add".into(), String::new()], None).unwrap_err())
-            .contains("must not be empty"));
+        assert!(
+            schema_reason(cli_request(vec!["add".into(), String::new()], None).unwrap_err())
+                .contains("must not be empty")
+        );
         assert!(schema_reason(
             cli_request(vec!["add".into(), "x".into(), "a\nb".into()], None).unwrap_err()
         )
         .contains("printable"));
-        assert!(schema_reason(cli_request(vec!["list".into()], Some(String::new())).unwrap_err())
-            .contains("1..="));
+        assert!(
+            schema_reason(cli_request(vec!["list".into()], Some(String::new())).unwrap_err())
+                .contains("1..=")
+        );
         assert!(schema_reason(
-            cli_request(vec!["move".into(), "S-1".into(), "done".into()], Some("p\n".into()))
-                .unwrap_err()
+            cli_request(
+                vec!["move".into(), "S-1".into(), "done".into()],
+                Some("p\n".into())
+            )
+            .unwrap_err()
         )
         .contains("printable"));
     }

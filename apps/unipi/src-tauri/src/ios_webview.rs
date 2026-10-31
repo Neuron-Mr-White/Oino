@@ -102,14 +102,30 @@ pub fn disable_safe_area_content_inset(wkwebview: *mut c_void) {
     unsafe {
         let scroll_view = get_obj(wkwebview, c"scrollView");
         if scroll_view.is_null()
-            || get_isize(scroll_view, c"contentInsetAdjustmentBehavior") == CONTENT_INSET_ADJUSTMENT_NEVER
+            || get_isize(scroll_view, c"contentInsetAdjustmentBehavior")
+                == CONTENT_INSET_ADJUSTMENT_NEVER
         {
             return;
         }
-        set_isize(scroll_view, c"setContentInsetAdjustmentBehavior:", CONTENT_INSET_ADJUSTMENT_NEVER);
-        set_bool(scroll_view, c"setAutomaticallyAdjustsScrollIndicatorInsets:", false);
+        set_isize(
+            scroll_view,
+            c"setContentInsetAdjustmentBehavior:",
+            CONTENT_INSET_ADJUSTMENT_NEVER,
+        );
+        set_bool(
+            scroll_view,
+            c"setAutomaticallyAdjustsScrollIndicatorInsets:",
+            false,
+        );
         let frame = get_rect(wkwebview, c"frame");
-        set_rect(wkwebview, c"setFrame:", CGRect { h: frame.h - 1.0, ..frame });
+        set_rect(
+            wkwebview,
+            c"setFrame:",
+            CGRect {
+                h: frame.h - 1.0,
+                ..frame
+            },
+        );
         set_rect(wkwebview, c"setFrame:", frame);
     }
 }
@@ -118,7 +134,9 @@ pub fn disable_safe_area_content_inset(wkwebview: *mut c_void) {
 /// openURL:options:completionHandler:]`). Main thread only. Used for the
 /// "new version — open unipi.nrn.one/ios" notice and other web links.
 pub fn open_in_safari(url: &str) -> bool {
-    let Ok(c_url) = std::ffi::CString::new(url) else { return false };
+    let Ok(c_url) = std::ffi::CString::new(url) else {
+        return false;
+    };
     unsafe {
         let ns_string = objc_getClass(c"NSString".as_ptr());
         let ns_url = objc_getClass(c"NSURL".as_ptr());
@@ -127,8 +145,11 @@ pub fn open_in_safari(url: &str) -> bool {
         if ns_string.is_null() || ns_url.is_null() || ns_dict.is_null() || ui_app.is_null() {
             return false;
         }
-        let with_utf8: unsafe extern "C" fn(*mut c_void, *mut c_void, *const c_char) -> *mut c_void =
-            std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+        let with_utf8: unsafe extern "C" fn(
+            *mut c_void,
+            *mut c_void,
+            *const c_char,
+        ) -> *mut c_void = std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
         let string = with_utf8(ns_string, sel(c"stringWithUTF8String:"), c_url.as_ptr());
         let with_obj: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> *mut c_void =
             std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
@@ -138,9 +159,20 @@ pub fn open_in_safari(url: &str) -> bool {
         }
         let shared = get_obj(ui_app, c"sharedApplication");
         let options = get_obj(ns_dict, c"dictionary");
-        let open: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, *mut c_void, *mut c_void) =
-            std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
-        open(shared, sel(c"openURL:options:completionHandler:"), nsurl, options, std::ptr::null_mut());
+        let open: unsafe extern "C" fn(
+            *mut c_void,
+            *mut c_void,
+            *mut c_void,
+            *mut c_void,
+            *mut c_void,
+        ) = std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+        open(
+            shared,
+            sel(c"openURL:options:completionHandler:"),
+            nsurl,
+            options,
+            std::ptr::null_mut(),
+        );
         true
     }
 }

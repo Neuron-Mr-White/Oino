@@ -23,8 +23,8 @@ use tauri::ipc::Channel;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use unipi_proto::{
     frame::{encode, FrameKind, MAX_FRAME},
-    AppErrorCode, AppErrorDto, BlobGetData, BlobPath, Control, ProtoError, PushListData, PushOutcome, Request,
-    PROTO_VERSION, PUSH_WAIT_MAX,
+    AppErrorCode, AppErrorDto, BlobGetData, BlobPath, Control, ProtoError, PushListData,
+    PushOutcome, Request, PROTO_VERSION, PUSH_WAIT_MAX,
 };
 
 use crate::blob::BlobProgress;
@@ -42,11 +42,23 @@ fn schema(message: impl Into<String>) -> AppErrorDto {
 }
 
 fn hello_frame(request: Request) -> Result<Vec<u8>, AppErrorDto> {
-    let hello = Control::Hello { proto: PROTO_VERSION.to_string().try_into().map_err(|e: String| internal(e))?, req: request };
-    Ok(encode(FrameKind::Control, &serde_json::to_vec(&hello).map_err(internal)?))
+    let hello = Control::Hello {
+        proto: PROTO_VERSION
+            .to_string()
+            .try_into()
+            .map_err(|e: String| internal(e))?,
+        req: request,
+    };
+    Ok(encode(
+        FrameKind::Control,
+        &serde_json::to_vec(&hello).map_err(internal)?,
+    ))
 }
 
-async fn read_frame<R: AsyncRead + Unpin>(recv: &mut R, limit: Duration) -> Result<Option<(u8, Vec<u8>)>, AppErrorDto> {
+async fn read_frame<R: AsyncRead + Unpin>(
+    recv: &mut R,
+    limit: Duration,
+) -> Result<Option<(u8, Vec<u8>)>, AppErrorDto> {
     let read = async {
         let kind = match recv.read_u8().await {
             Ok(kind) => kind,
@@ -66,14 +78,23 @@ async fn read_frame<R: AsyncRead + Unpin>(recv: &mut R, limit: Duration) -> Resu
         .map_err(|_| ProtoError::Timeout("The PC stopped answering".into()).to_app_error())?
 }
 
-async fn request_reply<R, W>(send: &mut W, recv: &mut R, request: Request, limit: Duration) -> Result<Option<serde_json::Value>, AppErrorDto>
+async fn request_reply<R, W>(
+    send: &mut W,
+    recv: &mut R,
+    request: Request,
+    limit: Duration,
+) -> Result<Option<serde_json::Value>, AppErrorDto>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    send.write_all(&hello_frame(request)?).await.map_err(transport)?;
+    send.write_all(&hello_frame(request)?)
+        .await
+        .map_err(transport)?;
     let _ = send.shutdown().await;
-    let (kind, payload) = read_frame(recv, limit).await?.ok_or_else(|| transport("The PC closed the request without a reply"))?;
+    let (kind, payload) = read_frame(recv, limit)
+        .await?
+        .ok_or_else(|| transport("The PC closed the request without a reply"))?;
     if kind != 0 {
         return Err(schema("expected a control reply"));
     }
@@ -89,16 +110,27 @@ pub(crate) fn safe_name(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or("");
     let cleaned: String = base
         .chars()
-        .map(|c| if c.is_control() || matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
+        .map(|c| {
+            if c.is_control() || matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '_'
+            } else {
+                c
+            }
+        })
         .take(120)
         .collect();
     let trimmed = cleaned.trim_matches(|c: char| c == '.' || c.is_whitespace());
-    if trimmed.is_empty() { "file".to_string() } else { trimmed.to_string() }
+    if trimmed.is_empty() {
+        "file".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Why a fetched file was refused.
 pub(crate) fn checksum_error(message: impl Into<String>) -> AppErrorDto {
-    AppErrorDto::new(AppErrorCode::E_BLOB_REJECTED, message, true).with_detail(serde_json::json!({"reason":"checksum"}))
+    AppErrorDto::new(AppErrorCode::E_BLOB_REJECTED, message, true)
+        .with_detail(serde_json::json!({"reason":"checksum"}))
 }
 
 /// Streams a `blob_get` reply (after the hello) into `dest`, verifying the
@@ -114,7 +146,9 @@ where
     R: AsyncRead + Unpin,
     F: FnMut(u64, u64),
 {
-    receive_to_file(recv, dest, Some((expected_sha256, expected_size)), progress).await.map(|(size, _)| size)
+    receive_to_file(recv, dest, Some((expected_sha256, expected_size)), progress)
+        .await
+        .map(|(size, _)| size)
 }
 
 /// Streams a `blob_get` reply into `dest`. With `expected` (sha256, size) the
@@ -138,11 +172,13 @@ where
         if kind != 0 {
             return Err(schema("expected a control reply"));
         }
-        let data: BlobGetData = match serde_json::from_slice::<Control>(&payload).map_err(|e| schema(e.to_string()))? {
-            Control::Ok { data } => serde_json::from_value(data.unwrap_or_default()).map_err(|e| schema(e.to_string()))?,
-            Control::Err { error } => return Err(error),
-            _ => return Err(schema("unexpected blob_get reply")),
-        };
+        let data: BlobGetData =
+            match serde_json::from_slice::<Control>(&payload).map_err(|e| schema(e.to_string()))? {
+                Control::Ok { data } => serde_json::from_value(data.unwrap_or_default())
+                    .map_err(|e| schema(e.to_string()))?,
+                Control::Err { error } => return Err(error),
+                _ => return Err(schema("unexpected blob_get reply")),
+            };
         let expected_size = match expected {
             Some((_, size)) if data.size != size => {
                 return Err(checksum_error(format!(
@@ -156,7 +192,9 @@ where
         if let Some(parent) = dest.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(internal)?;
         }
-        let mut out = tokio::fs::File::create(dest).await.map_err(|e| internal(format!("can't write {}: {e}", dest.display())))?;
+        let mut out = tokio::fs::File::create(dest)
+            .await
+            .map_err(|e| internal(format!("can't write {}: {e}", dest.display())))?;
         let mut hasher = Sha256::new();
         let mut received = 0u64;
         loop {
@@ -173,7 +211,9 @@ where
                     out.write_all(&payload).await.map_err(internal)?;
                     progress(received, expected_size);
                 }
-                0 => match serde_json::from_slice::<Control>(&payload).map_err(|e| schema(e.to_string()))? {
+                0 => match serde_json::from_slice::<Control>(&payload)
+                    .map_err(|e| schema(e.to_string()))?
+                {
                     Control::Exit { .. } => break,
                     Control::Err { error } => return Err(error),
                     _ => return Err(schema("unexpected blob_get frame")),
@@ -187,9 +227,15 @@ where
             return Err(transport("The download was cut off"));
         }
         if let Some((expected_sha256, _)) = expected {
-            let digest: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+            let digest: String = hasher
+                .finalize()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
             if digest != expected_sha256 {
-                return Err(checksum_error("The file didn't arrive intact (checksum mismatch)."));
+                return Err(checksum_error(
+                    "The file didn't arrive intact (checksum mismatch).",
+                ));
             }
         }
         Ok((received, data.mime))
@@ -206,12 +252,19 @@ fn cache_dir(app: &tauri::AppHandle) -> Result<PathBuf, AppErrorDto> {
     Ok(app.path().app_cache_dir().map_err(internal)?.join("pushes"))
 }
 
-fn host_opener(app: &tauri::AppHandle, host_id: &str) -> Result<crate::forward::Opener, AppErrorDto> {
+fn host_opener(
+    app: &tauri::AppHandle,
+    host_id: &str,
+) -> Result<crate::forward::Opener, AppErrorDto> {
     crate::forward::net_opener(app, host_id)
 }
 
 #[tauri::command]
-pub async fn push_list(app: tauri::AppHandle, host_id: String, wait: Option<u32>) -> Result<PushListData, AppErrorDto> {
+pub async fn push_list(
+    app: tauri::AppHandle,
+    host_id: String,
+    wait: Option<u32>,
+) -> Result<PushListData, AppErrorDto> {
     let wait = wait.unwrap_or(0).min(PUSH_WAIT_MAX);
     let opener = host_opener(&app, &host_id)?;
     let limit = Duration::from_secs(wait as u64 + 15);
@@ -219,7 +272,9 @@ pub async fn push_list(app: tauri::AppHandle, host_id: String, wait: Option<u32>
     for fresh in [false, true] {
         let attempt = async {
             let (mut send, mut recv) = opener(fresh).await?;
-            let request = Request::PushList { wait: Some(wait.try_into().map_err(|e: String| schema(e))?) };
+            let request = Request::PushList {
+                wait: Some(wait.try_into().map_err(|e: String| schema(e))?),
+            };
             let data = request_reply(&mut send, &mut recv, request, limit).await?;
             serde_json::from_value::<PushListData>(data.unwrap_or_default()).map_err(internal)
         }
@@ -264,8 +319,14 @@ pub async fn push_fetch(
     for fresh in [false, true] {
         let attempt = async {
             let (mut send, mut recv) = opener(fresh).await?;
-            let request = Request::BlobGet { sha256: None, path: Some(blob_path.clone()), range: None };
-            send.write_all(&hello_frame(request)?).await.map_err(transport)?;
+            let request = Request::BlobGet {
+                sha256: None,
+                path: Some(blob_path.clone()),
+                range: None,
+            };
+            send.write_all(&hello_frame(request)?)
+                .await
+                .map_err(transport)?;
             let _ = send.shutdown().await;
             let mut last_sent = 0u64;
             receive_verified(&mut recv, &dest, sha.as_str(), size, |done, total| {
@@ -279,7 +340,12 @@ pub async fn push_fetch(
         }
         .await;
         match attempt {
-            Ok(size) => return Ok(PushFetchResult { local_path: dest.to_string_lossy().into_owned(), size }),
+            Ok(size) => {
+                return Ok(PushFetchResult {
+                    local_path: dest.to_string_lossy().into_owned(),
+                    size,
+                })
+            }
             Err(error) if error.code == AppErrorCode::E_TRANSPORT && !fresh => last = error,
             Err(error) => return Err(error),
         }
@@ -323,8 +389,14 @@ pub async fn fs_download(
     for fresh in [false, true] {
         let attempt = async {
             let (mut send, mut recv) = opener(fresh).await?;
-            let request = Request::BlobGet { sha256: None, path: Some(blob_path.clone()), range: None };
-            send.write_all(&hello_frame(request)?).await.map_err(transport)?;
+            let request = Request::BlobGet {
+                sha256: None,
+                path: Some(blob_path.clone()),
+                range: None,
+            };
+            send.write_all(&hello_frame(request)?)
+                .await
+                .map_err(transport)?;
             let _ = send.shutdown().await;
             let mut last_sent = 0u64;
             receive_to_file(&mut recv, &dest, None, |done, total| {
@@ -337,7 +409,13 @@ pub async fn fs_download(
         }
         .await;
         match attempt {
-            Ok((size, mime)) => return Ok(FsDownloadResult { local_path: dest.to_string_lossy().into_owned(), size, mime }),
+            Ok((size, mime)) => {
+                return Ok(FsDownloadResult {
+                    local_path: dest.to_string_lossy().into_owned(),
+                    size,
+                    mime,
+                })
+            }
             Err(error) if error.code == AppErrorCode::E_TRANSPORT && !fresh => last = error,
             Err(error) => return Err(error),
         }
@@ -377,8 +455,14 @@ pub async fn push_done(
     for fresh in [false, true] {
         let attempt = async {
             let (mut send, mut recv) = opener(fresh).await?;
-            let request = Request::PushDone { id: id.clone(), outcome, detail: detail.clone() };
-            request_reply(&mut send, &mut recv, request, Duration::from_secs(15)).await.map(|_| ())
+            let request = Request::PushDone {
+                id: id.clone(),
+                outcome,
+                detail: detail.clone(),
+            };
+            request_reply(&mut send, &mut recv, request, Duration::from_secs(15))
+                .await
+                .map(|_| ())
         }
         .await;
         match attempt {
@@ -392,17 +476,27 @@ pub async fn push_done(
 /// Only files we fetched ourselves may be saved/opened.
 fn fetched_file(app: &tauri::AppHandle, src: &str) -> Result<PathBuf, AppErrorDto> {
     let root = cache_dir(app)?;
-    let path = PathBuf::from(src).canonicalize().map_err(|e| internal(format!("{src}: {e}")))?;
+    let path = PathBuf::from(src)
+        .canonicalize()
+        .map_err(|e| internal(format!("{src}: {e}")))?;
     let root = root.canonicalize().map_err(internal)?;
     if !path.starts_with(&root) || !path.is_file() {
-        return Err(AppErrorDto::new(AppErrorCode::E_UNAUTHORIZED, "Not a pushed file", false));
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_UNAUTHORIZED,
+            "Not a pushed file",
+            false,
+        ));
     }
     Ok(path)
 }
 
 /// Desktop: native "Save as…" dialog, then copy. `None` when cancelled.
 #[tauri::command]
-pub async fn push_save_as(app: tauri::AppHandle, src: String, name: String) -> Result<Option<String>, AppErrorDto> {
+pub async fn push_save_as(
+    app: tauri::AppHandle,
+    src: String,
+    name: String,
+) -> Result<Option<String>, AppErrorDto> {
     let src = fetched_file(&app, &src)?;
     #[cfg(desktop)]
     {
@@ -410,25 +504,36 @@ pub async fn push_save_as(app: tauri::AppHandle, src: String, name: String) -> R
         let default_dir = dirs_downloads();
         let file_name = safe_name(&name);
         app.run_on_main_thread(move || {
-            let mut dialog = rfd::AsyncFileDialog::new().set_file_name(&file_name).set_title("Save file");
+            let mut dialog = rfd::AsyncFileDialog::new()
+                .set_file_name(&file_name)
+                .set_title("Save file");
             if let Some(dir) = default_dir {
                 dialog = dialog.set_directory(dir);
             }
             let pending = dialog.save_file();
             std::thread::spawn(move || {
-                let picked = tauri::async_runtime::block_on(pending).map(|h| h.path().to_path_buf());
+                let picked =
+                    tauri::async_runtime::block_on(pending).map(|h| h.path().to_path_buf());
                 let _ = tx.send(picked);
             });
         })
         .map_err(internal)?;
-        let Some(dest) = rx.await.map_err(internal)? else { return Ok(None) };
-        tokio::fs::copy(&src, &dest).await.map_err(|e| internal(format!("can't save to {}: {e}", dest.display())))?;
+        let Some(dest) = rx.await.map_err(internal)? else {
+            return Ok(None);
+        };
+        tokio::fs::copy(&src, &dest)
+            .await
+            .map_err(|e| internal(format!("can't save to {}: {e}", dest.display())))?;
         Ok(Some(dest.to_string_lossy().into_owned()))
     }
     #[cfg(not(desktop))]
     {
         let _ = (src, name);
-        Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Save as… is desktop only (the phone uses Downloads)", false))
+        Err(AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "Save as… is desktop only (the phone uses Downloads)",
+            false,
+        ))
     }
 }
 
@@ -469,12 +574,19 @@ pub async fn open_url(app: tauri::AppHandle, url: String) -> Result<(), AppError
             c.arg("url.dll,FileProtocolHandler");
             c
         };
-        command.arg(&url).spawn().map_err(|e| internal(format!("can't open {url}: {e}")))?;
+        command
+            .arg(&url)
+            .spawn()
+            .map_err(|e| internal(format!("can't open {url}: {e}")))?;
         Ok(())
     }
     #[cfg(all(not(desktop), not(target_os = "ios")))]
     {
-        Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Links are opened by the Android bridge", false))
+        Err(AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "Links are opened by the Android bridge",
+            false,
+        ))
     }
 }
 
@@ -501,13 +613,20 @@ pub async fn push_open(app: tauri::AppHandle, path: String) -> Result<(), AppErr
             c.args(["/C", "start", ""]);
             c
         };
-        command.arg(&path).spawn().map_err(|e| internal(format!("can't open {}: {e}", path.display())))?;
+        command
+            .arg(&path)
+            .spawn()
+            .map_err(|e| internal(format!("can't open {}: {e}", path.display())))?;
         Ok(())
     }
     #[cfg(not(desktop))]
     {
         let _ = path;
-        Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Open is handled by the Android bridge", false))
+        Err(AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "Open is handled by the Android bridge",
+            false,
+        ))
     }
 }
 
@@ -521,14 +640,29 @@ mod tests {
     }
 
     fn sha(bytes: &[u8]) -> String {
-        Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+        Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
     }
 
-    async fn run(body: &[u8], announced: u64, expected_sha: &str, expected_size: u64) -> (Result<u64, AppErrorDto>, PathBuf, tempfile::TempDir, Vec<u64>) {
+    async fn run(
+        body: &[u8],
+        announced: u64,
+        expected_sha: &str,
+        expected_size: u64,
+    ) -> (
+        Result<u64, AppErrorDto>,
+        PathBuf,
+        tempfile::TempDir,
+        Vec<u64>,
+    ) {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("p1").join("app.apk");
         let (mut host, mut phone) = duplex(1 << 20);
-        let mut wire = ctrl(&Control::Ok { data: Some(serde_json::json!({"size": announced, "mime": "application/octet-stream"})) });
+        let mut wire = ctrl(&Control::Ok {
+            data: Some(serde_json::json!({"size": announced, "mime": "application/octet-stream"})),
+        });
         for chunk in body.chunks(7) {
             wire.extend(encode(FrameKind::Output, chunk));
         }
@@ -536,14 +670,18 @@ mod tests {
         host.write_all(&wire).await.unwrap();
         drop(host);
         let mut seen = Vec::new();
-        let result = receive_verified(&mut phone, &dest, expected_sha, expected_size, |d, _| seen.push(d)).await;
+        let result = receive_verified(&mut phone, &dest, expected_sha, expected_size, |d, _| {
+            seen.push(d)
+        })
+        .await;
         (result, dest, dir, seen)
     }
 
     #[tokio::test]
     async fn verified_download_lands_with_progress() {
         let body = b"PK\x03\x04 pretend this is an apk".to_vec();
-        let (result, dest, _dir, seen) = run(&body, body.len() as u64, &sha(&body), body.len() as u64).await;
+        let (result, dest, _dir, seen) =
+            run(&body, body.len() as u64, &sha(&body), body.len() as u64).await;
         assert_eq!(result.unwrap(), body.len() as u64);
         assert_eq!(std::fs::read(&dest).unwrap(), body);
         assert_eq!(*seen.last().unwrap(), body.len() as u64);
@@ -552,7 +690,8 @@ mod tests {
     #[tokio::test]
     async fn sha_mismatch_is_rejected_and_deleted() {
         let body = b"tampered bytes".to_vec();
-        let (result, dest, _dir, _) = run(&body, body.len() as u64, &"0".repeat(64), body.len() as u64).await;
+        let (result, dest, _dir, _) =
+            run(&body, body.len() as u64, &"0".repeat(64), body.len() as u64).await;
         let error = result.unwrap_err();
         assert_eq!(error.code, AppErrorCode::E_BLOB_REJECTED);
         assert_eq!(error.detail.unwrap()["reason"], "checksum");
@@ -575,7 +714,11 @@ mod tests {
         let body: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
         let (mut host, mut phone) = duplex(1 << 20);
         let writer = tokio::spawn(async move {
-            let mut wire = ctrl(&Control::Ok { data: Some(serde_json::json!({"size": body.len(), "mime": "application/octet-stream"})) });
+            let mut wire = ctrl(&Control::Ok {
+                data: Some(
+                    serde_json::json!({"size": body.len(), "mime": "application/octet-stream"}),
+                ),
+            });
             for chunk in body.chunks(64 * 1024) {
                 wire.extend(encode(FrameKind::Output, chunk));
             }
@@ -584,21 +727,34 @@ mod tests {
             body
         });
         let mut seen = Vec::new();
-        let (got, mime) = receive_to_file(&mut phone, &dest, None, |d, t| seen.push((d, t))).await.unwrap();
+        let (got, mime) = receive_to_file(&mut phone, &dest, None, |d, t| seen.push((d, t)))
+            .await
+            .unwrap();
         assert_eq!(mime, "application/octet-stream");
         let body = writer.await.unwrap();
         assert_eq!(got, body.len() as u64);
         assert_eq!(std::fs::read(&dest).unwrap(), body);
-        assert_eq!(seen.last().unwrap(), &(body.len() as u64, body.len() as u64));
+        assert_eq!(
+            seen.last().unwrap(),
+            &(body.len() as u64, body.len() as u64)
+        );
 
         // Cut off before the announced size: an error, and nothing left behind.
         let dest = dir.path().join("dl-2").join("cut.bin");
         let (mut host, mut phone) = duplex(1 << 16);
-        let mut wire = ctrl(&Control::Ok { data: Some(serde_json::json!({"size": 10, "mime": "x"})) });
+        let mut wire = ctrl(&Control::Ok {
+            data: Some(serde_json::json!({"size": 10, "mime": "x"})),
+        });
         wire.extend(encode(FrameKind::Output, b"12345"));
         host.write_all(&wire).await.unwrap();
         drop(host);
-        assert_eq!(receive_to_file(&mut phone, &dest, None, |_, _| {}).await.unwrap_err().code, AppErrorCode::E_TRANSPORT);
+        assert_eq!(
+            receive_to_file(&mut phone, &dest, None, |_, _| {})
+                .await
+                .unwrap_err()
+                .code,
+            AppErrorCode::E_TRANSPORT
+        );
         assert!(!dest.exists());
     }
 
@@ -616,14 +772,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("x");
         let (mut host, mut phone) = duplex(1 << 16);
-        let err = AppErrorDto::new(AppErrorCode::E_UNAUTHORIZED, "That path isn't available to the phone", false);
-        host.write_all(&ctrl(&Control::Err { error: err })).await.unwrap();
+        let err = AppErrorDto::new(
+            AppErrorCode::E_UNAUTHORIZED,
+            "That path isn't available to the phone",
+            false,
+        );
+        host.write_all(&ctrl(&Control::Err { error: err }))
+            .await
+            .unwrap();
         drop(host);
         let result = receive_verified(&mut phone, &dest, &"0".repeat(64), 3, |_, _| {}).await;
         assert_eq!(result.unwrap_err().code, AppErrorCode::E_UNAUTHORIZED);
 
         let (mut host, mut phone) = duplex(1 << 16);
-        let mut wire = ctrl(&Control::Ok { data: Some(serde_json::json!({"size": 10, "mime": "x"})) });
+        let mut wire = ctrl(&Control::Ok {
+            data: Some(serde_json::json!({"size": 10, "mime": "x"})),
+        });
         wire.extend(encode(FrameKind::Output, b"12345"));
         host.write_all(&wire).await.unwrap();
         drop(host);

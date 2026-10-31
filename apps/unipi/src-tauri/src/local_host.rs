@@ -154,25 +154,43 @@ mod tests {
 
     fn write_host_dir(dir: &Path, id: &str) {
         std::fs::write(dir.join("app.sock"), b"").unwrap();
-        std::fs::write(dir.join("endpoint.json"), serde_json::json!({"addr":{"id":id,"addrs":[]},"ticket":"endpointlocal"}).to_string()).unwrap();
+        std::fs::write(
+            dir.join("endpoint.json"),
+            serde_json::json!({"addr":{"id":id,"addrs":[]},"ticket":"endpointlocal"}).to_string(),
+        )
+        .unwrap();
     }
 
     fn paired(id: &str, name: &str) -> HostInfo {
-        HostInfo { id: id.into(), name: name.into(), ticket: "endpointpaired".into(), paired_at: 1, last_path: None, transport: None }
+        HostInfo {
+            id: id.into(),
+            name: name.into(),
+            ticket: "endpointpaired".into(),
+            paired_at: 1,
+            last_path: None,
+            transport: None,
+        }
     }
 
     #[test]
     fn detects_only_with_a_socket_and_an_endpoint() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(detect_in(dir.path()), None);
-        std::fs::write(dir.path().join("endpoint.json"), r#"{"addr":{"id":"abc"},"ticket":"t"}"#).unwrap();
+        std::fs::write(
+            dir.path().join("endpoint.json"),
+            r#"{"addr":{"id":"abc"},"ticket":"t"}"#,
+        )
+        .unwrap();
         // Unix: the socket file is the adopt signal. Windows has a pipe and
         // nothing to stat, so `endpoint.json` is it (a dead pipe falls back to
         // iroh in `connect`, spec host.md §6.1).
         #[cfg(unix)]
         assert_eq!(detect_in(dir.path()), None, "no socket = host not running");
         #[cfg(windows)]
-        assert!(detect_in(dir.path()).is_some(), "no pipe file to stat: endpoint.json");
+        assert!(
+            detect_in(dir.path()).is_some(),
+            "no pipe file to stat: endpoint.json"
+        );
         write_host_dir(dir.path(), "abc");
         let l = detect_in(dir.path()).unwrap();
         assert_eq!((l.id.as_str(), l.ticket.as_str()), ("abc", "endpointlocal"));
@@ -184,15 +202,28 @@ mod tests {
 
     #[test]
     fn this_computer_is_added_first_or_merged_by_id() {
-        let local = LocalHost { id: "me".into(), ticket: "endpointlocal".into(), socket: "/x/app.sock".into() };
+        let local = LocalHost {
+            id: "me".into(),
+            ticket: "endpointlocal".into(),
+            socket: "/x/app.sock".into(),
+        };
         let out = merge(vec![paired("other", "Laptop")], Some(&local));
-        assert_eq!(out.iter().map(|h| h.name.as_str()).collect::<Vec<_>>(), ["This computer", "Laptop"]);
+        assert_eq!(
+            out.iter().map(|h| h.name.as_str()).collect::<Vec<_>>(),
+            ["This computer", "Laptop"]
+        );
         assert_eq!(out[0].transport.as_deref(), Some("local"));
-        let merged = merge(vec![paired("me", "oi-desktop"), paired("other", "Laptop")], Some(&local));
+        let merged = merge(
+            vec![paired("me", "oi-desktop"), paired("other", "Laptop")],
+            Some(&local),
+        );
         assert_eq!(merged.len(), 2, "same id → one card");
         assert_eq!(merged[0].name, "oi-desktop");
         assert_eq!(merged[0].transport.as_deref(), Some("local"));
-        assert_eq!(merged[0].ticket, "endpointpaired", "keeps the iroh ticket as the fallback");
+        assert_eq!(
+            merged[0].ticket, "endpointpaired",
+            "keeps the iroh ticket as the fallback"
+        );
         assert_eq!(merge(vec![paired("a", "A")], None).len(), 1);
     }
 }
@@ -205,13 +236,17 @@ mod tests {
 mod offline_e2e {
     use std::time::{Duration, Instant};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use unipi_proto::{frame::{encode, FrameKind}, Control, PROTO_VERSION};
+    use unipi_proto::{
+        frame::{encode, FrameKind},
+        Control, PROTO_VERSION,
+    };
 
     static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[tokio::test(flavor = "multi_thread")]
     async fn this_computer_works_with_no_network() {
-        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/unipi-host");
+        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../target/debug/unipi-host");
         if !bin.exists() {
             eprintln!("SKIP: build unipi-host first ({})", bin.display());
             return;
@@ -220,7 +255,16 @@ mod offline_e2e {
         let host_dir = tempfile::tempdir().unwrap();
         let app_dir = tempfile::tempdir().unwrap();
         let mut child = std::process::Command::new(&bin)
-            .args(["--data-dir", host_dir.path().to_str().unwrap(), "serve", "--relay", "https://127.0.0.1:9", "--relay-only", "--mode", "manual"])
+            .args([
+                "--data-dir",
+                host_dir.path().to_str().unwrap(),
+                "serve",
+                "--relay",
+                "https://127.0.0.1:9",
+                "--relay-only",
+                "--mode",
+                "manual",
+            ])
             .env("HOME", host_dir.path())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -228,7 +272,10 @@ mod offline_e2e {
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(20);
         while super::detect_in(host_dir.path()).is_none() {
-            assert!(Instant::now() < deadline, "host never published app.sock + endpoint.json");
+            assert!(
+                Instant::now() < deadline,
+                "host never published app.sock + endpoint.json"
+            );
             std::thread::sleep(Duration::from_millis(100));
         }
         std::env::set_var("OINO_HOST_DIR", host_dir.path());
@@ -238,14 +285,26 @@ mod offline_e2e {
         assert_eq!(hosts[0].transport.as_deref(), Some("local"));
 
         let state = crate::net::NetState::default();
-        assert_eq!(state.path_for(&hosts[0].ticket), crate::path_kind::PathKind::Local);
-        let (mut send, mut recv) = tokio::time::timeout(Duration::from_secs(5), state.open_op(app_dir.path(), None, &hosts[0].ticket))
-            .await
-            .expect("open_op must not try iroh")
-            .unwrap();
+        assert_eq!(
+            state.path_for(&hosts[0].ticket),
+            crate::path_kind::PathKind::Local
+        );
+        let (mut send, mut recv) = tokio::time::timeout(
+            Duration::from_secs(5),
+            state.open_op(app_dir.path(), None, &hosts[0].ticket),
+        )
+        .await
+        .expect("open_op must not try iroh")
+        .unwrap();
         assert!(matches!(send, crate::op_stream::OpSend::Local(_)));
-        let hello = serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":{"op":"fs_roots"}});
-        send.write_all(&encode(FrameKind::Control, &serde_json::to_vec(&hello).unwrap())).await.unwrap();
+        let hello =
+            serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":{"op":"fs_roots"}});
+        send.write_all(&encode(
+            FrameKind::Control,
+            &serde_json::to_vec(&hello).unwrap(),
+        ))
+        .await
+        .unwrap();
         send.finish().unwrap();
         let kind = recv.read_u8().await.unwrap();
         let len = recv.read_u32().await.unwrap() as usize;
@@ -267,46 +326,99 @@ mod offline_e2e {
 /// running (or its version has no local transport).
 pub async fn admin(req: serde_json::Value) -> Result<serde_json::Value, AppErrorDto> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use unipi_proto::{frame::{encode, FrameKind}, AppErrorCode, Control, PROTO_VERSION};
+    use unipi_proto::{
+        frame::{encode, FrameKind},
+        AppErrorCode, Control, PROTO_VERSION,
+    };
     let Some(local) = detect() else {
-        return Err(AppErrorDto::new(AppErrorCode::E_NOT_FOUND, "unipi-host isn't running on this PC (or is too old to manage from here)", false));
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_NOT_FOUND,
+            "unipi-host isn't running on this PC (or is too old to manage from here)",
+            false,
+        ));
     };
     let fut = async {
         let (mut s, mut reply) = connect(&local).await.map_err(|e| {
-            AppErrorDto::new(AppErrorCode::E_TRANSPORT, format!("can't reach this PC's host: {e}"), true)
+            AppErrorDto::new(
+                AppErrorCode::E_TRANSPORT,
+                format!("can't reach this PC's host: {e}"),
+                true,
+            )
         })?;
         let hello = serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":req});
-        s.write_all(&encode(FrameKind::Control, &serde_json::to_vec(&hello).unwrap_or_default())).await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
-        let kind = reply.read_u8().await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
-        let len = reply.read_u32().await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))? as usize;
+        s.write_all(&encode(
+            FrameKind::Control,
+            &serde_json::to_vec(&hello).unwrap_or_default(),
+        ))
+        .await
+        .map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
+        let kind = reply
+            .read_u8()
+            .await
+            .map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
+        let len = reply
+            .read_u32()
+            .await
+            .map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?
+            as usize;
         if kind != 0 || len > unipi_proto::MAX_FRAME {
-            return Err(AppErrorDto::new(AppErrorCode::E_INTERNAL, "bad reply from this PC's host", false));
+            return Err(AppErrorDto::new(
+                AppErrorCode::E_INTERNAL,
+                "bad reply from this PC's host",
+                false,
+            ));
         }
         let mut bytes = vec![0; len];
-        reply.read_exact(&mut bytes).await.map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
-        match serde_json::from_slice::<Control>(&bytes).map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))? {
+        reply
+            .read_exact(&mut bytes)
+            .await
+            .map_err(|e| AppErrorDto::new(AppErrorCode::E_TRANSPORT, e.to_string(), true))?;
+        match serde_json::from_slice::<Control>(&bytes)
+            .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))?
+        {
             Control::Ok { data } => Ok(data.unwrap_or(serde_json::Value::Null)),
             Control::Err { error } => Err(error),
-            _ => Err(AppErrorDto::new(AppErrorCode::E_INTERNAL, "unexpected reply", false)),
+            _ => Err(AppErrorDto::new(
+                AppErrorCode::E_INTERNAL,
+                "unexpected reply",
+                false,
+            )),
         }
     };
     tokio::time::timeout(std::time::Duration::from_secs(10), fut)
         .await
-        .map_err(|_| AppErrorDto::new(unipi_proto::AppErrorCode::E_TIMEOUT, "this PC's host didn't answer", true))?
+        .map_err(|_| {
+            AppErrorDto::new(
+                unipi_proto::AppErrorCode::E_TIMEOUT,
+                "this PC's host didn't answer",
+                true,
+            )
+        })?
 }
 
 /// Ops the UI may send through `local_admin` (nothing else reaches the host this way).
-pub const ADMIN_OPS: [&str; 5] = ["host_info", "pair_begin", "pair_status", "devices_list", "device_revoke"];
+pub const ADMIN_OPS: [&str; 5] = [
+    "host_info",
+    "pair_begin",
+    "pair_status",
+    "devices_list",
+    "device_revoke",
+];
 
 #[tauri::command]
 pub async fn local_admin(req: serde_json::Value) -> Result<serde_json::Value, AppErrorDto> {
     let op = req.get("op").and_then(|v| v.as_str()).unwrap_or("");
     if !ADMIN_OPS.contains(&op) {
-        return Err(AppErrorDto::new(unipi_proto::AppErrorCode::E_SCHEMA, format!("not an admin op: {op}"), false));
+        return Err(AppErrorDto::new(
+            unipi_proto::AppErrorCode::E_SCHEMA,
+            format!("not an admin op: {op}"),
+            false,
+        ));
     }
     // Validate against the shared schema before it leaves the app.
     let hello = serde_json::json!({"type":"hello","proto":unipi_proto::PROTO_VERSION,"req":req});
-    let parsed: unipi_proto::Control = serde_json::from_value(hello).map_err(|e| AppErrorDto::new(unipi_proto::AppErrorCode::E_SCHEMA, e.to_string(), false))?;
+    let parsed: unipi_proto::Control = serde_json::from_value(hello)
+        .map_err(|e| AppErrorDto::new(unipi_proto::AppErrorCode::E_SCHEMA, e.to_string(), false))?;
     parsed.validate().map_err(|e| e.to_app_error())?;
     admin(req).await
 }
@@ -315,11 +427,19 @@ pub async fn local_admin(req: serde_json::Value) -> Result<serde_json::Value, Ap
 /// allowlist) — the tray line and the Quit confirm (UNI-237).
 pub fn paired_devices() -> usize {
     let Some(dir) = host_dir() else { return 0 };
-    let Ok(raw) = std::fs::read_to_string(dir.join("devices.json")) else { return 0 };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else { return 0 };
+    let Ok(raw) = std::fs::read_to_string(dir.join("devices.json")) else {
+        return 0;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return 0;
+    };
     match value {
         serde_json::Value::Array(list) => list.len(),
-        serde_json::Value::Object(map) => map.get("devices").and_then(|d| d.as_array()).map(|a| a.len()).unwrap_or(0),
+        serde_json::Value::Object(map) => map
+            .get("devices")
+            .and_then(|d| d.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0),
         _ => 0,
     }
 }
@@ -333,9 +453,17 @@ mod paired_tests {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("OINO_HOST_DIR", dir.path());
         assert_eq!(paired_devices(), 0, "no file = no phones");
-        std::fs::write(dir.path().join("devices.json"), r#"[{"id":"a"},{"id":"b"}]"#).unwrap();
+        std::fs::write(
+            dir.path().join("devices.json"),
+            r#"[{"id":"a"},{"id":"b"}]"#,
+        )
+        .unwrap();
         assert_eq!(paired_devices(), 2);
-        std::fs::write(dir.path().join("devices.json"), r#"{"devices":[{"id":"a"}]}"#).unwrap();
+        std::fs::write(
+            dir.path().join("devices.json"),
+            r#"{"devices":[{"id":"a"}]}"#,
+        )
+        .unwrap();
         assert_eq!(paired_devices(), 1);
         std::env::remove_var("OINO_HOST_DIR");
     }

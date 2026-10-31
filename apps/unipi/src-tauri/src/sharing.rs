@@ -23,7 +23,9 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
-use unipi_proto::{AppErrorCode, AppErrorDto, FeatureKind, FeatureNote, FeatureScope, ProtoError, Request};
+use unipi_proto::{
+    AppErrorCode, AppErrorDto, FeatureKind, FeatureNote, FeatureScope, ProtoError, Request,
+};
 
 use crate::net::NetState;
 
@@ -35,16 +37,26 @@ fn schema(message: impl Into<String>) -> AppErrorDto {
 
 fn directory(app: &tauri::AppHandle) -> Result<PathBuf, AppErrorDto> {
     use tauri::Manager;
-    app.path().app_data_dir().map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())
+    app.path()
+        .app_data_dir()
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())
 }
 
-async fn remote(app: &tauri::AppHandle, state: &NetState, host_id: &str, req: Request) -> Result<serde_json::Value, AppErrorDto> {
+async fn remote(
+    app: &tauri::AppHandle,
+    state: &NetState,
+    host_id: &str,
+    req: Request,
+) -> Result<serde_json::Value, AppErrorDto> {
     let dir = directory(app)?;
     let host = crate::local_host::hosts(&dir)?
         .into_iter()
         .find(|h| h.id == host_id)
         .ok_or_else(|| ProtoError::NotFound("Host not found".into()).to_app_error())?;
-    let id = crate::net::parse_ticket(&host.ticket)?.endpoint_addr().id.to_string();
+    let id = crate::net::parse_ticket(&host.ticket)?
+        .endpoint_addr()
+        .id
+        .to_string();
     let data = crate::retry::retry_once(|fresh| {
         let (dir, ticket, id, req) = (&dir, &host.ticket, &id, req.clone());
         async move {
@@ -71,12 +83,30 @@ pub async fn feature_request(
     scope: Option<FeatureScope>,
     note: Option<String>,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    let note = note.filter(|n| !n.trim().is_empty()).map(FeatureNote::try_from).transpose().map_err(schema)?;
-    remote(&app, &state, &host_id, Request::FeatureRequest { feature, scope: scope.unwrap_or_default(), note }).await
+    let note = note
+        .filter(|n| !n.trim().is_empty())
+        .map(FeatureNote::try_from)
+        .transpose()
+        .map_err(schema)?;
+    remote(
+        &app,
+        &state,
+        &host_id,
+        Request::FeatureRequest {
+            feature,
+            scope: scope.unwrap_or_default(),
+            note,
+        },
+    )
+    .await
 }
 
 #[tauri::command]
-pub async fn feature_requests(app: tauri::AppHandle, state: State<'_, NetState>, host_id: String) -> Result<serde_json::Value, AppErrorDto> {
+pub async fn feature_requests(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+) -> Result<serde_json::Value, AppErrorDto> {
     remote(&app, &state, &host_id, Request::FeatureRequests).await
 }
 
@@ -91,7 +121,9 @@ fn is_executable(path: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        path.metadata().map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+        path.metadata()
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
@@ -100,18 +132,36 @@ fn is_executable(path: &Path) -> bool {
 }
 
 /// The binary's file name on this OS.
-pub const BIN_NAME: &str = if cfg!(windows) { "unipi-host.exe" } else { "unipi-host" };
+pub const BIN_NAME: &str = if cfg!(windows) {
+    "unipi-host.exe"
+} else {
+    "unipi-host"
+};
 
 /// Where to look for `unipi-host`, in order (UNI-266): `$UNIPI_HOST_BIN`;
 /// the installers' places — `~/.local/bin` (install.sh on Linux/macOS),
 /// `%LOCALAPPDATA%\UniPi` (install.ps1); then `PATH` (also
 /// `/opt/homebrew/bin` and `/usr/local/bin`, which a macOS app started from
 /// Finder doesn't have on its PATH).
-pub fn find_bin(env_bin: Option<&std::ffi::OsStr>, home: Option<&Path>, path_var: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
-    find_bin_in(env_bin, home, std::env::var_os("LOCALAPPDATA").as_deref().map(Path::new), path_var)
+pub fn find_bin(
+    env_bin: Option<&std::ffi::OsStr>,
+    home: Option<&Path>,
+    path_var: Option<&std::ffi::OsStr>,
+) -> Option<PathBuf> {
+    find_bin_in(
+        env_bin,
+        home,
+        std::env::var_os("LOCALAPPDATA").as_deref().map(Path::new),
+        path_var,
+    )
 }
 
-pub fn find_bin_in(env_bin: Option<&std::ffi::OsStr>, home: Option<&Path>, local_app_data: Option<&Path>, path_var: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+pub fn find_bin_in(
+    env_bin: Option<&std::ffi::OsStr>,
+    home: Option<&Path>,
+    local_app_data: Option<&Path>,
+    path_var: Option<&std::ffi::OsStr>,
+) -> Option<PathBuf> {
     if let Some(bin) = env_bin.filter(|b| !b.is_empty()) {
         let bin = PathBuf::from(bin);
         return is_executable(&bin).then_some(bin);
@@ -135,7 +185,10 @@ pub fn find_bin_in(env_bin: Option<&std::ffi::OsStr>, home: Option<&Path>, local
 
 /// `$HOME`, or `%USERPROFILE%` on Windows (no HOME outside ssh/Git Bash).
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).filter(|h| !h.is_empty()).map(PathBuf::from)
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
 }
 
 /// The binary or the "not installed" error.
@@ -144,7 +197,11 @@ pub fn resolve_bin() -> Result<PathBuf, AppErrorDto> {
 }
 
 pub fn bin() -> Option<PathBuf> {
-    find_bin(std::env::var_os("UNIPI_HOST_BIN").as_deref(), home().as_deref(), std::env::var_os("PATH").as_deref())
+    find_bin(
+        std::env::var_os("UNIPI_HOST_BIN").as_deref(),
+        home().as_deref(),
+        std::env::var_os("PATH").as_deref(),
+    )
 }
 
 /// Only the public id from endpoint.json.
@@ -159,7 +216,8 @@ pub fn read_host_id(dir: &Path) -> Option<String> {
     }
     let bytes = std::fs::read(dir.join("endpoint.json")).ok()?;
     let cache: Cache = serde_json::from_slice(&bytes).ok()?;
-    (cache.addr.id.len() == 64 && cache.addr.id.bytes().all(|b| b.is_ascii_hexdigit())).then_some(cache.addr.id)
+    (cache.addr.id.len() == 64 && cache.addr.id.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then_some(cache.addr.id)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -173,7 +231,11 @@ pub struct LocalHost {
 }
 
 fn unsupported() -> AppErrorDto {
-    AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Only the desktop app can change this PC's sharing", false)
+    AppErrorDto::new(
+        AppErrorCode::E_UNSUPPORTED,
+        "Only the desktop app can change this PC's sharing",
+        false,
+    )
 }
 
 #[tauri::command]
@@ -236,7 +298,11 @@ pub enum SharingChange {
 }
 
 fn valid_id(id: &str) -> bool {
-    id.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric) && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    id.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 /// The `unipi-host` arguments for a change.
@@ -255,7 +321,11 @@ pub fn argv(change: &SharingChange) -> Result<Vec<String>, AppErrorDto> {
             a
         }
         SharingChange::BrowserEnable { headed, path } => {
-            let mut a = s(&["browser", "enable", if *headed { "--headed" } else { "--headless" }]);
+            let mut a = s(&[
+                "browser",
+                "enable",
+                if *headed { "--headed" } else { "--headless" },
+            ]);
             if let Some(path) = path {
                 if path.len() > 4096 || path.contains('\n') {
                     return Err(schema("browser path is too long"));
@@ -264,10 +334,25 @@ pub fn argv(change: &SharingChange) -> Result<Vec<String>, AppErrorDto> {
             }
             a
         }
-        SharingChange::DesktopEnable { view_only } => s(&["desktop", "enable", if *view_only { "--view-only" } else { "--control" }]),
+        SharingChange::DesktopEnable { view_only } => s(&[
+            "desktop",
+            "enable",
+            if *view_only {
+                "--view-only"
+            } else {
+                "--control"
+            },
+        ]),
         SharingChange::PushEnable => s(&["push", "enable"]),
         SharingChange::CronEnable => s(&["cron", "share"]),
-        SharingChange::Disable { feature } => vec![feature.as_str().to_string(), if matches!(feature, FeatureKind::Cron) { "unshare".into() } else { "disable".into() }],
+        SharingChange::Disable { feature } => vec![
+            feature.as_str().to_string(),
+            if matches!(feature, FeatureKind::Cron) {
+                "unshare".into()
+            } else {
+                "disable".into()
+            },
+        ],
         SharingChange::Approve { id, for_ } => {
             if !valid_id(id) {
                 return Err(schema("bad request id"));
@@ -289,16 +374,27 @@ pub fn argv(change: &SharingChange) -> Result<Vec<String>, AppErrorDto> {
         }
         SharingChange::LingerEnable => s(&["linger", "enable"]),
         SharingChange::HostUpdate => s(&["update"]),
-        SharingChange::HostUpdateMode { auto } => vec!["update".into(), format!("--mode={}", if *auto { "auto" } else { "prompt" })],
+        SharingChange::HostUpdateMode { auto } => vec![
+            "update".into(),
+            format!("--mode={}", if *auto { "auto" } else { "prompt" }),
+        ],
     })
 }
 
 /// The one-line installer for this OS.
-pub const INSTALL_COMMAND: &str = if cfg!(windows) { "irm https://unipi.nrn.one/install.ps1 | iex" } else { "curl -fsSL https://unipi.nrn.one/install.sh | sh" };
+pub const INSTALL_COMMAND: &str = if cfg!(windows) {
+    "irm https://unipi.nrn.one/install.ps1 | iex"
+} else {
+    "curl -fsSL https://unipi.nrn.one/install.sh | sh"
+};
 
 fn not_installed() -> AppErrorDto {
-    AppErrorDto::new(AppErrorCode::E_NOT_FOUND, "unipi-host isn't installed on this PC", false)
-        .with_hint(format!("Install it: {INSTALL_COMMAND}"))
+    AppErrorDto::new(
+        AppErrorCode::E_NOT_FOUND,
+        "unipi-host isn't installed on this PC",
+        false,
+    )
+    .with_hint(format!("Install it: {INSTALL_COMMAND}"))
 }
 
 /// `unipi-host` without a console window popping up on Windows.
@@ -316,23 +412,37 @@ fn command(bin: &Path) -> std::process::Command {
 
 /// Runs `unipi-host <args>` with the app's environment (so `UNIPI_HOST_DIR`
 /// applies). stdout on success; the CLI's own message as the error.
-pub async fn run(bin: PathBuf, args: Vec<String>, limit: Option<Duration>) -> Result<String, AppErrorDto> {
+pub async fn run(
+    bin: PathBuf,
+    args: Vec<String>,
+    limit: Option<Duration>,
+) -> Result<String, AppErrorDto> {
     let task = tokio::task::spawn_blocking(move || command(&bin).args(&args).output());
     let output = match limit {
-        Some(limit) => tokio::time::timeout(limit, task)
-            .await
-            .map_err(|_| AppErrorDto::new(AppErrorCode::E_TIMEOUT, "unipi-host didn't answer", true))?,
+        Some(limit) => tokio::time::timeout(limit, task).await.map_err(|_| {
+            AppErrorDto::new(AppErrorCode::E_TIMEOUT, "unipi-host didn't answer", true)
+        })?,
         None => task.await,
     }
     .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?
-    .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("couldn't run unipi-host: {e}"), false))?;
+    .map_err(|e| {
+        AppErrorDto::new(
+            AppErrorCode::E_INTERNAL,
+            format!("couldn't run unipi-host: {e}"),
+            false,
+        )
+    })?;
     if output.status.success() {
         return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
     if stderr.contains("unrecognized subcommand") || stderr.contains("unexpected argument") {
-        return Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "This PC's unipi-host is too old for one-click sharing", false)
-            .with_hint(format!("Update it: {INSTALL_COMMAND}")));
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "This PC's unipi-host is too old for one-click sharing",
+            false,
+        )
+        .with_hint(format!("Update it: {INSTALL_COMMAND}")));
     }
     let message = stderr
         .lines()
@@ -343,8 +453,14 @@ pub async fn run(bin: PathBuf, args: Vec<String>, limit: Option<Duration>) -> Re
 }
 
 async fn status_json(bin: PathBuf) -> Result<serde_json::Value, AppErrorDto> {
-    let out = run(bin, vec!["sharing".into(), "status".into(), "--json".into()], Some(Duration::from_secs(15))).await?;
-    serde_json::from_str(&out).map_err(|e| ProtoError::Internal(format!("unipi-host status: {e}")).to_app_error())
+    let out = run(
+        bin,
+        vec!["sharing".into(), "status".into(), "--json".into()],
+        Some(Duration::from_secs(15)),
+    )
+    .await?;
+    serde_json::from_str(&out)
+        .map_err(|e| ProtoError::Internal(format!("unipi-host status: {e}")).to_app_error())
 }
 
 /// Pending requests from `<host dir>/requests.json` (read-only; cheap enough
@@ -352,14 +468,35 @@ async fn status_json(bin: PathBuf) -> Result<serde_json::Value, AppErrorDto> {
 /// goes through `sharing_change` (the CLI).
 pub fn read_pending(dir: &Path, now_ms: u64) -> Vec<serde_json::Value> {
     const PENDING_TTL_MS: u64 = 24 * 60 * 60 * 1000;
-    let Ok(bytes) = std::fs::read(dir.join("requests.json")) else { return Vec::new() };
-    let Ok(list) = serde_json::from_slice::<Vec<serde_json::Value>>(&bytes) else { return Vec::new() };
+    let Ok(bytes) = std::fs::read(dir.join("requests.json")) else {
+        return Vec::new();
+    };
+    let Ok(list) = serde_json::from_slice::<Vec<serde_json::Value>>(&bytes) else {
+        return Vec::new();
+    };
     list.into_iter()
-        .filter(|r| r["status"] == "pending" && r["created_at"].as_u64().is_some_and(|t| now_ms.saturating_sub(t) < PENDING_TTL_MS))
+        .filter(|r| {
+            r["status"] == "pending"
+                && r["created_at"]
+                    .as_u64()
+                    .is_some_and(|t| now_ms.saturating_sub(t) < PENDING_TTL_MS)
+        })
         .map(|mut r| {
             // Only what the dialog shows.
             if let Some(o) = r.as_object_mut() {
-                o.retain(|k, _| ["id", "feature", "scope", "device_name", "device_id", "note", "status", "created_at"].contains(&k.as_str()));
+                o.retain(|k, _| {
+                    [
+                        "id",
+                        "feature",
+                        "scope",
+                        "device_name",
+                        "device_id",
+                        "note",
+                        "status",
+                        "created_at",
+                    ]
+                    .contains(&k.as_str())
+                });
             }
             r
         })
@@ -371,7 +508,10 @@ pub fn local_requests() -> Result<Vec<serde_json::Value>, AppErrorDto> {
     if cfg!(any(target_os = "android", target_os = "ios")) {
         return Err(unsupported());
     }
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
     Ok(read_pending(&host_dir(), now))
 }
 
@@ -408,28 +548,96 @@ mod tests {
     #[test]
     fn changes_map_to_fixed_argv() {
         let a = |c: SharingChange| argv(&c).unwrap().join(" ");
-        assert_eq!(a(SharingChange::ForwardEnable { any: true, ports: vec![] }), "forward enable --any");
-        assert_eq!(a(SharingChange::ForwardEnable { any: false, ports: vec![5173, 8080] }), "forward enable --only --port=5173 --port=8080");
-        assert!(argv(&SharingChange::ForwardEnable { any: false, ports: vec![] }).is_err());
-        assert_eq!(a(SharingChange::BrowserEnable { headed: true, path: None }), "browser enable --headed");
+        assert_eq!(
+            a(SharingChange::ForwardEnable {
+                any: true,
+                ports: vec![]
+            }),
+            "forward enable --any"
+        );
+        assert_eq!(
+            a(SharingChange::ForwardEnable {
+                any: false,
+                ports: vec![5173, 8080]
+            }),
+            "forward enable --only --port=5173 --port=8080"
+        );
+        assert!(argv(&SharingChange::ForwardEnable {
+            any: false,
+            ports: vec![]
+        })
+        .is_err());
+        assert_eq!(
+            a(SharingChange::BrowserEnable {
+                headed: true,
+                path: None
+            }),
+            "browser enable --headed"
+        );
         // A path starting with '-' can't become a flag.
-        assert_eq!(a(SharingChange::BrowserEnable { headed: false, path: Some("--evil".into()) }), "browser enable --headless --path=--evil");
-        assert_eq!(a(SharingChange::DesktopEnable { view_only: true }), "desktop enable --view-only");
-        assert_eq!(a(SharingChange::Disable { feature: FeatureKind::Push }), "push disable");
-        assert_eq!(a(SharingChange::Approve { id: "r1a".into(), for_: Some("1h".into()) }), "requests approve r1a --for=1h");
+        assert_eq!(
+            a(SharingChange::BrowserEnable {
+                headed: false,
+                path: Some("--evil".into())
+            }),
+            "browser enable --headless --path=--evil"
+        );
+        assert_eq!(
+            a(SharingChange::DesktopEnable { view_only: true }),
+            "desktop enable --view-only"
+        );
+        assert_eq!(
+            a(SharingChange::Disable {
+                feature: FeatureKind::Push
+            }),
+            "push disable"
+        );
+        assert_eq!(
+            a(SharingChange::Approve {
+                id: "r1a".into(),
+                for_: Some("1h".into())
+            }),
+            "requests approve r1a --for=1h"
+        );
         // An id can't smuggle a flag in.
-        assert!(argv(&SharingChange::Approve { id: "--for=1d".into(), for_: None }).is_err());
-        assert!(argv(&SharingChange::Approve { id: "r1;rm".into(), for_: None }).is_err());
-        assert!(argv(&SharingChange::Approve { id: "r1".into(), for_: Some("99y".into()) }).is_err());
+        assert!(argv(&SharingChange::Approve {
+            id: "--for=1d".into(),
+            for_: None
+        })
+        .is_err());
+        assert!(argv(&SharingChange::Approve {
+            id: "r1;rm".into(),
+            for_: None
+        })
+        .is_err());
+        assert!(argv(&SharingChange::Approve {
+            id: "r1".into(),
+            for_: Some("99y".into())
+        })
+        .is_err());
         assert_eq!(a(SharingChange::LingerEnable), "linger enable");
         assert_eq!(a(SharingChange::HostUpdate), "update");
-        assert_eq!(a(SharingChange::HostUpdateMode { auto: true }), "update --mode=auto");
-        assert_eq!(a(SharingChange::HostUpdateMode { auto: false }), "update --mode=prompt");
-        let c: SharingChange = serde_json::from_str(r#"{"kind":"host_update_mode","auto":true}"#).unwrap();
+        assert_eq!(
+            a(SharingChange::HostUpdateMode { auto: true }),
+            "update --mode=auto"
+        );
+        assert_eq!(
+            a(SharingChange::HostUpdateMode { auto: false }),
+            "update --mode=prompt"
+        );
+        let c: SharingChange =
+            serde_json::from_str(r#"{"kind":"host_update_mode","auto":true}"#).unwrap();
         assert_eq!(c, SharingChange::HostUpdateMode { auto: true });
         // The UI's JSON shape.
-        let c: SharingChange = serde_json::from_str(r#"{"kind":"approve","id":"r1","for":"8h"}"#).unwrap();
-        assert_eq!(c, SharingChange::Approve { id: "r1".into(), for_: Some("8h".into()) });
+        let c: SharingChange =
+            serde_json::from_str(r#"{"kind":"approve","id":"r1","for":"8h"}"#).unwrap();
+        assert_eq!(
+            c,
+            SharingChange::Approve {
+                id: "r1".into(),
+                for_: Some("8h".into())
+            }
+        );
         assert!(serde_json::from_str::<SharingChange>(r#"{"kind":"shell","cmd":"x"}"#).is_err());
     }
 
@@ -440,7 +648,11 @@ mod tests {
         std::fs::write(tmp.path().join("endpoint.json"), r#"{"addr":{"id":"zz"}}"#).unwrap();
         assert_eq!(read_host_id(tmp.path()), None);
         let id = "ab".repeat(32);
-        std::fs::write(tmp.path().join("endpoint.json"), format!(r#"{{"addr":{{"id":"{id}","addrs":[]}},"ticket":"t"}}"#)).unwrap();
+        std::fs::write(
+            tmp.path().join("endpoint.json"),
+            format!(r#"{{"addr":{{"id":"{id}","addrs":[]}},"ticket":"t"}}"#),
+        )
+        .unwrap();
         assert_eq!(read_host_id(tmp.path()), Some(id));
     }
 
@@ -456,12 +668,21 @@ mod tests {
         let on_path = pathdir.join("unipi-host");
         std::fs::write(&on_path, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&on_path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert_eq!(find_bin(None, Some(&home), Some(pathdir.as_os_str())), Some(on_path.clone()));
+        assert_eq!(
+            find_bin(None, Some(&home), Some(pathdir.as_os_str())),
+            Some(on_path.clone())
+        );
         let local = home.join(".local/bin/unipi-host");
         std::fs::write(&local, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&local, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert_eq!(find_bin(None, Some(&home), Some(pathdir.as_os_str())), Some(local));
-        assert_eq!(find_bin(Some(on_path.as_os_str()), Some(&home), None), Some(on_path));
+        assert_eq!(
+            find_bin(None, Some(&home), Some(pathdir.as_os_str())),
+            Some(local)
+        );
+        assert_eq!(
+            find_bin(Some(on_path.as_os_str()), Some(&home), None),
+            Some(on_path)
+        );
         assert_eq!(find_bin_in(None, None, None, None), None);
         // UNI-266: install.ps1's %LOCALAPPDATA%\UniPi comes before PATH.
         let lad = tmp.path().join("lad");
@@ -469,9 +690,15 @@ mod tests {
         let win = lad.join("UniPi").join(BIN_NAME);
         std::fs::write(&win, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&win, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert_eq!(find_bin_in(None, None, Some(&lad), Some(pathdir.as_os_str())), Some(win.clone()));
+        assert_eq!(
+            find_bin_in(None, None, Some(&lad), Some(pathdir.as_os_str())),
+            Some(win.clone())
+        );
         let nohome = tmp.path().join("nohome");
-        assert_eq!(find_bin_in(None, Some(&nohome), Some(&lad), None), Some(win));
+        assert_eq!(
+            find_bin_in(None, Some(&nohome), Some(&lad), None),
+            Some(win)
+        );
     }
 
     #[test]
@@ -497,13 +724,27 @@ mod tests {
     #[ignore]
     async fn live() {
         let dir = host_dir();
-        assert!(dir.starts_with("/tmp"), "point UNIPI_HOST_DIR at a /tmp dir, never the real one");
+        assert!(
+            dir.starts_with("/tmp"),
+            "point UNIPI_HOST_DIR at a /tmp dir, never the real one"
+        );
         let bin = bin().expect("UNIPI_HOST_BIN");
-        let s = sharing_change(SharingChange::ForwardEnable { any: false, ports: vec![5173] }).await.unwrap();
+        let s = sharing_change(SharingChange::ForwardEnable {
+            any: false,
+            ports: vec![5173],
+        })
+        .await
+        .unwrap();
         assert_eq!(s["forward"]["ports"], serde_json::json!([5173]));
-        let s = sharing_change(SharingChange::DesktopEnable { view_only: true }).await.unwrap();
+        let s = sharing_change(SharingChange::DesktopEnable { view_only: true })
+            .await
+            .unwrap();
         assert_eq!(s["desktop"]["view_only"], true);
-        let s = sharing_change(SharingChange::Disable { feature: FeatureKind::Desktop }).await.unwrap();
+        let s = sharing_change(SharingChange::Disable {
+            feature: FeatureKind::Desktop,
+        })
+        .await
+        .unwrap();
         assert_eq!(s["desktop"]["enabled"], false);
         let s = status_json(bin).await.unwrap();
         assert!(s["host_dir"].as_str().unwrap().starts_with("/tmp"));

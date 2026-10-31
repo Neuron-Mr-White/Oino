@@ -28,8 +28,8 @@ use tauri::{Manager, State};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use unipi_proto::{
     frame::{encode, FrameKind, MAX_FRAME},
-    AppErrorCode, AppErrorDto, BrowserCmd, BrowserEvent, BrowserViewport, Control, ProtoError, Request,
-    PROTO_VERSION,
+    AppErrorCode, AppErrorDto, BrowserCmd, BrowserEvent, BrowserViewport, Control, ProtoError,
+    Request, PROTO_VERSION,
 };
 
 use crate::net::NetState;
@@ -71,7 +71,8 @@ fn hello_frame(request: Request) -> Result<Vec<u8>, AppErrorDto> {
             .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
         req: request,
     };
-    let bytes = serde_json::to_vec(&hello).map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    let bytes = serde_json::to_vec(&hello)
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
     Ok(encode(FrameKind::Control, &bytes))
 }
 
@@ -119,7 +120,9 @@ pub(crate) async fn request<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     req: Request,
     timeout: Duration,
 ) -> Result<Option<serde_json::Value>, AppErrorDto> {
-    send.write_all(&hello_frame(req)?).await.map_err(transport)?;
+    send.write_all(&hello_frame(req)?)
+        .await
+        .map_err(transport)?;
     let (kind, payload) = read_frame(recv, Some(timeout))
         .await?
         .ok_or_else(|| transport("The PC closed the stream without a reply"))?;
@@ -165,7 +168,9 @@ pub(crate) async fn pump<R: AsyncRead + Unpin>(recv: &mut R, mut emit: impl FnMu
                 }
             }
             Ok(Some((0, payload))) => match serde_json::from_slice::<Control>(&payload) {
-                Ok(Control::BrowserEvent { event: BrowserEvent::Frame(meta) }) => {
+                Ok(Control::BrowserEvent {
+                    event: BrowserEvent::Frame(meta),
+                }) => {
                     pending = Some((meta.seq, meta.css_width, meta.css_height));
                 }
                 Ok(Control::BrowserEvent { event }) => {
@@ -189,7 +194,9 @@ pub(crate) async fn pump<R: AsyncRead + Unpin>(recv: &mut R, mut emit: impl FnMu
             },
             Ok(Some(_)) => {}
             Ok(None) => {
-                emit(Out::Msg(BrowserStreamMsg::Closed { message: Some("The PC closed the browser view".into()) }));
+                emit(Out::Msg(BrowserStreamMsg::Closed {
+                    message: Some("The PC closed the browser view".into()),
+                }));
                 return;
             }
             Err(error) => {
@@ -204,7 +211,9 @@ pub(crate) async fn pump<R: AsyncRead + Unpin>(recv: &mut R, mut emit: impl FnMu
 }
 
 fn directory(app: &tauri::AppHandle) -> Result<std::path::PathBuf, AppErrorDto> {
-    app.path().app_data_dir().map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())
+    app.path()
+        .app_data_dir()
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())
 }
 
 fn host_ticket(dir: &std::path::Path, host_id: &str) -> Result<(String, String), AppErrorDto> {
@@ -212,7 +221,10 @@ fn host_ticket(dir: &std::path::Path, host_id: &str) -> Result<(String, String),
         .into_iter()
         .find(|host| host.id == host_id)
         .ok_or_else(|| ProtoError::NotFound("Host not found".into()).to_app_error())?;
-    let id = crate::net::parse_ticket(&host.ticket)?.endpoint_addr().id.to_string();
+    let id = crate::net::parse_ticket(&host.ticket)?
+        .endpoint_addr()
+        .id
+        .to_string();
     Ok((host.ticket, id))
 }
 
@@ -256,7 +268,9 @@ pub async fn browser_status(
     state: State<'_, NetState>,
     host_id: String,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    Ok(one_shot(&app, &state, &host_id, Request::BrowserStatus).await?.unwrap_or(serde_json::Value::Null))
+    Ok(one_shot(&app, &state, &host_id, Request::BrowserStatus)
+        .await?
+        .unwrap_or(serde_json::Value::Null))
 }
 
 #[tauri::command]
@@ -265,7 +279,9 @@ pub async fn browser_close(
     state: State<'_, NetState>,
     host_id: String,
 ) -> Result<(), AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::BrowserClose).await.map(|_| ())
+    one_shot(&app, &state, &host_id, Request::BrowserClose)
+        .await
+        .map(|_| ())
 }
 
 /// UNI-268: show (or hide) the PC browser's window; returns the new status.
@@ -276,7 +292,11 @@ pub async fn browser_window(
     host_id: String,
     show: bool,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    Ok(one_shot(&app, &state, &host_id, Request::BrowserWindow { show }).await?.unwrap_or(serde_json::Value::Null))
+    Ok(
+        one_shot(&app, &state, &host_id, Request::BrowserWindow { show })
+            .await?
+            .unwrap_or(serde_json::Value::Null),
+    )
 }
 
 /// UNI-296: the PC's browser profiles (`BrowserProfilesData`).
@@ -286,11 +306,15 @@ pub async fn browser_profiles(
     state: State<'_, NetState>,
     host_id: String,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    Ok(one_shot(&app, &state, &host_id, Request::BrowserProfiles).await?.unwrap_or(serde_json::Value::Null))
+    Ok(one_shot(&app, &state, &host_id, Request::BrowserProfiles)
+        .await?
+        .unwrap_or(serde_json::Value::Null))
 }
 
 /// Parses an optional profile name from the UI.
-fn profile_arg(profile: Option<String>) -> Result<Option<unipi_proto::BrowserProfile>, AppErrorDto> {
+fn profile_arg(
+    profile: Option<String>,
+) -> Result<Option<unipi_proto::BrowserProfile>, AppErrorDto> {
     match profile.filter(|p| !p.trim().is_empty()) {
         Some(p) => Ok(Some(p.try_into().map_err(schema)?)),
         None => Ok(None),
@@ -307,7 +331,14 @@ pub async fn browser_takeover(
     profile: Option<String>,
 ) -> Result<serde_json::Value, AppErrorDto> {
     let profile = profile_arg(profile)?;
-    Ok(one_shot(&app, &state, &host_id, Request::BrowserTakeover { on, profile }).await?.unwrap_or(serde_json::Value::Null))
+    Ok(one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::BrowserTakeover { on, profile },
+    )
+    .await?
+    .unwrap_or(serde_json::Value::Null))
 }
 
 struct StreamHandle {
@@ -359,7 +390,12 @@ pub async fn browser_open(
     let dir = directory(&app)?;
     let (ticket, id) = host_ticket(&dir, &host_id)?;
     let profile = profile_arg(profile)?;
-    let req = Request::BrowserOpen { viewport, url, target, profile };
+    let req = Request::BrowserOpen {
+        viewport,
+        url,
+        target,
+        profile,
+    };
     let (send, mut recv, open) = crate::retry::retry_once(|fresh| {
         let (state, dir, ticket, id, req) = (&state, &dir, &ticket, &id, req.clone());
         async move {
@@ -381,9 +417,18 @@ pub async fn browser_open(
         .await;
         registry.lock().remove(&reader_id);
     });
-    map.insert(stream_id.clone(), StreamHandle { send: Arc::new(tokio::sync::Mutex::new(send)), reader });
+    map.insert(
+        stream_id.clone(),
+        StreamHandle {
+            send: Arc::new(tokio::sync::Mutex::new(send)),
+            reader,
+        },
+    );
     drop(map);
-    Ok(BrowserOpenResult { stream_id, open: open.unwrap_or(serde_json::Value::Null) })
+    Ok(BrowserOpenResult {
+        stream_id,
+        open: open.unwrap_or(serde_json::Value::Null),
+    })
 }
 
 #[tauri::command]
@@ -396,14 +441,23 @@ pub async fn browser_cmd(
         .lock()
         .get(&stream_id)
         .map(|h| h.send.clone())
-        .ok_or_else(|| AppErrorDto::new(AppErrorCode::E_TRANSPORT, "The browser view is not connected", true))?;
+        .ok_or_else(|| {
+            AppErrorDto::new(
+                AppErrorCode::E_TRANSPORT,
+                "The browser view is not connected",
+                true,
+            )
+        })?;
     let frame = cmd_frame(cmd)?;
     let mut send = send.lock().await;
     send.write_all(&frame).await.map_err(transport)
 }
 
 #[tauri::command]
-pub async fn browser_stop(streams: State<'_, BrowserStreams>, stream_id: String) -> Result<(), AppErrorDto> {
+pub async fn browser_stop(
+    streams: State<'_, BrowserStreams>,
+    stream_id: String,
+) -> Result<(), AppErrorDto> {
     let handle = streams.lock().remove(&stream_id);
     if let Some(handle) = handle {
         handle.reader.abort();
@@ -426,13 +480,25 @@ mod tests {
         let (mut host, mut phone) = tokio::io::duplex(1 << 16);
         let mut wire = Vec::new();
         wire.extend(control(&Control::BrowserEvent {
-            event: BrowserEvent::Tabs { tabs: vec![], active: "T".into() },
+            event: BrowserEvent::Tabs {
+                tabs: vec![],
+                active: "T".into(),
+            },
         }));
         wire.extend(control(&Control::BrowserEvent {
-            event: BrowserEvent::Frame(BrowserFrameMeta { seq: 5, css_width: 412.0, css_height: 780.0, quality: 70 }),
+            event: BrowserEvent::Frame(BrowserFrameMeta {
+                seq: 5,
+                css_width: 412.0,
+                css_height: 780.0,
+                quality: 70,
+            }),
         }));
         wire.extend(encode(FrameKind::Output, &[0xFF, 0xD8, 0xFF, 1]));
-        wire.extend(control(&Control::BrowserEvent { event: BrowserEvent::Closed { reason: "idle".into() } }));
+        wire.extend(control(&Control::BrowserEvent {
+            event: BrowserEvent::Closed {
+                reason: "idle".into(),
+            },
+        }));
         host.write_all(&wire).await.unwrap();
         drop(host);
         let mut out = Vec::new();
@@ -442,7 +508,12 @@ mod tests {
         })
         .await;
         assert_eq!(out.len(), 4, "{out:?}");
-        assert!(matches!(&out[0], Out::Msg(BrowserStreamMsg::Event { event: BrowserEvent::Tabs { .. } })));
+        assert!(matches!(
+            &out[0],
+            Out::Msg(BrowserStreamMsg::Event {
+                event: BrowserEvent::Tabs { .. }
+            })
+        ));
         let Out::Frame(bytes) = &out[1] else { panic!() };
         assert_eq!(&bytes[..8], &[0, 0, 0, 5, 1, 156, 3, 12]);
         assert_eq!(&bytes[8..], &[0xFF, 0xD8, 0xFF, 1]);
@@ -459,18 +530,29 @@ mod tests {
             true
         })
         .await;
-        assert!(matches!(&out[..], [Out::Msg(BrowserStreamMsg::Closed { message: Some(_) })]));
+        assert!(matches!(
+            &out[..],
+            [Out::Msg(BrowserStreamMsg::Closed { message: Some(_) })]
+        ));
 
         let (mut host, mut phone) = tokio::io::duplex(1024);
         let err = AppErrorDto::new(AppErrorCode::E_BROWSER_UNAVAILABLE, "crashed", true);
-        host.write_all(&control(&Control::Err { error: err })).await.unwrap();
+        host.write_all(&control(&Control::Err { error: err }))
+            .await
+            .unwrap();
         let mut out = Vec::new();
         pump(&mut phone, |o| {
             out.push(o);
             true
         })
         .await;
-        assert!(matches!(&out[..], [Out::Msg(BrowserStreamMsg::Error { code: Some(AppErrorCode::E_BROWSER_UNAVAILABLE), .. })]));
+        assert!(matches!(
+            &out[..],
+            [Out::Msg(BrowserStreamMsg::Error {
+                code: Some(AppErrorCode::E_BROWSER_UNAVAILABLE),
+                ..
+            })]
+        ));
     }
 
     #[tokio::test]
@@ -478,8 +560,17 @@ mod tests {
         let (mut phone_w, mut host_r) = tokio::io::duplex(4096);
         let (mut host_w, mut phone_r) = tokio::io::duplex(4096);
         let disabled = AppErrorDto::new(AppErrorCode::E_BROWSER_DISABLED, "off", false);
-        host_w.write_all(&control(&Control::Err { error: disabled })).await.unwrap();
-        let result = request(&mut phone_w, &mut phone_r, Request::BrowserStatus, REPLY_TIMEOUT).await;
+        host_w
+            .write_all(&control(&Control::Err { error: disabled }))
+            .await
+            .unwrap();
+        let result = request(
+            &mut phone_w,
+            &mut phone_r,
+            Request::BrowserStatus,
+            REPLY_TIMEOUT,
+        )
+        .await;
         assert_eq!(result.unwrap_err().code, AppErrorCode::E_BROWSER_DISABLED);
         // The hello went out.
         let mut buf = [0u8; 5];
@@ -491,15 +582,25 @@ mod tests {
     fn profile_arg_validates() {
         assert_eq!(profile_arg(None).unwrap(), None);
         assert_eq!(profile_arg(Some(" ".into())).unwrap(), None);
-        assert_eq!(profile_arg(Some("work".into())).unwrap().unwrap().as_str(), "work");
-        assert_eq!(profile_arg(Some("Bad Name".into())).unwrap_err().code, AppErrorCode::E_SCHEMA);
+        assert_eq!(
+            profile_arg(Some("work".into())).unwrap().unwrap().as_str(),
+            "work"
+        );
+        assert_eq!(
+            profile_arg(Some("Bad Name".into())).unwrap_err().code,
+            AppErrorCode::E_SCHEMA
+        );
     }
 
     #[test]
     fn cmd_frame_validates() {
         let ok = cmd_frame(BrowserCmd::Ack { seq: 1 }).unwrap();
         assert_eq!(ok[0], 0);
-        let bad = cmd_frame(BrowserCmd::Pinch { x: 0.0, y: 0.0, scale: 0.0 });
+        let bad = cmd_frame(BrowserCmd::Pinch {
+            x: 0.0,
+            y: 0.0,
+            scale: 0.0,
+        });
         assert_eq!(bad.unwrap_err().code, AppErrorCode::E_SCHEMA);
     }
 }

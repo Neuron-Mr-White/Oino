@@ -136,9 +136,9 @@ async fn open_stream(
 
 /// Hashes a local file and reads its size, in one streaming pass.
 async fn sha256_file(path: &Path) -> Result<(String, u64), AppErrorDto> {
-    let mut file = tokio::fs::File::open(path)
-        .await
-        .map_err(|e| ProtoError::NotFound(format!("can't read {}: {e}", path.display())).to_app_error())?;
+    let mut file = tokio::fs::File::open(path).await.map_err(|e| {
+        ProtoError::NotFound(format!("can't read {}: {e}", path.display())).to_app_error()
+    })?;
     let mut hasher = Sha256::new();
     let mut size = 0u64;
     let mut buf = vec![0u8; CHUNK];
@@ -261,25 +261,45 @@ pub async fn blob_put_bytes(
 /// streams it to the host from disk. Staged files live in the app cache and
 /// are removed after the upload (or by the next begin if left behind).
 fn staging_dir(app: &tauri::AppHandle) -> Result<PathBuf, AppErrorDto> {
-    Ok(app.path().app_cache_dir().map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?.join("upload-staging"))
+    Ok(app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?
+        .join("upload-staging"))
 }
 
 #[tauri::command]
-pub async fn upload_stage_begin(app: tauri::AppHandle, name: String) -> Result<String, AppErrorDto> {
+pub async fn upload_stage_begin(
+    app: tauri::AppHandle,
+    name: String,
+) -> Result<String, AppErrorDto> {
     let dir = staging_dir(&app)?;
     // Leftovers from an interrupted upload (older than an hour).
     if let Ok(mut entries) = tokio::fs::read_dir(&dir).await {
         while let Ok(Some(e)) = entries.next_entry().await {
-            let old = e.metadata().await.ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age > Duration::from_secs(3600));
+            let old = e
+                .metadata()
+                .await
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age > Duration::from_secs(3600));
             if old {
                 let _ = tokio::fs::remove_file(e.path()).await;
             }
         }
     }
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
-    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
     let path = dir.join(format!("{stamp}-{}", crate::push::safe_name(&name)));
-    tokio::fs::File::create(&path).await.map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    tokio::fs::File::create(&path)
+        .await
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -288,19 +308,37 @@ fn staged(app: &tauri::AppHandle, path: &str) -> Result<PathBuf, AppErrorDto> {
     let dir = staging_dir(app)?;
     let p = PathBuf::from(path);
     if p.parent() != Some(dir.as_path()) || !p.is_file() {
-        return Err(AppErrorDto::new(unipi_proto::AppErrorCode::E_UNAUTHORIZED, "not a staged upload", false));
+        return Err(AppErrorDto::new(
+            unipi_proto::AppErrorCode::E_UNAUTHORIZED,
+            "not a staged upload",
+            false,
+        ));
     }
     Ok(p)
 }
 
 #[tauri::command]
-pub async fn upload_stage_chunk(app: tauri::AppHandle, path: String, data: String) -> Result<u64, AppErrorDto> {
+pub async fn upload_stage_chunk(
+    app: tauri::AppHandle,
+    path: String,
+    data: String,
+) -> Result<u64, AppErrorDto> {
     use base64::Engine;
     let p = staged(&app, &path)?;
-    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|e| schema("data", e.to_string()))?;
-    let mut f = tokio::fs::OpenOptions::new().append(true).open(&p).await.map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
-    f.write_all(&bytes).await.map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
-    f.flush().await.map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .map_err(|e| schema("data", e.to_string()))?;
+    let mut f = tokio::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .await
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    f.write_all(&bytes)
+        .await
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    f.flush()
+        .await
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
     Ok(f.metadata().await.map(|m| m.len()).unwrap_or(0))
 }
 
@@ -369,9 +407,9 @@ pub async fn blob_put_file(
         });
     }
 
-    let mut file = tokio::fs::File::open(&src)
-        .await
-        .map_err(|e| ProtoError::NotFound(format!("can't read {}: {e}", src.display())).to_app_error())?;
+    let mut file = tokio::fs::File::open(&src).await.map_err(|e| {
+        ProtoError::NotFound(format!("can't read {}: {e}", src.display())).to_app_error()
+    })?;
     let mut sent = 0u64;
     let mut buf = vec![0u8; CHUNK];
     loop {
@@ -462,9 +500,9 @@ pub async fn blob_get_file(
     if let Some(parent) = Path::new(&dest_path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    let mut out = tokio::fs::File::create(&dest_path)
-        .await
-        .map_err(|e| ProtoError::Internal(format!("can't write {dest_path}: {e}")).to_app_error())?;
+    let mut out = tokio::fs::File::create(&dest_path).await.map_err(|e| {
+        ProtoError::Internal(format!("can't write {dest_path}: {e}")).to_app_error()
+    })?;
     let mut received = 0u64;
     loop {
         let Some((kind, payload)) = read_frame(&mut recv, Some(FRAME_TIMEOUT)).await? else {

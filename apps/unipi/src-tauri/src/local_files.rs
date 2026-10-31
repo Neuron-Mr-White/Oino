@@ -36,7 +36,11 @@ pub fn grant<I: IntoIterator<Item = PathBuf>>(paths: I) {
 }
 
 fn granted(path: &Path) -> bool {
-    GRANTED.lock().ok().and_then(|g| g.as_ref().map(|s| s.contains(path))).unwrap_or(false)
+    GRANTED
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|s| s.contains(path)))
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -52,7 +56,10 @@ fn describe(path: &Path) -> Option<LocalFile> {
     let meta = std::fs::metadata(path).ok()?;
     Some(LocalFile {
         path: path.to_string_lossy().into_owned(),
-        name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string_lossy().into_owned()),
+        name: path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string_lossy().into_owned()),
         size: meta.len(),
         is_dir: meta.is_dir(),
     })
@@ -67,8 +74,15 @@ pub fn paths_from_uri_list(text: &str) -> Vec<PathBuf> {
         .filter_map(|l| {
             let rest = l.strip_prefix("file://")?;
             // file://host/path → only a local (empty or localhost) host.
-            let path = if rest.starts_with('/') { rest } else { rest.strip_prefix("localhost")? };
-            url::Url::parse(&format!("file://{path}")).ok()?.to_file_path().ok()
+            let path = if rest.starts_with('/') {
+                rest
+            } else {
+                rest.strip_prefix("localhost")?
+            };
+            url::Url::parse(&format!("file://{path}"))
+                .ok()?
+                .to_file_path()
+                .ok()
         })
         .collect()
 }
@@ -87,7 +101,11 @@ pub fn local_files(paths: Vec<String>) -> Result<Vec<LocalFile>, AppErrorDto> {
 pub fn local_file_bytes(path: String) -> Result<tauri::ipc::Response, AppErrorDto> {
     let p = PathBuf::from(&path);
     if !granted(&p) {
-        return Err(AppErrorDto::new(AppErrorCode::E_SCOPE, "Only files you dropped or pasted can be read", false));
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_SCOPE,
+            "Only files you dropped or pasted can be read",
+            false,
+        ));
     }
     std::fs::read(&p)
         .map(tauri::ipc::Response::new)
@@ -110,17 +128,28 @@ async fn read_clipboard(app: &tauri::AppHandle) -> Result<Vec<PathBuf>, AppError
         .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("clipboard: {e}"), true))?;
     let data = tokio::time::timeout(std::time::Duration::from_secs(5), rx)
         .await
-        .map_err(|_| AppErrorDto::new(AppErrorCode::E_TIMEOUT, "The clipboard did not answer", true))?
+        .map_err(|_| {
+            AppErrorDto::new(
+                AppErrorCode::E_TIMEOUT,
+                "The clipboard did not answer",
+                true,
+            )
+        })?
         .unwrap_or(ClipData::None);
     match data {
         ClipData::None => Ok(Vec::new()),
         ClipData::Uris(text) => Ok(paths_from_uri_list(&text)),
         ClipData::Png(bytes) => {
             let dir = std::env::temp_dir().join("unipi-paste");
-            std::fs::create_dir_all(&dir).map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))?;
-            let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))?;
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
             let path = dir.join(format!("pasted-{stamp}.png"));
-            std::fs::write(&path, bytes).map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))?;
+            std::fs::write(&path, bytes)
+                .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))?;
             Ok(vec![path])
         }
     }
@@ -159,7 +188,12 @@ pub fn pick_target(targets: &[String]) -> Option<&'static str> {
 fn gtk_read(tx: tokio::sync::oneshot::Sender<ClipData>) {
     let clipboard = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD);
     clipboard.request_contents(&gtk::gdk::Atom::intern("TARGETS"), move |cb, sel| {
-        let targets: Vec<String> = sel.targets().unwrap_or_default().iter().map(|a| a.name().to_string()).collect();
+        let targets: Vec<String> = sel
+            .targets()
+            .unwrap_or_default()
+            .iter()
+            .map(|a| a.name().to_string())
+            .collect();
         log::info!("clipboard targets: {targets:?}");
         match pick_target(&targets) {
             Some("image/*") => cb.request_image(move |_, pixbuf| {
@@ -193,19 +227,47 @@ mod tests {
 
     #[test]
     fn uri_lists() {
-        assert_eq!(paths_from_uri_list("copy\nfile:///tmp/a%20b.png\nfile:///home/x/n.txt"), vec![PathBuf::from("/tmp/a b.png"), PathBuf::from("/home/x/n.txt")]);
-        assert_eq!(paths_from_uri_list("# comment\r\nfile:///tmp/x\r\n"), vec![PathBuf::from("/tmp/x")]);
-        assert_eq!(paths_from_uri_list("file://localhost/tmp/y"), vec![PathBuf::from("/tmp/y")]);
-        assert!(paths_from_uri_list("https://example.com/a.png\nfile://otherhost/tmp/z\ncut").is_empty());
+        assert_eq!(
+            paths_from_uri_list("copy\nfile:///tmp/a%20b.png\nfile:///home/x/n.txt"),
+            vec![
+                PathBuf::from("/tmp/a b.png"),
+                PathBuf::from("/home/x/n.txt")
+            ]
+        );
+        assert_eq!(
+            paths_from_uri_list("# comment\r\nfile:///tmp/x\r\n"),
+            vec![PathBuf::from("/tmp/x")]
+        );
+        assert_eq!(
+            paths_from_uri_list("file://localhost/tmp/y"),
+            vec![PathBuf::from("/tmp/y")]
+        );
+        assert!(
+            paths_from_uri_list("https://example.com/a.png\nfile://otherhost/tmp/z\ncut")
+                .is_empty()
+        );
     }
 
     #[test]
     fn targets() {
         let t = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(pick_target(&t(&["text/plain", "image/png"])), Some("image/png"));
+        assert_eq!(
+            pick_target(&t(&["text/plain", "image/png"])),
+            Some("image/png")
+        );
         assert_eq!(pick_target(&t(&["image/jpeg"])), Some("image/*"));
-        assert_eq!(pick_target(&t(&["text/uri-list", "x-special/gnome-copied-files", "text/plain"])), Some("x-special/gnome-copied-files"));
-        assert_eq!(pick_target(&t(&["text/uri-list", "image/png"])), Some("text/uri-list"));
+        assert_eq!(
+            pick_target(&t(&[
+                "text/uri-list",
+                "x-special/gnome-copied-files",
+                "text/plain"
+            ])),
+            Some("x-special/gnome-copied-files")
+        );
+        assert_eq!(
+            pick_target(&t(&["text/uri-list", "image/png"])),
+            Some("text/uri-list")
+        );
         assert_eq!(pick_target(&t(&["UTF8_STRING", "text/plain"])), None);
     }
 
@@ -217,8 +279,15 @@ mod tests {
         assert!(local_file_bytes(f.to_string_lossy().into_owned()).is_err());
         grant([f.clone()]);
         assert!(local_file_bytes(f.to_string_lossy().into_owned()).is_ok());
-        let d = local_files(vec![f.to_string_lossy().into_owned(), "/nope/missing".into()]).unwrap();
+        let d = local_files(vec![
+            f.to_string_lossy().into_owned(),
+            "/nope/missing".into(),
+        ])
+        .unwrap();
         assert_eq!(d.len(), 1);
-        assert_eq!((d[0].name.as_str(), d[0].size, d[0].is_dir), ("x.bin", 2, false));
+        assert_eq!(
+            (d[0].name.as_str(), d[0].size, d[0].is_dir),
+            ("x.bin", 2, false)
+        );
     }
 }

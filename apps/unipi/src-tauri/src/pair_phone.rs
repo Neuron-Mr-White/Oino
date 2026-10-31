@@ -66,35 +66,64 @@ pub fn exit_event(stderr: &str, saw_waiting: bool) -> Value {
         .lines()
         .map(|l| l.trim().trim_start_matches("Error: ").to_string())
         .find(|l| !l.is_empty())
-        .unwrap_or_else(|| if saw_waiting { "unipi-host stopped".into() } else { "unipi-host didn't start pairing".into() });
+        .unwrap_or_else(|| {
+            if saw_waiting {
+                "unipi-host stopped".into()
+            } else {
+                "unipi-host didn't start pairing".into()
+            }
+        });
     json!({"state":"error","message":message})
 }
 
 /// Is this line a final state?
 pub fn is_final(event: &Value) -> bool {
-    matches!(event["state"].as_str(), Some("paired" | "expired" | "error"))
+    matches!(
+        event["state"].as_str(),
+        Some("paired" | "expired" | "error")
+    )
 }
 
 #[tauri::command]
-pub async fn pair_phone_start(state: State<'_, PairPhone>, on_event: Channel<Value>) -> Result<(), AppErrorDto> {
+pub async fn pair_phone_start(
+    state: State<'_, PairPhone>,
+    on_event: Channel<Value>,
+) -> Result<(), AppErrorDto> {
     if cfg!(any(target_os = "android", target_os = "ios")) {
-        return Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Only the desktop app can pair a phone with this PC", false));
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "Only the desktop app can pair a phone with this PC",
+            false,
+        ));
     }
     state.stop();
     let bin = crate::sharing::resolve_bin()?;
     let mut command = tokio::process::Command::new(&bin);
-    command.args(ARGS).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    command
+        .args(ARGS)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     #[cfg(windows)]
     {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    let mut child = command
-        .spawn()
-        .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("couldn't run unipi-host: {e}"), false))?;
+    let mut child = command.spawn().map_err(|e| {
+        AppErrorDto::new(
+            AppErrorCode::E_INTERNAL,
+            format!("couldn't run unipi-host: {e}"),
+            false,
+        )
+    })?;
     let generation = GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let (kill_tx, mut kill_rx) = tokio::sync::oneshot::channel();
-    *lock(&state.current) = Some(Running { generation, stdin: child.stdin.take(), kill: kill_tx });
+    *lock(&state.current) = Some(Running {
+        generation,
+        stdin: child.stdin.take(),
+        kill: kill_tx,
+    });
     let stdout = child.stdout.take().expect("piped");
     let mut stderr = child.stderr.take().expect("piped");
     let current = state.current.clone();
@@ -122,7 +151,8 @@ pub async fn pair_phone_start(state: State<'_, PairPhone>, on_event: Channel<Val
         let _ = child.start_kill();
         if !finished {
             let mut err = String::new();
-            let _ = tokio::time::timeout(Duration::from_secs(1), stderr.read_to_string(&mut err)).await;
+            let _ =
+                tokio::time::timeout(Duration::from_secs(1), stderr.read_to_string(&mut err)).await;
             let _ = on_event.send(exit_event(&err, saw_waiting));
         }
         let mut current = lock(&current);
@@ -145,8 +175,16 @@ pub fn start_service_argv(os: &str) -> Option<Vec<String>> {
         "linux" => s(&["systemctl", "--user", "start", "unipi-host"]),
         "windows" => s(&["schtasks", "/Run", "/TN", "UniPi Host"]),
         "macos" => {
-            let uid = std::process::Command::new("id").arg("-u").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
-            s(&["launchctl", "kickstart", &format!("gui/{uid}/dev.unipi.host")])
+            let uid = std::process::Command::new("id")
+                .arg("-u")
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
+            s(&[
+                "launchctl",
+                "kickstart",
+                &format!("gui/{uid}/dev.unipi.host"),
+            ])
         }
         _ => None,
     }
@@ -158,9 +196,19 @@ pub fn start_service_argv(os: &str) -> Option<Vec<String>> {
 #[tauri::command]
 pub async fn local_host_start() -> Result<(), AppErrorDto> {
     if cfg!(any(target_os = "android", target_os = "ios")) {
-        return Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Only the desktop app can start this PC's host", false));
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "Only the desktop app can start this PC's host",
+            false,
+        ));
     }
-    let argv = start_service_argv(std::env::consts::OS).ok_or_else(|| AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Can't start unipi-host here", false))?;
+    let argv = start_service_argv(std::env::consts::OS).ok_or_else(|| {
+        AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "Can't start unipi-host here",
+            false,
+        )
+    })?;
     let started = std::time::SystemTime::now() - Duration::from_secs(1);
     let mut command = tokio::process::Command::new(&argv[0]);
     command.args(&argv[1..]).stdin(Stdio::null());
@@ -171,17 +219,43 @@ pub async fn local_host_start() -> Result<(), AppErrorDto> {
     }
     let out = tokio::time::timeout(Duration::from_secs(20), command.output())
         .await
-        .map_err(|_| AppErrorDto::new(AppErrorCode::E_TIMEOUT, "Starting unipi-host took too long", true))?
-        .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("couldn't run {}: {e}", argv[0]), false))?;
+        .map_err(|_| {
+            AppErrorDto::new(
+                AppErrorCode::E_TIMEOUT,
+                "Starting unipi-host took too long",
+                true,
+            )
+        })?
+        .map_err(|e| {
+            AppErrorDto::new(
+                AppErrorCode::E_INTERNAL,
+                format!("couldn't run {}: {e}", argv[0]),
+                false,
+            )
+        })?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        let first = err.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("failed").to_string();
-        return Err(AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("`{}` failed: {first}", argv.join(" ")), false)
-            .with_hint("Run `unipi-host serve` in a terminal, or re-run the installer"));
+        let first = err
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .unwrap_or("failed")
+            .to_string();
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_INTERNAL,
+            format!("`{}` failed: {first}", argv.join(" ")),
+            false,
+        )
+        .with_hint("Run `unipi-host serve` in a terminal, or re-run the installer"));
     }
     // serve rewrites endpoint.json when it starts (a stale one may be there).
     let endpoint = crate::sharing::host_dir().join("endpoint.json");
-    let fresh = || endpoint.metadata().and_then(|m| m.modified()).is_ok_and(|t| t >= started);
+    let fresh = || {
+        endpoint
+            .metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t >= started)
+    };
     for _ in 0..40 {
         if fresh() {
             // serve writes endpoint.json just before it opens the control channel.
@@ -204,17 +278,30 @@ mod tests {
         assert_eq!(e["code"], "E_UNSUPPORTED");
         let e = exit_event("Error: something broke\n", true);
         assert_eq!(e, json!({"state":"error","message":"something broke"}));
-        assert_eq!(exit_event("", false)["message"], "unipi-host didn't start pairing");
+        assert_eq!(
+            exit_event("", false)["message"],
+            "unipi-host didn't start pairing"
+        );
         assert!(is_final(&json!({"state":"paired","device":"x"})));
         assert!(!is_final(&json!({"state":"waiting"})));
         // Cancel comes from a sync command on the main thread: no tokio runtime there.
         let state = PairPhone::default();
         let (kill, _rx) = tokio::sync::oneshot::channel();
-        *lock(&state.current) = Some(Running { generation: 1, stdin: None, kill });
+        *lock(&state.current) = Some(Running {
+            generation: 1,
+            stdin: None,
+            kill,
+        });
         state.stop();
         assert!(lock(&state.current).is_none());
-        assert_eq!(start_service_argv("linux").unwrap().join(" "), "systemctl --user start unipi-host");
-        assert_eq!(start_service_argv("windows").unwrap().join(" "), "schtasks /Run /TN UniPi Host");
+        assert_eq!(
+            start_service_argv("linux").unwrap().join(" "),
+            "systemctl --user start unipi-host"
+        );
+        assert_eq!(
+            start_service_argv("windows").unwrap().join(" "),
+            "schtasks /Run /TN UniPi Host"
+        );
         assert_eq!(start_service_argv("android"), None);
     }
 }

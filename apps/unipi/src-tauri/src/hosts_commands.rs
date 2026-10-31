@@ -330,11 +330,20 @@ pub async fn host_status(
     // UNI-231: this PC's own host: the local socket answers → Local, no dial.
     if cfg!(unix) && crate::local_host::socket_for(&host_id).is_some() {
         let dir = directory(&app)?;
-        let ticket = crate::local_host::hosts(&dir)?.into_iter().find(|h| h.id == host_id).map(|h| h.ticket);
+        let ticket = crate::local_host::hosts(&dir)?
+            .into_iter()
+            .find(|h| h.id == host_id)
+            .map(|h| h.ticket);
         if let Some(ticket) = ticket {
             let started = std::time::Instant::now();
-            if op(&state, &dir, None, &ticket, Request::FsRoots).await.is_ok() {
-                return Ok(HostStatus { path: PathKind::Local, rtt_ms: Some(started.elapsed().as_millis() as u64) });
+            if op(&state, &dir, None, &ticket, Request::FsRoots)
+                .await
+                .is_ok()
+            {
+                return Ok(HostStatus {
+                    path: PathKind::Local,
+                    rtt_ms: Some(started.elapsed().as_millis() as u64),
+                });
             }
         }
     }

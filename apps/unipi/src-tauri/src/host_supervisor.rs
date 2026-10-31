@@ -130,7 +130,9 @@ impl SupervisorState {
     /// The banner line, when the app should nag (3 crashes in a row).
     pub fn banner(&self) -> Option<String> {
         match self {
-            SupervisorState::Failing { failures, message } if *failures >= BANNER_AFTER => Some(message.clone()),
+            SupervisorState::Failing { failures, message } if *failures >= BANNER_AFTER => {
+                Some(message.clone())
+            }
             _ => None,
         }
     }
@@ -153,7 +155,12 @@ pub struct ChildSpec<'a> {
 }
 
 pub async fn run_child(spec: ChildSpec<'_>) -> Result<std::process::ExitStatus, AppErrorDto> {
-    let ChildSpec { dir, bin, parent_pid, child_slot } = spec;
+    let ChildSpec {
+        dir,
+        bin,
+        parent_pid,
+        child_slot,
+    } = spec;
     use tokio::io::AsyncWriteExt;
     std::fs::create_dir_all(dir).map_err(|e| io_err("create the host dir", e))?;
     let mut log = tokio::fs::OpenOptions::new()
@@ -164,7 +171,13 @@ pub async fn run_child(spec: ChildSpec<'_>) -> Result<std::process::ExitStatus, 
         .map_err(|e| io_err("open host.log", e))?;
     let mut command = tokio::process::Command::new(bin);
     command
-        .args(["serve", "--mode", "app", "--exit-with-parent", &parent_pid.to_string()])
+        .args([
+            "serve",
+            "--mode",
+            "app",
+            "--exit-with-parent",
+            &parent_pid.to_string(),
+        ])
         .env("UNIPI_HOST_DIR", dir)
         // UNI-239: the host sees the *merged* PATH, so mise/nvm Node, pi,
         // herdr and tmux resolve as they do in the user's shell. Empty until
@@ -179,9 +192,13 @@ pub async fn run_child(spec: ChildSpec<'_>) -> Result<std::process::ExitStatus, 
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
-    let mut child = command
-        .spawn()
-        .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("could not start {}: {e}", bin.display()), false))?;
+    let mut child = command.spawn().map_err(|e| {
+        AppErrorDto::new(
+            AppErrorCode::E_INTERNAL,
+            format!("could not start {}: {e}", bin.display()),
+            false,
+        )
+    })?;
     // Remember the child (its own process group on Unix) so `stop()` can kill it.
     *child_slot.lock().await = Some(child.id().expect("a spawned child has a pid"));
     let stdout = child.stdout.take().expect("piped");
@@ -205,7 +222,10 @@ pub async fn run_child(spec: ChildSpec<'_>) -> Result<std::process::ExitStatus, 
             }
         }
     });
-    let status = child.wait().await.map_err(|e| io_err("wait for the host", e))?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| io_err("wait for the host", e))?;
     *child_slot.lock().await = None;
     let _ = tokio::time::timeout(Duration::from_secs(2), pump).await;
     Ok(status)
@@ -217,8 +237,17 @@ fn io_err(what: &str, e: std::io::Error) -> AppErrorDto {
 
 /// The last `lines` of `<dir>/host.log` (for the UI's viewer).
 pub fn log_tail(dir: &Path, lines: usize) -> String {
-    let Ok(text) = std::fs::read_to_string(dir.join(LOG_NAME)) else { return String::new() };
-    text.lines().rev().take(lines.max(1)).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
+    let Ok(text) = std::fs::read_to_string(dir.join(LOG_NAME)) else {
+        return String::new();
+    };
+    text.lines()
+        .rev()
+        .take(lines.max(1))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// `~/.local/bin`, where the setup engine puts the tools it installs (the
@@ -232,7 +261,9 @@ pub fn is_executable(path: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        path.metadata().map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+        path.metadata()
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
@@ -244,7 +275,11 @@ pub fn is_executable(path: &Path) -> bool {
 
 /// The sidecar's file name inside a bundle: `bundle.externalBin` strips the
 /// target triple (Windows keeps the extension).
-pub const SIDECAR_NAME: &str = if cfg!(windows) { "unipi-host.exe" } else { "unipi-host" };
+pub const SIDECAR_NAME: &str = if cfg!(windows) {
+    "unipi-host.exe"
+} else {
+    "unipi-host"
+};
 
 /// The directories [`sidecar`] looks in, in order. tauri-bundler puts an
 /// `externalBin` next to the app exe — `/usr/bin` for the deb and the rpm, the
@@ -254,7 +289,11 @@ pub const SIDECAR_NAME: &str = if cfg!(windows) { "unipi-host.exe" } else { "uni
 pub fn sidecar_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Vec<PathBuf> {
     use tauri::Manager;
     let mut dirs = Vec::new();
-    if let Some(exe) = std::env::current_exe().ok().as_deref().and_then(Path::parent) {
+    if let Some(exe) = std::env::current_exe()
+        .ok()
+        .as_deref()
+        .and_then(Path::parent)
+    {
         dirs.push(exe.to_path_buf());
     }
     if let Ok(resource) = app.path().resource_dir() {
@@ -266,7 +305,9 @@ pub fn sidecar_dirs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Vec<PathBuf
 /// [`sidecar`]'s lookup, as directories to search — so tests can build a
 /// bundle layout without a Tauri `AppHandle`.
 pub fn sidecar_in(dirs: &[PathBuf]) -> Option<PathBuf> {
-    dirs.iter().map(|d| d.join(SIDECAR_NAME)).find(|p| is_executable(p))
+    dirs.iter()
+        .map(|d| d.join(SIDECAR_NAME))
+        .find(|p| is_executable(p))
 }
 
 /// Where the bundled sidecar lives (UNI-236: `bundle.externalBin` =
@@ -287,7 +328,11 @@ pub fn socket_alive(socket: &Path) -> bool {
     {
         // Windows: the local transport is the named pipe (§6.1); opening it is
         // the "answers" test (a pipe has no file to stat).
-        std::fs::OpenOptions::new().read(true).write(true).open(socket).is_ok()
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(socket)
+            .is_ok()
     }
 }
 
@@ -295,11 +340,17 @@ pub fn socket_alive(socket: &Path) -> bool {
 /// Desktop only: the phone has no local host to supervise.
 pub fn decide(host_dir: &Path, bin: Option<&Path>) -> (Plan, Option<Arc<Supervisor>>) {
     // `app.sock` on Unix, `\\.\pipe\unipi-oino-app` on Windows (§6.1).
-    let state = HostState { socket_alive: socket_alive(&crate::local_host::listen_addr(host_dir)), bin: bin.map(Path::to_path_buf) };
+    let state = HostState {
+        socket_alive: socket_alive(&crate::local_host::listen_addr(host_dir)),
+        bin: bin.map(Path::to_path_buf),
+    };
     match plan(&state) {
         Plan::Adopt | Plan::Unsupported => (plan(&state), None),
         Plan::Spawn => {
-            let supervisor = Supervisor::new(host_dir.to_path_buf(), bin.expect("spawn needs a binary").to_path_buf());
+            let supervisor = Supervisor::new(
+                host_dir.to_path_buf(),
+                bin.expect("spawn needs a binary").to_path_buf(),
+            );
             supervisor.spawn();
             (Plan::Spawn, Some(supervisor))
         }
@@ -334,7 +385,14 @@ impl Supervisor {
         backoff: Arc<dyn Fn(u32) -> Duration + Send + Sync>,
     ) -> Arc<Supervisor> {
         let (stop, _) = tokio::sync::watch::channel(false);
-        Arc::new(Supervisor { dir, bin, backoff, child: Mutex::new(None), state: Mutex::new(SupervisorState::AppManaged), stop })
+        Arc::new(Supervisor {
+            dir,
+            bin,
+            backoff,
+            child: Mutex::new(None),
+            state: Mutex::new(SupervisorState::AppManaged),
+            stop,
+        })
     }
 
     pub async fn state(&self) -> SupervisorState {
@@ -353,12 +411,18 @@ impl Supervisor {
     }
 
     fn kill_child(&self) {
-        let pid = self.child.try_lock().ok().and_then(|mut guard| guard.take());
+        let pid = self
+            .child
+            .try_lock()
+            .ok()
+            .and_then(|mut guard| guard.take());
         if let Some(pid) = pid {
             #[cfg(unix)]
             {
                 // The child was started in its own process group (process_group(0)).
-                let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).status();
+                let _ = std::process::Command::new("kill")
+                    .args(["-KILL", "--", &format!("-{pid}")])
+                    .status();
             }
             #[cfg(not(unix))]
             let _ = pid;
@@ -373,10 +437,21 @@ impl Supervisor {
         tokio::spawn(async move {
             let mut failures: u32 = 0;
             while !*me.stop.subscribe().borrow_and_update() {
-                let status = match run_child(ChildSpec { dir: &me.dir, bin: &me.bin, parent_pid: std::process::id(), child_slot: &me.child }).await {
+                let status = match run_child(ChildSpec {
+                    dir: &me.dir,
+                    bin: &me.bin,
+                    parent_pid: std::process::id(),
+                    child_slot: &me.child,
+                })
+                .await
+                {
                     Ok(status) => status,
                     Err(error) => {
-                        me.set_state(SupervisorState::Failing { failures: failures + 1, message: error.message.to_string() }).await;
+                        me.set_state(SupervisorState::Failing {
+                            failures: failures + 1,
+                            message: error.message.to_string(),
+                        })
+                        .await;
                         failures += 1;
                         tokio::time::sleep((me.backoff)(failures)).await;
                         continue;
@@ -394,7 +469,11 @@ impl Supervisor {
                 }
                 failures += 1;
                 let delay = (me.backoff)(failures);
-                me.set_state(SupervisorState::Failing { failures, message: failing_message(&status) }).await;
+                me.set_state(SupervisorState::Failing {
+                    failures,
+                    message: failing_message(&status),
+                })
+                .await;
                 tokio::time::sleep(delay).await;
             }
         });
@@ -426,10 +505,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bin = fake_bin(dir.path(), "unipi-host", "exit 0");
         // A live socket always wins (someone else's serve is adopted).
-        let alive = HostState { socket_alive: true, bin: Some(bin.clone()) };
+        let alive = HostState {
+            socket_alive: true,
+            bin: Some(bin.clone()),
+        };
         assert_eq!(plan(&alive), Plan::Adopt);
         // Nothing listening and a binary: run it as our child.
-        let none = HostState { socket_alive: false, bin: Some(bin) };
+        let none = HostState {
+            socket_alive: false,
+            bin: Some(bin),
+        };
         assert_eq!(plan(&none), Plan::Spawn);
         // Nothing to run.
         let no_bin = HostState::default();
@@ -456,13 +541,32 @@ mod tests {
 
     #[test]
     fn a_banner_only_after_three_failures() {
-        let crashed = std::process::Command::new("/bin/sh").args(["-c", "exit 1"]).status().unwrap();
-        let killed = std::process::Command::new("/bin/sh").args(["-c", "kill -TERM $$"]).status().unwrap();
-        assert!(failing_message(&crashed).contains("exit code 1"), "{crashed:?}");
+        let crashed = std::process::Command::new("/bin/sh")
+            .args(["-c", "exit 1"])
+            .status()
+            .unwrap();
+        let killed = std::process::Command::new("/bin/sh")
+            .args(["-c", "kill -TERM $$"])
+            .status()
+            .unwrap();
+        assert!(
+            failing_message(&crashed).contains("exit code 1"),
+            "{crashed:?}"
+        );
         assert!(failing_message(&killed).contains("killed"), "{killed:?}");
         let message = failing_message(&crashed);
-        assert!(SupervisorState::Failing { failures: 2, message: message.clone() }.banner().is_none());
-        assert!(SupervisorState::Failing { failures: 3, message: message.clone() }.banner().is_some());
+        assert!(SupervisorState::Failing {
+            failures: 2,
+            message: message.clone()
+        }
+        .banner()
+        .is_none());
+        assert!(SupervisorState::Failing {
+            failures: 3,
+            message: message.clone()
+        }
+        .banner()
+        .is_some());
         assert!(SupervisorState::AppManaged.banner().is_none());
         assert!(SupervisorState::Adopted.banner().is_none());
     }
@@ -476,25 +580,55 @@ mod tests {
         let bin = fake_bin(
             dir.path(),
             "unipi-host",
-            &format!("echo \"$@\" > {}\necho one\necho two\nexit 0", argv.display()),
+            &format!(
+                "echo \"$@\" > {}\necho one\necho two\nexit 0",
+                argv.display()
+            ),
         );
         let slot: Mutex<Option<u32>> = Mutex::new(None);
-        let status = run_child(ChildSpec { dir: host_dir.path(), bin: &bin, parent_pid: std::process::id(), child_slot: &slot }).await.unwrap();
+        let status = run_child(ChildSpec {
+            dir: host_dir.path(),
+            bin: &bin,
+            parent_pid: std::process::id(),
+            child_slot: &slot,
+        })
+        .await
+        .unwrap();
         assert!(status.success());
         let logged = log_tail(host_dir.path(), 10);
         assert!(logged.contains("one") && logged.contains("two"), "{logged}");
         let args = std::fs::read_to_string(&argv).unwrap();
-        assert!(args.contains("serve") && args.contains("--mode") && args.contains("app"), "{args}");
-        assert!(args.contains(&format!("--exit-with-parent {}", std::process::id())), "{args}");
+        assert!(
+            args.contains("serve") && args.contains("--mode") && args.contains("app"),
+            "{args}"
+        );
+        assert!(
+            args.contains(&format!("--exit-with-parent {}", std::process::id())),
+            "{args}"
+        );
     }
 
     #[tokio::test]
     async fn a_host_that_exits_75_means_someone_else_owns_the_dir() {
         let dir = tempfile::tempdir().unwrap();
         let host_dir = tempfile::tempdir().unwrap();
-        let bin = fake_bin(dir.path(), "unipi-host", &format!("echo 'already running (pid 42, mode manual)' >&2\nexit {}", EXIT_ALREADY_RUNNING));
+        let bin = fake_bin(
+            dir.path(),
+            "unipi-host",
+            &format!(
+                "echo 'already running (pid 42, mode manual)' >&2\nexit {}",
+                EXIT_ALREADY_RUNNING
+            ),
+        );
         let slot: Mutex<Option<u32>> = Mutex::new(None);
-        let status = run_child(ChildSpec { dir: host_dir.path(), bin: &bin, parent_pid: std::process::id(), child_slot: &slot }).await.unwrap();
+        let status = run_child(ChildSpec {
+            dir: host_dir.path(),
+            bin: &bin,
+            parent_pid: std::process::id(),
+            child_slot: &slot,
+        })
+        .await
+        .unwrap();
         assert_eq!(status.code(), Some(EXIT_ALREADY_RUNNING));
         assert!(log_tail(host_dir.path(), 5).contains("already running"));
     }
@@ -513,7 +647,11 @@ mod tests {
                 mark = mark.display()
             ),
         );
-        let supervisor = Supervisor::with_backoff(host_dir.path().to_path_buf(), bin, Arc::new(|_| Duration::from_millis(10)));
+        let supervisor = Supervisor::with_backoff(
+            host_dir.path().to_path_buf(),
+            bin,
+            Arc::new(|_| Duration::from_millis(10)),
+        );
         supervisor.spawn();
         // Four crashes (the banner fires at the third), then a healthy child.
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
@@ -543,19 +681,29 @@ mod tests {
         let on_path = fake_bin(&path_dir, "unipi-host", "echo on-path");
         assert_eq!(sidecar_in(&[exe_dir]), Some(bundled.clone()));
         // The sidecar wins, even with a perfectly good host on PATH.
-        assert_eq!(host_bin_in(Some(bundled.clone()), || Some(on_path.clone())), Some(bundled));
-        assert_eq!(host_bin_in(None, || Some(on_path.clone())), Some(on_path.clone()));
+        assert_eq!(
+            host_bin_in(Some(bundled.clone()), || Some(on_path.clone())),
+            Some(bundled)
+        );
+        assert_eq!(
+            host_bin_in(None, || Some(on_path.clone())),
+            Some(on_path.clone())
+        );
         // No sidecar anywhere: the fallback (PATH / ~/.local/bin) is used.
         let empty = tmp.path().join("empty");
         std::fs::create_dir_all(&empty).unwrap();
         let found = sidecar_in(&[empty]);
         assert_eq!(found, None);
         assert_eq!(
-            host_bin_in(found, || crate::sharing::find_bin_in(None, None, None, Some(path_dir.as_os_str()))),
+            host_bin_in(found, || crate::sharing::find_bin_in(
+                None,
+                None,
+                None,
+                Some(path_dir.as_os_str())
+            )),
             Some(on_path)
         );
     }
-
 }
 
 // ---------------------------------------------------------------- commands
@@ -613,7 +761,10 @@ pub fn host_bin(app: Option<&tauri::AppHandle>) -> Option<PathBuf> {
 
 /// The sidecar when we have one, else `otherwise` (a host on PATH /
 /// `~/.local/bin`).
-pub fn host_bin_in(sidecar: Option<PathBuf>, otherwise: impl FnOnce() -> Option<PathBuf>) -> Option<PathBuf> {
+pub fn host_bin_in(
+    sidecar: Option<PathBuf>,
+    otherwise: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
     sidecar.or_else(otherwise)
 }
 
@@ -636,7 +787,11 @@ pub async fn start(app: Option<&tauri::AppHandle>, dir: &Path, shared: &Shared) 
 
 /// `$HOME` (`%USERPROFILE%` on Windows).
 pub fn home_dir() -> PathBuf {
-    std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).filter(|h| !h.is_empty()).map(PathBuf::from).unwrap_or_default()
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_default()
 }
 
 /// `host_runtime`: everything Settings → This computer shows about the host.
@@ -646,7 +801,10 @@ pub async fn host_runtime(
     host_dir: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<HostRuntime, AppErrorDto> {
-    let dir = host_dir.filter(|d| !d.is_empty()).map(PathBuf::from).unwrap_or_else(|| crate::local_host::host_dir().unwrap_or_default());
+    let dir = host_dir
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| crate::local_host::host_dir().unwrap_or_default());
     let guard = shared.0.lock().await;
     let supervisor = guard.as_ref();
     let (run_by, version) = lock_owner(&dir).unzip();
@@ -686,14 +844,26 @@ pub async fn host_runtime(
 /// `host_log`: the tail of `<host dir>/host.log`, newest last.
 #[tauri::command]
 pub fn host_log(host_dir: Option<String>, lines: Option<usize>) -> Vec<String> {
-    let dir = host_dir.filter(|d| !d.is_empty()).map(PathBuf::from).unwrap_or_else(|| crate::local_host::host_dir().unwrap_or_default());
-    log_tail(&dir, lines.unwrap_or(200)).lines().map(str::to_string).collect()
+    let dir = host_dir
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| crate::local_host::host_dir().unwrap_or_default());
+    log_tail(&dir, lines.unwrap_or(200))
+        .lines()
+        .map(str::to_string)
+        .collect()
 }
 
 /// `host_restart`: stop our child (if any) and apply the §3.2 decision again.
 #[tauri::command]
-pub async fn host_restart(shared: tauri::State<'_, Shared>, host_dir: Option<String>) -> Result<String, AppErrorDto> {
-    let dir = host_dir.filter(|d| !d.is_empty()).map(PathBuf::from).unwrap_or_else(|| crate::local_host::host_dir().unwrap_or_default());
+pub async fn host_restart(
+    shared: tauri::State<'_, Shared>,
+    host_dir: Option<String>,
+) -> Result<String, AppErrorDto> {
+    let dir = host_dir
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| crate::local_host::host_dir().unwrap_or_default());
     if let Some(s) = shared.0.lock().await.take() {
         s.stop();
     }
@@ -709,7 +879,8 @@ mod e2e {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn spawns_a_real_host_as_an_app_child() {
-        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/unipi-host");
+        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../target/debug/unipi-host");
         if !bin.exists() {
             eprintln!("SKIP: build unipi-host first ({})", bin.display());
             return;
@@ -718,7 +889,13 @@ mod e2e {
         let host_dir = dir.path().join("host");
         std::fs::create_dir_all(&host_dir).unwrap();
         let socket = host_dir.join("app.sock");
-        assert_eq!(plan(&HostState { socket_alive: socket_alive(&socket), bin: Some(bin.clone()) }), Plan::Spawn);
+        assert_eq!(
+            plan(&HostState {
+                socket_alive: socket_alive(&socket),
+                bin: Some(bin.clone())
+            }),
+            Plan::Spawn
+        );
 
         let supervisor = Supervisor::new(host_dir.clone(), bin.clone());
         supervisor.spawn();
@@ -726,13 +903,29 @@ mod e2e {
         while !socket_alive(&socket) && std::time::Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert!(socket_alive(&socket), "the app-managed host never answered on app.sock");
-        assert!(matches!(supervisor.state().await, SupervisorState::AppManaged), "{:?}", supervisor.state().await);
-        assert_eq!(plan(&HostState { socket_alive: socket_alive(&socket), bin: Some(bin.clone()) }), Plan::Adopt);
+        assert!(
+            socket_alive(&socket),
+            "the app-managed host never answered on app.sock"
+        );
+        assert!(
+            matches!(supervisor.state().await, SupervisorState::AppManaged),
+            "{:?}",
+            supervisor.state().await
+        );
+        assert_eq!(
+            plan(&HostState {
+                socket_alive: socket_alive(&socket),
+                bin: Some(bin.clone())
+            }),
+            Plan::Adopt
+        );
         let (mode, version) = lock_owner(&host_dir).expect("host.lock owner");
         assert_eq!(mode, "app", "the host records who started it");
         assert!(!version.is_empty());
-        assert!(log_tail(&host_dir, 50).lines().count() > 0, "its output goes to host.log");
+        assert!(
+            log_tail(&host_dir, 50).lines().count() > 0,
+            "its output goes to host.log"
+        );
         // Stopping the supervisor ends the child (kill_on_drop), so the lock is
         // released and nothing survives the test.
         supervisor.stop();
@@ -740,12 +933,21 @@ mod e2e {
         while lock_owner_live(&host_dir) && std::time::Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert!(!lock_owner_live(&host_dir), "the host must not outlive the app");
+        assert!(
+            !lock_owner_live(&host_dir),
+            "the host must not outlive the app"
+        );
     }
 
     /// Is a live host holding the dir's lock right now?
     fn lock_owner_live(dir: &Path) -> bool {
-        let Ok(file) = std::fs::OpenOptions::new().read(true).write(true).open(dir.join("host.lock")) else { return false };
+        let Ok(file) = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(dir.join("host.lock"))
+        else {
+            return false;
+        };
         file.try_lock().is_err()
     }
 
@@ -757,14 +959,25 @@ mod e2e {
     async fn the_bundled_sidecar_runs_as_the_app_managed_host() {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         // Only a host built for this machine can be executed here.
-        let triples: [&str; 2] =
-            if cfg!(target_arch = "x86_64") { ["x86_64-unknown-linux-musl", ""] } else { ["aarch64-unknown-linux-musl", ""] };
+        let triples: [&str; 2] = if cfg!(target_arch = "x86_64") {
+            ["x86_64-unknown-linux-musl", ""]
+        } else {
+            ["aarch64-unknown-linux-musl", ""]
+        };
         let built = triples
             .iter()
-            .map(|t| if t.is_empty() { manifest.join("../../../target/release/unipi-host") } else { manifest.join(format!("../../../target/{t}/release/unipi-host")) })
+            .map(|t| {
+                if t.is_empty() {
+                    manifest.join("../../../target/release/unipi-host")
+                } else {
+                    manifest.join(format!("../../../target/{t}/release/unipi-host"))
+                }
+            })
             .find(|p| is_executable(p));
         let Some(built) = built else {
-            eprintln!("SKIP: build the sidecar first (apps/mobile/src-tauri/unipi-host-sidecar.sh)");
+            eprintln!(
+                "SKIP: build the sidecar first (apps/mobile/src-tauri/unipi-host-sidecar.sh)"
+            );
             return;
         };
 
@@ -773,13 +986,20 @@ mod e2e {
         std::fs::create_dir_all(&exe_dir).unwrap();
         let bundled = exe_dir.join(SIDECAR_NAME);
         std::fs::copy(&built, &bundled).expect("copy the sidecar into the bundle layout");
-        assert_eq!(sidecar_in(&[exe_dir]), Some(bundled.clone()), "the sidecar is found next to the exe");
+        assert_eq!(
+            sidecar_in(&[exe_dir]),
+            Some(bundled.clone()),
+            "the sidecar is found next to the exe"
+        );
 
         let host_dir = tmp.path().join("host");
         std::fs::create_dir_all(&host_dir).unwrap();
         let socket = host_dir.join("app.sock");
         assert_eq!(
-            plan(&HostState { socket_alive: socket_alive(&socket), bin: Some(bundled.clone()) }),
+            plan(&HostState {
+                socket_alive: socket_alive(&socket),
+                bin: Some(bundled.clone())
+            }),
             Plan::Spawn
         );
         let supervisor = Supervisor::new(host_dir.clone(), bundled.clone());
@@ -788,11 +1008,21 @@ mod e2e {
         while !socket_alive(&socket) && std::time::Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert!(socket_alive(&socket), "the app-managed host never answered on app.sock");
-        assert_eq!(lock_owner(&host_dir).expect("host.lock owner").0, "app", "the host records who started it");
+        assert!(
+            socket_alive(&socket),
+            "the app-managed host never answered on app.sock"
+        );
+        assert_eq!(
+            lock_owner(&host_dir).expect("host.lock owner").0,
+            "app",
+            "the host records who started it"
+        );
         // The next decision adopts it: nothing is spawned twice.
         assert_eq!(
-            plan(&HostState { socket_alive: socket_alive(&socket), bin: Some(bundled) }),
+            plan(&HostState {
+                socket_alive: socket_alive(&socket),
+                bin: Some(bundled)
+            }),
             Plan::Adopt
         );
         supervisor.stop();
@@ -800,12 +1030,17 @@ mod e2e {
         while lock_owner_live(&host_dir) && std::time::Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert!(!lock_owner_live(&host_dir), "the host must not outlive the app");
+        assert!(
+            !lock_owner_live(&host_dir),
+            "the host must not outlive the app"
+        );
     }
 }
 
 /// Is the host running as *our* child right now (`host.lock` says mode "app")?
 /// Read-only and sync, for the tray and the Quit confirm.
 pub fn app_managed_blocking() -> bool {
-    lock_owner(&crate::local_host::host_dir().unwrap_or_default()).map(|(mode, _)| mode == "app").unwrap_or(false)
+    lock_owner(&crate::local_host::host_dir().unwrap_or_default())
+        .map(|(mode, _)| mode == "app")
+        .unwrap_or(false)
 }

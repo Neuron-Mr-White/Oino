@@ -39,7 +39,10 @@ pub enum InstallKind {
 
 /// `kind` from the bundle type the bundler patched into the binary and, on
 /// Linux, whether we run from an AppImage.
-pub fn install_kind(bundle: Option<tauri::utils::config::BundleType>, appimage_env: bool) -> InstallKind {
+pub fn install_kind(
+    bundle: Option<tauri::utils::config::BundleType>,
+    appimage_env: bool,
+) -> InstallKind {
     use tauri::utils::config::BundleType as B;
     match bundle {
         Some(B::AppImage) if appimage_env || !cfg!(target_os = "linux") => InstallKind::InApp,
@@ -50,7 +53,10 @@ pub fn install_kind(bundle: Option<tauri::utils::config::BundleType>, appimage_e
 }
 
 fn current_kind() -> InstallKind {
-    install_kind(tauri::utils::platform::bundle_type(), std::env::var_os("APPIMAGE").is_some())
+    install_kind(
+        tauri::utils::platform::bundle_type(),
+        std::env::var_os("APPIMAGE").is_some(),
+    )
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,8 +82,12 @@ fn err(message: impl Into<String>) -> AppErrorDto {
 fn updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater, AppErrorDto> {
     let mut builder = app.updater_builder();
     if let Some(feed) = std::env::var(FEED_ENV).ok().filter(|f| !f.is_empty()) {
-        let url = feed.parse().map_err(|e| err(format!("bad {FEED_ENV}: {e}")))?;
-        builder = builder.endpoints(vec![url]).map_err(|e| err(e.to_string()))?;
+        let url = feed
+            .parse()
+            .map_err(|e| err(format!("bad {FEED_ENV}: {e}")))?;
+        builder = builder
+            .endpoints(vec![url])
+            .map_err(|e| err(e.to_string()))?;
     }
     builder.build().map_err(|e| err(format!("updater: {e}")))
 }
@@ -87,7 +97,10 @@ fn updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater, AppE
 pub async fn app_update_check(app: tauri::AppHandle) -> Result<UpdateInfo, AppErrorDto> {
     let current = app.package_info().version.to_string();
     let kind = current_kind();
-    let update = updater(&app)?.check().await.map_err(|e| err(format!("Update check failed: {e}")))?;
+    let update = updater(&app)?
+        .check()
+        .await
+        .map_err(|e| err(format!("Update check failed: {e}")))?;
     Ok(UpdateInfo {
         current,
         kind,
@@ -111,10 +124,18 @@ pub enum Progress {
 /// Downloads (signature-checked by the plugin), installs and relaunches.
 /// Only after the user said yes (the UI's prompt).
 #[tauri::command]
-pub async fn app_update_install(app: tauri::AppHandle, expect: String, on_progress: Channel<Progress>) -> Result<(), AppErrorDto> {
+pub async fn app_update_install(
+    app: tauri::AppHandle,
+    expect: String,
+    on_progress: Channel<Progress>,
+) -> Result<(), AppErrorDto> {
     if current_kind() != InstallKind::InApp {
-        return Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "This copy of UniPi can't update itself", false)
-            .with_hint(format!("Download the new version from {DOWNLOAD_PAGE}")));
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "This copy of UniPi can't update itself",
+            false,
+        )
+        .with_hint(format!("Download the new version from {DOWNLOAD_PAGE}")));
     }
     let update = updater(&app)?
         .check()
@@ -123,7 +144,10 @@ pub async fn app_update_install(app: tauri::AppHandle, expect: String, on_progre
         .ok_or_else(|| err("No update available any more"))?;
     // The user agreed to *this* version.
     if update.version != expect {
-        return Err(err(format!("The available version changed to {} — check again", update.version)));
+        return Err(err(format!(
+            "The available version changed to {} — check again",
+            update.version
+        )));
     }
     let mut done = 0u64;
     let bytes = update
@@ -139,7 +163,9 @@ pub async fn app_update_install(app: tauri::AppHandle, expect: String, on_progre
         .await
         .map_err(|e| err(format!("Download failed: {e}")))?;
     let _ = on_progress.send(Progress::Installing);
-    update.install(bytes).map_err(|e| err(format!("Install failed: {e}")))?;
+    update
+        .install(bytes)
+        .map_err(|e| err(format!("Install failed: {e}")))?;
     log::info!("updated to {}; relaunching", update.version);
     app.restart();
 }
@@ -151,10 +177,14 @@ mod tests {
 
     #[test]
     fn config_points_at_the_feed_with_a_key() {
-        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         let u = &conf["plugins"]["updater"];
         assert_eq!(u["endpoints"][0], FEED_URL);
-        assert!(u["pubkey"].as_str().is_some_and(|k| k.len() > 100), "updater pubkey missing");
+        assert!(
+            u["pubkey"].as_str().is_some_and(|k| k.len() > 100),
+            "updater pubkey missing"
+        );
     }
 
     #[test]

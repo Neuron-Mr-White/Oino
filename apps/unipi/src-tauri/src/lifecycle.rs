@@ -33,11 +33,17 @@ pub fn config_dir() -> PathBuf {
     }
     #[cfg(target_os = "macos")]
     {
-        home().join("Library").join("Application Support").join("dev.unipi.oino")
+        home()
+            .join("Library")
+            .join("Application Support")
+            .join("dev.unipi.oino")
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
-        home().join("AppData").join("Roaming").join("dev.unipi.oino")
+        home()
+            .join("AppData")
+            .join("Roaming")
+            .join("dev.unipi.oino")
     }
 }
 
@@ -51,13 +57,19 @@ fn home() -> PathBuf {
 
 fn read_setting(file: &str, key: &str) -> Option<serde_json::Value> {
     let raw = std::fs::read_to_string(config_dir().join(file)).ok()?;
-    serde_json::from_str::<serde_json::Value>(&raw).ok()?.get(key).cloned()
+    serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()?
+        .get(key)
+        .cloned()
 }
 
 fn write_setting(file: &str, key: &str, value: serde_json::Value) -> std::io::Result<()> {
     let dir = config_dir();
     std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join(file), serde_json::json!({ key: value }).to_string())
+    std::fs::write(
+        dir.join(file),
+        serde_json::json!({ key: value }).to_string(),
+    )
 }
 
 // ------------------------------------------------------------ close action
@@ -126,11 +138,17 @@ pub const AUTOSTART_FILE: &str = "autostart.json";
 pub const AUTOSTART_KEY: &str = "autostart";
 
 pub fn autostart_enabled() -> bool {
-    read_setting(AUTOSTART_FILE, AUTOSTART_KEY).and_then(|v| v.as_bool()).unwrap_or(false)
+    read_setting(AUTOSTART_FILE, AUTOSTART_KEY)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 pub fn set_autostart(enabled: bool) -> std::io::Result<()> {
-    write_setting(AUTOSTART_FILE, AUTOSTART_KEY, serde_json::Value::Bool(enabled))
+    write_setting(
+        AUTOSTART_FILE,
+        AUTOSTART_KEY,
+        serde_json::Value::Bool(enabled),
+    )
 }
 
 /// `--hidden` (written into the login item by `tauri-plugin-autostart`): start
@@ -170,8 +188,13 @@ pub fn close_action_state() -> CloseAction {
 /// `close_action_set {action}`: remember the answer and apply it to this app.
 #[tauri::command]
 pub fn close_action_set(action: CloseAction) -> Result<CloseAction, AppErrorDto> {
-    set_close_action(action)
-        .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("can't save the setting: {e}"), false))?;
+    set_close_action(action).map_err(|e| {
+        AppErrorDto::new(
+            AppErrorCode::E_INTERNAL,
+            format!("can't save the setting: {e}"),
+            false,
+        )
+    })?;
     Ok(action)
 }
 
@@ -179,7 +202,11 @@ pub fn close_action_set(action: CloseAction) -> Result<CloseAction, AppErrorDto>
 /// the tray; `quit` goes through the real Quit (with the phone warning when it
 /// applies); `remember` stores the answer as `closeAction`.
 #[tauri::command]
-pub fn close_answer(app: tauri::AppHandle, action: CloseAction, remember: bool) -> Result<(), AppErrorDto> {
+pub fn close_answer(
+    app: tauri::AppHandle,
+    action: CloseAction,
+    remember: bool,
+) -> Result<(), AppErrorDto> {
     if action == CloseAction::Ask {
         return Err(AppErrorDto::new(
             AppErrorCode::E_SCHEMA,
@@ -188,8 +215,13 @@ pub fn close_answer(app: tauri::AppHandle, action: CloseAction, remember: bool) 
         ));
     }
     if remember {
-        set_close_action(action)
-            .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("can't save the setting: {e}"), false))?;
+        set_close_action(action).map_err(|e| {
+            AppErrorDto::new(
+                AppErrorCode::E_INTERNAL,
+                format!("can't save the setting: {e}"),
+                false,
+            )
+        })?;
     }
     #[cfg(desktop)]
     {
@@ -204,7 +236,11 @@ pub fn close_answer(app: tauri::AppHandle, action: CloseAction, remember: bool) 
     #[cfg(not(desktop))]
     {
         let _ = (app, action, remember);
-        Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "The close dialog is desktop only", false))
+        Err(AppErrorDto::new(
+            AppErrorCode::E_UNSUPPORTED,
+            "The close dialog is desktop only",
+            false,
+        ))
     }
 }
 
@@ -219,13 +255,29 @@ pub fn autostart_state() -> bool {
 /// passes `--hidden`, so a login start lands in the tray).
 #[tauri::command]
 pub fn autostart_set(app: tauri::AppHandle, enabled: bool) -> Result<bool, AppErrorDto> {
-    set_autostart(enabled).map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("can't save the setting: {e}"), false))?;
+    set_autostart(enabled).map_err(|e| {
+        AppErrorDto::new(
+            AppErrorCode::E_INTERNAL,
+            format!("can't save the setting: {e}"),
+            false,
+        )
+    })?;
     #[cfg(desktop)]
     {
         use tauri_plugin_autostart::ManagerExt;
         let manager = app.autolaunch();
-        let result = if enabled { manager.enable() } else { manager.disable() };
-        result.map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("can't change the login item: {e}"), false))?;
+        let result = if enabled {
+            manager.enable()
+        } else {
+            manager.disable()
+        };
+        result.map_err(|e| {
+            AppErrorDto::new(
+                AppErrorCode::E_INTERNAL,
+                format!("can't change the login item: {e}"),
+                false,
+            )
+        })?;
     }
     Ok(enabled)
 }
@@ -278,7 +330,11 @@ mod tests {
         assert_eq!(close_decision(CloseAction::Quit), CloseDecision::Quit);
         assert!(CLOSE_ASK_MESSAGE.contains("tray"));
         // The setting's wire names are the spec's (`ask | tray | quit`).
-        for (action, name) in [(CloseAction::Ask, "ask"), (CloseAction::Tray, "tray"), (CloseAction::Quit, "quit")] {
+        for (action, name) in [
+            (CloseAction::Ask, "ask"),
+            (CloseAction::Tray, "tray"),
+            (CloseAction::Quit, "quit"),
+        ] {
             let json = serde_json::to_string(&action).unwrap();
             assert_eq!(json, format!("\"{name}\""));
             assert_eq!(serde_json::from_str::<CloseAction>(&json).unwrap(), action);
@@ -290,7 +346,10 @@ mod tests {
         assert!(!start_hidden(["unipi".to_string()]));
         assert!(start_hidden(["unipi".to_string(), HIDDEN_ARG.to_string()]));
         // The autostart plugin's own args include it.
-        assert!(start_hidden(vec!["/usr/bin/unipi".to_string(), HIDDEN_ARG.to_string()]));
+        assert!(start_hidden(vec![
+            "/usr/bin/unipi".to_string(),
+            HIDDEN_ARG.to_string()
+        ]));
     }
 
     #[test]

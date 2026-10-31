@@ -261,7 +261,11 @@ pub fn plan_for(d: &Detected, offline: bool) -> Plan {
         Action::AlreadyPresent
     } else {
         needs_internet.push("node".into());
-        if d.node == ComponentState::Outdated { Action::Update } else { Action::Install }
+        if d.node == ComponentState::Outdated {
+            Action::Update
+        } else {
+            Action::Install
+        }
     };
     steps.push(PlanStep {
         id: "node".into(),
@@ -276,7 +280,11 @@ pub fn plan_for(d: &Detected, offline: bool) -> Plan {
         Action::AlreadyPresent
     } else {
         needs_internet.push("pi".into());
-        if d.pi == ComponentState::Outdated { Action::Update } else { Action::Install }
+        if d.pi == ComponentState::Outdated {
+            Action::Update
+        } else {
+            Action::Install
+        }
     };
     steps.push(PlanStep {
         id: "pi".into(),
@@ -326,7 +334,11 @@ pub fn plan_for(d: &Detected, offline: bool) -> Plan {
     steps.push(PlanStep {
         id: "kanboard".into(),
         label: "Board binary".into(),
-        action: if ok(d.kanboard) { Action::AlreadyPresent } else { Action::Install },
+        action: if ok(d.kanboard) {
+            Action::AlreadyPresent
+        } else {
+            Action::Install
+        },
         size_hint: None,
         needs: vec!["unipi".into()],
     });
@@ -364,13 +376,28 @@ pub fn plan_for(d: &Detected, offline: bool) -> Plan {
         })
         .collect::<Vec<_>>()
         .join(", ");
-    Plan { steps, needs_internet, offline, consent }
+    Plan {
+        steps,
+        needs_internet,
+        offline,
+        consent,
+    }
 }
 
 /// `HEAD <url>` succeeds? The offline pre-check (5 s).
 pub async fn reachable(url: &str) -> bool {
-    let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(5)).build() else { return false };
-    client.head(url).send().await.map(|r| r.status().is_success()).unwrap_or(false)
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    else {
+        return false;
+    };
+    client
+        .head(url)
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
 
 // ------------------------------------------------------------------ layout
@@ -394,7 +421,10 @@ pub fn node_current(home: &Path) -> Option<PathBuf> {
         .filter(|p| p.is_dir())
         .collect();
     versions.sort_by_key(|p| {
-        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
         super::version_tuple(&name)
     });
     versions.pop()
@@ -417,7 +447,8 @@ type Download = Arc<dyn Fn(&str) -> Option<(Vec<u8>, String)> + Send + Sync>;
 /// Runs a command with extra environment, returning its exit status and
 /// combined output. The env matters: installers are `curl … | sh` and npm is a
 /// `#!/usr/bin/env node` script, so our Node has to be on their PATH.
-type Command = Arc<dyn Fn(&Path, &[String], &[(&str, String)]) -> (Option<i32>, String) + Send + Sync>;
+type Command =
+    Arc<dyn Fn(&Path, &[String], &[(&str, String)]) -> (Option<i32>, String) + Send + Sync>;
 /// Fetches a URL as text.
 type Fetch = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// Extracts a downloaded tarball into a directory.
@@ -450,7 +481,10 @@ impl Env {
         Env {
             home,
             download: Arc::new(|url| {
-                let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(900)).build().ok()?;
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(Duration::from_secs(900))
+                    .build()
+                    .ok()?;
                 let response = client.get(url).send().ok()?;
                 if !response.status().is_success() {
                     return None;
@@ -475,7 +509,10 @@ impl Env {
                 }
             }),
             shasums: Arc::new(|url| {
-                let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(30)).build().ok()?;
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(Duration::from_secs(30))
+                    .build()
+                    .ok()?;
                 client.get(url).send().ok()?.text().ok()
             }),
             extract: Arc::new(|tarball, dest| {
@@ -526,7 +563,12 @@ impl Installer {
     /// The steps are blocking work (a download, a child process), so they run on
     /// a blocking thread and their progress is handed back over a channel —
     /// running `reqwest::blocking` inside the async runtime panics at drop.
-    pub async fn run<F>(&self, plan: &Plan, mut on_progress: F, cancel: &mut watch::Receiver<bool>) -> Outcome
+    pub async fn run<F>(
+        &self,
+        plan: &Plan,
+        mut on_progress: F,
+        cancel: &mut watch::Receiver<bool>,
+    ) -> Outcome
     where
         F: FnMut(Progress),
     {
@@ -534,13 +576,15 @@ impl Installer {
         let env = self.env.clone();
         let plan = plan.clone();
         let stop = cancel.clone();
-        let joined = tokio::task::spawn_blocking(move || {
-            run_steps(&env, Vec::new(), &plan, &stop, &tx)
-        });
+        let joined =
+            tokio::task::spawn_blocking(move || run_steps(&env, Vec::new(), &plan, &stop, &tx));
         while let Some(progress) = rx.recv().await {
             on_progress(progress);
         }
-        joined.await.unwrap_or_else(|_| Outcome { steps: Vec::new(), cancelled: true })
+        joined.await.unwrap_or_else(|_| Outcome {
+            steps: Vec::new(),
+            cancelled: true,
+        })
     }
 }
 
@@ -555,7 +599,9 @@ fn step_node(env: &Env, log: &mut Vec<String>) -> StepState {
     let shasums_url = format!("{NODE_DIST}/v{version}/SHASUMS256.txt");
     let Some(shasums) = (env.shasums)(&shasums_url) else {
         log.push("could not fetch SHASUMS256.txt".into());
-        return StepState::Failed { message: "Could not fetch Node's checksums".into() };
+        return StepState::Failed {
+            message: "Could not fetch Node's checksums".into(),
+        };
     };
     let tarball = node_tarball_name(version);
     let expected = shasums.lines().find_map(|line| {
@@ -564,43 +610,60 @@ fn step_node(env: &Env, log: &mut Vec<String>) -> StepState {
     });
     let Some(expected) = expected else {
         log.push(format!("{tarball} not in SHASUMS256"));
-        return StepState::Failed { message: "Node's checksum file has no entry for this platform".into() };
+        return StepState::Failed {
+            message: "Node's checksum file has no entry for this platform".into(),
+        };
     };
     let Some((bytes, digest)) = (env.download)(&format!("{NODE_DIST}/v{version}/{tarball}")) else {
         log.push(format!("download failed: {tarball}"));
-        return StepState::Failed { message: format!("Could not download {tarball}") };
+        return StepState::Failed {
+            message: format!("Could not download {tarball}"),
+        };
     };
     if digest != expected {
         log.push(format!("checksum mismatch: got {digest}, want {expected}"));
         // Nothing is written before this point, so a bad download leaves the PC untouched.
-        return StepState::Failed { message: "The download's checksum does not match Node's, so nothing was installed".into() };
+        return StepState::Failed {
+            message: "The download's checksum does not match Node's, so nothing was installed"
+                .into(),
+        };
     }
     let dest = node_dir(&env.home, version);
     let tmp = env.home.join(format!(".tmp-node-{version}"));
     let _ = std::fs::remove_dir_all(&tmp);
     if std::fs::create_dir_all(&tmp).is_err() {
-        return StepState::Failed { message: "Could not create the Node directory".into() };
+        return StepState::Failed {
+            message: "Could not create the Node directory".into(),
+        };
     }
     let tarball_path = tmp.join(&tarball);
     if std::fs::write(&tarball_path, &bytes).is_err() {
         let _ = std::fs::remove_dir_all(&tmp);
-        return StepState::Failed { message: "Could not save the Node download".into() };
+        return StepState::Failed {
+            message: "Could not save the Node download".into(),
+        };
     }
     if (env.extract)(&tarball_path, &tmp).is_err() {
         let _ = std::fs::remove_dir_all(&tmp);
-        return StepState::Failed { message: "Could not unpack the Node tarball".into() };
+        return StepState::Failed {
+            message: "Could not unpack the Node tarball".into(),
+        };
     }
     let _ = std::fs::remove_file(&tarball_path);
     // The version's parent may not exist yet on a bare PC.
     if let Some(parent) = dest.parent() {
         if std::fs::create_dir_all(parent).is_err() {
             let _ = std::fs::remove_dir_all(&tmp);
-            return StepState::Failed { message: "Could not create the Node directory".into() };
+            return StepState::Failed {
+                message: "Could not create the Node directory".into(),
+            };
         }
     }
     if std::fs::rename(&tmp, &dest).is_err() {
         let _ = std::fs::remove_dir_all(&tmp);
-        return StepState::Failed { message: "Could not move Node into place".into() };
+        return StepState::Failed {
+            message: "Could not move Node into place".into(),
+        };
     }
     // `current` points at the version we just installed.
     let current = env.home.join(NODE_ROOT_DIR).join("current");
@@ -638,20 +701,26 @@ fn install_pi_n1(env: &Env, log: &mut Vec<String>) -> StepState {
     log.push("N1: pi.dev's installer".into());
     // It is a shell script: run it with `sh` (not as JavaScript) and with our
     // Node first on its PATH.
-    let sh = std::env::var_os("SHELL").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/bin/sh"));
+    let sh = std::env::var_os("SHELL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/bin/sh"));
     let script = format!("curl -fsSL {PI_INSTALLER_URL} | sh");
     let (status, out) = (env.run)(&sh, &["-c".to_string(), script], &with_node_path(env));
     log.push(format!("N1 exit {status:?}: {out}"));
     if status == Some(0) {
         return StepState::Done;
     }
-    StepState::Failed { message: describe_failure(&sh, status, &out) }
+    StepState::Failed {
+        message: describe_failure(&sh, status, &out),
+    }
 }
 
 /// N2: npm install into pi's own prefix.
 fn install_pi_n2(env: &Env, log: &mut Vec<String>) -> StepState {
     let Some(npm) = npm_binary(env) else {
-        return StepState::Failed { message: "npm was not found".into() };
+        return StepState::Failed {
+            message: "npm was not found".into(),
+        };
     };
     let prefix = pi_npm_prefix(&env.home);
     let _ = std::fs::create_dir_all(&prefix);
@@ -667,7 +736,9 @@ fn install_pi_n2(env: &Env, log: &mut Vec<String>) -> StepState {
     log.push(format!("N2 exit {status:?}: {out}"));
     match status {
         Some(0) => StepState::Done,
-        _ => StepState::Failed { message: "npm could not install pi".into() },
+        _ => StepState::Failed {
+            message: "npm could not install pi".into(),
+        },
     }
 }
 
@@ -675,17 +746,25 @@ fn install_pi_n2(env: &Env, log: &mut Vec<String>) -> StepState {
 
 fn step_unipi(env: &Env, log: &mut Vec<String>, channel: String) -> StepState {
     let Some(pi) = find_pi(&env.home) else {
-        return StepState::Failed { message: "pi is not installed".into() };
+        return StepState::Failed {
+            message: "pi is not installed".into(),
+        };
     };
     // The channel follows the updater's rules, never a hardcoded alpha.
     let spec = install_spec(&channel);
     // pi is on the PATH we already searched, but a bare `pi` still needs its
     // Node — hand it the same PATH prepend.
-    let (status, out) = (env.run)(&pi, &["install".to_string(), spec.clone()], &with_node_path(env));
+    let (status, out) = (env.run)(
+        &pi,
+        &["install".to_string(), spec.clone()],
+        &with_node_path(env),
+    );
     log.push(format!("pi install {spec} exit {status:?}: {out}"));
     match status {
         Some(0) => StepState::Done,
-        _ => StepState::Failed { message: format!("pi could not install {spec}") },
+        _ => StepState::Failed {
+            message: format!("pi could not install {spec}"),
+        },
     }
 }
 
@@ -700,7 +779,9 @@ pub const AGENT_BROWSER_PACKAGE: &str = "agent-browser";
 /// drives the host's CloakBrowser instead.
 fn step_agent_browser(env: &Env, log: &mut Vec<String>) -> StepState {
     let Some(npm) = npm_binary(env) else {
-        return StepState::Failed { message: "npm was not found".into() };
+        return StepState::Failed {
+            message: "npm was not found".into(),
+        };
     };
     let prefix = pi_npm_prefix(&env.home);
     let _ = std::fs::create_dir_all(&prefix);
@@ -714,7 +795,9 @@ fn step_agent_browser(env: &Env, log: &mut Vec<String>) -> StepState {
     let (status, out) = (env.run)(&npm, &args, &node_path);
     log.push(format!("agent-browser install exit {status:?}: {out}"));
     if status != Some(0) {
-        return StepState::Failed { message: "npm could not install agent-browser".into() };
+        return StepState::Failed {
+            message: "npm could not install agent-browser".into(),
+        };
     }
     // Verify it actually runs, the way the release-asset installs do.
     let bin = prefix.join("bin").join("agent-browser");
@@ -723,7 +806,9 @@ fn step_agent_browser(env: &Env, log: &mut Vec<String>) -> StepState {
     match status {
         Some(0) => StepState::Done,
         _ if !out.trim().is_empty() => StepState::Done,
-        _ => StepState::Failed { message: "agent-browser was installed but does not run".into() },
+        _ => StepState::Failed {
+            message: "agent-browser was installed but does not run".into(),
+        },
     }
 }
 
@@ -739,18 +824,29 @@ fn step_kanboard(env: &Env, log: &mut Vec<String>) -> StepState {
         return StepState::Done;
     }
     let Some(pi) = find_pi(&env.home) else {
-        return StepState::Failed { message: "pi is not installed".into() };
+        return StepState::Failed {
+            message: "pi is not installed".into(),
+        };
     };
     let platform = super::platform_key();
     let spec = format!("npm:@pi-unipi/kanboard-{platform}");
-    let (status, out) = (env.run)(&pi, &["install".to_string(), spec.clone()], &with_node_path(env));
+    let (status, out) = (env.run)(
+        &pi,
+        &["install".to_string(), spec.clone()],
+        &with_node_path(env),
+    );
     log.push(format!("pi install {spec} exit {status:?}: {out}"));
-    match (&status, super::kanboard_binary(&super::known_dirs(&env.home), &env.home)) {
+    match (
+        &status,
+        super::kanboard_binary(&super::known_dirs(&env.home), &env.home),
+    ) {
         (Some(0), Some(bin)) => {
             log.push(format!("board binary at {}", bin.display()));
             StepState::Done
         }
-        _ => StepState::Failed { message: "The board binary is still missing after installing UniPi".into() },
+        _ => StepState::Failed {
+            message: "The board binary is still missing after installing UniPi".into(),
+        },
     }
 }
 
@@ -765,7 +861,9 @@ fn step_herdr(env: &Env, log: &mut Vec<String>) -> StepState {
     log.push(format!("running {HERDR_INSTALLER_URL}"));
     match run_installer(env, log, &script) {
         Ok(()) => StepState::Done,
-        Err(_) => StepState::Failed { message: "herdr's installer failed".into() },
+        Err(_) => StepState::Failed {
+            message: "herdr's installer failed".into(),
+        },
     }
 }
 
@@ -793,7 +891,10 @@ impl RootHelper {
         if self.shell_script {
             vec![
                 "-e".to_string(),
-                format!("do shell script \"{}\" with administrator privileges", command.join(" ")),
+                format!(
+                    "do shell script \"{}\" with administrator privileges",
+                    command.join(" ")
+                ),
             ]
         } else {
             command.to_vec()
@@ -806,7 +907,11 @@ impl RootHelper {
 /// `host_supervisor::systemctl_in` uses for `systemctl`. `None` when this PC has
 /// none, which makes a root method *unavailable*, never a failure.
 pub fn pkexec_in(path_var: Option<&std::ffi::OsStr>, standard: &[&Path]) -> Option<PathBuf> {
-    let from_path: Vec<PathBuf> = path_var.map(std::env::split_paths).into_iter().flatten().collect();
+    let from_path: Vec<PathBuf> = path_var
+        .map(std::env::split_paths)
+        .into_iter()
+        .flatten()
+        .collect();
     super::find_in(&from_path, "pkexec").or_else(|| {
         let dirs: Vec<PathBuf> = standard.iter().map(|d| d.to_path_buf()).collect();
         super::find_in(&dirs, "pkexec")
@@ -816,7 +921,10 @@ pub fn pkexec_in(path_var: Option<&std::ffi::OsStr>, standard: &[&Path]) -> Opti
 /// [`pkexec_in`] over this process's PATH and the standard locations.
 fn pkexec_here() -> Option<PathBuf> {
     let standard: Vec<PathBuf> = PKEXEC_STANDARD.iter().map(PathBuf::from).collect();
-    pkexec_in(std::env::var_os("PATH").as_deref(), &standard.iter().map(Path::new).collect::<Vec<_>>())
+    pkexec_in(
+        std::env::var_os("PATH").as_deref(),
+        &standard.iter().map(Path::new).collect::<Vec<_>>(),
+    )
 }
 
 /// This PC's root helper, or `None` when there is nothing to run it with (no
@@ -824,11 +932,17 @@ fn pkexec_here() -> Option<PathBuf> {
 pub fn root_helper_here() -> Option<RootHelper> {
     #[cfg(target_os = "macos")]
     {
-        Some(RootHelper { bin: PathBuf::from("/usr/bin/osascript"), shell_script: true })
+        Some(RootHelper {
+            bin: PathBuf::from("/usr/bin/osascript"),
+            shell_script: true,
+        })
     }
     #[cfg(target_os = "linux")]
     {
-        pkexec_here().map(|bin| RootHelper { bin, shell_script: false })
+        pkexec_here().map(|bin| RootHelper {
+            bin,
+            shell_script: false,
+        })
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
@@ -886,7 +1000,9 @@ impl PkgManager {
         {
             if Path::new("/etc/debian_version").exists() {
                 Some(PkgManager::Apt)
-            } else if Path::new("/etc/fedora-release").exists() || Path::new("/etc/redhat-release").exists() {
+            } else if Path::new("/etc/fedora-release").exists()
+                || Path::new("/etc/redhat-release").exists()
+            {
                 Some(PkgManager::Dnf)
             } else if Path::new("/etc/arch-release").exists() {
                 Some(PkgManager::Pacman)
@@ -949,15 +1065,29 @@ enum MethodKind {
 pub fn methods_for(component: &str) -> Vec<Method> {
     match component {
         "pi" if cfg!(unix) => vec![
-            Method { name: "pi.dev installer".into(), root: false, diy: format!("curl -fsSL {PI_INSTALLER_URL} | sh"), kind: MethodKind::PiInstaller },
-            Method { name: "npm".into(), root: false, diy: pi_npm_diy(), kind: MethodKind::PiNpm },
+            Method {
+                name: "pi.dev installer".into(),
+                root: false,
+                diy: format!("curl -fsSL {PI_INSTALLER_URL} | sh"),
+                kind: MethodKind::PiInstaller,
+            },
+            Method {
+                name: "npm".into(),
+                root: false,
+                diy: pi_npm_diy(),
+                kind: MethodKind::PiNpm,
+            },
         ],
         "tmux" => match PkgManager::detect() {
             Some(manager) => vec![Method {
                 name: format!(
                     "{} ({})",
                     manager.program(),
-                    if manager.needs_root() { "pkexec" } else { "no root" }
+                    if manager.needs_root() {
+                        "pkexec"
+                    } else {
+                        "no root"
+                    }
                 ),
                 root: manager.needs_root(),
                 diy: super::package_manager_tmux_command().to_string(),
@@ -1020,7 +1150,9 @@ pub fn fallback_command(component: &str) -> String {
         "tmux" => super::package_manager_tmux_command().to_string(),
         "xvfb" => super::package_manager_xvfb_command().to_string(),
         // Windows's installer is a one-liner of its own (herdr.dev/docs/install).
-        "herdr" if cfg!(windows) => "curl.exe -fsSLo install.cmd https://herdr.dev/install.cmd && install.cmd".into(),
+        "herdr" if cfg!(windows) => {
+            "curl.exe -fsSLo install.cmd https://herdr.dev/install.cmd && install.cmd".into()
+        }
         "herdr" => format!("curl -fsSL {HERDR_INSTALLER_URL} | sh"),
         // pi's npm way is the one that works without a network path to pi.dev.
         "pi" => pi_npm_diy(),
@@ -1042,7 +1174,12 @@ struct StepOutcome {
 impl StepOutcome {
     /// A step that is not a chain: nothing was tried, nothing to copy.
     fn plain(state: StepState) -> Self {
-        StepOutcome { state, attempted: Vec::new(), fallback_command: None, detail: None }
+        StepOutcome {
+            state,
+            attempted: Vec::new(),
+            fallback_command: None,
+            detail: None,
+        }
     }
 }
 
@@ -1058,7 +1195,10 @@ fn chain_step(env: &Env, log: &mut Vec<String>, component: &str) -> StepOutcome 
     for method in methods_for(component) {
         // No `pkexec` on this PC: the method is unavailable, not a failure.
         if method.root && env.root.is_none() {
-            log.push(format!("{} unavailable: this PC has no pkexec", method.name));
+            log.push(format!(
+                "{} unavailable: this PC has no pkexec",
+                method.name
+            ));
             continue;
         }
         attempted.push(method.name.clone());
@@ -1076,7 +1216,10 @@ fn chain_step(env: &Env, log: &mut Vec<String>, component: &str) -> StepOutcome 
         }
     }
     let (state, detail) = if done {
-        (StepState::Done, format!("installed with {}", attempted.join(", ")))
+        (
+            StepState::Done,
+            format!("installed with {}", attempted.join(", ")),
+        )
     } else if attempted.is_empty() {
         (
             StepState::Skipped {
@@ -1092,21 +1235,38 @@ fn chain_step(env: &Env, log: &mut Vec<String>, component: &str) -> StepOutcome 
             format!("tried {}, all failed: {last_error}", attempted.join(" → ")),
         )
     };
-    StepOutcome { state, attempted, fallback_command: Some(fallback), detail: Some(detail) }
+    StepOutcome {
+        state,
+        attempted,
+        fallback_command: Some(fallback),
+        detail: Some(detail),
+    }
 }
 
 /// Runs one method. `Ok(())` when it worked, `Err` with what went wrong.
-fn run_method(env: &Env, log: &mut Vec<String>, component: &str, method: &Method) -> Result<(), String> {
+fn run_method(
+    env: &Env,
+    log: &mut Vec<String>,
+    component: &str,
+    method: &Method,
+) -> Result<(), String> {
     match &method.kind {
         MethodKind::Package(manager) => {
             // UNI-299: Xvfb's package name differs per distro.
-            let package = if component == "xvfb" { super::xvfb_package(manager.program()) } else { component };
+            let package = if component == "xvfb" {
+                super::xvfb_package(manager.program())
+            } else {
+                component
+            };
             let args = manager.install_args(package);
             // The command the root helper runs: the manager's own argv.
             let mut command = vec![manager.program().to_string()];
             command.extend(args);
             let (bin, argv) = if method.root {
-                let helper = env.root.as_ref().ok_or("this PC has no way to run as root")?;
+                let helper = env
+                    .root
+                    .as_ref()
+                    .ok_or("this PC has no way to run as root")?;
                 (helper.bin.clone(), helper.argv(&command))
             } else {
                 (PathBuf::from(manager.program()), command)
@@ -1118,9 +1278,7 @@ fn run_method(env: &Env, log: &mut Vec<String>, component: &str, method: &Method
                 _ => Err(describe_failure(&bin, status, &out)),
             }
         }
-        MethodKind::Script(script) => {
-            run_installer(env, log, script)
-        }
+        MethodKind::Script(script) => run_installer(env, log, script),
         MethodKind::StaticBinary => install_static(env, log, component),
         // pi's two ways are the automatic step's own, so the chain and the
         // wizard's "Try another way" run exactly what a first install runs.
@@ -1151,8 +1309,14 @@ fn pi_npm_diy() -> String {
 
 /// `curl … | sh`: herdr's and pi's installers are shell one-liners.
 fn run_installer(env: &Env, log: &mut Vec<String>, script: &str) -> Result<(), String> {
-    let sh = std::env::var_os("SHELL").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/bin/sh"));
-    let (status, out) = (env.run)(&sh, &["-c".to_string(), script.to_string()], &with_node_path(env));
+    let sh = std::env::var_os("SHELL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/bin/sh"));
+    let (status, out) = (env.run)(
+        &sh,
+        &["-c".to_string(), script.to_string()],
+        &with_node_path(env),
+    );
     log.push(format!("{script} exit {status:?}: {out}"));
     match status {
         Some(0) => Ok(()),
@@ -1183,11 +1347,15 @@ fn install_static(env: &Env, log: &mut Vec<String>, component: &str) -> Result<(
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("could not chmod {}: {e}", tmp.display()))?;
     }
-    std::fs::rename(&tmp, &bin).map_err(|e| format!("could not move {} into place: {e}", bin.display()))?;
+    std::fs::rename(&tmp, &bin)
+        .map_err(|e| format!("could not move {} into place: {e}", bin.display()))?;
     log.push(format!("sha256 {digest}  {}", bin.display()));
     // Does it answer? A binary that cannot run is a silent failure, not an install.
     let (status, out) = (env.run)(&bin, &["--version".to_string()], &[]);
-    log.push(format!("{} --version exit {status:?}: {out}", bin.display()));
+    log.push(format!(
+        "{} --version exit {status:?}: {out}",
+        bin.display()
+    ));
     match status {
         Some(0) => Ok(()),
         _ if !out.trim().is_empty() => Ok(()),
@@ -1197,7 +1365,11 @@ fn install_static(env: &Env, log: &mut Vec<String>, component: &str) -> Result<(
 
 /// What went wrong, in one line for the error sheet.
 fn describe_failure(bin: &Path, status: Option<i32>, out: &str) -> String {
-    let first = out.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let first = out
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
     let ran = match status {
         Some(code) => format!("{} exited {code}", bin.display()),
         None => format!("could not run {}", bin.display()),
@@ -1222,7 +1394,11 @@ fn with_node_path(env: &Env) -> Vec<(&str, String)> {
         .unwrap_or_default();
     let mut dirs = vec![dir];
     dirs.extend(inherited);
-    let value = dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(":");
+    let value = dirs
+        .iter()
+        .map(|d| d.display().to_string())
+        .collect::<Vec<_>>()
+        .join(":");
     vec![("PATH", value)]
 }
 
@@ -1235,7 +1411,6 @@ fn npm_binary(env: &Env) -> Option<PathBuf> {
     let bin = node_current(&env.home)?.join("bin").join("npm");
     bin.exists().then_some(bin)
 }
-
 
 /// The blocking half of [`Installer::run`]: the step loop, kept a free function
 /// so it can move onto a blocking thread with everything it owns.
@@ -1251,7 +1426,9 @@ fn run_steps(
     for step in &plan.steps {
         if *stop.borrow() {
             cancelled = true;
-            let state = StepState::Skipped { reason: "Cancelled".into() };
+            let state = StepState::Skipped {
+                reason: "Cancelled".into(),
+            };
             results.push(StepResult {
                 step: step.id.clone(),
                 state: state.clone(),
@@ -1259,7 +1436,11 @@ fn run_steps(
                 attempted: Vec::new(),
                 fallback_command: None,
             });
-            let _ = tx.send(Progress { step: step.id.clone(), state, detail: None });
+            let _ = tx.send(Progress {
+                step: step.id.clone(),
+                state,
+                detail: None,
+            });
             continue;
         }
         // The running detail is the newest log line: bytes, a version, or the
@@ -1289,25 +1470,44 @@ fn run_steps(
         let _ = std::fs::create_dir_all(dir);
     }
     let _ = std::fs::write(&path, log.join("\n"));
-    Outcome { steps: results, cancelled }
+    Outcome {
+        steps: results,
+        cancelled,
+    }
 }
 
 /// The last log lines, for the error sheet.
 const LOG_TAIL_LINES: usize = 20;
 
 fn tail_of(log: &[String]) -> Vec<String> {
-    log.iter().rev().take(LOG_TAIL_LINES).rev().cloned().collect()
+    log.iter()
+        .rev()
+        .take(LOG_TAIL_LINES)
+        .rev()
+        .cloned()
+        .collect()
 }
 
 /// One step: skipped when a dependency did not succeed, a no-op when it is
 /// already satisfied.
-fn run_step(env: &Env, log: &mut Vec<String>, results: &[StepResult], step: &PlanStep) -> StepOutcome {
+fn run_step(
+    env: &Env,
+    log: &mut Vec<String>,
+    results: &[StepResult],
+    step: &PlanStep,
+) -> StepOutcome {
     for need in &step.needs {
         let unhappy = results.iter().any(|r| {
-            r.step == *need && matches!(r.state, StepState::Failed { .. } | StepState::Skipped { .. })
+            r.step == *need
+                && matches!(
+                    r.state,
+                    StepState::Failed { .. } | StepState::Skipped { .. }
+                )
         });
         if unhappy {
-            return StepOutcome::plain(StepState::Skipped { reason: format!("needs {need}") });
+            return StepOutcome::plain(StepState::Skipped {
+                reason: format!("needs {need}"),
+            });
         }
     }
     if step.action == Action::AlreadyPresent {
@@ -1330,8 +1530,12 @@ fn run_step(env: &Env, log: &mut Vec<String>, results: &[StepResult], step: &Pla
         // asked for it by name.
         "tmux" if step.action == Action::InstallForMe => return chain_step(env, log, "tmux"),
         "xvfb" if step.action == Action::InstallForMe => return chain_step(env, log, "xvfb"),
-        "tmux" => StepState::Skipped { reason: super::package_manager_tmux_command().to_string() },
-        _ => StepState::Skipped { reason: "nothing to do".into() },
+        "tmux" => StepState::Skipped {
+            reason: super::package_manager_tmux_command().to_string(),
+        },
+        _ => StepState::Skipped {
+            reason: "nothing to do".into(),
+        },
     };
     StepOutcome::plain(state)
 }
@@ -1407,7 +1611,9 @@ pub async fn plan_here_only(only: Option<Vec<String>>) -> Plan {
 /// those steps `needs`. A step another one depends on is never dropped — that
 /// would turn "skipped, needs pi" into a broken install.
 fn narrow(plan: &Plan, only: Option<Vec<String>>) -> Plan {
-    let Some(ticked) = only else { return plan.clone() };
+    let Some(ticked) = only else {
+        return plan.clone();
+    };
     // Close over dependencies: if a ticked step needs `pi`, and `pi` needs
     // `node`, all three run — in the planner's order.
     let mut keep: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1420,8 +1626,16 @@ fn narrow(plan: &Plan, only: Option<Vec<String>>) -> Plan {
             frontier.extend(step.needs.iter().cloned());
         }
     }
-    let steps: Vec<PlanStep> = plan.steps.iter().filter(|s| keep.contains(&s.id)).cloned().collect();
-    Plan { steps, ..plan.clone() }
+    let steps: Vec<PlanStep> = plan
+        .steps
+        .iter()
+        .filter(|s| keep.contains(&s.id))
+        .cloned()
+        .collect();
+    Plan {
+        steps,
+        ..plan.clone()
+    }
 }
 
 /// `setup_plan`: the plan for this PC (decision 4's items come back as
@@ -1440,17 +1654,39 @@ pub async fn setup_plan() -> Result<Plan, AppErrorDto> {
 pub fn plan_for_component(name: &str, d: &Detected) -> Plan {
     let (present, label, size_hint) = match name {
         "tmux" => (d.tmux == ComponentState::Ok, "tmux".to_string(), None),
-        "xvfb" => (d.xvfb == ComponentState::Ok, "Hidden browser display (Xvfb)".to_string(), Some("~3 MB".into())),
-        "herdr" => (d.herdr == ComponentState::Ok, "herdr (terminals)".to_string(), Some("~5 MB".into())),
+        "xvfb" => (
+            d.xvfb == ComponentState::Ok,
+            "Hidden browser display (Xvfb)".to_string(),
+            Some("~3 MB".into()),
+        ),
+        "herdr" => (
+            d.herdr == ComponentState::Ok,
+            "herdr (terminals)".to_string(),
+            Some("~5 MB".into()),
+        ),
         // pi gets the same treatment so the failure sheet's "Try another way"
         // has somewhere to go: N1 and N2 are its chain (see `methods_for`).
-        "pi" => (d.pi == ComponentState::Ok, "pi (coding agent)".to_string(), Some("~440 MB".into())),
+        "pi" => (
+            d.pi == ComponentState::Ok,
+            "pi (coding agent)".to_string(),
+            Some("~440 MB".into()),
+        ),
         // Anything we have no chain for is left alone rather than fake-planned.
         other => (true, other.to_string(), None),
     };
-    let action = if present { Action::AlreadyPresent } else { Action::InstallForMe };
+    let action = if present {
+        Action::AlreadyPresent
+    } else {
+        Action::InstallForMe
+    };
     Plan {
-        steps: vec![PlanStep { id: name.to_string(), label: label.clone(), action, size_hint, needs: vec![] }],
+        steps: vec![PlanStep {
+            id: name.to_string(),
+            label: label.clone(),
+            action,
+            size_hint,
+            needs: vec![],
+        }],
         needs_internet: vec![name.to_string()],
         offline: false,
         consent: format!("UniPi will try several ways to install {label}"),
@@ -1479,7 +1715,13 @@ pub async fn install_component_here(
     let _ = receiver.borrow_and_update();
     let send = channel.clone();
     Ok(installer
-        .run(&plan, move |p| { let _ = send.send(p); }, &mut receiver)
+        .run(
+            &plan,
+            move |p| {
+                let _ = send.send(p);
+            },
+            &mut receiver,
+        )
         .await)
 }
 
@@ -1508,7 +1750,13 @@ pub async fn setup_run(
     let _ = receiver.borrow_and_update();
     let send = channel.clone();
     Ok(installer
-        .run(&plan, move |p| { let _ = send.send(p); }, &mut receiver)
+        .run(
+            &plan,
+            move |p| {
+                let _ = send.send(p);
+            },
+            &mut receiver,
+        )
         .await)
 }
 
@@ -1554,7 +1802,10 @@ mod tests {
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::PermissionsExt;
-                        std::fs::set_permissions(dest.join("bin").join(bin), std::fs::Permissions::from_mode(0o755))?;
+                        std::fs::set_permissions(
+                            dest.join("bin").join(bin),
+                            std::fs::Permissions::from_mode(0o755),
+                        )?;
                     }
                 }
                 Ok(())
@@ -1580,7 +1831,13 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&pkexec, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        env_with_root(home, Some(RootHelper { bin: pkexec, shell_script: false }))
+        env_with_root(
+            home,
+            Some(RootHelper {
+                bin: pkexec,
+                shell_script: false,
+            }),
+        )
     }
 
     /// Runs `plan` with `env` and answers with the outcome.
@@ -1602,7 +1859,10 @@ mod tests {
     fn a_bare_pc_installs_everything_in_order() {
         let plan = plan_for(&nothing_installed(), false);
         assert!(!plan.is_noop());
-        assert_eq!(plan.needs_internet, vec!["node", "pi", "agent-browser", "unipi", "herdr"]);
+        assert_eq!(
+            plan.needs_internet,
+            vec!["node", "pi", "agent-browser", "unipi", "herdr"]
+        );
         assert_eq!(plan.step("pi").unwrap().needs, vec!["node"]);
         assert_eq!(plan.step("agent-browser").unwrap().needs, vec!["pi"]);
         assert_eq!(plan.step("unipi").unwrap().needs, vec!["pi"]);
@@ -1615,7 +1875,10 @@ mod tests {
 
     #[test]
     fn a_newer_node_is_left_alone_an_older_one_is_an_update() {
-        assert_eq!(plan_for(&ready(), false).step("node").unwrap().action, Action::AlreadyPresent);
+        assert_eq!(
+            plan_for(&ready(), false).step("node").unwrap().action,
+            Action::AlreadyPresent
+        );
         let mut d = ready();
         d.node = ComponentState::Outdated;
         let plan = plan_for(&d, false);
@@ -1635,12 +1898,25 @@ mod tests {
     #[test]
     fn xvfb_is_only_installed_when_asked_for() {
         // UNI-299: never in the default plan; "Install for me" plans one step.
-        let d = Detected { xvfb: ComponentState::Missing, ..Default::default() };
-        assert!(plan_for(&d, true).step("xvfb").is_none() && plan_for(&d, false).step("xvfb").is_none());
+        let d = Detected {
+            xvfb: ComponentState::Missing,
+            ..Default::default()
+        };
+        assert!(
+            plan_for(&d, true).step("xvfb").is_none() && plan_for(&d, false).step("xvfb").is_none()
+        );
         let plan = plan_for_component("xvfb", &d);
         assert_eq!(plan.step("xvfb").unwrap().action, Action::InstallForMe);
-        let have = Detected { xvfb: ComponentState::Ok, ..Default::default() };
-        assert_ne!(plan_for_component("xvfb", &have).step("xvfb").map(|s| s.action.clone()), Some(Action::InstallForMe));
+        let have = Detected {
+            xvfb: ComponentState::Ok,
+            ..Default::default()
+        };
+        assert_ne!(
+            plan_for_component("xvfb", &have)
+                .step("xvfb")
+                .map(|s| s.action.clone()),
+            Some(Action::InstallForMe)
+        );
     }
 
     #[test]
@@ -1654,9 +1930,15 @@ mod tests {
         // Already there: left alone, like everything else decision 4 covers.
         let mut d = ready();
         d.agent_browser = ComponentState::Missing;
-        assert_eq!(plan_for(&d, false).step("agent-browser").unwrap().action, Action::Install);
+        assert_eq!(
+            plan_for(&d, false).step("agent-browser").unwrap().action,
+            Action::Install
+        );
         d.agent_browser = ComponentState::Ok;
-        assert_eq!(plan_for(&d, false).step("agent-browser").unwrap().action, Action::AlreadyPresent);
+        assert_eq!(
+            plan_for(&d, false).step("agent-browser").unwrap().action,
+            Action::AlreadyPresent
+        );
     }
 
     #[tokio::test]
@@ -1669,17 +1951,25 @@ mod tests {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(node_dir.join(bin), std::fs::Permissions::from_mode(0o755)).unwrap();
+                std::fs::set_permissions(
+                    node_dir.join(bin),
+                    std::fs::Permissions::from_mode(0o755),
+                )
+                .unwrap();
             }
         }
         #[cfg(unix)]
         {
             use std::os::unix::fs::symlink;
-            let _ = symlink(home.path().join(".local/share/pi-node/22.19.0"), home.path().join(".local/share/pi-node/current"));
+            let _ = symlink(
+                home.path().join(".local/share/pi-node/22.19.0"),
+                home.path().join(".local/share/pi-node/current"),
+            );
         }
         let mut log = Vec::new();
         let mut e = env(home.path());
-        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen: Arc<std::sync::Mutex<Vec<Vec<String>>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
         let seen2 = seen.clone();
         e.run = Arc::new(move |_bin, args, _env| {
             seen2.lock().unwrap().push(args.to_vec());
@@ -1689,7 +1979,9 @@ mod tests {
         assert_eq!(state, StepState::Done);
         let calls = seen.lock().unwrap();
         let prefix = pi_npm_prefix(home.path());
-        assert!(calls[0].iter().any(|a| a == &format!("--prefix={}", prefix.display())));
+        assert!(calls[0]
+            .iter()
+            .any(|a| a == &format!("--prefix={}", prefix.display())));
         assert!(calls[0].contains(&"agent-browser".to_string()));
         // Verified with `--version`, never `agent-browser install` (that would
         // download its own Chrome — the host's CloakBrowser is used instead).
@@ -1702,10 +1994,18 @@ mod tests {
         let mut d = nothing_installed();
         d.unipi_version = Some("3.0.0-alpha.41".into());
         d.unipi_spec = Some("npm:@pi-unipi/unipi@alpha".into());
-        assert!(plan_for(&d, false).step("unipi").unwrap().label.contains("alpha"));
+        assert!(plan_for(&d, false)
+            .step("unipi")
+            .unwrap()
+            .label
+            .contains("alpha"));
         let mut d = nothing_installed();
         d.unipi_version = Some("3.0.0".into());
-        assert!(plan_for(&d, false).step("unipi").unwrap().label.contains("latest"));
+        assert!(plan_for(&d, false)
+            .step("unipi")
+            .unwrap()
+            .label
+            .contains("latest"));
     }
 
     #[test]
@@ -1714,15 +2014,24 @@ mod tests {
         // sheet's "Try another way" runs this list, so it must exist and be
         // ordered.
         let pi = methods_for("pi");
-        assert_eq!(pi.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(), vec!["pi.dev installer", "npm"]);
+        assert_eq!(
+            pi.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+            vec!["pi.dev installer", "npm"]
+        );
         assert!(pi.iter().all(|m| !m.root), "neither way needs root");
         // …and it is a plan, so `install_component_here("pi")` really runs it.
         let mut d = nothing_installed();
         d.pi = ComponentState::Missing;
-        assert_eq!(plan_for_component("pi", &d).step("pi").unwrap().action, Action::InstallForMe);
+        assert_eq!(
+            plan_for_component("pi", &d).step("pi").unwrap().action,
+            Action::InstallForMe
+        );
         let mut d = nothing_installed();
         d.pi = ComponentState::Ok;
-        assert_eq!(plan_for_component("pi", &d).step("pi").unwrap().action, Action::AlreadyPresent);
+        assert_eq!(
+            plan_for_component("pi", &d).step("pi").unwrap().action,
+            Action::AlreadyPresent
+        );
     }
 
     #[tokio::test]
@@ -1735,7 +2044,11 @@ mod tests {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(node.join("bin").join(bin), std::fs::Permissions::from_mode(0o755)).unwrap();
+                std::fs::set_permissions(
+                    node.join("bin").join(bin),
+                    std::fs::Permissions::from_mode(0o755),
+                )
+                .unwrap();
             }
         }
         #[cfg(unix)]
@@ -1752,7 +2065,13 @@ mod tests {
                 (Some(0), String::new())
             }
         });
-        let mut plan = plan_for_component("pi", &Detected { pi: ComponentState::Missing, ..Default::default() });
+        let mut plan = plan_for_component(
+            "pi",
+            &Detected {
+                pi: ComponentState::Missing,
+                ..Default::default()
+            },
+        );
         plan.steps.retain(|s| s.id == "pi");
         let installer = Installer::new(e);
         let (_tx, mut rx) = watch::channel(false);
@@ -1760,7 +2079,10 @@ mod tests {
         let step = &outcome.steps[0];
         assert_eq!(step.state, StepState::Done, "{outcome:?}");
         assert_eq!(step.attempted, vec!["pi.dev installer", "npm"]);
-        assert_eq!(step.fallback_command.as_deref(), Some("npm install --global --ignore-scripts @earendil-works/pi-coding-agent"));
+        assert_eq!(
+            step.fallback_command.as_deref(),
+            Some("npm install --global --ignore-scripts @earendil-works/pi-coding-agent")
+        );
     }
 
     #[test]
@@ -1771,21 +2093,34 @@ mod tests {
         // Only Node and pi ticked: the rest is really gone, so an unticked
         // component is not installed behind the user's back.
         let picked = narrow(&plan, Some(vec!["node".into(), "pi".into()]));
-        assert_eq!(picked.steps.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), vec!["node", "pi"]);
+        assert_eq!(
+            picked
+                .steps
+                .iter()
+                .map(|s| s.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["node", "pi"]
+        );
         assert!(picked.step("herdr").is_none() && picked.step("tmux").is_none());
         // UniPi needs pi: ticking only UniPi pulls the step it needs in, rather
         // than failing with "skipped, needs pi".
         let unipi = narrow(&plan, Some(vec!["unipi".into()]));
         let ids: Vec<&str> = unipi.steps.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, vec!["node", "pi", "unipi"], "dependencies come first");
-        assert!(!unipi.needs_internet.is_empty(), "the consent line still lists what needs the network");
+        assert!(
+            !unipi.needs_internet.is_empty(),
+            "the consent line still lists what needs the network"
+        );
     }
 
     #[test]
     fn offline_marks_the_steps_that_need_the_network() {
         let plan = plan_for(&nothing_installed(), true);
         assert!(plan.offline);
-        assert_eq!(plan.needs_internet, vec!["node", "pi", "agent-browser", "unipi", "herdr"]);
+        assert_eq!(
+            plan.needs_internet,
+            vec!["node", "pi", "agent-browser", "unipi", "herdr"]
+        );
     }
 
     #[tokio::test]
@@ -1826,11 +2161,19 @@ mod tests {
         let outcome = installer.run(&plan, |p| seen.push(p), &mut rx).await;
         assert!(!outcome.cancelled);
         assert!(
-            outcome.steps.iter().all(|s| matches!(s.state, StepState::Done | StepState::Skipped { .. })),
+            outcome
+                .steps
+                .iter()
+                .all(|s| matches!(s.state, StepState::Done | StepState::Skipped { .. })),
             "{outcome:?}"
         );
-        assert!(outcome.steps.iter().any(|s| s.step == "node" && s.state == StepState::Done));
-        assert!(seen.iter().any(|p| p.step == "pi" && p.state == StepState::Running));
+        assert!(outcome
+            .steps
+            .iter()
+            .any(|s| s.step == "node" && s.state == StepState::Done));
+        assert!(seen
+            .iter()
+            .any(|p| p.step == "pi" && p.state == StepState::Running));
         assert!(home.path().join(".unipi/logs/setup-1.log").exists());
     }
 
@@ -1845,7 +2188,10 @@ mod tests {
         let (_tx, mut rx) = watch::channel(false);
         let outcome = installer.run(&plan, |_| {}, &mut rx).await;
         let node = outcome.steps.iter().find(|s| s.step == "node").unwrap();
-        assert!(matches!(&node.state, StepState::Failed { message } if message.contains("checksum")), "{node:?}");
+        assert!(
+            matches!(&node.state, StepState::Failed { message } if message.contains("checksum")),
+            "{node:?}"
+        );
         assert!(!home.path().join(".local/share/pi-node/22.19.0").exists());
         assert!(!home.path().join(".tmp-node-22.19.0").exists());
     }
@@ -1858,7 +2204,10 @@ mod tests {
         let (tx, mut rx) = watch::channel(true);
         let outcome = installer.run(&plan, |_| {}, &mut rx).await;
         assert!(outcome.cancelled);
-        assert!(outcome.steps.iter().all(|s| matches!(s.state, StepState::Skipped { .. })));
+        assert!(outcome
+            .steps
+            .iter()
+            .all(|s| matches!(s.state, StepState::Skipped { .. })));
         drop(tx);
     }
 
@@ -1871,11 +2220,31 @@ mod tests {
         let installer = Installer::new(e);
         let (_tx, mut rx) = watch::channel(false);
         let outcome = installer.run(&plan, |_| {}, &mut rx).await;
-        let get = |id: &str| outcome.steps.iter().find(|s| s.step == id).unwrap().state.clone();
-        assert!(matches!(get("node"), StepState::Failed { .. }), "{outcome:?}");
-        assert!(matches!(get("pi"), StepState::Skipped { reason } if reason.contains("node")), "{outcome:?}");
-        assert!(matches!(get("unipi"), StepState::Skipped { reason } if reason.contains("pi")), "{outcome:?}");
-        assert!(matches!(get("kanboard"), StepState::Skipped { reason } if reason.contains("unipi")), "{outcome:?}");
+        let get = |id: &str| {
+            outcome
+                .steps
+                .iter()
+                .find(|s| s.step == id)
+                .unwrap()
+                .state
+                .clone()
+        };
+        assert!(
+            matches!(get("node"), StepState::Failed { .. }),
+            "{outcome:?}"
+        );
+        assert!(
+            matches!(get("pi"), StepState::Skipped { reason } if reason.contains("node")),
+            "{outcome:?}"
+        );
+        assert!(
+            matches!(get("unipi"), StepState::Skipped { reason } if reason.contains("pi")),
+            "{outcome:?}"
+        );
+        assert!(
+            matches!(get("kanboard"), StepState::Skipped { reason } if reason.contains("unipi")),
+            "{outcome:?}"
+        );
     }
 
     #[tokio::test]
@@ -1888,7 +2257,10 @@ mod tests {
         let outcome = installer.run(&plan, |_| {}, &mut rx).await;
         // Only tmux is skipped — it is the one step we never do ourselves.
         assert!(
-            outcome.steps.iter().all(|s| s.state == StepState::Done || s.step == "tmux"),
+            outcome
+                .steps
+                .iter()
+                .all(|s| s.state == StepState::Done || s.step == "tmux"),
             "{outcome:?}"
         );
         assert!(!home.path().join(".local").exists());
@@ -1899,15 +2271,27 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let node_dir = home.path().join(".local/share/pi-node/22.19.0");
         std::fs::create_dir_all(node_dir.join("bin")).unwrap();
-        std::fs::write(node_dir.join("bin/node"), "#!/bin/sh
-").unwrap();
-        std::fs::write(node_dir.join("bin/npm"), "#!/bin/sh
-").unwrap();
+        std::fs::write(
+            node_dir.join("bin/node"),
+            "#!/bin/sh
+",
+        )
+        .unwrap();
+        std::fs::write(
+            node_dir.join("bin/npm"),
+            "#!/bin/sh
+",
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             for bin in ["node", "npm"] {
-                std::fs::set_permissions(node_dir.join("bin").join(bin), std::fs::Permissions::from_mode(0o755)).unwrap();
+                std::fs::set_permissions(
+                    node_dir.join("bin").join(bin),
+                    std::fs::Permissions::from_mode(0o755),
+                )
+                .unwrap();
             }
             use std::os::unix::fs::symlink;
             symlink(&node_dir, home.path().join(".local/share/pi-node/current")).unwrap();
@@ -1930,8 +2314,16 @@ mod tests {
         let outcome = installer.run(&plan, |_| {}, &mut rx).await;
         assert_eq!(outcome.steps[0].state, StepState::Done, "{outcome:?}");
         let invoked = calls.lock().unwrap();
-        assert!(invoked.iter().any(|a| a.iter().any(|x| x.contains(PI_INSTALLER_URL))), "N1 was tried");
-        assert!(invoked.iter().any(|a| a.iter().any(|x| x == "install")), "N2 was tried");
+        assert!(
+            invoked
+                .iter()
+                .any(|a| a.iter().any(|x| x.contains(PI_INSTALLER_URL))),
+            "N1 was tried"
+        );
+        assert!(
+            invoked.iter().any(|a| a.iter().any(|x| x == "install")),
+            "N2 was tried"
+        );
     }
 
     // ------------------------------------------------ decision 8: the chain
@@ -1951,7 +2343,10 @@ mod tests {
         // herdr, preselected, is a real install; tmux is not, whatever the PC has.
         let mut d = nothing_installed();
         d.herdr = ComponentState::Missing;
-        assert_eq!(plan_for(&d, false).step("herdr").unwrap().action, Action::Install);
+        assert_eq!(
+            plan_for(&d, false).step("herdr").unwrap().action,
+            Action::Install
+        );
     }
 
     #[test]
@@ -1965,7 +2360,10 @@ mod tests {
         // `~/.local/bin`.
         assert!(herdr.iter().all(|m| !m.root));
         assert!(herdr[1].diy.contains("~/.local/bin/herdr"));
-        assert_eq!(herdr[0].kind, MethodKind::Script(format!("curl -fsSL {HERDR_INSTALLER_URL} | sh")));
+        assert_eq!(
+            herdr[0].kind,
+            MethodKind::Script(format!("curl -fsSL {HERDR_INSTALLER_URL} | sh"))
+        );
         assert_eq!(herdr[1].kind, MethodKind::StaticBinary);
 
         let tmux = methods_for("tmux");
@@ -1991,19 +2389,41 @@ mod tests {
     #[test]
     fn the_install_argv_per_package_manager_and_per_os() {
         assert_eq!(PkgManager::Apt.program(), "apt-get");
-        assert_eq!(PkgManager::Apt.install_args("tmux"), vec!["install", "-y", "tmux"]);
-        assert_eq!(PkgManager::Dnf.install_args("tmux"), vec!["install", "-y", "tmux"]);
-        assert_eq!(PkgManager::Pacman.install_args("tmux"), vec!["-S", "--noconfirm", "tmux"]);
-        assert_eq!(PkgManager::Brew.install_args("tmux"), vec!["install", "tmux"]);
+        assert_eq!(
+            PkgManager::Apt.install_args("tmux"),
+            vec!["install", "-y", "tmux"]
+        );
+        assert_eq!(
+            PkgManager::Dnf.install_args("tmux"),
+            vec!["install", "-y", "tmux"]
+        );
+        assert_eq!(
+            PkgManager::Pacman.install_args("tmux"),
+            vec!["-S", "--noconfirm", "tmux"]
+        );
+        assert_eq!(
+            PkgManager::Brew.install_args("tmux"),
+            vec!["install", "tmux"]
+        );
         assert!(!PkgManager::Brew.needs_root());
-        assert!(PkgManager::Apt.needs_root() && PkgManager::Dnf.needs_root() && PkgManager::Pacman.needs_root());
+        assert!(
+            PkgManager::Apt.needs_root()
+                && PkgManager::Dnf.needs_root()
+                && PkgManager::Pacman.needs_root()
+        );
 
         // Linux: `pkexec` takes the command as argv, unchanged.
-        let pkexec = RootHelper { bin: PathBuf::from("/usr/bin/pkexec"), shell_script: false };
+        let pkexec = RootHelper {
+            bin: PathBuf::from("/usr/bin/pkexec"),
+            shell_script: false,
+        };
         let apt = manager_command(&PkgManager::Apt, "tmux");
         assert_eq!(pkexec.argv(&apt), apt, "pkexec apt-get install -y tmux");
         // macOS: osascript wraps it in `with administrator privileges`.
-        let osascript = RootHelper { bin: PathBuf::from("/usr/bin/osascript"), shell_script: true };
+        let osascript = RootHelper {
+            bin: PathBuf::from("/usr/bin/osascript"),
+            shell_script: true,
+        };
         assert_eq!(
             osascript.argv(&manager_command(&PkgManager::Brew, "tmux")),
             vec![
@@ -2040,7 +2460,10 @@ mod tests {
         let standard = [PathBuf::from("/usr/bin")];
         let expected = PathBuf::from("/usr/bin/pkexec");
         if expected.exists() {
-            assert_eq!(pkexec_in(None, &standard.iter().map(Path::new).collect::<Vec<_>>()), Some(expected));
+            assert_eq!(
+                pkexec_in(None, &standard.iter().map(Path::new).collect::<Vec<_>>()),
+                Some(expected)
+            );
         }
     }
 
@@ -2051,7 +2474,9 @@ mod tests {
         let seen = calls.clone();
         let mut e = env(home.path());
         e.run = Arc::new(move |bin, args, _| {
-            seen.lock().unwrap().push((bin.to_path_buf(), args.to_vec()));
+            seen.lock()
+                .unwrap()
+                .push((bin.to_path_buf(), args.to_vec()));
             (Some(0), String::new())
         });
         e.root = None;
@@ -2063,7 +2488,10 @@ mod tests {
             other => panic!("a missing pkexec is not a failure: {other:?}"),
         };
         assert!(reason.contains(&fallback_command("tmux")), "{reason}");
-        assert_eq!(tmux.fallback_command.as_deref(), Some(fallback_command("tmux").as_str()));
+        assert_eq!(
+            tmux.fallback_command.as_deref(),
+            Some(fallback_command("tmux").as_str())
+        );
         assert!(tmux.attempted.is_empty());
         assert!(calls.lock().unwrap().is_empty(), "nothing was run");
     }
@@ -2075,17 +2503,24 @@ mod tests {
         let seen = calls.clone();
         let mut e = with_pkexec(home.path());
         e.run = Arc::new(move |bin, args, _| {
-            seen.lock().unwrap().push((bin.to_path_buf(), args.to_vec()));
+            seen.lock()
+                .unwrap()
+                .push((bin.to_path_buf(), args.to_vec()));
             (Some(100), "polkit-agent: not authorised".into())
         });
         let plan = plan_for_component("tmux", &nothing_installed());
         let outcome = run(e, &plan).await;
         let tmux = outcome.steps.iter().find(|s| s.step == "tmux").unwrap();
-        let StepState::Failed { message } = &tmux.state else { panic!("{outcome:?}") };
+        let StepState::Failed { message } = &tmux.state else {
+            panic!("{outcome:?}")
+        };
         assert!(message.contains("not authorised"), "{message}");
         // The fallback command is carried, so the UI can offer Copy.
         assert!(message.contains(&fallback_command("tmux")), "{message}");
-        assert_eq!(tmux.fallback_command.as_deref(), Some(fallback_command("tmux").as_str()));
+        assert_eq!(
+            tmux.fallback_command.as_deref(),
+            Some(fallback_command("tmux").as_str())
+        );
         // `pkexec apt-get install -y tmux`, through the stub.
         let manager = PkgManager::detect().expect("this PC's package manager is known");
         let invoked = calls.lock().unwrap();
@@ -2104,7 +2539,9 @@ mod tests {
         let mut e = env(home.path());
         // herdr's installer cannot be reached…
         e.run = Arc::new(move |bin, args, _| {
-            seen.lock().unwrap().push((bin.to_path_buf(), args.to_vec()));
+            seen.lock()
+                .unwrap()
+                .push((bin.to_path_buf(), args.to_vec()));
             if args.iter().any(|a| a.contains(HERDR_INSTALLER_URL)) {
                 (None, "curl: (6) could not resolve host".into())
             } else {
@@ -2114,7 +2551,10 @@ mod tests {
         // …so the static release binary is downloaded instead.
         e.download = Arc::new(move |url| {
             urls.lock().unwrap().push(url.to_string());
-            Some((b"#!/bin/sh\necho herdr 0.9.0\n".to_vec(), "decaf".to_string()))
+            Some((
+                b"#!/bin/sh\necho herdr 0.9.0\n".to_vec(),
+                "decaf".to_string(),
+            ))
         });
         let plan = plan_for_component("herdr", &nothing_installed());
         assert_eq!(plan.steps.len(), 1);
@@ -2122,10 +2562,16 @@ mod tests {
         let outcome = run(e, &plan).await;
         let herdr = outcome.steps.iter().find(|s| s.step == "herdr").unwrap();
         assert_eq!(herdr.state, StepState::Done, "{outcome:?}");
-        assert_eq!(herdr.attempted, vec!["herdr installer", "static binary in ~/.local/bin"]);
+        assert_eq!(
+            herdr.attempted,
+            vec!["herdr installer", "static binary in ~/.local/bin"]
+        );
         // The asset landed in `~/.local/bin`, 0755, and answers --version.
         let bin = crate::host_supervisor::bin_dir(home.path()).join("herdr");
-        assert_eq!(std::fs::read_to_string(&bin).unwrap(), "#!/bin/sh\necho herdr 0.9.0\n");
+        assert_eq!(
+            std::fs::read_to_string(&bin).unwrap(),
+            "#!/bin/sh\necho herdr 0.9.0\n"
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -2135,10 +2581,17 @@ mod tests {
             assert!(!bin.with_file_name(".herdr.new").exists());
         }
         let invoked = calls.lock().unwrap();
-        assert!(invoked.iter().any(|(bin, args)| bin.file_name() == Some("herdr".as_ref())
-            && args.iter().any(|a| a == "--version")),
-            "{invoked:?}");
-        assert_eq!(*downloads.lock().unwrap(), vec![format!("{HERDR_RELEASES}/{}", herdr_asset())]);
+        assert!(
+            invoked
+                .iter()
+                .any(|(bin, args)| bin.file_name() == Some("herdr".as_ref())
+                    && args.iter().any(|a| a == "--version")),
+            "{invoked:?}"
+        );
+        assert_eq!(
+            *downloads.lock().unwrap(),
+            vec![format!("{HERDR_RELEASES}/{}", herdr_asset())]
+        );
     }
 
     #[tokio::test]
@@ -2150,7 +2603,9 @@ mod tests {
         let plan = plan_for_component("herdr", &nothing_installed());
         let outcome = run(e, &plan).await;
         let herdr = outcome.steps.iter().find(|s| s.step == "herdr").unwrap();
-        let StepState::Failed { message } = &herdr.state else { panic!("{outcome:?}") };
+        let StepState::Failed { message } = &herdr.state else {
+            panic!("{outcome:?}")
+        };
         // The last error, then the command to run by hand.
         assert!(message.contains("could not download"), "{message}");
         assert!(message.contains("herdr.dev/install.sh"), "{message}");
@@ -2160,8 +2615,14 @@ mod tests {
         );
         assert_eq!(herdr.attempted.len(), 2);
         // Nothing half-installed: a failed download writes nothing.
-        assert!(!crate::host_supervisor::bin_dir(home.path()).join("herdr").exists());
-        assert!(herdr.log_tail.iter().any(|l| l.contains("downloading")), "{:?}", herdr.log_tail);
+        assert!(!crate::host_supervisor::bin_dir(home.path())
+            .join("herdr")
+            .exists());
+        assert!(
+            herdr.log_tail.iter().any(|l| l.contains("downloading")),
+            "{:?}",
+            herdr.log_tail
+        );
     }
 
     #[test]
@@ -2172,20 +2633,41 @@ mod tests {
         assert!(plan.needs_internet.contains(&"herdr".to_string()));
         assert!(!plan.is_noop());
         // Already there: nothing to do.
-        assert_eq!(plan_for_component("herdr", &ready()).step("herdr").unwrap().action, Action::AlreadyPresent);
+        assert_eq!(
+            plan_for_component("herdr", &ready())
+                .step("herdr")
+                .unwrap()
+                .action,
+            Action::AlreadyPresent
+        );
         // tmux, asked for by name, becomes a chain step.
         let mut d = nothing_installed();
-        assert_eq!(plan_for_component("tmux", &d).step("tmux").unwrap().action, Action::InstallForMe);
+        assert_eq!(
+            plan_for_component("tmux", &d).step("tmux").unwrap().action,
+            Action::InstallForMe
+        );
         d.tmux = ComponentState::Ok;
-        assert_eq!(plan_for_component("tmux", &d).step("tmux").unwrap().action, Action::AlreadyPresent);
+        assert_eq!(
+            plan_for_component("tmux", &d).step("tmux").unwrap().action,
+            Action::AlreadyPresent
+        );
         // A component with no chain is left alone rather than fake-planned.
-        assert_eq!(plan_for_component("node", &nothing_installed()).step("node").unwrap().action, Action::AlreadyPresent);
+        assert_eq!(
+            plan_for_component("node", &nothing_installed())
+                .step("node")
+                .unwrap()
+                .action,
+            Action::AlreadyPresent
+        );
     }
 
     #[test]
     fn node_layout_matches_pis_own_installer() {
         let home = Path::new("/home/t");
-        assert_eq!(node_dir(home, "22.19.0"), home.join(".local/share/pi-node/22.19.0"));
+        assert_eq!(
+            node_dir(home, "22.19.0"),
+            home.join(".local/share/pi-node/22.19.0")
+        );
         assert_eq!(pi_npm_prefix(home), home.join(".pi/agent/npm"));
         assert_eq!(log_path(home, 7), home.join(".unipi/logs/setup-7.log"));
         let tarball = node_tarball_name("22.19.0");

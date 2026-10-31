@@ -53,8 +53,14 @@ pub fn status_line(needs: u32, running: u32) -> String {
     match (needs, running) {
         (0, 0) => "All quiet".to_string(),
         (0, r) => format!("{r} {} working", if r == 1 { "agent" } else { "agents" }),
-        (n, 0) => format!("{n} {} you", if n == 1 { "agent needs" } else { "agents need" }),
-        (n, r) => format!("{n} {} you · {r} working", if n == 1 { "agent needs" } else { "agents need" }),
+        (n, 0) => format!(
+            "{n} {} you",
+            if n == 1 { "agent needs" } else { "agents need" }
+        ),
+        (n, r) => format!(
+            "{n} {} you · {r} working",
+            if n == 1 { "agent needs" } else { "agents need" }
+        ),
     }
 }
 
@@ -65,12 +71,22 @@ pub fn tooltip(status: &str) -> String {
 }
 
 #[cfg(desktop)]
-fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: bool) -> tauri::Result<tauri::menu::Menu<R>> {
+fn build_menu<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    visible: bool,
+) -> tauri::Result<tauri::menu::Menu<R>> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     let status_item = MenuItem::with_id(app, "status", current_line(), false, None::<&str>)?;
     let toggle = MenuItem::with_id(app, "toggle", toggle_label(visible), true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let mascot = tauri::menu::CheckMenuItem::with_id(app, "mascot", "Mascot window", true, mascot_visible(app), None::<&str>)?;
+    let mascot = tauri::menu::CheckMenuItem::with_id(
+        app,
+        "mascot",
+        "Mascot window",
+        true,
+        mascot_visible(app),
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quit UniPi", true, None::<&str>)?;
     Menu::with_items(app, &[&status_item, &sep, &toggle, &mascot, &quit])
 }
@@ -78,13 +94,17 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: bool) -> ta
 #[cfg(desktop)]
 fn main_visible<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
     use tauri::Manager;
-    app.get_webview_window("main").and_then(|w| w.is_visible().ok()).unwrap_or(true)
+    app.get_webview_window("main")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(true)
 }
 
 #[cfg(desktop)]
 fn toggle_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
-    let Some(window) = app.get_webview_window("main") else { return };
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
     let known = VISIBLE.lock().ok().and_then(|k| *k);
     let show = toggle_shows(known.unwrap_or_else(|| window.is_visible().unwrap_or(true)));
     if show {
@@ -126,7 +146,11 @@ static PHONES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::
 #[cfg(desktop)]
 fn current_line() -> String {
     use std::sync::atomic::Ordering::Relaxed;
-    tray_line(PHONES.load(Relaxed), RUNNING.load(Relaxed), NEEDS.load(Relaxed))
+    tray_line(
+        PHONES.load(Relaxed),
+        RUNNING.load(Relaxed),
+        NEEDS.load(Relaxed),
+    )
 }
 
 /// Sets how many phones are paired (from `host_runtime`, §5.3).
@@ -141,7 +165,9 @@ pub fn set_phone_count<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paired: usi
 #[cfg(desktop)]
 pub fn hide_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
-    let Some(window) = app.get_webview_window("main") else { return };
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
     let _ = window.hide();
     refresh_menu_as(app, Some(false));
 }
@@ -157,7 +183,9 @@ static VISIBLE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
 
 #[cfg(desktop)]
 fn refresh_menu_as<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: Option<bool>) {
-    let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
     let line = current_line();
     let visible = match visible {
         Some(v) => {
@@ -166,7 +194,11 @@ fn refresh_menu_as<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: Option
             }
             v
         }
-        None => VISIBLE.lock().ok().and_then(|k| *k).unwrap_or_else(|| main_visible(app)),
+        None => VISIBLE
+            .lock()
+            .ok()
+            .and_then(|k| *k)
+            .unwrap_or_else(|| main_visible(app)),
     };
     if let Ok(menu) = build_menu(app, visible) {
         let _ = tray.set_menu(Some(menu));
@@ -192,7 +224,11 @@ pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
             "toggle" => toggle_main(app),
             "mascot" => {
                 let show = !mascot_visible(app);
-                let _ = set_mascot_window(app, show, MASCOT_CRAB.load(std::sync::atomic::Ordering::Relaxed));
+                let _ = set_mascot_window(
+                    app,
+                    show,
+                    MASCOT_CRAB.load(std::sync::atomic::Ordering::Relaxed),
+                );
                 use tauri::Emitter;
                 let _ = app.emit_to("main", "mascot-window-changed", show);
                 refresh_menu(app);
@@ -202,7 +238,12 @@ pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
         })
         .on_tray_icon_event(|tray, event| {
             // Windows/macOS: a left click shows/hides (Linux trays only open the menu).
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
                 toggle_main(tray.app_handle());
             }
         });
@@ -228,7 +269,8 @@ pub const MASCOT_CRAB_SIZES: [u32; 3] = [72, 96, 128];
 pub const MASCOT_CRAB_DEFAULT: u32 = 96;
 /// The last size the page asked for (the tray toggle reuses it).
 #[cfg_attr(not(desktop), allow(dead_code))]
-static MASCOT_CRAB: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(MASCOT_CRAB_DEFAULT);
+static MASCOT_CRAB: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(MASCOT_CRAB_DEFAULT);
 /// Room for the reply bubble to the crab's left.
 const MASCOT_BUBBLE_ROOM: f64 = 276.0;
 
@@ -237,7 +279,11 @@ const MASCOT_BUBBLE_ROOM: f64 = 276.0;
 /// Everything else is transparent.
 #[cfg_attr(not(desktop), allow(dead_code))]
 pub fn mascot_size(crab: u32) -> (f64, f64) {
-    let crab = if MASCOT_CRAB_SIZES.contains(&crab) { crab } else { MASCOT_CRAB_DEFAULT } as f64;
+    let crab = if MASCOT_CRAB_SIZES.contains(&crab) {
+        crab
+    } else {
+        MASCOT_CRAB_DEFAULT
+    } as f64;
     let crab_h = (crab * 20.0 / 24.0).round();
     (crab + 16.0 + MASCOT_BUBBLE_ROOM, (crab_h + 16.0).max(104.0))
 }
@@ -254,11 +300,17 @@ pub fn mascot_position(monitor: (f64, f64), origin: (f64, f64), size: (f64, f64)
 #[cfg(desktop)]
 fn mascot_visible<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
     use tauri::Manager;
-    app.get_webview_window(MASCOT_LABEL).and_then(|w| w.is_visible().ok()).unwrap_or(false)
+    app.get_webview_window(MASCOT_LABEL)
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false)
 }
 
 #[cfg(desktop)]
-fn set_mascot_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>, show: bool, crab: u32) -> tauri::Result<bool> {
+fn set_mascot_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    show: bool,
+    crab: u32,
+) -> tauri::Result<bool> {
     use tauri::Manager;
     let size = mascot_size(crab);
     if let Some(window) = app.get_webview_window(MASCOT_LABEL) {
@@ -270,7 +322,10 @@ fn set_mascot_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>, show: bool, c
                 if (inner.width - size.0).abs() > 0.5 || (inner.height - size.1).abs() > 0.5 {
                     let pos = pos.to_logical::<f64>(scale);
                     let _ = window.set_size(tauri::LogicalSize::new(size.0, size.1));
-                    let _ = window.set_position(tauri::LogicalPosition::new(pos.x + inner.width - size.0, pos.y + inner.height - size.1));
+                    let _ = window.set_position(tauri::LogicalPosition::new(
+                        pos.x + inner.width - size.0,
+                        pos.y + inner.height - size.1,
+                    ));
                 }
             }
             window.show()?;
@@ -285,24 +340,34 @@ fn set_mascot_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>, show: bool, c
     // UNI-255: fully transparent — no decorations, no shadow, transparent
     // webview + RGBA visual (tao picks the screen's RGBA visual for a
     // transparent window on Linux; needs a compositor, which GNOME always has).
-    let mut builder = tauri::WebviewWindowBuilder::new(app, MASCOT_LABEL, tauri::WebviewUrl::App("mascot.html".into()))
-        .title("Unicrab")
-        .inner_size(size.0, size.1)
-        .resizable(false)
-        .decorations(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .shadow(false)
-        .focused(false);
+    let mut builder = tauri::WebviewWindowBuilder::new(
+        app,
+        MASCOT_LABEL,
+        tauri::WebviewUrl::App("mascot.html".into()),
+    )
+    .title("Unicrab")
+    .inner_size(size.0, size.1)
+    .resizable(false)
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .shadow(false)
+    .focused(false);
     #[cfg(not(target_os = "macos"))]
     {
-        builder = builder.transparent(true).background_color(tauri::window::Color(0, 0, 0, 0));
+        builder = builder
+            .transparent(true)
+            .background_color(tauri::window::Color(0, 0, 0, 0));
     }
     if let Some(monitor) = app.primary_monitor().ok().flatten() {
         let scale = monitor.scale_factor();
         let size = monitor.size().to_logical::<f64>(scale);
         let origin = monitor.position().to_logical::<f64>(scale);
-        let (x, y) = mascot_position((size.width, size.height), (origin.x, origin.y), mascot_size(crab));
+        let (x, y) = mascot_position(
+            (size.width, size.height),
+            (origin.x, origin.y),
+            mascot_size(crab),
+        );
         builder = builder.position(x, y);
     }
     builder.build()?;
@@ -312,12 +377,22 @@ fn set_mascot_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>, show: bool, c
 /// Shows (creates) or closes the always-on-top mascot window, sized for the
 /// crab width `size` (UNI-255; default 96). Answers whether it's shown.
 #[tauri::command]
-pub fn mascot_window(app: tauri::AppHandle, show: bool, size: Option<u32>) -> Result<bool, AppErrorDto> {
+pub fn mascot_window(
+    app: tauri::AppHandle,
+    show: bool,
+    size: Option<u32>,
+) -> Result<bool, AppErrorDto> {
     #[cfg(desktop)]
     {
         let crab = size.unwrap_or(MASCOT_CRAB_DEFAULT);
         MASCOT_CRAB.store(crab, std::sync::atomic::Ordering::Relaxed);
-        let shown = set_mascot_window(&app, show, crab).map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("mascot window: {e}"), true))?;
+        let shown = set_mascot_window(&app, show, crab).map_err(|e| {
+            AppErrorDto::new(
+                AppErrorCode::E_INTERNAL,
+                format!("mascot window: {e}"),
+                true,
+            )
+        })?;
         refresh_menu(&app);
         Ok(shown)
     }
@@ -351,12 +426,20 @@ pub fn mascot_focus_main(app: tauri::AppHandle) -> Result<(), AppErrorDto> {
 
 #[cfg(not(desktop))]
 fn unsupported(what: &str) -> AppErrorDto {
-    AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, format!("{what} is desktop only"), false)
+    AppErrorDto::new(
+        AppErrorCode::E_UNSUPPORTED,
+        format!("{what} is desktop only"),
+        false,
+    )
 }
 
 /// The UI's status for the tray: how many agents need you / are working.
 #[tauri::command]
-pub fn desktop_status(app: tauri::AppHandle, needs: u32, running: u32) -> Result<String, AppErrorDto> {
+pub fn desktop_status(
+    app: tauri::AppHandle,
+    needs: u32,
+    running: u32,
+) -> Result<String, AppErrorDto> {
     let line = status_line(needs, running);
     #[cfg(desktop)]
     {
@@ -371,7 +454,11 @@ pub fn desktop_status(app: tauri::AppHandle, needs: u32, running: u32) -> Result
 
 /// A native OS notification (desktop app only).
 #[tauri::command]
-pub fn desktop_notify(app: tauri::AppHandle, title: String, body: String) -> Result<(), AppErrorDto> {
+pub fn desktop_notify(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), AppErrorDto> {
     #[cfg(desktop)]
     {
         use tauri_plugin_notification::NotificationExt;
@@ -380,7 +467,13 @@ pub fn desktop_notify(app: tauri::AppHandle, title: String, body: String) -> Res
             .title(title)
             .body(body)
             .show()
-            .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("notification failed: {e}"), true))
+            .map_err(|e| {
+                AppErrorDto::new(
+                    AppErrorCode::E_INTERNAL,
+                    format!("notification failed: {e}"),
+                    true,
+                )
+            })
     }
     #[cfg(not(desktop))]
     {
@@ -396,7 +489,9 @@ pub fn desktop_set_title(app: tauri::AppHandle, title: String) -> Result<(), App
     {
         use tauri::Manager;
         if let Some(window) = app.get_webview_window("main") {
-            window.set_title(&title).map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))?;
+            window
+                .set_title(&title)
+                .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))?;
         }
         Ok(())
     }
@@ -428,13 +523,20 @@ pub struct SavedSize {
 /// Pure: the size to restore from the saved file contents (None = keep the config default).
 pub fn restore_size(saved: Option<&str>) -> Option<SavedSize> {
     let size: SavedSize = serde_json::from_str(saved?).ok()?;
-    (size.width >= MIN_RESTORE.0 && size.height >= MIN_RESTORE.1 && size.width <= 16384 && size.height <= 16384).then_some(size)
+    (size.width >= MIN_RESTORE.0
+        && size.height >= MIN_RESTORE.1
+        && size.width <= 16384
+        && size.height <= 16384)
+        .then_some(size)
 }
 
 #[cfg(desktop)]
 fn size_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<std::path::PathBuf> {
     use tauri::Manager;
-    app.path().app_config_dir().ok().map(|dir| dir.join(SIZE_FILE))
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|dir| dir.join(SIZE_FILE))
 }
 
 /// Restores the main window's content size (call from `setup`).
@@ -443,7 +545,9 @@ pub fn restore_window_size<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
     let Some(path) = size_path(app) else { return };
     let text = std::fs::read_to_string(&path).ok();
-    let Some(size) = restore_size(text.as_deref()) else { return };
+    let Some(size) = restore_size(text.as_deref()) else {
+        return;
+    };
     if let Some(window) = app.get_webview_window("main") {
         let maximized = window.is_maximized().unwrap_or(false);
         if !maximized {
@@ -456,7 +560,9 @@ pub fn restore_window_size<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 #[cfg(desktop)]
 pub fn save_window_size<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
-    let Some(window) = app.get_webview_window("main") else { return };
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
     if window.is_maximized().unwrap_or(false) || window.is_minimized().unwrap_or(false) {
         return;
     }
@@ -469,7 +575,10 @@ pub fn save_window_size<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let saved = SavedSize { width: size.width, height: size.height };
+    let saved = SavedSize {
+        width: size.width,
+        height: size.height,
+    };
     if let Ok(json) = serde_json::to_string(&saved) {
         let _ = std::fs::write(path, json);
     }
@@ -493,9 +602,18 @@ mod tests {
     #[test]
     fn the_tray_line_is_phones_sessions_and_needs_you() {
         // §5.3: "N phones · M sessions running · needs-you count".
-        assert_eq!(tray_line(2, 3, 1), "2 phones · 3 sessions running · 1 needs you");
-        assert_eq!(tray_line(1, 1, 2), "1 phone · 1 session running · 2 need you");
-        assert_eq!(tray_line(0, 0, 0), "No phones · No sessions running · Nobody needs you");
+        assert_eq!(
+            tray_line(2, 3, 1),
+            "2 phones · 3 sessions running · 1 needs you"
+        );
+        assert_eq!(
+            tray_line(1, 1, 2),
+            "1 phone · 1 session running · 2 need you"
+        );
+        assert_eq!(
+            tray_line(0, 0, 0),
+            "No phones · No sessions running · Nobody needs you"
+        );
         // §5.1: the tray label differs from the owner's old unipi one.
         assert_eq!(TRAY_TITLE, "UniPi (oino)");
         assert!(tooltip(&tray_line(2, 3, 1)).starts_with("UniPi (oino)"));
@@ -503,14 +621,26 @@ mod tests {
 
     #[test]
     fn restore_size_parses_and_bounds() {
-        assert_eq!(restore_size(Some(r#"{"width":1280,"height":820}"#)), Some(SavedSize { width: 1280, height: 820 }));
+        assert_eq!(
+            restore_size(Some(r#"{"width":1280,"height":820}"#)),
+            Some(SavedSize {
+                width: 1280,
+                height: 820
+            })
+        );
         assert_eq!(restore_size(None), None);
         assert_eq!(restore_size(Some("garbage")), None);
         assert_eq!(restore_size(Some(r#"{"width":10,"height":10}"#)), None);
         assert_eq!(restore_size(Some(r#"{"width":99999,"height":800}"#)), None);
         // Round trip: what we save is what we restore (no growth per launch).
-        let saved = SavedSize { width: 1332, height: 909 };
-        assert_eq!(restore_size(Some(&serde_json::to_string(&saved).unwrap())), Some(saved));
+        let saved = SavedSize {
+            width: 1332,
+            height: 909,
+        };
+        assert_eq!(
+            restore_size(Some(&serde_json::to_string(&saved).unwrap())),
+            Some(saved)
+        );
     }
 
     #[test]
@@ -523,7 +653,10 @@ mod tests {
         let (x2, _) = mascot_position((1920.0, 1080.0), (1920.0, 0.0), size);
         assert_eq!(x2, x + 1920.0);
         // A tiny screen never goes negative.
-        assert_eq!(mascot_position((100.0, 100.0), (0.0, 0.0), size), (0.0, 0.0));
+        assert_eq!(
+            mascot_position((100.0, 100.0), (0.0, 0.0), size),
+            (0.0, 0.0)
+        );
     }
 
     #[test]

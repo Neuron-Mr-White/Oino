@@ -209,10 +209,32 @@ mod wire_tests {
     /// lists exactly these strings — keep both in step.
     #[test]
     fn path_kinds_serialize_as_the_ui_expects() {
-        let all = [PathKind::Lan, PathKind::Tailnet, PathKind::Direct, PathKind::Relay, PathKind::Local, PathKind::Unknown];
-        let names: Vec<String> = all.iter().map(|k| serde_json::to_value(k).unwrap().as_str().unwrap().to_string()).collect();
-        assert_eq!(names, ["lan", "tailnet", "direct", "relay", "local", "unknown"]);
+        let all = [
+            PathKind::Lan,
+            PathKind::Tailnet,
+            PathKind::Direct,
+            PathKind::Relay,
+            PathKind::Local,
+            PathKind::Unknown,
+        ];
+        let names: Vec<String> = all
+            .iter()
+            .map(|k| {
+                serde_json::to_value(k)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            names,
+            ["lan", "tailnet", "direct", "relay", "local", "unknown"]
+        );
         let ts = include_str!("../../src/lib/schemas.ts");
-        assert!(ts.contains("z.enum(['lan', 'tailnet', 'direct', 'relay', 'local', 'unknown'])"), "schemas.ts PathKindSchema drifted");
+        assert!(
+            ts.contains("z.enum(['lan', 'tailnet', 'direct', 'relay', 'local', 'unknown'])"),
+            "schemas.ts PathKindSchema drifted"
+        );
     }
 }

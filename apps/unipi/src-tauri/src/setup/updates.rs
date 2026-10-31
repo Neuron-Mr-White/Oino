@@ -37,7 +37,10 @@ pub enum Update {
     /// Up to date. `offered` is the version the feed had — it can be *older*
     /// than what is installed (decision 4 never downgrades a user's version),
     /// so the UI can tell "up to date" from "newer than tested".
-    Current { installed: String, offered: Option<String> },
+    Current {
+        installed: String,
+        offered: Option<String>,
+    },
     /// The feed offers something newer: `from` → `to`.
     Available { from: String, to: String },
     /// Nothing installed yet: an install, not an update.
@@ -86,8 +89,15 @@ fn version_key(text: &str) -> ((u64, u64, u64), Option<Vec<String>>) {
         None => (trimmed, None),
     };
     let mut parts = core.split('.').map(|p| p.parse().unwrap_or(0));
-    let tuple = (parts.next().unwrap_or(0), parts.next().unwrap_or(0), parts.next().unwrap_or(0));
-    (tuple, pre.map(|p| p.split('.').map(str::to_string).collect()))
+    let tuple = (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    );
+    (
+        tuple,
+        pre.map(|p| p.split('.').map(str::to_string).collect()),
+    )
 }
 
 /// Semver's rule for two prerelease lists: identifier by identifier, numeric
@@ -128,7 +138,12 @@ pub fn is_newer(to: &str, from: &str) -> bool {
 }
 
 /// The update state of one component.
-pub fn compare(name: &str, installed: Option<&str>, offered: Option<&str>, detail: Option<String>) -> ComponentUpdate {
+pub fn compare(
+    name: &str,
+    installed: Option<&str>,
+    offered: Option<&str>,
+    detail: Option<String>,
+) -> ComponentUpdate {
     let update = match (installed, offered) {
         (None, Some(to)) => Update::Missing { to: to.to_string() },
         (None, None) => Update::Unknown,
@@ -136,16 +151,26 @@ pub fn compare(name: &str, installed: Option<&str>, offered: Option<&str>, detai
         (Some(from), Some(to)) => {
             let offered = Some(to.to_string());
             if is_newer(to, from) {
-                Update::Available { from: from.to_string(), to: to.to_string() }
+                Update::Available {
+                    from: from.to_string(),
+                    to: to.to_string(),
+                }
             } else {
                 // Equal, or ours is newer (decision 4 never downgrades it). The
                 // offered version rides along either way, so the UI can tell
                 // "up to date" from "newer than tested".
-                Update::Current { installed: from.to_string(), offered }
+                Update::Current {
+                    installed: from.to_string(),
+                    offered,
+                }
             }
         }
     };
-    ComponentUpdate { name: name.to_string(), update, detail }
+    ComponentUpdate {
+        name: name.to_string(),
+        update,
+        detail,
+    }
 }
 
 // ----------------------------------------------------------------- fetching
@@ -173,7 +198,10 @@ pub fn version_from_github(json: &str) -> Option<String> {
 /// The real fetcher: GET, 5 s, body as text.
 pub fn http_fetch() -> Fetch {
     Arc::new(|url| {
-        let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(5)).build().ok()?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .ok()?;
         let response = client.get(url).send().ok()?;
         if !response.status().is_success() {
             return None;
@@ -222,7 +250,11 @@ pub fn check_with(ctx: &CheckCtx) -> UpdateReport {
         .fetch(&npm_tags_url("@pi-unipi/unipi"))
         .map(|body| DistTags::parse(&body))
         .unwrap_or_default();
-    let channel = channel_for(ctx.unipi_spec.as_deref(), installed("unipi").as_deref(), &unipi_tags);
+    let channel = channel_for(
+        ctx.unipi_spec.as_deref(),
+        installed("unipi").as_deref(),
+        &unipi_tags,
+    );
     components.push(compare(
         "unipi",
         installed("unipi").as_deref(),
@@ -237,7 +269,10 @@ pub fn check_with(ctx: &CheckCtx) -> UpdateReport {
     components.push(compare(
         "agent-browser",
         installed("agent-browser").as_deref(),
-        agent_browser_tags.as_ref().and_then(|t| t.latest.clone()).as_deref(),
+        agent_browser_tags
+            .as_ref()
+            .and_then(|t| t.latest.clone())
+            .as_deref(),
         Some("npm latest".to_string()),
     ));
 
@@ -268,9 +303,17 @@ pub fn check_with(ctx: &CheckCtx) -> UpdateReport {
         Some("latest.json".to_string()),
     ));
 
-    let any_available = components.iter().any(|c| matches!(c.update, Update::Available { .. } | Update::Missing { .. }));
-    let offline = components.iter().all(|c| matches!(c.update, Update::Unknown));
-    UpdateReport { components, any_available, offline }
+    let any_available = components
+        .iter()
+        .any(|c| matches!(c.update, Update::Available { .. } | Update::Missing { .. }));
+    let offline = components
+        .iter()
+        .all(|c| matches!(c.update, Update::Unknown));
+    UpdateReport {
+        components,
+        any_available,
+        offline,
+    }
 }
 
 /// The version an installed UniPi should be compared against, for the channel
@@ -283,7 +326,8 @@ fn offered_for_channel(channel: &str, spec: Option<&str>, tags: &DistTags) -> Op
     if let Some(version) = tags.version_of(channel) {
         return Some(version.to_string());
     }
-    let pinned = spec.is_some_and(|s| s.starts_with("npm:")) && !matches!(channel, "latest" | "alpha");
+    let pinned =
+        spec.is_some_and(|s| s.starts_with("npm:")) && !matches!(channel, "latest" | "alpha");
     pinned.then(|| channel.to_string())
 }
 
@@ -300,18 +344,39 @@ fn component_from(components: &[ComponentUpdate], name: &str, source: &str) -> C
 /// The `host` block's version out of `latest.json`.
 pub fn host_version_from_feed(json: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(json).ok()?;
-    value.get("host")?.get("version")?.as_str().map(str::to_string)
+    value
+        .get("host")?
+        .get("version")?
+        .as_str()
+        .map(str::to_string)
 }
 
 /// The real thing: one report for this PC.
 pub async fn check_here(report: &super::SetupReport) -> UpdateReport {
     let mut installed = std::collections::BTreeMap::new();
-    for name in ["node", "npm", "pi", "unipi", "agent-browser", "kanboard", "herdr", "host", "tmux", "systemd-user"] {
-        installed.insert(name.to_string(), report.get(name).and_then(|c| c.version.clone()));
+    for name in [
+        "node",
+        "npm",
+        "pi",
+        "unipi",
+        "agent-browser",
+        "kanboard",
+        "herdr",
+        "host",
+        "tmux",
+        "systemd-user",
+    ] {
+        installed.insert(
+            name.to_string(),
+            report.get(name).and_then(|c| c.version.clone()),
+        );
     }
     let ctx = CheckCtx {
         installed,
-        unipi_spec: super::read_unipi_spec(&super::setup_json_path_of_home(), std::path::Path::new(".")),
+        unipi_spec: super::read_unipi_spec(
+            &super::setup_json_path_of_home(),
+            std::path::Path::new("."),
+        ),
         get: http_fetch(),
     };
     check_with(&ctx)
@@ -332,16 +397,23 @@ mod tests {
     use super::*;
 
     fn install(map: &[(&str, Option<&str>)]) -> std::collections::BTreeMap<String, Option<String>> {
-        map.iter().map(|(k, v)| (k.to_string(), v.map(str::to_string))).collect()
+        map.iter()
+            .map(|(k, v)| (k.to_string(), v.map(str::to_string)))
+            .collect()
     }
 
     /// A fake registry: a URL → body map; anything else returns nothing.
     fn fake(map: &'static [(&'static str, &'static str)]) -> Fetch {
-        Arc::new(move |url| map.iter().find(|(u, _)| *u == url).map(|(_, b)| b.to_string()))
+        Arc::new(move |url| {
+            map.iter()
+                .find(|(u, _)| *u == url)
+                .map(|(_, b)| b.to_string())
+        })
     }
 
     const NPM_UNIPI: &str = "https://registry.npmjs.org/-/package/@pi-unipi/unipi/dist-tags";
-    const NPM_PI: &str = "https://registry.npmjs.org/-/package/@earendil-works/pi-coding-agent/dist-tags";
+    const NPM_PI: &str =
+        "https://registry.npmjs.org/-/package/@earendil-works/pi-coding-agent/dist-tags";
     const NPM_AGENT_BROWSER: &str = "https://registry.npmjs.org/-/package/agent-browser/dist-tags";
     const GH_HERDR: &str = "https://api.github.com/repos/herdr-dev/herdr/releases/latest";
     const LATEST_JSON: &str = "https://unipi.nrn.one/latest.json";
@@ -352,8 +424,14 @@ mod tests {
         assert!(!is_newer("0.4.9", "0.4.9"));
         assert!(!is_newer("0.4.8", "0.4.9"));
         assert!(is_newer("3.0.0", "2.20.5"), "a major jump is newer");
-        assert!(is_newer("3.0.0-alpha.42", "3.0.0-alpha.41"), "the next alpha is newer");
-        assert!(is_newer("3.0.0-alpha.9", "3.0.0-alpha.8"), "numerically, not as strings");
+        assert!(
+            is_newer("3.0.0-alpha.42", "3.0.0-alpha.41"),
+            "the next alpha is newer"
+        );
+        assert!(
+            is_newer("3.0.0-alpha.9", "3.0.0-alpha.8"),
+            "numerically, not as strings"
+        );
         assert!(is_newer("3.0.1", "3.0.1-alpha.1"));
         // A prerelease of the same X.Y.Z is not newer than the release.
         assert!(!is_newer("3.0.0-alpha.42", "3.0.0"));
@@ -361,26 +439,50 @@ mod tests {
 
     #[test]
     fn compare_maps_installed_and_offered_to_a_state() {
-        assert_eq!(compare("pi", Some("1.0.0"), Some("1.2.0"), None).update, Update::Available { from: "1.0.0".into(), to: "1.2.0".into() });
+        assert_eq!(
+            compare("pi", Some("1.0.0"), Some("1.2.0"), None).update,
+            Update::Available {
+                from: "1.0.0".into(),
+                to: "1.2.0".into()
+            }
+        );
         assert_eq!(
             compare("pi", Some("1.2.0"), Some("1.2.0"), None).update,
-            Update::Current { installed: "1.2.0".into(), offered: Some("1.2.0".into()) }
+            Update::Current {
+                installed: "1.2.0".into(),
+                offered: Some("1.2.0".into())
+            }
         );
         // Decision 4: a newer user version is left alone, not downgraded — and
         // it says what it was compared against, so the UI can call it newer.
         assert_eq!(
             compare("pi", Some("9.9.9"), Some("1.2.0"), None).update,
-            Update::Current { installed: "9.9.9".into(), offered: Some("1.2.0".into()) }
+            Update::Current {
+                installed: "9.9.9".into(),
+                offered: Some("1.2.0".into())
+            }
         );
-        assert_eq!(compare("pi", None, Some("1.2.0"), None).update, Update::Missing { to: "1.2.0".into() });
-        assert_eq!(compare("pi", Some("1.0.0"), None, None).update, Update::Unknown);
+        assert_eq!(
+            compare("pi", None, Some("1.2.0"), None).update,
+            Update::Missing { to: "1.2.0".into() }
+        );
+        assert_eq!(
+            compare("pi", Some("1.0.0"), None, None).update,
+            Update::Unknown
+        );
         assert_eq!(compare("pi", None, None, None).update, Update::Unknown);
     }
 
     #[test]
     fn a_report_with_a_newer_pi_and_unipi() {
         let ctx = CheckCtx {
-            installed: install(&[("node", Some("22.19.0")), ("pi", Some("1.0.0")), ("unipi", Some("3.0.0-alpha.41")), ("herdr", Some("0.9.0")), ("host", Some("0.4.9"))]),
+            installed: install(&[
+                ("node", Some("22.19.0")),
+                ("pi", Some("1.0.0")),
+                ("unipi", Some("3.0.0-alpha.41")),
+                ("herdr", Some("0.9.0")),
+                ("host", Some("0.4.9")),
+            ]),
             unipi_spec: Some("npm:@pi-unipi/unipi@alpha".into()),
             get: fake(&[
                 (NPM_PI, r#"{"latest":"1.2.0"}"#),
@@ -390,14 +492,44 @@ mod tests {
             ]),
         };
         let report = check_with(&ctx);
-        assert_eq!(report.get("pi").unwrap().update, Update::Available { from: "1.0.0".into(), to: "1.2.0".into() });
+        assert_eq!(
+            report.get("pi").unwrap().update,
+            Update::Available {
+                from: "1.0.0".into(),
+                to: "1.2.0".into()
+            }
+        );
         // The alpha install is compared against alpha, not latest.
-        assert_eq!(report.get("unipi").unwrap().update, Update::Available { from: "3.0.0-alpha.41".into(), to: "3.0.0-alpha.42".into() });
-        assert_eq!(report.get("unipi").unwrap().detail.as_deref(), Some("channel: alpha"));
-        assert_eq!(report.get("herdr").unwrap().update, Update::Available { from: "0.9.0".into(), to: "0.9.1".into() });
-        assert_eq!(report.get("host").unwrap().update, Update::Available { from: "0.4.9".into(), to: "0.5.0".into() });
+        assert_eq!(
+            report.get("unipi").unwrap().update,
+            Update::Available {
+                from: "3.0.0-alpha.41".into(),
+                to: "3.0.0-alpha.42".into()
+            }
+        );
+        assert_eq!(
+            report.get("unipi").unwrap().detail.as_deref(),
+            Some("channel: alpha")
+        );
+        assert_eq!(
+            report.get("herdr").unwrap().update,
+            Update::Available {
+                from: "0.9.0".into(),
+                to: "0.9.1".into()
+            }
+        );
+        assert_eq!(
+            report.get("host").unwrap().update,
+            Update::Available {
+                from: "0.4.9".into(),
+                to: "0.5.0".into()
+            }
+        );
         // kanboard travels with the extensions.
-        assert_eq!(report.get("kanboard").unwrap().detail.as_deref(), Some("comes with unipi"));
+        assert_eq!(
+            report.get("kanboard").unwrap().detail.as_deref(),
+            Some("comes with unipi")
+        );
         assert!(report.any_available);
         assert!(!report.offline);
     }
@@ -405,7 +537,12 @@ mod tests {
     #[test]
     fn an_up_to_date_pc_has_nothing_to_offer() {
         let ctx = CheckCtx {
-            installed: install(&[("pi", Some("1.2.0")), ("unipi", Some("3.0.0-alpha.42")), ("herdr", Some("0.9.1")), ("host", Some("0.5.0"))]),
+            installed: install(&[
+                ("pi", Some("1.2.0")),
+                ("unipi", Some("3.0.0-alpha.42")),
+                ("herdr", Some("0.9.1")),
+                ("host", Some("0.5.0")),
+            ]),
             unipi_spec: Some("npm:@pi-unipi/unipi@alpha".into()),
             get: fake(&[
                 (NPM_PI, r#"{"latest":"1.2.0"}"#),
@@ -437,7 +574,12 @@ mod tests {
         assert!(report.offline, "{report:?}");
         assert!(!report.any_available);
         for c in &report.components {
-            assert_eq!(c.update, Update::Unknown, "{} must not read as up to date", c.name);
+            assert_eq!(
+                c.update,
+                Update::Unknown,
+                "{} must not read as up to date",
+                c.name
+            );
         }
     }
 
@@ -449,16 +591,31 @@ mod tests {
             get: fake(&[(NPM_AGENT_BROWSER, r#"{"latest":"1.1.0"}"#)]),
         };
         let report = check_with(&ctx);
-        assert_eq!(report.get("agent-browser").unwrap().update, Update::Available { from: "1.0.0".into(), to: "1.1.0".into() });
-        assert_eq!(report.get("agent-browser").unwrap().detail.as_deref(), Some("npm latest"));
+        assert_eq!(
+            report.get("agent-browser").unwrap().update,
+            Update::Available {
+                from: "1.0.0".into(),
+                to: "1.1.0".into()
+            }
+        );
+        assert_eq!(
+            report.get("agent-browser").unwrap().detail.as_deref(),
+            Some("npm latest")
+        );
     }
 
     #[test]
     fn host_version_comes_from_the_feed_host_block() {
-        assert_eq!(host_version_from_feed(r#"{"host":{"version":"0.5.0","files":{}}}"#).as_deref(), Some("0.5.0"));
+        assert_eq!(
+            host_version_from_feed(r#"{"host":{"version":"0.5.0","files":{}}}"#).as_deref(),
+            Some("0.5.0")
+        );
         assert_eq!(host_version_from_feed(r#"{"app":{}}"#), None);
         assert_eq!(host_version_from_feed("garbage"), None);
-        assert_eq!(version_from_github(r#"{"tag_name":"v1.4.2"}"#).as_deref(), Some("1.4.2"));
+        assert_eq!(
+            version_from_github(r#"{"tag_name":"v1.4.2"}"#).as_deref(),
+            Some("1.4.2")
+        );
         assert_eq!(version_from_github(r#"{"tag_name":""}"#), None);
     }
 
@@ -474,8 +631,16 @@ mod tests {
         };
         let report = check_with(&ctx);
         // Nothing installed and no spec: the channel floor applies, so alpha.
-        assert_eq!(report.get("unipi").unwrap().update, Update::Missing { to: "3.0.0-alpha.41".into() });
-        assert_eq!(report.get("pi").unwrap().update, Update::Missing { to: "1.2.0".into() });
+        assert_eq!(
+            report.get("unipi").unwrap().update,
+            Update::Missing {
+                to: "3.0.0-alpha.41".into()
+            }
+        );
+        assert_eq!(
+            report.get("pi").unwrap().update,
+            Update::Missing { to: "1.2.0".into() }
+        );
         assert!(report.any_available);
     }
 }

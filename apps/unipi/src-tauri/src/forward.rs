@@ -53,16 +53,25 @@ const REPLY_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn hello_frame(request: Request) -> Result<Vec<u8>, AppErrorDto> {
     let hello = Control::Hello {
-        proto: PROTO_VERSION.to_string().try_into().map_err(|e: String| internal(e))?,
+        proto: PROTO_VERSION
+            .to_string()
+            .try_into()
+            .map_err(|e: String| internal(e))?,
         req: request,
     };
-    Ok(encode(FrameKind::Control, &serde_json::to_vec(&hello).map_err(internal)?))
+    Ok(encode(
+        FrameKind::Control,
+        &serde_json::to_vec(&hello).map_err(internal)?,
+    ))
 }
 
 /// Reads the single control reply that precedes the raw bytes.
 async fn read_reply<R: AsyncRead + Unpin>(recv: &mut R) -> Result<Control, AppErrorDto> {
     let read = async {
-        let kind = recv.read_u8().await.map_err(|_| transport("The PC closed the forward without a reply"))?;
+        let kind = recv
+            .read_u8()
+            .await
+            .map_err(|_| transport("The PC closed the forward without a reply"))?;
         let len = recv.read_u32().await.map_err(transport)? as usize;
         if kind != 0 || len > MAX_FRAME {
             return Err(internal("Invalid reply frame from the PC"));
@@ -73,19 +82,29 @@ async fn read_reply<R: AsyncRead + Unpin>(recv: &mut R) -> Result<Control, AppEr
     };
     tokio::time::timeout(REPLY_TIMEOUT, read)
         .await
-        .map_err(|_| ProtoError::Timeout("The PC did not answer the forward".into()).to_app_error())?
+        .map_err(|_| {
+            ProtoError::Timeout("The PC did not answer the forward".into()).to_app_error()
+        })?
 }
 
 /// Sends the `tcp_forward` hello on a fresh stream and waits for `ok`.
-pub(crate) async fn handshake<R, W>(send: &mut W, recv: &mut R, port: u16) -> Result<(), AppErrorDto>
+pub(crate) async fn handshake<R, W>(
+    send: &mut W,
+    recv: &mut R,
+    port: u16,
+) -> Result<(), AppErrorDto>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
     let request = Request::TcpForward {
-        port: port.try_into().map_err(|e: String| AppErrorDto::new(AppErrorCode::E_SCHEMA, e, false))?,
+        port: port
+            .try_into()
+            .map_err(|e: String| AppErrorDto::new(AppErrorCode::E_SCHEMA, e, false))?,
     };
-    send.write_all(&hello_frame(request)?).await.map_err(transport)?;
+    send.write_all(&hello_frame(request)?)
+        .await
+        .map_err(transport)?;
     match read_reply(recv).await? {
         Control::Ok { .. } => Ok(()),
         Control::Err { error } => Err(error),
@@ -114,7 +133,10 @@ where
     tokio::join!(up, down)
 }
 
-type BoxStream = (Box<dyn AsyncWrite + Send + Unpin>, Box<dyn AsyncRead + Send + Unpin>);
+type BoxStream = (
+    Box<dyn AsyncWrite + Send + Unpin>,
+    Box<dyn AsyncRead + Send + Unpin>,
+);
 type BoxFut = Pin<Box<dyn Future<Output = Result<BoxStream, AppErrorDto>> + Send>>;
 /// Opens one fresh bistream to the host (redialing as needed).
 pub(crate) type Opener = Arc<dyn Fn(bool) -> BoxFut + Send + Sync>;
@@ -139,7 +161,12 @@ pub(crate) struct Stats {
 
 /// Opens one forward stream for an accepted socket, retrying once on a
 /// transport error with a fresh connection, then pipes it.
-pub(crate) async fn serve_connection(socket: TcpStream, port: u16, opener: Opener, stats: Arc<Stats>) {
+pub(crate) async fn serve_connection(
+    socket: TcpStream,
+    port: u16,
+    opener: Opener,
+    stats: Arc<Stats>,
+) {
     let _ = socket.set_nodelay(true);
     stats.active.fetch_add(1, Ordering::SeqCst);
     stats.total.fetch_add(1, Ordering::SeqCst);
@@ -164,8 +191,15 @@ pub(crate) async fn serve_connection(socket: TcpStream, port: u16, opener: Opene
             stats.bytes_down.fetch_add(down, Ordering::SeqCst);
         }
         Err(error) => {
-            log::warn!("UniPiForward port={port} error={:?} {}", error.code, error.message.as_str());
-            *stats.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(ForwardError { error, at: now_ms() });
+            log::warn!(
+                "UniPiForward port={port} error={:?} {}",
+                error.code,
+                error.message.as_str()
+            );
+            *stats.last_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(ForwardError {
+                error,
+                at: now_ms(),
+            });
             drop(socket);
         }
     }
@@ -174,7 +208,12 @@ pub(crate) async fn serve_connection(socket: TcpStream, port: u16, opener: Opene
 
 /// Accept loop. Aborting the returned task drops the JoinSet, which
 /// aborts every live connection too.
-pub(crate) fn spawn_accept(listener: TcpListener, port: u16, opener: Opener, stats: Arc<Stats>) -> tauri::async_runtime::JoinHandle<()> {
+pub(crate) fn spawn_accept(
+    listener: TcpListener,
+    port: u16,
+    opener: Opener,
+    stats: Arc<Stats>,
+) -> tauri::async_runtime::JoinHandle<()> {
     tauri::async_runtime::spawn(async move {
         let mut connections = tokio::task::JoinSet::new();
         loop {
@@ -197,7 +236,9 @@ pub(crate) async fn bind_local(preferred: Option<u16>) -> Result<TcpListener, Ap
             return Ok(listener);
         }
     }
-    TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| internal(format!("Could not open a local port: {e}")))
+    TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .map_err(|e| internal(format!("Could not open a local port: {e}")))
 }
 
 struct Entry {
@@ -246,7 +287,12 @@ fn info(id: &str, entry: &Entry) -> ForwardInfo {
         bytes_up: entry.stats.bytes_up.load(Ordering::SeqCst),
         bytes_down: entry.stats.bytes_down.load(Ordering::SeqCst),
         last_ok: (last_ok > 0).then_some(last_ok),
-        last_error: entry.stats.last_error.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        last_error: entry
+            .stats
+            .last_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone(),
     }
 }
 
@@ -258,10 +304,19 @@ impl ForwardRegistry {
         list
     }
     pub fn get(&self, id: &str) -> Option<ForwardInfo> {
-        self.entries.lock().unwrap_or_else(|e| e.into_inner()).get(id).map(|entry| info(id, entry))
+        self.entries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id)
+            .map(|entry| info(id, entry))
     }
     pub fn stop(&self, id: &str) -> bool {
-        match self.entries.lock().unwrap_or_else(|e| e.into_inner()).remove(id) {
+        match self
+            .entries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(id)
+        {
             Some(entry) => {
                 entry.task.abort();
                 true
@@ -313,7 +368,12 @@ impl ForwardRegistry {
             task,
         };
         let result = info(&id, &entry);
-        if let Some(old) = self.entries.lock().unwrap_or_else(|e| e.into_inner()).insert(id, entry) {
+        if let Some(old) = self
+            .entries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, entry)
+        {
             old.task.abort();
         }
         Ok(result)
@@ -332,7 +392,10 @@ fn host_ticket(dir: &std::path::Path, host_id: &str) -> Result<(String, String),
         .into_iter()
         .find(|host| host.id == host_id)
         .ok_or_else(|| ProtoError::NotFound("Host not found".into()).to_app_error())?;
-    let id = crate::net::parse_ticket(&host.ticket)?.endpoint_addr().id.to_string();
+    let id = crate::net::parse_ticket(&host.ticket)?
+        .endpoint_addr()
+        .id
+        .to_string();
     Ok((host.ticket, id))
 }
 
@@ -355,22 +418,32 @@ pub(crate) fn net_opener(app: &tauri::AppHandle, host_id: &str) -> Result<Opener
             }
             let relay = state.current_relay().await;
             let (send, recv) = state.open_op(&dir, relay.as_deref(), &ticket).await?;
-            Ok((Box::new(send) as Box<dyn AsyncWrite + Send + Unpin>, Box::new(recv) as Box<dyn AsyncRead + Send + Unpin>))
+            Ok((
+                Box::new(send) as Box<dyn AsyncWrite + Send + Unpin>,
+                Box::new(recv) as Box<dyn AsyncRead + Send + Unpin>,
+            ))
         }) as BoxFut
     }))
 }
 
 #[tauri::command]
-pub async fn ports_list(app: tauri::AppHandle, host_id: String) -> Result<PortsListData, AppErrorDto> {
+pub async fn ports_list(
+    app: tauri::AppHandle,
+    host_id: String,
+) -> Result<PortsListData, AppErrorDto> {
     let opener = net_opener(&app, &host_id)?;
     let mut last = transport("not attempted");
     for fresh in [false, true] {
         let attempt = async {
             let (mut send, mut recv) = opener(fresh).await?;
-            send.write_all(&hello_frame(Request::PortsList)?).await.map_err(transport)?;
+            send.write_all(&hello_frame(Request::PortsList)?)
+                .await
+                .map_err(transport)?;
             let _ = send.shutdown().await;
             match read_reply(&mut recv).await? {
-                Control::Ok { data } => serde_json::from_value(data.unwrap_or_default()).map_err(internal),
+                Control::Ok { data } => {
+                    serde_json::from_value(data.unwrap_or_default()).map_err(internal)
+                }
                 Control::Err { error } => Err(error),
                 _ => Err(internal("Unexpected reply to ports_list")),
             }
@@ -435,14 +508,22 @@ mod tests {
                     assert_eq!(kind, 0);
                     let hello: serde_json::Value = serde_json::from_slice(&hello).unwrap();
                     assert_eq!(hello["req"]["op"], "tcp_forward");
-                    w.write_all(&encode(FrameKind::Control, &serde_json::to_vec(&reply).unwrap())).await.unwrap();
+                    w.write_all(&encode(
+                        FrameKind::Control,
+                        &serde_json::to_vec(&reply).unwrap(),
+                    ))
+                    .await
+                    .unwrap();
                     if matches!(reply, Control::Ok { .. }) {
                         let _ = tokio::io::copy(&mut r, &mut w).await;
                     }
                     let _ = w.shutdown().await;
                 });
                 let (r, w) = tokio::io::split(phone);
-                Ok((Box::new(w) as Box<dyn AsyncWrite + Send + Unpin>, Box::new(r) as Box<dyn AsyncRead + Send + Unpin>))
+                Ok((
+                    Box::new(w) as Box<dyn AsyncWrite + Send + Unpin>,
+                    Box::new(r) as Box<dyn AsyncRead + Send + Unpin>,
+                ))
             }) as BoxFut
         });
         (opener, opened)
@@ -457,14 +538,20 @@ mod tests {
         assert!(info.local_port > 0);
         assert_eq!(info.url, format!("http://127.0.0.1:{}/", info.local_port));
         for round in 0..3u8 {
-            let mut socket = TcpStream::connect(("127.0.0.1", info.local_port)).await.unwrap();
+            let mut socket = TcpStream::connect(("127.0.0.1", info.local_port))
+                .await
+                .unwrap();
             socket.write_all(&[round; 1000]).await.unwrap();
             socket.shutdown().await.unwrap();
             let mut back = Vec::new();
             socket.read_to_end(&mut back).await.unwrap();
             assert_eq!(back, vec![round; 1000]);
         }
-        assert_eq!(opened.load(Ordering::SeqCst), 4, "probe + one stream per connection");
+        assert_eq!(
+            opened.load(Ordering::SeqCst),
+            4,
+            "probe + one stream per connection"
+        );
         tokio::time::sleep(Duration::from_millis(50)).await;
         let listed = registry.list();
         assert_eq!(listed.len(), 1);
@@ -473,7 +560,8 @@ mod tests {
         assert_eq!(listed[0].bytes_up, 3000);
         assert!(listed[0].last_error.is_none());
         // Same host+port again: the running forward is reused.
-        let (opener2, opened2) = fake_opener(Control::Ok { data: None }, Arc::new(AtomicU64::new(0)));
+        let (opener2, opened2) =
+            fake_opener(Control::Ok { data: None }, Arc::new(AtomicU64::new(0)));
         let again = registry.start("h1", 5173, None, opener2).await.unwrap();
         assert_eq!(again.local_port, info.local_port);
         assert_eq!(opened2.load(Ordering::SeqCst), 0);
@@ -481,17 +569,26 @@ mod tests {
         assert!(registry.stop(&info.id));
         assert!(!registry.stop(&info.id));
         tokio::time::sleep(Duration::from_millis(50)).await;
-        assert!(TcpStream::connect(("127.0.0.1", info.local_port)).await.is_err());
+        assert!(TcpStream::connect(("127.0.0.1", info.local_port))
+            .await
+            .is_err());
         assert!(registry.list().is_empty());
     }
 
     #[tokio::test]
     async fn start_surfaces_host_refusals_without_binding() {
         let registry = ForwardRegistry::default();
-        let refusal = AppErrorDto::new(AppErrorCode::E_FORWARD_DISABLED, "Port forwarding is off on this PC", false)
-            .with_hint("unipi-host forward enable --any");
+        let refusal = AppErrorDto::new(
+            AppErrorCode::E_FORWARD_DISABLED,
+            "Port forwarding is off on this PC",
+            false,
+        )
+        .with_hint("unipi-host forward enable --any");
         let (opener, _) = fake_opener(Control::Err { error: refusal }, Arc::new(AtomicU64::new(0)));
-        let error = registry.start("h1", 8080, Some(0), opener).await.unwrap_err();
+        let error = registry
+            .start("h1", 8080, Some(0), opener)
+            .await
+            .unwrap_err();
         assert_eq!(error.code, AppErrorCode::E_FORWARD_DISABLED);
         assert!(error.hint.unwrap().contains("forward enable"));
         assert!(registry.list().is_empty());
@@ -506,7 +603,9 @@ mod tests {
         let info = registry.start("h1", 3000, Some(0), opener).await.unwrap();
         // Now the PC is gone: both attempts fail → socket closed, error kept.
         failures.store(2, Ordering::SeqCst);
-        let mut socket = TcpStream::connect(("127.0.0.1", info.local_port)).await.unwrap();
+        let mut socket = TcpStream::connect(("127.0.0.1", info.local_port))
+            .await
+            .unwrap();
         let mut back = Vec::new();
         socket.read_to_end(&mut back).await.unwrap();
         assert!(back.is_empty());
@@ -524,7 +623,11 @@ mod tests {
         let info = registry.start("h1", 4000, Some(0), ok).await.unwrap();
         // Swap in a host that now says nothing listens there.
         registry.stop(&info.id);
-        let closed = AppErrorDto::new(AppErrorCode::E_NOT_FOUND, "Nothing is listening on port 4000 on this PC", false);
+        let closed = AppErrorDto::new(
+            AppErrorCode::E_NOT_FOUND,
+            "Nothing is listening on port 4000 on this PC",
+            false,
+        );
         let (opener, _) = fake_opener(Control::Err { error: closed }, Arc::new(AtomicU64::new(0)));
         let listener = bind_local(Some(0)).await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -568,37 +671,69 @@ mod live {
     async fn live_forward_against_test_host() {
         let dir = std::env::var("UNIPI_FWD_E2E_DIR").expect("UNIPI_FWD_E2E_DIR");
         assert!(!dir.contains(".unipi/app-host"), "never the real host dir");
-        let port: u16 = std::env::var("UNIPI_FWD_PORT").unwrap_or("8797".into()).parse().unwrap();
-        let hold: u64 = std::env::var("UNIPI_FWD_HOLD_SECS").unwrap_or("0".into()).parse().unwrap();
+        let port: u16 = std::env::var("UNIPI_FWD_PORT")
+            .unwrap_or("8797".into())
+            .parse()
+            .unwrap();
+        let hold: u64 = std::env::var("UNIPI_FWD_HOLD_SECS")
+            .unwrap_or("0".into())
+            .parse()
+            .unwrap();
         let cache: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(format!("{dir}/endpoint.json")).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(format!("{dir}/endpoint.json")).unwrap())
+                .unwrap();
         let addr: iroh::EndpointAddr = serde_json::from_value(cache["addr"].clone()).unwrap();
-        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0).bind().await.unwrap();
+        let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+            .bind()
+            .await
+            .unwrap();
         let conn = crate::net::dial(&endpoint, addr).await.unwrap();
         // Pair through a fresh code written into the test host's pairing.json.
         let code = "ABCDEFGH23";
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         std::fs::write(
             format!("{dir}/pairing.json"),
             serde_json::to_vec(&serde_json::json!({"code":code,"created_at":now,"expires_at":now+600,"attempts":0,"used":false})).unwrap(),
         )
         .unwrap();
         let (mut send, mut recv) = conn.open_bi().await.unwrap();
-        send.write_all(&hello_frame(Request::Pair { code: code.to_string().try_into().unwrap(), name: Some("live test".to_string().try_into().unwrap()) }).unwrap()).await.unwrap();
+        send.write_all(
+            &hello_frame(Request::Pair {
+                code: code.to_string().try_into().unwrap(),
+                name: Some("live test".to_string().try_into().unwrap()),
+            })
+            .unwrap(),
+        )
+        .await
+        .unwrap();
         send.finish().unwrap();
-        assert!(matches!(read_reply(&mut recv).await.unwrap(), Control::Ok { .. }));
+        assert!(matches!(
+            read_reply(&mut recv).await.unwrap(),
+            Control::Ok { .. }
+        ));
         let opener: Opener = Arc::new(move |_| {
             let conn = conn.clone();
             Box::pin(async move {
                 let (send, recv) = crate::net::open_op_stream(&conn).await?;
-                Ok((Box::new(send) as Box<dyn AsyncWrite + Send + Unpin>, Box::new(recv) as Box<dyn AsyncRead + Send + Unpin>))
+                Ok((
+                    Box::new(send) as Box<dyn AsyncWrite + Send + Unpin>,
+                    Box::new(recv) as Box<dyn AsyncRead + Send + Unpin>,
+                ))
             }) as BoxFut
         });
         let registry = ForwardRegistry::default();
         let info = registry.start("live", port, None, opener).await.unwrap();
         println!("FORWARD_URL={}", info.url);
-        let mut socket = TcpStream::connect(("127.0.0.1", info.local_port)).await.unwrap();
-        socket.write_all(b"GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").await.unwrap();
+        let mut socket = TcpStream::connect(("127.0.0.1", info.local_port))
+            .await
+            .unwrap();
+        socket
+            .write_all(b"GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n")
+            .await
+            .unwrap();
         let mut page = Vec::new();
         socket.read_to_end(&mut page).await.unwrap();
         let page = String::from_utf8_lossy(&page);
@@ -610,6 +745,9 @@ mod live {
                 break;
             }
         }
-        println!("stats: {}", serde_json::to_string(&registry.list()).unwrap());
+        println!(
+            "stats: {}",
+            serde_json::to_string(&registry.list()).unwrap()
+        );
     }
 }

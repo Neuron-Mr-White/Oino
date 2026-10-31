@@ -72,7 +72,11 @@ pub fn version_tuple(text: &str) -> (u64, u64, u64) {
         .take_while(|c| c.is_ascii_digit() || *c == '.')
         .collect();
     let mut parts = digits.split('.').map(|p| p.parse().unwrap_or(0));
-    (parts.next().unwrap_or(0), parts.next().unwrap_or(0), parts.next().unwrap_or(0))
+    (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    )
 }
 
 /// `>= min` by the tuple (never a semver range).
@@ -84,13 +88,19 @@ pub fn at_least(version: &str, min: (u64, u64, u64)) -> bool {
 
 /// Splits a `PATH` string into directories (empty entries dropped).
 pub fn parse_path(value: &str) -> Vec<PathBuf> {
-    value.split(':').map(PathBuf::from).filter(|p| !p.as_os_str().is_empty()).collect()
+    value
+        .split(':')
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .collect()
 }
 
 /// Deduplicates while keeping the first (most trusted) position.
 pub fn dedup_dirs(dirs: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut seen = std::collections::HashSet::new();
-    dirs.into_iter().filter(|d| seen.insert(d.clone())).collect()
+    dirs.into_iter()
+        .filter(|d| seen.insert(d.clone()))
+        .collect()
 }
 
 /// Where a tool may hide outside any PATH, in the order we try them.
@@ -114,14 +124,21 @@ pub fn known_dirs(home: &Path) -> Vec<PathBuf> {
             let mut versions: Vec<(String, PathBuf)> = Vec::new();
             if let Ok(list) = std::fs::read_dir(tool.path()) {
                 for version in list.flatten() {
-                    versions.push((version.file_name().to_string_lossy().to_string(), version.path().join("bin")));
+                    versions.push((
+                        version.file_name().to_string_lossy().to_string(),
+                        version.path().join("bin"),
+                    ));
                 }
             }
             tools.push((tool.file_name().to_string_lossy().to_string(), versions));
         }
         tools.sort_by(|a, b| b.0.cmp(&a.0));
         for (_, mut versions) in tools {
-            versions.sort_by(|a, b| version_tuple(&b.0).cmp(&version_tuple(&a.0)).then_with(|| b.0.cmp(&a.0)));
+            versions.sort_by(|a, b| {
+                version_tuple(&b.0)
+                    .cmp(&version_tuple(&a.0))
+                    .then_with(|| b.0.cmp(&a.0))
+            });
             if let Some((_, bin)) = versions.into_iter().next() {
                 dirs.push(bin);
             }
@@ -166,7 +183,10 @@ pub fn merge_paths(process: &[PathBuf], probe: &[PathBuf], known: &[PathBuf]) ->
 
 /// The merged PATH as a `PATH=`-shaped string.
 pub fn path_value(dirs: &[PathBuf]) -> String {
-    dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(":")
+    dirs.iter()
+        .map(|d| d.display().to_string())
+        .collect::<Vec<_>>()
+        .join(":")
 }
 
 // ------------------------------------------------------------------ report
@@ -243,7 +263,9 @@ impl SetupReport {
     }
 
     fn state_of(&self, name: &str) -> ComponentState {
-        self.get(name).map(|c| c.state).unwrap_or(ComponentState::Missing)
+        self.get(name)
+            .map(|c| c.state)
+            .unwrap_or(ComponentState::Missing)
     }
 
     /// Is this component usable (ok, or a newer version than we ask for)?
@@ -341,14 +363,22 @@ impl InstalledRecord {
     pub fn mark(&mut self, name: &str, version: &str, path: &Path, at: u64) {
         self.components.insert(
             name.to_string(),
-            InstalledComponent { version: version.to_string(), path: path.display().to_string(), at },
+            InstalledComponent {
+                version: version.to_string(),
+                path: path.display().to_string(),
+                at,
+            },
         );
     }
 }
 
 /// The first entry of `dirs` that holds an executable `name`.
 pub fn find_in(dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
-    let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
+    let exe = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
     dirs.iter().map(|d| d.join(&exe)).find(|p| is_executable(p))
 }
 
@@ -356,7 +386,9 @@ fn is_executable(path: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        path.metadata().map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+        path.metadata()
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
@@ -370,7 +402,9 @@ fn is_executable(path: &Path) -> bool {
 fn version_of(run: &Runner, bin: &Path, args: &[&str], env: &[(&str, String)]) -> Option<String> {
     let out = run(bin, args, env)?;
     out.split_whitespace()
-        .find(|token| token.chars().next().is_some_and(|c| c.is_ascii_digit()) && token.contains('.'))
+        .find(|token| {
+            token.chars().next().is_some_and(|c| c.is_ascii_digit()) && token.contains('.')
+        })
         .or_else(|| out.lines().map(str::trim).find(|l| !l.is_empty()))
         .map(|s| s.trim().trim_start_matches('v').to_string())
 }
@@ -406,10 +440,24 @@ fn versioned(
 ) -> Component {
     let source = Source::Found;
     match &version {
-        None => component(name, None, bin, ComponentState::Missing, source, Some(fix.into()), None),
-        Some(v) if at_least(v, floor) => {
-            component(name, Some(v.clone()), bin, ComponentState::Ok, source, None, None)
-        }
+        None => component(
+            name,
+            None,
+            bin,
+            ComponentState::Missing,
+            source,
+            Some(fix.into()),
+            None,
+        ),
+        Some(v) if at_least(v, floor) => component(
+            name,
+            Some(v.clone()),
+            bin,
+            ComponentState::Ok,
+            source,
+            None,
+            None,
+        ),
         Some(v) => component(
             name,
             Some(v.clone()),
@@ -417,7 +465,10 @@ fn versioned(
             ComponentState::Outdated,
             source,
             Some(fix.into()),
-            Some(format!("Needs {}.{}.{} or newer", floor.0, floor.1, floor.2)),
+            Some(format!(
+                "Needs {}.{}.{} or newer",
+                floor.0, floor.1, floor.2
+            )),
         ),
     }
 }
@@ -459,7 +510,10 @@ impl DistTags {
             return DistTags::default();
         };
         let tag = |name: &str| value.get(name).and_then(|v| v.as_str()).map(str::to_string);
-        DistTags { latest: tag("latest"), alpha: tag("alpha") }
+        DistTags {
+            latest: tag("latest"),
+            alpha: tag("alpha"),
+        }
     }
 
     fn version_of(&self, tag: &str) -> Option<&str> {
@@ -483,10 +537,17 @@ pub async fn unipi_dist_tags() -> DistTags {
 }
 
 async fn fetch_dist_tags(base: &str, package: &str) -> DistTags {
-    let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(5)).build() else {
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    else {
         return DistTags::default();
     };
-    match client.get(format!("{base}/{package}/dist-tags")).send().await {
+    match client
+        .get(format!("{base}/{package}/dist-tags"))
+        .send()
+        .await
+    {
         Ok(response) if response.status().is_success() => {
             DistTags::parse(&response.text().await.unwrap_or_default())
         }
@@ -505,7 +566,8 @@ pub fn channel_for(spec: Option<&str>, installed: Option<&str>, tags: &DistTags)
     fn from_spec(spec: &str) -> Option<String> {
         let s = spec.trim().trim_start_matches("npm:");
         let tag = s.strip_prefix("@pi-unipi/unipi@")?.trim();
-        let pinned = tag.starts_with(['^', '~', '<', '>', '=', 'v']) || tag.starts_with(|c: char| c.is_ascii_digit());
+        let pinned = tag.starts_with(['^', '~', '<', '>', '=', 'v'])
+            || tag.starts_with(|c: char| c.is_ascii_digit());
         if tag.is_empty() || pinned || tag == "*" {
             return None;
         }
@@ -527,7 +589,8 @@ pub fn channel_for(spec: Option<&str>, installed: Option<&str>, tags: &DistTags)
         }
         match (tags.version_of(&channel), tags.latest.as_deref()) {
             (Some(pre), Some(latest))
-                if version_tuple(latest).0 >= MIN_UNIPI_MAJOR && !updates::is_newer(pre, latest) =>
+                if version_tuple(latest).0 >= MIN_UNIPI_MAJOR
+                    && !updates::is_newer(pre, latest) =>
             {
                 "latest".to_string()
             }
@@ -576,9 +639,15 @@ pub fn read_unipi_spec(home: &Path, cwd: &Path) -> Option<String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".pi").join("agent"));
     for file in [cwd.join(".pi/settings.json"), dir.join("settings.json")] {
-        let Ok(raw) = std::fs::read_to_string(&file) else { continue };
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else { continue };
-        let Some(list) = value.get("packages").and_then(|p| p.as_array()) else { continue };
+        let Ok(raw) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            continue;
+        };
+        let Some(list) = value.get("packages").and_then(|p| p.as_array()) else {
+            continue;
+        };
         for entry in list {
             let source = match entry {
                 serde_json::Value::String(s) => Some(s.clone()),
@@ -600,8 +669,17 @@ pub fn read_unipi_spec(home: &Path, cwd: &Path) -> Option<String> {
 /// npm's platform key for the extensions' platform package (`linux-x64`),
 /// matching the host's `board/discovery.rs::platform_key`.
 pub fn platform_key() -> String {
-    let os = match std::env::consts::OS { "macos" => "darwin", "windows" => "win32", other => other };
-    let arch = match std::env::consts::ARCH { "x86_64" => "x64", "aarch64" => "arm64", "x86" => "ia32", other => other };
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        "windows" => "win32",
+        other => other,
+    };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        "x86" => "ia32",
+        other => other,
+    };
     format!("{os}-{arch}")
 }
 
@@ -618,7 +696,10 @@ pub fn kanboard_binary(dirs: &[PathBuf], home: &Path) -> Option<PathBuf> {
         .or_else(|| find_in(dirs, "kanboard"))
         .or_else(|| find_in(&[npm_root.join(".bin")], "unipi-kanboard"))
         .or_else(|| {
-            let bin = npm_root.join("@pi-unipi").join(&platform).join("bin/unipi-kanboard");
+            let bin = npm_root
+                .join("@pi-unipi")
+                .join(&platform)
+                .join("bin/unipi-kanboard");
             is_executable(&bin).then_some(bin)
         })
         .or_else(|| {
@@ -629,21 +710,35 @@ pub fn kanboard_binary(dirs: &[PathBuf], home: &Path) -> Option<PathBuf> {
 
 /// Builds the report from an injected context.
 pub fn detect_with(ctx: &DetectCtx) -> SetupReport {
-    let dirs = merge_paths(&ctx.process_path, ctx.probe.as_deref().unwrap_or(&[]), &known_dirs(&ctx.home));
+    let dirs = merge_paths(
+        &ctx.process_path,
+        ctx.probe.as_deref().unwrap_or(&[]),
+        &known_dirs(&ctx.home),
+    );
     // Tools are run with the merged PATH: npm, for one, is a `#!/usr/bin/env
     // node` script and cannot find its own runtime from a GUI's PATH.
     let path_env: Vec<(&str, String)> = vec![("PATH", path_value(&dirs))];
     let local_bin = ctx.home.join(".local").join("bin");
     let pi_agent_bin = ctx.home.join(".pi").join("agent").join("bin");
-    let pi_npm_modules = ctx.home.join(".pi").join("agent").join("npm").join("node_modules");
+    let pi_npm_modules = ctx
+        .home
+        .join(".pi")
+        .join("agent")
+        .join("npm")
+        .join("node_modules");
 
     let ours = |name: &str| {
-        ctx.installed.components.get(name).map(|c| (c.version.clone(), c.path.clone()))
+        ctx.installed
+            .components
+            .get(name)
+            .map(|c| (c.version.clone(), c.path.clone()))
     };
 
     // --- node -------------------------------------------------------------
     let node = find_in(&dirs, "node");
-    let node_version = node.as_deref().and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env));
+    let node_version = node
+        .as_deref()
+        .and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env));
     let node_component = match ours("node") {
         Some((version, path)) if node.is_none() => {
             // We installed it but it is gone from the merged PATH: point at it.
@@ -658,13 +753,21 @@ pub fn detect_with(ctx: &DetectCtx) -> SetupReport {
                 Some(format!("Installed at {path}, not on the PATH we see")),
             )
         }
-        _ => versioned("node", node_version, node.as_deref(), NODE_MIN, "Install Node 22 LTS (~30 MB)"),
+        _ => versioned(
+            "node",
+            node_version,
+            node.as_deref(),
+            NODE_MIN,
+            "Install Node 22 LTS (~30 MB)",
+        ),
     };
     let node_ok = node_component.state == ComponentState::Ok;
 
     // --- npm --------------------------------------------------------------
     let npm = find_in(&dirs, "npm");
-    let npm_version = npm.as_deref().and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env));
+    let npm_version = npm
+        .as_deref()
+        .and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env));
     let npm_component = versioned(
         "npm",
         npm_version,
@@ -677,8 +780,11 @@ pub fn detect_with(ctx: &DetectCtx) -> SetupReport {
     let _ = node_ok;
 
     // --- pi ---------------------------------------------------------------
-    let pi = find_in(&dirs, "pi").or_else(|| find_in(&[local_bin.clone(), pi_agent_bin.clone()], "pi"));
-    let pi_version = pi.as_deref().and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env));
+    let pi =
+        find_in(&dirs, "pi").or_else(|| find_in(&[local_bin.clone(), pi_agent_bin.clone()], "pi"));
+    let pi_version = pi
+        .as_deref()
+        .and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env));
     let pi_component = versioned(
         "pi",
         pi_version,
@@ -695,15 +801,22 @@ pub fn detect_with(ctx: &DetectCtx) -> SetupReport {
     // CloakBrowser is what the skill actually drives.
     let agent_browser = find_in(&dirs, "agent-browser")
         .or_else(|| find_in(&[pi_npm_modules.join(".bin")], "agent-browser"));
-    let agent_browser_version =
-        agent_browser.as_deref().and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env));
+    let agent_browser_version = agent_browser
+        .as_deref()
+        .and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env));
     let agent_browser_component = component(
         "agent-browser",
         agent_browser_version,
         agent_browser.as_deref(),
-        if agent_browser.is_some() { ComponentState::Ok } else { ComponentState::Missing },
+        if agent_browser.is_some() {
+            ComponentState::Ok
+        } else {
+            ComponentState::Missing
+        },
         Source::Found,
-        agent_browser.is_none().then(|| "npm install -g agent-browser".into()),
+        agent_browser
+            .is_none()
+            .then(|| "npm install -g agent-browser".into()),
         Some("Optional — lets pi drive the browser skill".into()),
     );
 
@@ -810,22 +923,43 @@ pub fn detect_with(ctx: &DetectCtx) -> SetupReport {
     let herdr = find_in(&dirs, "herdr");
     let herdr_component = component(
         "herdr",
-        herdr.as_deref().and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env)),
+        herdr
+            .as_deref()
+            .and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env)),
         herdr.as_deref(),
-        if herdr.is_some() { ComponentState::Ok } else { ComponentState::Missing },
-        if herdr.is_some() { Source::Found } else { Source::UnipiManaged },
-        herdr.is_none().then(|| "Install herdr (herdr.dev installer)".into()),
-        herdr.is_none().then(|| "Optional — better terminals".into()),
+        if herdr.is_some() {
+            ComponentState::Ok
+        } else {
+            ComponentState::Missing
+        },
+        if herdr.is_some() {
+            Source::Found
+        } else {
+            Source::UnipiManaged
+        },
+        herdr
+            .is_none()
+            .then(|| "Install herdr (herdr.dev installer)".into()),
+        herdr
+            .is_none()
+            .then(|| "Optional — better terminals".into()),
     );
     let tmux = find_in(&dirs, "tmux");
     let tmux_component = component(
         "tmux",
-        tmux.as_deref().and_then(|b| version_of(&ctx.run, b, &["-V"], &path_env)),
+        tmux.as_deref()
+            .and_then(|b| version_of(&ctx.run, b, &["-V"], &path_env)),
         tmux.as_deref(),
-        if tmux.is_some() { ComponentState::Ok } else { ComponentState::Missing },
+        if tmux.is_some() {
+            ComponentState::Ok
+        } else {
+            ComponentState::Missing
+        },
         Source::Found,
-        tmux.is_none().then(|| package_manager_tmux_command().into()),
-        tmux.is_none().then(|| "Optional — needs root, never automatic".into()),
+        tmux.is_none()
+            .then(|| package_manager_tmux_command().into()),
+        tmux.is_none()
+            .then(|| "Optional — needs root, never automatic".into()),
     );
 
     // --- hidden display for the browser (UNI-299) ------------------------
@@ -837,13 +971,19 @@ pub fn detect_with(ctx: &DetectCtx) -> SetupReport {
         "xvfb",
         None,
         xvfb.as_deref(),
-        if xvfb.is_some() { ComponentState::Ok } else { ComponentState::Missing },
+        if xvfb.is_some() {
+            ComponentState::Ok
+        } else {
+            ComponentState::Missing
+        },
         Source::Found,
-        xvfb.is_none().then(|| package_manager_xvfb_command().into()),
+        xvfb.is_none()
+            .then(|| package_manager_xvfb_command().into()),
         Some(if xvfb.is_some() {
             "Hidden display for the browser (shown only in the app)".into()
         } else {
-            "Optional — lets the browser show only in the app without running headless; needs root".into()
+            "Optional — lets the browser show only in the app without running headless; needs root"
+                .into()
         }),
     );
 
@@ -856,9 +996,15 @@ pub fn detect_with(ctx: &DetectCtx) -> SetupReport {
     let (service_name, service_path) = ("service", None::<PathBuf>);
     let service_component = component(
         service_name,
-        service_path.as_deref().and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env)),
+        service_path
+            .as_deref()
+            .and_then(|b| version_of(&ctx.run, b, &["--version"], &path_env)),
         service_path.as_deref(),
-        if service_path.is_some() { ComponentState::Ok } else { ComponentState::Unsupported },
+        if service_path.is_some() {
+            ComponentState::Ok
+        } else {
+            ComponentState::Unsupported
+        },
         Source::Found,
         None,
         Some("Keeps the host running with no UniPi window".into()),
@@ -881,21 +1027,34 @@ pub fn detect_with(ctx: &DetectCtx) -> SetupReport {
     // extensions aren't there yet) AND a host is running.
     let report_probe = SetupReport {
         components: components.clone(),
-        path: PathReport { value: String::new(), from_shell: vec![], local_bin_on_login_path: false, probed: false },
+        path: PathReport {
+            value: String::new(),
+            from_shell: vec![],
+            local_bin_on_login_path: false,
+            probed: false,
+        },
         ready: false,
         update_available: false,
         at: ctx.now,
     };
     let ready = ["node", "npm", "pi", "unipi"].iter().all(|n| {
-        matches!(report_probe.state_of(n), ComponentState::Ok | ComponentState::Unsupported)
+        matches!(
+            report_probe.state_of(n),
+            ComponentState::Ok | ComponentState::Unsupported
+        )
     }) && report_probe.is_ok("host");
-    let update_available = components.iter().any(|c| c.state == ComponentState::Outdated);
+    let update_available = components
+        .iter()
+        .any(|c| c.state == ComponentState::Outdated);
 
     SetupReport {
         components,
         path: PathReport {
             value: path_value(&dirs),
-            from_shell: dedup_dirs(ctx.probe.clone().unwrap_or_default()).iter().map(|p| p.display().to_string()).collect(),
+            from_shell: dedup_dirs(ctx.probe.clone().unwrap_or_default())
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect(),
             local_bin_on_login_path: ctx
                 .probe
                 .as_deref()
@@ -926,7 +1085,9 @@ pub fn package_manager_xvfb_command() -> &'static str {
     {
         if Path::new("/etc/debian_version").exists() {
             "sudo apt install xvfb"
-        } else if Path::new("/etc/fedora-release").exists() || Path::new("/etc/redhat-release").exists() {
+        } else if Path::new("/etc/fedora-release").exists()
+            || Path::new("/etc/redhat-release").exists()
+        {
             "sudo dnf install xorg-x11-server-Xvfb"
         } else if Path::new("/etc/arch-release").exists() {
             "sudo pacman -S xorg-server-xvfb"
@@ -950,7 +1111,9 @@ pub fn package_manager_tmux_command() -> &'static str {
     {
         if Path::new("/etc/debian_version").exists() {
             "sudo apt install tmux"
-        } else if Path::new("/etc/fedora-release").exists() || Path::new("/etc/redhat-release").exists() {
+        } else if Path::new("/etc/fedora-release").exists()
+            || Path::new("/etc/redhat-release").exists()
+        {
             "sudo dnf install tmux"
         } else if Path::new("/etc/arch-release").exists() {
             "sudo pacman -S tmux"
@@ -988,11 +1151,18 @@ async fn compute_merged_path(home: &Path) -> String {
     let process_path = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
         .unwrap_or_default();
-    let probe = match std::env::var_os("SHELL").filter(|s| !s.is_empty()).map(PathBuf::from) {
+    let probe = match std::env::var_os("SHELL")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+    {
         Some(shell) if shell.exists() => probe_shell_path(&shell).await,
         _ => None,
     };
-    path_value(&merge_paths(&process_path, &probe.unwrap_or_default(), &known_dirs(home)))
+    path_value(&merge_paths(
+        &process_path,
+        &probe.unwrap_or_default(),
+        &known_dirs(home),
+    ))
 }
 
 /// The real detection: process env + a login-shell probe + known dirs.
@@ -1001,13 +1171,19 @@ pub async fn detect_here(home: &Path) -> SetupReport {
     let process_path = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
         .unwrap_or_default();
-    let shell = std::env::var_os("SHELL").filter(|s| !s.is_empty()).map(PathBuf::from);
+    let shell = std::env::var_os("SHELL")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
     let probe = match &shell {
         Some(shell) if shell.exists() => probe_shell_path(shell).await,
         _ => None,
     };
 
-    let merged = merge_paths(&process_path, probe.as_deref().unwrap_or(&[]), &known_dirs(home));
+    let merged = merge_paths(
+        &process_path,
+        probe.as_deref().unwrap_or(&[]),
+        &known_dirs(home),
+    );
     let ctx = DetectCtx {
         home: home.to_path_buf(),
         process_path,
@@ -1029,7 +1205,10 @@ pub async fn probe_shell_path(shell: &Path) -> Option<Vec<PathBuf>> {
         .args(["-lic", "printf %s \"$PATH\""])
         .stdin(std::process::Stdio::null())
         .output();
-    let out = tokio::time::timeout(SHELL_PROBE_TIMEOUT, out).await.ok()?.ok()?;
+    let out = tokio::time::timeout(SHELL_PROBE_TIMEOUT, out)
+        .await
+        .ok()?
+        .ok()?;
     if !out.status.success() {
         return None;
     }
@@ -1063,14 +1242,23 @@ fn host_state() -> Option<HostState> {
     let raw = std::fs::read_to_string(dir.join("host.lock")).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
     Some(HostState {
-        run_by: value.get("mode").and_then(|m| m.as_str()).map(str::to_string),
-        version: value.get("version").and_then(|v| v.as_str()).map(str::to_string),
+        run_by: value
+            .get("mode")
+            .and_then(|m| m.as_str())
+            .map(str::to_string),
+        version: value
+            .get("version")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
         bin: crate::sharing::bin().map(|b| b.display().to_string()),
     })
 }
 
 fn now_unix() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 // ---------------------------------------------------------------- commands
@@ -1094,8 +1282,10 @@ mod tests {
 
     /// A fake runner: `{"node": "v24.16.0", …}` by binary name.
     fn runner(versions: &[(&str, &str)]) -> Runner {
-        let map: BTreeMap<String, String> =
-            versions.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let map: BTreeMap<String, String> = versions
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         Arc::new(move |bin, _args, _env| {
             let name = bin.file_name()?.to_str()?.to_string();
             map.get(&name).cloned()
@@ -1144,7 +1334,10 @@ mod tests {
                 PathBuf::from("/home/t/.local/bin"),
             ]
         );
-        assert_eq!(path_value(&merged), "/usr/bin:/bin:/opt/mise/shims:/home/t/.local/bin");
+        assert_eq!(
+            path_value(&merged),
+            "/usr/bin:/bin:/opt/mise/shims:/home/t/.local/bin"
+        );
     }
 
     #[test]
@@ -1167,7 +1360,10 @@ mod tests {
             "/home/tester/.local/share/pi-node/current/bin",
             "/home/tester/.local/share/mise/shims",
         ] {
-            assert!(names.contains(&want.to_string()), "{want} missing from {names:?}");
+            assert!(
+                names.contains(&want.to_string()),
+                "{want} missing from {names:?}"
+            );
         }
         // …and they stay first, in the documented order.
         assert_eq!(names[0], "/home/tester/.local/bin");
@@ -1206,7 +1402,10 @@ mod tests {
         let report = detect_with(&ctx(runner(&[])));
         let component = report.get("agent-browser").unwrap();
         assert_eq!(component.state, ComponentState::Missing);
-        assert_eq!(component.fix.as_deref(), Some("npm install -g agent-browser"));
+        assert_eq!(
+            component.fix.as_deref(),
+            Some("npm install -g agent-browser")
+        );
     }
 
     #[test]
@@ -1216,13 +1415,19 @@ mod tests {
         stub(dir.path(), "Xvfb");
         let mut c = ctx(runner(&[]));
         c.process_path = vec![dir.path().to_path_buf()];
-        assert_eq!(detect_with(&c).get("xvfb").unwrap().state, ComponentState::Ok);
+        assert_eq!(
+            detect_with(&c).get("xvfb").unwrap().state,
+            ComponentState::Ok
+        );
         let only_xwayland = tempfile::tempdir().unwrap();
         stub(only_xwayland.path(), "Xwayland");
         let mut c = ctx(runner(&[]));
         c.process_path = vec![only_xwayland.path().to_path_buf()];
         if !Path::new("/usr/bin/Xvfb").exists() {
-            assert_eq!(detect_with(&c).get("xvfb").unwrap().state, ComponentState::Missing);
+            assert_eq!(
+                detect_with(&c).get("xvfb").unwrap().state,
+                ComponentState::Missing
+            );
         }
     }
 
@@ -1239,9 +1444,14 @@ mod tests {
         for name in ["node", "npm", "pi", "unipi-kanboard"] {
             stub(dir.path(), name);
         }
-        std::fs::create_dir_all(dir.path().join(".pi/agent/npm/node_modules/@pi-unipi/unipi")).unwrap();
+        std::fs::create_dir_all(
+            dir.path()
+                .join(".pi/agent/npm/node_modules/@pi-unipi/unipi"),
+        )
+        .unwrap();
         std::fs::write(
-            dir.path().join(".pi/agent/npm/node_modules/@pi-unipi/unipi/package.json"),
+            dir.path()
+                .join(".pi/agent/npm/node_modules/@pi-unipi/unipi/package.json"),
             r#"{"version":"3.0.0-alpha.41"}"#,
         )
         .unwrap();
@@ -1250,7 +1460,12 @@ mod tests {
             r#"{"packages":["npm:@pi-unipi/unipi@alpha"]}"#,
         )
         .unwrap();
-        let mut c = ctx(runner(&[("node", "v24.16.0"), ("npm", "11.13.0"), ("pi", "1.0.0"), ("unipi-kanboard", "0.2.0")]));
+        let mut c = ctx(runner(&[
+            ("node", "v24.16.0"),
+            ("npm", "11.13.0"),
+            ("pi", "1.0.0"),
+            ("unipi-kanboard", "0.2.0"),
+        ]));
         c.home = dir.path().to_path_buf();
         c.process_path = vec![dir.path().to_path_buf()];
         c.pi_list = Some("User packages:\n  npm:@pi-unipi/unipi@alpha\n".into());
@@ -1260,16 +1475,26 @@ mod tests {
             bin: Some("/home/t/.local/bin/unipi-host".into()),
         });
         let report = detect_with(&c);
-        for name in ["node", "npm", "pi", "unipi", "kanboard", "host", "herdr", "tmux"] {
+        for name in [
+            "node", "npm", "pi", "unipi", "kanboard", "host", "herdr", "tmux",
+        ] {
             let state = report.get(name).map(|c| c.state);
             if name == "herdr" || name == "tmux" {
                 continue;
             }
-            assert_eq!(state, Some(ComponentState::Ok), "{name}: {:?}", report.get(name));
+            assert_eq!(
+                state,
+                Some(ComponentState::Ok),
+                "{name}: {:?}",
+                report.get(name)
+            );
         }
         assert!(report.ready);
         assert!(!report.update_available);
-        assert_eq!(report.get("unipi").unwrap().version.as_deref(), Some("3.0.0-alpha.41"));
+        assert_eq!(
+            report.get("unipi").unwrap().version.as_deref(),
+            Some("3.0.0-alpha.41")
+        );
     }
 
     #[test]
@@ -1277,14 +1502,32 @@ mod tests {
         let report = detect_with(&ctx(runner(&[])));
         assert!(!report.ready);
         assert_eq!(report.get("node").unwrap().state, ComponentState::Missing);
-        assert!(report.get("node").unwrap().fix.as_deref().unwrap().contains("Node"));
+        assert!(report
+            .get("node")
+            .unwrap()
+            .fix
+            .as_deref()
+            .unwrap()
+            .contains("Node"));
         // Nothing installed → no unipi, and kanboard is not "missing" on its own.
         assert_eq!(report.get("unipi").unwrap().state, ComponentState::Missing);
-        assert!(report.get("unipi").unwrap().fix.as_deref().unwrap().contains("pi install"));
-        assert_eq!(report.get("kanboard").unwrap().state, ComponentState::Unsupported);
+        assert!(report
+            .get("unipi")
+            .unwrap()
+            .fix
+            .as_deref()
+            .unwrap()
+            .contains("pi install"));
+        assert_eq!(
+            report.get("kanboard").unwrap().state,
+            ComponentState::Unsupported
+        );
         // npm without Node is missing, and its fix is Node.
         assert_eq!(report.get("npm").unwrap().state, ComponentState::Missing);
-        assert_eq!(report.get("npm").unwrap().fix.as_deref(), Some("Comes with Node"));
+        assert_eq!(
+            report.get("npm").unwrap().fix.as_deref(),
+            Some("Comes with Node")
+        );
         // The host is ours to run; nothing to download.
         assert_eq!(report.get("host").unwrap().source, Source::UnipiManaged);
     }
@@ -1299,13 +1542,25 @@ mod tests {
         let report = detect_with(&c);
         assert_eq!(report.get("node").unwrap().state, ComponentState::Outdated);
         assert!(report.update_available);
-        assert_eq!(report.get("node").unwrap().version.as_deref(), Some("22.18.0"));
-        assert!(report.get("node").unwrap().note.as_deref().unwrap().contains("22.19.0"));
+        assert_eq!(
+            report.get("node").unwrap().version.as_deref(),
+            Some("22.18.0")
+        );
+        assert!(report
+            .get("node")
+            .unwrap()
+            .note
+            .as_deref()
+            .unwrap()
+            .contains("22.19.0"));
 
         // Newer than the floor: ok, never downgraded (decision 4).
         let mut c = ctx(runner(&[("node", "v30.0.0"), ("npm", "11.0.0")]));
         c.process_path = vec![dir.path().to_path_buf()];
-        assert_eq!(detect_with(&c).get("node").unwrap().state, ComponentState::Ok);
+        assert_eq!(
+            detect_with(&c).get("node").unwrap().state,
+            ComponentState::Ok
+        );
     }
 
     #[test]
@@ -1314,13 +1569,23 @@ mod tests {
         for name in ["node", "npm", "pi"] {
             stub(dir.path(), name);
         }
-        let mut c = ctx(runner(&[("node", "v24.0.0"), ("npm", "11.0.0"), ("pi", "1.0.0")]));
+        let mut c = ctx(runner(&[
+            ("node", "v24.0.0"),
+            ("npm", "11.0.0"),
+            ("pi", "1.0.0"),
+        ]));
         c.home = dir.path().to_path_buf();
         c.process_path = vec![dir.path().to_path_buf()];
         c.pi_list = Some("npm:@pi-unipi/unipi@alpha\n".into());
         let report = detect_with(&c);
         assert_eq!(report.get("unipi").unwrap().state, ComponentState::Broken);
-        assert!(report.get("unipi").unwrap().fix.as_deref().unwrap().contains("Repair"));
+        assert!(report
+            .get("unipi")
+            .unwrap()
+            .fix
+            .as_deref()
+            .unwrap()
+            .contains("Repair"));
     }
 
     #[test]
@@ -1340,27 +1605,56 @@ mod tests {
 
     /// Today's registry: `latest` is still 2.x while `alpha` is 3.x.
     fn tags_v2_latest() -> DistTags {
-        DistTags { latest: Some("2.20.5".into()), alpha: Some("3.0.0-alpha.41".into()) }
+        DistTags {
+            latest: Some("2.20.5".into()),
+            alpha: Some("3.0.0-alpha.41".into()),
+        }
     }
     /// The registry once 3.x has been promoted.
     fn tags_v3_latest() -> DistTags {
-        DistTags { latest: Some("3.0.1".into()), alpha: Some("3.0.0-alpha.41".into()) }
+        DistTags {
+            latest: Some("3.0.1".into()),
+            alpha: Some("3.0.0-alpha.41".into()),
+        }
     }
 
     #[test]
     fn the_channel_follows_the_updater_spec_then_the_prerelease_id() {
         // A dist-tag spec wins.
-        assert_eq!(channel_for(Some("npm:@pi-unipi/unipi@alpha"), Some("3.0.0-alpha.41"), &tags_v2_latest()), "alpha");
+        assert_eq!(
+            channel_for(
+                Some("npm:@pi-unipi/unipi@alpha"),
+                Some("3.0.0-alpha.41"),
+                &tags_v2_latest()
+            ),
+            "alpha"
+        );
         // A bare spec names the `latest` channel explicitly: the floor does not
         // override that either.
-        assert_eq!(channel_for(Some("npm:@pi-unipi/unipi"), None, &tags_v2_latest()), "latest");
+        assert_eq!(
+            channel_for(Some("npm:@pi-unipi/unipi"), None, &tags_v2_latest()),
+            "latest"
+        );
         // A pinned version is not a channel, but it IS a choice: the floor does
         // not override it.
-        assert_eq!(channel_for(Some("npm:@pi-unipi/unipi@3.0.0"), Some("2.9.0"), &tags_v2_latest()), "latest");
+        assert_eq!(
+            channel_for(
+                Some("npm:@pi-unipi/unipi@3.0.0"),
+                Some("2.9.0"),
+                &tags_v2_latest()
+            ),
+            "latest"
+        );
         // An installed prerelease keeps its own channel.
-        assert_eq!(channel_for(None, Some("3.0.0-alpha.41"), &tags_v2_latest()), "alpha");
+        assert_eq!(
+            channel_for(None, Some("3.0.0-alpha.41"), &tags_v2_latest()),
+            "alpha"
+        );
         // A stable install never sees a prerelease tag.
-        assert_eq!(channel_for(None, Some("3.0.0"), &tags_v2_latest()), "latest");
+        assert_eq!(
+            channel_for(None, Some("3.0.0"), &tags_v2_latest()),
+            "latest"
+        );
         assert_eq!(install_spec("alpha"), "npm:@pi-unipi/unipi@alpha");
         assert_eq!(install_spec("latest"), "npm:@pi-unipi/unipi");
     }
@@ -1368,17 +1662,50 @@ mod tests {
     #[test]
     fn an_alpha_install_graduates_once_stable_latest_catches_up() {
         // 3.0.0 stable on `latest`, `alpha` left at the last alpha: move to latest.
-        let stable = DistTags { latest: Some("3.0.0".into()), alpha: Some("3.0.0-alpha.45".into()) };
-        assert_eq!(channel_for(Some("npm:@pi-unipi/unipi@alpha"), Some("3.0.0-alpha.45"), &stable), "latest");
+        let stable = DistTags {
+            latest: Some("3.0.0".into()),
+            alpha: Some("3.0.0-alpha.45".into()),
+        };
+        assert_eq!(
+            channel_for(
+                Some("npm:@pi-unipi/unipi@alpha"),
+                Some("3.0.0-alpha.45"),
+                &stable
+            ),
+            "latest"
+        );
         assert_eq!(channel_for(None, Some("3.0.0-alpha.45"), &stable), "latest");
         // `alpha` re-pointed at the same stable version: latest too.
-        let tie = DistTags { latest: Some("3.0.0".into()), alpha: Some("3.0.0".into()) };
-        assert_eq!(channel_for(Some("npm:@pi-unipi/unipi@alpha"), Some("3.0.0"), &tie), "latest");
+        let tie = DistTags {
+            latest: Some("3.0.0".into()),
+            alpha: Some("3.0.0".into()),
+        };
+        assert_eq!(
+            channel_for(Some("npm:@pi-unipi/unipi@alpha"), Some("3.0.0"), &tie),
+            "latest"
+        );
         // A newer alpha above stable keeps the alpha channel.
-        let ahead = DistTags { latest: Some("3.0.0".into()), alpha: Some("3.1.0-alpha.1".into()) };
-        assert_eq!(channel_for(Some("npm:@pi-unipi/unipi@alpha"), Some("3.1.0-alpha.1"), &ahead), "alpha");
+        let ahead = DistTags {
+            latest: Some("3.0.0".into()),
+            alpha: Some("3.1.0-alpha.1".into()),
+        };
+        assert_eq!(
+            channel_for(
+                Some("npm:@pi-unipi/unipi@alpha"),
+                Some("3.1.0-alpha.1"),
+                &ahead
+            ),
+            "alpha"
+        );
         // Offline: the channel stays.
-        assert_eq!(channel_for(Some("npm:@pi-unipi/unipi@alpha"), None, &DistTags::default()), "alpha");
+        assert_eq!(
+            channel_for(
+                Some("npm:@pi-unipi/unipi@alpha"),
+                None,
+                &DistTags::default()
+            ),
+            "alpha"
+        );
     }
 
     #[test]
@@ -1389,8 +1716,14 @@ mod tests {
         assert_eq!(channel_for(None, None, &tags_v2_latest()), "alpha");
         assert_eq!(channel_for(None, None, &tags_v3_latest()), "latest");
         // The same through the spec the app builds.
-        assert_eq!(install_spec(&channel_for(None, None, &tags_v2_latest())), "npm:@pi-unipi/unipi@alpha");
-        assert_eq!(install_spec(&channel_for(None, None, &tags_v3_latest())), "npm:@pi-unipi/unipi");
+        assert_eq!(
+            install_spec(&channel_for(None, None, &tags_v2_latest())),
+            "npm:@pi-unipi/unipi@alpha"
+        );
+        assert_eq!(
+            install_spec(&channel_for(None, None, &tags_v3_latest())),
+            "npm:@pi-unipi/unipi"
+        );
         // No tags at all (registry unreachable): `latest`, and the caller has
         // already treated that as offline.
         assert_eq!(channel_for(None, None, &DistTags::default()), "latest");
@@ -1399,7 +1732,10 @@ mod tests {
             channel_for(
                 None,
                 None,
-                &DistTags { latest: Some("2.20.5".into()), alpha: Some("2.9.0".into()) }
+                &DistTags {
+                    latest: Some("2.20.5".into()),
+                    alpha: Some("2.9.0".into())
+                }
             ),
             "latest"
         );
@@ -1410,7 +1746,10 @@ mod tests {
         let tags = DistTags::parse(r#"{"latest":"2.20.5","alpha":"3.0.0-alpha.41"}"#);
         assert_eq!(tags, tags_v2_latest());
         // Extra tags are ignored; rubbish gives nothing.
-        assert_eq!(DistTags::parse(r#"{"legacy-node20":"0.74.2","latest":"1.2.0"}"#).alpha, None);
+        assert_eq!(
+            DistTags::parse(r#"{"legacy-node20":"0.74.2","latest":"1.2.0"}"#).alpha,
+            None
+        );
         assert_eq!(DistTags::parse("not json"), DistTags::default());
     }
 
@@ -1427,7 +1766,10 @@ mod tests {
             read_unipi_spec(dir.path(), Path::new("/nowhere")).as_deref(),
             Some("npm:@pi-unipi/unipi@alpha")
         );
-        assert_eq!(read_unipi_spec(Path::new("/nowhere"), Path::new("/nowhere")), None);
+        assert_eq!(
+            read_unipi_spec(Path::new("/nowhere"), Path::new("/nowhere")),
+            None
+        );
     }
 
     // ----------------------------------------------------------- app-setup
@@ -1436,9 +1778,17 @@ mod tests {
     fn app_setup_json_round_trips_and_marks_only_ours() {
         let dir = tempfile::tempdir().unwrap();
         let mut record = InstalledRecord::default();
-        record.mark("node", "22.19.0", Path::new("/home/t/.local/share/pi-node/22.19.0"), 42);
+        record.mark(
+            "node",
+            "22.19.0",
+            Path::new("/home/t/.local/share/pi-node/22.19.0"),
+            42,
+        );
         record.write(dir.path()).unwrap();
-        assert_eq!(setup_json_path(dir.path()), dir.path().join(".unipi/app-setup.json"));
+        assert_eq!(
+            setup_json_path(dir.path()),
+            dir.path().join(".unipi/app-setup.json")
+        );
         let back = InstalledRecord::read(dir.path());
         let node = back.components.get("node").unwrap();
         assert_eq!((node.version.as_str(), node.at), ("22.19.0", 42));

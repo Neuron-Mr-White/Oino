@@ -83,7 +83,11 @@ fn shutdown_write(sock: &tokio::net::UnixStream) -> std::io::Result<()> {
     } else {
         let e = std::io::Error::last_os_error();
         // Already closed by the peer: nothing left to finish.
-        if e.kind() == std::io::ErrorKind::NotConnected { Ok(()) } else { Err(e) }
+        if e.kind() == std::io::ErrorKind::NotConnected {
+            Ok(())
+        } else {
+            Err(e)
+        }
     }
 }
 
@@ -97,9 +101,15 @@ unsafe fn libc_shutdown(fd: i32) -> i32 {
 }
 
 impl AsyncWrite for OpSend {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
         match self.get_mut() {
-            OpSend::Iroh(s) => Pin::new(s).poll_write(cx, buf).map_err(std::io::Error::other),
+            OpSend::Iroh(s) => Pin::new(s)
+                .poll_write(cx, buf)
+                .map_err(std::io::Error::other),
             OpSend::Local(w) => Pin::new(w).poll_write(cx, buf),
             #[cfg(test)]
             OpSend::Duplex(w) => Pin::new(w).poll_write(cx, buf),
@@ -124,9 +134,15 @@ impl AsyncWrite for OpSend {
 }
 
 impl AsyncRead for OpRecv {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
-            OpRecv::Iroh(r) => Pin::new(r).poll_read(cx, buf).map_err(std::io::Error::other),
+            OpRecv::Iroh(r) => Pin::new(r)
+                .poll_read(cx, buf)
+                .map_err(std::io::Error::other),
             OpRecv::Local(r) => Pin::new(r).poll_read(cx, buf),
             #[cfg(test)]
             OpRecv::Duplex(r) => Pin::new(r).poll_read(cx, buf),

@@ -11,8 +11,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use unipi_proto::{
     frame::{encode, FrameKind, MAX_FRAME},
     AppErrorCode, AppErrorDto, Control, FsListData, FsReadData, FsRootsData, FsSearchData,
-    FsStatData, FsWriteData, PathSegment, ProtoError, Request, SearchKind, SearchQuery,
-    Sha256Hex, PROTO_VERSION,
+    FsStatData, FsWriteData, PathSegment, ProtoError, Request, SearchKind, SearchQuery, Sha256Hex,
+    PROTO_VERSION,
 };
 
 use crate::net::NetState;
@@ -62,7 +62,8 @@ fn hello_frame(request: Request) -> Result<Vec<u8>, AppErrorDto> {
             .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
         req: request,
     };
-    let bytes = serde_json::to_vec(&hello).map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
+    let bytes = serde_json::to_vec(&hello)
+        .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
     Ok(encode(FrameKind::Control, &bytes))
 }
 
@@ -119,7 +120,9 @@ pub(crate) async fn simple_op_within(
     let dir = directory(app)?;
     let ticket = host_ticket(&dir, host_id)?;
     let (mut send, mut recv) = open_stream(state, &dir, &ticket).await?;
-    send.write_all(&hello_frame(request)?).await.map_err(transport)?;
+    send.write_all(&hello_frame(request)?)
+        .await
+        .map_err(transport)?;
     let _ = send.shutdown().await;
     let (kind, payload) = read_frame(&mut recv, Some(limit))
         .await?
@@ -147,8 +150,13 @@ pub async fn git_op(
     outside: Option<bool>,
     cmd: serde_json::Value,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    let cmd: unipi_proto::GitCmd = serde_json::from_value(cmd).map_err(|e| schema("cmd", e.to_string()))?;
-    let limit = if cmd.is_network() { Duration::from_secs(135) } else { Duration::from_secs(75) };
+    let cmd: unipi_proto::GitCmd =
+        serde_json::from_value(cmd).map_err(|e| schema("cmd", e.to_string()))?;
+    let limit = if cmd.is_network() {
+        Duration::from_secs(135)
+    } else {
+        Duration::from_secs(75)
+    };
     let request = Request::Git {
         path: path.try_into().map_err(|e: String| schema("path", e))?,
         outside,
@@ -325,7 +333,9 @@ pub async fn fs_read(
         outside,
         as_text,
     };
-    send.write_all(&hello_frame(request)?).await.map_err(transport)?;
+    send.write_all(&hello_frame(request)?)
+        .await
+        .map_err(transport)?;
     let _ = send.shutdown().await;
 
     let (kind, payload) = read_frame(&mut recv, Some(FRAME_TIMEOUT))
@@ -356,9 +366,8 @@ pub async fn fs_read(
             _ => return Err(schema("frame", "unexpected frame kind")),
         }
     }
-    let text = String::from_utf8(bytes).map_err(|_| {
-        AppErrorDto::new(AppErrorCode::E_BINARY, "That file isn't text", false)
-    })?;
+    let text = String::from_utf8(bytes)
+        .map_err(|_| AppErrorDto::new(AppErrorCode::E_BINARY, "That file isn't text", false))?;
     Ok(FsReadResult {
         size: read_data.size,
         hash: read_data.hash,
@@ -389,7 +398,6 @@ pub async fn fs_write(
     let data = simple_op(&app, &state, &host_id, request).await?;
     serde_json::from_value(data).map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())
 }
-
 
 /// Copies an already-uploaded blob (`blob_put_bytes`/`blob_put_file`) to
 /// `to` on the host (`fs_import`, UNI-199): "upload, then place it" in
