@@ -22,11 +22,16 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
     // The draft answers from a live chat on this PC, else the list it last saw (P0-09).
     async (): Promise<ModelInfo[]> => parseModels(await props.session.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined)),
   );
+  const [query, setQuery] = createSignal('');
+  /** The current model first, then the catalogue filtered by the query (name, id, provider); ≤ 80 rows. */
   const list = (): ModelInfo[] => {
     const all = models() ?? [];
     const m = props.session.state.model;
-    if (all.length || !m?.id) return all;
-    return [{ provider: m.provider ?? '', id: m.id, name: m.name ?? m.id } as ModelInfo];
+    const rows = all.length || !m?.id ? all : [{ provider: m.provider ?? '', id: m.id, name: m.name ?? m.id } as ModelInfo];
+    const q = query().trim().toLowerCase();
+    const hit = q ? rows.filter((r) => `${modelName(r)} ${r.id} ${r.provider}`.toLowerCase().includes(q)) : rows;
+    const cur = hit.filter((r) => modelKey(r) === current());
+    return [...cur, ...hit.filter((r) => modelKey(r) !== current())].slice(0, 80);
   };
   return (
     <>
@@ -38,7 +43,11 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
         aria-expanded={!!anchor()}
         title={modelChipTitle(props.session.state.model)}
         disabled={props.disabled}
-        onClick={(e) => (anchor() ? setAnchor(undefined) : setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()))}
+        onClick={(e) => {
+          setQuery('');
+          if (anchor()) setAnchor(undefined);
+          else setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect());
+        }}
         data-testid="model-chip"
       >
         <Cpu size={15} class="tb-ic" />
@@ -49,6 +58,24 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
         {(rect) => (
           <AnchoredMenu anchor={rect()} alignEnd width={300} label="Model" onDismiss={() => setAnchor(undefined)}>
             <div class="ws-menu dm-menu" data-testid="draft-model-menu">
+              <input
+                class="dm-search"
+                type="search"
+                placeholder="Search models"
+                aria-label="Search models"
+                value={query()}
+                onInput={(e) => setQuery(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const first = list()[0];
+                    if (first) {
+                      setAnchor(undefined);
+                      props.session.pickModel({ provider: first.provider ?? '', modelId: first.id, name: modelName(first) });
+                    }
+                  }
+                }}
+                ref={(el) => queueMicrotask(() => el.focus())}
+              />
               <div class="ws-label">Model for this chat</div>
               <Show when={!models.loading} fallback={<div class="ws-browse-note">Loading…</div>}>
                 <For each={list()}>
@@ -77,6 +104,9 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                     </button>
                   )}
                 </For>
+                <Show when={(models() ?? []).length > 0 && !list().length}>
+                  <div class="ws-browse-note">No model matches “{query()}”</div>
+                </Show>
                 <Show when={!(models() ?? []).length}>
                   <div class="ws-browse-note">The other models show here once a chat on this PC has run.</div>
                 </Show>

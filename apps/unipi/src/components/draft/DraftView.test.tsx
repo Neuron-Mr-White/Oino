@@ -21,6 +21,7 @@ import { queueFirstPrompt, takeFirstPrompt } from '../../lib/session/firstPrompt
 import type { SessionCard } from '../../lib/host/client';
 import { createDraftSession, draftKey } from './draftSession';
 import { homeOf, parentOf } from './WorkspacePicker';
+import { rememberCommands, rememberModels } from './hostCache';
 
 const start = vi.hoisted(() => vi.fn());
 vi.mock('./startSession', () => ({ startSession: start, LINGER_MS: 0 }));
@@ -177,6 +178,21 @@ describe('draft session (stand-in handle)', () => {
     expect(submitted).toEqual([]);
     s.send('Go', { mode: 'prompt' });
     expect(submitted).toEqual(['Go']);
+  });
+});
+
+describe('P0-09: the draft knows this PC before any chat is open', () => {
+  it('offers the / commands and models a chat on this PC last listed', async () => {
+    const world = createMockHost({ name: 't', hosts: [{ id: 'h', name: 'h', conn: { state: 'connected' } }] });
+    setHostClientFactory(world.client);
+    rememberCommands('h', [{ name: 'goal', description: 'Set a goal', source: 'extension' }]);
+    rememberModels('h', [{ provider: 'oino', id: 'ollamacloud/glm-4.7' }]);
+    const s = createRoot(() => createDraftSession('h', () => {}));
+    expect(s.state.commands.map((c) => c.name)).toEqual(['goal']);
+    const reply = await s.cmd<{ models: Array<{ id: string }> }>({ type: 'get_available_models' });
+    expect(reply.models.map((m) => m.id)).toEqual(['ollamacloud/glm-4.7']);
+    await s.cmd({ type: 'set_model', provider: 'oino', modelId: 'ollamacloud/glm-4.7' });
+    expect(s.choices().model).toEqual({ provider: 'oino', modelId: 'ollamacloud/glm-4.7' });
   });
 });
 

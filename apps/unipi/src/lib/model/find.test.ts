@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findModel } from './find';
+import { findModel, matchModel } from './find';
 
 const models = [
   { provider: 'oino', id: 'ollamacloud/deepseek-v4.1-flash' },
@@ -14,6 +14,12 @@ describe('findModel (/model <name>)', () => {
     expect(findModel(models, 'claude-opus-4-5')?.id).toBe('claude-opus-4-5');
     expect(findModel(models, 'DeepSeek V4.1 Flash')?.id).toBe('ollamacloud/deepseek-v4.1-flash');
     expect(findModel(models, 'sonnet')?.id).toBe('claude-sonnet-4-5');
+  });
+  it('several matches: the current provider wins, else they are listed', () => {
+    const rows = [...models, { provider: 'openrouter', id: 'deepseek/deepseek-v4.1-flash' }];
+    expect(findModel(rows, 'deepseek-v4.1-flash', { provider: 'oino' })?.provider).toBe('oino');
+    const m = matchModel(rows, 'deepseek-v4.1-flash');
+    expect('ambiguous' in m && m.ambiguous.length).toBe(2);
   });
   it('an ambiguous or unknown name is no match', () => {
     expect(findModel(models, 'claude')).toBeUndefined();

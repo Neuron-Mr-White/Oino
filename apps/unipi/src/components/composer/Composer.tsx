@@ -43,7 +43,7 @@ import {
   type BuiltinDeps,
   type SessionBuiltinDeps,
 } from '../../lib/composer/builtins';
-import { findModel } from '../../lib/model/find';
+import { matchModel } from '../../lib/model/find';
 import { rememberCommands } from '../draft/hostCache';
 import { modelName, parseModels } from '../../lib/model/picker';
 import { parseLevels, setThinkingLevel, thinkingLabel } from '../../lib/model/thinking';
@@ -522,11 +522,17 @@ export function Composer(props: ComposerProps) {
         void s
           .cmd<unknown>({ type: 'get_available_models' })
           .then((reply) => {
-            const hit = findModel(parseModels(reply), query);
-            if (!hit) {
+            const match = matchModel(parseModels(reply), query, s.state.model);
+            if ('ambiguous' in match) {
+              const names = match.ambiguous.slice(0, 3).map((m) => `${modelName(m)} (${m.provider})`).join(', ');
+              showActionNotice(`“${query}” matches ${match.ambiguous.length} models — ${names}${match.ambiguous.length > 3 ? '…' : ''}. Type more, or /model to pick`);
+              return;
+            }
+            if (!('hit' in match)) {
               showActionNotice(`No model matches “${query}”`);
               return;
             }
+            const hit = match.hit;
             return s.cmd({ type: 'set_model', provider: hit.provider, modelId: hit.id }).then(() => showActionNotice(`Model: ${modelName(hit)}`));
           })
           .catch(failed('Could not switch the model'));

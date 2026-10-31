@@ -76,6 +76,9 @@ html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placehol
   margin: 1px 1px;
 }
 
+/* The menus anchor to the composer itself, not the conversation pane. */
+.tl-composer-wrap { position: relative; }
+
 /* The `/` and `@` menus, above the composer (inside the dock). */
 .cmenu {
   position: absolute;
@@ -267,6 +270,9 @@ html:not([data-shell='desktop']) .cmenu {
   min-width: 0;
 }
 .comp-bar .tb-spacer { flex: 1 1 auto; min-width: 0; }
+/* A control that is not offered here (no workflow extension, a model without
+   thinking) leaves no slot behind — no double gap. */
+.comp-bar .tb-slot:empty { display: none; }
 .comp-bar .composer-plus-btn {
   display: grid;
   place-items: center;

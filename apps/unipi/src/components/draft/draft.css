@@ -128,6 +128,22 @@
   text-transform: uppercase;
   color: var(--color-text-dim);
 }
+.dm-menu { height: min(380px, 52vh); }
+.dm-search {
+  flex: none;
+  height: 34px;
+  margin: 2px 2px 4px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  caret-color: var(--color-claw);
+}
+.dm-search:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--color-claw); }
 .ws-sep { height: 1px; margin: 5px 8px; background: var(--color-line); }
 .ws-row {
   display: flex;
