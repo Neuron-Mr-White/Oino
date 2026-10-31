@@ -206,6 +206,63 @@ pub fn picker_rows(models: &[ModelInfo], preset: &Preset, active: Option<&Active
     keys
 }
 
+/// One curated entry: `{key, name}` — the name from the catalogue, else the
+/// id part of the key (unipi `named`).
+#[must_use]
+pub fn curated_entry(models: &[ModelInfo], key: &str) -> Value {
+    let name = models.iter().find(|m| m.key == key).map_or_else(
+        || preset::split_key(key).map_or(key, |(_, id)| id).to_owned(),
+        |m| m.name.clone(),
+    );
+    json!({"key": key, "name": name})
+}
+
+/// The `curated` object of the `fusion.status` service (P0-10): what the old
+/// harness's `FusionApiPicker` (`@pi-unipi/fusion` `api.ts`, relayed to the phone
+/// as `hello.fusion`) gave a UI-less picker. Exact JSON shape:
+///
+/// ```json
+/// {
+///   "lead":     [ { "key": "provider/id", "name": "Display Name" } ],
+///   "sidekick": [ { "key": "provider/id", "name": "Display Name" } ],
+///   "ranked":   [ { "key": "provider/id", "name": "Display Name" } ],
+///   "default":  { "lead": "provider/id", "sidekick": "provider/id" },
+///   "effort":   { "provider/id": "high" }
+/// }
+/// ```
+///
+/// - `lead` / `sidekick` — the lists `/fusion-preset` curates (global +
+///   project layers merged, settings `default.*` overrides applied for the
+///   pair only); every key is listed, names resolved off-catalogue too
+///   (id fallback).
+/// - `ranked` — the TUI picker's head order: `recent`, then curated leads,
+///   then sidekicks — deduplicated and catalogue-validated. The app's
+///   `ModelPicker` ranks these first; the raw catalogue stays for search.
+/// - `default` — the default pair (`{}` when unset; absent sides are
+///   omitted, like the old `default: { lead?, sidekick? }`).
+/// - `effort` — per-model effort overrides.
+#[must_use]
+pub fn curated_payload(models: &[ModelInfo], preset: &Preset) -> Value {
+    let mut head: Vec<&String> = Vec::new();
+    for key in preset
+        .recent
+        .iter()
+        .chain(&preset.lead)
+        .chain(&preset.sidekick)
+    {
+        if models.iter().any(|m| m.key == *key) && !head.contains(&key) {
+            head.push(key);
+        }
+    }
+    json!({
+        "lead": preset.lead.iter().map(|k| curated_entry(models, k)).collect::<Vec<_>>(),
+        "sidekick": preset.sidekick.iter().map(|k| curated_entry(models, k)).collect::<Vec<_>>(),
+        "ranked": head.iter().map(|k| curated_entry(models, k)).collect::<Vec<_>>(),
+        "default": serde_json::to_value(&preset.default).unwrap_or_default(),
+        "effort": preset.effort,
+    })
+}
+
 fn price_text(p: Option<&Price>) -> String {
     p.map_or_else(
         || "no pricing".into(),
@@ -1964,7 +2021,15 @@ impl Extension for Fusion {
             Ok(ext.reader(&p, &cx).await)
         });
         cx.service(point::FUSION_STATUS, |ext, _p, _c, cx| async move {
-            Ok(json!({"active": ext.sessions.with(cx.session_id(), |s| s.active.clone()), "status": unipi_kit::bus::get_raw(topics::FUSION_STATUS)}))
+            let (preset, _) = ext.preset();
+            let models = Self::models();
+            Ok(json!({
+                "active": ext.sessions.with(cx.session_id(), |s| s.active.clone()),
+                "status": unipi_kit::bus::get_raw(topics::FUSION_STATUS),
+                // P0-10: the curated lists `/fusion-preset` keeps, so the app's
+                // ModelPicker ranks models like the TUI picker (old phone shape).
+                "curated": curated_payload(&models, &preset),
+            }))
         });
         cx.service(point::FUSION_SET_PAIR, |ext, p, _c, cx| async move {
             let sel: Active =
@@ -2072,6 +2137,47 @@ mod tests {
             None
         );
         assert_eq!(restore_sidekick(&[]), None);
+    }
+
+    #[test]
+    fn curated_payload_shapes_the_picker_lists() {
+        let models = models_from(&[
+            json!({"provider": "a", "id": "x", "name": "X"}),
+            json!({"provider": "b", "id": "y"}),
+        ]);
+        let preset = Preset {
+            recent: vec!["b/y".into()],
+            lead: vec!["a/x".into(), "gone/q".into()],
+            sidekick: vec!["b/y".into(), "a/x".into()],
+            default: Pair {
+                lead: Some("a/x".into()),
+                sidekick: None,
+            },
+            effort: [("a/x".to_owned(), "high".to_owned())]
+                .into_iter()
+                .collect(),
+            ..Preset::default()
+        };
+        let payload = curated_payload(&models, &preset);
+        // Curated lists keep every key, names resolved off-catalogue (id fallback).
+        assert_eq!(payload["lead"][0], json!({"key": "a/x", "name": "X"}));
+        assert_eq!(payload["lead"][1], json!({"key": "gone/q", "name": "q"}));
+        assert_eq!(payload["sidekick"].as_array().map(Vec::len), Some(2));
+        // Ranked: recent first, then curated leads/sidekicks, deduped, catalogue-only.
+        let keys: Vec<&str> = payload["ranked"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["key"].as_str().unwrap())
+            .collect();
+        assert_eq!(keys, ["b/y", "a/x"]);
+        assert_eq!(payload["default"], json!({"lead": "a/x"}));
+        assert_eq!(payload["effort"], json!({"a/x": "high"}));
+        // An empty preset is a valid, all-empty shape (no `default` sides).
+        assert_eq!(
+            curated_payload(&models, &Preset::default())["default"],
+            json!({})
+        );
     }
 
     #[test]
