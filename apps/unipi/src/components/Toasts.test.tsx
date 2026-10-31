@@ -78,4 +78,12 @@ describe('Toasts', () => {
     fireEvent.pointerLeave(toast);
     expect(resume).toHaveBeenCalledWith(stack.list()[0]!.id);
   });
+
+  it('clicking anywhere on a toast dismisses it', () => {
+    stack.push('Plan mode on');
+    const { container } = render(() => <Toasts />);
+    const toast = container.querySelector('.app-toast')!;
+    fireEvent.click(toast);
+    expect(stack.list()[0]!.leaving).toBe(true);
+  });
 });

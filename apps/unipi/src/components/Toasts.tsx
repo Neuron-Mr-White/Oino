@@ -1,20 +1,84 @@
 /**
  * The app-wide toast stack (WP-A19, Z-85): mounted once by the shell on
- * every surface. One action per toast (Undo / Open…), identical toasts fold
- * ×N, hovering pauses the timer, dismissal exits through a 200 ms fade
- * (none under reduced motion). The board's own toasts land here too.
+ * every surface. Compact (≤ 360 px, 13 px text), stacked bottom-right of the
+ * conversation area above the composer so it never covers the input. One
+ * optional action per toast (Undo / Open…), identical toasts fold ×N, click
+ * or ✕ dismisses, hovering pauses the timer, and at most 3 show at once.
  */
-import { For, Show } from 'solid-js';
+import { createEffect, For, onCleanup, Show } from 'solid-js';
 import { AlertCircle, CheckCircle2, Info, TriangleAlert, Undo2, X } from 'lucide-solid';
 import { toasts, type ToastKind } from '../lib/toasts';
 import './toasts.css';
 
 const ICON: Record<ToastKind, typeof Info> = { info: Info, success: CheckCircle2, warning: TriangleAlert, error: AlertCircle };
 
+/** Computes right/bottom offsets so toasts stay bottom-right of `.conv` and above the composer. */
+function measureToastOffsets(): { right: number; bottom: number } {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return { right: 16, bottom: 96 };
+  const vw = window.innerWidth || 1440;
+  const vh = window.innerHeight || 900;
+  const phone = document.documentElement.dataset.shell === 'phone';
+  const edgePad = phone ? 12 : 16;
+
+  const conv = document.querySelector<HTMLElement>('.ws-layer .conv, .conv');
+  const convRect = conv?.getBoundingClientRect();
+  const right =
+    convRect && convRect.width > 0
+      ? Math.max(edgePad, Math.round(vw - convRect.right + edgePad))
+      : edgePad;
+
+  const dock = document.querySelector<HTMLElement>('.ws-layer .dock, .conv .dock');
+  const dockComposer = dock?.querySelector<HTMLElement>('.tl-composer') ?? dock;
+  if (dockComposer) {
+    const r = dockComposer.getBoundingClientRect();
+    if (r.height > 0 && r.top < vh) {
+      return { right, bottom: Math.max(edgePad, Math.round(vh - r.top + 10)) };
+    }
+  }
+
+  const draftComposer = document.querySelector<HTMLElement>('.draft-composer .tl-composer, .composer-card');
+  if (draftComposer) {
+    const r = draftComposer.getBoundingClientRect();
+    if (r.height > 0 && r.top < vh) {
+      if (vh - r.bottom < 160) {
+        return { right, bottom: Math.max(edgePad, Math.round(vh - r.top + 10)) };
+      }
+      return { right, bottom: phone ? 76 : 36 };
+    }
+  }
+
+  return { right, bottom: phone ? 76 : 20 };
+}
+
 export function Toasts() {
   const stack = toasts();
+  let rootEl: HTMLDivElement | undefined;
+
+  // Only observe layout while at least one toast is shown (zero cost while idle/streaming).
+  createEffect(() => {
+    if (stack.list().length === 0 || !rootEl || typeof window === 'undefined') return;
+    const el = rootEl;
+    const sync = () => {
+      const { right, bottom } = measureToastOffsets();
+      el.style.setProperty('--toast-right', `${right}px`);
+      el.style.setProperty('--toast-bottom', `${bottom}px`);
+    };
+    sync();
+    window.addEventListener('resize', sync, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : undefined;
+    if (ro) {
+      for (const target of document.querySelectorAll('.conv, .dock, .tl-composer, .draft-composer, .composer-card')) {
+        ro.observe(target);
+      }
+    }
+    onCleanup(() => {
+      window.removeEventListener('resize', sync);
+      ro?.disconnect();
+    });
+  });
+
   return (
-    <div class="app-toasts" aria-live="polite" data-testid="app-toasts">
+    <div ref={rootEl} class="app-toasts" aria-live="polite" data-testid="app-toasts">
       <For each={stack.list()}>
         {(toast) => {
           const Icon = ICON[toast.kind];
@@ -24,14 +88,15 @@ export function Toasts() {
               data-kind={toast.kind}
               data-leaving={toast.leaving ? '' : undefined}
               role={toast.kind === 'error' ? 'alert' : 'status'}
+              onClick={() => stack.dismiss(toast.id)}
               onPointerEnter={() => stack.pause(toast.id)}
               onPointerLeave={() => stack.resume(toast.id)}
             >
-              <Icon size={18} class="app-toast-icon shrink-0" />
-              <span class="min-w-0 flex-1">
+              <Icon size={15} class="app-toast-icon shrink-0" />
+              <span class="app-toast-msg">
                 {toast.message}
                 <Show when={(toast.count ?? 1) > 1}>
-                  <span class="text-text-dim"> ×{toast.count}</span>
+                  <span class="app-toast-count"> ×{toast.count}</span>
                 </Show>
               </span>
               <Show when={toast.action}>
@@ -39,20 +104,29 @@ export function Toasts() {
                   <button
                     type="button"
                     class="app-toast-action"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       stack.dismiss(toast.id);
                       void action().run();
                     }}
                   >
                     <Show when={action().label === 'Undo'}>
-                      <Undo2 size={15} />
+                      <Undo2 size={13} />
                     </Show>
                     {action().label}
                   </button>
                 )}
               </Show>
-              <button type="button" class="app-toast-close" aria-label="Dismiss" onClick={() => stack.dismiss(toast.id)}>
-                <X size={16} />
+              <button
+                type="button"
+                class="app-toast-close"
+                aria-label="Dismiss"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  stack.dismiss(toast.id);
+                }}
+              >
+                <X size={13} />
               </button>
             </div>
           );

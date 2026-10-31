@@ -1,11 +1,11 @@
 /**
  * The one app-wide toast stack (app spec §3.3, WP-A19; Z-85): confirmations,
- * pi `notify` effects and board actions surface here — in the BoardToasts
- * style (one action, identical toasts fold ×N, at most 3 visible, hover
- * pauses the timer, an exit fade on dismissal).
+ * extension `notify` effects and board actions surface here — compact,
+ * stacked bottom-right above the composer, one optional action, identical
+ * toasts fold ×N, at most 3 visible, hover pauses the timer, click dismisses,
+ * and dismissal exits through a short fade (none under reduced motion).
  *
- * Timings (the v1 F1 set, ruled in Z-85): info/success 4 s, warning 6 s,
- * error sticky (dismissed by hand), and an action buys 4 s more.
+ * Timings: info/success 3 s, warning 5 s, error 8 s, and an action buys 4 s more.
  *
  *   const stack = toasts();
  *   stack.push('Committed abc1234 · fix: width');
@@ -17,23 +17,22 @@ export type ToastKind = 'info' | 'success' | 'warning' | 'error';
 export type ToastAction = { label: string; run: () => void | Promise<void> };
 export type Toast = { id: number; kind: ToastKind; message: string; action?: ToastAction; count?: number; leaving?: boolean };
 
-/** Info/success toasts go after 4 s. */
-export const TOAST_INFO_MS = 4000;
-/** Warnings stay a beat longer: 6 s. */
-export const TOAST_WARNING_MS = 6000;
-/** An action (Undo / Open) buys 4 s more, like the board's 8 s Undo toasts. */
+/** Info/success toasts auto-dismiss after 3 s. */
+export const TOAST_INFO_MS = 3000;
+/** Warnings stay longer: 5 s. */
+export const TOAST_WARNING_MS = 5000;
+/** Errors stay longest so they can be read, then auto-dismiss: 8 s. */
+export const TOAST_ERROR_MS = 8000;
+/** An action (Undo / Open) buys 4 s more. */
 export const TOAST_ACTION_EXTRA_MS = 4000;
-/** Errors never auto-dismiss (sticky; the ✕ or the action closes them). */
-export const TOAST_ERROR_STICKY = true;
-/** The exit fade (Z-91 keeps exits ≤ 200 ms; reduced motion drops it in CSS). */
-export const TOAST_EXIT_MS = 200;
-/** At most 3 visible at once (BoardToasts rule). */
+/** The exit fade (≤ 200 ms; reduced motion drops it in CSS). */
+export const TOAST_EXIT_MS = 180;
+/** At most 3 visible at once. */
 export const TOAST_MAX_VISIBLE = 3;
 
-/** One toast's lifetime in ms, `0` = sticky. Pure. */
+/** One toast's lifetime in ms. Pure. */
 export function toastTtl(kind: ToastKind, hasAction = false): number {
-  if (kind === 'error') return 0;
-  const base = kind === 'warning' ? TOAST_WARNING_MS : TOAST_INFO_MS;
+  const base = kind === 'error' ? TOAST_ERROR_MS : kind === 'warning' ? TOAST_WARNING_MS : TOAST_INFO_MS;
   return base + (hasAction ? TOAST_ACTION_EXTRA_MS : 0);
 }
 
@@ -102,7 +101,7 @@ export function createToastStack(timers: ToastTimers = realTimers, now: () => nu
   return {
     list: () => list(),
     push(message, kind = 'info', action) {
-      // Web parity: identical toasts fold into ×N and get a fresh timer.
+      // Identical toasts fold into ×N and get a fresh timer.
       const same = !action ? list().find((t) => !t.action && !t.leaving && t.kind === kind && t.message === message) : undefined;
       if (same) {
         setList((current) => current.map((t) => (t.id === same.id ? { ...t, count: (t.count ?? 1) + 1 } : t)));
@@ -149,13 +148,17 @@ export function createToastStack(timers: ToastTimers = realTimers, now: () => nu
   };
 }
 
+type GlobalWithToasts = typeof globalThis & { __unipiToasts?: ToastStack };
+
 let shared: ToastStack | undefined;
 /** The one app-wide stack (`components/Toasts.tsx` renders it). */
 export function toasts(): ToastStack {
   if (!shared) shared = createToastStack();
+  (globalThis as GlobalWithToasts).__unipiToasts = shared;
   return shared;
 }
 /** Tests: replace the shared stack. */
 export function setToasts(stack: ToastStack | undefined): void {
   shared = stack;
+  (globalThis as GlobalWithToasts).__unipiToasts = stack;
 }

@@ -1,10 +1,10 @@
 /**
- * Toast stack tests (WP-A19 acceptance): info 4 s, warning 6 s, error sticky;
- * an action buys 4 s more; identical toasts fold ×N; at most 3 visible;
- * hover pauses and resumes with the remaining time.
+ * Toast stack tests (WP-A19 acceptance): info/success 3 s, warning 5 s,
+ * error 8 s; an action buys 4 s more; identical toasts fold ×N; at most 3
+ * visible; hover pauses and resumes with the remaining time.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createToastStack, toastTtl, TOAST_EXIT_MS, type ToastTimers } from './toasts';
+import { createToastStack, toastTtl, TOAST_ERROR_MS, TOAST_EXIT_MS, TOAST_INFO_MS, TOAST_WARNING_MS, type ToastTimers } from './toasts';
 
 type Fired = { ms: number; cb: () => void };
 let fired: Fired[];
@@ -38,48 +38,42 @@ afterEach(() => {
 });
 
 describe('toastTtl', () => {
-  it('info 4 s, success 4 s, warning 6 s, error sticky; +4 s with an action', () => {
-    expect(toastTtl('info')).toBe(4000);
-    expect(toastTtl('success')).toBe(4000);
-    expect(toastTtl('warning')).toBe(6000);
-    expect(toastTtl('error')).toBe(0);
-    expect(toastTtl('info', true)).toBe(8000);
-    expect(toastTtl('warning', true)).toBe(10_000);
-    expect(toastTtl('error', true)).toBe(0);
+  it('info 3 s, success 3 s, warning 5 s, error 8 s; +4 s with an action', () => {
+    expect(toastTtl('info')).toBe(3000);
+    expect(toastTtl('success')).toBe(3000);
+    expect(toastTtl('warning')).toBe(5000);
+    expect(toastTtl('error')).toBe(8000);
+    expect(toastTtl('info', true)).toBe(7000);
+    expect(toastTtl('warning', true)).toBe(9000);
+    expect(toastTtl('error', true)).toBe(12_000);
   });
 });
 
 describe('timings', () => {
-  it('an info toast dismisses after 4 s (through the 200 ms exit fade)', () => {
+  it('an info toast auto-dismisses after 3 s (through the exit fade)', () => {
     const s = stack();
-    s.push('Copied');
-    const ttl = due(4000)!;
+    s.push('Plan mode on');
+    const ttl = due(TOAST_INFO_MS)!;
+    expect(ttl).toBeTruthy();
     run(ttl);
-    expect(s.list()).toHaveLength(1); // leaving
+    expect(s.list()).toHaveLength(1);
     expect(s.list()[0]!.leaving).toBe(true);
     run(due(TOAST_EXIT_MS)!);
     expect(s.list()).toHaveLength(0);
   });
 
-  it('a warning goes after 6 s', () => {
+  it('warnings and errors stay longer before auto-dismissing', () => {
     const s = stack();
     s.push('Flaky', 'warning');
-    expect(due(6000)).toBeTruthy();
-  });
-
-  it('an error is sticky: no lifetime timer, only the manual one', () => {
-    const s = stack();
+    expect(due(TOAST_WARNING_MS)).toBeTruthy();
     s.push('Disk full', 'error');
-    expect(due(4000)).toBeUndefined();
-    expect(due(6000)).toBeUndefined();
-    expect(due(0)).toBeUndefined();
-    expect(s.list()[0]!.leaving).toBeUndefined();
+    expect(due(TOAST_ERROR_MS)).toBeTruthy();
   });
 
-  it('an action extends the lifetime (info + Undo = 8 s)', () => {
+  it('an action extends the lifetime (info + Undo = 7 s)', () => {
     const s = stack();
     s.push('Task archived', 'info', { label: 'Undo', run: () => {} });
-    expect(due(8000)).toBeTruthy();
+    expect(due(7000)).toBeTruthy();
   });
 });
 
@@ -87,11 +81,11 @@ describe('stack rules', () => {
   it('identical toasts (no action) fold into ×N with a fresh timer', () => {
     const s = stack();
     s.push('Copied');
-    now += 2000; // 2 s in
+    now += 2000;
     s.push('Copied');
     expect(s.list()).toHaveLength(1);
     expect(s.list()[0]!.count).toBe(2);
-    expect(due(4000)).toBeTruthy(); // a fresh 4 s, not the remaining 2 s
+    expect(due(TOAST_INFO_MS)).toBeTruthy();
   });
 
   it('an action toast never folds', () => {
@@ -108,32 +102,28 @@ describe('stack rules', () => {
     s.push('three', 'error');
     s.push('four', 'error');
     expect(s.list().map((t) => t.message)).toEqual(['two', 'three', 'four']);
-    // 'one' is gone outright — no exit fade timer left for it.
     expect(fired.filter((f) => f.ms === TOAST_EXIT_MS)).toHaveLength(0);
   });
 
   it('hover pauses and resumes with the remaining time', () => {
     const s = stack();
     const id = s.push('Copied');
-    now += 3000; // 3 s in
+    now += 2000; // 2 s in of 3 s
     s.pause(id);
-    expect(due(1000)).toBeUndefined(); // timer cleared
-    expect(due(4000)).toBeUndefined();
-    now += 60_000; // a long hover
+    expect(due(1000)).toBeUndefined();
+    expect(due(TOAST_INFO_MS)).toBeUndefined();
+    now += 60_000;
     s.resume(id);
-    expect(due(1000)).toBeTruthy(); // exactly the remaining second
+    expect(due(1000)).toBeTruthy();
     run(due(1000)!);
     expect(s.list()[0]!.leaving).toBe(true);
   });
 
-  it('pause on a sticky toast is a no-op; dismiss cancels the timer', () => {
+  it('dismiss cancels the lifetime timer and starts exit fade', () => {
     const s = stack();
-    const id = s.push('Disk full', 'error');
-    s.pause(id);
-    s.resume(id);
-    expect(s.list()[0]!.leaving).toBeUndefined();
     const warn = s.push('Flaky', 'warning');
     s.dismiss(warn);
-    expect(fired.some((f) => f.ms === 6000)).toBe(false);
+    expect(fired.some((f) => f.ms === TOAST_WARNING_MS)).toBe(false);
+    expect(s.list()[0]!.leaving).toBe(true);
   });
 });

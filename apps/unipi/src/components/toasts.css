@@ -1,51 +1,62 @@
-/* App-wide toasts (WP-A19, Z-85): the BoardToasts look, one stack for every
-   surface. Fixed bottom-left, clearing the desktop sidebar; on the phone they
-   sit above the bottom tab bar. Exit fade ≤ 200 ms, none under reduced motion. */
+/* App-wide toasts (WP-A19, Z-85): compact cards (≤ 360 px, auto width, 13 px
+   text), stacked bottom-right of the conversation area above the composer so
+   nothing covers the input. Exit fade ≤ 200 ms, none under reduced motion. */
 .app-toasts {
   position: fixed;
-  left: calc(var(--sidebar-w, 0px) + 12px);
-  right: 12px;
-  bottom: 18px;
+  right: var(--toast-right, 16px);
+  bottom: var(--toast-bottom, 96px);
+  left: auto;
   z-index: 70;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: min(360px, calc(100vw - 24px));
   pointer-events: none;
 }
 [data-shell='phone'] .app-toasts {
-  bottom: calc(76px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px)));
-  left: 12px;
+  right: var(--toast-right, 12px);
+  bottom: var(--toast-bottom, calc(76px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))));
 }
 .app-toast {
   pointer-events: auto;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-height: 52px;
-  padding: 6px 4px 6px 14px;
+  gap: 8px;
+  width: auto;
+  max-width: min(360px, calc(100vw - 24px));
+  min-height: 34px;
+  padding: 6px 8px 6px 10px;
   box-sizing: border-box;
-  border-radius: 16px;
+  border-radius: 10px;
   background: var(--color-surface-3);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 55%);
-  font-size: 14px;
-  line-height: 19px;
+  border: 1px solid var(--color-line);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+  font-size: 13px;
+  line-height: 18px;
   color: var(--color-text);
-  animation: app-toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  cursor: pointer;
+  user-select: none;
+  animation: app-toast-in 160ms ease-out both;
+  transition: border-color 120ms ease-out, background-color 120ms ease-out;
+}
+.app-toast:hover {
+  border-color: rgb(110 101 93 / 55%);
 }
 .app-toast[data-leaving] {
-  animation: app-toast-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  animation: app-toast-out 180ms ease-out both;
   pointer-events: none;
 }
 @keyframes app-toast-in {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(8px);
   }
 }
 @keyframes app-toast-out {
   to {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
 }
 .app-toast-icon {
@@ -63,25 +74,48 @@
 .app-toast[data-kind='info'] .app-toast-icon {
   color: var(--color-wm-cyan);
 }
+.app-toast-msg {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+.app-toast-count {
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+}
 .app-toast-action {
   flex: 0 0 auto;
-  min-height: 40px;
-  padding: 0 12px;
-  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--color-gold);
   font-weight: 600;
-  background: transparent;
+  background: rgb(240 192 48 / 10%);
+}
+.app-toast-action:hover {
+  background: rgb(240 192 48 / 18%);
 }
 .app-toast-close {
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
   display: grid;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 6px;
   color: var(--color-text-dim);
   background: transparent;
+}
+.app-toast-close:hover {
+  color: var(--color-text);
+  background: rgb(255 255 255 / 7%);
 }
 @media (prefers-reduced-motion: reduce) {
   .app-toast,
