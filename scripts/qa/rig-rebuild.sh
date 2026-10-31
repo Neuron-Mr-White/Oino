@@ -12,7 +12,10 @@ if [ "${1:-}" = --host ]; then
   (cd "$root/apps/unipi" && cargo build --release -p unipi-host 2>&1 | tail -3)
   install -m 755 "$root/apps/unipi/target/release/unipi-host" "$QA_HOME/app/usr/bin/unipi-oino-host"
 fi
-(cd "$root/apps/unipi" && cargo tauri build --no-bundle 2>&1 | grep -E "error|warning: unused|Finished|Built" | tail -5)
+# vite build + the release shell with the custom protocol (what `cargo tauri build`
+# does, without its file watcher, which hits the inotify limit on busy machines).
+(cd "$root/apps/unipi" && npx vite build 2>&1 | grep -E "error|built in" | tail -3)
+(cd "$root/apps/unipi/src-tauri" && cargo build --release --features tauri/custom-protocol 2>&1 | grep -E "^error|Finished" | tail -5)
 install -m 755 "$root/apps/unipi/src-tauri/target/release/unipi-oino" "$QA_HOME/app/usr/bin/unipi-oino"
 node "$root/scripts/qa/rig.mjs" start
 echo "rig restarted with the working tree build"
