@@ -1,0 +1,445 @@
+name: release
+
+# The release + install pipeline (docs/dev/v2/specs/dist.md §2, DIRECTION §8).
+# A tag push `v*` builds every artifact and publishes the GitHub Release:
+#
+#   oino-<version>-<target>.tar.gz|zip   the oino CLI/TUI + the extension
+#                                        share tree (`bin/` + `share/oino/`)
+#   UniPi_<version>_amd64.deb / .AppImage  Linux desktop app (sidecar + dist)
+#   UniPi_<version>_x64-setup.exe          Windows NSIS installer
+#   UniPi_<version>_universal.dmg          macOS (unsigned/ad-hoc, see BUILDING.md)
+#   UniPi_<version>_universal.apk          Android (release keystore via secrets,
+#                                          else a generated debug key)
+#   SHA256SUMS, release-manifest.json      checksums (installers verify SHA256SUMS)
+#                                        and the `oino update` manifest
+#
+# workflow_dispatch builds the same matrix from HEAD and attaches everything to
+# a DRAFT release (tag v<version> at the current commit) — buildability
+# rehearsal without publishing. Run it from a commit whose version differs
+# from any published tag (same-version dispatch would append files to that
+# tag's release).
+#
+# The extension components (extensions/dist) are not committed: the `wasm` job
+# builds them once and every other job consumes its artifact.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  wasm:
+    name: extension components
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nextensions -> target\napps/unipi -> target"
+      - name: Build extensions/dist
+        run: cargo xtask wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+
+  version:
+    name: release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          # Tags drive the version; a dispatch rehearsal falls back to the app
+          # conf until `cargo xtask dist version` (dist.md §1) lands.
+          if [ "${GITHUB_REF_TYPE:-}" = tag ]; then
+            v="${GITHUB_REF_NAME#v}"
+          else
+            v=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' apps/unipi/src-tauri/tauri.conf.json | head -1)
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "release version: $v"
+
+  # ── oino CLI/TUI ───────────────────────────────────────────────────────────
+
+  oino:
+    name: oino ${{ matrix.target }}
+    needs: [wasm, version]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux is static musl (runs on any distro, glibc or musl).
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-musl }
+          - { os: ubuntu-22.04, target: aarch64-unknown-linux-musl }
+          - { os: macos-14, target: aarch64-apple-darwin }
+          - { os: macos-14, target: x86_64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\napps/unipi -> target"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - run: rustup target add "$TARGET"
+      - name: Build the CLI and the kanboard package CLI
+        shell: bash
+        run: |
+          case "$(uname -s)" in
+            Linux*)
+              # Static musl through zig (musl-gcc is not on the runners);
+              # the same toolchain the sidecar script uses.
+              pip3 install cargo-zigbuild
+              cargo zigbuild --release -p oino-cli --target "$TARGET"
+              (cd apps/unipi && cargo zigbuild --release -p unipi-kanboard --target "$TARGET")
+              ;;
+            Darwin*)
+              cargo build --release -p oino-cli --target "$TARGET"
+              (cd apps/unipi && cargo build --release -p unipi-kanboard --target "$TARGET")
+              ;;
+            *)
+              # Windows: native MSVC; build.rs embeds the exe icon
+              # (crates/oino/build.rs) on a Windows host.
+              cargo build --release -p oino-cli --target "$TARGET"
+              (cd apps/unipi && cargo build --release -p unipi-kanboard --target "$TARGET")
+              ;;
+          esac
+      - name: Stage the archive (bin + share/oino/extensions, dist.md §5)
+        shell: bash
+        run: |
+          set -x
+          sh scripts/release/stage-dist.sh target/dist-stage
+          exe=""; [[ "$TARGET" == *windows* ]] && exe=".exe"
+          mkdir -p target/out/bin
+          cp "target/$TARGET/release/oino$exe" target/out/bin/
+          # The kanboard CLI ships inside the unipi.kanboard package (dist.md
+          # §3.4): rebuild it for this archive's target.
+          mkdir -p "target/dist-stage/extensions/unipi.kanboard/bin"
+          cp "apps/unipi/target/$TARGET/release/unipi-kanboard$exe" \
+             "target/dist-stage/extensions/unipi.kanboard/bin/unipi-kanboard$exe"
+          if [[ "$TARGET" == *windows* ]]; then
+            # Windows layout: `extensions` next to the exe
+            # (%LOCALAPPDATA%\oino\bin\{oino.exe,extensions}).
+            cp -R target/dist-stage/extensions target/out/bin/extensions
+          else
+            # Unix layout: <prefix>/{bin,share/oino/extensions}; the loader's
+            # first exe-relative candidate.
+            mkdir -p target/out/share/oino
+            cp -R target/dist-stage/extensions target/out/share/oino/extensions
+          fi
+          ls -laR target/out | head -40
+      - name: Pack oino-$VERSION-$TARGET.tar.gz
+        if: matrix.target != 'x86_64-pc-windows-msvc'
+        run: tar -czf "oino-$VERSION-$TARGET.tar.gz" -C target/out bin share
+      - name: Pack oino-$VERSION-$TARGET.zip
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        # The folder itself goes in (bin\oino.exe + bin\extensions), matching
+        # install.ps1's Expand-Archive -DestinationPath <root>.
+        run: Compress-Archive -Path target\out\bin -DestinationPath "oino-$env:VERSION-$env:TARGET.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oino-${{ matrix.target }}
+          path: oino-${{ needs.version.outputs.version }}-${{ matrix.target }}.*
+
+  # ── UniPi desktop app ──────────────────────────────────────────────────────
+
+  app-linux:
+    name: unipi desktop (linux)
+    needs: [wasm, version]
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/unipi -> target\napps/unipi/src-tauri -> target"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - name: Tauri prerequisites (webkitgtk et al.)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: rustup target add x86_64-unknown-linux-musl
+      - name: Install cargo-zigbuild (static musl sidecar)
+        run: pip3 install cargo-zigbuild
+      - name: unipi-host sidecar (static musl, zigbuild)
+        run: apps/unipi/src-tauri/unipi-host-sidecar.sh x86_64-unknown-linux-gnu
+      - name: Stage the extension dist + release config
+        run: |
+          sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
+          mkdir -p apps/unipi/target
+          stage="$PWD/apps/unipi/target/dist-stage/extensions"
+          cat > apps/unipi/target/tauri-release.conf.json <<EOF
+          {
+            "version": "$VERSION",
+            "bundle": { "resources": { "$stage": "extensions/" } }
+          }
+          EOF
+      - run: npm ci
+        working-directory: apps/unipi
+      - name: cargo tauri build (deb + AppImage)
+        run: cargo tauri build --config target/tauri-release.conf.json --bundles deb,appimage
+        working-directory: apps/unipi
+      - name: Collect
+        run: |
+          mkdir -p out
+          b=apps/unipi/src-tauri/target/release/bundle
+          cp "$b/deb/UniPi_${VERSION}_amd64.deb" "$b/appimage/UniPi_${VERSION}_amd64.AppImage" out/
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unipi-linux
+          path: out/*
+
+  app-windows:
+    name: unipi desktop (windows)
+    needs: [wasm, version]
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/unipi -> target\napps/unipi/src-tauri -> target"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - name: unipi-host sidecar (native MSVC)
+        shell: bash
+        run: |
+          (cd apps/unipi && cargo build --release -p unipi-host)
+          mkdir -p apps/unipi/src-tauri/binaries
+          cp apps/unipi/target/release/unipi-host.exe \
+             apps/unipi/src-tauri/binaries/unipi-host-x86_64-pc-windows-msvc.exe
+      - name: Stage the extension dist + release config
+        shell: bash
+        run: |
+          sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
+          stage="$(pwd -W 2>/dev/null || pwd)/apps/unipi/target/dist-stage/extensions"
+          cat > apps/unipi/target/tauri-release.conf.json <<EOF
+          {
+            "version": "$VERSION",
+            "bundle": { "resources": { "$stage": "extensions/" } }
+          }
+          EOF
+      - run: npm ci
+        working-directory: apps/unipi
+      - name: cargo tauri build (NSIS)
+        run: cargo tauri build --config target/tauri-release.conf.json --bundles nsis
+        working-directory: apps/unipi
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p out
+          cp "apps/unipi/src-tauri/target/release/bundle/nsis/UniPi_${VERSION}_x64-setup.exe" out/
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unipi-windows
+          path: out/*
+
+  app-macos:
+    name: unipi desktop (macos, universal)
+    # UNSIGNED: ad-hoc codesign only (dist.md §2.1) — no Apple Developer
+    # account. First launch needs right-click → Open; apps/unipi/BUILDING.md.
+    needs: [wasm, version]
+    runs-on: macos-14
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/unipi -> target\napps/unipi/src-tauri -> target"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: unipi-host sidecar (universal lipo + ad-hoc codesign)
+        run: |
+          cd apps/unipi
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release -p unipi-host --target "$t"
+          done
+          mkdir -p src-tauri/binaries
+          lipo -create \
+            target/aarch64-apple-darwin/release/unipi-host \
+            target/x86_64-apple-darwin/release/unipi-host \
+            -output src-tauri/binaries/unipi-host-universal-apple-darwin
+          codesign --force -s - --identifier dev.unipi.host \
+            src-tauri/binaries/unipi-host-universal-apple-darwin
+      - name: Stage the extension dist + release config
+        run: |
+          sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
+          stage="$PWD/apps/unipi/target/dist-stage/extensions"
+          cat > apps/unipi/target/tauri-release.conf.json <<EOF
+          {
+            "version": "$VERSION",
+            "bundle": { "resources": { "$stage": "extensions/" } }
+          }
+          EOF
+      - run: npm ci
+        working-directory: apps/unipi
+      - name: cargo tauri build (universal dmg)
+        run: cargo tauri build --config target/tauri-release.conf.json --target universal-apple-darwin --bundles dmg
+        working-directory: apps/unipi
+      - name: Collect
+        run: |
+          mkdir -p out
+          cp "apps/unipi/src-tauri/target/universal-apple-darwin/release/bundle/dmg/UniPi_${VERSION}_universal.dmg" out/
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unipi-macos
+          path: out/*
+
+  app-android:
+    name: unipi android
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/unipi -> target\napps/unipi/src-tauri -> target"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android NDK
+        run: |
+          if ! ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/ndk/* >/dev/null 2>&1; then
+            yes | sdkmanager --install "ndk;27.1.12297006" >/dev/null
+          fi
+          ndk=$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/ndk/* | sort -V | tail -1)
+          echo "NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "using $ndk"
+      - run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+      - name: Signing material
+        # With ANDROID_KEYSTORE_B64 in the repo secrets the release keystore
+        # signs the apk; without it a generated debug key does, and the artifact
+        # is suffixed -unsigned-debug. See docs/dev/release-secrets.md.
+        run: |
+          mkdir -p sign
+          if [ -n "$ANDROID_KEYSTORE_B64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > sign/release.keystore
+            suffix=""
+          else
+            echo "::notice::no ANDROID_KEYSTORE_B64 secret; signing with a generated debug key"
+            keytool -genkeypair -keystore sign/release.keystore -storepass android \
+              -keypass android -alias unipi-dev -keyalg RSA -keysize 4096 \
+              -validity 10000 -dname "CN=UniPi CI, OU=Build, O=UniPi"
+            suffix="-unsigned-debug"
+          fi
+          echo "SUFFIX=$suffix" >> "$GITHUB_ENV"
+          echo "UNIPI_ANDROID_KEYSTORE=$PWD/sign/release.keystore" >> "$GITHUB_ENV"
+          echo "UNIPI_ANDROID_KEYSTORE_PASSWORD=${ANDROID_KEYSTORE_PASSWORD:-android}" >> "$GITHUB_ENV"
+          echo "UNIPI_ANDROID_KEY_ALIAS=${ANDROID_KEY_ALIAS:-unipi-dev}" >> "$GITHUB_ENV"
+          echo "UNIPI_ANDROID_KEY_PASSWORD=${ANDROID_KEY_PASSWORD:-android}" >> "$GITHUB_ENV"
+      - name: Release config (version only — the phone is a remote client)
+        run: |
+          mkdir -p apps/unipi/target
+          printf '{\n  "version": "%s"\n}\n' "$VERSION" > apps/unipi/target/tauri-release.conf.json
+      - run: npm ci
+        working-directory: apps/unipi
+      - name: cargo tauri android build (universal apk)
+        run: cargo tauri android build --apk --config target/tauri-release.conf.json
+        working-directory: apps/unipi
+      - name: Collect
+        run: |
+          mkdir -p out
+          apk=apps/unipi/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+          cp "$apk" "out/UniPi_${VERSION}_universal${SUFFIX}.apk"
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unipi-android
+          path: out/*
+
+  # ── assemble the release ───────────────────────────────────────────────────
+
+  release:
+    name: GitHub Release
+    needs: [wasm, version, oino, app-linux, app-windows, app-macos, app-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'oino-*'
+          path: out
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'unipi-*'
+          path: out
+          merge-multiple: true
+      - name: SHA256SUMS + release-manifest.json
+        env:
+          TAG: v${{ needs.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          cp scripts/install.sh scripts/install.ps1 out/
+          cd out
+          sha256sum UniPi_* oino-* install.sh install.ps1 > SHA256SUMS
+          cat SHA256SUMS
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          tag, repo, version = os.environ['TAG'], os.environ['REPO'], os.environ['VERSION']
+          base = f"https://github.com/{repo}/releases/download/{tag}"
+          artifacts = []
+          for p in sorted(Path('.').glob('oino-*')):
+              # oino-<version>-<target>.tar.gz|zip → the target triple
+              target = p.name.removesuffix('.tar.gz').removesuffix('.zip').split('-', 2)[2]
+              artifacts.append({'name': 'oino', 'target': target,
+                                'url': f"{base}/{p.name}", 'size': p.stat().st_size,
+                                'sha256': hashlib.sha256(p.read_bytes()).hexdigest()})
+          Path('release-manifest.json').write_text(json.dumps(
+              {'tag': tag, 'version': version, 'artifacts': artifacts}, indent=2) + '\n')
+          PY
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: ${{ contains(needs.version.outputs.version, '-') }}
+          generate_release_notes: true
+          files: |
+            out/*

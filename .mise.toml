@@ -96,6 +96,14 @@ run = "cargo clippy --workspace --all-targets --manifest-path apps/unipi/Cargo.t
 description = "Run UniPi distribution workspace tests (apps/unipi; add -- --ignored for the e2e)"
 run = "cargo test --workspace --manifest-path apps/unipi/Cargo.toml"
 
+[tasks."unipi:dev"]
+description = "Run the UniPi desktop app from source (identifier dev.unipi.app.dev, productName 'UniPi Dev', isolated host dir)"
+run = "scripts/unipi-dev.sh"
+
+[tasks."unipi:build"]
+description = "Local release bundle of the UniPi app for this OS (dev identifier dev.unipi.app.dev; apps/unipi/BUILDING.md)"
+run = "scripts/unipi-build.sh"
+
 [tasks.doc]
 description = "Build workspace docs without dependencies"
 run = "cargo doc --workspace --no-deps"

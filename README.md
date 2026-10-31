@@ -38,29 +38,38 @@ extension:
 macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neuron-Mr-White/Oino/v1-alpha/scripts/install.sh | sh
+curl -fsSL https://oino.dev/install.sh | sh          # the oino TUI
+curl -fsSL https://oino.dev/install.sh | sh -s -- --app   # … + the UniPi desktop app
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/Neuron-Mr-White/Oino/v1-alpha/scripts/install.ps1 | iex
+irm https://oino.dev/install.ps1 | iex               # the oino TUI
+# the UniPi desktop app (the pipe cannot carry args — download once):
+irm https://oino.dev/install.ps1 -OutFile install.ps1; .\install.ps1 -App
 ```
 
+Until oino.dev serves the scripts, use the raw GitHub URLs, e.g.
+`curl -fsSL https://raw.githubusercontent.com/Neuron-Mr-White/Oino/v2/scripts/install.sh | sh`.
 From a source checkout (needs Rust; `rust-toolchain.toml` pins 1.99.0 + `wasm32-wasip2`):
 
 ```bash
-sh scripts/install.sh          # macOS / Linux
-.\scripts\install.ps1          # Windows
+sh scripts/install.sh          # macOS / Linux (--app: the desktop app)
+.\scripts/install.ps1          # Windows PowerShell (-App: the desktop app)
 ```
 
-The installers put `oino` into `~/.local/bin` (override with
-`OINO_PREFIX`). They prefer a tagged release binary and fall back to building from source
-(`cargo xtask wasm` + `cargo build --release -p oino-cli`). Details:
-[docs/install.md](docs/install.md).
+The installers download the latest GitHub release, verify it against the
+release's `SHA256SUMS`, and put `oino` into `~/.local/bin` (Windows:
+`%LOCALAPPDATA%\oino\bin`, added to your PATH) together with the extension
+packages under `<prefix>/share/oino/extensions` (Windows: next to the exe).
+`--app` / `-App` installs the UniPi desktop app (Linux AppImage or `.deb`,
+macOS `UniPi.app`, Windows NSIS installer). Without a matching release binary
+they build from source (`cargo xtask wasm` + `cargo build --release -p
+oino-cli`). Details: [docs/install.md](docs/install.md).
 
-Uninstall: delete `~/.local/bin/oino`; `~/.oino` holds your settings, credentials and
-sessions.
+Uninstall: delete `~/.local/bin/oino` (and `~/.local/share/oino`); `~/.oino`
+holds your settings, credentials and sessions.
 
 ## Quick start
 

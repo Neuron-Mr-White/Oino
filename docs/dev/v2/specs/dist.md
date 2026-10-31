@@ -150,6 +150,14 @@ for source installs.
 
 ## 7. Build hosts and commands
 
+> **Implementation status (launch plan 2026‑10‑31):** the release is built **in CI** by
+> [`.github/workflows/release.yml`](../../../.github/workflows/release.yml) (tags `v*`:
+> the oino archives, deb/AppImage/NSIS/dmg/apk, `SHA256SUMS` + `release-manifest.json`,
+> Android signed from repo secrets or a debug key). The owner-machine flow below
+> (ssh build hosts, `mise run dist …`) stays as the follow-up for canonical
+> minisign-signed updater releases; `scripts/release/build-host.sh` remains the
+> local/remote single-host builder for the CLI.
+
 Canonical releases are built **by the owner's machines**, driven from this PC through the
 existing xtask ssh machinery (`xtask/src/remote.rs`: git-bundle sync + `extensions/dist`
 tarball + detached build + artifact fetch). Pattern (extend, don't replace):

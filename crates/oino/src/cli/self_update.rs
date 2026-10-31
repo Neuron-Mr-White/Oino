@@ -58,12 +58,14 @@ pub struct Artifact {
     pub sha256: String,
 }
 
-/// This build's release target (`x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, …).
+/// This build's release target (`x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, …).
+/// Linux is static musl (release.yml): one binary per arch that runs on glibc
+/// and musl alike.
 #[must_use]
 pub fn current_target() -> String {
     let arch = std::env::consts::ARCH;
     match std::env::consts::OS {
-        "linux" => format!("{arch}-unknown-linux-gnu"),
+        "linux" => format!("{arch}-unknown-linux-musl"),
         "macos" => format!("{arch}-apple-darwin"),
         "windows" => format!("{arch}-pc-windows-msvc"),
         other => format!("{arch}-{other}"),
