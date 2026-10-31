@@ -112,7 +112,9 @@ Quality gates and test layers: [docs/dev/v1/quality.md](docs/dev/v1/quality.md).
 
 ## Acknowledgements
 
-oino is a Rust port of [pi](https://github.com/earendil-works/pi) by Mario Zechner (MIT).
+oino's agent core is a Rust port of [pi](https://github.com/earendil-works/pi) by Mario
+Zechner (MIT). Unlike pi, whose extensions are TypeScript modules, oino runs extensions as
+WASM components — any language that targets `wasm32-wasip2` can build one.
 
 ## License
 
