@@ -1,13 +1,13 @@
 // Golden fixtures for oino-settings: runs pi's SettingsManager over cases.json and records the
 // merged/global/project settings, getter results, written files and errors.
-// Usage: node settings.mjs   (writes crates/oino-settings/tests/fixtures/pi/settings-expected.json)
+// Usage: node settings.mjs   (writes crates/oino-settings/tests/fixtures/settings/settings-expected.json)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { importPi, REPO, scratchDir } from "./lib.mjs";
 
 const { SettingsManager } = await importPi("core/settings-manager.js");
-const fixtures = join(REPO, "crates/oino-settings/tests/fixtures/pi");
+const fixtures = join(REPO, "crates/oino-settings/tests/fixtures/settings");
 const cases = JSON.parse(readFileSync(join(fixtures, "settings-cases.json"), "utf-8"));
 
 const GETTERS = {

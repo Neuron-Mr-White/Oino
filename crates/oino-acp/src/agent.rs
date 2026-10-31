@@ -15,7 +15,7 @@ use agent_client_protocol::schema::v1::{
 };
 use agent_client_protocol::{Agent, Client, ConnectTo, ConnectionTo, Responder};
 use oino_ai::JsonValue;
-use oino_client::{PiCommand, RpcRequest, SessionBackend};
+use oino_client::{AgentCommand, RpcRequest, SessionBackend};
 use oino_core::runtime::SessionSource;
 use oino_core::session::StreamingBehavior;
 use oino_session::SessionManager;
@@ -188,7 +188,7 @@ impl AcpAgent {
         {
             session.shared.request_cancel();
             tokio::spawn(async move {
-                if let Err(error) = session.backend.send(PiCommand::Abort.into()).await {
+                if let Err(error) = session.backend.send(AgentCommand::Abort.into()).await {
                     tracing::debug!("abort failed: {error}");
                 }
             });
@@ -561,7 +561,7 @@ impl AcpAgent {
         let sent = session
             .backend
             .send(
-                PiCommand::Prompt {
+                AgentCommand::Prompt {
                     message: input.text,
                     images: input.images,
                     streaming_behavior: streaming.then_some(StreamingBehavior::FollowUp),

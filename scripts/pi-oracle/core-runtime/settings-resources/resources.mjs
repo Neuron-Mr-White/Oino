@@ -8,7 +8,7 @@ import { importPi, REPO, scratchDir } from "./lib.mjs";
 
 const { DefaultResourceLoader } = await importPi("core/resource-loader.js");
 const { SettingsManager } = await importPi("core/settings-manager.js");
-const fixtures = join(REPO, "crates/oino-resources/tests/fixtures/pi");
+const fixtures = join(REPO, "crates/oino-resources/tests/fixtures/golden");
 const spec = JSON.parse(readFileSync(join(fixtures, "resources-cases.json"), "utf-8"));
 
 function build(root, tree) {

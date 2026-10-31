@@ -69,7 +69,7 @@ fn v2_to_v3(values: &mut [JsonValue]) {
 
 /// Migrates raw pi lines in place; returns `true` when anything changed (pi returns whether
 /// the file must be rewritten).
-pub fn migrate_pi_values(values: &mut [JsonValue]) -> bool {
+pub fn migrate_values(values: &mut [JsonValue]) -> bool {
     let version = values
         .iter()
         .find(|value| is_header(value))
@@ -99,13 +99,13 @@ mod tests {
             json!({"type":"message","timestamp":"t","message":{"role":"hookMessage","customType":"x","content":"h","display":true,"timestamp":1}}),
             json!({"type":"compaction","timestamp":"t","summary":"s","firstKeptEntryIndex":2,"tokensBefore":1}),
         ];
-        assert!(migrate_pi_values(&mut values));
+        assert!(migrate_values(&mut values));
         assert_eq!(values[0]["version"], json!(3));
         assert_eq!(values[1]["parentId"], json!(null));
         assert_eq!(values[2]["parentId"], values[1]["id"]);
         assert_eq!(values[3]["firstKeptEntryId"], values[2]["id"]);
         assert!(values[3].get("firstKeptEntryIndex").is_none());
         assert_eq!(values[2]["message"]["role"], json!("custom"));
-        assert!(!migrate_pi_values(&mut values));
+        assert!(!migrate_values(&mut values));
     }
 }

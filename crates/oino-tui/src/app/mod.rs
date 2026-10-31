@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use oino_ai::{ImageContent, JsonObject, JsonValue, Model, ThinkingLevel};
-use oino_client::protocol::{OinoCommand, PiCommand, RpcCommand};
+use oino_client::protocol::{OinoCommand, AgentCommand, RpcCommand};
 use oino_client::{ClientError, RpcResponseData};
 use oino_core::events::{AgentSessionEvent, ClientEvent, OinoEvent, RunState};
 use oino_core::ui::UiResponse;
@@ -617,24 +617,24 @@ impl App {
         self.refresh_session();
         self.send(
             Tag::Models(ModelsFor::Footer),
-            PiCommand::GetAvailableModels,
+            AgentCommand::GetAvailableModels,
         );
     }
 
     fn refresh_session(&mut self) {
         self.send(Tag::UiSnapshot, OinoCommand::UiSnapshot);
-        self.send(Tag::State, PiCommand::GetState);
-        self.send(Tag::Entries, PiCommand::GetEntries { since: None });
-        self.send(Tag::Commands, PiCommand::GetCommands);
+        self.send(Tag::State, AgentCommand::GetState);
+        self.send(Tag::Entries, AgentCommand::GetEntries { since: None });
+        self.send(Tag::Commands, AgentCommand::GetCommands);
         self.send(
             Tag::ThinkingLevels { open: false },
-            PiCommand::GetAvailableThinkingLevels,
+            AgentCommand::GetAvailableThinkingLevels,
         );
         self.refresh_usage();
     }
 
     fn refresh_usage(&mut self) {
-        self.send(Tag::Stats { show: false }, PiCommand::GetSessionStats);
+        self.send(Tag::Stats { show: false }, AgentCommand::GetSessionStats);
         self.send(Tag::ContextUsage, OinoCommand::GetContextUsage);
     }
 
@@ -696,7 +696,7 @@ impl App {
             ClientEvent::Session(event) => {
                 let applied = self.transcript.apply(&event);
                 if applied.reload {
-                    self.send(Tag::Entries, PiCommand::GetEntries { since: None });
+                    self.send(Tag::Entries, AgentCommand::GetEntries { since: None });
                 }
                 self.on_session_event(&event);
             }
@@ -744,7 +744,7 @@ impl App {
                     self.session.routed_model = routed_model;
                     self.send(
                         Tag::ThinkingLevels { open: false },
-                        PiCommand::GetAvailableThinkingLevels,
+                        AgentCommand::GetAvailableThinkingLevels,
                     );
                     self.send(Tag::ContextUsage, OinoCommand::GetContextUsage);
                 }
@@ -752,7 +752,7 @@ impl App {
                     self.session.run_state = Some(state);
                     self.session.waiting_on = waiting_on.unwrap_or_default();
                 }
-                OinoEvent::CommandsChanged => self.send(Tag::Commands, PiCommand::GetCommands),
+                OinoEvent::CommandsChanged => self.send(Tag::Commands, AgentCommand::GetCommands),
                 OinoEvent::ExtensionUiDismiss { id, .. } => {
                     self.ui.dismiss(&id);
                     self.registry.dismiss_dialog(&id);
@@ -953,7 +953,7 @@ impl App {
                 self.notice(NoticeLevel::Info, format!("Signed in to {provider}"));
                 self.send(
                     Tag::Models(ModelsFor::Footer),
-                    PiCommand::GetAvailableModels,
+                    AgentCommand::GetAvailableModels,
                 );
             }
             Tag::Logout(provider) => {
@@ -963,7 +963,7 @@ impl App {
                 );
                 self.send(
                     Tag::Models(ModelsFor::Footer),
-                    PiCommand::GetAvailableModels,
+                    AgentCommand::GetAvailableModels,
                 );
             }
             Tag::UiSnapshot | Tag::UiResync => self.apply_ui_snapshot(data),
@@ -1127,7 +1127,7 @@ impl App {
                 {
                     self.composer.set_text(&text);
                 }
-                self.send(Tag::Entries, PiCommand::GetEntries { since: None });
+                self.send(Tag::Entries, AgentCommand::GetEntries { since: None });
                 self.refresh_usage();
             }
             Tag::SetLabel { entry_id, label } => {
@@ -1159,7 +1159,7 @@ impl App {
                 }
                 self.send(
                     Tag::ThinkingLevels { open: false },
-                    PiCommand::GetAvailableThinkingLevels,
+                    AgentCommand::GetAvailableThinkingLevels,
                 );
             }
             Tag::SetName(name) => {

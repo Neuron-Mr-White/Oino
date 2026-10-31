@@ -45,7 +45,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use oino_client::backend::SessionBackend;
-use oino_client::protocol::{PiCommand, RpcCommand, RpcRequest, RpcSessionState};
+use oino_client::protocol::{AgentCommand, RpcCommand, RpcRequest, RpcSessionState};
 use oino_core::events::ClientEvent;
 use oino_ui::slot::UiCapabilities;
 use unipi_proto::{
@@ -412,7 +412,7 @@ fn replaced_session(event: &Value) -> Option<String> {
 
 /// Is a run (or compaction) in flight? A disposed/evicted backend is not busy.
 async fn is_busy(backend: &Arc<dyn SessionBackend>) -> bool {
-    match backend.send(RpcCommand::Pi(PiCommand::GetState)).await {
+    match backend.send(RpcCommand::Agent(AgentCommand::GetState)).await {
         Ok(Some(data)) => serde_json::from_value::<RpcSessionState>(data)
             .map(|state| state.is_streaming || state.is_compacting)
             .unwrap_or(false),
@@ -671,7 +671,7 @@ where
             tracing::info!(op = "session_rename", session = session.as_str(), "request");
             let opened = hub.open(session.as_str()).await.map_err(hub_error)?;
             opened
-                .send(RpcCommand::Pi(PiCommand::SetSessionName {
+                .send(RpcCommand::Agent(AgentCommand::SetSessionName {
                     name: name.as_str().to_owned(),
                 }))
                 .await
@@ -874,13 +874,13 @@ async fn snapshot(
         ))
         .await
         .map_err(hub_error)?;
-    let state = send_data(session, RpcCommand::Pi(PiCommand::GetState)).await?;
+    let state = send_data(session, RpcCommand::Agent(AgentCommand::GetState)).await?;
     let entries = send_data(
         session,
-        RpcCommand::Pi(PiCommand::GetEntries { since: None }),
+        RpcCommand::Agent(AgentCommand::GetEntries { since: None }),
     )
     .await?;
-    let commands = send_data(session, RpcCommand::Pi(PiCommand::GetCommands)).await?;
+    let commands = send_data(session, RpcCommand::Agent(AgentCommand::GetCommands)).await?;
     let topics = send_data(
         session,
         RpcCommand::Oino(oino_client::protocol::OinoCommand::Topics {

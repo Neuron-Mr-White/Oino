@@ -10,7 +10,7 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use oino_ai::{AgentMessage, ImageContent, JsonValue, Model, ThinkingLevel};
 use oino_client::{
-    ClientError, PiCommand, RpcCommand, RpcResponse, RpcResponseData, RpcSessionState,
+    ClientError, AgentCommand, RpcCommand, RpcResponse, RpcResponseData, RpcSessionState,
 };
 use oino_core::compaction::CompactionResult;
 use oino_core::session::{
@@ -245,13 +245,13 @@ impl RpcClient {
         response.result.map_err(ClientError::Command)
     }
 
-    async fn typed<T: DeserializeOwned>(&self, command: PiCommand) -> Result<T, ClientError> {
+    async fn typed<T: DeserializeOwned>(&self, command: AgentCommand) -> Result<T, ClientError> {
         let data = self.request(command.into()).await?;
         serde_json::from_value(data.unwrap_or(JsonValue::Null))
             .map_err(|e| ClientError::Protocol(e.to_string()))
     }
 
-    async fn unit(&self, command: PiCommand) -> Result<(), ClientError> {
+    async fn unit(&self, command: AgentCommand) -> Result<(), ClientError> {
         self.request(command.into()).await.map(|_| ())
     }
 
@@ -298,7 +298,7 @@ impl RpcClient {
         streaming_behavior: Option<StreamingBehavior>,
     ) -> Result<PromptDisposition, ClientError> {
         let reply: Disposition = self
-            .typed(PiCommand::Prompt {
+            .typed(AgentCommand::Prompt {
                 message: message.into(),
                 images,
                 streaming_behavior,
@@ -318,7 +318,7 @@ impl RpcClient {
         images: Vec<ImageContent>,
     ) -> Result<PromptDisposition, ClientError> {
         let reply: Disposition = self
-            .typed(PiCommand::Steer {
+            .typed(AgentCommand::Steer {
                 message: message.into(),
                 images,
             })
@@ -337,7 +337,7 @@ impl RpcClient {
         images: Vec<ImageContent>,
     ) -> Result<PromptDisposition, ClientError> {
         let reply: Disposition = self
-            .typed(PiCommand::FollowUp {
+            .typed(AgentCommand::FollowUp {
                 message: message.into(),
                 images,
             })
@@ -351,7 +351,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn abort(&self) -> Result<(), ClientError> {
-        self.unit(PiCommand::Abort).await
+        self.unit(AgentCommand::Abort).await
     }
 
     /// `clear_queue`.
@@ -360,7 +360,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn clear_queue(&self) -> Result<ClearedQueues, ClientError> {
-        self.typed(PiCommand::ClearQueue).await
+        self.typed(AgentCommand::ClearQueue).await
     }
 
     /// `new_session`; `true` when an extension cancelled.
@@ -369,7 +369,7 @@ impl RpcClient {
     ///
     /// Session file failures.
     pub async fn new_session(&self, parent_session: Option<String>) -> Result<bool, ClientError> {
-        let reply: Cancelled = self.typed(PiCommand::NewSession { parent_session }).await?;
+        let reply: Cancelled = self.typed(AgentCommand::NewSession { parent_session }).await?;
         Ok(reply.cancelled)
     }
 
@@ -379,7 +379,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn get_state(&self) -> Result<RpcSessionState, ClientError> {
-        self.typed(PiCommand::GetState).await
+        self.typed(AgentCommand::GetState).await
     }
 
     /// `set_model`.
@@ -392,7 +392,7 @@ impl RpcClient {
         provider: impl Into<String>,
         model_id: impl Into<String>,
     ) -> Result<Model, ClientError> {
-        self.typed(PiCommand::SetModel {
+        self.typed(AgentCommand::SetModel {
             provider: provider.into(),
             model_id: model_id.into(),
         })
@@ -405,7 +405,7 @@ impl RpcClient {
     ///
     /// Persisting the selection failed.
     pub async fn cycle_model(&self) -> Result<Option<CycleModelResult>, ClientError> {
-        self.typed(PiCommand::CycleModel).await
+        self.typed(AgentCommand::CycleModel).await
     }
 
     /// `get_available_models`.
@@ -418,7 +418,7 @@ impl RpcClient {
         struct Models {
             models: Vec<Model>,
         }
-        let reply: Models = self.typed(PiCommand::GetAvailableModels).await?;
+        let reply: Models = self.typed(AgentCommand::GetAvailableModels).await?;
         Ok(reply.models)
     }
 
@@ -428,7 +428,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn set_thinking_level(&self, level: ThinkingLevel) -> Result<(), ClientError> {
-        self.unit(PiCommand::SetThinkingLevel { level }).await
+        self.unit(AgentCommand::SetThinkingLevel { level }).await
     }
 
     /// `cycle_thinking_level`.
@@ -441,7 +441,7 @@ impl RpcClient {
         struct Level {
             level: ThinkingLevel,
         }
-        let reply: Option<Level> = self.typed(PiCommand::CycleThinkingLevel).await?;
+        let reply: Option<Level> = self.typed(AgentCommand::CycleThinkingLevel).await?;
         Ok(reply.map(|l| l.level))
     }
 
@@ -455,7 +455,7 @@ impl RpcClient {
         struct Levels {
             levels: Vec<ThinkingLevel>,
         }
-        let reply: Levels = self.typed(PiCommand::GetAvailableThinkingLevels).await?;
+        let reply: Levels = self.typed(AgentCommand::GetAvailableThinkingLevels).await?;
         Ok(reply.levels)
     }
 
@@ -465,7 +465,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn set_steering_mode(&self, mode: oino_agent::QueueMode) -> Result<(), ClientError> {
-        self.unit(PiCommand::SetSteeringMode { mode }).await
+        self.unit(AgentCommand::SetSteeringMode { mode }).await
     }
 
     /// `set_follow_up_mode`.
@@ -474,7 +474,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn set_follow_up_mode(&self, mode: oino_agent::QueueMode) -> Result<(), ClientError> {
-        self.unit(PiCommand::SetFollowUpMode { mode }).await
+        self.unit(AgentCommand::SetFollowUpMode { mode }).await
     }
 
     /// `compact`.
@@ -486,7 +486,7 @@ impl RpcClient {
         &self,
         custom_instructions: Option<String>,
     ) -> Result<CompactionResult, ClientError> {
-        self.typed(PiCommand::Compact {
+        self.typed(AgentCommand::Compact {
             custom_instructions,
         })
         .await
@@ -498,7 +498,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn set_auto_compaction(&self, enabled: bool) -> Result<(), ClientError> {
-        self.unit(PiCommand::SetAutoCompaction { enabled }).await
+        self.unit(AgentCommand::SetAutoCompaction { enabled }).await
     }
 
     /// `set_auto_retry`.
@@ -507,7 +507,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn set_auto_retry(&self, enabled: bool) -> Result<(), ClientError> {
-        self.unit(PiCommand::SetAutoRetry { enabled }).await
+        self.unit(AgentCommand::SetAutoRetry { enabled }).await
     }
 
     /// `abort_retry`.
@@ -516,7 +516,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn abort_retry(&self) -> Result<(), ClientError> {
-        self.unit(PiCommand::AbortRetry).await
+        self.unit(AgentCommand::AbortRetry).await
     }
 
     /// `bash`.
@@ -529,7 +529,7 @@ impl RpcClient {
         command: impl Into<String>,
         exclude_from_context: bool,
     ) -> Result<BashResult, ClientError> {
-        self.typed(PiCommand::Bash {
+        self.typed(AgentCommand::Bash {
             command: command.into(),
             exclude_from_context: exclude_from_context.then_some(true),
         })
@@ -542,7 +542,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn abort_bash(&self) -> Result<(), ClientError> {
-        self.unit(PiCommand::AbortBash).await
+        self.unit(AgentCommand::AbortBash).await
     }
 
     /// `get_session_stats`.
@@ -551,7 +551,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn get_session_stats(&self) -> Result<SessionStats, ClientError> {
-        self.typed(PiCommand::GetSessionStats).await
+        self.typed(AgentCommand::GetSessionStats).await
     }
 
     /// `export_html`; returns the written path.
@@ -564,7 +564,7 @@ impl RpcClient {
         struct Path {
             path: String,
         }
-        let reply: Path = self.typed(PiCommand::ExportHtml { output_path }).await?;
+        let reply: Path = self.typed(AgentCommand::ExportHtml { output_path }).await?;
         Ok(reply.path)
     }
 
@@ -578,7 +578,7 @@ impl RpcClient {
         session_path: impl Into<String>,
     ) -> Result<bool, ClientError> {
         let reply: Cancelled = self
-            .typed(PiCommand::SwitchSession {
+            .typed(AgentCommand::SwitchSession {
                 session_path: session_path.into(),
             })
             .await?;
@@ -591,7 +591,7 @@ impl RpcClient {
     ///
     /// `Invalid entry ID for forking`.
     pub async fn fork(&self, entry_id: impl Into<String>) -> Result<ForkOutcome, ClientError> {
-        self.typed(PiCommand::Fork {
+        self.typed(AgentCommand::Fork {
             entry_id: entry_id.into(),
         })
         .await
@@ -603,7 +603,7 @@ impl RpcClient {
     ///
     /// `Cannot clone session: no current entry selected`.
     pub async fn clone_session(&self) -> Result<bool, ClientError> {
-        let reply: Cancelled = self.typed(PiCommand::Clone).await?;
+        let reply: Cancelled = self.typed(AgentCommand::Clone).await?;
         Ok(reply.cancelled)
     }
 
@@ -617,7 +617,7 @@ impl RpcClient {
         struct Messages {
             messages: Vec<ForkMessage>,
         }
-        let reply: Messages = self.typed(PiCommand::GetForkMessages).await?;
+        let reply: Messages = self.typed(AgentCommand::GetForkMessages).await?;
         Ok(reply.messages)
     }
 
@@ -627,7 +627,7 @@ impl RpcClient {
     ///
     /// `Entry not found: …`.
     pub async fn get_entries(&self, since: Option<String>) -> Result<EntriesOutcome, ClientError> {
-        self.typed(PiCommand::GetEntries { since }).await
+        self.typed(AgentCommand::GetEntries { since }).await
     }
 
     /// `get_tree` (nodes as JSON in [`EntriesOutcome::entries`]).
@@ -636,7 +636,7 @@ impl RpcClient {
     ///
     /// Transport failures.
     pub async fn get_tree(&self) -> Result<EntriesOutcome, ClientError> {
-        self.typed(PiCommand::GetTree).await
+        self.typed(AgentCommand::GetTree).await
     }
 
     /// `get_last_assistant_text`.
@@ -649,7 +649,7 @@ impl RpcClient {
         struct Text {
             text: Option<String>,
         }
-        let reply: Text = self.typed(PiCommand::GetLastAssistantText).await?;
+        let reply: Text = self.typed(AgentCommand::GetLastAssistantText).await?;
         Ok(reply.text)
     }
 
@@ -659,7 +659,7 @@ impl RpcClient {
     ///
     /// `Session name cannot be empty`.
     pub async fn set_session_name(&self, name: impl Into<String>) -> Result<(), ClientError> {
-        self.unit(PiCommand::SetSessionName { name: name.into() })
+        self.unit(AgentCommand::SetSessionName { name: name.into() })
             .await
     }
 
@@ -673,7 +673,7 @@ impl RpcClient {
         struct Messages {
             messages: Vec<AgentMessage>,
         }
-        let reply: Messages = self.typed(PiCommand::GetMessages).await?;
+        let reply: Messages = self.typed(AgentCommand::GetMessages).await?;
         Ok(reply.messages)
     }
 
@@ -687,7 +687,7 @@ impl RpcClient {
         struct Commands {
             commands: Vec<SlashCommandInfo>,
         }
-        let reply: Commands = self.typed(PiCommand::GetCommands).await?;
+        let reply: Commands = self.typed(AgentCommand::GetCommands).await?;
         Ok(reply.commands)
     }
 }

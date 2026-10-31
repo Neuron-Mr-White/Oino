@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 
-use oino_client::protocol::{PiCommand, RpcCommand};
+use oino_client::protocol::{AgentCommand, RpcCommand};
 use oino_extension_api::{ExtensionId, RawJson};
 use oino_wasm_host::LocalServices;
 
@@ -77,7 +77,7 @@ async fn wake(hub: Arc<SessionHub>, paths: CronPaths, job: Job, run: Run) {
         Ok(session) => {
             let message = wake_text(&job, &run);
             match session
-                .send(RpcCommand::Pi(PiCommand::Prompt {
+                .send(RpcCommand::Agent(AgentCommand::Prompt {
                     message,
                     images: Vec::new(),
                     streaming_behavior: None,

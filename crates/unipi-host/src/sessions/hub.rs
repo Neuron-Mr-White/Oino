@@ -45,7 +45,7 @@ use oino_client::hub::{
     HubOptions as CoreHubOptions, HubSession as CoreHubSession, HubSessionState as CoreHubState,
     SessionHub as CoreHub,
 };
-use oino_client::protocol::{PiCommand, RpcCommand, RpcResponseData, RpcSessionState};
+use oino_client::protocol::{AgentCommand, RpcCommand, RpcResponseData, RpcSessionState};
 use oino_core::events::{ClientEvent, OinoEvent};
 use oino_core::extensions::api::ExtensionMode;
 use oino_core::runtime::ToolSelection;
@@ -756,7 +756,7 @@ impl Inner {
             changes: None,
             last_activity: now,
         };
-        if let Ok(Some(data)) = backend.send(RpcCommand::Pi(PiCommand::GetState)).await {
+        if let Ok(Some(data)) = backend.send(RpcCommand::Agent(AgentCommand::GetState)).await {
             if let Ok(session) = serde_json::from_value::<RpcSessionState>(data) {
                 card.session_id = session.session_id;
                 card.file = session.session_file.map(PathBuf::from).unwrap_or_default();
@@ -920,16 +920,16 @@ impl Inner {
     ) -> Result<HubSession, HubError> {
         let session = self.open(target).await?;
         let command = match entry_id {
-            Some(entry) => PiCommand::Fork {
+            Some(entry) => AgentCommand::Fork {
                 entry_id: entry.to_owned(),
             },
             // pi `clone`: fork at the leaf (the whole conversation).
-            None => PiCommand::Clone,
+            None => AgentCommand::Clone,
         };
-        session.send(RpcCommand::Pi(command)).await?;
+        session.send(RpcCommand::Agent(command)).await?;
         if let Some(name) = name {
             session
-                .send(RpcCommand::Pi(PiCommand::SetSessionName {
+                .send(RpcCommand::Agent(AgentCommand::SetSessionName {
                     name: name.to_owned(),
                 }))
                 .await?;
@@ -1446,7 +1446,7 @@ async fn supervise(
 
 /// Is a run (or compaction) in flight in `backend`? A disposed/evicted backend is not busy.
 async fn is_busy(backend: &Arc<dyn SessionBackend>) -> bool {
-    match backend.send(RpcCommand::Pi(PiCommand::GetState)).await {
+    match backend.send(RpcCommand::Agent(AgentCommand::GetState)).await {
         Ok(Some(data)) => serde_json::from_value::<RpcSessionState>(data)
             .map(|state| state.is_streaming || state.is_compacting)
             .unwrap_or(false),

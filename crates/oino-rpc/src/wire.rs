@@ -12,9 +12,9 @@ use oino_ui::plain::to_lines;
 use oino_ui::slot::{RegistryOp, Slot, UiCapabilities, UiPatch, UiView};
 
 /// pi dialog methods (`rpc-extension-ui.md`).
-const PI_DIALOGS: [&str; 4] = ["select", "confirm", "input", "editor"];
+const DIALOG_METHODS: [&str; 4] = ["select", "confirm", "input", "editor"];
 /// pi fire-and-forget methods.
-const PI_FIRE: [&str; 5] = [
+const FIRE_AND_FORGET_METHODS: [&str; 5] = [
     "notify",
     "setStatus",
     "setWidget",
@@ -34,7 +34,7 @@ pub struct Connection {
 impl Connection {
     /// A pi client (no `_oino/hello`).
     #[must_use]
-    pub const fn pi() -> Self {
+    pub const fn plain() -> Self {
         Self {
             oino: false,
             ui: None,
@@ -151,7 +151,7 @@ pub fn rpc_event(event: &ClientEvent, connection: &Connection) -> WireEvent {
                 return WireEvent::Line(value);
             }
             let method = request.method.as_str();
-            if PI_DIALOGS.contains(&method) || PI_FIRE.contains(&method) {
+            if DIALOG_METHODS.contains(&method) || FIRE_AND_FORGET_METHODS.contains(&method) {
                 if let Some(object) = value.as_object_mut() {
                     object.shift_remove("extensionId");
                     object.shift_remove("sessionId");
@@ -373,25 +373,25 @@ mod tests {
     }
 
     #[test]
-    fn pi_clients_get_pi_records_only() {
-        let pi = Connection::pi();
+    fn plain_clients_get_plain_records_only() {
+        let plain = Connection::plain();
         assert_eq!(
-            rpc_event(&ui("select"), &pi),
+            rpc_event(&ui("select"), &plain),
             WireEvent::Line(
                 json!({"type":"extension_ui_request","id":"u1","method":"select","title":"t"})
             )
         );
         assert_eq!(
-            rpc_event(&ui("form"), &pi),
+            rpc_event(&ui("form"), &plain),
             WireEvent::CancelDialog("u1".into())
         );
-        assert_eq!(rpc_event(&ui("setFrame"), &pi), WireEvent::Drop);
+        assert_eq!(rpc_event(&ui("setFrame"), &plain), WireEvent::Drop);
         assert!(matches!(
             rpc_event(&ui("form"), &Connection::v1()),
             WireEvent::Line(_)
         ));
         let dismiss = ClientEvent::Oino(OinoEvent::CommandsChanged);
-        assert_eq!(rpc_event(&dismiss, &pi), WireEvent::Drop);
+        assert_eq!(rpc_event(&dismiss, &plain), WireEvent::Drop);
         assert_eq!(
             rpc_event(&dismiss, &Connection::v1()),
             WireEvent::Line(json!({"type":"commands_changed"}))
@@ -539,7 +539,7 @@ mod tests {
         assert_eq!(wire["type"], "agent_event");
         assert_eq!(wire["agentId"], "child");
         assert!(wire["event"].get("message").is_none());
-        assert_eq!(rpc_event(&update, &Connection::pi()), WireEvent::Drop);
+        assert_eq!(rpc_event(&update, &Connection::plain()), WireEvent::Drop);
         let mut decoder = crate::backend::EventDecoder::default();
         let WireEvent::Line(first) = rpc_event(&start, &v1) else {
             panic!("dropped");
@@ -588,7 +588,7 @@ mod tests {
                 .unwrap();
         assert_eq!(response.id, "u1");
         assert!(matches!(
-            rpc_event(&ui("select"), &Connection::pi()),
+            rpc_event(&ui("select"), &Connection::plain()),
             WireEvent::Line(_)
         ));
     }

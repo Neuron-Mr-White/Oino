@@ -637,7 +637,7 @@ mod tests {
     /// Every example of pi 1.4.0 `docs/rpc-extension-ui.md` round-trips byte-for-byte
     /// (D-U1): the pi request/response records are untouched by the v2 wire.
     #[test]
-    fn pi_rpc_extension_ui_examples_round_trip_byte_for_byte() {
+    fn rpc_extension_ui_examples_round_trip_byte_for_byte() {
         let requests = [
             r#"{"type":"extension_ui_request","id":"uuid-1","method":"select","title":"Allow dangerous command?","options":["Allow","Block"],"timeout":10000}"#,
             r#"{"type":"extension_ui_request","id":"uuid-2","method":"confirm","title":"Clear session?","message":"All messages will be lost.","timeout":5000}"#,

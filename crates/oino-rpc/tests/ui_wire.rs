@@ -97,7 +97,7 @@ async fn v2_hello_receives_registry_patches() {
 }
 
 #[tokio::test]
-async fn pi_clients_never_see_registry_patches() {
+async fn plain_clients_never_see_registry_patches() {
     let backend = FakeBackend::new("s-1");
     let backend_for_emit = backend.clone();
     let backend: Arc<dyn SessionBackend> = Arc::new(backend);

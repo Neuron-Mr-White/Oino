@@ -4,7 +4,7 @@
 
 use oino_agent::QueueMode;
 use oino_ai::{JsonValue, Model, ThinkingLevel};
-use oino_client::protocol::{OinoCommand, PiCommand};
+use oino_client::protocol::{OinoCommand, AgentCommand};
 use oino_core::session::NavigateTreeOptions;
 use oino_view::composer::Composer;
 use oino_view::fuzzy;
@@ -327,7 +327,7 @@ impl App {
                     .find(|m| model_label(m) == query || m.id == query);
                 if let Some(model) = exact {
                     let (provider, model_id) = (model.provider.clone(), model.id.clone());
-                    self.send(Tag::SetModel, PiCommand::SetModel { provider, model_id });
+                    self.send(Tag::SetModel, AgentCommand::SetModel { provider, model_id });
                 } else {
                     self.on_models(ModelsFor::Selector(Some(query)));
                 }
@@ -363,7 +363,7 @@ impl App {
                 let index = current.map_or(0, |i| wrap_index(i, -1, self.models.len()));
                 let model = &self.models[index];
                 let (provider, model_id) = (model.provider.clone(), model.id.clone());
-                self.send(Tag::SetModel, PiCommand::SetModel { provider, model_id });
+                self.send(Tag::SetModel, AgentCommand::SetModel { provider, model_id });
             }
         }
     }
@@ -482,7 +482,7 @@ impl App {
                     if let Some(&i) = picker.filtered.get(picker.selected) {
                         let model = &self.models[i];
                         let (provider, model_id) = (model.provider.clone(), model.id.clone());
-                        self.send(Tag::SetModel, PiCommand::SetModel { provider, model_id });
+                        self.send(Tag::SetModel, AgentCommand::SetModel { provider, model_id });
                     }
                     false
                 } else {
@@ -506,7 +506,7 @@ impl App {
                     true
                 } else if confirm {
                     if let Some(&level) = self.thinking_levels.get(*selected) {
-                        self.send(Tag::Ignore, PiCommand::SetThinkingLevel { level });
+                        self.send(Tag::Ignore, AgentCommand::SetThinkingLevel { level });
                         self.session.thinking = level;
                     }
                     false
@@ -529,7 +529,7 @@ impl App {
                 } else if confirm {
                     if let Some(&i) = picker.filtered.get(picker.selected) {
                         let entry_id = picker.items[i].0.clone();
-                        self.send(Tag::Fork, PiCommand::Fork { entry_id });
+                        self.send(Tag::Fork, AgentCommand::Fork { entry_id });
                     }
                     false
                 } else {
@@ -601,12 +601,12 @@ impl App {
             (["compaction", "enabled"], JsonValue::Bool(enabled)) => {
                 self.send(
                     Tag::Ignore,
-                    PiCommand::SetAutoCompaction { enabled: *enabled },
+                    AgentCommand::SetAutoCompaction { enabled: *enabled },
                 );
                 self.session.auto_compaction = *enabled;
             }
             (["retry", "enabled"], JsonValue::Bool(enabled)) => {
-                self.send(Tag::Ignore, PiCommand::SetAutoRetry { enabled: *enabled });
+                self.send(Tag::Ignore, AgentCommand::SetAutoRetry { enabled: *enabled });
             }
             (["steeringMode" | "followUpMode"], JsonValue::String(mode)) => {
                 let mode = if mode == "all" {
@@ -615,9 +615,9 @@ impl App {
                     QueueMode::OneAtATime
                 };
                 if item.path[0] == "steeringMode" {
-                    self.send(Tag::Ignore, PiCommand::SetSteeringMode { mode });
+                    self.send(Tag::Ignore, AgentCommand::SetSteeringMode { mode });
                 } else {
-                    self.send(Tag::Ignore, PiCommand::SetFollowUpMode { mode });
+                    self.send(Tag::Ignore, AgentCommand::SetFollowUpMode { mode });
                 }
             }
             (["hideThinkingBlock"], JsonValue::Bool(hide)) => {
@@ -802,7 +802,7 @@ impl App {
                 {
                     self.send(
                         Tag::SetName(name.clone()),
-                        PiCommand::SetSessionName { name: name.clone() },
+                        AgentCommand::SetSessionName { name: name.clone() },
                     );
                     picker.model.rename(&item.path, Some(name));
                 }
@@ -837,7 +837,7 @@ impl App {
                 if Some(&path) != self.session.session_file.as_ref() {
                     self.send(
                         Tag::Replace("Resume"),
-                        PiCommand::SwitchSession { session_path: path },
+                        AgentCommand::SwitchSession { session_path: path },
                     );
                 }
             }

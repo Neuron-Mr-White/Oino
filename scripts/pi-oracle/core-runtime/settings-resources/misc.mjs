@@ -82,5 +82,5 @@ const parseFrontmatter = frontmatters.map((input) => {
 });
 
 const out = { parseCommandArgs, substituteArgs, expandPromptTemplate, formatSkills, parseSkillBlock, keyIdChecks, keyArrayChecks, migrations, parseFrontmatter };
-writeFileSync(join(REPO, "crates/oino-resources/tests/fixtures/pi/misc-expected.json"), `${JSON.stringify(out, null, 2)}\n`);
+writeFileSync(join(REPO, "crates/oino-resources/tests/fixtures/golden/misc-expected.json"), `${JSON.stringify(out, null, 2)}\n`);
 console.log("wrote misc-expected.json");

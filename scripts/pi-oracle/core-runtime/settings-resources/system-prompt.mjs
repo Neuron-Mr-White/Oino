@@ -7,7 +7,7 @@ import { importPi, REPO } from "./lib.mjs";
 
 const sp = await importPi("core/system-prompt.js");
 const config = await importPi("config.js");
-const fixtures = join(REPO, "crates/oino-resources/tests/fixtures/pi");
+const fixtures = join(REPO, "crates/oino-resources/tests/fixtures/golden");
 const cases = JSON.parse(readFileSync(join(fixtures, "system-prompt-cases.json"), "utf-8"));
 const DOCS_ROOT = "/DOCS";
 

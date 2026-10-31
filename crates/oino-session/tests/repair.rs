@@ -313,7 +313,7 @@ fn in_memory_session_repairs_to_nothing() {
 /// exactly what `session-load.mjs` feeds to pi's own `SessionManager`. `OINO_BLESS=1`
 /// rewrites the fixtures.
 #[test]
-fn pi_oracle_fixture_matches_repair_output() {
+fn oracle_fixture_matches_repair_output() {
     let root = common::tempdir();
     let dir = root.path().join("sessions");
     std::fs::create_dir(&dir).unwrap();

@@ -122,7 +122,7 @@ impl SessionBackend for FakeBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::PiCommand;
+    use crate::protocol::AgentCommand;
     use oino_core::events::AgentSessionEvent;
     use serde_json::json;
 
@@ -134,12 +134,12 @@ mod tests {
         let mut events = fake.events();
         fake.emit(AgentSessionEvent::AgentStart);
         assert_eq!(
-            fake.send(PiCommand::GetState.into()).await.unwrap(),
+            fake.send(AgentCommand::GetState.into()).await.unwrap(),
             Some(json!({"sessionId": "s1"}))
         );
         assert_eq!(
             fake.send(
-                PiCommand::SetModel {
+                AgentCommand::SetModel {
                     provider: "a".into(),
                     model_id: "b".into()
                 }
@@ -148,7 +148,7 @@ mod tests {
             .await,
             Err(ClientError::Command("Model not found: a/b".into()))
         );
-        assert_eq!(fake.send(PiCommand::Abort.into()).await.unwrap(), None);
+        assert_eq!(fake.send(AgentCommand::Abort.into()).await.unwrap(), None);
         assert_eq!(fake.commands().len(), 3);
         assert_eq!(
             events.next().await,

@@ -17,7 +17,7 @@ use futures::StreamExt;
 use indexmap::IndexMap;
 use oino_ai::JsonObject;
 use oino_client::protocol::{EditorEvent, EditorIntent, QueueKind};
-use oino_client::{FrontendApi, InProcessBackend, PiCommand, RewindOptions, SessionBackend};
+use oino_client::{FrontendApi, InProcessBackend, AgentCommand, RewindOptions, SessionBackend};
 use oino_core::builtin::{SessionToolContext, builtin_tool_entries};
 use oino_core::events::{ClientEvent, OinoEvent};
 use oino_core::extensions::api::{ExtensionInstance, ExtensionMode, Registration};
@@ -111,7 +111,7 @@ async fn commands_work_from_a_non_tokio_thread() {
                 token_id: None,
             };
             let consumed = backend.editor_event(event).await.unwrap();
-            let state = backend.send(PiCommand::GetState.into()).await.unwrap();
+            let state = backend.send(AgentCommand::GetState.into()).await.unwrap();
             let topics = backend.topics(&["acme:*"], &[]).await.unwrap();
             (consumed, state.is_some(), topics.len())
         })
@@ -168,7 +168,7 @@ async fn frontend_api_covers_the_gui_feeds() {
     for text in ["one", "two"] {
         backend
             .send(
-                PiCommand::FollowUp {
+                AgentCommand::FollowUp {
                     message: text.into(),
                     images: Vec::new(),
                 }
@@ -184,7 +184,7 @@ async fn frontend_api_covers_the_gui_feeds() {
         .unwrap();
     backend.queue_remove(QueueKind::FollowUp, 0).await.unwrap();
     let queued = backend
-        .send(PiCommand::ClearQueue.into())
+        .send(AgentCommand::ClearQueue.into())
         .await
         .unwrap()
         .unwrap();
@@ -193,7 +193,7 @@ async fn frontend_api_covers_the_gui_feeds() {
     let mut events = backend.events();
     backend
         .send(
-            PiCommand::Prompt {
+            AgentCommand::Prompt {
                 message: "edit it".into(),
                 images: Vec::new(),
                 streaming_behavior: None,
@@ -227,7 +227,7 @@ async fn frontend_api_covers_the_gui_feeds() {
     };
     assert_eq!(replaced, oino_core::events::ReplaceReason::Fork);
     let messages = backend
-        .send(PiCommand::GetMessages.into())
+        .send(AgentCommand::GetMessages.into())
         .await
         .unwrap()
         .unwrap();

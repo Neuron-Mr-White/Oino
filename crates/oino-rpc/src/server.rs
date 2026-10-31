@@ -20,7 +20,7 @@ use futures::stream::{BoxStream, FuturesUnordered};
 use futures::{Future, FutureExt, StreamExt};
 use oino_ai::JsonValue;
 use oino_client::{
-    ClientError, OinoCommand, PiCommand, RpcCommand, RpcRequest, RpcResponse, SessionBackend,
+    ClientError, OinoCommand, AgentCommand, RpcCommand, RpcRequest, RpcResponse, SessionBackend,
 };
 use oino_core::events::{AgentSessionEvent, ClientEvent};
 use oino_core::ui::{UiAnswer, UiResponse};
@@ -99,7 +99,7 @@ impl Shared {
             }
         };
         let kind = request.command.kind();
-        let prompt = matches!(request.command, RpcCommand::Pi(PiCommand::Prompt { .. }));
+        let prompt = matches!(request.command, RpcCommand::Agent(AgentCommand::Prompt { .. }));
         let hello = match &request.command {
             RpcCommand::Oino(OinoCommand::Hello { ui, .. }) => Some(hello_connection(ui.as_ref())),
             _ => None,
@@ -279,7 +279,7 @@ impl RpcServer {
         W: AsyncWrite + Unpin + Send + 'static,
     {
         let (replies, replies_rx) = mpsc::channel::<Reply>(REPLY_QUEUE);
-        let connection = Arc::new(Mutex::new(Arc::new(Connection::pi())));
+        let connection = Arc::new(Mutex::new(Arc::new(Connection::plain())));
         let preflight = Arc::new(AtomicUsize::new(0));
         let writer = Writer {
             output,

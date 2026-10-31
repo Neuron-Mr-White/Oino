@@ -17,7 +17,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use oino_client::protocol::{PiCommand, RpcCommand, RpcResponseData};
+use oino_client::protocol::{AgentCommand, RpcCommand, RpcResponseData};
 use oino_core::extensions::api::ExtensionMode;
 use oino_core::runtime::ToolSelection;
 use oino_core::services::{ResourceFlags, StaticLoader};
@@ -77,7 +77,7 @@ fn hub_fixture() -> Fixture {
 
 async fn last_text(session: &HubSession) -> String {
     let data: RpcResponseData = session
-        .send(RpcCommand::Pi(PiCommand::GetLastAssistantText))
+        .send(RpcCommand::Agent(AgentCommand::GetLastAssistantText))
         .await
         .unwrap();
     data.and_then(|value| value["text"].as_str().map(str::to_owned))
@@ -126,14 +126,14 @@ async fn a_finished_run_wakes_its_linked_session_through_the_hub() {
     // The chat to wake: a live hub session that has answered once.
     let session = hub.create_session(None, Some("wake target")).await.unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::SetModel {
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
         }))
         .await
         .unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::Prompt {
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
             message: "seed".into(),
             images: Vec::new(),
             streaming_behavior: None,

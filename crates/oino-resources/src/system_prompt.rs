@@ -20,10 +20,6 @@ pub const DEFAULT_PREAMBLE: &str = "You are an expert coding assistant operating
 /// Tool guideline exported by the bash tool family (pi text with D12/D13 substitution).
 pub const ENV_GUIDELINE: &str = "You can inspect OINO_* environment variables (also exported as PI_*) for current model and session details.";
 
-/// The pi guideline [`ENV_GUIDELINE`] replaces.
-pub const PI_ENV_GUIDELINE: &str =
-    "You can inspect PI_* environment variables for current model and session details.";
-
 const TOOLS_FOOTER: &str = "In addition to the tools above, you may have access to other custom tools depending on the project.";
 
 /// Options of one prompt build (pi `NormalizedBuildSystemPromptOptions`; camelCase on the wire,
@@ -406,7 +402,7 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_applies_pi_defaults() {
+    fn deserialize_applies_defaults() {
         let options: BuildSystemPromptOptions = serde_json::from_str(r#"{"cwd": "/w"}"#).unwrap();
         assert_eq!(options.selected_tools, ["read", "bash", "edit", "write"]);
         assert_eq!(options.cwd, "/w");

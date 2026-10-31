@@ -33,7 +33,7 @@ tempfile.workspace = true
 nix = { workspace = true }
 
 [[test]]
-name = "golden_pi"
+name = "golden"
 required-features = ["manager"]
 
 [[test]]

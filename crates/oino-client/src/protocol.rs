@@ -19,7 +19,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 
 /// pi command types, in `rpc-types.ts` order.
-pub const PI_COMMAND_TYPES: [&str; 33] = [
+pub const AGENT_COMMAND_TYPES: [&str; 33] = [
     "prompt",
     "steer",
     "follow_up",
@@ -85,7 +85,7 @@ mod wire_images {
 /// A pi RPC command (pi `RpcCommand` without `id`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum PiCommand {
+pub enum AgentCommand {
     /// Send a prompt; replies once it was handled, queued or started.
     #[serde(rename_all = "camelCase")]
     Prompt {
@@ -618,12 +618,12 @@ pub const OINO_COMMAND_TYPES: [&str; 37] = [
 #[serde(untagged)]
 pub enum RpcCommand {
     /// pi command.
-    Pi(PiCommand),
+    Agent(AgentCommand),
     /// Oino extension.
     Oino(OinoCommand),
 }
 
-impl PiCommand {
+impl AgentCommand {
     /// The wire `type`.
     #[must_use]
     pub const fn kind(&self) -> &'static str {
@@ -716,15 +716,15 @@ impl RpcCommand {
     #[must_use]
     pub const fn kind(&self) -> &'static str {
         match self {
-            Self::Pi(command) => command.kind(),
+            Self::Agent(command) => command.kind(),
             Self::Oino(command) => command.kind(),
         }
     }
 }
 
-impl From<PiCommand> for RpcCommand {
-    fn from(command: PiCommand) -> Self {
-        Self::Pi(command)
+impl From<AgentCommand> for RpcCommand {
+    fn from(command: AgentCommand) -> Self {
+        Self::Agent(command)
     }
 }
 
@@ -774,7 +774,7 @@ impl RpcRequest {
                 error: "Unknown command: undefined".to_owned(),
             });
         };
-        let known = PI_COMMAND_TYPES.contains(&kind.as_str())
+        let known = AGENT_COMMAND_TYPES.contains(&kind.as_str())
             || OINO_COMMAND_TYPES.contains(&kind.as_str());
         if !known {
             return Err(RejectedCommand {
@@ -786,7 +786,7 @@ impl RpcRequest {
         let decoded = if kind.starts_with("_oino/") {
             serde_json::from_value::<OinoCommand>(value).map(RpcCommand::Oino)
         } else {
-            serde_json::from_value::<PiCommand>(value).map(RpcCommand::Pi)
+            serde_json::from_value::<AgentCommand>(value).map(RpcCommand::Agent)
         };
         decoded
             .map(|command| Self {
@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(request.id, Some(json!("1")));
         assert_eq!(
             request.command,
-            RpcCommand::Pi(PiCommand::Prompt {
+            RpcCommand::Agent(AgentCommand::Prompt {
                 message: "hi".into(),
                 images: vec![ImageContent {
                     data: "AA".into(),
@@ -984,7 +984,7 @@ mod tests {
             RpcRequest::from_value(json!({"type":"abort"}))
                 .unwrap()
                 .command,
-            RpcCommand::Pi(PiCommand::Abort)
+            RpcCommand::Agent(AgentCommand::Abort)
         );
     }
 

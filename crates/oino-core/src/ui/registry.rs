@@ -2096,11 +2096,11 @@ mod tests {
         let mut registry = registry();
         let namespace = |namespace: &str| oino_ui::settings::SettingsNamespace {
             namespace: namespace.to_owned(),
-            title: "Pi".to_owned(),
+            title: "Acme".to_owned(),
             extension_id: "oino".to_owned(),
             ..oino_ui::settings::SettingsNamespace::default()
         };
-        let id = registry.register_settings(namespace("pi")).unwrap();
+        let id = registry.register_settings(namespace("acme")).unwrap();
         assert_eq!(id, "oino/settings:pi");
         let entry = registry.get(&id).unwrap();
         assert_eq!(entry.slot, Slot::Settings);

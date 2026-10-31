@@ -1,4 +1,4 @@
-//! Golden suite `session-context` (quality §4.4): every fixture under `tests/fixtures/pi/`
+//! Golden suite `session-context` (quality §4.4): every fixture under `tests/fixtures/format/`
 //! is opened with [`SessionManager`] and compared with pi 1.4.0's output recorded by
 //! `scripts/pi-oracle/core-types-session/context.mjs` (`<name>.expected.json`).
 #![allow(
@@ -18,7 +18,7 @@ use oino_session::{FileLine, SessionManager};
 use serde_json::Value;
 
 fn fixture_files(dir: &str) -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = fs::read_dir(common::fixtures().join("pi").join(dir))
+    let mut files: Vec<PathBuf> = fs::read_dir(common::fixtures().join("format").join(dir))
         .unwrap()
         .filter_map(Result::ok)
         .map(|e| e.path())

@@ -24,7 +24,7 @@ use unipi_proto::{
     Control, HubEvent, Request, SessionCard, SessionEventDto, SessionSnapshot, PROTO_VERSION,
 };
 
-use oino_client::protocol::{PiCommand, RpcCommand, RpcSessionState};
+use oino_client::protocol::{AgentCommand, RpcCommand, RpcSessionState};
 use oino_core::extensions::api::ExtensionMode;
 use oino_core::runtime::ToolSelection;
 use oino_core::services::{ResourceFlags, StaticLoader};
@@ -76,14 +76,14 @@ async fn fixture() -> Fixture {
     .unwrap();
     let session = hub.create_session(None, None).await.unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::SetModel {
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
         }))
         .await
         .unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::Prompt {
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
             message: "hello".into(),
             images: Vec::new(),
             streaming_behavior: None,

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use oino_agent::AgentToolResult;
-use oino_client::protocol::{PiCommand, RpcCommand, RpcResponseData, RpcSessionState};
+use oino_client::protocol::{AgentCommand, RpcCommand, RpcResponseData, RpcSessionState};
 use oino_core::extensions::api::{
     ExtensionInstance, ExtensionMode, Registration, ToolExposure, ToolSpec,
 };
@@ -108,7 +108,7 @@ fn hub_with(responses: Vec<FauxResponse>) -> Fixture {
 async fn create(hub: &Arc<SessionHub>) -> HubSession {
     let session = hub.create_session(None, None).await.unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::SetModel {
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
         }))
@@ -119,7 +119,7 @@ async fn create(hub: &Arc<SessionHub>) -> HubSession {
 
 async fn prompt(session: &HubSession, text: &str) {
     session
-        .send(RpcCommand::Pi(PiCommand::Prompt {
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
             message: text.into(),
             images: Vec::new(),
             streaming_behavior: None,
@@ -130,7 +130,7 @@ async fn prompt(session: &HubSession, text: &str) {
 
 async fn state_of(session: &HubSession) -> RpcSessionState {
     let data: RpcResponseData = session
-        .send(RpcCommand::Pi(PiCommand::GetState))
+        .send(RpcCommand::Agent(AgentCommand::GetState))
         .await
         .unwrap();
     serde_json::from_value(data.unwrap()).unwrap()
@@ -138,7 +138,7 @@ async fn state_of(session: &HubSession) -> RpcSessionState {
 
 async fn last_text(session: &HubSession) -> String {
     let data: RpcResponseData = session
-        .send(RpcCommand::Pi(PiCommand::GetLastAssistantText))
+        .send(RpcCommand::Agent(AgentCommand::GetLastAssistantText))
         .await
         .unwrap();
     data.and_then(|value| value["text"].as_str().map(str::to_owned))

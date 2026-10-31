@@ -41,7 +41,7 @@ fn assert_json(label: &str, actual: &Value, expected: &Value) {
     );
 }
 
-fn pi_cut(value: &Value) -> CutPointResult {
+fn find_cut_point(value: &Value) -> CutPointResult {
     CutPointResult {
         first_kept_entry_index: usize::try_from(value["firstKeptEntryIndex"].as_u64().unwrap())
             .unwrap(),
@@ -87,7 +87,7 @@ fn sessions_match_pi() {
             );
             assert_eq!(
                 find_cut_point(&branch, 0, branch.len(), keep),
-                pi_cut(&case["findCutPoint"]),
+                find_cut_point(&case["findCutPoint"]),
                 "{label} findCutPoint"
             );
             checked += 1;

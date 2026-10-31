@@ -11,7 +11,7 @@
 //!
 //! | Module | pi equivalent | Contents |
 //! |---|---|---|
-//! | [`protocol`] | `rpc-types.ts` | [`RpcCommand`] ([`PiCommand`], [`OinoCommand`]), [`RpcRequest`], [`RpcResponse`], [`RpcSessionState`] |
+//! | [`protocol`] | `rpc-types.ts` | [`RpcCommand`] ([`AgentCommand`], [`OinoCommand`]), [`RpcRequest`], [`RpcResponse`], [`RpcSessionState`] |
 //! | [`backend`] | — | [`SessionBackend`], [`ClientError`] |
 //! | [`frontend`] | — | [`FrontendApi`]: typed `_oino/*` frontend commands (completions, panel actions, shortcuts, editor intents, settings, services, sign-in, topics, agents, queue edits, checkpoints / rewind, running bash, extensions) for every backend |
 //! | [`in_process`] (feature `in-process`) | `rpc-mode.ts` `handleCommand` | [`InProcessBackend`] over `AgentSessionRuntime` |
@@ -50,6 +50,6 @@ pub use hub::{HubOptions, HubSession, HubSessionState, SessionHub};
 #[cfg(feature = "in-process")]
 pub use in_process::{InProcessBackend, ServerInfo};
 pub use protocol::{
-    OinoCommand, PiCommand, RejectedCommand, RpcCommand, RpcRequest, RpcResponse, RpcResponseData,
+    OinoCommand, AgentCommand, RejectedCommand, RpcCommand, RpcRequest, RpcResponse, RpcResponseData,
     RpcSessionState,
 };

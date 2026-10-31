@@ -20,7 +20,7 @@ use oino_agent::AgentToolResult;
 use oino_ai::AgentMessage;
 use oino_client::backend::SessionBackend;
 use oino_client::hub::{HubOptions, HubSessionState, SessionHub};
-use oino_client::protocol::{PiCommand, RpcCommand, RpcResponseData, RpcSessionState};
+use oino_client::protocol::{AgentCommand, RpcCommand, RpcResponseData, RpcSessionState};
 use oino_core::extensions::api::{
     ExtensionInstance, ExtensionMode, Registration, ToolExposure, ToolSpec,
 };
@@ -191,7 +191,7 @@ fn interrupted_file(dir: &Path) -> (PathBuf, String) {
 
 async fn state_of(backend: &Arc<dyn SessionBackend>) -> RpcSessionState {
     let data: RpcResponseData = backend
-        .send(RpcCommand::Pi(PiCommand::GetState))
+        .send(RpcCommand::Agent(AgentCommand::GetState))
         .await
         .unwrap();
     serde_json::from_value(data.unwrap()).unwrap()
@@ -232,7 +232,7 @@ async fn wait_state(hub: &SessionHub, id: &str, want: HubSessionState) {
 
 async fn prompt(backend: &Arc<dyn SessionBackend>, message: &str) {
     backend
-        .send(RpcCommand::Pi(PiCommand::Prompt {
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
             message: message.into(),
             images: Vec::new(),
             streaming_behavior: None,
@@ -328,7 +328,7 @@ async fn create_session_is_live_reused_and_listed_after_the_first_message() {
     let id = backend.session_id();
     backend
         .send(
-            PiCommand::SetModel {
+            AgentCommand::SetModel {
                 provider: "faux".into(),
                 model_id: "faux-1".into(),
             }
@@ -452,7 +452,7 @@ async fn running_bash_prevents_idle_eviction() {
     let sender = Arc::clone(&backend);
     let bash = tokio::spawn(async move {
         sender
-            .send(RpcCommand::Pi(PiCommand::Bash {
+            .send(RpcCommand::Agent(AgentCommand::Bash {
                 command: "sleep 3".into(),
                 exclude_from_context: Some(true),
             }))

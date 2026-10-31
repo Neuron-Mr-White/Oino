@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 
 fn fixture(name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/pi")
+        .join("tests/fixtures/golden")
         .join(name);
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }

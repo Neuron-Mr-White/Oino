@@ -4,7 +4,7 @@
 use std::time::{Duration, Instant};
 
 use oino_ai::JsonValue;
-use oino_client::protocol::PiCommand;
+use oino_client::protocol::AgentCommand;
 use oino_ui::slot::{UiEntry, UiView};
 use oino_view::commands::filter_menu;
 use oino_view::composer::Composer;
@@ -72,11 +72,11 @@ impl App {
         if self.matches("app.interrupt", key) {
             self.completion = None;
             if self.bash_running.is_some() {
-                self.send(Tag::Abort, PiCommand::AbortBash);
+                self.send(Tag::Abort, AgentCommand::AbortBash);
             } else if self.retry.is_some() {
-                self.send(Tag::Abort, PiCommand::AbortRetry);
+                self.send(Tag::Abort, AgentCommand::AbortRetry);
             } else if self.busy() {
-                self.send_concurrent(Tag::Abort, PiCommand::Abort);
+                self.send_concurrent(Tag::Abort, AgentCommand::Abort);
             } else if self.composer.is_empty() {
                 let double = self
                     .last_escape
@@ -89,9 +89,9 @@ impl App {
                         .and_then(JsonValue::as_str)
                         .unwrap_or("tree")
                     {
-                        "fork" => self.send(Tag::ForkMessages, PiCommand::GetForkMessages),
+                        "fork" => self.send(Tag::ForkMessages, AgentCommand::GetForkMessages),
                         "none" => {}
-                        _ => self.send(Tag::Tree, PiCommand::GetTree),
+                        _ => self.send(Tag::Tree, AgentCommand::GetTree),
                     }
                 } else {
                     self.last_escape = Some(now);
@@ -135,23 +135,23 @@ impl App {
         if self.matches("app.model.select", key) {
             self.send(
                 Tag::Models(ModelsFor::Selector(None)),
-                PiCommand::GetAvailableModels,
+                AgentCommand::GetAvailableModels,
             );
             return true;
         }
         if self.matches("app.model.cycleForward", key) {
-            self.send(Tag::CycleModel, PiCommand::CycleModel);
+            self.send(Tag::CycleModel, AgentCommand::CycleModel);
             return true;
         }
         if self.matches("app.model.cycleBackward", key) {
             self.send(
                 Tag::Models(ModelsFor::CycleBackward),
-                PiCommand::GetAvailableModels,
+                AgentCommand::GetAvailableModels,
             );
             return true;
         }
         if self.matches("app.thinking.cycle", key) {
-            self.send(Tag::CycleThinking, PiCommand::CycleThinkingLevel);
+            self.send(Tag::CycleThinking, AgentCommand::CycleThinkingLevel);
             return true;
         }
         if self.matches("app.thinking.toggle", key) {
@@ -173,7 +173,7 @@ impl App {
             return true;
         }
         if self.matches("app.message.dequeue", key) {
-            self.send(Tag::Dequeue, PiCommand::ClearQueue);
+            self.send(Tag::Dequeue, AgentCommand::ClearQueue);
             return true;
         }
         let session_actions = [

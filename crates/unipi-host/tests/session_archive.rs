@@ -15,7 +15,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use oino_client::protocol::{PiCommand, RpcCommand};
+use oino_client::protocol::{AgentCommand, RpcCommand};
 use oino_core::extensions::api::{ExtensionInstance, ExtensionMode};
 use oino_core::runtime::ToolSelection;
 use oino_core::services::{ResourceFlags, StaticLoader};
@@ -95,7 +95,7 @@ async fn session_with_a_run(hub: &Arc<SessionHub>) -> HubSession {
 async fn start(hub: &Arc<SessionHub>) -> HubSession {
     let session = hub.create_session(None, None).await.unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::SetModel {
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
         }))
@@ -106,7 +106,7 @@ async fn start(hub: &Arc<SessionHub>) -> HubSession {
 
 async fn prompt(session: &HubSession) {
     session
-        .send(RpcCommand::Pi(PiCommand::Prompt {
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
             message: "hello".into(),
             images: Vec::new(),
             streaming_behavior: None,

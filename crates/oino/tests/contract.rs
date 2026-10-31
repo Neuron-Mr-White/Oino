@@ -19,7 +19,7 @@ use futures::stream::BoxStream;
 use indexmap::IndexMap;
 use oino_ai::{AgentMessage, AssistantContent, JsonObject};
 use oino_client::protocol::ClientInfo;
-use oino_client::{ClientError, InProcessBackend, PiCommand, SessionBackend};
+use oino_client::{ClientError, InProcessBackend, AgentCommand, SessionBackend};
 use oino_core::events::{AgentSessionEvent, ClientEvent, OinoEvent, ReplaceReason};
 use oino_core::extensions::api::{ExtensionInstance, ExtensionMode};
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource};
@@ -149,7 +149,7 @@ async fn scenario(backend: Arc<dyn SessionBackend>) -> Observed {
     let mut events = backend.events();
     let disposition = backend
         .send(
-            PiCommand::Prompt {
+            AgentCommand::Prompt {
                 message: "hi".into(),
                 images: Vec::new(),
                 streaming_behavior: None,
@@ -186,13 +186,13 @@ async fn scenario(backend: Arc<dyn SessionBackend>) -> Observed {
         })
         .unwrap_or_default();
     let last_text = backend
-        .send(PiCommand::GetLastAssistantText.into())
+        .send(AgentCommand::GetLastAssistantText.into())
         .await
         .unwrap()
         .unwrap();
     let model_error = backend
         .send(
-            PiCommand::SetModel {
+            AgentCommand::SetModel {
                 provider: "faux".into(),
                 model_id: "missing".into(),
             }
@@ -201,14 +201,14 @@ async fn scenario(backend: Arc<dyn SessionBackend>) -> Observed {
         .await
         .unwrap_err();
     let state = backend
-        .send(PiCommand::GetState.into())
+        .send(AgentCommand::GetState.into())
         .await
         .unwrap()
         .unwrap();
     let state_matches_id = state["sessionId"] == json!(backend.session_id());
     backend
         .send(
-            PiCommand::NewSession {
+            AgentCommand::NewSession {
                 parent_session: None,
             }
             .into(),
@@ -225,7 +225,7 @@ async fn scenario(backend: Arc<dyn SessionBackend>) -> Observed {
         }
     };
     let messages_after_new = backend
-        .send(PiCommand::GetMessages.into())
+        .send(AgentCommand::GetMessages.into())
         .await
         .unwrap()
         .unwrap()["messages"]
@@ -364,7 +364,7 @@ async fn gui_scenario(backend: Arc<dyn SessionBackend>) -> GuiObserved {
     for text in ["a", "b", "c"] {
         backend
             .send(
-                PiCommand::FollowUp {
+                AgentCommand::FollowUp {
                     message: text.into(),
                     images: Vec::new(),
                 }
@@ -384,7 +384,7 @@ async fn gui_scenario(backend: Arc<dyn SessionBackend>) -> GuiObserved {
         .await
         .unwrap_err();
     let queue = backend
-        .send(PiCommand::ClearQueue.into())
+        .send(AgentCommand::ClearQueue.into())
         .await
         .unwrap()
         .unwrap();

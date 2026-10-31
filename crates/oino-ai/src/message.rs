@@ -584,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn pi_doc_examples_round_trip() {
+    fn doc_examples_round_trip() {
         for raw in [
             json!({"role":"system","content":"","sections":{"preamble":"You are…","tools":"<tools>","cwd":"/p"},
                    "toolsAdded":[{"name":"read","description":"...","parameters":{}}],"timestamp":1_733_234_400_000_i64}),

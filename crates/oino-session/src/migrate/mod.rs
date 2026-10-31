@@ -7,12 +7,12 @@
 //!   (session-v3 §5.2); the file-moving wrapper lives in the manager.
 
 pub mod legacy;
-mod pi;
+mod values;
 
 use oino_ai::JsonValue;
 
 pub use legacy::{LegacyMigration, MigrationWarning};
-pub use pi::migrate_pi_values;
+pub use values::migrate_values;
 
 use crate::entry::{CURRENT_SESSION_VERSION, FileLine, SessionEntry, SessionHeader};
 use crate::error::SessionError;
@@ -21,13 +21,13 @@ use crate::error::SessionError;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileFormat {
     /// pi v1 (linear, no ids).
-    PiV1,
+    V1,
     /// pi v2 (tree, `hookMessage`).
-    PiV2,
+    V2,
     /// pi v3 (current).
-    PiV3,
+    V3,
     /// pi version newer than supported.
-    PiFuture(u32),
+    Future(u32),
     /// Pre-v1 Oino `record` file.
     OinoLegacy {
         /// Legacy header version (1 or 2).
@@ -65,10 +65,10 @@ pub fn detect(first_line: &str) -> FileFormat {
         .and_then(JsonValue::as_u64)
         .map_or(1, |v| u32::try_from(v).unwrap_or(u32::MAX));
     match version {
-        0 | 1 => FileFormat::PiV1,
-        2 => FileFormat::PiV2,
-        CURRENT_SESSION_VERSION => FileFormat::PiV3,
-        other => FileFormat::PiFuture(other),
+        0 | 1 => FileFormat::V1,
+        2 => FileFormat::V2,
+        CURRENT_SESSION_VERSION => FileFormat::V3,
+        other => FileFormat::Future(other),
     }
 }
 
@@ -122,7 +122,7 @@ pub fn parse_session_text(text: &str) -> Result<Option<ParsedSession>, SessionEr
     if version > CURRENT_SESSION_VERSION {
         return Err(SessionError::UnsupportedVersion(version));
     }
-    let migrated = migrate_pi_values(&mut values);
+    let migrated = migrate_values(&mut values);
     let mut header = None;
     let mut entries = Vec::with_capacity(values.len());
     for (value, line) in values.into_iter().zip(line_numbers) {
@@ -147,18 +147,18 @@ mod tests {
 
     #[test]
     fn detects_formats() {
-        assert_eq!(detect(r#"{"type":"session","id":"x"}"#), FileFormat::PiV1);
+        assert_eq!(detect(r#"{"type":"session","id":"x"}"#), FileFormat::V1);
         assert_eq!(
             detect(r#"{"type":"session","version":2,"id":"x"}"#),
-            FileFormat::PiV2
+            FileFormat::V2
         );
         assert_eq!(
             detect(r#"{"type":"session","version":3,"id":"x"}"#),
-            FileFormat::PiV3
+            FileFormat::V3
         );
         assert_eq!(
             detect(r#"{"type":"session","version":4,"id":"x"}"#),
-            FileFormat::PiFuture(4)
+            FileFormat::Future(4)
         );
         assert_eq!(
             detect(r#"{"record":"header","header":{"version":2}}"#),

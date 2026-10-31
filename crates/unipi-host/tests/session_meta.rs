@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oino_client::protocol::{PiCommand, RpcCommand};
+use oino_client::protocol::{AgentCommand, RpcCommand};
 use oino_core::extensions::api::{ExtensionInstance, ExtensionMode};
 use oino_core::runtime::ToolSelection;
 use oino_core::services::{ResourceFlags, StaticLoader};
@@ -90,7 +90,7 @@ fn fixture() -> Fixture {
 async fn create(hub: &Arc<SessionHub>) -> HubSession {
     let session = hub.create_session(None, None).await.unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::SetModel {
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
         }))
@@ -101,7 +101,7 @@ async fn create(hub: &Arc<SessionHub>) -> HubSession {
 
 async fn prompt(session: &HubSession, text: &str) {
     session
-        .send(RpcCommand::Pi(PiCommand::Prompt {
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
             message: text.into(),
             images: Vec::new(),
             streaming_behavior: None,
@@ -140,7 +140,7 @@ async fn run_once(session: &HubSession, text: &str) {
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         let data = session
-            .send(RpcCommand::Pi(PiCommand::GetState))
+            .send(RpcCommand::Agent(AgentCommand::GetState))
             .await
             .unwrap();
         let value: serde_json::Value =

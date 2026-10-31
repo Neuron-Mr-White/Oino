@@ -32,7 +32,7 @@ use unipi_host::sessions::stream::SessionService;
 use unipi_proto::frame::MAX_FRAME;
 use unipi_proto::{Request, SessionEventDto, SessionSnapshot};
 
-use oino_client::protocol::{PiCommand, RpcCommand};
+use oino_client::protocol::{AgentCommand, RpcCommand};
 use oino_core::events::{ClientEvent, OinoEvent};
 use oino_core::extensions::api::{ExtensionInstance, ExtensionMode};
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource};
@@ -90,14 +90,14 @@ fn open_host(dir: &Path) -> (Arc<SessionHub>, Arc<SessionService>) {
 async fn settled_session(hub: &Arc<SessionHub>) -> String {
     let session = hub.create_session(None, None).await.unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::SetModel {
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
         }))
         .await
         .unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::Prompt {
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
             message: "hello".into(),
             images: Vec::new(),
             streaming_behavior: None,

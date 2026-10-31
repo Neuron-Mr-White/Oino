@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use oino_ai::{ImageContent, JsonValue, ThinkingLevel};
-use oino_client::protocol::{OinoCommand, PiCommand};
+use oino_client::protocol::{OinoCommand, AgentCommand};
 use oino_core::session::StreamingBehavior;
 use oino_view::commands::{Builtin, Submitted, classify};
 use oino_view::format::format_tokens;
@@ -48,7 +48,7 @@ impl App {
                     .begin_bash(Some(id.clone()), &command, exclude_from_context);
                 self.effects.push(Effect::Send {
                     tag: Tag::Bash(id.clone()),
-                    command: PiCommand::Bash {
+                    command: AgentCommand::Bash {
                         command,
                         exclude_from_context: exclude_from_context.then_some(true),
                     }
@@ -67,9 +67,9 @@ impl App {
                 );
                 let busy = self.session.streaming || self.session.compacting;
                 let command = if busy && follow_up {
-                    PiCommand::FollowUp { message, images }
+                    AgentCommand::FollowUp { message, images }
                 } else {
-                    PiCommand::Prompt {
+                    AgentCommand::Prompt {
                         message,
                         images,
                         streaming_behavior: busy.then_some(if follow_up {
@@ -94,17 +94,17 @@ impl App {
             Builtin::Model => match arg {
                 Some(query) => self.send(
                     Tag::Models(ModelsFor::Direct(query)),
-                    PiCommand::GetAvailableModels,
+                    AgentCommand::GetAvailableModels,
                 ),
                 None => self.send(
                     Tag::Models(ModelsFor::Selector(None)),
-                    PiCommand::GetAvailableModels,
+                    AgentCommand::GetAvailableModels,
                 ),
             },
             Builtin::Thinking => match arg {
                 Some(level) => match level.parse::<ThinkingLevel>() {
                     Ok(level) if self.thinking_levels.is_empty() || self.thinking_levels.contains(&level) => {
-                        self.send(Tag::Ignore, PiCommand::SetThinkingLevel { level });
+                        self.send(Tag::Ignore, AgentCommand::SetThinkingLevel { level });
                         self.session.thinking = level;
                         self.notice(NoticeLevel::Info, format!("Thinking level: {}", level_name(level)));
                     }
@@ -122,27 +122,27 @@ impl App {
                 },
                 None => self.send(
                     Tag::ThinkingLevels { open: true },
-                    PiCommand::GetAvailableThinkingLevels,
+                    AgentCommand::GetAvailableThinkingLevels,
                 ),
             },
             Builtin::ScopedModels => {
-                self.send(Tag::Models(ModelsFor::Scoped), PiCommand::GetAvailableModels);
+                self.send(Tag::Models(ModelsFor::Scoped), AgentCommand::GetAvailableModels);
             }
             Builtin::Login => self.auth_command(false, arg),
             Builtin::Logout => self.auth_command(true, arg),
-            Builtin::New => self.send(Tag::Replace("New session"), PiCommand::NewSession { parent_session: None }),
+            Builtin::New => self.send(Tag::Replace("New session"), AgentCommand::NewSession { parent_session: None }),
             Builtin::Resume => self.open_sessions(),
-            Builtin::Name => if let Some(name) = arg { self.send(Tag::SetName(name.clone()), PiCommand::SetSessionName { name }) } else {
+            Builtin::Name => if let Some(name) = arg { self.send(Tag::SetName(name.clone()), AgentCommand::SetSessionName { name }) } else {
                 let text = self.session.session_name.as_ref().map_or_else(
                     || "No session name set".to_owned(),
                     |name| format!("Session name: {name}"),
                 );
                 self.notice(NoticeLevel::Info, text);
             },
-            Builtin::Session => self.send(Tag::Stats { show: true }, PiCommand::GetSessionStats),
-            Builtin::Tree => self.send(Tag::Tree, PiCommand::GetTree),
-            Builtin::Fork => self.send(Tag::ForkMessages, PiCommand::GetForkMessages),
-            Builtin::Clone => self.send(Tag::Replace("Clone"), PiCommand::Clone),
+            Builtin::Session => self.send(Tag::Stats { show: true }, AgentCommand::GetSessionStats),
+            Builtin::Tree => self.send(Tag::Tree, AgentCommand::GetTree),
+            Builtin::Fork => self.send(Tag::ForkMessages, AgentCommand::GetForkMessages),
+            Builtin::Clone => self.send(Tag::Replace("Clone"), AgentCommand::Clone),
             Builtin::Compact => {
                 if self.session.compacting {
                     self.notice(NoticeLevel::Warning, "Compaction already in progress");
@@ -150,7 +150,7 @@ impl App {
                 }
                 self.send_concurrent(
                     Tag::Compact,
-                    PiCommand::Compact {
+                    AgentCommand::Compact {
                         custom_instructions: arg,
                     },
                 );
@@ -175,7 +175,7 @@ impl App {
                 if jsonl {
                     self.send(Tag::Export, OinoCommand::ExportJsonl { output_path: arg });
                 } else {
-                    self.send(Tag::Export, PiCommand::ExportHtml { output_path: arg });
+                    self.send(Tag::Export, AgentCommand::ExportHtml { output_path: arg });
                 }
             }
             Builtin::Trust => self.notice(
@@ -191,7 +191,7 @@ impl App {
                 for warning in warnings {
                     self.notice(NoticeLevel::Warning, format!("keybindings.json: {warning}"));
                 }
-                self.send(Tag::Commands, PiCommand::GetCommands);
+                self.send(Tag::Commands, AgentCommand::GetCommands);
                 self.notice(
                     NoticeLevel::Info,
                     "Reloaded keybindings and settings (extensions and resources reload on restart)",

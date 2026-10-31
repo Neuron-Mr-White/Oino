@@ -19,7 +19,7 @@ use serde_json::json;
 
 use crate::backend::{ClientError, SessionBackend};
 use crate::follow::Followers;
-use crate::protocol::{OinoCommand, PiCommand, RpcCommand, RpcResponseData, RpcSessionState};
+use crate::protocol::{OinoCommand, AgentCommand, RpcCommand, RpcResponseData, RpcSessionState};
 
 /// Name and version reported by `_oino/hello`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -194,7 +194,7 @@ impl Shared {
             return Err(ClientError::Closed);
         }
         match command {
-            RpcCommand::Pi(command) => self.pi(request_id, command).await,
+            RpcCommand::Agent(command) => self.agent(request_id, command).await,
             RpcCommand::Oino(command) => self.oino(command).await,
         }
     }
@@ -203,14 +203,14 @@ impl Shared {
         clippy::too_many_lines,
         reason = "one arm per pi RPC command, mirroring rpc-mode.ts handleCommand"
     )]
-    async fn pi(
+    async fn agent(
         &self,
         request_id: Option<String>,
-        command: PiCommand,
+        command: AgentCommand,
     ) -> Result<RpcResponseData, ClientError> {
         let session = self.session();
         match command {
-            PiCommand::Prompt {
+            AgentCommand::Prompt {
                 message,
                 images,
                 streaming_behavior,
@@ -229,36 +229,36 @@ impl Shared {
                     .map_err(failed)?;
                 data(json!({ "disposition": disposition }))
             }
-            PiCommand::Steer { message, images } => {
+            AgentCommand::Steer { message, images } => {
                 let disposition = session
                     .steer(message, images, InputSource::Rpc)
                     .await
                     .map_err(failed)?;
                 data(json!({ "disposition": disposition }))
             }
-            PiCommand::FollowUp { message, images } => {
+            AgentCommand::FollowUp { message, images } => {
                 let disposition = session
                     .follow_up(message, images, InputSource::Rpc)
                     .await
                     .map_err(failed)?;
                 data(json!({ "disposition": disposition }))
             }
-            PiCommand::Abort => {
+            AgentCommand::Abort => {
                 session.abort().await;
                 Ok(None)
             }
-            PiCommand::ClearQueue => {
+            AgentCommand::ClearQueue => {
                 let (steering, follow_up) = session.clear_queue();
                 data(json!({ "steering": steering, "followUp": follow_up }))
             }
-            PiCommand::NewSession { parent_session } => {
+            AgentCommand::NewSession { parent_session } => {
                 let parent = parent_session.map(|p| self.path(&p));
                 let result = self.runtime.new_session(parent).await.map_err(failed)?;
                 self.rebind(ReplaceReason::New, result.cancelled);
                 data(json!({ "cancelled": result.cancelled }))
             }
-            PiCommand::GetState => data(self.state()),
-            PiCommand::SetModel { provider, model_id } => {
+            AgentCommand::GetState => data(self.state()),
+            AgentCommand::SetModel { provider, model_id } => {
                 let model = session
                     .models()
                     .available()
@@ -270,54 +270,54 @@ impl Shared {
                 let model = session.set_model(model, true).await.map_err(failed)?;
                 data(model)
             }
-            PiCommand::CycleModel => {
+            AgentCommand::CycleModel => {
                 let result = session
                     .cycle_model(CycleDirection::Forward, true)
                     .await
                     .map_err(failed)?;
                 data(result)
             }
-            PiCommand::GetAvailableModels => {
+            AgentCommand::GetAvailableModels => {
                 data(json!({ "models": session.models().available() }))
             }
-            PiCommand::SetThinkingLevel { level } => {
+            AgentCommand::SetThinkingLevel { level } => {
                 session.set_thinking_level(level, true).await;
                 Ok(None)
             }
-            PiCommand::CycleThinkingLevel => {
+            AgentCommand::CycleThinkingLevel => {
                 let level = session.cycle_thinking_level(true).await;
                 Ok(Some(level.map_or(
                     JsonValue::Null,
                     |level| json!({ "level": level }),
                 )))
             }
-            PiCommand::GetAvailableThinkingLevels => {
+            AgentCommand::GetAvailableThinkingLevels => {
                 data(json!({ "levels": session.available_thinking_levels() }))
             }
-            PiCommand::SetSteeringMode { mode } => {
+            AgentCommand::SetSteeringMode { mode } => {
                 session.set_steering_mode(mode);
                 Ok(None)
             }
-            PiCommand::SetFollowUpMode { mode } => {
+            AgentCommand::SetFollowUpMode { mode } => {
                 session.set_follow_up_mode(mode);
                 Ok(None)
             }
-            PiCommand::Compact {
+            AgentCommand::Compact {
                 custom_instructions,
             } => data(session.compact(custom_instructions).await.map_err(failed)?),
-            PiCommand::SetAutoCompaction { enabled } => {
+            AgentCommand::SetAutoCompaction { enabled } => {
                 session.set_auto_compaction_enabled(enabled);
                 Ok(None)
             }
-            PiCommand::SetAutoRetry { enabled } => {
+            AgentCommand::SetAutoRetry { enabled } => {
                 session.set_auto_retry_enabled(enabled);
                 Ok(None)
             }
-            PiCommand::AbortRetry => {
+            AgentCommand::AbortRetry => {
                 session.abort_retry();
                 Ok(None)
             }
-            PiCommand::Bash {
+            AgentCommand::Bash {
                 command,
                 exclude_from_context,
             } => {
@@ -327,19 +327,19 @@ impl Shared {
                     .map_err(failed)?;
                 data(result)
             }
-            PiCommand::AbortBash => {
+            AgentCommand::AbortBash => {
                 session.abort_bash();
                 Ok(None)
             }
-            PiCommand::GetSessionStats => data(session.session_stats()),
-            PiCommand::ExportHtml { output_path } => {
+            AgentCommand::GetSessionStats => data(session.session_stats()),
+            AgentCommand::ExportHtml { output_path } => {
                 let path = session
                     .export_html(output_path.map(|p| self.path(&p)))
                     .await
                     .map_err(failed)?;
                 data(json!({ "path": path.display().to_string() }))
             }
-            PiCommand::SwitchSession { session_path } => {
+            AgentCommand::SwitchSession { session_path } => {
                 let result = self
                     .runtime
                     .switch_session(self.path(&session_path), None)
@@ -348,7 +348,7 @@ impl Shared {
                 self.rebind(ReplaceReason::Resume, result.cancelled);
                 data(json!({ "cancelled": result.cancelled }))
             }
-            PiCommand::Fork { entry_id } => {
+            AgentCommand::Fork { entry_id } => {
                 let result = self
                     .runtime
                     .fork(&EntryId::new(entry_id), ForkPosition::Before)
@@ -361,7 +361,7 @@ impl Shared {
                 }
                 Ok(Some(value))
             }
-            PiCommand::Clone => {
+            AgentCommand::Clone => {
                 let leaf = session.with_manager(|m| m.leaf_id().cloned());
                 if leaf.is_none() {
                     return Err(ClientError::Command(
@@ -372,10 +372,10 @@ impl Shared {
                 self.rebind(ReplaceReason::Clone, result.cancelled);
                 data(json!({ "cancelled": result.cancelled }))
             }
-            PiCommand::GetForkMessages => {
+            AgentCommand::GetForkMessages => {
                 data(json!({ "messages": session.user_messages_for_forking() }))
             }
-            PiCommand::GetEntries { since } => {
+            AgentCommand::GetEntries { since } => {
                 let (entries, leaf) =
                     session.with_manager(|m| (m.entries().to_vec(), m.leaf_id().cloned()));
                 let entries = match since {
@@ -392,14 +392,14 @@ impl Shared {
                 };
                 data(json!({ "entries": entries, "leafId": leaf }))
             }
-            PiCommand::GetTree => {
+            AgentCommand::GetTree => {
                 let (tree, leaf) = session.with_manager(|m| (m.tree(), m.leaf_id().cloned()));
                 data(json!({ "tree": tree, "leafId": leaf }))
             }
-            PiCommand::GetLastAssistantText => {
+            AgentCommand::GetLastAssistantText => {
                 data(json!({ "text": session.last_assistant_text() }))
             }
-            PiCommand::SetSessionName { name } => {
+            AgentCommand::SetSessionName { name } => {
                 let name = name.trim();
                 if name.is_empty() {
                     return Err(ClientError::Command(
@@ -412,8 +412,8 @@ impl Shared {
                     .map_err(failed)?;
                 Ok(None)
             }
-            PiCommand::GetMessages => data(json!({ "messages": session.messages() })),
-            PiCommand::GetCommands => data(json!({ "commands": session.commands() })),
+            AgentCommand::GetMessages => data(json!({ "messages": session.messages() })),
+            AgentCommand::GetCommands => data(json!({ "commands": session.commands() })),
         }
     }
 

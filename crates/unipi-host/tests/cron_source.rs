@@ -17,7 +17,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use oino_client::protocol::{PiCommand, RpcCommand};
+use oino_client::protocol::{AgentCommand, RpcCommand};
 use oino_core::extensions::api::ExtensionMode;
 use oino_core::runtime::ToolSelection;
 use oino_core::services::{ResourceFlags, StaticLoader};
@@ -93,14 +93,14 @@ fn hub() -> Fixture {
 async fn session_with_file(hub: &Arc<SessionHub>) -> (HubSession, String) {
     let session = hub.create_session(None, None).await.unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::SetModel {
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
         }))
         .await
         .unwrap();
     session
-        .send(RpcCommand::Pi(PiCommand::Prompt {
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
             message: "summarize the inbox".into(),
             images: Vec::new(),
             streaming_behavior: None,
@@ -187,13 +187,13 @@ async fn a_run_owned_session_carries_source_cron() {
     // A second session matched only through its file (a fork of the run's session, say).
     let (other, other_file) = {
         let s = fixture.hub.create_session(None, None).await.unwrap();
-        s.send(RpcCommand::Pi(PiCommand::SetModel {
+        s.send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
         }))
         .await
         .unwrap();
-        s.send(RpcCommand::Pi(PiCommand::Prompt {
+        s.send(RpcCommand::Agent(AgentCommand::Prompt {
             message: "second".into(),
             images: Vec::new(),
             streaming_behavior: None,
