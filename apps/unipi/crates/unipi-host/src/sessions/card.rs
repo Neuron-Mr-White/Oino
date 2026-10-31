@@ -232,21 +232,44 @@ mod tests {
 
     #[test]
     fn state_and_card_wire_shape() {
+        // Linking oino-core enables serde_json's `preserve_order`, which makes
+        // `Value` equality key-insertion-order sensitive — a struct serialises
+        // in declaration order, a `json!` literal in written order, and the
+        // two print identically while comparing unequal. The wire shape is the
+        // KEY SET + values, so canonicalise both sides (sorted keys) instead of
+        // touching the wire output.
+        fn canonical(value: &serde_json::Value) -> serde_json::Value {
+            match value {
+                serde_json::Value::Object(map) => {
+                    let mut keys: Vec<_> = map.keys().cloned().collect();
+                    keys.sort();
+                    serde_json::Value::Object(
+                        keys.into_iter()
+                            .map(|key| {
+                                let entry = &map[&key];
+                                (key, canonical(entry))
+                            })
+                            .collect(),
+                    )
+                }
+                serde_json::Value::Array(items) => {
+                    serde_json::Value::Array(items.iter().map(canonical).collect())
+                }
+                other => other.clone(),
+            }
+        }
         assert_eq!(
-            serde_json::to_value(HubState::Crashed {
-                error: "boom".into()
-            })
-            .unwrap(),
-            serde_json::json!({"kind": "crashed", "error": "boom"})
+            canonical(&serde_json::to_value(HubState::Crashed { error: "boom".into() }).unwrap()),
+            canonical(&serde_json::json!({"kind": "crashed", "error": "boom"}))
         );
         assert_eq!(
-            serde_json::to_value(HubState::TakenOver { from: "tui".into() }).unwrap(),
-            serde_json::json!({"kind": "takenOver", "from": "tui"})
+            canonical(&serde_json::to_value(HubState::TakenOver { from: "tui".into() }).unwrap()),
+            canonical(&serde_json::json!({"kind": "takenOver", "from": "tui"}))
         );
         let value = serde_json::to_value(card("a", "/p", 10)).unwrap();
         assert_eq!(
-            value,
-            serde_json::json!({
+            canonical(&value),
+            canonical(&serde_json::json!({
                 "sessionId": "a",
                 "file": "/sessions/a.jsonl",
                 "cwd": "/p",
@@ -254,7 +277,7 @@ mod tests {
                 "messageCount": 2,
                 "state": {"kind": "idle"},
                 "lastActivity": 10,
-            })
+            }))
         );
     }
 
