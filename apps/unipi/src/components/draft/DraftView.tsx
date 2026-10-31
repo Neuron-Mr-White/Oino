@@ -114,7 +114,7 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
                 session={session}
                 draft
                 busy={busy()}
-                autofocus
+                autofocus={layout().desktop()}
                 phone={!layout().desktop()}
                 cwd={() => folder() ?? home()}
                 placeholder={busy() ? 'Starting the chat…' : undefined}

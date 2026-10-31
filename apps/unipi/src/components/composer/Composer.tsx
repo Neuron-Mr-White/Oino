@@ -775,6 +775,7 @@ export function Composer(props: ComposerProps) {
                 onSend={() => send()}
                 onStop={stop}
                 onSendNow={sendNow}
+                options={!props.draft}
               />
             </span>
           }

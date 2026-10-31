@@ -26,6 +26,8 @@ export function SendButton(props: {
   onStop(): void;
   /** "Send now (stops run)": abort, then send the text as a prompt. */
   onSendNow?(): void;
+  /** The queue/steer chevron (off on the new-chat draft: nothing runs there yet). */
+  options?: boolean;
 }) {
   const [menu, setMenu] = createSignal(false);
   const close = () => setMenu(false);
@@ -97,18 +99,20 @@ export function SendButton(props: {
         </div>
       </Show>
       <div class="send-btn-main">
-        <button
-          type="button"
-          class="send-btn-chevron"
-          aria-label="Send options"
-          title="While it runs: queue or steer"
-          aria-haspopup="menu"
-          aria-expanded={menu()}
-          onClick={() => setMenu(!menu())}
-          data-testid="send-chevron"
-        >
-          <ChevronUp size={13} />
-        </button>
+        <Show when={props.options !== false}>
+          <button
+            type="button"
+            class="send-btn-chevron"
+            aria-label="Send options"
+            title="While it runs: queue or steer"
+            aria-haspopup="menu"
+            aria-expanded={menu()}
+            onClick={() => setMenu(!menu())}
+            data-testid="send-chevron"
+          >
+            <ChevronUp size={13} />
+          </button>
+        </Show>
         {/* The wrapper keeps the tip alive on the disabled state (Z-116: tooltips work on disabled controls). */}
         <Tooltip label={sendTip()}>
           {props.running ? (

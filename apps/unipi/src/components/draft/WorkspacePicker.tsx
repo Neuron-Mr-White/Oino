@@ -57,7 +57,7 @@ export function WorkspacePicker(props: {
     props.roots
       .filter((p) => !props.recent.includes(p) || p === props.home)
       .slice(0, 6)
-      .map((path) => ({ path, label: path === props.home ? 'Home' : short(path), detail: path === props.home ? short(path) : path })),
+      .map((path) => ({ path, label: path === props.home ? 'Home' : short(path), detail: path === props.home ? short(path) : '' })),
   );
 
   const [listing] = createResource(browse, async (path) => {
@@ -85,7 +85,9 @@ export function WorkspacePicker(props: {
       <Folder size={15} class="ws-row-ic" />
       <span class="ws-row-text">
         <span class="ws-row-label">{item.label}</span>
-        <span class="ws-row-detail">{item.detail}</span>
+        <Show when={item.detail}>
+          <span class="ws-row-detail">{item.detail}</span>
+        </Show>
       </span>
       <Show when={props.value === item.path}>
         <Check size={15} class="ws-row-check" />

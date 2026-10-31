@@ -6,10 +6,12 @@
  *
  * Why over the new stream: a new session has no file until its first
  * message, and the host resolves `session_open` by its file — the chat the
- * app routes to can only open it once the prompt is in. The prompt is sent
- * here, then the chat opens it (and shows the prompt from the host's own
- * entries); this stream lingers a few seconds so the runtime is never left
- * without a subscriber in between.
+ * app routes to can only open it once the prompt is in (the prompt's ack
+ * comes before its user message is appended: routing on the ack alone got an
+ * `E_INTERNAL` open). So the prompt is sent here, the route waits for its
+ * user `message_end`, then the chat opens the session and shows the prompt
+ * from the host's own entries; this stream lingers a few seconds so the
+ * runtime is never left without a subscriber in between.
  */
 import { toAppError, type AppError } from '@unipi/protocol';
 import { hostClient } from '../../lib/host/factory';
@@ -27,9 +29,16 @@ export type StartRequest = {
 /** How long the creating stream stays open after the prompt went in. */
 export const LINGER_MS = 6000;
 const SNAPSHOT_TIMEOUT_MS = 20_000;
+/** Longest wait for the first user message to land before routing anyway. */
+const PERSIST_WAIT_MS = 8000;
 
 export async function startSession(hostId: string, req: StartRequest, client: HostClient = hostClient(hostId)): Promise<{ ok: true; sessionId: string } | { ok: false; error: AppError }> {
   let settle: ((snap: SessionSnapshot) => void) | undefined;
+  /** Resolves when the prompt's user message is in the session (its file exists from then on). */
+  let persisted: (() => void) | undefined;
+  const userIn = new Promise<void>((resolve) => (persisted = resolve));
+  /** Set right before the first prompt: a replayed `/permission` never counts. */
+  let armed = false;
   let fail: ((error: AppError) => void) | undefined;
   const ready = new Promise<SessionSnapshot>((resolve, reject) => {
     settle = resolve;
@@ -39,7 +48,12 @@ export async function startSession(hostId: string, req: StartRequest, client: Ho
     { kind: 'new', ...(req.cwd ? { cwd: req.cwd } : {}) },
     {
       snapshot: (snap) => settle?.(snap),
-      events: () => {},
+      events: (items) => {
+        for (const item of items) {
+          const ev = (item as { event?: { type?: string; message?: { role?: string } } }).event;
+          if (armed && ev?.type === 'message_end' && ev.message?.role === 'user') persisted?.();
+        }
+      },
       closed: (error) => fail?.(error ?? toAppError(new Error('The host closed the new session'))),
     },
   );
@@ -54,8 +68,12 @@ export async function startSession(hostId: string, req: StartRequest, client: Ho
     if (thinking) await cmd({ type: 'set_thinking_level', level: thinking }).catch(() => undefined);
     if (permission) await cmd({ type: 'prompt', message: `/permission ${permission}` }).catch(() => undefined);
     if (plan) await cmd({ type: 'prompt', message: '/plan on' }).catch(() => undefined);
+    armed = true;
     const images = req.images.map((img) => ({ type: 'image', data: img.data, mimeType: img.mimeType }));
     await cmd({ type: 'prompt', message: req.text, ...(images.length ? { images } : {}) });
+    // The chat opens the session by its file, written with the user message:
+    // route only once that message is in (bounded — a slow host still routes).
+    await Promise.race([userIn, new Promise((r) => setTimeout(r, PERSIST_WAIT_MS))]);
     setTimeout(() => stream.close(), LINGER_MS);
     return { ok: true, sessionId: snap.session_id };
   } catch (error) {

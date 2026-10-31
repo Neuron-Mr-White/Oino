@@ -277,15 +277,16 @@ describe('new-chat empty state (Z-87)', () => {
     expect(loreLine(0).length).toBeGreaterThan(20);
   });
 
-  it('shows the crab, the greeting, one hint and a lore line — no recents', async () => {
+  it('the start screen: greeting, one hint, the Unicrab as a faint watermark — no recents', async () => {
     const scenario = SCENARIOS['empty-chat'] as MockScenario;
     const host = scenario.hosts[0]!;
     const view = boot('empty-chat', `#/new/${host.id}`);
     await waitFor(() => expect(view.getByTestId('empty-chat')).toBeTruthy());
     const box = view.getByTestId('empty-chat');
-    expect(box.querySelector('svg')).toBeTruthy(); // the Unicrab rig
+    // The Unicrab rig sits behind the start screen (aria-hidden), not in the text block.
+    expect(view.container.querySelector('.draft-mark[aria-hidden="true"] svg')).toBeTruthy();
     expect(view.getByTestId('empty-chat-greeting').textContent).toBe(greetingFor(new Date()));
-    expect(box.querySelectorAll('p').length).toBe(2); // hint + lore, nothing else
+    expect(box.querySelectorAll('p').length).toBe(1); // the hint, nothing else
     expect(view.container.querySelector('[data-testid="empty-chat"] button')).toBeNull(); // no recent-session list
     expect(problems(view.container), problems(view.container).join('\n')).toEqual([]);
   });
