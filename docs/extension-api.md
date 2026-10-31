@@ -1,6 +1,6 @@
 # Extension API and WIT
 
-The contract between Oino and extensions is the WIT package `oino:extension@1.0.0` in
+The contract between Oino and extensions is the WIT package `oino:extension@2.0.0` in
 `wit/oino-extension/` (component model async on wasmtime 48, wit-bindgen 0.62). Data-model
 values (messages, models, events, tool results) cross the boundary as canonical JSON with
 exact wire shapes; host capabilities are typed WIT.
@@ -30,8 +30,7 @@ Validate the WIT with `cargo xtask wit`.
 `export_extension!`, typed event payloads from `oino-ai`). `unipi-kit` adds shared helpers
 used by the unipi ports (settings schema, bus topics, work tray, jev decisions).
 
-## Known gaps (alpha)
+## Known gaps
 
-- `control.running-bash` and `control.bash-detach` are not served yet (`unsupported`);
-  `control.shutdown` is recorded but no mode exits on it yet.
+- `control.shutdown` is recorded but no mode exits on it yet.
 - `models.classify` and `models.generate-image` are unsupported.

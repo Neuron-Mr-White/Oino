@@ -27,7 +27,7 @@ Next to `Cargo.toml`, an `extension.json` manifest (extension-api §7):
 
 ```json
 {
-  "apiVersion": "oino.extension/1",
+  "apiVersion": "oino.extension/2",
   "id": "acme.notify",
   "name": "Notify",
   "version": "3.0.0",

@@ -13,7 +13,7 @@ Minimal manifest:
 
 ```json
 {
-  "apiVersion": "oino.extension/1",
+  "apiVersion": "oino.extension/2",
   "id": "acme.hello",
   "name": "Hello",
   "version": "0.1.0",

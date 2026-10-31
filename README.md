@@ -81,7 +81,7 @@ bundled extensions, `/hotkeys` lists key bindings, `ctrl+d` exits.
 |---|---|---|
 | Core runtime | `crates/oino-core`, `oino-agent`, `oino-session`, `oino-tools`, … | [sessions](docs/sessions.md), [settings](docs/settings.md) |
 | `oino` CLI: TUI, print, JSON, RPC, ACP | `crates/oino`, `oino-tui`, `oino-rpc`, `oino-acp` | [tui](docs/tui.md), [rpc](docs/rpc.md), [acp](docs/acp.md) |
-| WASM extension host + WIT `oino:extension@1.0.0` | `wit/`, `crates/oino-wasm-host` | [extensions](docs/extensions.md), [extension API](docs/extension-api.md) |
+| WASM extension host + WIT `oino:extension@2.0.0` | `wit/`, `crates/oino-wasm-host` | [extensions](docs/extensions.md), [extension API](docs/extension-api.md) |
 | Provider components | `extensions/providers/*` | [providers](docs/providers.md), [models](docs/models.md) |
 | unipi 3.0.0 ports | `extensions/unipi/*` | [unipi](docs/unipi.md) |
 

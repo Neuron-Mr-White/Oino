@@ -1,7 +1,7 @@
 # Extensions
 
 Oino extensions are **WebAssembly components** implementing the WIT package
-`oino:extension@1.0.0` ([extension-api.md](extension-api.md)). They play the role of
+`oino:extension@2.0.0` ([extension-api.md](extension-api.md)). They play the role of
 TypeScript extensions: they subscribe to session events, register tools, slash commands,
 shortcuts, flags, renderers, settings namespaces, providers and virtual models, and talk to
 the user through frontend-agnostic UI requests. npm packages (TypeScript) cannot be loaded;
