@@ -2,6 +2,7 @@
 //! WP-H3), the per-client session streams over it (§7.3–7.5; WP-H4), plus the host services
 //! registered with the wasm host (§4.2, ext-abi §3).
 
+pub mod bound;
 pub mod card;
 pub mod crash;
 pub mod hub;

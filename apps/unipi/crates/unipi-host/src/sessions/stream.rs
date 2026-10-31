@@ -849,7 +849,7 @@ where
             tracing::debug!(session = %feed.session_id(), since, seq, "session resume");
             SessionSnapshot::resume(session.session_id(), seq, replay)
         }
-        _ => snapshot(&session, &feed).await?,
+        _ => snapshot(&session, &feed, Arc::downgrade(service)).await?,
     };
     if let Some(from) = taken_over {
         // §8.2: the first session event after the snapshot tells the app where it came from.
@@ -877,6 +877,7 @@ where
 async fn snapshot(
     session: &Arc<HubSession>,
     feed: &Arc<Feed>,
+    service: Weak<SessionService>,
 ) -> Result<SessionSnapshot, AppErrorDto> {
     session
         .send(RpcCommand::Oino(
@@ -913,11 +914,26 @@ async fn snapshot(
     .await?;
     let mut snapshot = SessionSnapshot::full(session.session_id(), feed.seq());
     snapshot.state = state;
-    snapshot.entries = field_array(entries.as_ref(), "entries");
     snapshot.leaf_id = entries
         .as_ref()
         .and_then(|value| value.get("leafId"))
         .cloned();
+    let mut entries = field_array(entries.as_ref(), "entries").unwrap_or_default();
+    // v2 QA: a session bigger than the 1 MiB frame must still open — big text is
+    // truncated (flagged for the app's full-output refetch), big inline images
+    // become blob `mediaRef`s the stream's `media` command serves.
+    let blobs_dir = service.upgrade().map(|service| service.hub().blobs_dir());
+    if let Some(blobs_dir) = blobs_dir.as_deref() {
+        let rewritten = super::bound::bound_entries(&mut entries, blobs_dir);
+        if rewritten > 0 {
+            tracing::info!(
+                session = %session.session_id(),
+                rewritten,
+                "snapshot bounded for the frame"
+            );
+        }
+    }
+    snapshot.entries = Some(entries);
     snapshot.commands = field_array(commands.as_ref(), "commands");
     snapshot.ui = ui;
     snapshot.topics = field_array(topics.as_ref(), "topics");
@@ -1012,6 +1028,16 @@ where
                 match serde_json::from_slice::<Control>(&bytes) {
                     Ok(Control::Exit { .. }) => return Ok(()),
                     Ok(Control::SessionCmd { id, cmd }) => {
+                        // The app's image fetch (`sessionRefChat.media`): a bounded
+                        // snapshot's `mediaRef` images load through this command, from
+                        // the same blob store the reference points into.
+                        if cmd.get("type").and_then(Value::as_str) == Some("media") {
+                            let reply = media_reply(service.upgrade().as_deref(), &cmd);
+                            flush_batch(write, &mut batch, &mut seen_through).await?;
+                            flush_at = None;
+                            write_json(write, &SessionReply::ok(id, Some(reply))).await?;
+                            continue;
+                        }
                         match RpcRequest::from_value(cmd) {
                             Ok(request) => {
                                 // A command may wake a session whose tap let go while it
@@ -1057,6 +1083,48 @@ where
         .last()
         .map_or(*seen_through, |event| event.seq.max(*seen_through));
     write_control(write, &Control::Events { items }).await
+}
+
+/// Answers the `media{mediaRef}` session command (`sessionRefChat.media`): the blob
+/// a bounded snapshot referenced, as `{mime, dataUrl}` in one frame. `mediaRef` is a
+/// sha256 hex into the host's blob store (validated: no path traversal); an image too
+/// large for one frame answers `null` — the app falls back to `blob_get{sha256}`.
+fn media_reply(service: Option<&SessionService>, cmd: &Value) -> Value {
+    let Some(service) = service else {
+        return Value::Null;
+    };
+    let Some(reference) = cmd
+        .get("mediaRef")
+        .and_then(Value::as_str)
+        .filter(|r| r.len() == 64 && r.bytes().all(|b| b.is_ascii_hexdigit()))
+    else {
+        return Value::Null;
+    };
+    let path = service.hub().blobs_dir().join(reference);
+    let Ok(bytes) = std::fs::read(&path) else {
+        tracing::warn!(%reference, "media: no such blob");
+        return Value::Null;
+    };
+    // Keep the reply under the frame cap: a data URL costs 4/3 the bytes.
+    const DATA_URL_CAP: usize = unipi_proto::frame::MAX_FRAME * 3 / 4 - 4096;
+    if bytes.len() > DATA_URL_CAP {
+        tracing::warn!(%reference, bytes = bytes.len(), "media: image larger than one frame");
+        return Value::Null;
+    }
+    let mime = sniff_mime(&bytes);
+    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+    json!({ "mime": mime, "dataUrl": format!("data:{mime};base64,{encoded}") })
+}
+
+/// Image mime from magic bytes (the stored blob carries no sidecar metadata).
+fn sniff_mime(bytes: &[u8]) -> &'static str {
+    match bytes {
+        [0x89, b'P', b'N', b'G', ..] => "image/png",
+        [0xff, 0xd8, ..] => "image/jpeg",
+        [b'G', b'I', b'F', b'8', ..] => "image/gif",
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => "image/webp",
+        _ => "application/octet-stream",
+    }
 }
 
 /// Runs one `SessionCmd` off the stream loop (a long `prompt` must not stall the writer) and

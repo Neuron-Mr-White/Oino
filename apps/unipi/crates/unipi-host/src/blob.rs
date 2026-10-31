@@ -212,6 +212,49 @@ fn touch(path: &Path) -> std::io::Result<()> {
     file.set_times(now)
 }
 
+/// Stores `bytes` in the blob store (content-addressed, deduplicated, under the
+/// same LRU cap as uploads) and returns its sha256 hex. The host's own writes — a
+/// session snapshot's oversized inline images become `mediaRef` blobs (v2 QA:
+/// sessions larger than the 1 MiB frame failed `session_open`).
+///
+/// # Errors
+///
+/// Blob directory or write failures.
+pub fn store_bytes(blobs_dir: &Path, bytes: &[u8]) -> std::io::Result<String> {
+    use std::io::Write as _;
+
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hex_digest(hasher);
+    std::fs::create_dir_all(blobs_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(blobs_dir, std::fs::Permissions::from_mode(0o700));
+    }
+    let path = blob_file(blobs_dir, &digest);
+    if std::fs::metadata(&path)
+        .map(|meta| meta.len())
+        .is_ok_and(|len| len == bytes.len() as u64)
+    {
+        let _ = touch(&path);
+        return Ok(digest);
+    }
+    let tmp_path = path.with_extension("part");
+    {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&tmp_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    std::fs::rename(&tmp_path, &path)?;
+    evict_lru(blobs_dir, BLOB_DIR_CAP);
+    Ok(digest)
+}
+
 /// Deletes the oldest-mtime files in `dir` until its total size is under
 /// `cap`. Best-effort: I/O errors are logged and skipped.
 fn evict_lru(dir: &Path, cap: u64) {

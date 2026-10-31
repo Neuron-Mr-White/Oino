@@ -240,17 +240,17 @@ impl HubSession {
         self.backend.events()
     }
 
-    /// Sends one command, making sure the session has a run supervisor (§4.4): a crash
-    /// during the run marks this session and leaves the others alone.
+    /// Sends one command, supervising it when it starts agent work (§4.4): a crash
+    /// during the run marks this session and leaves the others alone. Read-only
+    /// commands — the snapshot's `get_state`/`get_entries`/`ui`/`topics`, `_oino/render`,
+    /// an accordion-expand fetch — never start supervision, so they cannot flip the card
+    /// to `Working` or mark an unfocused session `unread`.
     ///
     /// # Errors
     ///
     /// Any backend failure (the session was evicted, taken over or disposed).
     pub async fn send(&self, command: RpcCommand) -> Result<RpcResponseData, HubError> {
-        if let Some(hub) = self.hub.upgrade() {
-            hub.ensure_supervisor(Arc::clone(&self.backend));
-        }
-        self.backend.send(command).await.map_err(HubError::from)
+        self.dispatch(command, None).await
     }
 
     /// [`HubSession::send`] with the RPC request id (`SessionCmd{id}`): `bash` streams
@@ -264,14 +264,66 @@ impl HubSession {
         request_id: Option<String>,
         command: RpcCommand,
     ) -> Result<RpcResponseData, HubError> {
-        if let Some(hub) = self.hub.upgrade() {
-            hub.ensure_supervisor(Arc::clone(&self.backend));
-        }
-        self.backend
-            .send_with_id(request_id, command)
-            .await
-            .map_err(HubError::from)
+        self.dispatch(command, request_id).await
     }
+
+    /// One command through the backend, with supervision started exactly when the
+    /// command starts agent work (or its reply says it did).
+    async fn dispatch(
+        &self,
+        command: RpcCommand,
+        request_id: Option<String>,
+    ) -> Result<RpcResponseData, HubError> {
+        let supervised = starts_run(&command);
+        if supervised {
+            if let Some(hub) = self.hub.upgrade() {
+                hub.ensure_supervisor(Arc::clone(&self.backend));
+            }
+        }
+        let reply = if let Some(id) = request_id {
+            self.backend.send_with_id(Some(id), command).await
+        } else {
+            self.backend.send(command).await
+        };
+        // A command we did not recognise as run-starting may still have started one (a
+        // queued steer, an extension dispatch): supervise from its reply on.
+        if !supervised && reply_started_run(reply.as_ref()) {
+            if let Some(hub) = self.hub.upgrade() {
+                hub.ensure_supervisor(Arc::clone(&self.backend));
+            }
+        }
+        reply.map_err(HubError::from)
+    }
+}
+
+/// Commands that start agent work (a run, a `!` command, compaction) or queue into one
+/// — the only ones that may switch a session's card to `Working` (§4.4). Everything
+/// else (`get_state`, `get_entries`, `get_commands`, `get_available_models`, model and
+/// thinking selectors, `ui`/`topics`/`_oino/render`/`_oino/get_shortcuts`, tree
+/// navigation, renames, forks) is read-only as far as the card is concerned.
+fn starts_run(command: &RpcCommand) -> bool {
+    matches!(
+        command,
+        RpcCommand::Agent(
+            AgentCommand::Prompt { .. }
+                | AgentCommand::Steer { .. }
+                | AgentCommand::FollowUp { .. }
+                | AgentCommand::Bash { .. }
+                | AgentCommand::Compact { .. }
+        )
+    )
+}
+
+/// Whether a command's reply says agent work started or was queued into a running
+/// turn (a `prompt`'s `{disposition: "started" | "queued"}`), so a command outside
+/// [`starts_run`] still gets supervision when it actually began work.
+fn reply_started_run(reply: Result<&RpcResponseData, &ClientError>) -> bool {
+    reply
+        .ok()
+        .and_then(|data| data.as_ref())
+        .and_then(|value| value.get("disposition"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|disposition| disposition == "started" || disposition == "queued")
 }
 
 /// The host hub: the core lazy hub plus host state, cards and hub events.
@@ -307,6 +359,9 @@ struct Inner {
     cron: crate::cron_serve::CronSessions,
     /// When the last background project pre-warm ran (throttle).
     warmed_at: Mutex<Option<Instant>>,
+    /// The host data dir (`~/.oino/host`; the fallback hermetic tests use) — where the
+    /// blob store media references point.
+    host_data: PathBuf,
     started: SystemTime,
 }
 
@@ -362,11 +417,11 @@ impl SessionHub {
         core_options.session_dir = Some(sessions_root.clone());
         let (events, _) = broadcast::channel(EVENTS_CAPACITY);
         let core = CoreHub::create(core_options)?;
-        let meta = MetaStore::open(
-            &options
-                .host_data_dir
-                .unwrap_or_else(|| agent_dir.join("host")),
-        );
+        let host_data = options
+            .host_data_dir
+            .clone()
+            .unwrap_or_else(|| agent_dir.join("host"));
+        let meta = MetaStore::open(&host_data);
         let inner = Arc::new(Inner {
             core,
             cwd,
@@ -379,6 +434,7 @@ impl SessionHub {
             focus: FocusRegistry::default(),
             cron: crate::cron_serve::CronSessions::new(&agent_dir),
             warmed_at: Mutex::new(None),
+            host_data,
             started: SystemTime::now(),
         });
         Ok(Arc::new(Self { inner }))
@@ -400,6 +456,13 @@ impl SessionHub {
     #[must_use]
     pub fn trash_dir(&self) -> PathBuf {
         self.inner.agent_dir.join("trash")
+    }
+
+    /// The host's blob store (`<host data dir>/blobs`, `crate::blob`): where a bounded
+    /// snapshot's image `mediaRef`s point and the session stream's `media` command reads.
+    #[must_use]
+    pub fn blobs_dir(&self) -> PathBuf {
+        self.inner.host_data.join("blobs")
     }
 
     /// How long this hub has been alive (the safe-mode success threshold reads it).
