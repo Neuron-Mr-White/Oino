@@ -1,4 +1,4 @@
-//! Host-provided services (ext-abi §3): named capabilities an embedding host (unipi-host)
+//! Host-provided services (ext-abi §3): named capabilities an embedding host
 //! registers with the runtime — `"browser"`, `"cron"`, … . Oino itself registers none:
 //! under a plain TUI every name is unavailable and extensions degrade (typically: tools
 //! report unavailable).

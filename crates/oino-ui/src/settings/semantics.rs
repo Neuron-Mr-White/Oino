@@ -1083,7 +1083,7 @@ mod tests {
     fn list_and_dict_templates_need_no_key() {
         // §7 `FieldWithoutKey`: the row templates carry no `key`.
         let raw = json!({
-            "namespace": "mcp", "title": "MCP", "extensionId": "unipi.mcp",
+            "namespace": "mcp", "title": "MCP", "extensionId": "acme.mcp",
             "sections": [{"id": "s", "title": "S", "fields": [
                 {"key": "servers", "type": "list", "label": "Servers",
                  "item": {"type": "string", "label": "URL"}},
@@ -1117,10 +1117,10 @@ mod tests {
 
     #[test]
     fn v1_namespaces_parse_unchanged() {
-        // The shape `unipi_kit::settings::schema` (v1 §6.6) emits: bare props, `order.items`
+        // The shape the v1 kit's `settings::schema` (v1 §6.6) emits: bare props, `order.items`
         // as `{value, label}` objects, `dynamic` from a service, `allowCustom`, `clearable`.
         let raw = json!({
-            "namespace": "notify", "title": "Notify", "extensionId": "unipi.notify",
+            "namespace": "notify", "title": "Notify", "extensionId": "acme.notify",
             "defaults": {"events": {"agentEnd": true}},
             "sections": [{"id": "events", "title": "Events", "fields": [
                 {"key": "events.agentEnd", "type": "boolean", "label": "Agent"},

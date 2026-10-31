@@ -57,28 +57,44 @@ pub enum WidgetPlacement {
     BelowEditor,
 }
 
-/// Reserved first-party components (§8); the app renders its native component.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ReservedComponent {
-    /// Kanban board (`unipi.kanboard/board`).
-    Board,
-    /// Cron jobs (`unipi.cron/jobs`).
-    Cron,
-    /// Files tree + editor (`host/files`).
-    Files,
-    /// Git pane (`host/git`).
-    Git,
-    /// Browser pane (`unipi.browser/browser`).
-    Browser,
-    /// Terminal (`host/terminal`).
-    Terminal,
-    /// Session info modal (`unipi.info-screen/dashboard`).
-    SessionInfo,
-    /// Long-horizon status (`unipi.long-horizon/visualize`).
-    LhStatus,
-    /// Turn file summary (`unipi.file-summary/turn-files`).
-    TurnFiles,
+/// Reserved first-party component (§8): an opaque key naming the native component the
+/// embedding app renders (e.g. `"board"`, `"files"`). The SDK transports the key; the
+/// app interprets it — which ids exist and who owns them is host registration
+/// (ui-protocol §8), not a compile-time table.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ReservedComponent(pub String);
+
+impl ReservedComponent {
+    /// A component key.
+    #[must_use]
+    pub fn new(key: impl Into<String>) -> Self {
+        Self(key.into())
+    }
+
+    /// The component key.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ReservedComponent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<&str> for ReservedComponent {
+    fn from(key: &str) -> Self {
+        Self(key.to_owned())
+    }
+}
+
+impl From<String> for ReservedComponent {
+    fn from(key: String) -> Self {
+        Self(key)
+    }
 }
 
 /// Entry size of an overlay (`custom` dialog / `overlay` panel, §6.1).
@@ -411,7 +427,7 @@ pub struct UiPatch {
 pub enum ActionSource {
     /// The terminal UI.
     Tui,
-    /// The unipi app (desktop or phone).
+    /// The embedder's desktop or phone app.
     #[default]
     App,
     /// An RPC client.
@@ -523,17 +539,18 @@ impl UiCapabilities {
             .into_iter()
             .collect(),
             reserved: [
-                ReservedComponent::Board,
-                ReservedComponent::Cron,
-                ReservedComponent::Files,
-                ReservedComponent::Git,
-                ReservedComponent::Browser,
-                ReservedComponent::Terminal,
-                ReservedComponent::SessionInfo,
-                ReservedComponent::LhStatus,
-                ReservedComponent::TurnFiles,
+                "board",
+                "cron",
+                "files",
+                "git",
+                "browser",
+                "terminal",
+                "sessionInfo",
+                "lhStatus",
+                "turnFiles",
             ]
             .into_iter()
+            .map(ReservedComponent::new)
             .collect(),
             nodes: "all".to_owned(),
             images: true,
@@ -628,11 +645,11 @@ mod tests {
 
     #[test]
     fn action_event_matches_spec_example() {
-        let raw = r#"{"panelId":"unipi.kanboard/board","actionId":"open-task",
+        let raw = r#"{"panelId":"acme.board/board","actionId":"open-task",
             "value":"T-12","path":["main","tasks"],"values":{"filter":"open"},
             "source":"app"}"#;
         let action: UiAction = serde_json::from_str(raw).unwrap_or_default();
-        assert_eq!(action.panel_id, "unipi.kanboard/board");
+        assert_eq!(action.panel_id, "acme.board/board");
         assert_eq!(action.action_id, "open-task");
         assert_eq!(action.source, Some(ActionSource::App));
     }

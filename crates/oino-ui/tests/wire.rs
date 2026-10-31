@@ -57,11 +57,11 @@ fn patch_fixture_round_trips() {
 
 #[test]
 fn action_event_parses_spec_example() {
-    let raw = r#"{"type":"oino_ui_action","panelId":"unipi.kanboard/board","actionId":"open-task",
+    let raw = r#"{"type":"oino_ui_action","panelId":"acme.board/board","actionId":"open-task",
         "value":"T-12","path":["main","tasks"],"values":{"filter":"open"},"source":"app"}"#;
     let value: Json = serde_json::from_str(raw).unwrap_or_default();
     let action: UiAction = serde_json::from_value(value.clone()).unwrap_or_default();
-    assert_eq!(action.panel_id, "unipi.kanboard/board");
+    assert_eq!(action.panel_id, "acme.board/board");
     assert_eq!(action.action_id, "open-task");
     assert_eq!(action.value.as_ref().and_then(Json::as_str), Some("T-12"));
     assert_eq!(

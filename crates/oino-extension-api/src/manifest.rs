@@ -22,19 +22,44 @@ pub const DEFAULT_COMPONENT: &str = "component.wasm";
 /// Maximum `limits.memoryMiB`.
 pub const MAX_MEMORY_MIB: u32 = 2048;
 
-/// Reserved entry ids (ui-protocol §8) with their owner: `host` ids are created by the host
-/// from its advertised services, every other id may only be declared by that extension.
-pub const RESERVED_IDS: [(&str, &str); 9] = [
-    ("unipi.kanboard/board", "unipi.kanboard"),
-    ("unipi.cron/jobs", "unipi.cron"),
-    ("host/files", "host"),
-    ("host/git", "host"),
-    ("unipi.browser/browser", "unipi.browser"),
-    ("host/terminal", "host"),
-    ("unipi.info-screen/dashboard", "unipi.info-screen"),
-    ("unipi.long-horizon/visualize", "unipi.long-horizon"),
-    ("unipi.file-summary/turn-files", "unipi.file-summary"),
-];
+/// Reserved entry ids (ui-protocol §8) and their owners live in a process-wide table the
+/// embedding host registers at startup ([`register_reserved_owner`]): every reserved id may
+/// only be declared by the extension that owns it (the special `host` owner is reserved for
+/// ids the host itself creates from its advertised services and may never be declared by an
+/// extension). The table starts empty — a bare SDK knows no first-party panels.
+///
+/// [`Manifest::owns_reserved`] derives ownership from it.
+pub fn register_reserved_owner(id: &str, owner: &str) {
+    reserved_owners()
+        .write()
+        .expect("reserved-owner registry poisoned")
+        .insert(id.to_owned(), owner.to_owned());
+}
+
+/// The registered owner of a reserved entry id, when any (see [`register_reserved_owner`]).
+#[must_use]
+pub fn reserved_owner(id: &str) -> Option<String> {
+    reserved_owners()
+        .read()
+        .expect("reserved-owner registry poisoned")
+        .get(id)
+        .cloned()
+}
+
+/// Drops every registered reserved-owner pair (tests and embedder restarts).
+pub fn clear_reserved_owners() {
+    reserved_owners()
+        .write()
+        .expect("reserved-owner registry poisoned")
+        .clear();
+}
+
+fn reserved_owners() -> &'static std::sync::RwLock<std::collections::HashMap<String, String>> {
+    static OWNERS: std::sync::OnceLock<
+        std::sync::RwLock<std::collections::HashMap<String, String>>,
+    > = std::sync::OnceLock::new();
+    OWNERS.get_or_init(|| std::sync::RwLock::new(std::collections::HashMap::new()))
+}
 
 /// Manifest `kind` (D15): `-ne` disables only `Extension`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -106,14 +131,15 @@ pub struct Manifest {
 /// `ui` (ui-protocol §8 rule 1, §7 static settings): `{"reserved": [id…], "settings":
 /// [SettingsNamespace…]}`.
 ///
-/// `reserved` names entries the app renders as a native component; only ids from
-/// [`RESERVED_IDS`] whose owner is this extension are accepted. `settings` is the static path
-/// for settings namespaces; the runtime `registry.register-settings` declaration stays valid
-/// alongside it (both accepted in 2.x).
+/// `reserved` names entries the app renders as a native component; an id must belong to
+/// this extension's own namespace or be registered for it (see
+/// [`register_reserved_owner`](crate::manifest::register_reserved_owner)). `settings` is the
+/// static path for settings namespaces; the runtime `registry.register-settings`
+/// declaration stays valid alongside it (both accepted in 2.x).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UiManifest {
-    /// Reserved entry ids (ui-protocol §8), e.g. `unipi.kanboard/board`.
+    /// Reserved entry ids (ui-protocol §8), e.g. `acme.board/board`.
     pub reserved: Vec<String>,
     /// `oino_protocol::ext::SettingsNamespace` JSON values (one Settings section each).
     pub settings: Vec<serde_json::Value>,
@@ -620,7 +646,7 @@ impl Manifest {
             }
         }
         for id in &self.ui.reserved {
-            if !self.owns_reserved(id) {
+            if !self.owns_reserved(id) && !self.in_own_namespace(id) {
                 return Err(ManifestError::ReservedId(id.clone()));
             }
         }
@@ -636,15 +662,27 @@ impl Manifest {
         Ok(())
     }
 
-    /// Whether [`RESERVED_IDS`] lists `id` as owned by this extension (ui-protocol §8 rule 1).
+    /// Whether the host-registered reserved table lists `id` as owned by this extension
+    /// (ui-protocol §8 rule 1; see
+    /// [`register_reserved_owner`](crate::manifest::register_reserved_owner)).
     ///
     /// Host-owned ids (`host/*`) are created by the host from its advertised services, never
     /// declared by an extension.
     #[must_use]
     pub fn owns_reserved(&self, id: &str) -> bool {
-        RESERVED_IDS.iter().any(|(reserved, owner)| {
-            *reserved == id && *owner == self.id.as_str() && *owner != "host"
+        reserved_owner(id).is_some_and(|owner| {
+            owner == self.id.as_str() && owner != "host"
         })
+    }
+
+    /// Whether `id` lies in this extension's own namespace (`<extensionId>/<name>`): a
+    /// reserved declaration for a native component an embedding host may register. Host
+    /// namespaces never qualify — an extension cannot declare `host/*` ids.
+    #[must_use]
+    pub fn in_own_namespace(&self, id: &str) -> bool {
+        self.id.as_str() != "host"
+            && id.strip_prefix(self.id.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
     }
 
     /// Reads `<root>/extension.json`, validates it, checks that the component and declared
@@ -732,7 +770,7 @@ mod tests {
 
     fn manifest(extra: &str) -> String {
         format!(
-            r#"{{"apiVersion":"oino.extension/2","id":"unipi.notify","name":"Notify","version":"3.0.0"{extra}}}"#
+            r#"{{"apiVersion":"oino.extension/2","id":"acme.notify","name":"Notify","version":"3.0.0"{extra}}}"#
         )
     }
 
@@ -772,7 +810,7 @@ mod tests {
             Manifest::parse(&manifest(r#","component":"../x.wasm""#)),
             Err(ManifestError::PathEscape(_))
         ));
-        assert!(Manifest::parse(&manifest("").replace("unipi.notify", "Bad")).is_err());
+        assert!(Manifest::parse(&manifest("").replace("acme.notify", "Bad")).is_err());
     }
 
     #[test]
@@ -782,34 +820,45 @@ mod tests {
         assert!(m.ui.is_empty());
         assert!(!manifest("").contains("\"ui\""));
 
-        // Reserved ids are accepted only from the ui-protocol §8 table, owned by this package.
-        let kanban = r#"{"apiVersion":"oino.extension/2","id":"unipi.kanboard","name":"K","version":"1.0.0",
-            "ui":{"reserved":["unipi.kanboard/board"]}}"#;
+        // Reserved ids in the extension's own namespace parse (the host registers the
+        // §8 owners at startup; an unregistered id simply renders as a plain tree panel);
+        // foreign and `host/*` ids are rejected.
+        clear_reserved_owners();
+        let kanban = r#"{"apiVersion":"oino.extension/2","id":"acme.kanboard","name":"K","version":"1.0.0",
+            "ui":{"reserved":["acme.kanboard/board"]}}"#;
         let m = Manifest::parse(kanban).unwrap();
-        assert_eq!(m.ui.reserved, ["unipi.kanboard/board"]);
-        assert!(m.owns_reserved("unipi.kanboard/board"));
-        assert!(!m.owns_reserved("unipi.cron/jobs"));
-        let foreign = kanban.replace("unipi.kanboard/board", "unipi.cron/jobs");
+        assert_eq!(m.ui.reserved, ["acme.kanboard/board"]);
+        assert!(!m.owns_reserved("acme.kanboard/board"), "nothing registered");
+        register_reserved_owner("acme.kanboard/board", "acme.kanboard");
+        register_reserved_owner("acme.cron/jobs", "acme.cron");
+        register_reserved_owner("host/git", "host");
+        assert!(m.owns_reserved("acme.kanboard/board"));
+        assert!(!m.owns_reserved("acme.cron/jobs"));
+        assert!(!m.owns_reserved("host/git"));
+        let foreign = kanban.replace("acme.kanboard/board", "acme.cron/jobs");
         assert!(matches!(
             Manifest::parse(&foreign),
             Err(ManifestError::ReservedId(_))
         ));
         // Host-owned ids are created by the host, never declared by an extension.
-        let host = kanban.replace("unipi.kanboard/board", "host/git");
+        let host = kanban.replace("acme.kanboard/board", "host/git");
         assert!(matches!(
             Manifest::parse(&host),
             Err(ManifestError::ReservedId(_))
         ));
-        // Unknown ids are rejected too.
-        let unknown = kanban.replace("unipi.kanboard/board", "unipi.kanboard/other");
+        // An id outside the extension's namespace that no host registered is rejected.
+        let unknown = kanban.replace("acme.kanboard/board", "acme.kanboard/other");
+        assert!(Manifest::parse(&unknown).is_ok(), "own namespace is valid");
+        let unregistered = kanban.replace("acme.kanboard/board", "acme.other/board");
         assert!(matches!(
-            Manifest::parse(&unknown),
+            Manifest::parse(&unregistered),
             Err(ManifestError::ReservedId(_))
         ));
+        clear_reserved_owners();
 
         // Static settings namespaces (both manifest and init-time are accepted).
         let settings = manifest(
-            r#","ui":{"settings":[{"namespace":"unipi.notify","title":"Notify",
+            r#","ui":{"settings":[{"namespace":"acme.notify","title":"Notify",
                "sections":[{"id":"s","title":"S","fields":[]}]}]}"#,
         );
         let m = Manifest::parse(&settings).unwrap();
@@ -819,7 +868,7 @@ mod tests {
             Manifest::parse(&missing),
             Err(ManifestError::SettingsNamespace(_))
         ));
-        let bad_name = settings.replace("\"unipi.notify\",\"title\"", "\"Bad Name\",\"title\"");
+        let bad_name = settings.replace("\"acme.notify\",\"title\"", "\"Bad Name\",\"title\"");
         assert!(matches!(
             Manifest::parse(&bad_name),
             Err(ManifestError::SettingsNamespace(_))
@@ -837,7 +886,7 @@ mod tests {
         let m = Manifest::parse(&manifest(
             r#","permissions":{"network":{"hosts":["ntfy.sh","*.example.com","*"]},
                "process":{"spawn":true,"allow":["git","rg*"]},
-               "credentials":["openai"],"services":{"call":["unipi.memory/save","a/*"]},"env":["HOME"],
+               "credentials":["openai"],"services":{"call":["acme.memory/save","a/*"]},"env":["HOME"],
                "hostServices":["browser"]}"#,
         ))
         .unwrap();
@@ -851,7 +900,7 @@ mod tests {
         assert!(p.allows_program("rg", false));
         assert!(!p.allows_program("bash", false));
         assert!(p.allows_credential("openai") && !p.allows_credential("anthropic"));
-        assert!(p.allows_service(Some("unipi.memory"), "save"));
+        assert!(p.allows_service(Some("acme.memory"), "save"));
         assert!(p.allows_service(None, "save"));
         assert!(p.allows_service(Some("a"), "anything"));
         assert!(!p.allows_service(Some("b"), "save"));
@@ -905,8 +954,8 @@ mod tests {
 
     #[test]
     fn binaries_parse_validate_and_probe() {
-        let m = Manifest::parse(&manifest(r#","binaries":["unipi-kanboard"]"#)).unwrap();
-        assert_eq!(m.binaries, ["unipi-kanboard"]);
+        let m = Manifest::parse(&manifest(r#","binaries":["acme-kanboard"]"#)).unwrap();
+        assert_eq!(m.binaries, ["acme-kanboard"]);
         // Default: none.
         assert_eq!(
             Manifest::parse(&manifest("")).unwrap().binaries,
@@ -923,24 +972,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("bin")).unwrap();
         let path = if cfg!(windows) {
-            dir.path().join("bin/unipi-kanboard.exe")
+            dir.path().join("bin/acme-kanboard.exe")
         } else {
-            dir.path().join("bin/unipi-kanboard")
+            dir.path().join("bin/acme-kanboard")
         };
         std::fs::write(&path, b"#").unwrap();
         assert_eq!(m.missing_binaries(dir.path()), Vec::<String>::new());
         std::fs::remove_file(path).unwrap();
-        assert_eq!(m.missing_binaries(dir.path()), ["unipi-kanboard"]);
+        assert_eq!(m.missing_binaries(dir.path()), ["acme-kanboard"]);
         assert_eq!(
             m.missing_binaries(tempfile::tempdir().unwrap().path()),
-            ["unipi-kanboard"]
+            ["acme-kanboard"]
         );
         // A missing bin/* checksum entry is skipped, not fatal (ext-abi §5.2).
         std::fs::write(dir.path().join("component.wasm"), b"wasm").unwrap();
         std::fs::write(
             dir.path().join(MANIFEST_FILE),
             manifest(
-                r#","binaries":["unipi-kanboard"],"checksums":{"bin/unipi-kanboard":"sha256:00"}"#,
+                r#","binaries":["acme-kanboard"],"checksums":{"bin/acme-kanboard":"sha256:00"}"#,
             ),
         )
         .unwrap();

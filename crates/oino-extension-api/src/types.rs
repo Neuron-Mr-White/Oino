@@ -287,7 +287,7 @@ mod tests {
     fn id_grammar() {
         for ok in [
             "a",
-            "unipi.background-tasks",
+            "acme.background-tasks",
             "oino.openai-compat",
             "x1.y-2",
         ] {

@@ -23,7 +23,7 @@ pub enum Delivery {
     NextTurn,
 }
 
-/// `session.provenance` (unipi harness provenance).
+/// `session.provenance` (the embedding harness provenance).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Provenance {

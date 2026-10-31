@@ -6,7 +6,7 @@
 //! [`Cond::eval`]). Core, the TUI hub and the app form engine (via a port) use the same rules,
 //! so a namespace resolves identically everywhere.
 //!
-//! Parsing is tolerant on purpose: v1 §6.6 namespaces (`unipi-kit` `schema`/`oss2` output) load
+//! Parsing is tolerant on purpose: v1 §6.6 namespaces (the v1 kit's `schema`/`oss2` output) load
 //! unchanged — bare-string enum options and v1 `order.items` (`{value, label}` objects) are
 //! accepted, and an unknown field `type` parses as [`FieldType::Unknown`] instead of failing
 //! the namespace.

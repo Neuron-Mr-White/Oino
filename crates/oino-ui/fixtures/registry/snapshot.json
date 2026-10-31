@@ -4,8 +4,8 @@
  "rev": 4,
  "entries": [
   {
-   "id": "unipi.kanboard/board",
-   "extensionId": "unipi.kanboard",
+   "id": "acme.board/board",
+   "extensionId": "acme.board",
    "scope": "host",
    "slot": "fullscreen",
    "order": 1000,
