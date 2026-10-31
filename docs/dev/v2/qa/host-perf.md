@@ -12,7 +12,7 @@ cargo xtask wasm                 # once (CI: the wasm job's `dist` artifact)
 cargo test -p unipi-host --test integration -- --ignored --nocapture
 ```
 
-The test is `crates/unipi-host/tests/integration.rs::headless_host_client_e2e_and_performance_gates`.
+The test is `apps/unipi/crates/unipi-host/tests/integration.rs::headless_host_client_e2e_and_performance_gates`.
 It spawns the real binary:
 
 ```text

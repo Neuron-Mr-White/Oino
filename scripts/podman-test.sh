@@ -74,9 +74,9 @@ build_binary() {
   fi
 
   if [[ "$PROFILE" == "release" ]]; then
-    cargo xtask wasm && cargo build --release -p oino-cli -p oino-kanboard
+    cargo xtask wasm && cargo build --release -p oino-cli
   elif [[ "$PROFILE" == "debug" ]]; then
-    cargo xtask wasm && cargo build -p oino-cli -p oino-kanboard
+    cargo xtask wasm && cargo build -p oino-cli
   else
     echo "error: OINO_PODMAN_PROFILE must be debug or release, got: $PROFILE" >&2
     exit 1

@@ -40,7 +40,7 @@ Decision: tag names `v{X.Y.Z}` continue the existing CLI-release flow (`ci.yml` 
 | macOS universal | `desmondgiam` (ssh alias today: `ssh mac`, user `desmondgiam`) | `.dmg` + updater tarball | `UniPi_{v}_universal.dmg`, `UniPi_{v}_universal.app.tar.gz` (+`.sig`) |
 | Linux amd64 | local (this PC) | `.deb` (post-processed, §5) | `unipi-oino_{v}_amd64.deb` |
 | Android arm64 | local, phone plugged in over USB | signed `.apk` | `unipi-oino-{v}.apk` |
-| iOS | — | **not shipped**; build-compatible only: `cargo check -p unipi-mobile --target aarch64-apple-ios` on desmondgiam stays green; `tauri.ios.conf.json`/`Info.ios.plist` kept in tree |
+| iOS | — | **not shipped**; build-compatible only: `cargo check -p unipi-mobile --manifest-path apps/unipi/src-tauri/Cargo.toml --target aarch64-apple-ios` on desmondgiam stays green; `tauri.ios.conf.json`/`Info.ios.plist` kept in tree |
 
 Secondary (unchanged, not an "installer"): the CLI channel `install.sh` / `install.ps1` +
 `release-manifest.json` keeps shipping the bare `oino` binary per target (§7.4).

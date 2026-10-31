@@ -12,10 +12,8 @@ struct Fixture {
 
 #[test]
 fn shared_admin_fixtures_agree() {
-    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
-        "../../../apps/unipi/protocol/fixtures/admin.json"
-    ))
-    .unwrap();
+    let fixtures: Vec<Fixture> =
+        serde_json::from_str(include_str!("../../../protocol/fixtures/admin.json")).unwrap();
     assert!(fixtures.len() >= 18);
     for f in fixtures {
         let v = f.value.clone();

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Language server wire types (app spec §3.12, WP-A21). Mirrors
- * `crates/unipi-proto/src/lsp.rs`.
+ * `apps/unipi/crates/unipi-proto/src/lsp.rs`.
  *
  * The host owns the servers (one per `(root, language)`); `lsp_open`
  * attaches the caller's stream and then the bytes pass through verbatim

@@ -246,7 +246,7 @@ mod offline_e2e {
     #[tokio::test(flavor = "multi_thread")]
     async fn this_computer_works_with_no_network() {
         let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../target/debug/unipi-host");
+            .join("../../target/debug/unipi-host");
         if !bin.exists() {
             eprintln!("SKIP: build unipi-host first ({})", bin.display());
             return;

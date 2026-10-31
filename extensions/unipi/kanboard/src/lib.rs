@@ -1,6 +1,6 @@
 //! `unipi.kanboard` — the unipi 3.0.0 kanboard package as an Oino component (unipi-port
 //! §3.16). The board is written only by the native `unipi-kanboard` binary (crate
-//! `crates/unipi-kanboard`); this component never edits task files.
+//! `apps/unipi/crates/unipi-kanboard`); this component never edits task files.
 //!
 //! | unipi | here |
 //! |---|---|

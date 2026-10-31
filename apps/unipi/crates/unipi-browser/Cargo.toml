@@ -15,7 +15,7 @@ futures.workspace = true
 globset.workspace = true
 image.workspace = true
 unipi-browser-protocol = { path = "../unipi-browser-protocol" }
-oino-extension-api = { path = "../oino-extension-api" }
+oino-extension-api = { path = "../../../../crates/oino-extension-api", version = "1.0.1" }
 regex.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }

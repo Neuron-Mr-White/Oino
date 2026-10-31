@@ -12,8 +12,10 @@
 # musl-gcc on these PCs: cargo-zigbuild is the only linker that works.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../.." && pwd)"
-cd "$ROOT"
+# unipi-host lives in the apps/unipi cargo workspace (repo-split); the SDK
+# crates stay at the repo root.
+WS="$(cd "$HERE/.." && pwd)"
+cd "$WS"
 
 # app triple <- the host target we build it from
 LINUX=(

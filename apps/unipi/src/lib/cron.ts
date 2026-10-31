@@ -1,7 +1,7 @@
 /**
  * Scheduled runs on job files (app spec WP-A23, G-17): the UI's one seam
  * onto the `cron_*` Tauri commands (`src-tauri/src/cron.rs` → `unipi-host`'s
- * `cron_*` requests, `crates/unipi-host/src/cron_serve.rs`), which the H8
+ * `cron_*` requests, `apps/unipi/crates/unipi-host/src/cron_serve.rs`), which the H8
  * merge answers from the job files under `<agent dir>/cron` and the embedded
  * scheduler `unipi-host serve` runs. Jobs are files written by the cron
  * extension and this seam alike; the store is the truth.

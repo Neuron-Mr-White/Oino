@@ -37,7 +37,7 @@ const IDS: [&str; 4] = [
 ];
 
 fn dist() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../extensions/dist")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../extensions/dist")
 }
 
 fn read_json(path: &Path) -> JsonValue {

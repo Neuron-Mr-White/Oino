@@ -1,5 +1,5 @@
 //! WP-A22 (app.md §3.14; ext-abi §5.5): the board ops against the **real**
-//! `unipi-kanboard` CLI built from `crates/unipi-kanboard`, over a temp board
+//! `unipi-kanboard` CLI built from `apps/unipi/crates/unipi-kanboard`, over a temp board
 //! home — `list`, `add`, `move`, the §5.5 error paths, the subcommand
 //! allow-list and the `board_watch` file watcher. Never touches `~/.oino`.
 

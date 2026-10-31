@@ -2,7 +2,7 @@
  * The mock cron world (WP-A23): job files + run history for the capture
  * harness and component tests, answering every `cron_*` op the Cron screen
  * and its form use — over the same shapes the H8 adapter
- * (`crates/unipi-host/src/cron_serve.rs`) puts on the wire (jobs live in
+ * (`apps/unipi/crates/unipi-host/src/cron_serve.rs`) puts on the wire (jobs live in
  * `<agent dir>/cron`, runs carry the fired session, the run id *is* the
  * session id).
  *

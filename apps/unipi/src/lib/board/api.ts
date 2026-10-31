@@ -216,7 +216,7 @@ export function displayTitle(task: { title: string; displayTitle?: string }): st
 
 /**
  * The user-actor rows of the kanboard transition table
- * (`crates/unipi-kanboard/src/transitions.rs` RULES), mirrored the way the
+ * (`apps/unipi/crates/unipi-kanboard/src/transitions.rs` RULES), mirrored the way the
  * daemon's `/api/rules` served them. The server still decides — this only
  * dims invalid targets and opens the comment sheet before a refusal.
  */

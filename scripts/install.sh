@@ -1,12 +1,13 @@
 #!/usr/bin/env sh
 # Oino installer (macOS / Linux / other Unix).
 #
-# Installs `oino` and `oino-kanboard` into $OINO_PREFIX/bin (default ~/.local/bin). Every
-# provider and unipi extension is bundled inside the `oino` binary; nothing else is needed.
+# Installs the `oino` CLI into $OINO_PREFIX/bin (default ~/.local/bin). The SDK ships
+# alone; UniPi's native extras (e.g. the kanboard CLI) arrive inside their
+# extension packages via `cargo xtask wasm`, not as release binaries.
 #
 # 1. Prefer a tagged release binary (release-manifest.json, sha256-verified).
 # 2. Fall back to a source build: `cargo xtask wasm` (extension components), then
-#    `cargo build --release -p oino-cli -p oino-kanboard`.
+#    `cargo build --release -p oino-cli`.
 #
 # Environment:
 #   OINO_PREFIX       install prefix (default ~/.local)
@@ -40,7 +41,7 @@ BIN_DIR="$PREFIX/bin"
 REPO=${OINO_REPO:-"https://github.com/Neuron-Mr-White/Oino.git"}
 REPO_SLUG=${OINO_REPO_SLUG:-"Neuron-Mr-White/Oino"}
 SRC_DIR=${OINO_DIR:-"$HOME/.cache/oino/source"}
-BINARIES="oino oino-kanboard"
+BINARIES="oino"
 
 os=$(uname -s 2>/dev/null || printf unknown)
 arch=$(uname -m 2>/dev/null || printf unknown)
@@ -133,7 +134,7 @@ source_install() {
   fi
   # rust-toolchain.toml pins the toolchain and the wasm32-wasip2 target.
   (cd "$SRC" && run cargo xtask wasm)
-  run cargo build --manifest-path "$SRC/Cargo.toml" --release -p oino-cli -p oino-kanboard
+  run cargo build --manifest-path "$SRC/Cargo.toml" --release -p oino-cli
   run mkdir -p "$BIN_DIR"
   for name in $BINARIES; do
     run cp "$SRC/target/release/$name" "$BIN_DIR/$name"

@@ -20,10 +20,8 @@ struct Fixture {
 }
 
 fn fixtures() -> Vec<Fixture> {
-    serde_json::from_str(include_str!(
-        "../../../apps/unipi/protocol/fixtures/session.json"
-    ))
-    .expect("session.json must be well-formed")
+    serde_json::from_str(include_str!("../../../protocol/fixtures/session.json"))
+        .expect("session.json must be well-formed")
 }
 
 fn parses(schema: &str, value: &Value) -> Result<(), String> {

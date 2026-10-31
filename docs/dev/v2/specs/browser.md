@@ -68,7 +68,7 @@ Sibling specs this coordinates with (do not redefine their content):
 - `crates/oino-browser` + `crates/oino-browser-protocol` stay root-workspace crates (exact
   location may move in the repo/package split; acceptance is "no `oino-*` core crate
   depends on `oino-browser`"). The service is **linked by unipi-host only**
-  (`crates/unipi-host` per `specs/host.md`). `crates/oino/src/browser.rs` (in-process
+  (`apps/unipi/crates/unipi-host` per `specs/host.md`). `crates/oino/src/browser.rs` (in-process
   `BrowserService` for the `oino` binary) is deleted in WP-B7; the plain TUI gets
   "unavailable" (D7). The extension id renames `oino.browser` → **`unipi.browser`**
   (per `specs/ext-abi.md`); app-proto paths in this spec are the imported-source paths

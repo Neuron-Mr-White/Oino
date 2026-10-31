@@ -128,43 +128,54 @@ fn host_target() -> Result<String> {
     Ok(host.to_owned())
 }
 
-/// The root-workspace crate whose `[[bin]]` builds `bin` (ext-abi §5.2: an
-/// extension package ships native CLI binaries built by the monorepo — the
-/// extensions workspace cannot build them, it targets wasm guests). The bin
-/// name is also the crate name in this repo (e.g. `unipi-kanboard`).
-fn owning_crate(bin: &str) -> Result<String> {
-    let crates_dir = root().join("crates");
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&crates_dir)?
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .collect();
-    dirs.sort();
-    for dir in dirs {
-        let Ok(toml) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+/// A crate root that hosts `[[bin]]` targets for extension packages: the SDK
+/// workspace (`crates/`) and the `UniPi` distribution workspace
+/// (`apps/unipi/crates/`, repo-split) — the extensions workspace itself targets
+/// wasm guests and cannot build native binaries.
+const BIN_WORKSPACES: &[(&str, &str)] = &[("crates", "."), ("apps/unipi/crates", "apps/unipi")];
+
+/// The crate (and its cargo workspace dir, relative to the repo root) whose
+/// `[[bin]]` builds `bin` (ext-abi §5.2: an extension package ships native CLI
+/// binaries built by the monorepo). The bin name is also the crate name in
+/// this repo (e.g. `unipi-kanboard`).
+fn owning_crate(bin: &str) -> Result<(String, PathBuf)> {
+    for (crates_dir, ws_dir) in BIN_WORKSPACES {
+        let base = root().join(crates_dir);
+        let Ok(entries) = std::fs::read_dir(&base) else {
             continue;
         };
-        let mut section = "";
-        let mut declared = false;
-        for line in toml.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with('[') {
-                section = trimmed;
-                continue;
-            }
-            let Some(name) = trimmed.strip_prefix("name = ") else {
+        let mut dirs: Vec<PathBuf> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
+        dirs.sort();
+        for dir in dirs {
+            let Ok(toml) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
                 continue;
             };
-            let name = name.trim_matches('"');
-            if name == bin && (section == "[[bin]]" || section == "[package]") {
-                declared = true;
+            let mut section = "";
+            let mut declared = false;
+            for line in toml.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with('[') {
+                    section = trimmed;
+                    continue;
+                }
+                let Some(name) = trimmed.strip_prefix("name = ") else {
+                    continue;
+                };
+                let name = name.trim_matches('"');
+                if name == bin && (section == "[[bin]]" || section == "[package]") {
+                    declared = true;
+                }
+            }
+            if declared && dir.join("src/main.rs").is_file() {
+                return Ok((bin.to_owned(), root().join(ws_dir)));
             }
         }
-        if declared && dir.join("src/main.rs").is_file() {
-            return Ok(bin.to_owned());
-        }
     }
-    bail!("no crate under crates/ builds binary `{bin}`")
+    bail!("no crate under crates/ or apps/unipi/crates/ builds binary `{bin}`")
 }
 
 #[allow(
@@ -246,30 +257,42 @@ fn wasm(args: &[String]) -> Result<()> {
             .collect();
         if !binaries.is_empty() {
             let target = host_target()?;
-            let mut crates: Vec<String> = Vec::new();
+            // Owning crates grouped by their cargo workspace (SDK root vs the
+            // UniPi distribution workspace): one cargo invocation per workspace.
+            let mut workspaces: Vec<(PathBuf, Vec<String>)> = Vec::new();
             for bin in &binaries {
-                let owner = owning_crate(bin)?;
-                if !crates.contains(&owner) {
-                    crates.push(owner);
+                let (owner, ws) = owning_crate(bin)?;
+                match workspaces.iter_mut().find(|(w, _)| *w == ws) {
+                    Some((_, crates)) => {
+                        if !crates.contains(&owner) {
+                            crates.push(owner);
+                        }
+                    }
+                    None => workspaces.push((ws, vec![owner])),
                 }
             }
-            println!(
-                "building native binaries {} for {target}",
-                crates.join(", ")
-            );
-            let mut cmd = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
-            cmd.current_dir(root()).arg("build");
-            for owner in &crates {
-                cmd.arg("-p").arg(owner);
+            for (ws, crates) in &workspaces {
+                println!(
+                    "building native binaries {} for {target} (workspace {})",
+                    crates.join(", "),
+                    ws.display()
+                );
+                let mut cmd =
+                    Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
+                cmd.current_dir(ws).arg("build");
+                for owner in crates {
+                    cmd.arg("-p").arg(owner);
+                }
+                if !debug {
+                    cmd.arg("--release");
+                }
+                cmd.arg("--target").arg(&target);
+                let status = cmd.status()?;
+                if !status.success() {
+                    bail!("cargo build failed for {}", crates.join(", "));
+                }
             }
-            if !debug {
-                cmd.arg("--release");
-            }
-            cmd.arg("--target").arg(&target);
-            let status = cmd.status()?;
-            if !status.success() {
-                bail!("cargo build failed for {}", crates.join(", "));
-            }
+            let owning_ws = |bin: &str| owning_crate(bin).map(|(_, ws)| ws);
             let exe = |bin: &str| {
                 let is_exe = std::path::Path::new(bin)
                     .extension()
@@ -281,7 +304,7 @@ fn wasm(args: &[String]) -> Result<()> {
                 }
             };
             for bin in &binaries {
-                let built = root()
+                let built = owning_ws(bin)?
                     .join("target")
                     .join(&target)
                     .join(profile)

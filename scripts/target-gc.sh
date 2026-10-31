@@ -4,7 +4,7 @@
 #
 # Usage: scripts/target-gc.sh [--budget-gb N] [--age-hours H] [--dry-run] [--force]
 #   Budget defaults to $OINO_TARGET_BUDGET_GB (30). Covers target/, extensions/target/,
-#   apps/unipi/src-tauri/target/, and standalone harness targets.
+#   apps/unipi/target/, apps/unipi/src-tauri/target/, and standalone harness targets.
 #   Steps, applied in order until total is under budget:
 #     1. remove harness/target dirs, incremental caches, examples, and tmp scratch
 #     2. remove linked test executables in */deps/* older than AGE (keeps .rlib/.rmeta warm)
@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-dirs=("$root/target" "$root/extensions/target" "$root/apps/unipi/src-tauri/target")
+dirs=("$root/target" "$root/extensions/target" "$root/apps/unipi/target" "$root/apps/unipi/src-tauri/target")
 
 total_gb() {
   local sum=0 d

@@ -17,14 +17,11 @@ OINO_FROM_SOURCE=1 OINO_PREFIX="$PREFIX" sh scripts/install.sh >"$TMP/install.lo
 }
 
 test -x "$PREFIX/bin/oino"
-test -x "$PREFIX/bin/oino-kanboard"
 "$PREFIX/bin/oino" --version
-"$PREFIX/bin/oino-kanboard" --help >/dev/null
 
 mkdir -p "$AGENT" "$TMP/work"
 printf '{"faux":{"type":"api_key","key":"smoke"}}' >"$AGENT/auth.json"
 reply=$(cd "$TMP/work" && OINO_AGENT_DIR="$AGENT" "$PREFIX/bin/oino" \
   -e "$ROOT/extensions/dist/oino.fixture.provider-faux" --model faux/faux-1 -p "hello")
 test "$reply" = "Hello from faux."
-ls "$AGENT/bundled" | grep -q '^unipi.core@'
 printf 'install smoke passed: %s\n' "$PREFIX/bin/oino"

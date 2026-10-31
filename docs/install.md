@@ -5,7 +5,9 @@ Oino ships as two binaries:
 | Binary | What it is |
 |---|---|
 | `oino` | the agent: terminal UI, print / JSON / RPC / ACP modes. Extension packages come from the installer's share dir (`OINO_DIST_EXTENSIONS` to override) and `~/.oino/extensions`; nothing is compiled in. |
-| `oino-kanboard` | the kanboard CLI and daemon used by the `unipi.kanboard` extension. |
+
+UniPi's native extras (e.g. the `unipi-kanboard` CLI) are not release binaries: they ship
+inside their extension packages in `extensions/dist` (built by `cargo xtask wasm`).
 
 ## Installers
 
@@ -20,7 +22,7 @@ Both installers:
    binaries for the current target and verify their sha256;
 2. otherwise build from source: clone into `~/.cache/oino/source` (or use the current
    checkout), run `cargo xtask wasm` (builds the WASM components into `extensions/dist`) and
-   `cargo build --release -p oino -p oino-kanboard`.
+   `cargo build --release -p oino-cli`.
 
 | Variable | Meaning |
 |---|---|
@@ -37,7 +39,7 @@ faux provider fixture; CI runs it on every push.
 
 ```bash
 cargo xtask wasm                              # extensions/dist/<id>/{extension.json, component.wasm, resources}
-cargo build --release -p oino -p oino-kanboard
+cargo build --release -p oino-cli
 ```
 
 Without `extensions/dist` the build still succeeds, but the binary bundles no components
@@ -60,6 +62,6 @@ checksum and replaces the binary. Re-running the installer works too. The bundle
 
 ## Uninstall
 
-Delete `oino` and `oino-kanboard` from the install directory. `~/.oino` contains settings,
+Delete `oino` from the install directory. `~/.oino` contains settings,
 credentials (`auth.json`, `secrets.json`), sessions and extension state; remove it only if you
 no longer need them.

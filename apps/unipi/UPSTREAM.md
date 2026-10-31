@@ -8,7 +8,7 @@
 - **Imported paths**: `apps/mobile`, `crates`, `packages`, `protocol`, `Cargo.toml`,
   `Cargo.lock`, `package.json`, `package-lock.json`, `DESIGN.md`, `.gitignore`
 - **v2 layout (WP-H1)**: the import is dissolved — `crates/{proto,host}` moved to the
-  root workspace as `crates/unipi-{proto,host}`, `apps/mobile` became this directory
+  root workspace as `apps/unipi/crates/unipi-{proto,host}`, `apps/mobile` became this directory
   (`apps/unipi`, own npm workspace + `packages/protocol`, src-tauri is its own cargo
   workspace), the shared fixtures stay in `protocol/fixtures`, and the old workspace
   manifests (`Cargo.toml`, `Cargo.lock`, `DESIGN.md`) are gone.

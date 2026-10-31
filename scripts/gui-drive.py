@@ -358,7 +358,7 @@ def run_scenario(client: Client, args: argparse.Namespace) -> int:
 
 
 def _task_md(task: dict, stamp: str) -> str:
-    """One kanboard task file (the `crates/oino-kanboard` frontmatter format)."""
+    """One kanboard task file (the `apps/unipi/crates/unipi-kanboard` frontmatter format)."""
     deps = json.dumps(task.get("deps", []))
     labels = json.dumps(task.get("labels", []))
     body = task.get("body", "")

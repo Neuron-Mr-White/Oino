@@ -13,10 +13,8 @@ struct Fixture {
 
 #[test]
 fn shared_fs_fixtures_agree() {
-    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
-        "../../../apps/unipi/protocol/fixtures/fs.json"
-    ))
-    .unwrap();
+    let fixtures: Vec<Fixture> =
+        serde_json::from_str(include_str!("../../../protocol/fixtures/fs.json")).unwrap();
     assert!(fixtures.len() >= 15);
     for fixture in fixtures {
         let result: Result<(), String> = match fixture.schema.as_str() {

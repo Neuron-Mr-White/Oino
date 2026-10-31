@@ -1,11 +1,11 @@
 # Oino installer for Windows (PowerShell 5.1+ / 7+).
 #
-# Installs oino.exe and oino-kanboard.exe into $env:OINO_PREFIX\bin (default
-# $HOME\.local\bin). Every provider and unipi extension is bundled inside oino.exe.
+# Installs oino.exe into $env:OINO_PREFIX\bin (default $HOME\.local\bin). The SDK
+# ships alone; UniPi's native extras arrive inside their extension packages.
 #
 # 1. Prefer a tagged release (release-manifest.json, sha256-verified).
 # 2. Fall back to a source build: `cargo xtask wasm`, then
-#    `cargo build --release -p oino-cli -p oino-kanboard`.
+#    `cargo build --release -p oino-cli`.
 #
 # Environment: OINO_PREFIX, OINO_REF, OINO_FROM_SOURCE=1, OINO_DIR, OINO_DRY_RUN=1.
 
@@ -18,7 +18,7 @@ $BinDir = Join-Path $Prefix "bin"
 $RepoSlug = if ($env:OINO_REPO_SLUG) { $env:OINO_REPO_SLUG } else { "Neuron-Mr-White/Oino" }
 $Repo = "https://github.com/$RepoSlug.git"
 $SrcDir = if ($env:OINO_DIR) { $env:OINO_DIR } else { Join-Path $HOME ".cache\oino\source" }
-$Binaries = @("oino", "oino-kanboard")
+$Binaries = @("oino")
 $Target = "x86_64-pc-windows-msvc"
 
 function Say([string]$Message) { Write-Host $Message }
@@ -77,7 +77,7 @@ function Install-Source {
     Push-Location $Src
     try {
         Run "cargo" @("xtask", "wasm")
-        Run "cargo" @("build", "--release", "-p", "oino", "-p", "oino-kanboard")
+        Run "cargo" @("build", "--release", "-p", "oino-cli")
     } finally {
         Pop-Location
     }

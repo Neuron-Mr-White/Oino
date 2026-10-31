@@ -48,7 +48,7 @@ run nice -n 10 cargo xtask checksums
 E5=$?
 
 echo "=== APPS workspace ===" | tee -a "$LOG"
-cd "$ROOT/apps"
+cd "$ROOT/apps/unipi"
 run nice -n 10 cargo fmt --all --check
 A1=$?
 run nice -n 10 cargo clippy --workspace --all-targets -j 4 -- -D warnings -W clippy::pedantic

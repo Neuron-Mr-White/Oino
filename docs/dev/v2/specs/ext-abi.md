@@ -297,7 +297,7 @@ cargo fmt --all --check && cargo clippy -p oino --all-targets -- -D warnings
   Env prefix follows the product: `UNIPI_KANBOARD_BIN|HOME|ACTOR|SESSION|PROJECT|PID|CHILD|CHAIN_GATE|MAX_SESSIONS`
   (mechanical rename of the `OINO_KANBOARD_*` set; `OINO_AGENT_DIR` stays — it is oino-wide).
   Board home default is unchanged (`~/.oino/state/unipi.kanboard/`).
-- Physical move is `spec-core`'s. **Interim**: `crates/oino-kanboard` → `crates/unipi-kanboard`
+- Physical move is `spec-core`'s. **Interim**: `crates/oino-kanboard` → `apps/unipi/crates/unipi-kanboard`
   (the root workspace's member glob `crates/*` keeps it building — zero workspace edits). Final
   home (`extensions/unipi/kanboard/cli` or a unipi workspace) is decided by `spec-core`; this spec
   only requires: **not** a dependency of `oino`, `oino-wasm-host`, `oino-extension-api`,
@@ -382,7 +382,7 @@ unipi.kanboard/
   host-side refresh signal (push change notifications over the proto; replaces the deleted SSE).
 - **JSON output contract** (what the Board and any caller may rely on; stable within v2):
   - Success: exit `0`, exactly one (pretty) JSON value on stdout. Shapes per subcommand as produced
-    by `crates/unipi-kanboard/src/commands.rs`: `list` → `{tasks: [Task]}` (task objects carry
+    by `apps/unipi/crates/unipi-kanboard/src/commands.rs`: `list` → `{tasks: [Task]}` (task objects carry
     `id,title,status,priority,labels,body?,ready,waitingFor,depsStatus,staleness`); `show` → task +
     activity; `project list` → `{projects: […]}`; `status` → `{home, binary, projects, …}`;
     `validate` → `{problems: […]}` (exit 1 when non-empty).
@@ -394,12 +394,12 @@ unipi.kanboard/
 
 ### 5.6 Files / acceptance
 
-Files: `crates/oino-kanboard/**` → `crates/unipi-kanboard/**` (rename crate+bin, env-var rename,
+Files: `crates/oino-kanboard/**` → `apps/unipi/crates/unipi-kanboard/**` (rename crate+bin, env-var rename,
 docs), `wit/oino-extension/{kanboard.wit (delete), worlds.wit}`, `crates/oino-wasm-host/{Cargo.toml, src/imports/{kanboard.rs (delete), mod.rs, io.rs (bin resolution + package_root), state.rs, bindings.rs}}`, `crates/oino-extension-api/src/manifest.rs` (`binaries` key + validation), `extensions/unipi/kanboard/{extension.json, src/{cli.rs, shell.rs, lib.rs (env names)}}`, `extensions/sdk/oino-extension/src/{kanboard.rs (delete), lib.rs}`, `xtask/src/wasm.rs` (binaries build/copy/checksum), `extensions/unipi/kanboard/harness/tests/kanboard.rs` (spawn path, `UNIPI_KANBOARD_BIN` override), `crates/oino-bundle` (no code change expected; dist table picks up `bin/` via resources—verify).
 
 Acceptance:
 ```sh
-CARGO_BUILD_JOBS=8 cargo test -p unipi-kanboard -p oino-wasm-host
+CARGO_BUILD_JOBS=8 cargo test -p oino-wasm-host && (cd apps/unipi && CARGO_BUILD_JOBS=8 cargo test -p unipi-kanboard)
 CARGO_BUILD_JOBS=8 cargo test -p unipi-kanboard --test harness 2>/dev/null || cargo test -p unipi-extension --lib   # harness lives in the extension dir; run its suite
 cargo xtask wasm && git diff --exit-code extensions/dist/checksums.json   # after rebuild
 CARGO_BUILD_JOBS=8 cargo check --workspace
@@ -414,7 +414,7 @@ scripts/docs-check.sh
 
 ### 6.1 Crate
 
-- `crates/oino-cron` → **`unipi-cron`** (interim `crates/unipi-cron`; final placement `spec-core`).
+- `crates/oino-cron` → **`unipi-cron`** (interim `apps/unipi/crates/unipi-cron`; final placement `spec-core`).
   Role: the scheduler library **unipi-host embeds** (single owner via the existing
   `scheduler.lock` flock) and the `unipi-host cron` CLI backs onto it. It stops being a dependency
   of `oino` and `oino-wasm-host`.
@@ -504,11 +504,11 @@ jobs.lock           # serialises job-file writes (extension, CLI, host)
 
 ### 6.7 Files / acceptance
 
-Files: `crates/oino-cron/**` → `crates/unipi-cron/**` (+ new `crates/unipi-cron-schedule/`), `crates/oino/src/{cli/cron.rs (delete), cli/mod.rs, cli/help.rs, startup.rs, Cargo.toml, lib.rs}`, `wit/oino-extension/{cron.wit (delete), worlds.wit}`, `crates/oino-wasm-host/{Cargo.toml, src/hub.rs, src/imports/{cron.rs (delete), mod.rs}, bindings.rs}`, `crates/oino-extension-api/src/{cron.rs (delete), lib.rs, runtime.rs (drop cron_call)}`, `extensions/sdk/oino-extension/src/{cron.rs (delete), lib.rs}`, `extensions/unipi/cron/{extension.json, src/{lib.rs, args.rs, tools.rs, settings.rs}, skills/cron/SKILL.md}`, tests for the job-file store + migration + watcher in `crates/unipi-cron`.
+Files: `crates/oino-cron/**` → `apps/unipi/crates/unipi-cron/**` (+ new `apps/unipi/crates/unipi-cron-schedule/`), `crates/oino/src/{cli/cron.rs (delete), cli/mod.rs, cli/help.rs, startup.rs, Cargo.toml, lib.rs}`, `wit/oino-extension/{cron.wit (delete), worlds.wit}`, `crates/oino-wasm-host/{Cargo.toml, src/hub.rs, src/imports/{cron.rs (delete), mod.rs}, bindings.rs}`, `crates/oino-extension-api/src/{cron.rs (delete), lib.rs, runtime.rs (drop cron_call)}`, `extensions/sdk/oino-extension/src/{cron.rs (delete), lib.rs}`, `extensions/unipi/cron/{extension.json, src/{lib.rs, args.rs, tools.rs, settings.rs}, skills/cron/SKILL.md}`, tests for the job-file store + migration + watcher in `apps/unipi/crates/unipi-cron`.
 
 Acceptance:
 ```sh
-CARGO_BUILD_JOBS=8 cargo test -p unipi-cron -p unipi-cron-schedule -p oino-wasm-host -p oino
+CARGO_BUILD_JOBS=8 cargo test -p oino-wasm-host -p oino && (cd apps/unipi && CARGO_BUILD_JOBS=8 cargo test -p unipi-cron -p unipi-cron-schedule)
 oino --help | grep -v "oino cron"          # no cron line
 CARGO_BUILD_JOBS=8 cargo check --workspace
 cargo xtask wasm
@@ -521,7 +521,7 @@ cargo xtask wasm
 ### 7.1 Crates
 
 - `crates/oino-browser` → **`unipi-browser`** and `crates/oino-browser-protocol` →
-  **`unipi-browser-protocol`** (interim `crates/unipi-*`; final placement `spec-core`). Both stop
+  **`unipi-browser-protocol`** (interim `apps/unipi/crates/unipi-*`; final placement `spec-core`). Both stop
   being dependencies of `oino` (`crates/oino/src/browser.rs` deleted with its `OINO_BROWSER` env
   story), `oino-wasm-host` and `oino-extension-api`. The engine becomes unipi-host's browser
   service implementation (DIRECTION §6; cloak/cookie/gate ports are `spec-host`'s).

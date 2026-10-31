@@ -62,9 +62,9 @@ const MARKER: &str = "H10-OK";
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../../..")
         .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from("../.."))
+        .unwrap_or_else(|_| PathBuf::from("../../../.."))
 }
 
 fn copy_dir(from: &Path, to: &Path) {

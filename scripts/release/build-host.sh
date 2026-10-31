@@ -8,8 +8,10 @@
 # Steps:
 #   1. `cargo xtask checksums`: extensions/dist must be present and current (it is not built
 #      here: build hosts have no wasm toolchain; `remote-build` ships the local dist).
-#   2. `cargo build --release -p oino-cli -p oino-kanboard` (macOS --universal: aarch64 + x86_64,
-#      lipo'd; the thin x86_64 binaries are kept as well).
+#   2. `cargo build --release -p oino-cli` (macOS --universal: aarch64 + x86_64,
+#      lipo'd; the thin x86_64 binaries are kept as well). The UniPi kanboard CLI is
+#      not a release binary: it ships inside the unipi.kanboard extension package
+#      (dist.md §3.4, `cargo xtask wasm`).
 #   3. Copies everything into target/release-artifacts/<target>/ with SHA256SUMS,
 #      build-info.txt and smoke.txt (smoke tests: --version, a faux-provider print run with
 #      the bundled components).
@@ -78,7 +80,7 @@ log "checking extensions/dist (cargo xtask checksums)"
 cargo xtask checksums
 
 cli_build() { # $1 = optional target triple
-  local args=(build --release -j "$JOBS" -p oino-cli -p oino-kanboard)
+  local args=(build --release -j "$JOBS" -p oino-cli)
   [[ -n "${1:-}" ]] && args+=(--target "$1")
   log "cargo ${args[*]}"
   cargo "${args[@]}"
@@ -89,15 +91,15 @@ if [[ $cli == 1 ]]; then
     rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
     cli_build aarch64-apple-darwin
     cli_build x86_64-apple-darwin
-    for bin in oino oino-kanboard; do
+    for bin in oino; do
       lipo -create -output "$out/$bin" "target/aarch64-apple-darwin/release/$bin" \
         "target/x86_64-apple-darwin/release/$bin"
     done
     mkdir -p "$art/x86_64-apple-darwin"
-    cp target/x86_64-apple-darwin/release/{oino,oino-kanboard} "$art/x86_64-apple-darwin/"
+    cp target/x86_64-apple-darwin/release/oino "$art/x86_64-apple-darwin/"
   else
     cli_build ""
-    cp "target/release/oino$exe" "target/release/oino-kanboard$exe" "$out/"
+    cp "target/release/oino$exe" "$out/"
   fi
 fi
 
@@ -126,7 +128,6 @@ if [[ $smoke == 1 ]]; then
   log "smoke tests"
   if [[ -f "$out/oino$exe" ]]; then
     check "oino --version" "$out/oino$exe" --version
-    check "oino-kanboard --version" "$out/oino-kanboard$exe" --version
     check "oino faux print run" faux_run "$out/oino$exe"
     if [[ $target == universal-apple-darwin ]]; then
       check "lipo oino" lipo -archs "$out/oino"

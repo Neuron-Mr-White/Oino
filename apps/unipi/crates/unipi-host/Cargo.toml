@@ -14,23 +14,23 @@ path = "src/main.rs"
 unipi-proto = { path = "../unipi-proto" }
 # H3 (host.md §4.2): the host links oino-core in-process and runs every session through the
 # wave-1 lazy client hub; extensions load on the process-shared wasm engine.
-oino-client = { path = "../oino-client" }
-oino-core = { path = "../oino-core" }
+oino-client = { path = "../../../../crates/oino-client", version = "1.0.0" }
+oino-core = { path = "../../../../crates/oino-core", version = "1.0.0" }
 # H5 (host.md §8): the lease metadata that names the runner an open took the session over
 # from (D-LOCK advisory file; the kernel lock itself stays core's).
-oino-session = { path = "../oino-session" }
-oino-extension-api = { path = "../oino-extension-api" }
-oino-models = { path = "../oino-models" }
-oino-settings = { path = "../oino-settings" }
+oino-session = { path = "../../../../crates/oino-session", version = "1.0.0" }
+oino-extension-api = { path = "../../../../crates/oino-extension-api", version = "1.0.1" }
+oino-models = { path = "../../../../crates/oino-models", version = "1.0.1" }
+oino-settings = { path = "../../../../crates/oino-settings", version = "1.0.1" }
 # H4 (host.md §7.3): the app's `UiCapabilities` for the implicit `_oino/hello`.
-oino-ui = { path = "../oino-ui" }
+oino-ui = { path = "../../../../crates/oino-ui", version = "1.0.1" }
 # H8 (host.md §9.8; ext-abi §6): the cron scheduler is unipi-cron's job-file library; the
 # host embeds it as the single owner and registers its "cron" host service.
 unipi-cron = { path = "../unipi-cron" }
 # WP-A22 (app.md §3.14; ext-abi §5.5): the Board runs the `unipi-kanboard` CLI one process
 # per call; only the project watcher (`service::watch_projects`) is a library call.
 unipi-kanboard = { path = "../unipi-kanboard" }
-oino-wasm-host = { path = "../oino-wasm-host" }
+oino-wasm-host = { path = "../../../../crates/oino-wasm-host", version = "1.0.0" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 # WP-A15 (app.md §3.14): fsnotify for the git watcher (Z-98 auto-refresh).
 notify = "8"
@@ -99,9 +99,9 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 # WP-H3 acceptance (`tests/sessions_hub.rs`): the faux provider and fake components.
-oino-agent = { path = "../oino-agent" }
-oino-core = { path = "../oino-core", features = ["testing"] }
-oino-ai = { path = "../oino-ai" }
+oino-agent = { path = "../../../../crates/oino-agent", version = "1.0.1" }
+oino-core = { path = "../../../../crates/oino-core", version = "1.0.0", features = ["testing"] }
+oino-ai = { path = "../../../../crates/oino-ai", version = "1.0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }

@@ -52,7 +52,7 @@ cleaned before the wave-2 tree forks from here.
 
 Note: all cargo runs had ambient `UNIPI_KANBOARD_*` unset (this QA session itself exports
 `UNIPI_KANBOARD_MAX_SESSIONS=5`, which breaks `eight_threads_race…` — the hazard WP-X3
-documented in `crates/unipi-kanboard/tests/common/mod.rs`; with the vars unset everything passes).
+documented in `apps/unipi/crates/unipi-kanboard/tests/common/mod.rs`; with the vars unset everything passes).
 
 ## Manual probes (all by QA on this machine)
 
@@ -178,7 +178,7 @@ Sequence and results:
    renamed crate. Owned by WP-D (dist.md §6), wave 3.
 7. **`UNIPI_KANBOARD_*` ambient-env test hazard** — an oino/UniPi session exports these and
    breaks `unipi-kanboard` in-process tests (`eight_threads_race…`); documented in
-   `crates/unipi-kanboard/tests/common/mod.rs`, hit by QA itself. Consider env-cleaning the
+   `apps/unipi/crates/unipi-kanboard/tests/common/mod.rs`, hit by QA itself. Consider env-cleaning the
    test harness instead of relying on the runner.
 
 ## Reproduction artifacts

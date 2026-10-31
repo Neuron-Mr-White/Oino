@@ -29,7 +29,7 @@ use oino_wasm_host::{HostConfig, WasmRuntime, WasmRuntimeOptions};
 use serde_json::json;
 
 fn dist() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../extensions/dist")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../extensions/dist")
 }
 
 fn available(ids: &[&str]) -> bool {

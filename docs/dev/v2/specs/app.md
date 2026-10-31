@@ -393,7 +393,7 @@ composer slot" is superseded by this ruling; U10 implements dialog bodies agains
 
 Like Zed (one server per worktree per language, owned by the project side, not the editor view):
 
-- **Host**: new `crates/unipi-host/src/lsp.rs` + `crates/unipi-proto/src/lsp.rs`.
+- **Host**: new `apps/unipi/crates/unipi-host/src/lsp.rs` + `apps/unipi/crates/unipi-proto/src/lsp.rs`.
   - `lsp_servers{path}` → `{root, servers:[{language, name, command, available, install_hint}]}`;
     `root` = nearest ancestor of `path` with a marker (`Cargo.toml`, `package.json`, `tsconfig.json`,
     `pyproject.toml`, `go.mod`, `compile_commands.json`, `.git`) inside the fs scope.
@@ -615,7 +615,7 @@ capture-harness scenarios (§3.15) the WP adds and screenshots at desktop 1280×
   Unpin (Z-14); host delta **session meta** (§3.14) incl. `session_focus` reporting.
 - **Files**: `src/components/sidebar/{SessionList,HostGroup,ProjectGroup,SessionRow}.tsx`,
   `sidebar.css`; `src/lib/session/hub.ts` (meta); `screens/Chat.tsx` (phone list → SessionList);
-  `crates/unipi-proto/src/session.rs` (meta DTOs), `crates/unipi-host/src/sessions/meta.rs` (+ hub
+  `apps/unipi/crates/unipi-proto/src/session.rs` (meta DTOs), `apps/unipi/crates/unipi-host/src/sessions/meta.rs` (+ hub
   wiring, test `tests/session_meta.rs`), `apps/unipi/packages/protocol/src/session.ts` (meta zod),
   `src-tauri/src/chat.rs` (op passthrough); scenarios `sidebar-many` (3 hosts, 12 projects, 300
   sessions), `sidebar-states`.
@@ -637,8 +637,8 @@ capture-harness scenarios (§3.15) the WP adds and screenshots at desktop 1280×
   `NewChatSheet` herdr/tmux steps and the "New session"/"New chat here" duplicates.
 - **Files**: `src/components/sidebar/{SessionMenu,ArchivedList,RenameDialog}.tsx`,
   `src/components/draft/{DraftView,HostPicker,FolderPicker}.tsx`, `src/lib/session/actions.ts`,
-  `src/lib/export.ts`; `crates/unipi-host/src/sessions/{hub.rs (restore/delete/trash_empty)}`,
-  `crates/unipi-proto/src/session.rs`, `packages/protocol/src/session.ts`, `src-tauri/src/chat.rs`;
+  `src/lib/export.ts`; `apps/unipi/crates/unipi-host/src/sessions/{hub.rs (restore/delete/trash_empty)}`,
+  `apps/unipi/crates/unipi-proto/src/session.rs`, `packages/protocol/src/session.ts`, `src-tauri/src/chat.rs`;
   `extensions/unipi/utility/src/rename/mod.rs`; scenarios `session-menu`, `archived`, `draft`.
 - **Deps**: A4, H3, H4.
 - **Acceptance**: component tests for each menu action (MockHost log asserts the op), archive →
@@ -828,8 +828,8 @@ capture-harness scenarios (§3.15) the WP adds and screenshots at desktop 1280×
   refresh on `GitChanged`, no polling (Z-98); no graph (Z-99); entry points: capsule, side pane,
   Cmd/Ctrl+Alt+B, Files branch chip — no second git UI (Z-100).
 - **Files**: `src/components/status/{StatusPane,GitSection}.tsx`, `src/components/git/*` (moved),
-  `src/lib/git.ts`; `crates/unipi-host/src/git_watch.rs` (+ hub event wiring, test
-  `tests/git_watch.rs`), `crates/unipi-proto/src/{git.rs,session.rs}` (watch op + event),
+  `src/lib/git.ts`; `apps/unipi/crates/unipi-host/src/git_watch.rs` (+ hub event wiring, test
+  `tests/git_watch.rs`), `apps/unipi/crates/unipi-proto/src/{git.rs,session.rs}` (watch op + event),
   `packages/protocol/src/{git,session}.ts`; scenarios `git-pane`, `git-last-turn`, `git-history`.
 - **Deps**: A3, H7.
 - **Acceptance**: last-turn file set derived from tool rows (test), watcher debounce test (Rust),
@@ -939,7 +939,7 @@ capture-harness scenarios (§3.15) the WP adds and screenshots at desktop 1280×
   editor tabs with dirty state, save (`fs_write{base_hash}`, conflict sheet kept), vim option kept,
   phone key bar kept; "Open in external editor" split button on the editor and the header (Z-102);
   Settings › Editor › Language servers list (available / install hint).
-- **Files**: `crates/unipi-proto/src/lsp.rs`, `crates/unipi-host/src/lsp.rs` (+ dispatch,
+- **Files**: `apps/unipi/crates/unipi-proto/src/lsp.rs`, `apps/unipi/crates/unipi-host/src/lsp.rs` (+ dispatch,
   settings key, tests `tests/lsp.rs` with a fake stdio server), `apps/unipi/src-tauri/src/lsp.rs`,
   `packages/protocol/src/lsp.ts`, `src/lib/lsp/{framing,transport,pool,features}.ts`,
   `src/components/files/{Editor,EditorTabs,LspStatus}.tsx` (from `screens/Editor.tsx`),
@@ -959,9 +959,9 @@ capture-harness scenarios (§3.15) the WP adds and screenshots at desktop 1280×
   `board_watch` → `BoardChanged`), JSON contract per ext-abi §5.5 (stderr JSON on failure) (G-18);
   PcChip kept on the Board; "Add task…" only in the composer `+` menu (chat ⋯ entry removed).
 - **Files**: `src/lib/board/{transport,api,live}.ts`, `src-tauri/src/board.rs`,
-  `crates/unipi-host/src/board_cli.rs` (+ dispatch, watcher via `unipi-kanboard`'s project watch,
-  test `tests/board_cli.rs` with the real CLI built from `crates/unipi-kanboard`),
-  `crates/unipi-proto/src/board.rs` (v2, small), `packages/protocol/src/board.ts` (v2);
+  `apps/unipi/crates/unipi-host/src/board_cli.rs` (+ dispatch, watcher via `unipi-kanboard`'s project watch,
+  test `tests/board_cli.rs` with the real CLI built from `apps/unipi/crates/unipi-kanboard`),
+  `apps/unipi/crates/unipi-proto/src/board.rs` (v2, small), `packages/protocol/src/board.ts` (v2);
   delete `vite.config.board-capture.ts` (ported); scenarios `board-lanes`, `board-dashboard`.
 - **Deps**: A3, H3, X3 (done).
 - **Acceptance**: existing board tests green against the CLI-shaped mock; host test runs `list`,
@@ -975,7 +975,7 @@ capture-harness scenarios (§3.15) the WP adds and screenshots at desktop 1280×
   `/cron` command output through the reserved page instead of a text dump (G-17); "Sent by cron"
   bubble label data (`source`) and a clock badge on cron sessions in the sidebar (Z-112).
 - **Files**: `src/lib/cron.ts`, `src/screens/Cron.tsx`, `src/components/CronSettings.tsx`,
-  `src/components/sidebar/SessionRow.tsx` (badge), `crates/unipi-host/src/sessions/card.rs`
+  `src/components/sidebar/SessionRow.tsx` (badge), `apps/unipi/crates/unipi-host/src/sessions/card.rs`
   (`source`); scenarios `cron-list`, `cron-form`, `cron-badge`.
 - **Deps**: A3, A4, H8.
 - **Acceptance**: DTO zod tests vs H8 fixtures, form preview tests, Run now → run appears with
@@ -995,7 +995,7 @@ capture-harness scenarios (§3.15) the WP adds and screenshots at desktop 1280×
   (§3.14) — the schema-driven form itself is U11.
 - **Files**: `src/screens/Settings.tsx`, `src/screens/settings/{SettingsNav,SettingsSearch,
   AppearanceSection,ExtensionsSection,AboutSection,LifetimeSection}.tsx`, `src/settings/*`,
-  `src/components/{UpdateCard,DesktopUpdate}.tsx` merge; `crates/unipi-host` `host_cmd` dispatch if
+  `src/components/{UpdateCard,DesktopUpdate}.tsx` merge; `apps/unipi/crates/unipi-host` `host_cmd` dispatch if
   missing; scenarios `settings-nav`, `settings-search`, `settings-extensions`, `settings-safe-mode`.
 - **Deps**: A3, H4, H7, H9.
 - **Acceptance**: search finds app, host, pi and extension keys (fixture schemas); font-size var

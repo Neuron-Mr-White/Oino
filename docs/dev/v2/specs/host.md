@@ -123,7 +123,7 @@ Source material studied: `apps/unipi` (unipi-app 1.0.0 import, commit `12f6660`)
   other PC app ─iroh┤                         │ "This computer" = local socket, else iroh
                     ▼                         ▼
               unipi-host  ◄── unix socket / named pipe (same protocol, same frames)
-              crates/unipi-host (links oino-core in-process, one tokio runtime)
+              apps/unipi/crates/unipi-host (links oino-core in-process, one tokio runtime)
               session hub · cron (oino-cron) · browser (spec-browser) · fs · git · pty ·
               push/notify · forward · sharing/blob · pairing · updater · settings
                     │
@@ -152,8 +152,8 @@ nothing else moves.
 
 | v2 location | Comes from | Notes |
 |---|---|---|
-| `crates/unipi-proto` | `apps/unipi/crates/proto` | Rust wire types (frames, Control/Request, service DTOs). Joins the **root cargo workspace** (members `crates/*`) so it can use `oino-core` event types in the session layer (§7). |
-| `crates/unipi-host` | `apps/unipi/crates/host` | `unipi-host` bin + `unipi_host` lib. Depends on `oino-core`, `oino-cron`, `oino-browser`, `unipi-proto`. Root workspace member. |
+| `apps/unipi/crates/unipi-proto` | `apps/unipi/crates/proto` | Rust wire types (frames, Control/Request, service DTOs). Joins the **root cargo workspace** (members `crates/*`) so it can use `oino-core` event types in the session layer (§7). |
+| `apps/unipi/crates/unipi-host` | `apps/unipi/crates/host` | `unipi-host` bin + `unipi_host` lib. Depends on `oino-core`, `oino-cron`, `oino-browser`, `unipi-proto`. Root workspace member. |
 | `apps/unipi` | `apps/unipi/apps/mobile` | The Tauri 2 app (`src/`, `src-tauri/`, `package.json`), still its own cargo workspace (src-tauri) + npm workspace with `apps/unipi/packages/protocol`. |
 | `apps/unipi/packages/protocol` | stays | TS/zod mirror of `unipi-proto` (+ new session module, §7.6). |
 | `extensions/unipi/*` | stays | UniPi distribution extension packages (cron, browser, kanboard CLI, …; `specs/ext-abi.md`). |
@@ -169,7 +169,7 @@ stays out of the root cargo workspace (Tauri builds and target dirs differ).
 
 ### 4.1 Crate and binary
 
-- `crates/unipi-host`: `src/main.rs` (CLI), `src/lib.rs` (library: everything testable).
+- `apps/unipi/crates/unipi-host`: `src/main.rs` (CLI), `src/lib.rs` (library: everything testable).
   Binary name `unipi-host`. Subcommands (see §11 table for per-file fate):
   - `serve [--relay <url|n0>] [--relay-only] [--mode app|manual] [--exit-with-parent <pid>]
     [--exclude-extension <id>]… [--no-extensions]` — the daemon.
@@ -183,7 +183,7 @@ stays out of the root cargo workspace (Tauri builds and target dirs differ).
 
 ### 4.2 Session hub
 
-New module `crates/unipi-host/src/sessions/`:
+New module `apps/unipi/crates/unipi-host/src/sessions/`:
 
 ```
 sessions/
@@ -495,7 +495,7 @@ client → host : (stream close = unsubscribe; session keeps running)
 
 ### 7.6 Protocol packages
 
-- `crates/unipi-proto`: keep modules (frame, error, version, admin, blob, fs, git, push,
+- `apps/unipi/crates/unipi-proto`: keep modules (frame, error, version, admin, blob, fs, git, push,
   forward, sharing, browser, cron, control minus deleted ops); new `session.rs` (snapshot,
    event DTOs, cmd envelope), `term.rs`, `settings.rs`; shared fixtures keep the
    JSON-driven test convention (`proto/tests/*_fixtures.rs`).
@@ -670,7 +670,7 @@ unipi-proto with only path/data-dir changes; `AGENT_BROWSER_CDP` stable endpoint
 
 ## 11. Keep / change / delete — every file
 
-### 11.1 `apps/unipi/crates/host/src` → `crates/unipi-host/src`
+### 11.1 `apps/unipi/crates/host/src` → `apps/unipi/crates/unipi-host/src`
 
 | File | Verdict | Notes |
 |---|---|---|
@@ -756,32 +756,33 @@ Dependency order; each ends green (`cargo fmt/clippy/test`, `npm test`, `tsc`) b
 next builds on it. Prefix `[host]`.
 
 ### WP-H1 — Repo move + proto v2 skeleton
-- Files: move `apps/unipi/crates/proto` → `crates/unipi-proto`, `apps/unipi/crates/host` →
-  `crates/unipi-host`, `apps/unipi/apps/mobile` → `apps/unipi` (+ `packages/protocol`);
+- Files: move `apps/unipi/crates/proto` → `apps/unipi/crates/unipi-proto`, `apps/unipi/crates/host` →
+  `apps/unipi/crates/unipi-host`, `apps/unipi/apps/mobile` → `apps/unipi` (+ `packages/protocol`);
   root `Cargo.toml` members already `crates/*`; delete `apps/unipi/{crates,apps}` remnants
   and workspace manifests; `UPSTREAM.md` → `apps/unipi/`.
 - In `unipi-proto`: bump `PROTO_VERSION` to `2.0.0`; delete mux/board/desktop/chat DTOs and
   ops from `control.rs` (keep `Control::{Hello,Ok,Err,Resize,Exit,Title,BrowserCmd,
   BrowserEvent}`); add empty `session.rs`, `term.rs`, `settings.rs` modules; prune fixtures.
 - Deps: none (first).
-- Accept: `cargo check --workspace` (root incl. new crates), `cargo test -p unipi-proto`,
-  `cargo clippy -p unipi-proto -p unipi-host --all-targets -- -D warnings`,
+- Accept: `cargo check --workspace` (root, SDK only; repo-split: the unipi crates check
+  in `apps/unipi`), `(cd apps/unipi && cargo test -p unipi-proto`,
+  `(cd apps/unipi && cargo clippy -p unipi-proto -p unipi-host --all-targets -- -D warnings`,
   `(cd apps/unipi && npm install && npm test && npm run typecheck)` — after
   H1 the TS suite may temporarily skip deleted modules; delete their tests here too.
 
 ### WP-H2 — Host skeleton: lifetime + transport
-- Files: `crates/unipi-host/src/{main.rs,data_dir.rs,instance.rs,local.rs,endpoint.rs,
+- Files: `apps/unipi/crates/unipi-host/src/{main.rs,data_dir.rs,instance.rs,local.rs,endpoint.rs,
   secret.rs,pairing.rs,pair_link.rs,pair_cli.rs,devices.rs,logging.rs,protocol.rs}`,
   `ipc.rs`; `apps/unipi/src-tauri/src/{net.rs,local_host.rs,host_store.rs}`.
 - Do: `~/.oino/host` paths; `Mode::{App,Manual}`; Windows named-pipe local listener +
   client; ALPN `unipi/oino/1`; delete `desktop/linger` subcommands; local-only admin ops
   gate kept.
 - Deps: H1.
-- Accept: `cargo test -p unipi-host` (ported `local_socket`, `instance`, `pairing_atomic`,
+- Accept: `(cd apps/unipi && cargo test -p unipi-host` (ported `local_socket`, `instance`, `pairing_atomic`,
   `transport`, `pair_json`, `admin_ops`), plus a Windows CI run of `local_socket` (coffee).
 
 ### WP-H3 — Session hub in the host
-- Files: `crates/unipi-host/src/sessions/{hub.rs,card.rs,crash.rs}`; `main.rs` serve wiring
+- Files: `apps/unipi/crates/unipi-host/src/sessions/{hub.rs,card.rs,crash.rs}`; `main.rs` serve wiring
   (extension loader, `ExtensionMode::Desktop`, host-service registration `unipi.cron`,
   `unipi.browser`, `unipi.kanboard`, `unipi.host`); `admin.rs` tools.
 - Do: hub create/open/fork/archive/close over `oino-core` `Services` + `AgentSessionRuntime`
@@ -789,39 +790,39 @@ next builds on it. Prefix `[host]`.
   live cards; per-session panic isolation (`HubState::Crashed`); safe mode
   (`start-history.json`, 2 fast-fails ⇒ `--no-extensions` + `HostNotice` naming suspects).
 - Deps: H2, `specs/core.md` hub/durability landing (session runtime API stable).
-- Accept: `cargo test -p unipi-host --test sessions_hub` (faux provider: create, prompt,
+- Accept: `(cd apps/unipi && cargo test -p unipi-host --test sessions_hub` (faux provider: create, prompt,
   concurrent sessions, crash marks one, others continue, archive → trash).
 
 ### WP-H4 — Session protocol + TS client
-- Files: `crates/unipi-proto/src/session.rs`; `crates/unipi-host/src/sessions/stream.rs`
+- Files: `apps/unipi/crates/unipi-proto/src/session.rs`; `apps/unipi/crates/unipi-host/src/sessions/stream.rs`
   (snapshot, seq ring, coalescer, batching, backpressure tap, `events_open` hub stream);
-  `crates/unipi-host/src/protocol.rs` dispatch; `apps/unipi/packages/protocol/src/session.ts`;
+  `apps/unipi/crates/unipi-host/src/protocol.rs` dispatch; `apps/unipi/packages/protocol/src/session.ts`;
   `apps/unipi/src-tauri/src/chat.rs` rewrite.
 - Do: §7.3–7.5 exactly: `SessionSnapshot`, `SessionCmd` envelope with `id` correlation,
   `Events` batches, `since_seq` resume, `_oino/hello` implicit capabilities, events-before-
   reply ordering, hub `SessionChanged`/`HostNotice`.
 - Deps: H3.
-- Accept: `cargo test -p unipi-host --test session_stream` (faux stream of 5k deltas ⇒
+- Accept: `(cd apps/unipi && cargo test -p unipi-host --test session_stream` (faux stream of 5k deltas ⇒
   ≤ ceil(events_per_16ms) frames; resume via `since_seq`; reset path; two subscribers);
   `(cd apps/unipi && npm test --workspace)` with new `session.test.ts` fixtures
   (JSON-fixture convention kept).
 
 ### WP-H5 — Session takeover
 - Files: `sessions/hub.rs` (open-with-takeover, `TakenOver` state, host events), 
-  `crates/unipi-host/tests/session_takeover.rs`.
+  `apps/unipi/crates/unipi-host/tests/session_takeover.rs`.
 - Do: §8 (5 s yield wait, holder-refusal bounded by core flush points, taken-over notice
   both directions).
 - Deps: H4 + `specs/core.md` single-writer lock landing.
-- Accept: `cargo test -p unipi-host --test session_takeover`: (a) TUI-style holder process
+- Accept: `(cd apps/unipi && cargo test -p unipi-host --test session_takeover`: (a) TUI-style holder process
   (spawn `oino --mode rpc` on the same session file) loses the session on host
   `session_open`; (b) second host opening marks the first's stream `taken_over`.
 
 ### WP-H6 — Terminal service
-- Files: `crates/unipi-host/src/term.rs` (+ `unipi-proto/src/term.rs`);
+- Files: `apps/unipi/crates/unipi-host/src/term.rs` (+ `unipi-proto/src/term.rs`);
   `apps/unipi/src-tauri/src/term.rs` rewrite; `tests/term.rs`.
 - Do: §9.3 (host PTY registry, attach, 100 ms resize throttle, idle cap, per-workspace).
 - Deps: H2 (independent of H3/H4).
-- Accept: `cargo test -p unipi-host --test term` (open→write→read, resize throttle counts,
+- Accept: `(cd apps/unipi && cargo test -p unipi-host --test term` (open→write→read, resize throttle counts,
   detach/reattach continuity, kill, cap eviction).
 
 ### WP-H7 — Host services port (fs, git, push/notify, forward, sharing, blob, settings)
@@ -833,28 +834,28 @@ next builds on it. Prefix `[host]`.
   blob, admin_ops`) + new `settings` test; `git` TurnFiles fixture test.
 
 ### WP-H8 — Cron merge
-- Files: `crates/unipi-host/src/cron_serve.rs` (adapter), `main.rs` (scheduler tick,
+- Files: `apps/unipi/crates/unipi-host/src/cron_serve.rs` (adapter), `main.rs` (scheduler tick,
   wake-via-hub), root `Cargo.toml` dep `oino-cron`; remove `oino cron serve` from
   `crates/oino/src/cli*` (per `specs/core.md` coordination); delete
   `apps/unipi`-era cron tests, re-target `cron_ops/cron/cron_notify/cron_wake`.
 - Deps: H3 (hub for wake), H7 (notify channels).
-- Accept: `cargo test -p unipi-host --test cron_ops` (add/edit/fire with
+- Accept: `(cd apps/unipi && cargo test -p unipi-host --test cron_ops` (add/edit/fire with
   `OINO_CRON_BIN` faux, pause/resume, notify test, wake opens hub session).
 
 ### WP-H9 — Updater + app lifetime
-- Files: `crates/unipi-host/src/update.rs`; `apps/unipi/src-tauri/src/{host_supervisor.rs,
+- Files: `apps/unipi/crates/unipi-host/src/update.rs`; `apps/unipi/src-tauri/src/{host_supervisor.rs,
   lifecycle.rs,desktop.rs,app_update.rs,setup.rs,setup/,lib.rs}`; delete `always_on.rs`,
   `screen.rs`.
 - Do: §5 (adopt/spawn only, tray label, ask-on-close remembered, start-at-login hidden,
   quit warning), §9.7 (de-service restart, `HostNotice` prompt).
 - Deps: H2; UI wiring with the app spec.
-- Accept: `cargo test -p unipi-host` (update check faux feed, restart-exit behaviour);
-  `cargo test -p unipi-app-src-tauri` equivalents of supervisor/lifecycle unit tests
+- Accept: `(cd apps/unipi && cargo test -p unipi-host` (update check faux feed, restart-exit behaviour);
+  `(cd apps/unipi && cargo test -p unipi-app-src-tauri` equivalents of supervisor/lifecycle unit tests
   (ported `host_supervisor`, `lifecycle` tests minus service branches); manual tray QA
   checklist on Linux + Windows.
 
 ### WP-H10 — Integration + performance gates
-- Files: `crates/unipi-host/tests/integration.rs` (+ CI wiring in `.github/workflows/ci.yml`
+- Files: `apps/unipi/crates/unipi-host/tests/integration.rs` (+ CI wiring in `.github/workflows/ci.yml`
   v2 job), `apps/unipi` e2e reuse of the offline e2e pattern (`local_host.rs` test).
 - Do: headless host + client e2e — spawn `unipi-host serve --data-dir <tmp> --relay
   https://127.0.0.1:9 --relay-only`; a Rust test client (frames + proto) over `app.sock`:
@@ -864,7 +865,7 @@ next builds on it. Prefix `[host]`.
   ≤ 1 `Events` frame / 16 ms / stream under streaming; 50-session list < 150 ms cold;
   RSS of 10 idle hub sessions within spec-core §3.2 budget.
 - Deps: H1–H8.
-- Accept: `cargo test -p unipi-host --test integration -- --ignored` green locally and in
+- Accept: `(cd apps/unipi && cargo test -p unipi-host --test integration -- --ignored` green locally and in
   CI (Linux; Windows secondary), numbers recorded in `docs/dev/v2/qa/host-perf.md`.
 
 ---

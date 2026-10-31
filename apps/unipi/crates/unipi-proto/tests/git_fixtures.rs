@@ -22,10 +22,8 @@ fn parse<T: serde::de::DeserializeOwned>(value: Value) -> Result<(), String> {
 
 #[test]
 fn shared_git_fixtures_agree() {
-    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
-        "../../../apps/unipi/protocol/fixtures/git.json"
-    ))
-    .unwrap();
+    let fixtures: Vec<Fixture> =
+        serde_json::from_str(include_str!("../../../protocol/fixtures/git.json")).unwrap();
     assert!(fixtures.len() >= 25);
     for fixture in fixtures {
         let result: Result<(), String> = match fixture.schema.as_str() {

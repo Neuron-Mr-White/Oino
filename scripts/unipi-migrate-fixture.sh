@@ -283,8 +283,8 @@ check_fixture() {
   t "subagent profile renamed, .bak skipped" "grep -q 'reports with /memory' '$S/unipi.subagents/global/profiles/helper.md' && [ ! -e '$S/unipi.subagents/global/profiles/helper.md.bak' ]"
   t "kanboard tasks transformed" "[ -f '$S/unipi.kanboard/projects/proj-abc123/tasks/PRO-1.md' ] && ! grep -Eq '^(strategy|plan):|owner: system|mode: direct' '$S/unipi.kanboard/projects/proj-abc123/tasks/PRO-1.md'"
   t "kanboard task body renamed" "grep -q 'Do it with /goal.' '$S/unipi.kanboard/projects/proj-abc123/tasks/PRO-1.md'"
-  if command -v oino-kanboard >/dev/null; then
-    t "kanboard canonical format" "! OINO_KANBOARD_HOME='$S/unipi.kanboard' oino-kanboard --project proj-abc123 validate 2>&1 | grep -q 'canonical'"
+  if command -v unipi-kanboard >/dev/null; then
+    t "kanboard canonical format" "! UNIPI_KANBOARD_HOME='$S/unipi.kanboard' unipi-kanboard --project proj-abc123 validate 2>&1 | grep -q 'canonical'"
   fi
   t "kanboard daemon settings" "py '$S/unipi.kanboard/settings.json' 'assert d[\"piCommand\"]==[\"oino\"] and \"agentCommand\" not in d and d[\"summaryModel\"]'"
   t "kanboard queues not copied" "[ ! -e '$S/unipi.kanboard/projects/proj-abc123/queues' ]"

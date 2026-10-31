@@ -7,7 +7,7 @@
 /// The binary the agent calls (`unipi-kanboard`, optionally `.exe`).
 pub const BINARY: &str = "unipi-kanboard";
 
-/// Every subcommand the CLI understands (`crates/unipi-kanboard/src/cli.rs` `Command`,
+/// Every subcommand the CLI understands (`apps/unipi/crates/unipi-kanboard/src/cli.rs` `Command`,
 /// kebab-case as clap spells it). Anything else — a typo like `done`, a bare binary with no
 /// subcommand — is the binary's own usage error; the guard neither charges nor blocks it.
 pub const KNOWN_SUBCOMMANDS: &[&str] = &[

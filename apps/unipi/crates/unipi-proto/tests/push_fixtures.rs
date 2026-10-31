@@ -1,7 +1,7 @@
-//! UNI-317/UNI-318 contract fixtures: same file as the vitest suite
-//! (`packages/protocol/tests/cron.test.ts`).
+//! UNI-214 contract fixtures: same file as the vitest suite
+//! (`packages/protocol/tests/push.test.ts`).
 use serde_json::Value;
-use unipi_proto::{Control, CronJob, CronSettingsData};
+use unipi_proto::{Control, PushListData};
 
 #[derive(Debug, serde::Deserialize)]
 struct Fixture {
@@ -12,21 +12,16 @@ struct Fixture {
 }
 
 #[test]
-fn shared_cron_fixtures_agree() {
-    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
-        "../../../apps/unipi/protocol/fixtures/cron.json"
-    ))
-    .unwrap();
-    assert!(fixtures.len() >= 20);
+fn shared_push_fixtures_agree() {
+    let fixtures: Vec<Fixture> =
+        serde_json::from_str(include_str!("../../../protocol/fixtures/push.json")).unwrap();
+    assert!(fixtures.len() >= 10);
     for fixture in fixtures {
         let result: Result<(), String> = match fixture.schema.as_str() {
             "Control" => serde_json::from_value::<Control>(fixture.value.clone())
                 .map_err(|e| e.to_string())
                 .and_then(|control| control.validate().map_err(|e| e.to_string())),
-            "CronJob" => serde_json::from_value::<CronJob>(fixture.value.clone())
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            "CronSettingsData" => serde_json::from_value::<CronSettingsData>(fixture.value.clone())
+            "PushListData" => serde_json::from_value::<PushListData>(fixture.value.clone())
                 .map(|_| ())
                 .map_err(|e| e.to_string()),
             other => panic!("unknown schema {other}"),

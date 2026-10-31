@@ -54,9 +54,9 @@ const FILES: MockGitFile[] = [
   { path: 'src/components/git/git.css', area: 'unstaged', status: 'M', add: 31, del: 9 },
   { path: 'src/lib/session/hub.ts', area: 'unstaged', status: 'M', add: 12, del: 2 },
   { path: 'src/components/shell/AppShell.tsx', area: 'unstaged', status: 'M', add: 7, del: 1 },
-  { path: 'crates/unipi-host/src/git_watch.rs', area: 'unstaged', status: 'A', add: 321, del: 0 },
-  { path: 'crates/unipi-host/tests/git_watch.rs', area: 'unstaged', status: 'A', add: 229, del: 0 },
-  { path: 'crates/unipi-proto/src/git.rs', area: 'unstaged', status: 'M', add: 38, del: 1 },
+  { path: 'apps/unipi/crates/unipi-host/src/git_watch.rs', area: 'unstaged', status: 'A', add: 321, del: 0 },
+  { path: 'apps/unipi/crates/unipi-host/tests/git_watch.rs', area: 'unstaged', status: 'A', add: 229, del: 0 },
+  { path: 'apps/unipi/crates/unipi-proto/src/git.rs', area: 'unstaged', status: 'M', add: 38, del: 1 },
   { path: 'packages/protocol/src/git.ts', area: 'unstaged', status: 'M', add: 28, del: 0 },
   { path: 'assets/logo.png', area: 'unstaged', status: 'M', binary: true },
   { path: 'src/components/git/BranchSheet.tsx', area: 'staged', status: 'A', add: 134, del: 0 },
@@ -70,7 +70,7 @@ const FILES: MockGitFile[] = [
 ];
 
 const MANY: MockGitFile[] = Array.from({ length: 2000 }, (_, i) => {
-  const dir = ['src/components', 'src/lib', 'crates/unipi-host/src', 'packages/protocol/src'][i % 4]!;
+  const dir = ['src/components', 'src/lib', 'apps/unipi/crates/unipi-host/src', 'packages/protocol/src'][i % 4]!;
   return {
     path: `${dir}/generated/file-${String(i).padStart(4, '0')}.ts`,
     area: i % 9 === 0 ? 'staged' : i % 7 === 0 ? 'untracked' : 'unstaged',

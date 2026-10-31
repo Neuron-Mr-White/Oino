@@ -17,10 +17,11 @@ description = "Trim build caches back under OINO_TARGET_BUDGET_GB (stale tmp, in
 run = "scripts/target-gc.sh"
 
 [tasks.clean]
-description = "Remove all build caches of the two workspaces"
+description = "Remove all build caches of the three workspaces"
 run = [
   "cargo clean",
   "cd extensions && cargo clean",
+  "cd apps/unipi && cargo clean",
 ]
 
 [tasks."tui:render-test"]
@@ -82,6 +83,18 @@ run = "cargo clippy --workspace --all-targets -- -D warnings"
 [tasks.test]
 description = "Run all workspace tests"
 run = "cargo test --workspace"
+
+[tasks."unipi:check"]
+description = "Check the UniPi distribution workspace (apps/unipi)"
+run = "cargo check --workspace --manifest-path apps/unipi/Cargo.toml"
+
+[tasks."unipi:lint"]
+description = "Clippy on the UniPi distribution workspace"
+run = "cargo clippy --workspace --all-targets --manifest-path apps/unipi/Cargo.toml -- -D warnings"
+
+[tasks."unipi:test"]
+description = "Run UniPi distribution workspace tests (apps/unipi; add -- --ignored for the e2e)"
+run = "cargo test --workspace --manifest-path apps/unipi/Cargo.toml"
 
 [tasks.doc]
 description = "Build workspace docs without dependencies"

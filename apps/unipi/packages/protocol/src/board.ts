@@ -1,6 +1,6 @@
 /**
  * Board wire types, v2 (app.md §3.14 "Board" delta, WP-A22; ext-abi §5.5).
- * Mirrors `crates/unipi-proto/src/board.rs`.
+ * Mirrors `apps/unipi/crates/unipi-proto/src/board.rs`.
  *
  * The v1 daemon relay (`board_http`/`board_sse`) is gone: the Board talks to
  * the `unipi-kanboard` **CLI** through the host. `board_cli{args, project}`
