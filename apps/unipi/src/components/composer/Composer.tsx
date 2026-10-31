@@ -45,6 +45,8 @@ import {
 } from '../../lib/composer/builtins';
 import { matchModel } from '../../lib/model/find';
 import { rememberCommands } from '../draft/hostCache';
+import { connectComposerMentions } from '../../lib/chat/mention';
+import { connectEditorTokens } from '../../lib/composer/tokens';
 import { modelName, parseModels } from '../../lib/model/picker';
 import { parseLevels, setThinkingLevel, thinkingLabel } from '../../lib/model/thinking';
 import { appNavigate } from '../../lib/nav';
@@ -454,6 +456,31 @@ export function Composer(props: ComposerProps) {
     const cleanup = registerComposerFocus(k, () => editor?.focus());
     onCleanup(cleanup);
   });
+
+  /* ── "Mention in chat" and `insertEditorToken` (P0-07 / P0-08) ────── */
+  /** Inserts text at the caret (or the end), space-separated from its neighbours, as one undo step. */
+  const insertAtCaret = (insert: string) => {
+    if (props.readOnly || !insert) return;
+    const text = draft().text;
+    const at = Math.max(0, Math.min(editor?.getCaret() ?? text.length, text.length));
+    const before = text.slice(0, at);
+    const after = text.slice(at);
+    const lead = before && !/\s$/.test(before) && !/^\s/.test(insert) ? ' ' : '';
+    // A trailing space too, so typing goes on after the token (and a chip forms).
+    const trail = !/^\s/.test(after) && !/\s$/.test(insert) ? ' ' : '';
+    const caretAt = (before + lead + insert + trail).length;
+    commit(before + lead + insert + trail + after, caretAt);
+    setDismissed(null);
+    queueMicrotask(() => {
+      editor?.syncFromStore();
+      editor?.setCaret(caretAt);
+      setCaret(caretAt);
+    });
+  };
+  // Files / Board / file-ref menus ("Mention in chat") and extensions' insertEditorToken
+  // land in this composer while it is mounted (keyed like the draft store: host/session, draft:host).
+  connectComposerMentions(key, insertAtCaret);
+  connectEditorTokens(key, insertAtCaret);
 
   /* ── pi built-ins (WP-A25, G-15) ──────────────────────────────────── */
   /** The effects a built-in needs. The chat is always this session (a built-in

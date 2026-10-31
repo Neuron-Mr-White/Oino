@@ -468,3 +468,21 @@ describe('P0-02: engine built-ins run, never reach the model as text', () => {
   });
 });
 
+
+describe('P0-07/P0-08: Mention in chat and insertEditorToken reach the mounted composer', () => {
+  it('a mention lands at the caret, space-separated; an editor token too', async () => {
+    const { queueMention, resetMentions } = await import('../../lib/chat/mention');
+    const { insertEditorToken, resetEditorTokens } = await import('../../lib/composer/tokens');
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('look at');
+    queueMention(`${HOST}:${SESSION}`, '@src/app.ts');
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('look at @src/app.ts '));
+    insertEditorToken(s.key, { kind: 'text', label: 'and this' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('look at @src/app.ts and this '));
+    insertEditorToken(s.key, { kind: 'file', label: '', path: 'docs/my notes.md' });
+    await waitFor(() => expect(composerDraft(s.key).text).toContain('@"docs/my notes.md"'));
+    resetMentions();
+    resetEditorTokens();
+  });
+});

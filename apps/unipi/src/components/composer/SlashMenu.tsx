@@ -39,6 +39,7 @@ export function SlashMenu(props: {
             onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => props.onHover(i())}
             onClick={() => props.onPick(c.name)}
+            title={c.description ? `/${c.name} — ${c.description}` : `/${c.name}`}
           >
             <span class="cmenu-name">/{c.name}</span>
             <Show when={c.description}>

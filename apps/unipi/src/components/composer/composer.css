@@ -126,7 +126,9 @@ html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placehol
 }
 
 .cmenu-name {
-  flex: 0 1 auto;
+  /* The command name never gives way to its description (it ellipsizes only past 60 %). */
+  flex: 0 0 auto;
+  max-width: 60%;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
