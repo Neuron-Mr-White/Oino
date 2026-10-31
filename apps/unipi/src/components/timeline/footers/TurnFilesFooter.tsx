@@ -31,7 +31,6 @@ import {
   fileCountLabel,
   isUndone,
   refreshTurnSummary,
-  resetFileSummaries,
   rowStatLabel,
   statusOf,
   totalsOf,
@@ -336,9 +335,4 @@ export function TurnFilesFooter(props: ReservedBodyProps) {
       </div>
     </Show>
   );
-}
-
-/** Test seam: forget every cached turn summary (a mounted footer re-asks). */
-export function resetTurnFiles(): void {
-  resetFileSummaries();
 }
