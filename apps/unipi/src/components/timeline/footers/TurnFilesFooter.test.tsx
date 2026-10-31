@@ -16,6 +16,7 @@ import { setHostClientFactory } from '../../../lib/host/factory';
 import { resetLayout, setDesktopOverride } from '../../../lib/layout';
 import { setPlatformOverride } from '../../../lib/platform';
 import { actionNotice, clearActionNotice } from '../../../lib/timeline/actions';
+import { toasts } from '../../../lib/toasts';
 import { installUiSinks, resetUiRegistries, sessionUi } from '../../../ui/registries';
 import { installUiEffects, resetUiEffects } from '../../../ui/slots/effects';
 import { panes, resetPanes } from '../../../lib/panes';
@@ -253,7 +254,7 @@ describe('turn file summary footer (A27)', () => {
     await waitFor(() => expect((screen.getByTestId('turn-file-src/math.ts').closest('.tl-files-row') as HTMLElement).dataset.status).toBe('undone'));
     expect(screen.queryByTestId('turn-file-undo-src/math.ts')).toBeNull();
     expect(screen.getByTestId('turn-files-toggle').textContent).toContain('undone');
-    expect(actionNotice()).toContain('1 file undone');
+    expect(toasts().list().map((t) => t.message).join(' ')).toContain('1 file undone');
     await waitFor(() => expect(calls('turn').length).toBeGreaterThan(1));
   });
 

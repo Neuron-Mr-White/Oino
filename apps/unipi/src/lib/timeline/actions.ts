@@ -1,3 +1,4 @@
+import { toasts } from '../toasts';
 /**
  * Turn actions (app spec WP-A7, Z-17/Z-26/Z-27/Z-28/Z-49/Z-93): the pure
  * helpers behind the turn tail, plus the two small stores the actions need —
@@ -121,10 +122,10 @@ export function actionNotice(): string | undefined {
   return notice();
 }
 
+/** Transient action feedback goes to the one toast stack (bottom-right, above the composer). */
 export function showActionNotice(text: string): void {
-  if (noticeTimer) clearTimeout(noticeTimer);
-  setNotice(text);
-  noticeTimer = setTimeout(() => setNotice(undefined), 4_000);
+  const kind = /^(could not|couldn't|failed|error)/i.test(text) ? 'error' : 'info';
+  toasts().push(text, kind);
 }
 
 export function clearActionNotice(): void {
