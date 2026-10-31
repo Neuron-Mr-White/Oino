@@ -31,6 +31,27 @@ import { attachFileRefGestures, handleFileRefClick } from '../../lib/chat/fileRe
 
 const COPY_FLASH_MS = 1200;
 
+/** Copies `text` via Tauri/Web Clipboard, with a DOM execCommand fallback for X11/WebKit views. */
+async function copyWithFallback(text: string): Promise<boolean> {
+  if (await copyText(text)) return true;
+  if (typeof document === 'undefined') return false;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = typeof document.execCommand === 'function' && document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Briefly flashes `.code-copied` on `el` (CSS handles the visual, no toast). */
 function flashCopied(el: HTMLElement): void {
   el.classList.add('code-copied');
@@ -45,6 +66,7 @@ function ensurePathCopyButton(code: HTMLElement): void {
   btn.type = 'button';
   btn.className = 'code-copy';
   btn.setAttribute('aria-label', 'Copy path');
+  btn.title = 'Copy path';
   btn.dataset.copyPath = '1';
   code.after(btn);
 }
@@ -79,7 +101,41 @@ export function MdBlock(props: { html: string; class?: string; chat?: RefChat })
     onCleanup(attachFileRefGestures(el, () => props.chat));
   });
   const onClick = (event: MouseEvent) => {
-    const svg = (event.target as HTMLElement).closest<HTMLElement>('[data-mmd-tap]');
+    const targetEl = event.target as HTMLElement | null;
+    if (!targetEl) return;
+    // Fenced code-block Copy button (`.cb-head [data-copy]`).
+    const cbCopy = targetEl.closest<HTMLButtonElement>('[data-copy]');
+    if (cbCopy && el?.contains(cbCopy)) {
+      event.stopPropagation();
+      const cb = cbCopy.closest('.cb');
+      const raw =
+        cb?.querySelector<HTMLElement>('pre code')?.textContent ??
+        cb?.querySelector<HTMLElement>('[data-diff-raw]')?.textContent ??
+        '';
+      void copyWithFallback(raw.replace(/\n$/, '')).then((ok) => {
+        if (!ok) return;
+        cbCopy.textContent = 'Copied';
+        cbCopy.dataset.copied = '';
+        setTimeout(() => {
+          cbCopy.textContent = 'Copy';
+          delete cbCopy.dataset.copied;
+        }, COPY_FLASH_MS);
+      });
+      return;
+    }
+    // Long fenced code-block Wrap / Unwrap toggle (`.cb-head [data-wrap-toggle]`).
+    const wrapToggle = targetEl.closest<HTMLButtonElement>('[data-wrap-toggle]');
+    if (wrapToggle && el?.contains(wrapToggle)) {
+      event.stopPropagation();
+      const cb = wrapToggle.closest('.cb');
+      if (cb) {
+        const wrapped = cb.classList.toggle('wrapped');
+        wrapToggle.textContent = wrapped ? 'Unwrap' : 'Wrap';
+        wrapToggle.setAttribute('aria-pressed', String(wrapped));
+      }
+      return;
+    }
+    const svg = targetEl.closest<HTMLElement>('[data-mmd-tap]');
     if (svg) {
       const source = decodeURIComponent(svg.closest<HTMLElement>('.mmd')?.dataset.mmdSource ?? '');
       openMermaidViewer({ svg: svg.innerHTML, source });
@@ -115,7 +171,7 @@ export function MdBlock(props: { html: string; class?: string; chat?: RefChat })
     if (copyBtn && el?.contains(copyBtn)) {
       event.stopPropagation();
       const code = copyBtn.previousElementSibling as HTMLElement | null;
-      void copyText(code?.textContent ?? '').then((ok) => {
+      void copyWithFallback(code?.textContent ?? '').then((ok) => {
         if (ok) flashCopied(copyBtn);
       });
       return;
@@ -124,7 +180,7 @@ export function MdBlock(props: { html: string; class?: string; chat?: RefChat })
     if (!code || code.closest('pre') || code.classList.contains('task-ref') || !el?.contains(code)) return; // inline only, not a fenced block or task ref
     // Any other inline code copies its text (UNI-208) — no preventDefault,
     // so long-press text selection still works.
-    void copyText(code.textContent ?? '').then((ok) => {
+    void copyWithFallback(code.textContent ?? '').then((ok) => {
       if (ok) flashCopied(code);
     });
   };

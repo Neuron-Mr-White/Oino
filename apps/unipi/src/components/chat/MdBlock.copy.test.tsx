@@ -46,13 +46,24 @@ describe('MdBlock inline-code copy (UNI-208)', () => {
     expect(copyText).toHaveBeenCalledWith('hello');
   });
 
-  it('a fenced code block is untouched by the inline-copy behaviour', () => {
+  it('a fenced code block is untouched by inline-copy on <code>, while its Copy and Wrap header buttons work', async () => {
     copyText.mockResolvedValue(true);
-    const html = renderBlocks('```\nconst a = 1;\n```', false).join('');
+    const lines = Array.from({ length: 22 }, (_, i) => `const x${i} = ${i};`).join('\n');
+    const html = renderBlocks(`\`\`\`ts\n${lines}\n\`\`\``, false).join('');
     const r = render(() => <MdBlock html={html} class="chat-block" />);
     const code = r.container.querySelector('pre code')!;
     fireEvent.click(code);
-    expect(copyText).not.toHaveBeenCalledWith('const a = 1;');
+    expect(copyText).not.toHaveBeenCalled();
+
+    const copyBtn = r.container.querySelector<HTMLButtonElement>('[data-copy]')!;
+    fireEvent.click(copyBtn);
+    expect(copyText).toHaveBeenCalledWith(lines);
+    await waitFor(() => expect(copyBtn.textContent).toBe('Copied'));
+
+    const wrapBtn = r.container.querySelector<HTMLButtonElement>('[data-wrap-toggle]')!;
+    fireEvent.click(wrapBtn);
+    expect(r.container.querySelector('.cb')!.classList.contains('wrapped')).toBe(true);
+    expect(wrapBtn.textContent).toBe('Unwrap');
   });
 
   it('inline code that is a verified path opens the previewer (not copy) on tap, and gets a copy button beside it', async () => {

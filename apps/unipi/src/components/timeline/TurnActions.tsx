@@ -50,13 +50,33 @@ import { TimeLabel } from './TimeLabel';
 
 const COPIED_MS = 1_200;
 
+async function copyWithFallback(text: string): Promise<boolean> {
+  if (await copyText(text)) return true;
+  if (typeof document === 'undefined') return false;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = typeof document.execCommand === 'function' && document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Copy with the 1.2 s glyph→check feedback (Z-93). */
 function copyFeedback(text: () => string, what: string) {
   const [copied, setCopied] = createSignal(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => timer && clearTimeout(timer));
   const copy = async () => {
-    if (!(await copyText(text()))) {
+    if (!(await copyWithFallback(text()))) {
       showActionNotice(`Couldn't copy ${what}.`);
       return;
     }
@@ -110,6 +130,21 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
   return (
     <Show when={turn().kind === 'turn' && !turn().live}>
       <div class="tl-tail-line" data-testid="tl-turn-tail">
+        <div class="tl-meta">
+          <span class="tl-done" data-stopped={turn().stopped ? '' : undefined} data-error={turn().error ? '' : undefined} data-testid="tl-turn-done">
+            {done()}
+          </span>
+          <Show when={cost()}>
+            <span class="tl-done-sep" aria-hidden="true">·</span>
+            <span class="tl-done" data-testid="tl-turn-cost">
+              {cost()}
+            </span>
+          </Show>
+          <Show when={turnTime(turn()) !== undefined}>
+            <span class="tl-done-sep" aria-hidden="true">·</span>
+            <TimeLabel at={turnTime(turn())} />
+          </Show>
+        </div>
         <div class="tl-actions" role="toolbar" aria-label="Turn actions">
           <button
             type="button"
@@ -120,15 +155,15 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
             data-tip={copy.copied() ? 'Copied' : 'Copy turn'}
             onClick={() => void copy.copy()}
           >
-            <Show when={copy.copied()} fallback={<Copy size={15} />}>
-              <Check size={15} class="tl-act-check" />
+            <Show when={copy.copied()} fallback={<Copy size={14} />}>
+              <Check size={14} class="tl-act-check" />
             </Show>
           </button>
           <button type="button" class="tl-act" data-testid="tl-quote" aria-label="Quote this turn" data-tip="Quote" onClick={quote}>
-            <Quote size={15} />
+            <Quote size={14} />
           </button>
           <button type="button" class="tl-act" data-testid="tl-fork" aria-label="Fork from this turn" data-tip="Fork from here" onClick={() => void fork()}>
-            <SquareStack size={15} />
+            <SquareStack size={14} />
           </button>
           <Show when={props.last}>
             <button
@@ -140,7 +175,7 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
               disabled={running()}
               onClick={() => void retry()}
             >
-              <RotateCcw size={15} />
+              <RotateCcw size={14} />
             </button>
           </Show>
           <button
@@ -151,22 +186,9 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
             data-tip="More"
             onClick={(event) => setMore(event.currentTarget.getBoundingClientRect())}
           >
-            <Ellipsis size={15} />
+            <Ellipsis size={14} />
           </button>
         </div>
-        <span class="tl-done" data-testid="tl-turn-done">
-          {done()}
-        </span>
-        <Show when={cost()}>
-          <span class="tl-done-sep">·</span>
-          <span class="tl-done" data-testid="tl-turn-cost">
-            {cost()}
-          </span>
-        </Show>
-        <Show when={turnTime(turn()) !== undefined}>
-          <span class="tl-done-sep">·</span>
-          <TimeLabel at={turnTime(turn())} />
-        </Show>
         <Show when={more()} keyed>
           {(anchor) => (
             <AnchoredMenu anchor={anchor} onDismiss={() => setMore(undefined)} label="More turn actions" width={224} alignEnd>
@@ -247,7 +269,7 @@ export function TurnMenus(props: { ctx: TimelineCtx }) {
               label="Copy"
               onSelect={() => {
                 closeMessageMenu();
-                void copyText(state.target.text).then((ok) => !ok && showActionNotice("Couldn't copy the message."));
+                void copyWithFallback(state.target.text).then((ok) => !ok && showActionNotice("Couldn't copy the message."));
               }}
             />
             <MenuRow

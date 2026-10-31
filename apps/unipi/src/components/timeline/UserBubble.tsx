@@ -34,8 +34,8 @@ import { ImageChipRow, openImagePreviewer } from '../chat/ImageChip';
 
 /** Longest collapsed body (Z-29; ZCode folds when `scrollHeight > 121`). */
 export const FOLD_PX = 120;
-/** The transition is 300 ms unless the OS asks for less motion. */
-const FOLD_MS = 300;
+/** Motion 120–200 ms ease-out (ui-bar.md Global). */
+const FOLD_MS = 180;
 
 /** A sent message's text as plain runs + inline chips (UNI-212): the same
  * tokenizer as the composer — attachments (`[file: name]@path`), a

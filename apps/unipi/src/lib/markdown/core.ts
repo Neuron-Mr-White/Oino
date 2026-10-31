@@ -82,7 +82,14 @@ function buildMarked(opts: RenderOptions): Marked {
     renderer: {
       code(token: Tokens.Code) {
         const lang = (token.lang ?? '').trim().split(/\s+/)[0] ?? '';
-        if (isDiffLang(lang)) return `<div class="cb"><div class="cb-head"><span class="cb-lang">${escapeHtml(lang)}</span></div>${renderDiffHtml(parseUnifiedDiff(token.text))}</div>`;
+        if (isDiffLang(lang)) {
+          return (
+            `<div class="cb"><div class="cb-head"><span class="cb-lang">${escapeHtml(lang)}</span>` +
+            `<span class="cb-head-actions"><button type="button" class="cb-copy" data-copy>Copy</button></span></div>` +
+            `${renderDiffHtml(parseUnifiedDiff(token.text))}` +
+            `<span hidden data-diff-raw>${escapeHtml(token.text)}</span></div>`
+          );
+        }
         if (isMermaidLang(lang)) return mermaidBlockHtml(token.text, true);
         return codeBlockHtml(lang, token.text);
       },
@@ -136,7 +143,24 @@ function sanitize(html: string, opts: RenderOptions): string {
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     ADD_TAGS: ['video', 'audio', 'mark', 'input'],
-    ADD_ATTR: ['data-copy', 'target', 'controls', 'preload', 'loading', 'data-att-path', 'data-att-name', 'data-cb-id', 'data-cb-lang', 'data-mmd-source', 'type', 'checked', 'disabled'],
+    ADD_ATTR: [
+      'data-copy',
+      'data-wrap-toggle',
+      'data-diff-raw',
+      'hidden',
+      'target',
+      'controls',
+      'preload',
+      'loading',
+      'data-att-path',
+      'data-att-name',
+      'data-cb-id',
+      'data-cb-lang',
+      'data-mmd-source',
+      'type',
+      'checked',
+      'disabled',
+    ],
     FORBID_TAGS: opts.allowImages || opts.resolveAttachment ? ['script', 'style', 'form', 'iframe'] : ['script', 'style', 'form', 'iframe', 'img'],
     FORBID_ATTR: ['onerror', 'onload', 'onclick'],
     // DOMPurify checks this against every URI-*looking* attribute value,
