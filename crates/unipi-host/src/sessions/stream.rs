@@ -412,7 +412,10 @@ fn replaced_session(event: &Value) -> Option<String> {
 
 /// Is a run (or compaction) in flight? A disposed/evicted backend is not busy.
 async fn is_busy(backend: &Arc<dyn SessionBackend>) -> bool {
-    match backend.send(RpcCommand::Agent(AgentCommand::GetState)).await {
+    match backend
+        .send(RpcCommand::Agent(AgentCommand::GetState))
+        .await
+    {
         Ok(Some(data)) => serde_json::from_value::<RpcSessionState>(data)
             .map(|state| state.is_streaming || state.is_compacting)
             .unwrap_or(false),
