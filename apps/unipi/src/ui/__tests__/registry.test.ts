@@ -33,7 +33,7 @@ describe('snapshot', () => {
     expect(reg.state.sessionId).toBe('s-1');
     expect(Object.keys(reg.state.entries)).toHaveLength(3);
     expect(reg.entriesFor('widget')().map((e) => e.id)).toEqual(['ext/widget:progress']);
-    const board = reg.entry('unipi.kanboard/board')!;
+    const board = reg.entry('acme.board/board')!;
     expect(board.order).toBe(1000);
     expect(board.view.kind).toBe('reserved');
     expect((board.view as { fallback: { t: string } }).fallback.t).toBe('List');
@@ -177,11 +177,20 @@ describe('ordering (§6.4)', () => {
     expect(reg.stackTop('bottomPane')).toBeUndefined();
   });
 
-  it('slot selectors keep their array when an unrelated slot changes', () => {
+  it('slot selectors keep item identity but observe meta-only changes (U10)', () => {
     const reg = mirrored('ordering.json');
     const side = reg.entriesFor('sidePane')();
     reg.applyPatch(patchAt(2, [{ op: 'put', entry: entry('ext/w', 'widget', 10) }]));
-    expect(reg.entriesFor('sidePane')()).toBe(side);
+    const afterPut = reg.entriesFor('sidePane')();
+    // an unrelated slot's entry does not change the side pane's rows…
+    expect(afterPut.map((e) => e.id)).toEqual(side.map((e) => e.id));
+    afterPut.forEach((e, i) => expect(e).toBe(side[i]));
+    // …but a `meta` op mutates the entry in place, so the selector must re-run
+    // (an identity comparator would swallow the retitle a tab/badge reads).
+    reg.applyPatch(patchAt(3, [{ op: 'meta', id: 'ext/side-x', set: { title: 'Renamed' } }]));
+    const afterMeta = reg.entriesFor('sidePane')();
+    expect(afterMeta).not.toBe(afterPut);
+    expect(afterMeta.find((e) => e.id === 'ext/side-x')!.title).toBe('Renamed');
   });
 });
 
