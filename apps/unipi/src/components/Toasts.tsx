@@ -31,8 +31,10 @@ function measureToastOffsets(): { right: number; bottom: number } {
   const dockComposer = dock?.querySelector<HTMLElement>('.tl-composer') ?? dock;
   if (dockComposer) {
     const r = dockComposer.getBoundingClientRect();
+    const dockRect = dock?.getBoundingClientRect();
     if (r.height > 0 && r.top < vh) {
-      return { right, bottom: Math.max(edgePad, Math.round(vh - r.top + 10)) };
+      const top = dockRect && dockRect.height > 0 && dockRect.top > 180 ? Math.min(dockRect.top, r.top) : r.top;
+      return { right, bottom: Math.max(edgePad, Math.round(vh - top + 10)) };
     }
   }
 
@@ -65,14 +67,28 @@ export function Toasts() {
     };
     sync();
     window.addEventListener('resize', sync, { passive: true });
+    window.addEventListener('hashchange', sync);
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : undefined;
-    if (ro) {
+    const observeTargets = () => {
+      if (!ro) return;
+      ro.disconnect();
       for (const target of document.querySelectorAll('.conv, .dock, .tl-composer, .draft-composer, .composer-card')) {
         ro.observe(target);
       }
-    }
+    };
+    observeTargets();
+    const mo =
+      typeof MutationObserver !== 'undefined'
+        ? new MutationObserver(() => {
+            observeTargets();
+            sync();
+          })
+        : undefined;
+    mo?.observe(document.body, { childList: true, subtree: true });
     onCleanup(() => {
       window.removeEventListener('resize', sync);
+      window.removeEventListener('hashchange', sync);
+      mo?.disconnect();
       ro?.disconnect();
     });
   });
