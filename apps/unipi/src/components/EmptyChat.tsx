@@ -20,23 +20,32 @@ export function EmptyChat(props: {
   hostName?: string;
   /** Tighter type scale inside the phone's composer-led draft. */
   compact?: boolean;
+  /** The new-chat start screen: greeting + one line, no crab (the draft draws
+   *  a faint watermark behind instead) and no lore. */
+  variant?: 'start';
   testId?: string;
 }) {
   const where = () => (props.hostName ? `on ${props.hostName}` : 'on this PC');
-  const hint = () => `Ask for a change in ${props.cwd ? shortCwd(props.cwd) : 'your project'} — UniPi reads, edits and runs it ${where()}.`;
+  const hint = () =>
+    props.variant === 'start' && !props.cwd
+      ? `Ask anything — UniPi reads, edits and runs code ${where()}.`
+      : `Ask for a change in ${props.cwd ? shortCwd(props.cwd) : 'your project'} — UniPi reads, edits and runs it ${where()}.`;
   return (
     <section
       class="empty-chat"
       data-compact={props.compact ? '' : undefined}
+      data-variant={props.variant}
       data-testid={props.testId ?? 'empty-chat'}
       aria-labelledby="empty-chat-title"
     >
-      <Unicrab state="idle" size={112} class="empty-chat-crab" title="Unicrab" />
+      <Show when={props.variant !== 'start'}>
+        <Unicrab state="idle" size={112} class="empty-chat-crab" title="Unicrab" />
+      </Show>
       <h2 id="empty-chat-title" class="empty-chat-greeting" data-testid="empty-chat-greeting">
         {greetingFor(new Date())}
       </h2>
       <p class="empty-chat-hint">{hint()}</p>
-      <Show when={loreLine()}>
+      <Show when={props.variant !== 'start' && loreLine()}>
         {(line) => <p class="empty-chat-lore">{line()}</p>}
       </Show>
     </section>

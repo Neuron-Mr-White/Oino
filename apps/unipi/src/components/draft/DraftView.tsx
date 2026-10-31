@@ -1,158 +1,155 @@
 /**
- * Draft view (Z-19, WP-A5): what `/new/:host?cwd=` shows — the empty-chat hero,
- * the folder + host pickers (`fs_roots` and the recent session cwds) and the
- * composer. The first prompt creates the session (`session_new`), the app
- * routes to `/s/:host/:id` and the prompt goes out once its stream is live
- * (`lib/session/firstPrompt.ts`). Replaces v1's `NewChatSheet` (its herdr/tmux
- * "Where" step went with herdr, D-14).
+ * Draft view (Z-19, WP-A5): what `/new/:host?cwd=` shows — a calm start
+ * screen: the time-of-day greeting, the SAME composer a chat has (attach,
+ * permission, Plan, thinking, model, Send) centred under it with a workspace
+ * row inside the card (folder picker, and a PC picker when more than one PC
+ * is paired), and a faint Unicrab watermark behind.
+ *
+ * The composer talks to a local stand-in session (`./draftSession`); the
+ * first prompt creates the real session in the chosen folder — "No
+ * workspace" is the user's home folder on that PC — replays the draft's
+ * choices on it, sends the prompt (`./startSession`) and routes to the chat.
  */
-import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
+import { createMemo, createResource, createSignal, on, Show, untrack } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { ArrowUp, Folder, Monitor } from 'lucide-solid';
 import { useHostsOptional } from '../../hosts/context';
 import { EmptyChat } from '../EmptyChat';
+import { Unicrab } from '../Unicrab';
+import { Composer } from '../composer/Composer';
 import { fsRoots } from '../../lib/fs';
-import { folderChoices, newSession, shortPath } from '../../lib/session/newSession';
+import { folderChoices } from '../../lib/session/newSession';
 import { hubs } from '../../lib/session/hub';
-import { queueFirstPrompt } from '../../lib/session/firstPrompt';
+import { restoreComposer } from '../../lib/composer/drafts';
+import { LOCAL_HOST } from '../../lib/host/client';
+import { layout } from '../../lib/layout';
 import { sessionHref } from '../shell/Sidebar';
+import { createDraftSession, draftKey } from './draftSession';
+import { DraftModelChip } from './DraftModelChip';
+import { startSession } from './startSession';
+import { HostPicker, WorkspacePicker, homeOf } from './WorkspacePicker';
+import type { OutboxImage } from '../../lib/session/types';
 import './draft.css';
 
 export function DraftView(props: { hostId: string; cwd?: string }) {
   const navigate = useNavigate();
   const hosts = useHostsOptional();
+  /** `/new/local` (the first-run route) names This computer by alias: use its real id. */
+  const hostId = createMemo(() => {
+    const list = hosts?.hosts() ?? [];
+    if (list.some((h) => h.id === props.hostId)) return props.hostId;
+    if (props.hostId === LOCAL_HOST) return list.find((h) => h.transport === 'local')?.id ?? props.hostId;
+    return props.hostId;
+  });
   const [folder, setFolder] = createSignal<string | undefined>(props.cwd);
-  const [text, setText] = createSignal('');
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<{ text: string; hint?: string } | undefined>();
 
-  const hub = createMemo(() => hubs().peek(props.hostId));
-  /** Recent cwds first (this host's sessions), then the host's `fs_roots`. */
-  const [roots] = createResource(
-    () => props.hostId,
-    async (hostId) => {
-      const res = await fsRoots(hostId);
-      return res.ok ? res.value.roots : [];
-    },
-  );
-  const folders = createMemo(() => {
+  // Untracked: `ensure` may open the hub (a registry write) — the memo follows the host only.
+  const hub = createMemo(on(hostId, (id) => untrack(() => hubs().ensure(id))));
+  const [roots] = createResource(hostId, async (id) => {
+    const res = await fsRoots(id);
+    return res.ok ? res.value.roots : [];
+  });
+  const home = createMemo(() => homeOf(roots.latest ?? []));
+  /** This PC's recent session folders (newest first). */
+  const recent = createMemo(() => {
     const cards = hub()?.state.loaded ? Object.values(hub()!.state.cards) : [];
-    const live = folderChoices(cards, roots.latest ?? [], undefined);
-    return [...new Set([folder(), ...live].filter((f): f is string => !!f))];
+    const sorted = [...cards].sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
+    return folderChoices(sorted, [], undefined);
   });
   const hostName = () => {
-    const h = hosts?.hosts().find((x) => x.id === props.hostId);
+    const h = hosts?.hosts().find((x) => x.id === hostId());
     return h && h.transport !== 'local' ? h.name : undefined;
   };
-  const canSend = () => text().trim().length > 0 && !busy();
-  const placeHint = () => {
-    const f = folder();
-    return f ? ` in ${shortPath(f)}` : '';
-  };
+  const multiHost = () => (hosts?.hosts().length ?? 0) > 1;
 
   const pickHost = (id: string) => {
-    if (id === props.hostId) return;
+    if (id === hostId()) return;
     navigate(`/new/${encodeURIComponent(id)}${folder() ? `?cwd=${encodeURIComponent(folder()!)}` : ''}`);
   };
 
-  const send = async () => {
-    if (!canSend()) return;
-    const prompt = text().trim();
-    const where = folder();
+  const submit = async (text: string, images: OutboxImage[], choices: ReturnType<ReturnType<typeof createDraftSession>['choices']>) => {
+    const id = hostId();
     setBusy(true);
     setError(undefined);
-    const res = await newSession(props.hostId, where);
+    // No workspace = the home folder on that PC (asked again if the roots are still on their way).
+    let cwd = folder() ?? home();
+    if (!cwd) {
+      const r = await fsRoots(id);
+      cwd = r.ok ? homeOf(r.value.roots) : undefined;
+    }
+    const res = await startSession(id, { cwd, text, images, choices });
     if (!res.ok) {
       setBusy(false);
-      setError({ text: res.error.message, hint: res.error.hint });
+      setError({ text: String(res.error.message), hint: res.error.hint });
+      // The message comes back: nothing typed is lost to a failed start.
+      restoreComposer(draftKey(id), { text, images });
       return;
     }
-    const id = res.value.session;
-    queueFirstPrompt(props.hostId, id, { text: prompt });
-    navigate(sessionHref(props.hostId, id));
+    navigate(sessionHref(id, res.sessionId));
   };
+
+  // One stand-in per PC, built untracked: it peeks the session registry (a
+  // chat closing as the route changes must not rebuild the composer mid-dispose).
+  const draft = createMemo(
+    on(hostId, (id) =>
+      untrack(() => {
+        const session = createDraftSession(id, (text, images) => void submit(text, images, session.choices()));
+        return session;
+      }),
+    ),
+  );
 
   return (
     <div class="draft" data-testid="draft-view">
-      <div class="draft-hero">
-        <EmptyChat cwd={folder()} hostName={hostName()} />
+      <div class="draft-mark" aria-hidden="true">
+        <Unicrab state="idle" size={560} class="draft-mark-crab" />
       </div>
-      <div class="draft-pickers" data-testid="draft-pickers">
-        <Show when={(hosts?.hosts().length ?? 0) > 1}>
-          <div class="draft-chips" role="group" aria-label="Host" data-testid="draft-hosts">
-            <For each={hosts?.hosts() ?? []}>
-              {(h) => (
-                <button
-                  type="button"
-                  class="draft-chip"
-                  data-on={h.id === props.hostId ? '' : undefined}
-                  aria-pressed={h.id === props.hostId}
-                  onClick={() => pickHost(h.id)}
-                >
-                  <Monitor size={12} />
-                  {h.transport === 'local' ? 'This computer' : h.name}
-                </button>
-              )}
-            </For>
-          </div>
-        </Show>
-        <Show when={folders().length > 0}>
-          <div class="draft-chips" role="group" aria-label="Folder" data-testid="draft-folders">
-            <For each={folders()}>
-              {(f) => (
-                <button
-                  type="button"
-                  class="draft-chip"
-                  title={f}
-                  data-on={f === folder() ? '' : undefined}
-                  aria-pressed={f === folder()}
-                  onClick={() => setFolder(f === folder() ? undefined : f)}
-                >
-                  <Folder size={12} />
-                  {shortPath(f)}
-                </button>
-              )}
-            </For>
-          </div>
+      <div class="draft-center">
+        <EmptyChat cwd={folder()} hostName={hostName()} variant="start" />
+        <div class="draft-composer" data-testid="draft-composer">
+          <Show when={draft()} keyed>
+            {(session) => (
+              <Composer
+                session={session}
+                draft
+                busy={busy()}
+                autofocus
+                phone={!layout().desktop()}
+                cwd={() => folder() ?? home()}
+                placeholder={busy() ? 'Starting the chat…' : undefined}
+                modelSlot={<DraftModelChip session={session} disabled={busy()} />}
+                header={
+                  <>
+                    <WorkspacePicker
+                      hostId={hostId()}
+                      value={folder()}
+                      onChange={setFolder}
+                      recent={recent()}
+                      roots={roots.latest ?? []}
+                      home={home()}
+                      disabled={busy()}
+                    />
+                    <Show when={multiHost()}>
+                      <HostPicker hostId={hostId()} hosts={hosts?.hosts() ?? []} onPick={pickHost} disabled={busy()} />
+                    </Show>
+                  </>
+                }
+              />
+            )}
+          </Show>
+        </div>
+        <Show when={error()}>
+          {(e) => (
+            <p class="draft-error" role="alert" data-testid="draft-error">
+              {e().text}
+              <Show when={e().hint}>
+                <span class="draft-error-hint">{e().hint}</span>
+              </Show>
+            </p>
+          )}
         </Show>
       </div>
-      <form
-        class="draft-form"
-        data-testid="draft-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-      >
-        <textarea
-          class="draft-input"
-          rows={2}
-          placeholder={`Message UniPi${placeHint()}…`}
-          aria-label="First message"
-          data-testid="draft-input"
-          value={text()}
-          onInput={(e) => setText(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-        />
-        <button type="submit" class="draft-send" disabled={!canSend()} aria-label="Send" data-testid="draft-send">
-          <ArrowUp size={16} />
-        </button>
-      </form>
-      <Show when={error()}>
-        {(e) => (
-          <p class="draft-error" role="alert" data-testid="draft-error">
-            {e().text}
-            <Show when={e().hint}>
-              <span class="draft-error-hint">{e().hint}</span>
-            </Show>
-          </p>
-        )}
-      </Show>
     </div>
   );
 }

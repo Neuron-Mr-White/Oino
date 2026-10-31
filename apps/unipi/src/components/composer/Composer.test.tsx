@@ -122,7 +122,7 @@ describe('placeholder by state (Z-57)', () => {
   it('an empty session shows the capability hint; with history, the follow-up hint', async () => {
     const empty = await openSession(0);
     const a = mountComposer(empty);
-    expect(a.field().getAttribute('data-placeholder')).toBe('Message pi, / commands, @ files');
+    expect(a.field().getAttribute('data-placeholder')).toBe('Ask anything — / for commands, @ for files');
 
     const full = await openSession(2);
     const b = mountComposer(full);
@@ -140,7 +140,7 @@ describe('placeholder by state (Z-57)', () => {
   it('the phone short form on an empty session', async () => {
     const empty = await openSession(0);
     const c = mountComposer(empty, { phone: true });
-    expect(c.field().getAttribute('data-placeholder')).toBe('Message pi…');
+    expect(c.field().getAttribute('data-placeholder')).toBe('Ask anything…');
   });
 });
 

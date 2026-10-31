@@ -41,7 +41,7 @@ function mountEditor(initial: string, opts = {}) {
       onChange={(t) => (changes.push(t), setValue(t))}
       opts={() => opts}
       onChipRemoved={(c) => removed.push(c)}
-      placeholder="Message pi"
+      placeholder="Ask anything"
     />
   ));
   const root = view.container.querySelector('.chip-field') as HTMLDivElement;

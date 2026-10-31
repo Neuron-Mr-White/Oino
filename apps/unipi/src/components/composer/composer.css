@@ -5,59 +5,70 @@
  * the `/` and `@` menus above it, the paste chip and the read-only state.
  */
 
-/* The field: a chip-aware contenteditable inside the composer row. */
+/* The field: a chip-aware contenteditable inside the composer card. A plain
+   block (never flex: a flex field centred its float placeholder half under
+   the toolbar and grew a phantom scrollbar), so it grows line by line with
+   the text up to 40 % of the viewport, then scrolls inside. */
 .tl-composer .tl-composer-field {
-  flex: 1;
+  position: relative;
+  display: block;
+  flex: none;
+  width: 100%;
   min-width: 0;
-  align-self: stretch;
-  display: flex;
-  align-items: center;
+  min-height: 38px;
+  max-height: 40vh;
+  overflow-x: hidden;
   overflow-y: auto;
-  max-height: min(38vh, 220px);
   margin: 0;
-  padding: 8px 4px;
+  padding: 8px 10px;
+  box-sizing: border-box;
   background: transparent;
   border: 0;
   outline: none;
   color: var(--color-text);
+  caret-color: var(--color-claw);
   font: inherit;
   font-size: 15px;
   line-height: 22px;
+  text-align: left;
   white-space: pre-wrap;
   word-break: break-word;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+  cursor: text;
 }
+.tl-composer .tl-composer-field::-webkit-scrollbar { width: 6px; }
+.tl-composer .tl-composer-field::-webkit-scrollbar-track { background: transparent; }
+.tl-composer .tl-composer-field::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--color-line); }
+.tl-composer .tl-composer-field:focus,
+.tl-composer .tl-composer-field:focus-visible { outline: none; }
 
 .tl-composer .tl-composer-field[data-readonly] {
   color: var(--color-text-dim);
+  cursor: default;
 }
 
+/* The placeholder sits exactly on the first line, inside the padding. */
 .tl-composer .tl-composer-field[data-empty][data-placeholder]::before {
   content: attr(data-placeholder);
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--color-text-dim);
   pointer-events: none;
-  float: left;
-  height: 0;
 }
 
-/* §3.9: on the phone the state placeholder never exceeds two lines. The
-   float trick can't line-clamp (its box is 0 px tall), so the phone paints
-   it absolutely, centred where the first line would sit. */
-html[data-shell=phone] .tl-composer .tl-composer-field {
-  position: relative;
-}
+/* §3.9: on the phone the state placeholder may take two lines, never more. */
 html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placeholder]::before {
-  float: none;
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  height: auto;
+  white-space: normal;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  overflow: hidden;
 }
 
 .tl-composer .tl-composer-field .ichip {
@@ -195,14 +206,48 @@ html:not([data-shell='desktop']) .cmenu {
 .tl-composer.tl-composer-dock {
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
-  padding: 6px 8px 7px;
+  gap: 0;
+  padding: 4px 6px 6px;
+  border-radius: 22px;
+  cursor: text;
+  transition: box-shadow 140ms ease-out;
 }
-.tl-composer-dock .tl-composer-field {
-  width: 100%;
-  max-height: min(32vh, 180px);
+/* Focus (and a file dragged over it): a calm claw ring around the whole card. */
+.tl-composer.tl-composer-dock:focus-within,
+.tl-composer.tl-composer-dock[data-drop] {
+  box-shadow:
+    inset 0 0 0 1px rgb(240 120 24 / 55%),
+    0 0 0 3px rgb(240 120 24 / 12%),
+    0 6px 22px rgb(0 0 0 / 30%);
+}
+.tl-composer.tl-composer-dock[data-drop] { background: color-mix(in srgb, var(--color-surface-2) 92%, var(--color-claw)); }
+.tl-composer.tl-composer-dock[data-readonly] { cursor: default; }
+.tl-composer.tl-composer-dock[data-readonly]:focus-within {
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), 0 6px 22px rgb(0 0 0 / 30%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-composer.tl-composer-dock { transition: none; }
+}
+
+/* The draft's chips (quotes, long pastes, attachments) sit inside the card,
+   above the text they go with. */
+.tl-composer-dock .tl-composer-chips {
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 6px 4px 0;
+  cursor: default;
+}
+
+/* A row inside the card above the field (the draft's workspace picker). */
+.comp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   padding: 4px 2px 0;
+  cursor: default;
 }
+
 .comp-bar {
   display: flex;
   align-items: center;
@@ -210,7 +255,9 @@ html:not([data-shell='desktop']) .cmenu {
   min-width: 0;
   height: 36px;
   flex: none;
+  padding: 0 1px;
   white-space: nowrap;
+  cursor: default;
 }
 .comp-bar .tb-item,
 .comp-bar .tb-slot {
@@ -221,26 +268,57 @@ html:not([data-shell='desktop']) .cmenu {
 }
 .comp-bar .tb-spacer { flex: 1 1 auto; min-width: 0; }
 .comp-bar .composer-plus-btn {
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
   margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
   color: var(--color-text-muted);
 }
-/* The base layer gives every button a 44px minimum; inside the 36px bar the
-   send/stop circle and its chevron keep their own size instead (the circle's
-   tap target is the circle). */
+.comp-bar .composer-plus-btn:hover:not(:disabled) { color: var(--color-text); background: var(--color-surface-3); }
+.comp-bar .composer-plus-btn[aria-expanded='true'] { color: var(--color-text); background: var(--color-surface-3); }
+
+/* The end group: context ring · send options · Send/Stop, one centre line. */
+.comp-bar .tb-end-group { display: flex; align-items: center; gap: 4px; height: 32px; }
+.comp-bar .ctx-ring { width: 28px; height: 28px; min-height: 28px; border-radius: 50%; }
+.comp-bar .ctx-ring svg { width: 20px; height: 20px; }
+.comp-bar .ctx-ring .ctx-ring-track,
+.comp-bar .ctx-ring[data-empty] .ctx-ring-track { stroke: rgb(163 154 144 / 32%); }
+
+/* Send / Stop: one 32 px circle in every state (the base layer's 44 px
+   button minimum would stretch it into an oval). */
 .comp-bar .tl-composer-send,
 .comp-bar .tl-composer-stop {
-  width: 34px;
-  height: 34px;
-  min-height: 34px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--color-claw);
+  color: var(--color-ink);
+  transition: background-color 120ms ease-out, color 120ms ease-out;
 }
+.comp-bar .tl-composer-send:hover:not(:disabled) { background: var(--color-amber); }
+.comp-bar .tl-composer-send:active:not(:disabled) { background: var(--color-claw); transform: scale(.94); }
+.comp-bar .tl-composer-send:disabled { opacity: 1; background: var(--color-surface-3); color: var(--color-text-dim); }
+.comp-bar .tl-composer-stop { background: var(--color-text); color: var(--color-bg); }
+.comp-bar .tl-composer-stop:hover:not(:disabled) { background: #fff; }
+.comp-bar .tl-composer-stop:active:not(:disabled) { background: var(--color-text); transform: scale(.94); }
 .comp-bar .send-btn-chevron {
-  height: 30px;
-  min-height: 30px;
+  width: 18px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 8px;
 }
-.comp-bar .composer-plus-btn:hover:not(:disabled) { color: var(--color-text); }
 
 /* A chip: the permission mode, the Plan toggle — same shape A14's model and
    thinking chips use (`.tb-chip` + `.tb-ic` + `.tb-label`). */
@@ -295,6 +373,28 @@ html:not([data-shell='desktop']) .cmenu {
 /* The permission menu rows (`.tb-menu-*` inside an AnchoredMenu). */
 .tb-menu-dot { display: block; width: 16px; height: 16px; }
 .tb-menu-hint { font-size: 11px; color: var(--color-text-dim); white-space: nowrap; }
+
+/* The permission menu (G-6): full labels over their descriptions. */
+.perm-menu-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 7px 12px 7px 10px;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  color: var(--color-text);
+}
+.perm-menu-row:hover { background: var(--color-surface-3); }
+.perm-menu-row[aria-checked='true'] { background: rgb(240 120 24 / 9%); }
+.perm-menu-check { grid-row: 1 / span 2; display: grid; place-items: center; color: var(--color-claw); }
+.perm-menu-label { grid-column: 2; display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 19px; font-weight: 600; white-space: nowrap; }
+.perm-menu-desc { grid-column: 2; font-size: 12.5px; line-height: 17px; color: var(--color-text-muted); white-space: nowrap; }
+.perm-menu-row[data-mode='auto'] .perm-menu-label { color: var(--color-claw); }
+.perm-menu-row[data-mode='full'] .perm-menu-label { color: #f6a89d; }
 
 /* ── Attachment chips (Z-60 states) ─────────────────────────────────── */
 .att-chip {

@@ -21,7 +21,7 @@
  * (Z-64, `./Toolbar`) and the permission/plan control bound to the workflow
  * extension (G-6, `./PermissionControl`).
  */
-import { createEffect, createMemo, createSignal, on, onCleanup, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show, untrack, type JSX } from 'solid-js';
 import { Paperclip, Quote } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import {
@@ -42,7 +42,8 @@ import { openSettingsAt } from '../../lib/settings/open';
 import { ABOUT_ANCHORS } from '../../screens/settings/anchors';
 import { setShortcutsOpen } from '../shell/ShortcutsDialog';
 import { openExternal } from '../../lib/board/share';
-import { can } from '../../lib/platform';
+import { can, isTauriDesktop } from '../../lib/platform';
+import { clipboardFiles, describeLocal, readLocalFiles, registerDropZone, startNativeDrop } from '../../lib/localFiles';
 import { z } from 'zod';
 import { call } from '../../lib/ipc';
 import { commandNames } from '../timeline/context';
@@ -89,7 +90,34 @@ const pasteHead = (text: string): string => {
   return flat.length > 220 ? `${flat.slice(0, 219).trimEnd()}…` : flat;
 };
 
-export function Composer(props: { session: SessionHandle; cwd?: () => string | undefined; readOnly?: boolean; phone?: boolean }) {
+/** Local files the composer reads into memory at most (a paste / a drop): the
+ *  attachment pipeline uploads `File`s, so anything bigger is refused. */
+const MAX_LOCAL_READ = 200 * 1024 * 1024;
+
+export type ComposerProps = {
+  session: SessionHandle;
+  cwd?: () => string | undefined;
+  readOnly?: boolean;
+  phone?: boolean;
+  /**
+   * The new-chat draft (`components/draft`): the session handle is a local
+   * stand-in whose `send` starts the real session. Pi built-ins that need a
+   * chat (`/model`, `/btw`, the ⋯ actions) and the context ring stay out.
+   */
+  draft?: boolean;
+  /** Draft: replaces the model chip (the session-bound picker can't open yet). */
+  modelSlot?: JSX.Element;
+  /** A row inside the card, above the field (the draft's workspace picker). */
+  header?: JSX.Element;
+  /** Overrides the state placeholder. */
+  placeholder?: string;
+  /** Send is held (the draft while its session is being created). */
+  busy?: boolean;
+  /** Focus the field on mount (the draft). */
+  autofocus?: boolean;
+};
+
+export function Composer(props: ComposerProps) {
   const key = () => props.session.key;
   const draft = () => composerDraft(key());
   let editor: ChipEditorApi | undefined;
@@ -103,15 +131,16 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
   /* ── placeholder by state (Z-57) ──────────────────────────────────── */
   const hasHistory = createMemo(() => props.session.turns().some((t) => !!t.user));
   const placeholder = () =>
-    props.readOnly
+    props.placeholder ??
+    (props.readOnly
       ? 'Read-only — this session is open elsewhere'
       : running()
         ? `Keep typing to ${followUpMode() === 'steer' ? 'steer' : 'queue'}…`
         : !hasHistory()
           ? props.phone
-            ? 'Message pi…'
-            : 'Message pi, / commands, @ files'
-          : 'Ask for follow-up changes';
+            ? 'Ask anything…'
+            : 'Ask anything — / for commands, @ for files'
+          : 'Ask for follow-up changes');
 
   /* ── undo/redo (kept from UNI-270; the store is lib/composer/undo) ── */
   const history = () => composerHistory(key());
@@ -308,6 +337,71 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     else if (refused.length === 1) showActionNotice(`${refused[0]!.name} is larger than 1 GB`);
     focusComposer(key());
   };
+  /** Local files from the OS (a native paste, a drop on the desktop app):
+   *  read into `File`s and attached like picked ones. */
+  const attachLocal = async (files: ReadonlyArray<{ path: string; name: string; size: number; isDir: boolean }>): Promise<boolean> => {
+    const usable = files.filter((f) => !f.isDir && f.size <= MAX_LOCAL_READ);
+    const skipped = files.length - usable.length;
+    if (skipped) showActionNotice(skipped === 1 ? `${files.find((f) => f.isDir || f.size > MAX_LOCAL_READ)!.name} can't be attached (a folder, or over 200 MB)` : `${skipped} items can't be attached (folders, or over 200 MB)`);
+    if (!usable.length) return skipped > 0;
+    attachPicked(await readLocalFiles(usable));
+    return true;
+  };
+  /** UNI-256: WebKitGTK hides a clipboard image from the page — the core reads it. */
+  const pasteNative = async (): Promise<boolean> => {
+    if (props.readOnly) return false;
+    const files = await clipboardFiles();
+    if (!files.length) return false;
+    return attachLocal(files);
+  };
+  /* ── drag & drop (web: DataTransfer files; desktop app: Tauri's window drop) ── */
+  let wrap: HTMLDivElement | undefined;
+  const [dropOver, setDropOver] = createSignal(false);
+  let dragDepth = 0;
+  const dragHasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types ?? []).includes('Files');
+  const dropHandlers = {
+    onDragEnter: (e: DragEvent) => {
+      if (props.readOnly || !dragHasFiles(e)) return;
+      e.preventDefault();
+      dragDepth += 1;
+      setDropOver(true);
+    },
+    onDragOver: (e: DragEvent) => {
+      if (props.readOnly || !dragHasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    },
+    onDragLeave: () => {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (!dragDepth) setDropOver(false);
+    },
+    onDrop: (e: DragEvent) => {
+      dragDepth = 0;
+      setDropOver(false);
+      if (props.readOnly || !dragHasFiles(e)) return;
+      e.preventDefault();
+      const files = [...(e.dataTransfer?.files ?? [])];
+      if (files.length) attachPicked(files);
+    },
+  };
+  onMount(() => {
+    if (!isTauriDesktop()) return;
+    void startNativeDrop();
+    const off = registerDropZone({
+      el: () => wrap,
+      enabled: () => !props.readOnly,
+      hover: setDropOver,
+      drop: (paths) => {
+        void describeLocal(paths)
+          .then((files) => attachLocal(files))
+          .catch((error: unknown) => {
+            console.warn('[drop] reading the dropped files failed', error);
+            showActionNotice("Couldn't read the dropped files");
+          });
+      },
+    });
+    onCleanup(off);
+  });
   /** The image editor (D-5): annotate a pending image in place. */
   const [editing, setEditing] = createSignal<{ id: string; src: string; mime: string; name: string } | undefined>();
   const openEditor = (id: string) => {
@@ -380,7 +474,7 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
 
   /* ── send ─────────────────────────────────────────────────────────── */
   const send = (mode?: 'prompt' | 'steer' | 'followUp') => {
-    if (props.readOnly) return;
+    if (props.readOnly || props.busy) return;
     // Z-60: nothing leaves until every attachment is ready.
     if (!attachmentsReady(key())) return;
     const current = draft();
@@ -390,13 +484,13 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     const cmd = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
     // `/model` opens the picker (Z-70: composer chip, Ctrl/Cmd+M and /model are
     // the only entry points) instead of becoming a prompt.
-    if (!props.readOnly && cmd && cmd[1] === 'model' && !cmd[2]?.trim()) {
+    if (!props.readOnly && !props.draft && cmd && cmd[1] === 'model' && !cmd[2]?.trim()) {
       openModelPicker({ hostId: hostId(), sessionId: props.session.sessionId() });
       afterRoute(text);
       return;
     }
     // `/btw` opens the side question instead of sending to the main chat (Z-31).
-    if (cmd && (cmd[1] === 'btw' || cmd[1] === 'unipi:btw')) {
+    if (!props.draft && cmd && (cmd[1] === 'btw' || cmd[1] === 'unipi:btw')) {
       openSideQuestion(cmd[2]?.trim() || undefined);
       afterRoute(text);
       return;
@@ -405,12 +499,17 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
     // "terminal only" toast is gone. An extension command of the same name wins.
     const builtin = cmd ? builtinPlan(cmd[1]!) : undefined;
     const sessionOwns = cmd ? props.session.state.commands.some((c) => c.name.replace(/^\//, '') === cmd[1]) : false;
+    if (cmd && builtin && !sessionOwns && props.draft) {
+      // A built-in acts on a chat; the draft has none yet.
+      showActionNotice(`/${cmd[1]} works inside a chat — send a first message to start one`);
+      return;
+    }
     if (cmd && builtin && !sessionOwns && runBuiltin(cmd[1]!, builtinDeps())) {
       afterRoute(text);
       return;
     }
     // A `/name` neither the session nor the app knows never becomes a prompt.
-    if (cmd && !isKnownCommand(cmd[1]!, props.session.state.commands)) {
+    if (cmd && !props.draft && !isKnownCommand(cmd[1]!, props.session.state.commands)) {
       showActionNotice(`Unknown command /${cmd[1]}`);
       return;
     }
@@ -526,43 +625,72 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
   const pending = () => pendingAttachmentsFor(key());
   const empty = () => !draft().text.trim() && !draft().quotes.length && !pending().length && !draft().chips.length;
   /** Z-60: Send waits for the attachments; a failed one keeps it closed. */
-  const canSend = () => props.readOnly || attachmentsReady(key());
+  const canSend = () => props.readOnly || (attachmentsReady(key()) && !props.busy);
+  onMount(() => {
+    if (props.autofocus && !props.readOnly) queueMicrotask(() => editor?.focus());
+  });
 
   return (
-    <div class="tl-composer-wrap" data-testid="tl-composer-wrap">
+    <div
+      class="tl-composer-wrap"
+      data-testid="tl-composer-wrap"
+      ref={wrap}
+      onDragEnter={dropHandlers.onDragEnter}
+      onDragOver={dropHandlers.onDragOver}
+      onDragLeave={dropHandlers.onDragLeave}
+      onDrop={dropHandlers.onDrop}
+    >
       <Show when={slashItems().length}>
         <SlashMenu items={slashItems()} selected={Math.min(sel(), slashItems().length - 1)} onPick={pickCommand} onHover={setSel} />
       </Show>
       <Show when={menuItems()}>
         <MentionMenu items={menuItems()!} selected={Math.min(sel(), menuItems()!.length - 1)} onPick={pickMention} onHover={setSel} />
       </Show>
-      <Show when={draft().quotes.length > 0 || pending().length > 0 || chips().length > 0}>
-        <div class="tl-composer-chips" data-testid="tl-composer-chips" role="list">
-          <For each={draft().quotes}>
-            {(quote) => (
-              <span class="tl-chip tl-quote-chip" data-testid="tl-quote-chip" title={quote.text}>
-                <Quote size={12} />
-                <span class="tl-chip-label">{quote.text.replace(/\s+/g, ' ').trim().slice(0, 72)}</span>
-                <button type="button" class="tl-chip-x" aria-label="Remove quote" onClick={() => removeComposerQuote(key(), quote.id)}>
-                  ✕
-                </button>
-              </span>
-            )}
-          </For>
-          <For each={chips()}>{(chip: ComposerChip) => <PastedTextChip chip={chip} onRemove={() => removeComposerChip(key(), chip.id)} />}</For>
-          <For each={pending()}>
-            {(attachment) => (
-              <AttachmentChip
-                attachment={attachment}
-                onRemove={() => removeAttachment(key(), attachment.id)}
-                onRetry={() => retryAttachment(key(), hostId(), attachment.id)}
-                onEdit={attachment.kind === 'image' ? () => openEditor(attachment.id) : undefined}
-              />
-            )}
-          </For>
-        </div>
-      </Show>
-      <div class="tl-composer tl-composer-dock" data-testid="tl-composer" data-readonly={props.readOnly ? '' : undefined}>
+      <div
+        class="tl-composer tl-composer-dock"
+        data-testid="tl-composer"
+        data-readonly={props.readOnly ? '' : undefined}
+        data-draft={props.draft ? '' : undefined}
+        data-drop={dropOver() ? '' : undefined}
+        onMouseDown={(e) => {
+          // A press on the card's padding lands in the field (the whole card reads as the input).
+          if (e.target === e.currentTarget && !props.readOnly) {
+            e.preventDefault();
+            editor?.focus();
+          }
+        }}
+      >
+        <Show when={props.header}>
+          <div class="comp-head" data-testid="composer-head">
+            {props.header}
+          </div>
+        </Show>
+        <Show when={draft().quotes.length > 0 || pending().length > 0 || chips().length > 0}>
+          <div class="tl-composer-chips" data-testid="tl-composer-chips" role="list">
+            <For each={draft().quotes}>
+              {(quote) => (
+                <span class="tl-chip tl-quote-chip" data-testid="tl-quote-chip" title={quote.text}>
+                  <Quote size={12} />
+                  <span class="tl-chip-label">{quote.text.replace(/\s+/g, ' ').trim().slice(0, 72)}</span>
+                  <button type="button" class="tl-chip-x" aria-label="Remove quote" onClick={() => removeComposerQuote(key(), quote.id)}>
+                    ✕
+                  </button>
+                </span>
+              )}
+            </For>
+            <For each={chips()}>{(chip: ComposerChip) => <PastedTextChip chip={chip} onRemove={() => removeComposerChip(key(), chip.id)} />}</For>
+            <For each={pending()}>
+              {(attachment) => (
+                <AttachmentChip
+                  attachment={attachment}
+                  onRemove={() => removeAttachment(key(), attachment.id)}
+                  onRetry={() => retryAttachment(key(), hostId(), attachment.id)}
+                  onEdit={attachment.kind === 'image' ? () => openEditor(attachment.id) : undefined}
+                />
+              )}
+            </For>
+          </div>
+        </Show>
         <input
           ref={photoInput}
           type="file"
@@ -615,6 +743,7 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
           onCaret={setCaret}
           onKeyDown={onKeyDown}
           onPasteFiles={props.phone ? undefined : (files) => attachPicked(files)}
+          onPasteNative={!props.phone && isTauriDesktop() ? pasteNative : undefined}
           onPasteText={onPasteText}
         />
         <Toolbar
@@ -629,18 +758,20 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
               onClick={(e) => setPlusAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
               data-testid="composer-plus"
             >
-              <Paperclip size={16} />
+              <Paperclip size={17} />
             </button>
           }
           end={
             <span class="tb-end-group">
-              <ContextRing session={props.session} />
+              <Show when={!props.draft}>
+                <ContextRing session={props.session} />
+              </Show>
               <SendButton
                 running={running()}
                 disabled={props.readOnly}
                 empty={empty()}
                 blocked={!canSend()}
-                blockedReason="Waiting for the attachments — Send unlocks when they are ready"
+                blockedReason={props.busy ? 'Starting the chat…' : 'Waiting for the attachments — Send unlocks when they are ready'}
                 onSend={() => send()}
                 onStop={stop}
                 onSendNow={sendNow}
@@ -657,9 +788,7 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
           <ToolbarSlot slot="think">
             <ThinkingChip session={props.session} disabled={props.readOnly} />
           </ToolbarSlot>
-          <ToolbarSlot slot="model">
-            <ModelChip session={props.session} disabled={props.readOnly} />
-          </ToolbarSlot>
+          <ToolbarSlot slot="model">{props.modelSlot ?? <ModelChip session={props.session} disabled={props.readOnly} />}</ToolbarSlot>
         </Toolbar>
       </div>
       <Show when={plusAnchor()}>
@@ -670,7 +799,7 @@ export function Composer(props: { session: SessionHandle; cwd?: () => string | u
             onPhoto={() => photoInput?.click()}
             onCamera={() => cameraInput?.click()}
             onFile={() => fileInput?.click()}
-            onSideQuestion={() => openSideQuestion(draft().text.trim() || undefined)}
+            onSideQuestion={props.draft ? undefined : () => openSideQuestion(draft().text.trim() || undefined)}
             onAddTask={() => addTaskFromChat(hostId(), cwd() || undefined)}
           />
         )}

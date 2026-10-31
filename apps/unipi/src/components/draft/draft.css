@@ -1,116 +1,207 @@
 /**
- * Draft view (Z-19, WP-A5): the `/new/:host` composer — hero, pickers, input.
- * Tokens and radii from the Unicrab set (ui.css); the layout mirrors the
- * timeline's empty state + bottom dock composer so the draft reads as the
- * chat it becomes.
+ * Draft view (Z-19, WP-A5): the `/new/:host` start screen — greeting, the
+ * chat's own composer centred under it, a faint Unicrab watermark behind.
+ * Tokens and radii from the Unicrab set (style.css / ui.css); the composer
+ * keeps its own sheet (composer/composer.css).
  */
 
+/* The conversation's empty slot is a 760 px column; the start screen owns the pane. */
+.tl-empty[data-testid='draft-empty'] {
+  display: flex;
+  max-width: none;
+  padding: 0;
+}
+
 .draft {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
+  width: 100%;
   min-height: 100%;
-  gap: 14px;
-  padding: 24px 18px 18px;
+  padding: 32px 20px 12vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  isolation: isolate;
 }
 
-.draft-hero { width: min(660px, 100%); }
+/* The watermark: large, dim, desaturated — a presence, never a highlight. */
+.draft-mark {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  user-select: none;
+  /* On the wrapper: the mascot's own sheet owns the svg's opacity. */
+  opacity: 0.04;
+  filter: saturate(0.5);
+}
+.draft-mark-crab {
+  width: min(560px, 78vw);
+  height: auto;
+  transform: translateY(-6%);
+  image-rendering: pixelated;
+}
 
-.draft-pickers {
+.draft-center {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  width: min(720px, 100%);
+}
+
+.draft .empty-chat[data-variant='start'] {
   gap: 8px;
-  width: min(660px, 100%);
+  padding: 0 8px;
+}
+.draft .empty-chat[data-variant='start'] .empty-chat-greeting {
+  margin: 0;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.draft .empty-chat[data-variant='start'] .empty-chat-hint {
+  color: var(--color-text-dim);
 }
 
-.draft-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
+.draft-composer { width: 100%; text-align: left; }
+.draft-composer .tl-composer-wrap { max-width: none; }
+.draft-composer .tl-composer { width: 100%; max-width: none; margin: 0; box-sizing: border-box; }
+.draft-composer .tl-composer.tl-composer-dock {
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 90%), 0 16px 48px rgb(0 0 0 / 38%);
 }
+.draft-composer .tl-composer.tl-composer-dock:focus-within,
+.draft-composer .tl-composer.tl-composer-dock[data-drop] {
+  box-shadow:
+    inset 0 0 0 1px rgb(240 120 24 / 55%),
+    0 0 0 3px rgb(240 120 24 / 12%),
+    0 16px 48px rgb(0 0 0 / 38%);
+}
+/* A roomier first message: two lines tall before it grows. */
+.draft-composer .tl-composer .tl-composer-field { min-height: 60px; }
 
-.draft-chip {
+/* ── the workspace / PC chips (inside the card, above the field) ───────── */
+.ws-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: min(260px, 60%);
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px 0 9px;
+  border-radius: 9999px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ws-chip:hover:not(:disabled),
+.ws-chip[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-text); }
+.ws-chip:disabled { opacity: 0.5; }
+.ws-chip-ic { flex: 0 0 auto; color: var(--color-claw); }
+.ws-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ws-chip-chev { flex: 0 0 auto; color: var(--color-text-dim); }
+
+/* ── their menus (inside an AnchoredMenu) ──────────────────────────────── */
+.ws-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+}
+.ws-label {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+.ws-sep { height: 1px; margin: 5px 8px; background: var(--color-line); }
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  color: var(--color-text);
+}
+.ws-row:hover { background: var(--color-surface-3); }
+.ws-row[aria-checked='true'] { background: rgb(240 120 24 / 9%); }
+.ws-row-ic { flex: 0 0 auto; color: var(--color-text-dim); }
+.ws-row[aria-checked='true'] .ws-row-ic { color: var(--color-claw); }
+.ws-row-text { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; }
+.ws-row-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13.5px; line-height: 18px; font-weight: 500; }
+.ws-row-detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 11.5px; line-height: 15px; color: var(--color-text-dim); }
+.ws-row-check { flex: 0 0 auto; color: var(--color-claw); }
+.ws-row-open .ws-row-label { color: var(--color-text-muted); }
+.ws-row-dir { min-height: 34px; }
+
+.ws-browse { display: flex; flex-direction: column; min-height: 0; }
+.ws-browse-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px 6px; border-bottom: 1px solid var(--color-line); }
+.ws-browse-up {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.ws-browse-up:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-text); }
+.ws-browse-up:disabled { opacity: 0.35; }
+.ws-browse-path { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; font-family: var(--font-mono); font-size: 12px; color: var(--color-text-muted); }
+.ws-browse-list { display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; }
+.ws-browse-note { padding: 10px 12px; font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); }
+.ws-browse-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 4px 2px; border-top: 1px solid var(--color-line); }
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
   min-height: 30px;
   padding: 0 12px;
   border-radius: 9999px;
-  border: 1px solid var(--color-line);
-  background: var(--color-surface-1);
-  color: var(--color-text-muted);
-  font-size: 12.5px;
-  max-width: 220px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.draft-chip:hover { color: var(--color-text); border-color: var(--color-text-dim); }
-.draft-chip[data-on] {
   background: var(--color-surface-3);
   color: var(--color-text);
-  border-color: var(--color-text-dim);
+  font-size: 12.5px;
   font-weight: 600;
 }
-
-.draft-form {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  width: min(660px, 100%);
-  padding: 8px 8px 8px 14px;
-  border-radius: 18px;
-  border: 1px solid var(--color-line);
-  background: var(--color-surface-1);
-  box-shadow: 0 8px 30px rgb(0 0 0 / 18%);
-}
-
-.draft-form:focus-within { border-color: var(--color-text-dim); }
-
-.draft-input {
-  flex: 1 1 auto;
-  min-height: 40px;
-  max-height: 160px;
-  resize: none;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--color-text);
-  font: inherit;
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.draft-input::placeholder { color: var(--color-text-dim); }
-
-.draft-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 9999px;
-  border: none;
-  background: var(--color-claw);
-  color: var(--color-ink);
-  flex: none;
-}
-
-.draft-send:disabled { opacity: 0.45; }
-.draft-send:not(:disabled):hover { filter: brightness(1.06); }
+.ws-btn-primary { background: var(--color-claw); color: var(--color-ink); }
+.ws-btn-primary:hover { background: var(--color-amber); }
 
 .draft-error {
   margin: 0;
-  width: min(660px, 100%);
+  width: 100%;
+  padding: 0 6px;
   font-size: 13px;
-  color: var(--color-wm-red, #e5484d);
+  color: var(--color-wm-red);
 }
-
 .draft-error-hint {
   display: block;
   color: var(--color-text-dim);
   font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .draft { padding: 20px 12px 8vh; justify-content: flex-end; }
+  .draft-center { gap: 16px; }
+  .draft .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: 22px; line-height: 28px; }
 }

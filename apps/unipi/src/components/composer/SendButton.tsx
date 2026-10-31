@@ -7,7 +7,7 @@
  * not stop the run (Z-55's popup rule).
  */
 import { Show, createSignal, onCleanup } from 'solid-js';
-import { ChevronUp, SendHorizonal, Square, Zap } from 'lucide-solid';
+import { ArrowUp, ChevronUp, Square, Zap } from 'lucide-solid';
 import { followUpMode, modeLabel, setFollowUpMode } from '../../lib/composer/sendMode';
 import { Tooltip } from '../Tooltip';
 import './sendButton.css';
@@ -55,7 +55,7 @@ export function SendButton(props: {
   };
 
   return (
-    <div class="send-btn" data-send-menu-root data-open={menu() ? '' : undefined} on:keydown={onKeyDown}>
+    <div class="send-ctl" data-send-menu-root data-open={menu() ? '' : undefined} on:keydown={onKeyDown}>
       <Show when={menu()}>
         <div class="send-menu" role="menu" aria-label="Send options" data-testid="send-menu">
           <div class="send-menu-heading">While it runs</div>
@@ -97,11 +97,23 @@ export function SendButton(props: {
         </div>
       </Show>
       <div class="send-btn-main">
+        <button
+          type="button"
+          class="send-btn-chevron"
+          aria-label="Send options"
+          title="While it runs: queue or steer"
+          aria-haspopup="menu"
+          aria-expanded={menu()}
+          onClick={() => setMenu(!menu())}
+          data-testid="send-chevron"
+        >
+          <ChevronUp size={13} />
+        </button>
         {/* The wrapper keeps the tip alive on the disabled state (Z-116: tooltips work on disabled controls). */}
         <Tooltip label={sendTip()}>
           {props.running ? (
             <button type="button" class="tl-composer-send tl-composer-stop" aria-label="Stop" onClick={() => props.onStop()} disabled={props.disabled} data-testid="send-stop">
-              <Square size={15} fill="currentColor" />
+              <Square size={12} fill="currentColor" stroke-width={0} />
             </button>
           ) : (
             <button
@@ -112,13 +124,10 @@ export function SendButton(props: {
               disabled={props.disabled || props.empty || props.blocked}
               data-testid="send-send"
             >
-              <SendHorizonal size={17} />
+              <ArrowUp size={17} stroke-width={2.4} />
             </button>
           )}
         </Tooltip>
-        <button type="button" class="send-btn-chevron" aria-label="Send options" aria-haspopup="menu" aria-expanded={menu()} onClick={() => setMenu(!menu())} data-testid="send-chevron">
-          <ChevronUp size={14} />
-        </button>
       </div>
     </div>
   );

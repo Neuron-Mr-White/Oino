@@ -1,10 +1,12 @@
 /* The send / stop control's chevron menu (WP-A11, Z-52). The button itself
-   reuses `.tl-composer-send` / `.tl-composer-stop` (dock.css). */
-.send-btn { position: relative; display: flex; align-items: center; gap: 2px; }
+   reuses `.tl-composer-send` / `.tl-composer-stop` (composer.css). The root
+   is `.send-ctl`, not `.send-btn` — that name is the old chat screen's
+   38 px red circle (screens/chat.css), which painted behind this control. */
+.send-ctl { position: relative; display: flex; align-items: center; gap: 2px; }
 .send-btn-main { display: flex; align-items: center; gap: 2px; }
 .send-btn-chevron { width: 22px; height: 34px; min-height: 34px; display: grid; place-items: center; border-radius: 9px; background: transparent; color: var(--color-text-dim); }
 .send-btn-chevron:hover { color: var(--color-text); }
-.send-btn[data-open] .send-btn-chevron { color: var(--color-claw); }
+.send-ctl[data-open] .send-btn-chevron { color: var(--color-claw); }
 
 /* the menu opens above the dock's composer */
 .send-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; min-width: 264px; padding: 6px; border-radius: 16px; background: var(--color-surface-2); box-shadow: 0 10px 34px rgb(0 0 0 / 55%), inset 0 0 0 1px var(--color-line); }

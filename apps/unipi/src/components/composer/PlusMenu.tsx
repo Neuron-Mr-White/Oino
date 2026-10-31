@@ -7,6 +7,7 @@
  * sheet for this project (UNI-181 portal).
  */
 import { Camera, FilePlus, Image as ImageIcon, ListPlus, MessageSquareText } from 'lucide-solid';
+import { Show } from 'solid-js';
 import { AnchoredMenu, MenuRow } from '../board/AnchoredMenu';
 
 export function PlusMenu(props: {
@@ -15,7 +16,8 @@ export function PlusMenu(props: {
   onPhoto: () => void;
   onCamera: () => void;
   onFile: () => void;
-  onSideQuestion: () => void;
+  /** Absent in the new-chat draft (a side question needs a chat). */
+  onSideQuestion?: () => void;
   onAddTask: () => void;
 }) {
   return (
@@ -23,7 +25,9 @@ export function PlusMenu(props: {
       <MenuRow icon={<ImageIcon size={18} />} label="Photo" onSelect={() => (props.onDismiss(), props.onPhoto())} />
       <MenuRow icon={<Camera size={18} />} label="Camera" onSelect={() => (props.onDismiss(), props.onCamera())} />
       <MenuRow icon={<FilePlus size={18} />} label="File" onSelect={() => (props.onDismiss(), props.onFile())} />
-      <MenuRow icon={<MessageSquareText size={18} />} label="Side question" onSelect={() => (props.onDismiss(), props.onSideQuestion())} />
+      <Show when={props.onSideQuestion}>
+        <MenuRow icon={<MessageSquareText size={18} />} label="Side question" onSelect={() => (props.onDismiss(), props.onSideQuestion!())} />
+      </Show>
       <MenuRow icon={<ListPlus size={18} />} label="Board task…" onSelect={() => (props.onDismiss(), props.onAddTask())} />
     </AnchoredMenu>
   );

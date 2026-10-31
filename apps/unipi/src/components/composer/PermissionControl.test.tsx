@@ -85,13 +85,13 @@ describe('permission chip (G-6)', () => {
     const s = await open({ status: { planMode: false, permissionMode: 'auto' } });
     const view = render(() => <PermissionControl session={s} onCommand={(cmd) => s.send(cmd, { mode: 'prompt' })} />);
     fireEvent.click(view.getByTestId('permission-chip'));
-    const rows = [...document.querySelectorAll('.recent-popover-row')] as HTMLElement[];
+    const rows = [...document.querySelectorAll('.perm-menu-row')] as HTMLElement[];
     expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Ask'), expect.stringContaining('Auto'), expect.stringContaining('Full')]);
     // The current mode is a no-op.
     fireEvent.click(rows[1]!);
     expect(prompts()).toEqual([]);
     fireEvent.click(view.getByTestId('permission-chip'));
-    fireEvent.click([...document.querySelectorAll('.recent-popover-row')][2] as HTMLElement);
+    fireEvent.click([...document.querySelectorAll('.perm-menu-row')][2] as HTMLElement);
     await waitFor(() => expect(prompts()).toEqual(['/permission full']));
   });
 

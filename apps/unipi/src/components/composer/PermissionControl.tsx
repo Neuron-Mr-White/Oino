@@ -20,7 +20,7 @@ import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { Check, ChevronUp, ListTree, ShieldCheck } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import { parseWorkflowStatus, WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
-import { AnchoredMenu, MenuRow } from '../board/AnchoredMenu';
+import { AnchoredMenu } from '../board/AnchoredMenu';
 
 /** The three modes the extension's `/permission` accepts (`rules::Mode`). */
 export const PERMISSION_MODES = ['ask', 'auto', 'full'] as const;
@@ -103,15 +103,22 @@ export function PermissionControl(props: {
         <ChevronUp size={12} class="tb-chev" />
       </button>
       <Show when={open() && anchorRect()}>
-        <AnchoredMenu anchor={anchorRect()!} alignEnd width={252} label="Permission mode" onDismiss={() => setOpen(false)}>
+        <AnchoredMenu anchor={anchorRect()!} width={276} label="Permission mode" onDismiss={() => setOpen(false)}>
           <For each={PERMISSION_MODES}>
             {(value) => (
-              <MenuRow
-                icon={mode() === value ? <Check size={16} /> : <span class="tb-menu-dot" />}
-                label={MODE_LABEL[value]}
-                hint={<span class="tb-menu-hint">{MODE_HINT[value]}</span>}
-                onSelect={() => pick(value)}
-              />
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={mode() === value}
+                class="perm-menu-row"
+                data-mode={value}
+                onClick={() => pick(value)}
+                data-testid={`permission-option-${value}`}
+              >
+                <span class="perm-menu-check">{mode() === value ? <Check size={16} /> : null}</span>
+                <span class="perm-menu-label">{MODE_LABEL[value]}</span>
+                <span class="perm-menu-desc">{MODE_HINT[value]}</span>
+              </button>
             )}
           </For>
         </AnchoredMenu>
