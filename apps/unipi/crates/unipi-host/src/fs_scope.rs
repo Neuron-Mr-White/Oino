@@ -336,6 +336,22 @@ mod tests {
         PathBuf::from("/home/me")
     }
 
+    /// The scratch base for root-allowance tests: a *default* root outside
+    /// any home. `tempfile::tempdir()` alone follows `TMPDIR`, which a
+    /// wrapping agent session may point inside its own home — then the
+    /// folder is neither under the (fake) home nor under a default root and
+    /// these tests assert the wrong thing entirely.
+    fn sys_tmp() -> &'static std::path::Path {
+        #[cfg(unix)]
+        {
+            std::path::Path::new("/tmp")
+        }
+        #[cfg(not(unix))]
+        {
+            std::env::temp_dir()
+        }
+    }
+
     #[test]
     fn forbidden_covers_system_folders_root_and_other_homes() {
         let h = home();
@@ -464,7 +480,7 @@ mod tests {
 
     #[test]
     fn allow_refuses_forbidden_and_missing_and_adds_custom_roots() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir_in(sys_tmp()).unwrap();
         let mut cfg = FsAccessConfig::default();
         for bad in ["/etc", "/", "/usr/share", "/proc"] {
             assert!(allow(&mut cfg, Path::new(bad), &home()).is_err(), "{bad}");
@@ -503,7 +519,7 @@ mod tests {
 
     #[test]
     fn deny_carves_out_a_subfolder_and_allow_under_a_denied_parent_explains() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(sys_tmp()).unwrap();
         let sub = dir.path().join("sub");
         fs::create_dir_all(&sub).unwrap();
         let mut cfg = FsAccessConfig::default();
