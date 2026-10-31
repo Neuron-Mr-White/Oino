@@ -1,6 +1,6 @@
 //! Handler deadlines that pause while the handler waits for the user (GA-30 / GA-42).
 //!
-//! A handler blocked on an approval, form or select dialog must not time out: unipi waits for
+//! A handler blocked on an approval, form or select dialog must not time out: the embedder waits for
 //! the user indefinitely. [`with_deadline`] lets `deadline` expire only while `waiting`
 //! reports no open dialog; after the dialog closes the handler gets a fresh `deadline`.
 

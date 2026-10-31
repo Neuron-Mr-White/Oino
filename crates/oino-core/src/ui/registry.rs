@@ -7,7 +7,7 @@
 //! (§6.6). Reserved ids are gated to their owner and component (§8).
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 
 use indexmap::IndexMap;
 use oino_ai::{JsonObject, JsonValue};
@@ -24,119 +24,116 @@ use oino_ui::text::Line;
 /// A dialog request in registry form (`UiSnapshot.dialogs`, `op:"dialog"`).
 pub type DialogRequest = oino_ui::slot::UiRequest;
 
-/// One reserved first-party entry of §8.
-#[derive(Clone, Copy, Debug)]
-pub struct ReservedEntry {
-    /// Entry id (`"<extensionId>/<name>"`).
-    pub id: &'static str,
-    /// The native component that renders it.
+/// One reserved first-party panel the embedding host registers (§8): the SDK ships an empty
+/// table — every reserved id, its owner and its component key are embedder registration
+/// ([`register_reserved`]), so a bare `oino` knows no first-party panels.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReservedPanelSpec {
+    /// Entry id (`"<extensionId>/<name>"`, or `host/<name>` for host-created ids).
+    pub id: String,
+    /// Opaque component key the frontend renders (wire value, e.g. `"board"`).
     pub component: ReservedComponent,
-    /// The extension id that owns (and gates) it.
-    pub owner: &'static str,
+    /// The extension id that owns (and gates) it; `host` for host-created ids.
+    pub owner: String,
     /// Default slot.
     pub slot: Slot,
     /// Slots the owner may request instead (the default is always allowed).
-    pub allowed: &'static [Slot],
+    pub allowed: Vec<Slot>,
     /// Default title.
-    pub title: &'static str,
+    pub title: String,
+    /// Default `order` (§6.4) per slot; a slot without an entry defaults to 0.
+    pub orders: Vec<(Slot, i32)>,
 }
 
-/// The fixed reserved-id table of §8 (RULINGS: the file-summary id is
-/// `unipi.file-summary`).
-pub const RESERVED_ENTRIES: [ReservedEntry; 9] = [
-    ReservedEntry {
-        id: "unipi.kanboard/board",
-        component: ReservedComponent::Board,
-        owner: "unipi.kanboard",
-        slot: Slot::Fullscreen,
-        allowed: &[Slot::Fullscreen, Slot::SidePane],
-        title: "Board",
-    },
-    ReservedEntry {
-        id: "unipi.cron/jobs",
-        component: ReservedComponent::Cron,
-        owner: "unipi.cron",
-        slot: Slot::Fullscreen,
-        allowed: &[Slot::Fullscreen],
-        title: "Cron",
-    },
-    ReservedEntry {
-        id: "host/files",
-        component: ReservedComponent::Files,
-        owner: "host",
-        slot: Slot::SidePane,
-        allowed: &[Slot::SidePane, Slot::Fullscreen],
-        title: "Files",
-    },
-    ReservedEntry {
-        id: "host/git",
-        component: ReservedComponent::Git,
-        owner: "host",
-        slot: Slot::SidePane,
-        allowed: &[Slot::SidePane],
-        title: "Git",
-    },
-    ReservedEntry {
-        id: "unipi.browser/browser",
-        component: ReservedComponent::Browser,
-        owner: "unipi.browser",
-        slot: Slot::SidePane,
-        allowed: &[Slot::SidePane],
-        title: "Browser",
-    },
-    ReservedEntry {
-        id: "host/terminal",
-        component: ReservedComponent::Terminal,
-        owner: "host",
-        slot: Slot::BottomPane,
-        allowed: &[Slot::BottomPane, Slot::SidePane],
-        title: "Terminal",
-    },
-    ReservedEntry {
-        id: "unipi.info-screen/dashboard",
-        component: ReservedComponent::SessionInfo,
-        owner: "unipi.info-screen",
-        slot: Slot::Overlay,
-        allowed: &[Slot::Overlay],
-        title: "Session",
-    },
-    ReservedEntry {
-        id: "unipi.long-horizon/visualize",
-        component: ReservedComponent::LhStatus,
-        owner: "unipi.long-horizon",
-        slot: Slot::SidePane,
-        allowed: &[Slot::SidePane],
-        title: "Progress",
-    },
-    ReservedEntry {
-        id: "unipi.file-summary/turn-files",
-        component: ReservedComponent::TurnFiles,
-        owner: "unipi.file-summary",
-        slot: Slot::TurnFooter,
-        allowed: &[Slot::TurnFooter],
-        title: "Changed files",
-    },
-];
+impl ReservedPanelSpec {
+    /// A spec with no alternate slots and one default order for every slot.
+    #[must_use]
+    pub fn new(
+        id: impl Into<String>,
+        owner: impl Into<String>,
+        component: impl Into<String>,
+        slot: Slot,
+        title: impl Into<String>,
+        order: i32,
+    ) -> Self {
+        let slot_key = slot;
+        Self {
+            id: id.into(),
+            component: ReservedComponent::new(component),
+            owner: owner.into(),
+            slot,
+            allowed: Vec::new(),
+            title: title.into(),
+            orders: vec![(slot_key, order)],
+        }
+    }
 
-/// The reserved entry with this id, if any (§8).
+    /// The default `order` of this panel in `slot` (§6.4).
+    #[must_use]
+    pub fn order_for(&self, slot: Slot) -> i32 {
+        self.orders
+            .iter()
+            .find(|(key, _)| *key == slot)
+            .map_or(0, |(_, order)| *order)
+    }
+}
+
+fn reserved_registry() -> &'static RwLock<Vec<Arc<ReservedPanelSpec>>> {
+    static RESERVED: OnceLock<RwLock<Vec<Arc<ReservedPanelSpec>>>> = OnceLock::new();
+    RESERVED.get_or_init(|| RwLock::new(Vec::new()))
+}
+
+/// Registers a reserved panel for every registry of the process (§8): the embedding host
+/// does this once at startup, before sessions open. Re-registering an id replaces its spec;
+/// the manifest-side owner table (extension-api) is kept in sync. Idempotent and cheap —
+/// embedders may call it from every entry point.
+///
+/// The panel is gated to `owner`, rendered as `component`, placed in `slot` (alternates in
+/// `allowed`) and titled `title`.
+pub fn register_reserved(spec: ReservedPanelSpec) {
+    let spec = Arc::new(spec);
+    let mut table = reserved_registry().write().expect("reserved registry poisoned");
+    match table.iter_mut().find(|entry| entry.id == spec.id) {
+        Some(slot) => *slot = Arc::clone(&spec),
+        None => table.push(Arc::clone(&spec)),
+    }
+    drop(table);
+    oino_extension_api::manifest::register_reserved_owner(&spec.id, &spec.owner);
+}
+
+/// Drops every registered reserved panel (tests and embedder restarts).
+pub fn clear_reserved_panels() {
+    reserved_registry()
+        .write()
+        .expect("reserved registry poisoned")
+        .clear();
+    oino_extension_api::manifest::clear_reserved_owners();
+}
+
+/// Every registered reserved panel, in registration order (§8).
 #[must_use]
-pub fn reserved(id: &str) -> Option<&'static ReservedEntry> {
-    RESERVED_ENTRIES.iter().find(|entry| entry.id == id)
+pub fn reserved_panels() -> Vec<Arc<ReservedPanelSpec>> {
+    reserved_registry()
+        .read()
+        .expect("reserved registry poisoned")
+        .clone()
 }
 
-/// Built-in order constants of §6.4 (extensions default to 0).
+/// The registered reserved panel with this id, if any (§8).
+#[must_use]
+pub fn reserved(id: &str) -> Option<Arc<ReservedPanelSpec>> {
+    reserved_registry()
+        .read()
+        .expect("reserved registry poisoned")
+        .iter()
+        .find(|entry| entry.id == id)
+        .cloned()
+}
+
+/// The default `order` of a registered reserved panel in `slot` (§6.4); 0 for anything else.
 #[must_use]
 pub fn default_order(id: &str, slot: Slot) -> i32 {
-    match id {
-        "host/files" => 1000,
-        "host/git" | "unipi.cron/jobs" => 990,
-        "unipi.browser/browser" => 980,
-        "host/terminal" if slot == Slot::BottomPane => 1000,
-        "host/terminal" => 970,
-        "unipi.kanboard/board" if slot == Slot::Fullscreen => 1000,
-        "unipi.kanboard/board" => 960,
-        _ => 0,
-    }
+    reserved(id).map_or(0, |spec| spec.order_for(slot))
 }
 
 /// Built-in Settings order of §6.4 (`core`/`pi` first, host/app next).
@@ -501,7 +498,7 @@ impl UiRegistry {
             .title
             .clone()
             .or_else(|| existing.and_then(|entry| entry.title.clone()))
-            .or_else(|| reserved(&id).map(|reserved| reserved.title.to_owned()));
+            .or_else(|| reserved(&id).map(|reserved| reserved.title.clone()));
         let entry = UiEntry {
             id: id.clone(),
             extension_id: extension,
@@ -901,7 +898,7 @@ impl UiRegistry {
             if entry.owner != request.extension_id {
                 return Err(RegistryError::ReservedOwned {
                     id: request.id.clone(),
-                    owner: entry.owner.to_owned(),
+                    owner: entry.owner.clone(),
                 });
             }
             let slot = if request.slot == entry.slot || entry.allowed.contains(&request.slot) {
@@ -911,11 +908,11 @@ impl UiRegistry {
             };
             let order = request
                 .order
-                .unwrap_or_else(|| default_order(entry.id, slot));
+                .unwrap_or_else(|| default_order(&entry.id, slot));
             return Ok((
                 slot,
                 UiView::Reserved {
-                    component: entry.component,
+                    component: entry.component.clone(),
                     fallback: fallback.map(Box::new),
                     params,
                 },
@@ -1673,11 +1670,31 @@ mod tests {
 
     #[test]
     fn reserved_ids_are_gated_to_their_owner() {
+        register_reserved(ReservedPanelSpec {
+            allowed: vec![Slot::Fullscreen, Slot::SidePane],
+            orders: vec![(Slot::Fullscreen, 1000), (Slot::SidePane, 960)],
+            ..ReservedPanelSpec::new(
+                "acme.board/board",
+                "acme.board",
+                "board",
+                Slot::Fullscreen,
+                "Board",
+                1000,
+            )
+        });
+        register_reserved(ReservedPanelSpec::new(
+            "acme.cron/jobs",
+            "acme.cron",
+            "cron",
+            Slot::Fullscreen,
+            "Cron",
+            990,
+        ));
         let mut registry = registry();
         let error = registry
             .put(request(
                 "evil",
-                "unipi.kanboard/board",
+                "acme.board/board",
                 Slot::Fullscreen,
                 tree("1"),
             ))
@@ -1685,14 +1702,14 @@ mod tests {
         assert_eq!(
             error,
             RegistryError::ReservedOwned {
-                id: "unipi.kanboard/board".to_owned(),
-                owner: "unipi.kanboard".to_owned()
+                id: "acme.board/board".to_owned(),
+                owner: "acme.board".to_owned()
             }
         );
         // A reserved component outside the table is not allowed either.
         let mut fake = request("evil", "evil/board", Slot::Overlay, tree("1"));
         fake.view = UiView::Reserved {
-            component: ReservedComponent::Board,
+            component: ReservedComponent::new("board"),
             fallback: None,
             params: None,
         };
@@ -1703,18 +1720,18 @@ mod tests {
         // The owner gets the component entry; its spec is ignored (§8).
         let out = registry
             .put(request(
-                "unipi.kanboard",
-                "unipi.kanboard/board",
+                "acme.board",
+                "acme.board/board",
                 Slot::Fullscreen,
                 tree("ignored"),
             ))
             .unwrap();
         assert!(out.created);
-        let entry = registry.get("unipi.kanboard/board").unwrap();
+        let entry = registry.get("acme.board/board").unwrap();
         assert_eq!(
             entry.view,
             UiView::Reserved {
-                component: ReservedComponent::Board,
+                component: ReservedComponent::new("board"),
                 fallback: None,
                 params: None,
             }
@@ -1724,50 +1741,58 @@ mod tests {
         // `sidePane` is allowed for the board; other slots fall back to the default.
         registry
             .put(request(
-                "unipi.kanboard",
-                "unipi.kanboard/board",
+                "acme.board",
+                "acme.board/board",
                 Slot::SidePane,
                 tree("ignored"),
             ))
             .unwrap();
         assert_eq!(
-            registry.get("unipi.kanboard/board").unwrap().slot,
+            registry.get("acme.board/board").unwrap().slot,
             Slot::SidePane
         );
-        assert_eq!(registry.get("unipi.kanboard/board").unwrap().order, 960);
+        assert_eq!(registry.get("acme.board/board").unwrap().order, 960);
         registry
             .put(request(
-                "unipi.cron",
-                "unipi.cron/jobs",
+                "acme.cron",
+                "acme.cron/jobs",
                 Slot::SidePane,
                 tree("ignored"),
             ))
             .unwrap();
         assert_eq!(
-            registry.get("unipi.cron/jobs").unwrap().slot,
+            registry.get("acme.cron/jobs").unwrap().slot,
             Slot::Fullscreen
         );
     }
 
     #[test]
     fn reserved_fallbacks_are_set_by_update_panel() {
+        register_reserved(ReservedPanelSpec::new(
+            "acme.kanban/board",
+            "acme.kanban",
+            "board",
+            Slot::Fullscreen,
+            "Board",
+            1000,
+        ));
         let mut registry = registry();
         registry
             .put(request(
-                "unipi.kanboard",
-                "unipi.kanboard/board",
+                "acme.kanban",
+                "acme.kanban/board",
                 Slot::Fullscreen,
                 tree("ignored"),
             ))
             .unwrap();
         registry
             .update(EntryUpdate {
-                id: "unipi.kanboard/board".to_owned(),
+                id: "acme.kanban/board".to_owned(),
                 fallback: Some(tree("tasks")),
                 ..EntryUpdate::default()
             })
             .unwrap();
-        let entry = registry.get("unipi.kanboard/board").unwrap();
+        let entry = registry.get("acme.kanban/board").unwrap();
         let UiView::Reserved { fallback, .. } = &entry.view else {
             panic!("not reserved");
         };

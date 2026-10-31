@@ -78,12 +78,15 @@ pub struct SourcePackage {
 }
 
 /// Discovery inputs.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SourcesContext {
     /// Agent dir (`~/.oino`).
     pub agent_dir: PathBuf,
     /// Project cwd.
     pub cwd: PathBuf,
+    /// Embedder-supplied share dirs, tried before the exe-relative candidates (an installer
+    /// tree the host owns; `OINO_DIST_EXTENSIONS` still overrides everything).
+    pub dist_dirs: Vec<PathBuf>,
     /// `-ne`: drop `kind: "extension"` packages of the scanned sources (providers stay;
     /// explicit `-e` packages are never filtered — same as `-e` before the split).
     pub no_extensions: bool,
@@ -114,46 +117,37 @@ pub struct ResolvedSources {
     pub diagnostics: Vec<SourceDiagnostic>,
 }
 
-/// Per-OS exe-relative share-dir candidates (dist.md §5 layouts; first existing wins):
-/// Linux `/usr/bin/oino` → `/usr/share/unipi-oino/extensions`; macOS
-/// `UniPi.app/Contents/Resources/bin/oino` → `Contents/Resources/extensions`; Windows
-/// `%LOCALAPPDATA%\UniPi\oino.exe` → `%LOCALAPPDATA%\UniPi\extensions`.
+/// Exe-relative share-dir candidates (dist.md §5 layouts; first existing wins):
+/// `<prefix>/share/oino/extensions` (Linux `/usr/bin/oino` → `/usr/share/oino/extensions`;
+/// the same rule covers any prefix install), `<prefix>/extensions` (macOS
+/// `App.app/Contents/Resources/bin/oino` → `Contents/Resources/extensions`), and
+/// `extensions` next to the exe (Windows `%LOCALAPPDATA%\App\oino.exe` →
+/// `%LOCALAPPDATA%\App\extensions`). Embedders whose tree sits elsewhere pass their
+/// dirs through [`SourcesContext::dist_dirs`] (or `OINO_DIST_EXTENSIONS`).
 #[must_use]
 pub fn share_candidates(exe: &Path) -> Vec<PathBuf> {
     let Some(bin) = exe.parent() else {
         return Vec::new();
     };
-    let linux = || {
-        bin.parent()
-            .map(|p| p.join("share").join("unipi-oino").join("extensions"))
-    };
-    if cfg!(windows) {
-        [Some(bin.join("extensions")), linux()]
-            .into_iter()
-            .flatten()
-            .collect()
-    } else if cfg!(target_os = "macos") {
-        [
-            Some(bin.join("../extensions")),
-            linux(),
-            Some(bin.join("extensions")),
-        ]
+    let prefix = || bin.parent();
+    let share = || prefix().map(|p| p.join("share").join("oino").join("extensions"));
+    let beside = || prefix().map(|p| p.join("extensions"));
+    [share(), beside(), Some(bin.join("extensions"))]
         .into_iter()
         .flatten()
         .collect()
-    } else {
-        linux().into_iter().collect()
-    }
 }
 
 /// The distribution share extensions dir: `OINO_DIST_EXTENSIONS` when set (empty = disabled;
-/// a missing dir warns), else the first existing exe-relative candidate.
+/// a missing dir warns), else the first existing of the embedder dirs ([`SourcesContext::dist_dirs`])
+/// and the exe-relative candidates.
 #[must_use]
 pub fn dist_share_dir() -> Option<PathBuf> {
     let mut diagnostics = Vec::new();
-    dist_share_dir_with(
+    pick_dist_dir(
         std::env::var_os(DIST_EXTENSIONS_ENV).as_deref(),
         &exe_path(),
+        &[],
         &mut diagnostics,
     )
 }
@@ -162,7 +156,7 @@ fn exe_path() -> PathBuf {
     std::env::current_exe().unwrap_or_else(|_| PathBuf::from("oino"))
 }
 
-/// Pure core of [`dist_share_dir`].
+/// Pure core of [`dist_share_dir`] (no embedder dirs; see [`pick_dist_dir`]).
 ///
 /// # Errors
 ///
@@ -171,6 +165,23 @@ fn exe_path() -> PathBuf {
 pub fn dist_share_dir_with(
     env: Option<&std::ffi::OsStr>,
     exe: &Path,
+    diagnostics: &mut Vec<SourceDiagnostic>,
+) -> Option<PathBuf> {
+    pick_dist_dir(env, exe, &[], diagnostics)
+}
+
+/// The distribution share dir an embedder computes: `OINO_DIST_EXTENSIONS` when set (empty =
+/// disabled; a missing dir warns), else the first existing dir of `extra` followed by the
+/// exe-relative [`share_candidates`].
+///
+/// # Errors
+///
+/// None; problems are reported through `diagnostics`.
+#[must_use]
+pub fn pick_dist_dir(
+    env: Option<&std::ffi::OsStr>,
+    exe: &Path,
+    extra: &[PathBuf],
     diagnostics: &mut Vec<SourceDiagnostic>,
 ) -> Option<PathBuf> {
     if let Some(value) = env {
@@ -187,7 +198,11 @@ pub fn dist_share_dir_with(
         )));
         return None;
     }
-    share_candidates(exe).into_iter().find(|dir| dir.is_dir())
+    extra
+        .iter()
+        .chain(share_candidates(exe).iter())
+        .find(|dir| dir.is_dir())
+        .cloned()
 }
 
 /// Loads the package rooted at `root` (`extension.json` + component path).
@@ -334,7 +349,12 @@ pub fn resolve_with(
     dist_env: Option<&std::ffi::OsStr>,
 ) -> ResolvedSources {
     let mut out = ResolvedSources::default();
-    let share = dist_share_dir_with(dist_env, &exe_path(), &mut out.diagnostics);
+    let share = pick_dist_dir(
+        dist_env,
+        &exe_path(),
+        &context.dist_dirs,
+        &mut out.diagnostics,
+    );
     out.share_dir.clone_from(&share);
     let keep =
         |p: &LoadedPackage| !context.no_extensions || p.manifest.kind == ExtensionKind::Provider;
@@ -475,6 +495,7 @@ mod tests {
         SourcesContext {
             agent_dir: dir.join("agent"),
             cwd: dir.join("cwd"),
+            dist_dirs: Vec::new(),
             no_extensions: false,
             excluded: Vec::new(),
         }
@@ -501,28 +522,53 @@ mod tests {
         };
         if cfg!(windows) {
             assert_eq!(
-                candidates(r"C:\Users\u\AppData\Local\UniPi\oino.exe"),
+                candidates(r"C:\Users\u\AppData\Local\acme\oino.exe"),
                 vec![
-                    r"C:\Users\u\AppData\Local\UniPi\extensions".to_owned(),
+                    r"C:\Users\u\AppData\Local\share\oino\extensions".to_owned(),
                     r"C:\Users\u\AppData\Local\extensions".to_owned(),
+                    r"C:\Users\u\AppData\Local\acme\extensions".to_owned(),
                 ]
             );
         } else if cfg!(target_os = "macos") {
             assert_eq!(
-                candidates("/Applications/UniPi.app/Contents/Resources/bin/oino"),
+                candidates("/Applications/Acme.app/Contents/Resources/bin/oino"),
                 vec![
-                    "/Applications/UniPi.app/Contents/Resources/bin/../extensions".to_owned(),
-                    "/Applications/UniPi.app/Contents/Resources/share/unipi-oino/extensions"
-                        .to_owned(),
-                    "/Applications/UniPi.app/Contents/Resources/bin/extensions".to_owned(),
+                    "/Applications/Acme.app/Contents/Resources/share/oino/extensions".to_owned(),
+                    "/Applications/Acme.app/Contents/Resources/extensions".to_owned(),
+                    "/Applications/Acme.app/Contents/Resources/bin/extensions".to_owned(),
                 ]
             );
         } else {
             assert_eq!(
                 candidates("/usr/bin/oino"),
-                vec!["/usr/share/unipi-oino/extensions".to_owned()]
+                vec![
+                    "/usr/share/oino/extensions".to_owned(),
+                    "/usr/extensions".to_owned(),
+                    "/usr/bin/extensions".to_owned(),
+                ]
             );
         }
+    }
+
+    #[test]
+    fn embedder_dist_dirs_win_over_exe_relative_candidates() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut context = ctx(dir.path());
+        context.cwd = dir.path().join("cwd-other");
+        context.dist_dirs = vec![dir.path().join("hostdist/extensions")];
+        package(
+            &dir.path().join("hostdist/extensions/acme.core"),
+            "acme.core",
+            "extension",
+        );
+        package(
+            &dir.path().join("agent/extensions/acme.user"),
+            "acme.user",
+            "extension",
+        );
+        let out = resolve_with(&[], &context, None);
+        assert_eq!(out.share_dir, Some(dir.path().join("hostdist/extensions")));
+        assert_eq!(ids(&out), vec!["acme.core".to_owned(), "acme.user".to_owned()]);
     }
 
     #[test]
@@ -556,25 +602,25 @@ mod tests {
         let mut context = ctx(dir.path());
         context.cwd = dir.path().join("cwd-other");
         package(
-            &dir.path().join("agent/extensions/unipi.core"),
-            "unipi.core",
+            &dir.path().join("agent/extensions/acme.core"),
+            "acme.core",
             "extension",
         );
         package(
-            &dir.path().join("cwd-other/.oino/extensions/unipi.proj"),
-            "unipi.proj",
+            &dir.path().join("cwd-other/.oino/extensions/acme.proj"),
+            "acme.proj",
             "extension",
         );
         // Share dir: core shadowed by a newer agent copy in place, notify appended.
         package_versioned(
-            &dir.path().join("dist/extensions/unipi.core"),
-            "unipi.core",
+            &dir.path().join("dist/extensions/acme.core"),
+            "acme.core",
             "extension",
             "0.9.0",
         );
         package(
-            &dir.path().join("dist/extensions/unipi.notify"),
-            "unipi.notify",
+            &dir.path().join("dist/extensions/acme.notify"),
+            "acme.notify",
             "extension",
         );
         let share = dir.path().join("dist/extensions");
@@ -583,9 +629,9 @@ mod tests {
         assert_eq!(
             ids(&out),
             vec![
-                "unipi.core".to_owned(),
-                "unipi.notify".to_owned(),
-                "unipi.proj".to_owned(),
+                "acme.core".to_owned(),
+                "acme.notify".to_owned(),
+                "acme.proj".to_owned(),
             ]
         );
         // The agent copy (1.0.0) replaced the share copy (0.9.0) in place.
@@ -600,18 +646,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let context = ctx(dir.path());
         package(
-            &dir.path().join("agent/extensions/unipi.core"),
-            "unipi.core",
+            &dir.path().join("agent/extensions/acme.core"),
+            "acme.core",
             "extension",
         );
         package_versioned(
             &dir.path().join("e/core"),
-            "unipi.core",
+            "acme.core",
             "extension",
             "9.9.9",
         );
         let out = resolve(&[dir.path().join("e/core").display().to_string()], &context);
-        assert_eq!(ids(&out), vec!["unipi.core".to_owned()]);
+        assert_eq!(ids(&out), vec!["acme.core".to_owned()]);
         assert_eq!(out.packages[0].package.manifest.version, "9.9.9");
         assert!(!out.packages[0].package.bundled);
     }
@@ -678,8 +724,8 @@ mod tests {
             "provider",
         );
         package(
-            &dir.path().join("agent/extensions/unipi.core"),
-            "unipi.core",
+            &dir.path().join("agent/extensions/acme.core"),
+            "acme.core",
             "extension",
         );
         let out = resolve(&[], &context);
@@ -696,12 +742,12 @@ mod tests {
             "provider",
         );
         package(
-            &dir.path().join("agent/extensions/unipi.notify"),
-            "unipi.notify",
+            &dir.path().join("agent/extensions/acme.notify"),
+            "acme.notify",
             "extension",
         );
         context.excluded = vec![
-            "unipi.notify".to_owned(),
+            "acme.notify".to_owned(),
             "oino.anthropic".to_owned(),
             "does.not-exist".to_owned(),
         ];
@@ -710,8 +756,8 @@ mod tests {
         assert_eq!(
             messages(&out),
             vec![
+                "Excluded extension \"acme.notify\" not loaded".to_owned(),
                 "Excluded extension \"oino.anthropic\" not loaded".to_owned(),
-                "Excluded extension \"unipi.notify\" not loaded".to_owned(),
                 "--exclude-extension \"does.not-exist\" matched no extension package".to_owned(),
             ]
         );
@@ -725,12 +771,12 @@ mod tests {
     #[test]
     fn missing_declared_binaries_warn_but_load() {
         let dir = tempfile::tempdir().unwrap();
-        let pkg = dir.path().join("agent/extensions/unipi.kanboard");
-        package(&pkg, "unipi.kanboard", "extension");
+        let pkg = dir.path().join("agent/extensions/acme.kanboard");
+        package(&pkg, "acme.kanboard", "extension");
         let manifest = std::fs::read_to_string(pkg.join(MANIFEST_FILE)).unwrap();
         std::fs::write(
             pkg.join(MANIFEST_FILE),
-            manifest.replace("\"kind\"", "\"binaries\":[\"unipi-kanboard\"],\"kind\""),
+            manifest.replace("\"kind\"", "\"binaries\":[\"acme-kanboard\"],\"kind\""),
         )
         .unwrap();
         // Missing: one warning, the package still loads.
@@ -739,7 +785,7 @@ mod tests {
         assert_eq!(
             messages(&out),
             vec![
-                "Extension unipi.kanboard: binary \"unipi-kanboard\" missing from bin/ — its tools may report unavailable"
+                "Extension acme.kanboard: binary \"acme-kanboard\" missing from bin/ — its tools may report unavailable"
                     .to_owned(),
             ]
         );
@@ -750,7 +796,7 @@ mod tests {
         );
         // Present: silent.
         std::fs::create_dir_all(pkg.join("bin")).unwrap();
-        std::fs::write(pkg.join("bin/unipi-kanboard"), b"#").unwrap();
+        std::fs::write(pkg.join("bin/acme-kanboard"), b"#").unwrap();
         let out = resolve(&[], &ctx(dir.path()));
         assert_eq!(ids(&out).len(), 1);
         assert_eq!(messages(&out).len(), 0);

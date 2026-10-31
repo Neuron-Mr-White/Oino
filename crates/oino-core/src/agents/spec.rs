@@ -163,13 +163,13 @@ mod tests {
         );
         assert_eq!(spec.ui, UiPolicy::AutoDeny { note: "no".into() });
         let minimal: AgentSpec = serde_json::from_value(json!({
-            "label": "btw", "extensions": {"only": ["unipi.memory"]}, "seed": "branchCopy",
+            "label": "btw", "extensions": {"only": ["acme.memory"]}, "seed": "branchCopy",
             "persistence": "memory", "ui": "forward"
         }))
         .unwrap();
         assert_eq!(
             minimal.extensions,
-            ExtensionPolicy::Only(vec!["unipi.memory".into()])
+            ExtensionPolicy::Only(vec!["acme.memory".into()])
         );
         assert_eq!(minimal.seed, Seed::BranchCopy);
         assert_eq!(minimal.ui, UiPolicy::Forward);

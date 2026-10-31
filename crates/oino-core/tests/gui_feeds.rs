@@ -134,7 +134,7 @@ async fn topics_feed_snapshots_and_streams_matching_publishes() {
         let topic = topic.to_owned();
         async move {
             host.call(
-                "unipi.workflow",
+                "acme.workflow",
                 &cx,
                 HostOp::BusPublish {
                     topic,
@@ -147,21 +147,21 @@ async fn topics_feed_snapshots_and_streams_matching_publishes() {
         }
     };
     // Published before anyone subscribed: kept as sticky state.
-    publish("unipi:workflow:status", json!({"planMode": true}), true).await;
-    publish("unipi:bg:tasks", json!({"tasks": []}), true).await;
+    publish("acme:workflow:status", json!({"planMode": true}), true).await;
+    publish("acme:bg:tasks", json!({"tasks": []}), true).await;
     let snapshot = session
-        .subscribe_topics(&["unipi:workflow:*".into()], &[])
+        .subscribe_topics(&["acme:workflow:*".into()], &[])
         .await;
     assert_eq!(snapshot.len(), 1);
-    assert_eq!(snapshot[0].topic, "unipi:workflow:status");
-    assert_eq!(snapshot[0].publisher, "unipi.workflow");
+    assert_eq!(snapshot[0].topic, "acme:workflow:status");
+    assert_eq!(snapshot[0].publisher, "acme.workflow");
     assert_eq!(snapshot[0].data, json!({"planMode": true}));
     let mut events = session.subscribe();
-    publish("unipi:bg:tasks", json!({"tasks": [1]}), true).await;
-    publish("unipi:workflow:status", json!({"planMode": false}), true).await;
+    publish("acme:bg:tasks", json!({"tasks": [1]}), true).await;
+    publish("acme:workflow:status", json!({"planMode": false}), true).await;
     // Unchanged sticky values do not repeat.
-    publish("unipi:workflow:status", json!({"planMode": false}), true).await;
-    publish("unipi:workflow:ping", json!(1), false).await;
+    publish("acme:workflow:status", json!({"planMode": false}), true).await;
+    publish("acme:workflow:ping", json!(1), false).await;
     let first = next_oino(&mut events, |e| match e {
         OinoEvent::Topic { topic, data, .. } => Some((topic.clone(), data.clone())),
         _ => None,
@@ -169,32 +169,32 @@ async fn topics_feed_snapshots_and_streams_matching_publishes() {
     .await;
     assert_eq!(
         first,
-        ("unipi:workflow:status".into(), json!({"planMode": false}))
+        ("acme:workflow:status".into(), json!({"planMode": false}))
     );
     let second = next_oino(&mut events, |e| match e {
         OinoEvent::Topic { topic, sticky, .. } => Some((topic.clone(), *sticky)),
         _ => None,
     })
     .await;
-    assert_eq!(second, ("unipi:workflow:ping".into(), false));
+    assert_eq!(second, ("acme:workflow:ping".into(), false));
     // bus.get for hosts without their own bus and `_oino/bus_get`.
     let value = services
         .host
         .call(
             "x",
             &cx(&session, CallKind::Event),
-            HostOp::BusGet("unipi:bg:tasks".into()),
+            HostOp::BusGet("acme:bg:tasks".into()),
         )
         .await
         .unwrap();
     assert_eq!(value, json!({"tasks": [1]}));
     assert_eq!(
-        session.bus_get("unipi:bg:tasks").unwrap().data,
+        session.bus_get("acme:bg:tasks").unwrap().data,
         json!({"tasks": [1]})
     );
     // Unsubscribing stops the feed; the git topic is always a valid shape.
     session
-        .subscribe_topics(&[], &["unipi:workflow:*".into()])
+        .subscribe_topics(&[], &["acme:workflow:*".into()])
         .await;
     assert_eq!(session.topic_patterns().len(), 0);
     let git = session.subscribe_topics(&["oino:git".into()], &[]).await;
@@ -216,7 +216,7 @@ async fn agents_feed_reports_tree_changes_and_forwards_child_events() {
     let child = services
         .host
         .spawn_agent(
-            "unipi.subagents",
+            "acme.subagents",
             &cx(&parent, CallKind::Tool),
             json!({"label": "Subagent scout", "childRole": "subagent"}),
         )
@@ -229,7 +229,7 @@ async fn agents_feed_reports_tree_changes_and_forwards_child_events() {
     .await;
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0].label, "Subagent scout");
-    assert_eq!(agents[0].owner, "unipi.subagents");
+    assert_eq!(agents[0].owner, "acme.subagents");
     assert_eq!(agents[0].role.as_deref(), Some("subagent"));
     assert_eq!(agents[0].depth, 1);
     assert_eq!(parent.agent_tree(), agents);

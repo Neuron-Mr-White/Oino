@@ -112,7 +112,7 @@ async fn commands_work_from_a_non_tokio_thread() {
             };
             let consumed = backend.editor_event(event).await.unwrap();
             let state = backend.send(PiCommand::GetState.into()).await.unwrap();
-            let topics = backend.topics(&["unipi:*"], &[]).await.unwrap();
+            let topics = backend.topics(&["acme:*"], &[]).await.unwrap();
             (consumed, state.is_some(), topics.len())
         })
     })
@@ -143,20 +143,20 @@ async fn frontend_api_covers_the_gui_feeds() {
     f.services
         .host
         .call(
-            "unipi.fusion",
+            "acme.fusion",
             &cx,
             HostOp::BusPublish {
-                topic: "unipi:fusion:status".into(),
+                topic: "acme:fusion:status".into(),
                 data: json!({"sidekick": "m"}),
                 sticky: true,
             },
         )
         .await
         .unwrap();
-    let topics = backend.topics(&["unipi:fusion:*"], &[]).await.unwrap();
+    let topics = backend.topics(&["acme:fusion:*"], &[]).await.unwrap();
     assert_eq!(topics[0].data, json!({"sidekick": "m"}));
     assert_eq!(
-        backend.bus_get("unipi:fusion:status").await.unwrap(),
+        backend.bus_get("acme:fusion:status").await.unwrap(),
         Some(json!({"sidekick": "m"}))
     );
     assert_eq!(backend.bus_get("nope").await.unwrap(), None);

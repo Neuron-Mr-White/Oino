@@ -372,7 +372,7 @@ async fn thinking_levels_and_models() {
 }
 
 /// `control.set-default-model` writes the fresh-session model into core settings without
-/// touching the running session (unipi-port R4).
+/// touching the running session (the v1 port, R4).
 #[tokio::test]
 async fn set_default_model_persists_core_settings() {
     let provider = FauxProvider::new(Vec::new());

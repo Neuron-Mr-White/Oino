@@ -194,7 +194,7 @@ async fn bench(n: usize, workdir: &Path) -> Result<Value> {
         "roots": roots,
         "childrenPerRootCap": CHILDREN_PER_ROOT,
         "model": "faux/faux-1",
-        "provider": "faux (in-process double, no unipi set)",
+        "provider": "faux (in-process double, no app set)",
         "startedAt": started.to_rfc3339(),
         "durationMs": as_u64(run_started.elapsed().as_millis()),
         "host": host(clock),
@@ -260,7 +260,7 @@ fn spec(i: usize) -> AgentSpec {
     }
 }
 
-/// `Services` with the in-process faux provider (no unipi set, core.md §4 B-1).
+/// `Services` with the in-process faux provider (no app set, core.md §4 B-1).
 async fn services(dir: &Path) -> Result<Arc<Services>> {
     let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
     models.set_runtime_api_key("faux", "bench");

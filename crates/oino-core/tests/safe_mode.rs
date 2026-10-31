@@ -62,7 +62,7 @@ async fn two_failures_disable_extensions_keep_providers_and_name_suspects() {
     // Two failed starts, the first naming a suspect extension.
     {
         let mut safe = SafeMode::load(&agent_dir(dir.path()));
-        safe.note_suspect("unipi.notify", "init failed: boom");
+        safe.note_suspect("acme.notify", "init failed: boom");
         safe.record_failure(FailureEntry::new(FailureStage::Services, "Error: boom"));
         safe.record_failure(FailureEntry::new(FailureStage::Session, "Error: crash"));
     }
@@ -71,7 +71,7 @@ async fn two_failures_disable_extensions_keep_providers_and_name_suspects() {
 
     // Next start: the extension is off, the provider is on, the banner names the suspect.
     let suspect = Arc::new(oino_core::testing::FakeExtension::new(
-        "unipi.notify",
+        "acme.notify",
         Registration::default(),
     ));
     let services = create_services(
@@ -105,7 +105,7 @@ async fn two_failures_disable_extensions_keep_providers_and_name_suspects() {
         "{banner}"
     );
     assert!(
-        banner.contains("unipi.notify (init failed: boom)"),
+        banner.contains("acme.notify (init failed: boom)"),
         "{banner}"
     );
     assert_eq!(
@@ -127,7 +127,7 @@ async fn two_failures_disable_extensions_keep_providers_and_name_suspects() {
 
     // Without the plan the extension loads again (`-ne`-style behavior, nothing latched).
     let suspect = Arc::new(oino_core::testing::FakeExtension::new(
-        "unipi.notify",
+        "acme.notify",
         Registration::default(),
     ));
     let fresh = create_services(
@@ -142,5 +142,5 @@ async fn two_failures_disable_extensions_keep_providers_and_name_suspects() {
         .iter()
         .map(|loaded| loaded.instance.id())
         .collect();
-    assert!(ids.contains(&"unipi.notify"), "{ids:?}");
+    assert!(ids.contains(&"acme.notify"), "{ids:?}");
 }

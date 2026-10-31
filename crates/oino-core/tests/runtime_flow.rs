@@ -267,7 +267,7 @@ async fn package_skills_and_opt_in_skills() {
     let skills = dir.path().join("pkg").join("skills");
     for (name, extra) in [
         ("plain-skill", ""),
-        ("unipi-migrate", "default-enabled: false\n"),
+        ("acme-migrate", "default-enabled: false\n"),
     ] {
         std::fs::create_dir_all(skills.join(name)).unwrap();
         std::fs::write(
@@ -308,12 +308,12 @@ async fn package_skills_and_opt_in_skills() {
         "{commands:?}"
     );
     assert!(
-        commands.contains(&"skill:unipi-migrate".to_owned()),
+        commands.contains(&"skill:acme-migrate".to_owned()),
         "{commands:?}"
     );
     let prompt = session.system_prompt();
     assert!(prompt.contains("<name>plain-skill</name>"), "{prompt}");
-    assert!(!prompt.contains("unipi-migrate"), "{prompt}");
+    assert!(!prompt.contains("acme-migrate"), "{prompt}");
 
     let run = |text: &str| {
         let session = session.clone();
@@ -331,13 +331,13 @@ async fn package_skills_and_opt_in_skills() {
     run("hello").await;
     let first = provider.requests()[0]["context"]["messages"][0]["sections"].to_string();
     assert!(
-        first.contains("plain-skill") && !first.contains("unipi-migrate"),
+        first.contains("plain-skill") && !first.contains("acme-migrate"),
         "{first}"
     );
 
-    run("/skill:unipi-migrate go").await;
+    run("/skill:acme-migrate go").await;
     let invoked = provider.requests()[1]["context"]["messages"].to_string();
-    assert!(invoked.contains("Body of unipi-migrate."), "{invoked}");
+    assert!(invoked.contains("Body of acme-migrate."), "{invoked}");
 
     services
         .settings
@@ -347,10 +347,10 @@ async fn package_skills_and_opt_in_skills() {
             oino_settings::SettingsScope::Global,
             "skills",
             "states",
-            Some(json!({"unipi-migrate": {"enabled": true}})),
+            Some(json!({"acme-migrate": {"enabled": true}})),
         )
         .unwrap();
     run("again").await;
     let enabled = provider.requests()[2]["context"]["messages"].to_string();
-    assert!(enabled.contains("<name>unipi-migrate</name>"), "{enabled}");
+    assert!(enabled.contains("<name>acme-migrate</name>"), "{enabled}");
 }

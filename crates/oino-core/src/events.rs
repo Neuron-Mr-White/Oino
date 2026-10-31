@@ -671,13 +671,13 @@ mod tests {
         );
         let disabled: ClientEvent = OinoEvent::ExtensionDisabled {
             session_id: "s1".into(),
-            extension_id: "unipi.x".into(),
+            extension_id: "acme.x".into(),
             reason: ExtensionDisabledReason::Trap,
         }
         .into();
         assert_eq!(
             serde_json::to_value(&disabled).unwrap(),
-            json!({"type":"extension_disabled","sessionId":"s1","extensionId":"unipi.x","reason":"trap"})
+            json!({"type":"extension_disabled","sessionId":"s1","extensionId":"acme.x","reason":"trap"})
         );
         let crashed: ClientEvent = OinoEvent::SessionCrashed {
             error: "boom".into(),

@@ -6,7 +6,7 @@
 //! `{"v":1,"consecutiveFailures":n,"lastFailures":[{"at":ms,"where":"services|session",
 //! "extensionId?":"…","error":"…"}]}` (max [`ENTRY_LIMIT`] entries).
 //!
-//! Protocol (driven by `crates/oino/src/startup.rs`; unipi-host joins later):
+//! Protocol (driven by `crates/oino/src/startup.rs`; the embedding host joins later):
 //!
 //! 1. [`SafeMode::load`] — a start that began but never finished (`openStart` still set: the
 //!    process died before success or failure was recorded) counts as a failed start.
@@ -271,7 +271,7 @@ mod tests {
     fn two_recorded_failures_trip_the_plan_and_success_resets() {
         let dir = tempfile::tempdir().unwrap();
         let mut safe = load(dir.path());
-        safe.note_suspect("unipi.notify", "init failed: boom");
+        safe.note_suspect("acme.notify", "init failed: boom");
         safe.record_failure(FailureEntry::new(FailureStage::Services, "Error: boom"));
         safe.record_failure(FailureEntry::new(FailureStage::Session, "Error: crash"));
         drop(safe);
@@ -282,12 +282,12 @@ mod tests {
         assert_eq!(plan.consecutive_failures, 2);
         assert_eq!(
             plan.suspects,
-            vec![("unipi.notify".to_owned(), "init failed: boom".to_owned())]
+            vec![("acme.notify".to_owned(), "init failed: boom".to_owned())]
         );
         let banner = banner(&plan);
         assert!(banner.starts_with("Safe mode: extensions are off after 2 failed starts"));
         assert!(
-            banner.contains("suspects: unipi.notify (init failed: boom)"),
+            banner.contains("suspects: acme.notify (init failed: boom)"),
             "{banner}"
         );
 
@@ -333,7 +333,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut safe = load(dir.path());
         for i in 0..6 {
-            safe.note_suspect(&format!("unipi.ext{i}"), "boom");
+            safe.note_suspect(&format!("acme.ext{i}"), "boom");
             safe.record_failure(FailureEntry::new(
                 FailureStage::Services,
                 format!("Error: {i}"),
@@ -353,7 +353,7 @@ mod tests {
     fn state_file_shape_matches_the_spec() {
         let dir = tempfile::tempdir().unwrap();
         let mut safe = load(dir.path());
-        safe.note_suspect("unipi.notify", "init failed: boom");
+        safe.note_suspect("acme.notify", "init failed: boom");
         safe.record_failure(FailureEntry::new(FailureStage::Session, "Error: crash"));
         drop(safe);
 

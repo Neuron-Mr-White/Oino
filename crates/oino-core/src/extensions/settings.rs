@@ -1485,18 +1485,18 @@ mod tests {
     fn layers_defaults_global_project_and_expands_flat_keys() {
         let dir = tempfile::tempdir().unwrap();
         let reg = registry(dir.path());
-        reg.register("unipi.notify", notify_schema()).unwrap();
+        reg.register("acme.notify", notify_schema()).unwrap();
         let schema = reg.schema();
         let notify = schema
             .iter()
             .find(|ns| ns["namespace"] == "notify")
             .expect("notify is registered");
-        assert_eq!(notify["extensionId"], "unipi.notify");
+        assert_eq!(notify["extensionId"], "acme.notify");
         assert_eq!(
             schema[0]["extensionId"], CORE_OWNER,
             "core namespaces come first"
         );
-        assert_eq!(reg.owner("notify").as_deref(), Some("unipi.notify"));
+        assert_eq!(reg.owner("notify").as_deref(), Some("acme.notify"));
         assert_eq!(
             reg.values("notify", SettingsLayer::Effective),
             json!({"events": {"agentEnd": true}, "platform": "native", "timeoutMs": 5})
@@ -1586,8 +1586,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let reg = registry(dir.path());
         let mut schema = notify_schema();
-        schema["secretReaders"] = json!(["unipi.*"]);
-        reg.register("unipi.notify", schema).unwrap();
+        schema["secretReaders"] = json!(["acme.*"]);
+        reg.register("acme.notify", schema).unwrap();
         reg.set(
             "notify",
             "ntfy.token",
@@ -1601,7 +1601,7 @@ mod tests {
         let secrets = SecretStore::new(&dir.path().join("agent"));
         assert_eq!(
             secrets
-                .get("unipi.notify/notify/ntfy.token")
+                .get("acme.notify/notify/ntfy.token")
                 .unwrap()
                 .as_deref(),
             Some("tok")
@@ -1610,11 +1610,11 @@ mod tests {
             reg.values("notify", SettingsLayer::Effective)["ntfy"]["token"],
             SECRET_MASK
         );
-        let own = reg.values_for("unipi.notify", "notify", SettingsLayer::Effective);
+        let own = reg.values_for("acme.notify", "notify", SettingsLayer::Effective);
         assert_eq!(own["ntfy"]["token"], "tok");
-        let shared = reg.values_for("unipi.core", "notify", SettingsLayer::Effective);
+        let shared = reg.values_for("acme.core", "notify", SettingsLayer::Effective);
         assert_eq!(shared["ntfy"]["token"], "tok");
-        let other = reg.values_for("acme.x", "notify", SettingsLayer::Effective);
+        let other = reg.values_for("other.x", "notify", SettingsLayer::Effective);
         assert!(other.get("ntfy").and_then(|n| n.get("token")).is_none());
         // Writing the mask back is a no-op; empty deletes.
         reg.set(
@@ -1626,7 +1626,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             secrets
-                .get("unipi.notify/notify/ntfy.token")
+                .get("acme.notify/notify/ntfy.token")
                 .unwrap()
                 .as_deref(),
             Some("tok")
@@ -1638,14 +1638,14 @@ mod tests {
             SettingsScope::Global,
         )
         .unwrap();
-        assert_eq!(secrets.get("unipi.notify/notify/ntfy.token").unwrap(), None);
+        assert_eq!(secrets.get("acme.notify/notify/ntfy.token").unwrap(), None);
     }
 
     #[test]
     fn ownership_validation_and_events() {
         let dir = tempfile::tempdir().unwrap();
         let reg = registry(dir.path());
-        reg.register("unipi.notify", notify_schema()).unwrap();
+        reg.register("acme.notify", notify_schema()).unwrap();
         assert!(matches!(
             reg.register("other", notify_schema()),
             Err(ExtensionSettingsError::NotOwner { .. })
@@ -1701,7 +1701,7 @@ mod tests {
             Err(ExtensionSettingsError::Invalid(_))
         ));
         reg.set_as(
-            "unipi.notify",
+            "acme.notify",
             "notify",
             "platform",
             Some(json!("ntfy")),
@@ -1715,7 +1715,7 @@ mod tests {
                 namespace: "notify".into(),
                 keys: vec!["platform".into()],
                 scope: SettingsScope::Global,
-                extension_id: Some("unipi.notify".into()),
+                extension_id: Some("acme.notify".into()),
             }
         );
         assert!(rx.try_recv().is_err(), "failed writes publish nothing");
@@ -1723,7 +1723,7 @@ mod tests {
         batch.insert("platform".into(), json!("native"));
         batch.insert("rules".into(), json!([{"tool": "bash"}]));
         reg.set_many_as(
-            Some("unipi.notify"),
+            Some("acme.notify"),
             "notify",
             &batch,
             SettingsScope::Global,
@@ -1734,8 +1734,8 @@ mod tests {
             reg.values("notify", SettingsLayer::Global)["rules"],
             json!([{"tool": "bash"}])
         );
-        assert_eq!(reg.owned_by("unipi.notify"), ["notify"]);
-        assert_eq!(reg.all_for("unipi.notify")["notify"]["platform"], "native");
+        assert_eq!(reg.owned_by("acme.notify"), ["notify"]);
+        assert_eq!(reg.all_for("acme.notify")["notify"]["platform"], "native");
     }
 
     #[test]
@@ -1903,7 +1903,7 @@ mod tests {
         // Extensions cannot write the core namespaces.
         assert!(matches!(
             reg.set_as(
-                "unipi.notify",
+                "acme.notify",
                 "oino.retry",
                 "enabled",
                 Some(json!(false)),
@@ -1913,11 +1913,11 @@ mod tests {
         ));
         // Core namespaces stay out of the extension payload.
         assert!(
-            reg.all_for("unipi.notify")
+            reg.all_for("acme.notify")
                 .as_object()
                 .is_some_and(|all| all.keys().all(|key| !key.starts_with("oino."))),
             "{:?}",
-            reg.all_for("unipi.notify")
+            reg.all_for("acme.notify")
         );
     }
 
@@ -1925,7 +1925,7 @@ mod tests {
     fn invalid_stored_values_fall_back_with_diagnostics() {
         let dir = tempfile::tempdir().unwrap();
         let reg = registry(dir.path());
-        reg.register("unipi.notify", notify_schema()).unwrap();
+        reg.register("acme.notify", notify_schema()).unwrap();
         write_layer(
             &reg,
             SettingsScope::Global,
@@ -1974,7 +1974,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let reg = registry(dir.path());
         reg.register(
-            "unipi.workflow",
+            "acme.workflow",
             json!({
                 "namespace": "permission", "title": "Permission",
                 "sections": [{"id": "s", "title": "S", "fields": [
@@ -2040,9 +2040,9 @@ mod tests {
     fn v1_namespaces_resolve_like_the_plain_merge() {
         let dir = tempfile::tempdir().unwrap();
         let reg = registry(dir.path());
-        // The v1 §6.6 shape `unipi_kit::settings::schema` emits, with every v1 field kind.
+        // The v1 §6.6 shape the v1 kit's `settings::schema` emits, with every v1 field kind.
         let v1 = json!({
-            "namespace": "notify", "title": "Notify", "extensionId": "unipi.notify",
+            "namespace": "notify", "title": "Notify", "extensionId": "acme.notify",
             "defaults": {"events": {"agentEnd": true}, "platform": "native"},
             "sections": [{"id": "events", "title": "Events", "fields": [
                 {"key": "events.agentEnd", "type": "boolean", "label": "Agent"},
@@ -2064,7 +2064,7 @@ mod tests {
                 ]}
             ]}]
         });
-        reg.register("unipi.notify", v1.clone()).unwrap();
+        reg.register("acme.notify", v1.clone()).unwrap();
         assert_eq!(reg.namespace("notify").unwrap()["sections"], v1["sections"]);
         let values = reg.values("notify", SettingsLayer::Effective);
         assert_eq!(values["events"]["agentEnd"], true);

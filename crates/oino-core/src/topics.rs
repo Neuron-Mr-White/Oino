@@ -1,6 +1,6 @@
 //! Frontend topic feed (`_oino/topics`, modes §4): the sticky bus topics extensions publish
-//! (unipi `unipi:long-horizon:state`, `unipi:workflow:status`, `unipi:bg:tasks`,
-//! `unipi:fusion:status`, `unipi:kanboard:status`, …) plus the core's own `oino:git` topic,
+//! (an embedder's `acme:long-horizon:state`, `acme:workflow:status`, `acme:bg:tasks`,
+//! `acme:fusion:status`, `acme:kanboard:status`, …) plus the core's own `oino:git` topic,
 //! mirrored to subscribed frontends as [`crate::events::OinoEvent::Topic`].
 //!
 //! The extension bus itself is served by the WASM host; it mirrors every publish into
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn patterns() {
-        assert!(topic_matches("unipi:*", "unipi:bg:tasks"));
+        assert!(topic_matches("acme:*", "acme:bg:tasks"));
         assert!(topic_matches("*", "x"));
         assert!(topic_matches("a", "a"));
         assert!(!topic_matches("a", "ab"));

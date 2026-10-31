@@ -92,7 +92,7 @@ impl RenderTarget {
     }
 }
 
-/// Row density the frontend asks for (unipi utility `render.style`).
+/// Row density the frontend asks for (the embedder's `render.style` utility).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RenderDensity {

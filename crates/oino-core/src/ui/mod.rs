@@ -24,5 +24,6 @@ pub use oino_ui::slot::{
 };
 pub use registry::{
     EntryRequest, EntryUpdate, ProduceOutcome, PutOutcome, RegistryError, RegistrySink,
-    ReservedEntry, UiRegistry, VisibilityChange, default_order, is_producer, reserved,
+    ReservedPanelSpec, UiRegistry, VisibilityChange, clear_reserved_panels, default_order,
+    is_producer, register_reserved, reserved, reserved_panels,
 };
