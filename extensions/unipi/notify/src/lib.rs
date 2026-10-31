@@ -13,7 +13,7 @@
 //! | recap via the model registry | `models.complete` ([`recap`]) |
 //! | `/notify-event <event> on\|off`, runners set-gotify/set-ntfy/set-telegram/test | same names as commands (runners hidden); setup wizards as dialogs |
 //! | `NOTIFICATION_SENT` | same topic |
-//! | app push encryption, UnifiedPush fan-out, `unipi://` deep links, herdr | dropped (unipi-port §2.5) |
+//! | app push encryption, UnifiedPush fan-out, `unipi://` deep links, herdr | host-owned (P0-06): the host's session tap sends the phone push (`unipi-host` `notify.rs::on_session_event`), reusing this extension's event matrix and ntfy settings; herdr stays dropped (unipi-port §2.5) |
 
 #![allow(
     clippy::unused_async_trait_impl,

@@ -377,6 +377,20 @@ impl Feed {
                             service.rekey(&old_id, &new_id);
                         }
                     }
+                    // P0-06: the host owns phone push — dialogs flip the card's
+                    // `needs_you` and push `unipi1:` E2E notices (deep link +
+                    // UnifiedPush fan-out), settles push the run-finished notice
+                    // and `notify_user` tool calls their message; everything not a
+                    // notice returns immediately (`crate::notify::on_session_event`).
+                    if let Some(service) = service.upgrade() {
+                        crate::notify::on_session_event(
+                            service.hub(),
+                            &crate::data_dir::HostPaths::resolve(),
+                            &event,
+                            &self.session_id(),
+                        )
+                        .await;
+                    }
                 }
                 _ = tick.tick() => {
                     if self.subscriber_count() > 0 {
