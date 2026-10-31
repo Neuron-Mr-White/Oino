@@ -23,7 +23,8 @@ import {
 } from '../lib/desktopUpdate';
 import { checkForUpdate, checkIosUpdate, installed, installNow, iosUpdate, startDownload, updateState } from '../lib/update';
 import { openExternal } from '../lib/board/share';
-import { hostClient, LOCAL_HOST } from '../lib/host/factory';
+import { hostClient } from '../lib/host/factory';
+import { LOCAL_HOST } from '../lib/host/client';
 import { hubs } from '../lib/session/hub';
 import { can, platform } from '../lib/platform';
 
