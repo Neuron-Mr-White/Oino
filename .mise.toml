@@ -1,8 +1,8 @@
 [env]
 # Build-cache budget for target/ and extensions/target/ combined
 # (app-convention: every build cache has a size limit). Enforced by `mise run gc`.
-OINO_TARGET_BUDGET_GB = "80"
-OINO_TARGET_GC_AGE_HOURS = "6"
+OINO_TARGET_BUDGET_GB = "30"
+OINO_TARGET_GC_AGE_HOURS = "1"
 
 [tasks.dev]
 description = "Run the Oino TUI app"
