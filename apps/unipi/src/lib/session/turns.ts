@@ -359,7 +359,10 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]!;
     const at = tsOf(e);
-    const countsForDuration = e.type === 'message' || (e.type === 'custom' && STEP_TYPES.has(String(e.customType ?? '')));
+    const mRole = e.message?.role;
+    const countsForDuration =
+      (e.type === 'message' && (mRole === 'user' || mRole === 'assistant' || mRole === 'toolResult' || mRole === 'bashExecution')) ||
+      (e.type === 'custom' && STEP_TYPES.has(String(e.customType ?? '')));
     if (at !== undefined && countsForDuration) {
       endedAt = at;
       segMeta[seg.index]!.endedAt = at;

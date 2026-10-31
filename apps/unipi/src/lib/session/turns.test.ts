@@ -278,6 +278,7 @@ describe('turns index: incremental tail recompute', () => {
     // Appended days later on session resume or auto-rename:
     s.add({ type: 'custom', customType: 'unipi:auto-name', data: { name: 'Button Click' } }, 86_400_000 * 4);
     s.add({ type: 'custom', customType: 'unipi-memory-session-card', data: {} }, 1000);
+    s.add({ type: 'message', message: { role: 'system', content: '', timestamp: Date.now() } }, 86_400_000);
     s.add({ type: 'custom_message', customType: 'unipi:plan-mode-message', display: false } as unknown as Omit<SessionEntry, 'id' | 'parentId' | 'timestamp'>, 1000);
     const [turn] = buildTurns(input(s.entries));
     expect(turn!.segments[0]!.answer?.text).toBe('After clicking, it changed to clicked 1');
