@@ -1,0 +1,116 @@
+/**
+ * Draft view (Z-19, WP-A5): the `/new/:host` composer — hero, pickers, input.
+ * Tokens and radii from the Unicrab set (ui.css); the layout mirrors the
+ * timeline's empty state + bottom dock composer so the draft reads as the
+ * chat it becomes.
+ */
+
+.draft {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 100%;
+  gap: 14px;
+  padding: 24px 18px 18px;
+}
+
+.draft-hero { width: min(660px, 100%); }
+
+.draft-pickers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(660px, 100%);
+}
+
+.draft-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.draft-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-1);
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-chip:hover { color: var(--color-text); border-color: var(--color-text-dim); }
+.draft-chip[data-on] {
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  border-color: var(--color-text-dim);
+  font-weight: 600;
+}
+
+.draft-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: min(660px, 100%);
+  padding: 8px 8px 8px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-1);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 18%);
+}
+
+.draft-form:focus-within { border-color: var(--color-text-dim); }
+
+.draft-input {
+  flex: 1 1 auto;
+  min-height: 40px;
+  max-height: 160px;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.draft-input::placeholder { color: var(--color-text-dim); }
+
+.draft-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: none;
+  background: var(--color-claw);
+  color: var(--color-ink);
+  flex: none;
+}
+
+.draft-send:disabled { opacity: 0.45; }
+.draft-send:not(:disabled):hover { filter: brightness(1.06); }
+
+.draft-error {
+  margin: 0;
+  width: min(660px, 100%);
+  font-size: 13px;
+  color: var(--color-wm-red, #e5484d);
+}
+
+.draft-error-hint {
+  display: block;
+  color: var(--color-text-dim);
+  font-size: 12px;
+}

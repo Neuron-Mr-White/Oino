@@ -25,6 +25,10 @@ export type SessionMeta = { pinned?: boolean; unread?: boolean; titleLock?: bool
 export type HubState = {
   hostId: string;
   cards: Record<string, SessionCard>;
+  /** The archived (trashed) sessions, loaded lazily when the Archived list opens (Z-13). */
+  archived: SessionCard[];
+  archivedLoaded: boolean;
+  archivedLoading: boolean;
   notices: HubNotice[];
   meta: Record<string, SessionMeta>;
   /** Repo root → change counter (WP-A15): bumped by every `git_changed`. */
@@ -73,6 +77,8 @@ export function applyHubEvent(s: HubState, event: HubEvent, now = Date.now()): v
     case 'session_removed':
       delete s.cards[event.session];
       delete s.meta[event.session];
+      // An archived session restored then deleted again leaves the list too (Z-13).
+      s.archived = s.archived.filter((card) => card.session_id !== event.session);
       return;
     case 'host_notice': {
       if (s.notices.some((n) => n.text === event.text && n.level === event.level)) return;
@@ -98,6 +104,16 @@ export type HubHandle = {
   reload(): Promise<void>;
   /** `session_meta_set` (§3.14): pin / unread / title lock — optimistic here, persisted by the host. */
   setMeta(sessionId: string, patch: { pinned?: boolean; unread?: boolean; titleLock?: boolean }): Promise<void>;
+  /** `sessions_list{archived:true}` (§3.14, Z-13): the archived list of this host (once, unless `force`). */
+  loadArchived(force?: boolean): Promise<void>;
+  /** `session_archive` (§4.2, Z-13): move the session's file to the host's trash. */
+  archive(sessionId: string): Promise<void>;
+  /** `session_restore` (§3.14, Z-13): put an archived session back into its project. */
+  restore(sessionId: string): Promise<void>;
+  /** `session_delete` (§3.14, Z-13/Z-20): delete an archived session file for good. */
+  deleteArchived(sessionId: string): Promise<void>;
+  /** `trash_empty` (§3.14, Z-13): delete every archived session; answers how many went. */
+  emptyTrash(): Promise<number>;
   /** Reports the focused session on this hub's events connection (`null` = none, §3.14); the host clears its `unread` (Z-82). */
   focus(session: string | null): void;
   dismissNotice(id: string): void;
@@ -115,13 +131,26 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
   const client = opts.client ?? hostClient(hostId);
   const setTimer = opts.setTimer ?? ((ms: number, cb: () => void) => setTimeout(cb, ms));
   const clearTimer = opts.clearTimer ?? ((h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const [state, setState] = createStore<HubState>({ hostId, cards: {}, notices: [], meta: {}, git: {}, loaded: false, loading: false, live: false });
+  const [state, setState] = createStore<HubState>({
+    hostId,
+    cards: {},
+    archived: [],
+    archivedLoaded: false,
+    archivedLoading: false,
+    notices: [],
+    meta: {},
+    git: {},
+    loaded: false,
+    loading: false,
+    live: false,
+  });
   let events: Closable | undefined;
   let eventsFocus: ((session: string | null) => void) | undefined;
   let retry: unknown;
   let attempt = 0;
   let closed = false;
   let inflight: Promise<void> | undefined;
+  let archivedInflight: Promise<void> | undefined;
 
   const reload = (): Promise<void> => {
     if (inflight) return inflight;
@@ -202,6 +231,65 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
       } catch (error) {
         setState('error', toAppError(error));
         void reload();
+      }
+    },
+    loadArchived(force = false) {
+      if (archivedInflight) return archivedInflight;
+      if (state.archivedLoaded && !force) return Promise.resolve();
+      setState('archivedLoading', true);
+      archivedInflight = client
+        .request<unknown>('sessions_list', { archived: true })
+        .then((data) => {
+          setState('archived', reconcile(cardsOf(data)));
+          setState({ archivedLoaded: true, archivedLoading: false });
+        })
+        .catch((error: unknown) => {
+          setState({ archivedLoading: false, error: toAppError(error) });
+        })
+        .finally(() => {
+          archivedInflight = undefined;
+        });
+      return archivedInflight;
+    },
+    async archive(sessionId) {
+      try {
+        await client.request('session_archive', { session: sessionId });
+        setState('archivedLoaded', false);
+      } catch (error) {
+        setState('error', toAppError(error));
+        void reload();
+      }
+    },
+    async restore(sessionId) {
+      try {
+        const card = await client.request<SessionCard>('session_restore', { session: sessionId });
+        batch(() => {
+          setState('archived', (list) => list.filter((row) => row.session_id !== sessionId));
+          if (card && typeof card.session_id === 'string') {
+            setState('cards', card.session_id, card);
+            setState('meta', card.session_id, metaOf(card));
+          }
+        });
+      } catch (error) {
+        setState('error', toAppError(error));
+      }
+    },
+    async deleteArchived(sessionId) {
+      try {
+        await client.request('session_delete', { session: sessionId });
+        setState('archived', (list) => list.filter((row) => row.session_id !== sessionId));
+      } catch (error) {
+        setState('error', toAppError(error));
+      }
+    },
+    async emptyTrash() {
+      try {
+        const data = await client.request<{ deleted?: unknown }>('trash_empty');
+        setState('archived', []);
+        return typeof data?.deleted === 'number' ? data.deleted : 0;
+      } catch (error) {
+        setState('error', toAppError(error));
+        return 0;
       }
     },
     focus(session) {

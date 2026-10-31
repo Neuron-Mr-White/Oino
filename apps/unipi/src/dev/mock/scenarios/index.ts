@@ -9,6 +9,7 @@ import { streamSteer } from './stream-steer';
 import { queueHeld, queuePanel } from './queue';
 import { shellDesktop, shellFullview, shellNarrow, shellSidepaneTabs } from './shell';
 import { sidebarMany, sidebarStates } from './sidebar';
+import { archived, draft, sessionMenu } from './session-actions';
 import { timelineMany } from './timeline';
 import { bubbleFold, turnActions, turnNavigator } from './turn';
 import { modalContext } from './modal-context';
@@ -62,6 +63,9 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'shell-fullview': shellFullview,
   'sidebar-many': sidebarMany,
   'sidebar-states': sidebarStates,
+  'session-menu': sessionMenu,
+  archived,
+  draft,
   'timeline-many': timelineMany,
   'turn-actions': turnActions,
   'turn-navigator': turnNavigator,

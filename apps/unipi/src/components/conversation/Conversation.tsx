@@ -28,6 +28,8 @@ import { SlotModal } from '../../ui/slots/SlotModal';
 import { WidgetStack } from '../../ui/slots/WidgetStack';
 import { installUiEffects } from '../../ui/slots/effects';
 import { reservedGate } from '../../ui/slots/reserved';
+import { DraftView } from '../draft/DraftView';
+import { takeFirstPrompt } from '../../lib/session/firstPrompt';
 import { TURN_FILES_ENTRY, fileSummaryCapability } from '../../lib/fileSummary';
 import { parseExtShortcutSpecs, setExtensionShortcuts } from '../../lib/shortcuts/registry';
 import { commandNames, type TimelineCtx } from '../timeline/context';
@@ -153,6 +155,18 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
       .then((reply) => setExtensionShortcuts(parseExtShortcutSpecs(reply)))
       .catch(() => askedShortcuts.delete(id));
   });
+  // Z-19 (WP-A5): a draft's first prompt created this session — send it the
+  // moment its stream is live (taken, so a reconnect can never resend it).
+  const sentFirst = new Set<string>();
+  createEffect(() => {
+    const s = session();
+    const id = s?.sessionId();
+    if (!s || !id || s.state.conn !== 'live' || sentFirst.has(id)) return;
+    const first = takeFirstPrompt(props.hostId, id);
+    if (!first) return;
+    sentFirst.add(id);
+    s.send(first.text, first.images?.length ? { images: first.images } : undefined);
+  });
   onCleanup(() => setExtensionShortcuts(undefined));
   const dialogs = () => registry()?.dialogs() ?? [];
   const answer = (id: string, value: unknown) => {
@@ -185,7 +199,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
         when={props.sessionId}
         fallback={
           <div class="tl-empty" data-testid="draft-empty">
-            <EmptyChat cwd={props.cwd} hostName={hostName()} />
+            <DraftView hostId={props.hostId} cwd={props.cwd} />
           </div>
         }
       >

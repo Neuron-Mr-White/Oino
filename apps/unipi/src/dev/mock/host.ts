@@ -142,6 +142,8 @@ export type MockHostSpec = {
   transport?: 'local' | 'iroh';
   conn?: HostConn;
   cards?: SessionCard[];
+  /** WP-A5 (Z-13): the host's trash — `sessions_list{archived:true}` rows. */
+  archived?: SessionCard[];
   sessions?: Record<string, MockSession>;
   /** Root folders → tree. */
   fs?: Record<string, MockFsNode>;
@@ -498,8 +500,35 @@ function mockHostCmd(cmd: { kind: string } & Record<string, unknown>, h: MockHos
 
 const BUILTIN: Record<string, MockOp> = {
   host_info: (_a, h) => ({ name: h.spec.name, version: '2.0.0', proto: '2.0.0', tools: ['oino', 'unipi-kanboard'] }),
-  // host.md §7.2: a bare array of cards, newest activity first.
-  sessions_list: (_a, h) => h.spec.cards ?? [],
+  // host.md §7.2 / app spec §3.14 (WP-A5, Z-19): the draft's first prompt
+  // creates the session; its card goes live at once.
+  session_new: (a, h) => {
+    const id = `s-new-${(h.spec.cards?.length ?? 0) + (h.spec.archived?.length ?? 0) + 1}-${Math.random().toString(36).slice(2, 8)}`;
+    const card: SessionCard = {
+      session_id: id,
+      name: null,
+      cwd: typeof a.cwd === 'string' && a.cwd ? a.cwd : h.spec.cards?.[0]?.cwd ?? '/home/you/p/oino',
+      run_state: 'idle',
+      updated_at: Date.now(),
+      message_count: 0,
+    };
+    h.spec.cards = [...(h.spec.cards ?? []), card];
+    h.emit({ kind: 'session_changed', card });
+    return { ...card };
+  },
+  // host.md §7.2: a bare array of cards, newest activity first (§3.14's
+  // `sessions_list{archived:true}` answers the trash instead, WP-A5).
+  sessions_list: (a, h) => (a?.archived === true ? h.spec.archived ?? [] : h.spec.cards ?? []),
+  // App spec §3.14 (WP-A5): rename sets the card's name and the hub stream
+  // carries it (the app locks the title separately via session_meta_set).
+  session_rename: (a, h) => {
+    const card = h.spec.cards?.find((c) => c.session_id === a.session) ?? h.spec.archived?.find((c) => c.session_id === a.session);
+    if (!card) throw err('E_NOT_FOUND', `No session ${String(a.session)}`);
+    if (typeof a.name !== 'string' || !a.name.trim()) throw err('E_SCHEMA', 'A name is required');
+    (card as Record<string, unknown>).name = a.name.trim();
+    if (h.spec.cards?.includes(card)) h.emit({ kind: 'session_changed', card: { ...card } });
+    return { ...card };
+  },
   // App spec §3.14 (WP-A4): patch the card, tell the hub stream, return the card.
   session_meta_set: (a, h) => {
     const card = h.spec.cards?.find((c) => c.session_id === a.session);
@@ -510,6 +539,35 @@ const BUILTIN: Record<string, MockOp> = {
     // Like the real host, the card goes to *this* host's connections only.
     h.emit({ kind: 'session_changed', card: { ...card } });
     return { ...card };
+  },
+  // App spec §3.14 / host.md §4.2 (WP-A5, Z-13): archive moves the card to the
+  // host's trash; restore puts it back; delete/trash_empty unlink for good.
+  session_archive: (a, h) => {
+    const card = h.spec.cards?.find((c) => c.session_id === a.session);
+    if (!card) throw err('E_NOT_FOUND', `No session ${String(a.session)}`);
+    h.spec.cards = (h.spec.cards ?? []).filter((c) => c.session_id !== card.session_id);
+    h.spec.archived = [card, ...(h.spec.archived ?? [])];
+    h.emit({ kind: 'session_removed', session: card.session_id });
+    return { ...card };
+  },
+  session_restore: (a, h) => {
+    const card = h.spec.archived?.find((c) => c.session_id === a.session);
+    if (!card) throw err('E_NOT_FOUND', `No archived session ${String(a.session)}`);
+    h.spec.archived = (h.spec.archived ?? []).filter((c) => c.session_id !== card.session_id);
+    h.spec.cards = [...(h.spec.cards ?? []), card];
+    h.emit({ kind: 'session_changed', card: { ...card } });
+    return { ...card };
+  },
+  session_delete: (a, h) => {
+    const card = h.spec.archived?.find((c) => c.session_id === a.session);
+    if (!card) throw err('E_NOT_FOUND', `No archived session ${String(a.session)}`);
+    h.spec.archived = (h.spec.archived ?? []).filter((c) => c.session_id !== card.session_id);
+    return null;
+  },
+  trash_empty: (_a, h) => {
+    const deleted = h.spec.archived?.length ?? 0;
+    h.spec.archived = [];
+    return { deleted };
   },
   // WP-A19 (G-12): `notify_register` on the host seam records the endpoint.
   notify_register: () => ({ registered: true }),

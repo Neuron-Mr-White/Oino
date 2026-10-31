@@ -9,7 +9,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'solid-js/store';
 import { ModeChip, ModePopover } from './ModeChip';
-import { ChatHeaderMenu } from './SessionMenus';
 import type { Chat } from '../../lib/chat/store';
 import type { LhProgress, LhRun } from '../status/lhProgress';
 
@@ -143,18 +142,5 @@ describe('ModePopover', () => {
     const f = fakeChat({ ...activeGraph(), conn: 'connecting' });
     render(() => <ModePopover anchor={anchor} chat={f.chat} onDismiss={() => {}} />);
     expect((screen.getByTestId('mode-pick-swarm') as HTMLButtonElement).disabled).toBe(true);
-  });
-});
-
-describe('⋯ menu', () => {
-  it('has a "Working mode" row with the current mode', () => {
-    const onMode = vi.fn();
-    render(() => (
-      <ChatHeaderMenu anchor={anchor} onDismiss={() => {}} onNew={() => {}} onTree={() => {}} onRename={() => {}} canRename onOpenSection={() => {}} onMode={onMode} modeHint="Plain" />
-    ));
-    const row = screen.getByText('Working mode').closest('button')!;
-    expect(row.textContent).toContain('Plain');
-    fireEvent.click(row);
-    expect(onMode).toHaveBeenCalled();
   });
 });

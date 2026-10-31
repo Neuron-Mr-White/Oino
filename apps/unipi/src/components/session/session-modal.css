@@ -121,3 +121,29 @@ body > div:has(> .sheet.session-sheet) > .sheet-overlay { z-index: 69; }
 .sheet.session-sheet .sm-row { position: relative; padding-left: 24px; }
 .sheet.session-sheet .sm-row .sm-indent-1 { margin-left: 0; }
 .sheet.session-sheet .sm-dialog { display: contents; }
+
+/* ── rename dialog (Z-15, WP-A5; sm-overlay/sm-dialog shell) ──────────── */
+.rename-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px 18px; }
+.rename-input {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 11px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+}
+.rename-input:focus { outline: none; border-color: var(--color-text-dim); }
+.rename-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.rename-actions .btn {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 11px;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-size: 13px;
+}
+.rename-actions .btn:not(:disabled) { background: var(--color-claw); color: var(--color-ink); border-color: transparent; }
+.rename-actions .btn:disabled { opacity: 0.5; }

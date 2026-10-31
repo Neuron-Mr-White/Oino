@@ -1,0 +1,187 @@
+// @vitest-environment jsdom
+/**
+ * Session row context menu (Z-16, WP-A5): right-click opens the menu; every
+ * row does its §3.14 op (asserted on the mock host's log — the WP-A5
+ * acceptance); Delete is a confirm step (Z-20); actions still run after the
+ * dismiss unmounts the row (the UNI-226 class of bug, guarded on this menu);
+ * Rename… opens the dialog and locks the title (Z-15).
+ */
+import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { HashRouter, Route } from '@solidjs/router';
+import { HostsProvider } from '../../hosts/context';
+import { SettingsProvider } from '../../settings/context';
+import { createMockHost, type MockScenario } from '../../dev/mock/host';
+import { setHostClientFactory } from '../../lib/host/factory';
+import { setDesktopOverride } from '../../lib/layout';
+import { resetHubs } from '../../lib/session/hub';
+import { closeRowMenu, openRowMenu, openRowMenuState } from '../../lib/session/actions';
+import { closeRenameDialog } from '../session/RenameDialog';
+import type { SessionCard } from '../../lib/host/client';
+import { SessionActions } from '../session/SessionActions';
+import { SessionList } from './SessionList';
+
+vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
+vi.mock('../../lib/board/share', () => ({ copyText: vi.fn(async () => true), openExternal: () => false }));
+import { copyText } from '../../lib/board/share';
+
+const card = (id: string, over: Partial<SessionCard> = {}): SessionCard => ({
+  session_id: id,
+  name: `Session ${id}`,
+  cwd: '/home/you/p/oino',
+  file: `/home/you/.oino/s/${id}.jsonl`,
+  run_state: 'idle',
+  updated_at: Date.now() - 90_000,
+  message_count: 2,
+  ...over,
+});
+
+let world: ReturnType<typeof createMockHost>;
+const boot = (cards: SessionCard[], archived: SessionCard[] = []) => {
+  const scenario: MockScenario = {
+    name: 't',
+    hosts: [{ id: 'this-pc', name: 'workstation', transport: 'local', conn: { state: 'connected' }, cards, archived }],
+  };
+  world = createMockHost(scenario);
+  setHostClientFactory(world.client);
+  location.hash = '#/';
+  return render(() => (
+    <SettingsProvider>
+      <HostsProvider>
+        <HashRouter>
+          <Route path="*" component={() => (<><SessionList variant="sidebar" /><SessionActions /></>)} />
+        </HashRouter>
+      </HostsProvider>
+    </SettingsProvider>
+  ));
+};
+
+const ops = () => world.log.filter((e) => e.kind === 'request').map((e) => `${e.op}`);
+const opWith = (op: string) => world.log.find((e) => e.kind === 'request' && e.op === op);
+
+const openMenuOn = async (id: string) => {
+  const row = screen.getByTestId(`srow-${id}`);
+  fireEvent.contextMenu(row);
+  await waitFor(() => expect(screen.getByRole('menu', { name: /Session/ })).toBeTruthy());
+};
+
+beforeEach(() => {
+  localStorage.clear();
+  setDesktopOverride(false); // the phone shell: Reveal folder routes to /files
+});
+afterEach(() => {
+  cleanup();
+  setDesktopOverride(undefined);
+  closeRowMenu();
+  closeRenameDialog();
+  setHostClientFactory(undefined);
+  resetHubs();
+});
+
+describe('SessionMenu (Z-16)', () => {
+  it('right-click opens the row menu; Pin sends session_meta_set{pinned}', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }));
+    await waitFor(() => expect(opWith('session_meta_set')?.args).toMatchObject({ session: 'a', pinned: true }));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('Mark as unread sends session_meta_set{unread:true}', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as unread' }));
+    await waitFor(() => expect(opWith('session_meta_set')?.args).toMatchObject({ session: 'a', unread: true }));
+  });
+
+  it('Archive sends session_archive (Z-13)', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: /Archive/ }));
+    await waitFor(() => expect(opWith('session_archive')?.args).toMatchObject({ session: 'a' }));
+    // The mock emitted session_removed: the row is gone from the live list.
+    await waitFor(() => expect(screen.queryByTestId('srow-a')).toBeNull());
+  });
+
+  it('Fork opens a fork stream and routes to it (Z-17)', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Fork' }));
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'open' && e.op === 'session_fork')).toBe(true));
+  });
+
+  it('Copy id / path / log copy the card fields', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy session id' }));
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith('a'));
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy log path' }));
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith('/home/you/.oino/s/a.jsonl'));
+  });
+
+  it('Reveal folder opens the Files tab rooted at the project', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reveal folder' }));
+    // jsdom is the phone shell: the Files target names the host + the project root.
+    await waitFor(() => expect(location.hash).toBe('#/files'));
+  });
+
+  it('Export opens the session and asks for the JSONL', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Export…' }));
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'open' && e.op === 'session_open')).toBe(true));
+  });
+
+  it('Delete asks first, then archives + deletes (Z-20)', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    // One click only armed the confirm row; nothing went out yet.
+    expect(ops()).not.toContain('session_archive');
+    fireEvent.click(screen.getByRole('menuitem', { name: /Yes, delete/ }));
+    await waitFor(() => expect(opWith('session_archive')?.args).toMatchObject({ session: 'a' }));
+    await waitFor(() => expect(opWith('session_delete')?.args).toMatchObject({ session: 'a' }));
+  });
+
+  it('actions run after the dismiss unmounts the menu (UNI-226 class)', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    const row = screen.getByTestId('srow-a');
+    fireEvent.contextMenu(row);
+    await waitFor(() => expect(openRowMenuState()).toBeTruthy());
+    // Dismiss the menu, then fire the still-referenced row handler: the pinned
+    // read must not be a stale Show read.
+    closeRowMenu();
+    expect(() => openRowMenu('this-pc', card('a'), row.getBoundingClientRect())).not.toThrow();
+    await waitFor(() => expect(openRowMenuState()?.card.session_id).toBe('a'));
+  });
+
+  it('Rename… opens the dialog; saving renames and locks the title (Z-15)', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
+    await openMenuOn('a');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }));
+    const input = await screen.findByTestId('rename-input');
+    expect((input as HTMLInputElement).value).toBe('Session a');
+    fireEvent.input(input, { target: { value: 'Triage' } });
+    fireEvent.submit(screen.getByTestId('rename-form'));
+    await waitFor(() => expect(opWith('session_rename')?.args).toMatchObject({ session: 'a', name: 'Triage' }));
+    await waitFor(() => expect(opWith('session_meta_set')?.args).toMatchObject({ session: 'a', title_locked: true }));
+    // And the card carried the new name to the live list.
+    await waitFor(() => expect(screen.getByText('Triage')).toBeTruthy());
+    // The sheet's exit fade takes a moment before the form leaves the DOM.
+    await waitFor(() => expect(screen.queryByTestId('rename-form')).toBeNull());
+  });
+});

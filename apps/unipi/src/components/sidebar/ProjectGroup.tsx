@@ -8,6 +8,7 @@
  * flood the DOM.
  */
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { Plus } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import type { SessionMeta } from '../../lib/session/hub';
 import { shortCwd } from '../../lib/session/selectors';
@@ -84,6 +85,18 @@ export function ProjectGroup(props: {
         <Show when={props.cards.length > 1}>
           <span class="sb-project-count" title={`${props.cards.length} sessions`}>{props.cards.length}</span>
         </Show>
+        {/* Z-19 (WP-A5): a per-project draft in this folder (`/new/:host?cwd=`); a
+            project-less group starts the host's default draft. */}
+        <a
+          class="sb-project-new"
+          href={`#/new/${encodeURIComponent(props.hostId)}${props.cwd ? `?cwd=${encodeURIComponent(props.cwd)}` : ''}`}
+          title="New chat in this folder"
+          aria-label={`New chat in ${props.label || 'this folder'}`}
+          data-testid={`sb-project-new-${props.label}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Plus size={13} />
+        </a>
       </div>
       <div
         ref={container}

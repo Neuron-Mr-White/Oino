@@ -132,9 +132,46 @@ describe('hub helpers', () => {
   });
 
   it('notices are capped', () => {
-    const s: HubState = { hostId: 'h', cards: {}, notices: [], meta: {}, git: {}, loaded: true, loading: false, live: true };
+    const s: HubState = { hostId: 'h', cards: {}, archived: [], archivedLoaded: false, archivedLoading: false, notices: [], meta: {}, git: {}, loaded: true, loading: false, live: true };
     for (let i = 0; i < MAX_NOTICES + 3; i++) applyHubEvent(s, { kind: 'host_notice', level: 'info', text: `n${i}` });
     expect(s.notices).toHaveLength(MAX_NOTICES);
     expect(s.notices[0]!.text).toBe('n3');
+  });
+
+  it('a restored-then-deleted session also leaves the archived list (Z-13)', () => {
+    const s: HubState = { hostId: 'h', cards: {}, archived: [card('z')], archivedLoaded: true, archivedLoading: false, notices: [], meta: {}, git: {}, loaded: true, loading: false, live: true };
+    applyHubEvent(s, { kind: 'session_removed', session: 'z' });
+    expect(s.archived).toEqual([]);
+  });
+
+  it('loadArchived asks sessions_list{archived:true} once, restore puts the card back (Z-13)', async () => {
+    const scenario: MockScenario = { name: 't', hosts: [{ id: 'h1', name: 'coffee', cards: [card('live')], archived: [card('gone', { name: 'Gone' })] }] };
+    const w = createMockHost(scenario);
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client: w.client('h1') }), dispose }));
+    await tick();
+    await hub.loadArchived();
+    expect(hub.state.archivedLoaded).toBe(true);
+    expect(hub.state.archived.map((c) => c.session_id)).toEqual(['gone']);
+    // A second call without force does not re-ask.
+    const before = w.log.filter((e) => e.kind === 'request' && e.op === 'sessions_list').length;
+    await hub.loadArchived();
+    expect(w.log.filter((e) => e.kind === 'request' && e.op === 'sessions_list').length).toBe(before);
+    await hub.restore('gone');
+    expect(hub.state.archived).toEqual([]);
+    expect(hub.state.cards.gone?.name).toBe('Gone');
+    hub.close();
+    dispose();
+  });
+
+  it('emptyTrash answers how many went (Z-13)', async () => {
+    const scenario: MockScenario = { name: 't', hosts: [{ id: 'h1', name: 'coffee', cards: [], archived: [card('g1'), card('g2')] }] };
+    const w = createMockHost(scenario);
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client: w.client('h1') }), dispose }));
+    await tick();
+    const deleted = await hub.emptyTrash();
+    expect(deleted).toBe(2);
+    expect(hub.state.archived).toEqual([]);
+    hub.close();
+    dispose();
   });
 });

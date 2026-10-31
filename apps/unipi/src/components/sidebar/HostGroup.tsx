@@ -12,6 +12,7 @@ import { hubs } from '../../lib/session/hub';
 import { sessionGroups } from '../../lib/session/selectors';
 import { SessionRow, type ModeBadge } from './SessionRow';
 import { createPaging, ProjectGroup } from './ProjectGroup';
+import { ArchivedList } from './ArchivedList';
 import type { RowVariant } from './SessionRow';
 
 const COLLAPSE_KEY = 'unipi.sidebar.hosts';
@@ -154,6 +155,8 @@ export function HostGroup(props: {
               />
             )}
           </For>
+          {/* Z-13 (WP-A5): the host's trash — restore or delete archived sessions. */}
+          <ArchivedList hostId={props.host.id} variant={props.variant} />
         </div>
       </Show>
     </section>

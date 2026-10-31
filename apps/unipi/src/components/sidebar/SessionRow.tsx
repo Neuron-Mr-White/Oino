@@ -11,8 +11,10 @@ import { Show, type JSX } from 'solid-js';
 import { Clock, LoaderCircle, Pin, PinOff } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { hostClient } from '../../lib/host/factory';
+import { LONG_PRESS_MS } from '../../lib/gestures';
 import { changesOf } from '../../lib/session/selectors';
 import type { SessionMeta } from '../../lib/session/hub';
+import { openRowMenu } from '../../lib/session/actions';
 import { relativeTimeMs } from '../../lib/time';
 
 export type RowVariant = 'sidebar' | 'page';
@@ -64,6 +66,27 @@ export function SessionRow(props: {
     e.stopPropagation();
     props.onPin?.(props.card, !props.meta?.pinned);
   };
+  // Z-16 (WP-A5): right-click (desktop) / long-press (phone) opens the row's
+  // context menu — one menu app-wide, anchored to this row.
+  const menuAt = (el: HTMLElement) => openRowMenu(props.hostId, props.card, el.getBoundingClientRect());
+  const onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    menuAt(e.currentTarget as HTMLElement);
+  };
+  let pressTimer: ReturnType<typeof setTimeout> | undefined;
+  const cancelPress = () => {
+    if (pressTimer !== undefined) clearTimeout(pressTimer);
+    pressTimer = undefined;
+  };
+  const onPointerDown = (e: PointerEvent & { currentTarget: HTMLElement }) => {
+    if (e.pointerType !== 'touch' || e.button !== 0) return;
+    const row = e.currentTarget;
+    cancelPress();
+    pressTimer = setTimeout(() => {
+      pressTimer = undefined;
+      menuAt(row);
+    }, LONG_PRESS_MS);
+  };
   const pinTitle = () => (props.meta?.pinned ? `Unpin "${titleText()}"` : `Pin "${titleText()}"`);
   const titleText = () => props.card.name?.trim() || folder() || props.card.session_id;
   const folder = () => props.card.cwd?.split(/[\\/]/).filter(Boolean).pop();
@@ -78,6 +101,11 @@ export function SessionRow(props: {
       aria-current={props.active ? 'page' : undefined}
       data-testid={`srow-${props.card.session_id}`}
       title={`${titleText()} · ${STATE_WORD[state()] || 'Idle'}${props.card.cwd ? ` · ${props.card.cwd}` : ''}`}
+      onContextMenu={onContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerUp={cancelPress}
+      onPointerCancel={cancelPress}
+      onPointerLeave={cancelPress}
     >
       <span class="srow-glyph" data-state={state()} aria-hidden="true">
         <Show when={state() === 'working'} fallback="π">

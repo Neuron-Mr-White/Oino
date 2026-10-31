@@ -59,6 +59,7 @@ import { CommandCenter } from '../command/CommandCenter';
 import { BuiltinPanes } from './builtins';
 import { DesktopNative } from './DesktopNative';
 import { SessionModalLayer } from '../session/SessionModal';
+import { SessionActions } from '../session/SessionActions';
 import { ModelPickerLayer } from '../model/ModelPicker';
 import { openModelPicker } from '../model/target';
 import { cycleThinkingLevel } from '../../lib/model/thinking';
@@ -352,6 +353,9 @@ export function AppShell(props: ParentProps) {
         {/* WP-A25: the ⋯ Export/Duplicate rows, the capability palettes and the
             Import session… dialog (the harness reachability surfaces). */}
         <BuiltinActions />
+        {/* WP-A5: the ⋯ Rename/Fork rows, the row context menu and the Rename
+            dialog (Z-13/15/16/20). */}
+        <SessionActions />
         {/* The shortcuts table is the desktop keyboard reference (its sheet does
             not paint in the phone capture shell; the phone has no chord UI). */}
         <Show when={desktop()}>

@@ -184,10 +184,11 @@ describe('header ⋯ (Z-2)', () => {
     // The mock cards have no session file: no "Copy log path". "Session info" is
     // always there: WP-A17's modal plugs it in with the shell (`SessionModalLayer`).
     // WP-A25's `BuiltinActions` registers Duplicate (`/clone`) and Export
-    // (`/export`) with the shell, so both are there without another WP.
-    expect(labels()).toEqual(['Find in chat', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Session info']);
+    // (`/export`); WP-A5's `SessionActions` registers Rename… and Fork — the
+    // slots A3 reserved stay filled once their WP lands.
+    expect(labels()).toEqual(['Find in chat', 'Rename…', 'Fork', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Session info']);
     fireEvent.click(screen.getByTestId('anchored-menu-backdrop'));
-    const offs = (['rename', 'fork', 'export', 'reveal'] as const).map((id) => registerChatAction(id, { run: () => {} }));
+    const offs = (['reveal'] as const).map((id) => registerChatAction(id, { run: () => {} }));
     try {
       fireEvent.click(screen.getByTestId('conv-more'));
       expect(labels()).toEqual(['Find in chat', 'Rename…', 'Fork', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Reveal folder', 'Session info']);
