@@ -135,9 +135,13 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     if (!item) return;
     mutate((s) => markSending(s, ref));
     ensureSweep();
-    stream.cmd(sendCommand(item.mode, unwrap(item))).then(
-      () => {
-        mutate((s) => markAcked(s, ref));
+    stream.cmd<{ disposition?: string } | undefined>(sendCommand(item.mode, unwrap(item))).then(
+      (reply) => {
+        // An extension slash command (`/plan on`, `/permission auto`, …) runs
+        // immediately and answers `handled`: no user message will ever settle
+        // the optimistic bubble, so drop it instead of leaving it "Sending…".
+        if (reply?.disposition === 'handled') mutate((s) => removeItem(s, ref));
+        else mutate((s) => markAcked(s, ref));
         persist();
       },
       (error: unknown) => {
