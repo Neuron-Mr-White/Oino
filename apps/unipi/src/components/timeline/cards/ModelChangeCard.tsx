@@ -6,11 +6,12 @@
 import { Cpu, GitBranch, Sparkles } from 'lucide-solid';
 import { Dynamic } from 'solid-js/web';
 import type { SessionEntry } from '../../../lib/session/types';
+import { modelDisplayName } from '../../../lib/model/displayName';
 
 const textOf2 = (e: SessionEntry): string => {
   if (e.type === 'model_change') {
     const model = String((e as { modelId?: unknown }).modelId ?? (e as { model?: unknown }).model ?? '').trim();
-    return model ? `Model → ${model}` : 'Model changed';
+    return model ? `Model → ${modelDisplayName({ id: model })}` : 'Model changed';
   }
   if (e.type === 'thinking_level_change') {
     const level = String((e as { thinkingLevel?: unknown; level?: unknown }).thinkingLevel ?? (e as { level?: unknown }).level ?? '').trim();
