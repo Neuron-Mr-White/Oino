@@ -123,7 +123,7 @@ export function cronOps(world: MockCronWorld): Record<string, MockOp> {
       const job = a.job as MockCronJob;
       if (world.jobs.some((j) => j.id === job.id)) throw err('E_CONFLICT', `job ${job.id} already exists`);
       const now = Date.now();
-      const made: MockCronJob = { created: now, updated: now, enabled: true, time_limit_s: 1800, tz: 'UTC', ...job };
+      const made: MockCronJob = { ...job, created: job.created ?? now, updated: job.updated ?? now, enabled: job.enabled ?? true, time_limit_s: job.time_limit_s ?? 1800, tz: job.tz ?? 'UTC' };
       world.jobs = [...world.jobs, made];
       return { ...made, running: false };
     },
