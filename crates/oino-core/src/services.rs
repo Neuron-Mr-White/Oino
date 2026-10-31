@@ -648,22 +648,7 @@ impl Services {
             models: models.clone(),
         }));
         forward_settings_changes(&extension_settings, &host);
-        if !(options.flags.offline || offline_env()) {
-            // An in-process app host (desktop/mobile, H-spec host.md §4.2) must never block
-            // its first session open — or a later wake in a new project cwd — on provider
-            // `list-models` probes: dead local servers (ollama, lmstudio) can hold a
-            // connection for the full `LIST_MODELS_TIMEOUT`. The refresh lands in the shared
-            // registry as it completes; terminal modes keep the awaited startup behavior.
-            if matches!(options.mode, ExtensionMode::Desktop | ExtensionMode::Mobile) {
-                let extensions = Arc::clone(&extensions);
-                let models = models.clone();
-                tokio::spawn(async move {
-                    refresh_dynamic_models(&extensions, &models).await;
-                });
-            } else {
-                refresh_dynamic_models(&extensions, &models).await;
-            }
-        }
+        start_model_refresh(&options, &extensions, &models).await;
         Ok(Arc::new(Self {
             cwd: options.cwd,
             agent_dir: options.agent_dir,
@@ -906,6 +891,34 @@ pub async fn refresh_provider_models(
 /// Fetches `list-models` for providers registered with dynamic models.
 /// Upper bound for one provider's `list-models` call at startup.
 const LIST_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The startup model refresh of [`Services::create`]: awaited for terminal modes. An
+/// in-process app host (desktop/mobile, H-spec host.md §4.2) spawns it instead (see
+/// [`spawn_model_refresh`]) — its first session open, or a later wake in a new project
+/// cwd, must never wait on provider `list-models` probes, which dead local servers
+/// (ollama, lmstudio) can hold for the full [`LIST_MODELS_TIMEOUT`].
+async fn start_model_refresh(
+    options: &ServicesOptions,
+    extensions: &Arc<ExtensionSet>,
+    models: &ModelRegistry,
+) {
+    if options.flags.offline || offline_env() {
+        return;
+    }
+    if matches!(options.mode, ExtensionMode::Desktop | ExtensionMode::Mobile) {
+        spawn_model_refresh(Arc::clone(extensions), models.clone());
+    } else {
+        refresh_dynamic_models(extensions, models).await;
+    }
+}
+
+/// The app-host variant of the startup model refresh, spawned so [`Services::create`]
+/// never blocks; the refresh lands in the shared registry as it completes.
+fn spawn_model_refresh(extensions: Arc<ExtensionSet>, models: ModelRegistry) {
+    tokio::spawn(async move {
+        refresh_dynamic_models(&extensions, &models).await;
+    });
+}
 
 /// Fetches the model lists of `models: "dynamic"` providers concurrently. Providers that need
 /// an API key and have none configured are skipped (their models would be unavailable anyway);

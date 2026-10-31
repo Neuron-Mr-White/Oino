@@ -8,7 +8,9 @@
 //! (`session_shutdown{reason:"idle"}`, lease released, guests drop their per-session state)
 //! and returns to a record that re-opens and repairs on demand. A services set with zero
 //! live sessions for `servicesIdleSec` (default 900 s) is disposed (extension `shutdown`);
-//! at most `maxServices` (default 4) are kept, least-recently-used first.
+//! at most `maxServices` (default 4) are kept, least-recently-used first — an idle set is
+//! evicted (its idle sessions return to records) to make room, and when every set has a
+//! busy session the hub rather exceeds the cap by one than refuses the open.
 //!
 //! Settings (`extensionSettings.hub.*`, §2.2): `sessionIdleSec`/`servicesIdleSec` `0`
 //! disables eviction — the TUI's single-session runtime does not use the hub at all.
@@ -521,28 +523,59 @@ impl SessionHub {
             return Ok(Arc::clone(&entry.services));
         }
         if state.services.len() >= self.inner.config.max_services {
-            let live_keys: HashSet<ServicesKey> = state
-                .live
-                .values()
-                .map(|live| live.services.clone())
-                .collect();
             let victim = state
                 .services
                 .iter()
                 .enumerate()
-                .filter(|(_, entry)| !live_keys.contains(&entry.key))
+                .filter(|(_, entry)| services_set_idle(state, &entry.key))
                 .min_by_key(|(_, entry)| entry.last_used)
                 .map(|(index, _)| index);
-            let Some(index) = victim else {
-                return Err(ClientError::Command(format!(
-                    "hub services cache is full ({} of max {}); close a session first",
-                    state.services.len(),
-                    self.inner.config.max_services
-                )));
-            };
-            let entry = state.services.remove(index);
-            tracing::info!(cwd = %entry.key.0.display(), "hub evicted services (maxServices)");
-            dispose_services(&entry.services).await;
+            match victim {
+                Some(index) => {
+                    let entry = state.services.remove(index);
+                    // Idle live sessions on the victim keep its `Services` alive inside
+                    // their runtimes, so they go back to records first (exactly what the
+                    // idle monitor's eviction does; the next command re-wakes them).
+                    let drained: Vec<Arc<Live>> = state
+                        .live
+                        .values()
+                        .filter(|live| live.services == entry.key)
+                        .cloned()
+                        .collect();
+                    for live in drained {
+                        let id = lock(&live.id).clone();
+                        state.live.remove(&id);
+                        live.gone.store(true, Ordering::Release);
+                        live.runtime.dispose().await;
+                        tracing::info!(
+                            session_id = %id, cwd = %entry.key.0.display(),
+                            "hub retired an idle session to free its services (maxServices)"
+                        );
+                    }
+                    tracing::info!(cwd = %entry.key.0.display(), "hub evicted services (maxServices)");
+                    dispose_services(&entry.services).await;
+                }
+                None if state.services.len() == self.inner.config.max_services => {
+                    // Every cached set has a busy session (a running turn, an attached
+                    // stream or an open dialog). Serving the user outranks the descriptor
+                    // budget: grow one set past the cap rather than refusing the open —
+                    // the next idle set trims back as soon as one frees up.
+                    tracing::warn!(
+                        cwd = %cwd.display(),
+                        sets = state.services.len(),
+                        cap = self.inner.config.max_services,
+                        "all services sets are busy; exceeding maxServices by one"
+                    );
+                }
+                None => {
+                    return Err(ClientError::Command(format!(
+                        "hub services cache is over budget ({} of max {}) and every set has a \
+                         running turn; wait for one to finish or close a session",
+                        state.services.len(),
+                        self.inner.config.max_services
+                    )));
+                }
+            }
         }
         let services = Services::create(ServicesOptions {
             cwd: key.0.clone(),
@@ -675,6 +708,26 @@ fn session_busy(runtime: &Arc<AgentSessionRuntime>) -> bool {
             .iter()
             .any(|agent| matches!(agent.state, AgentRunState::Running | AgentRunState::Idle))
         || session.hub().subscriber_count() > 1
+}
+
+/// Whether every live session running on `key`'s services is at rest: no run in flight,
+/// no attached stream and no open dialog. Such a set is a safe `maxServices` eviction
+/// victim — its sessions return to records, exactly like the idle monitor's eviction.
+fn services_set_idle(state: &State, key: &ServicesKey) -> bool {
+    state
+        .live
+        .values()
+        .filter(|live| &live.services == key)
+        .all(|live| {
+            !session_busy(&live.runtime) && {
+                let session = live.runtime.session();
+                !session
+                    .ui()
+                    .snapshot()
+                    .iter()
+                    .any(|request| oino_core::ui::is_dialog(&request.method))
+            }
+        })
 }
 
 /// Shuts a disposed services set's extensions down (E-LAZY: "extension shutdown, instances

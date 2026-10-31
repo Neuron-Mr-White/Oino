@@ -195,6 +195,31 @@ impl Client {
         }
     }
 
+    /// The first frame, or `None` when the handler refused the request and ended the
+    /// stream without one (its `Err` is then the task's result).
+    async fn first_reply_or_end(&mut self) -> Option<Value> {
+        let mut header = [0u8; 5];
+        let read =
+            tokio::time::timeout(Duration::from_secs(20), self.read.read_exact(&mut header)).await;
+        let Ok(Ok(_)) = read else {
+            return None;
+        };
+        let len = u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
+        let mut payload = vec![0u8; len];
+        self.read.read_exact(&mut payload).await.ok()?;
+        serde_json::from_slice(&payload).ok()
+    }
+
+    /// The refusal the handler returned (the task's `Err`), when the stream ended
+    /// without a frame.
+    async fn refusal(mut self) -> Option<unipi_proto::AppErrorDto> {
+        let _ = self.write.shutdown().await;
+        match tokio::time::timeout(Duration::from_secs(5), self.task).await {
+            Ok(Ok(Err(error))) => Some(error),
+            _ => None,
+        }
+    }
+
     async fn close(mut self) {
         let _ = self.write.shutdown().await;
         let _ = tokio::time::timeout(Duration::from_secs(5), self.task).await;
@@ -207,6 +232,12 @@ fn fd_count() -> usize {
         .map(|entries| entries.count())
         .unwrap_or(0)
 }
+
+/// Serializes the tests that assert on the process-wide fd count (they run in one
+/// process; concurrent fixtures would move the number under each other). Async-aware:
+/// the guard is held across the whole test.
+static FD_ASSERT_LOCK: std::sync::LazyLock<tokio::sync::Mutex<()>> =
+    std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 /// Creates a session with one faux exchange, waits for it to go idle and returns its id.
 async fn session_with_a_message(hub: &Arc<SessionHub>) -> String {
@@ -283,6 +314,7 @@ fn synthetic_session(sessions_root: &Path, cwd: &Path, count: usize) -> String {
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn many_opens_keep_the_fd_table_bounded() {
+    let _fd_lock = FD_ASSERT_LOCK.lock().await;
     let fixture = faux_fixture(None).await;
     let id = session_with_a_message(&fixture.hub).await;
 
@@ -354,40 +386,155 @@ async fn many_opens_keep_the_fd_table_bounded() {
     );
 }
 
-/// The hub's `maxServices` override reaches the core hub: a second concurrent project
-/// beyond the cap fails with the core hub's actionable text instead of exhausting the
-/// descriptor table (the crash path), and the first project keeps working.
+/// The hub's `maxServices` override reaches the core hub, and the cache trims by
+/// evicting idle sets — never by refusing an open of an idle session: sequential
+/// projects all open, the least-recently-used idle set (its idle sessions going
+/// back to records) rotating out.
 #[tokio::test]
-async fn services_cap_bounds_concurrent_project_sets() {
+async fn services_cap_evicts_idle_sets_and_never_blocks_an_idle_open() {
+    #[cfg(target_os = "linux")]
+    let _fd_lock = FD_ASSERT_LOCK.lock().await;
     let dir = tempfile::tempdir().unwrap();
-    let fixture = faux_fixture(Some(1)).await;
+    let fixture = faux_fixture(Some(2)).await;
 
-    let first = fixture
-        .hub
-        .create_session(Some(&dir.path().join("a")), None)
-        .await
-        .unwrap();
-    let second = fixture
-        .hub
-        .create_session(Some(&dir.path().join("b")), None)
-        .await;
-    assert!(
-        second.is_err(),
-        "the second project must not build services"
+    // Sequential opens of idle sessions (no stream attached: evictable at once).
+    #[cfg(target_os = "linux")]
+    let baseline = fd_count();
+    for index in 0..5 {
+        let cwd = dir.path().join(format!("p{index}"));
+        std::fs::create_dir_all(&cwd).unwrap();
+        let session = fixture
+            .hub
+            .create_session(Some(&cwd), None)
+            .await
+            .unwrap_or_else(|error| panic!("project {index} must open: {error}"));
+        drop(session);
+    }
+    // The cache rotated instead of growing: the descriptor table stayed flat
+    // (the new sessions have written no files yet, so the list shows none of them).
+    #[cfg(target_os = "linux")]
+    {
+        let after = fd_count();
+        assert!(
+            after <= baseline + 8,
+            "fd table grew while rotating idle sets: {baseline} -> {after}"
+        );
+    }
+}
+
+/// With every cached set busy — here two open session streams, which pin their
+/// runtimes exactly like running turns — a third project still opens (the cap is
+/// exceeded by one, with a warning), and only the open past that bound is refused.
+#[tokio::test]
+async fn a_busy_cache_still_opens_one_project_beyond_the_cap() {
+    let dir = tempfile::tempdir().unwrap();
+    let fixture = faux_fixture(Some(2)).await;
+
+    // Two open streams pin two sets (the feed tap keeps a runtime subscriber).
+    let mut first = Client::open(
+        &fixture.service,
+        Request::SessionNew {
+            cwd: Some(
+                dir.path()
+                    .join("a")
+                    .display()
+                    .to_string()
+                    .try_into()
+                    .unwrap(),
+            ),
+            name: None,
+        },
     );
-    let error = second.err().unwrap().to_string();
+    let r1 = first.first_reply().await;
+    assert_eq!(r1["type"], "ok", "first: {r1}");
+    let mut second = Client::open(
+        &fixture.service,
+        Request::SessionNew {
+            cwd: Some(
+                dir.path()
+                    .join("b")
+                    .display()
+                    .to_string()
+                    .try_into()
+                    .unwrap(),
+            ),
+            name: None,
+        },
+    );
+    let r2 = second.first_reply().await;
+    assert_eq!(r2["type"], "ok", "second: {r2}");
+
+    // The third project opens: both cached sets are busy, so the hub exceeds the cap.
+    let mut third = Client::open(
+        &fixture.service,
+        Request::SessionNew {
+            cwd: Some(
+                dir.path()
+                    .join("c")
+                    .display()
+                    .to_string()
+                    .try_into()
+                    .unwrap(),
+            ),
+            name: None,
+        },
+    );
+    let r3 = third.first_reply().await;
+    assert_eq!(r3["type"], "ok", "third: {r3}");
+
+    // A fourth open while every set is busy and the cache is already one over is the
+    // one refusal left — the alternative would be unbounded growth.
+    let mut fourth = Client::open(
+        &fixture.service,
+        Request::SessionNew {
+            cwd: Some(
+                dir.path()
+                    .join("d")
+                    .display()
+                    .to_string()
+                    .try_into()
+                    .unwrap(),
+            ),
+            name: None,
+        },
+    );
+    let mut reply = fourth.first_reply_or_end().await;
+    if reply.is_none() {
+        let refusal = fourth.refusal().await;
+        reply = refusal.map(|error| json!({"type": "err", "error": {"message": error.message}}));
+    }
+    let reply = reply.expect("a refusal, not silence");
+    assert_eq!(reply["type"], "err", "one-over is the limit: {reply}");
     assert!(
-        error.contains("cache is full"),
-        "the failure names the budget: {error}"
+        reply["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("over budget"),
+        "{reply}"
     );
 
-    // Closing the first session's runtime frees its services for the next project.
-    fixture.hub.close(&first.session_id()).await.unwrap();
-    let reopened = fixture
-        .hub
-        .create_session(Some(&dir.path().join("b")), None)
-        .await;
-    assert!(reopened.is_ok(), "after closing: {reopened:?}");
+    // Closing one stream frees its set's sessions: the next open evicts it and works.
+    third.close().await;
+    // The feed tap lets go of an unwatched idle session after ~3 s of idle polls.
+    tokio::time::sleep(Duration::from_millis(4500)).await;
+    let mut fifth = Client::open(
+        &fixture.service,
+        Request::SessionNew {
+            cwd: Some(
+                dir.path()
+                    .join("e")
+                    .display()
+                    .to_string()
+                    .try_into()
+                    .unwrap(),
+            ),
+            name: None,
+        },
+    );
+    assert_eq!(fifth.first_reply().await["type"], "ok");
+    first.close().await;
+    second.close().await;
+    fifth.close().await;
 }
 
 /// A 1000-entry session opens with its snapshot well inside the QA budget — no runtime
@@ -603,36 +750,29 @@ async fn hanging_list_models_does_not_block_services() {
 /// per-services descriptors until `accept` fails.
 #[cfg(target_os = "linux")]
 #[tokio::test]
-async fn concurrent_projects_beyond_the_cap_stay_bounded() {
+async fn cycling_projects_beyond_the_cap_stay_bounded() {
+    #[cfg(target_os = "linux")]
+    let _fd_lock = FD_ASSERT_LOCK.lock().await;
     let dir = tempfile::tempdir().unwrap();
-    // One services set fits: open sessions across three project cwds in a loop.
+    // One services set fits: cycling projects must rotate idle sets, never accumulate.
     let fixture = faux_fixture(Some(1)).await;
-    let mut live = Vec::new();
-    for index in 0..3 {
-        let cwd = dir.path().join(format!("p{index}"));
-        std::fs::create_dir_all(&cwd).unwrap();
-        match fixture.hub.create_session(Some(&cwd), None).await {
-            Ok(session) => live.push(session.session_id()),
-            Err(error) => assert!(
-                error.to_string().contains("cache is full"),
-                "unexpected failure: {error}"
-            ),
-        }
-    }
-    assert_eq!(live.len(), 1, "only the capped number of sets came up");
 
     let baseline = fd_count();
-    for index in 0..6 {
+    let mut live: Vec<String> = Vec::new();
+    for index in 0..8 {
         let cwd = dir.path().join(format!("q{index}"));
         std::fs::create_dir_all(&cwd).unwrap();
-        // Cycle: open beyond the cap (rejected), close the live one, open the next.
-        let _ = fixture.hub.create_session(Some(&cwd), None).await;
+        // Open, then close the previous session: its set becomes idle-evictable, so
+        // the next open retires it instead of growing the cache.
         if let Some(id) = live.pop() {
             fixture.hub.close(&id).await.unwrap();
         }
-        if let Ok(session) = fixture.hub.create_session(Some(&cwd), None).await {
-            live.push(session.session_id());
-        }
+        let session = fixture
+            .hub
+            .create_session(Some(&cwd), None)
+            .await
+            .unwrap_or_else(|error| panic!("project {index} must open: {error}"));
+        live.push(session.session_id());
     }
     let after = fd_count();
     assert!(
