@@ -1,4 +1,4 @@
-//! pi v1/v2 → v3 (`migrateToCurrentVersion`), operating on raw JSON like pi does.
+//! Format v1/v2 → v3 migration (`migrateToCurrentVersion`), operating on raw JSON.
 
 use std::collections::HashSet;
 
@@ -67,7 +67,7 @@ fn v2_to_v3(values: &mut [JsonValue]) {
     }
 }
 
-/// Migrates raw pi lines in place; returns `true` when anything changed (pi returns whether
+/// Migrates raw lines in place; returns `true` when anything changed (returns whether
 /// the file must be rewritten).
 pub fn migrate_values(values: &mut [JsonValue]) -> bool {
     let version = values

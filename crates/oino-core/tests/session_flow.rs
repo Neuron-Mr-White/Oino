@@ -1,4 +1,4 @@
-//! `AgentSession` behaviour against the faux provider and fake extensions (pi semantics).
+//! `AgentSession` behaviour against the faux provider and fake extensions.
 
 #![allow(
     clippy::unwrap_used,
@@ -734,7 +734,7 @@ async fn abort_settles_with_aborted_and_delivers_queued_steering() {
         })
         .collect();
     assert_eq!(settled, vec![true]);
-    // pi polls steering after the running batch even when aborted: the queued message is
+    // Steering is polled after the running batch even when aborted: the queued message is
     // delivered into the (aborted) next request, nothing is discarded.
     assert_eq!(session.steering_messages().len(), 0);
     assert!(

@@ -1,4 +1,4 @@
-//! Automatic retry of transient provider errors (pi `_prepareRetry`, `_finishCancelledRetry`).
+//! Automatic retry of transient provider errors (`_prepareRetry`, `_finishCancelledRetry`).
 
 use oino_ai::AssistantMessage;
 use tokio_util::sync::CancellationToken;

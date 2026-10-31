@@ -5,7 +5,10 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "pi AgentSession, runtime, extension runner, compaction, retry"
+description = "Coding-agent runtime for Oino: AgentSession, extension runner, compaction, retry"
+readme = "README.md"
+keywords = ["agent", "llm", "runtime", "extensions", "compaction"]
+categories = ["asynchronous", "development-tools"]
 
 [features]
 ## Test doubles: faux provider component, fake extensions, in-memory session builder.

@@ -1,6 +1,6 @@
 //! Extension UI plumbing (ui-protocol.md §2–§6, §9).
 //!
-//! [`bridge`] keeps the pi dialog protocol (request/response, first answer wins,
+//! [`bridge`] keeps the dialog protocol (request/response, first answer wins,
 //! dismissal, handler-deadline withdrawal) and the one-shot effects. [`registry`]
 //! is the retained state of §6: every retained producer call (`setStatus`,
 //! `setWidget`, `setHeader`, `setFooter`, `openPanel`, `updatePanel`, …) is an

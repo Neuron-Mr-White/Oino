@@ -377,7 +377,7 @@ impl ChildAgent {
     ///
     /// # Errors
     ///
-    /// Closed agent, wake failures (session file, repair) and pi prompt errors.
+    /// Closed agent, wake failures (session file, repair) and prompt errors.
     pub async fn prompt(&self, text: String, delivery: Option<&str>) -> Result<String, HostError> {
         self.ensure_open()?;
         let behavior = if delivery == Some("steer") {
@@ -484,7 +484,7 @@ impl ChildAgent {
         }
     }
 
-    /// Child client events (pi `AgentSessionEvent` JSON and friends) from now until
+    /// Child client events (`AgentSessionEvent` JSON and friends) from now until
     /// close. A live subscription keeps the child awake (E-HIBERNATE); on a hibernated
     /// child the first poll wakes it.
     pub fn events(&self) -> BoxStream<'static, JsonValue> {
@@ -704,7 +704,7 @@ impl AgentSession {
         let Some(dir) = dir else {
             return Ok(manager);
         };
-        // pi `--session-dir` semantics: the file lives directly in the child sessions dir.
+        // `--session-dir` semantics: the file lives directly in the child sessions dir.
         let path = dir.join(oino_session::manager::session_file_name(manager.header()));
         let mut text = serde_json::to_string(manager.header()).map_err(failed)?;
         text.push('\n');
@@ -844,12 +844,9 @@ impl AgentSession {
     )]
     #[allow(
         clippy::too_many_arguments,
-        reason = "one parameter per spawn input; mirrors pi createAgentSession"
+        reason = "one parameter per spawn input; mirrors createAgentSession"
     )]
-    #[allow(
-        clippy::too_many_lines,
-        reason = "one step per SessionConfig field, exactly like pi"
-    )]
+    #[allow(clippy::too_many_lines, reason = "one step per SessionConfig field")]
     async fn build_child(
         &self,
         extension: &str,

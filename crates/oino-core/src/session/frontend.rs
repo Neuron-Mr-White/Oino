@@ -320,7 +320,7 @@ fn byte_index(text: &str, chars: usize) -> usize {
         .map_or(text.len(), |(i, _)| i)
 }
 
-/// Case-insensitive subsequence match (pi-tui `fuzzyFilter` approximation).
+/// Case-insensitive subsequence match (`fuzzyFilter` approximation).
 fn fuzzy(candidate: &str, query: &str) -> bool {
     let mut chars = candidate.chars().flat_map(char::to_lowercase);
     query
@@ -596,7 +596,7 @@ impl AgentSession {
     }
 
     /// Applies one retained producer call (`ui.fire`, §6.3): the registry records it and
-    /// publishes a patch; the pi-shaped record is kept for pi clients and the v1 replay.
+    /// publishes a patch; the legacy record is kept for v1 clients and the v1 replay.
     ///
     /// # Errors
     ///

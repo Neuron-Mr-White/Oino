@@ -1,4 +1,4 @@
-//! `AgentSessionRuntime` (pi `agent-session-runtime.ts` + `sdk.ts` `createAgentSession`):
+//! `AgentSessionRuntime` (`agent-session-runtime` + `createAgentSession`):
 //! owns the current [`AgentSession`], replaces it on new/switch/fork/clone/import, and keeps
 //! one client event stream across replacements.
 
@@ -30,7 +30,7 @@ use crate::session::{AgentSession, SessionConfig, SessionOpError, ToolEntry, loc
 pub enum SessionSource {
     /// A new persisted session.
     New,
-    /// A new persisted session with an explicit header id (pi `--session-id`; the id is created
+    /// A new persisted session with an explicit header id (`--session-id`; the id is created
     /// when no session has it yet).
     NewWithId(String),
     /// Open a session file.
@@ -45,7 +45,7 @@ pub enum SessionSource {
     InMemory,
 }
 
-/// Tool selection (pi `--tools`, `-nt`, `-nbt`).
+/// Tool selection (`--tools`, `-nt`, `-nbt`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum ToolSelection {
     /// `defaultTools` setting.
@@ -110,7 +110,7 @@ impl Default for SessionOptions {
     }
 }
 
-/// pi `{cancelled}` result of replacements.
+/// The `{cancelled}` result of replacements.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Replaced {
     /// An extension cancelled the replacement.

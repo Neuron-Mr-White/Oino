@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::js;
 
-/// Files touched by tool calls (pi `FileOperations`; sets keep insertion order).
+/// Files touched by tool calls (`FileOperations`; sets keep insertion order).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileOperations {
     /// Paths passed to `read`.
@@ -18,7 +18,7 @@ pub struct FileOperations {
     pub edited: IndexSet<String>,
 }
 
-/// Sorted file lists (pi `computeFileLists` result, also `CompactionDetails` /
+/// Sorted file lists (`computeFileLists` result, also `CompactionDetails` /
 /// `BranchSummaryDetails`).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -93,9 +93,9 @@ impl FileOperations {
         }
     }
 
-    /// Seeds from stored file lists (previous pi-generated compaction / branch summary
+    /// Seeds from stored file lists (previous compaction / branch summary
     /// `details`): `readFiles` → read, `modifiedFiles` → edited. Non-array fields and non-string
-    /// items are ignored like pi's `Array.isArray` guard (strings only).
+    /// items are ignored like the `Array.isArray` guard (strings only).
     pub fn seed_from_details(&mut self, details: &JsonValue) {
         let list = |key: &str| {
             details

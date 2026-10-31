@@ -1,5 +1,5 @@
 //! Extension settings registry (runtime §10.3, D11) and the core `oino.*` namespaces
-//! (ui-protocol v2 §7): namespaces declared by extensions and by core (pi settings), layered
+//! (ui-protocol v2 §7): namespaces declared by extensions and by core, layered
 //! reads, scoped writes, secret fields and change notifications.
 //!
 //! - **Dialect**: OSS-2 (§7). Wire schemas are parsed into
@@ -8,12 +8,12 @@
 //!   unchanged.
 //! - **Layering**: `defaults ⊕ global ⊕ project` where the layers are
 //!   `extensionSettings.<namespace>` of `<agent>/settings.json` and the trusted
-//!   `.oino/settings.json`, read through the shared [`SettingsManager`] (pi layered file
+//!   `.oino/settings.json`, read through the shared [`SettingsManager`] (layered file
 //!   writes, unknown keys preserved). Legacy flat dotted keys (`"events.x": true`) are
 //!   expanded into nested objects on read and removed on write. Invalid stored values fall
 //!   back to the next layer down and produce a [`oino_ui::settings::Diagnostic`]
 //!   ([`ExtensionSettings::resolved`]); `resolve` never fails.
-//! - **Core namespaces**: `oino.model`, `oino.compaction`, … describe pi settings in the same
+//! - **Core namespaces**: `oino.model`, `oino.compaction`, … describe the agent settings in the same
 //!   dialect (owner `"oino"`, values live at the top level of the settings files) so frontends
 //!   render one Settings screen. Writes go through the same commands.
 //! - **Keys** are dot paths into the namespace object (`events.agentEnd` →
@@ -48,7 +48,7 @@ pub const SECRET_MASK: &str = "••••••";
 /// Settings key holding every namespace (`extensionSettings`).
 pub const EXTENSION_SETTINGS_KEY: &str = "extensionSettings";
 
-/// Owner id of the core namespaces (the pi settings groups).
+/// Owner id of the core namespaces (the settings groups).
 pub const CORE_OWNER: &str = "oino";
 
 const CHANGE_CAPACITY: usize = 64;
@@ -71,7 +71,7 @@ pub enum SettingsLayer {
 enum Root {
     /// `extensionSettings.<namespace>` of the settings files.
     Extension,
-    /// Top-level pi settings; field keys are relative to `prefix` (`None` = top-level names).
+    /// Top-level settings; field keys are relative to `prefix` (`None` = top-level names).
     Core { prefix: Option<String> },
 }
 
@@ -198,7 +198,7 @@ impl std::fmt::Debug for ExtensionSettings {
 
 impl ExtensionSettings {
     /// A registry over `settings`; secrets go to `secrets` (absent in secret-less hosts).
-    /// The core `oino.*` namespaces (pi settings groups, §7) are registered up front.
+    /// The core `oino.*` namespaces (settings groups, §7) are registered up front.
     #[must_use]
     pub fn new(settings: Arc<Mutex<SettingsManager>>, secrets: Option<SecretStore>) -> Self {
         let (changes, _) = broadcast::channel(CHANGE_CAPACITY);
@@ -1070,10 +1070,10 @@ fn core_namespace(
     }
 }
 
-/// The `oino.*` namespaces of §7 with their storage prefix (pi settings top-level key).
+/// The `oino.*` namespaces of §7 with their storage prefix (settings top-level key).
 #[allow(
     clippy::too_many_lines,
-    reason = "declarative table of the pi settings groups"
+    reason = "declarative table of the settings groups"
 )]
 fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
     use oino_settings::types::defaults;
@@ -1799,7 +1799,7 @@ mod tests {
                 .contains(&"oino.compaction".to_owned())
         );
 
-        // pi defaults come from `oino_settings::types::defaults`.
+        // Defaults come from `oino_settings::types::defaults`.
         assert_eq!(
             reg.values("oino.compaction", SettingsLayer::Effective),
             json!({"enabled": true, "reserveTokens": 16_384, "keepRecentTokens": 20_000})
@@ -1867,7 +1867,7 @@ mod tests {
         assert_eq!(global["steeringMode"], "all");
         assert!(
             global["retry"].get("baseDelayMs").is_none(),
-            "writing the pi default unsets: {global}"
+            "writing the default unsets: {global}"
         );
         assert!(
             global

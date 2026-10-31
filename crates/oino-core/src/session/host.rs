@@ -1,4 +1,4 @@
-//! Host operations performed by extensions against this session (pi `ExtensionActions`,
+//! Host operations performed by extensions against this session (`ExtensionActions`,
 //! `ExtensionContextActions`, `ExtensionCommandContextActions`, UI context).
 
 use oino_ai::{JsonValue, ThinkingLevel};

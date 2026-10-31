@@ -1,4 +1,4 @@
-//! Model and thinking-level control (pi `setModel`, `cycleModel`, `setThinkingLevel`,
+//! Model and thinking-level control (`setModel`, `cycleModel`, `setThinkingLevel`,
 //! `cycleThinkingLevel`, `routedModel`, `_recordSelection`, virtual routing).
 
 use oino_ai::{JsonValue, Message, Model, ThinkingLevel};
@@ -72,7 +72,7 @@ impl AgentSession {
             .find_physical(&latest.provider, &latest.model)
     }
 
-    /// Thinking levels the current model supports (all pi levels without a model).
+    /// Thinking levels the current model supports (all levels without a model).
     #[must_use]
     pub fn available_thinking_levels(&self) -> Vec<ThinkingLevel> {
         self.model().map_or_else(
@@ -248,7 +248,7 @@ impl AgentSession {
         effective
     }
 
-    /// pi `cycleThinkingLevel`; `None` when the model has no reasoning.
+    /// Cycles the thinking level; `None` when the model has no reasoning.
     pub async fn cycle_thinking_level(&self, persist: bool) -> Option<ThinkingLevel> {
         if !self.model().is_some_and(|m| m.reasoning) {
             return None;

@@ -1,4 +1,4 @@
-//! JavaScript string semantics the pi algorithms depend on: UTF-16 lengths, UTF-16 slicing,
+//! JavaScript string semantics the algorithms depend on: UTF-16 lengths, UTF-16 slicing,
 //! default `Array#sort` order and `JSON.stringify` output.
 
 use std::cmp::Ordering;

@@ -1,4 +1,4 @@
-//! Summary prompts, verbatim from pi 1.4.0 (`compaction.js`, `branch-summarization.js`,
+//! Summary prompts (`compaction`, `branch-summarization`,
 //! `utils.js`).
 
 /// The summarization system prompt constant.
@@ -6,7 +6,7 @@ pub const SUMMARIZATION_SYSTEM_PROMPT: &str = "You are a context summarization a
 
 Do NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary.";
 
-/// pi `SUMMARIZATION_PROMPT` (first compaction).
+/// The summarization prompt (first compaction).
 pub const SUMMARIZATION_PROMPT: &str = r#"The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
 Use this EXACT format:
@@ -40,7 +40,7 @@ Use this EXACT format:
 
 Keep each section concise. Preserve exact file paths, function names, and error messages."#;
 
-/// pi `UPDATE_SUMMARIZATION_PROMPT` (iterative update with `<previous-summary>`).
+/// The update summarization prompt (iterative update with `<previous-summary>`).
 pub const UPDATE_SUMMARIZATION_PROMPT: &str = r#"The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.
 
 Update the existing structured summary with new information. RULES:
@@ -80,7 +80,7 @@ Use this EXACT format:
 
 Keep each section concise. Preserve exact file paths, function names, and error messages."#;
 
-/// pi `TURN_PREFIX_SUMMARIZATION_PROMPT` (prefix of a split turn).
+/// The turn-prefix summarization prompt (prefix of a split turn).
 pub const TURN_PREFIX_SUMMARIZATION_PROMPT: &str = "The messages above are earlier context from an ongoing conversation. Later messages are stored separately and do not need to be reconstructed.
 
 Create a concise checkpoint of the user's request and the progress shown above. This checkpoint will be placed before the later messages so the conversation can continue with the necessary context.
@@ -96,7 +96,7 @@ Create a concise checkpoint of the user's request and the progress shown above. 
 
 Only summarize information explicitly present above. Do not infer or recreate later messages.";
 
-/// pi `BRANCH_SUMMARY_PREAMBLE` (prepended to branch summaries).
+/// The branch-summary preamble (prepended to branch summaries).
 pub const BRANCH_SUMMARY_PREAMBLE: &str = "The user explored a different conversation branch before returning here.\nSummary of that exploration:\n\n";
 
 /// The branch summary prompt constant.

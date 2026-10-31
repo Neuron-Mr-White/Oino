@@ -7,21 +7,21 @@
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`settings`] | `CompactionSettings` | [`CompactionSettings`], [`DEFAULT_COMPACTION_SETTINGS`] |
-//! | [`tokens`] | `calculateContextTokens`, `estimateTokens`, `estimateContextTokens`, `estimateProjectedContextTokens`, `shouldCompact`, `getLastAssistantUsage` | [`ContextUsageEstimate`], [`estimate_tokens`], [`should_compact`] |
-//! | [`cut_point`] | `findCutPoint`, `findTurnStartIndex` | [`CutPointResult`], [`find_cut_point`] |
-//! | [`prepare`] | `prepareCompaction`, `CompactionPreparation`, `CompactionResult` | [`prepare_compaction`], [`CompactionPreparation`], [`CompactionResult`] |
-//! | [`summarize`] | `completeSummarization`, `generateSummaryWithUsage`, `getSummarizationFailure`, `compact` | [`Summarizer`], [`generate_summary`], [`compact()`], [`summarize_default`] |
-//! | [`branch`] | `branch-summarization.js` | [`collect_entries_for_branch_summary`], [`prepare_branch_entries`], [`generate_branch_summary`] |
-//! | [`utils`] | `utils.js` | [`FileOperations`], [`FileLists`], [`format_file_operations`], [`serialize_conversation`] |
-//! | [`prompts`] | prompt constants | [`SUMMARIZATION_SYSTEM_PROMPT`] and the summary prompts |
-//! | [`retry`] | pi-ai `retryAssistantCall`, `RetryPolicy`, `RetryCallbacks` | [`RetryPolicy`], [`retry_delay_ms`], [`SummarizationRetryObserver`] |
-//! | [`errors`] | pi-ai `isContextOverflow`, `isRetryableAssistantError`, `isRecoverableLength` | [`is_context_overflow`], [`is_retryable_assistant_error`] |
+//! | Module | Contents |
+//! |---|---|
+//! | [`settings`] | [`CompactionSettings`], [`DEFAULT_COMPACTION_SETTINGS`] |
+//! | [`tokens`] | [`ContextUsageEstimate`], [`estimate_tokens`], [`should_compact`] |
+//! | [`cut_point`] | [`CutPointResult`], [`find_cut_point`] |
+//! | [`prepare`] | [`prepare_compaction`], [`CompactionPreparation`], [`CompactionResult`] |
+//! | [`summarize`] | [`Summarizer`], [`generate_summary`], [`compact()`], [`summarize_default`] |
+//! | [`branch`] | [`collect_entries_for_branch_summary`], [`prepare_branch_entries`], [`generate_branch_summary`] |
+//! | [`utils`] | [`FileOperations`], [`FileLists`], [`format_file_operations`], [`serialize_conversation`] |
+//! | [`prompts`] | [`SUMMARIZATION_SYSTEM_PROMPT`] and the summary prompts |
+//! | [`retry`] | [`RetryPolicy`], [`retry_delay_ms`], [`SummarizationRetryObserver`] |
+//! | [`errors`] | [`is_context_overflow`], [`is_retryable_assistant_error`] |
 //!
 //! String lengths, truncation and sorting follow JavaScript (UTF-16 code units) so token
-//! estimates, cut points and prompts match pi byte for byte.
+//! estimates, cut points and prompts are locked to golden fixtures.
 
 pub mod branch;
 pub mod cut_point;

@@ -1,8 +1,8 @@
-//! Compaction settings (pi `CompactionSettings`, `DEFAULT_COMPACTION_SETTINGS`).
+//! Compaction settings (`CompactionSettings`, `DEFAULT_COMPACTION_SETTINGS`).
 
 use serde::{Deserialize, Serialize};
 
-/// pi `CompactionSettings` (`settings.compaction`, per-model overrides resolved by the caller).
+/// Compaction settings (`settings.compaction`, per-model overrides resolved by the caller).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionSettings {

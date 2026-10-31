@@ -1,4 +1,4 @@
-//! Bounded retry of one assistant call (pi-ai `RetryPolicy`, `retryDelayMs`,
+//! Bounded retry of one assistant call (`RetryPolicy`, `retryDelayMs`,
 //! `retryAssistantCall`) with observer callbacks.
 
 use std::future::Future;
@@ -15,7 +15,7 @@ pub const DEFAULT_MAX_AGENT_RETRY_DELAY_MS: u64 = 60_000;
 /// `Number.MAX_SAFE_INTEGER`.
 const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
-/// pi `RetryPolicy` (`settings.retry`).
+/// The retry policy (`settings.retry`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RetryPolicy {
@@ -43,7 +43,7 @@ pub fn retry_delay_ms(base_delay_ms: u64, max_agent_delay_ms: Option<u64>, attem
     delay.min(max_agent_delay_ms.unwrap_or(DEFAULT_MAX_AGENT_RETRY_DELAY_MS))
 }
 
-/// pi `RetryCallbacks` for summarisation calls; core maps them to the
+/// Retry callbacks for summarisation calls; core maps them to the
 /// `summarization_retry_scheduled` / `_attempt_start` / `_finished` session events.
 pub trait SummarizationRetryObserver: Send + Sync {
     /// Before the backoff sleep of retry `attempt` (1-based).

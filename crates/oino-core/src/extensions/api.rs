@@ -2,7 +2,7 @@
 //!
 //! This mirrors `oino-extension-api` (extension-api.md §6) closely so the WASM host can
 //! implement it directly; once `oino-extension-api` lands these definitions are replaced by
-//! re-exports. Event payloads and results are pi-shaped JSON (D5).
+//! re-exports. Event payloads and results are fixed-shape JSON (D5).
 
 use std::path::PathBuf;
 
@@ -27,7 +27,7 @@ pub enum ExtensionKind {
     Extension,
 }
 
-/// pi `ExtensionMode` plus ACP.
+/// Extension mode plus ACP.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExtensionMode {
@@ -137,7 +137,7 @@ pub enum ToolExposure {
     Hidden,
 }
 
-/// Tool registered by an extension (pi `ToolDefinition` data part).
+/// Tool registered by an extension (`ToolDefinition` data part).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolSpec {
@@ -182,7 +182,7 @@ pub struct ToolSpec {
     pub prepare_arguments: bool,
 }
 
-/// Slash command (pi `RegisteredCommand` data part).
+/// Slash command (`RegisteredCommand` data part).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandSpec {
@@ -256,7 +256,7 @@ pub struct Registration {
     /// Flags.
     #[serde(default)]
     pub flags: Vec<FlagSpec>,
-    /// Subscribed event kinds (pi `type` strings or `oino_*`).
+    /// Subscribed event kinds (`type` strings or `oino_*`).
     #[serde(default)]
     pub events: Vec<String>,
     /// Provider registrations (extension-api §4.4 JSON).
@@ -372,7 +372,7 @@ pub trait ExtensionInstance: Send + Sync {
     }
 
     /// Resource directories the package declares (manifest `resources`, absolute paths under
-    /// the package root); loaded like pi package resources (runtime §9.6).
+    /// the package root); loaded like package resources (runtime §9.6).
     fn resource_dirs(&self) -> PackageResourceDirs {
         PackageResourceDirs::default()
     }
@@ -398,7 +398,7 @@ pub trait ExtensionInstance: Send + Sync {
         cx: CallContext,
     ) -> BoxFuture<'_, Result<AgentToolResult, ExtensionCallError>>;
 
-    /// pi `prepareArguments` for a registered tool.
+    /// `prepareArguments` for a registered tool.
     fn prepare_arguments(&self, _tool: &str, raw: JsonObject) -> JsonObject {
         raw
     }
@@ -471,7 +471,7 @@ pub trait ExtensionInstance: Send + Sync {
         None
     }
 
-    /// Routes a virtual model (`route-model` export): a pi route request in, a route result
+    /// Routes a virtual model (`route-model` export): a route request in, a route result
     /// out.
     fn route_model(
         &self,

@@ -1,6 +1,6 @@
-//! Minimal case-insensitive backtracking matcher for pi's error-classification regexes.
+//! Minimal case-insensitive backtracking matcher for the error-classification regexes.
 //!
-//! pi's tables use JavaScript syntax including negative look-behind, which the `regex` crate
+//! The tables use JavaScript syntax including negative look-behind, which the `regex` crate
 //! does not support, so the subset they need is implemented here: literals, `.`, `\d \D \w
 //! \W \s \S`, escaped punctuation, classes with ranges, `^`/`$`, groups `( )`/`(?: )` with
 //! alternation, `(?! )`, `(?<! )`, and greedy `? * +`. Semantics follow JS `RegExp#test`

@@ -1,4 +1,4 @@
-//! Tool registry, loadout and the base system prompt options (pi `_refreshToolRegistry`,
+//! Tool registry, loadout and the base system prompt options (`_refreshToolRegistry`,
 //! `_applyToolLoadout`, `_rebuildSystemPrompt`, `_preparePromptAndToolLoadout`,
 //! `_restoreToolsFromTranscript`).
 
@@ -107,7 +107,7 @@ impl ToolEntry {
     }
 }
 
-/// pi `ToolInfo` (+ Oino `source`).
+/// `ToolInfo` (+ Oino `source`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolInfo {

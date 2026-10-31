@@ -1,7 +1,7 @@
-//! Assistant error classification (pi-ai `utils/overflow.js` and `utils/retry.js`).
+//! Assistant error classification (overflow and retry patterns).
 //!
-//! Pattern tables are copied verbatim from pi 1.4.0 (JS regex source, matched
-//! case-insensitively by a small built-in matcher, see [`pattern_matches`]); a golden test compares them with pi's sources.
+//! Pattern tables are fixed JS regex sources (matched
+//! case-insensitively by a small built-in matcher, see [`pattern_matches`]); a golden test locks them to the reference fixtures.
 
 use std::sync::LazyLock;
 
@@ -9,7 +9,7 @@ use oino_ai::{AssistantMessage, StopReason};
 
 use super::pattern::Pattern;
 
-/// pi `OVERFLOW_PATTERNS` (context overflow error texts per provider).
+/// Overflow patterns (context overflow error texts per provider).
 pub const OVERFLOW_PATTERNS: &[&str] = &[
     r"prompt (?:is )?too long",
     r"prompt exceeds max length",
@@ -39,7 +39,7 @@ pub const OVERFLOW_PATTERNS: &[&str] = &[
     r"^(?:[\w -]+ API error \(413\):|413(?:\s|:|$))",
 ];
 
-/// pi `CEREBRAS_BODYLESS_OVERFLOW_PATTERN` (only for provider `cerebras`).
+/// The bodyless overflow pattern (only for provider `cerebras`).
 pub const CEREBRAS_BODYLESS_OVERFLOW_PATTERN: &str =
     r"^4(?:00|13)\s*(?:status code)?\s*\(no body\)";
 
@@ -50,7 +50,7 @@ pub const NON_OVERFLOW_PATTERNS: &[&str] = &[
     r"too many requests",
 ];
 
-/// pi `NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN` alternatives (quota/billing exhaustion).
+/// Non-retryable provider-limit error pattern alternatives (quota/billing exhaustion).
 pub const NON_RETRYABLE_PROVIDER_LIMIT_PATTERNS: &[&str] = &[
     "GoUsageLimitError",
     "FreeUsageLimitError",
@@ -64,7 +64,7 @@ pub const NON_RETRYABLE_PROVIDER_LIMIT_PATTERNS: &[&str] = &[
     "subscription_sharing_workplace_individual_usage_limit_exceeded",
 ];
 
-/// pi `RETRYABLE_PROVIDER_ERROR_PATTERN` alternatives (transient provider/transport errors).
+/// Retryable provider error pattern alternatives (transient provider/transport errors).
 pub const RETRYABLE_PROVIDER_ERROR_PATTERNS: &[&str] = &[
     "overloaded",
     "server_busy",
@@ -167,7 +167,7 @@ fn error_text(message: &AssistantMessage) -> Option<&str> {
         .filter(|text| !text.is_empty())
 }
 
-/// pi `isContextOverflow(message, contextWindow)`. `context_window == 0` disables the
+/// `isContextOverflow(message, contextWindow)`. `context_window == 0` disables the
 /// silent-overflow (usage above the window) and length-stop (input fills the window) checks.
 #[must_use]
 pub fn is_context_overflow(message: &AssistantMessage, context_window: u64) -> bool {
@@ -185,7 +185,7 @@ pub fn is_context_overflow(message: &AssistantMessage, context_window: u64) -> b
     }
     #[allow(
         clippy::cast_precision_loss,
-        reason = "pi compares token counts as JS doubles"
+        reason = "token counts are compared as JS doubles"
     )]
     let fills_window = input as f64 >= context_window as f64 * 0.99;
     context_window > 0

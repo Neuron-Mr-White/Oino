@@ -1,4 +1,4 @@
-//! Session statistics, context usage and export (pi `getSessionStats`, `getContextUsage`,
+//! Session statistics, context usage and export (`getSessionStats`, `getContextUsage`,
 //! `exportToJsonl`, `exportToHtml`).
 
 use std::path::PathBuf;
@@ -75,7 +75,7 @@ fn add(totals: &mut TokenTotals, cost: &mut f64, usage: &Usage) {
 }
 
 impl AgentSession {
-    /// pi `getSessionStats` (all entries, including compacted history and `usage` entries).
+    /// Session stats (all entries, including compacted history and `usage` entries).
     #[must_use]
     pub fn session_stats(&self) -> SessionStats {
         let mut stats = SessionStats {
@@ -174,10 +174,7 @@ impl AgentSession {
             }
         }
         let estimate = estimate_projected_context_tokens(&projection, &branch);
-        #[allow(
-            clippy::cast_precision_loss,
-            reason = "percent is approximate, as in pi"
-        )]
+        #[allow(clippy::cast_precision_loss, reason = "percent is approximate")]
         let percent = estimate.tokens as f64 / context_window as f64 * 100.0;
         Some(ContextUsage {
             tokens: Some(estimate.tokens),
@@ -239,7 +236,7 @@ impl AgentSession {
         Ok(target)
     }
 
-    /// Exports the current branch as a self-contained HTML page (pi `exportToHtml`
+    /// Exports the current branch as a self-contained HTML page (`exportToHtml`
     /// structure: header, messages, tool calls, collapsed thinking, embedded CSS).
     ///
     /// # Errors

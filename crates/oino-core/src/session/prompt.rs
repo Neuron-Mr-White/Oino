@@ -1,4 +1,4 @@
-//! Prompt pipeline and run lifecycle (pi `prompt`, `steer`, `followUp`, `sendCustomMessage`,
+//! Prompt pipeline and run lifecycle (`prompt`, `steer`, `followUp`, `sendCustomMessage`,
 //! `sendUserMessage`, `_startRun`, `_prepareRun`, `_handlePostAgentRun`, `_emitAgentSettled`).
 
 use futures::future::BoxFuture;
@@ -132,7 +132,7 @@ impl AgentSession {
     ///
     /// # Errors
     ///
-    /// pi's errors: streaming without behaviour, no model, no API key, compaction running.
+    /// Fixed errors: streaming without behaviour, no model, no API key, compaction running.
     pub fn prompt(
         &self,
         text: String,
@@ -393,7 +393,7 @@ impl AgentSession {
         }
     }
 
-    /// pi `sendCustomMessage` (four cases, see runtime §2).
+    /// `sendCustomMessage` (four cases, see runtime §2).
     ///
     /// # Errors
     ///
@@ -534,7 +534,7 @@ impl AgentSession {
     fn defer(&self, action: Deferred) {
         let session = self.clone();
         self.spawn_isolated(IsolatedTask::Drive, async move {
-            // Runs once the current agent_settled emission finished (pi deferred actions).
+            // Runs once the current agent_settled emission finished (deferred actions).
             while lock(&session.inner.book).emitting_settled {
                 tokio::task::yield_now().await;
             }

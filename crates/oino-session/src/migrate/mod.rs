@@ -1,7 +1,7 @@
 //! Format detection, parsing and migration to v3.
 //!
 //! - [`detect`] classifies a file by its first line.
-//! - [`parse_session_text`] parses pi files (v1/v2 migrated in memory, exactly like pi
+//! - [`parse_session_text`] parses session files (v1/v2 migrated in memory, exactly like the reference
 //!   `migrateToCurrentVersion`).
 //! - [`legacy::migrate_oino_legacy_text`] maps pre-v1 Oino `record` files to v3 entries
 //!   (session-v3 §5.2); the file-moving wrapper lives in the manager.
@@ -20,13 +20,13 @@ use crate::error::SessionError;
 /// File format of a session file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileFormat {
-    /// pi v1 (linear, no ids).
+    /// Format v1 (linear, no ids).
     V1,
-    /// pi v2 (tree, `hookMessage`).
+    /// Format v2 (tree, `hookMessage`).
     V2,
-    /// pi v3 (current).
+    /// Format v3 (current).
     V3,
-    /// pi version newer than supported.
+    /// Format version newer than supported.
     Future(u32),
     /// Pre-v1 Oino `record` file.
     OinoLegacy {
@@ -40,7 +40,7 @@ pub enum FileFormat {
 }
 
 /// Classifies a file from its first line: key `"record"` ⇒ Oino legacy; `"type":"session"`
-/// ⇒ pi (missing `version` ⇒ 1).
+/// ⇒ session format (missing `version` ⇒ 1).
 #[must_use]
 pub fn detect(first_line: &str) -> FileFormat {
     if first_line.trim().is_empty() {
@@ -72,7 +72,7 @@ pub fn detect(first_line: &str) -> FileFormat {
     }
 }
 
-/// A parsed pi session file.
+/// A parsed session file.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ParsedSession {
     /// Header (version 3 after migration).
@@ -85,8 +85,8 @@ pub struct ParsedSession {
     pub skipped_lines: Vec<usize>,
 }
 
-/// Parses pi session text. Returns `Ok(None)` when the first valid JSON line is not a
-/// `session` header with a string id (pi `loadEntriesFromFile` returns `[]`).
+/// Parses session text. Returns `Ok(None)` when the first valid JSON line is not a
+/// `session` header with a string id (`loadEntriesFromFile` returns `[]`).
 ///
 /// # Errors
 ///

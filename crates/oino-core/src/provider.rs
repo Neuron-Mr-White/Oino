@@ -2,7 +2,7 @@
 //!
 //! Core has no provider code (charter). A request for a model goes to the provider component
 //! whose manifest `provides.apis` contains the model's `api`; its [`ProviderEvent`]s are
-//! assembled into pi `AssistantMessageEvent`s with live partials. Every stream ends with
+//! assembled into `AssistantMessageEvent`s with live partials. Every stream ends with
 //! `done` or `error`.
 
 use std::sync::Arc;

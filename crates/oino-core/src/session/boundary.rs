@@ -1,4 +1,4 @@
-//! Session boundaries (pi `_dispatchTurnEndBoundary`, `_runBeforeSettleBoundary`,
+//! Session boundaries (`_dispatchTurnEndBoundary`, `_runBeforeSettleBoundary`,
 //! `_buildBoundaryContext`, `_applyBoundaryDrafts`, `_commitBoundaryDrafts`).
 
 use oino_ai::{AgentMessage, AssistantMessage, JsonValue, StopReason, ToolResultMessage};
@@ -120,7 +120,7 @@ impl AgentSession {
         Ok(preview)
     }
 
-    /// pi `_buildBoundaryContext` (`BoundaryContextPreview` JSON).
+    /// `_buildBoundaryContext` (`BoundaryContextPreview` JSON).
     pub(crate) fn build_boundary_context(
         &self,
         drafts: &[JsonValue],
@@ -197,7 +197,7 @@ impl AgentSession {
         );
     }
 
-    /// pi `_dispatchTurnEndBoundary`; returns whether an extension asked to continue.
+    /// `_dispatchTurnEndBoundary`; returns whether an extension asked to continue.
     pub(crate) async fn dispatch_turn_end_boundary(
         &self,
         message: &AssistantMessage,
@@ -266,7 +266,7 @@ impl AgentSession {
         result.continue_run
     }
 
-    /// pi `_runBeforeSettleBoundary`; returns whether the run continues. When the handlers
+    /// `_runBeforeSettleBoundary`; returns whether the run continues. When the handlers
     /// leave the run settling, the turn arbiter (runtime §7.6) may still continue it.
     pub(crate) async fn run_before_settle_boundary(&self) -> bool {
         let runner = self.runner();

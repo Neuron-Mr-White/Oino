@@ -1,4 +1,4 @@
-//! Frontend-facing session state the GUI needs beyond pi (gui-audit area E): the runtime
+//! Frontend-facing session state the GUI needs beyond the core events (gui-audit area E): the runtime
 //! handle background work is spawned on, the `_oino/topics` subscription, attached frontends,
 //! running `bash` calls with their detach registry, and file checkpoints.
 

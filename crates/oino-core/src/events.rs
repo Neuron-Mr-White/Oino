@@ -1,7 +1,7 @@
-//! Client events (runtime.md §6): pi `AgentSessionEvent` plus the other client events.
+//! Client events (runtime.md §6): `AgentSessionEvent` plus the other client events.
 //!
 //! These types will move to `oino-protocol::events` once that crate exists; the JSON shapes
-//! are already the wire shapes (pi field names, `type` tags).
+//! are already the wire shapes (fixed field names, `type` tags).
 
 use oino_agent::{AgentEvent, AgentToolResult};
 use oino_ai::{
@@ -43,7 +43,7 @@ pub enum SummarizationSource {
 /// One event emitted by an agent session.
 #[allow(
     clippy::large_enum_variant,
-    reason = "variants mirror pi event shapes; events are moved through channels one at a time"
+    reason = "variants mirror the event shapes; events are moved through channels one at a time"
 )]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -303,7 +303,7 @@ impl AgentSessionEvent {
     }
 }
 
-/// pi `ExtensionError` as a client event (`extension_error`).
+/// Extension error as a client event (`extension_error`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionErrorEvent {
@@ -564,7 +564,7 @@ impl OinoEvent {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ClientEvent {
-    /// pi session event.
+    /// Session event.
     Session(AgentSessionEvent),
     /// Extension UI request (`extension_ui_request`).
     Ui(UiRequest),
@@ -601,7 +601,7 @@ impl From<ExtensionErrorEvent> for ClientEvent {
     }
 }
 
-/// Serialises tool results as pi does (`{"role":"toolResult",…}`).
+/// Serialises tool results as `{"role":"toolResult",…}`.
 mod tagged_tool_results {
     use oino_ai::{AgentMessage, ToolResultMessage};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};

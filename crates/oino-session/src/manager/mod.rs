@@ -1,4 +1,4 @@
-//! [`SessionManager`]: append-only session tree persistence (pi `SessionManager`, D20).
+//! [`SessionManager`]: append-only session tree persistence (session format v3, D20).
 //!
 //! `session_dir` arguments are always the **sessions root** (e.g. `~/.oino/sessions`); new
 //! files go to `<root>/--<cwd>--/<ts>_<id>.jsonl` (session-v3 §6.1).
@@ -65,7 +65,7 @@ pub struct CompactionDraft {
     pub from_hook: Option<bool>,
     /// Usage of the summary request.
     pub usage: Option<Usage>,
-    /// Checkpoint; `None` ⇒ folded from the current projection (pi behaviour).
+    /// Checkpoint; `None` ⇒ folded from the current projection.
     pub system_message: Option<SystemMessage>,
 }
 
@@ -129,7 +129,7 @@ struct SessionWriter {
 /// Session tree with append-only JSONL persistence.
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "flat bookkeeping flags; a state machine would obscure the pi-parity fields"
+    reason = "flat bookkeeping flags; a state machine would obscure the format-parity fields"
 )]
 #[derive(Debug)]
 pub struct SessionManager {
@@ -246,7 +246,7 @@ impl SessionManager {
         Ok(manager)
     }
 
-    /// Opens a session file: migrates pi v1/v2 in place and pre-v1 Oino files to
+    /// Opens a session file: migrates v1/v2 in place and pre-v1 Oino files to
     /// the v3 layout; a missing file starts a new session at that path.
     ///
     /// # Errors
@@ -417,7 +417,7 @@ impl SessionManager {
     /// [`SessionError::InvalidSessionId`].
     #[allow(
         clippy::needless_pass_by_value,
-        reason = "contract signature (session-v3 §6.2) mirrors pi newSession(options)"
+        reason = "contract signature (session-v3 §6.2) mirrors newSession(options)"
     )]
     pub fn new_session(&mut self, opts: CreateOptions) -> Result<(), SessionError> {
         self.header = new_header(&self.cwd, &opts)?;
@@ -503,7 +503,7 @@ impl SessionManager {
         self.labels = labels;
     }
 
-    /// Whether this manager writes to disk (pi `isPersisted`: `false` for in-memory).
+    /// Whether this manager writes to disk (`isPersisted`: `false` for in-memory).
     #[must_use]
     pub const fn is_persisted(&self) -> bool {
         self.persist
@@ -843,7 +843,7 @@ impl SessionManager {
     }
 
     /// Appends a `context_edit` of an editable entry on the active branch; string replacements
-    /// of assistant/toolResult targets are normalised to one text block (pi).
+    /// of assistant/toolResult targets are normalised to one text block.
     ///
     /// # Errors
     ///
@@ -998,19 +998,19 @@ impl SessionManager {
         tree::build(self.index.entries(), &self.labels)
     }
 
-    /// pi `buildContextEntries` at the leaf.
+    /// Builds context entries at the leaf.
     #[must_use]
     pub fn build_context_entries(&self) -> Vec<SessionEntry> {
         build_context_entries(&self.index, self.leaf.as_ref())
     }
 
-    /// pi `buildSessionProjection` at the leaf.
+    /// Builds the session projection at the leaf.
     #[must_use]
     pub fn build_session_projection(&self) -> SessionProjection {
         build_session_projection(&self.index, self.leaf.as_ref())
     }
 
-    /// pi `buildSessionContext` at the leaf.
+    /// Builds the session context at the leaf.
     #[must_use]
     pub fn build_session_context(&self) -> SessionContext {
         build_session_context(&self.index, self.leaf.as_ref())
@@ -1139,7 +1139,7 @@ impl SessionManager {
         Ok(path)
     }
 
-    /// pi `createBranchedSession` semantics: replaces `self` with the branched session (the
+    /// Branched-session semantics: replaces `self` with the branched session (the
     /// file is written only if it contains a user/assistant message). Returns the new path
     /// for persisted sessions.
     ///

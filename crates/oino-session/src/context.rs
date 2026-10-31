@@ -1,9 +1,9 @@
-//! Context building and projection (pi `buildContextEntries`, `buildSessionProjection`,
+//! Context building and projection (`buildContextEntries`, `buildSessionProjection`,
 //! `buildSessionContext`). Pure functions over an [`EntryIndex`].
 //!
-//! Leaf convention: `leaf = None` is pi's `null` leaf (empty path, e.g. after `resetLeaf`);
+//! Leaf convention: `leaf = None` is the `null` leaf (empty path, e.g. after `resetLeaf`);
 //! an id that is not in the index falls back to the last entry. Use
-//! [`EntryIndex::last_id`] for pi's "default leaf".
+//! [`EntryIndex::last_id`] for the "default leaf".
 
 use std::collections::{HashMap, HashSet};
 
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::entry::{ContextReplacement, EditableContent, EntryId, EntryKind, SessionEntry};
 use crate::messages::{branch_summary_message, compaction_summary_message, custom_message};
 
-/// Entries in file order plus an id index (latest entry wins on duplicate ids, like pi's map).
+/// Entries in file order plus an id index (latest entry wins on duplicate ids).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EntryIndex {
     entries: Vec<SessionEntry>,
@@ -89,7 +89,7 @@ impl EntryIndex {
         self.entries.is_empty()
     }
 
-    /// Id of the last entry in file order (pi's default leaf).
+    /// Id of the last entry in file order (the default leaf).
     #[must_use]
     pub fn last_id(&self) -> Option<&EntryId> {
         self.entries.last().map(|entry| &entry.id)
@@ -290,8 +290,8 @@ fn select_context<'a>(path: &[&'a SessionEntry]) -> Vec<&'a SessionEntry> {
     selected
 }
 
-/// pi `sessionEntryToContextMessages`. `compaction_system` is the checkpoint used when a
-/// compaction entry has no `systemMessage` (pi passes none; projection passes `None`).
+/// Converts entries to context messages. `compaction_system` is the checkpoint used when a
+/// compaction entry has no `systemMessage` (projection passes `None`).
 #[must_use]
 pub fn entry_to_context_messages(
     entry: &SessionEntry,

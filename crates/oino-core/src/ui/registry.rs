@@ -809,7 +809,7 @@ impl UiRegistry {
         self.pending.push(RegistryOp::SessionMeta { set });
     }
 
-    /// Records a dialog (also sent as a pi record to pi clients, §9.2).
+    /// Records a dialog (also sent as a legacy record to plain clients, §9.2).
     pub fn dialog_opened(&mut self, request: DialogRequest) {
         if !self.dialogs.iter().any(|dialog| dialog.id == request.id) {
             self.dialogs.push(request.clone());

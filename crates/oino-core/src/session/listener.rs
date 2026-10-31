@@ -1,5 +1,5 @@
 //! Agent event handling: queues, extension events, client events and persistence
-//! (pi `_handleAgentEvent`, `_emitExtensionEvent`).
+//! (`_handleAgentEvent`, `_emitExtensionEvent`).
 
 use std::sync::{Arc, Weak};
 

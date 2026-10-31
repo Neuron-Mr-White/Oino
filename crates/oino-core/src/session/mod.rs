@@ -108,7 +108,7 @@ impl IsolatedTask {
     }
 }
 
-/// pi `getCurrentSystemMessage` over agent messages.
+/// `getCurrentSystemMessage` over agent messages.
 #[must_use]
 pub fn current_system_message(messages: &[AgentMessage]) -> Option<SystemMessage> {
     SystemState::fold(messages.iter().filter_map(|message| match message {
@@ -118,7 +118,7 @@ pub fn current_system_message(messages: &[AgentMessage]) -> Option<SystemMessage
     .into_message()
 }
 
-/// Failure of a session operation (pi error texts).
+/// Failure of a session operation (fixed error texts).
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum SessionOpError {
@@ -135,7 +135,7 @@ pub enum SessionOpError {
     NoApiKey {
         /// Provider id.
         provider: String,
-        /// pi message.
+        /// Message.
         message: String,
     },
     /// An extension command cannot be queued.
@@ -155,7 +155,7 @@ pub enum SessionOpError {
     /// Session-replacing operations need a command context.
     #[error("This operation is only available in command and shortcut contexts")]
     CommandContextRequired,
-    /// Any other failure with pi's text.
+    /// Any other failure.
     #[error("{0}")]
     Failed(String),
 }
@@ -173,10 +173,10 @@ pub enum ActivityOutcome {
     Error,
 }
 
-/// Mutable run bookkeeping (pi private fields).
+/// Mutable run bookkeeping (private fields).
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "mirrors pi's private AgentSession flags one-to-one"
+    reason = "mirrors the private AgentSession flags one-to-one"
 )]
 #[derive(Default)]
 pub(crate) struct RunBook {
@@ -328,7 +328,7 @@ impl ErrorSink for HubErrors {
     }
 }
 
-/// The session's UI plumbing: pi records go to the hub for pi-shaped frontends,
+/// The session's UI plumbing: legacy records go to the hub for v1 frontends,
 /// registry ops go out as `oino_ui_patch` events (§9.2).
 struct UiHub {
     hub: EventHub,
@@ -368,7 +368,7 @@ impl RegistrySink for UiHub {
 }
 
 impl AgentSession {
-    /// Creates a session (pi `new AgentSession` + `createAgentSession` agent wiring). Call
+    /// Creates a session (`new AgentSession` + `createAgentSession` agent wiring). Call
     /// [`AgentSession::bind_extensions`] afterwards to emit `session_start`.
     #[must_use]
     #[allow(
@@ -487,7 +487,7 @@ impl AgentSession {
         session
     }
 
-    /// pi `bindExtensions` tail: emits `session_start` and merges `resources_discover`
+    /// `bindExtensions` tail: emits `session_start` and merges `resources_discover`
     /// results into the resources.
     pub async fn bind_extensions(&self, reason: &str, previous_session_file: Option<PathBuf>) {
         let runner = self.runner();
@@ -518,7 +518,7 @@ impl AgentSession {
         }
     }
 
-    /// Package resources (manifest `resources` of every loaded extension, pi package
+    /// Package resources (manifest `resources` of every loaded extension, package
     /// resources) followed by `resources_discover` results.
     async fn extend_resources_from_extensions(&self, reason: &str) {
         use oino_resources::source::{PathMetadata, SourceOrigin, SourceScope};
@@ -906,7 +906,7 @@ impl AgentSession {
         lock(&self.inner.scoped_models).clone()
     }
 
-    /// Rebuilds the finalized transcript from the session projection (pi
+    /// Rebuilds the finalized transcript from the session projection (the
     /// `_refreshFinalizedContext`).
     pub fn refresh_context(&self) {
         let messages = lock(&self.inner.manager)

@@ -1,4 +1,4 @@
-//! Session discovery: listing, most-recent lookup and id search (pi `list`, `listAll`,
+//! Session discovery: listing, most-recent lookup and id search (`list`, `listAll`,
 //! `findMostRecentSession`, `findById`).
 
 use std::fs;
@@ -60,7 +60,7 @@ fn message_text(message: &JsonValue) -> Option<String> {
     }
 }
 
-/// Builds the summary of one file; `None` when it is not a pi session file.
+/// Builds the summary of one file; `None` when it is not a session file.
 #[must_use]
 pub fn session_info(path: &Path) -> Option<SessionInfo> {
     let file = fs::File::open(path).ok()?;

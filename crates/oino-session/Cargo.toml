@@ -5,7 +5,10 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "pi session format v3: entries, migration, context projection and SessionManager"
+description = "Session format v3 for Oino: entries, migration, context projection, SessionManager"
+readme = "README.md"
+keywords = ["session", "agent", "transcript", "persistence"]
+categories = ["data-structures"]
 
 [features]
 default = ["manager"]

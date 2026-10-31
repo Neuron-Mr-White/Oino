@@ -1,4 +1,4 @@
-//! Summary generation (pi `completeSummarization`, `generateSummaryWithUsage`,
+//! Summary generation (`completeSummarization`, `generateSummaryWithUsage`,
 //! `generateTurnPrefixSummary`, `getSummarizationFailure`, `compact`) and the extension-facing
 //! `summarize-default`.
 
@@ -33,7 +33,7 @@ use super::uuid::uuidv7;
 pub type Headers = IndexMap<String, Option<String>>;
 
 /// Everything a summary request needs: provider dispatch, resolved model and credentials,
-/// retry policy and observer, cancellation (pi's `model, apiKey, headers, signal,
+/// retry policy and observer, cancellation (`model, apiKey, headers, signal,
 /// thinkingLevel, streamFn, retry, callbacks, sessionId` parameters).
 #[derive(Clone)]
 pub struct Summarizer {
@@ -58,7 +58,7 @@ pub struct Summarizer {
     pub cancel: CancellationToken,
 }
 
-/// Text and usage of one generated summary (pi `{text, usage}`; also the `summarize-default`
+/// Text and usage of one generated summary (`{text, usage}`; also the `summarize-default`
 /// result `{summary, usage?}`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SummaryOutput {
@@ -305,7 +305,7 @@ pub async fn summarize_default(
 /// plus a turn-prefix summary for split turns, merged), appends the file lists and returns
 /// the [`CompactionResult`] with `details: {readFiles, modifiedFiles}`.
 ///
-/// An aborted request yields the (usually empty) aborted text, as in pi; callers check
+/// An aborted request yields the (usually empty) aborted text; callers check
 /// cancellation themselves.
 ///
 /// # Errors

@@ -4,10 +4,10 @@
 //! The dispatch record is one `custom` entry per side-effect tool call, appended before
 //! the tool body runs, so a crash between dispatch and result leaves an attributable
 //! record. Repair is the resume layer's job and appends closers only: a torn physical
-//! tail is terminated with `"\n"` (pi's own repair, `session-manager.js:365-367`) so the
+//! tail is terminated with `"\n"` (the reference repair, `session-manager.js:365-367`) so the
 //! fragment stays a permanently skipped line, and every dangling tool call of the
 //! trailing assistant message is closed with an unknown-outcome error toolResult —
-//! exactly a pi `toolResult` message a stock pi reader understands. Existing bytes are
+//! exactly a `toolResult` message any v3-format reader understands. Existing bytes are
 //! never rewritten or truncated, and open calls are never auto-retried.
 
 use std::collections::HashSet;
@@ -44,8 +44,8 @@ pub struct RepairReport {
 impl SessionManager {
     /// Appends the [`TOOL_DISPATCH_TYPE`] record of a tool call (D-DISPATCH): a `custom`
     /// entry naming the call before its body runs, so resume repair can attribute an
-    /// interrupted effect. `custom` entries never project into context (pi
-    /// `session-manager.js:164-181`) — inert to stock pi readers.
+    /// interrupted effect. `custom` entries never project into context
+    /// (`session-manager.js:164-181`) — inert to v3-format readers.
     ///
     /// # Errors
     ///

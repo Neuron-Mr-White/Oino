@@ -69,11 +69,11 @@ pub fn default_sessions_root() -> Option<PathBuf> {
     default_agent_dir().map(|dir| dir.join("sessions"))
 }
 
-/// pi session id rule: `^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$`.
+/// Session id rule: `^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$`.
 ///
 /// # Errors
 ///
-/// [`SessionError::InvalidSessionId`] with pi's message.
+/// [`SessionError::InvalidSessionId`] with the fixed message.
 pub fn validate_session_id(id: &str) -> Result<(), SessionError> {
     let bytes = id.as_bytes();
     let edge_ok = |b: Option<&u8>| b.is_some_and(u8::is_ascii_alphanumeric);
@@ -91,7 +91,7 @@ pub(crate) fn read_to_string(path: &Path) -> Result<String, SessionError> {
     fs::read_to_string(path).map_err(|e| SessionError::io(path, e))
 }
 
-/// First non-empty line of a file (bounded to 1 MiB like pi's header scan).
+/// First non-empty line of a file (bounded to 1 MiB, as the header scan requires).
 pub(crate) fn first_line(path: &Path) -> Result<String, SessionError> {
     let file = File::open(path).map_err(|e| SessionError::io(path, e))?;
     let mut reader = std::io::Read::take(BufReader::new(file), 1024 * 1024);
@@ -107,7 +107,7 @@ pub(crate) fn first_line(path: &Path) -> Result<String, SessionError> {
     }
 }
 
-/// Header of a pi session file, `None` when the first line is not a valid header.
+/// Header of a session file, `None` when the first line is not a valid header.
 pub(crate) fn read_header(path: &Path) -> Option<SessionHeader> {
     match FileLine::parse(&first_line(path).ok()?) {
         Ok(FileLine::Header(header)) => Some(header),

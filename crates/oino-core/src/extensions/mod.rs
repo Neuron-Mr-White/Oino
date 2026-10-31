@@ -5,7 +5,7 @@
 //! | [`api`] | instance contract, registrations, call context |
 //! | [`deadline`] | handler deadlines that pause while a dialog is open |
 //! | [`host`] | [`host::HostApi`], [`host::HostOp`]: what extensions can do |
-//! | [`runner`] | registries and pi-composition dispatch |
+//! | [`runner`] | registries and composition dispatch |
 //! | [`settings`] | extension settings registry: schema, layered values, secret fields, writes, change events |
 //! | [`sources`] | shared source discovery (share dir, agent, project, `-e`) and the docs root (dist.md §5) |
 //! | [`tool`] | extension tools as `AgentTool`s |

@@ -49,7 +49,7 @@ fn tree_json(roots: &[SessionTreeNode]) -> Value {
     Value::Array(out)
 }
 
-/// Same shape as `scripts/pi-oracle/core-types-session/lib.mjs` `snapshot`.
+/// Same shape as the oracle harness `snapshot`.
 pub fn snapshot(manager: &mut SessionManager) -> Value {
     let entries = manager.entries().to_vec();
     let parents: std::collections::HashSet<_> =

@@ -1,4 +1,4 @@
-//! Manual and automatic compaction plus overflow recovery (pi `compact`, `_checkCompaction`,
+//! Manual and automatic compaction plus overflow recovery (`compact`, `_checkCompaction`,
 //! `_runAutoCompaction`, `_compactBeforeNextAssistantResponse`, `_omitRecoveryAttempt`).
 
 use std::sync::{Arc, Weak};
@@ -389,7 +389,7 @@ impl AgentSession {
         )
     }
 
-    /// pi `_compactBeforeNextAssistantResponse`; returns the projected messages.
+    /// `_compactBeforeNextAssistantResponse`; returns the projected messages.
     pub(crate) async fn compact_before_next_assistant_response(&self) -> Vec<AgentMessage> {
         let projection = lock(&self.inner.manager).build_session_projection();
         let Some(model) = self.model() else {
@@ -424,11 +424,8 @@ impl AgentSession {
             })
     }
 
-    /// pi `_checkCompaction`; returns whether the post-run loop should continue.
-    #[allow(
-        clippy::too_many_lines,
-        reason = "one-to-one port of pi _checkCompaction"
-    )]
+    /// `_checkCompaction`; returns whether the post-run loop should continue.
+    #[allow(clippy::too_many_lines, reason = "one-to-one port of _checkCompaction")]
     pub(crate) async fn check_compaction(
         &self,
         assistant: &AssistantMessage,
@@ -643,7 +640,7 @@ impl AgentSession {
         self.refresh_context();
     }
 
-    /// pi `_runAutoCompaction`; returns whether the post-run loop should continue.
+    /// `_runAutoCompaction`; returns whether the post-run loop should continue.
     pub(crate) async fn run_auto_compaction(
         &self,
         reason: CompactionReason,

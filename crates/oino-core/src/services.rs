@@ -70,8 +70,8 @@ impl ExtensionLoader for StaticLoader {
     }
 }
 
-/// CLI resource flags (pi `-ns`, `-np`, `-nc`, `--skill`, …).
-#[allow(clippy::struct_excessive_bools, reason = "one field per pi CLI switch")]
+/// CLI resource flags (`-ns`, `-np`, `-nc`, `--skill`, …).
+#[allow(clippy::struct_excessive_bools, reason = "one field per CLI switch")]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResourceFlags {
     /// `--no-skills`.
@@ -805,7 +805,7 @@ struct ComponentOAuth {
     models: ModelRegistry,
 }
 
-/// Deadline of one `oauth-refresh` call (pi: 15 s).
+/// Deadline of one `oauth-refresh` call (15 s).
 const OAUTH_REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 impl oino_models::OAuthRefresher for ComponentOAuth {

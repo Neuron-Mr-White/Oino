@@ -1,4 +1,4 @@
-//! Token accounting (pi `calculateContextTokens`, `estimateTokens`, `estimateContextTokens`,
+//! Token accounting (`calculateContextTokens`, `estimateTokens`, `estimateContextTokens`,
 //! `estimateProjectedContextTokens`, `shouldCompact`).
 
 use oino_ai::{
@@ -231,7 +231,7 @@ pub fn should_compact(
 ) -> bool {
     #[allow(
         clippy::cast_possible_wrap,
-        reason = "token counts are far below i64::MAX; pi compares JS doubles"
+        reason = "token counts are far below i64::MAX; compared as JS doubles"
     )]
     let threshold = context_window as i64 - settings.reserve_tokens as i64;
     #[allow(clippy::cast_possible_wrap, reason = "see above")]

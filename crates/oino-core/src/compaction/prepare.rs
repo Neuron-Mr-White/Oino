@@ -1,4 +1,4 @@
-//! Compaction preparation and result types (pi `CompactionPreparation`, `prepareCompaction`,
+//! Compaction preparation and result types (`CompactionPreparation`, `prepareCompaction`,
 //! `CompactionResult`, `CompactionDetails`).
 
 use oino_ai::{AgentMessage, JsonValue, Usage};
@@ -15,7 +15,7 @@ use super::utils::{FileLists, FileOperations};
 /// File tracking stored in `CompactionEntry.details`.
 pub type CompactionDetails = FileLists;
 
-/// pi `CompactionResult` (the session manager adds id/parent when appending).
+/// Compaction result (the session manager adds id/parent when appending).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionResult {
@@ -31,12 +31,12 @@ pub struct CompactionResult {
     /// Usage of the summarisation request(s).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
-    /// Implementation data ([`CompactionDetails`] for pi summaries, free-form for extensions).
+    /// Implementation data ([`CompactionDetails`] for built-in summaries, free-form for extensions).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<JsonValue>,
 }
 
-/// pi `CompactionPreparation` (payload of `session_before_compact`).
+/// Compaction preparation (payload of `session_before_compact`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionPreparation {

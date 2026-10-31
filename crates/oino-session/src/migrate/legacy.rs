@@ -193,7 +193,7 @@ fn zero_usage() -> Value {
 
 /// Outcome of mapping one legacy message.
 enum Mapped {
-    /// pi message JSON.
+    /// Message JSON.
     Message(Value),
     /// The message becomes a non-message entry (non-model-visible custom).
     CustomEntry(Box<EntryKind>),
@@ -282,7 +282,7 @@ impl Mapper<'_> {
         )
     }
 
-    /// Maps a legacy message to a pi message value, a `custom` entry for non-model-visible
+    /// Maps a legacy message to a message value, a `custom` entry for non-model-visible
     /// customs, or drops it.
     fn map_message(&mut self, message: &Value, ts: i64, line: usize) -> Mapped {
         match str_field(message, "kind") {
@@ -582,8 +582,8 @@ pub fn migrate_oino_legacy_text(text: &str, base_ms: i64) -> Result<LegacyMigrat
     })
 }
 
-/// Stores the folded system checkpoint on migrated compactions (what pi's
-/// `appendCompaction` would have recorded), so pi-exact projection keeps the prompt.
+/// Stores the folded system checkpoint on migrated compactions (what the reference
+/// `appendCompaction` would have recorded), so exact projection keeps the prompt.
 fn fill_compaction_checkpoints(mut index: EntryIndex) -> Vec<SessionEntry> {
     let compactions: Vec<(usize, Option<EntryId>, i64)> = index
         .entries()

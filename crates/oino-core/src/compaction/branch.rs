@@ -39,7 +39,7 @@ pub struct CollectEntriesResult {
 pub struct BranchPreparation {
     /// Messages to summarise, oldest first.
     pub messages: Vec<AgentMessage>,
-    /// File operations (cumulative with pi-generated branch summaries).
+    /// File operations (cumulative with generated branch summaries).
     pub file_ops: FileOperations,
     /// Estimated tokens of `messages`.
     pub total_tokens: u64,
@@ -69,7 +69,7 @@ pub struct BranchSummaryResult {
     pub error: Option<String>,
 }
 
-/// Prompt options of [`generate_branch_summary`] (pi `GenerateBranchSummaryOptions` minus the
+/// Prompt options of [`generate_branch_summary`] (`GenerateBranchSummaryOptions` minus the
 /// request fields carried by [`Summarizer`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BranchSummaryOptions {
@@ -149,7 +149,7 @@ pub fn collect_entries_for_branch_summary(
     }
 }
 
-/// pi `getMessageFromEntry` (branch variant): conversation content of an entry; tool
+/// `getMessageFromEntry` (branch variant): conversation content of an entry; tool
 /// results are skipped (their calls carry the context) and compactions become summaries.
 fn message_from_entry(entry: &SessionEntry) -> Option<AgentMessage> {
     let timestamp = entry.timestamp.to_ms().unwrap_or(0);
@@ -184,7 +184,7 @@ fn message_from_entry(entry: &SessionEntry) -> Option<AgentMessage> {
     }
 }
 
-/// File operations from every entry (seeded from pi-generated
+/// File operations from every entry (seeded from generated
 /// branch summaries), then messages newest → oldest until `token_budget` (0 = unlimited); a
 /// summary entry that overflows is still kept while under 90 % of the budget.
 #[must_use]
@@ -213,7 +213,7 @@ pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> Br
             );
             #[allow(
                 clippy::cast_precision_loss,
-                reason = "pi compares token counts as JS doubles"
+                reason = "token counts are compared as JS doubles"
             )]
             let under_ninety_percent = (total_tokens as f64) < token_budget as f64 * 0.9;
             if is_summary && under_ninety_percent {
@@ -235,7 +235,7 @@ pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> Br
 
 /// Summarises abandoned branch entries (oldest first) within
 /// `context window − reserve_tokens`. Failures are reported in the result, not as errors.
-/// The request carries no reasoning level or caller session id (as in pi).
+/// The request carries no reasoning level or caller session id.
 pub async fn generate_branch_summary(
     entries: &[SessionEntry],
     summarizer: &Summarizer,

@@ -1,21 +1,21 @@
-//! `oino-session`: pi session format v3 for Oino.
+//! `oino-session`: session format v3 for Oino.
 //!
 //! Session files are JSONL: a `"type":"session"` header followed by tree entries linked by
 //! `id`/`parentId`. This crate owns the line types, LLM conversion of coding-agent messages,
-//! the pure context-building rules, migration (pi v1/v2 and pre-v1 Oino files) and — behind
+//! the pure context-building rules, migration (v1/v2 and pre-v1 Oino files) and — behind
 //! the default `manager` feature — the synchronous [`SessionManager`] (D20). Without
 //! `manager` the crate is pure and builds for `wasm32-wasip2`.
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`entry`] | `SessionHeader`, `SessionEntry` | [`SessionHeader`], [`SessionEntry`], [`EntryKind`], [`EntryId`], [`IsoTimestamp`], [`FileLine`] |
-//! | [`messages`] | `core/messages.js` | [`convert_to_llm`], summary prefixes, `bashExecutionToText` |
-//! | [`context`] | `buildContextEntries` / `buildSessionProjection` / `buildSessionContext` | [`EntryIndex`], [`SessionProjection`], [`SessionContext`] |
-//! | [`migrate`] | `migrateSessionEntries` | [`migrate::detect`], [`migrate::parse_session_text`], legacy Oino mapping |
-//! | [`manager`] (feature) | `SessionManager` | [`SessionManager`], listing, [`ReadonlySession`] |
-//! | [`time`] | `Date#toISOString` | ISO formatting/parsing |
+//! | Module | Contents |
+//! |---|---|
+//! | [`entry`] | [`SessionHeader`], [`SessionEntry`], [`EntryKind`], [`EntryId`], [`IsoTimestamp`], [`FileLine`] |
+//! | [`messages`] | [`convert_to_llm`], summary prefixes, `bashExecutionToText` |
+//! | [`context`] | [`EntryIndex`], [`SessionProjection`], [`SessionContext`] |
+//! | [`migrate`] | [`migrate::detect`], [`migrate::parse_session_text`], legacy Oino mapping |
+//! | [`manager`] (feature) | [`SessionManager`], listing, [`ReadonlySession`] |
+//! | [`time`] | ISO formatting/parsing |
 //!
 //! Files live at `<sessions root>/--<cwd>--/<ts>_<sessionId>.jsonl` and are append-only; a
 //! file is created only once the first user or assistant message exists.

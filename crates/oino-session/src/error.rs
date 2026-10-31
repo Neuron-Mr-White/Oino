@@ -26,7 +26,7 @@ pub enum SessionError {
         /// Underlying error.
         source: serde_json::Error,
     },
-    /// Session id failed pi's validation (message text is pi's, verbatim).
+    /// Session id failed validation (message text is fixed, verbatim).
     #[error(
         "Session id must be non-empty, contain only alphanumeric characters, '-', '_', and '.', and start and end with an alphanumeric character"
     )]

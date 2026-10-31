@@ -1,4 +1,4 @@
-//! Tree navigation with branch summaries (pi `navigateTree`, `getUserMessagesForForking`).
+//! Tree navigation with branch summaries (`navigateTree`, `getUserMessagesForForking`).
 
 use oino_ai::{AgentMessage, Usage};
 use oino_session::{BranchSummaryDraft, EntryId, EntryKind};
@@ -30,7 +30,7 @@ pub struct NavigateTreeOptions {
     pub label: Option<String>,
 }
 
-/// pi `navigateTree` result.
+/// `navigateTree` result.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigateTreeResult {
@@ -81,8 +81,8 @@ impl AgentSession {
     ///
     /// # Errors
     ///
-    /// pi's texts for streaming, compaction, unknown targets and summariser failures.
-    #[allow(clippy::too_many_lines, reason = "one-to-one port of pi navigateTree")]
+    /// Fixed texts for streaming, compaction, unknown targets and summariser failures.
+    #[allow(clippy::too_many_lines, reason = "one-to-one port of navigateTree")]
     pub async fn navigate_tree(
         &self,
         target_id: &EntryId,

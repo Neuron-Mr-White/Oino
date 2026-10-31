@@ -1,14 +1,14 @@
-//! pi dialog protocol and one-shot effects (ui-protocol.md §2–§4).
+//! Dialog protocol and one-shot effects (ui-protocol.md §2–§4).
 //!
 //! Extensions raise dialogs (`select`, `confirm`, `input`, `editor`, Oino dialogs) and
 //! fire-and-forget updates (`notify`, `setStatus`, `setWidget`, …). The bridge publishes the
-//! pi-shaped `extension_ui_request` records, resolves dialogs with the first valid
-//! `extension_ui_response` (or the pi default on timeout / cancel / no UI), and broadcasts
+//! legacy `extension_ui_request` records, resolves dialogs with the first valid
+//! `extension_ui_response` (or the default on timeout / cancel / no UI), and broadcasts
 //! `extension_ui_dismiss`. Retained producer calls are also mirrored into the
-//! [`super::registry::UiRegistry`] (§6); the v1 `retained` replay here feeds pi-shaped
+//! [`super::registry::UiRegistry`] (§6); the v1 `retained` replay here feeds v1
 //! frontends until the TUI renderer (WP-U4) and `oino-view` (WP-U5) move to the registry.
 //!
-//! Wire types live in `oino_ui::slot`; this module keeps the pi request/response records
+//! Wire types live in `oino_ui::slot`; this module keeps the request/response records
 //! byte-for-byte (D-U1).
 
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ pub struct UiRequest {
     pub id: String,
     /// Method name (`select`, `setStatus`, …).
     pub method: String,
-    /// Method fields, pi names.
+    /// Method fields (wire names).
     pub params: JsonObject,
     /// Owning extension (Oino).
     pub extension_id: Option<String>,
@@ -84,7 +84,7 @@ impl<'de> Deserialize<'de> for UiRequest {
     }
 }
 
-/// Answer of a dialog (pi response forms).
+/// Answer of a dialog (wire response forms).
 #[derive(Clone, Debug, PartialEq)]
 pub enum UiAnswer {
     /// `{value}`.
@@ -226,7 +226,7 @@ pub fn is_dialog(method: &str) -> bool {
     DIALOG_METHODS.contains(&method)
 }
 
-/// pi `UIPromptKind` of a dialog method (Oino-only dialogs map to `custom`).
+/// The `UIPromptKind` of a dialog method (Oino-only dialogs map to `custom`).
 #[must_use]
 pub fn prompt_kind(method: &str) -> &'static str {
     match method {
@@ -634,8 +634,8 @@ mod tests {
         );
     }
 
-    /// Every example of pi 1.4.0 `docs/rpc-extension-ui.md` round-trips byte-for-byte
-    /// (D-U1): the pi request/response records are untouched by the v2 wire.
+    /// Every documented RPC UI example round-trips byte-for-byte
+    /// (D-U1): the request/response records are untouched by the v2 wire.
     #[test]
     fn rpc_extension_ui_examples_round_trip_byte_for_byte() {
         let requests = [
@@ -646,7 +646,7 @@ mod tests {
             r#"{"type":"extension_ui_request","id":"uuid-5","method":"notify","message":"Command blocked by user","notifyType":"warning"}"#,
             r#"{"type":"extension_ui_request","id":"uuid-6","method":"setStatus","statusKey":"my-ext","statusText":"Turn 3 running..."}"#,
             r#"{"type":"extension_ui_request","id":"uuid-7","method":"setWidget","widgetKey":"my-ext","widgetLines":["--- My Widget ---","Line 1","Line 2"],"widgetPlacement":"aboveEditor"}"#,
-            r#"{"type":"extension_ui_request","id":"uuid-8","method":"setTitle","title":"pi - my project"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-8","method":"setTitle","title":"oino - my project"}"#,
             r#"{"type":"extension_ui_request","id":"uuid-9","method":"set_editor_text","text":"prefilled text for the user"}"#,
         ];
         for example in requests {
@@ -664,7 +664,7 @@ mod tests {
             let encoded = serde_json::to_string(&response).unwrap();
             assert_eq!(encoded, example);
         }
-        // The registry form keeps the pi fields and adds the Oino ids (§9.2).
+        // The registry form keeps the wire fields and adds the Oino ids (§9.2).
         let request: UiRequest = serde_json::from_str(requests[0]).unwrap();
         let registry = request.to_registry();
         assert_eq!(registry.id, "uuid-1");

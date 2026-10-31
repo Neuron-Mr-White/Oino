@@ -1,4 +1,4 @@
-//! `!` command execution (pi `executeBash`, `recordBashResult`, bash-executor.ts).
+//! `!` command execution (`executeBash`, `recordBashResult`, bash-executor.ts).
 
 use oino_ai::{AgentMessage, BashExecutionMessage};
 use serde::{Deserialize, Serialize};

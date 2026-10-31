@@ -1,4 +1,4 @@
-//! Nested tool calls (pi 1.4 `ctx.executeTool`, `nested-tool-calls.ts`): a tool runs another
+//! Nested tool calls (`ctx.executeTool`, `nested-tool-calls.ts`): a tool runs another
 //! callable tool through the full pipeline (validation, `tool_call`/`tool_result` hooks) with
 //! id `<parent>/<n>`; calls and usage are recorded on the parent's result message.
 
@@ -25,7 +25,7 @@ const MAX_ARGUMENT_BYTES_PER_CALL: u64 = 8 * 1024;
 const MAX_ARGUMENT_BYTES_TOTAL: u64 = 32 * 1024;
 const MAX_ERROR_CHARS: usize = 500;
 
-/// pi `NestedCallRecorder` for one top-level call.
+/// The nested-call recorder for one top-level call.
 pub(crate) struct Recorder {
     calls: Vec<(NestedToolCallRecord, Instant)>,
     complete: bool,
@@ -156,7 +156,7 @@ impl AfterToolCall for NestedHooks {
 }
 
 impl AgentSession {
-    /// pi `ctx.executeTool(name, args)` for the running call `parent`.
+    /// `ctx.executeTool(name, args)` for the running call `parent`.
     pub async fn execute_nested_tool(
         &self,
         parent: &str,
@@ -253,7 +253,7 @@ impl AgentSession {
     }
 
     /// Adds the nested calls and usage of a finished top-level call to its result message
-    /// (pi `takeRecord` at the result's `message_start`; the same record again at `message_end`).
+    /// (`takeRecord` at the result's `message_start`; the same record again at `message_end`).
     pub(crate) fn attach_nested_record(
         &self,
         message: &oino_ai::ToolResultMessage,

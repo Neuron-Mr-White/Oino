@@ -157,7 +157,7 @@ pub struct SessionEntry {
 }
 
 impl SessionEntry {
-    /// pi `type` string of this entry.
+    /// `type` string of this entry.
     #[must_use]
     pub const fn type_name(&self) -> &'static str {
         self.kind.type_name()
@@ -184,7 +184,7 @@ impl SessionEntry {
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(
     clippy::large_enum_variant,
-    reason = "variants mirror pi entry shapes; entries are stored by value in one Vec"
+    reason = "variants mirror the entry shapes; entries are stored by value in one Vec"
 )]
 pub enum EntryKind {
     /// Conversation message.
@@ -283,7 +283,7 @@ pub enum EntryKind {
 }
 
 impl EntryKind {
-    /// pi `type` string.
+    /// `type` string.
     #[must_use]
     pub const fn type_name(&self) -> &'static str {
         match self {

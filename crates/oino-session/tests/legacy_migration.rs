@@ -2,9 +2,8 @@
 //!
 //! Inputs: `tests/fixtures/oino-legacy/*.jsonl` (scrubbed real files + hand-written edge
 //! cases). Goldens: `expected/<name>.jsonl` (ids normalised on comparison). Bless with
-//! `OINO_BLESS=1 cargo test -p oino-session --test legacy_migration`, then record pi's view
-//! of the goldens with `node scripts/pi-oracle/core-types-session/context.mjs
-//! crates/oino-session/tests/fixtures/oino-legacy/expected`.
+//! `OINO_BLESS=1 cargo test -p oino-session --test legacy_migration`, then re-record the
+//! reference view of the goldens with the oracle harness in `scripts/`.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -91,9 +90,9 @@ fn legacy_files_match_goldens() {
     assert!(compared >= 4, "only {compared} goldens");
 }
 
-/// pi 1.4.0 reads the migrated goldens and builds the same context as Oino.
+/// The reference reader reads the migrated goldens and builds the same context as Oino.
 #[test]
-fn goldens_match_pi_projection() {
+fn goldens_match_reference_projection() {
     let dir = common::fixtures().join("oino-legacy/expected");
     for file in fs::read_dir(&dir)
         .unwrap()

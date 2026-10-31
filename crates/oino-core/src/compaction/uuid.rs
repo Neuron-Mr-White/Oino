@@ -1,4 +1,4 @@
-//! `UUIDv7` routing ids for summary requests (pi-ai `uuidv7`), without an RNG dependency:
+//! `UUIDv7` routing ids for summary requests (`uuidv7`), without an RNG dependency:
 //! randomness comes from std's per-process random hasher keys.
 
 use std::collections::hash_map::RandomState;

@@ -1,5 +1,5 @@
-//! Extension runner: registries and event dispatch with pi composition semantics
-//! (pi `ExtensionRunner`, runtime.md §7.2).
+//! Extension runner: registries and event dispatch with composition semantics
+//! (runtime.md §7.2).
 //!
 //! Handlers run sequentially in load order. Notification and transform handlers that fail
 //! are reported as `extension_error` and skipped (the chain keeps the previous value);
@@ -276,7 +276,7 @@ impl std::fmt::Debug for ExtensionRunner {
     }
 }
 
-/// pi `ExtensionRunner.invalidate` default message (verbatim, product name substituted).
+/// The `invalidate` default message (verbatim, product name substituted).
 pub const STALE_CONTEXT_MESSAGE: &str = "This extension ctx is stale after session replacement or reload. Do not use a captured Oino or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload(). For newSession, fork, and switchSession, move post-replacement work into withSession and use the ctx passed to withSession. For reload, do not use the old ctx after await ctx.reload().";
 
 impl ExtensionRunner {
@@ -1105,7 +1105,7 @@ impl ExtensionRunner {
         lock(&self.flag_values).clone()
     }
 
-    /// Shortcuts with their owners (later registrations of the same id win, like pi keys).
+    /// Shortcuts with their owners (later registrations of the same id win, like map keys).
     #[must_use]
     pub fn shortcuts(&self) -> Vec<(String, ShortcutSpec)> {
         let mut shortcuts: IndexMap<String, (String, ShortcutSpec)> = IndexMap::new();
@@ -1146,7 +1146,7 @@ impl ExtensionRunner {
     }
 }
 
-/// pi role string of a message.
+/// Role string of a message.
 #[must_use]
 pub fn role_of(message: &AgentMessage) -> &'static str {
     match message {

@@ -1,6 +1,6 @@
-//! Golden tests for the summary requests of `compact` / `generate_branch_summary` against pi
+//! Golden tests for the summary requests of `compact` / `generate_branch_summary` against reference
 //! 1.4.0: exact request context and options (through a recording `StreamFn`), results,
-//! failures and retry callbacks. Fixtures: `scripts/pi-oracle/core-runtime/compaction/`.
+//! failures and retry callbacks. Fixtures under `tests/fixtures/compaction/`.
 
 #![allow(
     clippy::unwrap_used,
@@ -40,7 +40,7 @@ fn assert_json(label: &str, actual: &Value, expected: &Value) {
     );
 }
 
-/// Replays scripted replies and records each request in pi's oracle shape.
+/// Replays scripted replies and records each request in the oracle shape.
 struct Recorder {
     replies: Vec<AssistantMessage>,
     requests: Mutex<Vec<Value>>,

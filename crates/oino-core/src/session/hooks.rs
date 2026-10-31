@@ -1,4 +1,4 @@
-//! Agent hooks installed by the session (pi `_installAgent*` methods and the `sdk.ts` agent
+//! Agent hooks installed by the session (`_installAgent*` methods and the agent
 //! wiring): tool interception, request projection + virtual routing, turn boundaries,
 //! between-turn compaction and prompt refresh, context transforms, per-request auth.
 
@@ -47,7 +47,7 @@ impl Barrier {
 }
 
 /// Built-in tools with no side effects: they are exempt from the tool barrier (D-FLUSH
-/// barrier 2; pi's read-only set `read`, `grep`, `find`, `ls`) — nothing to repair and no
+/// barrier 2; read-only set `read`, `grep`, `find`, `ls`) — nothing to repair and no
 /// effect to attribute, so no fsync and no dispatch record (D-DISPATCH).
 const READ_ONLY_BUILTIN_TOOLS: [&str; 4] = ["read", "grep", "find", "ls"];
 
@@ -100,7 +100,7 @@ impl BeforeToolCall for SessionHooks {
                 // D-DISPATCH + D-FLUSH barrier 2: the call is on the durable log before
                 // the tool body runs — the record attributes an interrupted effect, the
                 // barrier makes the whole log durable. Either failure becomes the tool's
-                // error result (pi's hook-failure path), so the body never runs
+                // error result (the hook-failure path), so the body never runs
                 // unpersisted. Read-only tools skip both.
                 session.tool_dispatch_barrier(cx.tool_call, args)?;
             }
@@ -457,7 +457,7 @@ impl AgentSession {
     }
 }
 
-/// Content blocks with their `type` tags (pi shapes).
+/// Content blocks with their `type` tags (wire shapes).
 pub(crate) fn tagged_content(content: &[UserContent]) -> JsonValue {
     serde_json::to_value(content).unwrap_or(JsonValue::Array(Vec::new()))
 }
@@ -514,7 +514,7 @@ impl StreamFn for SessionStream {
 }
 
 impl AgentSession {
-    /// pi `_getRequiredRequestAuth` + header transforms.
+    /// `_getRequiredRequestAuth` + header transforms.
     async fn authorize(&self, mut request: StreamRequest) -> Result<StreamRequest, String> {
         let auth = self
             .inner
@@ -578,7 +578,7 @@ impl AgentSession {
     }
 }
 
-/// pi OAuth failure text.
+/// OAuth failure text.
 pub(crate) fn oauth_failed_message(provider: &str) -> String {
     format!(
         "Authentication failed for \"{provider}\". Credentials may have expired or network is unavailable. Run '/login {provider}' to re-authenticate."

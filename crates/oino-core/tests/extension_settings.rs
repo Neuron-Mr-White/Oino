@@ -98,7 +98,7 @@ async fn registry_serves_guests_and_frontends() {
     ));
     let services = services(dir.path(), Arc::clone(&owner)).await;
     let registry = &services.extension_settings;
-    // Core `oino.*` namespaces (pi settings groups) are registered up front; the extension
+    // Core `oino.*` namespaces (settings groups) are registered up front; the extension
     // namespaces follow.
     let namespaces = registry.schema();
     assert_eq!(

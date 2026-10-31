@@ -34,7 +34,7 @@ pub const DOCS_ROOT_ENV: &str = "OINO_DOCS_ROOT";
 pub enum SourceSeverity {
     /// Startup continues (the source is skipped, the package dropped).
     Warning,
-    /// Fatal at startup (pi `-e` semantics: an unloadable explicit package fails the start).
+    /// Fatal at startup (`-e` semantics: an unloadable explicit package fails the start).
     Error,
 }
 

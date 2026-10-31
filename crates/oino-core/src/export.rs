@@ -1,4 +1,4 @@
-//! Self-contained HTML export of a session branch (pi `session-export.ts` structure: header,
+//! Self-contained HTML export of a session branch (structure: header,
 //! messages, tool calls, collapsed thinking, embedded CSS, no external assets).
 
 use std::fmt::Write as _;

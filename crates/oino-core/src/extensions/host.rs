@@ -119,7 +119,7 @@ pub enum HostOp {
     },
     /// Read session data.
     SessionRead(SessionQuery),
-    /// pi `appendEntry(customType, data)`; returns the entry id.
+    /// Appends an entry (`appendEntry(customType, data)`); returns the entry id.
     AppendEntry {
         /// Custom type.
         custom_type: String,
@@ -159,7 +159,7 @@ pub enum HostOp {
     SetActiveTools(Vec<String>),
     /// Returns the registered commands.
     GetCommands,
-    /// pi `setModel`; returns `true` when auth is configured and the model was set.
+    /// Sets the model; returns `true` when auth is configured and the model was set.
     SetModel {
         /// Provider id.
         provider: String,
@@ -205,7 +205,7 @@ pub enum HostOp {
     GetScopedModels,
     /// The model a virtual selection currently routes to (`control.routed-model`).
     GetRoutedModel,
-    /// pi `SessionStats` (`control.session-stats`).
+    /// Session stats (`control.session-stats`).
     GetSessionStats,
     /// Project trust decision (`control.is-project-trusted`).
     IsProjectTrusted,
@@ -229,9 +229,9 @@ pub enum HostOp {
         /// Earlier summary to update.
         previous_summary: Option<String>,
     },
-    /// pi command `ctx.waitForIdle` (command context only).
+    /// Waits for idle (`ctx.waitForIdle`, command context only).
     WaitForIdle,
-    /// pi command `ctx.navigateTree` (command context only).
+    /// Navigates the tree (`ctx.navigateTree`, command context only).
     NavigateTree {
         /// Target entry.
         target_id: String,
@@ -260,7 +260,7 @@ pub enum HostOp {
         /// Fields.
         params: oino_ai::JsonObject,
     },
-    /// pi 1.4 `ctx.executeTool`: runs a callable tool nested under `parent_tool_call_id`.
+    /// `ctx.executeTool`: runs a callable tool nested under `parent_tool_call_id`.
     ExecuteTool {
         /// Running tool call that makes the call.
         parent_tool_call_id: String,
@@ -373,9 +373,9 @@ impl HostOp {
 pub struct ModelRequest {
     /// `provider/id`; the session model when absent.
     pub model: Option<String>,
-    /// pi `Context` JSON.
+    /// `Context` JSON.
     pub context: JsonValue,
-    /// pi `StreamOptions` JSON (`null` = defaults).
+    /// `StreamOptions` JSON (`null` = defaults).
     pub options: JsonValue,
     /// Caller cancellation.
     pub cancel: Option<CancellationToken>,

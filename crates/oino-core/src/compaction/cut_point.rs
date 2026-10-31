@@ -1,4 +1,4 @@
-//! Cut-point detection (pi `findCutPoint`, `findTurnStartIndex` and the projection-based
+//! Cut-point detection (`findCutPoint`, `findTurnStartIndex` and the projection-based
 //! variant used by `prepareCompaction`).
 
 use oino_ai::AgentMessage;
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::tokens::estimate_all;
 
-/// pi `CutPointResult` (`turnStartIndex: -1` is `None`).
+/// Cut-point result (`turnStartIndex: -1` is `None`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CutPointResult {
