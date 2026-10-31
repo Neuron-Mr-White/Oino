@@ -43,7 +43,7 @@
 .ftree-git[data-git=M] { color: var(--color-amber); }
 .ftree-git[data-git=A] { color: var(--color-wm-green); }
 .ftree-git[data-git=D] { color: var(--color-wm-red); }
-.ftree-git[data-git=?] { color: var(--color-text-dim); }
+.ftree-git[data-git="?"] { color: var(--color-text-dim); }
 .ftree-row .ftree-menu { display: none; place-items: center; width: 20px; height: 20px; min-height: 20px; margin-left: 4px; border-radius: 6px; background: transparent; color: var(--color-text-dim); }
 .ftree-row:hover .ftree-menu, .ftree-row[data-selected] .ftree-menu { display: grid; }
 .ftree-row .ftree-menu:hover { background: var(--color-surface-3); color: var(--color-text); }
