@@ -76,7 +76,7 @@ fn keys(text: &str) -> (Vec<u64>, Vec<char>) {
     (primaries, accents)
 }
 
-/// Compares like pi's `a.toLowerCase().localeCompare(b.toLowerCase())`.
+/// Compares like `a.toLowerCase().localeCompare(b.toLowerCase())`.
 #[must_use]
 pub(crate) fn locale_compare(a: &str, b: &str) -> Ordering {
     let (a_primary, a_accents) = keys(a);

@@ -1,11 +1,11 @@
-//! Image type sniffing (pi `utils/mime.ts`).
+//! Image type sniffing.
 
-/// Bytes read from the start of a file for sniffing (pi `IMAGE_TYPE_SNIFF_BYTES`).
+/// Bytes read from the start of a file for sniffing.
 pub const IMAGE_TYPE_SNIFF_BYTES: usize = 4100;
 
 const PNG_SIGNATURE: [u8; 8] = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
-/// pi `detectSupportedImageMimeType`: `image/jpeg`, `image/png` (not animated), `image/gif`,
+/// `image/jpeg`, `image/png` (not animated), `image/gif`,
 /// `image/webp` or `image/bmp` from magic bytes.
 #[must_use]
 pub fn detect_supported_image_mime_type(buffer: &[u8]) -> Option<&'static str> {

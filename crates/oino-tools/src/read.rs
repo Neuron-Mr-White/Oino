@@ -1,4 +1,4 @@
-//! `read` (pi `tools/read.ts`).
+//! `read`.
 
 use futures::FutureExt;
 use futures::future::BoxFuture;
@@ -270,7 +270,7 @@ fn text_content(
     Ok((truncation.content, None))
 }
 
-/// pi `toReadOutput`: the text, or `{type:"image", data, mimeType, note}`.
+/// The text, or `{type:"image", data, mimeType, note}`.
 fn structured_output(content: &[UserContent]) -> JsonValue {
     let text = content
         .iter()
@@ -291,10 +291,10 @@ fn structured_output(content: &[UserContent]) -> JsonValue {
     }
 }
 
-/// Text that replaces images when `images.blockImages` is set (pi `convertToLlm` wrapper).
+/// Text that replaces images when `images.blockImages` is set (the `convertToLlm` wrapper).
 pub const IMAGE_READING_DISABLED: &str = "Image reading is disabled.";
 
-/// pi's `blockImages` filter: every image becomes [`IMAGE_READING_DISABLED`], consecutive
+/// The `blockImages` filter: every image becomes [`IMAGE_READING_DISABLED`], consecutive
 /// copies of that text collapse into one. Core applies it when converting messages for the
 /// model; the tool itself always returns images.
 #[must_use]

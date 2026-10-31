@@ -19,7 +19,7 @@ const MAX_NAME_LENGTH: usize = 64;
 /// Maximum description length (Agent Skills spec).
 const MAX_DESCRIPTION_LENGTH: usize = 1024;
 
-/// A loaded skill (pi `Skill`; serialised with pi field names).
+/// A loaded skill (serialised with fixed field names).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Skill {
@@ -90,7 +90,7 @@ impl LoadSkillsResult {
     }
 }
 
-/// Source label used for skill provenance (pi `loadSkillsFromDir` `source`).
+/// Source label used for skill provenance (`loadSkillsFromDir` `source`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SkillSource {
     /// Under `<agent>/skills`.
@@ -400,7 +400,7 @@ impl SkillCollector {
     }
 }
 
-/// The tool a model uses to read skill files (pi `formatSkillsForPrompt` `fileReadTool`).
+/// The tool a model uses to read skill files (`formatSkillsForPrompt` `fileReadTool`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SkillReader {
     /// `read` is declared.
@@ -486,7 +486,7 @@ pub enum SkillExpansionError {
     Frontmatter(#[from] crate::frontmatter::FrontmatterError),
 }
 
-/// A recognised `/skill:name [args]` input (pi `_expandSkillCommand` parsing).
+/// A recognised `/skill:name [args]` input (`_expandSkillCommand` parsing).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SkillCommand<'a> {
     /// Skill name after `/skill:`.
@@ -511,7 +511,7 @@ pub fn parse_skill_command(text: &str) -> Option<SkillCommand<'_>> {
     })
 }
 
-/// The `<skill …>` block for `skill` with its body and optional user text (pi
+/// The `<skill …>` block for `skill` with its body and optional user text (the
 /// `_expandSkillCommand` output).
 #[must_use]
 pub fn render_skill_block(skill: &Skill, body: &str, args: &str) -> String {
@@ -534,7 +534,7 @@ pub fn render_skill_block(skill: &Skill, body: &str, args: &str) -> String {
 ///
 /// # Errors
 ///
-/// [`SkillExpansionError`] when the skill file cannot be read or parsed (pi emits an
+/// [`SkillExpansionError`] when the skill file cannot be read or parsed (emits an
 /// extension error with event `skill_expansion` and keeps the original text).
 pub fn expand_skill_command(
     text: &str,
@@ -551,7 +551,7 @@ pub fn expand_skill_command(
     Ok(Some(render_skill_block(skill, &body, command.args)))
 }
 
-/// A parsed skill block (pi `ParsedSkillBlock`, used to render skill invocations).
+/// A parsed skill block (used to render skill invocations).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParsedSkillBlock {
     /// Skill name.

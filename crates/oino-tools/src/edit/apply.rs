@@ -1,10 +1,10 @@
-//! Matching and applying edits (pi `tools/edit-diff.ts`).
+//! Matching and applying edits.
 
 use unicode_normalization::UnicodeNormalization;
 
 use crate::js;
 
-/// One replacement (pi `Edit`).
+/// One replacement.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Edit {
     /// Text to find.
@@ -20,7 +20,7 @@ pub(crate) enum LineEnding {
     Crlf,
 }
 
-/// pi `detectLineEnding`: CRLF when the first `\r\n` comes before the first bare `\n`.
+/// CRLF when the first `\r\n` comes before the first bare `\n`.
 pub(crate) fn detect_line_ending(content: &str) -> LineEnding {
     match (content.find("\r\n"), content.find('\n')) {
         (Some(crlf), Some(lf)) if crlf < lf => LineEnding::Crlf,
@@ -28,12 +28,12 @@ pub(crate) fn detect_line_ending(content: &str) -> LineEnding {
     }
 }
 
-/// pi `normalizeToLF`.
+/// N o r m a l i z e   T o   L F.
 pub(crate) fn normalize_to_lf(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// pi `restoreLineEndings`.
+/// R e s t o r e   L i n e   E n d i n g s.
 pub(crate) fn restore_line_endings(text: &str, ending: LineEnding) -> String {
     match ending {
         LineEnding::Crlf => text.replace('\n', "\r\n"),
@@ -41,7 +41,7 @@ pub(crate) fn restore_line_endings(text: &str, ending: LineEnding) -> String {
     }
 }
 
-/// pi `normalizeForFuzzyMatch`: NFKC, trailing whitespace per line, smart quotes, Unicode
+/// NFKC, trailing whitespace per line, smart quotes, Unicode
 /// dashes and special spaces folded to ASCII.
 pub(crate) fn normalize_for_fuzzy_match(text: &str) -> String {
     let nfkc: String = text.nfkc().collect();
@@ -71,7 +71,7 @@ struct Replacement {
     new_text: String,
 }
 
-/// pi `fuzzyFindText`.
+/// F u z z y   F i n d   T e x t.
 struct FuzzyMatch {
     index: Option<usize>,
     len: usize,
@@ -102,7 +102,7 @@ fn fuzzy_find(content: &str, old_text: &str) -> FuzzyMatch {
     }
 }
 
-/// pi `countOccurrences`: `content.split(oldText).length - 1` in fuzzy space.
+/// `content.split(oldText).length - 1` in fuzzy space.
 fn count_occurrences(content: &str, old_text: &str) -> i64 {
     let fuzzy_content = normalize_for_fuzzy_match(content);
     let fuzzy_old = normalize_for_fuzzy_match(old_text);
@@ -113,7 +113,7 @@ fn count_occurrences(content: &str, old_text: &str) -> i64 {
     i64::try_from(fuzzy_content.matches(fuzzy_old.as_str()).count()).unwrap_or(i64::MAX)
 }
 
-/// Why edits could not be applied; the texts are pi's.
+/// Why edits could not be applied; the texts are fixed.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum EditError {
     /// An `oldText` is empty.
@@ -176,7 +176,7 @@ pub enum EditError {
     OutOfRange,
 }
 
-/// pi `applyReplacements` (from the end, offsets relative to `offset`).
+/// Applies replacements (from the end, offsets relative to `offset`).
 fn apply_replacements(content: &str, replacements: &[Replacement], offset: usize) -> String {
     let mut result = content.to_owned();
     for replacement in replacements.iter().rev() {
@@ -186,7 +186,7 @@ fn apply_replacements(content: &str, replacements: &[Replacement], offset: usize
     result
 }
 
-/// pi `splitLinesWithEndings` as byte spans.
+/// Splits lines with endings as byte spans.
 fn line_spans(content: &str) -> Vec<(usize, usize)> {
     let mut spans = Vec::new();
     let mut start = 0;
@@ -222,7 +222,7 @@ fn replacement_line_range(
     Ok((start_line, end_line + 1))
 }
 
-/// pi `applyReplacementsPreservingUnchangedLines`: replacements matched in `base` rewrite only
+/// Replacements matched in `base` rewrite only
 /// the lines they touch; other lines are copied from `original`.
 fn apply_preserving_unchanged_lines(
     original: &str,
@@ -268,14 +268,14 @@ fn apply_preserving_unchanged_lines(
     Ok(result)
 }
 
-/// pi `AppliedEditsResult`.
+/// The applied edits result record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AppliedEdits {
     pub(crate) base_content: String,
     pub(crate) new_content: String,
 }
 
-/// pi `applyEditsToNormalizedContent`.
+/// A p p l y   E d i t s   T o   N o r m a l i z e d   C o n t e n t.
 pub(crate) fn apply_edits_to_normalized_content(
     normalized: &str,
     edits: &[Edit],

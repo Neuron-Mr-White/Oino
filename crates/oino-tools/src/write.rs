@@ -1,4 +1,4 @@
-//! `write` (pi `tools/write.ts`).
+//! `write`.
 
 use futures::FutureExt;
 use futures::future::BoxFuture;
@@ -58,7 +58,7 @@ async fn run(
     let dir = node_path::dirname(&absolute);
     let env = config.env.as_ref();
     // Abort is checked after each step, never mid-operation, so the queue stays locked until
-    // the file system call settled (pi).
+    // the file system call settled.
     let check = || {
         if cancel.is_cancelled() {
             Err(aborted())

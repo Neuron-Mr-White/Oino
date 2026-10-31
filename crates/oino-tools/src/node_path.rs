@@ -1,6 +1,6 @@
 //! Node `path` semantics on strings (`resolve`, `join`, `dirname`, `basename`, `relative`).
 //!
-//! The tools report paths in text the model reads, so they keep pi's lexical path handling
+//! The tools report paths in text the model reads, so they keep lexical path handling
 //! instead of `std::path` (which neither collapses `..` nor strips trailing separators).
 //! POSIX rules apply on every platform; on Windows `\` is also accepted as a separator and a
 //! drive prefix (`C:`) counts as absolute.

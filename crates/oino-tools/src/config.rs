@@ -1,4 +1,4 @@
-//! Tool configuration and the per-call context core supplies (pi `ToolsOptions` +
+//! Tool configuration and the per-call context core supplies (the `ToolsOptions` +
 //! `ExtensionContext` fields the built-ins read).
 
 use std::fmt;
@@ -13,9 +13,9 @@ use crate::mutation_queue::FileMutationQueue;
 /// What the `read` tool needs to know about the current model.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ModelImageInfo {
-    /// The model accepts image input (pi `model.input.includes("image")`).
+    /// The model accepts image input.
     pub accepts_images: bool,
-    /// The model's image resize policy (pi `model.inputLimits.images.resize`).
+    /// The model's image resize policy.
     pub resize: Option<ImageResize>,
 }
 
@@ -84,9 +84,9 @@ impl SessionEnv {
     }
 }
 
-/// Live values read at call time (pi reads them from the `ExtensionContext`).
+/// Live values read at call time (from the `ExtensionContext`).
 pub trait ToolContext: Send + Sync {
-    /// Current working directory; `None` uses [`ToolConfig::cwd`] (pi `ctx?.cwd || cwd`).
+    /// Current working directory; `None` uses [`ToolConfig::cwd`].
     fn cwd(&self) -> Option<String> {
         None
     }
@@ -111,9 +111,9 @@ impl ToolContext for NoContext {}
 /// Image handling of `read` (settings `images.autoResize` + fallback resize profile).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImageOptions {
-    /// Resize images to inline limits (pi `autoResizeImages`, default `true`).
+    /// Resize images to inline limits (`autoResizeImages`, default `true`).
     pub auto_resize: bool,
-    /// Resize profile when the model has none (pi `resizeOptions`; `None` = 2000×2000, 4.5MB).
+    /// Resize profile when the model has none (`resizeOptions`; `None` = 2000×2000, 4.5MB).
     pub fallback_resize: Option<ImageResize>,
 }
 
@@ -126,7 +126,7 @@ impl Default for ImageOptions {
     }
 }
 
-/// Shell tool options (pi `BashToolOptions`).
+/// Shell tool options.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShellOptions {
     /// Explicit shell (setting `shellPath`).
@@ -200,7 +200,7 @@ impl ToolConfig {
         }
     }
 
-    /// The call's working directory (pi `ctx?.cwd || cwd`).
+    /// The call's working directory.
     #[must_use]
     pub fn effective_cwd(&self) -> String {
         self.context

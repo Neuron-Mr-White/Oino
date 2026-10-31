@@ -1,4 +1,4 @@
-//! The `bash` and `powershell` tools (pi `createShellToolDefinition`).
+//! The `bash` and `powershell` tools.
 
 use futures::FutureExt;
 use futures::future::BoxFuture;
@@ -20,11 +20,11 @@ use crate::info::{ShellKind, shell_info};
 use crate::truncate::{DEFAULT_MAX_BYTES, TruncatedBy, format_size};
 use crate::{args, js_number};
 
-/// Update throttle (pi `BASH_UPDATE_THROTTLE_MS`).
+/// Update throttle.
 pub const BASH_UPDATE_THROTTLE: std::time::Duration = std::time::Duration::from_millis(100);
-/// Limit of `structuredContent.output` (pi `STRUCTURED_OUTPUT_MAX_BYTES`).
+/// Limit of `structuredContent.output`.
 const STRUCTURED_OUTPUT_MAX_BYTES: u64 = 1024 * 1024;
-/// Prepended to PowerShell commands (pi `UTF8_OUTPUT_PREFIX`).
+/// Prepended to PowerShell commands.
 const POWERSHELL_UTF8_PREFIX: &str =
     "try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\n";
 
@@ -43,7 +43,7 @@ impl ShellTool {
         Self::new(ShellKind::Bash, config)
     }
 
-    /// The `powershell` tool (Windows; elsewhere every call fails with pi's message).
+    /// The `powershell` tool (Windows; elsewhere every call fails with a fixed message).
     #[must_use]
     pub fn powershell(config: ToolConfig) -> Self {
         Self::new(ShellKind::PowerShell, config)
@@ -143,7 +143,7 @@ impl OutputSink for Streaming {
     }
 }
 
-/// pi `formatOutput`: the visible text with the truncation footer, and `details`.
+/// The visible text with the truncation footer, and `details`.
 fn format_output(
     snapshot: &OutputSnapshot,
     last_line_bytes: u64,
@@ -188,7 +188,7 @@ fn format_output(
     (text, Some(JsonValue::Object(details)))
 }
 
-/// pi `appendStatus`.
+/// A p p e n d   S t a t u s.
 fn append_status(text: &str, status: &str) -> String {
     if text.is_empty() {
         status.to_owned()
@@ -279,7 +279,7 @@ async fn run(
     exited(&mut streaming, exit_code, started)
 }
 
-/// The result of a command that exited (pi's success / non-zero-exit branch).
+/// The result of a command that exited (the success / non-zero-exit branch).
 fn exited(
     streaming: &mut Streaming,
     exit_code: i32,

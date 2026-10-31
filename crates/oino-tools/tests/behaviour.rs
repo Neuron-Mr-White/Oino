@@ -1,4 +1,4 @@
-//! Behaviour beyond the pi goldens: streaming updates, detach, D12 environment, the `!cmd`
+//! Behaviour beyond the golden cases: streaming updates, detach, D12 environment, the `!cmd`
 //! executor, process-tree kill, temp files and the mutation queue.
 
 #![allow(
@@ -153,7 +153,7 @@ async fn bash_streams_throttled_updates() {
     assert_eq!(
         updates[0],
         AgentToolResult::default(),
-        "pi's initial empty update"
+        "the initial empty update"
     );
     assert!(updates.len() >= 3, "throttled snapshots: {}", updates.len());
     let last = updates.last().unwrap();

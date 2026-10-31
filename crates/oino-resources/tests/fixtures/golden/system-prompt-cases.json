@@ -12,7 +12,7 @@
       },
       "promptGuidelines": ["Prefer small diffs", "Use read to examine files", ""],
       "appendSystemPrompt": "Extra line one\n\nExtra two",
-      "contextFiles": [{ "path": "/home/u/.pi/agent/AGENTS.md", "content": "global rules" }, { "path": "/work/proj/AGENTS.md", "content": "project rules\n" }],
+      "contextFiles": [{ "path": "/home/u/.oino/agent/AGENTS.md", "content": "global rules" }, { "path": "/work/proj/AGENTS.md", "content": "project rules\n" }],
       "skills": [
         { "name": "alpha", "description": "Does <alpha> & 'beta' \"things\"", "filePath": "/s/alpha/SKILL.md", "baseDir": "/s/alpha", "sourceInfo": { "path": "/s/alpha/SKILL.md", "source": "local", "scope": "user", "origin": "top-level" }, "disableModelInvocation": false },
         { "name": "hidden", "description": "hidden", "filePath": "/s/hidden/SKILL.md", "baseDir": "/s/hidden", "sourceInfo": { "path": "/s/hidden/SKILL.md", "source": "local", "scope": "user", "origin": "top-level" }, "disableModelInvocation": true }

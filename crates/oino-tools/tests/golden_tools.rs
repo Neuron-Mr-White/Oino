@@ -1,6 +1,6 @@
-//! Golden tests: every built-in tool against pi 1.4.0's real implementation.
+//! Golden tests: every built-in tool against reference outputs.
 //!
-//! Cases: `scripts/pi-oracle/core-runtime/tools/cases.json`; pi results:
+//! Cases: `tests/fixtures/cases.json`; reference results:
 //! `tests/fixtures/tools.json` (regenerate with `node run.mjs` in that directory). Both sides
 //! normalise the case directory to `$CWD`, temp logs to `$TMPLOG`, wall time to `0`, image
 //! bytes to `$SOURCE`/`$ENCODED` (+ decoded dimensions) and long strings to a digest.
@@ -28,7 +28,7 @@ use oino_tools::{
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
-const CASES: &str = include_str!("../../../scripts/pi-oracle/core-runtime/tools/cases.json");
+const CASES: &str = include_str!("fixtures/cases.json");
 const GOLDEN: &str = include_str!("fixtures/tools.json");
 
 struct CaseContext {
@@ -442,7 +442,7 @@ async fn tools_match_pi() {
         let actual = comparable(actual, mode);
         if actual != expected {
             failures.push(format!(
-                "case {name}\n  pi:   {}\n  oino: {}",
+                "case {name}\n  ref:  {}\n  oino: {}",
                 serde_json::to_string(&expected).unwrap(),
                 serde_json::to_string(&actual).unwrap()
             ));
@@ -459,7 +459,7 @@ async fn tools_match_pi() {
 }
 
 #[test]
-fn metadata_matches_pi() {
+fn metadata_matches_reference() {
     let meta: Value = serde_json::from_str(include_str!("fixtures/meta.json")).unwrap();
     let config = ToolConfig::new("/cwd", "/agent");
     for (name, expected) in meta.as_object().unwrap() {
@@ -473,7 +473,7 @@ fn metadata_matches_pi() {
             lines
                 .iter()
                 .map(|line| {
-                    // D13: pi's PI_* guideline.
+                    // The reference fixture stores the guideline with its own env prefix;
                     line.replace(
                         "You can inspect OINO_* environment variables (also exported as PI_*)",
                         "You can inspect PI_* environment variables",

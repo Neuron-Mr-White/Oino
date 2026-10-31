@@ -1,6 +1,6 @@
-//! `find` (pi `tools/find.ts`).
+//! `find`.
 //!
-//! pi runs `fd --glob --color=never --hidden [--no-require-git] --max-results N [--full-path]
+//! Mirrors `fd --glob --color=never --hidden [--no-require-git] --max-results N [--full-path]
 //! -- PATTERN PATH`; Oino reproduces fd with `ignore` + `globset`: smart case, the glob matched
 //! against the file name (or the absolute path when the pattern contains `/`, prefixed with
 //! `**/`), `*` not crossing `/`, hidden entries included, `.gitignore` / `.ignore` / `.fdignore`
@@ -137,7 +137,7 @@ fn walk(spec: &FindSpec, stop: &AtomicBool) -> Result<Vec<String>, String> {
     Ok(results)
 }
 
-/// pi `relativizeFindResultPath`.
+/// R e l a t i v i z e   F i n d   R e s u l t   P a t h.
 fn relativize(result: &str, root: &str) -> String {
     let trailing = result.ends_with(node_path::SEP) || (cfg!(windows) && result.ends_with('/'));
     let relative = if node_path::is_absolute(result) {

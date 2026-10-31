@@ -50,7 +50,7 @@ pub fn parse_frontmatter(content: &str) -> Result<Frontmatter, FrontmatterError>
 }
 
 /// The body only (the whole text when the frontmatter is invalid is
-/// **not** returned; invalid frontmatter is an error like in pi).
+/// **not** returned; invalid frontmatter is an error).
 ///
 /// # Errors
 ///

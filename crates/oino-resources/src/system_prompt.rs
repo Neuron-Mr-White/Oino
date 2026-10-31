@@ -14,17 +14,17 @@ use serde::{Deserialize, Serialize};
 use crate::context_files::ContextFile;
 use crate::skills::{Skill, SkillReader, format_skills_for_prompt};
 
-/// Default preamble (pi text with the product name substituted, D13).
+/// Default preamble (D13).
 pub const DEFAULT_PREAMBLE: &str = "You are an expert coding assistant operating inside Oino, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
 
-/// Tool guideline exported by the bash tool family (pi text with D12/D13 substitution).
+/// Tool guideline exported by the bash tool family (D12/D13).
 pub const ENV_GUIDELINE: &str = "You can inspect OINO_* environment variables (also exported as PI_*) for current model and session details.";
 
 const TOOLS_FOOTER: &str = "In addition to the tools above, you may have access to other custom tools depending on the project.";
 
-/// Options of one prompt build (pi `NormalizedBuildSystemPromptOptions`; camelCase on the wire,
+/// Options of one prompt build (camelCase on the wire,
 /// sent to extensions as `before_agent_start.systemPromptOptions` and accepted back mutated).
-/// Absent collections deserialise to pi's normalised defaults.
+/// Absent collections deserialise to the normalised defaults.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildSystemPromptOptions {
@@ -92,7 +92,7 @@ impl Default for BuildSystemPromptOptions {
     }
 }
 
-/// A custom section name pi rejects.
+/// A custom section name that is rejected.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("Invalid system prompt section name: {name}")]
 pub struct InvalidSectionName {
@@ -254,7 +254,7 @@ fn insert_default_sections(
     }
 }
 
-/// pi `buildSystemPromptSections` (ignores `force_system_prompt`).
+/// Builds the system prompt sections (ignores `force_system_prompt`).
 ///
 /// # Errors
 ///

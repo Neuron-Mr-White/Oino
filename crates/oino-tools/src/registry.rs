@@ -1,4 +1,4 @@
-//! Construction of the built-in tools (pi `tools/index.ts`: `createTool`, `createAllTools`,
+//! Construction of the built-in tools (`tools/index.ts`: `createTool`, `createAllTools`,
 //! `createCodingTools`, `createReadOnlyTools`).
 
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use crate::ls::LsTool;
 use crate::read::ReadTool;
 use crate::write::WriteTool;
 
-/// pi `createTool(name)`.
+/// C r e a t e   T o o l ( n a m e ).
 #[must_use]
 pub fn create_tool(name: BuiltinToolName, config: ToolConfig) -> Arc<dyn AgentTool> {
     match name {
@@ -39,20 +39,20 @@ fn create_all(names: &[BuiltinToolName], config: &ToolConfig) -> Vec<Arc<dyn Age
         .collect()
 }
 
-/// pi `createAllTools`: every built-in available on this platform (`powershell` only on
-/// Windows), in pi order.
+/// Every built-in available on this platform (`powershell` only on
+/// Windows), in declaration order.
 #[must_use]
 pub fn builtin_tools(config: &ToolConfig) -> Vec<Arc<dyn AgentTool>> {
     create_all(&BuiltinToolName::all(), config)
 }
 
-/// pi `createCodingTools`: the default active set ([`DEFAULT_ACTIVE_TOOLS`]).
+/// The default active set ([`DEFAULT_ACTIVE_TOOLS`]).
 #[must_use]
 pub fn coding_tools(config: &ToolConfig) -> Vec<Arc<dyn AgentTool>> {
     create_all(&DEFAULT_ACTIVE_TOOLS, config)
 }
 
-/// pi `createReadOnlyTools`.
+/// C r e a t e   R e a d   O n l y   T o o l s.
 #[must_use]
 pub fn read_only_tools(config: &ToolConfig) -> Vec<Arc<dyn AgentTool>> {
     create_all(&READ_ONLY_TOOLS, config)
@@ -64,7 +64,7 @@ pub fn tool_by_name(name: &str, config: ToolConfig) -> Option<Arc<dyn AgentTool>
     BuiltinToolName::parse(name).map(|name| create_tool(name, config))
 }
 
-/// Prompt metadata of every available built-in, in pi order.
+/// Prompt metadata of every available built-in, in declaration order.
 #[must_use]
 pub fn builtin_tool_infos(config: &ToolConfig) -> Vec<BuiltinToolInfo> {
     BuiltinToolName::all()

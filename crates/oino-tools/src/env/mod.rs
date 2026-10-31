@@ -1,9 +1,9 @@
 //! Execution environment: the file system and process boundary every tool goes through.
 //!
-//! pi lets tools swap their `operations` (for SSH, containers…); Oino generalises that into
+//! Tools can swap their `operations` (for SSH, containers…); Oino generalises that into
 //! one [`ExecutionEnv`] so ACP clients can host the file system and terminals (modes §6.4).
 //! [`LocalEnv`] is the default. Errors carry Node's `code`/`syscall`/`path` so the texts the
-//! model sees match pi (`ENOENT: no such file or directory, open '/x'`).
+//! model sees match the host's (`ENOENT: no such file or directory, open '/x'`).
 
 mod error;
 mod local;
@@ -61,7 +61,7 @@ pub struct ExitStatus {
 }
 
 impl ExitStatus {
-    /// pi's exit-code rule: the code, else `128 + signal`, else `1`.
+    /// Exit-code rule: the code, else `128 + signal`, else `1`.
     #[must_use]
     pub fn shell_exit_code(self) -> i32 {
         match (self.code, self.signal) {
@@ -77,7 +77,7 @@ pub trait ProcessControl: Send {
     /// OS process id, when known.
     fn pid(&self) -> Option<u32>;
 
-    /// Kills the process and all its descendants (pi `killProcessTree`: `killpg(SIGKILL)` on
+    /// Kills the process and all its descendants (`killProcessTree`: `killpg(SIGKILL)` on
     /// Unix, `taskkill /F /T` on Windows). Never fails; a dead process is ignored.
     fn kill_tree(&self);
 
@@ -142,11 +142,11 @@ pub trait ExecutionEnv: Send + Sync {
     fn spawn(&self, request: SpawnRequest) -> BoxFuture<'_, Result<SpawnedProcess, SpawnError>>;
 
     /// Whether paths refer to this machine's file system. `grep` and `find` walk the local file
-    /// system directly (pi runs local `rg`/`fd` too) and refuse to run otherwise.
+    /// system directly and refuse to run otherwise.
     fn is_local(&self) -> bool;
 }
 
-/// pi `pathExists`: `access(F_OK)` succeeds.
+/// `access(F_OK)` succeeds.
 pub async fn path_exists(env: &dyn ExecutionEnv, path: &str) -> bool {
     env.access(path, AccessMode::Exists).await.is_ok()
 }

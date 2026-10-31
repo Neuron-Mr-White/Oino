@@ -1,4 +1,4 @@
-//! Resource provenance (pi `core/source-info.ts`, `PathMetadata`).
+//! Resource provenance (`source-info`, `PathMetadata`).
 
 use std::path::{Path, PathBuf};
 
@@ -32,7 +32,7 @@ pub enum SourceOrigin {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathMetadata {
-    /// `auto`, `local`, `cli`, a package source, … (pi keeps this a free string).
+    /// `auto`, `local`, `cli`, a package source, … (a free string).
     pub source: String,
     /// Scope.
     pub scope: SourceScope,
@@ -73,7 +73,7 @@ impl SourceInfo {
         }
     }
 
-    /// pi `createSyntheticSourceInfo` (scope defaults to temporary, origin to top-level).
+    /// Creates synthetic source info (scope defaults to temporary, origin to top-level).
     #[must_use]
     pub fn synthetic(
         path: &Path,

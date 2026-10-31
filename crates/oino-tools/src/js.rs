@@ -1,4 +1,4 @@
-//! JavaScript semantics the pi tools rely on: number formatting, `toFixed`, UTF-16 lengths and
+//! JavaScript semantics the tools rely on: number formatting, `toFixed`, UTF-16 lengths and
 //! `String.prototype.trimEnd`.
 
 /// JavaScript `Number.prototype.toString()` for the values tools print (counts, offsets,

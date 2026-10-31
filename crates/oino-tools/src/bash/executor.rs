@@ -1,4 +1,4 @@
-//! Core's `!cmd` executor building block (pi `core/bash-executor.ts`
+//! Core's `!cmd` executor building block (`core/bash-executor.ts`
 //! `executeBashWithOperations` over the local shell operations).
 
 use std::collections::VecDeque;
@@ -27,7 +27,7 @@ pub struct ShellRunOptions {
     pub process_env: Option<Vec<(String, String)>>,
 }
 
-/// pi `BashResult`.
+/// The bash result record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BashOutcome {
     /// Combined, sanitised output (ANSI stripped, binary garbage removed, no `\r`), tail
@@ -43,7 +43,7 @@ pub struct BashOutcome {
     pub full_output_path: Option<String>,
 }
 
-/// A command that could not run (pi rethrows the `exec` error).
+/// A command that could not run (rethrows the `exec` error).
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct ShellRunError(pub String);
@@ -66,7 +66,7 @@ impl ExecutorSink<'_> {
         }
         if let Ok((path, mut file)) = create_output_file(&self.temp_dir, "oino-bash") {
             for chunk in &self.chunks {
-                // pi ignores stream write errors here.
+                // Stream write errors are ignored here.
                 let _ = file.write_all(chunk.as_bytes());
             }
             self.temp = Some((path, file));
@@ -121,7 +121,7 @@ impl OutputSink for ExecutorSink<'_> {
     fn flush(&mut self) {}
 }
 
-/// Runs a user `!cmd` like pi `executeBash`: the configured shell, the process environment
+/// Runs a user `!cmd` (`executeBash`): the configured shell, the process environment
 /// with `<agent_dir>/bin` on `PATH`, sanitised streaming chunks via `on_chunk`, a rolling
 /// buffer and a temp file for long output. Cancelling kills the process tree and returns the
 /// output so far with `cancelled: true`.

@@ -1,4 +1,4 @@
-//! Project trust (pi `project-trust.ts`, `trust-manager.ts`, runtime §9.7).
+//! Project trust (runtime §9.7).
 
 use std::path::{Path, PathBuf};
 
@@ -7,7 +7,7 @@ use oino_settings::storage::{FileLock, write_atomic};
 use oino_settings::{JsonObject, ProjectTrustDefault};
 use serde_json::Value;
 
-/// Project-local entries under `.oino/` that require trust (pi
+/// Project-local entries under `.oino/` that require trust (the
 /// `TRUST_REQUIRING_PROJECT_CONFIG_RESOURCES`, without `mcp.json`: no MCP in core).
 pub const PROTECTED_PROJECT_RESOURCES: [&str; 7] = [
     "settings.json",
@@ -53,7 +53,7 @@ pub struct TrustOption {
     pub saved_path: Option<PathBuf>,
 }
 
-/// `trust.json` failure (pi messages).
+/// `trust.json` failure.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum TrustStoreError {
@@ -327,7 +327,7 @@ pub fn trust_options(cwd: &Path, include_session_only: bool) -> Vec<TrustOption>
     options
 }
 
-/// pi `formatProjectTrustPrompt` (product strings substituted).
+/// Formats the project trust prompt (product strings substituted).
 #[must_use]
 pub fn trust_prompt(cwd: &Path) -> String {
     format!(
@@ -345,7 +345,7 @@ pub struct ExtensionTrustDecision {
     pub remember: bool,
 }
 
-/// Inputs of [`resolve_project_trust`], in pi decision order.
+/// Inputs of [`resolve_project_trust`], in decision order.
 #[derive(Clone, Debug)]
 pub struct TrustRequest<'a> {
     /// Project directory.
@@ -398,7 +398,7 @@ pub enum TrustResolution {
     },
 }
 
-/// pi `resolveProjectTrusted` minus the UI: CLI → no protected resources → extension decision
+/// Resolves project trust minus the UI: CLI → no protected resources → extension decision
 /// (saved when `remember`) → nearest saved decision → `defaultProjectTrust` → ask (UI) or
 /// untrusted.
 ///

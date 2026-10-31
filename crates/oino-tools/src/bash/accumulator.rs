@@ -1,4 +1,4 @@
-//! Bounded streaming output with an on-demand temp file (pi `tools/output-accumulator.ts`).
+//! Bounded streaming output with an on-demand temp file.
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
@@ -53,7 +53,7 @@ impl Utf8Decoder {
     }
 }
 
-/// Creates `<dir>/<prefix>-<16 hex>.log` exclusively with mode 0600 (pi
+/// Creates `<dir>/<prefix>-<16 hex>.log` exclusively with mode 0600 (the
 /// `createOutputFileStream`).
 pub(crate) fn create_output_file(dir: &str, prefix: &str) -> Result<(String, File), FsError> {
     std::fs::create_dir_all(dir).map_err(|error| FsError::from_io(&error, "mkdir", Some(dir)))?;
@@ -72,7 +72,7 @@ pub(crate) fn create_output_file(dir: &str, prefix: &str) -> Result<(String, Fil
     Ok((path, file))
 }
 
-/// pi `OutputSnapshot`.
+/// The output snapshot record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct OutputSnapshot {
     pub(crate) content: String,
@@ -80,14 +80,14 @@ pub(crate) struct OutputSnapshot {
     pub(crate) full_output_path: Option<String>,
 }
 
-/// pi `FullOutput`.
+/// The full output record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FullOutput {
     pub(crate) content: String,
     pub(crate) truncated: bool,
 }
 
-/// pi `OutputAccumulator` with default limits.
+/// An output accumulator with default limits.
 #[derive(Debug)]
 pub(crate) struct OutputAccumulator {
     max_lines: u64,
@@ -142,7 +142,7 @@ impl OutputAccumulator {
         }
     }
 
-    /// pi `append`.
+    /// A p p e n d.
     pub(crate) fn append(&mut self, data: &[u8]) {
         if self.finished {
             return;
@@ -158,7 +158,7 @@ impl OutputAccumulator {
         }
     }
 
-    /// pi `finish`.
+    /// F i n i s h.
     pub(crate) fn finish(&mut self) {
         if self.finished {
             return;
@@ -171,7 +171,7 @@ impl OutputAccumulator {
         }
     }
 
-    /// pi `snapshot({persistIfTruncated})`.
+    /// S n a p s h o t ( { p e r s i s t   I f   T r u n c a t e d } ).
     pub(crate) fn snapshot(&mut self, persist_if_truncated: bool) -> OutputSnapshot {
         let tail = truncate_tail(
             self.snapshot_text(),
@@ -209,7 +209,7 @@ impl OutputAccumulator {
         }
     }
 
-    /// pi `closeTempFile`.
+    /// C l o s e   T e m p   F i l e.
     pub(crate) fn close_temp_file(&mut self) -> Result<(), FsError> {
         if let Some(mut file) = self.temp_file.take()
             && let Err(error) = file.flush()
@@ -223,7 +223,7 @@ impl OutputAccumulator {
         }
     }
 
-    /// pi `readFullOutput(maxBytes)`: the complete output, or its first and last
+    /// The complete output, or its first and last
     /// `max_bytes / 2` bytes around `[... N bytes omitted ...]`.
     pub(crate) fn read_full_output(&self, max_bytes: u64) -> Result<FullOutput, FsError> {
         let Some(path) = &self.temp_path else {
@@ -265,7 +265,7 @@ impl OutputAccumulator {
         })
     }
 
-    /// pi `getLastLineBytes`.
+    /// Returns the last line bytes.
     pub(crate) fn last_line_bytes(&self) -> u64 {
         self.current_line_bytes
     }
@@ -336,7 +336,7 @@ impl OutputAccumulator {
                 }
             }
             Err(error) => {
-                // pi reports stream errors when the file is closed.
+                // Stream errors are reported when the file is closed.
                 self.temp_path = Some(String::new());
                 self.temp_error.get_or_insert(error);
             }

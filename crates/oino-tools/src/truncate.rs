@@ -1,4 +1,4 @@
-//! Output truncation shared by the tools (pi `tools/truncate.ts`).
+//! Output truncation shared by the tools.
 //!
 //! Two independent limits apply, whichever is hit first: a line limit
 //! ([`DEFAULT_MAX_LINES`]) and a byte limit ([`DEFAULT_MAX_BYTES`]). Partial lines are only
@@ -8,13 +8,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::js;
 
-/// Default line limit (pi `DEFAULT_MAX_LINES`).
+/// Default line limit.
 pub const DEFAULT_MAX_LINES: u64 = 2000;
-/// Default byte limit, 50KB (pi `DEFAULT_MAX_BYTES`).
+/// Default byte limit, 50KB.
 pub const DEFAULT_MAX_BYTES: u64 = 50 * 1024;
-/// Maximum characters per grep match line (pi `GREP_MAX_LINE_LENGTH`).
+/// Maximum characters per grep match line.
 pub const GREP_MAX_LINE_LENGTH: usize = 500;
-/// pi `Number.MAX_SAFE_INTEGER`, used as "no line limit".
+/// `Number.MAX_SAFE_INTEGER`, used as "no line limit".
 pub const NO_LINE_LIMIT: u64 = 9_007_199_254_740_991;
 
 /// Which limit truncated the content.
@@ -27,7 +27,7 @@ pub enum TruncatedBy {
     Bytes,
 }
 
-/// pi `TruncationResult` (serialised in tool `details.truncation`).
+/// Truncation result (serialised in tool `details.truncation`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TruncationResult {
@@ -55,7 +55,7 @@ pub struct TruncationResult {
     pub max_bytes: u64,
 }
 
-/// Limits for [`truncate_head`] / [`truncate_tail`] (pi `TruncationOptions`).
+/// Limits for [`truncate_head`] / [`truncate_tail`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TruncationOptions {
     /// Maximum number of lines.
@@ -99,7 +99,7 @@ fn count(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
 }
 
-/// pi `formatSize`: `512B`, `1.5KB`, `2.0MB`.
+/// `512B`, `1.5KB`, `2.0MB`.
 #[must_use]
 pub fn format_size(bytes: u64) -> String {
     #[allow(clippy::cast_precision_loss, reason = "sizes are far below 2^53")]
@@ -130,7 +130,7 @@ fn untruncated(content: &str, lines: u64, options: TruncationOptions) -> Truncat
     }
 }
 
-/// pi `truncateHead`: keeps the first lines/bytes, never a partial line. When the first line
+/// Keeps the first lines/bytes, never a partial line. When the first line
 /// alone exceeds the byte limit the content is empty and `first_line_exceeds_limit` is set.
 #[must_use]
 pub fn truncate_head(content: &str, options: TruncationOptions) -> TruncationResult {
@@ -190,7 +190,7 @@ pub fn truncate_head(content: &str, options: TruncationOptions) -> TruncationRes
     }
 }
 
-/// pi `truncateTail`: keeps the last lines/bytes. May return a partial line when the last line
+/// Keeps the last lines/bytes. May return a partial line when the last line
 /// alone exceeds the byte limit (`last_line_partial`).
 #[must_use]
 pub fn truncate_tail(content: &str, options: TruncationOptions) -> TruncationResult {
@@ -242,7 +242,7 @@ pub fn truncate_tail(content: &str, options: TruncationOptions) -> TruncationRes
     }
 }
 
-/// pi `truncateStringToBytesFromEnd`: the longest suffix of `text` within `max_bytes`, starting
+/// The longest suffix of `text` within `max_bytes`, starting
 /// at a character boundary.
 fn tail_within_bytes(text: &str, max_bytes: u64) -> &str {
     let max = usize::try_from(max_bytes).unwrap_or(usize::MAX);
@@ -256,7 +256,7 @@ fn tail_within_bytes(text: &str, max_bytes: u64) -> &str {
     &text[start..]
 }
 
-/// pi `truncateLine` result.
+/// `truncateLine` result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TruncatedLine {
     /// The possibly shortened line.
@@ -265,7 +265,7 @@ pub struct TruncatedLine {
     pub was_truncated: bool,
 }
 
-/// pi `truncateLine`: cuts a line to `max_chars` UTF-16 units and appends `... [truncated]`.
+/// Cuts a line to `max_chars` UTF-16 units and appends `... [truncated]`.
 #[must_use]
 pub fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
     if js::utf16_len(line) <= max_chars {

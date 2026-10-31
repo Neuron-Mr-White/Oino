@@ -1,4 +1,4 @@
-//! Project context files (pi `loadProjectContextFiles`, runtime §9.2).
+//! Project context files (runtime §9.2).
 
 use std::collections::HashSet;
 use std::fs;
@@ -27,7 +27,7 @@ pub struct ContextFile {
     pub content: String,
 }
 
-/// Context files plus read warnings (pi logs these to stderr).
+/// Context files plus read warnings (logged to stderr).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ContextFiles {
     /// Agent-dir file first, then ancestors from the filesystem root down to cwd.

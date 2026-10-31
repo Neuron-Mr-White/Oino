@@ -1,6 +1,6 @@
-//! `grep` (pi `tools/grep.ts`).
+//! `grep`.
 //!
-//! pi runs `rg --no-config --json --line-number --color=never --hidden [--ignore-case]
+//! Mirrors `rg --no-config --json --line-number --color=never --hidden [--ignore-case]
 //! [--fixed-strings] [--glob G] -- PATTERN PATH`; Oino uses the ripgrep library crates with
 //! the same settings: hidden files searched, `.gitignore` (inside git repositories), `.ignore`
 //! and `.rgignore` respected, binary files skipped, one match per matching line. Results are
@@ -207,7 +207,7 @@ fn search(spec: &SearchSpec, stop: &AtomicBool) -> Result<SearchOutcome, String>
     })
 }
 
-/// Formats matches like pi: `path:line: text`, or blocks with `path-line- text` context lines.
+/// Formats matches as `path:line: text`, or blocks with `path-line- text` context lines.
 async fn format_matches(
     env: &dyn crate::env::ExecutionEnv,
     matches: &[Match],

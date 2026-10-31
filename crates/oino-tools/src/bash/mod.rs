@@ -1,4 +1,4 @@
-//! Shell tools and reusable shell execution (pi `tools/bash.ts`, `tools/powershell.ts`,
+//! Shell tools and reusable shell execution (`tools/bash.ts`, `tools/powershell.ts`,
 //! `tools/output-accumulator.ts`, `core/bash-executor.ts`, `utils/shell.ts`).
 
 mod accumulator;
@@ -18,7 +18,7 @@ pub use shell::{
 };
 pub use tool::{BASH_UPDATE_THROTTLE, ShellTool};
 
-/// `<agent_dir>/tmp`, where truncated output is saved (pi uses the OS temp directory).
+/// `<agent_dir>/tmp`, where truncated output is saved.
 #[must_use]
 pub fn temp_dir(agent_dir: &str) -> String {
     crate::node_path::join(agent_dir, "tmp")

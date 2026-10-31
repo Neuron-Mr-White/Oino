@@ -1,7 +1,7 @@
-//! Image handling for `read` (pi `utils/image-process.ts`, `image-resize-core.ts`,
+//! Image handling for `read` (`image-process`, `image-resize-core`,
 //! `image-convert.ts`, `mime.ts`, `exif-orientation.ts`).
 //!
-//! pi decodes and re-encodes with Photon (the Rust `image` crate compiled to WASM); Oino uses
+//! Decoding and re-encoding uses the `image` crate; Oino uses
 //! the `image` crate directly with the same steps: EXIF orientation, Lanczos3 resize, PNG and
 //! JPEG candidates at decreasing quality, then shrinking by 0.75 until the encoded size fits.
 //! Re-encoded bytes may differ from Photon's; dimensions, MIME types and notes match.
@@ -25,7 +25,7 @@ const DEFAULT_MAX_BYTES: u64 = 4_718_592;
 const DEFAULT_MAX_DIMENSION: u32 = 2000;
 const DEFAULT_JPEG_QUALITY: u8 = 80;
 
-/// pi `processImage` result.
+/// The image-process result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProcessedImage {
     /// An inline image.
@@ -39,12 +39,12 @@ pub enum ProcessedImage {
     },
     /// The image could not be inlined; `message` explains why.
     Omitted {
-        /// pi's `[Image omitted: …]` text.
+        /// The `[Image omitted: …]` text.
         message: String,
     },
 }
 
-/// pi `ResizedImage`.
+/// The resized image record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ResizedImage {
     data: String,
@@ -56,7 +56,7 @@ struct ResizedImage {
     was_resized: bool,
 }
 
-/// Resize limits with pi's defaults filled in.
+/// Resize limits with defaults filled in.
 #[derive(Clone, Copy, Debug)]
 struct ResizeLimits {
     max_width: u32,
@@ -144,7 +144,7 @@ fn shrink(value: u32) -> u32 {
     next.max(1)
 }
 
-/// pi `resizeImageInProcess`.
+/// R e s i z e   I m a g e   I n   P r o c e s s.
 fn resize_image(bytes: &[u8], mime_type: &str, limits: ResizeLimits) -> Option<ResizedImage> {
     let input_base64_size = (bytes.len() as u64).div_ceil(3) * 4;
     let image = decode_oriented(bytes)?;
@@ -212,7 +212,7 @@ fn resize_image(bytes: &[u8], mime_type: &str, limits: ResizeLimits) -> Option<R
     }
 }
 
-/// pi `formatDimensionNote`.
+/// F o r m a t   D i m e n s i o n   N o t e.
 fn dimension_note(resized: &ResizedImage) -> Option<String> {
     if !resized.was_resized {
         return None;
@@ -233,7 +233,7 @@ fn conversion_hint(from: Option<&str>, to: &str) -> Option<String> {
         .map(|from| format!("[Image converted from {from} to {to}.]"))
 }
 
-/// pi `processImage(bytes, mimeType, {autoResizeImages, resizeOptions})`.
+/// P r o c e s s   I m a g e ( b y t e s ,   m i m e   T y p e ,   { a u t o   R e s i z e   I m a g e s ,   r e s i z e   O p t i o n s } ).
 #[must_use]
 pub fn process_image(
     bytes: &[u8],

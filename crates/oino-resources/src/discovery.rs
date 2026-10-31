@@ -1,5 +1,5 @@
-//! Local resource resolution (pi `DefaultPackageManager.resolve` minus packages): settings
-//! resource arrays of both scopes plus auto-discovered directories, with pi's `!glob`, `+path`,
+//! Local resource resolution (minus packages): settings
+//! resource arrays of both scopes plus auto-discovered directories, with `!glob`, `+path`,
 //! `-path` overrides and precedence ordering.
 //!
 //! Packages and extensions are resolved by `oino-core` (WASM packages); their skill/prompt/theme
@@ -71,7 +71,7 @@ const fn kind_extension(kind: ResourceKind) -> &'static str {
     }
 }
 
-/// pi `resolve()` for skills, prompts and themes.
+/// Resolves skills, prompts and themes.
 #[must_use]
 pub fn resolve_local_resources(input: &DiscoveryInput<'_>) -> ResolvedResources {
     let global_base = input.agent_dir.to_path_buf();
@@ -204,7 +204,7 @@ fn resolve_local_entries(
 
 #[allow(
     clippy::too_many_lines,
-    reason = "linear port of pi addAutoDiscoveredResources; order is the contract"
+    reason = "linear port of addAutoDiscoveredResources; order is the contract"
 )]
 fn add_auto_discovered(
     input: &DiscoveryInput<'_>,
@@ -316,7 +316,7 @@ fn add_auto_discovered(
     );
 }
 
-/// pi `findGitRepoRoot` (`.git` file or dir).
+/// Finds the git repo root (`.git` file or dir).
 fn find_git_repo_root(start: &Path) -> Option<PathBuf> {
     start
         .ancestors()
@@ -404,7 +404,7 @@ fn skill_entries(
     }
 }
 
-/// pi `collectAutoPromptEntries` / `collectAutoThemeEntries`: direct children with `suffix`.
+/// Collects auto prompt/theme entries: direct children with `suffix`.
 fn collect_direct_files(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     if !dir.exists() {
         return Vec::new();
@@ -459,7 +459,7 @@ fn collect_files_recursive(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     out
 }
 
-/// pi `collectResourceFiles` (skills use skill discovery, others recursive files).
+/// Collects resource files (skills use skill discovery, others recursive files).
 fn collect_resource_files(dir: &Path, kind: ResourceKind) -> Vec<PathBuf> {
     match kind {
         ResourceKind::Skills => collect_skill_entries(dir, SkillMode::Oino),
@@ -504,7 +504,7 @@ fn glob_matches(pattern: &str, text: &str) -> bool {
         .is_ok_and(|glob| glob.compile_matcher().is_match(text))
 }
 
-/// Candidate strings a pattern may match for `file` (pi `matchesAnyPattern` targets).
+/// Candidate strings a pattern may match for `file` (`matchesAnyPattern` targets).
 struct MatchTargets {
     relative: String,
     name: String,

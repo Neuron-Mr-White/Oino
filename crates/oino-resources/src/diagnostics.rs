@@ -50,7 +50,7 @@ pub struct ResourceDiagnostic {
     /// Kind.
     #[serde(rename = "type")]
     pub kind: DiagnosticKind,
-    /// pi message, e.g. `description is required`.
+    /// Message, e.g. `description is required`.
     pub message: String,
     /// Affected path.
     #[serde(default, skip_serializing_if = "Option::is_none")]

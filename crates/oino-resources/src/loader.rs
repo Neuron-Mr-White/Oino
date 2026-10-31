@@ -1,4 +1,4 @@
-//! [`ResourceLoader`] (pi `DefaultResourceLoader`, minus extension loading): skills, prompt
+//! [`ResourceLoader`] (minus extension loading): skills, prompt
 //! templates, theme files, context files and SYSTEM/APPEND prompt sources.
 
 use std::collections::HashSet;
@@ -21,10 +21,10 @@ use crate::source::{PathMetadata, SourceInfo, SourceOrigin, SourceScope};
 use crate::templates::{LoadPromptTemplatesOptions, PromptTemplate, load_prompt_templates};
 use crate::walk::{has_suffix, read_dir_sorted};
 
-/// Construction inputs (pi `DefaultResourceLoaderOptions`, runtime subset).
+/// Construction inputs (runtime subset).
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "mirrors pi CLI flags -ns, -np, --no-themes, -nc"
+    reason = "mirrors the CLI flags -ns, -np, --no-themes, -nc"
 )]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResourceLoaderOptions {
@@ -51,11 +51,11 @@ pub struct ResourceLoaderOptions {
     /// `--system-prompt` text or file path.
     pub system_prompt: Option<String>,
     /// `--append-system-prompt` values (text or file paths, in order). `Some` replaces the
-    /// discovered `APPEND_SYSTEM.md` (pi parity); `None` discovers it.
+    /// discovered `APPEND_SYSTEM.md`; `None` discovers it.
     pub append_system_prompt: Option<Vec<String>>,
 }
 
-/// Paths contributed after load (pi `ResourceExtensionPaths`; packages and
+/// Paths contributed after load (packages and
 /// `resources_discover`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResourceExtensionPaths {
@@ -140,8 +140,8 @@ impl ResourceLoader {
         &self.options
     }
 
-    /// Re-resolve everything for `settings` and the trust state (pi `reload`; extension
-    /// contributions from [`Self::extend`] are dropped, as in pi).
+    /// Re-resolve everything for `settings` and the trust state (`reload`; extension
+    /// contributions from [`Self::extend`] are dropped).
     pub fn reload(&mut self, settings: &Settings, project_trusted: bool) {
         self.project_trusted = project_trusted;
         let cwd = self.options.cwd.clone();
@@ -706,7 +706,7 @@ fn has_diagnostic_for(diagnostics: &[ResourceDiagnostic], path: &Path) -> bool {
         .any(|diagnostic| diagnostic.path.as_deref() == Some(path))
 }
 
-/// The `name` of a theme file (pi's loader validates the full schema in the TUI).
+/// The `name` of a theme file (the full schema is validated in the TUI).
 fn theme_name(path: &Path) -> Result<String, String> {
     let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let value: serde_json::Value = serde_json::from_str(oino_settings::json::strip_bom(&content))

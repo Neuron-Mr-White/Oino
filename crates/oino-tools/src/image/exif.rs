@@ -1,4 +1,4 @@
-//! EXIF orientation (pi `utils/exif-orientation.ts`), applied before resizing.
+//! EXIF orientation, applied before resizing.
 
 use image::DynamicImage;
 
@@ -129,7 +129,7 @@ fn find_webp_tiff_offset(bytes: &[u8]) -> Option<i64> {
     None
 }
 
-/// pi `getExifOrientation`: 1–8, `1` when absent.
+/// 1–8, `1` when absent.
 #[must_use]
 pub(crate) fn exif_orientation(bytes: &[u8]) -> u8 {
     let tiff = if bytes.starts_with(&[0xff, 0xd8]) {
@@ -142,7 +142,7 @@ pub(crate) fn exif_orientation(bytes: &[u8]) -> u8 {
     tiff.map_or(1, |offset| read_orientation_from_tiff(bytes, offset))
 }
 
-/// pi `applyExifOrientation`.
+/// A p p l y   E x i f   O r i e n t a t i o n.
 #[must_use]
 pub(crate) fn apply_exif_orientation(image: DynamicImage, original: &[u8]) -> DynamicImage {
     match exif_orientation(original) {

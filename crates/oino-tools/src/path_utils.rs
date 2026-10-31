@@ -1,4 +1,4 @@
-//! Path resolution of tool arguments (pi `tools/path-utils.ts` + `utils/paths.ts`).
+//! Path resolution of tool arguments.
 
 use unicode_normalization::UnicodeNormalization;
 
@@ -104,7 +104,7 @@ fn file_url_to_path(url: &str) -> Result<String, PathError> {
     percent_decode(path)
 }
 
-/// pi `normalizePath(path, {normalizeUnicodeSpaces, stripAtPrefix})` (`expandPath`): unicode
+/// Normalises a path: unicode
 /// spaces → space, leading `@` stripped, `~` expanded, `file://` URLs converted.
 ///
 /// # Errors
@@ -145,7 +145,7 @@ fn normalize(input: &str, tool_argument: bool) -> Result<String, PathError> {
     Ok(normalized)
 }
 
-/// pi `resolveToCwd`: [`expand_path`], then resolved against `cwd` (Node `path.resolve`).
+/// [`expand_path`], then resolved against `cwd` (Node `path.resolve`).
 ///
 /// # Errors
 /// Invalid `file://` URLs.
@@ -157,7 +157,7 @@ pub fn resolve_to_cwd(path: &str, cwd: &str) -> Result<String, PathError> {
 }
 
 fn macos_screenshot_variant(path: &str) -> String {
-    // pi: replace(/ (AM|PM)\./gi, "\u202F$1.")
+    // replace(/ (AM|PM)\./gi, "\u202F$1.")
     let mut out = String::with_capacity(path.len());
     let mut rest = path;
     while let Some(index) = rest.find(' ') {
@@ -188,7 +188,7 @@ fn curly_quote_variant(path: &str) -> String {
     path.replace('\'', "\u{2019}")
 }
 
-/// pi `resolveReadPathAsync`: [`resolve_to_cwd`], then the first existing variant among the
+/// [`resolve_to_cwd`], then the first existing variant among the
 /// macOS screenshot `AM`/`PM` narrow-NBSP form, NFD, curly apostrophe and NFD + curly
 /// apostrophe; the resolved path when none exists.
 ///

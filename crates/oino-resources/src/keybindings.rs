@@ -1,4 +1,4 @@
-//! `<agent>/keybindings.json` (pi `keybindings.ts`, `key-id-schema.ts`): load, migrate legacy
+//! `<agent>/keybindings.json`: load, migrate legacy
 //! names, validate key ids. Semantics (defaults, conflicts, dispatch) belong to frontends.
 
 use std::path::{Path, PathBuf};
@@ -31,7 +31,7 @@ impl KeyBinding {
         }
     }
 
-    /// pi `KeybindingValueSchema` check.
+    /// The `KeybindingValueSchema` check.
     #[must_use]
     pub fn from_value(value: &Value) -> Option<Self> {
         match value {
@@ -55,11 +55,11 @@ impl KeyBinding {
 pub struct KeybindingsFile {
     /// File path.
     pub path: PathBuf,
-    /// Valid user bindings, migrated and in pi order (known ids first, extras sorted).
+    /// Valid user bindings, migrated and ordered (known ids first, extras sorted).
     pub bindings: IndexMap<String, KeyBinding>,
     /// Whether legacy names were migrated (the file is not rewritten).
     pub migrated: bool,
-    /// Unreadable file or dropped invalid entries (pi drops them silently).
+    /// Unreadable file or dropped invalid entries (dropped silently).
     pub diagnostics: Vec<ResourceDiagnostic>,
 }
 
@@ -180,7 +180,7 @@ pub fn is_valid_key_id(key: &str) -> bool {
     single || NAMED_KEYS.contains(&rest)
 }
 
-/// Known keybinding ids in pi order (`KEYBINDINGS`: pi-tui then app), used to order files.
+/// Known keybinding ids in declaration order (`KEYBINDINGS`: tui then app), used to order files.
 pub const KEYBINDING_IDS: [&str; 90] = [
     "tui.editor.cursorUp",
     "tui.editor.cursorDown",
@@ -274,7 +274,7 @@ pub const KEYBINDING_IDS: [&str; 90] = [
     "app.tree.filter.cycleBackward",
 ];
 
-/// Named base keys accepted after modifiers (pi-tui `Key` values; plus single `[a-z0-9]`).
+/// Named base keys accepted after modifiers (`Key` values; plus single `[a-z0-9]`).
 const NAMED_KEYS: [&str; 61] = [
     "escape",
     "esc",

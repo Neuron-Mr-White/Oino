@@ -1,5 +1,5 @@
-//! Line diffs exactly as pi produces them: a port of jsdiff 8.0.4 `diffLines` (Myers with the
-//! diagonal pruning of `base.js`) and `createTwoFilesPatch`, plus pi's display diff
+//! Line diffs: a port of jsdiff 8.0.4 `diffLines` (Myers with the
+//! diagonal pruning of `base.js`) and `createTwoFilesPatch`, plus the display diff
 //! (`generateDiffString` in `tools/edit-diff.ts`).
 
 use std::collections::HashMap;
@@ -339,7 +339,7 @@ fn hunks(old: &str, new: &str, context: usize) -> Vec<Hunk> {
     hunks
 }
 
-/// pi `generateUnifiedPatch`: jsdiff `createTwoFilesPatch(path, path, old, new, undefined,
+/// Jsdiff `createTwoFilesPatch(path, path, old, new, undefined,
 /// undefined, {context: 4, headerOptions: FILE_HEADERS_ONLY})`.
 #[must_use]
 pub(crate) fn unified_patch(path: &str, old: &str, new: &str) -> String {
@@ -366,14 +366,14 @@ pub(crate) fn unified_patch(path: &str, old: &str, new: &str) -> String {
     text
 }
 
-/// pi `generateDiffString` result.
+/// `generateDiffString` result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DisplayDiff {
     pub(crate) diff: String,
     pub(crate) first_changed_line: Option<usize>,
 }
 
-/// Accumulates pi's display diff lines and the old/new line counters.
+/// Accumulates the display diff lines and the old/new line counters.
 struct DiffWriter {
     output: Vec<String>,
     old_line: usize,
@@ -435,7 +435,7 @@ impl DiffWriter {
     }
 }
 
-/// pi `generateDiffString(old, new, 4)`: numbered `+`/`-`/context lines with `...` gaps.
+/// Numbered `+`/`-`/context lines with `...` gaps.
 #[must_use]
 pub(crate) fn display_diff(old: &str, new: &str) -> DisplayDiff {
     let parts = diff_lines(old, new);

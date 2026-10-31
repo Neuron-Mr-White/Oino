@@ -103,7 +103,7 @@ pub fn substitute_args(content: &str, args: &[String]) -> String {
     out
 }
 
-/// Try the pi regex alternatives at `tail` (which starts with `$`), in order; returns the
+/// Try the regex alternatives at `tail` (which starts with `$`), in order; returns the
 /// consumed length and the replacement.
 fn match_placeholder(tail: &str, args: &[String], all: &str) -> Option<(usize, String)> {
     let body = &tail[1..];
@@ -381,7 +381,7 @@ pub fn expand_prompt_template(text: &str, templates: &[PromptTemplate]) -> Optio
     ))
 }
 
-/// Split `/name rest` per pi `^\/([^\s]+)(?:\s+([\s\S]*))?$` → `(name, rest)`.
+/// Split `/name rest` per `^\/([^\s]+)(?:\s+([\s\S]*))?$` → `(name, rest)`.
 #[must_use]
 pub fn parse_slash_invocation(text: &str) -> Option<(&str, &str)> {
     let rest = text.strip_prefix('/')?;

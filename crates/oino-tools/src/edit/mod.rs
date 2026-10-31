@@ -1,4 +1,4 @@
-//! `edit` (pi `tools/edit.ts` + `tools/edit-diff.ts`).
+//! `edit`.
 
 mod apply;
 mod diff;
@@ -47,7 +47,7 @@ fn is_single_edit(value: &JsonValue) -> bool {
     })
 }
 
-/// pi `prepareEditArguments`: accepts `edits` as a JSON string or a single object, and legacy
+/// Accepts `edits` as a JSON string or a single object, and legacy
 /// top-level `oldText`/`newText` (appended as the last edit).
 #[must_use]
 pub fn prepare_edit_arguments(mut args: JsonObject) -> JsonObject {

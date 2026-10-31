@@ -10,7 +10,7 @@ node run.mjs  > ../../../../crates/oino-tools/tests/fixtures/tools.json  # cases
 node units.mjs > ../../../../crates/oino-tools/tests/fixtures/units.json # truncate, paths, diffs
 ```
 
-- `cases.json` is shared with `crates/oino-tools/tests/golden_tools.rs`: each case lists the
+- `cases.json` is copied to `crates/oino-tools/tests/fixtures/cases.json` for `golden_tools.rs`: each case lists the
   tool, arguments, fixture files (text, base64, generated lines/repeats, images), context
   (cwd, model image capabilities, session) and options.
 - Case directories live under `target/oino-tools/oracle/` (inside the repository, so

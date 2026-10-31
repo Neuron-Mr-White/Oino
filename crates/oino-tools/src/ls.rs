@@ -1,4 +1,4 @@
-//! `ls` (pi `tools/ls.ts`).
+//! `ls`.
 
 use futures::FutureExt;
 use futures::future::BoxFuture;

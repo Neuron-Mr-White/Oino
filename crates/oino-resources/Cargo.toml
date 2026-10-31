@@ -5,7 +5,10 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "pi resource loading: context files, SYSTEM/APPEND, skills, prompt templates, system prompt"
+description = "Resource loading for Oino: context files, skills, prompt templates, system prompt, project trust"
+readme = "README.md"
+keywords = ["agent", "resources", "skills", "prompt", "config"]
+categories = ["config", "filesystem"]
 
 [dependencies]
 globset.workspace = true

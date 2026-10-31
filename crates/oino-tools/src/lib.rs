@@ -1,29 +1,29 @@
-//! `oino-tools`: pi 1.4.0's built-in tools — `read`, `write`, `edit`, `bash`, `grep`, `find`,
-//! `ls` and (Windows) `powershell` — with pi's names, schemas, descriptions, prompt text,
+//! `oino-tools`: the built-in tools — `read`, `write`, `edit`, `bash`, `grep`, `find`,
+//! `ls` and (Windows) `powershell` — with fixed names, schemas, descriptions, prompt text,
 //! error strings, truncation footers and `details` shapes.
 //!
 //! Tools implement [`oino_agent::AgentTool`]; `oino-core` builds them from a [`ToolConfig`]
 //! (cwd, agent dir, [`ExecutionEnv`], live [`ToolContext`], image and shell options) and uses
-//! [`BuiltinToolInfo`] for the system prompt. Product strings follow D13 (`pi-bash-*.log` →
-//! `<agent>/tmp/oino-bash-*.log`, `PI_*` guideline → `OINO_*`), the shell environment D12.
+//! [`BuiltinToolInfo`] for the system prompt. Temp files go to `<agent>/tmp/oino-bash-*.log`;
+//! the shell environment is D12.
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`registry`] | `tools/index.ts` | [`builtin_tools`], [`coding_tools`], [`read_only_tools`], [`create_tool`], [`tool_by_name`] |
-//! | [`info`] | tool definitions' metadata | [`BuiltinToolName`], [`BuiltinToolInfo`], [`DEFAULT_ACTIVE_TOOLS`] |
-//! | [`config`] | `ToolsOptions`, `ExtensionContext` | [`ToolConfig`], [`ToolContext`], [`SessionEnv`], [`ImageOptions`], [`ShellOptions`] |
-//! | [`mod@env`] | `*Operations` | [`ExecutionEnv`], [`LocalEnv`], [`SpawnedProcess`], [`FsError`] |
-//! | [`read`] | `read.ts` | [`ReadTool`], [`read::block_images`] |
-//! | [`mod@write`] | `write.ts` | [`WriteTool`] |
-//! | [`edit`] | `edit.ts`, `edit-diff.ts` | [`EditTool`], [`edit::prepare_edit_arguments`] |
-//! | [`bash`] | `bash.ts`, `powershell.ts`, `bash-executor.ts`, `utils/shell.ts` | [`ShellTool`], [`BashDetachRegistry`], [`run_shell_command`], [`bash::resolve_shell_config`] |
-//! | [`grep`], [`find`], [`ls`] | `grep.ts`, `find.ts`, `ls.ts` | [`GrepTool`], [`FindTool`], [`LsTool`] |
-//! | [`truncate`] | `truncate.ts` | [`truncate::truncate_head`], [`truncate::truncate_tail`], [`truncate::truncate_line`], [`truncate::format_size`] |
-//! | [`path_utils`] | `path-utils.ts`, `utils/paths.ts` | [`path_utils::expand_path`], [`path_utils::resolve_to_cwd`], [`path_utils::resolve_read_path`] |
-//! | [`mutation_queue`] | `file-mutation-queue.ts` | [`FileMutationQueue`] |
-//! | [`image`] | `utils/image-*.ts`, `mime.ts`, `exif-orientation.ts` | [`image::process_image`], [`image::detect_supported_image_mime_type`] |
+//! | Module | Contents |
+//! |---|---|
+//! | [`registry`] | [`builtin_tools`], [`coding_tools`], [`read_only_tools`], [`create_tool`], [`tool_by_name`] |
+//! | [`info`] | [`BuiltinToolName`], [`BuiltinToolInfo`], [`DEFAULT_ACTIVE_TOOLS`] |
+//! | [`config`] | [`ToolConfig`], [`ToolContext`], [`SessionEnv`], [`ImageOptions`], [`ShellOptions`] |
+//! | [`mod@env`] | [`ExecutionEnv`], [`LocalEnv`], [`SpawnedProcess`], [`FsError`] |
+//! | [`read`] | [`ReadTool`], [`read::block_images`] |
+//! | [`mod@write`] | [`WriteTool`] |
+//! | [`edit`] | [`EditTool`], [`edit::prepare_edit_arguments`] |
+//! | [`bash`] | [`ShellTool`], [`BashDetachRegistry`], [`run_shell_command`], [`bash::resolve_shell_config`] |
+//! | [`grep`], [`find`], [`ls`] | [`GrepTool`], [`FindTool`], [`LsTool`] |
+//! | [`truncate`] | [`truncate::truncate_head`], [`truncate::truncate_tail`], [`truncate::truncate_line`], [`truncate::format_size`] |
+//! | [`path_utils`] | [`path_utils::expand_path`], [`path_utils::resolve_to_cwd`], [`path_utils::resolve_read_path`] |
+//! | [`mutation_queue`] | [`FileMutationQueue`] |
+//! | [`image`] | [`image::process_image`], [`image::detect_supported_image_mime_type`] |
 
 #![forbid(unsafe_code)]
 #![cfg_attr(
@@ -77,7 +77,7 @@ pub use registry::{
 };
 pub use write::WriteTool;
 
-/// pi's abort error text.
+/// The abort error text.
 pub const OPERATION_ABORTED: &str = "Operation aborted";
 
 fn aborted() -> oino_agent::ToolError {

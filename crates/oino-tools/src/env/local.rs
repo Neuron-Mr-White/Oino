@@ -191,7 +191,7 @@ fn spawn_local(request: SpawnRequest) -> Result<SpawnedProcess, SpawnError> {
         .map_err(|error| SpawnError::from_io(&error, &request.program))?;
     if let (Some(input), Some(mut stdin)) = (request.stdin, child.stdin.take()) {
         tokio::spawn(async move {
-            // Errors writing stdin are ignored like pi (`child.stdin.on("error", () => {})`).
+            // Errors writing stdin are ignored (`child.stdin.on("error", () => {})`).
             let _ = stdin.write_all(&input).await;
             let _ = stdin.shutdown().await;
         });
@@ -283,7 +283,7 @@ fn convert_status(status: std::process::ExitStatus) -> ExitStatus {
     }
 }
 
-/// pi `killProcessTree`: SIGKILL to the process group, falling back to the process.
+/// SIGKILL to the process group, falling back to the process.
 #[cfg(unix)]
 pub(crate) fn kill_process_tree(pid: u32) {
     use nix::sys::signal::{Signal, kill, killpg};
@@ -298,12 +298,12 @@ pub(crate) fn kill_process_tree(pid: u32) {
     }
 }
 
-/// pi `killProcessTree`: `%SystemRoot%\System32\taskkill.exe /F /T /PID <pid>`.
+/// `%SystemRoot%\System32\taskkill.exe /F /T /PID <pid>`.
 #[cfg(windows)]
 pub(crate) fn kill_process_tree(pid: u32) {
     let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_owned());
     let taskkill = format!("{root}\\System32\\taskkill.exe");
-    // Failures are ignored like pi.
+    // Failures are ignored.
     let _ = std::process::Command::new(taskkill)
         .args(["/F", "/T", "/PID", &pid.to_string()])
         .stdin(Stdio::null())

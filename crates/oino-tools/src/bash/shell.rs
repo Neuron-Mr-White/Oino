@@ -1,4 +1,4 @@
-//! Shell resolution, environment and output sanitising (pi `utils/shell.ts`, `utils/ansi.ts`).
+//! Shell resolution, environment and output sanitising.
 
 use std::sync::LazyLock;
 
@@ -17,7 +17,7 @@ pub enum CommandTransport {
     Stdin,
 }
 
-/// pi `ShellConfig`.
+/// The shell config record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShellConfig {
     /// Shell executable.
@@ -38,7 +38,7 @@ impl ShellConfig {
     }
 }
 
-/// pi `isLegacyWslBashPath`.
+/// Returns whether it is legacy wsl bash path.
 fn is_legacy_wsl_bash(path: &str) -> bool {
     if !cfg!(windows) {
         return false;
@@ -81,7 +81,7 @@ fn bash_config(shell: &str) -> ShellConfig {
     }
 }
 
-/// pi `findExecutableOnPath` (`which` on Unix, `where` on Windows; first line of output).
+/// Finds an executable on the path (`which` on Unix, `where` on Windows; first line of output).
 async fn find_executable_on_path(env: &dyn ExecutionEnv, executable: &str) -> Option<String> {
     let finder = if cfg!(windows) { "where" } else { "which" };
     let output = tokio::time::timeout(
@@ -111,11 +111,11 @@ async fn find_executable_on_path(env: &dyn ExecutionEnv, executable: &str) -> Op
     Some(first)
 }
 
-/// pi `getShellConfig(shellPath)`: the explicit shell, else `/bin/bash`, `bash` on `PATH`,
+/// The explicit shell, else `/bin/bash`, `bash` on `PATH`,
 /// `sh` (Unix) or Git Bash / `bash.exe` on `PATH` (Windows).
 ///
 /// # Errors
-/// pi's texts: `Custom shell path not found: {path}`, or the Windows "No bash shell found"
+/// The texts: `Custom shell path not found: {path}`, or the Windows "No bash shell found"
 /// help.
 pub async fn resolve_shell_config(
     env: &dyn ExecutionEnv,
@@ -158,7 +158,7 @@ pub async fn resolve_shell_config(
     Ok(ShellConfig::argv("sh", &["-c"]))
 }
 
-/// pi `POWERSHELL_ARGS`.
+/// The powershell args constant.
 pub const POWERSHELL_ARGS: [&str; 5] = [
     "-NoProfile",
     "-NonInteractive",
@@ -167,11 +167,11 @@ pub const POWERSHELL_ARGS: [&str; 5] = [
     "-Command",
 ];
 
-/// pi `getPowerShellConfig`: `pwsh.exe` on `PATH`, PowerShell 7, `powershell.exe` on `PATH`,
+/// `pwsh.exe` on `PATH`, PowerShell 7, `powershell.exe` on `PATH`,
 /// then Windows PowerShell.
 ///
 /// # Errors
-/// pi's texts when not on Windows or when no PowerShell is installed.
+/// The texts when not on Windows or when no PowerShell is installed.
 pub async fn resolve_powershell_config(env: &dyn ExecutionEnv) -> Result<ShellConfig, String> {
     if !cfg!(windows) {
         return Err("The powershell tool is only available on Windows.".to_owned());
@@ -203,7 +203,7 @@ pub async fn resolve_powershell_config(env: &dyn ExecutionEnv) -> Result<ShellCo
     Ok(ShellConfig::argv(&shell, &POWERSHELL_ARGS))
 }
 
-/// pi `getShellEnv`: the base environment with `<agent_dir>/bin` prepended to `PATH` (once).
+/// The base environment with `<agent_dir>/bin` prepended to `PATH` (once).
 #[must_use]
 pub fn shell_env(base: Option<&[(String, String)]>, agent_dir: &str) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = match base {
@@ -235,7 +235,7 @@ pub fn shell_env(base: Option<&[(String, String)]>, agent_dir: &str) -> Vec<(Str
     env
 }
 
-/// The shell tool environment (pi `resolveSpawnContext`, D12): inherited session variables
+/// The shell tool environment (D12): inherited session variables
 /// removed, then `session` exported under `OINO_*` and `PI_*`.
 #[must_use]
 pub fn tool_env(
@@ -252,7 +252,7 @@ pub fn tool_env(
     env
 }
 
-/// pi `sanitizeBinaryOutput`: drops C0 controls except tab/LF/CR, and U+FFF9..U+FFFB.
+/// Drops C0 controls except tab/LF/CR, and U+FFF9..U+FFFB.
 #[must_use]
 pub fn sanitize_binary_output(text: &str) -> String {
     text.chars()
@@ -273,7 +273,7 @@ static CSI_UNFINISHED: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(r"^[\x1B\u{9B}][\[\]()#;?]*(?:[0-9]{1,4}(?:[;:][0-9]{0,4})*)?$").ok()
 });
 
-/// pi `stripAnsi`.
+/// S t r i p   A n s i.
 #[must_use]
 pub fn strip_ansi(text: &str) -> String {
     if !text.contains(['\u{1b}', '\u{9b}']) {
@@ -301,10 +301,10 @@ fn is_unfinished_osc(rest: &str) -> bool {
     true
 }
 
-/// Longest unfinished sequence held back while streaming (pi `MAX_PENDING_ANSI_LENGTH`).
+/// Longest unfinished sequence held back while streaming.
 const MAX_PENDING_ANSI_LENGTH: usize = 256;
 
-/// pi `splitIncompleteAnsiSuffix`: `(complete, pending)` where `pending` is a trailing
+/// `(complete, pending)` where `pending` is a trailing
 /// unfinished escape sequence to prepend to the next chunk.
 #[must_use]
 pub fn split_incomplete_ansi_suffix(text: &str) -> (String, String) {

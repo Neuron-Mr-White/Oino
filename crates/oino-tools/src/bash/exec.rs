@@ -1,4 +1,4 @@
-//! Local shell execution shared by the shell tools and core's `!cmd` executor (pi
+//! Local shell execution shared by the shell tools and core's `!cmd` executor (the
 //! `createLocalShellOperations().exec` + `waitForChildProcess`).
 
 use std::time::Duration;
@@ -12,12 +12,12 @@ use super::shell::{CommandTransport, resolve_powershell_config, resolve_shell_co
 use crate::env::{ExecutionEnv, SpawnRequest, SpawnedProcess, path_exists};
 use crate::js::number_to_string;
 
-/// Grace period after exit while descendants still write (pi `EXIT_STDIO_GRACE_MS`).
+/// Grace period after exit while descendants still write.
 const EXIT_STDIO_GRACE: Duration = Duration::from_millis(100);
-/// pi `MAX_TIMEOUT_MS`.
+/// The max timeout ms constant.
 const MAX_TIMEOUT_MS: f64 = 2_147_483_647.0;
 
-/// pi `resolveTimeoutMs`: validates a timeout in seconds.
+/// Validates a timeout in seconds.
 ///
 /// # Errors
 /// `Invalid timeout: must be a finite number of seconds` / `Invalid timeout: maximum is
@@ -51,16 +51,16 @@ pub(crate) trait OutputSink {
 
 /// How a command ended without error.
 pub(crate) enum ExecEnd {
-    /// The shell exited (pi exit-code rule applied).
+    /// The shell exited (exit-code rule applied).
     Exited(i32),
     /// Core detached the process; it keeps running.
     Detached(DetachRequest, SpawnedProcess),
 }
 
-/// Why a command failed (pi's `exec` rejections).
+/// Why a command failed (`exec` rejections).
 #[derive(Debug)]
 pub(crate) enum ExecError {
-    /// The cancellation token fired (pi `"aborted"`).
+    /// The cancellation token fired.
     Aborted,
     /// The timeout elapsed; carries the timeout as JavaScript prints it.
     Timeout(String),

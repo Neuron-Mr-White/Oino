@@ -1,4 +1,4 @@
-//! Per-file serialisation of mutations (pi `tools/file-mutation-queue.ts`).
+//! Per-file serialisation of mutations.
 //!
 //! `write` and `edit` calls on the same file run one after another in call order; calls on
 //! different files run in parallel. The key is the real path (symlinks resolved), or the
@@ -17,7 +17,7 @@ use crate::node_path;
 
 type Tail = Shared<BoxFuture<'static, ()>>;
 
-/// A mutation queue keyed by file (pi `withFileMutationQueue`).
+/// A mutation queue keyed by file.
 #[derive(Clone, Debug, Default)]
 pub struct FileMutationQueue {
     inner: Arc<QueueInner>,
@@ -26,7 +26,7 @@ pub struct FileMutationQueue {
 #[derive(Debug, Default)]
 struct QueueInner {
     tails: Mutex<HashMap<String, Tail>>,
-    /// Orders registrations like pi's `registrationQueue`, so calls queue in call order even
+    /// Orders registrations like a registration queue, so calls queue in call order even
     /// though resolving the key is asynchronous.
     registration: tokio::sync::Mutex<()>,
 }
@@ -34,7 +34,7 @@ struct QueueInner {
 static GLOBAL: LazyLock<FileMutationQueue> = LazyLock::new(FileMutationQueue::default);
 
 impl FileMutationQueue {
-    /// The process-wide queue shared by all built-in tools (pi's queue is module-global).
+    /// The process-wide queue shared by all built-in tools.
     #[must_use]
     pub fn global() -> Self {
         GLOBAL.clone()

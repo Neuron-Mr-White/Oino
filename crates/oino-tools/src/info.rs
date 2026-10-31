@@ -1,4 +1,4 @@
-//! Static pi metadata of the built-in tools (names, descriptions, schemas, prompt text).
+//! Static metadata of the built-in tools (names, descriptions, schemas, prompt text).
 
 use oino_agent::{ExecutionMode, ToolDefinitionMeta};
 use oino_ai::{ConstrainedSampling, ConstrainedSamplingConfig, JsonValue, StrictMode};
@@ -6,7 +6,7 @@ use serde_json::json;
 
 use crate::truncate::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, GREP_MAX_LINE_LENGTH};
 
-/// Built-in tool names (pi `ToolName`).
+/// Built-in tool names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BuiltinToolName {
     /// `read`
@@ -28,7 +28,7 @@ pub enum BuiltinToolName {
 }
 
 impl BuiltinToolName {
-    /// Every built-in available on this platform, in pi `createAllTools` order.
+    /// Every built-in available on this platform, in declaration order.
     #[must_use]
     pub fn all() -> Vec<Self> {
         let mut names = vec![Self::Read, Self::Bash];
@@ -69,7 +69,7 @@ impl std::fmt::Display for BuiltinToolName {
     }
 }
 
-/// Tools active by default (setting `defaultTools`, pi `createCodingTools`).
+/// Tools active by default (setting `defaultTools`).
 pub const DEFAULT_ACTIVE_TOOLS: [BuiltinToolName; 4] = [
     BuiltinToolName::Read,
     BuiltinToolName::Bash,
@@ -77,7 +77,7 @@ pub const DEFAULT_ACTIVE_TOOLS: [BuiltinToolName; 4] = [
     BuiltinToolName::Write,
 ];
 
-/// pi read-only set (`createReadOnlyTools`): `read`, `grep`, `find`, `ls`.
+/// Read-only set (`createReadOnlyTools`): `read`, `grep`, `find`, `ls`.
 pub const READ_ONLY_TOOLS: [BuiltinToolName; 4] = [
     BuiltinToolName::Read,
     BuiltinToolName::Grep,
@@ -85,7 +85,7 @@ pub const READ_ONLY_TOOLS: [BuiltinToolName; 4] = [
     BuiltinToolName::Ls,
 ];
 
-/// The pi metadata core uses for the system prompt and `ToolInfo`.
+/// The metadata core uses for the system prompt and `ToolInfo`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BuiltinToolInfo {
     /// Tool name.
@@ -94,11 +94,11 @@ pub struct BuiltinToolInfo {
     pub label: &'static str,
     /// Model-facing description.
     pub description: String,
-    /// One-line summary in the system prompt tool list (pi `promptSnippet`).
+    /// One-line summary in the system prompt tool list.
     pub prompt_snippet: Option<&'static str>,
-    /// Guideline bullets (pi `promptGuidelines`; `None` when pi leaves it undefined).
+    /// Guideline bullets (`promptGuidelines`; `None` when undefined).
     pub prompt_guidelines: Option<Vec<String>>,
-    /// Scheduling (every pi built-in is parallel; file mutations use the mutation queue).
+    /// Scheduling (every built-in is parallel; file mutations use the mutation queue).
     pub execution_mode: ExecutionMode,
     /// JSON Schema of the arguments.
     pub parameters: JsonValue,
@@ -127,7 +127,7 @@ impl BuiltinToolInfo {
     }
 }
 
-/// Guideline advertising the session environment (D13 substitution of pi's `PI_*` text).
+/// Guideline advertising the session environment (the `OINO_*` text).
 pub const SESSION_ENV_GUIDELINE: &str = "You can inspect OINO_* environment variables (also exported as PI_*) for current model and session details.";
 
 fn strict_prefer() -> ConstrainedSampling {
@@ -166,7 +166,7 @@ fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|item| (*item).to_owned()).collect()
 }
 
-/// pi `createReadToolDefinition` metadata.
+/// The read tool metadata.
 #[must_use]
 pub fn read_info() -> BuiltinToolInfo {
     let mut info = info(
@@ -208,7 +208,7 @@ pub fn read_info() -> BuiltinToolInfo {
     info
 }
 
-/// pi `createWriteToolDefinition` metadata.
+/// The write tool metadata.
 #[must_use]
 pub fn write_info() -> BuiltinToolInfo {
     let mut info = info(
@@ -229,7 +229,7 @@ pub fn write_info() -> BuiltinToolInfo {
     info
 }
 
-/// pi `createEditToolDefinition` metadata.
+/// The edit tool metadata.
 #[must_use]
 pub fn edit_info() -> BuiltinToolInfo {
     let mut info = info(
@@ -266,7 +266,7 @@ pub fn edit_info() -> BuiltinToolInfo {
     info
 }
 
-/// Shell tool flavour (pi `ShellToolConfig`).
+/// Shell tool flavour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellKind {
     /// `bash`.
@@ -285,7 +285,7 @@ impl ShellKind {
         }
     }
 
-    /// Shell name in descriptions and errors (pi `shellName`).
+    /// Shell name in descriptions and errors.
     #[must_use]
     pub fn shell_name(self) -> &'static str {
         match self {
@@ -294,7 +294,7 @@ impl ShellKind {
         }
     }
 
-    /// Temp file prefix (pi `pi-bash` / `pi-powershell`, D13).
+    /// Temp file prefix (`oino-bash` / `oino-powershell`).
     #[must_use]
     pub fn temp_file_prefix(self) -> &'static str {
         match self {
@@ -311,7 +311,7 @@ impl ShellKind {
     }
 }
 
-/// pi `createShellToolDefinition` metadata. Guidelines are only present when the session
+/// The shell tool metadata. Guidelines are only present when the session
 /// environment is exposed.
 #[must_use]
 pub fn shell_info(kind: ShellKind, expose_session_environment: bool) -> BuiltinToolInfo {
@@ -355,7 +355,7 @@ pub(crate) const FIND_DEFAULT_LIMIT: f64 = 1000.0;
 /// Default `ls` entry limit.
 pub(crate) const LS_DEFAULT_LIMIT: f64 = 500.0;
 
-/// pi `createGrepToolDefinition` metadata.
+/// The grep tool metadata.
 #[must_use]
 pub fn grep_info() -> BuiltinToolInfo {
     info(
@@ -382,7 +382,7 @@ pub fn grep_info() -> BuiltinToolInfo {
     )
 }
 
-/// pi `createFindToolDefinition` metadata.
+/// The find tool metadata.
 #[must_use]
 pub fn find_info() -> BuiltinToolInfo {
     info(
@@ -405,7 +405,7 @@ pub fn find_info() -> BuiltinToolInfo {
     )
 }
 
-/// pi `createLsToolDefinition` metadata.
+/// The ls tool metadata.
 #[must_use]
 pub fn ls_info() -> BuiltinToolInfo {
     info(

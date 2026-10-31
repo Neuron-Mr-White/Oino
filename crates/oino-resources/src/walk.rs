@@ -1,5 +1,5 @@
 //! Directory walking helpers shared by discovery and loaders: sorted entries with followed
-//! symlinks, and pi's prefixed `.gitignore`/`.ignore`/`.fdignore` matching.
+//! symlinks, and prefixed `.gitignore`/`.ignore`/`.fdignore` matching.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,7 +9,7 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 /// Ignore files honoured during discovery.
 const IGNORE_FILE_NAMES: [&str; 3] = [".gitignore", ".ignore", ".fdignore"];
 
-/// One directory entry with symlinks resolved (pi `Dirent` + `statSync` for links).
+/// One directory entry with symlinks resolved (`Dirent` + `statSync` for links).
 #[derive(Clone, Debug)]
 pub(crate) struct DirEntry {
     pub(crate) name: String,
@@ -45,7 +45,7 @@ pub(crate) fn read_dir_sorted(dir: &Path) -> Option<Vec<DirEntry>> {
     Some(entries)
 }
 
-/// Case-sensitive suffix test (pi `name.endsWith(".md")`; `.MD` files are not resources).
+/// Case-sensitive suffix test (`name.endsWith(".md")`; `.MD` files are not resources).
 pub(crate) fn has_suffix(name: &str, suffix: &str) -> bool {
     name.ends_with(suffix)
 }
@@ -60,7 +60,7 @@ pub(crate) fn posix_relative(root: &Path, path: &Path) -> String {
         .join("/")
 }
 
-/// pi's accumulated `ignore()` matcher: rules from nested ignore files are prefixed with their
+/// The accumulated `ignore()` matcher: rules from nested ignore files are prefixed with their
 /// directory relative to the walk root.
 pub(crate) struct IgnoreMatcher {
     root: PathBuf,
