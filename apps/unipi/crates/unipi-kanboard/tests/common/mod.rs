@@ -29,10 +29,11 @@ use unipi_kanboard::commands::{self, Common};
 use unipi_kanboard::model::{Actor, ChainGate, Priority, Status, Task};
 use unipi_kanboard::store::{Layout, Project};
 
-// In-process tests read `UNIPI_KANBOARD_MAX_SESSIONS` & co. from the process
-// environment (`commands::max_sessions()`); run them from a shell that does not
-// export the `UNIPI_KANBOARD_*` tuning vars (an Oino session sets them only for
-// the agent's own bash calls). Child-process helpers override them explicitly.
+// In-process tests pin the cap they assert (`commands::SESSION_CAP_DEFAULT`):
+// `commands::max_sessions()` reads this process's environment, and a wrapping
+// agent session exports `UNIPI_KANBOARD_MAX_SESSIONS` for its own board —
+// exactly what the cap tests must not inherit. Child-process helpers clear the
+// ambient vars before the test's own `.env(...)` calls.
 
 pub(crate) struct Fixture {
     pub _home: TempDir,
@@ -159,7 +160,7 @@ impl Fixture {
                 session,
                 pid,
                 host: &host,
-                max_sessions: commands::max_sessions(),
+                max_sessions: commands::SESSION_CAP_DEFAULT,
             },
             self.common.now,
         )

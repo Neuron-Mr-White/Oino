@@ -598,7 +598,7 @@ fn eight_threads_race_but_the_two_session_cap_holds() {
                 // two-sessions-per-project cap is what the threads hit.
                 pid: std::process::id(),
                 host: &host,
-                max_sessions: commands::max_sessions(),
+                max_sessions: commands::SESSION_CAP_DEFAULT,
             };
             commands::start(
                 &layout,
