@@ -37,4 +37,4 @@ unipi_kit::bus::emit_raw(unipi_kit::topics::WORK_TRAY_CHANGED, &json!({}));
 ```
 
 Tests: `cargo test -p unipi-kit` (native, in `extensions/`). Deviations and open requests:
-`docs/dev/v1/deviations/unipi-core.md`.
+the internal deviation register.

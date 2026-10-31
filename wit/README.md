@@ -1,7 +1,7 @@
 # WIT
 
 `oino-extension/` is the package `oino:extension@2.0.0` (extension-api §3 as amended by
-[../docs/dev/v2/specs/ext-abi.md](../docs/dev/v2/specs/ext-abi.md) §8), one file per
+the extension ABI spec §8), one file per
 interface plus `worlds.wit` (`extension`, `provider-extension`). `oino-extension/deps/` holds
 WASI 0.2.12 (`cli`, `clocks`, `filesystem`, `io`, `random`, `sockets`; no `wasi:http`, D7).
 

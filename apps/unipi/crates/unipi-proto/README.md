@@ -1,7 +1,7 @@
 # unipi-proto
 
 Wire protocol types and framing for `unipi/oino/1` (serde mirror of
-`apps/unipi/packages/protocol`). See `docs/dev/v2/specs/host.md` §5.1, §7.
+`apps/unipi/packages/protocol`). See the host wire docs in this crate.
 
 ## API
 

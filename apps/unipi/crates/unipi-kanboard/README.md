@@ -3,7 +3,7 @@
 The Rust binary `unipi-kanboard` holds the Kanboard task files, the transition rules and the
 board daemon (JSON API + SSE). It is the only program that writes board files. The Oino
 extension `unipi.kanboard` (`extensions/unipi/kanboard`) drives it; ported from unipi
-`crates/kanboard` (differences: `docs/dev/v1/deviations/unipi-kanboard.md`).
+`crates/kanboard` (small differences).
 
 ## Build and test
 
