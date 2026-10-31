@@ -205,6 +205,12 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   // ── scroll memory: restore once content exists ────────────────────
   const memKey = () => scrollMemoryKey('main', props.ctx.hostId, props.ctx.sessionId());
   const saved = readScrollMemory(memKey());
+  // onCleanup must not read props.ctx: the parent's memos are already disposed
+  // when this component is cleaned up (Solid cleanNode crash on route change).
+  let lastMemKey = memKey();
+  createEffect(() => {
+    lastMemKey = memKey();
+  });
   const restore: { pos: 'bottom' | number; done: boolean } = { pos: saved && 'scrollTop' in saved ? saved.scrollTop : 'bottom', done: false };
   let userScrolled = false;
   const origIntent = lock.intent;
@@ -247,7 +253,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   onCleanup(() => {
     const el = scrollEl();
     if (!el) return;
-    writeScrollMemory(memKey(), lock.locked() ? { bottomLocked: true } : { scrollTop: el.scrollTop });
+    writeScrollMemory(lastMemKey, lock.locked() ? { bottomLocked: true } : { scrollTop: el.scrollTop });
   });
 
   const loading = () => session().state.conn === 'connecting' && turns().length === 0;
