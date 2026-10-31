@@ -68,7 +68,7 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant }) {
           <For each={state.archived}>
             {(card) => (
               <div class="sb-archived-row" data-testid={`sb-archived-row-${card.session_id}`}>
-                <span class="sb-archived-title" title={`${titleOf(card)} · ${card.cwd ?? ''}`}>
+                <span class="sb-archived-title" title={card.cwd ? `${titleOf(card)} · ${card.cwd}` : titleOf(card)}>
                   {titleOf(card)}
                 </span>
                 <span class="srow-time">{relativeTimeMs(card.last_activity ?? card.updated_at)}</span>
@@ -77,7 +77,7 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant }) {
                   fallback={
                     <button
                       type="button"
-                      class="sb-archived-del text-wm-red"
+                      class="sb-archived-del sb-archived-del-confirm text-wm-red"
                       title="Confirm delete"
                       onClick={() => {
                         setConfirmId(undefined);
@@ -100,6 +100,7 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant }) {
                   <button
                     type="button"
                     class="sb-archived-del"
+                    aria-label="Delete archived session"
                     title="Delete this archived session"
                     onClick={() => setConfirmId(card.session_id)}
                   >

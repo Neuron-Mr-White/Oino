@@ -153,9 +153,13 @@ describe('SessionList', () => {
     expect(within(u).getByText('+12')).toBeTruthy();
     expect(within(u).getByText('−4')).toBeTruthy();
     expect(u.querySelector('.srow-cron')).toBeTruthy();
-    expect(u.getAttribute('title')).toContain('Nightly build');
-    // Idle rows show no state word on the desktop (Z-12 keeps words for states).
-    expect(within(screen.getByTestId('srow-z')).queryByText('Idle')).toBeNull();
+    expect(u.getAttribute('title')).toBe('Nightly build');
+    // Idle rows show no state word and omit .srow-sub when empty; never a π glyph.
+    const idleRow = screen.getByTestId('srow-z');
+    expect(within(idleRow).queryByText('Idle')).toBeNull();
+    expect(idleRow.querySelector('.srow-sub')).toBeNull();
+    expect(idleRow.textContent).not.toContain('π');
+    expect(idleRow.querySelector('.srow-glyph svg')).toBeTruthy();
   });
 
   it('links to /s/:host/:session and marks the routed session active', async () => {

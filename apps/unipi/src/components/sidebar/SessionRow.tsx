@@ -7,8 +7,8 @@
  * then the state word (or the project folder when idle) and the badges —
  * 264 px cannot hold all of Z-12 on one line without hiding the title.
  */
-import { Show, type JSX } from 'solid-js';
-import { Clock, LoaderCircle, Pin, PinOff } from 'lucide-solid';
+import { createEffect, onCleanup, Show, type JSX } from 'solid-js';
+import { CircleAlert, Clock, LoaderCircle, MessageCircleQuestion, MessageSquare, Pin, PinOff } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { hostClient } from '../../lib/host/factory';
 import { LONG_PRESS_MS } from '../../lib/gestures';
@@ -35,6 +35,21 @@ export const STATE_WORD: Record<ReturnType<typeof rowState>, string> = {
   'taken-over': 'Taken over',
   idle: '',
 };
+
+/** Shared ResizeObserver so `.srow-title` only fades when text genuinely overflows. */
+let titleRo: ResizeObserver | undefined;
+function syncTitleOverflow(el: HTMLElement): void {
+  const over = el.scrollWidth > el.clientWidth + 1;
+  if (over !== el.hasAttribute('data-overflow')) el.toggleAttribute('data-overflow', over);
+}
+function observeTitleOverflow(el: HTMLElement): void {
+  if (typeof ResizeObserver === 'undefined') return;
+  titleRo ??= new ResizeObserver((entries) => {
+    for (const entry of entries) syncTitleOverflow(entry.target as HTMLElement);
+  });
+  titleRo.observe(el);
+  onCleanup(() => titleRo?.unobserve(el));
+}
 
 /** The working mode badge (Z-12 keeps unipi's): a slot until A16's status pane exposes the live mode. */
 export type ModeBadge = { mode: string; label: string; paused?: boolean };
@@ -90,17 +105,26 @@ export function SessionRow(props: {
   const pinTitle = () => (props.meta?.pinned ? `Unpin "${titleText()}"` : `Pin "${titleText()}"`);
   const titleText = () => props.card.name?.trim() || folder() || props.card.session_id;
   const folder = () => props.card.cwd?.split(/[\\/]/).filter(Boolean).pop();
+  const stateWord = () => STATE_WORD[state()];
+  const subFolder = () => ((!stateWord() && props.showFolder) || (props.variant === 'page' && !!stateWord()) ? folder() : undefined);
+  const hasSub = () => Boolean(stateWord() || subFolder() || props.mode || changes() || props.card.source === 'cron');
+  let titleEl: HTMLSpanElement | undefined;
+  createEffect(() => {
+    titleText();
+    if (titleEl && typeof ResizeObserver !== 'undefined') queueMicrotask(() => titleEl && syncTitleOverflow(titleEl));
+  });
   return (
     <a
       href={`#/s/${encodeURIComponent(props.hostId)}/${encodeURIComponent(props.card.session_id)}`}
       class="srow"
       data-variant={props.variant}
       data-state={state()}
+      data-sub={hasSub() ? '' : undefined}
       data-unread={props.meta?.unread ? '' : undefined}
       data-cron={props.card.source === 'cron' ? '' : undefined}
       aria-current={props.active ? 'page' : undefined}
       data-testid={`srow-${props.card.session_id}`}
-      title={`${titleText()} · ${STATE_WORD[state()] || 'Idle'}${props.card.cwd ? ` · ${props.card.cwd}` : ''}`}
+      title={titleText()}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
       onPointerUp={cancelPress}
@@ -108,64 +132,88 @@ export function SessionRow(props: {
       onPointerLeave={cancelPress}
     >
       <span class="srow-glyph" data-state={state()} aria-hidden="true">
-        <Show when={state() === 'working'} fallback="π">
-          <LoaderCircle size={13} class="srow-spin" />
+        <Show
+          when={state() === 'working'}
+          fallback={
+            <Show
+              when={state() === 'needs-you'}
+              fallback={
+                <Show when={state() === 'crashed' || state() === 'taken-over'} fallback={<MessageSquare size={14} />}>
+                  <CircleAlert size={14} />
+                </Show>
+              }
+            >
+              <MessageCircleQuestion size={14} />
+            </Show>
+          }
+        >
+          <LoaderCircle size={14} class="srow-spin" />
         </Show>
       </span>
       <span class="srow-main">
         <span class="srow-title-line">
-          <span class="srow-title">{titleText()}</span>
+          <span
+            ref={(el) => {
+              titleEl = el;
+              observeTitleOverflow(el);
+            }}
+            class="srow-title"
+          >
+            {titleText()}
+          </span>
           <Show when={props.meta?.unread}>
             <span class="srow-unread" title="Unread" aria-label="Unread" />
           </Show>
           <span class="srow-time" title={stamp()}>{time()}</span>
+          <Show when={props.onPin}>
+            <button
+              type="button"
+              class="srow-pin"
+              data-pinned={props.meta?.pinned ? '' : undefined}
+              aria-label={props.meta?.pinned ? 'Unpin session' : 'Pin session'}
+              title={pinTitle()}
+              data-testid={`srow-pin-${props.card.session_id}`}
+              onClick={pin()}
+            >
+              <Show when={props.meta?.pinned} fallback={<Pin size={13} />}>
+                <PinOff size={13} />
+              </Show>
+            </button>
+          </Show>
         </span>
-        <span class="srow-sub">
-          <Show when={STATE_WORD[state()]} fallback={<Show when={props.showFolder && folder()}><span class="srow-cwd">{folder()}</span></Show>}>
-            <span class="srow-word" data-state={state()}>{STATE_WORD[state()]}</span>
-          </Show>
-          <Show when={props.variant === 'page' && STATE_WORD[state()] && folder()}>
-            <span class="srow-cwd">{folder()}</span>
-          </Show>
-          <Show when={props.mode}>
-            {(m) => (
-              <span class="srow-mode" data-paused={m().paused ? '' : undefined} title={`Working mode: ${m().label}`}>
-                {m().label}
-              </span>
-            )}
-          </Show>
-          <span class="srow-tail">
-            <Show when={changes()}>
-              {(c) => (
-                <span class="srow-changes" aria-label={`${c().add} lines added, ${c().del} removed`}>
-                  <span class="add">+{c().add}</span>
-                  <span class="del">−{c().del}</span>
+        <Show when={hasSub()}>
+          <span class="srow-sub">
+            <Show when={stateWord()}>
+              <span class="srow-word" data-state={state()}>{stateWord()}</span>
+            </Show>
+            <Show when={subFolder()}>
+              <span class="srow-cwd">{subFolder()}</span>
+            </Show>
+            <Show when={props.mode}>
+              {(m) => (
+                <span class="srow-mode" data-paused={m().paused ? '' : undefined} title={`Working mode: ${m().label}`}>
+                  {m().label}
                 </span>
               )}
             </Show>
-            <Show when={props.card.source === 'cron'}>
-              <span class="srow-cron" title="Run by the cron scheduler">
-                <Clock size={12} />
-                <span class="srow-cron-label">cron</span>
-              </span>
-            </Show>
-            <Show when={props.onPin}>
-              <button
-                type="button"
-                class="srow-pin"
-                data-pinned={props.meta?.pinned ? '' : undefined}
-                aria-label={props.meta?.pinned ? 'Unpin session' : 'Pin session'}
-                title={pinTitle()}
-                data-testid={`srow-pin-${props.card.session_id}`}
-                onClick={pin()}
-              >
-                <Show when={props.meta?.pinned} fallback={<Pin size={13} />}>
-                  <PinOff size={13} />
-                </Show>
-              </button>
-            </Show>
+            <span class="srow-tail">
+              <Show when={changes()}>
+                {(c) => (
+                  <span class="srow-changes" aria-label={`${c().add} lines added, ${c().del} removed`}>
+                    <span class="add">+{c().add}</span>
+                    <span class="del">−{c().del}</span>
+                  </span>
+                )}
+              </Show>
+              <Show when={props.card.source === 'cron'}>
+                <span class="srow-cron" title="Run by the cron scheduler">
+                  <Clock size={12} />
+                  <span class="srow-cron-label">cron</span>
+                </span>
+              </Show>
+            </span>
           </span>
-        </span>
+        </Show>
       </span>
     </a>
   );
