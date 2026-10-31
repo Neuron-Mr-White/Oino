@@ -1,5 +1,5 @@
-//! Replays the pi-ai 1.4.0 oracle fixtures (`scripts/pi-oracle/providers-v1/payload.mjs` and
-//! `scripts/pi-oracle/providers-more/payload.mjs`): request URL, headers and body must equal
+//! Replays the pi-ai 1.4.0 oracle fixtures (`tests/fixtures/<api>/`): request URL, headers
+//! and body must equal
 //! pi's captured request (`SigV4` signatures are recomputed from pi's signed headers), and the
 //! recorded SSE / AWS event stream (or error response) must produce pi's events, final message,
 //! usage and cost.

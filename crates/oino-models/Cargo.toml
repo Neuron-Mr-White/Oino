@@ -1,6 +1,6 @@
 [package]
 name = "oino-models"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -11,7 +11,7 @@ keywords = ["llm", "models", "registry", "auth", "ai"]
 categories = ["config"]
 
 [dependencies]
-oino-ai = { path = "../oino-ai", version = "1.0.1" }
+oino-ai = { path = "../oino-ai", version = "1.0.2" }
 futures.workspace = true
 globset.workspace = true
 indexmap.workspace = true

@@ -22,6 +22,7 @@ import { resetShortcuts } from '../../lib/shortcuts/registry';
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
 vi.mock('@tauri-apps/api/app', () => ({ onBackButtonPress: async () => ({ unregister: async () => {} }) }));
+vi.mock('@tauri-apps/plugin-deep-link', () => ({ getCurrent: async () => [], onOpenUrl: async () => () => {} }));
 
 const SESSION = streamBasic.hosts[0]!.cards![0]!.session_id;
 

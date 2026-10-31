@@ -1,6 +1,6 @@
 name: release
 
-# The release + install pipeline (docs/dev/v2/specs/dist.md §2, DIRECTION §8).
+# The release + install pipeline (see docs/install.md for the user-facing story).
 # A tag push `v*` builds every artifact and publishes the GitHub Release:
 #
 #   oino-<version>-<target>.tar.gz|zip   the oino CLI/TUI + the extension
@@ -351,7 +351,7 @@ jobs:
       - name: Signing material
         # With ANDROID_KEYSTORE_B64 in the repo secrets the release keystore
         # signs the apk; without it a generated debug key does, and the artifact
-        # is suffixed -unsigned-debug. See docs/dev/release-secrets.md.
+        # is suffixed -unsigned-debug.
         run: |
           mkdir -p sign
           if [ -n "$ANDROID_KEYSTORE_B64" ]; then

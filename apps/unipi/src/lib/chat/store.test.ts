@@ -679,8 +679,8 @@ describe('tree_go restore (UNI-290)', () => {
 describe('models push (late providers)', () => {
   it("replaces the model list when the bridge sends 'models' after hello", () => {
     const state = { models: [{ provider: 'openrouter', id: 'a' }] } as unknown as Parameters<typeof applyMessage>[0];
-    applyMessage(state, { t: 'models', models: [{ provider: 'openrouter', id: 'a' }, { provider: 'omniroute', id: 'b' }] } as never);
-    expect(state.models.map((m: { provider: string }) => m.provider)).toEqual(['openrouter', 'omniroute']);
+    applyMessage(state, { t: 'models', models: [{ provider: 'openrouter', id: 'a' }, { provider: 'acme', id: 'b' }] } as never);
+    expect(state.models.map((m: { provider: string }) => m.provider)).toEqual(['openrouter', 'acme']);
   });
   it('ignores a malformed push', () => {
     const state = { models: [{ provider: 'x', id: 'y' }] } as unknown as Parameters<typeof applyMessage>[0];

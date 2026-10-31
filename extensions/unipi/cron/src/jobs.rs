@@ -127,7 +127,7 @@ fn job_path(id: &str) -> String {
 pub fn now_ms() -> u64 {
     #[cfg(target_arch = "wasm32")]
     {
-        oino_extension::timers::now_ms().max(0) as u64
+        u64::try_from(oino_extension::timers::now_ms().max(0)).unwrap_or(0)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

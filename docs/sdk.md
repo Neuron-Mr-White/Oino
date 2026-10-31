@@ -30,8 +30,7 @@ let runtime = AgentSessionRuntime::create(services, SessionOptions { /* … */ }
 let backend = oino_client::InProcessBackend::new(Arc::new(runtime));
 ```
 
-See `crates/oino/src/startup.rs` (CLI) and `apps/oino-desktop/src/embedded.rs` (desktop) for
-complete examples, and `docs/dev/v1/architecture.md` for the crate layering rules. Each crate's
+See `crates/oino/src/startup.rs` (CLI) for a complete example. Each crate's
 rustdoc (`cargo doc --workspace --no-deps --open`) starts with an API map.
 
 Out of process, drive `oino --mode rpc` ([rpc.md](rpc.md)) or `oino --mode acp`

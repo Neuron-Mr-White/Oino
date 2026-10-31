@@ -2,9 +2,8 @@
 """Drive Oino Desktop deterministically: click, type and read the UI over the automation socket.
 
 The app serves a JSON-lines RPC on a Unix socket when it runs with
-`OINO_DESKTOP_AUTOMATION=<path>` (see `apps/oino-ui/src/automation/` and
-docs/dev/v1/gui-driver.md). This client talks to that socket locally or, with `--ti`, through
-an SSH pipe to the `ti` GUI host.
+`OINO_DESKTOP_AUTOMATION=<path>` (see `crates/oino-ui/src/automation/`). This client talks to
+that socket locally or, with `--ti`, through an SSH pipe to a remote GUI test host.
 
 Usage
     scripts/gui-drive.py [--ti | --host H --socket S] <command> [args]
@@ -23,7 +22,7 @@ Commands
 
 Examples
     scripts/gui-drive.py --ti tree --role switch
-    scripts/gui-drive.py --ti run docs/dev/v1/gui/scenarios/approval-allow.json
+    scripts/gui-drive.py --ti run my-scenario.json
 """
 
 from __future__ import annotations
@@ -39,9 +38,11 @@ import sys
 import time
 from pathlib import Path
 
-TI_HOST = "ti@ti"
+# Remote GUI test host (opt-in): set OINO_TI_HOST (user@host) to use --ti; the app
+# expects its automation socket and scratch dirs under the paths below on that host.
+TI_HOST = os.environ.get("OINO_TI_HOST", "")
 TI_SOCKET = "/home/ti/oino-test/run/automation.sock"
-TI_SHOTS = "docs/dev/v1/design/shots/gui"
+TI_SHOTS = "target/gui-shots"
 TI_REMOTE_SHOTS = "/home/ti/oino-test/run/gui-shots"
 
 # Runs on the far side of the SSH pipe: stdin lines -> socket -> stdout lines. It travels as
@@ -310,7 +311,7 @@ def resolve_run_path(client: Client, path: str) -> str:
 
 
 class Scenario:
-    """A JSON scenario: `{name, scene, shots, steps}` (docs/dev/v1/gui-driver.md §4)."""
+    """A JSON scenario: `{name, scene, shots, steps}`."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -501,7 +502,7 @@ def run_step(client: Client, scenario: Scenario, method: str, params: dict, args
         print("      " + json.dumps(result))
         return ""
     if method in ("drop", "clipboard_image"):
-        # Platform input injections for attachments (docs/dev/v1/gui-driver.md §2); `$RUN`
+        # Platform input injections for attachments (`$RUN`
         # placeholders resolve to the app host's run dir.
         payload = dict(params)
         if isinstance(payload.get("paths"), list):
@@ -813,7 +814,7 @@ def ti_restart(
     if backend == "real":
         # A real run needs a default model and a non-first-run agent dir (no onboarding).
         # Core settings are pi's `defaultProvider`/`defaultModel` pair (not `model:`); the
-        # router needs its cached model catalog, copied from this PC (docs/dev/v1/ti.md §2).
+        # router needs its cached model catalog, copied from this PC.
         base = {"defaultProvider": "oino", "defaultModel": "deepseek/deepseek-flash"}
         merged = json.dumps(merge_settings(base, settings or {}))
         desktop = json.dumps({"onboarded": True})

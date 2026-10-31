@@ -68,5 +68,4 @@ Custom providers and model overrides go into `models.json` ([models.md](models.m
 
 WebSocket transports and Anthropic workload-identity federation are not ported; Bedrock
 reads env keys, bearer tokens and static `~/.aws` profiles only; Vertex reads
-`authorized_user` / `service_account` ADC files. Details: `extensions/providers/README.md` and
-[providers deviations](dev/v1/deviations/providers-v1.md).
+`authorized_user` / `service_account` ADC files. Details: `extensions/providers/README.md`.

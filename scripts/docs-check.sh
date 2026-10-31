@@ -33,7 +33,7 @@ import pathlib
 import re
 import sys
 
-files = [pathlib.Path("README.md"), *sorted(pathlib.Path("docs").glob("*.md")), pathlib.Path("docs/dev/v1/STATUS.md")]
+files = [pathlib.Path("README.md"), *sorted(pathlib.Path("docs").glob("*.md"))]
 link_re = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 errors = []
 for path in files:

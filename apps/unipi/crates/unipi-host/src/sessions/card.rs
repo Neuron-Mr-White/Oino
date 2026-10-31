@@ -253,6 +253,7 @@ mod tests {
                 "updatedAt": 10,
                 "messageCount": 2,
                 "state": {"kind": "idle"},
+                "lastActivity": 10,
             })
         );
     }

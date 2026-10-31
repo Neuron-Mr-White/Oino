@@ -13,10 +13,10 @@ repository = "https://github.com/Neuron-Mr-White/Oino"
 base64 = "0.22"
 hmac = "0.12"
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
-oino-ai = { path = "../crates/oino-ai", version = "1.0.1" }
-oino-ui = { path = "../crates/oino-ui", version = "1.0.1" }
-oino-extension = { path = "sdk/oino-extension", version = "1.0.0" }
-oino-extension-macros = { path = "sdk/oino-extension-macros", version = "1.0.0" }
+oino-ai = { path = "../crates/oino-ai", version = "1.0.2" }
+oino-ui = { path = "../crates/oino-ui", version = "1.0.2" }
+oino-extension = { path = "sdk/oino-extension", version = "1.0.2" }
+oino-extension-macros = { path = "sdk/oino-extension-macros", version = "1.0.2" }
 oino-provider-kit = { path = "sdk/oino-provider-kit" }
 proc-macro2 = "1"
 quote = "1"

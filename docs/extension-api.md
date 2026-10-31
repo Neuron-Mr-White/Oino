@@ -19,10 +19,8 @@ exact wire shapes; host capabilities are typed WIT.
 | `http` | outbound HTTP through the host (allowlists, proxy, credential injection, optional TLS fingerprint) |
 | `fs`, `kv`, `secrets`, `timers`, `bus`, `services`, `log`, `host-info` | state, storage, timers, cross-extension messaging |
 
-The authoritative description, including permissions and manifest fields, is
-[dev/v1/extension-api.md](dev/v1/extension-api.md); differences in the current
-implementation are in [dev/v1/deviations/wit-v1.md](dev/v1/deviations/wit-v1.md).
-Validate the WIT with `cargo xtask wit`.
+The authoritative description, including permissions and manifest fields, is the WIT world
+itself (`wit/oino/extension.wit`); validate it after changes with `cargo xtask wit`.
 
 ## Guest SDK
 

@@ -1,5 +1,5 @@
-//! Bundled provider catalogs (`catalog.json`, generated from pi-ai 1.4.0 by
-//! `scripts/pi-oracle/providers-v1/catalog.mjs`), provider registrations and model listing.
+//! Bundled provider catalogs (`catalog.json`, generated from pi-ai 1.4.0),
+//! provider registrations and model listing.
 
 use serde::Deserialize;
 use serde_json::{Value, json};

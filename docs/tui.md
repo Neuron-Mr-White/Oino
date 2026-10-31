@@ -39,7 +39,7 @@ oino -c                                # continue the last session here
 Built-in: `/settings`, `/model`, `/thinking`, `/scoped-models`, `/new`, `/resume`, `/name`,
 `/session`, `/tree`, `/fork`, `/clone`, `/compact`, `/import`, `/copy`, `/export`, `/reload`,
 `/hotkeys`, `/changelog`, `/quit`; `/login [provider]` and `/logout [provider]`
-run OAuth sign-in; `/trust` and `/extensions` only print guidance in this alpha. Extension commands (`/goal`, `/kanboard`, … — see `docs/dev/v1/commands.md`), prompt templates and `/skill:*`
+run OAuth sign-in; `/trust` and `/extensions` only print guidance in this alpha. Extension commands (`/goal`, `/kanboard`, …), prompt templates and `/skill:*`
 appear in the same menu ([unipi.md](unipi.md)).
 
 ## Differences
@@ -47,5 +47,4 @@ appear in the same menu ([unipi.md](unipi.md)).
 The UI uses the alternate screen by default (`--tui-mode regular` or setting
 `tuiMode: "regular"` keeps the terminal scrollback); images render as `[image: mime]`
 placeholders. Extension completions, the extension settings hub (`/settings`) and panel
-buttons work. See
-[dev/v1/deviations/tui-client.md](dev/v1/deviations/tui-client.md).
+buttons work.

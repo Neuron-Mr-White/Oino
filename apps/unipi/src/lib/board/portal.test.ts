@@ -56,9 +56,9 @@ describe('task ref matching (UNI-181)', () => {
 
 describe('project resolution (UNI-181)', () => {
   const list = [
-    P('unipi-faa347', 'UNI', '/home/oi/Projects/unipi'),
-    P('heartpick-427ef7', 'HEA', '/home/oi/Projects/heartpick'),
-    P('heartpick-merchant-24102c', 'HEA', '/home/oi/Projects/heartpick/merchant'),
+    P('unipi-faa347', 'UNI', '/home/dev/Projects/unipi'),
+    P('acme-427ef7', 'HEA', '/home/dev/Projects/acme'),
+    P('acme-merchant-24102c', 'HEA', '/home/dev/Projects/acme/merchant'),
     P('old-uni', 'UNI', '/old', true),
   ];
 
@@ -68,14 +68,14 @@ describe('project resolution (UNI-181)', () => {
   });
 
   it('a shared prefix is tie-broken by the chat cwd (deepest root), then the last opened', () => {
-    expect(pickProjectForRef(list, 'HEA-3', '/home/oi/Projects/heartpick/merchant/src')).toBe('heartpick-merchant-24102c');
-    expect(pickProjectForRef(list, 'HEA-3', '/home/oi/Projects/heartpick/web')).toBe('heartpick-427ef7');
-    expect(pickProjectForRef(list, 'HEA-3', '/tmp', 'heartpick-merchant-24102c')).toBe('heartpick-merchant-24102c');
+    expect(pickProjectForRef(list, 'HEA-3', '/home/dev/Projects/acme/merchant/src')).toBe('acme-merchant-24102c');
+    expect(pickProjectForRef(list, 'HEA-3', '/home/dev/Projects/acme/web')).toBe('acme-427ef7');
+    expect(pickProjectForRef(list, 'HEA-3', '/tmp', 'acme-merchant-24102c')).toBe('acme-merchant-24102c');
   });
 
   it('pickProjectForCwd uses the root containing the cwd, else the last opened', () => {
-    expect(pickProjectForCwd(list, '/home/oi/Projects/unipi/unipi-app')).toBe('unipi-faa347');
-    expect(pickProjectForCwd(list, '/tmp', 'heartpick-427ef7')).toBe('heartpick-427ef7');
+    expect(pickProjectForCwd(list, '/home/dev/Projects/unipi/unipi-app')).toBe('unipi-faa347');
+    expect(pickProjectForCwd(list, '/tmp', 'acme-427ef7')).toBe('acme-427ef7');
     expect(pickProjectForCwd(list, '/tmp')).toBeUndefined();
   });
 });

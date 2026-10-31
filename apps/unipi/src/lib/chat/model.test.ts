@@ -186,7 +186,7 @@ describe('summaries', () => {
   });
   it('subjects, previews, diff stats and durations', () => {
     expect(toolSubject({ name: 'bash', args: { command: 'npm test\necho' } })).toBe('npm test');
-    expect(toolSubject({ name: 'read', args: { path: '/home/oi/x' } })).toBe('~/x');
+    expect(toolSubject({ name: 'read', args: { path: '/home/u/x' } })).toBe('~/x');
     expect(thinkingPreview('First **bold**.\n\nSecond para\nmore', true)).toBe('First bold.');
     expect(thinkingPreview('Only one', false)).toBe('Only one');
     expect(diffStat({ name: 'edit', args: { edits: [{ oldText: 'a\nb', newText: 'c' }] } })).toEqual({ add: 1, del: 2 });
@@ -364,7 +364,7 @@ describe('collapseCommandRows (UNI-210 / UNI-251)', () => {
   });
 
   it('the real /unipi:kanboard-do shape (UNI-251): bubble = the typed text, chip "Kanboard · task budget", body = the preamble WITHOUT the repeated request', () => {
-    const req = '- You can decide this.\n- Strip pi omniroute bridge away from app.\n\n- Can I restart UniPi this session rn?';
+    const req = '- You can decide this.\n- Remove the legacy bridge from the app.\n\n- Can I restart UniPi this session rn?';
     const entries: Entry[] = [
       { type: 'custom', id: 'h0', customType: 'unipi-command-echo', data: { text: '/unipi-app-session' } },
       echo('e1', `/unipi:kanboard-do ${req}`),

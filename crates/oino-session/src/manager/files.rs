@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn encodes_cwd_like_pi() {
-        assert_eq!(encode_cwd(Path::new("/home/oi/p")), "--home-oi-p--");
+        assert_eq!(encode_cwd(Path::new("/home/u/p")), "--home-u-p--");
         assert_eq!(encode_cwd(Path::new("/a/./b/../c")), "--a-c--");
     }
 

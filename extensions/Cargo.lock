@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ai"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "indexmap",
  "serde",
@@ -849,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "futures",
  "oino-ai",
@@ -864,7 +864,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-macros"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -886,7 +886,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ui"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "serde",
  "serde_json",

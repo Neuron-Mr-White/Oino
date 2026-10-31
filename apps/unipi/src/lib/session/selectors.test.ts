@@ -12,7 +12,7 @@ describe('selectors', () => {
     expect(sessionTitle(card('a', { cwd: '/x/proj/' }))).toBe('proj');
     expect(sessionTitle(card('a', { name: 'Card' }), { name: 'Live' })).toBe('Live');
     expect(sessionCwd(card('a', { cwd: '/x/proj/' }))).toBe('/x/proj');
-    expect(shortCwd('/home/oi/p')).toBe('~/p');
+    expect(shortCwd('/home/dev/p')).toBe('~/p');
   });
 
   it('running / needs-you prefer the open session over the card', () => {

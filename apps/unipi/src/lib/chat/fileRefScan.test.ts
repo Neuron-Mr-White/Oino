@@ -104,7 +104,7 @@ describe('scanFileRefs — false positives it must refuse', () => {
   });
 
   it('npm package names', () => {
-    expect(paths('install @scope/pkg and @earendil-works/pi-tui')).toEqual([]);
+    expect(paths('install @scope/pkg and @scope/pkg-tui')).toEqual([]);
   });
 
   it('a/b in prose', () => {

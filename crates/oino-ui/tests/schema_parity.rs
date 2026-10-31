@@ -1,7 +1,8 @@
-//! Schema parity (WP-U1 acceptance): the exported `schema/node.schema.json` must
-//! stay identical to the Appendix A block in the spec document (normalized =
-//! structural JSON equality), and the registry envelopes must validate the
-//! shared `fixtures/registry/*.json` seeds (WP-U5 / WP-U9 reuse them).
+//! Schema parity: the exported `schema/node.schema.json` must stay identical to
+//! the ui-protocol v2 spec's Appendix A snapshot (kept at
+//! `fixtures/spec-appendix-a.node.schema.json`; normalized = structural JSON
+//! equality), and the registry envelopes must validate the shared
+//! `fixtures/registry/*.json` seeds.
 
 #![allow(
     clippy::unwrap_used,
@@ -13,9 +14,9 @@ use std::fs;
 
 use serde_json::Value as Json;
 
-const SPEC: &str = concat!(
+const SPEC_SNAPSHOT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../docs/dev/v2/specs/ui-protocol.md"
+    "/fixtures/spec-appendix-a.node.schema.json"
 );
 
 fn schema_file(name: &str) -> Json {
@@ -24,23 +25,11 @@ fn schema_file(name: &str) -> Json {
     serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse {path}: {e}"))
 }
 
-/// Extracts the Appendix A fenced JSON block from the spec document.
+/// Loads the Appendix A snapshot taken from the ui-protocol v2 spec.
 fn appendix_a_from_spec() -> Json {
-    let doc = fs::read_to_string(SPEC).unwrap_or_else(|e| panic!("read {SPEC}: {e}"));
-    let marker = "## Appendix A — JSON Schema";
-    let start = doc
-        .find(marker)
-        .unwrap_or_else(|| panic!("spec is missing {marker}"));
-    let rest = &doc[start..];
-    let fence = rest
-        .find("```json")
-        .unwrap_or_else(|| panic!("no ```json after Appendix A"));
-    let body = &rest[fence + "```json".len()..];
-    let end = body
-        .find("```")
-        .unwrap_or_else(|| panic!("unterminated json fence in Appendix A"));
-    let raw = body[..end].trim();
-    serde_json::from_str(raw).unwrap_or_else(|e| panic!("Appendix A block is not valid JSON: {e}"))
+    let raw =
+        fs::read_to_string(SPEC_SNAPSHOT).unwrap_or_else(|e| panic!("read {SPEC_SNAPSHOT}: {e}"));
+    serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse {SPEC_SNAPSHOT}: {e}"))
 }
 
 #[test]
@@ -49,7 +38,7 @@ fn exported_node_schema_equals_appendix_a() {
     let appendix = appendix_a_from_spec();
     assert_eq!(
         exported, appendix,
-        "schema/node.schema.json drifted from the spec's Appendix A"
+        "schema/node.schema.json drifted from the spec snapshot"
     );
 }
 

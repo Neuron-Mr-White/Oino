@@ -6,6 +6,10 @@ AGENT.md
 .deepseek/
 .oino/
 .env.podman
+.unipi-workspace.json
 extensions/target/
 __pycache__/
 extensions/*/*/harness/target/
+node_modules/
+.DS_Store
+*.log

@@ -1,5 +1,5 @@
 {"type":"session","version":3,"id":"01a05613-2a77-71ed-87d8-ece31e7967b5","timestamp":"2026-08-31T04:28:11.767Z","cwd":"/work/project"}
-{"type":"model_change","id":"ed0ef113","parentId":null,"timestamp":"2026-08-31T04:28:12.552Z","provider":"omniroute","modelId":"zai/glm-5.3-flash"}
+{"type":"model_change","id":"ed0ef113","parentId":null,"timestamp":"2026-08-31T04:28:12.552Z","provider":"openrouter","modelId":"zai/glm-5.3-flash"}
 {"type":"thinking_level_change","id":"9ad2c0e7","parentId":"ed0ef113","timestamp":"2026-08-31T04:28:12.552Z","thinkingLevel":"high"}
 {"type":"model_change","id":"3ba2e73f","parentId":"9ad2c0e7","timestamp":"2026-08-31T04:33:28.934Z","provider":"abliterated","modelId":"qwen38-start"}
 {"type":"thinking_level_change","id":"3a450219","parentId":"3ba2e73f","timestamp":"2026-08-31T04:33:28.934Z","thinkingLevel":"off"}

@@ -18,7 +18,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/Neuron-Mr-White/Oino"
 
 [workspace.dependencies]
-oino-ui = { path = "crates/oino-ui", version = "1.0.1" }
+oino-ui = { path = "crates/oino-ui", version = "1.0.2" }
 async-trait = "0.1"
 futures = "0.3"
 bytes = "1"

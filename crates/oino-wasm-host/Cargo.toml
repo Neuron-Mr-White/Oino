@@ -1,6 +1,6 @@
 [package]
 name = "oino-wasm-host"
-version = "1.0.0"
+version = "1.0.2"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -23,11 +23,11 @@ bytes.workspace = true
 chrono.workspace = true
 futures.workspace = true
 notify = "8.2"
-oino-agent = { path = "../oino-agent", version = "1.0.1", optional = true }
-oino-ai = { path = "../oino-ai", version = "1.0.1" }
-oino-core = { path = "../oino-core", version = "1.0.0", optional = true }
-oino-extension-api = { path = "../oino-extension-api", version = "1.0.1" }
-oino-settings = { path = "../oino-settings", version = "1.0.1" }
+oino-agent = { path = "../oino-agent", version = "1.0.2", optional = true }
+oino-ai = { path = "../oino-ai", version = "1.0.2" }
+oino-core = { path = "../oino-core", version = "1.0.2", optional = true }
+oino-extension-api = { path = "../oino-extension-api", version = "1.0.2" }
+oino-settings = { path = "../oino-settings", version = "1.0.2" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
@@ -45,9 +45,9 @@ nix = { workspace = true, features = ["signal", "process"] }
 
 [dev-dependencies]
 indexmap.workspace = true
-oino-core = { path = "../oino-core", version = "1.0.0", features = ["testing"] }
-oino-models = { path = "../oino-models", version = "1.0.1" }
-oino-extension-api = { path = "../oino-extension-api", version = "1.0.1", features = ["testing"] }
+oino-core = { path = "../oino-core", version = "1.0.2", features = ["testing"] }
+oino-models = { path = "../oino-models", version = "1.0.2" }
+oino-extension-api = { path = "../oino-extension-api", version = "1.0.2", features = ["testing"] }
 oino-wasm-host = { path = ".", default-features = false, features = ["testing"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }

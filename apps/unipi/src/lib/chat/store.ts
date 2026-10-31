@@ -383,7 +383,7 @@ export function applyMessage(state: ChatState, msg: Msg): void {
       return;
     }
     // The model list changed after hello: a provider registered late
-    // (pi-omniroute-bridge), so a phone that connected early only had part of it.
+    // (a legacy bridge), so a phone that connected early only had part of it.
     case 'models': {
       if (Array.isArray(msg.models)) state.models = msg.models as ModelInfo[];
       return;

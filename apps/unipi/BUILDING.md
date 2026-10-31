@@ -1,8 +1,7 @@
 # Building UniPi
 
 How to build the UniPi desktop app (and phone app) from this checkout. For what
-ships in a release, see `.github/workflows/release.yml` and
-[docs/dev/v2/specs/dist.md](../../docs/dev/v2/specs/dist.md).
+ships in a release, see `.github/workflows/release.yml`.
 
 ## Never collide with the installed app
 
@@ -112,8 +111,7 @@ why the release pipeline skips iOS entirely.
 ## Android
 
 CI builds a universal `.apk` (release.keystore via repo secrets, or a generated
-debug key when they are absent — see
-[docs/dev/release-secrets.md](../../docs/dev/release-secrets.md)). Locally:
+debug key when they are absent). Locally:
 
 ```sh
 cd apps/unipi

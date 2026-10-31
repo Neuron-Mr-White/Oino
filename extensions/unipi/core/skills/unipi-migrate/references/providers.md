@@ -51,7 +51,7 @@ models: [...]}}}`).
 
 Not migrated (pi- or extension-private caches): `$PI_DIR/models-store.json`,
 `$PI_DIR/model-catalogs`, `$UNIPI/config/models-cache.json`,
-`$UNIPI/config/image-models-cache.json`, `$PI_DIR/omniroute-bridge/` and other TypeScript
+`$UNIPI/config/image-models-cache.json`, TypeScript-extension caches under `$PI_DIR/` and other
 extension state (they regenerate or belong to code that does not run in Oino).
 
 Verify: `oino --list-models | head -50` shows the providers; for each provider with

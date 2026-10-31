@@ -141,4 +141,4 @@ maxConsecutiveToolErrors,summaryTurn}`; background task caps are
 | `$UNIPI/workspace/<uuid>/state/{dream,subagents}`, `long-horizon/{state,graph}.json`, `$UNIPI/workspace/<uuid>/sessions/` | run state of old processes |
 | `$UNIPI/config/settings-version.json`, `$UNIPI/state-version.json`, `$UNIPI/config/.backup/` | unipi's own migration ledger |
 | `$UNIPI/move-backup/`, `$UNIPI/memory-v2-backup-*`, `$UNIPI/quick-work/`, `$UNIPI/worktrees/`, `$UNIPI/sumbench/`, `$UNIPI/trajectory/`, `$UNIPI/docs/` | backups, scratch and benchmark data of unipi itself; mention so the user can keep them |
-| pi-extension private files (`$PI_DIR/antigravity-accounts.json`, `models-store.json`, `omniroute-bridge/`, `.zcode2pi-state.json`, `fff/`) | belong to TypeScript extensions that do not run in Oino |
+| pi-extension private files (`$PI_DIR/antigravity-accounts.json`, `models-store.json`, `.zcode2pi-state.json`, `fff/`) | belong to TypeScript extensions that do not run in Oino |

@@ -3299,7 +3299,7 @@ dependencies = [
 
 [[package]]
 name = "oino-agent"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "futures",
  "indexmap",
@@ -3314,7 +3314,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ai"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "indexmap",
  "serde",
@@ -3324,7 +3324,7 @@ dependencies = [
 
 [[package]]
 name = "oino-client"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "futures",
  "indexmap",
@@ -3343,7 +3343,7 @@ dependencies = [
 
 [[package]]
 name = "oino-core"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "futures",
  "ignore",
@@ -3369,7 +3369,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-api"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "futures",
  "oino-ai",
@@ -3383,7 +3383,7 @@ dependencies = [
 
 [[package]]
 name = "oino-models"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "futures",
  "globset",
@@ -3398,7 +3398,7 @@ dependencies = [
 
 [[package]]
 name = "oino-resources"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "globset",
  "ignore",
@@ -3413,7 +3413,7 @@ dependencies = [
 
 [[package]]
 name = "oino-session"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "fs4",
  "indexmap",
@@ -3427,7 +3427,7 @@ dependencies = [
 
 [[package]]
 name = "oino-settings"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "dirs",
  "indexmap",
@@ -3440,7 +3440,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tools"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -3465,7 +3465,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ui"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -3473,7 +3473,7 @@ dependencies = [
 
 [[package]]
 name = "oino-wasm-host"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
  "base64 0.22.1",
  "bytes",

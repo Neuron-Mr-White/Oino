@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# ui-protocol v2 migration gate (WP-U7, docs/dev/v2/specs/ui-protocol.md §12.3).
+# ui-protocol v2 migration gate (no OUS v1 node trees in extension sources).
 #
 # Fails when an extension still emits an OUS v1 node tree: a literal `"t": "<lowercase kind>"`
 # (v2 tags are capitalised, `"t": "Paragraph"`, and core rejects v1 trees at the registry gate,

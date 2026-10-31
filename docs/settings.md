@@ -51,7 +51,7 @@ Extension secrets (API keys entered in extension settings) live in `~/.oino/secr
 - Desktop: one Settings screen with the agent keys, every extension namespace and the host/app
   settings, rendered by the same form engine.
 
-Settings namespaces use the OSS-2 dialect (`docs/dev/v2/specs/ui-protocol.md` §7). Core also
+Settings namespaces use the OSS-2 dialect. Core also
 contributes `oino.*` namespaces (model, compaction, retry, shell, …) describing the core keys
 above, so they appear in the same UI. A stored value that no longer matches its field (type,
 enum membership, range, pattern) is ignored in favour of the layer below and reported as a

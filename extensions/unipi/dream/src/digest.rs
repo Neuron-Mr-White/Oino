@@ -162,7 +162,7 @@ pub fn is_correction(text: &str) -> bool {
         || word("actually")
 }
 
-/// pi/Oino session dir name for a cwd (`/home/oi` → `--home-oi--`).
+/// pi/Oino session dir name for a cwd (`/home/u` → `--home-u--`).
 #[must_use]
 pub fn encode_session_dir_name(cwd: &str) -> String {
     format!(
@@ -454,15 +454,14 @@ mod tests {
                 result(
                     "1",
                     "bash",
-                    &format!("Error: Cannot find module '@earendil-works/pi-tui'\n{stack}")
-                        .repeat(3),
+                    &format!("Error: Cannot find module '@scope/pkg-tui'\n{stack}").repeat(3),
                     true,
                 ),
             ]),
         )
         .unwrap_or_default();
         let head = d.events[0].error_head.clone().unwrap_or_default();
-        assert!(head.contains("Cannot find module '@earendil-works/pi-tui'"));
+        assert!(head.contains("Cannot find module '@scope/pkg-tui'"));
         assert!(head.chars().count() <= 401);
         let d = digest_session(
             "s",
@@ -530,8 +529,8 @@ mod tests {
         assert_eq!(count_new_sessions(&sessions, 0), 1);
         assert_eq!(count_new_sessions(&sessions, i64::MAX), 0);
         assert_eq!(
-            encode_session_dir_name("/home/oi/Projects/Personal/archived/unipi"),
-            "--home-oi-Projects-Personal-archived-unipi--"
+            encode_session_dir_name("/home/dev/Projects/Personal/archived/unipi"),
+            "--home-dev-Projects-Personal-archived-unipi--"
         );
         let _ = std::fs::remove_dir_all(&base);
     }

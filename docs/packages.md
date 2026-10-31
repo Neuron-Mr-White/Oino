@@ -25,7 +25,7 @@ Minimal manifest:
 ```
 
 `kind: "provider"` packages must list `provides.apis` and export the `provider` interface.
-Fields, permissions and validation rules: [dev/v1/extension-api.md](dev/v1/extension-api.md) §7.
+Fields, permissions and validation rules: [extension API](extension-api.md).
 
 ## Installing
 

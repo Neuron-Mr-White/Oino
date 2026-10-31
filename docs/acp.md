@@ -43,4 +43,4 @@ loads the same extensions as the terminal UI (bundled providers + unipi, install
 
 - MCP servers passed in `session/new` are not forwarded to `unipi.mcp` yet.
 - The `refusal` stop reason is never returned; extension tools report kind `other`.
-- Full list: [dev/v1/deviations/acp.md](dev/v1/deviations/acp.md).
+- Full gap list: the internal QA register.

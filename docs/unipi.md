@@ -34,15 +34,12 @@ bring one over, run the `unipi-migrate` skill ([migrate-from-unipi.md](migrate-f
 | `unipi.utility` | Utility and Image pages of the core `/settings` hub, auto-rename, `/answer`, attachments, image tools, render styles, `/move`, `/doctor` |
 
 Not ported (dropped): `/cron`, browser skills, app push encryption and Herdr
-integration (see [dev/v1/unipi-port.md](dev/v1/unipi-port.md)). Per-component differences
-from unipi are in the appendix of [dev/v1/unipi-port.md](dev/v1/unipi-port.md); open items in
-`docs/dev/v1/deviations/unipi-*.md`.
+integration. Per-component differences from unipi and open items are tracked internally.
 
 ## Commands
 
 Feature commands have plain names (no `unipi:` prefix, no aliases); core built-ins always win
-a name clash. The full old → new mapping and the collision decisions are in
-[dev/v1/commands.md](dev/v1/commands.md).
+a name clash.
 
 | Command | Component | Description |
 |---|---|---|

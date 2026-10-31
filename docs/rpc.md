@@ -38,11 +38,11 @@ dialogs (`select`, `confirm`, `input`, `editor`, plus Oino's `form`, `multiselec
 `approval`, `custom`) expect an `extension_ui_response` with the same `id`; fire-and-forget
 requests (`notify`, `setStatus`, `setWidget`, `setFrame`, `setTitle`, panels, `setPlan`) need
 no answer. Unknown methods may be ignored. The full vocabulary, including the Oino UI Spec
-(OUS) node tree used by panels and widgets, is in
-[dev/v1/ui-protocol.md](dev/v1/ui-protocol.md).
+(OUS) node tree used by panels and widgets, ships as JSON schemas with the `oino-ui` crate
+(`crates/oino-ui/schema/`).
 
 ## Not available yet
 
 `oino serve` (RPC over TCP + TLS with pairing) and `--remote` are specified but not
 implemented; neither are the `_oino/*` commands for settings, completions, rendering,
-extension UI actions and shortcuts listed in [dev/v1/modes.md](dev/v1/modes.md) §4.
+extension UI actions and shortcuts.
