@@ -98,7 +98,7 @@
     "unipi.watchdog/extension.json": "sha256:d23d1427e3d3518f3028d2bd13751ca5816418f3ab7f293021ca2d5d5239bfd1",
     "unipi.web-api/component.wasm": "sha256:186c816d8529d94622f61617312d8ce00cd94eae698ff93376fb05aefb925260",
     "unipi.web-api/extension.json": "sha256:c32bd973894db93363c3b07f43914f2f32f1acf308bb3ad751bab54fa0be7645",
-    "unipi.workflow/component.wasm": "sha256:9ccd8648cbf0b5cecc2298b6ac846ebc6466100143f4e7f04b3723115b27d82f",
-    "unipi.workflow/extension.json": "sha256:ed535917deb5a978c72e98af2556f0909d45fd1210851ba2436cbe235b8bc50f"
+    "unipi.workflow/component.wasm": "sha256:1195b09f6a047c739c37888a6d5efc7ccb07f2c9190dc19548bdf4d54ceea4a7",
+    "unipi.workflow/extension.json": "sha256:7d39fb509c7fabc0eebd39868a5ad12bf8032e0d347520332f072eea697c8b97"
   }
 }

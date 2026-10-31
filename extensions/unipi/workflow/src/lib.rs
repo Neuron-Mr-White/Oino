@@ -6,6 +6,7 @@
 //! | approval prompt (Allow once / Always allow / Deny / Deny with note) | `approval` dialog (`allow_once`, `allow_always`, `reject_once`, `reject_once` + feedback) |
 //! | `/permission [ask\|auto\|full\|status]`, Alt+M | command + shortcut `unipi.permission.cycle` |
 //! | `/plan [on\|off\|view\|approve]`, Alt+P, `plan_submit` | command + shortcut `unipi.plan.toggle` + tool |
+//! | plan instructions / "[plan mode off]" note | pending flag, attached to the next prompt at `before_agent_start` (a toggle never starts a turn) |
 //! | plan review overlay | `custom` dialog (markdown, side-by-side sections, three buttons) |
 //! | runners `plan-enter/-exit/-off`, `permission-clear-rules` | hidden commands |
 //! | `WORKFLOW_STATUS` (sticky), `PLAN_MODE_CHANGED`, `PERMISSION_MODE_CHANGED`, `MODULE_READY` | bus topics |
@@ -30,11 +31,11 @@ use oino_extension::prelude::*;
 use oino_extension::session::{Delivery, Provenance};
 use oino_extension::sync::SessionMap;
 use oino_extension::wit::session as ws;
+use unipi_kit::jev;
 use unipi_kit::settings::Store;
 use unipi_kit::topics::{
     self, ModuleReady, PermissionModeChanged, PlanModeChanged, WorkflowStatus,
 };
-use unipi_kit::{jev, provenance::Harness};
 
 use crate::decide::{Decision, Deps, JevRisk, Mode, Step};
 use crate::plan::{DISCARD, KEEP, PLAN_MESSAGE_TYPE, PLAN_STATE_ENTRY, PLAN_TOOL, PlanState};
@@ -386,7 +387,7 @@ impl Workflow {
         (!t.is_empty()).then(|| t.to_owned())
     }
 
-    async fn enable_plan(&self, cx: &Ctx) -> String {
+    fn enable_plan(&self, cx: &Ctx) -> String {
         let cwd = cx.cwd().display().to_string();
         let sid = cx.session_id().to_owned();
         let file = self.plans.with(&sid, |s| {
@@ -401,8 +402,8 @@ impl Workflow {
             let _ = std::fs::create_dir_all(dir);
         }
         self.plans.with(&sid, |s| {
-            s.active = true;
             s.plan_file = Some(file.clone());
+            plan::mark_on(s);
         });
         let _ = session::append_entry(
             PLAN_STATE_ENTRY,
@@ -416,28 +417,22 @@ impl Workflow {
             plan_file: display.clone(),
             reason: None,
         });
-        let _ = Harness::new(SOURCE, "Plan mode on")
-            .synopsis("Plan with the user — plan file required")
-            .send_custom(
-                PLAN_MESSAGE_TYPE,
-                json!(plan::instructions(&display)),
-                Some(harness("Plan mode on")),
-            )
-            .await;
+        // The instructions attach to the user's next prompt (`before_agent_start`): the
+        // toggle itself never starts a turn nor puts anything in the chat.
         if cx.has_ui() {
-            let _ = ui::notify(&format!("Plan mode on — plan file {display}"), "info");
+            let _ = ui::notify("Plan mode on", "info");
         }
         file
     }
 
-    async fn disable_plan(&self, cx: &Ctx, reason: &str) {
+    fn disable_plan(&self, cx: &Ctx, reason: &str) {
         let cwd = cx.cwd().display().to_string();
+        let discarded = reason == "discarded";
         let Some(file) = self.plans.with(cx.session_id(), |s| {
             if !s.active {
                 return None;
             }
-            s.active = false;
-            s.last_kept_hash = None;
+            plan::mark_off(s, discarded);
             Some(s.plan_file.clone())
         }) else {
             return;
@@ -453,19 +448,11 @@ impl Workflow {
             plan_file: plan::display_plan_path(&cwd, file.as_deref()),
             reason: Some(reason.to_owned()),
         });
-        if reason != "approved" {
-            let (note, title) = if reason == "discarded" {
-                ("[plan mode off — plan discarded]", "Plan discarded")
-            } else {
-                ("[plan mode off]", "Plan mode off")
-            };
-            let _ = Harness::new(SOURCE, title)
-                .send_custom(PLAN_MESSAGE_TYPE, json!(note), Some(harness(title)))
-                .await;
-        }
+        // Cancelling an undelivered enable is a net no-op; otherwise an "[plan mode off]"
+        // note attaches to the next prompt (`before_agent_start`) — nothing is sent now.
         if cx.has_ui() {
             let _ = ui::notify(
-                if reason == "discarded" {
+                if discarded {
                     "Plan mode off — plan discarded"
                 } else {
                     "Plan mode off"
@@ -517,7 +504,7 @@ impl Workflow {
         let choice = Self::review_choice(&content, &self.plan_display(cx)).await;
         match choice {
             Some(c) if c == plan::APPROVE => {
-                self.disable_plan(cx, "approved").await;
+                self.disable_plan(cx, "approved");
                 let text = format!(
                     "Implement the approved plan below. Treat it as authoritative; do not re-plan.\n\n{content}"
                 );
@@ -538,7 +525,7 @@ impl Workflow {
                 Approval::Approved
             }
             Some(c) if c == DISCARD => {
-                self.disable_plan(cx, "discarded").await;
+                self.disable_plan(cx, "discarded");
                 Approval::Discarded
             }
             Some(_) => {
@@ -562,11 +549,11 @@ impl Workflow {
         }
     }
 
-    async fn toggle_plan(&self, cx: &Ctx) {
+    fn toggle_plan(&self, cx: &Ctx) {
         if self.plans.with(cx.session_id(), |s| s.active) {
-            self.disable_plan(cx, "toggled").await;
+            self.disable_plan(cx, "toggled");
         } else {
-            self.enable_plan(cx).await;
+            self.enable_plan(cx);
         }
     }
 
@@ -601,11 +588,11 @@ impl Workflow {
             }
             "on" if active => notify("Plan mode is already on", "info"),
             "on" => {
-                self.enable_plan(cx).await;
+                self.enable_plan(cx);
             }
-            "off" if active => self.disable_plan(cx, "toggled").await,
+            "off" if active => self.disable_plan(cx, "toggled"),
             "off" => notify("Plan mode is already off", "info"),
-            "" => self.toggle_plan(cx).await,
+            "" => self.toggle_plan(cx),
             other => notify(
                 &format!("Unknown plan argument \"{other}\" — use on, off, view or approve"),
                 "warning",
@@ -723,14 +710,17 @@ impl Workflow {
     }
 
     fn before_agent_start(&self, cx: &Ctx) -> Option<Value> {
-        if !self.plans.with(cx.session_id(), |s| s.active) {
-            return None;
-        }
+        let sid = cx.session_id().to_owned();
+        let cwd = cx.cwd().display().to_string();
+        let attach = self.plans.with(&sid, |s| {
+            let file = s.plan_file.clone();
+            plan::next_attach(s, &plan::display_plan_path(&cwd, file.as_deref()))
+        })?;
         Some(json!({"message": {
             "customType": PLAN_MESSAGE_TYPE,
-            "content": plan::reminder(&self.plan_display(cx)),
-            "display": false,
-            "details": harness("Plan reminder (hidden)"),
+            "content": attach.content,
+            "display": attach.display,
+            "details": harness(attach.title),
         }}))
     }
 }
@@ -865,7 +855,7 @@ impl Extension for Workflow {
                 .description("Leave plan mode")
                 .hidden()
                 .run(|ext, _args, cx| async move {
-                    ext.disable_plan(&cx.cx, "toggled").await;
+                    ext.disable_plan(&cx.cx, "toggled");
                     Ok(())
                 }),
         );
@@ -877,7 +867,7 @@ impl Extension for Workflow {
                     if ext.plans.with(cx.session_id(), |s| s.active) {
                         return Ok(Some(json!({"ok": true, "alreadyActive": true})));
                     }
-                    let file = ext.enable_plan(&cx.cx).await;
+                    let file = ext.enable_plan(&cx.cx);
                     Ok(Some(json!({"ok": true, "planFile": file})))
                 }),
         );
@@ -886,7 +876,7 @@ impl Extension for Workflow {
                 .description("Leave plan mode (runner)")
                 .hidden()
                 .run_value(|ext, _args, cx| async move {
-                    ext.disable_plan(&cx.cx, "toggled").await;
+                    ext.disable_plan(&cx.cx, "toggled");
                     Ok(Some(json!({"ok": true})))
                 }),
         );
@@ -894,7 +884,7 @@ impl Extension for Workflow {
             Shortcut::<Self>::new("unipi.plan.toggle", &["alt+p"])
                 .description("Toggle plan mode")
                 .run(|ext, cx| async move {
-                    ext.toggle_plan(&cx.cx).await;
+                    ext.toggle_plan(&cx.cx);
                     Ok(())
                 }),
         );

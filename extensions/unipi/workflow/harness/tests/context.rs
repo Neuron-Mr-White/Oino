@@ -206,6 +206,24 @@ impl Env {
             .collect()
     }
 
+    /// Session messages the extension sent (`sendMessage`/`sendUserMessage`).
+    fn sent_messages(&self) -> Vec<Value> {
+        self.host
+            .calls_named("session_write")
+            .into_iter()
+            .map(|c| c.detail)
+            .filter_map(|d| {
+                if d["sendMessage"].is_object() {
+                    Some(d["sendMessage"].clone())
+                } else {
+                    d["sendUserMessage"]
+                        .is_object()
+                        .then(|| d["sendUserMessage"].clone())
+                }
+            })
+            .collect()
+    }
+
     fn appended(&self, custom_type: &str) -> Vec<Value> {
         self.host
             .calls_named("session_write")
@@ -224,6 +242,16 @@ fn names<T>(items: &[T], f: impl Fn(&T) -> (&str, bool)) -> Vec<(String, bool)> 
             (n.to_owned(), h)
         })
         .collect()
+}
+
+/// Fires `before_agent_start` as the host does for a user prompt.
+async fn prompt_turn(env: &Env, ext: &Arc<dyn ExtensionInstance>, text: &str) -> Option<Value> {
+    env.event(
+        ext,
+        EventKind::BeforeAgentStart,
+        json!({"type": "before_agent_start", "prompt": text, "systemPrompt": "", "systemPromptOptions": {}}),
+    )
+    .await
 }
 
 fn text(result: &Value) -> String {
@@ -299,13 +327,14 @@ async fn workflow_gate_and_plan_mode() {
     let entries = env.appended("unipi:plan-mode");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["data"]["active"], true);
-    assert!(
-        env.notifies()
-            .iter()
-            .any(|n| n.starts_with("Plan mode on — plan file docs/plans/")),
+    assert_eq!(
+        env.notifies().last().map(String::as_str),
+        Some("Plan mode on"),
         "{:?}",
         env.notifies()
     );
+    // The toggle itself sends nothing: no session message, no turn start.
+    assert!(env.sent_messages().is_empty(), "{:?}", env.sent_messages());
     let write = env.event(&ext, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "write", "toolCallId": "c3", "input": {"path": "src/main.rs", "content": "x"}})).await.unwrap();
     assert_eq!(write["block"], true);
     assert!(
@@ -314,9 +343,89 @@ async fn workflow_gate_and_plan_mode() {
             .unwrap()
             .starts_with("Plan mode: only the plan file")
     );
-    let reminder = env.event(&ext, EventKind::BeforeAgentStart, json!({"type": "before_agent_start", "prompt": "go", "systemPrompt": "", "systemPromptOptions": {}})).await.unwrap();
+    // First prompt: the instructions attach once (visible) …
+    let instructions = env.event(&ext, EventKind::BeforeAgentStart, json!({"type": "before_agent_start", "prompt": "go", "systemPrompt": "", "systemPromptOptions": {}})).await.unwrap();
+    assert_eq!(
+        instructions["message"]["customType"],
+        "unipi:plan-mode-message"
+    );
+    assert_eq!(instructions["message"]["display"], true);
+    assert!(
+        instructions["message"]["content"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("Plan mode is ON")
+    );
+    // … later prompts only get the hidden reminder.
+    let reminder = env.event(&ext, EventKind::BeforeAgentStart, json!({"type": "before_agent_start", "prompt": "again", "systemPrompt": "", "systemPromptOptions": {}})).await.unwrap();
     assert_eq!(reminder["message"]["customType"], "unipi:plan-mode-message");
     assert_eq!(reminder["message"]["display"], false);
+    assert!(
+        reminder["message"]["content"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("[plan mode on")
+    );
+}
+
+/// Plan-mode toggles never start a turn and never put anything in the chat by themselves:
+/// the instructions (and later the "[plan mode off]" note) attach to the next prompt at
+/// `before_agent_start`, and an on→off flip before that prompt is a net no-op.
+#[tokio::test(flavor = "multi_thread")]
+async fn plan_toggle_attaches_to_next_prompt() {
+    let env = Env::new();
+    let (ext, _) = env.load("workflow").await;
+    env.event(
+        &ext,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+
+    // on → prompt: instructions attached once, by the hook, not sent.
+    env.command(&ext, "plan", "on").await;
+    assert_eq!(env.sent_messages().len(), 0, "toggle sends nothing");
+    let msg = prompt_turn(&env, &ext, "draft the plan")
+        .await
+        .expect("instructions attach");
+    assert!(
+        msg["message"]["content"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("Plan mode is ON")
+    );
+    assert_eq!(msg["message"]["display"], true);
+    assert_eq!(env.sent_messages().len(), 0, "attach is a hook return");
+
+    // on, prompt, off, prompt: "[plan mode off]" attaches to the second prompt.
+    env.command(&ext, "plan", "off").await;
+    assert_eq!(
+        env.notifies().last().map(String::as_str),
+        Some("Plan mode off")
+    );
+    let note = prompt_turn(&env, &ext, "go ahead")
+        .await
+        .expect("off note attaches");
+    assert_eq!(note["message"]["content"], "[plan mode off]");
+    assert_eq!(note["message"]["display"], true);
+    assert!(
+        prompt_turn(&env, &ext, "and again").await.is_none(),
+        "off note consumed once; no reminder while off"
+    );
+
+    // on, off, prompt: nothing attached (net no-op).
+    env.command(&ext, "plan", "on").await;
+    env.command(&ext, "plan", "off").await;
+    assert_eq!(env.sent_messages().len(), 0, "no message was ever sent");
+    assert!(prompt_turn(&env, &ext, "plain question").await.is_none());
+
+    // No toggle ever started a turn: nothing left the extension but state entries.
+    assert!(env.sent_messages().is_empty());
+    assert_eq!(
+        env.appended("unipi:plan-mode").len(),
+        4,
+        "state entries only"
+    );
 }
 
 /// Rules, the project mode and skill states go through `registry.set-extension-setting`; the
@@ -703,12 +812,14 @@ async fn kill_and_restart_restores_plan_mode_and_pending_compaction() {
         json!({"type": "session_start", "reason": "startup"}),
     )
     .await;
-    let changed = env
+    let published: Vec<_> = env
         .host
         .calls_named("bus_publish")
         .into_iter()
         .map(|c| c.detail)
         .filter(|d| d["topic"] == "unipi:plan:mode:changed")
+        .collect();
+    let changed = published
         .last()
         .expect("plan mode change published after restart");
     assert_eq!(changed["data"]["active"], true, "{changed:?}");

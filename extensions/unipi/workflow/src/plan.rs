@@ -22,6 +22,29 @@ pub const KEEP: &str = "Keep planning…";
 /// Discard.
 pub const DISCARD: &str = "Discard plan";
 
+/// A plan-mode message waiting for the next prompt (never sent on its own).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pending {
+    /// Plan instructions; plan mode just turned on and no prompt ran yet.
+    Instructions,
+    /// "[plan mode off]" note; plan mode turned off after the instructions were delivered.
+    OffNote {
+        /// The plan was discarded ("[plan mode off — plan discarded]").
+        discarded: bool,
+    },
+}
+
+/// The message to attach to the next prompt.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlanAttach {
+    /// Message text.
+    pub content: String,
+    /// Render in frontends (the hidden reminder is `false`).
+    pub display: bool,
+    /// Provenance title.
+    pub title: &'static str,
+}
+
 /// Per-session plan state.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlanState {
@@ -31,6 +54,8 @@ pub struct PlanState {
     pub plan_file: Option<String>,
     /// Hash of the plan when the user last chose "Keep planning" (not persisted).
     pub last_kept_hash: Option<String>,
+    /// Message attached to the next prompt (not persisted).
+    pub pending: Option<Pending>,
 }
 
 /// `<YYYY-MM-DD>-<short-session-id>.md` (UTC date).
@@ -152,7 +177,7 @@ pub fn enforce(
     None
 }
 
-/// Instructions sent when plan mode turns on.
+/// Instructions attached to the user's next prompt when plan mode turns on.
 #[must_use]
 pub fn instructions(plan_path: &str) -> String {
     [
@@ -179,6 +204,62 @@ pub fn reminder(plan_path: &str) -> String {
         "Call plan_submit only when ### Open questions says \"None\".".into(),
     ]
     .join("\n")
+}
+
+/// The "[plan mode off]" note (discarded variant keeps its label).
+#[must_use]
+pub fn off_note(discarded: bool) -> &'static str {
+    if discarded {
+        "[plan mode off — plan discarded]"
+    } else {
+        "[plan mode off]"
+    }
+}
+
+/// Plan mode turns on: the instructions attach to the next prompt (nothing is sent now).
+pub fn mark_on(state: &mut PlanState) {
+    state.active = true;
+    state.pending = Some(Pending::Instructions);
+}
+
+/// Plan mode turns off: undelivered instructions are cancelled (a toggle on→off before any
+/// prompt is a net no-op); once delivered, an "[plan mode off]" note attaches to the next
+/// prompt. `discarded` selects the discarded wording.
+pub fn mark_off(state: &mut PlanState, discarded: bool) {
+    state.active = false;
+    state.last_kept_hash = None;
+    state.pending = match state.pending {
+        Some(Pending::Instructions) => None,
+        _ => Some(Pending::OffNote { discarded }),
+    };
+}
+
+/// The message `before_agent_start` attaches to this prompt: a pending delivery first
+/// (consumed), then the hidden reminder while plan mode stays on, else nothing.
+#[must_use]
+pub fn next_attach(state: &mut PlanState, plan_path: &str) -> Option<PlanAttach> {
+    match state.pending.take() {
+        Some(Pending::Instructions) => Some(PlanAttach {
+            content: instructions(plan_path),
+            display: true,
+            title: "Plan mode on",
+        }),
+        Some(Pending::OffNote { discarded }) => Some(PlanAttach {
+            content: off_note(discarded).to_owned(),
+            display: true,
+            title: if discarded {
+                "Plan discarded"
+            } else {
+                "Plan mode off"
+            },
+        }),
+        None if state.active => Some(PlanAttach {
+            content: reminder(plan_path),
+            display: false,
+            title: "Plan reminder (hidden)",
+        }),
+        None => None,
+    }
 }
 
 /// Content hash used by the keep-planning gate.
@@ -395,6 +476,7 @@ mod tests {
             active: true,
             plan_file: Some(plan_file_path(dir, "session-1", DAY)),
             last_kept_hash: None,
+            pending: None,
         }
     }
 
@@ -571,5 +653,71 @@ mod tests {
         assert_eq!(d["method"], "custom");
         assert_eq!(d["spec"]["children"][1]["children"][0]["action"], "approve");
         assert_eq!(d["spec"]["children"][0]["t"], "Markdown");
+    }
+
+    #[test]
+    fn pending_delivery_on_then_prompt() {
+        let mut s = PlanState::default();
+        mark_on(&mut s);
+        assert_eq!(s.pending, Some(Pending::Instructions));
+        // First prompt: the instructions attach once …
+        let a = next_attach(&mut s, "docs/plans/p.md").unwrap();
+        assert_eq!(a.title, "Plan mode on");
+        assert!(a.display);
+        assert!(a.content.starts_with("Plan mode is ON"));
+        assert!(a.content.contains("docs/plans/p.md"));
+        // … later prompts only get the hidden reminder.
+        let r = next_attach(&mut s, "docs/plans/p.md").unwrap();
+        assert_eq!(r.title, "Plan reminder (hidden)");
+        assert!(!r.display);
+        assert!(r.content.starts_with("[plan mode on"));
+        assert_eq!(next_attach(&mut s, "docs/plans/p.md").unwrap(), r);
+    }
+
+    #[test]
+    fn pending_delivery_on_off_prompt_is_no_op() {
+        let mut s = PlanState::default();
+        mark_on(&mut s);
+        mark_off(&mut s, false);
+        assert_eq!(s, PlanState::default(), "toggle on→off leaves no trace");
+        assert_eq!(next_attach(&mut s, "docs/plans/p.md"), None);
+        // on, off, on, off, prompt → still nothing.
+        mark_on(&mut s);
+        mark_off(&mut s, false);
+        assert_eq!(next_attach(&mut s, "docs/plans/p.md"), None);
+    }
+
+    #[test]
+    fn pending_delivery_off_note_after_delivery() {
+        // on, prompt, off → the off note attaches to the next prompt.
+        let mut s = PlanState::default();
+        mark_on(&mut s);
+        let _ = next_attach(&mut s, "docs/plans/p.md");
+        mark_off(&mut s, false);
+        assert_eq!(s.pending, Some(Pending::OffNote { discarded: false }));
+        let a = next_attach(&mut s, "docs/plans/p.md").unwrap();
+        assert_eq!(a.content, "[plan mode off]");
+        assert_eq!(a.title, "Plan mode off");
+        assert!(a.display);
+        assert_eq!(
+            next_attach(&mut s, "docs/plans/p.md"),
+            None,
+            "consumed once"
+        );
+        // Discarded keeps its label; a fresh enable replaces a pending off note.
+        let mut s = PlanState::default();
+        mark_on(&mut s);
+        let _ = next_attach(&mut s, "docs/plans/p.md");
+        mark_off(&mut s, true);
+        assert_eq!(off_note(true), "[plan mode off — plan discarded]");
+        let a = next_attach(&mut s, "docs/plans/p.md").unwrap();
+        assert_eq!(a.content, "[plan mode off — plan discarded]");
+        assert_eq!(a.title, "Plan discarded");
+        mark_on(&mut s);
+        assert_eq!(s.pending, Some(Pending::Instructions));
+        // mark_off also forgets a stale keep-planning hash.
+        s.last_kept_hash = Some("h".into());
+        mark_off(&mut s, false);
+        assert_eq!(s.last_kept_hash, None);
     }
 }
