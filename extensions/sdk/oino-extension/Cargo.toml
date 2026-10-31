@@ -1,10 +1,11 @@
 [package]
 name = "oino-extension"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
 description = "Guest SDK for Oino WASM component extensions (oino:extension@2.0.0)"
 
 [features]

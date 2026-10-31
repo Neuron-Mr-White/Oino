@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+publish = false
 description = "Pure wire logic of the Oino provider components (pi-ai 1.4.0 ports): request payloads, SSE parsing, usage and cost"
 
 [features]

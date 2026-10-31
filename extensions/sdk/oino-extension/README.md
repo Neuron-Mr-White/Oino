@@ -1,7 +1,8 @@
 # oino-extension — guest SDK
 
 Write Oino extensions in Rust, compiled to WASM components (`wasm32-wasip2`) for the WIT
-package `oino:extension@2.0.0` (`wit/oino-extension`). Component-model async: tool calls,
+package `oino:extension@2.0.0` (the WIT tree is bundled in this crate under
+`wit/oino-extension`). Component-model async: tool calls,
 commands and event handlers of one extension run concurrently.
 
 ## Crate setup
@@ -15,7 +16,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-oino-extension = { path = "../../sdk/oino-extension" }          # add features = ["provider"] for providers
+oino-extension = "1.0"                                           # add features = ["provider"] for providers
 serde = { version = "1", features = ["derive"] }
 schemars = "1.2"
 ```
@@ -25,7 +26,7 @@ Next to `Cargo.toml`, an `extension.json` manifest (extension-api §7):
 ```json
 {
   "apiVersion": "oino.extension/1",
-  "id": "unipi.notify",
+  "id": "acme.notify",
   "name": "Notify",
   "version": "3.0.0",
   "permissions": { "network": { "hosts": ["ntfy.sh"] }, "osNotify": true }

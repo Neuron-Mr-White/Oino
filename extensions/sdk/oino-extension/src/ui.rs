@@ -236,7 +236,7 @@ pub fn register_settings(namespace: &SettingsNamespace) -> Result<()> {
     Ok(wr::register_settings(&serde_json::to_string(namespace)?)?)
 }
 
-/// [`register_settings`] for a namespace built as JSON (e.g. `unipi_kit::settings`).
+/// [`register_settings`] for a namespace built as JSON (e.g. `acme_kit::settings`).
 pub fn register_settings_json(namespace: &Value) -> Result<()> {
     Ok(wr::register_settings(&namespace.to_string())?)
 }

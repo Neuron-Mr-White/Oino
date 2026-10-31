@@ -73,7 +73,7 @@
 pub mod bindings {
     #[cfg(feature = "provider")]
     wit_bindgen::generate!({
-        path: "../../../wit/oino-extension",
+        path: "wit/oino-extension",
         world: "provider-extension",
         generate_all,
         pub_export_macro: true,
@@ -82,7 +82,7 @@ pub mod bindings {
     });
     #[cfg(not(feature = "provider"))]
     wit_bindgen::generate!({
-        path: "../../../wit/oino-extension",
+        path: "wit/oino-extension",
         world: "extension",
         generate_all,
         pub_export_macro: true,

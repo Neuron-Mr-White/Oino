@@ -19,7 +19,7 @@ pub async fn exec(
 }
 
 /// pi `exec` with `env` set on top of the host's environment (ext-abi §5.3:
-/// the caller's `UNIPI_KANBOARD_*` identity travels with the argv).
+/// the caller's `ACME_*` identity travels with the argv).
 pub async fn exec_env(
     command: &str,
     args: &[&str],

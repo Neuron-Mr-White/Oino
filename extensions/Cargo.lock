@@ -849,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "futures",
  "oino-ai",
@@ -864,7 +864,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-macros"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "proc-macro2",
  "quote",

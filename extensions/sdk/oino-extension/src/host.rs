@@ -14,7 +14,7 @@ pub fn info() -> Info {
 /// The host's current UTC offset in minutes (east positive).
 ///
 /// WASI clocks are UTC and the guest cannot read the host time zone, so this is how extensions
-/// derive local time: `local_hour_ms = now_ms + offset * 60_000` (unipi-core R3).
+/// derive local time: `local_hour_ms = now_ms + offset * 60_000`.
 #[must_use]
 pub fn local_offset_minutes() -> i32 {
     wh::get().local_offset_minutes

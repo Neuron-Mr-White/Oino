@@ -1,8 +1,8 @@
 //! Host-provided services (WIT `host-service`, v2 ext-abi §3): one thin wrapper over
 //! [`wit::host_service`].
 //!
-//! A service `name` ("browser", "cron", …) is registered by the embedding host
-//! (unipi-host); under a plain `oino` TUI no service exists and `available` returns
+//! A service `name` ("browser", "cron", …) is registered by the embedding host;
+//! under a plain `oino` TUI no service exists and `available` returns
 //! `false` (extensions degrade: tools report unavailable). `call` is permission-gated
 //! per name (`permissions.hostServices`); `payload` and the reply are the service's own
 //! JSON contract — user-facing failures travel inside the reply, the host-error is only

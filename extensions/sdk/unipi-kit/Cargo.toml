@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+publish = false
 description = "Shared guest-side kit for the unipi 3.0.0 ports: suite ids, bus topics, service conventions, settings (v1 + OSS-2), jev, bounded output, attachments, savings"
 
 [dependencies]
