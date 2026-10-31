@@ -20,9 +20,9 @@ futures.workspace = true
 indexmap.workspace = true
 nix = { workspace = true, features = ["feature"] }
 oino-ai = { path = "../oino-ai", version = "1.0.0" }
-oino-core = { path = "../oino-core", version = "1.0.0" }
+oino-core = { path = "../oino-core", version = "1.0.1" }
 oino-models = { path = "../oino-models", version = "1.0.0" }
-oino-session = { path = "../oino-session", version = "1.0.0" }
+oino-session = { path = "../oino-session", version = "1.0.1" }
 oino-settings = { path = "../oino-settings", version = "1.0.0" }
 serde_json.workspace = true
 tempfile.workspace = true

@@ -1,6 +1,6 @@
 [package]
 name = "oino-core"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -19,8 +19,8 @@ oino-agent = { path = "../oino-agent", version = "1.0.0" }
 oino-ai = { path = "../oino-ai", version = "1.0.0" }
 oino-extension-api = { path = "../oino-extension-api", version = "1.0.1" }
 oino-models = { path = "../oino-models", version = "1.0.0" }
-oino-resources = { path = "../oino-resources", version = "1.0.0" }
-oino-session = { path = "../oino-session", version = "1.0.0" }
+oino-resources = { path = "../oino-resources", version = "1.0.1" }
+oino-session = { path = "../oino-session", version = "1.0.1" }
 oino-settings = { path = "../oino-settings", version = "1.0.0" }
 oino-tools = { path = "../oino-tools", version = "1.0.0" }
 oino-ui.workspace = true

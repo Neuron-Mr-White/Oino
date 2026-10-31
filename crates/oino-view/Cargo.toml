@@ -1,6 +1,6 @@
 [package]
 name = "oino-view"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -11,8 +11,8 @@ description = "Frontend-agnostic view models for Oino clients: transcript, exten
 indexmap.workspace = true
 oino-agent = { path = "../oino-agent", version = "1.0.0" }
 oino-ai = { path = "../oino-ai", version = "1.0.0" }
-oino-core = { path = "../oino-core", version = "1.0.0" }
-oino-session = { path = "../oino-session", version = "1.0.0", default-features = false }
+oino-core = { path = "../oino-core", version = "1.0.1" }
+oino-session = { path = "../oino-session", version = "1.0.1", default-features = false }
 oino-ui.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
