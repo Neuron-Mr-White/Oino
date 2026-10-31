@@ -1,0 +1,218 @@
+[
+  {
+    "scenario": "empty-chat",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/new/pc-coffee"
+  },
+  {
+    "scenario": "empty-chat",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/new/pc-coffee"
+  },
+  {
+    "scenario": "stream-basic",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "stream-basic",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "stream-steer",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "stream-steer",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "timeline-many",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "timeline-many",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "tools-mix",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "tools-mix",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "turn-files-undo",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s-files"
+  },
+  {
+    "scenario": "turn-files-undo",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s-files"
+  },
+  {
+    "scenario": "queue-held",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "queue-held",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "dialog-approval",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "dialog-approval",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "taken-over",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "taken-over",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "board-lanes",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/board"
+  },
+  {
+    "scenario": "board-lanes",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/board"
+  },
+  {
+    "scenario": "cron-list",
+    "shell": "desktop",
+    "ready": false,
+    "hash": "#/cron"
+  },
+  {
+    "scenario": "cron-list",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/cron"
+  },
+  {
+    "scenario": "settings-nav",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/settings"
+  },
+  {
+    "scenario": "settings-nav",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/settings"
+  },
+  {
+    "scenario": "sidebar-many",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/new/local"
+  },
+  {
+    "scenario": "sidebar-many",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/chat"
+  },
+  {
+    "scenario": "modal-running",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "modal-running",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "git-last-turn",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "git-last-turn",
+    "shell": "phone",
+    "ready": false,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "status-lh-graph",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "status-lh-graph",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "u12-native",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "u12-native",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/s/pc-coffee/s001"
+  },
+  {
+    "scenario": "cap-memory",
+    "shell": "desktop",
+    "ready": true,
+    "hash": "#/settings"
+  },
+  {
+    "scenario": "cap-memory",
+    "shell": "phone",
+    "ready": true,
+    "hash": "#/settings"
+  }
+]
