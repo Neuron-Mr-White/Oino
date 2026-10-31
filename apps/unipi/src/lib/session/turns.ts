@@ -120,6 +120,18 @@ export type TurnsInput = {
 
 const TERMINAL = new Set(['stop', 'aborted', 'error', 'length']);
 const ECHO_TYPES = new Set(['oino.command-echo', 'unipi-command-echo']);
+/** State-only `custom` entries that never produce transcript cards (`oino-view` `CustomEntry` rule). */
+const INTERNAL_CUSTOM_TYPES = new Set([
+  'oino.tool-dispatch',
+  'oino.command-echo',
+  'unipi-command-echo',
+  'unipi:auto-name',
+  'unipi:skills-judged',
+  'unipi:plan-mode',
+  'long-horizon-decision',
+  'unipi-cleared-input',
+  'unipi-progress',
+]);
 
 /** Z-38 class of a tool (undefined = never groups). */
 export function toolGroupOf(name: string): ToolGroupKind | undefined {
@@ -287,8 +299,12 @@ function echoCommand(e: SessionEntry | undefined): TurnCommand | undefined {
 function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, live: Live | undefined): Turn {
   const first = branch[start.at]!;
   const entries = branch.slice(start.at, end) as SessionEntry[];
-  const results = new Map<string, { message: AgentMessage; id: string }>();
-  for (const e of entries) if (e.message?.role === 'toolResult' && typeof e.message.toolCallId === 'string') results.set(e.message.toolCallId, { message: e.message, id: e.id });
+  const results = new Map<string, { message: AgentMessage; id: string; at?: number }>();
+  for (const e of entries) {
+    if (e.message?.role === 'toolResult' && typeof e.message.toolCallId === 'string') {
+      results.set(e.message.toolCallId, { message: e.message, id: e.id, at: tsOf(e) });
+    }
+  }
   const running = !!live?.running;
   const segments: Segment[] = [];
   let seg: Segment = { id: start.kind === 'compaction' ? `cmp:${first.id}` : first.id, index: 0, work: [], nodes: [], live: false };
@@ -299,7 +315,8 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
   let lastAssistant: AgentMessage | undefined;
   let endedAt: number | undefined;
   const turn: Turn = { turnId: start.kind === 'turn' ? first.id : start.kind === 'compaction' ? `cmp:${first.id}` : `pre:${first.id}`, kind: start.kind, entries, segments, live: false, stopped: false, source: 'user' };
-  const pushParts = (key: string, parts: readonly ModelPart[], isLive: boolean, stopped: boolean) => {
+  const pushParts = (key: string, parts: readonly ModelPart[], isLive: boolean, stopped: boolean, callAt?: number) => {
+    let stepStart = callAt;
     parts.forEach((part, i) => {
       const k = `${key}-${i}`;
       if (part.type === 'thinking') {
@@ -317,6 +334,14 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
           tool.output = textOf(result.message.content as string | ModelPart[] | undefined);
           if (result.message.details !== undefined) tool.details = result.message.details;
           tool.resultId = result.id;
+          const det = result.message.details as { durationMs?: unknown; duration_ms?: unknown } | undefined;
+          const detMs = typeof det?.durationMs === 'number' ? det.durationMs : typeof det?.duration_ms === 'number' ? det.duration_ms : undefined;
+          if (detMs !== undefined && Number.isFinite(detMs) && detMs >= 0) {
+            tool.durationMs = detMs;
+          } else if (stepStart !== undefined && result.at !== undefined && result.at >= stepStart && result.at - stepStart < 3_600_000) {
+            tool.durationMs = result.at - stepStart;
+          }
+          if (result.at !== undefined) stepStart = result.at;
         } else if (lt) {
           tool.state = lt.done ? (lt.isError ? 'error' : 'ok') : 'running';
           if (lt.partial !== undefined) tool.live = lt.partial;
@@ -334,7 +359,8 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]!;
     const at = tsOf(e);
-    if (at !== undefined) {
+    const countsForDuration = e.type === 'message' || (e.type === 'custom' && STEP_TYPES.has(String(e.customType ?? '')));
+    if (at !== undefined && countsForDuration) {
       endedAt = at;
       segMeta[seg.index]!.endedAt = at;
     }
@@ -344,7 +370,8 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       const text = textOf(m.content as string | ModelPart[] | undefined);
       turn.command = echoCommand(branch[start.at - 1]) ?? commandOf(text, e.id);
       if (turn.command && isHiddenCommandText(text)) turn.command.hidden = true;
-      turn.source = m.source === 'cron' || m.unipiCron ? 'cron' : m.unipiHarness ? 'harness' : 'user';
+      const hasProvenance = !!(m.unipiHarness || (m.details as { oinoProvenance?: unknown; unipiHarness?: unknown } | undefined)?.oinoProvenance || (m.details as { unipiHarness?: unknown } | undefined)?.unipiHarness);
+      turn.source = m.source === 'cron' || m.unipiCron ? 'cron' : hasProvenance ? 'harness' : 'user';
       continue;
     }
     if (i === 0 && start.kind === 'compaction') {
@@ -362,7 +389,7 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         cost += m.usage?.cost?.total ?? 0;
         if (typeof m.model === 'string') model = m.model;
         const stopped = stoppedOf(m);
-        pushParts(e.id, (Array.isArray(m.content) ? m.content : []) as ModelPart[], false, stopped);
+        pushParts(e.id, (Array.isArray(m.content) ? m.content : []) as ModelPart[], false, stopped, at);
         if (stopped) segMeta[seg.index]!.stopped = true;
         else if (m.stopReason === 'error') {
           segMeta[seg.index]!.error = true;
@@ -379,11 +406,15 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         // An echo right before the user message it opened belongs to that turn (its `command`).
         if (cmd?.hidden || (start.at + i + 1 === end && isUser(branch[end]))) continue;
       }
+      if (INTERNAL_CUSTOM_TYPES.has(ct)) continue;
       if (STEP_TYPES.has(ct)) {
         seg.work.push({ kind: 'step', key: e.id, entry: e });
         segMeta[seg.index]!.steps++;
       } else seg.work.push({ kind: 'card', key: e.id, entry: e });
-    } else if (e.type === 'custom_message' || e.type === 'model_change' || e.type === 'branch_summary' || e.type === 'thinking_level_change') {
+    } else if (e.type === 'custom_message') {
+      if ((e as { display?: unknown }).display === false || (e.message as { display?: unknown } | undefined)?.display === false) continue;
+      seg.work.push({ kind: 'card', key: e.id, entry: e });
+    } else if (e.type === 'model_change' || e.type === 'branch_summary' || e.type === 'thinking_level_change') {
       seg.work.push({ kind: 'card', key: e.id, entry: e });
     } else if (e.type === 'compaction') {
       seg.work.push({ kind: 'compaction', key: e.id, entry: e });
@@ -420,10 +451,16 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
 
 function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number; stopped: boolean; error: boolean; steps: number }, live: boolean): void {
   s.live = live;
-  const last = s.work[s.work.length - 1];
-  if (last?.kind === 'prose') {
-    s.answer = last;
-    s.work.pop();
+  // Extract the final answer prose even when trailing metadata cards (e.g. saved
+  // memories or wake-up cards) were appended after the assistant finished speaking.
+  for (let i = s.work.length - 1; i >= 0; i--) {
+    const item = s.work[i]!;
+    if (item.kind === 'prose') {
+      s.answer = item;
+      s.work.splice(i, 1);
+      break;
+    }
+    if (item.kind !== 'card') break;
   }
   s.nodes = groupWork(s.work);
   if (!s.work.length && !live) return;

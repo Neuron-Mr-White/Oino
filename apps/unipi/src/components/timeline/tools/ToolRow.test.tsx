@@ -138,33 +138,42 @@ describe('groups (Z-38)', () => {
 });
 
 describe('lazy full output (get_entries)', () => {
-  it('a long run output offers "Show full output" and reveals everything', async () => {
+  it('a long run output offers "Show full output", shows an inline loading pill while fetching, and never hides truncated text', async () => {
     const long = `${'x'.repeat(7000)}`;
     const result: SessionEntry = { type: 'message', id: 'r1', message: { role: 'toolResult', toolCallId: 't1', content: [{ type: 'text', text: long }] } } as SessionEntry;
-    const ctx = fakeCtx([result]);
-    const tool = run({ resultId: 'r1', output: long });
+    let resolveEntries!: (entries: SessionEntry[]) => void;
+    const ctx = fakeCtx([result], {
+      getEntries: () => new Promise<SessionEntry[]>((res) => (resolveEntries = res)),
+    });
+    const tool = run({ resultId: 'r1', output: long.slice(0, 6200) });
     const r = render(() => <ToolRow tool={tool} ctx={ctx} itemKey="f1" />);
     fireEvent.click(r.getByTestId('tl-tool-row'));
     await waitFor(() => expect(r.getByTestId('tool-full-output')).toBeTruthy());
     const trimmed = r.container.querySelector('.tool-term-out')!.textContent!;
     expect(trimmed.startsWith('…')).toBe(true);
     fireEvent.click(r.getByTestId('tool-full-output'));
+    // While fetching, the truncated output stays visible alongside an inline loading indicator (never "Working…")
+    expect(r.getByTestId('tool-loading-output').textContent).toContain('Loading full output');
+    expect(r.container.querySelector('.tool-term-out')!.textContent!.length).toBeGreaterThan(6000);
+    expect(r.container.textContent).not.toContain('Working');
+    resolveEntries([result]);
     await waitFor(() => expect(r.container.querySelector('.tool-term-out')!.textContent).toBe(long));
+    expect(r.queryByTestId('tool-loading-output')).toBeNull();
   });
 });
 
 describe('extension tool renderer (render-only override)', () => {
-  it('an answering renderer replaces the native body', async () => {
-    const ctx = fakeCtx([], { renderers: { 'tool/bash': { t: 'Paragraph', text: '◆ Ran command' } } });
-    const r = render(() => <ToolRow tool={run()} ctx={ctx} itemKey="x1" />);
+  it('an answering renderer replaces the fallback body for extension tools', async () => {
+    const ctx = fakeCtx([], { renderers: { 'tool/bg_run': { t: 'Paragraph', text: '◆ Background task started' } } });
+    const r = render(() => <ToolRow tool={run({ name: 'bg_run', args: { command: 'cargo check' } })} ctx={ctx} itemKey="x1" />);
     fireEvent.click(r.getByTestId('tl-tool-row'));
     await waitFor(() => expect(r.getByTestId('tool-render')).toBeTruthy());
-    expect(r.container.textContent).toContain('Ran command');
-    expect(r.container.querySelector('.tool-term')).toBeNull();
+    expect(r.container.textContent).toContain('Background task started');
   });
-  it('no renderer → the native body', async () => {
-    const ctx = fakeCtx([]);
-    const r = render(() => <ToolRow tool={run()} ctx={ctx} itemKey="x2" />);
+  it('built-in GUI tools (bash, edit, write, read) always render natively without waiting on _oino/render', async () => {
+    const ctx = fakeCtx([], { renderers: { 'tool/bash': { t: 'Paragraph', text: '◆ Ran command' } } });
+    const r = render(() => <ToolRow tool={run({ durationMs: 420 })} ctx={ctx} itemKey="x2" />);
+    expect(r.getByTestId('tl-tool-dur').textContent).toBe('420ms');
     fireEvent.click(r.getByTestId('tl-tool-row'));
     await waitFor(() => expect(r.container.querySelector('.tool-term')).toBeTruthy());
     expect(r.queryByTestId('tool-render')).toBeNull();

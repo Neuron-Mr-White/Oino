@@ -269,4 +269,21 @@ describe('turns index: incremental tail recompute', () => {
     expect(turns[0]!.segments).toHaveLength(2);
     expect(turns).toEqual(buildTurns(input(s.entries)));
   });
+
+  it('trailing custom / wake-up entries never hide the assistant answer or inflate turn duration', () => {
+    const s = session();
+    s.user('click the button');
+    s.round([['read', { path: 'SKILL.md' }]]);
+    s.answer('After clicking, it changed to clicked 1');
+    // Appended days later on session resume or auto-rename:
+    s.add({ type: 'custom', customType: 'unipi:auto-name', data: { name: 'Button Click' } }, 86_400_000 * 4);
+    s.add({ type: 'custom', customType: 'unipi-memory-session-card', data: {} }, 1000);
+    s.add({ type: 'custom_message', customType: 'unipi:plan-mode-message', display: false } as unknown as Omit<SessionEntry, 'id' | 'parentId' | 'timestamp'>, 1000);
+    const [turn] = buildTurns(input(s.entries));
+    expect(turn!.segments[0]!.answer?.text).toBe('After clicking, it changed to clicked 1');
+    expect(turn!.durationMs).toBeLessThan(60_000);
+    expect(turn!.segments[0]!.fold?.durationMs).toBeLessThan(60_000);
+    const tool = turn!.segments[0]!.work.find((w) => w.kind === 'tool');
+    expect(tool && tool.kind === 'tool' ? tool.tool.durationMs : undefined).toBeGreaterThan(0);
+  });
 });

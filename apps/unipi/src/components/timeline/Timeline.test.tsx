@@ -15,6 +15,7 @@ import type { SessionEntry } from '../../lib/session/types';
 import { createSession, type SessionHandle } from '../../lib/session/store';
 import { sessionRefChat } from '../../lib/timeline/refChat';
 import { clearScrollMemory } from '../../lib/timeline/scrollMemory';
+import { clearTimelineSnapshots, writeTimelineSnapshot } from '../../lib/timeline/snapshotCache';
 import { commandNames, type TimelineCtx } from './context';
 import { Timeline } from './Timeline';
 import { TurnHeightCache } from '../../lib/timeline/heightCache';
@@ -39,6 +40,7 @@ let clientOf: () => HostClient = () => {
 beforeEach(() => {
   localStorage.clear();
   clearScrollMemory();
+  clearTimelineSnapshots();
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
     get() {
@@ -214,6 +216,30 @@ describe('Timeline', () => {
     const { s } = await openSession(0);
     const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
     await waitFor(() => expect(r.getByTestId('tl-empty')).toBeTruthy());
+  });
+
+  it('renders cached snapshot turns immediately while connecting without flashing a skeleton', async () => {
+    const warm = await openSession(2);
+    writeTimelineSnapshot('h1/s-slow', warm.s.turns());
+    // Create a session whose snapshot never arrives yet (`conn === 'connecting'`).
+    const baseClient = warm.w.client('h1');
+    const slowClient = Object.assign(Object.create(Object.getPrototypeOf(baseClient)), baseClient, {
+      openSession: () => ({ cmd: () => new Promise(() => {}), close: () => {} }),
+    }) as HostClient;
+    const { s, dispose } = createRoot((d) => ({
+      s: createSession('h1', 's-slow', { client: slowClient }),
+      dispose: d,
+    }));
+    disposers.push(() => {
+      s.close();
+      dispose();
+    });
+    expect(s.state.conn).toBe('connecting');
+    expect(s.turns()).toHaveLength(0);
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    expect(r.queryByTestId('tl-skeleton')).toBeNull();
+    expect(r.container.textContent).toContain('Question 0');
+    expect(r.container.textContent).toContain('Answer 1');
   });
 });
 

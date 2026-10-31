@@ -20,14 +20,18 @@ export function CardRow(props: { entry: SessionEntry; ctx: TimelineCtx }) {
     return <ModelChangeCard entry={e()} />;
   }
   if (e().message?.role === 'bashExecution') {
+    const cmdText = () => String((e().message?.content as string) ?? '');
     return (
-      <div class="tl-card" data-kind="user-bash" data-testid="tl-bash">
+      <div class="tl-card" data-kind="user-bash" data-testid="tl-bash" title={cmdText()}>
         <span class="tool-icon">
           <SquareTerminal size={15} />
         </span>
-        <span class="tl-card-text truncate">{String((e().message?.content as string) ?? '')}</span>
+        <span class="tl-card-text truncate">{cmdText()}</span>
       </div>
     );
+  }
+  if (e().type === 'custom_message' && ((e() as { display?: unknown }).display === false || (e().message as { display?: unknown } | undefined)?.display === false)) {
+    return null;
   }
   // Z-42: a subagent / sidekick card has one way into the child transcript —
   // the `subagent` tab (a sheet on the phone). No second "Open session" path.

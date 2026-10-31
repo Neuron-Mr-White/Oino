@@ -48,11 +48,12 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
     return last && last.kind === 'tool' ? toolCategory(last.tool.name) : 'think';
   };
   const anyError = () => props.segment.work.some((w) => (w.kind === 'tool' && w.tool.state === 'error') || w.kind === 'error');
+  const fullTitle = () => (fold().detail ? `${label()} · ${fold().detail}` : label());
   // Z-91: closing the fold fades the body out (160 ms) instead of dropping it.
   const body = createPresence(open);
   return (
     <div class="proc tl-fold" data-live={running() ? '' : undefined} data-open={open() ? '' : undefined} data-state={fold().state} data-testid="tl-fold">
-      <button type="button" class="proc-head" aria-expanded={open()} onClick={toggle}>
+      <button type="button" class="proc-head" aria-expanded={open()} onClick={toggle} title={fullTitle()}>
         <span class="proc-icon">
           <Show when={lead() !== 'think'} fallback={<Brain size={15} />}>
             <Dynamic component={TOOL_ICON[lead() as ToolCategory]} size={15} />

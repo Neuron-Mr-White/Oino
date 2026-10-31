@@ -31,7 +31,10 @@ export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
   const [open, setOpen] = createSignal(false);
   const echo = () => echoOf(props.turn);
   const m = () => props.turn.user?.message;
-  const harness = () => (m()?.unipiHarness ?? {}) as { source?: string; title?: string };
+  const harness = () => {
+    const details = (m()?.details ?? {}) as { unipiHarness?: { source?: string; title?: string }; oinoProvenance?: { source?: string; title?: string } };
+    return (m()?.unipiHarness ?? details.unipiHarness ?? details.oinoProvenance ?? {}) as { source?: string; title?: string };
+  };
   const sent = () => textOf(m()?.content as string | Part[] | undefined);
   const body = () => {
     const e = echo();

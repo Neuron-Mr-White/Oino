@@ -48,9 +48,17 @@ installUiSinks();
 // U10's app-wide effect handlers (notify → toasts, set_editor_text, …).
 installUiEffects();
 
-/** The session's banners: connection loss (Z-50), takeover (Z-51), host crashes/reloads. */
+/** The session's banners: connection loss (Z-50), open error, takeover (Z-51), host crashes/reloads. */
 function Banners(props: { session: SessionHandle }) {
-  const conn = () => connBanner(props.session.state);
+  const conn = () => {
+    const st = props.session.state;
+    const base = connBanner(st);
+    if (base) return base;
+    if (st.conn === 'closed' && st.connError && st.entries.length > 0) {
+      return { text: st.connError.message || 'Disconnected from the session', action: 'retry' as const };
+    }
+    return undefined;
+  };
   const banner = () => props.session.state.banner;
   return (
     <>
@@ -190,7 +198,9 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
   const widgetBelow = () => (layout().desktop() ? (registry()?.entriesFor('widgetBelow')() ?? []) : []);
   const overlayStack = () => registry()?.stack('overlay')() ?? [];
   const trayStack = () => registry()?.stack('editorReplace')() ?? [];
-  const headerEntries = () => registry()?.entriesFor('header')() ?? [];
+  // Suppress the TUI-only ASCII Unicrab startup splash (`unipi.info-screen/setHeader:splash`) —
+  // the GUI already renders native Unicrab/EmptyChat and the 14-line ASCII banner causes a 280 px jump on open.
+  const headerEntries = () => (registry()?.entriesFor('header')() ?? []).filter((e) => e.id !== 'unipi.info-screen/setHeader:splash');
   installConversationSlots({ hostId: props.hostId, sessionId: props.sessionId ?? '', cwd, registry, session });
 
   return (

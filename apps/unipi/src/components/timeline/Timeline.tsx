@@ -18,9 +18,12 @@
 import { createEffect, createMemo, createSignal, Index, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { measureElement as defaultMeasure, observeElementOffset, observeElementRect, type Virtualizer } from '@tanstack/virtual-core';
+import { RefreshCw, TriangleAlert } from 'lucide-solid';
 import { createBottomLock, distanceToBottom } from '../../lib/timeline/bottomLock';
 import { TurnHeightCache, DEFAULT_TURN_HEIGHT } from '../../lib/timeline/heightCache';
 import { readScrollMemory, writeScrollMemory, scrollMemoryKey } from '../../lib/timeline/scrollMemory';
+import { readTimelineSnapshot, writeTimelineSnapshot } from '../../lib/timeline/snapshotCache';
+import { EmptyState } from '../EmptyState';
 import { LiveTail } from './LiveTail';
 import { JumpButton } from './JumpButton';
 import { ChatSkeleton } from './Skeleton';
@@ -54,7 +57,17 @@ function perf(name: string, start: number): void {
 
 export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10: the `header` slot band (scrolls with the transcript). */ header?: JSX.Element; /** U10: the `overlay` slot host (below the dock, §6.4). */ overlay?: JSX.Element; /** Z-87: the new-chat empty state (supplied by `Conversation`, which knows the host). */ empty?: JSX.Element }) {
   const session = () => props.ctx.session;
-  const turns = () => session().turns();
+  const liveTurns = () => session().turns();
+  const cachedTurns = createMemo(() => readTimelineSnapshot(session().key));
+  const turns = createMemo(() => {
+    const live = liveTurns();
+    if (live.length > 0 || session().state.conn === 'live') return live;
+    return cachedTurns() ?? live;
+  });
+  createEffect(() => {
+    const live = liveTurns();
+    if (live.length > 0) writeTimelineSnapshot(session().key, live);
+  });
   /** The running turn (outside the list); everything before it is virtualized. */
   const liveTurn = () => {
     const t = turns();
@@ -79,6 +92,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
 
   // ── scroll container wiring ──────────────────────────────────────
   let contentEl: HTMLDivElement | undefined;
+  let accordionToggleUntil = 0;
   const syncOverflow = () => {
     const el = scrollEl();
     if (el) setOverflowing(el.scrollHeight - el.clientHeight > 4);
@@ -88,18 +102,24 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     const el = scrollEl();
     if (!el) return;
     const intent = () => lock.intent();
+    const onPointerDown = (e: PointerEvent) => {
+      // Scrollbar track/thumb press on the scroll container itself counts as user scroll intent;
+      // clicking buttons/accordions inside `.tl-content` or `.tl-dock` must not fake a scroll.
+      if (e.target === el) lock.intent();
+    };
     const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable="true"]')) return;
       // Keys that scroll the container count as user intent.
       if (['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' '].includes(e.key)) intent();
     };
     el.addEventListener('wheel', intent, { passive: true });
     el.addEventListener('touchstart', intent, { passive: true });
-    el.addEventListener('pointerdown', intent, { passive: true });
+    el.addEventListener('pointerdown', onPointerDown, { passive: true });
     el.addEventListener('keydown', onKey);
     onCleanup(() => {
       el.removeEventListener('wheel', intent);
       el.removeEventListener('touchstart', intent);
-      el.removeEventListener('pointerdown', intent);
+      el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('keydown', onKey);
     });
 
@@ -118,9 +138,17 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
 
     if (typeof ResizeObserver !== 'undefined') {
       // Content growth (stream, folds, measure, dock): pin while locked,
-      // unread dot while detached. The RO callback lands in the same frame.
+      // unread dot while detached. User-initiated accordion toggles in a
+      // settled turn re-measure in place without yanking scrollTop or
+      // lighting up the unread dot.
       const grow = new ResizeObserver(() => {
         if (!restore.done) return;
+        if (!liveTurn() && performance.now() < accordionToggleUntil) {
+          virt()?.measure();
+          lock.reconcile(el);
+          syncOverflow();
+          return;
+        }
         lock.grew(el);
         syncOverflow();
       });
@@ -159,12 +187,12 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       () => session().state.entriesRev,
       () => {
         const el = scrollEl();
-        if (!el || !restore.done) return;
+        if (!el || !restore.done || lock.locked()) return;
         const items = virt()?.getVirtualItems() ?? [];
         const first = items.find((i) => i.end > el.scrollTop) ?? items[0];
         const anchor = first ? { key: String(first.key), delta: el.scrollTop - first.start } : undefined;
         queueMicrotask(() => {
-          if (!anchor) return;
+          if (!anchor || lock.locked()) return;
           const idx = settled().findIndex((t) => t.turnId === anchor.key);
           if (idx < 0) return;
           virt()?.scrollToIndex(idx, { align: 'start' });
@@ -223,6 +251,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   });
 
   const loading = () => session().state.conn === 'connecting' && turns().length === 0;
+  const openFailed = () => session().state.conn === 'closed' && !!session().state.connError && turns().length === 0;
   const empty = () => session().state.conn === 'live' && turns().length === 0 && !session().state.outbox.length;
 
   // ── navigator (Z-25): the query at the top of the viewport is active ─
@@ -349,10 +378,35 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
           }
         }}
       >
-      <div class="tl-content" ref={contentEl}>
+      <div
+        class="tl-content"
+        ref={contentEl}
+        onClick={(e) => {
+          if ((e.target as HTMLElement | null)?.closest?.('[aria-expanded], [data-testid="tl-bubble-fold"], [data-testid="turn-files-toggle"]')) {
+            accordionToggleUntil = performance.now() + 350;
+          }
+        }}
+      >
         {props.header}
         <Show when={loading()}>
           <ChatSkeleton />
+        </Show>
+        <Show when={openFailed()}>
+          <div class="tl-empty" data-testid="tl-open-failed">
+            <EmptyState
+              compact
+              tone="error"
+              icon={<TriangleAlert size={20} />}
+              title="Couldn't open this session"
+              body={session().state.connError?.message || 'The host could not load this conversation.'}
+              testId="tl-open-failed-card"
+              action={
+                <button type="button" class="btn btn-secondary btn-sm" onClick={() => session().retry()}>
+                  <RefreshCw size={14} /> Retry
+                </button>
+              }
+            />
+          </div>
         </Show>
         <Show when={empty()}>
           <div class="tl-empty" data-testid="tl-empty">

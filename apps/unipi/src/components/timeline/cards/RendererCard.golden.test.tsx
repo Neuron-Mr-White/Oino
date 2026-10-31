@@ -82,11 +82,20 @@ describe('RendererCard goldens (U7b corpus)', () => {
 });
 
 describe("the frontend's own row", () => {
-  it('an unregistered type keeps the native light row (source · title)', () => {
+  it('an unregistered custom_message keeps the native light row (source · title) even after null settles', async () => {
     const ctx = fakeCtx([entry('acme:report', 'custom_message', 2)], {});
     const r = render(() => <RendererCard entry={ctx.session.state.entries[0]!} ctx={ctx} />);
+    await new Promise((res) => setTimeout(res, 20));
     expect(r.container.querySelector('.tl-card')).toBeTruthy();
     expect(r.container.textContent).toContain('acme:report');
+  });
+
+  it('an unregistered custom entry renders nothing (never flashes a placeholder)', async () => {
+    const ctx = fakeCtx([entry('oino.tool-dispatch', 'custom', 9)], {});
+    const r = render(() => <RendererCard entry={ctx.session.state.entries[0]!} ctx={ctx} />);
+    expect(r.container.querySelector('.tl-card')).toBeNull();
+    await new Promise((res) => setTimeout(res, 20));
+    expect(r.container.querySelector('.tl-card')).toBeNull();
   });
 
   it('a renderer that never answers (2 s timeout path) renders nothing over the native row', async () => {
@@ -98,9 +107,11 @@ describe("the frontend's own row", () => {
     expect(r.queryByTestId('tl-card-render')).toBeNull();
   });
 
-  it('harness meta beats entry data for the native label', () => {
+  it('harness / oinoProvenance meta beats entry data for the native label', () => {
     const e = { type: 'custom_message', customType: 'unipi:lh-continue', data: {}, message: { details: { unipiHarness: { source: 'Long-horizon', title: 'Continuation' } } } } as unknown as SessionEntry;
     expect(nativeCardLabel(e)).toEqual({ source: 'Long-horizon', title: 'Continuation' });
+    const oino = { type: 'custom_message', customType: 'unipi:plan-mode-message', details: { oinoProvenance: { source: 'Plan mode', title: 'Plan mode on' } } } as unknown as SessionEntry;
+    expect(nativeCardLabel(oino)).toEqual({ source: 'Plan mode', title: 'Plan mode on' });
   });
 });
 
@@ -109,8 +120,11 @@ describe('native change cards', () => {
     const r = render(() => <ModelChangeCard entry={{ type: 'model_change', id: 'm1', modelId: 'claude-sonnet-4-5' } as SessionEntry} />);
     expect(r.getByTestId('tl-model-change').textContent).toContain('Model → claude-sonnet-4-5');
   });
-  it('thinking_level_change renders "Thinking → high"', () => {
+  it('thinking_level_change renders "Thinking → high" for both v3 thinkingLevel and legacy level', () => {
     const r = render(() => <ModelChangeCard entry={{ type: 'thinking_level_change', id: 'm2', level: 'high' } as SessionEntry} />);
     expect(r.getByTestId('tl-model-change').textContent).toContain('Thinking → high');
+    cleanup();
+    const v3 = render(() => <ModelChangeCard entry={{ type: 'thinking_level_change', id: 'm3', thinkingLevel: 'medium' } as unknown as SessionEntry} />);
+    expect(v3.getByTestId('tl-model-change').textContent).toContain('Thinking → medium');
   });
 });

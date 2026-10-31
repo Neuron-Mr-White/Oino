@@ -45,20 +45,22 @@ export function ThinkingRow(props: { item: { key: string; text: string; live: bo
     const ms = thoughtForMs(props.ctx, i().key);
     return ms !== undefined ? `Thought for ${formatDuration(ms)}` : 'Thought';
   };
+  const preview = () => thinkingPreview(i().text, i().live);
+  const fullTitle = () => (preview() ? `${label()} · ${preview()}` : label());
   return (
     <Show when={!empty()}>
       <div class="think tl-think" data-live={i().live ? '' : undefined} data-testid="tl-think">
-        <button type="button" class="tool-row" aria-expanded={open()} onClick={toggle}>
+        <button type="button" class="tool-row" aria-expanded={open()} onClick={toggle} title={fullTitle()}>
           <span class="tool-icon">
             <Brain size={15} />
           </span>
           <span class="tool-name" classList={{ shimmer: i().live }}>
             {label()}
           </span>
-          <Show when={thinkingPreview(i().text, i().live)}>
+          <Show when={preview()}>
             <>
               <span class="tool-sep" />
-              <span class="tool-subject fade">{thinkingPreview(i().text, i().live)}</span>
+              <span class="tool-subject tl-think-preview">{preview()}</span>
             </>
           </Show>
           <ChevronRight size={15} class="proc-chev" data-open={open() ? '' : undefined} />
