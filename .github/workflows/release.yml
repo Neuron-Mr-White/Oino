@@ -193,10 +193,17 @@ jobs:
           sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
           mkdir -p apps/unipi/target
           stage="$PWD/apps/unipi/target/dist-stage/extensions"
+          cargo build --release -p oino-cli --bin oino
+          oino="$PWD/target/release/oino"
+          # Linux: the bundled extensions go to /usr/share/oino/extensions and the
+          # CLI to /usr/bin/oino, the layout both unipi-oino-host and oino resolve.
           cat > apps/unipi/target/tauri-release.conf.json <<EOF
           {
             "version": "$VERSION",
-            "bundle": { "resources": { "$stage": "extensions/" } }
+            "bundle": { "linux": {
+              "deb": { "files": { "/usr/share/oino/extensions": "$stage", "/usr/bin/oino": "$oino" } },
+              "appimage": { "files": { "/usr/share/oino/extensions": "$stage", "/usr/bin/oino": "$oino" } }
+            } }
           }
           EOF
       - run: npm ci
@@ -236,7 +243,7 @@ jobs:
           (cd apps/unipi && cargo build --release -p unipi-host)
           mkdir -p apps/unipi/src-tauri/binaries
           cp apps/unipi/target/release/unipi-host.exe \
-             apps/unipi/src-tauri/binaries/unipi-host-x86_64-pc-windows-msvc.exe
+             apps/unipi/src-tauri/binaries/unipi-oino-host-x86_64-pc-windows-msvc.exe
       - name: Stage the extension dist + release config
         shell: bash
         run: |
@@ -292,9 +299,9 @@ jobs:
           lipo -create \
             target/aarch64-apple-darwin/release/unipi-host \
             target/x86_64-apple-darwin/release/unipi-host \
-            -output src-tauri/binaries/unipi-host-universal-apple-darwin
+            -output src-tauri/binaries/unipi-oino-host-universal-apple-darwin
           codesign --force -s - --identifier dev.unipi.host \
-            src-tauri/binaries/unipi-host-universal-apple-darwin
+            src-tauri/binaries/unipi-oino-host-universal-apple-darwin
       - name: Stage the extension dist + release config
         run: |
           sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage

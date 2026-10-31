@@ -42,7 +42,7 @@ mise run unipi:dev        # = scripts/unipi-dev.sh
 ```
 
 Builds the debug `unipi-host`, stages it as the sidecar
-(`src-tauri/binaries/unipi-host-<triple>`, required by tauri's build.rs),
+(`src-tauri/binaries/unipi-oino-host-<triple>`, required by tauri's build.rs),
 builds `extensions/dist` if missing, sets `OINO_HOST_DIR` to the scratch dir
 and runs `cargo tauri dev --config tauri.dev.conf.json`.
 

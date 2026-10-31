@@ -132,9 +132,13 @@ pub fn resolve_binary() -> Option<PathBuf> {
             return Some(path);
         }
     }
-    if let Some(dir) = agent_dir() {
-        let packaged = dir
-            .join("extensions")
+    // The installed distribution's package first (the CLI ships inside the
+    // bundled kanboard package), then a user-installed copy, then PATH.
+    let roots = crate::sessions::services::dist_dirs()
+        .into_iter()
+        .chain(agent_dir().map(|dir| dir.join("extensions")));
+    for root in roots {
+        let packaged = root
             .join("unipi.kanboard")
             .join("bin")
             .join(executable_name());
@@ -166,10 +170,10 @@ fn which_on_path() -> Option<PathBuf> {
 fn not_installed() -> AppErrorDto {
     AppErrorDto::new(
         AppErrorCode::E_BOARD_UNAVAILABLE,
-        "unipi-kanboard is not installed on this PC",
+        "The board CLI (unipi-kanboard) was not found in this installation",
         false,
     )
-    .with_hint("Install the UniPi distribution on this PC (it ships unipi-kanboard)".to_owned())
+    .with_hint("Reinstall UniPi: the installer ships the board with the app".to_owned())
     .with_detail(serde_json::json!({"reason": "not_installed"}))
 }
 

@@ -133,9 +133,9 @@ fn is_executable(path: &Path) -> bool {
 
 /// The binary's file name on this OS.
 pub const BIN_NAME: &str = if cfg!(windows) {
-    "unipi-host.exe"
+    "unipi-oino-host.exe"
 } else {
-    "unipi-host"
+    "unipi-oino-host"
 };
 
 /// Where to look for `unipi-host`, in order (UNI-266): `$UNIPI_HOST_BIN`;
@@ -665,14 +665,14 @@ mod tests {
         let pathdir = tmp.path().join("bin");
         std::fs::create_dir_all(home.join(".local/bin")).unwrap();
         std::fs::create_dir_all(&pathdir).unwrap();
-        let on_path = pathdir.join("unipi-host");
+        let on_path = pathdir.join(BIN_NAME);
         std::fs::write(&on_path, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&on_path, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(
             find_bin(None, Some(&home), Some(pathdir.as_os_str())),
             Some(on_path.clone())
         );
-        let local = home.join(".local/bin/unipi-host");
+        let local = home.join(".local/bin").join(BIN_NAME);
         std::fs::write(&local, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&local, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(

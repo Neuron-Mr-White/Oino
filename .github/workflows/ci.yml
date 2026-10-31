@@ -171,5 +171,5 @@ jobs:
           cargo build --manifest-path apps/unipi/Cargo.toml -p unipi-host
           triple=$(rustc -vV | sed -n 's/^host: //p')
           mkdir -p apps/unipi/src-tauri/binaries
-          cp "apps/unipi/target/debug/unipi-host" "apps/unipi/src-tauri/binaries/unipi-host-$triple"
+          cp "apps/unipi/target/debug/unipi-host" "apps/unipi/src-tauri/binaries/unipi-oino-host-$triple"
           cd apps/unipi && npm ci && cargo tauri build --debug --no-bundle --config tauri.dev.conf.json

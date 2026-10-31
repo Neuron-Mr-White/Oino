@@ -6,7 +6,7 @@
 #
 #   apps/unipi/src-tauri/unipi-host-sidecar.sh [app-target-triple…]
 #
-# Tauri looks for `apps/unipi/src-tauri/binaries/unipi-host-<app target
+# Tauri looks for `apps/unipi/src-tauri/binaries/unipi-oino-host-<app target
 # triple>` (the triple the *desktop app* is built for), so each static musl
 # host is copied under the gnu triple of the same architecture. There is no
 # musl-gcc on these PCs: cargo-zigbuild is the only linker that works.
@@ -30,15 +30,15 @@ WINDOWS=(
 
 build() {
   local app=$1 target=$2
-  echo "==> unipi-host sidecar: $target -> src-tauri/binaries/unipi-host-$app"
+  echo "==> unipi-host sidecar: $target -> src-tauri/binaries/unipi-oino-host-$app"
   cargo zigbuild -p unipi-host --release --target "$target"
   local src="target/$target/release/unipi-host" ext=""
   [ "$target" = "x86_64-pc-windows-gnu" ] && ext=".exe"
   [ -s "$src$ext" ] || { echo "   no $src$ext" >&2; return 1; }
   mkdir -p "$HERE/binaries"
-  # Tauri looks for binaries/unipi-host-<triple>.exe on Windows targets.
-  cp -f "$src$ext" "$HERE/binaries/unipi-host-$app$ext"
-  file "$HERE/binaries/unipi-host-$app$ext" | sed 's/^/    /'
+  # Tauri looks for binaries/unipi-oino-host-<triple>.exe on Windows targets.
+  cp -f "$src$ext" "$HERE/binaries/unipi-oino-host-$app$ext"
+  file "$HERE/binaries/unipi-oino-host-$app$ext" | sed 's/^/    /'
 }
 
 if [ $# -gt 0 ]; then

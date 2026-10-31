@@ -33,14 +33,24 @@ sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
 
 version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' apps/unipi/src-tauri/tauri.conf.json | head -1)
 stage="$root/apps/unipi/target/dist-stage/extensions"
-# The dev identity merge (tauri.dev.conf.json) plus the staged extension
-# resources — one --config, same shape as the release workflow's merge.
+# The dev identity merge (tauri.dev.conf.json) plus the bundled extensions —
+# one --config, same shape as the release workflow's merge. UNIPI_RELEASE_IDENTITY=1
+# keeps the release identity (UniPi Oino / dev.unipi.oino): byte-for-byte the
+# package a user installs. Linux puts the extensions in /usr/share/oino/extensions
+# and the CLI in /usr/bin/oino (deb + AppImage `files`); macOS/Windows use resources.
+if [ "${UNIPI_RELEASE_IDENTITY:-0}" = 1 ]; then identity=''; label="UniPi Oino $version, identifier dev.unipi.oino"
+else identity='"productName": "UniPi Dev", "identifier": "dev.unipi.app.dev",'; label="UniPi Dev $version, identifier dev.unipi.app.dev"; fi
+if [ "$os" = linux ]; then
+  echo "==> oino CLI (release)"
+  cargo build --release -p oino-cli --bin oino
+  oino="$root/target/release/oino"
+  files="{ \"/usr/share/oino/extensions\": \"$stage\", \"/usr/bin/oino\": \"$oino\" }"
+  bundle="{ \"linux\": { \"deb\": { \"files\": $files }, \"appimage\": { \"files\": $files } } }"
+else
+  bundle="{ \"resources\": { \"$stage\": \"extensions/\" } }"
+fi
 cat > apps/unipi/target/tauri-local.conf.json <<EOF
-{
-  "productName": "UniPi Dev",
-  "identifier": "dev.unipi.app.dev",
-  "bundle": { "resources": { "$stage": "extensions/" } }
-}
+{ $identity "bundle": $bundle }
 EOF
 conf=target/tauri-local.conf.json
 
@@ -63,9 +73,9 @@ case "$os" in
       lipo -create \
         target/aarch64-apple-darwin/release/unipi-host \
         target/x86_64-apple-darwin/release/unipi-host \
-        -output src-tauri/binaries/unipi-host-universal-apple-darwin
+        -output src-tauri/binaries/unipi-oino-host-universal-apple-darwin
       codesign --force -s - --identifier dev.unipi.host \
-        src-tauri/binaries/unipi-host-universal-apple-darwin)
+        src-tauri/binaries/unipi-oino-host-universal-apple-darwin)
     args=(--config "$conf" --target universal-apple-darwin --bundles dmg)
     out=apps/unipi/src-tauri/target/universal-apple-darwin/release/bundle
     ;;
@@ -74,7 +84,7 @@ case "$os" in
     (cd apps/unipi && cargo build --release -p unipi-host)
     mkdir -p apps/unipi/src-tauri/binaries
     cp apps/unipi/target/release/unipi-host.exe \
-       apps/unipi/src-tauri/binaries/unipi-host-x86_64-pc-windows-msvc.exe
+       apps/unipi/src-tauri/binaries/unipi-oino-host-x86_64-pc-windows-msvc.exe
     args=(--config "$conf" --bundles nsis)
     out=apps/unipi/src-tauri/target/release/bundle
     ;;
@@ -88,6 +98,6 @@ fi
 echo "==> cargo tauri build ${args[*]}"
 (cd apps/unipi && cargo tauri build "${args[@]}")
 
-echo "==> bundles (UniPi Dev $version, identifier dev.unipi.app.dev):"
+echo "==> bundles ($label):"
 find "$out" -maxdepth 2 -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' -o -name '*-setup.exe' \) \
   | sed 's/^/    /'

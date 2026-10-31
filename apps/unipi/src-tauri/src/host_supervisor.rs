@@ -276,9 +276,9 @@ pub fn is_executable(path: &Path) -> bool {
 /// The sidecar's file name inside a bundle: `bundle.externalBin` strips the
 /// target triple (Windows keeps the extension).
 pub const SIDECAR_NAME: &str = if cfg!(windows) {
-    "unipi-host.exe"
+    "unipi-oino-host.exe"
 } else {
-    "unipi-host"
+    "unipi-oino-host"
 };
 
 /// The directories [`sidecar`] looks in, in order. tauri-bundler puts an
@@ -678,7 +678,7 @@ mod tests {
         let bundled = fake_bin(&exe_dir, SIDECAR_NAME, "echo bundled");
         let path_dir = tmp.path().join("path");
         std::fs::create_dir_all(&path_dir).unwrap();
-        let on_path = fake_bin(&path_dir, "unipi-host", "echo on-path");
+        let on_path = fake_bin(&path_dir, crate::sharing::BIN_NAME, "echo on-path");
         assert_eq!(sidecar_in(&[exe_dir]), Some(bundled.clone()));
         // The sidecar wins, even with a perfectly good host on PATH.
         assert_eq!(

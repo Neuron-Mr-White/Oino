@@ -29,7 +29,7 @@ echo "==> debug unipi-host sidecar ($triple)"
 (cd apps/unipi && cargo build -p unipi-host)
 mkdir -p apps/unipi/src-tauri/binaries
 cp "apps/unipi/target/debug/unipi-host$exe" \
-   "apps/unipi/src-tauri/binaries/unipi-host-$triple$exe"
+   "apps/unipi/src-tauri/binaries/unipi-oino-host-$triple$exe"
 
 export OINO_HOST_DIR="${OINO_HOST_DIR:-$root/apps/unipi/target/unipi-dev/host}"
 mkdir -p "$OINO_HOST_DIR"

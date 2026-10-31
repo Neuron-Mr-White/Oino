@@ -393,7 +393,7 @@ impl HostLoader {
         let context = SourcesContext {
             agent_dir: agent_dir.to_path_buf(),
             cwd: cwd.to_path_buf(),
-            dist_dirs: Vec::new(),
+            dist_dirs: dist_dirs(),
             no_extensions,
             excluded: excluded.to_vec(),
         };
@@ -646,4 +646,37 @@ mod tests {
         // Resolution never panics whatever this machine has.
         let _ = kanboard_bin();
     }
+}
+
+/// The installed app's bundled extensions, for the layouts the installers
+/// produce beyond oino's own exe-relative candidates (`share/oino/extensions`,
+/// `extensions`, `bin/extensions`, which the Linux `.deb`/AppImage use):
+/// the macOS bundle's `Contents/Resources/extensions` and a Tauri resource dir
+/// under `<prefix>/lib/<product>/extensions`. `OINO_DIST_EXTENSIONS` still wins
+/// (oino-core reads it first).
+#[must_use]
+pub fn dist_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(value) = std::env::var_os("OINO_DIST_EXTENSIONS").filter(|v| !v.is_empty()) {
+        dirs.push(std::path::PathBuf::from(value));
+    }
+    let Some(exe) = std::env::current_exe().ok() else {
+        return dirs;
+    };
+    dirs.extend(oino_core::extensions::sources::share_candidates(&exe));
+    if let Some(prefix) = exe.parent().and_then(std::path::Path::parent) {
+        dirs.push(prefix.join("Resources").join("extensions"));
+        if let Ok(entries) = std::fs::read_dir(prefix.join("lib")) {
+            let mut found: Vec<_> = entries
+                .filter_map(Result::ok)
+                .map(|e| e.path().join("extensions"))
+                .filter(|d| d.join("unipi.core").is_dir())
+                .collect();
+            found.sort();
+            dirs.extend(found);
+        }
+    }
+    dirs.retain(|d| d.is_dir());
+    dirs.dedup();
+    dirs
 }
