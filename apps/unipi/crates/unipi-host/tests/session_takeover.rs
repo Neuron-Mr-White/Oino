@@ -79,6 +79,7 @@ fn open_host(dir: &Path) -> (Arc<SessionHub>, Arc<SessionService>) {
         models: Some(models),
         tools: oino_core::runtime::ToolSelection::Default,
         exclude_tools: Vec::new(),
+        services_cap: None,
         host_data_dir: None,
     })
     .unwrap();

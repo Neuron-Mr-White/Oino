@@ -33,7 +33,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::FutureExt;
 use futures_util::StreamExt;
@@ -72,6 +72,10 @@ const SUPERVISE_IDLE_POLLS: u32 = 3;
 /// Host notices kept for clients that connect after startup (the safe-mode banner is emitted
 /// before the app's `events_open` exists).
 const NOTICE_HISTORY: usize = 16;
+
+/// Minimum spacing between background project-service pre-warms (each is a no-op while
+/// the services stay cached).
+const WARM_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Failure of one hub operation.
 #[derive(Debug, thiserror::Error)]
@@ -164,6 +168,9 @@ pub struct HostHubOptions {
     pub tools: ToolSelection,
     /// `--exclude-tools` applied to every woken session.
     pub exclude_tools: Vec<String>,
+    /// Overrides the hub's `maxServices` (descriptor budget; see [`crate::fd_budget`]).
+    /// `None` keeps the `extensionSettings.hub.maxServices` setting (default 4).
+    pub services_cap: Option<usize>,
     /// Host data dir (`~/.oino/host`): where `session-meta.json` lives (app spec
     /// §3.14). `None` falls back to `<agent_dir>/host` (hermetic tests).
     pub host_data_dir: Option<PathBuf>,
@@ -298,6 +305,8 @@ struct Inner {
     /// Which sessions the cron scheduler owns (app spec §3.14 "Cron source", WP-A23):
     /// fills the cards' `source: "cron"` from the cron runs store.
     cron: crate::cron_serve::CronSessions,
+    /// When the last background project pre-warm ran (throttle).
+    warmed_at: Mutex<Option<Instant>>,
     started: SystemTime,
 }
 
@@ -344,6 +353,7 @@ impl SessionHub {
             models: options.models,
             tools: options.tools,
             exclude_tools: options.exclude_tools,
+            max_services: options.services_cap,
         };
         // The host writes session files (create/fork/archive) too: resolve the sessions root
         // once, with core's own chain, and pin it so both sides always agree.
@@ -368,6 +378,7 @@ impl SessionHub {
             meta,
             focus: FocusRegistry::default(),
             cron: crate::cron_serve::CronSessions::new(&agent_dir),
+            warmed_at: Mutex::new(None),
             started: SystemTime::now(),
         });
         Ok(Arc::new(Self { inner }))
@@ -410,6 +421,24 @@ impl SessionHub {
         self.inner.core.services().await.map_err(HubError::Client)
     }
 
+    /// Warms (or returns) the cached services of `cwd` with no session runtime — the
+    /// background pre-warm of the recent projects, so a `session_open` there does not
+    /// pay extension loading on the click path.
+    ///
+    /// # Errors
+    ///
+    /// Services creation failures (core hub texts).
+    pub async fn core_services_for(
+        &self,
+        cwd: &Path,
+    ) -> Result<Arc<oino_core::services::Services>, HubError> {
+        self.inner
+            .core
+            .warm_services(cwd)
+            .await
+            .map_err(HubError::Client)
+    }
+
     /// The hub event stream (§7.4). A new `events_open` stream first sends
     /// [`SessionHub::notices`], then this stream.
     #[must_use]
@@ -443,12 +472,55 @@ impl SessionHub {
     }
 
     /// The lazy Sessions list (§4.2): headers only, merged with the host's live state.
+    /// Also refreshes the background pre-warm of the most recent projects' services
+    /// (throttled; see [`SessionHub::warm_recent_projects`]).
     ///
     /// # Errors
     ///
     /// Listing I/O failures.
     pub async fn list(&self) -> Result<Vec<SessionCard>, HubError> {
-        self.inner.list().await
+        let cards = self.inner.list().await?;
+        self.warm_recent_projects(false);
+        Ok(cards)
+    }
+
+    /// Pre-warms the session hub's cached services for the most recent projects'
+    /// cwds, in the background: opening a session there then answers with a live
+    /// runtime rebuild only (`session_open` never waits for extension loading or
+    /// provider model probes). At most one service set per distinct cwd is kept —
+    /// bounded by the hub's `maxServices` — and passes run at most once per
+    /// [`WARM_INTERVAL`] unless `force`.
+    pub fn warm_recent_projects(&self, force: bool) {
+        if !force && lock(&self.inner.warmed_at).is_some_and(|at| at.elapsed() < WARM_INTERVAL) {
+            return;
+        }
+        *lock(&self.inner.warmed_at) = Some(Instant::now());
+        let weak = Arc::downgrade(&self.inner);
+        tokio::spawn(async move {
+            let Some(inner) = weak.upgrade() else { return };
+            let Ok(records) = inner.core.list().await else {
+                return;
+            };
+            let mut seen: HashSet<PathBuf> = HashSet::new();
+            let mut cwds = 0;
+            for record in records {
+                if cwds >= inner.core.max_services() {
+                    break;
+                }
+                let cwd = PathBuf::from(&record.info.cwd);
+                if record.info.cwd.is_empty()
+                    || !cwd.is_absolute()
+                    || !cwd.is_dir()
+                    || !seen.insert(cwd.clone())
+                {
+                    continue;
+                }
+                cwds += 1;
+                // A miss here is fine: the first open of that project builds its
+                // services on the click path, off the provider network.
+                let _ = inner.core.warm_services(&cwd).await;
+            }
+        });
     }
 
     /// Resolves a `session` target — exact id, unique prefix (≥ 4 chars) or session file

@@ -63,6 +63,7 @@ impl Fixture {
             },
             tools: ToolSelection::Default,
             exclude_tools: Vec::new(),
+            services_cap: None,
             host_data_dir: Some(self.host_data.clone()),
         })
         .unwrap()

@@ -610,6 +610,13 @@ async fn main() -> anyhow::Result<()> {
                 safe_mode: safe_plan.disable_extensions.then(|| safe_plan.clone()),
                 ..oino_core::services::ResourceFlags::default()
             };
+            // v2 QA (os error 24): every cached services set costs ~290 descriptors
+            // (wasm preopens + extension logs), so the hub's default `maxServices` of 4
+            // does not fit a desktop session's 1024-fd limit. Raise the soft limit
+            // where possible, then cap the hub to the remaining budget.
+            let nofile = unipi_host::fd_budget::soft_limit();
+            let services_cap = unipi_host::fd_budget::services_cap(nofile);
+            tracing::info!(soft_limit = nofile, services_cap, "fd budget");
             let hub =
                 unipi_host::sessions::SessionHub::create(unipi_host::sessions::HostHubOptions {
                     cwd,
@@ -627,6 +634,7 @@ async fn main() -> anyhow::Result<()> {
                     // App spec §3.14 (WP-A4): `session-meta.json` lives with the host data
                     // (`$OINO_HOST_DIR`, default `~/.oino/host`).
                     host_data_dir: Some(paths.root.clone()),
+                    services_cap: Some(services_cap),
                 })?;
             if safe_plan.disable_extensions {
                 hub.notice(
@@ -634,6 +642,11 @@ async fn main() -> anyhow::Result<()> {
                     unipi_host::sessions::crash::banner(&safe_plan),
                 );
             }
+            // v2 QA (slow open): warm the most recent projects' service sets in the
+            // background so a session click there does not pay extension loading —
+            // provider model probes never block an open (they refresh in the
+            // background inside `Services::create`).
+            hub.warm_recent_projects(true);
             // H4 (host.md §7.3–7.5): the protocol handler reaches the hub and its per-session
             // event feeds through this one service (`events_open`, the session streams).
             let _sessions =

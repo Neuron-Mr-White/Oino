@@ -65,6 +65,7 @@ fn hub_fixture() -> Fixture {
         models: Some(models),
         tools: ToolSelection::Default,
         exclude_tools: Vec::new(),
+        services_cap: None,
         host_data_dir: None,
     })
     .unwrap();

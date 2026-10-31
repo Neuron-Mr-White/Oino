@@ -68,6 +68,7 @@ fn hub_over(dir: &std::path::Path) -> Arc<SessionHub> {
         models: Some(models),
         tools: ToolSelection::Default,
         exclude_tools: Vec::new(),
+        services_cap: None,
         host_data_dir: None,
     })
     .unwrap()

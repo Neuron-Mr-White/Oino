@@ -113,6 +113,7 @@ fn hub_with(
         models: Some(models),
         tools,
         exclude_tools: Vec::new(),
+        max_services: None,
     })
     .unwrap();
     (dir, hub, loads, provider)

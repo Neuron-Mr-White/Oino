@@ -8,6 +8,7 @@ pub mod cron_wake;
 pub mod data_dir;
 pub mod devices;
 pub mod endpoint;
+pub mod fd_budget;
 pub mod forward;
 pub mod fs;
 pub mod fs_scope;

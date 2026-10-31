@@ -649,7 +649,20 @@ impl Services {
         }));
         forward_settings_changes(&extension_settings, &host);
         if !(options.flags.offline || offline_env()) {
-            refresh_dynamic_models(&extensions, &models).await;
+            // An in-process app host (desktop/mobile, H-spec host.md §4.2) must never block
+            // its first session open — or a later wake in a new project cwd — on provider
+            // `list-models` probes: dead local servers (ollama, lmstudio) can hold a
+            // connection for the full `LIST_MODELS_TIMEOUT`. The refresh lands in the shared
+            // registry as it completes; terminal modes keep the awaited startup behavior.
+            if matches!(options.mode, ExtensionMode::Desktop | ExtensionMode::Mobile) {
+                let extensions = Arc::clone(&extensions);
+                let models = models.clone();
+                tokio::spawn(async move {
+                    refresh_dynamic_models(&extensions, &models).await;
+                });
+            } else {
+                refresh_dynamic_models(&extensions, &models).await;
+            }
         }
         Ok(Arc::new(Self {
             cwd: options.cwd,

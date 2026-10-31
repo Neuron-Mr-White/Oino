@@ -106,6 +106,12 @@ pub struct HubOptions {
     pub tools: ToolSelection,
     /// `--exclude-tools` applied to every woken session.
     pub exclude_tools: Vec<String>,
+    /// Overrides `extensionSettings.hub.maxServices` for this hub. `None` keeps the
+    /// setting (default 4). An embedding host sets this from its own budget: every
+    /// cached services set holds one wasm instance per extension, and those hold
+    /// preopen directory and log file descriptors, so a host with a low
+    /// `RLIMIT_NOFILE` cannot afford the default.
+    pub max_services: Option<usize>,
 }
 
 impl HubOptions {
@@ -262,7 +268,10 @@ impl SessionHub {
     /// Never today; `Result` keeps room for settings failures.
     pub fn create(opts: HubOptions) -> Result<Arc<Self>, ClientError> {
         let settings = SettingsManager::create(&opts.cwd, &opts.agent_dir, false);
-        let config = HubConfig::read(settings.settings().merged());
+        let mut config = HubConfig::read(settings.settings().merged());
+        if let Some(max) = opts.max_services {
+            config.max_services = max.clamp(1, 1024);
+        }
         let sessions_root = opts.sessions_root(&settings);
         let docs_root = opts
             .docs_root
@@ -477,6 +486,25 @@ impl SessionHub {
         let cwd = self.inner.cwd.clone();
         let mut state = self.inner.state.lock().await;
         self.services_for(&mut state, &cwd).await
+    }
+
+    /// Warms (or returns) the cached services of `cwd`, with no session runtime — the
+    /// embedding host's background pre-warm of its recent projects' cwds, so a
+    /// `session_open` there answers without paying services creation (extension load,
+    /// wasm instances) on the click path.
+    ///
+    /// # Errors
+    ///
+    /// Services creation failures.
+    pub async fn warm_services(&self, cwd: &Path) -> Result<Arc<Services>, ClientError> {
+        let mut state = self.inner.state.lock().await;
+        self.services_for(&mut state, cwd).await
+    }
+
+    /// The effective `maxServices` of this hub (setting or override).
+    #[must_use]
+    pub fn max_services(&self) -> usize {
+        self.inner.config.max_services
     }
 
     /// The services of `cwd`: cached, LRU-bounded (`maxServices`) and reset to "in use".

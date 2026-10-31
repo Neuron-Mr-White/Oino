@@ -59,6 +59,7 @@ fn hub(dir: &tempfile::TempDir) -> Arc<SessionHub> {
         },
         tools: ToolSelection::Default,
         exclude_tools: Vec::new(),
+        services_cap: None,
         host_data_dir: Some(dir.path().join("host")),
     })
     .unwrap()
