@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-128.png" alt="oino" width="64">
+
 # oino-settings
 
 Settings manager for Oino: global/project layering, migrations, typed getters, locking.

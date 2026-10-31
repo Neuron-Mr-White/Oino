@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-128.png" alt="oino" width="64">
+
 # oino-agent
 
 Provider-agnostic agent runtime for Oino: turns, steering and follow-up queues, sequential and

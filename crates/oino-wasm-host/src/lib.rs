@@ -27,6 +27,10 @@
 //! | [`core_bridge`] (feature `core`) | adapters to `oino_core::extensions` and `services::ExtensionLoader` |
 //! | `testing` (feature) | fixture builder + harness |
 
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-256.png",
+    html_favicon_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/oino.ico"
+)]
 #![deny(unsafe_code)]
 #![cfg_attr(
     test,

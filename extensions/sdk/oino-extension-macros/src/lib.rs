@@ -13,6 +13,11 @@
 //! // in init: cx.tool(Self::notify_user_tool());
 //! ```
 
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-256.png",
+    html_favicon_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/oino.ico"
+)]
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::Parser;

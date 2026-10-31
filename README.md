@@ -1,5 +1,10 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/oino.svg">
+  <img src="docs/assets/brand/oino-invert.svg" alt="oino" width="160">
+</picture>
+
 # Oino
 
 ### A Rust coding agent: agent core, WASM extensions, terminal + ACP clients.

@@ -21,6 +21,10 @@
 //! Unknown JSON fields are ignored on read; optional fields are omitted on write exactly where
 //! the wire format omits them; integral `f64` costs serialise without a fraction like `JSON.stringify`.
 
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-256.png",
+    html_favicon_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/oino.ico"
+)]
 #![forbid(unsafe_code)]
 #![cfg_attr(
     test,

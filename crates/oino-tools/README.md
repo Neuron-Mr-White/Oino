@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-128.png" alt="oino" width="64">
+
 # oino-tools
 
 The built-in tools for Oino agents: `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` and

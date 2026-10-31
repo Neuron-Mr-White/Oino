@@ -38,6 +38,10 @@
 //! - Virtual router state equal to the current state is not re-stored (no object identity
 //!   across WASM).
 
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-256.png",
+    html_favicon_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/oino.ico"
+)]
 #![forbid(unsafe_code)]
 #![cfg_attr(
     test,

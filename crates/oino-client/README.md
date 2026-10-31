@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-128.png" alt="oino" width="64">
+
 # oino-client
 
 Client contract for Oino sessions: [`SessionBackend`], RPC command records, in-process and

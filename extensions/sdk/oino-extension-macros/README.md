@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-128.png" alt="oino" width="64">
+
 # oino-extension-macros — proc macros for the Oino guest SDK
 
 Companion crate of [`oino-extension`](https://crates.io/crates/oino-extension): attribute

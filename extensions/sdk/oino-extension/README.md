@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-128.png" alt="oino" width="64">
+
 # oino-extension — guest SDK
 
 Write Oino extensions in Rust, compiled to WASM components (`wasm32-wasip2`) for the WIT

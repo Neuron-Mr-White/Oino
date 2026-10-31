@@ -24,6 +24,10 @@
 //! Product substitutions (D13): the default preamble names Oino, the docs section points at the
 //! bundled Oino docs (`docs_root`), and the bash env guideline is [`system_prompt::ENV_GUIDELINE`].
 
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-256.png",
+    html_favicon_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/oino.ico"
+)]
 #![forbid(unsafe_code)]
 #![cfg_attr(
     test,

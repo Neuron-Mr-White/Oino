@@ -20,6 +20,10 @@
 //! Files live at `<sessions root>/--<cwd>--/<ts>_<sessionId>.jsonl` and are append-only; a
 //! file is created only once the first user or assistant message exists.
 
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-256.png",
+    html_favicon_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/oino.ico"
+)]
 #![forbid(unsafe_code)]
 #![cfg_attr(
     test,

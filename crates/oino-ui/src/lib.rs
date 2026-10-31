@@ -20,6 +20,11 @@
 //! assert_eq!(json["t"], "Layout");
 //! ```
 
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-256.png",
+    html_favicon_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/oino.ico"
+)]
+
 pub mod extras;
 pub mod layout;
 pub mod limits;
