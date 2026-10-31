@@ -118,7 +118,7 @@ describe("the frontend's own row", () => {
 describe('native change cards', () => {
   it('model_change renders the light "Model → X" row', () => {
     const r = render(() => <ModelChangeCard entry={{ type: 'model_change', id: 'm1', modelId: 'claude-sonnet-4-5' } as SessionEntry} />);
-    expect(r.getByTestId('tl-model-change').textContent).toContain('Model → claude-sonnet-4-5');
+    expect(r.getByTestId('tl-model-change').textContent).toContain('Model → Claude Sonnet 4.5');
   });
   it('thinking_level_change renders "Thinking → high" for both v3 thinkingLevel and legacy level', () => {
     const r = render(() => <ModelChangeCard entry={{ type: 'thinking_level_change', id: 'm2', level: 'high' } as SessionEntry} />);
