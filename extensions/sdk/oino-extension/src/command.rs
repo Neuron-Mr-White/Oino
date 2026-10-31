@@ -1,4 +1,4 @@
-//! Command, shortcut and flag builders (pi `registerCommand`, `registerShortcut`, `registerFlag`).
+//! Command, shortcut and flag builders (`registerCommand`, `registerShortcut`, `registerFlag`).
 
 use std::rc::Rc;
 
@@ -88,7 +88,7 @@ impl<E: 'static> Command<E> {
         self
     }
 
-    /// Argument completions (pi `getArgumentCompletions`).
+    /// Argument completions.
     #[must_use]
     pub fn complete<F, Fut>(mut self, f: F) -> Self
     where
@@ -186,7 +186,7 @@ impl Flag {
     }
 }
 
-/// Current value of a flag (pi `getFlag`).
+/// Current value of a flag.
 #[must_use]
 pub fn get_flag(name: &str) -> Option<Value> {
     crate::bindings::oino::extension::registry::get_flag(name)

@@ -290,7 +290,7 @@ impl RpcClient {
     ///
     /// # Errors
     ///
-    /// pi's prompt errors.
+    /// Prompt errors.
     pub async fn prompt(
         &self,
         message: impl Into<String>,
@@ -483,7 +483,7 @@ impl RpcClient {
     ///
     /// # Errors
     ///
-    /// pi's compaction errors.
+    /// Compaction errors.
     pub async fn compact(
         &self,
         custom_instructions: Option<String>,

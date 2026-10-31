@@ -158,7 +158,7 @@ pub async fn set_config_option(
     Ok(())
 }
 
-/// `session/set_mode`: pi-acp compatibility, the mode id is a thinking level.
+/// `session/set_mode`: compatibility mode; the mode id is a thinking level.
 ///
 /// # Errors
 ///

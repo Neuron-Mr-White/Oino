@@ -66,7 +66,7 @@ impl App {
     }
 
     /// Application-level bindings; returns `true` when handled.
-    #[allow(clippy::too_many_lines, reason = "one branch per pi app.* action")]
+    #[allow(clippy::too_many_lines, reason = "one branch per app.* action")]
     fn app_action(&mut self, key: &KeyId) -> bool {
         let now = Instant::now();
         if self.matches("app.interrupt", key) {
@@ -266,7 +266,7 @@ impl App {
         } else if kb.matches("tui.input.newLine", key) {
             c.newline();
         } else if kb.matches("tui.input.submit", key) {
-            // pi: a trailing backslash turns Enter into a newline.
+            // A trailing backslash turns Enter into a newline.
             let text = c.text();
             let (line, col) = c.cursor();
             let at_end = c
@@ -485,7 +485,7 @@ impl App {
                 }
                 self.composer.replace_current_token(&format!("{value} "));
                 if self.keys.matches("tui.input.submit", key) {
-                    // pi: Enter on a command without arguments runs it.
+                    // Enter on a command without arguments runs it.
                     let name = value.trim_start_matches('/');
                     let takes_args = oino_view::commands::BUILTINS
                         .iter()

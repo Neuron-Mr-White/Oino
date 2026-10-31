@@ -1,5 +1,5 @@
 //! Core integration: the echo component loaded through `core_bridge::CoreLoader` into an
-//! `oino-core` session sees pi events, serves tools and blocks tool calls.
+//! `oino-core` session sees client events, serves tools and blocks tool calls.
 
 #![allow(
     clippy::unwrap_used,

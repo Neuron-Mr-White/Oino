@@ -1,8 +1,8 @@
-//! pi `list-models.ts`: the `--list-models [search]` table.
+//! The `--list-models [search]` table.
 
 use oino_ai::Model;
 
-/// pi `formatTokenCount` (`200000` → `200K`, `1000000` → `1M`, `1500` → `1.5K`).
+/// `formatTokenCount` (`200000` → `200K`, `1000000` → `1M`, `1500` → `1.5K`).
 #[must_use]
 pub fn format_token_count(count: u64) -> String {
     let scaled = |value: u64, unit: u64, suffix: &str| {
@@ -23,7 +23,7 @@ pub fn format_token_count(count: u64) -> String {
     }
 }
 
-/// Case-insensitive subsequence match of every whitespace-separated token (pi-tui
+/// Case-insensitive subsequence match of every whitespace-separated token (the
 /// `fuzzyFilter` approximation).
 fn fuzzy_matches(text: &str, query: &str) -> bool {
     let text = text.to_lowercase();
@@ -36,7 +36,7 @@ fn fuzzy_matches(text: &str, query: &str) -> bool {
     })
 }
 
-/// Rows of the table (header first), or the pi message when nothing matches.
+/// Rows of the table (header first), or the fixed message when nothing matches.
 #[must_use]
 pub fn list_models_output(models: &[Model], search: Option<&str>, no_models: &str) -> String {
     if models.is_empty() {

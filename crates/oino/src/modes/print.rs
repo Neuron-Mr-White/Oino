@@ -1,4 +1,4 @@
-//! pi `print-mode.ts`: `-p` text output and `--mode json` event streams.
+//! Print mode: `-p` text output and `--mode json` event streams.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -110,7 +110,7 @@ async fn prompts(
     Ok(())
 }
 
-/// The text-mode result: stdout text and exit code (pi rules).
+/// The text-mode result: stdout text and exit code.
 fn text_result(messages: &[AgentMessage]) -> (String, Option<String>, i32) {
     let Some(AgentMessage::Assistant(last)) = messages.last() else {
         return (String::new(), None, 0);

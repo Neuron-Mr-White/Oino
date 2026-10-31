@@ -1,4 +1,4 @@
-//! Session reads and writes (pi `sessionManager`, `appendEntry`, `sendMessage`).
+//! Session reads and writes (`sessionManager`, `appendEntry`, `sendMessage`).
 
 use serde::Serialize;
 use serde_json::Value;
@@ -61,21 +61,21 @@ pub fn label(id: &str) -> Option<String> {
 pub fn session_name() -> Option<String> {
     ws::session_name()
 }
-/// pi `setSessionName` (permission `sessionControl`).
+/// Sets the session name (permission `sessionControl`).
 pub fn set_session_name(name: Option<&str>) -> Result<()> {
     Ok(ws::set_session_name(name)?)
 }
-/// pi `setLabel` (permission `sessionControl`).
+/// Sets the entry label (permission `sessionControl`).
 pub fn set_label(id: &str, label: Option<&str>) -> Result<()> {
     Ok(ws::set_label(id, label)?)
 }
-/// pi `appendEntry(customType, data)`; returns the entry id.
+/// Appends an entry (`appendEntry(customType, data)`); returns the entry id.
 pub fn append_entry(custom_type: &str, data: Option<&impl Serialize>) -> Result<String> {
     let data = data.map(serde_json::to_string).transpose()?;
     Ok(ws::append_entry(custom_type, data.as_deref())?)
 }
 
-/// A custom message (pi `sendMessage` draft).
+/// A custom message (`sendMessage` draft).
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomMessage {
@@ -101,7 +101,7 @@ pub struct SendOptions {
     pub provenance: Option<Provenance>,
 }
 
-/// pi `sendMessage`.
+/// Sends a message into the session.
 pub async fn send_message(message: &CustomMessage, options: SendOptions) -> Result<()> {
     let opts = ws::SendOptions {
         trigger_turn: options.trigger_turn,
@@ -111,7 +111,7 @@ pub async fn send_message(message: &CustomMessage, options: SendOptions) -> Resu
     Ok(ws::send_message(serde_json::to_string(message)?, opts).await?)
 }
 
-/// pi `sendUserMessage` (permission `sessionControl`). `content` = string or content blocks.
+/// Sends a user message (permission `sessionControl`). `content` = string or content blocks.
 pub async fn send_user_message(content: &Value, deliver_as: Option<Delivery>) -> Result<()> {
     let opts = ws::UserMessageOptions {
         deliver_as,

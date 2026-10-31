@@ -1,4 +1,4 @@
-//! Built-in interactive slash commands (pi `slash-commands.md`, modes.md §1.3) and the
+//! Built-in interactive slash commands (modes.md §1.3) and the
 //! command menu model merged with `get_commands` results.
 
 use crate::fuzzy;
@@ -63,7 +63,7 @@ pub struct BuiltinSpec {
     pub name: &'static str,
     /// Argument hint.
     pub args: &'static str,
-    /// Description (pi).
+    /// Description.
     pub description: &'static str,
 }
 
@@ -81,7 +81,7 @@ const fn b(
     }
 }
 
-/// Built-ins in pi menu order.
+/// Built-ins in menu order.
 pub const BUILTINS: &[BuiltinSpec] = &[
     b(Builtin::Settings, "settings", "", "Open settings"),
     b(
@@ -198,7 +198,7 @@ pub const BUILTINS: &[BuiltinSpec] = &[
     b(Builtin::Quit, "quit", "", "Quit Oino"),
 ];
 
-/// What a submitted line means (pi `setupEditorSubmitHandler` order).
+/// What a submitted line means (`setupEditorSubmitHandler` order).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Submitted {
     /// A built-in with its argument (trimmed, `None` when absent).
@@ -214,7 +214,7 @@ pub enum Submitted {
     Prompt(String),
 }
 
-/// Classifies a trimmed submission. Bare `!`/`!!` are prompts (pi only runs non-empty
+/// Classifies a trimmed submission. Bare `!`/`!!` are prompts (only non-empty
 /// commands).
 #[must_use]
 pub fn classify(text: &str) -> Submitted {
@@ -272,7 +272,7 @@ pub struct CommandItem {
 }
 
 /// Built-ins plus the session's commands (`get_commands`), deduplicated by name (built-ins
-/// win, pi).
+/// win).
 #[must_use]
 pub fn menu_items(session_commands: &[(String, Option<String>, String)]) -> Vec<CommandItem> {
     let mut items: Vec<CommandItem> = BUILTINS

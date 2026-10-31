@@ -16,7 +16,7 @@ pub enum AcpError {
     /// Creating or opening a session failed.
     #[error("{0}")]
     Factory(String),
-    /// A session command failed (pi error text).
+    /// A session command failed.
     #[error("{0}")]
     Command(String),
     /// The client rejected or failed a request the agent sent.

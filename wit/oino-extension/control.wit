@@ -3,13 +3,13 @@ package oino:extension@2.0.0;
 interface control {
     use types.{json, host-error, cancel-token};
 
-    // Model / thinking (pi setModel, get/setThinkingLevel; permission sessionControl for setters)
+    // Model / thinking (setModel, get/setThinkingLevel; permission sessionControl for setters)
     model: func() -> option<json>;                            // Model
     routed-model: func() -> option<json>;
     set-model: func(provider: string, id: string) -> result<bool, host-error>;  // false when no credentials
     /// Persist the model a fresh session starts with: core settings `defaultProvider`,
     /// `defaultModel` and (when given) `modelThinkingLevels["provider/id"]`. Does not change the
-    /// running session (pi `settings.json` `defaultModel`). false when the model is unknown or
+    /// running session (`settings.json` `defaultModel`). false when the model is unknown or
     /// has no credentials.
     set-default-model: func(provider: string, id: string, thinking: option<string>) -> result<bool, host-error>;
     thinking-level: func() -> string;
@@ -25,7 +25,7 @@ interface control {
     session-stats: func() -> json;                            // SessionStats
     system-prompt: func() -> string;
     is-project-trusted: func() -> bool;
-    get-settings: func() -> json;                             // pi getSettings(): merged settings copy
+    get-settings: func() -> json;                             // getSettings(): merged settings copy
 
     // Actions
     abort: func();
@@ -48,9 +48,9 @@ interface control {
     commands-list: func() -> json;                            // Vec<SlashCommandInfo>
     /// Run any command (cross-extension) with a command context. Replaces the v1 command runners.
     command-invoke: async func(name: string, args: string) -> result<option<json>, host-error>;
-    /// pi ctx.executeTool (tool-call context only). Returns AgentToolCallOutcome JSON.
+    /// ctx.executeTool (tool-call context only). Returns AgentToolCallOutcome JSON.
     execute-tool: async func(name: string, args: json, cancel: option<borrow<cancel-token>>) -> result<json, host-error>;
-    /// Report tool progress for the current tool call (pi onUpdate). partial = AgentToolResult JSON.
+    /// Report tool progress for the current tool call (onUpdate). partial = AgentToolResult JSON.
     tool-progress: func(tool-call-id: string, partial: json);
     /// Detach a running built-in bash call into a background task (permission process.spawn).
     bash-detach: func(tool-call-id: string, reason: string) -> result<string, host-error>;  // task id

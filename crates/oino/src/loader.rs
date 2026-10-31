@@ -25,7 +25,7 @@ use oino_wasm_host::{HostConfig, WasmRuntime, WasmRuntimeOptions};
 
 use crate::cli::args::Diagnostic;
 
-/// pi `EXTENSION_LOAD_FAILURE_HINT` (D13).
+/// The extension load failure hint (D13).
 pub const EXTENSION_LOAD_FAILURE_HINT: &str = "Hint: Start without extensions using \"oino -ne\".";
 
 /// Components instantiated by the binary itself (feature `faux`).
@@ -116,7 +116,7 @@ fn diagnostic(d: oino_core::extensions::sources::SourceDiagnostic) -> Diagnostic
     }
 }
 
-/// An unrecognised `builtin:` id keeps pi's `-e` error shape (and names the id).
+/// An unrecognised `builtin:` id keeps the `-e` error shape (and names the id).
 fn unknown_builtin(source: &str, id: &str) -> Diagnostic {
     Diagnostic::error(format!(
         "Failed to load extension \"{source}\": unknown built-in extension \"{id}\""

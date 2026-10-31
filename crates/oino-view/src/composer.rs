@@ -1,4 +1,4 @@
-//! Composer buffer (pi-tui `Editor` semantics): multi-line text with a cursor, prompt history,
+//! Composer buffer (`Editor` semantics): multi-line text with a cursor, prompt history,
 //! kill ring (yank / yank-pop), undo, large-paste markers and attachment tokens.
 //!
 //! Positions are character indices into logical lines; frontends wrap for display.
@@ -314,7 +314,7 @@ impl Composer {
             .find(|a| before.trim_end().ends_with(&a.marker))
     }
 
-    /// Text and images to send (pi submit).
+    /// Text and images to send (submit).
     #[must_use]
     pub fn submission(&self) -> Submission {
         let mut text = self.text();

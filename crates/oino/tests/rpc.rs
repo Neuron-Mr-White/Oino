@@ -1,4 +1,4 @@
-//! `oino --mode rpc` over stdio with the faux provider: framing, every pi command (success
+//! `oino --mode rpc` over stdio with the faux provider: framing, every command (success
 //! and error paths), events, the extension UI sub-protocol and the `_oino/*` extensions.
 
 #![allow(
@@ -475,7 +475,7 @@ fn extension_ui_dialogs_round_trip() {
     assert_eq!(request["options"], json!(["a", "b"]));
     assert!(
         request.get("extensionId").is_none(),
-        "pi clients get pi records"
+        "plain clients get legacy records"
     );
     assert!(request["id"].as_str().unwrap().len() >= 32);
     rpc.write_raw(&format!(
@@ -514,7 +514,7 @@ fn extension_ui_dialogs_round_trip() {
     assert_eq!(request["timeout"], 50);
     assert_eq!(answer(&mut rpc, &id), r#"probe:timeout:{"cancelled":true}"#);
 
-    // Oino-only dialogs are resolved as cancelled for pi clients (never sent).
+    // Oino-only dialogs are resolved as cancelled for plain clients (never sent).
     let id = rpc.send(json!({"type": "prompt", "message": "/probe form"}));
     let seen = rpc.seen.len();
     assert_eq!(answer(&mut rpc, &id), r#"probe:form:{"cancelled":true}"#);
@@ -552,14 +552,14 @@ fn extension_ui_fire_and_forget_and_errors() {
         actual.as_object_mut().unwrap().remove("type");
         assert_eq!(actual, expected, "{args}");
     }
-    // Oino fire-and-forget methods are dropped for pi clients.
+    // Oino fire-and-forget methods are dropped for plain clients.
     let id = rpc.send(json!({"type": "prompt", "message": "/probe setFrame x"}));
     rpc.response(&id);
     let id = rpc.send(json!({"type": "prompt", "message": "/probe-fail"}));
     let seen = rpc.seen.len();
     let (_, error) = rpc.response_and(&id, |v| v["type"] == "extension_error");
     assert!(rpc.seen[seen..].iter().all(|e| e["method"] != "setFrame"));
-    // pi `_tryExecuteExtensionCommand` reports command failures as `command:<name>`.
+    // `_tryExecuteExtensionCommand` reports command failures as `command:<name>`.
     assert_eq!(error["extensionPath"], "command:probe-fail");
     assert_eq!(error["event"], "command");
     assert_eq!(error["error"], "probe failed");
@@ -663,7 +663,7 @@ fn concurrent_commands_answer_while_a_dialog_blocks() {
     let sandbox = Sandbox::new();
     let mut rpc = sandbox.rpc(&json!([]), &["--no-session", "-e", "builtin:ui-probe"]);
     let (id, request) = probe(&mut rpc, "confirm Wait");
-    // The pending command does not block other commands (pi handles lines concurrently).
+    // The pending command does not block other commands (lines are handled concurrently).
     let state = rpc.ok(json!({"type": "get_state"}));
     assert_eq!(state["isStreaming"], false);
     rpc.write_raw(&format!(

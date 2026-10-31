@@ -30,7 +30,7 @@ impl Ctx {
         self.raw.mode
     }
 
-    /// A dialog-capable UI is attached (pi `ctx.hasUI`).
+    /// A dialog-capable UI is attached.
     #[must_use]
     pub fn has_ui(&self) -> bool {
         self.raw.has_ui
@@ -72,7 +72,7 @@ impl Ctx {
 pub struct Cancel(pub(crate) Rc<Cell<bool>>);
 
 impl Cancel {
-    /// The call was cancelled (pi `signal.aborted`).
+    /// The call was cancelled.
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
         self.0.get()
@@ -97,7 +97,7 @@ impl ToolCtx {
         self.cx.session_id()
     }
 
-    /// Reports partial output (pi `onUpdate`).
+    /// Reports partial output.
     pub fn progress(&self, partial: &crate::tool::ToolResult) {
         if let Ok(json) = serde_json::to_string(partial) {
             crate::bindings::oino::extension::control::tool_progress(&self.tool_call_id, &json);

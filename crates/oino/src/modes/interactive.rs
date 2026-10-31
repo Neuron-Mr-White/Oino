@@ -1,4 +1,4 @@
-//! pi interactive mode: [`oino_tui::run`] over an in-process backend.
+//! Interactive mode: [`oino_tui::run`] over an in-process backend.
 
 use std::sync::Arc;
 

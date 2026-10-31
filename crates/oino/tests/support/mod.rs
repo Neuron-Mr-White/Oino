@@ -202,7 +202,7 @@ impl Rpc {
         response.get("data").cloned().unwrap_or(Value::Null)
     }
 
-    /// `data` of a successful response and the records written before it (pi writes the
+    /// `data` of a successful response and the records written before it (the
     /// events a command causes before its reply).
     pub(crate) fn ok_events(&mut self, command: Value) -> (Value, Vec<Value>) {
         let id = self.send(command);

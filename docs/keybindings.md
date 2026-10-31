@@ -1,7 +1,7 @@
 # Key bindings
 
-Oino's terminal UI uses pi 1.4.0's key binding ids and defaults. Override them in
-`~/.oino/keybindings.json` (pi format; legacy names are migrated):
+Oino's terminal UI uses fixed key binding ids and defaults. Override them in
+`~/.oino/keybindings.json` (legacy names are migrated):
 
 ```json
 {

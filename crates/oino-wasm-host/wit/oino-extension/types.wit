@@ -26,7 +26,7 @@ interface types {
 
     variant host-error {
         denied(string),          // permission missing (names the permission)
-        stale-context,           // session replaced since this call started (pi assertActive)
+        stale-context,           // session replaced since this call started (assertActive)
         command-context-required,
         invalid-argument(string),
         not-found(string),

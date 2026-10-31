@@ -1,4 +1,4 @@
-//! Frame layout and drawing (pi `TUI` container order: chat, pending messages, status,
+//! Frame layout and drawing (container order: chat, pending messages, status,
 //! widgets above editor, editor, widgets below editor, footer).
 //!
 //! Every function is pure over [`App`] state; the only mutation is the per-row line cache
@@ -348,7 +348,7 @@ fn draw_modal(frame: &mut Frame<'_>, block: Block, area: Rect, transcript_area: 
     }
 }
 
-/// Header lines at the top of the transcript (pi built-in header).
+/// Header lines at the top of the transcript (built-in header).
 fn header_lines(app: &mut App, width: usize) -> Vec<OLine> {
     let quiet = app
         .settings

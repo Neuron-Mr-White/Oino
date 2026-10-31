@@ -98,7 +98,7 @@ pub(crate) const AGENT_SUBDIRS: &[&str] = &[
     "bundled",
 ];
 
-/// Agent-dir files exposed read-only as `/agent/<name>` (pi `mcp.json`-style config, R1).
+/// Agent-dir files exposed read-only as `/agent/<name>` (`mcp.json`-style config, R1).
 pub(crate) const AGENT_FILES: &[&str] = &["mcp.json"];
 
 /// Shared read-only view of the agent-dir config files, exposed to guests as `/agent`.

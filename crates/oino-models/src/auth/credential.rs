@@ -105,7 +105,7 @@ impl AuthCredential {
         serde_json::to_value(self).unwrap_or(JsonValue::Null)
     }
 
-    /// Validates a raw `auth.json` entry like pi's `ReadOnlyAuthStorage`: API keys need an
+    /// Validates a raw `auth.json` entry: API keys need an
     /// optional string `key` and string-valued `env`; OAuth needs string `access`/`refresh`
     /// and a finite numeric `expires`.
     #[must_use]

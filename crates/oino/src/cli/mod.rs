@@ -1,4 +1,4 @@
-//! Command-line parsing and the pieces of pi `cli/*` the headless binary needs.
+//! Command-line parsing and the pieces the headless binary needs.
 
 pub mod args;
 pub mod files;

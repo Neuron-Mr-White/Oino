@@ -6,7 +6,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-/// Canonical JSON text of a pi/Oino serde type (D5). Cheap to forward, parsed on demand.
+/// Canonical JSON text of an Oino serde type (D5). Cheap to forward, parsed on demand.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct RawJson(pub Box<RawValue>);

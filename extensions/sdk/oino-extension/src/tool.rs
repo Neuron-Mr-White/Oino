@@ -1,4 +1,4 @@
-//! Tool builder and results (pi `registerTool`).
+//! Tool builder and results.
 
 use std::rc::Rc;
 
@@ -176,14 +176,14 @@ impl<E: 'static> Tool<E> {
         self
     }
 
-    /// pi `promptSnippet`.
+    /// P r o m p t   S n i p p e t.
     #[must_use]
     pub fn prompt_snippet(mut self, snippet: impl Into<String>) -> Self {
         self.spec.prompt_snippet = Some(snippet.into());
         self
     }
 
-    /// pi `promptGuidelines`.
+    /// P r o m p t   G u i d e l i n e s.
     #[must_use]
     pub fn guideline(mut self, line: impl Into<String>) -> Self {
         self.spec.prompt_guidelines.push(line.into());
@@ -254,7 +254,7 @@ impl<E: 'static> Tool<E> {
         self
     }
 
-    /// pi `prepareArguments`.
+    /// P r e p a r e   A r g u m e n t s.
     #[must_use]
     pub fn prepare_arguments(mut self, f: impl Fn(Value) -> Value + 'static) -> Self {
         self.spec.prepare_arguments = true;
@@ -262,7 +262,7 @@ impl<E: 'static> Tool<E> {
         self
     }
 
-    /// pi `prepareLoadout`.
+    /// P r e p a r e   L o a d o u t.
     #[must_use]
     pub fn prepare_loadout(mut self, f: impl Fn(Value) -> Option<Value> + 'static) -> Self {
         self.spec.prepare_loadout = true;

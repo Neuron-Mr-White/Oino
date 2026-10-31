@@ -22,7 +22,7 @@ Commands run by the `bash` tool (and extension processes) see the current sessio
 | `OINO_MODEL` | `PI_MODEL` | selected model id |
 | `OINO_REASONING_LEVEL` | `PI_REASONING_LEVEL` | thinking level |
 
-The `PI_*` aliases keep skills written for pi working unchanged.
+The `PI_*` aliases keep skills written for earlier versions working unchanged.
 
 ## Kanboard
 

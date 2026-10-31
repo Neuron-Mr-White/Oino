@@ -6,6 +6,9 @@ rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
 description = "ACP v1 (Agent Client Protocol) agent adapter over oino-core sessions"
+readme = "README.md"
+keywords = ["acp", "agent", "protocol", "ide"]
+categories = ["api-bindings"]
 
 [dependencies]
 agent-client-protocol = { version = "=3.5.0", features = ["stdio", "unstable_session_fork"] }

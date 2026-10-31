@@ -5,7 +5,7 @@ Oino Desktop do.
 
 | Crate | Role |
 |---|---|
-| `oino-ai` | message, model and stream types (pi-ai shapes) |
+| `oino-ai` | message, model and stream types (fixed wire shapes) |
 | `oino-session` | session format v3, `SessionManager` |
 | `oino-agent` | agent loop, tools contract |
 | `oino-tools` | built-in tools |

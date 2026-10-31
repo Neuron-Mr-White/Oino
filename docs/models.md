@@ -1,6 +1,6 @@
 # Models and `models.json`
 
-Model selection follows pi 1.4.0:
+Model selection rules:
 
 - `--model <pattern>` accepts `provider/id`, a bare id, a fuzzy pattern, and an optional
   `:<thinking>` suffix (`--model sonnet:high`). `--provider` narrows the search.
@@ -13,7 +13,7 @@ Model selection follows pi 1.4.0:
 ## `models.json`
 
 `~/.oino/models.json` adds providers and
-models or overrides built-in ones, with pi's schema:
+models or overrides built-in ones, with the fixed schema:
 
 ```json
 {
@@ -35,11 +35,11 @@ models or overrides built-in ones, with pi's schema:
 
 - `api` must be implemented by a loaded component: `openai-completions`, `openai-responses`,
   `anthropic-messages` or `oino-router`.
-- `apiKey` is a literal, an environment variable name, or `!command` (pi semantics).
+- `apiKey` is a literal, an environment variable name, or `!command`.
 - `authHeader: true` sends `Authorization: Bearer <key>`.
 - A provider entry with only `baseUrl`/`headers`/`models` overrides an existing provider.
 
 ## Virtual models
 
-Extensions can register virtual models whose route is chosen per request (pi virtual models).
+Extensions can register virtual models whose route is chosen per request.
 The footer shows the routed model next to the selected one.

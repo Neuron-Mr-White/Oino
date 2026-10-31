@@ -15,7 +15,7 @@ interface guest {
 
     init: async func(input: init-input, ctx: call-context) -> result<registration, string>;
     /// Event dispatch. payload/result = JSON of oino_protocol::ext::events::<Event>/<Result>.
-    /// Return none for "no result" (pi `undefined`).
+    /// Return none for "no result" (`undefined`).
     on-event: async func(kind: event-kind, payload: json, ctx: call-context) -> result<option<json>, string>;
     /// Returns AgentToolResult JSON. Progress via control.tool-progress.
     run-tool: async func(invocation: tool-invocation, cancel: borrow<cancel-token>, ctx: call-context) -> result<json, string>;
@@ -35,7 +35,7 @@ interface guest {
     /// `target` may be `"tool"`, `"customMessage"`, `"customEntry"` or `"turnFooter"`.
     /// result = v2 `Node` JSON (PascalCase `t`), or none for "nothing to render".
     render: func(request: json, ctx: call-context) -> option<json>;
-    /// Virtual model routing (runtime §13). request/response = pi route request/result JSON.
+    /// Virtual model routing (runtime §13). request/response = route request/result JSON.
     route-model: async func(request: json, ctx: call-context) -> result<json, string>;
     /// Autocomplete contributor (ui-protocol §7.3). request = {text, cursor}; result = Vec<CompletionGroup>.
     complete-input: async func(request: json, ctx: call-context) -> option<json>;

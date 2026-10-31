@@ -1,4 +1,4 @@
-//! `oino-tui`: the interactive terminal client (pi 1.4.0 interactive mode) over
+//! `oino-tui`: the interactive terminal client over
 //! [`oino_client::SessionBackend`].
 //!
 //! The binary constructs the backend (in-process or remote) and a [`TuiHost`] and calls
@@ -9,13 +9,13 @@
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`app`] | `interactive-mode.ts` | [`App`], [`AppEvent`], [`Effect`], [`TuiOptions`] |
-//! | [`render`] | components (`assistant-message`, `tool-execution`, `footer`, selectors) | [`render::draw`] |
-//! | [`host`] | `SettingsManager`, `SessionManager.list`, `KeybindingsManager` | [`TuiHost`], [`host::LocalHost`] |
-//! | [`input`] | pi-tui key parsing | crossterm → [`oino_view::keys::KeyId`] |
-//! | [`theme`] | `theme/dark.json`, `theme/light.json` | [`theme::Theme`] |
+//! | Module | Contents |
+//! |---|---|
+//! | [`app`] | [`App`], [`AppEvent`], [`Effect`], [`TuiOptions`] |
+//! | [`render`] | [`render::draw`] |
+//! | [`host`] | [`TuiHost`], [`host::LocalHost`] |
+//! | [`input`] | crossterm → [`oino_view::keys::KeyId`] |
+//! | [`theme`] | [`theme::Theme`] |
 //! | `runner` | `TUI.start` | terminal lifecycle, event loop, effect execution |
 
 #![forbid(unsafe_code)]

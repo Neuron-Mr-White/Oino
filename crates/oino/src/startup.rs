@@ -1,4 +1,4 @@
-//! pi `main.ts` startup: services, session selection, model/tool options, runtime.
+//! Startup: services, session selection, model/tool options, runtime.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -26,7 +26,7 @@ fn settings_snapshot(services: &Services) -> oino_settings::Settings {
         .snapshot()
 }
 
-/// Resolved app mode (pi `resolveAppMode`).
+/// Resolved app mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppMode {
     /// Terminal UI.
@@ -42,7 +42,7 @@ pub enum AppMode {
 }
 
 impl AppMode {
-    /// pi `resolveAppMode`.
+    /// R e s o l v e   A p p   M o d e.
     #[must_use]
     pub fn resolve(args: &Args, stdin_tty: bool, stdout_tty: bool) -> Self {
         use crate::cli::args::OutputMode;
@@ -98,11 +98,11 @@ impl std::fmt::Debug for Started {
     }
 }
 
-/// pi `validateForkFlags` + `validateSessionIdFlags`.
+/// `validateForkFlags` + `validateSessionIdFlags`.
 ///
 /// # Errors
 ///
-/// pi's conflict messages.
+/// Conflict messages.
 pub fn validate_session_flags(args: &Args) -> Result<(), StartupError> {
     let flags = |pairs: &[(bool, &str)]| -> Vec<String> {
         pairs
@@ -149,10 +149,10 @@ enum Resolved {
     NotFound,
 }
 
-/// pi `resolveSessionPath`.
+/// R e s o l v e   S e s s i o n   P a t h.
 #[allow(
     clippy::case_sensitive_file_extension_comparisons,
-    reason = "pi matches `.jsonl` case-sensitively"
+    reason = "`.jsonl` matches case-sensitively"
 )]
 fn resolve_session_path(arg: &str, cwd: &Path, root: &Path) -> Resolved {
     if arg.contains('/') || arg.contains('\\') || arg.ends_with(".jsonl") {
@@ -185,7 +185,7 @@ fn resolve_session_path(arg: &str, cwd: &Path, root: &Path) -> Resolved {
     Resolved::NotFound
 }
 
-/// pi `createSessionManager` as a [`SessionSource`].
+/// Creates the session manager as a [`SessionSource`].
 fn session_source(
     args: &Args,
     metadata_only: bool,
@@ -226,7 +226,7 @@ fn session_source(
         return Ok(SessionSource::ContinueRecent);
     }
     if let Some(id) = &args.session_id {
-        // pi `--session-id`: open the session when it exists, create it with that id otherwise.
+        // `--session-id`: open the session when it exists, create it with that id otherwise.
         return match SessionManager::find_by_id(cwd, id, root) {
             Ok(Some(path)) => Ok(SessionSource::Open(path)),
             Ok(None) => Ok(SessionSource::NewWithId(id.clone())),
@@ -236,7 +236,7 @@ fn session_source(
     Ok(SessionSource::New)
 }
 
-/// Whether the selected session already has messages (pi `hasExistingSession`).
+/// Whether the selected session already has messages.
 fn has_existing_session(source: &SessionSource, cwd: &Path, root: &Path) -> bool {
     let path = match source {
         SessionSource::Open(path) | SessionSource::Fork(path) => Some(path.clone()),
@@ -256,7 +256,7 @@ struct ModelChoice {
     scoped: Vec<ScopedModel>,
 }
 
-/// pi `buildSessionOptions` model part.
+/// `buildSessionOptions` model part.
 fn choose_model(
     args: &Args,
     services: &Services,
@@ -334,7 +334,7 @@ fn choose_model(
     choice
 }
 
-/// `--model` / `--provider` / `--models` for a new ACP session in `services`' cwd (pi
+/// `--model` / `--provider` / `--models` for a new ACP session in `services`' cwd
 /// `buildSessionOptions` without an existing session); diagnostics go to stderr.
 pub(crate) fn acp_model_choice(args: &Args, services: &Services) -> oino_acp::ModelChoice {
     let mut diagnostics = Vec::new();
@@ -356,7 +356,7 @@ pub(crate) fn docs_root(agent_dir: &Path) -> PathBuf {
     oino_core::extensions::sources::docs_root(agent_dir).unwrap_or_default()
 }
 
-/// pi resource flags from the command line.
+/// Resource flags from the command line.
 pub(crate) fn resource_flags(args: &Args, cwd: &Path) -> ResourceFlags {
     ResourceFlags {
         no_skills: args.no_skills,
@@ -401,7 +401,7 @@ fn resolve_cli_paths(cwd: &Path, paths: Option<&Vec<String>>) -> Vec<String> {
         .collect()
 }
 
-/// pi `applyExtensionFlagValues` checks over the loaded extensions.
+/// `applyExtensionFlagValues` checks over the loaded extensions.
 fn check_extension_flags(
     args: &Args,
     services: &Services,
@@ -510,14 +510,14 @@ fn record_start_failure(
     safe_mode.record_failure(FailureEntry::new(stage, error));
 }
 
-/// Creates services and the runtime (pi `createRuntime` + `createAgentSessionRuntime`).
+/// Creates services and the runtime.
 ///
 /// # Errors
 ///
 /// Startup diagnostics with errors, session resolution failures, missing models.
 #[allow(
     clippy::too_many_lines,
-    reason = "linear port of pi main.ts startup; splitting hides the order"
+    reason = "linear startup; splitting hides the order"
 )]
 pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Started, StartupError> {
     let metadata_only = args.help || args.list_models.is_some();

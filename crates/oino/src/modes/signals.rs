@@ -1,4 +1,4 @@
-//! Termination signals of non-interactive modes (pi: SIGHUP → 129, SIGTERM → 143).
+//! Termination signals of non-interactive modes (SIGHUP → 129, SIGTERM → 143).
 
 /// A signal that ends the process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -10,7 +10,7 @@ pub enum Signal {
 }
 
 impl Signal {
-    /// pi's exit code for the signal.
+    /// Exit code for the signal.
     #[must_use]
     pub const fn exit_code(self) -> i32 {
         match self {

@@ -1,9 +1,9 @@
-//! Terminal key events → pi [`KeyId`]s.
+//! Terminal key events → [`KeyId`]s.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use oino_view::keys::{Key, KeyId, Modifiers};
 
-/// Converts a crossterm key press; `None` for releases and keys pi has no id for.
+/// Converts a crossterm key press; `None` for releases and keys without an id.
 #[must_use]
 pub fn key_id(event: &KeyEvent) -> Option<KeyId> {
     if event.kind == KeyEventKind::Release {
@@ -23,7 +23,7 @@ pub fn key_id(event: &KeyEvent) -> Option<KeyId> {
                 Key::Char(c.to_ascii_lowercase())
             } else {
                 if !c.is_ascii_alphanumeric() && !mods.ctrl && !mods.alt {
-                    // Shifted symbols (`!`, `?`) are their own keys in pi.
+                    // Shifted symbols (`!`, `?`) are their own keys.
                     mods.shift = false;
                 }
                 Key::Char(c)

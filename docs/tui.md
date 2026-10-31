@@ -1,7 +1,7 @@
 # Terminal UI
 
 `oino` with a terminal on stdin and stdout starts the interactive UI (`crates/oino-tui`, a
-ratatui client over the in-process session). It follows pi 1.4.0's interactive mode.
+ratatui client over the in-process session).
 
 ```bash
 oino                                   # new session
@@ -14,7 +14,7 @@ oino -c                                # continue the last session here
 
 - **Header** — product, version, cwd, hints from extensions (`unipi.core` hints).
 - **Transcript** — markdown with syntax highlighting, collapsible thinking blocks and tool
-  output (`app.tools.expand`), pi's layouts for `read`/`write`/`edit`/`bash`, extension
+  output (`app.tools.expand`), the layouts for `read`/`write`/`edit`/`bash`, extension
   renderers and cards.
 - **Widgets / panels** — extension widgets above the editor, overlays, editor-replacing
   panels (e.g. `/btw`) and fullscreen panels (e.g. `/info`).
@@ -42,7 +42,7 @@ Built-in: `/settings`, `/model`, `/thinking`, `/scoped-models`, `/new`, `/resume
 run OAuth sign-in; `/trust` and `/extensions` only print guidance in this alpha. Extension commands (`/goal`, `/kanboard`, … — see `docs/dev/v1/commands.md`), prompt templates and `/skill:*`
 appear in the same menu ([unipi.md](unipi.md)).
 
-## Differences from pi
+## Differences
 
 The UI uses the alternate screen by default (`--tui-mode regular` or setting
 `tuiMode: "regular"` keeps the terminal scrollback); images render as `[image: mime]`

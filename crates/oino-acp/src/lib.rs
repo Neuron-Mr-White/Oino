@@ -16,7 +16,7 @@
 //! | `session/list`, `session/close`, `session/delete` | `SessionManager` listing, dispose, move to `<agent>/trash/` |
 //! | `session/prompt`, `session/cancel` | `prompt` (follow-up while streaming) resolved on `agent_settled`; `abort` |
 //! | `session/set_config_option`, `session/set_mode` | model, thinking, queue modes, auto-compaction/retry; mode = thinking level |
-//! | `_oino/rpc`, `_oino/<command>` | any pi / `_oino/*` RPC command on the session's backend |
+//! | `_oino/rpc`, `_oino/<command>` | any RPC command on the session's backend |
 //!
 //! Agent → client: `session/update` (message/thought chunks, tool calls with kinds, locations,
 //! diffs and terminals, plans, usage, compaction, notices, commands, config, session info),

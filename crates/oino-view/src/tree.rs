@@ -1,9 +1,9 @@
 //! Session tree navigator model.
 //!
-//! Built from `get_tree` data. Flattening follows pi: linear chains stay at one indent,
+//! Built from `get_tree` data. Flattening: linear chains stay at one indent,
 //! branch points indent their children, the branch containing the current leaf is listed
 //! first, and gutters/connectors (`├─`, `└─`, `│`) are computed per row. Filter modes,
-//! search, folding and branch-segment jumps match pi.
+//! search, folding and branch-segment jumps follow the same rules.
 
 use std::collections::{HashMap, HashSet};
 
@@ -75,7 +75,7 @@ impl FilterMode {
         Self::All,
     ];
 
-    /// pi status label (`[no-tools]`, …; empty for default).
+    /// Status label (`[no-tools]`, …; empty for default).
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -595,7 +595,7 @@ impl TreeModel {
             .and_then(|&i| self.flat[i].label.as_deref())
     }
 
-    /// Moves the selection (wrapping, pi `tui.select.up/down`).
+    /// Moves the selection (wrapping, `tui.select.up/down`).
     pub fn move_by(&mut self, delta: isize) {
         let len = self.visible.len();
         if len == 0 {
@@ -715,7 +715,7 @@ impl TreeModel {
         self.apply_filter();
     }
 
-    /// pi toggle semantics: `mode` ↔ default.
+    /// Toggle semantics: `mode` ↔ default.
     pub fn toggle_filter(&mut self, mode: FilterMode) {
         let next = if self.filter == mode {
             FilterMode::Default
@@ -773,7 +773,7 @@ impl TreeModel {
             .collect()
     }
 
-    /// pi window: centre the selection in `height` rows.
+    /// Windowing: centre the selection in `height` rows.
     #[must_use]
     pub fn window(&self, height: usize) -> (usize, usize) {
         let len = self.visible.len();
@@ -888,7 +888,7 @@ impl TreeModel {
 
     #[allow(
         clippy::too_many_lines,
-        reason = "one arm per entry type (pi getEntryDisplayText)"
+        reason = "one arm per entry type (getEntryDisplayText)"
     )]
     fn display(&self, flat: &Flat) -> DisplayText {
         let text = |kind, prefix: &str, body: String| DisplayText {
@@ -1001,7 +1001,7 @@ impl TreeModel {
         }
     }
 
-    /// pi `getEntryCopyText` for the selected entry.
+    /// `getEntryCopyText` for the selected entry.
     #[must_use]
     pub fn selected_copy_text(&self) -> Option<String> {
         let entry = self.selected_entry()?;

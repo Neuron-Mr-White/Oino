@@ -3,7 +3,7 @@
 All of unipi 3.0.0 except its desktop app is ported to
 Rust WASM components and bundled into `oino` and Oino Desktop. They load in unipi's order,
 `unipi.core` first. Settings live under `extensionSettings.<namespace>` in `settings.json`
-([settings.md](settings.md)); state under `~/.oino/state/<id>/`. Oino does not read an existing pi + unipi install; to
+([settings.md](settings.md)); state under `~/.oino/state/<id>/`. Oino does not read an existing previous install; to
 bring one over, run the `unipi-migrate` skill ([migrate-from-unipi.md](migrate-from-unipi.md)).
 
 | Component | What it does |

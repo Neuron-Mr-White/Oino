@@ -123,7 +123,7 @@ impl std::fmt::Debug for RequestAuth {
     }
 }
 
-/// `getApiKeyAndHeaders` failure; the message is pi's text.
+/// `getApiKeyAndHeaders` failure; the message is the resolution text.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct RequestAuthError {
@@ -577,7 +577,7 @@ impl ModelRegistry {
         )
     }
 
-    /// pi `setRuntimeApiKey` (`--api-key`).
+    /// Sets the runtime API key (`--api-key`).
     pub fn set_runtime_api_key(&self, provider: &str, key: impl Into<String>) {
         self.inner.auth.set_runtime_api_key(provider, key);
     }

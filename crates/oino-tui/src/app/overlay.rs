@@ -1,4 +1,4 @@
-//! Selectors that replace the editor area (pi `showModelSelector`, `showSessionSelector`,
+//! Selectors that replace the editor area (`showModelSelector`, `showSessionSelector`,
 //! `showTreeSelector`, `showUserMessageSelector`, `showSettingsSelector`, thinking and
 //! scoped-model selectors).
 
@@ -158,10 +158,7 @@ fn edit_query(query: &mut String, key: &KeyId) -> bool {
     false
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "declarative table of pi settings rows"
-)]
+#[allow(clippy::too_many_lines, reason = "declarative table of settings rows")]
 fn settings_items(settings: &oino_ai::JsonObject) -> Vec<SettingItem> {
     let get = |path: &[&str]| -> Option<&JsonValue> {
         let mut value = settings.get(path[0])?;
@@ -457,7 +454,7 @@ impl App {
     /// Key handling while a selector is open.
     #[allow(
         clippy::too_many_lines,
-        reason = "one block per selector, mirroring pi component handleInput"
+        reason = "one block per selector, mirroring component handleInput"
     )]
     pub(crate) fn overlay_key(&mut self, key: KeyId) {
         let Some(mut overlay) = self.overlay.take() else {
@@ -644,7 +641,7 @@ impl App {
     )]
     #[allow(
         clippy::too_many_lines,
-        reason = "one branch per pi scoped-models binding"
+        reason = "one branch per scoped-models binding"
     )]
     fn scoped_key(
         &mut self,
@@ -783,7 +780,7 @@ impl App {
     )]
     #[allow(
         clippy::too_many_lines,
-        reason = "one branch per pi session-selector binding"
+        reason = "one branch per session-selector binding"
     )]
     fn sessions_key(
         &mut self,
@@ -907,7 +904,7 @@ impl App {
     )]
     #[allow(
         clippy::too_many_lines,
-        reason = "pi tree-selector handleInput: one branch per binding"
+        reason = "tree-selector handleInput: one branch per binding"
     )]
     fn tree_key(
         &mut self,

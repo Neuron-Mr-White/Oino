@@ -30,7 +30,7 @@ impl<R: AsyncRead + Unpin> LineReader<R> {
     }
 
     /// The next line without its terminator; `None` at end of input. A final unterminated
-    /// line is returned before `None` (pi emits it on `end`). Invalid UTF-8 is replaced.
+    /// line is returned before `None` (emitted on `end`). Invalid UTF-8 is replaced.
     ///
     /// # Errors
     ///

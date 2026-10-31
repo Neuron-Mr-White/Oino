@@ -33,7 +33,7 @@ Copy (or symlink) the package directory into `~/.oino/extensions/` (global) or
 `<project>/.oino/extensions/` (project; needs trust), or pass `-e <dir>` for one run.
 `cargo xtask wasm` produces ready-made packages under `extensions/dist/`.
 
-The pi-style package manager installs from a directory, an archive, an `https` archive or a
+The package manager installs from a directory, an archive, an `https` archive or a
 `git+https` URL: `oino install <source> [--project] [--yes]`, `oino remove <id>`,
 `oino update <id>…` / `oino update --extensions`, `oino list`, `oino config`. `oino list`
 also shows the distribution share-dir packages (scope `dist`; `OINO_DIST_EXTENSIONS`

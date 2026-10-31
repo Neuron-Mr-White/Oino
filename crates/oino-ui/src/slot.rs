@@ -127,7 +127,7 @@ pub enum Scope {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KeyBinding {
-    /// Key id (pi `KeyId`).
+    /// Key id.
     pub key: String,
     /// Action fired (absent: `$key` with the key id as value, §4.6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -149,7 +149,7 @@ pub enum UiView {
         /// The root node.
         root: Node,
     },
-    /// pi `setWidget` string arrays.
+    /// `setWidget` string arrays.
     Lines {
         /// Plain lines.
         lines: Vec<String>,
@@ -229,11 +229,11 @@ pub struct UiEntry {
     pub rev: u64,
 }
 
-/// pi-shaped dialog request kept opaquely in snapshots (`{id, method, …}`, §9.2
-/// `dialogs`); core owns the exact pi records (pi parity).
+/// Legacy dialog request kept opaquely in snapshots (`{id, method, …}`, §9.2
+/// `dialogs`); core owns the exact records (wire parity).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct UiRequest {
-    /// Request id (pi request shape).
+    /// Request id (wire shape).
     pub id: String,
     /// Remaining fields (`method`, params, Oino extras) passed through verbatim.
     #[serde(flatten)]
@@ -358,9 +358,9 @@ pub enum RegistryOp {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         turns: Option<Vec<String>>,
     },
-    /// A dialog opened (also sent as `extension_ui_request` for pi clients, §9.2).
+    /// A dialog opened (also sent as `extension_ui_request` for plain clients, §9.2).
     Dialog {
-        /// The pi-shaped request.
+        /// The legacy request.
         request: UiRequest,
     },
     /// A dialog was dismissed (§9.2).
@@ -378,7 +378,7 @@ pub enum RegistryOp {
     /// One-shot effect (`notify`, `set_editor_text`, `openUrl`, …); never in
     /// snapshots (§2 L0).
     Effect {
-        /// The pi-shaped request.
+        /// The legacy request.
         request: UiRequest,
     },
 }
@@ -397,7 +397,7 @@ pub struct UiSnapshot {
     /// Entries (registry order not implied; frontends sort by §6.4).
     #[serde(default)]
     pub entries: Vec<UiEntry>,
-    /// Open dialogs, pi request shape (first-answer-wins state, §3).
+    /// Open dialogs, legacy request shape (first-answer-wins state, §3).
     #[serde(default)]
     pub dialogs: Vec<UiRequest>,
     /// Registry meta.
@@ -479,7 +479,7 @@ pub struct UiVisible {
 pub struct UiCapabilities {
     /// Protocol version (2).
     pub protocol: u8,
-    /// Dialogs the frontend renders (pi method names, §10).
+    /// Dialogs the frontend renders (method names, §10).
     pub dialogs: Vec<String>,
     /// Slots the frontend hosts.
     pub slots: Vec<Slot>,

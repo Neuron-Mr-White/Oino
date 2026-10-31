@@ -64,7 +64,7 @@ impl<E: 'static> Init<E> {
         &self.flags
     }
 
-    /// Subscribes `f` to `kind` (pi `on`). Handlers of one extension run in registration order;
+    /// Subscribes `f` to `kind`. Handlers of one extension run in registration order;
     /// the last non-`None` result wins.
     pub fn on<F, Fut, R>(&mut self, kind: EventKind, f: F) -> &mut Self
     where

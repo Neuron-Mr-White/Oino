@@ -1,6 +1,6 @@
-//! Transcript rows (pi `interactive-mode.ts` chat container).
+//! Transcript rows (the interactive-mode chat container).
 //!
-//! [`Transcript`] mirrors what pi's interactive mode puts into its chat container: user
+//! [`Transcript`] mirrors what the interactive mode puts into its chat container: user
 //! messages (with skill blocks split out), assistant messages (text + thinking), one row per
 //! tool call (args stream in, results attach by tool-call id), `!` command runs, custom
 //! messages, custom entries, branch/compaction summaries and notices. Rows carry a revision
@@ -66,7 +66,7 @@ pub struct UserRow {
     pub entry_id: Option<String>,
 }
 
-/// pi `parseSkillBlock` result.
+/// `parseSkillBlock` result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SkillRow {
     /// Skill name.
@@ -172,7 +172,7 @@ pub struct ToolRow {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "mirrors pi BashExecutionMessage flags plus the running state"
+    reason = "mirrors the BashExecutionMessage flags plus the running state"
 )]
 pub struct BashRow {
     /// Request id used for `bash_execution_update` routing.
@@ -391,7 +391,7 @@ fn assistant_row(message: &AssistantMessage, streaming: bool) -> AssistantRow {
     }
 }
 
-/// Error text pi puts on tool rows of an aborted/failed assistant message.
+/// Error text shown on tool rows of an aborted/failed assistant message.
 fn tool_error_text(message: &AssistantMessage) -> String {
     if message.stop_reason == StopReason::Aborted {
         "Operation aborted".to_owned()
@@ -473,7 +473,7 @@ impl Transcript {
         }))
     }
 
-    /// Rebuilds from session entries the way pi `renderInitialMessages` does: the context
+    /// Rebuilds from session entries the way `renderInitialMessages` does: the context
     /// entries of the branch ending at `leaf` (latest compaction honoured), custom entries
     /// included.
     pub fn reset_from_entries(&mut self, entries: &[SessionEntry], leaf: Option<&str>) {
@@ -488,7 +488,7 @@ impl Transcript {
             self.render_entries(&context);
             return;
         }
-        // pi prepends the latest compaction for the model; frontends show kept entries,
+        // The latest compaction is prepended for the model; frontends show kept entries,
         // then the summary, then what followed the compaction.
         let compaction = context.remove(0);
         let path = oino_session::path_to(&index, leaf.as_ref());
@@ -570,7 +570,7 @@ impl Transcript {
         self.pending_tools.extend(rendered_tools);
     }
 
-    /// pi `addMessageToChat` for non-assistant, non-tool-result messages.
+    /// `addMessageToChat` for non-assistant, non-tool-result messages.
     fn add_message(&mut self, message: &AgentMessage, entry_id: Option<&str>) {
         match message {
             AgentMessage::User(user) => {
@@ -657,10 +657,10 @@ impl Transcript {
         row
     }
 
-    /// Applies one session event (pi `handleEvent` chat-container effects).
+    /// Applies one session event (`handleEvent` chat-container effects).
     #[allow(
         clippy::too_many_lines,
-        reason = "one arm per pi session event, mirroring interactive-mode handleEvent"
+        reason = "one arm per session event, mirroring interactive-mode handleEvent"
     )]
     pub fn apply(&mut self, event: &AgentSessionEvent) -> Applied {
         let mut applied = Applied::default();
@@ -927,7 +927,7 @@ impl Transcript {
         })
     }
 
-    /// Texts of user rows in order (editor history seed, pi `populateHistory`).
+    /// Texts of user rows in order (editor history seed, `populateHistory`).
     #[must_use]
     pub fn user_texts(&self) -> Vec<String> {
         self.rows

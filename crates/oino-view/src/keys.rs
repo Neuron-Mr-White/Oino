@@ -1,7 +1,7 @@
-//! Key ids and keybindings (pi `keybindings.md`, `KeybindingsManager`).
+//! Key ids and keybindings (`KeybindingsManager`).
 //!
-//! A [`KeyId`] is pi's `modifier+key` syntax (`ctrl+shift+p`, `alt+enter`, `f5`, `ctrl+]`).
-//! [`Keybindings`] holds every pi action id with its default keys, overridden per action by
+//! A [`KeyId`] is `modifier+key` syntax (`ctrl+shift+p`, `alt+enter`, `f5`, `ctrl+]`).
+//! [`Keybindings`] holds every action id with its default keys, overridden per action by
 //! the user's `keybindings.json` (a configured value replaces the default; an empty list
 //! unbinds).
 
@@ -143,7 +143,7 @@ impl Key {
     }
 }
 
-/// A key press in pi `KeyId` form.
+/// A key press in `KeyId` form.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KeyId {
     /// Key.
@@ -259,7 +259,7 @@ impl fmt::Display for KeyId {
     }
 }
 
-/// One pi action with its default keys and description.
+/// One action with its default keys and description.
 #[derive(Clone, Copy, Debug)]
 pub struct ActionSpec {
     /// Action id (`app.interrupt`).
@@ -315,7 +315,7 @@ const NEXT_PROMPT: &[&str] = &["ctrl+shift+down", "ctrl+down"];
 #[cfg(not(windows))]
 const NEXT_PROMPT: &[&str] = &["ctrl+shift+down"];
 
-/// Every pi action (pi `keybindings.md` order).
+/// Every action (declaration order).
 pub const ACTIONS: &[ActionSpec] = &[
     spec(
         "tui.editor.cursorUp",
@@ -685,7 +685,7 @@ fn parse_keys(keys: &[impl AsRef<str>]) -> Vec<(KeyId, String)> {
 }
 
 impl Keybindings {
-    /// pi defaults.
+    /// Defaults.
     #[must_use]
     pub fn defaults() -> Self {
         let bindings = ACTIONS
@@ -781,7 +781,7 @@ impl Keybindings {
             .any(|(_, keys)| keys.iter().any(|(k, _)| k == key))
     }
 
-    /// Every action with its current key text and description, in pi order.
+    /// Every action with its current key text and description, in declaration order.
     #[must_use]
     pub fn rows(&self) -> Vec<(&'static str, String, &'static str)> {
         ACTIONS

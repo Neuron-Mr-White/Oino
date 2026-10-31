@@ -7,19 +7,19 @@
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`transcript`] | `interactive-mode.ts` `handleEvent`, `renderSessionItems` | [`transcript::Transcript`] rows keyed by tool-call id; reducer over session events |
-//! | [`ui_state`] | `rpc-extension-ui`, footer/widgets/status | [`ui_state::RegistryMirror`]: v2 snapshot/patch mirror (ui-protocol §6, §9.2) with the dialog queue; [`ui_state::UiState`]: the transitional v1 request reducer |
-//! | [`ous`] | — (ui-protocol v1 §6) | [`ous::OusNode`]: typed Oino UI Spec v1 nodes (deleted with the last v1 emitter, WP-U7) |
-//! | [`tree`] | `tree-selector.ts` | [`tree::TreeModel`]: flattening, filter modes, folding, search |
-//! | [`sessions`] | `session-selector.ts` | [`sessions::SessionListModel`]: scope, sort, name filter, search |
-//! | [`settings_hub`] | — (ui-protocol §7, OSS-2) | extension settings hub: namespaces, flattened fields, display, cycling, parsing, `visibleIf`/`disabledIf` |
-//! | [`composer`] | pi-tui `Editor` | [`composer::Composer`]: multi-line buffer, history, kill ring, undo, paste markers |
-//! | [`commands`] | `slash-commands.ts` | built-in slash command table and parsing |
-//! | [`keys`] | `keybindings.ts` | [`keys::KeyId`], [`keys::Keybindings`] with pi defaults |
-//! | [`fuzzy`] | pi-tui `fuzzyFilter` | subsequence matcher |
-//! | [`mod@format`] | `footer.ts` helpers | token, cwd, age formatting |
+//! | Module | Contents |
+//! |---|---|
+//! | [`transcript`] | [`transcript::Transcript`] rows keyed by tool-call id; reducer over session events |
+//! | [`ui_state`] | [`ui_state::RegistryMirror`]: v2 snapshot/patch mirror (ui-protocol §6, §9.2) with the dialog queue; [`ui_state::UiState`]: the transitional v1 request reducer |
+//! | [`ous`] | [`ous::OusNode`]: typed Oino UI Spec v1 nodes (deleted with the last v1 emitter, WP-U7) |
+//! | [`tree`] | [`tree::TreeModel`]: flattening, filter modes, folding, search |
+//! | [`sessions`] | [`sessions::SessionListModel`]: scope, sort, name filter, search |
+//! | [`settings_hub`] | extension settings hub: namespaces, flattened fields, display, cycling, parsing, `visibleIf`/`disabledIf` |
+//! | [`composer`] | [`composer::Composer`]: multi-line buffer, history, kill ring, undo, paste markers |
+//! | [`commands`] | built-in slash command table and parsing |
+//! | [`keys`] | [`keys::KeyId`], [`keys::Keybindings`] with defaults |
+//! | [`fuzzy`] | subsequence matcher |
+//! | [`mod@format`] | token, cwd, age formatting |
 //!
 //! Wire types come from `oino-core`/`oino-session`/`oino-ai` until `oino-protocol` exists
 //! (deviations/tui-client.md).

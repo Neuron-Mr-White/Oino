@@ -1,4 +1,4 @@
-//! [`InProcessBackend`]: the command set of pi `rpc-mode.ts` over an `oino-core`
+//! [`InProcessBackend`]: the full command set over an `oino-core`
 //! [`AgentSessionRuntime`], without serialisation.
 
 use std::path::{Path, PathBuf};
@@ -140,7 +140,7 @@ impl Shared {
         self.runtime.session()
     }
 
-    /// Resolves a client path against the session cwd (pi resolves against the process cwd,
+    /// Resolves a client path against the session cwd (the process cwd is not used,
     /// which is the session cwd for the `oino` binary).
     fn path(&self, path: &str) -> PathBuf {
         let path = Path::new(path);
@@ -201,7 +201,7 @@ impl Shared {
 
     #[allow(
         clippy::too_many_lines,
-        reason = "one arm per pi RPC command, mirroring rpc-mode.ts handleCommand"
+        reason = "one arm per agent command, mirroring handleCommand"
     )]
     async fn agent(
         &self,
@@ -438,7 +438,7 @@ impl Shared {
                 let snapshot = session.ui_snapshot();
                 let mut value = serde_json::to_value(snapshot).unwrap_or(JsonValue::Null);
                 if let Some(object) = value.as_object_mut() {
-                    // Transitional: pi-shaped frontends still replay `requests` until the
+                    // Transitional: v1 frontends still replay `requests` until the
                     // TUI renderer (WP-U4) and `oino-view` (WP-U5) read the registry.
                     object.insert(
                         "requests".to_owned(),

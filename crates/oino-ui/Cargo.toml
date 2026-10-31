@@ -5,7 +5,10 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "Wire types and ratatui-mirroring builder for the Oino extension UI protocol v2 (serde-only, wasm32-wasip2-safe)"
+description = "Wire types and builder for the Oino extension UI protocol v2 (serde-only, wasm32-wasip2-safe)"
+readme = "README.md"
+keywords = ["ui", "protocol", "wire", "extensions"]
+categories = ["gui", "wasm"]
 
 [features]
 default = []

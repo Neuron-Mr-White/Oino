@@ -5,7 +5,10 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "Oino interactive terminal client (pi interactive mode) over oino-client"
+description = "Oino interactive terminal client over oino-client"
+readme = "README.md"
+keywords = ["tui", "terminal", "agent", "llm"]
+categories = ["command-line-interface"]
 
 [features]
 default = ["local-host"]

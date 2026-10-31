@@ -1,5 +1,5 @@
 //! Interactive mode: `oino` on a pseudo-terminal starts the TUI, runs a prompt through the
-//! faux provider and exits on `ctrl+d` (pi interactive mode, modes §7).
+//! faux provider and exits on `ctrl+d` (interactive mode, modes §7).
 //!
 //! Needs util-linux `setsid --ctty` so the child gets the pty as its controlling terminal
 //! (crossterm reads `/dev/tty`); the test is skipped when it is missing.

@@ -301,7 +301,7 @@ impl SessionListModel {
         rows
     }
 
-    /// Header title (pi).
+    /// Header title.
     #[must_use]
     pub const fn title(&self) -> &'static str {
         match self.scope {

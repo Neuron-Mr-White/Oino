@@ -5,7 +5,10 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "SessionBackend contract, RPC command records, in-process and fake backends"
+description = "Oino client SDK: SessionBackend contract, RPC command records, in-process and fake backends"
+readme = "README.md"
+keywords = ["client", "rpc", "agent", "sdk"]
+categories = ["asynchronous"]
 
 [features]
 default = ["in-process"]

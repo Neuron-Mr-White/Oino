@@ -9,7 +9,7 @@
       "agent/skills/beta.md": "---\ndescription: Beta standalone\n---\nBeta",
       "agent/skills/nodesc.md": "# no frontmatter",
       "agent/skills/sub/gamma/SKILL.md": "---\nname: gamma-x\ndescription: Gamma in sub\n---\nG",
-      "agent/skills/sub/loose.md": "---\ndescription: nested loose md is not a skill in pi mode\n---\n",
+      "agent/skills/sub/loose.md": "---\ndescription: nested loose md is not a skill in legacy mode\n---\n",
       "agent/skills/bad/SKILL.md": "---\nname: Bad_Name--\n---\nno description",
       "agent/skills/badyaml/SKILL.md": "---\nname: [unclosed\n---\n",
       "agent/skills/.hidden/SKILL.md": "---\ndescription: hidden dir\n---\n",

@@ -1,4 +1,4 @@
-//! Tool call rows (pi `ToolExecutionComponent` + built-in tool renderers).
+//! Tool call rows (`ToolExecutionComponent` + built-in tool renderers).
 
 use oino_ai::{JsonObject, JsonValue};
 use oino_view::format::{read_line_range, shorten_path};
@@ -85,7 +85,7 @@ fn path_run(path: Option<&str>, cx: &RenderCtx<'_>) -> Run {
 
 #[allow(
     clippy::too_many_lines,
-    reason = "one call header per pi built-in tool renderer"
+    reason = "one call header per built-in tool renderer"
 )]
 fn call_lines(tool: &ToolRow, cx: &RenderCtx<'_>, width: usize) -> Vec<OLine> {
     let theme = cx.theme;
@@ -213,7 +213,7 @@ fn call_lines(tool: &ToolRow, cx: &RenderCtx<'_>, width: usize) -> Vec<OLine> {
             ),
         ],
         other => {
-            // pi `formatToolCallWithArgs`.
+            // `formatToolCallWithArgs`.
             let mut runs = vec![title(other, cx)];
             if !args.is_empty() {
                 if cx.expanded {
@@ -325,7 +325,7 @@ fn code_preview(
     out
 }
 
-/// pi `renderDiff` (line colours; intra-line inverse highlighting is omitted).
+/// `renderDiff` (line colours; intra-line inverse highlighting is omitted).
 pub(crate) fn diff_lines(diff: &str, cx: &RenderCtx<'_>, width: usize) -> Vec<OLine> {
     let theme = cx.theme;
     diff.lines()
@@ -393,7 +393,7 @@ fn truncation_warning(details: Option<&JsonValue>, cx: &RenderCtx<'_>) -> Option
 
 #[allow(
     clippy::too_many_lines,
-    reason = "one result layout per pi built-in tool renderer"
+    reason = "one result layout per built-in tool renderer"
 )]
 fn result_lines(tool: &ToolRow, cx: &RenderCtx<'_>, width: usize) -> Vec<OLine> {
     let Some(output) = &tool.output else {

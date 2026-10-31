@@ -1,16 +1,16 @@
 # Settings
 
-Oino uses pi 1.4.0's settings model and file names, rooted at `~/.oino` instead of
-`~/.pi/agent`:
+Oino's settings model and file names, rooted at `~/.oino`:
+:
 
 | File | Scope |
 |---|---|
 | `~/.oino/settings.json` | global |
 | `<project>/.oino/settings.json` | project (only read when the project is trusted; project wins) |
 
-Writes are atomic and locked; pi's migrations of old keys are applied on load.
+Writes are atomic and locked; migrations of old keys are applied on load.
 
-## Core keys (pi)
+## Core keys
 
 | Key | Meaning |
 |---|---|
@@ -28,7 +28,7 @@ Writes are atomic and locked; pi's migrations of old keys are applied on load.
 | `enableSkillCommands` | expose skills as `/skill:<name>` commands |
 | `sessionDir` | where sessions are stored ([sessions.md](sessions.md)) |
 | `defaultProjectTrust` | default answer for untrusted projects |
-| `packages` | extension package sources (pi packages; see [packages.md](packages.md)) |
+| `packages` | extension package sources (see [packages.md](packages.md)) |
 | `quietStartup`, `hideThinking`, `theme`, `doubleEscapeAction`, `treeFilter` | TUI preferences |
 
 ## Oino keys
@@ -52,7 +52,7 @@ Extension secrets (API keys entered in extension settings) live in `~/.oino/secr
   settings, rendered by the same form engine.
 
 Settings namespaces use the OSS-2 dialect (`docs/dev/v2/specs/ui-protocol.md` §7). Core also
-contributes `oino.*` namespaces (model, compaction, retry, shell, …) describing the pi keys
+contributes `oino.*` namespaces (model, compaction, retry, shell, …) describing the core keys
 above, so they appear in the same UI. A stored value that no longer matches its field (type,
 enum membership, range, pattern) is ignored in favour of the layer below and reported as a
 diagnostic; writing a value that equals the layer below deletes the key instead of storing it.

@@ -274,7 +274,7 @@ impl App {
         match purpose {
             SchemaPurpose::Hub => {
                 if let Some(Overlay::Settings(settings)) = &mut self.overlay {
-                    // Core `oino.*` namespaces are the pi settings groups the rows above this
+                    // Core `oino.*` namespaces are the settings groups the rows above this
                     // list already edit (no duplicates, DIRECTION §4.2.2); the app renders them
                     // as its Agent group (ui-protocol §7).
                     settings.namespaces = namespaces

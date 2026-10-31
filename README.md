@@ -2,7 +2,7 @@
 
 # Oino
 
-### A Rust coding agent: pi 1.4.0 core, WASM extensions, terminal + ACP clients.
+### A Rust coding agent: agent core, WASM extensions, terminal + ACP clients.
 
 The UniPi app (Tauri) is being rebuilt on v2 — see [docs/dev/v2/DIRECTION.md](docs/dev/v2/DIRECTION.md).
 
@@ -14,11 +14,10 @@ The UniPi app (Tauri) is being rebuilt on v2 — see [docs/dev/v2/DIRECTION.md](
 
 ---
 
-Oino is another [pi](https://github.com/earendil-works/pi) core written in Rust. `oino-core`
-behaves like `@earendil-works/pi-coding-agent` 1.4.0: the same agent loop, sessions (pi
-session format v3), tools (`read`, `write`, `edit`, `bash`, plus `grep`, `find`, `ls`),
+Oino is a coding-agent core written in Rust. `oino-core` provides the agent loop, sessions
+(session format v3), tools (`read`, `write`, `edit`, `bash`, plus `grep`, `find`, `ls`),
 skills, prompt templates, `AGENTS.md` / `SYSTEM.md`, compaction, branch summaries, settings,
-print / JSON / RPC modes and the same command line. Everything else is a client or an
+print / JSON / RPC modes and a fixed command line. Everything else is a client or an
 extension:
 
 - **Providers are WASM components** (Anthropic Messages, OpenAI Responses, OpenAI-compatible
@@ -75,7 +74,7 @@ bundled extensions, `/hotkeys` lists key bindings, `ctrl+d` exits.
 
 | Part | Where | Docs |
 |---|---|---|
-| Core runtime (pi 1.4.0 parity) | `crates/oino-core`, `oino-agent`, `oino-session`, `oino-tools`, … | [sessions](docs/sessions.md), [settings](docs/settings.md) |
+| Core runtime | `crates/oino-core`, `oino-agent`, `oino-session`, `oino-tools`, … | [sessions](docs/sessions.md), [settings](docs/settings.md) |
 | `oino` CLI: TUI, print, JSON, RPC, ACP | `crates/oino`, `oino-tui`, `oino-rpc`, `oino-acp` | [tui](docs/tui.md), [rpc](docs/rpc.md), [acp](docs/acp.md) |
 | WASM extension host + WIT `oino:extension@1.0.0` | `wit/`, `crates/oino-wasm-host` | [extensions](docs/extensions.md), [extension API](docs/extension-api.md) |
 | Provider components | `extensions/providers/*` | [providers](docs/providers.md), [models](docs/models.md) |

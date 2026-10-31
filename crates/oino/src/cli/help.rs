@@ -1,5 +1,5 @@
-//! pi `printHelp` with Oino substitutions (D13): product name, `~/.oino`, `OINO_*`
-//! variables; pi-ai provider variables, MCP and codemode lines are gone (providers are
+//! `printHelp` (D13): product name, `~/.oino`, `OINO_*`
+//! variables; provider variables, MCP and codemode lines are gone (providers are
 //! extensions, deviations/modes.md).
 
 use std::fmt::Write as _;
@@ -159,7 +159,7 @@ Built-in Tool Names:
   ls         - List directory contents (read-only, off by default)
 "#;
 
-/// pi `printHelp(extensionFlags)` text.
+/// `printHelp(extensionFlags)` text.
 #[must_use]
 pub fn help_text(extension_flags: &[ExtensionFlag]) -> String {
     let mut text =

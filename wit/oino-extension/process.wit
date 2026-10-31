@@ -15,7 +15,7 @@ interface process {
         timeout-ms: option<u64>,
     }
     record exit-status { code: option<s32>, signal: option<s32>, timed-out: bool }
-    record exec-result { stdout: string, stderr: string, code: option<s32>, killed: bool }  // pi exec shape
+    record exec-result { stdout: string, stderr: string, code: option<s32>, killed: bool }  // exec shape
     record exec-options { cwd: option<string>, timeout-ms: option<u64>, env: list<tuple<string, string>> }
     record proc-stats { pid: u32, ppid: u32, state: string, cpu-ms: u64, rss-bytes: u64, read-bytes: u64, write-bytes: u64, start-time-ms: u64 }
 
@@ -30,7 +30,7 @@ interface process {
         try-wait: func() -> option<exit-status>;
         signal: func(sig: signal, group: bool) -> result<_, host-error>;
     }
-    /// pi exec(command, args, {timeout, cwd}) → {stdout, stderr, code, killed}.
+    /// exec(command, args, {timeout, cwd}) → {stdout, stderr, code, killed}.
     exec: async func(command: string, args: list<string>, options: exec-options) -> result<exec-result, host-error>;
     process-tree: func(pid: u32) -> result<list<u32>, host-error>;
     process-stats: func(pid: u32) -> result<proc-stats, host-error>;

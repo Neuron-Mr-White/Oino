@@ -1,4 +1,4 @@
-//! Session control (pi `ctx.*`, `setModel`, tools, commands, command-context operations).
+//! Session control (`ctx.*`, `setModel`, tools, commands, command-context operations).
 
 use serde_json::Value;
 
@@ -16,7 +16,7 @@ pub use wc::{
 pub fn model() -> Option<Value> {
     wc::model().and_then(|t| serde_json::from_str(&t).ok())
 }
-/// pi `setModel`; `false` when the model has no credentials (permission `sessionControl`).
+/// Sets the model; `false` when the model has no credentials (permission `sessionControl`).
 pub fn set_model(provider: &str, id: &str) -> Result<bool> {
     Ok(wc::set_model(provider, id)?)
 }
@@ -31,7 +31,7 @@ pub fn set_model(provider: &str, id: &str) -> Result<bool> {
 pub fn set_default_model(provider: &str, id: &str, thinking: Option<&str>) -> Result<bool> {
     Ok(wc::set_default_model(provider, id, thinking)?)
 }
-/// pi `setThinkingLevel`; returns the clamped level.
+/// Sets the thinking level; returns the clamped level.
 pub fn set_thinking_level(level: &str) -> Result<String> {
     Ok(wc::set_thinking_level(level)?)
 }
@@ -39,7 +39,7 @@ pub fn set_thinking_level(level: &str) -> Result<String> {
 pub fn models() -> Result<Vec<Value>> {
     parse(&wc::models_list())
 }
-/// pi `getContextUsage`.
+/// Returns the context usage.
 pub fn context_usage() -> Result<Value> {
     parse(&wc::context_usage())
 }
@@ -51,23 +51,23 @@ pub fn session_stats() -> Result<Value> {
 pub fn run_state() -> Result<Value> {
     parse(&wc::run_state())
 }
-/// pi `getSettings`.
+/// Returns the settings.
 pub fn settings() -> Result<Value> {
     parse(&wc::get_settings())
 }
-/// pi `setActiveTools`.
+/// Sets the active tools.
 pub fn set_active_tools(names: &[String]) -> Result<()> {
     Ok(wc::set_active_tools(names)?)
 }
-/// pi `getAllTools`.
+/// Returns every tool.
 pub fn all_tools() -> Result<Vec<Value>> {
     parse(&wc::all_tools())
 }
-/// pi `getCommands`.
+/// Returns the registered commands.
 pub fn commands() -> Result<Vec<Value>> {
     parse(&wc::commands_list())
 }
-/// pi `ctx.compact`.
+/// Triggers compaction.
 pub async fn compact(custom_instructions: Option<&str>) -> Result<Value> {
     parse(&wc::compact(custom_instructions.map(ToOwned::to_owned)).await?)
 }
@@ -78,7 +78,7 @@ pub async fn invoke_command(name: &str, args: &str) -> Result<Option<Value>> {
         .map(|t| parse(&t))
         .transpose()
 }
-/// pi `ctx.executeTool` (tool-call context only); returns `AgentToolCallOutcome`.
+/// `ctx.executeTool` (tool-call context only); returns `AgentToolCallOutcome`.
 pub async fn execute_tool(name: &str, args: &Value) -> Result<Value> {
     parse(&wc::execute_tool(name.to_owned(), args.to_string(), None).await?)
 }

@@ -6,6 +6,9 @@ rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
 description = "Wasmtime component host for oino:extension@2.0.0 components"
+readme = "README.md"
+keywords = ["wasm", "wasmtime", "extensions", "component-model"]
+categories = ["wasm"]
 
 [features]
 default = ["core"]

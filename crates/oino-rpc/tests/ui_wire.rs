@@ -136,12 +136,12 @@ async fn plain_clients_never_see_registry_patches() {
         lines
             .iter()
             .all(|line| line.get("type").and_then(JsonValue::as_str) != Some("oino_ui_patch")),
-        "a pi client saw a registry patch: {lines:?}"
+        "a plain client saw a registry patch: {lines:?}"
     );
     let dialog = lines
         .iter()
         .find(|line| line.get("type").and_then(JsonValue::as_str) == Some("extension_ui_request"))
-        .expect("pi client lost its dialog record");
+        .expect("plain client lost its dialog record");
     assert_eq!(dialog["method"], "select");
     assert!(dialog.get("extensionId").is_none());
     handle.abort();

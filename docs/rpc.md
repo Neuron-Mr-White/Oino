@@ -1,6 +1,6 @@
 # RPC mode
 
-`oino --mode rpc` speaks pi 1.4.0's RPC protocol on stdin/stdout: one JSON object per line.
+`oino --mode rpc` speaks the JSONL RPC protocol on stdin/stdout: one JSON object per line.
 Commands carry an optional `id`; every command gets a `response`
 (`{"id","type":"response","command","success","data"|"error"}`); session events are streamed
 as they happen (`agent_start`, `message_update`, `tool_execution_end`, `agent_settled`, …),
@@ -10,7 +10,7 @@ exactly like `--mode json`.
 printf '%s\n' '{"id":"1","type":"prompt","message":"hello"}' | oino --mode rpc
 ```
 
-## Commands (pi)
+## Commands
 
 `prompt`, `steer`, `follow_up`, `abort`, `new_session`, `get_state`, `set_model`,
 `cycle_model`, `get_available_models`, `set_thinking_level`, `cycle_thinking_level`,
@@ -33,7 +33,7 @@ printf '%s\n' '{"id":"1","type":"prompt","message":"hello"}' | oino --mode rpc
 
 ## Extension UI sub-protocol
 
-Extensions talk to the user through `extension_ui_request` events (pi `rpc-extension-ui`):
+Extensions talk to the user through `extension_ui_request` events (`rpc-extension-ui`):
 dialogs (`select`, `confirm`, `input`, `editor`, plus Oino's `form`, `multiselect`,
 `approval`, `custom`) expect an `extension_ui_response` with the same `id`; fire-and-forget
 requests (`notify`, `setStatus`, `setWidget`, `setFrame`, `setTitle`, panels, `setPlan`) need

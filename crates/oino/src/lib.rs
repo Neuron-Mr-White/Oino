@@ -1,6 +1,6 @@
-//! `oino`: the headless Oino binary over `oino-core` (pi `main.ts`, modes.md §1–§3).
+//! `oino`: the headless Oino binary over `oino-core` (modes.md §1–§3).
 //!
-//! pi 1.4.0 command line (same flags and semantics): interactive mode (the `oino-tui`
+//! The command line (fixed flags and semantics): interactive mode (the `oino-tui`
 //! client), print mode, JSON event stream mode, RPC mode and ACP mode on stdio. Every mode
 //! loads the share-dir, installed and `-e` extension packages ([`loader`]). Package subcommands
 //! (`install`, `remove`, `update`, `list`, `config`) and the self-update (`oino update`) run
@@ -8,20 +8,20 @@
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`cli::args`] | `cli/args.ts` | [`cli::args::parse_args`] → [`cli::args::Args`] |
-//! | [`cli::help`] | `printHelp` | help text with extension flags |
-//! | [`cli::files`] | `file-processor.ts`, `initial-message.ts` | `@file` arguments, first message |
-//! | [`cli::list_models`] | `list-models.ts` | `--list-models` table |
-//! | [`cli::packages`] | `package-manager.ts` | `install`/`remove`/`update`/`list`/`config` |
-//! | [`cli::self_update`] | — | `oino update [--check]` from the release manifest |
-//! | [`startup`] | `main.ts` `createRuntime` | services, session selection, model/tool options |
-//! | [`loader`] | resource loader `-e` | share-dir, installed and `-e` packages, `builtin:` components |
-//! | [`modes::print`] | `print-mode.ts` | text and JSON output |
-//! | [`modes::rpc`] | `rpc-mode.ts` | RPC server on stdio |
-//! | [`modes::interactive`] | `interactive-mode.ts` | the TUI over an in-process backend |
-//! | [`modes::acp`] | — | ACP agent on stdio (`oino-acp`) |
+//! | Module | Contents |
+//! |---|---|
+//! | [`cli::args`] | [`cli::args::parse_args`] → [`cli::args::Args`] |
+//! | [`cli::help`] | help text with extension flags |
+//! | [`cli::files`] | `@file` arguments, first message |
+//! | [`cli::list_models`] | `--list-models` table |
+//! | [`cli::packages`] | `install`/`remove`/`update`/`list`/`config` |
+//! | [`cli::self_update`] | `oino update [--check]` from the release manifest |
+//! | [`startup`] | services, session selection, model/tool options |
+//! | [`loader`] | share-dir, installed and `-e` packages, `builtin:` components |
+//! | [`modes::print`] | text and JSON output |
+//! | [`modes::rpc`] | RPC server on stdio |
+//! | [`modes::interactive`] | the TUI over an in-process backend |
+//! | [`modes::acp`] | ACP agent on stdio (`oino-acp`) |
 //! | `faux` (feature) | — | scripted provider + UI probe for tests |
 
 #![forbid(unsafe_code)]
@@ -65,7 +65,7 @@ fn print_stdout(text: &str) {
     let _ = stdout.flush();
 }
 
-/// `Error: …` / `Warning: …` lines (pi `reportDiagnostics`).
+/// `Error: …` / `Warning: …` lines.
 pub(crate) fn report_lines(diagnostics: &[Diagnostic]) -> Vec<String> {
     diagnostics
         .iter()
@@ -83,7 +83,7 @@ fn fail(lines: &[String]) -> i32 {
     1
 }
 
-/// pi `readPipedStdin`: all of stdin when it is not a terminal, trimmed; `None` if empty.
+/// All of stdin when it is not a terminal, trimmed; `None` if empty.
 fn read_piped_stdin() -> Option<String> {
     let mut stdin = std::io::stdin();
     if stdin.is_terminal() {
@@ -95,7 +95,7 @@ fn read_piped_stdin() -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
-/// pi `exportFromFile`.
+/// E x p o r t   F r o m   F i l e.
 fn export_from_file(input: &str, output: Option<&str>, cwd: &Path) -> Result<PathBuf, String> {
     let home = oino_settings::paths::home_dir();
     let input = oino_settings::paths::resolve_path(input, cwd, home.as_deref(), false);
@@ -138,7 +138,7 @@ fn environment(args: &cli::args::Args) -> Result<Environment, String> {
     Ok(Environment { cwd, agent_dir })
 }
 
-/// Package manager subcommands (pi `handlePackageCommand`, runtime §15).
+/// Package manager subcommands (runtime §15).
 const PACKAGE_COMMANDS: [&str; 6] = ["install", "remove", "uninstall", "update", "list", "config"];
 
 /// Subcommands handled before flag parsing that are not available yet (`auth`, Oino

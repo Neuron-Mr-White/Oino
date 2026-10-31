@@ -1,4 +1,4 @@
-//! Subsequence fuzzy matching (approximation of pi-tui `fuzzyFilter`).
+//! Subsequence fuzzy matching (approximation of `fuzzyFilter`).
 //!
 //! Every whitespace-separated query token must match the candidate as a case-insensitive
 //! subsequence. Scores prefer contiguous runs, word starts and early matches; lower is better.

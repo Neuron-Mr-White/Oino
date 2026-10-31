@@ -1,9 +1,9 @@
 # Extension API and WIT
 
 The contract between Oino and extensions is the WIT package `oino:extension@1.0.0` in
-`wit/oino-extension/` (component model async on wasmtime 48, wit-bindgen 0.62). Pi data-model
+`wit/oino-extension/` (component model async on wasmtime 48, wit-bindgen 0.62). Data-model
 values (messages, models, events, tool results) cross the boundary as canonical JSON with
-pi's exact shapes; host capabilities are typed WIT.
+exact wire shapes; host capabilities are typed WIT.
 
 | Interface | What it offers |
 |---|---|

@@ -1,7 +1,7 @@
 package oino:extension@2.0.0;
 
 /// Imported by provider components so core can run the provider-level extension events
-/// (pi onPayload / onResponse / onProviderStreamEvent) on the real wire payload.
+/// (onPayload / onResponse / onProviderStreamEvent) on the real wire payload.
 interface provider-host {
     use types.{json};
     /// Call after building the HTTP request, before sending. Core dispatches

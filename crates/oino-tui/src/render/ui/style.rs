@@ -1,6 +1,6 @@
 //! Theme tokens → ratatui styles, and the §4.2 text model → ratatui text.
 //!
-//! Colours are role tokens only (§5): a token resolves through the active pi theme
+//! Colours are role tokens only (§5): a token resolves through the active theme
 //! ([`Theme`]); unknown tokens are dropped (they render with the inherited colour).
 
 use oino_ui::style::{Color as Token, Modifier as TokenModifier, Style as TokenStyle};
@@ -34,7 +34,7 @@ pub(crate) fn token(token: &Token, theme: &Theme) -> Option<Color> {
         Token::Text | Token::Assistant => theme.text,
         Token::Muted => theme.muted,
         Token::Dim => theme.dim,
-        // Both map to pi `accent` in the TUI (§5: `primary` is shell red in the app only).
+        // Both map to `accent` in the TUI (§5: `primary` is shell red in the app only).
         Token::Accent | Token::Primary => theme.accent,
         Token::Info | Token::Link => theme.md_link,
         Token::Success => theme.success,

@@ -22,7 +22,7 @@ pub async fn stream(request: &Value) -> Result<impl Stream<Item = Value>> {
 }
 
 /// Core's compaction summarizer → `{summary, usage?}`. `previous_summary` updates an earlier
-/// summary instead of starting fresh (pi `generateSummary(…, previousSummary)`).
+/// summary instead of starting fresh.
 pub async fn summarize_default(
     messages: &Value,
     custom_instructions: Option<&str>,

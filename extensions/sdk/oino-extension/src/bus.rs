@@ -1,4 +1,4 @@
-//! Event bus (pi `events`): deliveries arrive as `oino_bus` events.
+//! Event bus: deliveries arrive as `oino_bus` events.
 
 use serde::Serialize;
 use serde_json::Value;

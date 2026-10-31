@@ -386,7 +386,7 @@ pub(crate) fn kill_tree(pid: u32, group: bool) {
     let _ = group;
 }
 
-/// Result of [`exec`] (pi `exec` shape).
+/// Result of [`exec`] (the `exec` shape).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ExecOutput {
     pub(crate) stdout: String,

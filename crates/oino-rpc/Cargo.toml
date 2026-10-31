@@ -5,7 +5,10 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "pi RPC JSONL codec, RPC server over a SessionBackend, typed RPC client"
+description = "Oino JSONL RPC codec, RPC server over a SessionBackend, typed RPC client"
+readme = "README.md"
+keywords = ["rpc", "jsonl", "protocol", "agent"]
+categories = ["network-programming"]
 
 [dependencies]
 futures.workspace = true

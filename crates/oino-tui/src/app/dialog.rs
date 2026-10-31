@@ -1,5 +1,5 @@
 //! Extension dialogs (ui-protocol §4.1, §4.3): selection, confirmation, text input, editor,
-//! multi-select, form, approval and custom OUS dialogs, answered with pi response forms.
+//! multi-select, form, approval and custom OUS dialogs, answered with wire response forms.
 
 use std::collections::HashMap;
 use std::time::Instant;

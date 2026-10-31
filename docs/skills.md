@@ -1,17 +1,17 @@
 # Skills
 
 Skills are folders with a `SKILL.md` (front matter `name`, `description`) and any supporting
-files, exactly as in pi 1.4.0. Oino lists them in the system prompt; the model reads a skill's
+files. Oino lists them in the system prompt; the model reads a skill's
 `SKILL.md` with the `read` tool when it is relevant. With `enableSkillCommands` they are also
 available as `/skill:<name>`.
 
-Discovery (later entries win on name conflicts, pi precedence):
+Discovery (later entries win on name conflicts):
 
 | Location | Scope |
 |---|---|
 | bundled extension skills (`~/.oino/bundled/<id>@…/skills/`) | extensions (`unipi.ask-user`, `unipi.dream` craft-skill, `unipi.kanboard`, …) |
 | `~/.oino/skills/` | global |
-| `~/.agents/skills/` and project `.agents/skills/` | shared agent skills (pi layout) |
+| `~/.agents/skills/` and project `.agents/skills/` | shared agent skills |
 | `<project>/.oino/skills/` | project (trusted projects only) |
 | `--skill <path>` | this run |
 
@@ -33,5 +33,5 @@ Turn it on — and the model sees it from the next prompt — in either way:
 - or set it in `settings.json`:
   `"extensionSettings": {"skills": {"states": {"<name>": {"enabled": true}}}}`.
 
-Bundled opt-in skills: `unipi-migrate` (`unipi.core`), the full migration from a pi + unipi
+Bundled opt-in skills: `unipi-migrate` (`unipi.core`), the full migration from a previous
 install — see [migrate-from-unipi.md](migrate-from-unipi.md).

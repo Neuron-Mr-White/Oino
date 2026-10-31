@@ -1,4 +1,4 @@
-//! RPC records (pi `rpc-types.ts` + Oino `_oino/*`, modes.md §3–§4).
+//! RPC records (the core command set + Oino `_oino/*`, modes.md §3–§4).
 //!
 //! Commands are `{id?, type, …fields}` objects; replies are
 //! `{id?, type:"response", command, success, data? | error}`. The same [`RpcCommand`] enum
@@ -18,7 +18,7 @@ pub use oino_settings::SettingsScope;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 
-/// pi command types, in `rpc-types.ts` order.
+/// Core command types, in protocol order.
 pub const AGENT_COMMAND_TYPES: [&str; 33] = [
     "prompt",
     "steer",
@@ -55,7 +55,7 @@ pub const AGENT_COMMAND_TYPES: [&str; 33] = [
     "clear_queue",
 ];
 
-/// pi image attachments travel as `{type:"image", data, mimeType}`.
+/// Image attachments travel as `{type:"image", data, mimeType}`.
 mod wire_images {
     use oino_ai::ImageContent;
     use serde::ser::SerializeSeq;
@@ -82,7 +82,7 @@ mod wire_images {
     }
 }
 
-/// A pi RPC command (pi `RpcCommand` without `id`).
+/// An agent session command (the RPC command without `id`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentCommand {
@@ -617,7 +617,7 @@ pub const OINO_COMMAND_TYPES: [&str; 37] = [
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RpcCommand {
-    /// pi command.
+    /// Agent session command.
     Agent(AgentCommand),
     /// Oino extension.
     Oino(OinoCommand),
@@ -750,12 +750,12 @@ pub struct RejectedCommand {
     pub id: Option<JsonValue>,
     /// Command type as sent (`None` when missing).
     pub command: Option<String>,
-    /// pi error text.
+    /// Error text.
     pub error: String,
 }
 
 impl RpcRequest {
-    /// Decodes a command object (pi `handleCommand` dispatch rules).
+    /// Decodes a command object (`handleCommand` dispatch rules).
     ///
     /// # Errors
     ///
@@ -817,7 +817,7 @@ impl RpcRequest {
 /// Successful reply payload (`None` = no `data` key, `Some(Null)` = `"data": null`).
 pub type RpcResponseData = Option<JsonValue>;
 
-/// `{id?, type:"response", command, success, data? | error}` in pi key order.
+/// `{id?, type:"response", command, success, data? | error}` in wire key order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RpcResponse {
     /// Correlation id.
@@ -907,7 +907,7 @@ impl Serialize for RpcResponse {
     }
 }
 
-/// pi `RpcSessionState` (`get_state` data).
+/// Session state (`get_state` data).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcSessionState {

@@ -1,11 +1,11 @@
-//! pi `cli/args.ts` `parseArgs`: the hand-written parser, ported rule for rule (multi-letter
+//! `parseArgs`: the hand-written parser, ported rule for rule (multi-letter
 //! short flags such as `-nbt`, `-p` taking an optional message, `@file` arguments, unknown
 //! long flags kept for extensions).
 
 use indexmap::IndexMap;
 use oino_ai::{JsonValue, ThinkingLevel};
 
-/// pi `VALID_THINKING_LEVELS`.
+/// The valid thinking levels constant.
 pub const VALID_THINKING_LEVELS: [&str; 7] =
     ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -36,7 +36,7 @@ pub enum Severity {
 pub struct Diagnostic {
     /// Severity.
     pub severity: Severity,
-    /// pi's text.
+    /// Fixed text.
     pub message: String,
 }
 
@@ -78,10 +78,10 @@ pub enum TuiMode {
     Fullscreen,
 }
 
-/// pi `Args`.
+/// The args record.
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "one field per pi CLI switch, as in pi's Args"
+    reason = "one field per CLI switch, as in Args"
 )]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Args {
@@ -199,17 +199,17 @@ fn push_ids(list: &mut Option<Vec<String>>, value: &str) {
     list.get_or_insert_with(Vec::new).extend(split_list(value));
 }
 
-/// pi `normalizeSessionName`.
+/// N o r m a l i z e   S e s s i o n   N a m e.
 #[must_use]
 pub fn normalize_session_name(value: &str) -> Option<String> {
     let name = value.trim();
     (!name.is_empty()).then(|| name.to_owned())
 }
 
-/// pi `parseArgs`.
+/// P a r s e   A r g s.
 #[allow(
     clippy::too_many_lines,
-    reason = "one branch per pi flag, in pi's order, so the port stays reviewable"
+    reason = "one branch per flag, in flag order, so the port stays reviewable"
 )]
 #[must_use]
 pub fn parse_args(args: &[String]) -> Args {

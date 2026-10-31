@@ -1,5 +1,5 @@
 //! Credential checks and resolution per provider
-//! `composeApiKeyAuth`/`composeOAuthAuth`, pi-ai `auth/resolve.ts`, `envApiKeyAuth`).
+//! `composeApiKeyAuth`/`composeOAuthAuth`, `envApiKeyAuth`).
 //!
 //! Order: runtime key (`--api-key`) > `auth.json` > `models.json`/override `apiKey` >
 //! registration `authEnv` variables. A stored credential owns the provider: there is no
@@ -157,7 +157,7 @@ pub enum ApiKeyError {
 }
 
 impl AuthResolveError {
-    /// The message pi's `ModelRegistry.getApiKeyAndHeaders` reports: the cause's message, with
+    /// The message `getApiKeyAndHeaders` reports: the cause's message, with
     /// `authHeader requires a resolved API key` shown as `No API key found for "<provider>"`.
     #[must_use]
     pub fn request_message(&self, provider: &str) -> String {

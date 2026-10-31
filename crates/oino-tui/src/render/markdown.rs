@@ -1,4 +1,4 @@
-//! Markdown → styled lines (pi-tui `Markdown` with pi's markdown theme).
+//! Markdown → styled lines (with the markdown theme).
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Modifier, Style};

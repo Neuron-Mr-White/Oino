@@ -375,7 +375,7 @@ pub struct App {
     pub(crate) commands: Vec<CommandItem>,
     pub(crate) queue: (Vec<String>, Vec<String>),
     pub(crate) transcript: Transcript,
-    /// pi dialogs and one-shot effects (L0, §3); retained state lives in `registry`.
+    /// Dialogs and one-shot effects (L0, §3); retained state lives in `registry`.
     pub(crate) ui: UiState,
     /// v2 registry mirror of the session scope (§9.2): slots, meta and dialogs.
     pub(crate) registry: RegistryMirror,
@@ -1316,7 +1316,7 @@ impl App {
     }
 
     /// A backend that only knows the v1 replay (`requests`) still works: dialogs come from
-    /// the pi records (`ClientEvent::Ui`), so nothing retained is replayed here.
+    /// the legacy records (`ClientEvent::Ui`), so nothing retained is replayed here.
     fn ui_snapshot_fallback(&mut self, _data: Option<&JsonValue>) {
         self.sync_visibility();
     }
@@ -1348,8 +1348,8 @@ impl App {
                                 .is_some_and(|turns| !turns.contains(turn))
                     });
                 }
-                // One-shot effects also arrive as pi records (`ClientEvent::Ui`), so they are
-                // not applied twice here (D-U1 keeps the pi records byte-for-byte).
+                // One-shot effects also arrive as legacy records (`ClientEvent::Ui`), so they are
+                // not applied twice here (D-U1 keeps the records byte-for-byte).
                 for op in &patch.ops {
                     match op {
                         RegistryOp::Del { id } => self.local_drop(id),
@@ -1461,7 +1461,7 @@ impl App {
         format!("tui-{}", self.next_request)
     }
 
-    /// Current spinner frame (pi loader frames).
+    /// Current spinner frame (loader frames).
     pub(crate) fn spinner(&self) -> &'static str {
         const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         FRAMES[usize::try_from(self.tick % 10).unwrap_or(0)]

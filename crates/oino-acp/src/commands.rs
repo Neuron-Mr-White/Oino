@@ -1,4 +1,4 @@
-//! Slash commands: the adapter's built-ins (pi frontend commands that call the session API,
+//! Slash commands: the adapter's built-ins (frontend commands that call the session API,
 //! modes §1.3) plus the session's extension commands, prompt templates and skills
 //! (`available_commands_update`).
 

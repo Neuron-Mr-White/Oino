@@ -1,4 +1,4 @@
-//! Event payloads. Payloads are pi-shaped JSON (they carry pi's `type` field).
+//! Event payloads. Payloads are wire-shaped JSON (they carry the `type` field).
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -33,7 +33,7 @@ impl Event {
     }
 }
 
-/// Return types accepted from event handlers: `()` = no result (pi `undefined`), `Option<T>`,
+/// Return types accepted from event handlers: `()` = no result, `Option<T>`,
 /// or a JSON [`Value`].
 pub trait IntoEventResult {
     /// Converts into the optional JSON result.
@@ -58,7 +58,7 @@ impl IntoEventResult for Value {
     }
 }
 
-/// Wire name (pi `type`) of an event kind.
+/// Wire name of an event kind.
 #[must_use]
 pub fn wire_name(kind: EventKind) -> String {
     let debug = format!("{kind:?}");

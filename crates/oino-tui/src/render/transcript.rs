@@ -1,4 +1,4 @@
-//! Transcript rows → lines (pi chat container components), with a per-row cache.
+//! Transcript rows → lines (chat container components), with a per-row cache.
 
 use oino_ai::{JsonValue, UserContentField};
 use oino_view::transcript::{AssistantBlock, NoticeLevel, Row, RowKind};
@@ -14,7 +14,7 @@ use crate::host::RenderRequest;
 /// Renders one row (without the leading spacer).
 #[allow(
     clippy::too_many_lines,
-    reason = "one arm per transcript row kind (pi chat components)"
+    reason = "one arm per transcript row kind (chat components)"
 )]
 pub(crate) fn row_lines(row: &Row, cx: &RenderCtx<'_>) -> Vec<OLine> {
     let theme = cx.theme;

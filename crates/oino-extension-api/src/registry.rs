@@ -9,8 +9,8 @@ use crate::json::RawJson;
 
 macro_rules! event_kinds {
     ($($(#[$doc:meta])* $variant:ident => $wire:literal,)*) => {
-        /// `event-kind`: pi 1.4.0 extension events plus Oino host events (`oino_*`).
-        /// [`EventKind::wire`] is the pi `type` string (kebab → snake).
+        /// `event-kind`: extension events plus Oino host events (`oino_*`).
+        /// [`EventKind::wire`] is the `type` string (kebab → snake).
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
         #[non_exhaustive]
         pub enum EventKind {
@@ -95,7 +95,7 @@ event_kinds! {
 pub struct UnknownEventKind(pub String);
 
 impl EventKind {
-    /// Oino host events (`oino_*`), produced by the host rather than by pi's runner.
+    /// Oino host events (`oino_*`), produced by the host rather than by the extension runner.
     #[must_use]
     pub fn is_oino(self) -> bool {
         self.wire().starts_with("oino_")

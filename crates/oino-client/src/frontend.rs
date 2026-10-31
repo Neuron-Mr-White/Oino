@@ -23,7 +23,7 @@ use crate::protocol::{
 pub struct ShortcutInfo {
     /// Action id.
     pub id: String,
-    /// Default key ids (pi `KeyId` syntax).
+    /// Default key ids (`KeyId` syntax).
     #[serde(default)]
     pub default_keys: Vec<String>,
     /// Description.

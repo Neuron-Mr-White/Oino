@@ -59,7 +59,7 @@ pub enum OAuthError {
 }
 
 impl OAuthError {
-    /// The message pi's `getApiKeyAndHeaders` reports (the cause's message).
+    /// The message `getApiKeyAndHeaders` reports (the cause's message).
     #[must_use]
     pub fn cause_message(&self) -> String {
         match self {

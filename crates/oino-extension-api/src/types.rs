@@ -195,7 +195,7 @@ pub enum HostError {
     Denied(String),
     /// Session replaced since this call started.
     #[error(
-        "This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload()."
+        "This extension ctx is stale after session replacement or reload. Do not use a captured session or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload()."
     )]
     StaleContext,
     /// Session-replacing operations need a command or shortcut context.

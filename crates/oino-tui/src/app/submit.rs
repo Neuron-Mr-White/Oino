@@ -84,10 +84,7 @@ impl App {
         }
     }
 
-    #[allow(
-        clippy::too_many_lines,
-        reason = "one arm per pi built-in slash command"
-    )]
+    #[allow(clippy::too_many_lines, reason = "one arm per built-in slash command")]
     pub(crate) fn run_builtin(&mut self, builtin: Builtin, arg: Option<String>) {
         match builtin {
             Builtin::Settings => self.open_settings(None),
@@ -328,7 +325,7 @@ impl App {
     }
 }
 
-/// pi thinking level display names.
+/// Thinking level display names.
 pub(crate) fn level_name(level: ThinkingLevel) -> &'static str {
     match level {
         ThinkingLevel::Off => "off",

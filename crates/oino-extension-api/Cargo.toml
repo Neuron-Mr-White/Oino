@@ -6,6 +6,9 @@ rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
 description = "Contracts between oino-core and extension runtimes: instances, host services, manifests, permissions"
+readme = "README.md"
+keywords = ["extensions", "sdk", "wit", "wasm"]
+categories = ["wasm", "api-bindings"]
 
 [features]
 ## Test doubles: `RecordingHostServices`, `FakeExtensionRuntime`.

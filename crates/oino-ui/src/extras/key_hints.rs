@@ -8,7 +8,7 @@ use crate::node::{ActionId, Common, IntoNode, Node};
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Hint {
-    /// Key id (pi `KeyId`).
+    /// Key id.
     pub keys: String,
     /// Hint label.
     pub label: String,

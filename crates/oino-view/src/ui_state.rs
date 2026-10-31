@@ -879,7 +879,7 @@ impl UiState {
         self.panels.iter().rev().find(|p| p.focus)
     }
 
-    /// Statuses sorted for display: priority (higher first), then key (pi sorts by key).
+    /// Statuses sorted for display: priority (higher first), then key.
     #[must_use]
     pub fn sorted_statuses(&self) -> Vec<(&str, &StatusItem)> {
         let mut items: Vec<(&str, &StatusItem)> =
@@ -1406,7 +1406,7 @@ enum Prepared {
     Effect(Option<UiEffect>),
 }
 
-/// The pi-shaped request behind a registry-form request (`{id, method, …params}`, §9.2).
+/// The legacy request behind a registry-form request (`{id, method, …params}`, §9.2).
 fn registry_request(request: &oino_ui::slot::UiRequest) -> Option<UiRequest> {
     let mut fields = request.fields.clone();
     let method = fields.remove("method")?.as_str()?.to_owned();

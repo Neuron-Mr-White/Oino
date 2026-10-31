@@ -1,6 +1,6 @@
 # Prompt templates
 
-Prompt templates are Markdown files invoked as slash commands (pi 1.4.0 semantics):
+Prompt templates are Markdown files invoked as slash commands:
 `~/.oino/prompts/review.md` becomes `/review`. Front matter may set `description` and
 `argument-hint`; the body may use `$1`, `$2`, `$@` and `${@:2}` for arguments.
 

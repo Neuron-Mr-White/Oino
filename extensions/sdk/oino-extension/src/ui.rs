@@ -2,8 +2,8 @@
 //! turn footers), settings namespaces, editor, device integration.
 //!
 //! Node trees are built with the re-exported builder crate [`widgets`] (`oino_ui`, ui-protocol
-//! §11); this module adds the slot calls on top of it. The pi-shaped helpers (`select`,
-//! `confirm`, `input`, `notify`, `status`, `widget_lines`) keep their 1.x wire form, so pi
+//! §11); this module adds the slot calls on top of it. The legacy helpers (`select`,
+//! `confirm`, `input`, `notify`, `status`, `widget_lines`) keep their 1.x wire form, so v1
 //! parity (§D-U1) holds.
 //!
 //! ```
@@ -83,7 +83,7 @@ pub async fn dialog(request: &Value) -> Result<Value> {
     parse(&wu::dialog(request.to_string(), None).await?)
 }
 
-/// pi `ctx.ui.select` → chosen value (`None` when dismissed).
+/// `ctx.ui.select` → chosen value (`None` when dismissed).
 pub async fn select(title: &str, options: &[&str]) -> Result<Option<String>> {
     let answer = dialog(&json!({"method": "select", "title": title, "options": options})).await?;
     Ok(answer
@@ -92,7 +92,7 @@ pub async fn select(title: &str, options: &[&str]) -> Result<Option<String>> {
         .map(ToOwned::to_owned))
 }
 
-/// pi `ctx.ui.confirm`.
+/// U i . c o n f i r m.
 pub async fn confirm(title: &str, message: &str) -> Result<bool> {
     let answer = dialog(&json!({"method": "confirm", "title": title, "message": message})).await?;
     Ok(answer
@@ -101,7 +101,7 @@ pub async fn confirm(title: &str, message: &str) -> Result<bool> {
         .unwrap_or(false))
 }
 
-/// pi `ctx.ui.input`.
+/// U i . i n p u t.
 pub async fn input(title: &str, placeholder: Option<&str>) -> Result<Option<String>> {
     let answer =
         dialog(&json!({"method": "input", "title": title, "placeholder": placeholder})).await?;
@@ -117,7 +117,7 @@ pub fn fire(request: &Value) -> Result<()> {
     Ok(wu::fire(&request.to_string())?)
 }
 
-/// pi `ctx.ui.notify(message, type)`.
+/// U i . n o t i f y ( m e s s a g e ,   t y p e ).
 pub fn notify(message: &str, kind: &str) -> Result<()> {
     fire(&json!({"method": "notify", "message": message, "notifyType": kind}))
 }
@@ -125,7 +125,7 @@ pub fn notify(message: &str, kind: &str) -> Result<()> {
 /// Content of a status segment (`setStatus`, ui-protocol §3).
 #[derive(Clone, Debug, PartialEq)]
 pub enum StatusText {
-    /// pi 1.4.0 `statusText` (byte-for-byte parity, D-U1).
+    /// `statusText` (byte-for-byte parity, D-U1).
     Text(String),
     /// Oino v2 `spans` (one [`Line`] of styled spans).
     Line(Line),
@@ -169,9 +169,9 @@ impl<T: Into<Self>> From<Option<T>> for StatusText {
     }
 }
 
-/// pi `ctx.ui.setStatus(key, text)` / Oino styled status segment: absent text clears it.
+/// `ctx.ui.setStatus(key, text)` / Oino styled status segment: absent text clears it.
 ///
-/// `status("mode", Some("Graph 3/7"))`, `status("mode", None)` (pi form) and
+/// `status("mode", Some("Graph 3/7"))`, `status("mode", None)` (legacy form) and
 /// `status("mode", Some(Line::from("Graph 3/7").fg(Color::Info)))` (v2 form) all work.
 pub fn status(key: &str, text: impl Into<StatusText>) -> Result<()> {
     fire(&status_request(key, text.into())?)
@@ -192,7 +192,7 @@ fn status_request(key: &str, text: StatusText) -> Result<Value> {
     Ok(request)
 }
 
-/// pi `ctx.ui.setWidget(key, lines)` (absent lines clear it).
+/// `ctx.ui.setWidget(key, lines)` (absent lines clear it).
 pub fn widget_lines(key: &str, lines: Option<&[String]>) -> Result<()> {
     let mut request = json!({"method": "setWidget", "widgetKey": key});
     if let Some(lines) = lines {

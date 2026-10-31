@@ -1,5 +1,5 @@
 //! Behaviour tests: key presses and slash commands → backend commands, dialog answers,
-//! session replacement, keybinding overrides (pi interactive-mode semantics).
+//! session replacement, keybinding overrides (interactive-mode semantics).
 
 #![allow(
     clippy::unwrap_used,

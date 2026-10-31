@@ -9,7 +9,7 @@ interface session {
     record user-message-options { deliver-as: option<delivery>, expand-prompt-templates: bool, provenance: option<provenance> }
     enum sessions-scope { cwd, all }
 
-    // Reads (pi ReadonlySessionManager). JSON = oino_session types.
+    // Reads (readonly session manager). JSON = oino_session types.
     header: func() -> json;                                   // SessionHeader
     session-id: func() -> string;
     session-file: func() -> option<string>;
@@ -26,11 +26,11 @@ interface session {
     // Writes
     set-session-name: func(name: option<string>) -> result<_, host-error>;
     set-label: func(id: entry-id, label: option<string>) -> result<_, host-error>;
-    /// pi appendEntry: `custom` entry, emits entry_appended. data = JSON value or none.
+    /// appendEntry: `custom` entry, emits entry_appended. data = JSON value or none.
     append-entry: func(custom-type: string, data: option<json>) -> result<entry-id, host-error>;
-    /// pi sendMessage. message = {customType, content, display, details?}.
+    /// sendMessage. message = {customType, content, display, details?}.
     send-message: async func(message: json, options: send-options) -> result<_, host-error>;
-    /// pi sendUserMessage. content = UserContentField.
+    /// sendUserMessage. content = UserContentField.
     send-user-message: async func(content: json, options: user-message-options) -> result<_, host-error>;
 
     // Sessions index (C7); permission sessions.readAll.

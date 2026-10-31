@@ -8,7 +8,7 @@ pub use crate::bindings::oino::extension::process::{
     ExecResult, ExitStatus, OutputTarget, ProcStats, Signal, SpawnSpec, StdioMode,
 };
 
-/// pi `exec(command, args, {timeout, cwd})`.
+/// Runs a command with optional timeout and cwd.
 pub async fn exec(
     command: &str,
     args: &[&str],
@@ -18,7 +18,7 @@ pub async fn exec(
     exec_env(command, args, cwd, &[], timeout_ms).await
 }
 
-/// pi `exec` with `env` set on top of the host's environment (ext-abi §5.3:
+/// `exec` with `env` set on top of the host's environment (ext-abi §5.3:
 /// the caller's `ACME_*` identity travels with the argv).
 pub async fn exec_env(
     command: &str,

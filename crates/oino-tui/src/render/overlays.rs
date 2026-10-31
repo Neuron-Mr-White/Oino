@@ -96,7 +96,7 @@ fn input_line(prefix: &str, input: &str, app: &App, width: usize) -> OLine {
 /// Selector shown in place of the editor.
 #[allow(
     clippy::too_many_lines,
-    reason = "one layout per selector, mirroring pi components"
+    reason = "one layout per selector, mirroring the components"
 )]
 pub(super) fn overlay_block(
     app: &App,
@@ -851,7 +851,7 @@ fn composer_lines(
     )
 }
 
-/// Dialog in place of the editor (pi `ExtensionSelector` / `ExtensionInput` / `ExtensionEditor`).
+/// Dialog in place of the editor (`ExtensionSelector` / `ExtensionInput` / `ExtensionEditor`).
 #[allow(
     clippy::too_many_lines,
     reason = "one layout per dialog kind (ui-protocol §4)"

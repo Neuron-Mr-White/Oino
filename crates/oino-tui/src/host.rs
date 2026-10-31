@@ -137,7 +137,7 @@ pub trait TuiHost: Send + Sync {
     }
 }
 
-/// `@path` completion over the filesystem (pi uses `fd`; this lists one directory level,
+/// `@path` completion over the filesystem (lists one directory level,
 /// hiding dot-entries unless the prefix starts with a dot).
 #[must_use]
 pub fn complete_path_in(cwd: &Path, prefix: &str) -> Vec<String> {
@@ -175,7 +175,7 @@ pub fn complete_path_in(cwd: &Path, prefix: &str) -> Vec<String> {
     out
 }
 
-/// Reads `.git/HEAD` upwards from `cwd` (pi footer branch).
+/// Reads `.git/HEAD` upwards from `cwd` (footer branch).
 #[must_use]
 pub fn git_branch(cwd: &Path) -> Option<String> {
     let mut dir = Some(cwd);

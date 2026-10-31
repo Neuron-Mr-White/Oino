@@ -1,4 +1,4 @@
-//! pi `file-processor.ts` + `initial-message.ts`: `@file` arguments become text blocks and
+//! File processing and the initial message: `@file` arguments become text blocks and
 //! image attachments of the first message; piped stdin is prepended.
 
 use std::fmt::Write as _;
@@ -16,7 +16,7 @@ pub struct FileContent {
     pub images: Vec<ImageContent>,
 }
 
-/// pi `processFileArguments`; errors carry pi's text (the caller prints it and exits 1).
+/// Processes `@file` arguments; errors carry fixed text (the caller prints it and exits 1).
 ///
 /// # Errors
 ///
@@ -53,7 +53,7 @@ pub fn process_file_arguments(file_args: &[String], cwd: &Path) -> Result<FileCo
     Ok(content)
 }
 
-/// The first prompt of a non-interactive run (pi `buildInitialMessage`).
+/// The first prompt of a non-interactive run.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InitialMessage {
     /// Text (stdin + files + first message), `None` when all are absent.
@@ -62,7 +62,7 @@ pub struct InitialMessage {
     pub images: Vec<ImageContent>,
 }
 
-/// pi `buildInitialMessage`: consumes the first positional message.
+/// Consumes the first positional message.
 #[must_use]
 pub fn build_initial_message(
     messages: &mut Vec<String>,

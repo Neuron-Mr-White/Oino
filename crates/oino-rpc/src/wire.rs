@@ -1,7 +1,7 @@
-//! Client events on the wire (pi `json-event.ts` + RPC event filtering, modes.md §2.2/§3.1;
+//! Client events on the wire (JSON event records + RPC event filtering, modes.md §2.2/§3.1;
 //! ui-protocol v2 §9.2/§10).
 //!
-//! A connection declares itself in `_oino/hello`: without it only pi records go out; with
+//! A connection declares itself in `_oino/hello`: without it only legacy records go out; with
 //! `ui.protocol: 2` the connection gets registry patches (`oino_ui_patch`) instead of the
 //! retained `extension_ui_request` stream, degraded to what it declared.
 
@@ -11,9 +11,9 @@ use oino_core::ui::is_dialog;
 use oino_ui::plain::to_lines;
 use oino_ui::slot::{RegistryOp, Slot, UiCapabilities, UiPatch, UiView};
 
-/// pi dialog methods (`rpc-extension-ui.md`).
+/// Dialog methods (`rpc-extension-ui.md`).
 const DIALOG_METHODS: [&str; 4] = ["select", "confirm", "input", "editor"];
-/// pi fire-and-forget methods.
+/// Fire-and-forget methods.
 const FIRE_AND_FORGET_METHODS: [&str; 5] = [
     "notify",
     "setStatus",
@@ -27,12 +27,12 @@ const FIRE_AND_FORGET_METHODS: [&str; 5] = [
 pub struct Connection {
     /// `_oino/hello` was received.
     pub oino: bool,
-    /// UI capabilities (`ui` field of `_oino/hello`); `None` for pi clients.
+    /// UI capabilities (`ui` field of `_oino/hello`); `None` for plain clients.
     pub ui: Option<UiCapabilities>,
 }
 
 impl Connection {
-    /// A pi client (no `_oino/hello`).
+    /// A plain client (no `_oino/hello`).
     #[must_use]
     pub const fn plain() -> Self {
         Self {
@@ -77,7 +77,7 @@ pub enum WireEvent {
     CancelDialog(String),
 }
 
-/// pi `toJsonEvent` for a session event: `message_update` loses the cumulative `message`
+/// `toJsonEvent` for a session event: `message_update` loses the cumulative `message`
 /// and every `partial`, gains top-level `usage`; `toolcall_start` carries `id`/`toolName`.
 #[must_use]
 pub fn session_event_json(event: &AgentSessionEvent) -> JsonValue {
@@ -130,7 +130,7 @@ fn message_update(mut object: JsonObject) -> JsonObject {
 
 /// Maps one client event for an RPC connection.
 ///
-/// Pi clients get pi records only (pi UI methods without the Oino `extensionId`/
+/// Plain clients get legacy records only (UI methods without the Oino `extensionId`/
 /// `sessionId` fields, `extension_error` without `stack`, no Oino events; Oino-only
 /// dialogs resolve as cancelled). v2 clients get the registry wire: `oino_ui_patch`
 /// degraded to their declared capabilities (§10) plus `extension_error`.
@@ -429,7 +429,7 @@ mod tests {
         assert_eq!(value["ops"][0]["op"], "put");
         assert_eq!(value["ops"][0]["entry"]["id"], "ext/panel-1");
         assert_eq!(value["ops"][1]["op"], "dialog");
-        // A v1 Oino client keeps the pi-shaped records and no patches.
+        // A v1 Oino client keeps the legacy records and no patches.
         assert_eq!(rpc_event(&event, &Connection::v1()), WireEvent::Drop);
         // A v2 client gets dialogs through the patch, not as a second record.
         assert_eq!(rpc_event(&ui("select"), &v2), WireEvent::Drop);
@@ -582,7 +582,7 @@ mod tests {
         };
         let decoded: ClientEvent = serde_json::from_value(value).unwrap();
         assert_eq!(decoded, event);
-        // Responses stay pi-shaped for every frontend.
+        // Responses keep the legacy shape for every frontend.
         let response: UiResponse =
             serde_json::from_value(json!({"type":"extension_ui_response","id":"u1","value":"ok"}))
                 .unwrap();

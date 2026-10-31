@@ -11,7 +11,7 @@ use crate::protocol::{RpcCommand, RpcResponseData};
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum ClientError {
-    /// The command failed; the text is pi's error message (RPC `error`).
+    /// The command failed; the text is the error message (RPC `error`).
     #[error("{0}")]
     Command(String),
     /// The backend is gone (session disposed, connection closed).
@@ -27,11 +27,11 @@ pub enum ClientError {
 
 /// One live session as a frontend sees it: commands in, one ordered event stream out.
 pub trait SessionBackend: Send + Sync {
-    /// Any pi or `_oino/*` command; returns the response `data`.
+    /// Any agent session or `_oino/*` command; returns the response `data`.
     fn send(&self, command: RpcCommand) -> BoxFuture<'_, Result<RpcResponseData, ClientError>>;
 
     /// [`SessionBackend::send`] with the RPC request id; `bash` streams
-    /// `bash_execution_update{id}` with it (pi passes the command id to `executeBash`).
+    /// `bash_execution_update{id}` with it (the command id goes to `executeBash`).
     fn send_with_id(
         &self,
         request_id: Option<String>,

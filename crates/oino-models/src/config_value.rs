@@ -1,4 +1,4 @@
-//! pi `resolve-config-value.ts`: API keys and header values that are literals, `$ENV` /
+//! Config-value resolution: API keys and header values that are literals, `$ENV` /
 //! `${ENV}` templates, or `!command` output.
 //!
 //! - A value starting with `!` runs the rest as a shell command (`sh -c`, 10 s timeout) and uses

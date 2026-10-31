@@ -6,6 +6,9 @@ rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
 description = "Frontend-agnostic view models for Oino clients: transcript, extension UI state, tree, sessions, composer, keybindings"
+readme = "README.md"
+keywords = ["view", "frontend", "agent", "tui"]
+categories = ["gui"]
 
 [dependencies]
 indexmap.workspace = true

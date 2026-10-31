@@ -22,7 +22,7 @@ fn arg<'a>(args: &'a JsonObject, key: &str) -> Option<&'a str> {
     args.get(key).and_then(JsonValue::as_str)
 }
 
-/// Resolves a tool path argument against the session cwd (pi `resolveToCwd`, `~` expanded).
+/// Resolves a tool path argument against the session cwd (`resolveToCwd`, `~` expanded).
 #[must_use]
 pub fn resolve_path(cwd: &Path, path: &str) -> PathBuf {
     let path = path.strip_prefix('@').unwrap_or(path);

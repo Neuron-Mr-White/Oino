@@ -5,7 +5,7 @@
 //!
 //! Core implements [`HostServices`] (what extensions may do to sessions, UI, models, agents);
 //! a runtime (the WASM host) implements [`ExtensionRuntime`] / [`ExtensionInstance`] (what core
-//! may ask an extension). pi data-model values cross as [`RawJson`] with exact pi shapes (D5);
+//! may ask an extension). Data-model values cross as [`RawJson`] with exact shapes (D5);
 //! capability calls use the typed records of the WIT package `oino:extension@2.0.0`.
 //!
 //! # API map

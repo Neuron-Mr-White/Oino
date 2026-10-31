@@ -15,13 +15,13 @@ models).
 
 ## Credentials
 
-Resolution order per provider (pi semantics):
+Resolution order per provider:
 
 1. `--api-key <key>` (with `--model`) for this run;
 2. `~/.oino/auth.json`;
 3. the provider's environment variables.
 
-`auth.json` uses pi's format and is written with mode `0600`:
+`auth.json` uses the fixed format and is written with mode `0600`:
 
 ```json
 {
@@ -48,7 +48,7 @@ Environment variables (first match wins):
 | ollama, lmstudio | none (local servers on `localhost:11434` / `localhost:1234`) |
 
 The full list is in each component's `catalog.json` (`extensions/providers/*/catalog.json`,
-generated from pi-ai 1.4.0's model data).
+generated from reference model data).
 
 `/login [provider]` and `/logout [provider]` (TUI, desktop Settings → Models & Providers, RPC
 `_oino/login`) run the provider's OAuth flow and store the credential in `auth.json`:
@@ -58,7 +58,7 @@ The flows are tested against recorded fixtures; live accounts have not been trie
 ## Models
 
 `oino --list-models [search]` shows every model with credentials. Catalogs are static (from
-pi) except for `models: "dynamic"` providers (Ollama, LM Studio, Mistral, DeepInfra, Chutes,
+) except for `models: "dynamic"` providers (Ollama, LM Studio, Mistral, DeepInfra, Chutes,
 Perplexity, the Oino Router), which are listed at startup when credentials exist (keyless
 local servers are probed with a 5 s timeout). `--offline` / `OINO_OFFLINE=1` skips that.
 

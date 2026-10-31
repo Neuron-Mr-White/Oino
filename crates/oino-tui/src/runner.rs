@@ -361,7 +361,7 @@ async fn event_loop(
     Ok(())
 }
 
-/// pi external editor: `externalEditor` setting, `$VISUAL`, `$EDITOR`, Notepad, `nano`.
+/// External editor: `externalEditor` setting, `$VISUAL`, `$EDITOR`, Notepad, `nano`.
 fn external_editor(text: &str, extension: &str) -> std::io::Result<Option<String>> {
     let editor = std::env::var("VISUAL")
         .ok()

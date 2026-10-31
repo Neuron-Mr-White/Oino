@@ -1,13 +1,13 @@
-//! [`RpcServer`]: pi `rpc-mode.ts` over any [`SessionBackend`].
+//! [`RpcServer`]: the RPC protocol over any [`SessionBackend`].
 //!
-//! Each input line is handled as soon as it arrives (pi does not serialise commands, so
+//! Each input line is handled as soon as it arrives (commands are not serialised, so
 //! `abort` reaches a running `compact`); a command whose work completes without waiting
-//! answers before the next line is read, like pi's synchronous handlers.
+//! answers before the next line is read.
 //!
 //! One writer task owns the output and the backend's event stream. Before it writes a
 //! reply it drains every event already queued, so events a command caused precede its
-//! reply (pi writes events synchronously while the command runs). A `prompt` reply is
-//! written before that run's `agent_start` (pi `preflightResult` fires before the agent
+//! reply (events are written synchronously while the command runs). A `prompt` reply is
+//! written before that run's `agent_start` (`preflightResult` fires before the agent
 //! starts).
 
 use std::pin::Pin;
@@ -137,7 +137,7 @@ fn hello_connection(ui: Option<&JsonValue>) -> Connection {
     }
 }
 
-/// The text of a JSON id as pi passes it to `executeBash` (`bash_execution_update.id`).
+/// The text of a JSON id as passed to `executeBash` (`bash_execution_update.id`).
 fn id_text(id: &JsonValue) -> String {
     match id {
         JsonValue::String(text) => text.clone(),
@@ -145,7 +145,7 @@ fn id_text(id: &JsonValue) -> String {
     }
 }
 
-/// Owns the output: events and replies in pi order.
+/// Owns the output: events and replies in protocol order.
 struct Writer<W> {
     output: W,
     events: BoxStream<'static, ClientEvent>,
@@ -249,7 +249,7 @@ impl<W: AsyncWrite + Unpin> Writer<W> {
     }
 }
 
-/// pi RPC mode over a backend.
+/// RPC mode over a backend.
 pub struct RpcServer {
     backend: Arc<dyn SessionBackend>,
 }
@@ -271,7 +271,7 @@ impl RpcServer {
 
     /// Serves commands from `input` and writes replies/events to `output` until `input`
     /// ends or an extension requested shutdown and the session is idle, then shuts the
-    /// backend down (pi: stdin end ⇒ orderly shutdown, exit 0).
+    /// backend down (stdin end ⇒ orderly shutdown, exit 0).
     ///
     /// # Errors
     ///

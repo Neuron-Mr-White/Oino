@@ -14,7 +14,7 @@ use super::text::{OLine, spread, truncate_line};
 use super::{Block, overlays};
 use crate::app::App;
 
-/// pi built-in header (compact unless tools are expanded).
+/// Built-in header (compact unless tools are expanded).
 pub(super) fn builtin_header(app: &App, width: usize) -> Vec<OLine> {
     let theme = &app.theme;
     let k = |id: &str| app.keys.key_text(id);
@@ -270,7 +270,7 @@ fn segments_line(segments: &[Segment], width: usize, border: Style, app: &App) -
     truncate_line(Line::from(left), width)
 }
 
-/// pi icon names → glyphs.
+/// Icon names → glyphs.
 pub(super) fn icon_glyph(name: &str) -> &'static str {
     match name {
         "check" => "✓",
@@ -459,10 +459,10 @@ pub(super) fn completion_popup(app: &App, width: usize) -> Option<Vec<OLine>> {
     Some(out)
 }
 
-/// pi footer: cwd line, stats line, extension statuses; plus extension footers.
+/// Footer: cwd line, stats line, extension statuses; plus extension footers.
 #[allow(
     clippy::too_many_lines,
-    reason = "mirrors pi FooterComponent.render step by step"
+    reason = "mirrors FooterComponent.render step by step"
 )]
 pub(super) fn footer_lines(app: &mut App, width: usize) -> Vec<OLine> {
     let theme = &app.theme;

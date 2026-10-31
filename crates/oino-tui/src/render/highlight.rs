@@ -1,4 +1,4 @@
-//! Syntax highlighting with syntect, mapped onto pi's `syntax*` theme tokens.
+//! Syntax highlighting with syntect, mapped onto the `syntax*` theme tokens.
 
 use std::sync::OnceLock;
 

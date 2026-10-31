@@ -4,7 +4,7 @@ interface registry {
     use types.{json, host-error};
 
     enum event-kind {
-        // pi 1.4.0 extension events (wire name = kebab → snake, e.g. session-start → session_start)
+        // Extension events (wire name = kebab → snake, e.g. session-start → session_start)
         project-trust, resources-discover, mcp-servers-change,
         session-start, session-info-changed, session-before-switch, session-before-fork,
         session-before-compact, session-compact, session-compact-failed, session-shutdown,
@@ -113,7 +113,7 @@ interface registry {
     /// ("use default"). Secret fields go to the secret store (always global). The owner then
     /// receives `oino_settings_changed {namespace, keys, scope}`.
     set-extension-setting: func(namespace: string, key: string, value: option<json>, scope: settings-scope) -> result<_, host-error>;
-    /// Provider registration (pi registerProvider): JSON of oino_protocol::ext::ProviderRegistration.
+    /// Provider registration (registerProvider): JSON of oino_protocol::ext::ProviderRegistration.
     /// Only from components exporting `provider`, or a config-only override (baseUrl/headers/models) from any extension.
     register-provider: func(config: json) -> result<_, host-error>;
     unregister-provider: func(provider-id: string);

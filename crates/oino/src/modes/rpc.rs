@@ -1,4 +1,4 @@
-//! pi `rpc-mode.ts` on stdio: [`oino_rpc::RpcServer`] over an in-process backend.
+//! RPC mode on stdio: [`oino_rpc::RpcServer`] over an in-process backend.
 
 use std::sync::Arc;
 

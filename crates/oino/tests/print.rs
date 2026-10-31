@@ -87,7 +87,7 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     files
 }
 
-/// pi `--session-id`: an unknown id creates the session with that header id, an existing one
+/// An unknown id creates the session with that header id, an existing one
 /// opens it (known issue 14).
 #[test]
 fn session_id_creates_the_session_like_pi() {
@@ -141,7 +141,7 @@ fn session_id_creates_the_session_like_pi() {
         .collect();
     assert_eq!(users.len(), 2, "{}", entries.len());
 
-    // Ids pi rejects stay rejected.
+    // Rejected ids stay rejected.
     let rejected = sandbox.run(
         &json!([{"text": "x"}]),
         &["--session-dir", &dir, "--session-id", "bad/id", "-p", "hi"],
@@ -171,7 +171,7 @@ fn print_mode_error_exit_code() {
         stderr(&output)
     );
 
-    // `length` exits 1 only when the truncated reply stays last; with pi 1.4 length
+    // `length` exits 1 only when the truncated reply stays last; with length
     // recovery (core) the reply is omitted, so that rule is covered by the unit tests.
 }
 

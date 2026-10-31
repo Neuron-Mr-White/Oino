@@ -2,7 +2,7 @@
 //!
 //! Each stream subscribes to the *session* hub, not the runtime hub: session events are
 //! queued synchronously when published, so once a command returns every event it caused is
-//! already in the stream (a frontend can drain it before writing the reply, pi ordering).
+//! already in the stream (a frontend can drain it before writing the reply; ordering rule).
 //! When the backend replaces the session it hands every live stream a subscription to the
 //! new session plus the `session_replaced` event; a stream switches after draining the old
 //! session.

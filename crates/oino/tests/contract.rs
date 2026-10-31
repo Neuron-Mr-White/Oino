@@ -19,7 +19,7 @@ use futures::stream::BoxStream;
 use indexmap::IndexMap;
 use oino_ai::{AgentMessage, AssistantContent, JsonObject};
 use oino_client::protocol::ClientInfo;
-use oino_client::{ClientError, InProcessBackend, AgentCommand, SessionBackend};
+use oino_client::{AgentCommand, ClientError, InProcessBackend, SessionBackend};
 use oino_core::events::{AgentSessionEvent, ClientEvent, OinoEvent, ReplaceReason};
 use oino_core::extensions::api::{ExtensionInstance, ExtensionMode};
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource};

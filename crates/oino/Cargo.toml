@@ -5,7 +5,10 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "The Oino command-line binary: pi-compatible CLI, interactive (TUI), print, JSON, RPC and ACP modes"
+description = "The Oino command-line binary: interactive (TUI), print, JSON, RPC and ACP modes"
+readme = "README.md"
+keywords = ["cli", "agent", "llm", "tui", "ai"]
+categories = ["command-line-interface", "development-tools"]
 
 [lib]
 name = "oino"

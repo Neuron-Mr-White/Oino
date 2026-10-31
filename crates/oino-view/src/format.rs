@@ -1,4 +1,4 @@
-//! Display formatting shared by frontends (pi `footer.ts`, `session-selector.ts`, tool
+//! Display formatting shared by frontends (footer, session selector, tool
 //! renderers).
 
 use std::path::{Component, Path};

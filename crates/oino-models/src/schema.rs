@@ -217,7 +217,7 @@ pub(crate) fn validate(schema: &Schema, value: &Value) -> Vec<SchemaError> {
     errors
 }
 
-/// typebox builds `/`-joined instance paths without escaping; pi then turns `/` into `.`.
+/// typebox builds `/`-joined instance paths without escaping; they are then turned into `.` paths.
 fn escape_segment(segment: &str) -> String {
     segment.replace('/', ".")
 }

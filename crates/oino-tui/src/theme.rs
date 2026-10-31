@@ -1,15 +1,15 @@
-//! Colour theme: pi's built-in `dark` and `light` themes (resolved from their okhsl values)
+//! Colour theme: the built-in `dark` and `light` themes (resolved from their okhsl values)
 //! and the OUS tone mapping (ui-protocol §6.5).
 
 use oino_ai::ThinkingLevel;
 use oino_view::ous::Tone;
 use ratatui::style::{Color, Modifier, Style};
 
-/// Resolved theme colours (pi theme tokens).
+/// Resolved theme colours (theme tokens).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(
     missing_docs,
-    reason = "fields are pi theme token names (theme-schema.json)"
+    reason = "fields are theme token names (theme-schema.json)"
 )]
 pub struct Theme {
     pub name: &'static str,
@@ -67,7 +67,7 @@ pub struct Theme {
     pub bash_mode: Color,
 }
 
-/// pi `dark` theme.
+/// The `dark` theme.
 pub const DARK: Theme = Theme {
     name: "dark",
     accent: Color::Rgb(0xa7, 0x98, 0xd7),
@@ -124,7 +124,7 @@ pub const DARK: Theme = Theme {
     bash_mode: Color::Rgb(0x5e, 0xb2, 0x86),
 };
 
-/// pi `light` theme.
+/// The `light` theme.
 pub const LIGHT: Theme = Theme {
     name: "light",
     accent: Color::Rgb(0x74, 0x59, 0xb4),
