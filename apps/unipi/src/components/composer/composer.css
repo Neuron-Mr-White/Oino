@@ -340,6 +340,12 @@ html:not([data-shell='desktop']) .cmenu {
 .tb-chip:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
 .tb-chip:disabled { opacity: .5; }
 .tb-chip .tb-ic { flex: 0 0 auto; }
+/* A long name ends in an ellipsis (the chip's native title has the full text), never mid-word clipping. */
+.tb-chip .tb-label { min-width: 0; }
+.tb-chip .roll-label { grid-template-columns: minmax(0, 1fr); }
+.tb-chip .roll-in,
+.tb-chip .roll-out { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.comp-bar .tb-chip-model .tb-label { max-width: 176px; }
 .tb-chip .tb-chev { flex: 0 0 auto; color: var(--color-text-dim); transform: rotate(180deg); }
 .tb-chip[data-mode="auto"] { color: var(--color-claw); background: rgb(240 120 24 / 12%); }
 .tb-chip[data-mode="full"] { color: #f6a89d; background: rgb(240 60 50 / 12%); }

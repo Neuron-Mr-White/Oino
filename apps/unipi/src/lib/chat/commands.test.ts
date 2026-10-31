@@ -69,7 +69,7 @@ describe('UNI-276: every command is suggested', () => {
     ];
     const all = allCommands(session);
     expect(all.filter((c) => c.name === 'name')).toEqual([{ name: 'name', description: 'mine', source: 'extension' }]);
-    expect(all.length).toBe(session.length + PI_BUILTINS.length - 1);
+    expect(all.length).toBe(session.length + PI_BUILTINS.length - 2);
     expect(all.some((c) => c.name === 'settings')).toBe(true);
   });
 });
@@ -93,7 +93,9 @@ describe('UNI-308: isKnownCommand', () => {
   });
   it('a pi built-in is known (routed or app-handled)', async () => {
     const { isKnownCommand } = await import('./commands');
-    expect(isKnownCommand('reload', cmds)).toBe(true);
+    expect(isKnownCommand('compact', cmds)).toBe(true);
+    // No reload RPC: /reload is not a command the app offers.
+    expect(isKnownCommand('reload', cmds)).toBe(false);
     expect(isKnownCommand('settings', cmds)).toBe(true);
   });
   it('anything else is unknown', async () => {

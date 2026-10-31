@@ -10,12 +10,17 @@ import type { SessionHandle } from '../../lib/session/store';
 import { modKey } from '../../lib/shell';
 import { RollingLabel } from '../RollingLabel';
 import { openModelPicker } from './target';
+import { modelDisplayName, modelOrigin } from '../../lib/model/displayName';
 
-/** The chip's label: the running model's name, else its id, else a neutral word. */
+/** The chip's label: the running model's display name (never a raw `router/id` path), else a neutral word. */
 export function modelChipLabel(model: SessionHandle['state']['model']): string {
-  if (!model) return 'Model';
-  const name = typeof model.name === 'string' && model.name.trim() ? model.name : undefined;
-  return name ?? model.id ?? 'Model';
+  return modelDisplayName(model) || 'Model';
+}
+
+/** The chip's tooltip: the full name, where it runs (provider · id) and the shortcut. */
+export function modelChipTitle(model: SessionHandle['state']['model']): string {
+  const origin = modelOrigin(model);
+  return `Model: ${modelChipLabel(model)}${origin ? ` (${origin})` : ''} — change it (${modKey()} M)`;
 }
 
 export function ModelChip(props: { session: SessionHandle; disabled?: boolean }) {
@@ -27,7 +32,7 @@ export function ModelChip(props: { session: SessionHandle; disabled?: boolean })
       class="tb-chip tb-chip-model"
       aria-label={`Model: ${label()}. Change model`}
       aria-haspopup="dialog"
-      title={`Model: ${label()} — change it (${modKey()} M)`}
+      title={modelChipTitle(props.session.state.model)}
       disabled={props.disabled}
       onClick={open}
       data-testid="model-chip"

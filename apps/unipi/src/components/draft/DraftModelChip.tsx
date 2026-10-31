@@ -9,7 +9,7 @@ import { createResource, createSignal, For, Show } from 'solid-js';
 import { Check, ChevronUp, Cpu } from 'lucide-solid';
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { modelKey, modelName, parseModels, type ModelInfo } from '../../lib/model/picker';
-import { modelChipLabel } from '../model/ModelChip';
+import { modelChipLabel, modelChipTitle } from '../model/ModelChip';
 import { RollingLabel } from '../RollingLabel';
 import type { DraftSession } from './draftSession';
 
@@ -19,12 +19,8 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
   const current = () => modelKey(props.session.state.model ?? {});
   const [models] = createResource(
     () => (anchor() ? props.session.hostId : undefined),
-    async (): Promise<ModelInfo[]> => {
-      const peer = props.session.peer();
-      if (!peer) return [];
-      const reply = await peer.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined);
-      return parseModels(reply);
-    },
+    // The draft answers from a live chat on this PC, else the list it last saw (P0-09).
+    async (): Promise<ModelInfo[]> => parseModels(await props.session.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined)),
   );
   const list = (): ModelInfo[] => {
     const all = models() ?? [];
@@ -40,7 +36,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
         aria-label={`Model: ${label()}. Change model`}
         aria-haspopup="menu"
         aria-expanded={!!anchor()}
-        title={`Model: ${label()}`}
+        title={modelChipTitle(props.session.state.model)}
         disabled={props.disabled}
         onClick={(e) => (anchor() ? setAnchor(undefined) : setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()))}
         data-testid="model-chip"
@@ -62,7 +58,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                       role="menuitemradio"
                       aria-checked={modelKey(m) === current()}
                       class="ws-row"
-                      title={modelKey(m)}
+                      title={`${modelName(m)} — ${m.provider} · ${m.id}`}
                       onClick={() => {
                         setAnchor(undefined);
                         props.session.pickModel({ provider: m.provider ?? '', modelId: m.id, name: modelName(m) });
@@ -71,7 +67,9 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                       <Cpu size={15} class="ws-row-ic" />
                       <span class="ws-row-text">
                         <span class="ws-row-label">{modelName(m)}</span>
-                        <span class="ws-row-detail">{m.provider}</span>
+                        <span class="ws-row-detail">
+                          {m.provider} · {m.id}
+                        </span>
                       </span>
                       <Show when={modelKey(m) === current()}>
                         <Check size={15} class="ws-row-check" />
@@ -80,7 +78,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                   )}
                 </For>
                 <Show when={!(models() ?? []).length}>
-                  <div class="ws-browse-note">The full model list opens inside a chat (Ctrl M).</div>
+                  <div class="ws-browse-note">The other models show here once a chat on this PC has run.</div>
                 </Show>
               </Show>
             </div>

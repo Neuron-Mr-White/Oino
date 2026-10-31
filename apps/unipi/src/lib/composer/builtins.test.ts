@@ -6,7 +6,7 @@
  * surface or a command that silently falls back fails this file.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { BUILTIN_ROUTES, BUG_URL, builtinPlan, NO_CHAT_NOTICE, routedBuiltinNames, runBuiltin, type BuiltinDeps } from './builtins';
+import { BUILTIN_ROUTES, BUG_URL, builtinPlan, builtinWorksWithoutChat, NO_CHAT_NOTICE, routedBuiltinNames, runBuiltin, runSessionBuiltin, SESSION_BUILTINS, type BuiltinDeps } from './builtins';
 
 function deps(overrides: Partial<BuiltinDeps> = {}): BuiltinDeps {
   return {
@@ -126,5 +126,39 @@ describe('what each built-in opens', () => {
       expect(plan.title.trim()).not.toBe('');
       expect(plan.action.do).toBeTruthy();
     }
+  });
+});
+
+describe('P0-02: the chat built-ins run an action', () => {
+  const sdeps = () => ({
+    model: vi.fn(),
+    thinking: vi.fn(),
+    compact: vi.fn(),
+    newChat: vi.fn(),
+    resume: vi.fn(),
+    fork: vi.fn(),
+    tree: vi.fn(),
+    rename: vi.fn(),
+    copyLast: vi.fn(),
+    sessionInfo: vi.fn(),
+  });
+  it.each(Object.keys(SESSION_BUILTINS))('/%s runs', (name) => {
+    expect(runSessionBuiltin(name, undefined, sdeps())).toBe(true);
+  });
+  it('passes the argument', () => {
+    const d = sdeps();
+    runSessionBuiltin('compact', '  keep the API notes ', d);
+    expect(d.compact).toHaveBeenCalledWith('keep the API notes');
+    runSessionBuiltin('thinking', 'high', d);
+    expect(d.thinking).toHaveBeenCalledWith('high');
+    runSessionBuiltin('name', '', d);
+    expect(d.rename).toHaveBeenCalledWith(undefined);
+  });
+  it('knows which work before a chat exists', () => {
+    expect(builtinWorksWithoutChat('model')).toBe(true);
+    expect(builtinWorksWithoutChat('settings')).toBe(true);
+    expect(builtinWorksWithoutChat('compact')).toBe(false);
+    expect(builtinWorksWithoutChat('export')).toBe(false);
+    expect(runSessionBuiltin('unipi:goal', undefined, sdeps())).toBe(false);
   });
 });

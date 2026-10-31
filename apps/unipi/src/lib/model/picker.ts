@@ -10,6 +10,8 @@
  * `unipi.fusion` (`./fusion.ts`), so the picker never invents one.
  */
 
+import { modelDisplayName } from './displayName';
+
 /** The part of pi's `Model` the picker reads. */
 export type ModelInfo = {
   provider: string;
@@ -69,8 +71,9 @@ export function shortModelName(name: string | undefined): string {
   return m ? m[1]! : n;
 }
 
-/** The row's label: the display name, else the id (snapshots carry no name). */
-export const modelName = (m: ModelInfo): string => (m.name && m.name.trim()) || m.id;
+/** The row's label: the display name (a name that is really an id path is
+ *  made readable — `ollamacloud/deepseek-v4.1-flash` → "DeepSeek V4.1 Flash"). */
+export const modelName = (m: ModelInfo): string => modelDisplayName(m) || m.id;
 
 /** The Vision badge (Z-69): the model accepts image input. */
 export const hasVision = (m: ModelInfo): boolean => (m.input ?? []).includes('image');

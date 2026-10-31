@@ -10,47 +10,56 @@ export function sourceOf(c: CommandInfo): CommandSource {
 }
 
 /**
- * UNI-276: pi's own built-in commands the bridge doesn't list (it sends the
- * handful the app acts on: model, thinking, compact, new, resume, fork, tree).
- * Typing `/` suggests every command pi has; these are the rest. The app acts
- * on name / copy / session / reload itself; every other one is routed to an
- * app surface by `lib/composer/builtins.ts` (WP-A25, G-15) — there is no
- * "terminal only" leftover.
+ * UNI-276 / P0-02: the built-in commands the engine itself has. oino's
+ * `get_commands` lists only extension / prompt / skill commands, so the app
+ * supplies these; every one either runs an app action or the oino RPC it maps
+ * to (`lib/composer/builtins.ts`: `SESSION_BUILTINS` acts on the chat,
+ * `BUILTIN_ROUTES` opens an app surface). A built-in with neither is not
+ * listed — nothing typed as a command ever reaches the model as text.
+ * (`/reload` is absent: oino has no reload RPC; extensions reload from
+ * Settings › Extensions.)
  */
 export const PI_BUILTINS: readonly CommandInfo[] = [
-  { name: 'name', description: 'Rename this session', source: 'builtin' },
+  { name: 'model', description: 'Pick the model (or /model <name>)', source: 'builtin' },
+  { name: 'thinking', description: 'Thinking level (or /thinking <level>)', source: 'builtin' },
+  { name: 'compact', description: 'Compact the conversation now (optional focus text)', source: 'builtin' },
+  { name: 'new', description: 'Start a new chat in this folder', source: 'builtin' },
+  { name: 'resume', description: 'Open another chat', source: 'builtin' },
+  { name: 'fork', description: 'Fork this chat into a new one', source: 'builtin' },
+  { name: 'tree', description: 'Show the conversation tree', source: 'builtin' },
+  { name: 'name', description: 'Rename this chat (or /name <title>)', source: 'builtin' },
   { name: 'copy', description: 'Copy the last reply', source: 'builtin' },
   { name: 'session', description: 'Session info and stats', source: 'builtin' },
-  { name: 'settings', description: 'Open settings menu', source: 'builtin' },
-  { name: 'scoped-models', description: 'Enable/disable models for Ctrl+P cycling', source: 'builtin' },
-  { name: 'export', description: 'Export session (HTML default, or .html/.jsonl path)', source: 'builtin' },
-  { name: 'import', description: 'Import and resume a session from a JSONL file', source: 'builtin' },
-  { name: 'share', description: 'Share session as a secret GitHub gist', source: 'builtin' },
-  { name: 'clone', description: 'Duplicate the session at the current position', source: 'builtin' },
-  { name: 'changelog', description: 'Show changelog entries', source: 'builtin' },
+  { name: 'settings', description: 'Open settings', source: 'builtin' },
+  { name: 'scoped-models', description: 'Choose the models to cycle through', source: 'builtin' },
+  { name: 'export', description: 'Export this chat (JSONL)', source: 'builtin' },
+  { name: 'import', description: 'Import a session from a JSONL file', source: 'builtin' },
+  { name: 'share', description: 'Share this chat', source: 'builtin' },
+  { name: 'clone', description: 'Duplicate this chat at the current point', source: 'builtin' },
+  { name: 'changelog', description: "What's new", source: 'builtin' },
   { name: 'hotkeys', description: 'Show all keyboard shortcuts', source: 'builtin' },
-  { name: 'trust', description: 'Save project trust decision', source: 'builtin' },
-  { name: 'login', description: 'Configure provider authentication', source: 'builtin' },
-  { name: 'logout', description: 'Remove provider authentication', source: 'builtin' },
-  { name: 'reload', description: 'Reload extensions, skills, prompts and context files', source: 'builtin' },
-  { name: 'bug', description: 'Report a bug to the Pi developers', source: 'builtin' },
-  { name: 'quit', description: 'Quit pi', source: 'builtin' },
+  { name: 'trust', description: 'Project trust', source: 'builtin' },
+  { name: 'login', description: 'Sign in to a provider', source: 'builtin' },
+  { name: 'logout', description: 'Sign out of a provider', source: 'builtin' },
+  { name: 'bug', description: 'Report a bug', source: 'builtin' },
+  { name: 'quit', description: 'Quit UniPi', source: 'builtin' },
 ];
 /**
- * UNI-308: built-ins the app acts on itself — `copy` here, the rest in the
- * session store/shell. Kept here, not just inline in the composer, so a test
- * can assert `APP_HANDLED_BUILTINS \u222a BUILTIN_ROUTES === PI_BUILTINS` (WP-A25:
- * every built-in has somewhere to go; none silently becomes a prompt).
+ * The built-ins that act on the chat itself (`SESSION_BUILTINS` in
+ * `lib/composer/builtins.ts`, run by the composer). With `BUILTIN_ROUTES`
+ * they cover exactly `PI_BUILTINS` (asserted by a test): none silently
+ * becomes a prompt.
  */
-export const APP_HANDLED_BUILTINS = new Set(['name', 'copy', 'session', 'reload']);
+export const APP_HANDLED_BUILTINS = new Set(['model', 'thinking', 'compact', 'new', 'resume', 'fork', 'tree', 'name', 'copy', 'session']);
 
 /** pi's built-ins by name (the rows a bare `/` lists after the session's own). */
 const PI_ONLY = new Set(PI_BUILTINS.map((c) => c.name));
 
-/** Everything `/` suggests: the session's list plus pi built-ins it doesn't carry (a same-named extension command wins). */
-export function allCommands(session: readonly CommandInfo[]): CommandInfo[] {
+/** Everything `/` suggests: the session's list plus pi built-ins it doesn't carry (a same-named extension command wins).
+ *  `builtin` filters the built-ins (the new-chat draft lists only those that work without a chat). */
+export function allCommands(session: readonly CommandInfo[], builtin: (name: string) => boolean = () => true): CommandInfo[] {
   const have = new Set(session.map((c) => c.name));
-  return [...session, ...PI_BUILTINS.filter((c) => !have.has(c.name))];
+  return [...session, ...PI_BUILTINS.filter((c) => !have.has(c.name) && builtin(c.name))];
 }
 
 /**
@@ -65,6 +74,12 @@ export function allCommands(session: readonly CommandInfo[]): CommandInfo[] {
  */
 export function isKnownCommand(name: string, session: readonly CommandInfo[]): boolean {
   return allCommands(session).some((c) => c.name === name);
+}
+
+/** A typed `/name` that the session does not run itself (an engine built-in the app handles).
+ *  A session row with `source: 'builtin'` is the engine naming its own built-in, not an extension. */
+export function isAppBuiltin(name: string, session: readonly CommandInfo[]): boolean {
+  return PI_ONLY.has(name) && !session.some((c) => c.name === name && c.source !== 'builtin');
 }
 
 /** The `/query` being typed at the caret, or null. Only at the start of the draft or after whitespace. */
@@ -120,7 +135,8 @@ export function rankCommands(commands: readonly CommandInfo[], query: string, li
   // pi's own built-ins that the session does not list are filler for a bare
   // `/`: they sink below the session's commands (the old "terminal" rows did,
   // and they are what the user rarely wants mid-task). WP-A25.
-  const rank = (c: CommandInfo) => (c.source === 'builtin' && PI_ONLY.has(c.name) ? 9 : SOURCE_RANK[sourceOf(c)]);
+  // The chat built-ins (/model, /compact…) are what a bare `/` is often typed for: they keep the top group.
+  const rank = (c: CommandInfo) => (c.source === 'builtin' && PI_ONLY.has(c.name) && !APP_HANDLED_BUILTINS.has(c.name) ? 9 : SOURCE_RANK[sourceOf(c)]);
   scored.sort((a, b) => a.s - b.s || rank(a.c) - rank(b.c) || a.c.name.localeCompare(b.c.name));
   return scored.slice(0, limit).map((x) => x.c);
 }

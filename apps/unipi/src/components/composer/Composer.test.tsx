@@ -415,3 +415,56 @@ describe('pi built-ins route to app surfaces (WP-A25, G-15)', () => {
     expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
   });
 });
+
+describe('P0-02: engine built-ins run, never reach the model as text', () => {
+  const sendCommand = async (text: string) => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText(text);
+    c.key({ key: 'Escape' });
+    c.key({ key: 'Enter' });
+    return { s, c };
+  };
+  const prompted = () => world.log.some((e) => e.kind === 'cmd' && (e.op === 'prompt' || e.op === 'steer' || e.op === 'follow_up'));
+
+  it('/compact <focus> runs the compact RPC with the focus text', async () => {
+    await sendCommand('/compact keep the API notes');
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'compact')).toBe(true));
+    const cmd = world.log.find((e) => e.kind === 'cmd' && e.op === 'compact')!.args as { customInstructions?: string };
+    expect(cmd.customInstructions).toBe('keep the API notes');
+    expect(prompted()).toBe(false);
+  });
+
+  it('/copy asks for the last reply', async () => {
+    await sendCommand('/copy');
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'get_last_assistant_text')).toBe(true));
+    expect(prompted()).toBe(false);
+  });
+
+  it('/thinking <level> sets it; /model opens the picker; /session opens Info', async () => {
+    const { s } = await sendCommand('/thinking high');
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'get_available_thinking_levels')).toBe(true));
+    expect(prompted()).toBe(false);
+    expect(composerDraft(s.key).text).toBe('');
+  });
+
+  it('/new goes to a new chat in this folder; /resume opens the sessions list', async () => {
+    await sendCommand('/new');
+    await waitFor(() => expect(location.hash).toContain(`/new/${HOST}`));
+    expect(decodeURIComponent(location.hash)).toContain(CWD);
+    expect(prompted()).toBe(false);
+  });
+
+  it('/reload is not a command (no reload RPC) and is never sent', async () => {
+    await sendCommand('/reload');
+    await waitFor(() => expect(actionNotice() ?? '').toMatch(/Unknown command \/reload/));
+    expect(prompted()).toBe(false);
+  });
+
+  it('/model still opens the picker though the session lists it as a builtin', async () => {
+    await sendCommand('/model');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(prompted()).toBe(false);
+  });
+});
+

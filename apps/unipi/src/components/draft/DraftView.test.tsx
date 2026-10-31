@@ -107,7 +107,7 @@ describe('DraftView (Z-19)', () => {
     expect(screen.getByTestId('send-send')).toBeTruthy();
     expect(screen.getByTestId('workspace-chip').textContent).toContain('No workspace');
     // The host's default model; the draft has no context to measure yet.
-    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('deepseek-flash'));
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('DeepSeek Flash'));
     expect(screen.queryByTestId('context-ring')).toBeNull();
     // The workflow extension runs on this PC → its controls are there.
     await waitFor(() => expect(screen.getByTestId('permission-chip')).toBeTruthy());

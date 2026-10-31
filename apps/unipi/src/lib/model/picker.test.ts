@@ -51,8 +51,8 @@ describe('row labels and badges', () => {
     expect(shortModelName(undefined)).toBe('');
   });
   it('falls back to the id when the snapshot carried no name', () => {
-    expect(modelName({ provider: 'a', id: 'b' })).toBe('b');
-    expect(modelName({ provider: 'a', id: 'b', name: '  ' })).toBe('b');
+    expect(modelName({ provider: 'a', id: 'b' })).toBe('B');
+    expect(modelName({ provider: 'a', id: 'b', name: '  ' })).toBe('B');
   });
   it('marks Vision models and formats the context window', () => {
     expect(hasVision(models[0]!)).toBe(true);

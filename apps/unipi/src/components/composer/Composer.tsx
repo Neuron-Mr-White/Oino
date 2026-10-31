@@ -34,8 +34,26 @@ import {
   retryAttachment,
   withAttachmentMentions,
 } from '../../lib/composer/attachments';
-import { allCommands, applyAt, atQuery, isKnownCommand, rankCommands, slashQuery } from '../../lib/chat/commands';
-import { builtinPlan, runBuiltin, type BuiltinDeps } from '../../lib/composer/builtins';
+import { allCommands, applyAt, atQuery, isAppBuiltin, isKnownCommand, rankCommands, slashQuery } from '../../lib/chat/commands';
+import {
+  builtinPlan,
+  builtinWorksWithoutChat,
+  runBuiltin,
+  runSessionBuiltin,
+  type BuiltinDeps,
+  type SessionBuiltinDeps,
+} from '../../lib/composer/builtins';
+import { findModel } from '../../lib/model/find';
+import { rememberCommands } from '../draft/hostCache';
+import { modelName, parseModels } from '../../lib/model/picker';
+import { parseLevels, setThinkingLevel, thinkingLabel } from '../../lib/model/thinking';
+import { appNavigate } from '../../lib/nav';
+import { setPaletteOpen } from '../../lib/shell';
+import { copyText } from '../../lib/board/share';
+import { forkSession, renameSession } from '../../lib/session/actions';
+import { openRenameDialog, NAME_MAX } from '../session/RenameDialog';
+import { openSessionModal } from '../session/modalTarget';
+import { openBtwTab, openTreeTab } from '../panes/tabs/sessionTabs';
 import { chatActionsFor } from '../shell/ConversationHeader';
 import { openImportSession } from '../command/ImportSession';
 import { openSettingsAt } from '../../lib/settings/open';
@@ -48,7 +66,7 @@ import { z } from 'zod';
 import { call } from '../../lib/ipc';
 import { commandNames } from '../timeline/context';
 import { fsList, fsSearch, fsStat } from '../../lib/fs';
-import { openBtwTab } from '../panes/tabs/sessionTabs';
+import { toAppError } from '@unipi/protocol';
 import { addTaskFromChat } from '../../lib/session/open';
 import { followUpMode, sendModeForEnter } from '../../lib/composer/sendMode';
 import { SendButton } from './SendButton';
@@ -89,6 +107,8 @@ const pasteHead = (text: string): string => {
   const flat = text.replace(/\s+/g, ' ').trimEnd();
   return flat.length > 220 ? `${flat.slice(0, 219).trimEnd()}…` : flat;
 };
+
+const errorText = (error: unknown): string => String(toAppError(error).message || 'something went wrong');
 
 /** Local files the composer reads into memory at most (a paste / a drop): the
  *  attachment pipeline uploads `File`s, so anything bigger is refused. */
@@ -172,6 +192,12 @@ export function Composer(props: ComposerProps) {
 
   /* ── `/` commands (Z-62: commands, prompt templates, skills) ──────── */
   const commands = createMemo(() => commandNames(props.session.state.commands));
+  // P0-09: the new-chat draft offers this PC's `/` commands before any chat is open.
+  createEffect(() => {
+    if (props.draft) return;
+    const list = props.session.state.commands;
+    if (list.length) untrack(() => rememberCommands(hostId(), list));
+  });
   const [verified, setVerified] = createSignal<ReadonlySet<string>>(new Set(), { equals: false });
   const markVerified = (token: string) => {
     const next = new Set(verified());
@@ -184,7 +210,8 @@ export function Composer(props: ComposerProps) {
   const slashItems = createMemo(() => {
     const q = slash();
     if (!q || dismissed() === draft().text) return [];
-    return rankCommands(allCommands(props.session.state.commands), q.query, 12);
+    // The draft lists only the built-ins that work before a chat exists (P0-02: no dead rows).
+    return rankCommands(allCommands(props.session.state.commands, props.draft ? builtinWorksWithoutChat : undefined), q.query, 60);
   });
   const pickCommand = (name: string) => {
     const q = slash();
@@ -472,6 +499,103 @@ export function Composer(props: ComposerProps) {
     };
   };
 
+  /** P0-02: the chat built-ins (`SESSION_BUILTINS`) — oino RPCs and app actions. */
+  const sessionBuiltinDeps = (): SessionBuiltinDeps => {
+    const s = props.session;
+    const chat = () => ({ hostId: hostId(), sessionId: s.sessionId() });
+    /** Opens one of this composer's own toolbar menus (the thinking / draft model chips). */
+    const clickChip = (testId: string): boolean => {
+      const el = wrap?.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`);
+      if (!el || el.disabled) return false;
+      el.click();
+      return true;
+    };
+    const failed = (what: string) => (error: unknown) => showActionNotice(`${what}: ${errorText(error)}`);
+    return {
+      model: (query) => {
+        if (!query) {
+          if (props.draft) {
+            if (!clickChip('model-chip')) showActionNotice('No model list yet');
+          } else openModelPicker(chat());
+          return;
+        }
+        void s
+          .cmd<unknown>({ type: 'get_available_models' })
+          .then((reply) => {
+            const hit = findModel(parseModels(reply), query);
+            if (!hit) {
+              showActionNotice(`No model matches “${query}”`);
+              return;
+            }
+            return s.cmd({ type: 'set_model', provider: hit.provider, modelId: hit.id }).then(() => showActionNotice(`Model: ${modelName(hit)}`));
+          })
+          .catch(failed('Could not switch the model'));
+      },
+      thinking: (level) => {
+        if (!level) {
+          if (!clickChip('thinking-chip')) showActionNotice('This model has no thinking levels');
+          return;
+        }
+        const want = level.toLowerCase().replace(/^x-high$/, 'xhigh');
+        void s
+          .cmd<unknown>({ type: 'get_available_thinking_levels' })
+          .then((reply) => {
+            const levels = parseLevels(reply);
+            if (levels.length && !levels.includes(want)) {
+              showActionNotice(`Thinking levels here: ${levels.map(thinkingLabel).join(', ')}`);
+              return;
+            }
+            return setThinkingLevel(s, want).then(() => showActionNotice(`Thinking: ${thinkingLabel(want)}`));
+          })
+          .catch(failed('Could not set the thinking level'));
+      },
+      compact: (focus) => {
+        showActionNotice('Compacting the conversation…');
+        void s.cmd({ type: 'compact', ...(focus ? { customInstructions: focus } : {}) }).then(
+          () => showActionNotice('Compacted'),
+          failed('Compaction failed'),
+        );
+      },
+      newChat: () => {
+        if (props.draft) {
+          focusComposer(key());
+          return;
+        }
+        const here = cwd();
+        appNavigate(`/new/${encodeURIComponent(hostId())}${here ? `?cwd=${encodeURIComponent(here)}` : ''}`);
+      },
+      resume: () => setPaletteOpen(true, 'sessions'),
+      fork: () => {
+        const ctx = { ...chat(), title: s.state.name ?? '', cwd: cwd() || undefined };
+        const row = chatActionsFor(ctx).find((entry) => entry.id === 'fork');
+        if (row) row.action.run(ctx);
+        else void forkSession(ctx.hostId, ctx.sessionId);
+      },
+      tree: () => openTreeTab({ ...chat(), cwd: cwd() || undefined }),
+      rename: (title) => {
+        if (!title) {
+          openRenameDialog({ ...chat(), name: s.state.name ?? '' });
+          return;
+        }
+        void renameSession(hostId(), s.sessionId(), title.slice(0, NAME_MAX)).then(() => showActionNotice(`Renamed to “${title.slice(0, 60)}”`), failed('Could not rename'));
+      },
+      copyLast: () => {
+        void s
+          .cmd<{ text?: string | null }>({ type: 'get_last_assistant_text' })
+          .then((reply) => {
+            const text = reply && typeof reply.text === 'string' ? reply.text : '';
+            if (!text.trim()) {
+              showActionNotice('No reply to copy yet');
+              return;
+            }
+            return copyText(text).then(() => showActionNotice('Copied the last reply'));
+          })
+          .catch(failed("Couldn't copy"));
+      },
+      sessionInfo: () => openSessionModal({ ...chat(), tab: 'info' }),
+    };
+  };
+
   /* ── send ─────────────────────────────────────────────────────────── */
   const send = (mode?: 'prompt' | 'steer' | 'followUp') => {
     if (props.readOnly || props.busy) return;
@@ -482,34 +606,30 @@ export function Composer(props: ComposerProps) {
     const images = current.images;
     if (!text.trim() && !images.length) return;
     const cmd = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-    // `/model` opens the picker (Z-70: composer chip, Ctrl/Cmd+M and /model are
-    // the only entry points) instead of becoming a prompt.
-    if (!props.readOnly && !props.draft && cmd && cmd[1] === 'model' && !cmd[2]?.trim()) {
-      openModelPicker({ hostId: hostId(), sessionId: props.session.sessionId() });
-      afterRoute(text);
-      return;
-    }
     // `/btw` opens the side question instead of sending to the main chat (Z-31).
     if (!props.draft && cmd && (cmd[1] === 'btw' || cmd[1] === 'unipi:btw')) {
       openSideQuestion(cmd[2]?.trim() || undefined);
       afterRoute(text);
       return;
     }
-    // WP-A25 (G-15): every pi built-in the app can show has a surface — the
-    // "terminal only" toast is gone. An extension command of the same name wins.
-    const builtin = cmd ? builtinPlan(cmd[1]!) : undefined;
-    const sessionOwns = cmd ? props.session.state.commands.some((c) => c.name.replace(/^\//, '') === cmd[1]) : false;
-    if (cmd && builtin && !sessionOwns && props.draft) {
-      // A built-in acts on a chat; the draft has none yet.
-      showActionNotice(`/${cmd[1]} works inside a chat — send a first message to start one`);
-      return;
-    }
-    if (cmd && builtin && !sessionOwns && runBuiltin(cmd[1]!, builtinDeps())) {
-      afterRoute(text);
+    if (cmd && isAppBuiltin(cmd[1]!, props.session.state.commands)) {
+      const name = cmd[1]!;
+      // P0-02: every engine built-in runs here (an app action or its oino RPC);
+      // an extension command of the same name wins (the session owns it).
+      if (props.draft && !builtinWorksWithoutChat(name)) {
+        showActionNotice(`/${name} works inside a chat — send a first message to start one`);
+        return;
+      }
+      // WP-A25 (G-15): the app surfaces (settings, export, import…).
+      if (builtinPlan(name) ? runBuiltin(name, builtinDeps()) : runSessionBuiltin(name, cmd[2], sessionBuiltinDeps())) {
+        afterRoute(text);
+        return;
+      }
+      showActionNotice(`/${name} isn't available here`);
       return;
     }
     // A `/name` neither the session nor the app knows never becomes a prompt.
-    if (cmd && !props.draft && !isKnownCommand(cmd[1]!, props.session.state.commands)) {
+    if (cmd && !isKnownCommand(cmd[1]!, props.session.state.commands)) {
       showActionNotice(`Unknown command /${cmd[1]}`);
       return;
     }

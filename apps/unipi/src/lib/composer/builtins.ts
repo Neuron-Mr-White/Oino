@@ -222,3 +222,96 @@ export function runBuiltin(name: string, deps: BuiltinDeps): boolean {
  * built-in share one label.
  */
 export const DUPLICATE_LABEL = 'Duplicate';
+
+/* ── P0-02: the built-ins that act on the chat ─────────────────────────── */
+
+/**
+ * The engine's chat built-ins (oino's `get_commands` does not list them):
+ * each maps to an oino RPC or an app action, run through injected effects.
+ *
+ *   /model [name]      → the model picker, or `set_model` for a named model
+ *   /thinking [level]  → the thinking menu, or `set_thinking_level`
+ *   /compact [focus]   → `compact{customInstructions}`
+ *   /new               → a new chat in this folder (the draft route)
+ *   /resume            → the command center on Sessions
+ *   /fork              → the ⋯ Fork action (`session_fork`)
+ *   /tree              → the Tree tab
+ *   /name [title]      → the Rename dialog, or `session_rename`
+ *   /copy              → `get_last_assistant_text` → clipboard
+ *   /session           → the Session modal's Info tab
+ *
+ * `chat: false` rows also work on the new-chat draft (before a session exists).
+ */
+export const SESSION_BUILTINS: Record<string, { chat: boolean }> = {
+  model: { chat: false },
+  thinking: { chat: false },
+  compact: { chat: true },
+  new: { chat: false },
+  resume: { chat: false },
+  fork: { chat: true },
+  tree: { chat: true },
+  name: { chat: true },
+  copy: { chat: true },
+  session: { chat: true },
+};
+
+/** The effects the chat built-ins need (the composer wires the real ones). */
+export type SessionBuiltinDeps = {
+  model: (query?: string) => void;
+  thinking: (level?: string) => void;
+  compact: (focus?: string) => void;
+  newChat: () => void;
+  resume: () => void;
+  fork: () => void;
+  tree: () => void;
+  rename: (title?: string) => void;
+  copyLast: () => void;
+  sessionInfo: () => void;
+};
+
+/** Whether `/name` runs on the draft (no chat yet). Routed app surfaces need none either, except the chat ⋯ ones. */
+export function builtinWorksWithoutChat(name: string): boolean {
+  const own = SESSION_BUILTINS[name];
+  if (own) return !own.chat;
+  const plan = BUILTIN_ROUTES[name];
+  return !!plan && plan.action.do !== 'chat-action' && plan.action.do !== 'import';
+}
+
+/** Runs a chat built-in; false when `name` is not one. */
+export function runSessionBuiltin(name: string, arg: string | undefined, deps: SessionBuiltinDeps): boolean {
+  const a = arg?.trim() || undefined;
+  switch (name) {
+    case 'model':
+      deps.model(a);
+      return true;
+    case 'thinking':
+      deps.thinking(a);
+      return true;
+    case 'compact':
+      deps.compact(a);
+      return true;
+    case 'new':
+      deps.newChat();
+      return true;
+    case 'resume':
+      deps.resume();
+      return true;
+    case 'fork':
+      deps.fork();
+      return true;
+    case 'tree':
+      deps.tree();
+      return true;
+    case 'name':
+      deps.rename(a);
+      return true;
+    case 'copy':
+      deps.copyLast();
+      return true;
+    case 'session':
+      deps.sessionInfo();
+      return true;
+    default:
+      return false;
+  }
+}

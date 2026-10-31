@@ -24,6 +24,8 @@ import type { RpcCommand } from '../../lib/host/client';
 import { THINKING_ORDER } from '../../lib/model/thinking';
 import { WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
 import { hostCmd, listExtensions } from '../../settings/hostCmd';
+import { parseModels, type ModelInfo } from '../../lib/model/picker';
+import { cachedCommands, cachedModels, rememberModels } from './hostCache';
 
 export type DraftModel = { provider: string; modelId: string; name?: string };
 
@@ -85,10 +87,13 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
     })
     .catch(() => undefined);
 
-  // The `/` menu: a live chat's commands; else the workflow controls alone
-  // when this PC runs the extension (the permission / Plan chips need them).
+  // The `/` menu: a live chat's commands, else the ones a chat on this PC
+  // listed last (P0-09), else the workflow controls alone when this PC runs
+  // the extension (the permission / Plan chips need them).
   const fromPeer = peer()?.state.commands;
+  const remembered = cachedCommands(hostId);
   if (fromPeer?.length) setState('commands', [...fromPeer] as CommandInfo[]);
+  else if (remembered?.length) setState('commands', remembered);
   else
     void listExtensions(hostId)
       .then((res) => {
@@ -153,6 +158,21 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
           if (reply) return reply as T;
         }
         return { levels: [...DEFAULT_LEVELS] } as T;
+      }
+      if (cmd.type === 'get_available_models') {
+        const p = peer();
+        const reply = p ? await p.cmd<unknown>(cmd).catch(() => undefined) : undefined;
+        const models: ModelInfo[] = reply ? parseModels(reply) : [];
+        if (models.length) {
+          rememberModels(hostId, models);
+          return { models } as T;
+        }
+        return { models: cachedModels(hostId) ?? [] } as T;
+      }
+      if (cmd.type === 'set_model' && typeof cmd.provider === 'string' && typeof cmd.modelId === 'string') {
+        const known = (cachedModels(hostId) ?? []).find((m) => m.provider === cmd.provider && m.id === cmd.modelId);
+        handle.pickModel({ provider: cmd.provider, modelId: cmd.modelId, ...(known?.name ? { name: known.name } : {}) });
+        return null as T;
       }
       if (cmd.type === 'set_thinking_level' && typeof cmd.level === 'string') {
         setChoices((c) => ({ ...c, thinking: cmd.level as string }));
