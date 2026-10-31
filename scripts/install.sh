@@ -255,15 +255,31 @@ install_app_linux() {
   # Icon + .desktop: pull the hicolor icons out of the AppImage itself.
   if (cd "$tmp" && "$BIN_DIR/UniPi.AppImage" --appimage-extract 'usr/share/icons/*' >/dev/null 2>&1) \
       && [ -d "$tmp/squashfs-root/usr/share/icons" ]; then
-    # largest size dir wins (512x512, 1024x1024, …; @2x variants sort high)
-    size=$(find "$tmp/squashfs-root/usr/share/icons" -name '*.png' -exec dirname {} \; \
-      | while read -r d; do basename "$(dirname "$d")"; done | sort -n | tail -1)
+    sizes=$(find "$tmp/squashfs-root/usr/share/icons" -name '*.png' -exec dirname {} \; \
+      | while read -r d; do basename "$(dirname "$d")"; done | sort -u)
+    # hicolor has no @2 size dirs; prefer the largest plain WxH
+    size=$(printf '%s\n' "$sizes" | grep -E '^[0-9]+x[0-9]+$' | sort -n | tail -1)
+    [ -n "$size" ] || size=$(printf '%s\n' "$sizes" | sort -n | tail -1)
     icon=$(find "$tmp/squashfs-root/usr/share/icons" -path "*/$size/*" -name '*.png' | head -1)
     if [ -n "$icon" ]; then
       run mkdir -p "$HOME/.local/share/icons/hicolor/$size/apps"
       run cp "$icon" "$HOME/.local/share/icons/hicolor/$size/apps/unipi.png"
       icon_name=unipi.png
     fi
+  fi
+  # AppImages mount through FUSE (libfuse2 + /dev/fuse). Machines without
+  # it (containers, some VMs) still run fine extracted; the menu entry then
+  # pays a few seconds of extraction per launch instead of failing outright.
+  fuse_ok=1
+  [ -e /dev/fuse ] || fuse_ok=0
+  if [ "$fuse_ok" = 1 ] && have ldconfig \
+      && ! ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; then
+    fuse_ok=0
+  fi
+  exec_args=""
+  if [ "$fuse_ok" = 0 ]; then
+    exec_args=" --appimage-extract-and-run"
+    say "No usable FUSE (/dev/fuse + libfuse2): the menu entry runs the AppImage extracted (--appimage-extract-and-run)."
   fi
   run mkdir -p "$HOME/.local/share/applications"
   desktop=$HOME/.local/share/applications/unipi.desktop
@@ -272,7 +288,7 @@ install_app_linux() {
     printf 'Type=Application\n'
     printf 'Name=UniPi\n'
     printf 'Comment=The UniPi agent workspace (oino)\n'
-    printf 'Exec=%s\n' "$BIN_DIR/UniPi.AppImage"
+    printf 'Exec=%s%s\n' "$BIN_DIR/UniPi.AppImage" "$exec_args"
     printf 'Icon=%s\n' "${icon_name:-unipi}"
     printf 'Terminal=false\n'
     printf 'Categories=Development;\n'
