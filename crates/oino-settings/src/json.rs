@@ -1,4 +1,4 @@
-//! JSON-object helpers: pi `deepMergeSettings`, `migrateSettings`, path edits and JS-style
+//! JSON-object helpers: deep merge, migrations, path edits and JS-style
 //! value coercions used by the typed getters.
 
 use serde_json::{Map, Value};
@@ -8,7 +8,7 @@ use crate::tools::merge_default_tools;
 /// Settings JSON object (insertion-ordered, `preserve_order`).
 pub type JsonObject = Map<String, Value>;
 
-/// pi `deepMergeObjects`: `overrides` wins; nested objects (not arrays) merge recursively.
+/// `overrides` wins; nested objects (not arrays) merge recursively.
 /// Keys keep their first-seen position, new keys are appended (JS spread order).
 #[must_use]
 pub fn deep_merge_objects(base: &JsonObject, overrides: &JsonObject) -> JsonObject {
@@ -25,7 +25,7 @@ pub fn deep_merge_objects(base: &JsonObject, overrides: &JsonObject) -> JsonObje
     result
 }
 
-/// pi `deepMergeSettings`: [`deep_merge_objects`] plus the `defaultTools` rule (a list of only
+/// [`deep_merge_objects`] plus the `defaultTools` rule (a list of only
 /// `+name`/`-name` entries is appended to the inherited list instead of replacing it).
 #[must_use]
 pub fn deep_merge_settings(base: &JsonObject, overrides: &JsonObject) -> JsonObject {
@@ -38,7 +38,7 @@ pub fn deep_merge_settings(base: &JsonObject, overrides: &JsonObject) -> JsonObj
     merged
 }
 
-/// pi `SettingsManager.migrateSettings`: rewrite legacy keys in place.
+/// Rewrite legacy keys in place.
 ///
 /// - `queueMode` → `steeringMode` (only when `steeringMode` is absent);
 /// - boolean `websockets` → `transport` (`websocket` / `sse`) when `transport` is absent;
@@ -139,7 +139,7 @@ pub fn set_path(object: &mut JsonObject, path: &[&str], value: Option<Value>) {
     }
 }
 
-/// Strip a leading UTF-8 byte order mark (pi `stripBom`).
+/// Strip a leading UTF-8 byte order mark.
 #[must_use]
 pub fn strip_bom(content: &str) -> &str {
     content.strip_prefix('\u{feff}').unwrap_or(content)
@@ -183,7 +183,7 @@ fn js_number(n: &serde_json::Number) -> String {
     }
 }
 
-/// A JSON number as a non-negative integer, flooring finite fractions (pi `Math.floor`).
+/// A JSON number as a non-negative integer, flooring finite fractions.
 #[must_use]
 pub fn as_non_negative_u64(value: &Value) -> Option<u64> {
     if let Some(u) = value.as_u64() {

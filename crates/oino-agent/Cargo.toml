@@ -1,16 +1,19 @@
 [package]
 name = "oino-agent"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "pi-agent-core: agent loop, tool execution, stateful Agent with queues"
+description = "Agent loop, tool execution and a stateful agent with queues for Oino"
+readme = "README.md"
+keywords = ["agent", "llm", "ai", "tools", "asynchronous"]
+categories = ["asynchronous"]
 
 [dependencies]
 futures.workspace = true
 indexmap.workspace = true
-oino-ai = { path = "../oino-ai", version = "1.0.0" }
+oino-ai = { path = "../oino-ai", version = "1.0.1" }
 regex.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }

@@ -1,4 +1,4 @@
-//! pi `resolveCliModel`: `--provider` / `--model` (with `--thinking`) to one model.
+//! CLI model resolution: `--provider` / `--model` (with `--thinking`) to one model.
 
 use oino_ai::{Model, ThinkingLevel};
 
@@ -33,12 +33,12 @@ pub struct CliModel {
     pub warning: Option<String>,
 }
 
-/// CLI resolution failure; the message is pi's text.
+/// CLI resolution failure.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct CliModelError(pub String);
 
-/// pi `buildFallbackModel`: a custom id on the provider's default (or first) model.
+/// A custom id on the provider's default (or first) model.
 fn build_fallback_model(provider_models: &[&Model], model_id: &str) -> Option<Model> {
     let first = *provider_models.first()?;
     let base = default_model_for_provider(&first.provider)
@@ -55,7 +55,7 @@ fn build_fallback_model(provider_models: &[&Model], model_id: &str) -> Option<Mo
 ///
 /// # Errors
 ///
-/// [`CliModelError`] with pi's messages (empty catalog, unknown provider, ambiguous, not found).
+/// [`CliModelError`] with the resolution messages (empty catalog, unknown provider, ambiguous, not found).
 pub fn resolve_cli_model(
     request: &CliModelRequest<'_>,
     models: &[Model],
@@ -153,7 +153,7 @@ fn ambiguous_error(
     ))
 }
 
-/// A custom model id on a known provider (pi: "Using custom model id").
+/// A custom model id on a known provider ("Using custom model id").
 fn custom_model(
     cli_model: &str,
     thinking: Option<ThinkingLevel>,

@@ -1,4 +1,4 @@
-//! pi `AgentSession.cycleModel` selection rules and thinking level on model switches.
+//! Model cycling selection rules and thinking level on model switches.
 
 use indexmap::IndexMap;
 use oino_ai::{Model, ThinkingLevel};
@@ -29,7 +29,7 @@ fn step(len: usize, current: Option<usize>, direction: CycleDirection) -> usize 
     }
 }
 
-/// pi `_cycleScopedModel`: the next scoped model among those still available; `None` when at
+/// The next scoped model among those still available; `None` when at
 /// most one remains.
 #[must_use]
 pub fn next_scoped_model(
@@ -49,7 +49,7 @@ pub fn next_scoped_model(
     Some(candidates[step(candidates.len(), index, direction)].clone())
 }
 
-/// pi `_cycleAvailableModel`.
+/// C y c l e   A v a i l a b l e   M o d e l.
 #[must_use]
 pub fn next_available_model(
     available: &[Model],
@@ -76,7 +76,7 @@ pub struct ThinkingSwitch<'a> {
     pub current: Option<ThinkingLevel>,
 }
 
-/// pi `_getThinkingLevelForModelSwitch`: explicit > per-model setting > default setting >
+/// Explicit > per-model setting > default setting >
 /// current > `medium` (the caller clamps to the model).
 #[must_use]
 pub fn thinking_level_for_model_switch(

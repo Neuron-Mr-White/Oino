@@ -113,7 +113,7 @@ pub struct ToolOutput {
 }
 
 impl ToolOutput {
-    /// pi `getTextOutput`: text blocks joined with newlines.
+    /// Text blocks joined with newlines.
     #[must_use]
     pub fn text(&self) -> String {
         self.content
@@ -147,7 +147,7 @@ impl ToolOutput {
     }
 }
 
-/// Tool call row (pi `ToolExecutionComponent`).
+/// Tool call row.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolRow {
     /// Tool-call id.
@@ -162,13 +162,13 @@ pub struct ToolRow {
     pub started: bool,
     /// Latest (partial or final) result.
     pub output: Option<ToolOutput>,
-    /// `output` is a partial update (pi `isPartial`).
+    /// `output` is a partial update.
     pub partial: bool,
     /// Wall time of the finished call.
     pub duration_ms: Option<u64>,
 }
 
-/// `!` command row (pi `BashExecutionComponent`).
+/// `!` command row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(
     clippy::struct_excessive_bools,
@@ -294,7 +294,7 @@ pub struct Transcript {
     streaming: Option<RowId>,
 }
 
-/// pi `parseSkillBlock`.
+/// P a r s e   S k i l l   B l o c k.
 #[must_use]
 pub fn parse_skill_block(text: &str) -> Option<(SkillRow, Option<String>)> {
     let rest = text.strip_prefix("<skill name=\"")?;
@@ -908,7 +908,7 @@ impl Transcript {
         })
     }
 
-    /// Text of the last finished assistant message (pi `/copy`).
+    /// Text of the last finished assistant message.
     #[must_use]
     pub fn last_assistant_text(&self) -> Option<String> {
         self.rows.iter().rev().find_map(|row| match &row.kind {

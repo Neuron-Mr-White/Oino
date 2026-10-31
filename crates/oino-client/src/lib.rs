@@ -50,6 +50,6 @@ pub use hub::{HubOptions, HubSession, HubSessionState, SessionHub};
 #[cfg(feature = "in-process")]
 pub use in_process::{InProcessBackend, ServerInfo};
 pub use protocol::{
-    OinoCommand, AgentCommand, RejectedCommand, RpcCommand, RpcRequest, RpcResponse, RpcResponseData,
-    RpcSessionState,
+    AgentCommand, OinoCommand, RejectedCommand, RpcCommand, RpcRequest, RpcResponse,
+    RpcResponseData, RpcSessionState,
 };

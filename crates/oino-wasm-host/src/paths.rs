@@ -329,7 +329,7 @@ mod tests {
         );
     }
 
-    /// `fs.agentDir: read` exposes the agent-dir config files as `/agent/<name>` (pi `mcp.json`)
+    /// `fs.agentDir: read` exposes the agent-dir config files as `/agent/<name>`
     /// and never the secrets next to them (R1).
     #[test]
     fn agent_view_exposes_config_files_only() {

@@ -1,8 +1,8 @@
-//! Typed setting values and pi `SETTINGS_DEFAULTS`.
+//! Typed setting values and defaults.
 
 use serde::{Deserialize, Serialize};
 
-/// pi `SETTINGS_DEFAULTS` (runtime keys) plus the Oino keys of runtime §10.2.
+/// Runtime-setting defaults plus the Oino keys of runtime §10.2.
 pub mod defaults {
     /// `compaction.enabled`.
     pub const COMPACTION_ENABLED: bool = true;
@@ -20,11 +20,11 @@ pub mod defaults {
     pub const RETRY_MAX_RETRIES: u64 = 3;
     /// `retry.baseDelayMs`.
     pub const RETRY_BASE_DELAY_MS: u64 = 2_000;
-    /// `retry.maxAgentDelayMs` (pi-ai `DEFAULT_MAX_AGENT_RETRY_DELAY_MS`).
+    /// `retry.maxAgentDelayMs` (default `DEFAULT_MAX_AGENT_RETRY_DELAY_MS`).
     pub const RETRY_MAX_AGENT_DELAY_MS: u64 = 60_000;
     /// `retry.provider.maxRetryDelayMs`.
     pub const RETRY_PROVIDER_MAX_RETRY_DELAY_MS: u64 = 60_000;
-    /// `httpIdleTimeoutMs` (pi `DEFAULT_HTTP_IDLE_TIMEOUT_MS`).
+    /// `httpIdleTimeoutMs`.
     pub const HTTP_IDLE_TIMEOUT_MS: u64 = 300_000;
     /// `showCacheMissNotices`.
     pub const SHOW_CACHE_MISS_NOTICES: bool = false;
@@ -34,7 +34,7 @@ pub mod defaults {
     pub const IMAGES_AUTO_RESIZE: bool = true;
     /// `images.blockImages`.
     pub const IMAGES_BLOCK_IMAGES: bool = false;
-    /// Runtime default thinking level when `defaultThinkingLevel` is unset (pi `defaults.ts`).
+    /// Runtime default thinking level when `defaultThinkingLevel` is unset.
     pub const THINKING_LEVEL: oino_ai::ThinkingLevel = oino_ai::ThinkingLevel::Medium;
     /// `serve.bind`.
     pub const SERVE_BIND: &str = "127.0.0.1:7420";
@@ -50,30 +50,30 @@ pub enum QueueMode {
     /// Deliver every queued message at once.
     #[serde(rename = "all")]
     All,
-    /// Deliver one queued message per turn (pi default).
+    /// Deliver one queued message per turn (default).
     #[default]
     #[serde(rename = "one-at-a-time")]
     OneAtATime,
 }
 
-/// `cacheWarming` profile (global only, pi `CacheWarmingMode`).
+/// `cacheWarming` profile (global only).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CacheWarmingMode {
     /// Never warm.
     Off,
-    /// Warm while streaming (pi default).
+    /// Warm while streaming (default).
     #[default]
     Streaming,
     /// Also warm between agent runs.
     Idle,
 }
 
-/// `defaultProjectTrust` (global only, pi `DefaultProjectTrust`).
+/// `defaultProjectTrust` (global only).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectTrustDefault {
-    /// Ask interactively; non-interactive modes treat it as untrusted (pi default).
+    /// Ask interactively; non-interactive modes treat it as untrusted (default).
     #[default]
     Ask,
     /// Trust every project.
@@ -95,7 +95,7 @@ pub enum UiDensity {
     Advanced,
 }
 
-/// Resolved compaction settings (pi `getCompactionSettings`).
+/// Resolved compaction settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionSettings {
@@ -107,7 +107,7 @@ pub struct CompactionSettings {
     pub keep_recent_tokens: u64,
 }
 
-/// Resolved branch summary settings (pi `getBranchSummarySettings`).
+/// Resolved branch summary settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSummarySettings {
@@ -117,7 +117,7 @@ pub struct BranchSummarySettings {
     pub skip_prompt: bool,
 }
 
-/// Resolved agent-level retry settings (pi `getRetrySettings`).
+/// Resolved agent-level retry settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrySettings {
@@ -131,7 +131,7 @@ pub struct RetrySettings {
     pub max_agent_delay_ms: u64,
 }
 
-/// Resolved provider/SDK retry settings (pi `getProviderRetrySettings`).
+/// Resolved provider/SDK retry settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderRetrySettings {
@@ -167,7 +167,7 @@ pub struct ServeSettings {
     pub allow_remote: bool,
 }
 
-/// A `packages[]` entry (pi `PackageSource`): a source string or a filtered object.
+/// A `packages[]` entry: a source string or a filtered object.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PackageSource {
@@ -225,7 +225,7 @@ pub enum ResourceKind {
 }
 
 impl ResourceKind {
-    /// Every kind in pi `RESOURCE_TYPES` order.
+    /// Every kind in `RESOURCE_TYPES` order.
     pub const ALL: [Self; 4] = [Self::Extensions, Self::Skills, Self::Prompts, Self::Themes];
 
     /// The settings key, which is also the conventional directory name.

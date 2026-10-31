@@ -219,7 +219,7 @@ impl Theme {
         Style::default().fg(color)
     }
 
-    /// Editor border colour for a thinking level (pi `getThinkingBorderColor`).
+    /// Editor border colour for a thinking level.
     #[must_use]
     pub const fn thinking_border(&self, level: ThinkingLevel) -> Color {
         match level {

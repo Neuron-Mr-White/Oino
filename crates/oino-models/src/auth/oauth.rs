@@ -1,4 +1,4 @@
-//! pi `auth/resolve.ts` OAuth handling: refresh tokens that expire within five minutes,
+//! OAuth handling: refresh tokens that expire within five minutes,
 //! double-checked under the `auth.json` lock so concurrent callers and processes refresh once.
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,14 +9,14 @@ use oino_ai::JsonValue;
 use super::credential::{AuthCredential, OAuthCredential};
 use super::storage::{AuthStorage, AuthStorageError};
 
-/// Tokens with less validity than this are refreshed before use (pi: five minutes).
+/// Tokens with less validity than this are refreshed before use (five minutes).
 pub const DEFAULT_OAUTH_MINIMUM_VALIDITY_MS: i64 = 5 * 60 * 1000;
 
 /// Refreshes OAuth credentials through the provider component's `oauth-refresh` export.
 ///
 /// `credential` is the stored JSON (`type`, `access`, `refresh`, `expires`, extra fields); the
 /// result must be a credential of the same shape (`type` may be omitted). The host enforces the
-/// call deadline (pi: 15 s).
+/// call deadline (15 s).
 pub trait OAuthRefresher: Send + Sync {
     /// Exchanges the refresh token of `provider`.
     ///
@@ -30,7 +30,7 @@ pub trait OAuthRefresher: Send + Sync {
     ) -> BoxFuture<'a, Result<JsonValue, String>>;
 }
 
-/// OAuth failures (pi `ModelsError` texts).
+/// OAuth failures.
 #[derive(Debug, thiserror::Error)]
 pub enum OAuthError {
     /// The refresher failed or returned an invalid credential; `reason` is its message.
@@ -38,7 +38,7 @@ pub enum OAuthError {
     RefreshFailed {
         /// Provider id.
         provider: String,
-        /// The refresher's message (pi surfaces it as the request error).
+        /// The refresher's message (surfaced as the request error).
         reason: String,
     },
     /// An explicit minimum validity could not be met.
@@ -91,7 +91,7 @@ pub fn now_ms() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
-/// pi `refreshStoredOAuthCredential`: under the lock, re-reads the credential; refreshes it when
+/// Under the lock, re-reads the credential; refreshes it when
 /// still an OAuth credential and `needs_refresh` holds; persists the result.
 ///
 /// Returns the OAuth credential after the operation, or `None` when it was logged out meanwhile.
@@ -149,7 +149,7 @@ pub async fn refresh_stored_oauth(
     }
 }
 
-/// pi `resolveStoredOAuth`: returns a credential valid for at least five minutes (or
+/// Returns a credential valid for at least five minutes (or
 /// `min_validity_ms` when larger), refreshing it first when needed. `None` when the credential
 /// was removed meanwhile.
 ///

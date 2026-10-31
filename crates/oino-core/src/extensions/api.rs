@@ -103,7 +103,7 @@ impl CallContext {
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct ExtensionCallError {
-    /// Error text (pi `error.message`).
+    /// Error text.
     pub message: String,
     /// The guest trapped (instance restarted lazily).
     pub trap: bool,
@@ -120,7 +120,7 @@ impl ExtensionCallError {
     }
 }
 
-/// pi `ToolExposure`.
+/// How a tool is exposed to the model.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ToolExposure {

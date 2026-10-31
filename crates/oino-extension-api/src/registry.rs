@@ -21,7 +21,7 @@ macro_rules! event_kinds {
             /// Every event kind in WIT order.
             pub const ALL: &'static [EventKind] = &[$(EventKind::$variant,)*];
 
-            /// Wire name (pi `type`).
+            /// Wire name.
             #[must_use]
             pub fn wire(self) -> &'static str {
                 match self { $(EventKind::$variant => $wire,)* }
@@ -121,7 +121,7 @@ impl<'de> Deserialize<'de> for EventKind {
     }
 }
 
-/// `exposure` (pi `ToolExposure`).
+/// `exposure`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Exposure {

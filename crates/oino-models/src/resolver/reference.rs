@@ -1,4 +1,4 @@
-//! pi `resolveModelReference`: one model from `id`, `provider/id`, fuzzy text and an optional
+//! Model reference resolution: one model from `id`, `provider/id`, fuzzy text and an optional
 //! `:<thinking>` suffix. Candidates are collected before a provider is chosen, so catalog order
 //! never decides the provider and ambiguity is reported.
 
@@ -113,14 +113,14 @@ impl ModelReferenceResult<'_> {
     }
 }
 
-/// pi `splitThinkingSuffix`.
+/// S p l i t   T h i n k i n g   S u f f i x.
 pub(crate) fn split_thinking_suffix(text: &str) -> Option<(&str, ThinkingLevel)> {
     let colon = text.rfind(':')?;
     let level = text[colon + 1..].parse::<ThinkingLevel>().ok()?;
     Some((&text[..colon], level))
 }
 
-/// pi `splitProviderPrefix`: `(provider, model_text)` when the prefix names a known provider.
+/// `(provider, model_text)` when the prefix names a known provider.
 fn split_provider_prefix<'t>(text: &'t str, models: &[&Model]) -> Option<(String, &'t str)> {
     let slash = text.find('/')?;
     let prefix = text[..slash].trim().to_lowercase();
@@ -143,7 +143,7 @@ fn provider_count(models: &[&Model]) -> usize {
     providers.len()
 }
 
-/// pi `resolveModelReference`. `usable` only breaks ties between providers, so a unique match
+/// Resolves a model reference. `usable` only breaks ties between providers, so a unique match
 /// resolves without credentials (`--api-key` first-time setup).
 pub fn resolve_model_reference<'m>(
     request: &ModelReferenceRequest<'_>,
@@ -200,7 +200,7 @@ pub fn resolve_model_reference<'m>(
     }
 }
 
-/// pi `findExactModelReferenceMatch`: exact `provider/id` or bare id, no suffix or fuzzy.
+/// Exact `provider/id` or bare id, no suffix or fuzzy.
 #[must_use]
 pub fn find_exact_model_reference_match<'m>(
     reference: &str,
@@ -278,7 +278,7 @@ fn resolved(model: &Model) -> ModelReferenceResult<'_> {
     }
 }
 
-/// pi `selectReference`: exact ids, with `provider/rest` as a hint.
+/// Exact ids, with `provider/rest` as a hint.
 fn select_reference<'m>(
     text: &str,
     pool: &[&'m Model],
@@ -396,7 +396,7 @@ fn select_fuzzy<'m>(
     })
 }
 
-/// pi `isAlias`: `-latest` or no `-YYYYMMDD` date suffix.
+/// `-latest` or no `-YYYYMMDD` date suffix.
 fn is_alias(id: &str) -> bool {
     if id.ends_with("-latest") {
         return true;
@@ -408,7 +408,7 @@ fn is_alias(id: &str) -> bool {
     !dated
 }
 
-/// pi `bestFuzzyMatch`: prefer aliases over dated versions, then the greatest id
+/// Prefer aliases over dated versions, then the greatest id
 /// (`localeCompare`, first on ties like a stable sort).
 fn best_fuzzy_match<'m>(matches: &[&'m Model]) -> Option<&'m Model> {
     let aliases: Vec<&'m Model> = matches

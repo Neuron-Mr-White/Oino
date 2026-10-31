@@ -43,7 +43,7 @@ pub const OVERFLOW_PATTERNS: &[&str] = &[
 pub const CEREBRAS_BODYLESS_OVERFLOW_PATTERN: &str =
     r"^4(?:00|13)\s*(?:status code)?\s*\(no body\)";
 
-/// pi `NON_OVERFLOW_PATTERNS`: errors that are never overflow even if they match above.
+/// Errors that are never overflow even if they match above.
 pub const NON_OVERFLOW_PATTERNS: &[&str] = &[
     r"^(Throttling error|Service unavailable):",
     r"rate limit",
@@ -194,7 +194,7 @@ pub fn is_context_overflow(message: &AssistantMessage, context_window: u64) -> b
         && fills_window
 }
 
-/// pi `isRecoverableLength`: a length stop below the intended output limit (`desired_max_output`
+/// A length stop below the intended output limit (`desired_max_output`
 /// is the limit before context clamping).
 #[must_use]
 pub fn is_recoverable_length(message: &AssistantMessage, desired_max_output: u64) -> bool {
@@ -203,7 +203,7 @@ pub fn is_recoverable_length(message: &AssistantMessage, desired_max_output: u64
         && message.usage.output < desired_max_output
 }
 
-/// pi `isRetryableAssistantError`: a transient provider or transport error (callers handle
+/// A transient provider or transport error (callers handle
 /// context overflow first).
 #[must_use]
 pub fn is_retryable_assistant_error(message: &AssistantMessage) -> bool {

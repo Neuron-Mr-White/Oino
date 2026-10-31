@@ -8,7 +8,7 @@ use crate::compaction::retry_delay_ms;
 use crate::events::AgentSessionEvent;
 
 impl AgentSession {
-    /// pi `_finishCancelledRetry`.
+    /// F i n i s h   C a n c e l l e d   R e t r y.
     pub(crate) fn finish_cancelled_retry(&self) {
         let attempt = std::mem::take(&mut lock(&self.inner.book).retry_attempt);
         if attempt == 0 {
@@ -21,7 +21,7 @@ impl AgentSession {
         });
     }
 
-    /// pi `_prepareRetry`: schedules a retry with exponential backoff; `false` when the budget
+    /// Schedules a retry with exponential backoff; `false` when the budget
     /// is spent, retries are disabled or the wait was cancelled.
     pub(crate) async fn prepare_retry(&self, message: &AssistantMessage) -> bool {
         let settings = lock(&self.inner.settings).settings().retry_settings();

@@ -1,4 +1,4 @@
-//! Session resume picker model (pi `session-selector.ts`).
+//! Session resume picker model.
 //!
 //! Scope (current folder / all), sort (threaded / recent / fuzzy), name filter (all /
 //! named), path display, search and delete confirmation. Threaded order nests forks under

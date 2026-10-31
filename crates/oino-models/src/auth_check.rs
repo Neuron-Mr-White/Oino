@@ -1,8 +1,8 @@
-//! pi `oino auth check` (`cli/auth-check.ts` + `main.ts`): provider readiness with exit codes
+//! `oino auth check`: provider readiness with exit codes
 //! 0 (ready), 1 (not ready), 2 (invalid).
 //!
 //! For `--no-refresh` the caller builds the registry over
-//! [`AuthStorage::open_read_only`](crate::AuthStorage::open_read_only), like pi.
+//! [`AuthStorage::open_read_only`](crate::AuthStorage::open_read_only).
 
 use serde::Serialize;
 
@@ -10,7 +10,7 @@ use crate::auth::credential::{AuthCredential, CredentialType};
 use crate::registry::{AuthOverrides, ModelRegistry, ResolvedAuth};
 use crate::resolver::{CliModelRequest, resolve_cli_model_in};
 
-/// Readiness (pi `AuthCheckStatus`).
+/// Readiness.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthCheckStatus {
@@ -44,7 +44,7 @@ impl AuthCheckStatus {
     }
 }
 
-/// Why a provider is not ready (pi `AuthCheckReason`).
+/// Why a provider is not ready.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthCheckReason {
@@ -58,7 +58,7 @@ pub enum AuthCheckReason {
     InvalidState,
 }
 
-/// pi `AuthCheckResult`.
+/// The auth check result record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthCheckResult {
@@ -84,7 +84,7 @@ impl AuthCheckResult {
         }
     }
 
-    /// pi output line: JSON (`{…, "credentials"?}`) or the credential / status word.
+    /// Output line: JSON (`{…, "credentials"?}`) or the credential / status word.
     #[must_use]
     pub fn render(&self, json: bool, credential: Option<&str>) -> String {
         if json {
@@ -108,7 +108,7 @@ pub struct AuthCheckTarget<'a> {
     pub model: Option<&'a str>,
 }
 
-/// pi `checkProviderAuth` with main's error mapping (every failure is `invalid`).
+/// Checks provider auth with the CLI's error mapping (every failure is `invalid`).
 pub async fn check_provider_auth(
     target: AuthCheckTarget<'_>,
     registry: &ModelRegistry,
@@ -180,7 +180,7 @@ pub async fn check_provider_auth(
     }
 }
 
-/// pi `getAuthCredential`: the API key, else the token of an `Authorization: Bearer` header.
+/// The API key, else the token of an `Authorization: Bearer` header.
 #[must_use]
 pub fn auth_credential(auth: Option<&ResolvedAuth>) -> Option<String> {
     let auth = auth?;
@@ -197,7 +197,7 @@ pub fn auth_credential(auth: Option<&ResolvedAuth>) -> Option<String> {
     (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then(|| token.to_owned())
 }
 
-/// pi `getProviderCredential` (`--credentials`): without refresh a stored OAuth access token is
+/// The provider credential (`--credentials`): without refresh a stored OAuth access token is
 /// printed as is; otherwise the resolved credential.
 pub async fn provider_credential(
     registry: &ModelRegistry,

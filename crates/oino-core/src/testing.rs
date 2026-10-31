@@ -624,7 +624,7 @@ impl TestSession {
             },
             None => SessionManager::in_memory(&self.cwd, CreateOptions::default(), Vec::new()),
         };
-        // New sessions record the initial selection (pi `createAgentSession`).
+        // New sessions record the initial selection.
         let model = FauxProvider::model();
         let _ = manager.append_model_change(&model.provider, &model.id);
         let _ = manager.append_thinking_level_change("off");

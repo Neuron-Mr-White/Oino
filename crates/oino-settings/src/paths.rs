@@ -1,11 +1,11 @@
-//! Filesystem layout and path helpers (pi `config.ts` + `utils/paths.ts`).
+//! Filesystem layout and path helpers.
 //!
-//! The agent dir is `~/.oino` (pi `~/.pi/agent`), overridable with [`env::OINO_AGENT_DIR`];
-//! the project dir is `<cwd>/.oino` (pi `.pi`, at cwd, never the git root).
+//! The agent dir is `~/.oino`, overridable with [`env::OINO_AGENT_DIR`];
+//! the project dir is `<cwd>/.oino` (at cwd, never the git root).
 
 use std::path::{Component, Path, PathBuf};
 
-/// Project configuration directory name (pi `CONFIG_DIR_NAME` = `.pi`).
+/// Project configuration directory name.
 pub const CONFIG_DIR_NAME: &str = ".oino";
 /// Agent directory name under the home directory (`~/.oino`).
 pub const AGENT_DIR_NAME: &str = ".oino";
@@ -24,13 +24,13 @@ pub const LOCK_SUFFIX: &str = ".lock";
 
 /// Process environment variable names read by the runtime (runtime §9.5, D12).
 pub mod env {
-    /// Agent dir override (pi `PI_CODING_AGENT_DIR`).
+    /// Agent dir override.
     pub const OINO_AGENT_DIR: &str = "OINO_AGENT_DIR";
-    /// Session dir override (pi `PI_CODING_AGENT_SESSION_DIR`).
+    /// Session dir override.
     pub const OINO_SESSION_DIR: &str = "OINO_SESSION_DIR";
-    /// Offline mode (pi `PI_OFFLINE`).
+    /// Offline mode.
     pub const OINO_OFFLINE: &str = "OINO_OFFLINE";
-    /// Prompt cache retention (`long`; pi `PI_CACHE_RETENTION`).
+    /// Prompt cache retention (`long`).
     pub const OINO_CACHE_RETENTION: &str = "OINO_CACHE_RETENTION";
 }
 
@@ -44,7 +44,7 @@ pub enum PathError {
 }
 
 /// The user's home directory: `$HOME` when set and non-empty, else the platform default
-/// (pi `process.env.HOME || homedir()`).
+///.
 #[must_use]
 pub fn home_dir() -> Option<PathBuf> {
     match std::env::var_os("HOME") {
@@ -53,7 +53,7 @@ pub fn home_dir() -> Option<PathBuf> {
     }
 }
 
-/// The agent dir: `$OINO_AGENT_DIR` (tilde-expanded) or `~/.oino` (pi `getAgentDir`).
+/// The agent dir: `$OINO_AGENT_DIR` (tilde-expanded) or `~/.oino`.
 ///
 /// # Errors
 ///
@@ -83,7 +83,7 @@ pub fn project_dir(cwd: &Path) -> PathBuf {
     cwd.join(CONFIG_DIR_NAME)
 }
 
-/// pi `normalizePath`: expand a leading `~` / `~/` against `home` and turn `file://` URLs into
+/// Expand a leading `~` / `~/` against `home` and turn `file://` URLs into
 /// paths. Everything else is returned unchanged (relative paths stay relative).
 #[must_use]
 pub fn normalize_path(input: &str, home: Option<&Path>) -> PathBuf {
@@ -105,7 +105,7 @@ pub fn normalize_path(input: &str, home: Option<&Path>) -> PathBuf {
     PathBuf::from(input)
 }
 
-/// pi `resolvePath`: [`normalize_path`], then resolve against `base` and normalise `.`/`..`
+/// [`normalize_path`], then resolve against `base` and normalise `.`/`..`
 /// lexically (Node `path.resolve`). With `trim`, surrounding whitespace is removed first.
 #[must_use]
 pub fn resolve_path(input: &str, base: &Path, home: Option<&Path>, trim: bool) -> PathBuf {
@@ -140,13 +140,13 @@ pub fn lexical_normalize(path: &Path) -> PathBuf {
     out
 }
 
-/// pi `canonicalizePath`: the real path, or `path` unchanged when it cannot be resolved.
+/// The real path, or `path` unchanged when it cannot be resolved.
 #[must_use]
 pub fn canonicalize_or_self(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-/// Whether `target` equals `root` or lies below it (pi `isUnderPath`, lexical).
+/// Whether `target` equals `root` or lies below it (lexical).
 #[must_use]
 pub fn is_under_path(target: &Path, root: &Path) -> bool {
     target.starts_with(root)

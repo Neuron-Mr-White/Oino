@@ -186,7 +186,7 @@ impl ExtensionSet {
     }
 }
 
-/// A command with its resolved invocation name (pi `ResolvedCommand`).
+/// A command with its resolved invocation name.
 #[derive(Clone, Debug)]
 pub struct ResolvedCommand {
     /// Owning extension.
@@ -324,7 +324,7 @@ impl ExtensionRunner {
         self.cx = cx;
     }
 
-    /// Marks contexts of this runner stale (pi `invalidate`).
+    /// Marks contexts of this runner stale.
     pub fn invalidate(&self, message: Option<&str>) {
         let mut stale = lock(&self.stale);
         if stale.is_none() {
@@ -362,7 +362,7 @@ impl ExtensionRunner {
             .collect()
     }
 
-    /// pi `hasHandlers`.
+    /// Returns whether any handler is registered.
     #[must_use]
     pub fn has_handlers(&self, kind: &str) -> bool {
         self.active().any(|extension| extension.subscribed(kind))
@@ -458,7 +458,7 @@ impl ExtensionRunner {
         self.emit_error(&extension.instance.path(), kind, error.message.clone());
     }
 
-    /// Generic dispatch (pi `emit`): notification events, plus the `session_before_*` gates
+    /// Generic dispatch: notification events, plus the `session_before_*` gates
     /// where the first result with `cancel: true` stops dispatch and the last result wins.
     pub async fn emit(&self, payload: JsonValue) -> Option<JsonValue> {
         let kind = payload["type"].as_str().unwrap_or_default().to_owned();
@@ -551,7 +551,7 @@ impl ExtensionRunner {
         result
     }
 
-    /// `tool_result` chain (pi `emitToolResult`): returns the combined override, if any.
+    /// `tool_result` chain: returns the combined override, if any.
     pub async fn emit_tool_result(&self, mut event: JsonObject) -> Option<JsonObject> {
         let mut modified = false;
         for extension in self.handlers("tool_result") {
@@ -694,7 +694,7 @@ impl ExtensionRunner {
         }
     }
 
-    /// `context` then `context_with_system` (pi `emitContext`).
+    /// `context` then `context_with_system`.
     pub async fn emit_context(&self, messages: Vec<AgentMessage>) -> Vec<AgentMessage> {
         let mut current = messages;
         for extension in self.handlers("context") {
@@ -829,7 +829,7 @@ impl ExtensionRunner {
         found
     }
 
-    /// Boundary dispatch (pi `emitBoundary`). `context` rebuilds the preview after each
+    /// Boundary dispatch. `context` rebuilds the preview after each
     /// handler; an invalid draft list discards everything.
     pub async fn emit_boundary(
         &self,
@@ -1023,7 +1023,7 @@ impl ExtensionRunner {
         tools
     }
 
-    /// Commands with invocation names (pi `resolveRegisteredCommands`).
+    /// Commands with invocation names.
     #[must_use]
     pub fn commands(&self) -> Vec<ResolvedCommand> {
         let mut all = Vec::new();
@@ -1065,7 +1065,7 @@ impl ExtensionRunner {
             .collect()
     }
 
-    /// pi `getCommand(invocationName)`.
+    /// Returns the command matching an invocation name.
     #[must_use]
     pub fn command(&self, invocation_name: &str) -> Option<ResolvedCommand> {
         self.commands()

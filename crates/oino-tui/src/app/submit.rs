@@ -1,9 +1,9 @@
-//! Editor submission and built-in slash commands (pi `setupEditorSubmitHandler`).
+//! Editor submission and built-in slash commands.
 
 use std::fmt::Write as _;
 
 use oino_ai::{ImageContent, JsonValue, ThinkingLevel};
-use oino_client::protocol::{OinoCommand, AgentCommand};
+use oino_client::protocol::{AgentCommand, OinoCommand};
 use oino_core::session::StreamingBehavior;
 use oino_view::commands::{Builtin, Submitted, classify};
 use oino_view::format::format_tokens;
@@ -12,7 +12,7 @@ use oino_view::transcript::NoticeLevel;
 use super::{App, Effect, ModelsFor, Tag};
 
 impl App {
-    /// Submits the composer (pi `onSubmit`).
+    /// Submits the composer.
     pub(crate) fn submit(&mut self, follow_up: bool) {
         let submission = self.composer.submission();
         if submission.text.is_empty() && submission.images.is_empty() {
@@ -341,7 +341,7 @@ pub(crate) fn level_name(level: ThinkingLevel) -> &'static str {
     }
 }
 
-/// `1234567` → `1,234,567` (pi `toLocaleString`).
+/// `1234567` → `1,234,567`.
 pub(crate) fn group(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::new();

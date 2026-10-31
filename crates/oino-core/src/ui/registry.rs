@@ -138,11 +138,11 @@ pub fn default_order(id: &str, slot: Slot) -> i32 {
     reserved(id).map_or(0, |spec| spec.order_for(slot))
 }
 
-/// Built-in Settings order of §6.4 (`core`/`pi` first, host/app next).
+/// Built-in Settings order of §6.4 (`core` first, host/app next).
 #[must_use]
 pub fn settings_order(extension_id: &str) -> i32 {
     match extension_id {
-        "oino" | "core" | "pi" => 1000,
+        "oino" | "core" => 1000,
         "host" | "app" => 900,
         _ => 0,
     }
@@ -933,7 +933,7 @@ impl UiRegistry {
         let built_in_settings = request.slot == Slot::Settings
             && matches!(
                 request.extension_id.as_str(),
-                "oino" | "core" | "pi" | "host" | "app"
+                "oino" | "core" | "host" | "app"
             );
         let order = match request.order {
             Some(order) if built_in_settings => order,
@@ -2101,14 +2101,14 @@ mod tests {
             ..oino_ui::settings::SettingsNamespace::default()
         };
         let id = registry.register_settings(namespace("acme")).unwrap();
-        assert_eq!(id, "oino/settings:pi");
+        assert_eq!(id, "oino/settings:acme");
         let entry = registry.get(&id).unwrap();
         assert_eq!(entry.slot, Slot::Settings);
         assert_eq!(entry.order, 1000);
         assert!(matches!(entry.view, UiView::Settings { .. }));
         assert!(
             registry
-                .register_settings(namespace("pi"))
+                .register_settings(namespace("acme"))
                 .unwrap_err()
                 .to_string()
                 .contains("already registered")

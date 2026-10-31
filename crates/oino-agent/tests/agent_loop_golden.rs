@@ -1,5 +1,5 @@
-//! Golden test: the scripted scenarios of `scripts/pi-oracle/core-runtime/agent/` produce the
-//! same events and transcript as pi-agent-core's `Agent`.
+//! Golden test: the scripted scenarios of the oracle harness (`scripts/`) produce the
+//! same events and transcript as the reference `Agent`.
 
 #![allow(
     clippy::unwrap_used,
@@ -247,7 +247,7 @@ impl AgentListener for Recorder {
 }
 
 /// `oino_ai::ToolCall` serialises without `"type":"toolCall"` outside a content array
-/// (`toolcall_end.toolCall`); pi includes it. Reported to core-types-session.
+/// (`toolcall_end.toolCall`); the reference includes it.
 fn strip(value: &JsonValue) -> JsonValue {
     let mut value = strip_keys(value);
     for event in value.as_array_mut().into_iter().flatten() {
@@ -260,7 +260,7 @@ fn strip(value: &JsonValue) -> JsonValue {
         }
     }
     // Completion order of concurrent tools depends on the scheduler (JS microtasks vs tokio);
-    // pi only promises "completion order". Runs of update/end events are compared as sets.
+    // Only "completion order" is guaranteed. Runs of update/end events are compared as sets.
     if let Some(events) = value.as_array_mut() {
         let concurrent = |e: &JsonValue| {
             matches!(
@@ -392,13 +392,13 @@ async fn agent_matches_pi_scenarios() {
         {
             assert!(
                 json_semantic_eq(actual, wanted),
-                "{name}: event {index} differs\n rust: {actual}\n   pi: {wanted}"
+                "{name}: event {index} differs\n rust: {actual}\n ref: {wanted}"
             );
         }
         let messages = strip(&serde_json::to_value(agent.messages()).unwrap());
         assert!(
             json_semantic_eq(&messages, &golden["messages"]),
-            "{name}: transcript differs\n rust: {messages}\n   pi: {}",
+            "{name}: transcript differs\n rust: {messages}\n ref: {}",
             golden["messages"]
         );
         let error = agent.state().error_message;

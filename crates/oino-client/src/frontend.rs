@@ -39,7 +39,7 @@ pub struct ShortcutInfo {
 pub struct RewindOptions {
     /// Restore the files changed at and after the message.
     pub files: bool,
-    /// Fork the conversation before the message (pi `fork`).
+    /// Fork the conversation before the message.
     pub conversation: bool,
 }
 

@@ -1,4 +1,4 @@
-//! pi-ai `Message` and the coding-agent `AgentMessage` union.
+//! The LLM `Message` and the coding-agent `AgentMessage` union.
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -7,7 +7,7 @@ use crate::content::{AssistantContent, UserContent, UserContentField, UserTextFi
 use crate::json::{JsonObject, JsonValue};
 use crate::primitives::{StopReason, ThinkingLevel, TimestampMs, Usage};
 
-/// Tool declaration carried by system messages (pi `Tool`).
+/// Tool declaration carried by system messages.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolDecl {
@@ -23,7 +23,7 @@ pub struct ToolDecl {
     pub constrained_sampling: Option<ConstrainedSampling>,
 }
 
-/// pi `false | ConstrainedSamplingConfig`.
+/// F a l s e   |   C o n s t r a i n e d   S a m p l i n g   C o n f i g.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ConstrainedSampling {
@@ -90,7 +90,7 @@ pub struct ToolRef {
 /// Ordered prompt sections; `None` (JSON `null`) removes a section during replay.
 pub type Sections = IndexMap<String, Option<String>>;
 
-/// System prompt and tool loadout (pi `SystemMessage`).
+/// System prompt and tool loadout.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemMessage {
@@ -111,7 +111,7 @@ pub struct SystemMessage {
     pub timestamp: TimestampMs,
 }
 
-/// User message (pi `UserMessage`).
+/// User message.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserMessage {
@@ -123,7 +123,7 @@ pub struct UserMessage {
     pub timestamp: TimestampMs,
 }
 
-/// Assistant message (pi `AssistantMessage`).
+/// Assistant message.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistantMessage {
@@ -145,7 +145,7 @@ pub struct AssistantMessage {
     /// Provider-specific effort string applied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_thinking_level: Option<String>,
-    /// pi thinking level requested for this response.
+    /// Thinking level requested for this response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<ThinkingLevel>,
     /// Non-fatal diagnostics.
@@ -208,7 +208,7 @@ impl AssistantMessage {
     }
 }
 
-/// Assistant diagnostic (pi `AssistantMessageDiagnostic`).
+/// Assistant diagnostic.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistantDiagnostic {
@@ -225,7 +225,7 @@ pub struct AssistantDiagnostic {
     pub details: Option<JsonObject>,
 }
 
-/// pi `DiagnosticErrorInfo`.
+/// The diagnostic error info record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticError {
@@ -242,7 +242,7 @@ pub struct DiagnosticError {
     pub code: Option<JsonValue>,
 }
 
-/// Deferred response handle (pi `DeferredHandle`).
+/// Deferred response handle.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeferredHandle {
@@ -281,7 +281,7 @@ pub enum NestedStatus {
     Unfinished,
 }
 
-/// One nested tool call (pi `NestedToolCallRecord`).
+/// One nested tool call.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NestedToolCallRecord {
@@ -305,7 +305,7 @@ pub struct NestedToolCallRecord {
     pub error: Option<String>,
 }
 
-/// pi `NestedToolCalls`.
+/// The nested tool calls record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct NestedToolCalls {
     /// Recorded calls.
@@ -314,7 +314,7 @@ pub struct NestedToolCalls {
     pub complete: bool,
 }
 
-/// Tool result (pi `ToolResultMessage`).
+/// Tool result.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolResultMessage {
@@ -348,10 +348,10 @@ pub struct ToolResultMessage {
     pub duration_ms: Option<u64>,
 }
 
-/// LLM-level message (pi-ai `Message`).
+/// LLM-level message (`Message`).
 #[allow(
     clippy::large_enum_variant,
-    reason = "variants mirror pi shapes; boxing would leak into every match across crates"
+    reason = "variants mirror the wire shapes; boxing would leak into every match across crates"
 )]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "role")]
@@ -382,7 +382,7 @@ impl Message {
         }
     }
 
-    /// pi role string.
+    /// Role string.
     #[must_use]
     pub const fn role(&self) -> &'static str {
         match self {
@@ -475,10 +475,10 @@ pub struct CompactionSummaryMessage {
     pub timestamp: TimestampMs,
 }
 
-/// Coding-agent message union (pi `AgentMessage`).
+/// Coding-agent message union.
 #[allow(
     clippy::large_enum_variant,
-    reason = "variants mirror pi shapes; boxing would leak into every match across crates"
+    reason = "variants mirror the wire shapes; boxing would leak into every match across crates"
 )]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "role")]
@@ -510,7 +510,7 @@ pub enum AgentMessage {
 }
 
 impl AgentMessage {
-    /// The LLM message when this is one of the four pi-ai roles.
+    /// The LLM message when this is one of the four LLM roles.
     #[must_use]
     pub fn as_llm(&self) -> Option<Message> {
         match self {
@@ -522,7 +522,7 @@ impl AgentMessage {
         }
     }
 
-    /// pi role string.
+    /// Role string.
     #[must_use]
     pub const fn role(&self) -> &'static str {
         match self {

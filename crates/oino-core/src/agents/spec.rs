@@ -26,9 +26,9 @@ pub enum SystemPromptSpec {
     /// The default Oino system prompt for the child's tools.
     #[default]
     Default,
-    /// Replace the prompt body (pi `--system-prompt`).
+    /// Replace the prompt body.
     Replace(String),
-    /// Append to the default prompt (pi `--append-system-prompt`).
+    /// Append to the default prompt.
     Append(String),
 }
 

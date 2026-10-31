@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// Where a resource was configured (pi `SourceScope`).
+/// Where a resource was configured.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceScope {
@@ -17,7 +17,7 @@ pub enum SourceScope {
     Temporary,
 }
 
-/// Whether a resource came from a package or a top-level path (pi `SourceOrigin`).
+/// Whether a resource came from a package or a top-level path.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SourceOrigin {
@@ -28,7 +28,7 @@ pub enum SourceOrigin {
     TopLevel,
 }
 
-/// Resolution metadata of a discovered path (pi `PathMetadata`).
+/// Resolution metadata of a discovered path.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathMetadata {
@@ -43,7 +43,7 @@ pub struct PathMetadata {
     pub base_dir: Option<PathBuf>,
 }
 
-/// Provenance attached to a loaded resource (pi `SourceInfo`).
+/// Provenance attached to a loaded resource.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceInfo {
@@ -61,7 +61,7 @@ pub struct SourceInfo {
 }
 
 impl SourceInfo {
-    /// pi `createSourceInfo`.
+    /// C r e a t e   S o u r c e   I n f o.
     #[must_use]
     pub fn from_metadata(path: &Path, metadata: &PathMetadata) -> Self {
         Self {

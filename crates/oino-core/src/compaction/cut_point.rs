@@ -51,7 +51,7 @@ fn is_turn_start_entry(entry: &SessionEntry) -> bool {
     !is_compaction(entry) && raw_messages(entry).iter().any(is_turn_start_message)
 }
 
-/// pi `findTurnStartIndex`: the nearest turn-start entry at or before `entry_index`, not
+/// The nearest turn-start entry at or before `entry_index`, not
 /// before `start_index`.
 #[must_use]
 pub fn find_turn_start_index(
@@ -174,7 +174,7 @@ const fn no_cut(start: usize) -> CutPointResult {
     }
 }
 
-/// pi `findCutPoint`: walk back from the newest entry in `start..end` accumulating estimated
+/// Walk back from the newest entry in `start..end` accumulating estimated
 /// tokens until `keep_recent_tokens`, then cut at the nearest valid cut point at or after
 /// that entry (user, assistant, bash, custom or summary message; never a tool result).
 #[must_use]
@@ -193,7 +193,7 @@ pub fn find_cut_point(
     }
 }
 
-/// pi `findProjectedCutPoint`: [`find_cut_point`] over the finalized projection, advancing
+/// [`find_cut_point`] over the finalized projection, advancing
 /// past a closed context-invisible suffix that contains an omitted assistant attempt
 /// (recovery omissions).
 pub(crate) fn find_projected_cut_point(

@@ -667,7 +667,7 @@ pub struct UiState {
     pub title: Option<String>,
     /// Working message override.
     pub working_message: Option<String>,
-    /// Working indicator visibility (pi `setWorkingVisible`).
+    /// Working indicator visibility.
     pub working_visible: bool,
     /// Open panels; the last is on top.
     pub panels: Vec<Panel>,

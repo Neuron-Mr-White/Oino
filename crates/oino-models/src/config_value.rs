@@ -21,7 +21,7 @@ use crate::env::{EnvSource, lookup};
 /// Explicit variables consulted before the environment (a stored credential's `env`).
 pub type ExplicitEnv = IndexMap<String, String>;
 
-/// Timeout for `!command` values (pi: 10 000 ms).
+/// Timeout for `!command` values (default: 10 000 ms).
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 
 static COMMAND_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
@@ -40,7 +40,7 @@ enum Reference {
     Template(Vec<TemplatePart>),
 }
 
-/// Failure to resolve a required config value (pi `resolveConfigValueOrThrow` messages).
+/// Failure to resolve a required config value.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConfigValueError {
     /// The `!command` produced no value.
@@ -191,7 +191,7 @@ fn resolve_template(
     Some(resolved)
 }
 
-/// pi `getConfigValueEnvVarName`: the variable when the value is exactly one `$NAME` reference.
+/// The variable when the value is exactly one `$NAME` reference.
 #[must_use]
 pub fn config_value_env_var_name(config: &str) -> Option<String> {
     match parse_reference(config) {
@@ -203,7 +203,7 @@ pub fn config_value_env_var_name(config: &str) -> Option<String> {
     }
 }
 
-/// pi `getConfigValueEnvVarNames`: every distinct variable a template references.
+/// Every distinct variable a template references.
 #[must_use]
 pub fn config_value_env_var_names(config: &str) -> Vec<String> {
     match parse_reference(config) {
@@ -212,7 +212,7 @@ pub fn config_value_env_var_names(config: &str) -> Vec<String> {
     }
 }
 
-/// pi `getMissingConfigValueEnvVarNames`.
+/// Returns the missing config value env var names.
 #[must_use]
 pub fn missing_config_value_env_var_names(
     config: &str,
@@ -225,13 +225,13 @@ pub fn missing_config_value_env_var_names(
         .collect()
 }
 
-/// pi `isCommandConfigValue`.
+/// Returns whether it is command config value.
 #[must_use]
 pub fn is_command_config_value(config: &str) -> bool {
     config.starts_with('!')
 }
 
-/// pi `isConfigValueConfigured`: every referenced variable is set (commands count as configured).
+/// Every referenced variable is set (commands count as configured).
 #[must_use]
 pub fn is_config_value_configured(
     config: &str,
@@ -241,7 +241,7 @@ pub fn is_config_value_configured(
     missing_config_value_env_var_names(config, explicit, env).is_empty()
 }
 
-/// pi `resolveConfigValue`: resolves a value; `!command` results are cached per process.
+/// Resolves a value; `!command` results are cached per process.
 #[must_use]
 pub fn resolve_config_value(
     config: &str,
@@ -254,7 +254,7 @@ pub fn resolve_config_value(
     }
 }
 
-/// pi `resolveConfigValueUncached`: like [`resolve_config_value`] but runs commands every time.
+/// Like [`resolve_config_value`] but runs commands every time.
 #[must_use]
 pub fn resolve_config_value_uncached(
     config: &str,
@@ -267,7 +267,7 @@ pub fn resolve_config_value_uncached(
     }
 }
 
-/// pi `resolveConfigValueOrThrow` (uncached).
+/// Resolves a config value without caching.
 ///
 /// # Errors
 ///
@@ -302,7 +302,7 @@ pub fn resolve_config_value_strict(
     }
 }
 
-/// pi `resolveHeaders`: resolves header values (cached commands); unresolved or empty values
+/// Resolves header values (cached commands); unresolved or empty values
 /// are dropped and an empty result is `None`.
 #[must_use]
 pub fn resolve_headers(
@@ -321,7 +321,7 @@ pub fn resolve_headers(
     (!resolved.is_empty()).then_some(resolved)
 }
 
-/// pi `resolveHeadersOrThrow`: every header must resolve; `description` is extended with
+/// Every header must resolve; `description` is extended with
 /// ` header "<name>"`.
 ///
 /// # Errors
@@ -347,7 +347,7 @@ pub fn resolve_headers_strict(
     Ok((!resolved.is_empty()).then_some(resolved))
 }
 
-/// pi `clearConfigValueCache`: forgets cached `!command` results.
+/// Forgets cached `!command` results.
 pub fn clear_config_value_cache() {
     COMMAND_CACHE
         .lock()
@@ -384,7 +384,7 @@ fn shell_command(command: &str) -> Command {
 }
 
 /// Runs `command` through the default shell with a 10 s timeout; trimmed non-empty stdout of a
-/// successful run, else `None` (pi `executeWithDefaultShell`).
+/// successful run, else `None`.
 fn execute_command(command: &str) -> Option<String> {
     let mut child = shell_command(command)
         .stdin(Stdio::null())

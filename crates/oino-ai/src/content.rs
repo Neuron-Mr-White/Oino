@@ -1,4 +1,4 @@
-//! Content blocks (pi `TextContent`, `ThinkingContent`, `ImageContent`, `ToolCall`).
+//! Content blocks (`TextContent`, `ThinkingContent`, `ImageContent`, `ToolCall`).
 
 use serde::{Deserialize, Serialize};
 
@@ -115,7 +115,7 @@ impl AssistantContent {
     }
 }
 
-/// System content: pi `string | TextContent[]`. A JSON string stays a string.
+/// System content: `string | TextContent[]`. A JSON string stays a string.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum UserTextField {
@@ -132,7 +132,7 @@ impl Default for UserTextField {
 }
 
 impl UserTextField {
-    /// pi `contentText(content)`: the string, or text blocks joined with `separator`.
+    /// The string, or text blocks joined with `separator`.
     #[must_use]
     pub fn text(&self, separator: &str) -> String {
         match self {
@@ -155,7 +155,7 @@ pub enum TypedText {
     Text(TextContent),
 }
 
-/// User/custom content: pi `string | (TextContent | ImageContent)[]`. A JSON string stays a
+/// User/custom content: `string | (TextContent | ImageContent)[]`. A JSON string stays a
 /// string.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -173,7 +173,7 @@ impl Default for UserContentField {
 }
 
 impl UserContentField {
-    /// Converts to block form (a string becomes one text block), as pi `convertToLlm` does.
+    /// Converts to block form (a string becomes one text block), as `convertToLlm` does.
     #[must_use]
     pub fn into_blocks(self) -> Vec<UserContent> {
         match self {

@@ -62,7 +62,7 @@ impl ToolContext for SessionToolContext {
     }
 }
 
-/// Every built-in tool (pi `createAllToolDefinitions`) as session tool entries.
+/// Every built-in tool as session tool entries.
 #[must_use]
 pub fn builtin_tool_entries(
     cwd: &std::path::Path,

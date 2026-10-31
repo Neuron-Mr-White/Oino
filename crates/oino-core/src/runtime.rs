@@ -134,7 +134,7 @@ struct Current {
     forward: JoinHandle<()>,
 }
 
-/// Owns the current session (pi `AgentSessionRuntime`). Extension command contexts reach it
+/// Owns the current session. Extension command contexts reach it
 /// through a weak link for `newSession` / `fork` / `switchSession` / `shutdown`.
 pub struct AgentSessionRuntime {
     core: Arc<RuntimeCore>,
@@ -359,7 +359,7 @@ fn repaired(mut manager: SessionManager) -> Result<SessionManager, SessionError>
     Ok(manager)
 }
 
-/// The model and thinking level a session starts with (pi `createAgentSession`).
+/// The model and thinking level a session starts with.
 fn initial_selection(
     services: &Services,
     manager: &SessionManager,
@@ -730,7 +730,7 @@ impl AgentSessionRuntime {
         Ok(runtime)
     }
 
-    /// pi `modelFallbackMessage`.
+    /// Message shown when the model falls back.
     #[must_use]
     pub fn model_fallback_message(&self) -> Option<&str> {
         self.core.model_fallback_message.get().map(String::as_str)
@@ -762,14 +762,14 @@ impl AgentSessionRuntime {
         self.core.hub.subscribe()
     }
 
-    /// Becomes `true` when an extension called `ctx.shutdown()` (pi `shutdownHandler`);
+    /// Becomes `true` when an extension called `ctx.shutdown()`;
     /// frontends exit once the session is idle.
     #[must_use]
     pub fn shutdown_requested(&self) -> tokio::sync::watch::Receiver<bool> {
         self.core.shutdown.subscribe()
     }
 
-    /// pi `newSession`.
+    /// Starts a new session.
     ///
     /// # Errors
     ///
@@ -778,7 +778,7 @@ impl AgentSessionRuntime {
         self.core.new_session(parent).await
     }
 
-    /// pi `switchSession`.
+    /// Switches to another session.
     ///
     /// # Errors
     ///
@@ -791,7 +791,7 @@ impl AgentSessionRuntime {
         self.core.switch_session(path, cwd_override).await
     }
 
-    /// pi `fork`.
+    /// Forks the session.
     ///
     /// # Errors
     ///
@@ -821,7 +821,7 @@ impl AgentSessionRuntime {
             .await
     }
 
-    /// pi `importFromJsonl`: copies the file into the sessions dir and switches to it.
+    /// Copies the file into the sessions dir and switches to it.
     ///
     /// # Errors
     ///
@@ -1045,7 +1045,7 @@ impl RuntimeCore {
             .with_manager(|m| (m.is_persisted(), m.session_dir().to_path_buf()))
     }
 
-    /// pi `newSession`.
+    /// Starts a new session.
     ///
     /// # Errors
     ///
@@ -1085,7 +1085,7 @@ impl RuntimeCore {
         Ok(Replaced::default())
     }
 
-    /// pi `switchSession`.
+    /// Switches to another session.
     ///
     /// # Errors
     ///
@@ -1175,7 +1175,7 @@ impl RuntimeCore {
         })
     }
 
-    /// pi `importFromJsonl`: copies the file into the sessions dir and switches to it.
+    /// Copies the file into the sessions dir and switches to it.
     ///
     /// # Errors
     ///

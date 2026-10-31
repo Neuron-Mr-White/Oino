@@ -332,7 +332,9 @@ const definitions = [
   { provider: "router", id: "plain", name: "Plain" },
   { provider: "router", id: "limits", name: "Limits", thinkingLevels: ["off", "max"], contextWindow: 1000, maxTokens: 10, input: ["text"] },
 ];
-write("virtual-models.json", { api: virtual.VIRTUAL_MODEL_API, stateEntry: virtual.VIRTUAL_MODEL_STATE_ENTRY, models: definitions.map((d) => ({ definition: d, model: virtual.createVirtualModel(d) })) });
+// Product-neutral spelling: the fixture stores the Oino api id / state entry, so the
+// golden test compares directly (D13 substitution applied at generation time).
+write("virtual-models.json", { api: virtual.VIRTUAL_MODEL_API.replaceAll("pi", "oino"), stateEntry: virtual.VIRTUAL_MODEL_STATE_ENTRY.replaceAll("pi", "oino"), models: definitions.map((d) => { const m = virtual.createVirtualModel(d); m.api = m.api.replaceAll("pi", "oino"); return { definition: d, model: m }; }) });
 
 rmSync(work, { recursive: true, force: true });
 console.log(`wrote fixtures to ${out}`);

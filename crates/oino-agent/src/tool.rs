@@ -1,4 +1,4 @@
-//! Tool contract (pi-agent-core `AgentTool`, `AgentToolResult`).
+//! Tool contract (`AgentTool`, `AgentToolResult`).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 /// How a tool may be scheduled relative to other calls of the same assistant message
-/// (pi `ToolExecutionMode`).
+///.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExecutionMode {
@@ -21,7 +21,7 @@ pub enum ExecutionMode {
     Sequential,
 }
 
-/// Whether a recorded call may be replayed (pi `AgentTool.replay`).
+/// Whether a recorded call may be replayed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Replay {
@@ -73,7 +73,7 @@ impl ToolDefinitionMeta {
         }
     }
 
-    /// pi `toToolDeclaration`: the model-visible declaration recorded in system messages.
+    /// The model-visible declaration recorded in system messages.
     #[must_use]
     pub fn declaration(&self) -> ToolDecl {
         ToolDecl {
@@ -85,7 +85,7 @@ impl ToolDefinitionMeta {
     }
 }
 
-/// Result of a tool execution (pi `AgentToolResult`). Also used for partial updates.
+/// Result of a tool execution. Also used for partial updates.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentToolResult {
@@ -119,7 +119,7 @@ impl AgentToolResult {
         }
     }
 
-    /// pi `createErrorToolResult`: `{content:[{type:"text",text}], details:{}}`.
+    /// `{content:[{type:"text",text}], details:{}}`.
     #[must_use]
     pub fn error(message: impl Into<String>) -> Self {
         Self {
@@ -169,7 +169,7 @@ pub struct ToolInvocation {
     pub parent_tool_call_id: Option<String>,
 }
 
-/// Sink for partial results (pi `onUpdate`). Cheap to clone; updates sent after the call
+/// Sink for partial results. Cheap to clone; updates sent after the call
 /// settled are dropped.
 #[derive(Clone, Debug)]
 pub struct UpdateSink {
@@ -207,7 +207,7 @@ impl UpdateSink {
             return;
         }
         if let Some(tx) = &self.tx {
-            // A closed receiver means the call settled; dropping the update is pi's behaviour.
+            // A closed receiver means the call settled; dropping the update is expected.
             let _ = tx.send(update);
         }
     }
@@ -219,12 +219,12 @@ impl UpdateSink {
     }
 }
 
-/// An executable tool (pi `AgentTool`).
+/// An executable tool.
 pub trait AgentTool: Send + Sync {
     /// Static metadata.
     fn meta(&self) -> &ToolDefinitionMeta;
 
-    /// pi `prepareArguments`: normalises raw arguments before validation.
+    /// Normalises raw arguments before validation.
     fn prepare_arguments(&self, raw: JsonObject) -> JsonObject {
         raw
     }

@@ -26,7 +26,7 @@ impl EntryId {
         Self(id.into())
     }
 
-    /// pi `generateId`: first 8 hex chars of a random UUID, retried up to 100 times against
+    /// First 8 hex chars of a random UUID, retried up to 100 times against
     /// `taken`, then a full UUID.
     #[must_use]
     pub fn generate(taken: impl Fn(&str) -> bool) -> Self {

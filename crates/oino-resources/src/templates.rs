@@ -1,4 +1,4 @@
-//! Prompt templates (pi `core/prompt-templates.ts`): loading, argument parsing and
+//! Prompt templates: loading, argument parsing and
 //! substitution, `/name args` expansion.
 
 use std::fs;
@@ -13,7 +13,7 @@ use crate::frontmatter::parse_frontmatter;
 use crate::source::{SourceInfo, SourceScope};
 use crate::walk::{has_suffix, read_dir_sorted};
 
-/// A prompt template loaded from a markdown file (pi `PromptTemplate`).
+/// A prompt template loaded from a markdown file.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptTemplate {
@@ -32,7 +32,7 @@ pub struct PromptTemplate {
     pub file_path: PathBuf,
 }
 
-/// Templates plus diagnostics (pi `LoadPromptTemplatesResult`).
+/// Templates plus diagnostics.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LoadPromptTemplatesResult {
     /// Loaded templates (not deduplicated; see the resource loader).
@@ -41,7 +41,7 @@ pub struct LoadPromptTemplatesResult {
     pub diagnostics: Vec<ResourceDiagnostic>,
 }
 
-/// pi `parseCommandArgs`: split on whitespace honouring `'…'` and `"…"` quotes (no escapes;
+/// Split on whitespace honouring `'…'` and `"…"` quotes (no escapes;
 /// quoted empty strings are kept).
 #[must_use]
 pub fn parse_command_args(args: &str) -> Vec<String> {
@@ -80,7 +80,7 @@ fn is_js_whitespace(c: char) -> bool {
     c.is_whitespace() || c == '\u{feff}'
 }
 
-/// pi `substituteArgs`: `$1…`, `$@`, `$ARGUMENTS`, `${N:-default}`, `${@:-default}`,
+/// `$1…`, `$@`, `$ARGUMENTS`, `${N:-default}`, `${@:-default}`,
 /// `${ARGUMENTS:-default}`, `${@:N}`, `${@:N:L}`. Replacement is single-pass (substituted values
 /// are not re-expanded).
 #[must_use]
@@ -203,7 +203,7 @@ fn positional(args: &[String], number: &str) -> Option<String> {
         .cloned()
 }
 
-/// pi `loadTemplateFromFile`.
+/// L o a d   T e m p l a t e   F r o m   F i l e.
 fn load_template_from_file(
     file_path: &Path,
     source_info: SourceInfo,
@@ -276,7 +276,7 @@ fn js_slice(text: &str, n: usize) -> String {
     out
 }
 
-/// pi `loadTemplatesFromDir`: direct `.md` children (non-recursive, symlinks followed).
+/// Direct `.md` children (non-recursive, symlinks followed).
 fn load_templates_from_dir(
     dir: &Path,
     source_info: &dyn Fn(&Path) -> SourceInfo,
@@ -296,7 +296,7 @@ fn load_templates_from_dir(
     result
 }
 
-/// Inputs of [`load_prompt_templates`] (pi `LoadPromptTemplatesOptions`).
+/// Inputs of [`load_prompt_templates`].
 #[derive(Clone, Debug)]
 pub struct LoadPromptTemplatesOptions<'a> {
     /// Working directory.
@@ -311,7 +311,7 @@ pub struct LoadPromptTemplatesOptions<'a> {
     pub include_defaults: bool,
 }
 
-/// pi `loadPromptTemplates`.
+/// L o a d   P r o m p t   T e m p l a t e s.
 #[must_use]
 pub fn load_prompt_templates(
     options: &LoadPromptTemplatesOptions<'_>,
@@ -369,7 +369,7 @@ pub fn load_prompt_templates(
     result
 }
 
-/// pi `expandPromptTemplate`: `/name args` → the substituted template; `None` when `text` is
+/// `/name args` → the substituted template; `None` when `text` is
 /// not a known template invocation.
 #[must_use]
 pub fn expand_prompt_template(text: &str, templates: &[PromptTemplate]) -> Option<String> {

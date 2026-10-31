@@ -1,4 +1,4 @@
-//! [`SettingsManager`] (pi `SettingsManager`): layered load, trust gating, scoped writes.
+//! [`SettingsManager`]: layered load, trust gating, scoped writes.
 
 use std::path::{Path, PathBuf};
 
@@ -14,14 +14,14 @@ use crate::types::{
 };
 use crate::view::Settings;
 
-/// Global + project settings with pi merge, migration and write semantics.
+/// Global + project settings with the merge, migration and write semantics.
 ///
 /// - Reads: [`Self::settings`] gives the typed [`Settings`] view (project overrides global,
 ///   nested objects deep-merged, `defaultTools` modifiers appended).
 /// - Writes go to exactly one [`SettingsScope`]. Each write re-reads the file under an exclusive
 ///   lock on `<file>.lock`, migrates it, replaces only the written key path (unknown keys and
 ///   concurrent edits to other keys survive) and replaces the file atomically.
-/// - A layer whose file failed to load is never written (pi parity: a broken file is not
+/// - A layer whose file failed to load is never written (a broken file is not
 ///   clobbered); the in-memory change still applies.
 /// - Load errors are collected and returned by [`Self::drain_errors`]; write errors are returned
 ///   directly.
@@ -37,7 +37,7 @@ pub struct SettingsManager {
 
 impl SettingsManager {
     /// Load `<agent_dir>/settings.json` and, when `project_trusted`, `<cwd>/.oino/settings.json`
-    /// (pi `SettingsManager.create`). Relative inputs resolve against the process cwd.
+    ///. Relative inputs resolve against the process cwd.
     #[must_use]
     pub fn create(cwd: &Path, agent_dir: &Path, project_trusted: bool) -> Self {
         let absolute = |path: &Path| {
@@ -51,8 +51,8 @@ impl SettingsManager {
         Self::from_storage(storage, project_trusted)
     }
 
-    /// An in-memory manager seeded with `initial` as the global layer (pi `inMemory`); the
-    /// project is trusted (pi default) and starts empty.
+    /// An in-memory manager seeded with `initial` as the global layer; the
+    /// project is trusted (default) and starts empty.
     #[must_use]
     pub fn in_memory(initial: JsonObject) -> Self {
         let mut initial = initial;
@@ -122,7 +122,7 @@ impl SettingsManager {
     }
 
     /// Change the trust state: untrusted clears the project layer, trusted loads it
-    /// (pi `setProjectTrusted`).
+    ///.
     pub fn set_project_trusted(&mut self, trusted: bool) {
         if self.project_trusted == trusted {
             return;
@@ -148,7 +148,7 @@ impl SettingsManager {
     }
 
     /// Re-read both layers for the current trust state; a layer that fails to load keeps its
-    /// previous content and records an error (pi `reload`).
+    /// previous content and records an error.
     pub fn reload(&mut self) {
         let global = match load_layer(&self.storage, SettingsScope::Global) {
             Ok(global) => {
@@ -179,7 +179,7 @@ impl SettingsManager {
         self.rebuild(global, project);
     }
 
-    /// Layer session-only overrides on top of the merged settings (pi `applyOverrides`; kept
+    /// Layer session-only overrides on top of the merged settings (`applyOverrides`; kept
     /// across later writes and reloads).
     pub fn apply_overrides(&mut self, overrides: &JsonObject) {
         let merged = crate::json::deep_merge_settings(self.view.overrides(), overrides);
@@ -191,7 +191,7 @@ impl SettingsManager {
         );
     }
 
-    /// Take the collected load diagnostics (pi `drainErrors`).
+    /// Take the collected load diagnostics.
     pub fn drain_errors(&mut self) -> Vec<SettingsError> {
         std::mem::take(&mut self.errors)
     }
@@ -315,7 +315,7 @@ impl SettingsManager {
         )
     }
 
-    /// `modelThinkingLevels["provider/modelId"] = level` (global; whole map rewritten like pi).
+    /// `modelThinkingLevels["provider/modelId"] = level` (global; whole map rewritten).
     ///
     /// # Errors
     ///
@@ -577,8 +577,8 @@ impl SettingsManager {
         self.set(scope, &[kind.key()], Some(paths.into()))
     }
 
-    /// `deviceId`, generated (UUID v4) and persisted globally on first use (pi
-    /// `getOrCreateDeviceId`; project settings are ignored).
+    /// `deviceId`, generated (UUID v4) and persisted globally on first use
+    /// (`getOrCreateDeviceId`; project settings are ignored).
     ///
     /// # Errors
     ///

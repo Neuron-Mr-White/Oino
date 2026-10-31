@@ -17,7 +17,7 @@ use futures::StreamExt;
 use indexmap::IndexMap;
 use oino_ai::JsonObject;
 use oino_client::protocol::{EditorEvent, EditorIntent, QueueKind};
-use oino_client::{FrontendApi, InProcessBackend, AgentCommand, RewindOptions, SessionBackend};
+use oino_client::{AgentCommand, FrontendApi, InProcessBackend, RewindOptions, SessionBackend};
 use oino_core::builtin::{SessionToolContext, builtin_tool_entries};
 use oino_core::events::{ClientEvent, OinoEvent};
 use oino_core::extensions::api::{ExtensionInstance, ExtensionMode, Registration};

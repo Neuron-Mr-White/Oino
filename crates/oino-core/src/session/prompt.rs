@@ -16,7 +16,7 @@ use crate::extensions::api::CallKind;
 use crate::extensions::host::{CustomMessageDraft, Delivery};
 use crate::extensions::runner::InputOutcome;
 
-/// How an accepted prompt was dispatched (pi `PromptDisposition`).
+/// How an accepted prompt was dispatched.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PromptDisposition {
@@ -28,7 +28,7 @@ pub enum PromptDisposition {
     Started,
 }
 
-/// Queueing while streaming (pi `streamingBehavior`).
+/// Queueing while streaming.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum StreamingBehavior {
@@ -47,7 +47,7 @@ impl StreamingBehavior {
     }
 }
 
-/// pi `InputSource`.
+/// The input source record.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum InputSource {
@@ -94,7 +94,7 @@ impl Default for PromptOptions {
     }
 }
 
-/// What starts a run (pi `BeforeAgentStartTrigger`).
+/// What starts a run.
 #[derive(Clone, Debug)]
 pub(crate) enum Trigger {
     User {
@@ -125,7 +125,7 @@ fn images_json(images: &[ImageContent]) -> JsonValue {
 type Deferred = BoxFuture<'static, ()>;
 
 impl AgentSession {
-    /// Sends a prompt (pi `prompt`): extension commands run immediately, `input` handlers
+    /// Sends a prompt: extension commands run immediately, `input` handlers
     /// may transform or handle it, skills and templates expand, and while streaming it is
     /// queued per `streaming_behavior`. Returns once the run started (await
     /// [`AgentSession::wait_for_idle`] for completion).
@@ -199,7 +199,7 @@ impl AgentSession {
         Ok(PromptDisposition::Started)
     }
 
-    /// pi `steer`: queues a steering message.
+    /// Queues a steering message.
     ///
     /// # Errors
     ///
@@ -214,7 +214,7 @@ impl AgentSession {
             .await
     }
 
-    /// pi `followUp`: queues a follow-up message.
+    /// Queues a follow-up message.
     ///
     /// # Errors
     ///
@@ -281,7 +281,7 @@ impl AgentSession {
             .unwrap_or(expanded)
     }
 
-    /// pi `_expandSkillCommand`.
+    /// E x p a n d   S k i l l   C o m m a n d.
     fn expand_skill_command(&self, text: &str) -> String {
         let resources = self
             .inner
@@ -361,7 +361,7 @@ impl AgentSession {
         })
     }
 
-    /// Runs an extension command if `text` names one (pi `_tryExecuteExtensionCommand`).
+    /// Runs an extension command if `text` names one.
     async fn try_execute_extension_command(&self, text: &str) -> bool {
         let name = command_name(text);
         let args = text.split_once(' ').map_or("", |(_, rest)| rest);
@@ -459,7 +459,7 @@ impl AgentSession {
         Ok(())
     }
 
-    /// pi `sendUserMessage`: always triggers a turn (queued while streaming).
+    /// Always triggers a turn (queued while streaming).
     ///
     /// # Errors
     ///
@@ -542,7 +542,7 @@ impl AgentSession {
         });
     }
 
-    /// pi `_startRun`: prepares the run inline, then drives it in the background.
+    /// Prepares the run inline, then drives it in the background.
     pub(crate) async fn start_run(&self, trigger: Trigger) -> Result<(), SessionOpError> {
         {
             let mut book = lock(&self.inner.book);
@@ -614,7 +614,7 @@ impl AgentSession {
         lock(&self.inner.book).abort_requested
     }
 
-    /// pi `_prepareRun`.
+    /// P r e p a r e   R u n.
     async fn prepare_run(&self, trigger: Trigger) -> Result<Vec<AgentMessage>, SessionOpError> {
         if let Some(last) = self.last_assistant_message() {
             self.check_compaction(&last, false).await;
@@ -711,7 +711,7 @@ impl AgentSession {
         })
     }
 
-    /// pi `_handlePostAgentRun`: retry, overflow recovery, threshold compaction, queued work.
+    /// Retry, overflow recovery, threshold compaction, queued work.
     async fn handle_post_agent_run(&self) -> bool {
         let message = lock(&self.inner.book).last_assistant.take();
         if self.abort_requested() {
@@ -755,7 +755,7 @@ impl AgentSession {
         !self.abort_requested() && self.inner.agent.has_queued_messages()
     }
 
-    /// pi `_emitAgentSettled`.
+    /// E m i t   A g e n t   S e t t l e d.
     async fn emit_agent_settled(&self) {
         let aborted = {
             let mut book = lock(&self.inner.book);

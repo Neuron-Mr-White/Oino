@@ -1,4 +1,4 @@
-//! Provider-side transcript transformation (pi-ai `api/transform-messages.js`): drop foreign
+//! Provider-side transcript transformation: drop foreign
 //! reasoning and signatures, downgrade images for text-only models, synthesize missing tool
 //! results, and hold mid-tool-call system messages until the results are in.
 
@@ -15,10 +15,10 @@ const NON_VISION_TOOL_IMAGE_PLACEHOLDER: &str =
 const ERROR_TOOL_IMAGE_PLACEHOLDER: &str = "(image attached after the tool results)";
 const MISSING_TOOL_RESULT_TEXT: &str = "No result provided";
 
-/// Callback renaming tool-call ids for a target model (pi `normalizeToolCallId`).
+/// Callback renaming tool-call ids for a target model.
 pub type NormalizeToolCallId<'a> = &'a dyn Fn(&str, &Model, &AssistantMessage) -> String;
 
-/// Images split out of an error tool result (pi `splitErrorToolResultImages`).
+/// Images split out of an error tool result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SplitToolImages {
     /// Content with images replaced by a placeholder.
@@ -29,7 +29,7 @@ pub struct SplitToolImages {
     pub images: Vec<UserContent>,
 }
 
-/// pi `splitErrorToolResultImages`.
+/// S p l i t   E r r o r   T o o l   R e s u l t   I m a g e s.
 #[must_use]
 pub fn split_error_tool_result_images(message: &ToolResultMessage) -> Option<SplitToolImages> {
     if !message.is_error {
@@ -138,8 +138,8 @@ fn transform_assistant(
     message
 }
 
-/// pi `transformMessages(messages, model, normalizeToolCallId)`. `now` stamps synthesized
-/// tool results (pi uses `Date.now()`).
+/// `transformMessages(messages, model, normalizeToolCallId)`. `now` stamps synthesized
+/// tool results (`Date.now()` semantics).
 #[must_use]
 pub fn transform_messages(
     messages: Vec<Message>,

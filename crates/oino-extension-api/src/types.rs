@@ -138,7 +138,7 @@ pub enum CallKind {
 }
 
 impl CallKind {
-    /// Command-context-only operations are allowed (pi `ExtensionCommandContext`).
+    /// Command-context-only operations are allowed.
     #[must_use]
     pub fn is_command_context(self) -> bool {
         matches!(self, Self::Command | Self::Shortcut)
@@ -193,7 +193,7 @@ pub enum HostError {
     /// Permission missing (names the permission).
     #[error("permission denied: {0}")]
     Denied(String),
-    /// Session replaced since this call started (pi `assertActive`).
+    /// Session replaced since this call started.
     #[error(
         "This extension ctx is stale after session replacement or reload. Do not use a captured pi or command ctx after ctx.newSession(), ctx.fork(), ctx.switchSession(), or ctx.reload()."
     )]
@@ -243,7 +243,7 @@ pub struct ExtensionError {
     pub extension: String,
     /// Guest call (`init`, `on-event:tool_call`, `run-tool:bash`, …).
     pub call: String,
-    /// Error text (pi `error.message`).
+    /// Error text.
     pub message: String,
     /// The guest trapped (instance restarts lazily).
     pub trap: bool,

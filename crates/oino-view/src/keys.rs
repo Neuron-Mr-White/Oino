@@ -266,7 +266,7 @@ pub struct ActionSpec {
     pub id: &'static str,
     /// Default key ids.
     pub defaults: &'static [&'static str],
-    /// Description (pi `keybindings.md`).
+    /// Description.
     pub description: &'static str,
 }
 
@@ -753,7 +753,7 @@ impl Keybindings {
             .unwrap_or_default()
     }
 
-    /// pi `keyText`: the configured key texts joined with `/` (empty when unbound).
+    /// The configured key texts joined with `/` (empty when unbound).
     #[must_use]
     pub fn key_text(&self, action: &str) -> String {
         self.bindings

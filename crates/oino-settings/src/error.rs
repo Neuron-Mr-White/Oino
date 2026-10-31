@@ -1,4 +1,4 @@
-//! Settings scopes and errors (pi `SettingsScope`, `SettingsError`).
+//! Settings scopes and errors.
 
 use std::fmt;
 use std::path::PathBuf;
@@ -43,12 +43,12 @@ pub enum SettingsErrorKind {
     /// The file could not be written.
     #[error("{0}")]
     Write(String),
-    /// A project write was attempted while the project is untrusted (pi message).
+    /// A project write was attempted while the project is untrusted.
     #[error("Project is not trusted; refusing to write project settings")]
     ProjectUntrusted,
 }
 
-/// A settings diagnostic (pi `SettingsError{scope, path?, error}`); collected by the manager and
+/// A settings diagnostic; collected by the manager and
 /// returned by [`crate::SettingsManager::drain_errors`], or returned directly by writes.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub struct SettingsError {
@@ -69,7 +69,7 @@ impl SettingsError {
 }
 
 impl fmt::Display for SettingsError {
-    /// pi `collectSettingsDiagnostics` wording.
+    /// The diagnostics wording.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.path {
             Some(path) => write!(f, "Invalid settings file {}: {}", path.display(), self.kind),
@@ -78,11 +78,11 @@ impl fmt::Display for SettingsError {
     }
 }
 
-/// A setting value that a validating getter rejects (pi throws `Error` with these messages).
+/// A setting value that a validating getter rejects.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct InvalidSettingError {
-    /// pi's exact message, e.g. `Invalid httpIdleTimeoutMs setting: abc`.
+    /// The exact message, e.g. `Invalid httpIdleTimeoutMs setting: abc`.
     pub message: String,
 }
 

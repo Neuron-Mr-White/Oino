@@ -21,7 +21,7 @@ use crate::extensions::api::CallKind;
 
 pub use oino_models::resolver::CycleDirection;
 
-/// pi `ModelCycleResult`.
+/// The model cycle result record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CycleModelResult {
@@ -157,7 +157,7 @@ impl AgentSession {
         }
     }
 
-    /// pi `setModel`: validates auth, records `model_change`, applies the thinking level.
+    /// Validates auth, records `model_change`, applies the thinking level.
     ///
     /// # Errors
     ///
@@ -179,7 +179,7 @@ impl AgentSession {
         Ok(model)
     }
 
-    /// pi `cycleModel`.
+    /// C y c l e   M o d e l.
     ///
     /// # Errors
     ///
@@ -216,7 +216,7 @@ impl AgentSession {
         }))
     }
 
-    /// pi `setThinkingLevel`: clamps, records only changes; returns the effective level.
+    /// Clamps, records only changes; returns the effective level.
     pub async fn set_thinking_level(&self, level: ThinkingLevel, persist: bool) -> ThinkingLevel {
         let available = self.available_thinking_levels();
         let effective = if available.contains(&level) {
@@ -260,7 +260,7 @@ impl AgentSession {
         Some(next)
     }
 
-    /// pi `_recordSelection`: appends `model_change` when the branch implies another model.
+    /// Appends `model_change` when the branch implies another model.
     pub(crate) fn record_selection(&self) {
         let Some(model) = self.model() else {
             return;
@@ -292,7 +292,7 @@ impl AgentSession {
         }
     }
 
-    /// Routes a virtual model through its extension (pi `ModelRuntime.resolveModel`), storing
+    /// Routes a virtual model through its extension, storing
     /// router state on the branch.
     pub(crate) async fn route_virtual(
         &self,

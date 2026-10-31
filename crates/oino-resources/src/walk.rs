@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 
-/// Ignore files honoured during discovery (pi `IGNORE_FILE_NAMES`).
+/// Ignore files honoured during discovery.
 const IGNORE_FILE_NAMES: [&str; 3] = [".gitignore", ".ignore", ".fdignore"];
 
 /// One directory entry with symlinks resolved (pi `Dirent` + `statSync` for links).
@@ -50,7 +50,7 @@ pub(crate) fn has_suffix(name: &str, suffix: &str) -> bool {
     name.ends_with(suffix)
 }
 
-/// `/`-separated path of `path` relative to `root` (pi `toPosixPath(relative(root, path))`).
+/// `/`-separated path of `path` relative to `root`.
 pub(crate) fn posix_relative(root: &Path, path: &Path) -> String {
     let relative = path.strip_prefix(root).unwrap_or(path);
     relative
@@ -77,7 +77,7 @@ impl IgnoreMatcher {
         }
     }
 
-    /// pi `addIgnoreRules(ig, dir, root)`.
+    /// A d d   I g n o r e   R u l e s ( i g ,   d i r ,   r o o t ).
     pub(crate) fn add_rules(&mut self, dir: &Path) {
         let relative = posix_relative(&self.root, dir);
         let prefix = if relative.is_empty() {
@@ -123,7 +123,7 @@ impl IgnoreMatcher {
     }
 }
 
-/// pi `prefixIgnorePattern`.
+/// P r e f i x   I g n o r e   P a t t e r n.
 fn prefix_ignore_pattern(line: &str, prefix: &str) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() || (trimmed.starts_with('#') && !trimmed.starts_with("\\#")) {

@@ -1,4 +1,4 @@
-//! Scalar pi-ai types: timestamps, thinking levels, stop reasons, usage.
+//! Scalar types: timestamps, thinking levels, stop reasons, usage.
 
 use std::fmt;
 use std::str::FromStr;
@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::json::js_f64;
 
-/// Unix epoch milliseconds (pi `number` timestamps on messages).
+/// Unix epoch milliseconds (`number` timestamps on messages).
 pub type TimestampMs = i64;
 
-/// Reasoning effort requested from a model (pi `ThinkingLevel`). Wire values are lowercase
+/// Reasoning effort requested from a model. Wire values are lowercase
 /// (`"xhigh"`, not `"x_high"`).
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
@@ -35,7 +35,7 @@ pub enum ThinkingLevel {
 }
 
 impl ThinkingLevel {
-    /// Every level in pi order (`EXTENDED_THINKING_LEVELS`).
+    /// Every level in declaration order (`EXTENDED_THINKING_LEVELS`).
     pub const ALL: [Self; 7] = [
         Self::Off,
         Self::Minimal,
@@ -60,7 +60,7 @@ impl ThinkingLevel {
         }
     }
 
-    /// pi `clampThinkingLevel`: the requested level if available, else the nearest *higher*
+    /// The requested level if available, else the nearest *higher*
     /// available level, else the nearest lower one, else the first available (or `Off`).
     #[must_use]
     pub fn clamp(self, available: &[Self]) -> Self {
@@ -83,7 +83,7 @@ impl fmt::Display for ThinkingLevel {
     }
 }
 
-/// Error returned when a string is not a pi thinking level.
+/// Error returned when a string is not a thinking level.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("unknown thinking level: {0}")]
 pub struct UnknownThinkingLevel(pub String);
@@ -99,11 +99,11 @@ impl FromStr for ThinkingLevel {
     }
 }
 
-/// Why an assistant message stopped (pi `StopReason`).
+/// Why an assistant message stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum StopReason {
-    /// Streaming partial (pi `message_start` assistants).
+    /// Streaming partial (`message_start` assistants).
     Pending,
     /// Normal end of turn.
     Stop,
@@ -141,7 +141,7 @@ pub enum CacheRetention {
     Long,
 }
 
-/// Cost breakdown in USD (pi `Usage.cost`).
+/// Cost breakdown in USD.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageCost {
@@ -162,7 +162,7 @@ pub struct UsageCost {
     pub total: f64,
 }
 
-/// Token usage and cost (pi `Usage`).
+/// Token usage and cost.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Usage {

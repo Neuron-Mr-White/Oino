@@ -1,7 +1,7 @@
 //! Per-provider model list cache: `<agent>/cache/models/<provider>.json`.
 //!
 //! Dynamic provider registrations (`models: "dynamic"`) start from the cached list until the
-//! host has called the component's `list-models` (pi keeps refreshed catalogs in
+//! host has called the component's `list-models` (refreshed catalogs live in
 //! `models-store.json` with the same `{models, checkedAt}` entry shape).
 
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::auth::oauth::now_ms;
 use crate::auth::storage::write_atomic;
 
-/// A cached model list (pi `ModelsStoreEntry` subset).
+/// A cached model list.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CachedModels {

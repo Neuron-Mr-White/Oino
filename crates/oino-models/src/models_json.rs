@@ -1,6 +1,6 @@
-//! pi `model-config.ts`: one immutable, credential-blind load of `models.json`.
+//! One immutable, credential-blind load of `models.json`.
 //!
-//! Load problems never fail hard: like pi, they become a diagnostic string
+//! Load problems never fail hard: they become a diagnostic string
 //! ([`ModelsJson::error`]) and the file contributes no providers.
 
 use std::path::{Path, PathBuf};
@@ -13,10 +13,10 @@ use serde::{Deserialize, Deserializer};
 use crate::json_text::{strip_bom, strip_json_comments};
 use crate::schema::{MODELS_CONFIG, validate};
 
-/// `samplingParamsByThinkingLevel`: known pi levels only (unknown keys are ignored like pi).
+/// `samplingParamsByThinkingLevel`: known levels only (unknown keys are ignored).
 pub type SamplingByLevel = IndexMap<ThinkingLevel, JsonObject>;
 
-/// Deserializes `samplingParamsByThinkingLevel`, ignoring keys that are not pi levels.
+/// Deserializes `samplingParamsByThinkingLevel`, ignoring unknown level keys.
 pub(crate) fn sampling_by_level<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<SamplingByLevel>, D::Error> {
@@ -34,7 +34,7 @@ pub(crate) fn sampling_by_level<'de, D: Deserializer<'de>>(
     }))
 }
 
-/// A `models[]` entry (pi `ModelsJsonModel`).
+/// A `models[]` entry.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelsJsonModel {
@@ -89,7 +89,7 @@ pub struct PartialCost {
     pub tiers: Option<Vec<ModelCostTier>>,
 }
 
-/// A `modelOverrides` entry (pi `ModelsJsonModelOverride`): every field merges over the
+/// A `modelOverrides` entry: every field merges over the
 /// existing model.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -123,7 +123,7 @@ pub struct ModelsJsonModelOverride {
     pub compat: Option<JsonValue>,
 }
 
-/// A `providers.<id>` entry (pi `ModelsJsonProvider`).
+/// A `providers.<id>` entry.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelsJsonProvider {
@@ -135,7 +135,7 @@ pub struct ModelsJsonProvider {
     pub api_key: Option<String>,
     /// API of the provider's models.
     pub api: Option<String>,
-    /// pi's `"radius"` OAuth flow marker (validated, no flow in core).
+    /// The `"radius"` OAuth flow marker (validated, no flow in core).
     pub oauth: Option<String>,
     /// Request headers (values resolve like `apiKey`).
     pub headers: Option<IndexMap<String, String>>,
@@ -154,7 +154,7 @@ struct RawConfig {
     providers: IndexMap<String, ModelsJsonProvider>,
 }
 
-/// One load of `models.json` (pi `ModelConfig`).
+/// One load of `models.json`.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ModelsJson {
     providers: IndexMap<String, ModelsJsonProvider>,
@@ -168,8 +168,8 @@ impl ModelsJson {
         Self::default()
     }
 
-    /// pi `ModelConfig.load`: a missing file is empty; read, parse and schema errors become
-    /// [`ModelsJson::error`] with pi's texts.
+    /// A missing file is empty; read, parse and schema errors become
+    /// [`ModelsJson::error`] with the load texts.
     #[must_use]
     pub fn load(path: Option<&Path>) -> Self {
         let Some(path) = path else {

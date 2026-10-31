@@ -1,4 +1,4 @@
-//! Tree view of a session (pi `getTree`), built and dropped without recursion so very deep
+//! Tree view of a session, built and dropped without recursion so very deep
 //! linear sessions cannot overflow the stack.
 
 use std::collections::HashMap;

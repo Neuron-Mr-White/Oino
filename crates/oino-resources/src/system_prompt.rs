@@ -1,4 +1,4 @@
-//! Structured system prompt (pi `core/system-prompt.ts`) with the D13 product substitutions of
+//! Structured system prompt with the D13 product substitutions of
 //! runtime §9.4.
 //!
 //! Sections are ordered: `preamble` (untagged), then `tools`, `rules`, `docs` (default prompt
@@ -100,7 +100,7 @@ pub struct InvalidSectionName {
     pub name: String,
 }
 
-/// Prompt state of one build (pi `buildSystemPromptState`): a forced prompt is opaque text with
+/// Prompt state of one build: a forced prompt is opaque text with
 /// no sections; otherwise `content` is empty and `sections` carry the prompt.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SystemPromptState {
@@ -129,7 +129,7 @@ impl SystemPromptState {
         }
     }
 
-    /// Rendered text exactly as the transcript replays it (pi `getSystemMessageText`).
+    /// Rendered text exactly as the transcript replays it.
     #[must_use]
     pub fn render(&self) -> String {
         oino_ai::transcript::system_message_text(&self.to_system_message(TimestampMs::default()))
@@ -152,7 +152,7 @@ pub fn docs_section(docs_root: &Path) -> String {
     )
 }
 
-/// pi `renderProjectContext`.
+/// R e n d e r   P r o j e c t   C o n t e x t.
 #[must_use]
 pub fn render_project_context(files: &[ContextFile]) -> String {
     std::iter::once("Project-specific instructions and guidelines:".to_owned())
@@ -167,7 +167,7 @@ pub fn render_project_context(files: &[ContextFile]) -> String {
         .join("\n\n")
 }
 
-/// pi `buildRules`: deduplicated, trimmed bullets.
+/// Deduplicated, trimmed bullets.
 #[must_use]
 pub fn build_rules(
     declared_tools: &[String],
@@ -340,7 +340,7 @@ pub fn build_system_prompt_sections(
         .collect())
 }
 
-/// pi `buildSystemPromptState`.
+/// B u i l d   S y s t e m   P r o m p t   S t a t e.
 ///
 /// # Errors
 ///
@@ -361,7 +361,7 @@ pub fn build_system_prompt_state(
     })
 }
 
-/// pi `buildSystemPrompt`: the rendered prompt text.
+/// The rendered prompt text.
 ///
 /// # Errors
 ///
@@ -373,7 +373,7 @@ pub fn build_system_prompt(
     build_system_prompt_state(options, docs_root).map(|state| state.render())
 }
 
-/// pi `diffSystemPromptSections`: the section patch from `previous` (replayed) to `current`, or
+/// The section patch from `previous` (replayed) to `current`, or
 /// `None` when unchanged.
 #[must_use]
 pub fn diff_system_prompt_sections(

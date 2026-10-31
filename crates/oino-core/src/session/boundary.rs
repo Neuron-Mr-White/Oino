@@ -29,7 +29,7 @@ impl Boundary {
     }
 }
 
-/// Applies boundary drafts to `manager` (pi `_applyBoundaryDrafts`).
+/// Applies boundary drafts to `manager`.
 ///
 /// # Errors
 ///

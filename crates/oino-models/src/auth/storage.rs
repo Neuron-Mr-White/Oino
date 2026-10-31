@@ -1,8 +1,8 @@
-//! pi `auth-storage.ts`: credentials in `<agent>/auth.json`.
+//! Credentials in `<agent>/auth.json`.
 //!
 //! - Format: `{ "<provider>": {"type":"api_key",…} | {"type":"oauth",…} }`, written with
 //!   two-space indentation like `JSON.stringify(data, null, 2)`.
-//! - Read-modify-write runs under an exclusive lock on `auth.json.lock` (pi locks
+//! - Read-modify-write runs under an exclusive lock on `auth.json.lock`
 //!   `auth.json.lock` too, through proper-lockfile). The file is replaced atomically (temp file +
 //!   rename) so lock-free readers never see a partial write; new files are created `0600`, an
 //!   existing file keeps its mode.
@@ -24,10 +24,10 @@ use crate::config_value::resolve_config_value;
 use crate::env::{EnvSource, ProcessEnv};
 use crate::json_text::strip_bom;
 
-/// How long a writer waits for another holder of the lock (pi: 30 s stale window).
+/// How long a writer waits for another holder of the lock (30 s stale window).
 const LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Errors reading or writing `auth.json` (pi texts where pi has them).
+/// Errors reading or writing `auth.json`.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthStorageError {
     /// The file could not be read or parsed.
@@ -77,8 +77,8 @@ struct Snapshot {
     loaded: bool,
 }
 
-/// Credential storage (pi `AuthStorage` / `ReadOnlyAuthStorage` / in-memory backend) with
-/// pi's `RuntimeCredentials` overlay.
+/// Credential storage (file-backed, read-only and in-memory backends) with
+/// a runtime-credentials overlay.
 pub struct AuthStorage {
     backend: Backend,
     runtime: RwLock<IndexMap<String, String>>,
@@ -143,7 +143,7 @@ impl AuthStorage {
         }
     }
 
-    /// pi `AuthStorage.create(path)`: file-backed, read-write.
+    /// File-backed, read-write.
     #[must_use]
     pub fn open(path: impl Into<PathBuf>) -> Self {
         Self::with_backend(Backend::File {
@@ -152,7 +152,7 @@ impl AuthStorage {
         })
     }
 
-    /// pi `ReadOnlyAuthStorage`: validates every entry and refuses mutations.
+    /// Validates every entry and refuses mutations.
     #[must_use]
     pub fn open_read_only(path: impl Into<PathBuf>) -> Self {
         Self::with_backend(Backend::File {
@@ -161,7 +161,7 @@ impl AuthStorage {
         })
     }
 
-    /// pi `AuthStorage.inMemory(data)`.
+    /// The auth storage.in memory(data) record.
     #[must_use]
     pub fn in_memory(data: IndexMap<String, AuthCredential>) -> Self {
         let object = data
@@ -214,7 +214,7 @@ impl AuthStorage {
 
     /// Current data, reloaded when the file revision changed.
     ///
-    /// Read-write storage keeps the last valid snapshot when the file is unreadable (pi);
+    /// Read-write storage keeps the last valid snapshot when the file is unreadable;
     /// read-only storage reports the error.
     fn data(&self) -> Result<JsonObject, AuthStorageError> {
         match &self.backend {
@@ -244,7 +244,7 @@ impl AuthStorage {
         }
     }
 
-    /// Forces the next read to reload the file (pi `reload`).
+    /// Forces the next read to reload the file.
     pub fn reload(&self) {
         let mut snapshot = self.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
         snapshot.revision = None;
@@ -252,7 +252,7 @@ impl AuthStorage {
     }
 
     /// The stored credential exactly as written (no runtime overlay, no key resolution;
-    /// pi `readStoredCredential`). Entries of unknown shape read as `None`.
+    /// Reads a stored credential). Entries of unknown shape read as `None`.
     ///
     /// # Errors
     ///
@@ -262,7 +262,7 @@ impl AuthStorage {
         Ok(data.get(provider).and_then(AuthCredential::from_value))
     }
 
-    /// pi `read`: the runtime key if set, else the stored credential with an API key's config
+    /// The runtime key if set, else the stored credential with an API key's config
     /// value resolved (`!command` cached, `$ENV` with the credential's `env` first). A key that
     /// does not resolve becomes `None`.
     ///
@@ -285,7 +285,7 @@ impl AuthStorage {
         }))
     }
 
-    /// pi `list`: stored entries plus runtime keys (as `api_key`).
+    /// Stored entries plus runtime keys (as `api_key`).
     ///
     /// # Errors
     ///
@@ -337,7 +337,7 @@ impl AuthStorage {
         })
     }
 
-    /// pi `delete`: removes the stored credential and any runtime key.
+    /// Removes the stored credential and any runtime key.
     ///
     /// # Errors
     ///
@@ -351,7 +351,7 @@ impl AuthStorage {
         Ok(())
     }
 
-    /// pi `modify` (synchronous): `f` receives the current credential under the lock; `Some`
+    /// Modify (synchronous): `f` receives the current credential under the lock; `Some`
     /// replaces it, `None` leaves the file untouched. Returns the credential after the call.
     ///
     /// # Errors
@@ -377,7 +377,7 @@ impl AuthStorage {
         Ok(result)
     }
 
-    /// pi `modify` with an asynchronous callback (OAuth refresh). Concurrent calls in this
+    /// Modify with an asynchronous callback (OAuth refresh). Concurrent calls in this
     /// process are serialized; the file lock is held while `f` runs, so other processes
     /// refresh at most once.
     ///
@@ -412,17 +412,17 @@ impl AuthStorage {
         }
     }
 
-    /// pi `setRuntimeApiKey`: a non-persistent key that wins over `auth.json`.
+    /// A non-persistent key that wins over `auth.json`.
     pub fn set_runtime_api_key(&self, provider: &str, key: impl Into<String>) {
         self.write_runtime().insert(provider.to_owned(), key.into());
     }
 
-    /// pi `removeRuntimeApiKey`.
+    /// R e m o v e   R u n t i m e   A p i   K e y.
     pub fn remove_runtime_api_key(&self, provider: &str) {
         self.write_runtime().shift_remove(provider);
     }
 
-    /// pi `hasRuntimeApiKey`.
+    /// Returns whether runtime api key is present.
     #[must_use]
     pub fn has_runtime_api_key(&self, provider: &str) -> bool {
         self.read_runtime().contains_key(provider)

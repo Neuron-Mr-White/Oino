@@ -1,5 +1,5 @@
 //! Provider registrations (extension-api §4.4) and config-only provider overrides
-//! (pi `registerProvider(name, config)`).
+//!.
 
 use indexmap::IndexMap;
 use oino_ai::{InputLimits, InputModality, JsonObject, JsonValue, Model, ModelCost};
@@ -10,7 +10,7 @@ use crate::models_json::{SamplingByLevel, sampling_by_level};
 
 /// How a registration sends the API key (`authHeader`).
 ///
-/// pi uses a boolean; extension-api §4.4 uses `"bearer"`. Both spellings are accepted. Any
+/// A boolean and `"bearer"` are both accepted spellings. Any
 /// other header name (e.g. Anthropic's `"x-api-key"`) is informational: the provider
 /// component places the key itself, so it maps to [`AuthHeaderMode::None`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -47,9 +47,9 @@ impl<'de> Deserialize<'de> for AuthHeaderMode {
     }
 }
 
-/// A model in a registration or override (pi `ProviderChatModelConfig`).
+/// A model in a registration or override.
 ///
-/// pi's TypeScript type requires most fields; Oino applies the models.json defaults when
+/// Most fields default to the models.json values when
 /// they are missing (`name = id`, `input = ["text"]`, zero cost, 128 000 / 16 384 tokens).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,7 +100,7 @@ pub struct ProviderModelConfig {
     )]
     pub sampling_params_by_thinking_level: Option<SamplingByLevel>,
     /// Model headers. On a registration they stay on the model; on an override they are
-    /// request-time headers (pi `rawModelHeaders`).
+    /// request-time headers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub headers: Option<IndexMap<String, String>>,
     /// Compatibility flags.
@@ -208,7 +208,7 @@ pub struct ProviderRegistration {
     #[serde(default)]
     pub auth_env: Vec<String>,
     /// Informational for the component (see crate docs: core only injects
-    /// `Authorization` for models.json / override `authHeader: true`, like pi).
+    /// `Authorization` for models.json / override `authHeader: true`).
     #[serde(default)]
     pub auth_header: AuthHeaderMode,
     /// The component supports OAuth login/refresh.
@@ -240,7 +240,7 @@ impl ProviderRegistration {
     }
 }
 
-/// pi `ProviderConfigInput` minus code: config-only overrides an extension sets for an
+/// Config-only overrides an extension sets for an
 /// existing provider id. Re-registration merges defined fields over the previous override.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -269,7 +269,7 @@ pub struct ProviderConfigOverride {
 }
 
 impl ProviderConfigOverride {
-    /// pi re-registration: defined values of `next` replace those of `self`.
+    /// Re-registration merge: defined values of `next` replace those of `self`.
     #[must_use]
     pub fn merged_with(self, next: Self) -> Self {
         Self {

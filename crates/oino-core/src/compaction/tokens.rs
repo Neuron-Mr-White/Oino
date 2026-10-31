@@ -15,7 +15,7 @@ use super::settings::CompactionSettings;
 /// Characters counted for one image block.
 const ESTIMATED_IMAGE_CHARS: usize = 4800;
 
-/// pi `calculateContextTokens`: `totalTokens`, or the sum of the components when it is 0.
+/// `totalTokens`, or the sum of the components when it is 0.
 #[must_use]
 pub fn calculate_context_tokens(usage: &Usage) -> u64 {
     if usage.total_tokens > 0 {
@@ -40,7 +40,7 @@ fn assistant_usage(message: &AgentMessage) -> Option<&Usage> {
     }
 }
 
-/// pi `getLastAssistantUsage`: usage of the newest valid assistant message entry.
+/// Usage of the newest valid assistant message entry.
 #[must_use]
 pub fn last_assistant_usage(entries: &[&SessionEntry]) -> Option<Usage> {
     entries.iter().rev().find_map(|entry| match &entry.kind {
@@ -49,7 +49,7 @@ pub fn last_assistant_usage(entries: &[&SessionEntry]) -> Option<Usage> {
     })
 }
 
-/// pi `ContextUsageEstimate`.
+/// The context usage estimate record.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextUsageEstimate {
@@ -94,7 +94,7 @@ fn system_chars(content: &UserTextField) -> usize {
     }
 }
 
-/// pi `estimateTokens`: `ceil(chars / 4)` per message (UTF-16 characters; 4800 per image;
+/// `ceil(chars / 4)` per message (UTF-16 characters; 4800 per image;
 /// tool calls count name + JSON arguments; system messages count sections and `toolsAdded`).
 #[must_use]
 pub fn estimate_tokens(message: &AgentMessage) -> u64 {
@@ -141,7 +141,7 @@ pub(crate) fn estimate_all<'a>(messages: impl IntoIterator<Item = &'a AgentMessa
     messages.into_iter().map(estimate_tokens).sum()
 }
 
-/// pi `estimateContextTokens`: the newest valid assistant usage plus estimates for the
+/// The newest valid assistant usage plus estimates for the
 /// messages after it, or a full estimate when no usage exists.
 #[must_use]
 pub fn estimate_context_tokens(messages: &[AgentMessage]) -> ContextUsageEstimate {
@@ -169,7 +169,7 @@ pub fn estimate_context_tokens(messages: &[AgentMessage]) -> ContextUsageEstimat
     }
 }
 
-/// pi `estimateProjectedContextTokens`: like [`estimate_context_tokens`] over the projection,
+/// Like [`estimate_context_tokens`] over the projection,
 /// but usage recorded before the latest `context_edit`/`compaction` on `branch` is not
 /// trusted; then the current system checkpoint plus every non-system message is estimated.
 #[must_use]
@@ -222,7 +222,7 @@ pub fn estimate_projected_context_tokens(
     }
 }
 
-/// pi `shouldCompact`: `enabled && contextTokens > contextWindow − reserveTokens`.
+/// `enabled && contextTokens > contextWindow − reserveTokens`.
 #[must_use]
 pub fn should_compact(
     context_tokens: u64,

@@ -1,4 +1,4 @@
-//! The interactive-mode state machine (pi `interactive-mode.ts`).
+//! The interactive-mode state machine.
 //!
 //! [`App`] owns every piece of view state and reacts to [`AppEvent`]s (keys, paste, ticks,
 //! client events, command replies, host replies). It never performs I/O: side effects are
@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use oino_ai::{ImageContent, JsonObject, JsonValue, Model, ThinkingLevel};
-use oino_client::protocol::{OinoCommand, AgentCommand, RpcCommand};
+use oino_client::protocol::{AgentCommand, OinoCommand, RpcCommand};
 use oino_client::{ClientError, RpcResponseData};
 use oino_core::events::{AgentSessionEvent, ClientEvent, OinoEvent, RunState};
 use oino_core::ui::UiResponse;
@@ -43,7 +43,7 @@ pub(crate) use frontend::{ExtSettingsPage, ExtSubPage, ProviderPicker};
 pub(crate) use overlay::Overlay;
 pub(crate) use submit::group;
 
-/// Terminal layout (pi `tuiMode`).
+/// Terminal layout.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TuiMode {
     /// Alternate screen with an in-app scrolling transcript.
@@ -587,7 +587,7 @@ impl App {
         self.scroll = 0;
     }
 
-    /// Initial requests (pi `init` + `rebindCurrentSession` + `renderInitialMessages`).
+    /// Initial requests.
     pub fn start(&mut self) {
         for notice in self.options.notices.clone() {
             self.notice(NoticeLevel::Warning, notice);

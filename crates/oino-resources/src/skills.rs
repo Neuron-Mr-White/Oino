@@ -1,4 +1,4 @@
-//! Skills (pi `core/skills.ts`): discovery, frontmatter validation, prompt formatting and
+//! Skills: discovery, frontmatter validation, prompt formatting and
 //! `/skill:name` expansion.
 
 use std::collections::{HashMap, HashSet};
@@ -74,7 +74,7 @@ pub fn apply_opt_in(skills: &mut [Skill], namespace: &Value) {
     }
 }
 
-/// Skills plus diagnostics (pi `LoadSkillsResult`).
+/// Skills plus diagnostics.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LoadSkillsResult {
     /// Loaded skills (first-wins by name).
@@ -101,7 +101,7 @@ pub enum SkillSource {
     Path,
 }
 
-/// Inputs of [`load_skills`] (pi `LoadSkillsOptions`).
+/// Inputs of [`load_skills`].
 #[derive(Clone, Debug)]
 pub struct LoadSkillsOptions<'a> {
     /// Working directory (relative skill paths resolve against it).
@@ -116,7 +116,7 @@ pub struct LoadSkillsOptions<'a> {
     pub include_defaults: bool,
 }
 
-/// pi `validateName`.
+/// V a l i d a t e   N a m e.
 fn validate_name(name: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let length = name.encode_utf16().count();
@@ -144,7 +144,7 @@ fn validate_name(name: &str) -> Vec<String> {
     errors
 }
 
-/// pi `validateDescription`.
+/// V a l i d a t e   D e s c r i p t i o n.
 fn validate_description(description: Option<&Value>) -> Vec<String> {
     match description.and_then(Value::as_str) {
         Some(text) if !text.trim().is_empty() => {
@@ -174,7 +174,7 @@ fn skill_source_info(file_path: &Path, base_dir: &Path, source: SkillSource) -> 
     }
 }
 
-/// pi `loadSkillFromFile`: one skill file, with diagnostics. Standalone `.md` files without a
+/// One skill file, with diagnostics. Standalone `.md` files without a
 /// description are silently skipped; `SKILL.md` files report every problem.
 #[must_use]
 pub fn load_skill_from_file(
@@ -240,7 +240,7 @@ pub fn load_skill_from_file(
     (Some(skill), diagnostics)
 }
 
-/// pi `loadSkillsFromDir`: a dir with `SKILL.md` is one skill (no recursion); otherwise direct
+/// A dir with `SKILL.md` is one skill (no recursion); otherwise direct
 /// `.md` children of the root are skills and subdirectories are searched for `SKILL.md`.
 /// Dot entries, `node_modules` and ignore-file matches are skipped.
 #[must_use]
@@ -294,7 +294,7 @@ fn load_dir(
     result
 }
 
-/// pi `loadSkills`: load every location, first skill per name wins (collision diagnostics
+/// Load every location, first skill per name wins (collision diagnostics
 /// last), the same real file is loaded once.
 #[must_use]
 pub fn load_skills(options: &LoadSkillsOptions<'_>) -> LoadSkillsResult {
@@ -412,7 +412,7 @@ pub enum SkillReader {
     Indirect,
 }
 
-/// pi `formatSkillsForPrompt`: the `<available_skills>` block (leading `\n\n`), excluding
+/// The `<available_skills>` block (leading `\n\n`), excluding
 /// `disable-model-invocation` skills and opt-in skills that are off; empty when none are
 /// visible.
 #[must_use]
@@ -457,7 +457,7 @@ pub fn format_skills_for_prompt(skills: &[Skill], reader: SkillReader) -> String
     lines.join("\n")
 }
 
-/// XML-escape `& < > " '` (pi `escapeXml`).
+/// XML-escape `& < > " '`.
 #[must_use]
 pub fn escape_xml(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -529,7 +529,7 @@ pub fn render_skill_block(skill: &Skill, body: &str, args: &str) -> String {
     }
 }
 
-/// pi `_expandSkillCommand`: expand `/skill:name args` with the named skill's body. Returns
+/// Expand `/skill:name args` with the named skill's body. Returns
 /// `Ok(None)` when `text` is not a skill command or the skill is unknown (pass-through).
 ///
 /// # Errors
@@ -564,7 +564,7 @@ pub struct ParsedSkillBlock {
     pub user_message: Option<String>,
 }
 
-/// pi `parseSkillBlock`: recognise text produced by [`render_skill_block`].
+/// Recognise text produced by [`render_skill_block`].
 #[must_use]
 pub fn parse_skill_block(text: &str) -> Option<ParsedSkillBlock> {
     let rest = text.strip_prefix("<skill name=\"")?;

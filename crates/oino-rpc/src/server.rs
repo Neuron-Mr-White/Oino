@@ -20,7 +20,7 @@ use futures::stream::{BoxStream, FuturesUnordered};
 use futures::{Future, FutureExt, StreamExt};
 use oino_ai::JsonValue;
 use oino_client::{
-    ClientError, OinoCommand, AgentCommand, RpcCommand, RpcRequest, RpcResponse, SessionBackend,
+    AgentCommand, ClientError, OinoCommand, RpcCommand, RpcRequest, RpcResponse, SessionBackend,
 };
 use oino_core::events::{AgentSessionEvent, ClientEvent};
 use oino_core::ui::{UiAnswer, UiResponse};
@@ -99,7 +99,10 @@ impl Shared {
             }
         };
         let kind = request.command.kind();
-        let prompt = matches!(request.command, RpcCommand::Agent(AgentCommand::Prompt { .. }));
+        let prompt = matches!(
+            request.command,
+            RpcCommand::Agent(AgentCommand::Prompt { .. })
+        );
         let hello = match &request.command {
             RpcCommand::Oino(OinoCommand::Hello { ui, .. }) => Some(hello_connection(ui.as_ref())),
             _ => None,

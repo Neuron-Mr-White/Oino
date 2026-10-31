@@ -47,7 +47,7 @@ pub struct NavigateTreeResult {
     pub summary_entry: Option<oino_session::SessionEntry>,
 }
 
-/// `{entryId, text}` of a user message (pi `getUserMessagesForForking`).
+/// `{entryId, text}` of a user message.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForkMessage {
@@ -58,7 +58,7 @@ pub struct ForkMessage {
 }
 
 impl AgentSession {
-    /// User messages of the whole session (pi `getUserMessagesForForking`).
+    /// User messages of the whole session.
     #[must_use]
     pub fn user_messages_for_forking(&self) -> Vec<ForkMessage> {
         lock(&self.inner.manager)
@@ -77,7 +77,7 @@ impl AgentSession {
             .collect()
     }
 
-    /// pi `navigateTree`.
+    /// Navigates the entry tree.
     ///
     /// # Errors
     ///

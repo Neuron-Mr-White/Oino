@@ -244,7 +244,7 @@ impl AgentSession {
         }
     }
 
-    /// `tool_call` handlers (pi `_beforeToolCall`).
+    /// `tool_call` handlers.
     pub(crate) async fn before_tool_call(
         &self,
         call: &oino_ai::ToolCall,
@@ -278,7 +278,7 @@ impl AgentSession {
         }))
     }
 
-    /// `tool_result` handlers (pi `_afterToolCall`).
+    /// `tool_result` handlers.
     pub(crate) async fn after_tool_call(
         &self,
         cx: &AfterToolCallContext<'_>,
@@ -324,7 +324,7 @@ impl AgentSession {
         })
     }
 
-    /// pi `_installAgentRequestProjection`.
+    /// Installs the agent request projection.
     async fn prepare_request(
         &self,
         context: &AgentContext,
@@ -378,7 +378,7 @@ impl AgentSession {
         })
     }
 
-    /// pi `_installAgentNextTurnRefresh`.
+    /// Installs the next-turn refresh.
     async fn prepare_next_turn(&self, _context: &AgentContext) -> AgentLoopTurnUpdate {
         let messages = self.compact_before_next_assistant_response().await;
         let base = self.system_prompt_options();

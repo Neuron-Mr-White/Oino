@@ -20,7 +20,7 @@ fn path_arg(args: &JsonObject) -> Option<&str> {
     str_arg(args, "file_path").or_else(|| str_arg(args, "path"))
 }
 
-/// pi `formatToolDuration`.
+/// F o r m a t   T o o l   D u r a t i o n.
 pub(crate) fn format_duration(ms: u64) -> String {
     let seconds = ms / 1000;
     if ms < 60_000 {

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::{AgentSession, SessionOpError, lock};
 use crate::compaction::{calculate_context_tokens, estimate_projected_context_tokens};
 
-/// pi `ContextUsage`.
+/// The context usage record.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextUsage {
@@ -38,7 +38,7 @@ pub struct TokenTotals {
     pub total: u64,
 }
 
-/// pi `SessionStats`.
+/// The session stats record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionStats {
@@ -137,7 +137,7 @@ impl AgentSession {
         stats
     }
 
-    /// pi `getContextUsage`.
+    /// Returns the context usage.
     #[must_use]
     pub fn context_usage(&self) -> Option<ContextUsage> {
         let model = self.routed_model().or_else(|| self.model())?;
@@ -186,7 +186,7 @@ impl AgentSession {
         })
     }
 
-    /// pi `exportToJsonl`: a fresh header plus the current branch, re-linked linearly.
+    /// A fresh header plus the current branch, re-linked linearly.
     ///
     /// # Errors
     ///

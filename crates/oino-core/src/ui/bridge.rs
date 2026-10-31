@@ -279,7 +279,7 @@ impl UiBridge {
         }
     }
 
-    /// Whether dialog-capable UI is attached (pi `hasUI`).
+    /// Whether dialog-capable UI is attached.
     #[must_use]
     pub const fn has_ui(&self) -> bool {
         self.has_ui

@@ -1,7 +1,7 @@
-//! A small JSON-schema validator reproducing the typebox checks and error texts pi applies to
+//! A small JSON-schema validator reproducing typebox-style checks and error texts applied to
 //! `models.json` (`model-config.ts` `ModelsConfigSchema`).
 //!
-//! Errors are reported like pi: required properties first, then properties in schema order;
+//! Errors are reported: required properties first, then properties in schema order;
 //! paths are dotted (`providers.a.models.0.id`), a missing required property is reported at
 //! `<object path>.<first missing>` with every missing name in the message.
 
@@ -198,7 +198,7 @@ static PROVIDER: Schema = Schema::Object(&[
 ]);
 static PROVIDERS: Schema = Schema::Record(&PROVIDER);
 
-/// pi `ModelsConfigSchema` (`compat` is checked only for being an object: compatibility flags
+/// The models config schema (`compat` is checked only for being an object: compatibility flags
 /// are interpreted by provider extensions).
 pub(crate) static MODELS_CONFIG: Schema =
     Schema::Object(&[opt("$schema", &STRING), req("providers", &PROVIDERS)]);
@@ -210,7 +210,7 @@ pub(crate) struct SchemaError {
     pub(crate) message: String,
 }
 
-/// Validates `value` against `schema`, returning every error in pi order.
+/// Validates `value` against `schema`, returning every error in schema order.
 pub(crate) fn validate(schema: &Schema, value: &Value) -> Vec<SchemaError> {
     let mut errors = Vec::new();
     check(schema, value, &mut Vec::new(), &mut errors);

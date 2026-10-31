@@ -5,7 +5,7 @@ use std::path::{Component, Path};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-/// pi `formatTokens`: `999`, `1.2k`, `12k`, `1.2M`, `12M`.
+/// `999`, `1.2k`, `12k`, `1.2M`, `12M`.
 #[must_use]
 #[allow(
     clippy::cast_precision_loss,
@@ -26,7 +26,7 @@ pub fn format_tokens(count: u64) -> String {
     }
 }
 
-/// pi `formatCwdForFooter`: `~` for home, `~/rel` inside home, else the path unchanged.
+/// `~` for home, `~/rel` inside home, else the path unchanged.
 #[must_use]
 pub fn format_cwd(cwd: &Path, home: Option<&Path>) -> String {
     let Some(home) = home else {
@@ -41,7 +41,7 @@ pub fn format_cwd(cwd: &Path, home: Option<&Path>) -> String {
     }
 }
 
-/// Replaces a leading home directory with `~` (pi `shortenPath`).
+/// Replaces a leading home directory with `~`.
 #[must_use]
 pub fn shorten_path(path: &str, home: Option<&str>) -> String {
     match home {
@@ -52,7 +52,7 @@ pub fn shorten_path(path: &str, home: Option<&str>) -> String {
     }
 }
 
-/// pi `formatSessionDate`: `now`, `5m`, `3h`, `2d`, `4w`, `6mo`, `1y` relative to `now_ms`.
+/// `now`, `5m`, `3h`, `2d`, `4w`, `6mo`, `1y` relative to `now_ms`.
 #[must_use]
 pub fn format_age(modified_ms: i64, now_ms: i64) -> String {
     let seconds = (now_ms - modified_ms).max(0) / 1000;
@@ -82,7 +82,7 @@ pub fn width(text: &str) -> usize {
     UnicodeWidthStr::width(text)
 }
 
-/// Truncates `text` to `max` cells, appending `ellipsis` when cut (pi `truncateToWidth`).
+/// Truncates `text` to `max` cells, appending `ellipsis` when cut.
 #[must_use]
 pub fn truncate(text: &str, max: usize, ellipsis: &str) -> String {
     if width(text) <= max {
@@ -105,7 +105,7 @@ pub fn truncate(text: &str, max: usize, ellipsis: &str) -> String {
     out
 }
 
-/// Collapses newlines/tabs/control characters to single spaces (pi `sanitizeStatusText`).
+/// Collapses newlines/tabs/control characters to single spaces.
 #[must_use]
 pub fn single_line(text: &str) -> String {
     let replaced: String = text
@@ -115,7 +115,7 @@ pub fn single_line(text: &str) -> String {
     replaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// pi `formatReadLineRange`: `:offset` / `:offset-end` for read calls.
+/// `:offset` / `:offset-end` for read calls.
 #[must_use]
 pub fn read_line_range(offset: Option<u64>, limit: Option<u64>) -> String {
     match (offset, limit) {

@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use super::{AgentSession, SessionOpError, lock};
 use crate::events::AgentSessionEvent;
 
-/// pi `BashResult`.
+/// The bash result record.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BashResult {
@@ -39,7 +39,7 @@ impl From<oino_tools::BashOutcome> for BashResult {
 }
 
 impl AgentSession {
-    /// pi `executeBash`: `user_bash` handlers first (`{result}` short-circuits), then the
+    /// `user_bash` handlers first (`{result}` short-circuits), then the
     /// configured shell with `shellCommandPrefix`; output streams as `bash_execution_update`
     /// and the result is recorded as a `bashExecution` message (`!!` excludes it from context).
     ///
@@ -102,7 +102,7 @@ impl AgentSession {
         Ok(result)
     }
 
-    /// pi `recordBashResult`: records a `bashExecution` message (deferred while streaming).
+    /// Records a `bashExecution` message (deferred while streaming).
     pub fn record_bash_result(
         &self,
         command: &str,
@@ -131,7 +131,7 @@ impl AgentSession {
         self.refresh_context();
     }
 
-    /// pi `_flushPendingBashMessages`.
+    /// F l u s h   P e n d i n g   B a s h   M e s s a g e s.
     pub(crate) fn flush_pending_bash_messages(&self) {
         let pending = std::mem::take(&mut lock(&self.inner.book).pending_bash);
         if pending.is_empty() {

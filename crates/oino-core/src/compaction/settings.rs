@@ -14,7 +14,7 @@ pub struct CompactionSettings {
     pub keep_recent_tokens: u64,
 }
 
-/// pi `DEFAULT_COMPACTION_SETTINGS`.
+/// The default compaction settings constant.
 pub const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = CompactionSettings {
     enabled: true,
     reserve_tokens: 16384,

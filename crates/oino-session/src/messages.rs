@@ -1,4 +1,4 @@
-//! Coding-agent message helpers (pi `core/messages.js`): LLM conversion and summary wrappers.
+//! Coding-agent message helpers: LLM conversion and summary wrappers.
 
 use std::fmt::Write as _;
 
@@ -17,7 +17,7 @@ pub const BRANCH_SUMMARY_PREFIX: &str =
 /// Text after a branch summary in LLM context.
 pub const BRANCH_SUMMARY_SUFFIX: &str = "</summary>";
 
-/// pi `bashExecutionToText`.
+/// B a s h   E x e c u t i o n   T o   T e x t.
 #[must_use]
 pub fn bash_execution_to_text(message: &BashExecutionMessage) -> String {
     let mut text = format!("Ran `{}`\n", message.command);
@@ -37,7 +37,7 @@ pub fn bash_execution_to_text(message: &BashExecutionMessage) -> String {
     text
 }
 
-/// pi `createBranchSummaryMessage`.
+/// C r e a t e   B r a n c h   S u m m a r y   M e s s a g e.
 #[must_use]
 pub fn branch_summary_message(
     summary: &str,
@@ -51,7 +51,7 @@ pub fn branch_summary_message(
     })
 }
 
-/// pi `createCompactionSummaryMessage`.
+/// C r e a t e   C o m p a c t i o n   S u m m a r y   M e s s a g e.
 #[must_use]
 pub fn compaction_summary_message(
     summary: &str,
@@ -65,7 +65,7 @@ pub fn compaction_summary_message(
     })
 }
 
-/// pi `createCustomMessage`.
+/// C r e a t e   C u s t o m   M e s s a g e.
 #[must_use]
 pub fn custom_message(
     custom_type: &str,
@@ -118,7 +118,7 @@ pub fn to_llm(message: &AgentMessage) -> Option<Message> {
     }
 }
 
-/// pi `convertToLlm`.
+/// C o n v e r t   T o   L l m.
 #[must_use]
 pub fn convert_to_llm(messages: &[AgentMessage]) -> Vec<Message> {
     messages.iter().filter_map(to_llm).collect()

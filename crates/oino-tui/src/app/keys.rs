@@ -1,4 +1,4 @@
-//! Key dispatch for the main editor (pi `CustomEditor` + `setupKeyHandlers`), the
+//! Key dispatch for the main editor, the
 //! autocomplete popup and focused extension panels.
 
 use std::time::{Duration, Instant};
@@ -369,7 +369,7 @@ impl App {
             }
             return;
         }
-        // Dropped files arrive as pasted paths (pi `drop files to attach`).
+        // Dropped files arrive as pasted paths.
         let trimmed = text.trim();
         let looks_like_path = !trimmed.contains('\n')
             && (trimmed.starts_with('/')

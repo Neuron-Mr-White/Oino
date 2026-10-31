@@ -1,4 +1,4 @@
-//! System-message replay (pi-ai `utils/transcript.js`, `utils/text.js`) and the
+//! System-message replay and the
 //! `diffSystemPromptSections` patch helper.
 //!
 //! A transcript carries the prompt and tool loadout in system messages: the first declares the
@@ -26,7 +26,7 @@ pub struct SystemState {
 }
 
 impl SystemState {
-    /// Folds system messages in order (pi `getCurrentSystemMessage` internals).
+    /// Folds system messages in order (`getCurrentSystemMessage` internals).
     pub fn fold<'a>(systems: impl IntoIterator<Item = &'a SystemMessage>) -> Self {
         let mut content = Vec::new();
         let mut sections = IndexMap::new();
@@ -64,7 +64,7 @@ impl SystemState {
     }
 
     /// The equivalent single system message, or `None` when no system message existed and no
-    /// tool is live (pi returns `undefined`).
+    /// tool is live (returns `undefined`).
     #[must_use]
     pub fn into_message(self) -> Option<SystemMessage> {
         if self.first_timestamp.is_none() && self.tools.is_empty() {
@@ -98,19 +98,19 @@ pub fn current_system(messages: &[Message]) -> SystemState {
     SystemState::fold(systems(messages))
 }
 
-/// pi `getCurrentSystemMessage`.
+/// Returns the current system message.
 #[must_use]
 pub fn current_system_message(messages: &[Message]) -> Option<SystemMessage> {
     current_system(messages).into_message()
 }
 
-/// pi `getCurrentTools`.
+/// Returns the current tools.
 #[must_use]
 pub fn current_tools(messages: &[Message]) -> Vec<ToolDecl> {
     current_system(messages).tools
 }
 
-/// pi `getDeclaredTools`: every tool ever declared (latest definition per name).
+/// Every tool ever declared (latest definition per name).
 #[must_use]
 pub fn declared_tools(messages: &[Message]) -> Vec<ToolDecl> {
     let mut definitions: IndexMap<String, ToolDecl> = IndexMap::new();
@@ -120,7 +120,7 @@ pub fn declared_tools(messages: &[Message]) -> Vec<ToolDecl> {
     definitions.into_values().collect()
 }
 
-/// pi `getSystemMessageText`: content plus live section texts joined with blank lines.
+/// Content plus live section texts joined with blank lines.
 #[must_use]
 pub fn system_message_text(message: &SystemMessage) -> String {
     std::iter::once(message.content.text("\n"))
@@ -136,7 +136,7 @@ pub fn system_message_text(message: &SystemMessage) -> String {
         .join("\n\n")
 }
 
-/// pi `renderSystemMessageUpdate`: human-readable rendering of a system patch.
+/// Human-readable rendering of a system patch.
 #[must_use]
 pub fn render_system_message_update(message: &SystemMessage) -> String {
     let mut parts = Vec::new();
@@ -153,7 +153,7 @@ pub fn render_system_message_update(message: &SystemMessage) -> String {
     parts.join("\n\n")
 }
 
-/// pi `diffSystemPromptSections(previous, current)`: changed/added sections with their text,
+/// Changed/added sections with their text,
 /// then removed sections as `null`; `None` when nothing changed.
 #[must_use]
 pub fn diff_sections(
@@ -174,7 +174,7 @@ pub fn diff_sections(
     (!patch.is_empty()).then_some(patch)
 }
 
-/// pi `createInitialSystemMessage`: a leading system message for a prompt and tools, or
+/// A leading system message for a prompt and tools, or
 /// `None` when both are empty.
 #[must_use]
 pub fn initial_system_message(system_prompt: &str, tools: &[ToolDecl]) -> Option<SystemMessage> {
@@ -190,7 +190,7 @@ pub fn initial_system_message(system_prompt: &str, tools: &[ToolDecl]) -> Option
     })
 }
 
-/// pi `collapseSystemMessages`: one leading folded system message, other messages unchanged.
+/// One leading folded system message, other messages unchanged.
 #[must_use]
 pub fn collapse_system_messages(context: Context) -> Context {
     let head = current_system_message(&context.messages);
@@ -203,7 +203,7 @@ pub fn collapse_system_messages(context: Context) -> Context {
     }
 }
 
-/// How much mid-conversation system support a provider has (pi `resolveTranscriptTools`).
+/// How much mid-conversation system support a provider has.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolChangeSupport {
     /// Tools are only sent as request-level declarations.
@@ -223,7 +223,7 @@ pub struct ResolvedTools {
     pub folded_system_messages: usize,
 }
 
-/// pi `resolveTranscriptTools`.
+/// R e s o l v e   T r a n s c r i p t   T o o l s.
 #[must_use]
 pub fn resolve_transcript_tools(messages: &[Message], support: ToolChangeSupport) -> ResolvedTools {
     let system_messages: Vec<&SystemMessage> = systems(messages).collect();
@@ -265,13 +265,13 @@ fn last_non_additive_change(system_messages: &[&SystemMessage]) -> Option<usize>
     last
 }
 
-/// pi `hasNonAdditiveToolChanges`.
+/// Returns whether non additive tool changes is present.
 #[must_use]
 pub fn has_non_additive_tool_changes(messages: &[Message]) -> bool {
     last_non_additive_change(&systems(messages).collect::<Vec<_>>()).is_some()
 }
 
-/// pi `getToolStateChanges(previous, current)`: tools to add (new or changed) and remove.
+/// Tools to add (new or changed) and remove.
 #[must_use]
 pub fn tool_state_changes(
     previous: &[ToolDecl],

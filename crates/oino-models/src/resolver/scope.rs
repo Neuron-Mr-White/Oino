@@ -1,4 +1,4 @@
-//! pi `resolveModelScopeFromModels`: `--models` / `enabledModels` patterns (globs, fuzzy
+//! Model scope resolution: `--models` / `enabledModels` patterns (globs, fuzzy
 //! references, `:<thinking>` suffixes) to scoped models with diagnostics.
 
 use oino_ai::{Model, ThinkingLevel};
@@ -22,7 +22,7 @@ pub struct ScopedModel {
     pub thinking_level: Option<ThinkingLevel>,
 }
 
-/// Diagnostic kind (pi `ModelScopeDiagnostic.code`).
+/// Diagnostic kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScopeDiagnosticCode {
@@ -39,7 +39,7 @@ pub enum ScopeDiagnosticCode {
 pub struct ScopeDiagnostic {
     /// Kind.
     pub code: ScopeDiagnosticCode,
-    /// pi message (printed as `Warning: <message>`).
+    /// Message (printed as `Warning: <message>`).
     pub message: String,
     /// The pattern.
     pub pattern: String,
@@ -171,7 +171,7 @@ impl ResolveModelScopeResult {
     }
 }
 
-/// Resolves scope patterns against `models` (pi passes the *available* models). Every model is
+/// Resolves scope patterns against `models` (the *available* models). Every model is
 /// usable, so a pattern matching several providers adds all of them with a warning.
 #[must_use]
 pub fn resolve_model_scope(patterns: &[String], models: &[Model]) -> ResolveModelScopeResult {

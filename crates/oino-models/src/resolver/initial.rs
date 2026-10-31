@@ -1,4 +1,4 @@
-//! pi `findInitialModel` and `restoreModelFromSession`.
+//! Initial model selection and session restore.
 
 use indexmap::IndexMap;
 use oino_ai::{Model, ThinkingLevel};
@@ -31,7 +31,7 @@ pub struct InitialModel {
     pub model: Option<Model>,
     /// Thinking level to start with.
     pub thinking_level: ThinkingLevel,
-    /// Always `None` here (kept for pi shape parity).
+    /// Always `None` here (kept for shape parity).
     pub fallback_message: Option<String>,
 }
 
@@ -52,7 +52,7 @@ fn preferred_available(available: &[Model]) -> Option<&Model> {
         .or_else(|| available.first())
 }
 
-/// pi `findInitialModel`: (1) first scoped model unless continuing, (2) settings default when
+/// (1) first scoped model unless continuing, (2) settings default when
 /// its provider has auth, (3) a known provider default among available models, else the first
 /// available. The CLI `--model` is applied by the caller before this.
 #[must_use]
@@ -97,7 +97,7 @@ pub fn find_initial_model(
     }
 }
 
-/// A line pi prints while restoring (when messages are enabled).
+/// A line printed while restoring (when messages are enabled).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RestoreNotice {
     /// Dimmed info line.
@@ -111,13 +111,13 @@ pub enum RestoreNotice {
 pub struct RestoredModel {
     /// Model to use.
     pub model: Option<Model>,
-    /// pi `modelFallbackMessage` when the stored model was not used.
+    /// The fallback message when the stored model was not used.
     pub fallback_message: Option<String>,
-    /// Lines pi prints in this order.
+    /// Lines printed in this order.
     pub notices: Vec<RestoreNotice>,
 }
 
-/// pi `restoreModelFromSession`.
+/// R e s t o r e   M o d e l   F r o m   S e s s i o n.
 #[must_use]
 pub fn restore_model_from_session(
     saved_provider: &str,

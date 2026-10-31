@@ -1,7 +1,7 @@
 //! Summary prompts, verbatim from pi 1.4.0 (`compaction.js`, `branch-summarization.js`,
 //! `utils.js`).
 
-/// pi `SUMMARIZATION_SYSTEM_PROMPT`.
+/// The summarization system prompt constant.
 pub const SUMMARIZATION_SYSTEM_PROMPT: &str = "You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.
 
 Do NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary.";
@@ -99,7 +99,7 @@ Only summarize information explicitly present above. Do not infer or recreate la
 /// pi `BRANCH_SUMMARY_PREAMBLE` (prepended to branch summaries).
 pub const BRANCH_SUMMARY_PREAMBLE: &str = "The user explored a different conversation branch before returning here.\nSummary of that exploration:\n\n";
 
-/// pi `BRANCH_SUMMARY_PROMPT`.
+/// The branch summary prompt constant.
 pub const BRANCH_SUMMARY_PROMPT: &str = r#"Create a structured summary of this conversation branch for context when returning later.
 
 Use this EXACT format:

@@ -789,7 +789,7 @@ impl AgentSession {
         }
     }
 
-    /// pi `_refreshCurrentModelFromRegistry`.
+    /// Refreshes the current model from the registry.
     pub(crate) fn refresh_current_model(&self) {
         let Some(current) = self.model() else {
             return;
@@ -801,7 +801,7 @@ impl AgentSession {
         }
     }
 
-    /// Slash commands: extension commands, prompt templates, skills (pi `getCommands`).
+    /// Slash commands: extension commands, prompt templates, skills.
     #[must_use]
     pub fn commands(&self) -> Vec<SlashCommandInfo> {
         let mut commands: Vec<SlashCommandInfo> = self
@@ -837,7 +837,7 @@ impl AgentSession {
     }
 }
 
-/// pi `SlashCommandInfo`.
+/// Metadata of one slash command.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SlashCommandInfo {

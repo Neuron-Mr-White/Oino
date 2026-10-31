@@ -14,7 +14,7 @@ use crate::entry::IsoTimestamp;
 use crate::error::SessionError;
 use crate::time::ms_to_system_time;
 
-/// Summary of one session file (pi `SessionInfo`).
+/// Summary of one session file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionInfo {
     /// File path.

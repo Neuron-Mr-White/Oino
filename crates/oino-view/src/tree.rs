@@ -1,4 +1,4 @@
-//! Session tree navigator model (pi `tree-selector.ts`).
+//! Session tree navigator model.
 //!
 //! Built from `get_tree` data. Flattening follows pi: linear chains stay at one indent,
 //! branch points indent their children, the branch containing the current leaf is listed
@@ -12,7 +12,7 @@ use oino_session::{EntryKind, SessionEntry};
 
 use crate::format::read_line_range;
 
-/// One tree node (pi `SessionTreeNode`).
+/// One tree node.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TreeNode {
     /// The entry.
@@ -50,7 +50,7 @@ impl TreeNode {
     }
 }
 
-/// pi `treeFilterMode`.
+/// T r e e   F i l t e r   M o d e.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FilterMode {
     /// Hide bookkeeping entries.
@@ -631,7 +631,7 @@ impl TreeModel {
         }
     }
 
-    /// pi `app.tree.foldOrUp`.
+    /// A p p . t r e e . f o l d   O r   U p.
     pub fn fold_or_up(&mut self) {
         let Some(id) = self.selected_id() else {
             return;
@@ -644,7 +644,7 @@ impl TreeModel {
         }
     }
 
-    /// pi `app.tree.unfoldOrDown`.
+    /// A p p . t r e e . u n f o l d   O r   D o w n.
     pub fn unfold_or_down(&mut self) {
         let Some(id) = self.selected_id() else {
             return;

@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::diagnostics::ResourceDiagnostic;
 
-/// A binding value: one key id or a list (pi `KeyId | KeyId[]`).
+/// A binding value: one key id or a list.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum KeyBinding {
@@ -64,7 +64,7 @@ pub struct KeybindingsFile {
 }
 
 impl KeybindingsFile {
-    /// Load `<agent_dir>/keybindings.json` (pi `KeybindingsManager.loadFromFile`); a missing or
+    /// Load `<agent_dir>/keybindings.json`; a missing or
     /// unreadable file yields no bindings.
     #[must_use]
     pub fn load(agent_dir: &Path) -> Self {
@@ -117,7 +117,7 @@ impl KeybindingsFile {
     }
 }
 
-/// pi `migrateKeybindingsConfig`: rename legacy names (an existing new name wins), then order
+/// Rename legacy names (an existing new name wins), then order
 /// known ids first and extras sorted.
 #[must_use]
 pub fn migrate_keybindings_config(raw: &JsonObject) -> (JsonObject, bool) {
@@ -152,7 +152,7 @@ fn order_keybindings_config(mut config: JsonObject) -> JsonObject {
     ordered
 }
 
-/// pi `KeyIdSchema`: up to four distinct `ctrl+`/`shift+`/`alt+`/`super+` modifiers, then one
+/// Up to four distinct `ctrl+`/`shift+`/`alt+`/`super+` modifiers, then one
 /// base key (`[a-z0-9]` or a named key). Lowercase only.
 #[must_use]
 pub fn is_valid_key_id(key: &str) -> bool {
@@ -339,7 +339,7 @@ const NAMED_KEYS: [&str; 61] = [
     "?",
 ];
 
-/// Legacy name → id (pi `KEYBINDING_NAME_MIGRATIONS`).
+/// Legacy name → id.
 pub const LEGACY_KEYBINDING_NAMES: [(&str, &str); 59] = [
     ("cursorUp", "tui.editor.cursorUp"),
     ("cursorDown", "tui.editor.cursorDown"),

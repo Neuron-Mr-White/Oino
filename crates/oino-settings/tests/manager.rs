@@ -1,4 +1,4 @@
-//! `SettingsManager` behaviour beyond the pi golden cases: locking, concurrency, trust
+//! `SettingsManager` behaviour beyond the golden cases: locking, concurrency, trust
 //! switching, reload, Oino keys.
 #![allow(
     clippy::unwrap_used,

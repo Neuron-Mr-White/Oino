@@ -16,7 +16,7 @@ use oino_settings::{ResourceKind, Settings, SettingsScope};
 use crate::source::{PathMetadata, SourceOrigin, SourceScope};
 use crate::walk::{IgnoreMatcher, has_suffix, posix_relative, read_dir_sorted};
 
-/// One resolved resource file (pi `ResolvedResource`).
+/// One resolved resource file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedResource {
     /// File path.
@@ -55,7 +55,7 @@ pub struct DiscoveryInput<'a> {
 
 type Accumulator = IndexMap<PathBuf, (PathMetadata, bool)>;
 
-/// Skill discovery flavour (pi `SkillDiscoveryMode`).
+/// Skill discovery flavour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SkillMode {
     /// `<agent>/skills`, `.oino/skills`, settings dirs: root `.md` files are skills.
@@ -146,7 +146,7 @@ fn add_resource(target: &mut Accumulator, path: PathBuf, metadata: &PathMetadata
         .or_insert_with(|| (metadata.clone(), enabled));
 }
 
-/// pi `resourcePrecedenceRank`.
+/// R e s o u r c e   P r e c e d e n c e   R a n k.
 fn precedence(metadata: &PathMetadata) -> u8 {
     if metadata.origin == SourceOrigin::Package {
         return 4;
@@ -159,7 +159,7 @@ fn precedence(metadata: &PathMetadata) -> u8 {
     base + u8::from(metadata.source != "local")
 }
 
-/// pi `toResolvedPaths`: stable precedence sort, then canonical-path deduplication.
+/// Stable precedence sort, then canonical-path deduplication.
 fn finish(accumulator: Accumulator) -> Vec<ResolvedResource> {
     let mut resolved: Vec<ResolvedResource> = accumulator
         .into_iter()
@@ -175,7 +175,7 @@ fn finish(accumulator: Accumulator) -> Vec<ResolvedResource> {
     resolved
 }
 
-/// pi `resolveLocalEntries`.
+/// R e s o l v e   L o c a l   E n t r i e s.
 fn resolve_local_entries(
     input: &DiscoveryInput<'_>,
     entries: &[String],
@@ -337,7 +337,7 @@ fn overridden_by(env: Option<&std::ffi::OsStr>, agent_dir: &Path, home: &Path) -
         && canonicalize_or_self(agent_dir) != canonicalize_or_self(&home.join(".oino"))
 }
 
-/// pi `collectAncestorAgentsSkillDirs`: `.agents/skills` from cwd up to the repo root (or the
+/// `.agents/skills` from cwd up to the repo root (or the
 /// filesystem root outside a repo).
 fn ancestor_agents_skill_dirs(start: &Path) -> Vec<PathBuf> {
     let root = find_git_repo_root(start);
@@ -351,7 +351,7 @@ fn ancestor_agents_skill_dirs(start: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-/// pi `collectSkillEntries`.
+/// C o l l e c t   S k i l l   E n t r i e s.
 fn collect_skill_entries(dir: &Path, mode: SkillMode) -> Vec<PathBuf> {
     let mut ignore = IgnoreMatcher::new(dir);
     let mut out = Vec::new();
@@ -423,7 +423,7 @@ fn collect_direct_files(dir: &Path, suffix: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-/// pi `collectFiles`: recursive files with `suffix`.
+/// Recursive files with `suffix`.
 fn collect_files_recursive(dir: &Path, suffix: &str) -> Vec<PathBuf> {
     fn walk(
         dir: &Path,
@@ -467,7 +467,7 @@ fn collect_resource_files(dir: &Path, kind: ResourceKind) -> Vec<PathBuf> {
     }
 }
 
-/// pi `collectFilesFromPaths`.
+/// C o l l e c t   F i l e s   F r o m   P a t h s.
 fn collect_files_from_paths(paths: &[PathBuf], kind: ResourceKind) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for path in paths {
@@ -483,7 +483,7 @@ fn collect_files_from_paths(paths: &[PathBuf], kind: ResourceKind) -> Vec<PathBu
     files
 }
 
-/// pi `isPattern`.
+/// Returns whether it is pattern.
 fn is_pattern(entry: &str) -> bool {
     entry.starts_with('!')
         || entry.starts_with('+')
@@ -601,7 +601,7 @@ fn matches_any_exact_pattern(
     })
 }
 
-/// pi `isEnabledByOverrides`: `!glob` excludes, `+path` force-includes, `-path` force-excludes.
+/// `!glob` excludes, `+path` force-includes, `-path` force-excludes.
 fn is_enabled_by_overrides(
     file: &Path,
     entries: &[String],
@@ -630,7 +630,7 @@ fn is_enabled_by_overrides(
     enabled
 }
 
-/// pi `applyPatterns`: includes (or all), minus `!` excludes, plus `+` force-includes, minus
+/// Includes (or all), minus `!` excludes, plus `+` force-includes, minus
 /// `-` force-excludes.
 fn apply_patterns(
     files: &[PathBuf],
@@ -679,7 +679,7 @@ fn apply_patterns(
     result.into_iter().cloned().collect()
 }
 
-/// Whether a settings entry names a local path (pi `isLocalPath`).
+/// Whether a settings entry names a local path.
 #[must_use]
 pub fn is_local_path(value: &str) -> bool {
     let trimmed = value.trim();

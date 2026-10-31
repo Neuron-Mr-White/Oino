@@ -1,4 +1,4 @@
-//! Registry data and the composed catalog (pi `ModelRuntime` provider composition).
+//! Registry data and the composed catalog (provider composition).
 
 use indexmap::{IndexMap, IndexSet};
 use oino_ai::Model;
@@ -93,7 +93,7 @@ pub(crate) struct State {
 }
 
 impl State {
-    /// pi `providerIds()` order: registrations, models.json, overrides, virtual providers.
+    /// Provider order: registrations, models.json, overrides, virtual providers.
     fn provider_ids(&self) -> IndexSet<String> {
         let mut ids: IndexSet<String> = self.registrations.keys().cloned().collect();
         ids.extend(self.models_json.provider_ids().map(str::to_owned));
@@ -102,7 +102,7 @@ impl State {
         ids
     }
 
-    /// pi `rebuildProviders`: recomposes every provider.
+    /// Recomposes every provider.
     pub(crate) fn recompose(&mut self) {
         self.composition_errors.clear();
         let mut providers = Vec::new();

@@ -242,7 +242,7 @@ impl ResourceLoader {
         self.load_prompt_sources();
     }
 
-    /// Add package / `resources_discover` paths (pi `extendResources`).
+    /// Add package / `resources_discover` paths.
     pub fn extend(&mut self, paths: &ResourceExtensionPaths) {
         let normalize =
             |this: &Self, entries: &[ExtraResourcePath]| -> Vec<(PathBuf, SourceInfo)> {
@@ -385,7 +385,7 @@ impl ResourceLoader {
         resources.iter().filter(|r| r.enabled).cloned().collect()
     }
 
-    /// pi `mapSkillPath`: an auto/package skill dir with `SKILL.md` maps to that file.
+    /// An auto/package skill dir with `SKILL.md` maps to that file.
     fn map_skill_path(&mut self, resource: &ResolvedResource) -> PathBuf {
         if resource.metadata.source != "auto" && resource.metadata.origin != SourceOrigin::Package {
             return resource.path.clone();
@@ -412,7 +412,7 @@ impl ResourceLoader {
         )
     }
 
-    /// pi `mergePaths`: resolve, dedupe by canonical path, keep first.
+    /// Resolve, dedupe by canonical path, keep first.
     fn merge_paths(&self, primary: &[PathBuf], additional: &[PathBuf]) -> Vec<PathBuf> {
         let mut seen = HashSet::new();
         primary
@@ -558,7 +558,7 @@ impl ResourceLoader {
         self.theme_diagnostics = diagnostics;
     }
 
-    /// pi `findSourceInfoForPath`: contributed paths first, then exact, then ancestor metadata.
+    /// Contributed paths first, then exact, then ancestor metadata.
     fn find_source_info(
         &self,
         path: &Path,
@@ -588,7 +588,7 @@ impl ResourceLoader {
             .map(|(_, metadata)| SourceInfo::from_metadata(path, metadata))
     }
 
-    /// pi `getDefaultSourceInfoForPath`.
+    /// Returns the default source info for path.
     fn default_source_info(&self, path: &Path) -> SourceInfo {
         let normalized = lexical_normalize(path);
         let kinds = ["skills", "prompts", "themes", "extensions"];
@@ -670,7 +670,7 @@ impl ResourceLoader {
         path.exists().then_some(path)
     }
 
-    /// pi `resolvePromptInput`: file content when `input` names an existing file, else the text.
+    /// File content when `input` names an existing file, else the text.
     fn resolve_prompt_input(&mut self, input: &str, description: &str) -> Option<String> {
         if input.is_empty() {
             return None;

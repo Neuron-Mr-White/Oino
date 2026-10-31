@@ -12,7 +12,7 @@ use crate::time::system_time_ms;
 /// Name of the directory (inside the sessions root) that keeps migrated pre-v1 files.
 pub const LEGACY_DIR_NAME: &str = ".legacy";
 
-/// pi `resolvePath`: absolute (joined to the process cwd) and lexically normalised, without
+/// Absolute (joined to the process cwd) and lexically normalised, without
 /// resolving symlinks.
 #[must_use]
 pub fn resolve_path(path: &Path) -> PathBuf {
@@ -142,7 +142,7 @@ fn create_parent(path: &Path) -> Result<(), SessionError> {
     }
 }
 
-/// Creates `path` exclusively and writes `text` (pi `openSync(file, "wx")`).
+/// Creates `path` exclusively and writes `text`.
 pub(crate) fn write_new(path: &Path, text: &str) -> Result<(), SessionError> {
     create_parent(path)?;
     let mut file = OpenOptions::new()

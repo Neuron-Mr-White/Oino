@@ -20,7 +20,7 @@ use crate::events::OinoEvent;
 use crate::extensions::api::ToolExposure;
 use crate::extensions::tool::ExtensionTool;
 
-/// pi `BUILTIN_PATH_PREFIX`.
+/// Path prefix of built-in tools.
 pub const BUILTIN_PATH_PREFIX: &str = "builtin:";
 
 /// Where a tool comes from.
@@ -135,7 +135,7 @@ pub struct ToolInfo {
     pub source_info: SourceInfo,
 }
 
-/// pi `createToolNameMatcher`: exact names and `*` patterns.
+/// Exact names and `*` patterns.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ToolMatcher {
     names: HashSet<String>,
@@ -258,7 +258,7 @@ impl AgentSession {
             .collect()
     }
 
-    /// Every registered tool (pi `getAllTools`).
+    /// Every registered tool.
     #[must_use]
     pub fn all_tools(&self) -> Vec<ToolInfo> {
         let tools = lock(&self.inner.tools);
@@ -283,7 +283,7 @@ impl AgentSession {
             .collect()
     }
 
-    /// pi `setActiveToolsByName`.
+    /// Sets the active tools by name.
     pub fn set_active_tools_by_name(&self, names: &[String]) {
         let previous = self.active_tool_names();
         self.set_active_tools(names);
@@ -308,7 +308,7 @@ impl AgentSession {
             .publish(OinoEvent::ToolsChanged { active: names });
     }
 
-    /// pi `_applyToolLoadout`: sets the agent's tools to the registered, non-hidden ones.
+    /// Sets the agent's tools to the registered, non-hidden ones.
     pub(crate) fn apply_tool_loadout(&self, names: &[String]) -> Vec<Arc<dyn AgentTool>> {
         let mut seen = HashSet::new();
         let tools: Vec<Arc<dyn AgentTool>> = {
@@ -327,7 +327,7 @@ impl AgentSession {
         tools
     }
 
-    /// pi `_rebuildSystemPrompt`: recomputes the base prompt options.
+    /// Recomputes the base prompt options.
     pub(crate) fn rebuild_system_prompt(&self, names: &[String]) {
         let (snippets, guidelines, valid, hidden) = {
             let state = lock(&self.inner.tools);
@@ -412,13 +412,13 @@ impl AgentSession {
         oino_resources::skills::apply_opt_in(skills, &states);
     }
 
-    /// Base prompt options (pi `getSystemPromptOptions`).
+    /// Base prompt options.
     #[must_use]
     pub fn system_prompt_options(&self) -> BuildSystemPromptOptions {
         lock(&self.inner.tools).base_options.clone()
     }
 
-    /// Current effective system prompt, including changes not yet sent (pi `systemPrompt`).
+    /// Current effective system prompt, including changes not yet sent.
     #[must_use]
     pub fn system_prompt(&self) -> String {
         let options = lock(&self.inner.book)
@@ -429,7 +429,7 @@ impl AgentSession {
             .unwrap_or_default()
     }
 
-    /// pi `_preparePromptAndToolLoadout`: applies `options` and returns the system patch.
+    /// Applies `options` and returns the system patch.
     pub(crate) fn prepare_prompt_and_tool_loadout(
         &self,
         options: &mut BuildSystemPromptOptions,
@@ -467,7 +467,7 @@ impl AgentSession {
         })
     }
 
-    /// pi `_refreshToolRegistry`.
+    /// Refreshes the tool registry.
     pub(crate) fn refresh_tool_registry(
         &self,
         active: Option<Vec<String>>,
@@ -548,7 +548,7 @@ impl AgentSession {
         self.set_active_tools(&next);
     }
 
-    /// pi `_restoreToolsFromTranscript`.
+    /// Restores the active tool set from the transcript.
     pub(crate) fn restore_tools_from_transcript(&self, modifiers: &[String]) {
         lock(&self.inner.tools).pending.clear();
         let systems: Vec<SystemMessage> = lock(&self.inner.manager)
@@ -615,14 +615,14 @@ impl AgentSession {
     }
 }
 
-/// pi `_normalizePromptSnippet`.
+/// Normalises a prompt snippet.
 fn normalize_snippet(text: Option<&str>) -> Option<String> {
     let text = text?;
     let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
     (!one_line.is_empty()).then_some(one_line)
 }
 
-/// pi `_normalizePromptGuidelines`.
+/// Normalises prompt guidelines.
 fn normalize_guidelines(guidelines: &[String]) -> Vec<String> {
     let mut unique = IndexSet::new();
     for guideline in guidelines {

@@ -98,7 +98,7 @@ pub trait ExtensionInstance: Send + Sync {
         input: InitInput,
         cx: CallContext,
     ) -> BoxFut<'_, Result<Registration, ExtensionError>>;
-    /// `on-event`; `Ok(None)` = no result (pi `undefined`).
+    /// `on-event`; `Ok(None)` = no result.
     fn on_event(
         &self,
         kind: EventKind,

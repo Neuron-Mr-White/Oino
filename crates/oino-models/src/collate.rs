@@ -29,7 +29,7 @@ fn tertiary(c: char) -> u8 {
     u8::from(c.is_uppercase())
 }
 
-/// Compares like `a.localeCompare(b)` for the identifiers pi sorts.
+/// Compares like `a.localeCompare(b)` for sorted identifiers.
 #[must_use]
 pub(crate) fn locale_compare(a: &str, b: &str) -> Ordering {
     a.chars()

@@ -1,4 +1,4 @@
-//! Loop events (pi-agent-core `AgentEvent`).
+//! Loop events (`AgentEvent`).
 
 use futures::future::BoxFuture;
 use oino_ai::{AgentMessage, AssistantMessageEvent, JsonObject, ToolResultMessage};
@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::tool::AgentToolResult;
 
-/// One lifecycle event of an agent run, serialised exactly like pi.
+/// One lifecycle event of an agent run, serialised to the fixed event shape.
 #[allow(
     clippy::large_enum_variant,
-    reason = "variants mirror pi event shapes; events are moved, not stored in bulk"
+    reason = "variants mirror the event shapes; events are moved, not stored in bulk"
 )]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -90,7 +90,7 @@ pub enum AgentEvent {
 }
 
 impl AgentEvent {
-    /// pi `type` string.
+    /// `type` string.
     #[must_use]
     pub const fn kind(&self) -> &'static str {
         match self {
@@ -108,7 +108,7 @@ impl AgentEvent {
     }
 }
 
-/// Serialises tool results as pi does (`{"role":"toolResult",…}`).
+/// Serialises tool results as `{"role":"toolResult",…}`.
 mod tagged_tool_results {
     use oino_ai::{AgentMessage, ToolResultMessage};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -141,7 +141,7 @@ mod tagged_tool_results {
     }
 }
 
-/// Receiver of loop events. `emit` is awaited before the loop continues (pi `emit`).
+/// Receiver of loop events. `emit` is awaited before the loop continues.
 pub trait EventSink: Send + Sync {
     /// Handles one event.
     fn emit(&self, event: AgentEvent) -> BoxFuture<'_, ()>;

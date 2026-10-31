@@ -1,4 +1,4 @@
-//! Extension runner (pi `core/extensions/runner.ts`) over native extension instances.
+//! Extension runner over native extension instances.
 //!
 //! | Module | Contents |
 //! |---|---|

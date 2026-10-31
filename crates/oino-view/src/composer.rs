@@ -5,7 +5,7 @@
 
 use oino_ai::ImageContent;
 
-/// Pastes with more lines than this collapse into a marker (pi `[paste #n +m lines]`).
+/// Pastes with more lines than this collapse into a marker.
 pub const PASTE_COLLAPSE_LINES: usize = 10;
 /// Pastes with more characters than this collapse into a marker.
 pub const PASTE_COLLAPSE_CHARS: usize = 1000;

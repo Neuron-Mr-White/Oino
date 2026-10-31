@@ -1,4 +1,4 @@
-//! pi `utils/json.ts` + `utils/text.ts`: lenient JSON text preprocessing for config files.
+//! Lenient JSON text preprocessing for config files.
 
 use std::sync::LazyLock;
 
@@ -18,13 +18,13 @@ static LINE_COMMENT: LazyLock<Regex> =
 static TRAILING_COMMA: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#""(?:\\.|[^"\\])*"|,(\s*[}\]])"#).expect("valid regex"));
 
-/// pi `stripBom`: drops a leading U+FEFF.
+/// Drops a leading U+FEFF.
 #[must_use]
 pub(crate) fn strip_bom(text: &str) -> &str {
     text.strip_prefix('\u{feff}').unwrap_or(text)
 }
 
-/// pi `stripJsonComments`: removes `//` line comments and trailing commas outside strings.
+/// Removes `//` line comments and trailing commas outside strings.
 #[must_use]
 pub(crate) fn strip_json_comments(text: &str) -> String {
     let without_comments = LINE_COMMENT.replace_all(text, |caps: &Captures<'_>| {

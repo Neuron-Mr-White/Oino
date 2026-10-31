@@ -1,20 +1,20 @@
-//! `oino-agent`: the pi-agent-core runtime for Oino.
+//! `oino-agent`: the agent runtime for Oino.
 //!
 //! Provider-agnostic agent loop: turns, steering and follow-up queues, sequential and parallel
-//! tool execution, abort, and every loop hook with pi 1.4.0 semantics. It knows nothing about
+//! tool execution, abort, and every loop hook. It knows nothing about
 //! sessions, extensions or providers; `oino-core` supplies those through the hook traits and a
 //! [`StreamFn`].
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`tool`] | `AgentTool`, `AgentToolResult` | [`AgentTool`], [`ToolDefinitionMeta`], [`AgentToolResult`], [`UpdateSink`], [`ToolError`] |
-//! | [`event`] | `AgentEvent` | [`AgentEvent`], [`EventSink`] |
-//! | [`config`] | `AgentLoopConfig` + hooks | [`AgentLoopConfig`], [`AgentContext`], [`StreamFn`], hook traits |
-//! | [`mod@agent_loop`] | `agent-loop.js` | [`agent_loop()`], [`agent_loop_continue`], [`run_tool_call`], [`declare_tool_changes`] |
-//! | [`agent`] | `agent.js` | [`Agent`], [`AgentOptions`], [`AgentListener`], [`QueueMode`] |
-//! | [`validate`] | pi-ai `validateToolArguments` | [`validate_tool_arguments`] |
+//! | Module | Contents |
+//! |---|---|
+//! | [`tool`] | [`AgentTool`], [`ToolDefinitionMeta`], [`AgentToolResult`], [`UpdateSink`], [`ToolError`] |
+//! | [`event`] | [`AgentEvent`], [`EventSink`] |
+//! | [`config`] | [`AgentLoopConfig`], [`AgentContext`], [`StreamFn`], hook traits |
+//! | [`mod@agent_loop`] | [`agent_loop()`], [`agent_loop_continue`], [`run_tool_call`], [`declare_tool_changes`] |
+//! | [`agent`] | [`Agent`], [`AgentOptions`], [`AgentListener`], [`QueueMode`] |
+//! | [`validate`] | [`validate_tool_arguments`] |
 
 #![forbid(unsafe_code)]
 #![cfg_attr(

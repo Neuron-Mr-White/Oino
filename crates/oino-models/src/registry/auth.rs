@@ -1,4 +1,4 @@
-//! Credential checks and resolution per provider (pi `provider-composer.ts`
+//! Credential checks and resolution per provider
 //! `composeApiKeyAuth`/`composeOAuthAuth`, pi-ai `auth/resolve.ts`, `envApiKeyAuth`).
 //!
 //! Order: runtime key (`--api-key`) > `auth.json` > `models.json`/override `apiKey` >
@@ -24,7 +24,7 @@ pub(crate) struct ApiKeyPlan {
     pub(crate) inherited_env: Option<Vec<String>>,
     /// `models.json` / override `apiKey` config value.
     pub(crate) raw_key: Option<String>,
-    /// `raw_key` came from an override (pi `fallback` status source).
+    /// `raw_key` came from an override (`fallback` status source).
     pub(crate) raw_key_from_override: bool,
 }
 
@@ -48,7 +48,7 @@ pub(crate) enum AuthPlan {
     Standard(StandardAuth),
 }
 
-/// pi `AuthCheck`: a provider has usable credentials.
+/// A provider has usable credentials.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthCheck {
     /// Credential kind.
@@ -59,7 +59,7 @@ pub struct AuthCheck {
     pub source: String,
 }
 
-/// pi `AuthStatus.source`.
+/// The auth status.source record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthStatusSource {
@@ -77,7 +77,7 @@ pub enum AuthStatusSource {
     ModelsJsonCommand,
 }
 
-/// pi `AuthStatus` (for `/login` and status displays).
+/// Auth status (for `/login` and status displays).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthStatus {
     /// Credentials are configured.
@@ -90,7 +90,7 @@ pub struct AuthStatus {
     pub label: Option<String>,
 }
 
-/// Credentials resolved for one provider (pi `AuthResult`).
+/// Credentials resolved for one provider.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ResolvedAuth {
     /// API key / access token.
@@ -116,7 +116,7 @@ impl std::fmt::Debug for ResolvedAuth {
     }
 }
 
-/// Credential resolution failures (pi `ModelsError` messages).
+/// Credential resolution failures.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthResolveError {
     /// The credential store could not be read.
@@ -180,7 +180,7 @@ impl AuthResolveError {
 /// Per-request auth inputs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AuthOverrides {
-    /// A request-scoped API key (pi `options.apiKey`).
+    /// A request-scoped API key.
     pub api_key: Option<String>,
     /// Required remaining OAuth validity (default five minutes).
     pub min_oauth_validity_ms: Option<i64>,
@@ -194,7 +194,7 @@ fn first_env_key(names: &[String], env: &dyn EnvSource) -> Option<(String, Strin
     })
 }
 
-/// pi `checkProviderAuth` for a composed provider.
+/// Checks auth for a composed provider.
 pub(crate) fn check(
     plan: &AuthPlan,
     credential: Option<&AuthCredential>,
@@ -238,7 +238,7 @@ pub(crate) fn check(
     }
 }
 
-/// pi `getProviderAuthStatus`.
+/// Returns the provider auth status.
 pub(crate) fn status(
     plan: &AuthPlan,
     storage: &AuthStorage,
@@ -297,7 +297,7 @@ pub(crate) fn status(
     }
 }
 
-/// pi `withConfiguredAuth`.
+/// W i t h   C o n f i g u r e d   A u t h.
 fn with_configured_auth(
     mut auth: ResolvedAuth,
     headers: Option<IndexMap<String, String>>,
@@ -335,7 +335,7 @@ pub(crate) struct Resolver<'a> {
 }
 
 impl Resolver<'_> {
-    /// pi `resolveProviderAuth` + composition: `None` when nothing is configured.
+    /// Resolves provider auth + composition: `None` when nothing is configured.
     pub(crate) async fn resolve(
         &self,
         overrides: &AuthOverrides,
@@ -422,7 +422,7 @@ impl Resolver<'_> {
         .map_err(|error| self.api_key_error(error.into()))
     }
 
-    /// pi `composeApiKeyAuth().resolve`.
+    /// C o m p o s e   A p i   K e y   A u t h ( ) . r e s o l v e.
     fn resolve_api_key(
         &self,
         plan: &StandardAuth,

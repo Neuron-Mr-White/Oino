@@ -1,9 +1,9 @@
-//! Loop configuration and hooks (pi-agent-core `AgentLoopConfig`).
+//! Loop configuration and hooks (`AgentLoopConfig`).
 //!
 //! Hooks are traits so that `oino-core` can implement them on its session type. Every hook
 //! returns a boxed future; an `Err(HookError)` from a loop-level hook ends the run the way a
-//! thrown error ends a pi run (the [`crate::Agent`] turns it into a failure message). Errors
-//! from tool hooks become error tool results instead, as in pi.
+//! thrown error ends the run (the [`crate::Agent`] turns it into a failure message). Errors
+//! from tool hooks become error tool results instead.
 
 use std::sync::Arc;
 
@@ -31,7 +31,7 @@ impl HookError {
     }
 }
 
-/// Messages and executable tools of a run (pi `AgentContext`).
+/// Messages and executable tools of a run.
 #[derive(Clone, Default)]
 pub struct AgentContext {
     /// Transcript (all roles).
@@ -79,16 +79,16 @@ pub struct StreamRequest {
     pub cancel: CancellationToken,
 }
 
-/// Provider dispatch (pi `StreamFn`). The stream must end with `Done` or `Error`.
+/// Provider dispatch. The stream must end with `Done` or `Error`.
 pub trait StreamFn: Send + Sync {
     /// Starts one request.
     fn stream(&self, request: StreamRequest) -> BoxStream<'static, AssistantMessageEvent>;
 }
 
-/// `AgentMessage[]` → `Message[]` at the request boundary (pi `convertToLlm`).
+/// `AgentMessage[]` → `Message[]` at the request boundary.
 pub type ConvertToLlm = Arc<dyn Fn(&[AgentMessage]) -> Vec<Message> + Send + Sync>;
 
-/// pi `transformContext`: rewrites the transcript before conversion.
+/// Rewrites the transcript before conversion.
 pub trait TransformContext: Send + Sync {
     /// Returns the messages to convert.
     fn transform<'a>(
@@ -98,14 +98,14 @@ pub trait TransformContext: Send + Sync {
     ) -> BoxFuture<'a, Result<Vec<AgentMessage>, HookError>>;
 }
 
-/// pi `getApiKey`: resolves a short-lived credential per request.
+/// Resolves a short-lived credential per request.
 pub trait GetApiKey: Send + Sync {
     /// Credential for `provider`, if any.
     fn api_key<'a>(&'a self, provider: &'a str)
     -> BoxFuture<'a, Result<Option<String>, HookError>>;
 }
 
-/// pi `BeforeToolCallContext`.
+/// The before tool call context record.
 #[derive(Clone, Copy, Debug)]
 pub struct BeforeToolCallContext<'a> {
     /// Assistant message that issued the call.
@@ -118,7 +118,7 @@ pub struct BeforeToolCallContext<'a> {
     pub context: &'a AgentContext,
 }
 
-/// pi `BeforeToolCallResult`.
+/// The before tool call result record.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BeforeToolCallResult {
@@ -131,12 +131,12 @@ pub struct BeforeToolCallResult {
     /// Mark the blocked result as terminating.
     #[serde(default)]
     pub terminate: bool,
-    /// Replacement arguments for the call (Oino: pi handlers mutate `args` in place).
+    /// Replacement arguments for the call (handlers mutate `args` in place).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<JsonObject>,
 }
 
-/// pi `beforeToolCall`.
+/// B e f o r e   T o o l   C a l l.
 pub trait BeforeToolCall: Send + Sync {
     /// Inspects (and may block) a validated call.
     fn before<'a>(
@@ -146,7 +146,7 @@ pub trait BeforeToolCall: Send + Sync {
     ) -> BoxFuture<'a, Result<Option<BeforeToolCallResult>, HookError>>;
 }
 
-/// pi `AfterToolCallContext`.
+/// The after tool call context record.
 #[derive(Clone, Copy, Debug)]
 pub struct AfterToolCallContext<'a> {
     /// Assistant message that issued the call.
@@ -163,7 +163,7 @@ pub struct AfterToolCallContext<'a> {
     pub context: &'a AgentContext,
 }
 
-/// pi `AfterToolCallResult`: field-wise overrides.
+/// Field-wise overrides.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AfterToolCallResult {
@@ -187,7 +187,7 @@ pub struct AfterToolCallResult {
     pub terminate: Option<bool>,
 }
 
-/// pi `afterToolCall`.
+/// A f t e r   T o o l   C a l l.
 pub trait AfterToolCall: Send + Sync {
     /// Post-processes a result.
     fn after<'a>(
@@ -197,7 +197,7 @@ pub trait AfterToolCall: Send + Sync {
     ) -> BoxFuture<'a, Result<Option<AfterToolCallResult>, HookError>>;
 }
 
-/// pi `AgentTurnContext` / `PrepareNextTurnContext`.
+/// The turn context passed to hooks.
 #[derive(Clone, Copy, Debug)]
 pub struct AgentTurnContext<'a> {
     /// Assistant message of the turn.
@@ -210,7 +210,7 @@ pub struct AgentTurnContext<'a> {
     pub new_messages: &'a [AgentMessage],
 }
 
-/// pi `AgentTurnDecision`.
+/// The agent turn decision record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "lowercase")]
 pub enum TurnDecision {
@@ -220,7 +220,7 @@ pub enum TurnDecision {
     End,
 }
 
-/// pi `finishTurn`: decides after each turn, before `turn_end`.
+/// Decides after each turn, before `turn_end`.
 pub trait FinishTurn: Send + Sync {
     /// Decision for this turn.
     fn finish<'a>(
@@ -230,7 +230,7 @@ pub trait FinishTurn: Send + Sync {
     ) -> BoxFuture<'a, Result<Option<TurnDecision>, HookError>>;
 }
 
-/// pi `AgentLoopTurnUpdate`.
+/// The agent loop turn update record.
 #[derive(Clone, Debug, Default)]
 pub struct AgentLoopTurnUpdate {
     /// Replacement context.
@@ -243,7 +243,7 @@ pub struct AgentLoopTurnUpdate {
     pub thinking_level: Option<ThinkingLevel>,
 }
 
-/// pi `prepareNextTurn`: runs after `turn_end` when the run continues (e.g. compaction).
+/// Runs after `turn_end` when the run continues (e.g. compaction).
 pub trait PrepareNextTurn: Send + Sync {
     /// Optional update for the next turn.
     fn prepare<'a>(
@@ -253,7 +253,7 @@ pub trait PrepareNextTurn: Send + Sync {
     ) -> BoxFuture<'a, Result<Option<AgentLoopTurnUpdate>, HookError>>;
 }
 
-/// pi `PrepareRequestContext`.
+/// The prepare request context record.
 #[derive(Clone, Copy, Debug)]
 pub struct PrepareRequestContext<'a> {
     /// Context about to be sent.
@@ -264,7 +264,7 @@ pub struct PrepareRequestContext<'a> {
     pub thinking_level: ThinkingLevel,
 }
 
-/// pi `AgentRequestUpdate`.
+/// The agent request update record.
 #[derive(Clone, Debug, Default)]
 pub struct AgentRequestUpdate {
     /// Replacement context.
@@ -275,7 +275,7 @@ pub struct AgentRequestUpdate {
     pub thinking_level: Option<ThinkingLevel>,
 }
 
-/// pi `prepareRequest`: runs before every request, including the first (virtual routing).
+/// Runs before every request, including the first (virtual routing).
 pub trait PrepareRequest: Send + Sync {
     /// Optional update for this request.
     fn prepare<'a>(
@@ -285,13 +285,13 @@ pub trait PrepareRequest: Send + Sync {
     ) -> BoxFuture<'a, Result<Option<AgentRequestUpdate>, HookError>>;
 }
 
-/// pi `getSteeringMessages` / `getFollowUpMessages`.
+/// Reads queued steering / follow-up messages.
 pub trait QueueSource: Send + Sync {
     /// Drains the next messages (possibly none).
     fn drain(&self) -> BoxFuture<'_, Vec<AgentMessage>>;
 }
 
-/// pi `ToolExecutionMode` of the loop.
+/// The loop's tool execution mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ToolExecution {
@@ -302,7 +302,7 @@ pub enum ToolExecution {
     Sequential,
 }
 
-/// Configuration of one loop run (pi `AgentLoopConfig`).
+/// Configuration of one loop run.
 ///
 /// Provider-level callbacks (`onPayload`, `onResponse`, `onProviderStreamEvent`) belong to the
 /// [`StreamFn`] implementation in Oino, which owns the provider hooks.
@@ -322,7 +322,7 @@ pub struct AgentLoopConfig {
     pub transform_context: Option<Arc<dyn TransformContext>>,
     /// Per-request credential.
     pub get_api_key: Option<Arc<dyn GetApiKey>>,
-    /// Static credential fallback (pi `apiKey`).
+    /// Static credential fallback.
     pub api_key: Option<String>,
     /// Tool gate.
     pub before_tool_call: Option<Arc<dyn BeforeToolCall>>,
@@ -343,7 +343,7 @@ pub struct AgentLoopConfig {
 }
 
 impl AgentLoopConfig {
-    /// A config with no hooks and pi's default conversion (system/user/assistant/toolResult).
+    /// A config with no hooks and the default conversion (system/user/assistant/toolResult).
     #[must_use]
     pub fn new(model: Model, stream: Arc<dyn StreamFn>) -> Self {
         Self {
@@ -367,7 +367,7 @@ impl AgentLoopConfig {
     }
 }
 
-/// pi-agent-core `defaultConvertToLlm`: keeps the four LLM roles.
+/// The default conversion: keeps the four LLM roles.
 #[must_use]
 pub fn default_convert_to_llm(messages: &[AgentMessage]) -> Vec<Message> {
     messages.iter().filter_map(AgentMessage::as_llm).collect()

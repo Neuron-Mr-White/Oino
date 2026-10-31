@@ -1,4 +1,4 @@
-//! YAML frontmatter (pi `utils/frontmatter.ts`).
+//! YAML frontmatter.
 
 use serde_json::{Map, Value};
 
@@ -19,7 +19,7 @@ pub struct FrontmatterError {
     pub message: String,
 }
 
-/// pi `parseFrontmatter`: strip a BOM, normalise newlines, and split `---\n…\n---` frontmatter.
+/// Strip a BOM, normalise newlines, and split `---\n…\n---` frontmatter.
 ///
 /// # Errors
 ///
@@ -49,7 +49,7 @@ pub fn parse_frontmatter(content: &str) -> Result<Frontmatter, FrontmatterError>
     Ok(Frontmatter { fields, body })
 }
 
-/// pi `stripFrontmatter`: the body only (the whole text when the frontmatter is invalid is
+/// The body only (the whole text when the frontmatter is invalid is
 /// **not** returned; invalid frontmatter is an error like in pi).
 ///
 /// # Errors

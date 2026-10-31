@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 use super::{AgentSession, lock};
 use crate::events::AgentSessionEvent;
 
-/// pi `NESTED_CALL_LIMITS`.
+/// The nested call limits constant.
 const MAX_CALLS: usize = 256;
 const MAX_ARGUMENT_BYTES_PER_CALL: u64 = 8 * 1024;
 const MAX_ARGUMENT_BYTES_TOTAL: u64 = 32 * 1024;

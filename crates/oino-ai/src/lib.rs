@@ -1,24 +1,25 @@
-//! `oino-ai`: the pi-ai data model for Oino.
+//! `oino-ai`: the LLM data model for Oino.
 //!
-//! Every type serialises to **exactly** pi 1.4.0's JSON (field names, tags, optionality), so
-//! sessions, RPC records and WASM-boundary payloads are interchangeable with pi. The crate has
+//! Every type serialises to a fixed JSON shape (field names, tags, optionality), so
+//! sessions, RPC records and WASM-boundary payloads stay interchangeable across processes and
+//! tools that speak the same format. The crate has
 //! no async runtime and builds for `wasm32-wasip2`; guests and host share these types (D5).
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`primitives`] | `types.ts` scalars | [`TimestampMs`], [`ThinkingLevel`] (+ clamping), [`StopReason`], [`Usage`] |
-//! | [`content`] | content blocks | [`TextContent`], [`ThinkingContent`], [`ImageContent`], [`ToolCall`], [`UserContent`], [`AssistantContent`], [`UserContentField`] |
-//! | [`message`] | `Message`, coding-agent `AgentMessage` | [`Message`], [`AgentMessage`], [`SystemMessage`], [`AssistantMessage`], … |
-//! | [`model`] | `Model`, `AnyModel` | [`Model`], [`ModelKey`], [`ThinkingLevelMap`], costs and limits |
-//! | [`stream`] | `AssistantMessageEvent`, `Context`, `StreamOptions` | [`AssistantMessageEvent`], [`ProviderEvent`], [`PartialAssembler`] |
-//! | [`transcript`] | `utils/transcript.js` | system-message replay, [`transcript::diff_sections`], collapsing |
-//! | [`transform`] | `api/transform-messages.js` | [`transform::transform_messages`] |
-//! | [`json`] | — | [`JsonObject`], [`JsonValue`], [`json::json_semantic_eq`] |
+//! | Module | Contents |
+//! |---|---|
+//! | [`primitives`] | scalars: [`TimestampMs`], [`ThinkingLevel`] (+ clamping), [`StopReason`], [`Usage`] |
+//! | [`content`] | content blocks: [`TextContent`], [`ThinkingContent`], [`ImageContent`], [`ToolCall`], [`UserContent`], [`AssistantContent`], [`UserContentField`] |
+//! | [`message`] | [`Message`], [`AgentMessage`], [`SystemMessage`], [`AssistantMessage`], … |
+//! | [`model`] | [`Model`], [`ModelKey`], [`ThinkingLevelMap`], costs and limits |
+//! | [`stream`] | [`AssistantMessageEvent`], [`ProviderEvent`], [`PartialAssembler`] |
+//! | [`transcript`] | system-message replay, [`transcript::diff_sections`], collapsing |
+//! | [`transform`] | [`transform::transform_messages`] |
+//! | [`json`] | [`JsonObject`], [`JsonValue`], [`json::json_semantic_eq`] |
 //!
 //! Unknown JSON fields are ignored on read; optional fields are omitted on write exactly where
-//! pi omits them; integral `f64` costs serialise without a fraction like `JSON.stringify`.
+//! the wire format omits them; integral `f64` costs serialise without a fraction like `JSON.stringify`.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(

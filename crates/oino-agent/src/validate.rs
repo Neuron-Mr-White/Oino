@@ -1,9 +1,9 @@
-//! Tool-argument validation (pi-ai `validateToolArguments`).
+//! Tool-argument validation (`validateToolArguments`).
 //!
-//! pi validates with `TypeBox` after two normalisation passes: optional properties set to `null`
+//! Validation runs against a JSON schema after two normalisation passes: optional properties set to `null`
 //! are dropped, then primitives are coerced towards the schema type (`"5"` → `5`, `1` → `"1"`,
 //! `"true"` → `true`, …). Error messages and paths follow `TypeBox` so the text the model sees is
-//! identical to pi (golden-tested against the pi oracle).
+//! golden-tested against reference fixtures.
 //!
 //! Supported keywords: `type`, `const`, `enum`, `minLength`, `maxLength`, `pattern`, `minimum`,
 //! `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `items`, `prefixItems`,
@@ -15,7 +15,7 @@ use oino_ai::{JsonObject, JsonValue, ToolCall};
 use regex::Regex;
 use serde_json::Number;
 
-/// pi `validateToolArguments`: returns the coerced arguments or pi's error text.
+/// Returns the coerced arguments or the error text.
 ///
 /// # Errors
 ///
@@ -155,7 +155,7 @@ fn check_in(root: &JsonValue, schema: &JsonValue, value: &JsonValue) -> bool {
     errors.is_empty()
 }
 
-/// pi `coerceWithJsonSchema` (does not follow `$ref`, like pi).
+/// Coerces with the JSON schema (does not follow `$ref`).
 fn coerce(value: JsonValue, schema: &JsonValue, root: &JsonValue) -> JsonValue {
     let mut next = value;
     if let Some(JsonValue::Array(all)) = schema.get("allOf") {
@@ -239,7 +239,7 @@ fn coerce_array(items: &mut [JsonValue], schema: &JsonValue, root: &JsonValue) {
     }
 }
 
-/// pi `coercePrimitiveByType`; `None` when the value is left unchanged.
+/// Coerces a primitive by its schema type; `None` when the value is left unchanged.
 fn coerce_primitive(value: &JsonValue, kind: &str) -> Option<JsonValue> {
     match (kind, value) {
         ("number" | "integer", JsonValue::Null) => Some(JsonValue::from(0)),

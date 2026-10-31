@@ -1,10 +1,10 @@
-//! Resource diagnostics (pi `core/diagnostics.ts`).
+//! Resource diagnostics.
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// Diagnostic severity / kind (pi `ResourceDiagnostic.type`).
+/// Diagnostic severity / kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DiagnosticKind {
@@ -16,7 +16,7 @@ pub enum DiagnosticKind {
     Collision,
 }
 
-/// Resource type of a collision (pi `ResourceCollision.resourceType`).
+/// Resource type of a collision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CollisionResource {
@@ -30,7 +30,7 @@ pub enum CollisionResource {
     Theme,
 }
 
-/// Name collision details (pi `ResourceCollision`).
+/// Name collision details.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceCollision {
@@ -44,7 +44,7 @@ pub struct ResourceCollision {
     pub loser_path: PathBuf,
 }
 
-/// One resource diagnostic (pi `ResourceDiagnostic`).
+/// One resource diagnostic.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceDiagnostic {
     /// Kind.

@@ -1,4 +1,4 @@
-//! The agent loop (pi-agent-core `agent-loop.js`).
+//! The agent loop.
 //!
 //! A run emits `agent_start`, then turns: each turn adds queued messages, requests one
 //! assistant response, executes its tool calls and ends with `turn_end`. The run continues
@@ -38,12 +38,12 @@ pub enum AgentLoopError {
     /// `agent_loop_continue` after an assistant message.
     #[error("Cannot continue from message role: assistant")]
     ContinueFromAssistant,
-    /// A loop hook failed; the run ends like a thrown pi error.
+    /// A loop hook failed; the run ends like a thrown error.
     #[error("{0}")]
     Hook(#[from] HookError),
 }
 
-/// Current wall-clock time in epoch milliseconds (pi `Date.now()`).
+/// Current wall-clock time in epoch milliseconds.
 #[must_use]
 pub fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -51,7 +51,7 @@ pub fn now_ms() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
-/// pi `runAgentLoop`: starts a run with `prompts`. Returns the messages the run added.
+/// Starts a run with `prompts`. Returns the messages the run added.
 ///
 /// # Errors
 ///
@@ -80,7 +80,7 @@ pub async fn agent_loop(
     Ok(new_messages)
 }
 
-/// pi `runAgentLoopContinue`: continues from the current transcript.
+/// Continues from the current transcript.
 ///
 /// # Errors
 ///
@@ -111,7 +111,7 @@ struct CompletedTurn {
 
 #[allow(
     clippy::too_many_lines,
-    reason = "one-to-one port of pi runLoop; splitting obscures the control flow"
+    reason = "the loop is ported one-to-one; splitting obscures the control flow"
 )]
 async fn run_loop(
     mut current: AgentContext,
@@ -301,7 +301,7 @@ fn tool_calls_of(message: &AssistantMessage) -> Vec<ToolCall> {
         .collect()
 }
 
-/// pi `declareToolChanges`: announces loadout changes with a system message before the next
+/// Announces loadout changes with a system message before the next
 /// request, or rewrites the tool fields of a pending system message.
 #[must_use]
 pub fn declare_tool_changes(
@@ -496,7 +496,7 @@ async fn finish_message(
     message
 }
 
-/// A settled tool call (pi `AgentToolCallOutcome`).
+/// A settled tool call.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolCallOutcome {
     /// The call as issued.
@@ -925,7 +925,7 @@ async fn emit_end(outcome: &ToolCallOutcome, sink: &dyn EventSink) {
     .await;
 }
 
-/// pi `createToolResultMessage`.
+/// C r e a t e   T o o l   R e s u l t   M e s s a g e.
 #[must_use]
 pub fn tool_result_message(outcome: &ToolCallOutcome) -> ToolResultMessage {
     ToolResultMessage {
@@ -952,7 +952,7 @@ async fn emit_result_message(message: &ToolResultMessage, sink: &dyn EventSink) 
     .await;
 }
 
-/// Options of [`run_tool_call`] (pi `RunToolCallOptions`).
+/// Options of [`run_tool_call`].
 pub struct RunToolCallOptions<'a> {
     /// Assistant message the call belongs to.
     pub assistant_message: &'a AssistantMessage,
@@ -966,13 +966,13 @@ pub struct RunToolCallOptions<'a> {
     pub after_tool_call: Option<Arc<dyn AfterToolCall>>,
     /// Abort signal.
     pub cancel: CancellationToken,
-    /// Calling tool for nested calls (pi 1.4 `ctx.executeTool`).
+    /// Calling tool for nested calls (`ctx.executeTool`).
     pub parent_tool_call_id: Option<String>,
     /// Partial-result callback.
     pub on_update: Option<UpdateCallback<'a>>,
 }
 
-/// pi `runToolCall`: one call through preparation, validation, hooks and execution. Emits no
+/// One call through preparation, validation, hooks and execution. Emits no
 /// events and never fails (errors become `is_error` outcomes).
 pub async fn run_tool_call(call: ToolCall, options: RunToolCallOptions<'_>) -> ToolCallOutcome {
     let hooks = Hooks {

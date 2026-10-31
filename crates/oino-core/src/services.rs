@@ -1,4 +1,4 @@
-//! Per-cwd services (pi `agent-session-services.ts`): settings, resources, models + auth,
+//! Per-cwd services: settings, resources, models + auth,
 //! loaded extensions, the provider stream and the host router extensions call back into.
 
 use std::collections::HashMap;

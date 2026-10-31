@@ -336,7 +336,7 @@ impl ExtensionSettings {
         &self.settings
     }
 
-    /// pi `getSettings()`: the merged settings object.
+    /// The merged settings object.
     #[must_use]
     pub fn merged_settings(&self) -> JsonObject {
         self.manager().settings().merged().clone()

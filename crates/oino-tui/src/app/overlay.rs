@@ -4,7 +4,7 @@
 
 use oino_agent::QueueMode;
 use oino_ai::{JsonValue, Model, ThinkingLevel};
-use oino_client::protocol::{OinoCommand, AgentCommand};
+use oino_client::protocol::{AgentCommand, OinoCommand};
 use oino_core::session::NavigateTreeOptions;
 use oino_view::composer::Composer;
 use oino_view::fuzzy;
@@ -606,7 +606,10 @@ impl App {
                 self.session.auto_compaction = *enabled;
             }
             (["retry", "enabled"], JsonValue::Bool(enabled)) => {
-                self.send(Tag::Ignore, AgentCommand::SetAutoRetry { enabled: *enabled });
+                self.send(
+                    Tag::Ignore,
+                    AgentCommand::SetAutoRetry { enabled: *enabled },
+                );
             }
             (["steeringMode" | "followUpMode"], JsonValue::String(mode)) => {
                 let mode = if mode == "all" {

@@ -1,4 +1,4 @@
-//! pi `model-resolver.ts` and model cycling: `--model`, `--models` / `enabledModels`, initial
+//! Model resolution and cycling: `--model`, `--models` / `enabledModels`, initial
 //! selection, session restore.
 //!
 //! Pure functions take model slices; functions that need credentials take a
@@ -77,7 +77,7 @@ pub fn resolve_cli_model_in(
     })
 }
 
-/// pi `resolveModelScopeWithDiagnostics`: scope patterns against the available models.
+/// Scope patterns against the available models.
 #[must_use]
 pub fn resolve_model_scope_in(
     patterns: &[String],

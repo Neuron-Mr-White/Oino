@@ -94,7 +94,7 @@ impl AgentSession {
         }
     }
 
-    /// pi `_getSummarizationRequestAuth`: routes a virtual model, resolves credentials.
+    /// Routes a virtual model, resolves credentials.
     pub(crate) async fn summarizer(
         &self,
         model: &Model,
@@ -252,7 +252,7 @@ impl AgentSession {
         })
     }
 
-    /// pi `compact`: manual compaction; aborts the current run first, never retries.
+    /// Manual compaction; aborts the current run first, never retries.
     ///
     /// # Errors
     ///
@@ -369,7 +369,7 @@ impl AgentSession {
         }
     }
 
-    /// pi `_exceedsCompactionThreshold`.
+    /// E x c e e d s   C o m p a c t i o n   T h r e s h o l d.
     pub(crate) fn exceeds_compaction_threshold(
         &self,
         model: &Model,
@@ -580,7 +580,7 @@ impl AgentSession {
         false
     }
 
-    /// pi `_modelForMessage`.
+    /// M o d e l   F o r   M e s s a g e.
     fn model_for_message(&self, message: &AssistantMessage) -> Option<Model> {
         let model = self.model()?;
         if oino_models::virtual_models::is_virtual_api(&model.api) {
@@ -592,7 +592,7 @@ impl AgentSession {
         (model.provider == message.provider && model.id == message.model).then_some(model)
     }
 
-    /// pi `_isRetryableError`.
+    /// Returns whether it is retryable error.
     pub(crate) fn is_retryable_error(&self, message: &AssistantMessage) -> bool {
         let window = self
             .model_for_message(message)
@@ -604,7 +604,7 @@ impl AgentSession {
         compaction::is_retryable_assistant_error(message)
     }
 
-    /// pi `_omitRecoveryAttempt`: omits the failed attempt and its tool results from context.
+    /// Omits the failed attempt and its tool results from context.
     pub(crate) fn omit_recovery_attempt(&self, message: &AssistantMessage) {
         let call_ids: Vec<&str> = message
             .content

@@ -12,7 +12,7 @@ use super::settings::CompactionSettings;
 use super::tokens::estimate_projected_context_tokens;
 use super::utils::{FileLists, FileOperations};
 
-/// pi `CompactionDetails`: file tracking stored in `CompactionEntry.details`.
+/// File tracking stored in `CompactionEntry.details`.
 pub type CompactionDetails = FileLists;
 
 /// pi `CompactionResult` (the session manager adds id/parent when appending).
@@ -71,7 +71,7 @@ fn summary_messages(entries: &[ProjectedEntry]) -> Vec<AgentMessage> {
         .collect()
 }
 
-/// pi `prepareCompaction(pathEntries, settings)`: `None` when the path ends with a compaction
+/// `None` when the path ends with a compaction
 /// or nothing would be summarised. `path` is the root → leaf branch.
 #[must_use]
 pub fn prepare_compaction(

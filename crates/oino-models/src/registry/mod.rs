@@ -1,4 +1,4 @@
-//! pi `ModelRegistry` / `ModelRuntime` (registry and auth parts): the shared catalog of
+//! The shared model catalog (registry and auth parts):
 //! provider registrations, `models.json`, config overrides and virtual models, plus credential
 //! resolution per request.
 //!
@@ -82,7 +82,7 @@ impl ModelRegistryOptions {
 /// Registry mutation failures.
 #[derive(Debug, thiserror::Error)]
 pub enum RegistryError {
-    /// Empty provider id (pi text).
+    /// Empty provider id.
     #[error("Provider id must not be empty.")]
     EmptyProviderId,
     /// The provider is not registered by a component.
@@ -91,7 +91,7 @@ pub enum RegistryError {
     /// The provider's models are static.
     #[error("Provider {0} has a static model list.")]
     StaticModels(String),
-    /// A config override does not compose (pi message).
+    /// A config override does not compose.
     #[error("{0}")]
     InvalidConfig(String),
     /// Virtual model registration failed.
@@ -102,7 +102,7 @@ pub enum RegistryError {
     Cache(#[from] CacheError),
 }
 
-/// Credentials for one request (pi `ResolvedRequestAuth` with `ok: true`).
+/// Credentials for one request (the resolved-auth record with `ok: true`).
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct RequestAuth {
     /// `StreamOptions.apiKey`.
@@ -123,7 +123,7 @@ impl std::fmt::Debug for RequestAuth {
     }
 }
 
-/// `getApiKeyAndHeaders` failure (pi `{ok: false, error}`); the message is pi's text.
+/// `getApiKeyAndHeaders` failure; the message is pi's text.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct RequestAuthError {
@@ -131,7 +131,7 @@ pub struct RequestAuthError {
     pub message: String,
 }
 
-/// A non-fatal catalog problem outside pi's `getError()`.
+/// A non-fatal catalog problem outside `getError()`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryDiagnostic {
     /// Provider id.
@@ -234,7 +234,7 @@ impl ModelRegistry {
             .clone()
     }
 
-    /// pi `refresh`: reloads `models.json` and recomposes the catalog.
+    /// Reloads `models.json` and recomposes the catalog.
     pub fn refresh(&self) {
         let models_json = ModelsJson::load(self.inner.models_json_path.as_deref());
         let mut state = self.write();
@@ -249,7 +249,7 @@ impl ModelRegistry {
         state.recompose();
     }
 
-    /// pi `getError`: `models.json` load error and per-provider composition errors, joined by
+    /// `models.json` load error and per-provider composition errors, joined by
     /// blank lines.
     #[must_use]
     pub fn error(&self) -> Option<String> {
@@ -292,7 +292,7 @@ impl ModelRegistry {
 
     // ----- registrations -------------------------------------------------------------------
 
-    /// Registers (or replaces) a provider component's registration (pi
+    /// Registers (or replaces) a provider component's registration
     /// `registerNativeProvider`). A dynamic registration starts from the cached model list.
     ///
     /// # Errors
@@ -365,12 +365,12 @@ impl ModelRegistry {
         Ok(())
     }
 
-    /// pi `registerProvider(name, config)`: validates the override on its own, then merges its
+    /// Validates the override on its own, then merges its
     /// defined fields over the previous override. The provider's registration is kept.
     ///
     /// # Errors
     ///
-    /// [`RegistryError::InvalidConfig`] with pi's composition message; nothing is stored.
+    /// [`RegistryError::InvalidConfig`] with the composition message; nothing is stored.
     pub fn register_provider_config(
         &self,
         provider: &str,
@@ -405,7 +405,7 @@ impl ModelRegistry {
         Ok(())
     }
 
-    /// pi `unregisterProvider`: removes the registration and the config override (virtual
+    /// Removes the registration and the config override (virtual
     /// models stay).
     pub fn unregister_provider(&self, provider: &str) {
         let mut state = self.write();
@@ -426,7 +426,7 @@ impl ModelRegistry {
         state.recompose();
     }
 
-    /// pi `getRegisteredProviderIds`: providers with an override or a component registration.
+    /// Providers with an override or a component registration.
     #[must_use]
     pub fn registered_providers(&self) -> Vec<String> {
         let state = self.read();
@@ -448,7 +448,7 @@ impl ModelRegistry {
             .map(|r| r.registration.clone())
     }
 
-    /// pi `getRegisteredProviderConfig`.
+    /// Returns the registered provider config.
     #[must_use]
     pub fn registered_provider_config(&self, provider: &str) -> Option<ProviderConfigOverride> {
         self.read().overrides.get(provider).cloned()
@@ -456,7 +456,7 @@ impl ModelRegistry {
 
     // ----- catalog -------------------------------------------------------------------------
 
-    /// pi `getAll`: every model, providers in registration order.
+    /// Every model, providers in registration order.
     #[must_use]
     pub fn all(&self) -> Vec<Model> {
         self.read()
@@ -466,7 +466,7 @@ impl ModelRegistry {
             .collect()
     }
 
-    /// pi `getAvailable`: models whose provider has credentials and whose API a provider
+    /// Models whose provider has credentials and whose API a provider
     /// component implements (virtual models: provider credentials only).
     #[must_use]
     pub fn available(&self) -> Vec<Model> {
@@ -487,13 +487,13 @@ impl ModelRegistry {
         available
     }
 
-    /// pi `find`.
+    /// F i n d.
     #[must_use]
     pub fn find(&self, provider: &str, id: &str) -> Option<Model> {
         self.read().find(provider, id).cloned()
     }
 
-    /// pi `getPhysicalModel`: a catalog model that is not virtual.
+    /// A catalog model that is not virtual.
     #[must_use]
     pub fn find_physical(&self, provider: &str, id: &str) -> Option<Model> {
         self.find(provider, id).filter(|m| !is_virtual_api(&m.api))
@@ -505,7 +505,7 @@ impl ModelRegistry {
         self.read().providers.iter().map(|p| p.id.clone()).collect()
     }
 
-    /// pi `getProviderDisplayName`.
+    /// Returns the provider display name.
     #[must_use]
     pub fn provider_display_name(&self, provider: &str) -> String {
         self.read()
@@ -536,27 +536,27 @@ impl ModelRegistry {
         self.read().provider(provider).map(|p| p.auth.clone())
     }
 
-    /// pi `checkAuth`: how a provider is authenticated, `None` when it is not.
+    /// How a provider is authenticated, `None` when it is not.
     #[must_use]
     pub fn check_auth(&self, provider: &str) -> Option<AuthCheck> {
         let plan = self.plan(provider)?;
         self.check_plan(provider, &plan)
     }
 
-    /// pi `hasConfiguredAuth`.
+    /// Returns whether configured auth is present.
     #[must_use]
     pub fn has_configured_auth(&self, provider: &str) -> bool {
         self.check_auth(provider).is_some()
     }
 
-    /// pi `isUsingOAuth`.
+    /// Returns whether it is using oauth.
     #[must_use]
     pub fn is_using_oauth(&self, provider: &str) -> bool {
         self.check_auth(provider)
             .is_some_and(|c| c.kind == CredentialType::Oauth)
     }
 
-    /// pi `getProviderAuthStatus`.
+    /// Returns the provider auth status.
     #[must_use]
     pub fn auth_status(&self, provider: &str) -> AuthStatus {
         let plan = self
@@ -582,12 +582,12 @@ impl ModelRegistry {
         self.inner.auth.set_runtime_api_key(provider, key);
     }
 
-    /// pi `removeRuntimeApiKey`.
+    /// R e m o v e   R u n t i m e   A p i   K e y.
     pub fn remove_runtime_api_key(&self, provider: &str) {
         self.inner.auth.remove_runtime_api_key(provider);
     }
 
-    /// pi `getAuth(provider)`: resolved credentials (refreshing OAuth tokens as needed).
+    /// Resolved credentials (refreshing OAuth tokens as needed).
     ///
     /// # Errors
     ///
@@ -612,7 +612,7 @@ impl ModelRegistry {
         .await
     }
 
-    /// pi `getApiKeyForProvider`: the key, or `None` when unconfigured or failing.
+    /// The key, or `None` when unconfigured or failing.
     pub async fn get_api_key(&self, provider: &str) -> Option<String> {
         self.get_auth(provider, &AuthOverrides::default())
             .await
@@ -621,12 +621,12 @@ impl ModelRegistry {
             .and_then(|auth| auth.api_key)
     }
 
-    /// pi `getApiKeyAndHeaders`: what core passes to the provider component as
+    /// What core passes to the provider component as
     /// `StreamOptions.apiKey` + `headers`.
     ///
     /// # Errors
     ///
-    /// [`RequestAuthError`] with pi's message.
+    /// [`RequestAuthError`] with the message.
     pub async fn get_api_key_and_headers(
         &self,
         model: &Model,
@@ -668,7 +668,7 @@ impl ModelRegistry {
                 headers: merge_headers(resolution.headers, headers),
             });
         }
-        // pi compatibility path: no credentials resolved.
+        // Compatibility path: no credentials resolved.
         let raw = match (config_headers, model_headers) {
             (None, None) => None,
             (base, over) => {
@@ -700,7 +700,7 @@ impl ModelRegistry {
 
     // ----- virtual models ------------------------------------------------------------------
 
-    /// pi `registerVirtualModel`: registers or replaces a virtual model.
+    /// Registers or replaces a virtual model.
     ///
     /// # Errors
     ///
@@ -721,7 +721,7 @@ impl ModelRegistry {
         Ok(())
     }
 
-    /// pi `unregisterVirtualModel`.
+    /// U n r e g i s t e r   V i r t u a l   M o d e l.
     pub fn unregister_virtual_model(&self, provider: &str, id: &str) {
         let mut state = self.write();
         if state.virtual_models.unregister(provider, id) {
@@ -735,7 +735,7 @@ impl ModelRegistry {
         self.read().virtual_models.get(provider, id).cloned()
     }
 
-    /// Builds the route request for a virtual model (pi `resolveModel` before the router call):
+    /// Builds the route request for a virtual model (before the router call):
     /// `previous` from the latest successful response in `messages`, `failed` from a retry.
     ///
     /// # Errors
@@ -786,7 +786,7 @@ impl ModelRegistry {
         })
     }
 
-    /// Validates a router result (pi `resolveModel` after the call): the target must be a
+    /// Validates a router result (after the call): the target must be a
     /// physical catalog model with credentials; the level is clamped to it.
     ///
     /// # Errors

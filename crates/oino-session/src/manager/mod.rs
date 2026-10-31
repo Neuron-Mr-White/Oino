@@ -246,7 +246,7 @@ impl SessionManager {
         Ok(manager)
     }
 
-    /// Opens a session file (pi `open`): migrates pi v1/v2 in place and pre-v1 Oino files to
+    /// Opens a session file: migrates pi v1/v2 in place and pre-v1 Oino files to
     /// the v3 layout; a missing file starts a new session at that path.
     ///
     /// # Errors
@@ -314,7 +314,7 @@ impl SessionManager {
     }
 
     /// Copies all entries of `source` into a new session for `target_cwd` with
-    /// `parentSession = source` (pi `forkFrom`). Written immediately.
+    /// `parentSession = source`. Written immediately.
     ///
     /// # Errors
     ///
@@ -410,7 +410,7 @@ impl SessionManager {
         Ok(migrated)
     }
 
-    /// Fresh header and empty tree (pi `newSession`).
+    /// Fresh header and empty tree.
     ///
     /// # Errors
     ///
@@ -436,7 +436,7 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Binds to `path` (pi `setSessionFile`): loads it when it exists, otherwise starts a new
+    /// Binds to `path`: loads it when it exists, otherwise starts a new
     /// session that will be written there.
     ///
     /// # Errors
@@ -768,7 +768,7 @@ impl SessionManager {
     }
 
     /// Appends a compaction. Without an explicit checkpoint the current projection's system
-    /// state is stored, stamped with the entry time (pi `appendCompaction`).
+    /// state is stored, stamped with the entry time.
     ///
     /// # Errors
     ///
@@ -1016,7 +1016,7 @@ impl SessionManager {
         build_session_context(&self.index, self.leaf.as_ref())
     }
 
-    /// Moves the leaf (pi `branch(fromId)`); nothing is written.
+    /// Moves the leaf; nothing is written.
     ///
     /// # Errors
     ///

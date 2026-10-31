@@ -1,4 +1,4 @@
-//! Event streams that follow the runtime's current session (pi `rebindSession`).
+//! Event streams that follow the runtime's current session.
 //!
 //! Each stream subscribes to the *session* hub, not the runtime hub: session events are
 //! queued synchronously when published, so once a command returns every event it caused is

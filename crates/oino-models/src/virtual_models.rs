@@ -1,4 +1,4 @@
-//! pi `virtual-models.ts`: catalog entries that route each request to a physical model.
+//! Catalog entries that route each request to a physical model.
 //!
 //! Extensions register definitions (`register-virtual-model`) and implement the guest export
 //! `route-model`. This module holds the definitions, the route request/result wire types,
@@ -10,13 +10,13 @@ use oino_ai::{AssistantMessage, InputModality, JsonValue, Message, Model, ModelC
 use oino_ai::{StopReason, ThinkingLevel, ThinkingLevelMap};
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// API id of virtual catalog entries (pi `pi-virtual`, D13). Requests for it fail unless routed.
+/// API id of virtual catalog entries. Requests for it fail unless routed.
 pub const VIRTUAL_MODEL_API: &str = "oino-virtual";
 
 /// `customType` of the session entry storing router state on a branch.
 pub const VIRTUAL_MODEL_STATE_ENTRY: &str = "oino.virtual-model-state";
 
-/// pi `VirtualModelDefinition` without `route` (implemented by the guest export).
+/// A virtual model definition without `route` (implemented by the guest export).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VirtualModelDefinition {
@@ -40,13 +40,13 @@ pub struct VirtualModelDefinition {
     pub input: Option<Vec<InputModality>>,
 }
 
-/// Whether a model (or message `api`) names a virtual model (pi `isVirtualModel`).
+/// Whether a model (or message `api`) names a virtual model.
 #[must_use]
 pub fn is_virtual_api(api: &str) -> bool {
     api == VIRTUAL_MODEL_API
 }
 
-/// pi `createVirtualModel`: the catalog entry of a definition.
+/// The catalog entry of a definition.
 #[must_use]
 pub fn create_virtual_model(definition: &VirtualModelDefinition) -> Model {
     let levels = definition
@@ -99,7 +99,7 @@ pub struct RegisteredVirtualModel {
     pub model: Model,
 }
 
-/// Errors registering a virtual model (pi texts).
+/// Errors registering a virtual model.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum VirtualModelError {
     /// Empty provider or id.
@@ -115,7 +115,7 @@ pub enum VirtualModelError {
     },
 }
 
-/// Virtual model definitions by provider, then id (pi `ModelRuntime.virtualModels`).
+/// Virtual model definitions by provider, then id.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VirtualModelRegistry {
     by_provider: IndexMap<String, IndexMap<String, RegisteredVirtualModel>>,
@@ -203,7 +203,7 @@ impl VirtualModelRegistry {
     }
 }
 
-/// Why a request is routed (pi `ModelRouteReason`).
+/// Why a request is routed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RouteReason {
@@ -241,7 +241,7 @@ pub struct RouteFailed {
     pub message: AssistantMessage,
 }
 
-/// pi `ModelRouteRequest` (the abort signal is the host call's cancellation).
+/// A route request (the abort signal is the host call's cancellation).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteRequest {
@@ -301,7 +301,7 @@ fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<JsonValu
     JsonValue::deserialize(deserializer).map(Some)
 }
 
-/// pi `ModelRoute` as returned by the guest.
+/// A route result as returned by the guest.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteResult {
@@ -329,7 +329,7 @@ pub struct ModelRoute {
     pub state: Option<JsonValue>,
 }
 
-/// Routing failures (pi texts); the request ends with an error response.
+/// Routing failures; the request ends with an error response.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RouteError {
     /// The selected virtual model is not registered.
@@ -368,7 +368,7 @@ pub enum RouteError {
     },
 }
 
-/// pi `findLatestResponse`: the latest assistant message that did not fail or abort.
+/// The latest assistant message that did not fail or abort.
 #[must_use]
 pub fn find_latest_response(messages: &[Message]) -> Option<&AssistantMessage> {
     messages.iter().rev().find_map(|message| match message {
@@ -398,7 +398,7 @@ pub struct VirtualModelStateData {
 
 /// Whether core stores the router state returned for a request before sending it.
 ///
-/// pi stores any returned object except `undefined` and `request.state` itself. Object
+/// Any returned object except `undefined` and `request.state` itself is stored. Object
 /// identity does not survive the WASM boundary, so Oino skips a state equal to the current one.
 /// `direct` requests never store state.
 #[must_use]
@@ -452,7 +452,7 @@ pub struct BranchSelection {
     pub model_id: String,
 }
 
-/// pi `getBranchSelection`: a virtual `model_change` holds until the next `model_change`;
+/// A virtual `model_change` holds until the next `model_change`;
 /// otherwise the latest physical response wins. `is_registered_virtual(provider, id)` reports a
 /// currently registered virtual model (unregistered ones fall back to the last response).
 #[must_use]
@@ -496,7 +496,7 @@ pub fn branch_selection(
     None
 }
 
-/// pi `getVirtualModelState`: the latest router state stored on the branch for a model.
+/// The latest router state stored on the branch for a model.
 #[must_use]
 pub fn virtual_model_state<'a>(
     branch: &[BranchEntryRef<'a>],

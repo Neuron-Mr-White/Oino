@@ -40,7 +40,7 @@ fn syntax_for(lang: &str) -> Option<&'static SyntaxReference> {
         .or_else(|| set.find_syntax_by_token(alias))
 }
 
-/// pi `getLanguageFromPath`: language token from a file path.
+/// Language token from a file path.
 #[must_use]
 pub(crate) fn language_from_path(path: &str) -> Option<String> {
     let name = path.rsplit('/').next().unwrap_or(path);

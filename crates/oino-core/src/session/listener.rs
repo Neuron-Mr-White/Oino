@@ -41,7 +41,7 @@ impl AgentListener for Listener {
     }
 }
 
-/// Joined text of a user message (pi `contentText(content, "")`).
+/// Joined text of a user message.
 pub(crate) fn user_text(message: &AgentMessage) -> String {
     match message {
         AgentMessage::User(user) => user.content.text(""),

@@ -1,6 +1,6 @@
 [package]
 name = "oino-core"
-version = "1.0.1"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -15,13 +15,13 @@ testing = []
 futures.workspace = true
 ignore.workspace = true
 indexmap.workspace = true
-oino-agent = { path = "../oino-agent", version = "1.0.0" }
-oino-ai = { path = "../oino-ai", version = "1.0.0" }
+oino-agent = { path = "../oino-agent", version = "1.0.1" }
+oino-ai = { path = "../oino-ai", version = "1.0.1" }
 oino-extension-api = { path = "../oino-extension-api", version = "1.0.1" }
-oino-models = { path = "../oino-models", version = "1.0.0" }
-oino-resources = { path = "../oino-resources", version = "1.0.1" }
-oino-session = { path = "../oino-session", version = "1.0.1" }
-oino-settings = { path = "../oino-settings", version = "1.0.0" }
+oino-models = { path = "../oino-models", version = "1.0.1" }
+oino-resources = { path = "../oino-resources", version = "1.0.0" }
+oino-session = { path = "../oino-session", version = "1.0.0" }
+oino-settings = { path = "../oino-settings", version = "1.0.1" }
 oino-tools = { path = "../oino-tools", version = "1.0.0" }
 oino-ui.workspace = true
 regex.workspace = true

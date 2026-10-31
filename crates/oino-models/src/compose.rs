@@ -1,7 +1,7 @@
-//! pi `provider-composer.ts` model layering: registration models, then `models.json`
+//! Model layering: registration models, then `models.json`
 //! (provider fields and `models[]` upserts), then config-only overrides, then `modelOverrides`.
 //!
-//! Errors are pi's messages (`Provider x: …`); callers record them per provider and keep the
+//! Errors carry the provider name (`Provider x: …`); callers record them per provider and keep the
 //! base models.
 
 use indexmap::IndexMap;
@@ -15,7 +15,7 @@ use crate::registration::{
     DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, ProviderConfigOverride, ProviderModelConfig,
 };
 
-/// Nested compat objects that merge per key (pi `mergeCompat`).
+/// Nested compat objects that merge per key.
 const NESTED_COMPAT_KEYS: [&str; 4] = [
     "openRouterRouting",
     "vercelGatewayRouting",
@@ -26,7 +26,7 @@ const NESTED_COMPAT_KEYS: [&str; 4] = [
 /// API whose models serve as defaults for custom models when nothing closer matches.
 const DEFAULT_TEMPLATE_API: &str = "openai-completions";
 
-/// pi `mergeCompat`: shallow merge, nested routing objects merged per key.
+/// Shallow merge, nested routing objects merged per key.
 #[must_use]
 pub(crate) fn merge_compat(
     base: Option<&JsonValue>,
@@ -146,7 +146,7 @@ fn token_limit(value: f64) -> u64 {
     value as u64
 }
 
-/// pi `applyModelOverride`.
+/// A p p l y   M o d e l   O v e r r i d e.
 #[must_use]
 pub(crate) fn apply_model_override(model: &Model, over: &ModelsJsonModelOverride) -> Model {
     let mut next = model.clone();
@@ -201,7 +201,7 @@ pub(crate) fn apply_model_override(model: &Model, over: &ModelsJsonModelOverride
     next
 }
 
-/// pi `findModelDefaults`.
+/// F i n d   M o d e l   D e f a u l t s.
 fn find_model_defaults<'a>(
     models: &'a [Model],
     model_id: &str,
@@ -215,7 +215,7 @@ fn find_model_defaults<'a>(
         .or_else(|| models.first())
 }
 
-/// pi `modelFromJson`.
+/// M o d e l   F r o m   J s o n.
 fn model_from_json(
     provider_id: &str,
     definition: &ModelsJsonModel,
@@ -300,11 +300,11 @@ fn has_models_json_content(config: &ModelsJsonProvider) -> bool {
         || config.auth_header.is_some()
 }
 
-/// pi `applyModelsJson`.
+/// A p p l y   M o d e l s   J s o n.
 ///
 /// # Errors
 ///
-/// pi's structural messages (missing `baseUrl`/`api`, empty provider entry).
+/// Structural errors (missing `baseUrl`/`api`, empty provider entry).
 pub(crate) fn apply_models_json(
     provider_id: &str,
     base: &[Model],
@@ -347,7 +347,7 @@ pub(crate) fn apply_models_json(
     Ok(models)
 }
 
-/// pi `extensionModelFromDefinition`.
+/// E x t e n s i o n   M o d e l   F r o m   D e f i n i t i o n.
 fn model_from_override_definition(
     provider_id: &str,
     models: &[Model],
@@ -375,16 +375,16 @@ fn model_from_override_definition(
             format!("Provider {provider_id}: \"baseUrl\" is required when defining custom models.")
         })?;
     let mut model = definition.clone().into_model(provider_id, api, base_url);
-    // Override model headers are request-time headers (pi `rawModelHeaders`).
+    // Override model headers are request-time headers.
     model.headers = None;
     Ok(model)
 }
 
-/// pi `applyExtension` for config-only overrides.
+/// Applies config-only overrides.
 ///
 /// # Errors
 ///
-/// pi's messages for override models without `api`/`baseUrl`.
+/// Errors for override models without `api`/`baseUrl`.
 pub(crate) fn apply_override(
     provider_id: &str,
     models: Vec<Model>,
@@ -411,12 +411,12 @@ pub(crate) fn apply_override(
         .collect()
 }
 
-/// Full composition (pi `composeModelProvider().getAllModels()`): `models.json`, then the
+/// Full composition: `models.json`, then the
 /// override, then `modelOverrides`.
 ///
 /// # Errors
 ///
-/// The first structural error, as pi reports it.
+/// The first structural error.
 pub(crate) fn compose_models(
     provider_id: &str,
     base: &[Model],
@@ -438,7 +438,7 @@ pub(crate) fn compose_models(
         .collect())
 }
 
-/// pi `rawModelHeaders`: request-time headers configured for one model
+/// Request-time headers configured for one model
 /// (`modelOverrides` < `models[]` < override `models[]`).
 #[must_use]
 pub(crate) fn raw_model_headers(
@@ -469,7 +469,7 @@ pub(crate) fn raw_model_headers(
     (!headers.is_empty()).then_some(headers)
 }
 
-/// pi `configuredHeaders`: provider headers from `models.json` and the override (override wins).
+/// Provider headers from `models.json` and the override (override wins).
 #[must_use]
 pub(crate) fn configured_headers(
     config: Option<&ModelsJsonProvider>,
@@ -489,7 +489,7 @@ pub(crate) fn configured_headers(
     Some(merged)
 }
 
-/// pi `mergeHeaders`: later names replace earlier ones case-insensitively.
+/// Later names replace earlier ones case-insensitively.
 #[must_use]
 pub(crate) fn merge_headers(
     base: Option<IndexMap<String, String>>,

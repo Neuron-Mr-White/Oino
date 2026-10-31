@@ -395,7 +395,7 @@ pub(crate) struct ExecOutput {
     pub(crate) killed: bool,
 }
 
-/// pi `exec(command, args, {timeout, cwd})`.
+/// Runs a command with optional timeout and cwd.
 pub(crate) async fn exec(
     command: &str,
     args: &[String],

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::diagnostics::ResourceDiagnostic;
 
-/// Per-directory candidates, first existing file wins (pi `loadContextFileFromDir`).
+/// Per-directory candidates, first existing file wins.
 pub const CONTEXT_FILE_CANDIDATES: [&str; 5] = [
     "AGENTS.override.md",
     "AGENTS.md",
@@ -18,7 +18,7 @@ pub const CONTEXT_FILE_CANDIDATES: [&str; 5] = [
     "CLAUDE.MD",
 ];
 
-/// A loaded context file (pi `{path, content}`).
+/// A loaded context file.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextFile {
     /// File path.
@@ -61,7 +61,7 @@ fn load_from_dir(dir: &Path, diagnostics: &mut Vec<ResourceDiagnostic>) -> Optio
     None
 }
 
-/// Git layout around `cwd` (pi `findGitPaths`).
+/// Git layout around `cwd`.
 struct GitPaths {
     repo_dir: PathBuf,
     common_git_dir: PathBuf,
@@ -106,7 +106,7 @@ fn find_git_paths(cwd: &Path) -> Option<GitPaths> {
     }
 }
 
-/// pi `findShadowedContextFile`: the main repo's context file shadowed by a nested linked
+/// The main repo's context file shadowed by a nested linked
 /// worktree's own copy (canonical path), if any.
 fn find_shadowed_context_file(cwd: &Path) -> Option<PathBuf> {
     let git = find_git_paths(cwd)?;
@@ -123,7 +123,7 @@ fn find_shadowed_context_file(cwd: &Path) -> Option<PathBuf> {
     Some(main_root.join(worktree_file.path.file_name()?))
 }
 
-/// pi `loadProjectContextFiles`: the agent-dir file, then one file per ancestor directory from
+/// The agent-dir file, then one file per ancestor directory from
 /// the filesystem root down to `cwd`; a path is loaded once and a nested git worktree's file
 /// shadows the main repository's. `cwd` and `agent_dir` must be absolute.
 #[must_use]

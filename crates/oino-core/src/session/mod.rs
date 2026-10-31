@@ -1,4 +1,4 @@
-//! `AgentSession` (pi `agent-session.ts`): agent lifecycle, persistence, prompts, queues,
+//! `AgentSession`: agent lifecycle, persistence, prompts, queues,
 //! models, tools, compaction, retry, bash, tree navigation and the extension bindings of one
 //! session.
 //!
@@ -160,7 +160,7 @@ pub enum SessionOpError {
     Failed(String),
 }
 
-/// What an `agent_before_settle` / `turn_end` run ended with (pi `AgentActivityOutcome`).
+/// What an `agent_before_settle` / `turn_end` run ended with.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ActivityOutcome {
@@ -586,7 +586,7 @@ impl AgentSession {
         self.rebuild_system_prompt(&active);
     }
 
-    /// pi `reload`: `session_shutdown{reason:"reload"}`, settings and resources reload, tool
+    /// `session_shutdown{reason:"reload"}`, settings and resources reload, tool
     /// registry rebuild, then `session_start{reason:"reload"}` and `resources_discover`.
     ///
     /// # Errors
@@ -745,7 +745,7 @@ impl AgentSession {
             || cancels.branch_summary.is_some()
     }
 
-    /// pi `isIdle`.
+    /// Returns whether the session is idle.
     #[must_use]
     pub fn is_idle(&self) -> bool {
         !self.is_streaming() && !self.is_compacting()
@@ -814,7 +814,7 @@ impl AgentSession {
         book.steering.len() + book.follow_up.len()
     }
 
-    /// Clears both queues and returns their texts (pi `clearQueue`).
+    /// Clears both queues and returns their texts.
     #[must_use]
     pub fn clear_queue(&self) -> (Vec<String>, Vec<String>) {
         let (steering, follow_up) = {
@@ -840,7 +840,7 @@ impl AgentSession {
         });
     }
 
-    /// Text of the last assistant message (pi `getLastAssistantText`).
+    /// Text of the last assistant message.
     #[must_use]
     pub fn last_assistant_text(&self) -> Option<String> {
         let messages = self.messages();
@@ -947,7 +947,7 @@ impl AgentSession {
         self.inner.idle.send_replace(false);
     }
 
-    /// Resolves once the session is idle (pi `waitForIdle`).
+    /// Resolves once the session is idle.
     pub async fn wait_for_idle(&self) {
         if self.is_idle() {
             return;
@@ -963,7 +963,7 @@ impl AgentSession {
         }
     }
 
-    /// Aborts the current operation and waits for idle (pi `abort`).
+    /// Aborts the current operation and waits for idle.
     pub async fn abort(&self) {
         {
             let mut book = lock(&self.inner.book);
@@ -1128,7 +1128,7 @@ impl AgentSession {
         self.inner.agent.recover_orphaned_run();
     }
 
-    /// Sets the session name (pi `setSessionName`).
+    /// Sets the session name.
     ///
     /// # Errors
     ///
@@ -1205,7 +1205,7 @@ fn unmap_queue_mode(mode: oino_agent::QueueMode) -> oino_settings::QueueMode {
     }
 }
 
-/// pi `convertToLlmWithBlockImages`.
+/// Converts an entry to LLM records, blocking images.
 fn convert_with_block_images(settings: Arc<Mutex<SettingsManager>>) -> oino_agent::ConvertToLlm {
     Arc::new(move |messages: &[AgentMessage]| {
         let converted = oino_session::convert_to_llm(messages);

@@ -5,7 +5,7 @@
 //! previous content (or its absence) under the checkpoint of the user message that started
 //! the run, once per file and checkpoint. Rewinding to a user message restores every file
 //! touched at or after that checkpoint to the state it had before it and, optionally, forks
-//! the conversation before that message (pi `fork`). Shell commands and extension tools are
+//! the conversation before that message. Shell commands and extension tools are
 //! not tracked.
 //!
 //! Persisted sessions keep the checkpoints in `<agentDir>/checkpoints/<sessionId>/`

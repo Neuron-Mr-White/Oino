@@ -1,4 +1,4 @@
-//! Streaming events (pi `AssistantMessageEvent`), the partial-free provider form crossing the
+//! Streaming events, the partial-free provider form crossing the
 //! WIT boundary ([`ProviderEvent`]) and request types ([`Context`], [`StreamOptions`]).
 
 use indexmap::IndexMap;
@@ -53,7 +53,7 @@ impl From<ErrorReason> for StopReason {
     }
 }
 
-/// pi `AssistantMessageEvent` (with the live `partial` message).
+/// An assistant message event (with the live `partial` message).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AssistantMessageEvent {
@@ -257,7 +257,7 @@ pub enum ProviderEvent {
     },
 }
 
-/// Rebuilds pi `partial` messages from [`ProviderEvent`]s so the host emits exact pi events.
+/// Rebuilds `partial` messages from [`ProviderEvent`]s so the host emits exact events.
 #[derive(Clone, Debug)]
 pub struct PartialAssembler {
     partial: AssistantMessage,
@@ -283,10 +283,10 @@ impl PartialAssembler {
         &self.partial
     }
 
-    /// Applies one provider event and returns the matching pi event.
+    /// Applies one provider event and returns the matching client event.
     #[allow(
         clippy::too_many_lines,
-        reason = "one arm per pi event keeps the 1:1 mapping readable"
+        reason = "one arm per provider event keeps the 1:1 mapping readable"
     )]
     pub fn apply(&mut self, event: ProviderEvent) -> AssistantMessageEvent {
         match event {
@@ -463,7 +463,7 @@ pub enum Transport {
     Auto,
 }
 
-/// Token budgets per thinking level (pi `ThinkingBudgets`).
+/// Token budgets per thinking level.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ThinkingBudgets {
     /// `minimal` budget.
@@ -480,7 +480,7 @@ pub struct ThinkingBudgets {
     pub high: Option<u64>,
 }
 
-/// Serializable subset of pi `SimpleStreamOptions`.
+/// Serializable subset of the stream options.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamOptions {

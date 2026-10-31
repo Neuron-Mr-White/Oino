@@ -1,17 +1,17 @@
-//! `defaultTools` selection rules (pi `settings-manager.ts` tool helpers).
+//! `defaultTools` selection rules.
 
 use serde_json::Value;
 
-/// Tools enabled at startup when `defaultTools` does not change them (pi `DEFAULT_TOOL_NAMES`).
+/// Tools enabled at startup when `defaultTools` does not change them.
 pub const DEFAULT_TOOL_NAMES: [&str; 4] = ["read", "bash", "edit", "write"];
 
-/// Whether `entry` is a `+name` or `-name` modifier (pi `isToolModifier`).
+/// Whether `entry` is a `+name` or `-name` modifier.
 #[must_use]
 pub fn is_tool_modifier(entry: &str) -> bool {
     entry.starts_with('+') || entry.starts_with('-')
 }
 
-/// pi `getToolListError`: a tool list is either plain names/patterns or only exact `+name` /
+/// A tool list is either plain names/patterns or only exact `+name` /
 /// `-name` entries. Returns the problem, or `None` when the list is valid.
 #[must_use]
 pub fn tool_list_error<S: AsRef<str>>(entries: &[S]) -> Option<String> {
@@ -34,7 +34,7 @@ pub fn tool_list_error<S: AsRef<str>>(entries: &[S]) -> Option<String> {
         })
 }
 
-/// pi `applyToolModifiers`: apply `+name` (add when absent) and `-name` (remove) in order.
+/// Apply `+name` (add when absent) and `-name` (remove) in order.
 #[must_use]
 pub fn apply_tool_modifiers<S: AsRef<str>>(base: &[String], entries: &[S]) -> Vec<String> {
     let mut tools = base.to_vec();
@@ -55,7 +55,7 @@ pub fn apply_tool_modifiers<S: AsRef<str>>(base: &[String], entries: &[S]) -> Ve
     tools
 }
 
-/// pi `resolveDefaultTools`: plain names replace [`DEFAULT_TOOL_NAMES`], then modifiers apply.
+/// Plain names replace [`DEFAULT_TOOL_NAMES`], then modifiers apply.
 #[must_use]
 pub fn resolve_default_tools(entries: &[String]) -> Vec<String> {
     let plain: Vec<String> = entries
@@ -74,7 +74,7 @@ pub fn resolve_default_tools(entries: &[String]) -> Vec<String> {
     apply_tool_modifiers(&base, entries)
 }
 
-/// pi `mergeDefaultTools`: `None` when neither layer sets the key; a modifier-only override list
+/// `None` when neither layer sets the key; a modifier-only override list
 /// is appended to an array base, anything else replaces it.
 pub(crate) fn merge_default_tools(
     base: Option<&Value>,

@@ -1,4 +1,4 @@
-//! `oino-settings`: pi 1.4.0 settings for Oino — global/project layering, migrations, typed
+//! `oino-settings`: settings for Oino — global/project layering, migrations, typed
 //! getters, locked atomic writes, and the filesystem layout of the agent and project dirs.
 //!
 //! Boundary: synchronous std I/O only (no async runtime); `oino-core` owns one
@@ -6,19 +6,19 @@
 //!
 //! # API map
 //!
-//! | Module | pi equivalent | Contents |
-//! |---|---|---|
-//! | [`manager`] | `SettingsManager`, `FileSettingsStorage` | [`SettingsManager`]: create / in-memory, trust gating, reload, scoped writes, typed setters |
-//! | [`view`] | `SettingsManager` getters | [`Settings`]: typed getters with pi defaults, layer access, extension settings layering |
-//! | [`types`] | `settings-schema.ts`, `SETTINGS_DEFAULTS` | [`QueueMode`], [`CacheWarmingMode`], [`ProjectTrustDefault`], [`UiDensity`], resolved setting structs, [`PackageSource`], [`ResourceKind`], [`defaults`] |
-//! | [`error`] | `SettingsError`, `collectSettingsDiagnostics` | [`SettingsScope`], [`SettingsError`], [`SettingsErrorKind`], [`InvalidSettingError`] |
-//! | [`json`] | `deepMergeSettings`, `migrateSettings` | merge/migrate/path helpers over [`JsonObject`] |
-//! | [`tools`] | `DEFAULT_TOOL_NAMES`, tool modifiers | [`tools::resolve_default_tools`], [`tools::apply_tool_modifiers`], [`tools::tool_list_error`] |
-//! | [`paths`] | `config.ts`, `utils/paths.ts` | [`paths::agent_dir`], [`paths::project_dir`], file-name constants, [`paths::env`] names, tilde/`file://` resolution |
-//! | [`storage`] | `proper-lockfile` use | [`storage::FileLock`] (`<file>.lock`), [`storage::write_atomic`] (shared with other agent-dir files) |
-//! | [`secrets`] | — (Oino) | [`SecretStore`]: `<agent>/secrets.json` (0600, locked), extension secrets and secret settings fields |
+//! | Module | Contents |
+//! |---|---|
+//! | [`manager`] | [`SettingsManager`]: create / in-memory, trust gating, reload, scoped writes, typed setters |
+//! | [`view`] | [`Settings`]: typed getters with defaults, layer access, extension settings layering |
+//! | [`types`] | [`QueueMode`], [`CacheWarmingMode`], [`ProjectTrustDefault`], [`UiDensity`], resolved setting structs, [`PackageSource`], [`ResourceKind`], [`defaults`] |
+//! | [`error`] | [`SettingsScope`], [`SettingsError`], [`SettingsErrorKind`], [`InvalidSettingError`] |
+//! | [`json`] | merge/migrate/path helpers over [`JsonObject`] |
+//! | [`tools`] | [`tools::resolve_default_tools`], [`tools::apply_tool_modifiers`], [`tools::tool_list_error`] |
+//! | [`paths`] | [`paths::agent_dir`], [`paths::project_dir`], file-name constants, [`paths::env`] names, tilde/`file://` resolution |
+//! | [`storage`] | [`storage::FileLock`] (`<file>.lock`), [`storage::write_atomic`] (shared with other agent-dir files) |
+//! | [`secrets`] | [`SecretStore`]: `<agent>/secrets.json` (0600, locked), extension secrets and secret settings fields |
 //!
-//! # Semantics (pi parity)
+//! # Semantics
 //!
 //! - Project settings (`<cwd>/.oino/settings.json`) load only when the project is trusted and
 //!   override global ones (`<agent>/settings.json`); nested objects deep-merge, arrays replace.

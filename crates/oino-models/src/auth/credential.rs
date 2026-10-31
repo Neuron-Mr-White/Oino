@@ -1,4 +1,4 @@
-//! `auth.json` credential shapes (pi `Credential`).
+//! `auth.json` credential shapes.
 
 use indexmap::IndexMap;
 use oino_ai::{JsonObject, JsonValue};
@@ -59,7 +59,7 @@ pub enum AuthCredential {
     Oauth(OAuthCredential),
 }
 
-/// Credential kind (pi `AuthType`).
+/// Credential kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialType {
@@ -154,7 +154,7 @@ fn js_ms(value: f64) -> i64 {
     value.trunc() as i64
 }
 
-/// Credential metadata (pi `CredentialInfo`).
+/// Credential metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CredentialInfo {

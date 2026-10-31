@@ -1,11 +1,11 @@
-//! pi `defaults.ts` and `defaultModelPerProvider`.
+//! Default model preferences per provider.
 
 use oino_ai::ThinkingLevel;
 
-/// pi `DEFAULT_THINKING_LEVEL`.
+/// The default thinking level constant.
 pub const DEFAULT_THINKING_LEVEL: ThinkingLevel = ThinkingLevel::Medium;
 
-/// pi `defaultModelPerProvider` in pi's key order: preferred model per known provider id, used
+/// Preferred model per known provider id in key order, used
 /// for the first-available fallback and custom model templates.
 pub const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] = &[
     ("amazon-bedrock", "us.anthropic.claude-opus-4-6-v1"),
@@ -54,7 +54,7 @@ pub const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] = &[
     ("xiaomi-token-plan-sgp", "mimo-v2.6-pro"),
 ];
 
-/// The preferred model id of `provider`, if pi knows one.
+/// The preferred model id of `provider`, if one is known.
 #[must_use]
 pub fn default_model_for_provider(provider: &str) -> Option<&'static str> {
     DEFAULT_MODEL_PER_PROVIDER

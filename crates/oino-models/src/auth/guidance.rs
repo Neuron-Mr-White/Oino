@@ -1,11 +1,11 @@
-//! pi `auth-guidance.ts`: user-facing texts when no model or credential is available
+//! User-facing texts when no model or credential is available
 //! (product name and docs location substituted per D13).
 
 use std::path::Path;
 
 const UNKNOWN_PROVIDER: &str = "unknown";
 
-/// pi `getProviderLoginHelp`; `docs_dir` is the installed documentation directory.
+/// Returns provider login help; `docs_dir` is the installed documentation directory.
 #[must_use]
 pub fn provider_login_help(docs_dir: &Path) -> String {
     [
@@ -16,13 +16,13 @@ pub fn provider_login_help(docs_dir: &Path) -> String {
     .join("\n")
 }
 
-/// pi `formatNoModelsAvailableMessage`.
+/// F o r m a t   N o   M o d e l s   A v a i l a b l e   M e s s a g e.
 #[must_use]
 pub fn no_models_available_message(docs_dir: &Path) -> String {
     format!("No models available. {}", provider_login_help(docs_dir))
 }
 
-/// pi `formatNoModelSelectedMessage`.
+/// F o r m a t   N o   M o d e l   S e l e c t e d   M e s s a g e.
 #[must_use]
 pub fn no_model_selected_message(docs_dir: &Path) -> String {
     format!(
@@ -31,7 +31,7 @@ pub fn no_model_selected_message(docs_dir: &Path) -> String {
     )
 }
 
-/// pi `formatNoApiKeyFoundMessage`.
+/// F o r m a t   N o   A p i   K e y   F o u n d   M e s s a g e.
 #[must_use]
 pub fn no_api_key_found_message(provider: &str, docs_dir: &Path) -> String {
     let display = if provider == UNKNOWN_PROVIDER {

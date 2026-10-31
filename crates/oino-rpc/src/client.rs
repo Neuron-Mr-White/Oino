@@ -1,4 +1,4 @@
-//! [`RpcClient`]: typed client for `oino --mode rpc` (pi `rpc-client.ts`).
+//! [`RpcClient`]: typed client for `oino --mode rpc`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use oino_ai::{AgentMessage, ImageContent, JsonValue, Model, ThinkingLevel};
 use oino_client::{
-    ClientError, AgentCommand, RpcCommand, RpcResponse, RpcResponseData, RpcSessionState,
+    AgentCommand, ClientError, RpcCommand, RpcResponse, RpcResponseData, RpcSessionState,
 };
 use oino_core::compaction::CompactionResult;
 use oino_core::session::{
@@ -369,7 +369,9 @@ impl RpcClient {
     ///
     /// Session file failures.
     pub async fn new_session(&self, parent_session: Option<String>) -> Result<bool, ClientError> {
-        let reply: Cancelled = self.typed(AgentCommand::NewSession { parent_session }).await?;
+        let reply: Cancelled = self
+            .typed(AgentCommand::NewSession { parent_session })
+            .await?;
         Ok(reply.cancelled)
     }
 

@@ -310,7 +310,7 @@ impl SessionHub {
         self.wake(target).await
     }
 
-    /// Creates a fresh session (pi `session_new`) in `cwd` (the hub's primary cwd when
+    /// Creates a fresh session in `cwd` (the hub's primary cwd when
     /// `None`) and returns its backend. Services come from the hub's per-cwd cache; the
     /// runtime starts over `SessionSource::New`, so core writes the session file at the
     /// first conversation entry (durability rule), and `name` is recorded as the session's

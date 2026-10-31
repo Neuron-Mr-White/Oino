@@ -1,6 +1,6 @@
 //! Environment lookup used by credential and config-value resolution.
 //!
-//! pi reads `process.env` directly. Oino injects the environment so tests stay deterministic
+//! The environment is injected so tests stay deterministic
 //! (edition 2024 makes `std::env::set_var` unsafe) and hosts can overlay variables.
 
 use std::collections::HashMap;
@@ -9,7 +9,7 @@ use std::fmt;
 /// Source of environment variables.
 ///
 /// Implementations return `None` for unset variables. Callers treat empty values as unset,
-/// matching pi's `env[name] || process.env[name] || undefined`.
+/// matching `env[name] || process.env[name] || undefined`.
 pub trait EnvSource: Send + Sync {
     /// Value of `name`, if set.
     fn var(&self, name: &str) -> Option<String>;
@@ -70,7 +70,7 @@ impl EnvSource for MapEnv {
 }
 
 /// Looks up `name` in `explicit` first, then in `env`; empty values count as unset
-/// (pi `resolveEnvConfigValue`).
+///.
 pub(crate) fn lookup(
     name: &str,
     explicit: Option<&indexmap::IndexMap<String, String>>,

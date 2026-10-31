@@ -279,7 +279,7 @@ async fn summarize_default_uses_the_first_compaction_prompt() {
     assert_json("request", &recorder.requests()[0], &case["requests"][0]);
 }
 
-/// pi `generateSummary(…, previousSummary)`: the update prompt plus a `<previous-summary>`
+/// The update prompt plus a `<previous-summary>`
 /// block instead of a fresh summary.
 #[tokio::test]
 async fn summarize_default_updates_a_previous_summary() {

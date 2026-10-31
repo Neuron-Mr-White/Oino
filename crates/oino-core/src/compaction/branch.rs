@@ -1,4 +1,4 @@
-//! Branch summarisation for tree navigation (pi `compaction/branch-summarization.js`).
+//! Branch summarisation for tree navigation.
 
 use std::collections::HashSet;
 
@@ -14,7 +14,7 @@ use super::summarize::{
 use super::tokens::estimate_tokens;
 use super::utils::{FileLists, FileOperations, format_file_operations, serialize_conversation};
 
-/// pi `BranchSummaryDetails`: file tracking stored in `BranchSummaryEntry.details`.
+/// File tracking stored in `BranchSummaryEntry.details`.
 pub type BranchSummaryDetails = FileLists;
 
 /// Default `branchSummary.reserveTokens`.
@@ -23,7 +23,7 @@ pub const DEFAULT_BRANCH_SUMMARY_RESERVE_TOKENS: u64 = 16384;
 /// Context window assumed when the model reports 0.
 const FALLBACK_CONTEXT_WINDOW: u64 = 128_000;
 
-/// pi `CollectEntriesResult`.
+/// The collect entries result record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectEntriesResult {
@@ -33,7 +33,7 @@ pub struct CollectEntriesResult {
     pub common_ancestor_id: Option<EntryId>,
 }
 
-/// pi `BranchPreparation`.
+/// The branch preparation record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchPreparation {
@@ -45,7 +45,7 @@ pub struct BranchPreparation {
     pub total_tokens: u64,
 }
 
-/// pi `BranchSummaryResult`.
+/// The branch summary result record.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSummaryResult {
@@ -91,7 +91,7 @@ impl Default for BranchSummaryOptions {
     }
 }
 
-/// pi `SessionManager.getBranch(id)`: root → `id` (empty for an unknown id).
+/// Root → `id` (empty for an unknown id).
 fn branch_ids(index: &EntryIndex, id: &EntryId) -> Vec<EntryId> {
     let mut path = Vec::new();
     let mut seen = HashSet::new();
@@ -110,7 +110,7 @@ fn branch_ids(index: &EntryIndex, id: &EntryId) -> Vec<EntryId> {
     path
 }
 
-/// pi `collectEntriesForBranchSummary`: entries from `old_leaf` back to (excluding) the
+/// Entries from `old_leaf` back to (excluding) the
 /// deepest common ancestor with `target`, oldest first. Compaction entries are included.
 #[must_use]
 pub fn collect_entries_for_branch_summary(
@@ -184,7 +184,7 @@ fn message_from_entry(entry: &SessionEntry) -> Option<AgentMessage> {
     }
 }
 
-/// pi `prepareBranchEntries`: file operations from every entry (seeded from pi-generated
+/// File operations from every entry (seeded from pi-generated
 /// branch summaries), then messages newest → oldest until `token_budget` (0 = unlimited); a
 /// summary entry that overflows is still kept while under 90 % of the budget.
 #[must_use]
@@ -233,7 +233,7 @@ pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> Br
     }
 }
 
-/// pi `generateBranchSummary`: summarises abandoned branch entries (oldest first) within
+/// Summarises abandoned branch entries (oldest first) within
 /// `context window − reserve_tokens`. Failures are reported in the result, not as errors.
 /// The request carries no reasoning level or caller session id (as in pi).
 pub async fn generate_branch_summary(

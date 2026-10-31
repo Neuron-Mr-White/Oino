@@ -1,4 +1,4 @@
-//! Initial selection, restore and cycling tests (ported from pi behaviour).
+//! Initial selection, restore and cycling tests.
 
 use indexmap::IndexMap;
 use oino_ai::ThinkingLevel;

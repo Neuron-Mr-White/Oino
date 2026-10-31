@@ -40,7 +40,7 @@ pub struct TrustUpdate {
     pub decision: ProjectTrustDecision,
 }
 
-/// A selectable trust answer (pi `ProjectTrustOption`).
+/// A selectable trust answer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrustOption {
     /// Label shown to the user.
@@ -89,7 +89,7 @@ pub enum TrustStoreError {
     },
 }
 
-/// `<agent>/trust.json` (pi `ProjectTrustStore`): canonical directory → decision, locked access,
+/// `<agent>/trust.json`: canonical directory → decision, locked access,
 /// nearest-ancestor lookup.
 #[derive(Clone, Debug)]
 pub struct TrustStore {
@@ -117,7 +117,7 @@ impl TrustStore {
         &self.path
     }
 
-    /// Nearest saved decision for `cwd` or an ancestor (pi `get`).
+    /// Nearest saved decision for `cwd` or an ancestor.
     ///
     /// # Errors
     ///
@@ -126,7 +126,7 @@ impl TrustStore {
         Ok(self.get_entry(cwd)?.map(|entry| entry.trusted))
     }
 
-    /// Nearest saved entry (pi `getEntry`).
+    /// Nearest saved entry.
     ///
     /// # Errors
     ///
@@ -145,7 +145,7 @@ impl TrustStore {
             }))
     }
 
-    /// Save one decision (pi `set`).
+    /// Save one decision.
     ///
     /// # Errors
     ///
@@ -244,7 +244,7 @@ impl TrustStore {
     }
 }
 
-/// pi `hasTrustRequiringProjectResources`: protected entries under `<cwd>/.oino`, or an
+/// Protected entries under `<cwd>/.oino`, or an
 /// `.agents/skills` dir in `cwd` or any ancestor other than `~/.agents/skills`.
 #[must_use]
 pub fn has_protected_resources(cwd: &Path, home: Option<&Path>) -> bool {
@@ -263,13 +263,13 @@ pub fn has_protected_resources(cwd: &Path, home: Option<&Path>) -> bool {
     })
 }
 
-/// Parent directory offered by "Trust parent folder" (pi `getProjectTrustParentPath`).
+/// Parent directory offered by "Trust parent folder".
 #[must_use]
 pub fn trust_parent_path(cwd: &Path) -> Option<PathBuf> {
     normalize_dir(cwd).parent().map(Path::to_path_buf)
 }
 
-/// pi `getProjectTrustOptions`.
+/// Returns the project trust options.
 #[must_use]
 pub fn trust_options(cwd: &Path, include_session_only: bool) -> Vec<TrustOption> {
     let trust_path = normalize_dir(cwd);
@@ -336,7 +336,7 @@ pub fn trust_prompt(cwd: &Path) -> String {
     )
 }
 
-/// A `project_trust` extension handler's answer (pi `ProjectTrustEventResult`).
+/// A `project_trust` extension handler's answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ExtensionTrustDecision {
     /// `trusted: "yes"`.

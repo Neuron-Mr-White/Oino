@@ -19,7 +19,7 @@ use serde_json::json;
 
 use crate::backend::{ClientError, SessionBackend};
 use crate::follow::Followers;
-use crate::protocol::{OinoCommand, AgentCommand, RpcCommand, RpcResponseData, RpcSessionState};
+use crate::protocol::{AgentCommand, OinoCommand, RpcCommand, RpcResponseData, RpcSessionState};
 
 /// Name and version reported by `_oino/hello`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -113,7 +113,7 @@ impl InProcessBackend {
         &self.shared.runtime
     }
 
-    /// pi `get_state`.
+    /// Returns the state.
     #[must_use]
     pub fn state(&self) -> RpcSessionState {
         self.shared.state()
@@ -565,7 +565,7 @@ impl Shared {
     }
 
     /// `_oino/rewind`: files first (checkpoints at and after the entry), then the
-    /// conversation fork before the entry (pi `fork`).
+    /// conversation fork before the entry.
     async fn rewind(
         &self,
         session: &AgentSession,

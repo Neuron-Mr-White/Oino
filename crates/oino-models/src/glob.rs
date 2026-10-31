@@ -1,4 +1,4 @@
-//! minimatch subset used by pi model scoping (`nocase`, `*` does not cross `/`).
+//! minimatch subset used by model scoping (`nocase`, `*` does not cross `/`).
 
 use globset::GlobBuilder;
 

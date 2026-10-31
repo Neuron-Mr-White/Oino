@@ -1,11 +1,14 @@
 [package]
 name = "oino-ai"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "pi-ai compatible message, content, model and streaming types for Oino"
+description = "Message, content, model and streaming types for the Oino agent stack"
+readme = "README.md"
+keywords = ["llm", "ai", "agent", "streaming", "messaging"]
+categories = ["data-structures", "encoding"]
 
 [dependencies]
 indexmap.workspace = true

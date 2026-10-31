@@ -1,4 +1,4 @@
-//! Extension tools as [`AgentTool`]s (pi `wrapRegisteredTools`).
+//! Extension tools as [`AgentTool`]s.
 
 use std::sync::Arc;
 

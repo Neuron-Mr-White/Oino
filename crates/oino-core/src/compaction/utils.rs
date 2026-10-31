@@ -1,4 +1,4 @@
-//! Shared helpers (pi `compaction/utils.js`): file-operation tracking and conversation
+//! Shared helpers: file-operation tracking and conversation
 //! serialisation for summary prompts.
 
 use indexmap::IndexSet;
@@ -30,13 +30,13 @@ pub struct FileLists {
 }
 
 impl FileOperations {
-    /// pi `createFileOps`.
+    /// C r e a t e   F i l e   O p s.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// pi `extractFileOpsFromMessage`: tool calls of an assistant message, or the nested calls
+    /// Tool calls of an assistant message, or the nested calls
     /// recorded on a tool result (codemode scripts).
     pub fn extract_from_message(&mut self, message: &AgentMessage) {
         match message {
@@ -73,7 +73,7 @@ impl FileOperations {
         set.insert(path.to_owned());
     }
 
-    /// pi `computeFileLists`: read-only files and modified (edited ∪ written) files, each in
+    /// Read-only files and modified (edited ∪ written) files, each in
     /// JS default sort order.
     #[must_use]
     pub fn file_lists(&self) -> FileLists {
@@ -111,7 +111,7 @@ impl FileOperations {
     }
 }
 
-/// pi `formatFileOperations`: `<read-files>` / `<modified-files>` sections, prefixed with a
+/// `<read-files>` / `<modified-files>` sections, prefixed with a
 /// blank line, or `""` when both lists are empty.
 #[must_use]
 pub fn format_file_operations(read_files: &[String], modified_files: &[String]) -> String {
@@ -160,7 +160,7 @@ fn blocks_text(blocks: &[UserContent], separator: &str) -> String {
         .join(separator)
 }
 
-/// pi `serializeConversation`: LLM messages as `[User]:` / `[Assistant]:` /
+/// LLM messages as `[User]:` / `[Assistant]:` /
 /// `[Assistant tool calls]:` / `[Tool result]:` paragraphs (thinking omitted, tool results
 /// truncated to [`TOOL_RESULT_MAX_CHARS`]). Call [`oino_session::convert_to_llm`] first.
 #[must_use]

@@ -1,6 +1,6 @@
 {
-  "api": "pi-virtual",
-  "stateEntry": "pi.virtual-model-state",
+  "api": "oino-virtual",
+  "stateEntry": "oino.virtual-model-state",
   "models": [
     {
       "definition": {
@@ -15,7 +15,7 @@
       "model": {
         "id": "auto",
         "name": "Auto",
-        "api": "pi-virtual",
+        "api": "oino-virtual",
         "provider": "router",
         "baseUrl": "",
         "reasoning": true,
@@ -51,7 +51,7 @@
       "model": {
         "id": "plain",
         "name": "Plain",
-        "api": "pi-virtual",
+        "api": "oino-virtual",
         "provider": "router",
         "baseUrl": "",
         "reasoning": false,
@@ -96,7 +96,7 @@
       "model": {
         "id": "limits",
         "name": "Limits",
-        "api": "pi-virtual",
+        "api": "oino-virtual",
         "provider": "router",
         "baseUrl": "",
         "reasoning": true,

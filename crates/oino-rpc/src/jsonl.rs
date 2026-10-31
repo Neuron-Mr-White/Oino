@@ -1,4 +1,4 @@
-//! Strict JSONL framing (pi `jsonl.ts`): records end with `\n` only; a trailing `\r` is
+//! Strict JSONL framing: records end with `\n` only; a trailing `\r` is
 //! stripped; U+2028/U+2029 inside strings are payload, not separators.
 
 use tokio::io::{AsyncRead, AsyncReadExt};

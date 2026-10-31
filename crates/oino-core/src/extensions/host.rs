@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 use super::api::{ArbiterRoles, CallContext, CommandSpec, FlagSpec, ShortcutSpec, ToolSpec};
 use crate::agents::ChildAgent;
 
-/// Delivery of extension messages (pi `deliverAs`).
+/// Delivery of extension messages.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Delivery {
@@ -21,7 +21,7 @@ pub enum Delivery {
     NextTurn,
 }
 
-/// `sendMessage` draft (pi `Pick<CustomMessage, "customType"|"content"|"display"|"details">`).
+/// `sendMessage` draft.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomMessageDraft {
@@ -126,7 +126,7 @@ pub enum HostOp {
         /// Payload.
         data: Option<JsonValue>,
     },
-    /// pi `sendMessage`.
+    /// Sends a message into the session.
     SendMessage {
         /// Draft.
         message: CustomMessageDraft,
@@ -135,29 +135,29 @@ pub enum HostOp {
         /// Delivery mode.
         deliver_as: Option<Delivery>,
     },
-    /// pi `sendUserMessage`.
+    /// Sends a user message into the session.
     SendUserMessage {
         /// Content.
         content: UserContentField,
         /// Delivery mode while streaming.
         deliver_as: Option<Delivery>,
     },
-    /// pi `setSessionName`.
+    /// Sets the session name.
     SetSessionName(String),
-    /// pi `setLabel`.
+    /// Sets the entry label.
     SetLabel {
         /// Entry id.
         entry_id: String,
         /// Label (`None` clears).
         label: Option<String>,
     },
-    /// pi `getActiveTools`.
+    /// Returns the active tools.
     GetActiveTools,
-    /// pi `getAllTools`.
+    /// Returns every tool.
     GetAllTools,
-    /// pi `setActiveTools`.
+    /// Sets the active tools.
     SetActiveTools(Vec<String>),
-    /// pi `getCommands`.
+    /// Returns the registered commands.
     GetCommands,
     /// pi `setModel`; returns `true` when auth is configured and the model was set.
     SetModel {
@@ -178,26 +178,26 @@ pub enum HostOp {
     },
     /// Current model (`null` when none).
     GetModel,
-    /// pi `getThinkingLevel`.
+    /// Returns the current thinking level.
     GetThinkingLevel,
-    /// pi `setThinkingLevel`.
+    /// Sets the thinking level.
     SetThinkingLevel(ThinkingLevel),
-    /// pi `ctx.isIdle`.
+    /// Returns whether the session is idle.
     IsIdle,
-    /// pi `ctx.abort`.
+    /// Aborts the current turn.
     Abort,
-    /// pi `ctx.hasPendingMessages`.
+    /// Returns whether messages are pending.
     HasPendingMessages,
-    /// pi `ctx.getContextUsage`.
+    /// Returns the context usage.
     GetContextUsage,
-    /// pi `ctx.compact`.
+    /// Triggers compaction.
     Compact {
         /// Custom instructions.
         custom_instructions: Option<String>,
     },
-    /// pi `ctx.getSystemPrompt`.
+    /// Returns the current system prompt.
     GetSystemPrompt,
-    /// pi `getSettings()`: the merged settings object.
+    /// The merged settings object.
     GetSettings,
     /// Models with configured credentials (`control.models-list`).
     GetAvailableModels,
@@ -226,7 +226,7 @@ pub enum HostOp {
         messages: JsonValue,
         /// Extra focus.
         custom_instructions: Option<String>,
-        /// Earlier summary to update (pi `previousSummary`).
+        /// Earlier summary to update.
         previous_summary: Option<String>,
     },
     /// pi command `ctx.waitForIdle` (command context only).
@@ -282,7 +282,7 @@ pub enum HostOp {
     ListAgents,
     /// `control.run-state`: `{state, waitingOn?}`.
     GetRunState,
-    /// `control.shutdown` (pi `ctx.shutdown()`): asks the frontend to exit when idle.
+    /// `control.shutdown`: asks the frontend to exit when idle.
     Shutdown,
     /// `control.system-prompt-options` (command context only).
     GetSystemPromptOptions,
@@ -385,7 +385,7 @@ pub struct ModelRequest {
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum HostError {
-    /// The caller's session was replaced or disposed (pi `assertActive`).
+    /// The caller's session was replaced or disposed.
     #[error("{0}")]
     StaleContext(String),
     /// Session-replacing operations need a command or shortcut context.

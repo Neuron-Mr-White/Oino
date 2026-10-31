@@ -1,9 +1,9 @@
-//! JSON aliases and serde helpers that keep the wire format identical to pi (JavaScript).
+//! JSON aliases and serde helpers that keep the wire format identical to a JavaScript host.
 
-/// Arbitrary JSON value (pi `JsonValue` / `unknown`).
+/// Arbitrary JSON value (`unknown`).
 pub type JsonValue = serde_json::Value;
 
-/// JSON object with insertion order preserved (pi `JsonObject`, `Record<string, unknown>`).
+/// JSON object with insertion order preserved (`Record<string, unknown>`).
 pub type JsonObject = serde_json::Map<String, serde_json::Value>;
 
 /// Largest integer a JavaScript `number` represents exactly (`Number.MAX_SAFE_INTEGER`).
@@ -76,7 +76,7 @@ pub fn keep_null<'de, D: serde::Deserializer<'de>>(
     <JsonValue as serde::Deserialize>::deserialize(deserializer).map(Some)
 }
 
-/// Compares two JSON values the way pi golden tests do (quality §4.3): objects ignore key
+/// Compares two JSON values the way golden tests do (quality §4.3): objects ignore key
 /// order, numbers compare by numeric value (`1` equals `1.0`), arrays compare in order.
 #[must_use]
 pub fn json_semantic_eq(left: &JsonValue, right: &JsonValue) -> bool {

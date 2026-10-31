@@ -11,7 +11,7 @@ use crate::json::RawJson;
 
 // ── session ──────────────────────────────────────────────────────────────
 
-/// `session.delivery` (pi `deliverAs`).
+/// `session.delivery`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Delivery {
@@ -78,7 +78,7 @@ pub enum SessionsScope {
     All,
 }
 
-/// Session reads (pi `ReadonlySessionManager`); results are `oino_session` JSON.
+/// Session reads; results are `oino_session` JSON.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "kebab-case")]
 pub enum SessionQuery {
@@ -350,7 +350,7 @@ impl ControlOp {
         )
     }
 
-    /// Only valid in command/shortcut contexts (pi `ExtensionCommandContext`).
+    /// Only valid in command/shortcut contexts.
     #[must_use]
     pub fn needs_command_context(&self) -> bool {
         matches!(
@@ -420,7 +420,7 @@ pub enum ModelsOp {
         messages: RawJson,
         /// Custom instructions.
         custom_instructions: Option<String>,
-        /// Summary of the earlier messages: the call then updates it (pi `previousSummary`).
+        /// Summary of the earlier messages: the call then updates it.
         previous_summary: Option<String>,
     },
     /// `credential-for`.

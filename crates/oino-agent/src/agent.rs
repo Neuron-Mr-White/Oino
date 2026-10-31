@@ -1,4 +1,4 @@
-//! Stateful agent (pi-agent-core `Agent`).
+//! Stateful agent (`Agent`).
 //!
 //! [`Agent`] owns the transcript, reduces loop events into [`AgentState`], awaits listeners in
 //! subscription order, and exposes the steering / follow-up queues. It is cheap to clone; all
@@ -27,19 +27,19 @@ use crate::config::{
 use crate::event::{AgentEvent, EventSink};
 use crate::tool::AgentTool;
 
-/// How queued messages are drained (pi `QueueMode`).
+/// How queued messages are drained.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QueueMode {
     /// Every queued message at once.
     #[serde(rename = "all")]
     All,
-    /// One message per turn (pi default).
+    /// One message per turn (default).
     #[default]
     #[serde(rename = "one-at-a-time")]
     OneAtATime,
 }
 
-/// Operation refused by the agent (pi error texts).
+/// Operation refused by the agent.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum AgentError {
@@ -62,7 +62,7 @@ pub enum AgentError {
     CannotContinue,
 }
 
-/// Snapshot of the agent state (pi `AgentState`).
+/// Snapshot of the agent state.
 #[derive(Clone)]
 pub struct AgentState {
     /// Model of the next request.
@@ -96,7 +96,7 @@ impl std::fmt::Debug for AgentState {
 }
 
 impl AgentState {
-    /// pi `state.systemPrompt`: the replayed prompt text of the transcript.
+    /// The replayed prompt text of the transcript.
     #[must_use]
     pub fn system_prompt(&self) -> String {
         system_prompt_of(&self.messages)
@@ -115,7 +115,7 @@ pub fn system_prompt_of(messages: &[AgentMessage]) -> String {
     .unwrap_or_default()
 }
 
-/// pi-agent-core `DEFAULT_MODEL`.
+/// The default model id.
 #[must_use]
 pub fn unknown_model() -> Model {
     Model {
@@ -159,7 +159,7 @@ pub struct AgentHooks {
     pub prepare_next_turn: Option<Arc<dyn PrepareNextTurn>>,
 }
 
-/// Construction options (pi `AgentOptions`).
+/// Construction options.
 #[derive(Clone)]
 pub struct AgentOptions {
     /// Initial system prompt (becomes the leading system message).
@@ -189,7 +189,7 @@ pub struct AgentOptions {
 }
 
 impl AgentOptions {
-    /// Options with pi defaults for `stream`.
+    /// Options with defaults for `stream`.
     #[must_use]
     pub fn new(stream: Arc<dyn StreamFn>) -> Self {
         Self {
@@ -212,7 +212,7 @@ impl AgentOptions {
     }
 }
 
-/// Listener of agent events (pi `subscribe` callback). Awaited in subscription order.
+/// Listener of agent events (the `subscribe` callback). Awaited in subscription order.
 pub trait AgentListener: Send + Sync {
     /// Handles one event of the active run.
     fn on_event<'a>(
@@ -300,7 +300,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Stateful wrapper around the agent loop (pi `Agent`).
+/// Stateful wrapper around the agent loop.
 #[derive(Clone)]
 pub struct Agent {
     inner: Arc<Inner>,
@@ -397,7 +397,7 @@ impl Agent {
         lock(&self.inner.state).messages.push(message);
     }
 
-    /// Replaces the last transcript message (pi in-place `message_end` replacement).
+    /// Replaces the last transcript message (in-place `message_end` replacement).
     pub fn replace_last_message(&self, message: AgentMessage) {
         if let Some(last) = lock(&self.inner.state).messages.last_mut() {
             *last = message;
@@ -431,7 +431,7 @@ impl Agent {
         lock(&self.inner.state).thinking_level = level;
     }
 
-    /// pi `state.systemPrompt`.
+    /// S t a t e . s y s t e m   P r o m p t.
     #[must_use]
     pub fn system_prompt(&self) -> String {
         system_prompt_of(&lock(&self.inner.state).messages)
@@ -616,7 +616,7 @@ impl Agent {
         Ok(())
     }
 
-    /// pi `prompt(text, images)`: a user message with text and images.
+    /// A user message with text and images.
     ///
     /// # Errors
     ///
@@ -635,7 +635,7 @@ impl Agent {
         .await
     }
 
-    /// pi `prompt(messages)`: starts a run with `messages`; resolves when the run is idle.
+    /// Starts a run with `messages`; resolves when the run is idle.
     ///
     /// # Errors
     ///
@@ -646,7 +646,7 @@ impl Agent {
         Ok(())
     }
 
-    /// pi `continue()`: continues from the transcript; after an assistant message the queues
+    /// Continues from the transcript; after an assistant message the queues
     /// are drained instead.
     ///
     /// # Errors

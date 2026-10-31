@@ -1,4 +1,4 @@
-//! pi-ai `Model` and related catalogue types.
+//! The `Model` and related catalogue types.
 
 use std::fmt;
 
@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::json::{JsonObject, JsonValue, js_f64, js_f64_opt};
 use crate::primitives::{InputModality, ThinkingLevel};
 
-/// Chat model (pi `Model<Api>`).
+/// Chat model.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Model {
@@ -41,7 +41,7 @@ pub struct Model {
     /// Whether the model supports reasoning.
     #[serde(default)]
     pub reasoning: bool,
-    /// Mapping of pi levels to provider effort strings (`null` = unsupported).
+    /// Mapping of thinking levels to provider effort strings (`null` = unsupported).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level_map: Option<ThinkingLevelMap>,
     /// Prompt cache pricing/retention hints.
@@ -97,7 +97,7 @@ impl Model {
         }
     }
 
-    /// pi `getSupportedThinkingLevels`: `[Off]` for non-reasoning models; otherwise every level
+    /// `[Off]` for non-reasoning models; otherwise every level
     /// not mapped to `null`, with `xhigh`/`max` only when explicitly mapped.
     #[must_use]
     pub fn available_thinking_levels(&self) -> Vec<ThinkingLevel> {
@@ -173,10 +173,10 @@ pub enum MapEntry<'a> {
     Value(&'a str),
 }
 
-/// pi `ThinkingLevelMap`: each key is absent, `null`, or a provider string.
+/// Each key is absent, `null`, or a provider string.
 #[allow(
     clippy::option_option,
-    reason = "absent, null and string are three distinct pi states"
+    reason = "absent, null and string are three distinct states"
 )]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ThinkingLevelMap {
@@ -227,7 +227,7 @@ impl ThinkingLevelMap {
 /// Serde for `Option<Option<String>>`: absent / `null` / string.
 #[allow(
     clippy::option_option,
-    reason = "absent, null and string are three distinct pi states"
+    reason = "absent, null and string are three distinct states"
 )]
 mod tri {
     use super::{Deserialize, Deserializer, Serializer};
@@ -309,7 +309,7 @@ pub struct ImageResize {
     pub jpeg_quality: Option<u8>,
 }
 
-/// Image-generation model (pi `ImageModel`).
+/// Image-generation model.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageModel {
@@ -338,7 +338,7 @@ pub struct ImageModel {
     pub headers: Option<IndexMap<String, String>>,
 }
 
-/// Classifier model (pi `ClassifierModel`).
+/// Classifier model.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifierModel {
@@ -370,7 +370,7 @@ pub struct ClassifierModel {
     pub compat: Option<JsonValue>,
 }
 
-/// Any registry model (pi `AnyModel`), discriminated by `type` (absent ⇒ chat).
+/// Any registry model, discriminated by `type` (absent ⇒ chat).
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnyModel {
     /// Chat model (`type` absent or `"chat"`).

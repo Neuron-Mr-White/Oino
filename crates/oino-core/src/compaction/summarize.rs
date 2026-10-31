@@ -85,7 +85,7 @@ impl Summarizer {
         }
     }
 
-    /// pi `createSummarizationOptions`: headers, routing session id and `reasoning` for
+    /// Headers, routing session id and `reasoning` for
     /// reasoning models.
     #[must_use]
     pub fn summarization_options(&self) -> StreamOptions {
@@ -99,7 +99,7 @@ impl Summarizer {
         }
     }
 
-    /// pi `completeSummarization`: one request with prompt-cache writes disabled and a routing
+    /// One request with prompt-cache writes disabled and a routing
     /// session id, retried on transient errors per [`Self::retry`].
     pub async fn complete(&self, context: Context, mut options: StreamOptions) -> AssistantMessage {
         options.cache_retention = Some(CacheRetention::None);
@@ -154,7 +154,7 @@ async fn final_message(
     message
 }
 
-/// pi `buildSummarizationContext`: the summarisation system prompt and one user message.
+/// The summarisation system prompt and one user message.
 #[must_use]
 pub fn summarization_context(prompt_text: &str) -> Context {
     let system = initial_system_message(SUMMARIZATION_SYSTEM_PROMPT, &[]).map(Message::System);
@@ -167,7 +167,7 @@ pub fn summarization_context(prompt_text: &str) -> Context {
     }
 }
 
-/// pi `getSummarizationFailure`: the error for responses that must not become a checkpoint
+/// The error for responses that must not become a checkpoint
 /// (`error`, or `length` with a partial summary).
 #[must_use]
 pub fn summarization_failure(response: &AssistantMessage, label: &str) -> Option<String> {
@@ -187,7 +187,7 @@ pub fn summarization_failure(response: &AssistantMessage, label: &str) -> Option
     }
 }
 
-/// pi `contentText(content)`: text blocks joined with newlines.
+/// Text blocks joined with newlines.
 pub(crate) fn response_text(response: &AssistantMessage) -> String {
     response
         .content
@@ -235,7 +235,7 @@ async fn summarize_prompt(
     })
 }
 
-/// pi `generateSummaryWithUsage`: summarises `messages` (or updates `previous_summary`) with
+/// Summarises `messages` (or updates `previous_summary`) with
 /// the structured checkpoint prompt.
 ///
 /// # Errors
@@ -269,7 +269,7 @@ pub async fn generate_summary(
     summarize_prompt(summarizer, &prompt, "Summarization").await
 }
 
-/// pi `generateTurnPrefixSummary`: checkpoint of the prefix of a split turn.
+/// Checkpoint of the prefix of a split turn.
 async fn generate_turn_prefix_summary(
     messages: &[AgentMessage],
     summarizer: &Summarizer,
@@ -287,7 +287,7 @@ async fn generate_turn_prefix_summary(
 
 /// Core's default summariser exposed to extensions (`models.summarize-default`, C9): a
 /// summary of `messages` with optional extra focus, updating `previous_summary` when given
-/// (pi `generateSummary(…, previousSummary)`).
+///.
 ///
 /// # Errors
 ///
@@ -301,7 +301,7 @@ pub async fn summarize_default(
     generate_summary(messages, summarizer, custom_instructions, previous_summary).await
 }
 
-/// pi `compact`: generates the summary for a [`CompactionPreparation`] (history summary,
+/// Generates the summary for a [`CompactionPreparation`] (history summary,
 /// plus a turn-prefix summary for split turns, merged), appends the file lists and returns
 /// the [`CompactionResult`] with `details: {readFiles, modifiedFiles}`.
 ///

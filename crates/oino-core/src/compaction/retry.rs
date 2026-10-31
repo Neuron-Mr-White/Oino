@@ -1,5 +1,5 @@
 //! Bounded retry of one assistant call (pi-ai `RetryPolicy`, `retryDelayMs`,
-//! `retryAssistantCall`) with observer callbacks (pi `RetryCallbacks`).
+//! `retryAssistantCall`) with observer callbacks.
 
 use std::future::Future;
 
@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::errors::is_retryable_assistant_error;
 
-/// Default cap of one retry delay (pi `DEFAULT_MAX_AGENT_RETRY_DELAY_MS`).
+/// Default cap of one retry delay.
 pub const DEFAULT_MAX_AGENT_RETRY_DELAY_MS: u64 = 60_000;
 
 /// `Number.MAX_SAFE_INTEGER`.
@@ -30,7 +30,7 @@ pub struct RetryPolicy {
     pub max_agent_delay_ms: Option<u64>,
 }
 
-/// pi `retryDelayMs`: `baseDelayMs · 2^max(0, attempt−1)` (saturating at
+/// `baseDelayMs · 2^max(0, attempt−1)` (saturating at
 /// `Number.MAX_SAFE_INTEGER`), capped by `maxAgentDelayMs`.
 #[must_use]
 pub fn retry_delay_ms(base_delay_ms: u64, max_agent_delay_ms: Option<u64>, attempt: u32) -> u64 {
@@ -54,7 +54,7 @@ pub trait SummarizationRetryObserver: Send + Sync {
     fn retry_finished(&self, success: bool, attempt: u32, final_error: Option<&str>);
 }
 
-/// pi `retryAssistantCall`: runs `produce` and retries transient errors (per
+/// Runs `produce` and retries transient errors (per
 /// [`is_retryable_assistant_error`]) with exponential backoff. Aborted responses are terminal;
 /// cancellation during a backoff returns the last response as `aborted` (without its error
 /// message).

@@ -1,5 +1,5 @@
 //! [`Settings`]: an immutable, typed view over the global, project and merged layers
-//! (pi `SettingsManager` getters).
+//! (the settings-manager getters).
 
 use std::path::{Path, PathBuf};
 
@@ -75,19 +75,19 @@ impl Settings {
         }
     }
 
-    /// The effective object (pi `getSettings`).
+    /// The effective object.
     #[must_use]
     pub fn merged(&self) -> &JsonObject {
         &self.merged
     }
 
-    /// The global layer (pi `getGlobalSettings`).
+    /// The global layer.
     #[must_use]
     pub fn global(&self) -> &JsonObject {
         &self.global
     }
 
-    /// The project layer; empty when untrusted (pi `getProjectSettings`).
+    /// The project layer; empty when untrusted.
     #[must_use]
     pub fn project(&self) -> &JsonObject {
         &self.project
@@ -167,7 +167,7 @@ impl Settings {
             .and_then(parse_enum)
     }
 
-    /// Every valid `modelThinkingLevels` entry (pi `getAllModelThinkingLevels`).
+    /// Every valid `modelThinkingLevels` entry.
     #[must_use]
     pub fn model_thinking_levels(&self) -> IndexMap<String, ThinkingLevel> {
         self.value(&["modelThinkingLevels"])
@@ -216,7 +216,7 @@ impl Settings {
             .unwrap_or_default()
     }
 
-    /// Resolved `defaultTools` selection; `None` when no layer sets it (pi `getDefaultTools`).
+    /// Resolved `defaultTools` selection; `None` when no layer sets it.
     #[must_use]
     pub fn default_tools(&self) -> Option<Vec<String>> {
         let tools = self.merged.get("defaultTools")?;
@@ -238,11 +238,11 @@ impl Settings {
     }
 
     /// One compaction token setting: model override, then ordinary value, then default
-    /// (pi `getCompactionTokenSetting`).
+    ///.
     ///
     /// # Errors
     ///
-    /// pi's validation errors for non-integer values or non-object model overrides.
+    /// Validation errors for non-integer values or non-object model overrides.
     pub fn compaction_token(
         &self,
         field: CompactionTokenField,
@@ -360,7 +360,7 @@ impl Settings {
             .unwrap_or(Transport::Auto)
     }
 
-    /// `httpProxy`, global layer only (pi reads `getGlobalSettings().httpProxy`).
+    /// `httpProxy`, global layer only (reads `getGlobalSettings().httpProxy`).
     #[must_use]
     pub fn http_proxy(&self) -> Option<&str> {
         self.global.get("httpProxy").and_then(Value::as_str)
@@ -447,7 +447,7 @@ impl Settings {
         self.global.get("deviceId").and_then(Value::as_str)
     }
 
-    /// Effective `packages` (project replaces global, pi `getPackages`).
+    /// Effective `packages` (project replaces global).
     #[must_use]
     pub fn packages(&self) -> Vec<PackageSource> {
         parse_packages(self.merged.get("packages"))
@@ -459,7 +459,7 @@ impl Settings {
         parse_packages(self.layer(scope).get("packages"))
     }
 
-    /// Effective resource array (project replaces global, pi `getSkillPaths` & co.).
+    /// Effective resource array (project replaces global).
     #[must_use]
     pub fn resource_paths(&self, kind: ResourceKind) -> Vec<String> {
         self.merged
@@ -545,7 +545,7 @@ fn parse_packages(value: Option<&Value>) -> Vec<PackageSource> {
         .unwrap_or_default()
 }
 
-/// pi `parseHttpIdleTimeoutMs`: numbers ≥ 0 (floored), numeric strings, `"disabled"` → 0.
+/// Numbers ≥ 0 (floored), numeric strings, `"disabled"` → 0.
 #[must_use]
 pub fn parse_timeout_ms(value: &Value) -> Option<u64> {
     match value {

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::compaction::CompactionResult;
 use crate::ui::{DismissReason, UiRequest};
 
-/// Why compaction ran (pi `"manual" | "threshold" | "overflow"`).
+/// Why compaction ran.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CompactionReason {
@@ -40,7 +40,7 @@ pub enum SummarizationSource {
     },
 }
 
-/// pi `AgentSessionEvent`.
+/// One event emitted by an agent session.
 #[allow(
     clippy::large_enum_variant,
     reason = "variants mirror pi event shapes; events are moved through channels one at a time"

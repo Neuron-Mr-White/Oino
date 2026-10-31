@@ -292,7 +292,7 @@ pub enum OinoCommand {
         /// The last revision the frontend applied.
         rev: u64,
     },
-    /// pi `navigateTree`.
+    /// Navigates the entry tree.
     #[serde(rename = "_oino/navigate_tree", rename_all = "camelCase")]
     NavigateTree {
         /// Target entry.
@@ -940,7 +940,7 @@ pub struct RpcSessionState {
     pub pending_message_count: usize,
 }
 
-/// pi `RpcSlashCommand`.
+/// The rpc slash command record.
 pub type RpcSlashCommand = oino_core::session::SlashCommandInfo;
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-//! Compaction and branch summarisation (pi `core/compaction/*`), plus the assistant error
+//! Compaction and branch summarisation, plus the assistant error
 //! classification core reuses for overflow recovery and auto-retry.
 //!
 //! Pure logic over `oino-session` entries and projections; the only side effect is the

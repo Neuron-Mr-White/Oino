@@ -1,4 +1,4 @@
-//! Settings storage: files (locked, atomic) or memory (pi `FileSettingsStorage`,
+//! Settings storage: files (locked, atomic) or memory (`FileSettingsStorage`,
 //! `InMemorySettingsStorage`).
 
 use std::fs::{self, File, OpenOptions};
@@ -88,8 +88,8 @@ pub(crate) fn read_optional(path: &Path) -> io::Result<Option<String>> {
     }
 }
 
-/// An exclusive advisory lock on `<path>.lock`, released on drop (pi uses `proper-lockfile`
-/// on the same lock path).
+/// An exclusive advisory lock on `<path>.lock`, released on drop (the lock file lives
+/// beside the locked file).
 #[derive(Debug)]
 pub struct FileLock {
     file: File,

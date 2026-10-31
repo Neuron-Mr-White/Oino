@@ -2,7 +2,7 @@
 //! `buildSessionContext`). Pure functions over an [`EntryIndex`].
 //!
 //! Leaf convention: `leaf = None` is pi's `null` leaf (empty path, e.g. after `resetLeaf`);
-//! an id that is not in the index falls back to the last entry (pi `leaf ??= last`). Use
+//! an id that is not in the index falls back to the last entry. Use
 //! [`EntryIndex::last_id`] for pi's "default leaf".
 
 use std::collections::{HashMap, HashSet};
@@ -71,7 +71,7 @@ impl EntryIndex {
         self.entries
     }
 
-    /// Number of distinct ids (pi `getEntryCount`).
+    /// Number of distinct ids.
     #[must_use]
     pub fn id_count(&self) -> usize {
         self.by_id.len()
@@ -112,7 +112,7 @@ pub struct ModelRef {
     pub model_id: String,
 }
 
-/// One selected entry and the messages it contributes (pi `ProjectedSessionEntry`).
+/// One selected entry and the messages it contributes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectedEntry {
@@ -122,7 +122,7 @@ pub struct ProjectedEntry {
     pub messages: Vec<AgentMessage>,
 }
 
-/// pi `SessionProjection`.
+/// The session projection record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionProjection {
@@ -136,7 +136,7 @@ pub struct SessionProjection {
     pub model: Option<ModelRef>,
 }
 
-/// pi `SessionContext`.
+/// The session context record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionContext {
@@ -159,7 +159,7 @@ pub struct BranchSelection {
     pub thinking_level: Option<String>,
 }
 
-/// Root → leaf path (pi `buildSessionPath`). Stops at a missing parent (orphans become roots)
+/// Root → leaf path. Stops at a missing parent (orphans become roots)
 /// and at cycles.
 #[must_use]
 pub fn path_to<'a>(entries: &'a EntryIndex, leaf: Option<&EntryId>) -> Vec<&'a SessionEntry> {
@@ -224,7 +224,7 @@ pub fn branch_selection(path: &[&SessionEntry]) -> BranchSelection {
     selection
 }
 
-/// pi `getSessionContextSettings`: thinking level (default `"off"`) and model from the full
+/// Thinking level (default `"off"`) and model from the full
 /// path; assistant messages also update the model (the physical model that answered).
 fn context_settings(path: &[&SessionEntry]) -> (String, Option<ModelRef>) {
     let mut thinking_level = "off".to_owned();
@@ -256,7 +256,7 @@ fn context_settings(path: &[&SessionEntry]) -> (String, Option<ModelRef>) {
     (thinking_level, model)
 }
 
-/// pi `buildContextEntries`: honours the latest compaction on the path.
+/// Honours the latest compaction on the path.
 #[must_use]
 pub fn build_context_entries(entries: &EntryIndex, leaf: Option<&EntryId>) -> Vec<SessionEntry> {
     select_context(&path_to(entries, leaf))
@@ -373,7 +373,7 @@ fn assistant_blocks(content: &EditableContent) -> Vec<AssistantContent> {
     }
 }
 
-/// Applies a replacement to one message, keeping role and metadata (pi `projectContextEntry`).
+/// Applies a replacement to one message, keeping role and metadata.
 /// Blocks that the target role cannot hold (images on assistants, thinking on users) are
 /// dropped.
 fn replace_content(message: AgentMessage, replacement: &ContextReplacement) -> AgentMessage {
@@ -414,7 +414,7 @@ fn project_entry(
     }
 }
 
-/// pi `buildSessionProjection`: context selection, latest context edit per target (among the
+/// Context selection, latest context edit per target (among the
 /// selected entries), entry → messages.
 #[must_use]
 pub fn build_session_projection(entries: &EntryIndex, leaf: Option<&EntryId>) -> SessionProjection {
@@ -455,7 +455,7 @@ pub fn build_session_projection(entries: &EntryIndex, leaf: Option<&EntryId>) ->
     }
 }
 
-/// pi `buildSessionContext`.
+/// B u i l d   S e s s i o n   C o n t e x t.
 #[must_use]
 pub fn build_session_context(entries: &EntryIndex, leaf: Option<&EntryId>) -> SessionContext {
     let SessionProjection {
@@ -471,7 +471,7 @@ pub fn build_session_context(entries: &EntryIndex, leaf: Option<&EntryId>) -> Se
     }
 }
 
-/// Folded system checkpoint of a projection (pi `getCurrentSystemMessage(projection.messages)`).
+/// Folded system checkpoint of a projection.
 #[must_use]
 pub fn current_system_message(messages: &[AgentMessage]) -> Option<SystemMessage> {
     SystemState::fold(messages.iter().filter_map(AgentMessage::as_system)).into_message()
