@@ -36,7 +36,7 @@ case "$cmd" in
         WEBKIT_DISABLE_COMPOSITING_MODE=1 \
         XDG_DATA_HOME="$QA_HOME/xdg/data" XDG_CONFIG_HOME="$QA_HOME/xdg/config" \
         XDG_CACHE_HOME="$QA_HOME/xdg/cache" XDG_STATE_HOME="$QA_HOME/xdg/state" \
-        setsid nohup tauri-driver --port "$PORT" --native-driver "$HOME/.local/bin/WebKitWebDriver" \
+        setsid nohup tauri-driver --port "$PORT" --native-port "$((PORT + 1))" --native-driver "$HOME/.local/bin/WebKitWebDriver" \
         >"$QA_HOME/run/driver.log" 2>&1 &
       sleep 1; }
     echo "$QA_HOME/app/usr/bin/unipi-oino" > "$QA_HOME/run/app-path"
