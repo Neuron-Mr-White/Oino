@@ -9,7 +9,7 @@
  * the selection (`mousedown` is prevented), and disappears when the selection
  * collapses, the timeline scrolls, or Esc is pressed.
  */
-import { createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { Quote } from 'lucide-solid';
 import { desktopShell } from '../../lib/layout';
@@ -58,15 +58,19 @@ export function SelectionQuote(props: { root: () => HTMLElement | undefined; ses
     };
     document.addEventListener('selectionchange', schedule);
     document.addEventListener('keydown', onKey);
-    const root = props.root();
-    const onScroll = () => setPicked(undefined);
-    root?.addEventListener('scroll', onScroll, { passive: true });
     onCleanup(() => {
       cancelAnimationFrame(frame);
       document.removeEventListener('selectionchange', schedule);
       document.removeEventListener('keydown', onKey);
-      root?.removeEventListener('scroll', onScroll);
     });
+  });
+
+  createEffect(() => {
+    const root = props.root();
+    if (!root) return;
+    const onScroll = () => setPicked(undefined);
+    root.addEventListener('scroll', onScroll, { passive: true });
+    onCleanup(() => root.removeEventListener('scroll', onScroll));
   });
 
   const quote = () => {
