@@ -160,11 +160,10 @@ jobs:
           ./actionlint -shellcheck= -pyflakes=
       - name: Sidecar (unipi-host) release check
         run: cargo check --release -p unipi-host --manifest-path apps/unipi/Cargo.toml
-      # The app bundle build with the dev identifier merge. continue-on-error:
-      # src-tauri does not compile until the known a30h P0-2 app fixes land
-      # (hosts_commands.rs, 15 errors at HEAD); flip this to required after.
+      # The app bundle build with the dev identifier merge. Required since the
+      # [app-fix] wave (hosts_commands.rs pruned, WP-A5 landed): the debug
+      # no-bundle build is green again.
       - name: cargo tauri build --debug --no-bundle (dev identifier)
-        continue-on-error: true
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
