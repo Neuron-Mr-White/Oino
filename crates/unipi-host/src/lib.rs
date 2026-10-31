@@ -30,4 +30,5 @@ pub mod sessions;
 pub mod settings;
 pub mod sharing;
 pub mod term;
+pub mod ui_panels;
 pub mod update;

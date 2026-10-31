@@ -10,11 +10,11 @@
 use std::path::PathBuf;
 
 use tempfile::TempDir;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, duplex};
+use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
 use unipi_host::{data_dir::HostPaths, lsp::LspRegistry, protocol::read_frame};
 use unipi_proto::{
+    frame::{encode, FrameKind},
     AppErrorCode, Control, FsPath, LspLanguage, Request,
-    frame::{FrameKind, encode},
 };
 
 fn fake_bin() -> PathBuf {
@@ -253,7 +253,10 @@ async fn lsp_open_streams_and_detaches_clean() {
         {
             break lines;
         }
-        assert!(std::time::Instant::now() < deadline, "detach must didClose the open document: {lines:?}");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "detach must didClose the open document: {lines:?}"
+        );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     };
     assert!(
@@ -267,7 +270,7 @@ async fn lsp_open_streams_and_detaches_clean() {
     // idle 0 kills the detached server; the exit-watcher reaps the
     // registry entry asynchronously.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while fix.registry.len() != 0 {
+    while !fix.registry.is_empty() {
         assert!(
             std::time::Instant::now() < deadline,
             "idle 0 must kill the detached server"

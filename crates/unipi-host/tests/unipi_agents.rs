@@ -10,16 +10,14 @@
     clippy::too_many_lines,
     reason = "tests assert by unwrapping"
 )]
-#![cfg(feature = "core")]
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::future::BoxFuture;
+use futures_util::future::BoxFuture;
 use indexmap::IndexMap;
 use oino_ai::{AgentMessage, JsonValue};
-use oino_core::builtin::{SessionToolContext, builtin_tool_entries};
+use oino_core::builtin::{builtin_tool_entries, SessionToolContext};
 use oino_core::extensions::api::{CallKind, ExtensionInstance, ExtensionMode};
 use oino_core::extensions::host::{HostApi, HostOp};
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource};
@@ -320,11 +318,9 @@ async fn subagents_run_foreground_background_and_read() {
         result_text(&result).contains("foreground report"),
         "{result:?}"
     );
-    assert!(
-        usage_kinds(&session)
-            .iter()
-            .any(|k| k.starts_with("child:"))
-    );
+    assert!(usage_kinds(&session)
+        .iter()
+        .any(|k| k.starts_with("child:")));
     assert_eq!(
         session.last_assistant_text().as_deref(),
         Some("parent saw the report")

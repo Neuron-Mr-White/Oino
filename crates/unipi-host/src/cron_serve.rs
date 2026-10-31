@@ -876,7 +876,7 @@ mod tests {
         assert_eq!(sessions.source_of("x", Path::new("/s/x.jsonl")), None);
 
         // A corrupt run file must not take the sessions list down: the set stays empty.
-        let paths = CronPaths::new(&dir.path().join("agent"));
+        let paths = CronPaths::new(dir.path().join("agent"));
         store::save_job(&paths, &job("j")).unwrap();
         std::fs::create_dir_all(paths.job_runs("j")).unwrap();
         std::fs::write(paths.run_json("j", "bad"), "not json").unwrap();

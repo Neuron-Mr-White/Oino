@@ -12,8 +12,6 @@
     clippy::too_many_lines,
     reason = "tests assert by unwrapping"
 )]
-#![cfg(feature = "core")]
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,7 +21,7 @@ use indexmap::IndexMap;
 use oino_ai::JsonValue;
 use oino_core::extensions::api::{CallKind, ExtensionMode};
 use oino_core::extensions::host::{HostApi, HostOp};
-use oino_core::extensions::settings::{SECRET_MASK, SettingsLayer};
+use oino_core::extensions::settings::{SettingsLayer, SECRET_MASK};
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource};
 use oino_core::services::{ResourceFlags, Services, ServicesOptions};
 use oino_settings::{SecretStore, SettingsManager, SettingsScope};
@@ -226,11 +224,9 @@ async fn unipi_state_files_move_into_settings() {
             SettingsScope::Global,
         )
         .unwrap();
-    assert!(
-        !std::fs::read_to_string(&global_file)
-            .unwrap()
-            .contains("jev-key")
-    );
+    assert!(!std::fs::read_to_string(&global_file)
+        .unwrap()
+        .contains("jev-key"));
     assert_eq!(
         SecretStore::new(&agent)
             .get("unipi.core/decision-model/apiKey")

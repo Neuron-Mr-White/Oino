@@ -101,11 +101,13 @@ windows-sys = { version = "0.61", features = [
 # WP-H3 acceptance (`tests/sessions_hub.rs`): the faux provider and fake components.
 oino-agent = { path = "../oino-agent" }
 oino-core = { path = "../oino-core", features = ["testing"] }
+oino-ai = { path = "../oino-ai" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 base64 = "0.22"
 aes-gcm = "0.11"
+indexmap.workspace = true
 
 [lints.clippy]
 # The host's error type is `AppErrorDto`, the wire envelope it shares with the

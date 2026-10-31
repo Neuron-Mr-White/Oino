@@ -271,13 +271,11 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let paths = HostPaths::from_dir(temp.path());
         assert!(set(&paths, &request("relay", serde_json::json!("n0"))).is_ok());
-        assert!(
-            set(
-                &paths,
-                &request("relay", serde_json::json!("https://relay.example"))
-            )
-            .is_ok()
-        );
+        assert!(set(
+            &paths,
+            &request("relay", serde_json::json!("https://relay.example"))
+        )
+        .is_ok());
         let relay = RelayConfig::load(&paths);
         assert_eq!(relay.relay.as_deref(), Some("https://relay.example"));
         assert!(!relay.relay_only);

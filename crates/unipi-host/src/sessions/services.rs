@@ -388,9 +388,12 @@ impl HostLoader {
     /// `--exclude-extension`.
     #[must_use]
     pub fn build(agent_dir: &Path, cwd: &Path, no_extensions: bool, excluded: &[String]) -> Self {
+        // The UniPi reserved-panel table is host registration, not SDK data (§8).
+        crate::ui_panels::register();
         let context = SourcesContext {
             agent_dir: agent_dir.to_path_buf(),
             cwd: cwd.to_path_buf(),
+            dist_dirs: Vec::new(),
             no_extensions,
             excluded: excluded.to_vec(),
         };

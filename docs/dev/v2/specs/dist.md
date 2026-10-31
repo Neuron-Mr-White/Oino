@@ -109,15 +109,15 @@ installer owns an immutable, versioned tree of extension packages — the **shar
 
 | OS | Share dir |
 |---|---|
-| Linux | `/usr/share/unipi-oino/extensions/<id>/…` |
-| macOS | `/Applications/UniPi.app/Contents/Resources/extensions/<id>/…` |
+| Linux | `/usr/share/oino/extensions/<id>/…` |
+| macOS | `/Applications/UniPi.app/Contents/Resources/extensions/<id>/…` (exe-relative `<prefix>/extensions`) |
 | Windows | `%LOCALAPPDATA%\UniPi\extensions\<id>\…` |
 
 Discovery moves **into `oino-core`** (today it lives in `crates/oino/src/loader.rs`, which the
 host never links). Scan order, lowest → highest precedence, reusing the loader's existing
 same-id replacement semantics:
 
-1. distribution share dir (resolved relative to the running exe: `<exe>/../share/unipi-oino/extensions`
+1. distribution share dir (resolved relative to the running exe, product-neutral: `<exe>/../share/oino/extensions`
    heuristics per OS above; overridable with **`OINO_DIST_EXTENSIONS=<dir>`** for dev/tests);
 2. `~/.oino/extensions` (user agent dir — a user-installed package with the same id shadows
    the distribution one);
@@ -186,7 +186,7 @@ the header):
 
 - `scripts/dist/linux-build.sh` — `unipi-host-sidecar.sh` (x86_64-linux), `cargo tauri build
   --bundles deb`, then **post-process** (`scripts/dist/deb-postprocess.sh`): unpack with
-  `dpkg-deb -x`, rename package to `unipi-oino`, add `/usr/bin/oino`, `/usr/share/unipi-oino/extensions`
+  `dpkg-deb -x`, rename package to `unipi-oino`, add `/usr/bin/oino`, `/usr/share/oino/extensions`
   (staged tree + native CLI), conffiles-free `postinst` (only `update-desktop-database`),
   repack with `dpkg-deb -b`. Tauri's own deb cannot place files in `/usr/bin` or rename the
   package; repacking is ~30 lines and the archived release.sh already unpacks debs the same way.
@@ -261,7 +261,7 @@ empties it). Then per installer:
 |---|---|---|
 | Windows (`scripts/dist/smoke-windows.ps1`, run on coffee) | silent install `UniPi_…_x64-setup.exe /S`; **new** shell: `oino --version` resolves on PATH; `UniPi.exe` launches; `unipi-host.exe` sidecar process appears (spawned child); `oino list` sees distribution packages; `unipi-kanboard --version` via the package bin dir; uninstall silently; install dir + PATH entry gone | all green, `~/.oino` user data untouched by uninstall |
 | macOS (`scripts/dist/smoke-macos.sh`, on desmondgiam) | mount dmg, `cp -R UniPi.app /Applications` (test: `~/Applications`), `codesign -v` (ad-hoc ok), `open` the app, `pgrep unipi-host`, Resources/bin/`oino --version`, CLI symlink action → `oino --version` from `~/.local/bin`, delete app + symlinks | all green; old `/Applications/UniPi.app` (if the old app is installed) untouched — new bundle id differs |
-| Linux (`scripts/dist/smoke-linux.sh`, local **podman** ubuntu container — never the host: it carries the owner's live old unipi) | `dpkg -i unipi-oino_…_amd64.deb`; `/usr/bin/oino --version`; `dpkg -L unipi-oino` lists `/usr/share/unipi-oino/extensions`; launch `unipi-mobile` under `xvfb-run`, host sidecar appears; faux print run; `dpkg -r unipi-oino` → `/usr/bin/oino` and share dir gone | all green inside the container |
+| Linux (`scripts/dist/smoke-linux.sh`, local **podman** ubuntu container — never the host: it carries the owner's live old unipi) | `dpkg -i unipi-oino_…_amd64.deb`; `/usr/bin/oino --version`; `dpkg -L unipi-oino` lists `/usr/share/oino/extensions`; launch `unipi-mobile` under `xvfb-run`, host sidecar appears; faux print run; `dpkg -r unipi-oino` → `/usr/bin/oino` and share dir gone | all green inside the container |
 | Android (`scripts/dist/smoke-android.sh`, phone plugged in) | `adb install -r unipi-oino-{v}.apk`; launch main activity; app reaches the host list and pairs with the local host over LAN (QR/link); screenshot stored under `releases/{v}/qa/`; **old unipi app still installed and opens** (coexistence); `adb uninstall dev.unipi.oino` | all green; apksigner cert pinned (build-time check) |
 
 Publish gate (`dist publish`): every smoke log in `releases/{v}/qa/` ends PASS, and the

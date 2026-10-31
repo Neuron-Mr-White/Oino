@@ -338,6 +338,11 @@ async fn registration() {
     let manifest = ext.manifest();
     assert_eq!(manifest.id.as_str(), ID);
     assert_eq!(manifest.ui.reserved, ["unipi.file-summary/turn-files"]);
+    // Ownership derives from the host registration (the SDK table starts empty).
+    oino_extension_api::manifest::register_reserved_owner(
+        "unipi.file-summary/turn-files",
+        "unipi.file-summary",
+    );
     assert!(manifest.owns_reserved("unipi.file-summary/turn-files"));
     assert_eq!(manifest.permissions.fs.project, FsAccess::Write);
     let _ = ExtensionId::new(ID).unwrap();

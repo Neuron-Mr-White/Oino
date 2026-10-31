@@ -508,6 +508,9 @@ enum ForwardAction {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    // The UniPi reserved-panel table registers with the neutral SDK before any session or
+    // UI registry exists (idempotent; HostLoader::build repeats it for library users).
+    unipi_host::ui_panels::register();
     let paths = cli
         .data_dir
         .clone()

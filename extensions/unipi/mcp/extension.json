@@ -6,6 +6,7 @@
   "kind": "extension",
   "description": "Connects MCP servers (stdio and streamable HTTP) and registers their tools as <server>__<tool>; server registry, catalog browser and status.",
   "license": "MIT",
+  "provides": {"apis": ["mcp"]},
   "permissions": {
     "process": { "spawn": true, "allow": ["*"] },
     "network": { "hosts": ["*"] },

@@ -40,8 +40,8 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
-        Arc, Mutex, MutexGuard, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex, MutexGuard, OnceLock,
     },
     time::Duration,
 };
@@ -51,8 +51,8 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc;
 
 use unipi_proto::{
+    frame::{encode, FrameKind},
     AppErrorCode, AppErrorDto, Control, LspAttachData, LspServerInfo, LspServersData, Request,
-    frame::{FrameKind, encode},
 };
 
 use crate::{
