@@ -26,6 +26,14 @@ import type { ConnState } from './types';
 export const SESSION_BACKOFF_MS = [500, 1_000, 2_000, 5_000] as const;
 export const SESSION_STEADY_MS = 5_000;
 export const SESSION_GIVE_UP_MS = 120_000;
+/**
+ * An open the host *rejects* (not a dropped link): a session whose file is not
+ * written yet, a runtime still starting, a host restarting — retried on its
+ * own backoff before the chat shows "Couldn't open this chat · Retry".
+ */
+export const OPEN_RETRY_MS = [600, 1_500, 3_000, 6_000] as const;
+/** Rejections that no retry can fix (the session or the protocol is wrong). */
+const FINAL_OPEN_CODES = new Set(['E_SCHEMA', 'E_UNSUPPORTED', 'E_UNAUTHORIZED', 'E_FORBIDDEN', 'E_TAKEN_OVER']);
 /** app spec §3.2 command budgets. */
 export const CMD_TIMEOUT_MS = 30_000;
 export const RENDER_TIMEOUT_MS = 2_000;
@@ -71,6 +79,9 @@ export class SessionStreamClient {
   private closedByUs = false;
   private stopped = false;
   private isLive = false;
+  /** Rejected opens in a row (reset once a snapshot arrives). */
+  private openFailures = 0;
+  private openTimer: unknown;
   private readonly reconnect: Reconnect;
   private readonly schedule: (flush: () => void) => void;
 
@@ -127,6 +138,8 @@ export class SessionStreamClient {
   retryNow(): void {
     if (this.closedByUs) return;
     this.stopped = false;
+    this.openFailures = 0;
+    this.clearOpenTimer();
     this.reconnect.beginConnecting();
     this.handlers.conn('connecting');
     this.connect(true);
@@ -136,15 +149,19 @@ export class SessionStreamClient {
     this.detach();
     const gen = ++this.gen;
     const since = resume ? this.handlers.seq() : 0;
+    /** This attempt delivered its first frame. */
+    let opened = false;
     this.stream = this.client.openSession(
       { kind: 'open', session: this.sessionId, ...(since > 0 ? { sinceSeq: since } : {}) },
       {
         snapshot: (snap) => {
           if (gen !== this.gen) return;
+          opened = true;
           // Live before the snapshot reaches the store: the reducer sets `state.conn = 'live'`
           // inside `handlers.snapshot`, and a consumer reacting to that (the Session modal tabs
           // fetch on `conn === 'live'`) must not send a command the stream still rejects.
           this.isLive = true;
+          this.openFailures = 0;
           this.reconnect.live();
           const r = this.handlers.snapshot(snap);
           this.handlers.conn('live');
@@ -165,7 +182,20 @@ export class SessionStreamClient {
           if (this.closedByUs || this.stopped) return;
           const app = error ? toAppError(error) : undefined;
           if (!shouldReconnect(app)) {
-            this.reconnect.dispose();
+            // Rejected before it ever went live: retry the open on its own backoff.
+            if (!opened && app && !FINAL_OPEN_CODES.has(app.code) && this.openFailures < OPEN_RETRY_MS.length) {
+              const wait = OPEN_RETRY_MS[this.openFailures++]!;
+              this.handlers.conn('connecting');
+              this.clearOpenTimer();
+              const setTimer = this.opts.setTimer ?? ((ms: number, cb: () => void) => setTimeout(cb, ms));
+              this.openTimer = setTimer(wait, () => {
+                this.openTimer = undefined;
+                if (!this.closedByUs && !this.stopped) this.connect(resume);
+              });
+              return;
+            }
+            // Ended for this attempt, not for good: the state machine stays usable, so
+            // Retry (or a re-click / revisit) reconnects and later drops still auto-reconnect.
             this.handlers.conn('closed', app);
             return;
           }
@@ -247,9 +277,22 @@ export class SessionStreamClient {
     old?.close();
   }
 
+  private clearOpenTimer(): void {
+    if (this.openTimer === undefined) return;
+    const clearTimer = this.opts.clearTimer ?? ((h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>));
+    clearTimer(this.openTimer);
+    this.openTimer = undefined;
+  }
+
+  /** The stream gave up for good (`closed` with an error): what a re-click / revisit retries. */
+  get failed(): boolean {
+    return !this.closedByUs && !this.stopped && !this.isLive && !this.stream && this.openTimer === undefined;
+  }
+
   /** Local hang-up (the session keeps running on the host). */
   close(): void {
     this.closedByUs = true;
+    this.clearOpenTimer();
     this.reconnect.dispose();
     this.detach();
     this.handlers.conn('closed');

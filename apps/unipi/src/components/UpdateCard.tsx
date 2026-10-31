@@ -25,6 +25,7 @@ import { checkForUpdate, checkIosUpdate, installed, installNow, iosUpdate, start
 import { openExternal } from '../lib/board/share';
 import { hostClient } from '../lib/host/factory';
 import { LOCAL_HOST } from '../lib/host/client';
+import { resolveHostId } from '../lib/host/localId';
 import { hubs } from '../lib/session/hub';
 import { can, platform } from '../lib/platform';
 
@@ -34,7 +35,7 @@ type HostInfoLike = { version?: string; name?: string };
 
 /** The host's release row inside the card: its version + any update notice. */
 function HostRow() {
-  const hub = () => hubs().peek(LOCAL_HOST);
+  const hub = () => hubs().peek(resolveHostId(LOCAL_HOST));
   const [info] = createResource(async (): Promise<HostInfoLike | undefined> => {
     try {
       return await hostClient(LOCAL_HOST).request<HostInfoLike>('host_info');

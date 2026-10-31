@@ -316,6 +316,46 @@ export function snapshotOf(handle: SessionHandle): SessionState {
 
 type Entry = { handle: SessionHandle & { readonly refs: number }; dispose: () => void };
 
+/**
+ * A session whose open failed for good (`closed` with an error, or `lost`)
+ * — not one taken over (that one waits for "Take back").
+ */
+export function openFailed(state: Pick<SessionState, 'conn' | 'connError' | 'banner'>): boolean {
+  if (state.banner?.kind === 'taken_over') return false;
+  return state.conn === 'lost' || (state.conn === 'closed' && !!state.connError);
+}
+
+/** Retries a failed session outside the caller's computation (ensure runs inside memos). */
+function retryLater(handle: SessionHandle): void {
+  queueMicrotask(() => {
+    if (openFailed(handle.state)) handle.retry();
+  });
+}
+
+let reclickInstalled = false;
+/**
+ * Re-clicking the row of a chat that could not open retries it: the link's
+ * href is the route already shown, so the router does nothing. One delegated
+ * listener (sidebar rows, the phone Chat list, any `#/s/…` link).
+ */
+function installReclickRetry(registry: { peek(hostId: string, sessionId: string): SessionHandle | undefined }): void {
+  if (reclickInstalled || typeof document === 'undefined') return;
+  reclickInstalled = true;
+  document.addEventListener(
+    'click',
+    (e) => {
+      const link = (e.target as Element | null)?.closest?.('a[href^="#/s/"]');
+      const href = link?.getAttribute('href');
+      if (!href || href !== location.hash) return;
+      const m = /^#\/s\/([^/]+)\/([^/?#]+)/.exec(href);
+      if (!m) return;
+      const handle = registry.peek(decodeURIComponent(m[1]!), decodeURIComponent(m[2]!));
+      if (handle) retryLater(handle);
+    },
+    true,
+  );
+}
+
 /** The per-app registry of open sessions (LRU 8, pinned while acquired). */
 export function createSessionRegistry(limit = SESSION_LRU, factory: (hostId: string, sessionId: string) => SessionHandle = createSession) {
   const open = new Map<string, Entry>();
@@ -340,6 +380,8 @@ export function createSessionRegistry(limit = SESSION_LRU, factory: (hostId: str
       if (hit) {
         open.delete(key);
         open.set(key, hit);
+        // Coming back to a chat that could not open tries again (never a blank chat forever).
+        if (hit.handle.state && untrack(() => openFailed(hit.handle.state))) retryLater(hit.handle);
         return hit.handle;
       }
       const entry = createRoot((dispose) => ({ handle: factory(hostId, sessionId) as Entry['handle'], dispose }));
@@ -383,7 +425,10 @@ export type SessionRegistry = ReturnType<typeof createSessionRegistry>;
 let shared: SessionRegistry | undefined;
 /** The app's session registry. */
 export function sessions(): SessionRegistry {
-  if (!shared) shared = createRoot(() => createSessionRegistry());
+  if (!shared) {
+    shared = createRoot(() => createSessionRegistry());
+    installReclickRetry({ peek: (h, id) => shared?.peek(h, id) });
+  }
   return shared;
 }
 /** Tests: drop the shared registry (closing every session). */

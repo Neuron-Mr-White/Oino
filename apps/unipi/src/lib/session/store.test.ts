@@ -273,3 +273,59 @@ describe('session registry (LRU 8)', () => {
     expect(reg.peek('h', 'a')).toBeUndefined();
   });
 });
+
+describe('a rejected open recovers (never a blank chat forever)', () => {
+  /** A host whose `session_open` is rejected `failures` times (E_INTERNAL: the file is not written yet). */
+  function flakyClient(failures: number) {
+    let calls = 0;
+    const client = {
+      hostId: 'h1',
+      openSession(_req: unknown, sink: { snapshot(s: SessionSnapshot): void; closed(e?: unknown): void }) {
+        calls += 1;
+        const fail = calls <= failures;
+        queueMicrotask(() =>
+          fail ? sink.closed({ code: 'E_INTERNAL', message: 'no such session', retryable: false }) : sink.snapshot(structuredClone(rt.snapshot)),
+        );
+        return { cmd: async () => ({}), close() {} };
+      },
+    };
+    return { client: client as never, calls: () => calls };
+  }
+
+  it('retries a rejected open on its backoff and goes live', async () => {
+    const c = clock();
+    const f = flakyClient(2);
+    const { s, dispose } = createRoot((d) => ({ s: createSession('h1', 's1', { client: f.client, schedule: c.schedule, setTimer: c.setTimer, clearTimer: c.clearTimer, now: c.now }), dispose: d }));
+    await tick();
+    expect(s.state.conn).toBe('connecting');
+    c.advance(600);
+    await tick();
+    expect(f.calls()).toBe(2);
+    c.advance(1_500);
+    await tick();
+    expect(f.calls()).toBe(3);
+    expect(s.state.conn).toBe('live');
+    dispose();
+  });
+
+  it('after the retries it shows the failure; Retry (and a revisit) opens again', async () => {
+    const c = clock();
+    const f = flakyClient(5);
+    const reg = createRoot(() => createSessionRegistry(8, (h, id) => createSession(h, id, { client: f.client, schedule: c.schedule, setTimer: c.setTimer, clearTimer: c.clearTimer, now: c.now })));
+    const s = reg.ensure('h1', 's1');
+    for (const ms of [600, 1_500, 3_000, 6_000]) {
+      await tick();
+      c.advance(ms);
+    }
+    await tick();
+    expect(f.calls()).toBe(5);
+    expect(s.state.conn).toBe('closed');
+    expect(s.state.connError?.message).toBe('no such session');
+    // Coming back to the chat (the route asks the registry again) retries — and this time it opens.
+    reg.ensure('h1', 's1');
+    await tick();
+    await tick();
+    expect(f.calls()).toBe(6);
+    expect(s.state.conn).toBe('live');
+  });
+});

@@ -8,6 +8,7 @@ import { type Accessor, type JSX, createContext, createSignal, onMount, useConte
 import type { AppError } from '@unipi/protocol';
 import { call } from '../lib/ipc';
 import { HostInfoSchema, type HostInfo, type PathKind } from '../lib/schemas';
+import { localIdOf, setLocalHostId } from '../lib/host/localId';
 import { z } from 'zod';
 import { useSettings } from '../settings/context';
 import { markAppReady } from '../lib/splash';
@@ -47,6 +48,8 @@ export function HostsProvider(props: { children: JSX.Element }): JSX.Element {
     const result = await call('list_hosts', {}, ListHostsSchema);
     setLoading(false);
     if (result.ok) {
+      // The `local` alias resolves to This computer's real id app-wide (lib/host/localId).
+      setLocalHostId(localIdOf(result.value));
       setHosts(result.value);
       setError(undefined);
       const current = selectedId();

@@ -15,8 +15,10 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import { createSignal } from 'solid-js';
 import { toAppError, type AppError } from '@unipi/protocol';
 import { LspFrameParser, encodeMessage } from '../lsp/framing';
+import { localHostId, localIdOf, setLocalHostId } from './localId';
 import {
   APP_HOST,
+  LOCAL_HOST,
   isUnreachableCode,
   unavailableError,
   type LspRequest,
@@ -37,12 +39,36 @@ import {
   type TermStream,
 } from './client';
 
+let lookingUp: Promise<string | undefined> | undefined;
+/** The real id of This computer (asks the core once when nothing recorded it yet). */
+function lookUpLocal(): Promise<string | undefined> {
+  lookingUp ??= invoke<Array<{ id: string; transport?: string }>>('list_hosts', {})
+    .then((list) => {
+      const id = localIdOf(Array.isArray(list) ? list : []);
+      setLocalHostId(id);
+      return id;
+    })
+    .catch(() => undefined)
+    .finally(() => (lookingUp = undefined));
+  return lookingUp;
+}
+
+/**
+ * Runs `f` with the id the core knows the host by: `local` → This computer's
+ * real id (synchronously when already known, so a real id never waits).
+ */
+export function withWireId<T>(hostId: string, f: (id: string) => Promise<T>): Promise<T> {
+  if (hostId !== LOCAL_HOST) return f(hostId);
+  const known = localHostId();
+  if (known) return f(known);
+  return lookUpLocal().then((id) => f(id ?? hostId));
+}
+
 export function createTauriHost(hostId: string): HostClient {
   const [conn, setConn] = createSignal<HostConn>({ state: hostId === APP_HOST ? 'connected' : 'connecting' });
   const request = async <T,>(op: string, args?: Record<string, unknown>): Promise<T> => {
-    const payload = hostId === APP_HOST ? args : { hostId, ...(args ?? {}) };
     try {
-      const value = (await invoke(op, payload)) as T;
+      const value = (await (hostId === APP_HOST ? invoke(op, args) : withWireId(hostId, (id) => invoke(op, { hostId: id, ...(args ?? {}) })))) as T;
       if (conn().state !== 'connected') setConn({ state: 'connected' });
       return value;
     } catch (error) {
@@ -139,8 +165,10 @@ function openSessionChannel(hostId: string, req: OpenSessionRequest, sink: Sessi
         return;
     }
   };
-  const { command, args } = openArgs(hostId, req);
-  const opened = invoke<string>(command, { ...args, onEvent: channel }).then(
+  const opened = withWireId(hostId, (id) => {
+    const { command, args } = openArgs(id, req);
+    return invoke<string>(command, { ...args, onEvent: channel });
+  }).then(
     (id) => {
       streamId = id;
       if (closing) hangUp('session_stream_close', id);
@@ -186,7 +214,7 @@ function openEventsChannel(hostId: string, sink: (event: HubEvent) => void, clos
   let pendingFocus: string | null | undefined;
   const sendFocus = (id: string, session: string | null) =>
     void invoke('events_focus', { streamId: id, session }).catch(() => {});
-  void invoke<string>('events_open', { hostId, onEvent: channel }).then(
+  void withWireId(hostId, (id) => invoke<string>('events_open', { hostId: id, onEvent: channel })).then(
     (id) => {
       streamId = id;
       if (pendingFocus !== undefined) sendFocus(id, pendingFocus);
@@ -266,14 +294,16 @@ function openLspChannel(hostId: string, req: LspRequest, sink: LspSink): LspStre
   };
 
   const write = (body: string) => invoke('lsp_write', { lspId, data: Array.from(encodeMessage(body)) }).catch(() => {});
-  const opened = invoke<{ server: string; attached: boolean; initializeResult: unknown }>('lsp_open', {
-    hostId,
-    lspId,
-    root: req.root,
-    language: req.language,
-    onData,
-    onEvent,
-  }).then(
+  const opened = withWireId(hostId, (id) =>
+    invoke<{ server: string; attached: boolean; initializeResult: unknown }>('lsp_open', {
+      hostId: id,
+      lspId,
+      root: req.root,
+      language: req.language,
+      onData,
+      onEvent,
+    }),
+  ).then(
     (result) => {
       openedOk = true;
       sink.attached?.({ server: result.server, attached: result.attached, initialize_result: result.initializeResult });

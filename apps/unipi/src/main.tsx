@@ -16,7 +16,7 @@
 import { render } from 'solid-js/web';
 import { HashRouter, Navigate, Route, useLocation, useParams, useSearchParams } from '@solidjs/router';
 import { Show } from 'solid-js';
-import type { Component } from 'solid-js';
+import type { Component, JSX } from 'solid-js';
 import { Puzzle } from 'lucide-solid';
 import Board from './screens/Board';
 import Chat from './screens/Chat';
@@ -37,6 +37,8 @@ import { extPageView } from './components/shell/Rail';
 import { SettingsNotices } from './components/SettingsNotices';
 import { UpdateBanner } from './components/UpdateCard';
 import { LOCAL_HOST } from './lib/host/client';
+import { localHostId, resolveHostId } from './lib/host/localId';
+import { useHostsOptional } from './hosts/context';
 import { layout } from './lib/layout';
 import { can, isWeb, type Capability } from './lib/platform';
 import { dismissSplashWhenReady } from './lib/splash';
@@ -79,15 +81,41 @@ function Home() {
   if (!can('chat') && can('board')) return <Navigate href="/board" />;
   if (!desktop()) return <Navigate href="/chat" />;
   const last = readLastSession();
-  return <Navigate href={last ? sessionHref(last.hostId, last.sessionId) : `/new/${LOCAL_HOST}`} />;
+  return <Navigate href={last ? sessionHref(resolveHostId(last.hostId), last.sessionId) : `/new/${resolveHostId(LOCAL_HOST)}`} />;
+}
+
+/**
+ * `/new/local`, `/s/local/…`: the `local` alias is resolved here, once — the
+ * route is replaced by This computer's real id, so no screen ever keys hubs,
+ * sessions or panes by the alias (lib/host/localId). While the hosts load it
+ * waits; with no local host at all (web / harness) the alias renders as is.
+ */
+function HostRoute(props: { host: string; children: (hostId: string) => JSX.Element }) {
+  const hosts = useHostsOptional();
+  const location = useLocation();
+  const real = () => (props.host === LOCAL_HOST ? localHostId() : props.host);
+  const settled = () => !hosts || (!hosts.loading() && (hosts.hosts().length > 0 || !!hosts.error()));
+  return (
+    <Show when={real()} fallback={<Show when={props.host === LOCAL_HOST && settled() && !localHostId()}>{props.children(props.host)}</Show>}>
+      {(id) => (
+        <Show when={id() === props.host} fallback={<Navigate href={`${location.pathname.replace(/^\/(new|s)\/local\b/, `/$1/${encodeURIComponent(id())}`)}${location.search}`} />}>
+          {props.children(id())}
+        </Show>
+      )}
+    </Show>
+  );
 }
 
 function ConversationRoute() {
   const params = useParams<{ host: string; session: string }>();
   const body = () => (
-    <Show when={params.session} keyed>
-      {(session) => <Workspace hostId={params.host} sessionId={session} />}
-    </Show>
+    <HostRoute host={params.host}>
+      {(hostId) => (
+        <Show when={params.session} keyed>
+          {(session) => <Workspace hostId={hostId} sessionId={session} />}
+        </Show>
+      )}
+    </HostRoute>
   );
   return <Show when={desktop()} fallback={<div class="ws-layer">{body()}</div>}>{body()}</Show>;
 }
@@ -95,7 +123,7 @@ function ConversationRoute() {
 function DraftRoute() {
   const params = useParams<{ host: string }>();
   const [search] = useSearchParams<{ cwd?: string }>();
-  const body = () => <Workspace hostId={params.host} cwd={search.cwd} />;
+  const body = () => <HostRoute host={params.host}>{(hostId) => <Workspace hostId={hostId} cwd={search.cwd} />}</HostRoute>;
   return <Show when={desktop()} fallback={<div class="ws-layer">{body()}</div>}>{body()}</Show>;
 }
 
