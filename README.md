@@ -110,6 +110,10 @@ sh scripts/install-smoke.sh           # install into a temp prefix and run one f
 
 Quality gates and test layers: [docs/dev/v1/quality.md](docs/dev/v1/quality.md).
 
+## Acknowledgements
+
+oino is a Rust port of [pi](https://github.com/earendil-works/pi) by Mario Zechner (MIT).
+
 ## License
 
 MIT OR Apache-2.0.
