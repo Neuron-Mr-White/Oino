@@ -98,6 +98,12 @@ async fn probe(name: &str, arg: Value) -> Result<Value> {
             host::info_log("probe log line");
             Value::Null
         }
+        "print" => {
+            // WASI stdout/stderr: the host wires both to one shared log descriptor.
+            println!("probe stdout line");
+            eprintln!("probe stderr line");
+            Value::Null
+        }
         "kv" => {
             kv::set(kv::Scope::Global, "k", b"v1")?;
             kv::set_json(kv::Scope::Session, "s", &json!({"n": 1}))?;

@@ -137,6 +137,14 @@ async fn imports_allowed() {
         std::fs::read_to_string(h.agent_dir.path().join("logs/ext/oino.fixture.echo.log")).unwrap();
     assert!(log.contains("probe log line"));
 
+    // WASI stdout and stderr share one host-side log descriptor (fd budget): both
+    // streams land in the same file.
+    assert!(probe(&h, &*ext, "print", Value::Null).await["ok"].is_null());
+    let log =
+        std::fs::read_to_string(h.agent_dir.path().join("logs/ext/oino.fixture.echo.log")).unwrap();
+    assert!(log.contains("probe stdout line"), "{log}");
+    assert!(log.contains("probe stderr line"), "{log}");
+
     let kv = probe(&h, &*ext, "kv", Value::Null).await;
     assert_eq!(kv["ok"]["global"], "v1");
     assert_eq!(kv["ok"]["session"], json!({"n": 1}));
