@@ -7,7 +7,7 @@
     unused_qualifications
 )]
 wasmtime::component::bindgen!({
-    path: "../../wit/oino-extension",
+    path: "wit/oino-extension",
     world: "provider-extension",
     imports: { default: async | store | trappable },
     exports: { default: async | store },

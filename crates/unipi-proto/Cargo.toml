@@ -1,5 +1,6 @@
 [package]
 name = "unipi-proto"
+publish = false
 version = "1.0.0"
 edition = "2021"
 description = "Wire protocol types and framing for the UniPi host and app (unipi/oino/1, proto v2)"

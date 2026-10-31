@@ -1,6 +1,6 @@
 [package]
 name = "oino-settings"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -10,7 +10,7 @@ description = "pi settings manager: global/project merge, typed getters, locking
 [dependencies]
 dirs.workspace = true
 indexmap.workspace = true
-oino-ai = { path = "../oino-ai" }
+oino-ai = { path = "../oino-ai", version = "1.0.0" }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror = "2"

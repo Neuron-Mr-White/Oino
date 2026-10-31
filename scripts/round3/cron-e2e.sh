@@ -11,7 +11,7 @@
 # headless shell — the unit file is what gets verified) and, with --real, one short run on
 # oino/deepseek/deepseek-flash (needs ~/.oino/auth.json, copied into the scratch agent dir).
 #
-# Needs the binary built with the faux provider: `cargo build -p oino --features faux`.
+# Needs the binary built with the faux provider: `cargo build -p oino-cli --features faux`.
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"

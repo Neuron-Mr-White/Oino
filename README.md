@@ -52,7 +52,7 @@ sh scripts/install.sh          # macOS / Linux
 
 The installers put `oino` and `oino-kanboard` into `~/.local/bin` (override with
 `OINO_PREFIX`). They prefer a tagged release binary and fall back to building from source
-(`cargo xtask wasm` + `cargo build --release -p oino -p oino-kanboard`). Details:
+(`cargo xtask wasm` + `cargo build --release -p oino-cli -p oino-kanboard`). Details:
 [docs/install.md](docs/install.md).
 
 Uninstall: delete `~/.local/bin/oino` and `~/.local/bin/oino-kanboard`; `~/.oino` holds your

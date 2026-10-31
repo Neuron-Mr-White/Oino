@@ -1,6 +1,6 @@
 [package]
 name = "oino-models"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 description = "pi model registry, models.json, model resolution, auth storage, virtual models"
 
 [dependencies]
-oino-ai = { path = "../oino-ai" }
+oino-ai = { path = "../oino-ai", version = "1.0.0" }
 futures.workspace = true
 globset.workspace = true
 indexmap.workspace = true

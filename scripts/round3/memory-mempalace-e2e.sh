@@ -16,7 +16,7 @@
 # Each case: `/memory` reports the backend, `memory_store` + `memory_search` +
 # `memory_delete` run through the tool path with the scripted faux provider (daemon jobs,
 # direct `mine`, warm `mempalace-mcp` reader), and the palace copy is checked with the CLI.
-# Needs `cargo build -p oino --features faux` (the scripted provider).
+# Needs `cargo build -p oino-cli --features faux` (the scripted provider).
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"

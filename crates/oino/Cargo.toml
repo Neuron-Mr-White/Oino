@@ -1,11 +1,15 @@
 [package]
-name = "oino"
-version = "1.0.0-alpha.5"
+name = "oino-cli"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
 description = "The Oino command-line binary: pi-compatible CLI, interactive (TUI), print, JSON, RPC and ACP modes"
+
+[lib]
+name = "oino"
+path = "src/lib.rs"
 
 [[bin]]
 name = "oino"
@@ -19,19 +23,19 @@ faux = []
 base64.workspace = true
 futures.workspace = true
 indexmap.workspace = true
-oino-acp = { path = "../oino-acp" }
-oino-agent = { path = "../oino-agent" }
-oino-ai = { path = "../oino-ai" }
-oino-client = { path = "../oino-client" }
-oino-core = { path = "../oino-core" }
-oino-extension-api = { path = "../oino-extension-api" }
-oino-models = { path = "../oino-models" }
-oino-rpc = { path = "../oino-rpc" }
-oino-session = { path = "../oino-session" }
-oino-tui = { path = "../oino-tui" }
-oino-settings = { path = "../oino-settings" }
-oino-tools = { path = "../oino-tools" }
-oino-wasm-host = { path = "../oino-wasm-host" }
+oino-acp = { path = "../oino-acp", version = "1.0.0" }
+oino-agent = { path = "../oino-agent", version = "1.0.0" }
+oino-ai = { path = "../oino-ai", version = "1.0.0" }
+oino-client = { path = "../oino-client", version = "1.0.0" }
+oino-core = { path = "../oino-core", version = "1.0.0" }
+oino-extension-api = { path = "../oino-extension-api", version = "1.0.0" }
+oino-models = { path = "../oino-models", version = "1.0.0" }
+oino-rpc = { path = "../oino-rpc", version = "1.0.0" }
+oino-session = { path = "../oino-session", version = "1.0.0" }
+oino-tui = { path = "../oino-tui", version = "1.0.0" }
+oino-settings = { path = "../oino-settings", version = "1.0.0" }
+oino-tools = { path = "../oino-tools", version = "1.0.0" }
+oino-wasm-host = { path = "../oino-wasm-host", version = "1.0.0" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
@@ -42,7 +46,7 @@ tokio = { workspace = true, features = ["io-std", "io-util", "macros", "rt-multi
 tokio-util.workspace = true
 
 [dev-dependencies]
-oino = { path = ".", features = ["faux"] }
+oino = { package = "oino-cli", path = ".", features = ["faux"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 nix = { workspace = true, features = ["term", "fs"] }

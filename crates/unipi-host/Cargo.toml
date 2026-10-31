@@ -1,5 +1,6 @@
 [package]
 name = "unipi-host"
+publish = false
 version = "1.0.0"
 edition = "2021"
 description = "unipi-host daemon + CLI: iroh endpoint, pairing, host services (unipi/oino/1)"

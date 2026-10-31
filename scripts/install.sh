@@ -6,7 +6,7 @@
 #
 # 1. Prefer a tagged release binary (release-manifest.json, sha256-verified).
 # 2. Fall back to a source build: `cargo xtask wasm` (extension components), then
-#    `cargo build --release -p oino -p oino-kanboard`.
+#    `cargo build --release -p oino-cli -p oino-kanboard`.
 #
 # Environment:
 #   OINO_PREFIX       install prefix (default ~/.local)
@@ -133,7 +133,7 @@ source_install() {
   fi
   # rust-toolchain.toml pins the toolchain and the wasm32-wasip2 target.
   (cd "$SRC" && run cargo xtask wasm)
-  run cargo build --manifest-path "$SRC/Cargo.toml" --release -p oino -p oino-kanboard
+  run cargo build --manifest-path "$SRC/Cargo.toml" --release -p oino-cli -p oino-kanboard
   run mkdir -p "$BIN_DIR"
   for name in $BINARIES; do
     run cp "$SRC/target/release/$name" "$BIN_DIR/$name"

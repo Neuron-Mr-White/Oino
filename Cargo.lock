@@ -4086,40 +4086,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "oino"
-version = "1.0.0-alpha.5"
-dependencies = [
- "base64 0.22.1",
- "futures",
- "indexmap 2.14.0",
- "nix 0.29.0",
- "oino",
- "oino-acp",
- "oino-agent",
- "oino-ai",
- "oino-client",
- "oino-core",
- "oino-extension-api",
- "oino-models",
- "oino-rpc",
- "oino-session",
- "oino-settings",
- "oino-tools",
- "oino-tui",
- "oino-wasm-host",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "oino-acp"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "agent-client-protocol",
  "futures",
@@ -4143,7 +4111,7 @@ dependencies = [
 
 [[package]]
 name = "oino-agent"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
@@ -4158,7 +4126,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ai"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "indexmap 2.14.0",
  "proptest",
@@ -4169,7 +4137,7 @@ dependencies = [
 
 [[package]]
 name = "oino-bench"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4187,8 +4155,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "oino-cli"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures",
+ "indexmap 2.14.0",
+ "nix 0.29.0",
+ "oino-acp",
+ "oino-agent",
+ "oino-ai",
+ "oino-cli",
+ "oino-client",
+ "oino-core",
+ "oino-extension-api",
+ "oino-models",
+ "oino-rpc",
+ "oino-session",
+ "oino-settings",
+ "oino-tools",
+ "oino-tui",
+ "oino-wasm-host",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "oino-client"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
@@ -4208,7 +4208,7 @@ dependencies = [
 
 [[package]]
 name = "oino-core"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "futures",
  "ignore",
@@ -4237,7 +4237,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-api"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "futures",
  "oino-ai",
@@ -4253,7 +4253,7 @@ dependencies = [
 
 [[package]]
 name = "oino-models"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "futures",
  "globset",
@@ -4269,7 +4269,7 @@ dependencies = [
 
 [[package]]
 name = "oino-resources"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "globset",
  "ignore",
@@ -4286,7 +4286,7 @@ dependencies = [
 
 [[package]]
 name = "oino-rpc"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "futures",
  "oino-agent",
@@ -4303,7 +4303,7 @@ dependencies = [
 
 [[package]]
 name = "oino-session"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "fs4",
  "indexmap 2.14.0",
@@ -4319,7 +4319,7 @@ dependencies = [
 
 [[package]]
 name = "oino-settings"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "dirs",
  "indexmap 2.14.0",
@@ -4333,7 +4333,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tools"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -4359,7 +4359,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tui"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "crossterm",
@@ -4388,7 +4388,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ui"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "jsonschema",
@@ -4399,7 +4399,7 @@ dependencies = [
 
 [[package]]
 name = "oino-view"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "indexmap 2.14.0",
  "oino-agent",
@@ -4414,7 +4414,7 @@ dependencies = [
 
 [[package]]
 name = "oino-wasm-host"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -6781,6 +6781,7 @@ dependencies = [
  "iroh",
  "iroh-tickets",
  "libc",
+ "notify",
  "oino-agent",
  "oino-client",
  "oino-core",
@@ -6810,6 +6811,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unipi-cron",
+ "unipi-kanboard",
  "unipi-proto",
  "url",
  "windows-sys 0.61.2",

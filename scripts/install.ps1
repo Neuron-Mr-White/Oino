@@ -5,7 +5,7 @@
 #
 # 1. Prefer a tagged release (release-manifest.json, sha256-verified).
 # 2. Fall back to a source build: `cargo xtask wasm`, then
-#    `cargo build --release -p oino -p oino-kanboard`.
+#    `cargo build --release -p oino-cli -p oino-kanboard`.
 #
 # Environment: OINO_PREFIX, OINO_REF, OINO_FROM_SOURCE=1, OINO_DIR, OINO_DRY_RUN=1.
 

@@ -1,6 +1,6 @@
 [package]
 name = "oino-extension-api"
-version = "1.0.0-alpha.5"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -13,7 +13,7 @@ testing = []
 
 [dependencies]
 futures.workspace = true
-oino-ai = { path = "../oino-ai" }
+oino-ai = { path = "../oino-ai", version = "1.0.0" }
 semver.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }

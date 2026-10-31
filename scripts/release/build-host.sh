@@ -8,7 +8,7 @@
 # Steps:
 #   1. `cargo xtask checksums`: extensions/dist must be present and current (it is not built
 #      here: build hosts have no wasm toolchain; `remote-build` ships the local dist).
-#   2. `cargo build --release -p oino -p oino-kanboard` (macOS --universal: aarch64 + x86_64,
+#   2. `cargo build --release -p oino-cli -p oino-kanboard` (macOS --universal: aarch64 + x86_64,
 #      lipo'd; the thin x86_64 binaries are kept as well).
 #   3. Copies everything into target/release-artifacts/<target>/ with SHA256SUMS,
 #      build-info.txt and smoke.txt (smoke tests: --version, a faux-provider print run with
@@ -78,7 +78,7 @@ log "checking extensions/dist (cargo xtask checksums)"
 cargo xtask checksums
 
 cli_build() { # $1 = optional target triple
-  local args=(build --release -j "$JOBS" -p oino -p oino-kanboard)
+  local args=(build --release -j "$JOBS" -p oino-cli -p oino-kanboard)
   [[ -n "${1:-}" ]] && args+=(--target "$1")
   log "cargo ${args[*]}"
   cargo "${args[@]}"

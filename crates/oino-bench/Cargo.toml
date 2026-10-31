@@ -1,6 +1,7 @@
 [package]
 name = "oino-bench"
-version = "1.0.0-alpha.5"
+publish = false
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
@@ -18,11 +19,11 @@ chrono.workspace = true
 futures.workspace = true
 indexmap.workspace = true
 nix = { workspace = true, features = ["feature"] }
-oino-ai = { path = "../oino-ai" }
-oino-core = { path = "../oino-core" }
-oino-models = { path = "../oino-models" }
-oino-session = { path = "../oino-session" }
-oino-settings = { path = "../oino-settings" }
+oino-ai = { path = "../oino-ai", version = "1.0.0" }
+oino-core = { path = "../oino-core", version = "1.0.0" }
+oino-models = { path = "../oino-models", version = "1.0.0" }
+oino-session = { path = "../oino-session", version = "1.0.0" }
+oino-settings = { path = "../oino-settings", version = "1.0.0" }
 serde_json.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

@@ -146,7 +146,7 @@ jobs:
         with:
           name: dist
           path: extensions/dist
-      - run: cargo build --release -p oino -p oino-kanboard
+      - run: cargo build --release -p oino-cli -p oino-kanboard
       - name: Stage
         shell: bash
         run: |
