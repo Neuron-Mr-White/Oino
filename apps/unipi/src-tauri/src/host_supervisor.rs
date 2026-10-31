@@ -879,8 +879,8 @@ mod e2e {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn spawns_a_real_host_as_an_app_child() {
-        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/debug/unipi-host");
+        let bin =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/unipi-host");
         if !bin.exists() {
             eprintln!("SKIP: build unipi-host first ({})", bin.display());
             return;
@@ -975,9 +975,7 @@ mod e2e {
             })
             .find(|p| is_executable(p));
         let Some(built) = built else {
-            eprintln!(
-                "SKIP: build the sidecar first (apps/unipi/src-tauri/unipi-host-sidecar.sh)"
-            );
+            eprintln!("SKIP: build the sidecar first (apps/unipi/src-tauri/unipi-host-sidecar.sh)");
             return;
         };
 

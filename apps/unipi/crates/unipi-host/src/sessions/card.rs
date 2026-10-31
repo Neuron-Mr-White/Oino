@@ -259,7 +259,12 @@ mod tests {
             }
         }
         assert_eq!(
-            canonical(&serde_json::to_value(HubState::Crashed { error: "boom".into() }).unwrap()),
+            canonical(
+                &serde_json::to_value(HubState::Crashed {
+                    error: "boom".into()
+                })
+                .unwrap()
+            ),
             canonical(&serde_json::json!({"kind": "crashed", "error": "boom"}))
         );
         assert_eq!(
