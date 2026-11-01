@@ -450,11 +450,7 @@ mod tests {
         );
         // Without a home there is no default agent dir to re-root against.
         assert_eq!(
-            rooted_in_agent_dir_with(
-                None,
-                default_agent.join("cron"),
-                &agent_dir
-            ),
+            rooted_in_agent_dir_with(None, default_agent.join("cron"), &agent_dir),
             default_agent.join("cron")
         );
     }
