@@ -1,15 +1,25 @@
 /**
  * Info tab (WP-A17, G-13): the `/info` pages natively — Session (identity +
- * `get_session_stats`), Usage (this PC's sessions from the hub cards), Tools
- * (`get_commands`, grouped by source), Skills (commands with source `skill`,
- * grouped like the extension groups them) and Modules (`_oino/extensions`)
- * — plus the watchdog Limits section (G-16). The info-screen extension's own
- * fallback tree stays what non-native frontends see (ui-protocol §8).
+ * `get_session_stats`), Usage, Tools, Skills (commands with source `skill`,
+ * grouped like the extension groups them) and Modules (`_oino/extensions`
+ * plus every extension's `info-screen.groups` status card) — plus the
+ * watchdog Limits section (G-16).
+ *
+ * P1-03: Usage (per-day token/cost history from the session files) and Tools
+ * (the active LLM tools) are data only the info-screen extension computes —
+ * no host RPC carries them. Opening those pages asks the extension
+ * (`/info usage|tools`) and renders *its* page from the dashboard's reserved
+ * entry (the Tabs pane of that id), live as it repaints; this PC's hub totals
+ * and the slash-command inventory stay as the quick native part.
  */
-import { createResource, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, on, Show } from 'solid-js';
+import { NodeView } from '../../ui/NodeView';
+import { EntryContext, createEntryActions, type UiTarget } from '../../ui/actions';
+import { sessionUi } from '../../ui/registries';
+import type { UiEntry, UiNode } from '../../ui/types';
 import type { SessionHandle } from '../../lib/session/store';
 import { hubs } from '../../lib/session/hub';
-import { formatCount, formatUsd, liveSource, parseExtensions, parseSessionStats, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
+import { formatCount, formatUsd, liveSource, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
 import { LimitsSection } from './LimitsSection';
 import type { InfoPage } from './SessionModal';
 
@@ -114,14 +124,69 @@ function UsagePage(props: { s: SessionHandle }) {
         <div class="sm-stat"><span class="sm-stat-label">Needs you</span><span class="sm-stat-value">{needsYou()}</span></div>
         <div class="sm-stat"><span class="sm-stat-label">Messages</span><span class="sm-stat-value">{formatCount(messages())}</span></div>
       </div>
-      <p class="sm-note">Across the sessions this PC reports. Per-day token and cost history is the host's to expose.</p>
+      <ExtPane s={props.s} page="usage" label="Token and cost history" />
     </>
   );
 }
 
-function ToolsPage(props: { commands: CommandInfo[] }) {
+const DASHBOARD = 'unipi.info-screen/dashboard';
+
+/** The info-screen dashboard entry of this session (present once `/info …` ran). */
+function dashboardEntry(s: SessionHandle): UiEntry | undefined {
+  return sessionUi(s.hostId, s.sessionId()).stack('overlay')().find((e) => e.id === DASHBOARD);
+}
+
+/** The extension's own page `page` from the dashboard's fallback Tabs tree. Pure. */
+export function dashboardPane(entry: UiEntry | undefined, page: string): UiNode | undefined {
+  const view = entry?.view as { kind?: string; fallback?: unknown; root?: unknown } | undefined;
+  const tree = (view?.kind === 'reserved' ? view.fallback : view?.root) as { t?: string; panes?: Record<string, UiNode> } | undefined;
+  if (!tree || tree.t !== 'Tabs') return undefined;
+  const pane = tree.panes?.[page] as (UiNode & { t?: string }) | undefined;
+  // An unloaded page is a bare spinner: nothing to show yet.
+  return pane && !(pane.t === 'Spinner' && !(pane as { label?: string }).label) ? pane : undefined;
+}
+
+/**
+ * P1-03: the info-screen extension's page `page`, asked for once per mount
+ * (`/info <page>` repaints the dashboard entry with that page loaded) and
+ * rendered from the entry live. No extension → a quiet note.
+ */
+function ExtPane(props: { s: SessionHandle; page: 'usage' | 'tools'; label: string }) {
+  const has = () => props.s.state.commands.some((c) => c.name === 'info' || c.name === 'unipi:info');
+  const command = () => (props.s.state.commands.some((c) => c.name === 'info') ? 'info' : 'unipi:info');
+  createEffect(
+    on(has, (ok) => {
+      if (ok) props.s.send(`/${command()} ${props.page}`, { mode: 'prompt' });
+    }),
+  );
+  const pane = createMemo(() => dashboardPane(dashboardEntry(props.s), props.page));
+  const target = (): UiTarget => ({ scope: 'session', hostId: props.s.hostId, sessionId: props.s.sessionId() });
+  const actions = createMemo(() => createEntryActions(DASHBOARD, target()));
+  return (
+    <div class="sm-ext-pane" data-testid={`sm-ext-${props.page}`}>
+      <div class="sm-section-title">{props.label}</div>
+      <Show
+        when={pane()}
+        fallback={<p class="sm-note">{has() ? 'Loading from the Info extension…' : 'Turn on the Info extension (Settings › Extensions) for this page.'}</p>}
+      >
+        {(node) => (
+          <EntryContext.Provider value={actions()}>
+            <div class="ui-entry sm-ext-tree" data-entry={DASHBOARD}>
+              <NodeView node={node()} path={[props.page]} mode="auto" />
+            </div>
+          </EntryContext.Provider>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+function ToolsPage(props: { s: SessionHandle; commands: CommandInfo[] }) {
   const groups = () => groupBy(props.commands.filter((c) => c.source !== 'skill'), commandSource);
   return (
+    <>
+    <ExtPane s={props.s} page="tools" label="Agent tools" />
+    <div class="sm-section-title sm-section-gap">Commands</div>
     <Show when={groups().length > 0} fallback={<p class="sm-note">No commands.</p>}>
       <For each={groups()}>
         {([source, list]) => (
@@ -143,6 +208,7 @@ function ToolsPage(props: { commands: CommandInfo[] }) {
         )}
       </For>
     </Show>
+    </>
   );
 }
 
@@ -174,9 +240,77 @@ function SkillsPage(props: { commands: CommandInfo[] }) {
   );
 }
 
-function ModulesPage(props: { extensions: ExtensionInfo[] }) {
+/** One extension status card from `info-screen.groups` (id, name, stats, data). */
+export type InfoGroup = { owner: string; id: string; name: string; stats: Array<{ id: string; label: string; value: string; detail?: string }> };
+
+/** Decodes one `info-screen.groups` reply (a group or a list) into cards. Pure. */
+export function parseInfoGroups(owner: string, reply: unknown): InfoGroup[] {
+  const list = Array.isArray(reply) ? reply : reply && typeof reply === 'object' ? [reply] : [];
+  const out: InfoGroup[] = [];
+  for (const raw of list) {
+    const g = raw as { id?: unknown; name?: unknown; config?: { stats?: unknown }; data?: Record<string, unknown> };
+    if (typeof g?.id !== 'string') continue;
+    const data = (g.data && typeof g.data === 'object' ? g.data : {}) as Record<string, { value?: unknown; detail?: unknown } | undefined>;
+    const declared = Array.isArray(g.config?.stats) ? (g.config!.stats as Array<{ id?: unknown; label?: unknown; show?: unknown }>) : [];
+    const ids = declared.length
+      ? declared.filter((st) => typeof st.id === 'string' && st.show !== false).map((st) => ({ id: st.id as string, label: typeof st.label === 'string' ? st.label : (st.id as string) }))
+      : Object.keys(data).filter((k) => k !== 'raw').map((k) => ({ id: k, label: k }));
+    const stats = ids.flatMap(({ id, label }) => {
+      const v = data[id];
+      if (!v || v.value === undefined || v.value === null || v.value === '') return [];
+      return [{ id, label, value: String(v.value), ...(typeof v.detail === 'string' && v.detail ? { detail: v.detail } : {}) }];
+    });
+    out.push({ owner, id: g.id, name: typeof g.name === 'string' ? g.name : g.id, stats });
+  }
+  return out;
+}
+
+function ModulesPage(props: { s: SessionHandle; extensions: ExtensionInfo[] }) {
+  // P1-03: every loaded extension's status card (`info-screen.groups`): compactor, mcp, memory, updater, web-api…
+  const [groups] = createResource(
+    () => props.extensions.filter((e) => e.loaded && e.enabled).map((e) => e.id).join(','),
+    async (ids) => {
+      const replies = await Promise.all(
+        ids
+          .split(',')
+          .filter(Boolean)
+          .map((id) =>
+            serviceCall<unknown>(props.s, 'info-screen.groups', {}, id)
+              .then((reply) => parseInfoGroups(id, reply))
+              .catch(() => [] as InfoGroup[]),
+          ),
+      );
+      return replies.flat().filter((g) => g.stats.length > 0);
+    },
+  );
   const rows = () => props.extensions.map((e) => [e.id, e.loaded ? 'loaded' : e.enabled ? 'enabled' : 'off', e.path ?? ''] as const);
   return (
+    <>
+    <Show when={(groups.latest ?? []).length > 0}>
+      <div class="sm-groups" data-testid="sm-info-groups">
+        <For each={groups.latest ?? []}>
+          {(g) => (
+            <section class="sm-group" data-testid="sm-info-group" title={g.owner}>
+              <div class="sm-group-name">{g.name}</div>
+              <div class="sm-kv">
+                <For each={g.stats}>
+                  {(st) => (
+                    <div class="sm-kv-row">
+                      <span class="sm-kv-key">{st.label}</span>
+                      <span class="sm-kv-val" data-num={/^[\d.,:\-TZ%$ ]+$/.test(st.value) ? '' : undefined} title={st.detail ? `${st.value} · ${st.detail}` : st.value}>
+                        {st.value}
+                        {st.detail ? ` · ${st.detail}` : ''}
+                      </span>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </section>
+          )}
+        </For>
+      </div>
+      <div class="sm-section-title sm-section-gap">Extensions</div>
+    </Show>
     <Show when={props.extensions.length > 0} fallback={<p class="sm-note">No extensions loaded.</p>}>
       <div class="sm-rows">
         <For each={rows()}>
@@ -192,6 +326,7 @@ function ModulesPage(props: { extensions: ExtensionInfo[] }) {
         </For>
       </div>
     </Show>
+    </>
   );
 }
 
@@ -230,13 +365,13 @@ export function InfoTab(props: { s: SessionHandle; initialPage?: InfoPage }) {
         <UsagePage s={props.s} />
       </Show>
       <Show when={page() === 'tools'}>
-        <ToolsPage commands={data.latest?.commands ?? []} />
+        <ToolsPage s={props.s} commands={data.latest?.commands ?? []} />
       </Show>
       <Show when={page() === 'skills'}>
         <SkillsPage commands={data.latest?.commands ?? []} />
       </Show>
       <Show when={page() === 'modules'}>
-        <ModulesPage extensions={data.latest?.extensions ?? []} />
+        <ModulesPage s={props.s} extensions={data.latest?.extensions ?? []} />
       </Show>
       <LimitsSection s={props.s} />
     </div>

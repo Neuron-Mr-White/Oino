@@ -147,3 +147,14 @@ body > div:has(> .sheet.session-sheet) > .sheet-overlay { z-index: 69; }
 }
 .rename-actions .btn:not(:disabled) { background: var(--color-claw); color: var(--color-ink); border-color: transparent; }
 .rename-actions .btn:disabled { opacity: 0.5; }
+
+/* P1-03: extension status cards (info-screen.groups) and the extension's own Usage / Tools pages. */
+.sm-section-gap { margin-top: 10px; }
+.sm-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.sm-group { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 14px; background: var(--color-surface-2); min-width: 0; }
+.sm-group-name { font-size: 13px; font-weight: 650; color: var(--color-text); }
+.sm-group .sm-kv-row { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; }
+.sm-group .sm-kv-key { width: auto; white-space: nowrap; }
+.sm-group .sm-kv-val { min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-ext-pane { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.sm-ext-tree { padding: 10px 12px; border-radius: 14px; background: var(--color-surface-1, rgb(255 255 255 / 2%)); border: 1px solid rgb(46 40 37 / 60%); overflow-x: auto; }

@@ -119,11 +119,15 @@ export function SessionModal(props: { onClose: () => void }) {
   };
   const close = () => {
     const cur = t();
+    // P1-03: the Info pages may have asked the extension (`/info usage`) — its
+    // dashboard entry then exists even when the modal opened from ⋯; close it too.
+    const entryId =
+      cur?.entryId ?? (cur && sessionUi(cur.hostId, cur.sessionId).stack('overlay')().some((e) => e.id === DASHBOARD_ID) ? DASHBOARD_ID : undefined);
     // Remember before closing: the reopen effect must see the dismissal.
-    if (cur?.entryId) dismissed.add(cur.entryId);
+    if (entryId) dismissed.add(entryId);
     props.onClose();
-    if (cur?.entryId) {
-      uiTransport().action({ scope: 'session', hostId: cur.hostId, sessionId: cur.sessionId }, { entryId: cur.entryId, actionId: '$close' }).catch(() => {});
+    if (cur && entryId) {
+      uiTransport().action({ scope: 'session', hostId: cur.hostId, sessionId: cur.sessionId }, { entryId, actionId: '$close' }).catch(() => {});
     }
   };
   onMount(() => {
