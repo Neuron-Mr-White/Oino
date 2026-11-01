@@ -16,7 +16,7 @@ import { joinBase, scanFileRefs, type FileRefCandidate, type ScanMode } from './
 import { lookupPaths, pathStatUnavailable, type StatChat } from './pathStat';
 import { isExternalHref } from '../markdown/links';
 
-const BLOB_DIR_RE = /\/\.unipi\/app-host\/blobs\/([0-9a-f]{16,64})(?:[/?#]|$)/i;
+const BLOB_DIR_RE = /\/\.oino\/host\/blobs\/([0-9a-f]{16,64})(?:[/?#]|$)/i;
 
 /** A verified file reference: a span of the scanned text and where it lives on the PC. */
 export type FileRefHit = { start: number; end: number; path: string; resolved: string; kind: 'file' | 'dir'; line?: number; col?: number };
@@ -82,7 +82,7 @@ export function splitByHits(text: string, hits: readonly FileRefHit[]): Array<st
   return out;
 }
 
-/** `~/.unipi/app-host/blobs/<sha256>` → `attachment·<first 8 of sha>`;
+/** `~/.oino/host/blobs/<sha256>` → `attachment·<first 8 of sha>`;
  * otherwise the basename, with the parent dir available separately for
  * dimmed display (attachment/path chips, UNI-203/212). */
 export function fileRefLabel(path: string): { label: string; dim?: string } {

@@ -9,7 +9,6 @@
  * linger enable`) — the one step that needs root.
  */
 import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { A } from '@solidjs/router';
 import { Clock, Globe, Hand, HardDrive, Monitor, MonitorSmartphone, Plug, Power, QrCode, RefreshCw, Send, ShieldCheck, Smartphone, Terminal } from 'lucide-solid';
 import { MODE_LABEL, refreshThisComputer, revokeDevice, seenText, thisComputer } from '../lib/thisComputer';
 import type { DeviceItem } from '@unipi/protocol';
@@ -18,9 +17,7 @@ import type { AppError } from '@unipi/protocol';
 import { SwitchField } from './Switch';
 import { BoardSheet } from './board/BoardSheet';
 import { HostSupervisorCard, hostLog, restartHost } from './HostSupervisorCard';
-import { ComponentsCard } from './ComponentsCard';
 import { CronSettingsCard } from './CronSettings';
-import { setupBannerVisible } from '../lib/setupGate';
 import { useAutostart } from './LifecycleUi';
 import { call } from '../lib/ipc';
 import { can } from '../lib/platform';
@@ -437,12 +434,6 @@ function ThisComputer(props: { s: SharingStatus; Section: (p: { title: string; i
   };
   return (
     <Section title="This computer" icon={<HardDrive size={14} />}>
-      <Show when={setupBannerVisible()}>
-        <div class="setup-banner" data-testid="setup-banner">
-          <p>This PC isn't set up for UniPi yet.</p>
-          <A href="/setup" class="btn btn-primary btn-sm">Set up this PC</A>
-        </div>
-      </Show>
       <div data-testid="share-this-computer">
         <div class="settings-row">
           <span class="settings-icon"><QrCode size={18} /></span>
@@ -514,9 +505,6 @@ function ThisComputer(props: { s: SharingStatus; Section: (p: { title: string; i
           </div>
         </Show>
         <HostLogRow busy={!!change.busy()} />
-        <Show when={can('selfInstall')}>
-          <ComponentsCard />
-        </Show>
         <CronSettingsCard />
         <ErrorLine error={change.error()} />
       </div>

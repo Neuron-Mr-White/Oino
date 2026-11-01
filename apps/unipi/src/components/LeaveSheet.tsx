@@ -72,7 +72,7 @@ export function LeaveSheet(props: {
           </For>
         </div>
         <Show when={error()}>
-          <p class="setup-error-message mt-2" role="alert" data-testid="leave-error">
+          <p class="mt-2 text-[13px] leading-[18px] text-wm-red" role="alert" data-testid="leave-error">
             {error()}
           </p>
         </Show>

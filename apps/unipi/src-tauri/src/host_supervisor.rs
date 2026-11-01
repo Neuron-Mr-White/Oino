@@ -179,11 +179,11 @@ pub async fn run_child(spec: ChildSpec<'_>) -> Result<std::process::ExitStatus, 
             &parent_pid.to_string(),
         ])
         .env("UNIPI_HOST_DIR", dir)
-        // UNI-239: the host sees the *merged* PATH, so mise/nvm Node, pi,
-        // herdr and tmux resolve as they do in the user's shell. Empty until
-        // detection has run, and then we leave the inherited PATH alone.
+        // The host sees the *merged* PATH, so mise/nvm Node, herdr and tmux
+        // resolve as they do in the user's shell. Empty until the start-up
+        // probe has landed, and then we leave the inherited PATH alone.
         .envs({
-            let merged = crate::setup::merged_path();
+            let merged = crate::shell_path::merged_path();
             (!merged.is_empty()).then_some(("PATH", merged))
         })
         .stdin(Stdio::null())
@@ -248,12 +248,6 @@ pub fn log_tail(dir: &Path, lines: usize) -> String {
         .rev()
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-/// `~/.local/bin`, where the setup engine puts the tools it installs (the
-/// host itself runs from the app bundle — v2 has no service and no `ExecStart`).
-pub fn bin_dir(home: &Path) -> PathBuf {
-    home.join(".local").join("bin")
 }
 
 /// A file is executable by its owner?

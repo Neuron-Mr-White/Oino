@@ -1,7 +1,9 @@
 /**
  * About section (WP-A24, G-14): one Update card (the merged UpdateCard: this
- * app's updater + the host row), version/platform/protocol rows, licences —
- * plus the two rows the pi built-ins land on (WP-A25, G-15): **What's new**
+ * app's updater + the host row), the Components rows on the desktop (what
+ * this install ships: app, agent host, oino engine, extensions — P0-01) or the
+ * Version row elsewhere, platform/protocol rows, licences — plus the two rows
+ * the built-in commands land on (WP-A25, G-15): **What's new**
  * (`/changelog`: the update feed's release notes) and **Report a bug**
  * (`/bug`: the repository's issue form in the system browser).
  */
@@ -13,6 +15,7 @@ import { platform } from '../../lib/platform';
 import { updateState } from '../../lib/update';
 import { openExternal } from '../../lib/board/share';
 import { UpdateCard } from '../../components/UpdateCard';
+import { ComponentsCard } from '../../components/ComponentsCard';
 import { ABOUT_ANCHORS } from './anchors';
 import { Row, Section } from './rows';
 
@@ -54,9 +57,16 @@ export function AboutSection() {
           <span class="text-sm text-text-muted" data-testid="platform-mode">{MODE_LABEL[platform().mode]}</span>
         </Row>
       </Show>
-      <Row label="Version">
-        <span class="text-sm text-text-muted" data-testid="about-version">{valueOf(info(), 'version')}</span>
-      </Row>
+      <Show
+        when={platform().mode === 'tauri-desktop'}
+        fallback={
+          <Row label="Version">
+            <span class="text-sm text-text-muted" data-testid="about-version">{valueOf(info(), 'version')}</span>
+          </Row>
+        }
+      >
+        <ComponentsCard />
+      </Show>
       <Row label="Platform">
         <span class="text-sm text-text-muted">{valueOf(info(), 'platform')}</span>
       </Row>

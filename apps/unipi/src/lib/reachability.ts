@@ -26,7 +26,7 @@ import { builtinPlan } from './composer/builtins';
 import { SETTINGS_SECTIONS } from '../screens/settings/catalog';
 
 /** App routes (`main.tsx` `Root()`), plus the settings sub-route pattern. */
-export const ROUTES = ['/', '/s/:host/:session', '/new/:host', '/chat', '/board', '/cron', '/x/:entryId', '/settings', '/settings/:section', '/setup', '/files', '/files/edit', '/preview'];
+export const ROUTES = ['/', '/s/:host/:session', '/new/:host', '/chat', '/board', '/cron', '/x/:entryId', '/settings', '/settings/:section', '/files', '/files/edit', '/preview'];
 
 /** UI v2 slot hosts (U10): the placement → the module that renders it. */
 export const SLOT_SURFACES: Array<{ id: string; title: string; evidence: string }> = [

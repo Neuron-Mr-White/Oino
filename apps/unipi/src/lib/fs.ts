@@ -69,10 +69,6 @@ export async function fsImport(hostId: string, sha256: string, to: string, overw
   return hostCall(hostId, 'fs_import', { sha256, to, overwrite, outside }, z.unknown());
 }
 
-/** The default "Upload to…" destination: a shared folder the host
- * creates on demand, so an upload never needs a browse round trip. */
-export const DEFAULT_UPLOAD_DIR = '~/.unipi/uploads';
-
 /** A directory's basename, or the whole path for `/`. */
 export function basename(path: string): string {
   const trimmed = path.replace(/\/+$/, '');

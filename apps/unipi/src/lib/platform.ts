@@ -83,9 +83,7 @@ export type Capability =
   /** Switch this PC's own sharing (forwarding/browser/desktop/push) through its unipi-host CLI (UNI-248). */
   | 'localSharing'
   /** Desktop app self-update (signed, prompted; UNI-263). */
-  | 'desktopUpdater'
-  /** Install Node, pi, the UniPi extensions and the rest on this PC (UNI-236/241). */
-  | 'selfInstall';
+  | 'desktopUpdater';
 
 /** Where a capability is available, by mode. */
 const MATRIX: Record<Capability, Record<PlatformMode, boolean>> = {
@@ -113,7 +111,6 @@ const MATRIX: Record<Capability, Record<PlatformMode, boolean>> = {
   windowState: { 'tauri-mobile': false, 'tauri-desktop': true, web: false },
   localSharing: { 'tauri-mobile': false, 'tauri-desktop': true, web: false },
   desktopUpdater: { 'tauri-mobile': false, 'tauri-desktop': true, web: false },
-  selfInstall: { 'tauri-mobile': false, 'tauri-desktop': true, web: false },
 };
 
 /** Human name of a capability, for notices ("Chat isn't available…"). */
@@ -142,7 +139,6 @@ export const CAP_LABEL: Record<Capability, string> = {
   windowState: 'Remembered window size',
   localSharing: "This PC's sharing switches",
   desktopUpdater: 'Desktop app updates',
-  selfInstall: 'Installing UniPi on this PC',
 };
 
 export const CAPABILITIES = Object.keys(MATRIX) as Capability[];

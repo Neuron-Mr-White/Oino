@@ -8,7 +8,7 @@
  *   /board, /cron        rail pages
  *   /x/:entryId          extension sidebar page (`fullscreen` slot, U10)
  *   /settings/:section?  the one Settings screen
- *   /setup               SetupWizard
+ *   /setup               (gone: a stale link lands on `/`)
  * Phone only (until A20 / A29): /chat (the Chat tab list), /files(/edit), /preview
  * (the forward viewer; on the desktop shell ports live in the side pane `+`
  * launcher, Z-104). On the desktop shell those redirect to `/`.
@@ -23,7 +23,6 @@ import Chat from './screens/Chat';
 import Cron from './screens/Cron';
 import Preview from './screens/Preview';
 import Settings from './screens/Settings';
-import { SetupWizard } from './screens/SetupWizard';
 import { FilesLayer } from './components/files/FilesTab';
 import { PageHeader } from './components/PageHeader';
 import { EmptyState } from './components/EmptyState';
@@ -154,7 +153,7 @@ export function Root() {
         <Route path="/cron" component={railPage(Cron)} />
         <Route path="/x/:entryId" component={railPage(ExtPageRoute)} />
         <Route path={['/settings', '/settings/:section']} component={railPage(Settings, 'Settings')} />
-        <Route path="/setup" component={railPage(SetupWizard)} />
+        <Route path="/setup" component={() => <Navigate href="/" />} />
         <Route path={['/files', '/files/edit']} component={phoneOnly(gated('files', FilesLayer, 'Files'))} />
         <Route path="/preview" component={phoneOnly(Preview)} />
       </HashRouter>

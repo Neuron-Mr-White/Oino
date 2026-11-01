@@ -38,7 +38,7 @@ import { MermaidViewer } from '../chat/MermaidViewer';
 import { StatusPaneLayer } from '../status/StatusPane';
 import { Previewer } from '../media/Previewer';
 import Editor from '../../screens/Editor';
-import { SetupGate } from '../../lib/setupGate';
+import { InstallCheck } from '../../lib/about';
 import { inTextField } from '../../lib/desktop';
 import { bindingForEvent, installShortcutsPersistence, scopeOf, type BindingHit } from '../../lib/shortcuts/registry';
 import { hasForegroundSubagent, SUBAGENTS_SHORTCUT } from '../../lib/shortcuts/subagents';
@@ -350,7 +350,7 @@ export function AppShell(props: ParentProps) {
         <SharingRequestsRunner />
         <QuitRunner />
         <CloseAskRunner />
-        <SetupGate />
+        <InstallCheck />
         <PairPhoneDialog />
         <Show when={can('desktopUpdater')}>
           <DesktopUpdatePrompt />

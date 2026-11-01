@@ -165,7 +165,7 @@ describe('hydrateFileRefs (rendered markdown)', () => {
 
 describe('fileRefLabel', () => {
   it('shows a short attachment label for blob-store paths', () => {
-    expect(fileRefLabel('/home/u/.unipi/app-host/blobs/deadbeefcafebabe0011223344556677')).toEqual({ label: 'attachment·deadbeef' });
+    expect(fileRefLabel('/home/u/.oino/host/blobs/deadbeefcafebabe0011223344556677')).toEqual({ label: 'attachment·deadbeef' });
   });
   it('splits basename and dimmed parent dir for a regular path', () => {
     expect(fileRefLabel('/home/u/proj/src/a.ts')).toEqual({ label: 'a.ts', dim: '/home/u/proj/src/' });

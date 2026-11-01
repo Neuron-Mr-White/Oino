@@ -7,22 +7,19 @@
 //! protocol compatibility.
 
 #[cfg(desktop)]
+mod about;
+#[cfg(desktop)]
 mod app_update;
 #[cfg(desktop)]
-pub mod setup;
-/// Mobile stand-in for the PATH helpers `host_supervisor`/`setup` use
-/// (they compile everywhere but only run on desktop; setup needs reqwest).
+pub mod shell_path;
+/// Mobile stand-in for the PATH helper `host_supervisor` uses (it compiles
+/// everywhere but only runs on desktop).
 #[cfg(mobile)]
-pub mod setup {
+pub mod shell_path {
     pub fn merged_path() -> String {
         String::new()
     }
-    pub async fn merged_path_here(_home: &std::path::Path) -> String {
-        String::new()
-    }
 }
-#[cfg(desktop)]
-use setup::install;
 mod blob;
 mod board;
 mod browser;
@@ -167,17 +164,7 @@ pub fn run() {
             browser::browser_profiles,
             browser::browser_takeover,
             #[cfg(desktop)]
-            setup::setup_detect,
-            #[cfg(desktop)]
-            setup::updates::setup_check_updates,
-            #[cfg(desktop)]
-            setup::install::setup_plan,
-            #[cfg(desktop)]
-            setup::install::setup_run,
-            #[cfg(desktop)]
-            setup::install::setup_cancel,
-            #[cfg(desktop)]
-            setup::install::install_component_here,
+            about::about_components,
             host_supervisor::host_runtime,
             host_supervisor::host_log,
             host_supervisor::host_restart,
@@ -236,8 +223,6 @@ pub fn run() {
     // close and restored when the main window is created.
     #[cfg(desktop)]
     let builder = builder
-        // UNI-240: the setup engine's cancel flag (desktop only).
-        .manage(install::CancelFlag::default())
         // UNI-237 (A6): "Start at login" (starts hidden in the tray).
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -269,6 +254,8 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 use tauri::Manager;
+                // The user's shell PATH for the host's tools, off the UI thread.
+                shell_path::warm();
                 if let Some(dir) = local_host::host_dir() {
                     let shared = app.state::<host_supervisor::Shared>().inner().clone();
                     let bin = host_supervisor::host_bin(Some(app.handle()));

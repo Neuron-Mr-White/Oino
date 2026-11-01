@@ -14,8 +14,8 @@
 //!   returns the fresh status. The serve process re-reads config.json on every
 //!   request, so nothing needs a restart.
 //!
-//! The host dir is `$UNIPI_HOST_DIR` or `~/.unipi/app-host` (same rule as
-//! unipi-host); the binary is `$UNIPI_HOST_BIN`, `~/.local/bin/unipi-host`, or
+//! The host dir is `$OINO_HOST_DIR` or `~/.oino/host` (`local_host::host_dir`,
+//! the same rule as unipi-host); the binary is `$UNIPI_HOST_BIN`, `~/.local/bin/unipi-host`, or
 //! `unipi-host` on `PATH`.
 
 use std::path::{Path, PathBuf};

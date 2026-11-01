@@ -6,6 +6,7 @@
 
 /** Rows inside About. */
 export const ABOUT_ANCHORS = {
+  components: 'about-components',
   'whats-new': 'about-whats-new',
   'report-bug': 'about-report-bug',
 } as const;
