@@ -1368,7 +1368,7 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                     "tui",
                     "TUI",
                     vec![
-                        core_string("theme", "Theme"),
+                        core_choice("theme", "Theme", &["dark", "light"], "dark"),
                         core_boolean("hideThinkingBlock", "Hide thinking", false),
                         core_choice(
                             "doubleEscapeAction",

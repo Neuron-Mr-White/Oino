@@ -43,7 +43,10 @@ pub fn deep_merge_settings(base: &JsonObject, overrides: &JsonObject) -> JsonObj
 /// - `queueMode` → `steeringMode` (only when `steeringMode` is absent);
 /// - boolean `websockets` → `transport` (`websocket` / `sse`) when `transport` is absent;
 /// - object `skills: {enableSkillCommands, customDirectories}` → `enableSkillCommands` + array;
-/// - `retry.maxDelayMs` → `retry.provider.maxRetryDelayMs` (always removes `maxDelayMs`).
+/// - `retry.maxDelayMs` → `retry.provider.maxRetryDelayMs` (always removes `maxDelayMs`);
+/// - object `theme: {active, overrides}` → string `theme` (legacy theme-object shape);
+///   non-string/absent `active` drops `theme`, non-empty `overrides` moves to top-level
+///   `themeOverrides` (not in the schema; preserved to avoid data loss, existing wins).
 pub fn migrate_settings(settings: &mut JsonObject) {
     if !settings.contains_key("steeringMode")
         && let Some(mode) = settings.shift_remove("queueMode")
@@ -72,6 +75,26 @@ pub fn migrate_settings(settings: &mut JsonObject) {
             _ => {
                 settings.shift_remove("skills");
             }
+        }
+    }
+
+    if let Some(Value::Object(theme)) = settings.get("theme").cloned() {
+        match theme.get("active") {
+            Some(Value::String(active)) => {
+                settings.insert("theme".to_owned(), Value::String(active.clone()));
+            }
+            _ => {
+                settings.shift_remove("theme");
+            }
+        }
+        if let Some(Value::Object(overrides)) = theme.get("overrides")
+            && !overrides.is_empty()
+            && !settings.contains_key("themeOverrides")
+        {
+            settings.insert(
+                "themeOverrides".to_owned(),
+                Value::Object(overrides.clone()),
+            );
         }
     }
 
@@ -281,6 +304,78 @@ mod tests {
         assert_eq!(
             Value::Object(kept),
             json!({"queueMode": "all", "steeringMode": "one-at-a-time"})
+        );
+    }
+
+    #[test]
+    fn migration_promotes_theme_object_active_string() {
+        let mut s = obj(json!({"theme": {"active": "light", "overrides": {}} }));
+        migrate_settings(&mut s);
+        assert_eq!(Value::Object(s), json!({"theme": "light"}));
+    }
+
+    #[test]
+    fn migration_drops_theme_object_without_string_active() {
+        let mut s = obj(json!({"theme": {"active": null, "overrides": {}} }));
+        migrate_settings(&mut s);
+        assert_eq!(Value::Object(s), json!({}));
+        let mut s = obj(json!({"theme": {"overrides": {}} }));
+        migrate_settings(&mut s);
+        assert_eq!(Value::Object(s), json!({}));
+        let mut s = obj(json!({"theme": {"active": 42} }));
+        migrate_settings(&mut s);
+        assert_eq!(Value::Object(s), json!({}));
+    }
+
+    #[test]
+    fn migration_moves_non_empty_theme_overrides_to_top_level() {
+        let mut s = obj(json!({
+            "theme": {"active": "dark", "overrides": {"accent": "red"}}
+        }));
+        migrate_settings(&mut s);
+        assert_eq!(
+            Value::Object(s),
+            json!({"theme": "dark", "themeOverrides": {"accent": "red"}})
+        );
+        // No string `active`: `theme` is dropped but overrides are still preserved.
+        let mut s = obj(json!({"theme": {"active": null, "overrides": {"accent": "red"}} }));
+        migrate_settings(&mut s);
+        assert_eq!(
+            Value::Object(s),
+            json!({"themeOverrides": {"accent": "red"}})
+        );
+    }
+
+    #[test]
+    fn migration_drops_empty_theme_overrides() {
+        let mut s = obj(json!({"theme": {"active": "dark", "overrides": {}} }));
+        migrate_settings(&mut s);
+        assert_eq!(Value::Object(s), json!({"theme": "dark"}));
+        let mut s = obj(json!({"theme": {"active": "dark"} }));
+        migrate_settings(&mut s);
+        assert_eq!(Value::Object(s), json!({"theme": "dark"}));
+    }
+
+    #[test]
+    fn migration_leaves_string_theme_untouched() {
+        let mut s = obj(json!({"theme": "light"}));
+        migrate_settings(&mut s);
+        assert_eq!(Value::Object(s), json!({"theme": "light"}));
+        let mut s = obj(json!({"theme": null}));
+        migrate_settings(&mut s);
+        assert_eq!(Value::Object(s), json!({"theme": null}));
+    }
+
+    #[test]
+    fn migration_keeps_existing_top_level_theme_overrides() {
+        let mut s = obj(json!({
+            "theme": {"active": "dark", "overrides": {"accent": "red"}},
+            "themeOverrides": {"accent": "blue"}
+        }));
+        migrate_settings(&mut s);
+        assert_eq!(
+            Value::Object(s),
+            json!({"theme": "dark", "themeOverrides": {"accent": "blue"}})
         );
     }
 
