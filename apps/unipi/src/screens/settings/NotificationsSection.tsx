@@ -17,6 +17,7 @@ import { NamespaceForm } from '../../ui/settings/form';
 import { settingsSchema } from '../../ui/settings/data';
 import type { Namespace } from '../../ui/settings/types';
 import { LOCAL_HOST } from '../../lib/host/client';
+import { syncDesktopNotify } from '../../lib/notifications/desktopSwitch';
 import { z } from 'zod';
 import { call } from '../../lib/ipc';
 import { can } from '../../lib/platform';
@@ -125,7 +126,9 @@ export function NotificationsSection() {
   return (
     <>
     <Section title="Notifications" id="sec-notifications" icon={<Bell size={14} />}>
-      <Show when={can('nativeNotifications')}>
+      {/* One desktop switch: the notify extension's "Native desktop" below (owner ruling);
+          the app's own switch shows only when the PC reports no notify settings. */}
+      <Show when={can('nativeNotifications') && !namespaces.loading && !notifyNs()}>
         <Row label="Desktop notifications" description="A system notification when the agent needs you or finishes, while UniPi isn't in front">
           <SwitchField label="Desktop notifications" checked={desktopOn()} onChange={(v) => (setDesktopNotifyOn(v), setDesktopOn(v))} />
         </Row>
@@ -207,7 +210,14 @@ export function NotificationsSection() {
       {(ns) => (
         <Section title={can('localSharing') ? 'What this PC sends' : 'What your PC sends'} navTitle="Notifications" id="sec-notify-pc" icon={<Bell size={14} />}>
           <p class="settings-page-blurb">Events, channels (ntfy, Gotify, Telegram, desktop) and quiet hours of the PC’s notify extension.</p>
-          <NamespaceForm namespace={ns()} hostId={notifyHost()} bare flat testId="notify-pc-form" />
+          <NamespaceForm
+            namespace={ns()}
+            hostId={notifyHost()}
+            bare
+            flat
+            testId="notify-pc-form"
+            onChanged={() => void (can('nativeNotifications') && syncDesktopNotify(notifyHost()).then((on) => on !== undefined && setDesktopOn(on)))}
+          />
         </Section>
       )}
     </Show>

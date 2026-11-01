@@ -34,19 +34,33 @@ export function browserTabTitle(page: { url: string; title: string }): string | 
   return displayUrl(page.url) || undefined;
 }
 
-const URL_USED = 'unipi.browserTab.urlUsed';
-/** A tab opened for a link (`params.url`) navigates there once — not again after a reload. */
-export function startUrlOnce(tabId: string, url: unknown): string | undefined {
-  if (typeof url !== 'string' || !url) return undefined;
+const TAB_URLS = 'unipi.browserTab.urls';
+type TabUrls = Array<[tabId: string, url: string]>;
+
+function readTabUrls(): TabUrls {
   try {
-    const used = new Set<string>(JSON.parse(sessionStorage.getItem(URL_USED) ?? '[]') as string[]);
-    if (used.has(tabId)) return undefined;
-    used.add(tabId);
-    sessionStorage.setItem(URL_USED, JSON.stringify([...used].slice(-50)));
+    const raw = JSON.parse(localStorage.getItem(TAB_URLS) ?? '[]') as unknown;
+    return Array.isArray(raw) ? raw.filter((r): r is [string, string] => Array.isArray(r) && typeof r[0] === 'string' && typeof r[1] === 'string') : [];
   } catch {
-    // storage blocked: navigate every open
+    return [];
   }
-  return url;
+}
+
+/** Remembers the page a Browser pane tab shows, so it reopens there after a restart (newest 50 tabs). */
+export function rememberTabUrl(tabId: string, url: string): void {
+  if (!/^https?:/i.test(url)) return;
+  const next = [...readTabUrls().filter(([id]) => id !== tabId), [tabId, url] as [string, string]].slice(-50);
+  try {
+    localStorage.setItem(TAB_URLS, JSON.stringify(next));
+  } catch {
+    // storage blocked: not remembered
+  }
+}
+
+/** The page a Browser pane tab opens on: its last page, else the link it was opened for (`params.url`). */
+export function tabStartUrl(tabId: string, paramUrl: unknown): string | undefined {
+  const saved = readTabUrls().find(([id]) => id === tabId)?.[1];
+  return saved ?? (typeof paramUrl === 'string' && paramUrl ? paramUrl : undefined);
 }
 
 export function BrowserTab(props: PaneTabProps) {
@@ -56,7 +70,7 @@ export function BrowserTab(props: PaneTabProps) {
   const hostName = () => hosts?.hosts().find((h) => h.id === hostId())?.name ?? 'this PC';
   const key = () => composerKeyOf(hostId(), props.sessionId);
   // Read once per mount: the viewer reads `url` several times while it opens.
-  const startUrl = startUrlOnce(props.tab.id, props.tab.params?.url);
+  const startUrl = tabStartUrl(props.tab.id, props.tab.params?.url);
   /** The shown page's title (names a screenshot). */
   let pageTitle = '';
   return (
@@ -74,6 +88,7 @@ export function BrowserTab(props: PaneTabProps) {
             onClose={() => props.close()}
             onPage={(page) => {
               pageTitle = page.title;
+              rememberTabUrl(props.tab.id, page.url);
               const title = browserTabTitle(page);
               if (title !== props.tab.title) props.setTitle(title);
             }}

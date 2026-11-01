@@ -22,6 +22,7 @@ import { useHosts, useHostsOptional } from '../hosts/context';
 import { hubs } from '../lib/session/hub';
 import { can } from '../lib/platform';
 import { desktopNotifyOn, nativeNotify } from '../lib/desktop';
+import { syncDesktopNotify } from '../lib/notifications/desktopSwitch';
 import { openSessionRoute } from '../lib/notifyInit';
 import { attentionItem, NotifyRouter, planNotifications, type Attention, type SessionRef } from '../lib/notifications/route';
 import './needsYou.css';
@@ -173,6 +174,8 @@ export function NeedsYouFeed() {
   const location = useLocation();
   const store = needsYou();
   const router = new NotifyRouter();
+  // One desktop switch: follow the notify extension's "Native desktop".
+  if (can('nativeNotifications')) void syncDesktopNotify();
   /** The item ids this feed added, per session (so an ended wait leaves the drawer). */
   const added = new Map<string, { waiting?: string; finished?: string }>();
 

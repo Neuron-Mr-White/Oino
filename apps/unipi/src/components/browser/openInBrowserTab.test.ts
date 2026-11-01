@@ -10,3 +10,16 @@ describe('Z-106: terminal links → the Browser tab', () => {
     expect(browsableUrl('mailto:me@example.com')).toBe(false);
   });
 });
+
+describe('Browser pane tabs remember their page across restarts', () => {
+  it('a tab reopens on its last page, else on the link it was opened for', async () => {
+    const { rememberTabUrl, tabStartUrl } = await import('./BrowserTab');
+    localStorage.clear();
+    expect(tabStartUrl('t1', 'https://example.com/')).toBe('https://example.com/');
+    rememberTabUrl('t1', 'https://example.com/later');
+    expect(tabStartUrl('t1', 'https://example.com/')).toBe('https://example.com/later');
+    rememberTabUrl('t1', 'about:blank');
+    expect(tabStartUrl('t1', undefined)).toBe('https://example.com/later');
+    expect(tabStartUrl('t2', undefined)).toBeUndefined();
+  });
+});
