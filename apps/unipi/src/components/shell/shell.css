@@ -46,6 +46,8 @@ html[data-shell=desktop] .app-content:has(.settings-group) > div { margin: 0; }
 .sb-word { font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
 .sb-badge { padding: 1px 7px; border-radius: 9999px; font-size: 11px; font-weight: 600; color: var(--color-wm-cyan); background: rgb(40 190 240 / 12%); box-shadow: inset 0 0 0 1px rgb(40 190 240 / 30%); }
 .sb-collapse { margin-left: auto; }
+.sb-top > .sb-bell ~ .sb-collapse { margin-left: 0; }
+.sb-top > .sb-bell > .ny-shell-bell { margin-left: auto; }
 .sb-actions { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 0 10px 8px; }
 .sb-action { display: flex; align-items: center; gap: 10px; height: 34px; min-height: 34px; padding: 0 10px; border-radius: 9px; background: transparent; color: var(--color-text-muted); font-size: 13.5px; font-weight: 500; text-align: left; }
 .sb-action:hover { background: var(--color-surface-2); color: var(--color-text); }

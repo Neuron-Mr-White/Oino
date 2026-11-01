@@ -16,7 +16,7 @@ import { layout } from '../lib/layout';
 import { floatingOn, setFloatingOn } from '../lib/mascot';
 import './needsYou.css';
 
-const [needsYouOpen, setNeedsYouOpen] = createSignal(false);
+import { needsYouOpen, setNeedsYouOpen } from '../lib/needsYouOpen';
 export { needsYouOpen, setNeedsYouOpen };
 /** The phone's floating crab on/off (Settings → Unicrab, and its own "Hide" quick action). */
 const [floating, setFloatingSignal] = createSignal(floatingOn());

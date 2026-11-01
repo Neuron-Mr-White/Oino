@@ -12,7 +12,9 @@ import { useLocation, useNavigate } from '@solidjs/router';
 import { PanelLeftClose, Search, SquarePen } from 'lucide-solid';
 import crab from '../../assets/unicrab-pixel.png';
 import { useHostsOptional } from '../../hosts/context';
-import { isWeb } from '../../lib/platform';
+import { can, isWeb } from '../../lib/platform';
+import { ShellNeedsYouBell } from '../NeedsYouBell';
+import { setNeedsYouOpen } from '../../lib/needsYouOpen';
 import { layout } from '../../lib/layout';
 import { modKey, setPaletteOpen } from '../../lib/shell';
 import { SessionList } from '../sidebar/SessionList';
@@ -53,6 +55,11 @@ export function Sidebar() {
         <span class="sb-word">UniPi</span>
         <Show when={isWeb()}>
           <span class="sb-badge" title="Running in a browser: only the board is available">web</span>
+        </Show>
+        <Show when={can('hosts')}>
+          <span class="sb-bell">
+            <ShellNeedsYouBell onOpen={() => setNeedsYouOpen(true)} />
+          </span>
         </Show>
         <button type="button" class="shell-icon-btn sb-collapse" aria-label="Hide sidebar" title={`Hide sidebar (${modKey()} B)`} onClick={() => layout().toggleSidebar(false)}>
           <PanelLeftClose size={17} />

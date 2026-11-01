@@ -44,7 +44,8 @@ export function PageHeader(props: {
       <div class="page-head-lead">{props.lead}</div>
       <div class="page-head-tools">
         {props.tools}
-        <Show when={desktop() && props.bell !== false && can('hosts')}>
+        {/* P1-06: with the sidebar open its head carries the bell (one per screen). */}
+        <Show when={desktop() && !layout().sidebarOpen() && props.bell !== false && can('hosts')}>
           <NeedsYouBell onOpen={() => setNeedsYouOpen(true)} />
         </Show>
       </div>

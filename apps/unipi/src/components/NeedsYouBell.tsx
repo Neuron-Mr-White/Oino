@@ -11,7 +11,7 @@
  */
 import { createEffect, createMemo, For, onCleanup, Show } from 'solid-js';
 import { useLocation } from '@solidjs/router';
-import { X } from 'lucide-solid';
+import { Bell, X } from 'lucide-solid';
 import { Unicrab } from './Unicrab';
 import { mascotLive } from '../lib/mascotLive';
 import './mascot.css';
@@ -118,6 +118,34 @@ export function NeedsYouBell(props: { onOpen: () => void }) {
       <Unicrab state={live.state()} size={30} />
       <Show when={unread() > 0}>
         <span class="ny-badge">{unread() > 9 ? '9+' : unread()}</span>
+      </Show>
+    </button>
+  );
+}
+
+/**
+ * P1-06: the desktop shell's bell — a compact icon button with the unread
+ * badge in the sidebar head (and beside "Show sidebar" when it is collapsed),
+ * so pending approvals / questions on every PC are one click away on every
+ * screen. The phone keeps the floating Unicrab.
+ */
+export function ShellNeedsYouBell(props: { onOpen: () => void }) {
+  const unread = () => needsYou().unreadCount();
+  const waiting = () => needsYou().list().some((i) => i.group === 'waiting' && !needsYou().isRead(i.id));
+  const label = () => (unread() > 0 ? `Needs you · ${unread()} unread` : 'Needs you');
+  return (
+    <button
+      type="button"
+      class="shell-icon-btn ny-shell-bell"
+      aria-label={label()}
+      title={label()}
+      data-waiting={waiting() ? '' : undefined}
+      data-testid="shell-needs-you"
+      onClick={() => props.onOpen()}
+    >
+      <Bell size={16} />
+      <Show when={unread() > 0}>
+        <span class="ny-shell-badge">{unread() > 9 ? '9+' : unread()}</span>
       </Show>
     </button>
   );

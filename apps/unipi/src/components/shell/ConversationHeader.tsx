@@ -18,6 +18,9 @@ import { copyText } from '../../lib/board/share';
 import { layout } from '../../lib/layout';
 import { modKey } from '../../lib/shell';
 import { openFind } from '../../lib/find';
+import { can } from '../../lib/platform';
+import { ShellNeedsYouBell } from '../NeedsYouBell';
+import { setNeedsYouOpen } from '../../lib/needsYouOpen';
 import type { IconComponent } from '../../lib/panes/kinds';
 
 export type ChatActionId = 'rename' | 'fork' | 'duplicate' | 'export' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'info';
@@ -80,6 +83,9 @@ export function SidebarReveal(props: { onNewChat: () => void }) {
       <button type="button" class="shell-icon-btn" aria-label="New chat" title="New chat" onClick={() => props.onNewChat()}>
         <SquarePen size={16} />
       </button>
+      <Show when={can('hosts')}>
+        <ShellNeedsYouBell onOpen={() => setNeedsYouOpen(true)} />
+      </Show>
     </div>
   );
 }

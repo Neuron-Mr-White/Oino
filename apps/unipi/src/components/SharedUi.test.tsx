@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 import { PageHeader } from './PageHeader';
 import { EmptyState, NoHostState } from './EmptyState';
 import { PcChip } from './PcChip';
-import { resetLayout } from '../lib/layout';
+import { layout, resetLayout } from '../lib/layout';
 import { setPlatformOverride } from '../lib/platform';
 import { lore } from '../lore';
 
@@ -53,9 +53,10 @@ describe('<PageHeader>', () => {
     expect(screen.getByText('QA2 Main project').closest('.page-head-title')).toBeTruthy();
   });
 
-  it('desktop shell: the needs-you bell sits in the header tools (F9); phone: not (it floats)', () => {
+  it('desktop shell, sidebar collapsed: the needs-you bell sits in the header tools (F9, P1-06: the open sidebar carries it otherwise); phone: not (it floats)', () => {
     setPlatformOverride('tauri-desktop');
     desktop(true);
+    layout().toggleSidebar(false);
     render(() => <PageHeader title="Files" />);
     expect(screen.getByTestId('page-head').querySelector('.page-head-tools [aria-label="Needs you"]')).toBeTruthy();
     cleanup();
