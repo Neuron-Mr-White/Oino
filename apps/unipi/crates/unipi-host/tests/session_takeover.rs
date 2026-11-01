@@ -94,6 +94,7 @@ async fn settled_session(hub: &Arc<SessionHub>) -> String {
         .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
+            persist: None,
         }))
         .await
         .unwrap();

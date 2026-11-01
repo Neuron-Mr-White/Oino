@@ -62,6 +62,7 @@ pub mod config_value;
 pub mod env;
 mod glob;
 mod json_text;
+pub mod kind;
 mod models_json;
 mod registration;
 mod registry;

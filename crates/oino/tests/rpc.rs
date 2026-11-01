@@ -171,7 +171,14 @@ fn state_model_and_thinking_commands() {
     assert_eq!(state["isStreaming"], false);
     let models = rpc.ok(json!({"type": "get_available_models"}));
     assert_eq!(models["models"][0]["provider"], "faux");
+    // F-02: every row names its kind (the faux model is a chat model).
+    assert_eq!(models["models"][0]["kind"], "chat");
     let model = rpc.ok(json!({"type": "set_model", "provider": "faux", "modelId": "faux-1"}));
+    assert_eq!(model["id"], "faux-1");
+    // E-19: the explicit per-chat pick (persist: false) is accepted like the default.
+    let model = rpc.ok(
+        json!({"type": "set_model", "provider": "faux", "modelId": "faux-1", "persist": false}),
+    );
     assert_eq!(model["id"], "faux-1");
     assert_eq!(
         rpc.err(json!({"type": "set_model", "provider": "faux", "modelId": "nope"})),
@@ -180,6 +187,11 @@ fn state_model_and_thinking_commands() {
     assert!(
         rpc.err(json!({"type": "set_model", "provider": "faux"}))
             .contains("modelId")
+    );
+    // F-04: the curated domain — one usable chat key means no cycle.
+    assert_eq!(
+        rpc.ok(json!({"type": "cycle_model", "models": ["faux/faux-1", "gone/gone"]})),
+        Value::Null
     );
     assert_eq!(rpc.ok(json!({"type": "cycle_model"})), Value::Null);
     let levels = rpc.ok(json!({"type": "get_available_thinking_levels"}));

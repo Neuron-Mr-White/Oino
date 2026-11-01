@@ -195,6 +195,7 @@ async fn scenario(backend: Arc<dyn SessionBackend>) -> Observed {
             AgentCommand::SetModel {
                 provider: "faux".into(),
                 model_id: "missing".into(),
+                persist: None,
             }
             .into(),
         )

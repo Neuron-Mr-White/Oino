@@ -259,7 +259,11 @@ impl Shared {
                 data(json!({ "cancelled": result.cancelled }))
             }
             AgentCommand::GetState => data(self.state()),
-            AgentCommand::SetModel { provider, model_id } => {
+            AgentCommand::SetModel {
+                provider,
+                model_id,
+                persist,
+            } => {
                 let model = session
                     .models()
                     .available()
@@ -268,20 +272,44 @@ impl Shared {
                     .ok_or_else(|| {
                         ClientError::Command(format!("Model not found: {provider}/{model_id}"))
                     })?;
-                let model = session.set_model(model, true).await.map_err(failed)?;
+                // E-19: `persist` names what the caller wants. Absent = save the PC's
+                // default (the TUI/CLI never send the flag); the app's session stream
+                // rewrites an in-chat pick to `false` so only that chat switches.
+                let model = session
+                    .set_model(model, persist.unwrap_or(true))
+                    .await
+                    .map_err(failed)?;
                 data(model)
             }
-            AgentCommand::CycleModel => {
+            AgentCommand::CycleModel { models } => {
                 // E-19: a cycle is a per-session probe, not a choice — the PC's default
                 // model stays (use the picker's `set_model` to change it for real).
                 let result = session
-                    .cycle_model(CycleDirection::Forward, false)
+                    .cycle_model(
+                        CycleDirection::Forward,
+                        false,
+                        models.as_deref().unwrap_or(&[]),
+                    )
                     .await
                     .map_err(failed)?;
                 data(result)
             }
             AgentCommand::GetAvailableModels => {
-                data(json!({ "models": session.models().available() }))
+                // F-02: every entry names its derived kind (`chat` vs `image`/`speech`/…)
+                // so the UI can filter and mark rows. Per-model readiness (`ready`/
+                // `reason`) rides on the app path (the hub's cache), not here.
+                let models = session
+                    .models()
+                    .available()
+                    .into_iter()
+                    .map(|model| {
+                        let mut entry =
+                            serde_json::to_value(&model).unwrap_or_else(|_| json!(null));
+                        entry["kind"] = json!(oino_models::kind::model_kind(&model));
+                        entry
+                    })
+                    .collect::<Vec<_>>();
+                data(json!({ "models": models }))
             }
             AgentCommand::SetThinkingLevel { level } => {
                 session.set_thinking_level(level, true).await;

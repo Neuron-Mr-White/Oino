@@ -140,7 +140,7 @@ impl App {
             return true;
         }
         if self.matches("app.model.cycleForward", key) {
-            self.send(Tag::CycleModel, AgentCommand::CycleModel);
+            self.send(Tag::CycleModel, AgentCommand::CycleModel { models: None });
             return true;
         }
         if self.matches("app.model.cycleBackward", key) {

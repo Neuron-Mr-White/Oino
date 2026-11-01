@@ -4,7 +4,7 @@
 //! |---|---|
 //! | `tool_call` gate: plan enforcement, then rules → read-only → write/edit → bash (jev in auto) → other | [`Workflow::gate`], [`decide`], [`plan::enforce`], [`bash`] |
 //! | approval prompt (Allow once / Always allow / Deny / Deny with note) | `approval` dialog (`allow_once`, `allow_always`, `reject_once`, `reject_once` + feedback) |
-//! | `/permission [ask\|auto\|full\|status]`, Alt+M | command + shortcut `unipi.permission.cycle` |
+//! | `/permission [ask\|auto\|full\|make-default [mode]\|status]`, Alt+M | command + shortcut `unipi.permission.cycle`; the mode is per chat (session state, E-18), `make-default` writes the global `defaultMode` in the agent dir |
 //! | `/plan [on\|off\|view\|approve]`, Alt+P, `plan_submit` | command + shortcut `unipi.plan.toggle` + tool |
 //! | plan instructions / "[plan mode off]" note | pending flag, attached to the next prompt at `before_agent_start` (a toggle never starts a turn) |
 //! | plan review overlay | `custom` dialog (markdown, side-by-side sections, three buttons) |
@@ -145,6 +145,10 @@ pub fn approval_request(tool: &str, summary: &str, reason: &str, pattern: &str) 
 pub struct Workflow {
     settings: Store,
     plans: SessionMap<PlanState>,
+    /// This chat's permission mode (E-18): session-scoped, never written to disk —
+    /// a chat's choice changes that chat only; the PC default changes only through
+    /// `make-default` (the global `defaultMode` in the agent dir).
+    modes: SessionMap<String>,
 }
 
 fn harness(title: &str) -> Value {
@@ -152,17 +156,21 @@ fn harness(title: &str) -> Value {
 }
 
 impl Workflow {
-    fn resolved(&self) -> settings::Resolved {
+    fn resolved(&self, session_id: &str) -> settings::Resolved {
+        let session_mode = self
+            .modes
+            .with(session_id, |m| (!m.is_empty()).then(|| m.clone()));
         settings::resolve(
             &self.settings.get(NAMESPACE),
             settings::read_file_rules(&self.settings),
             &settings::load(RuleScope::Project),
             &settings::load(RuleScope::Global),
+            session_mode.as_deref(),
         )
     }
 
-    fn debug(&self, line: &str) {
-        if !self.resolved().debug {
+    fn debug(&self, session_id: &str, line: &str) {
+        if !self.resolved(session_id).debug {
             return;
         }
         let path = unipi_kit::paths::logs("permission.log");
@@ -188,23 +196,37 @@ impl Workflow {
     }
 
     fn register_namespace(&self) {
-        let ns = settings::namespace(self.resolved().rules.len()).to_json();
+        let ns = settings::namespace(self.resolved("register").rules.len()).to_json();
         let _ = oino_extension::wit::registry::register_settings(&ns.to_string());
     }
 
     // ── permission mode ──────────────────────────────────────────────────────
 
-    fn set_mode(&self, mode: Mode) {
-        settings::persist_mode(&self.settings, mode.as_str());
+    /// Sets THIS chat's mode (E-18): session state only, nothing on disk.
+    fn set_mode(&self, mode: Mode, session_id: &str) {
+        self.modes.with(session_id, |m| mode.as_str().clone_into(m));
         update_status(None, Some(mode.as_str()));
         unipi_kit::bus::emit(&PermissionModeChanged {
             mode: mode.as_str().into(),
         });
-        self.debug(&format!("mode set to {}", mode.as_str()));
+        self.debug(
+            session_id,
+            &format!("mode set to {} (session)", mode.as_str()),
+        );
+    }
+
+    /// "Make default" (E-18): the one explicit way to change the PC default — the global
+    /// `defaultMode` in the agent dir. Never touches a repo.
+    fn make_default(&self, mode: Mode, session_id: &str) {
+        settings::persist_default_mode(&self.settings, mode.as_str());
+        self.debug(
+            session_id,
+            &format!("default mode set to {}", mode.as_str()),
+        );
     }
 
     fn clear_rules(&self) -> usize {
-        let count = self.resolved().rules.len();
+        let count = self.resolved("clear-rules").rules.len();
         settings::clear_rules(&self.settings);
         self.register_namespace();
         count
@@ -259,7 +281,7 @@ impl Workflow {
             .map(ToOwned::to_owned);
         match option {
             "allow_once" => {
-                self.debug(&format!("approved tool={tool} rule=-"));
+                self.debug(cx.session_id(), &format!("approved tool={tool} rule=-"));
                 Ok(())
             }
             "allow_always" => {
@@ -279,7 +301,10 @@ impl Workflow {
                         "info",
                     );
                 }
-                self.debug(&format!("approved tool={tool} rule={pattern}"));
+                self.debug(
+                    cx.session_id(),
+                    &format!("approved tool={tool} rule={pattern}"),
+                );
                 Ok(())
             }
             other => {
@@ -293,10 +318,13 @@ impl Workflow {
                 } else {
                     feedback
                 };
-                self.debug(&format!(
-                    "denied tool={tool} note={}",
-                    serde_json::to_string(note.as_deref().unwrap_or("")).unwrap_or_default()
-                ));
+                self.debug(
+                    cx.session_id(),
+                    &format!(
+                        "denied tool={tool} note={}",
+                        serde_json::to_string(note.as_deref().unwrap_or("")).unwrap_or_default()
+                    ),
+                );
                 Err(match note {
                     Some(n) => format!("Blocked by permission (user denied): {n}"),
                     None => "Blocked by permission (user denied)".to_owned(),
@@ -318,7 +346,7 @@ impl Workflow {
         let cwd = cx.cwd().display().to_string();
         let tmp = Self::tmpdir();
         let block = |reason: String| Some(json!({"block": true, "reason": reason}));
-        let r = self.resolved();
+        let r = self.resolved(cx.session_id());
         let state = self.plans.with(cx.session_id(), |s| s.clone());
         match plan::enforce(&tool, &subject, &state, &cwd, &tmp) {
             Some(plan::Enforcement::Block(reason)) => return block(reason),
@@ -349,18 +377,34 @@ impl Workflow {
                 decide::after_jev(risk.as_ref(), &subject, &deps)
             }
         };
+        // F-06: child workers get the tools their profile grants. A background child has
+        // no one to ask (its dialogs auto-deny), so an ask would always be a denial —
+        // the profile's grant is the consent. Saved deny rules already decided above.
+        let decision = if cx.is_child()
+            && matches!(&decision, Decision::Ask(_, _))
+            && oino_extension::control::active_tools()
+                .iter()
+                .any(|t| t == &tool)
+        {
+            Decision::Allow(format!("granted by the child's profile ({tool})"))
+        } else {
+            decision
+        };
         let (action, reason) = match &decision {
             Decision::Allow(r) => ("allow", r.clone()),
             Decision::Ask(r, _) => ("ask", r.clone()),
             Decision::Block(r) => ("block", r.clone()),
         };
-        self.debug(&format!(
-            "decision tool={tool} mode={} action={action} reason={} subject={}",
-            r.mode.as_str(),
-            serde_json::to_string(&reason).unwrap_or_default(),
-            serde_json::to_string(&subject.chars().take(200).collect::<String>())
-                .unwrap_or_default()
-        ));
+        self.debug(
+            cx.session_id(),
+            &format!(
+                "decision tool={tool} mode={} action={action} reason={} subject={}",
+                r.mode.as_str(),
+                serde_json::to_string(&reason).unwrap_or_default(),
+                serde_json::to_string(&subject.chars().take(200).collect::<String>())
+                    .unwrap_or_default()
+            ),
+        );
         match decision {
             Decision::Allow(_) => None,
             Decision::Block(reason) => block(reason),
@@ -608,7 +652,7 @@ impl Workflow {
             }
         };
         if req.is_empty() || req == "status" {
-            let r = self.resolved();
+            let r = self.resolved(cx.session_id());
             let default = self
                 .settings
                 .get(NAMESPACE)
@@ -618,23 +662,47 @@ impl Workflow {
                 .to_owned();
             notify(
                 &format!(
-                    "Permission mode: {} (project: {} · default: {default})",
+                    "Permission mode: {} (this chat: {} · default: {default})",
                     r.mode.as_str(),
-                    r.project_mode.as_deref().unwrap_or("-")
+                    r.session_mode.as_deref().unwrap_or("-")
                 ),
+                "info",
+            );
+            return;
+        }
+        // E-18: "make default" is the only persisted change — the GLOBAL default in the
+        // agent dir. Everything else stays in this chat.
+        if let Some(rest) = req.strip_prefix("make-default") {
+            let mode = match Mode::parse(rest.trim()) {
+                Some(mode) => mode,
+                None if rest.trim().is_empty() => self.resolved(cx.session_id()).mode,
+                None => {
+                    notify(
+                        &format!(
+                            "Unknown permission mode \"{}\" — use ask, auto or full",
+                            rest.trim()
+                        ),
+                        "warning",
+                    );
+                    return;
+                }
+            };
+            self.make_default(mode, cx.session_id());
+            notify(
+                &format!("Default permission mode: {} (new chats)", mode.as_str()),
                 "info",
             );
             return;
         }
         let Some(mode) = Mode::parse(&req) else {
             notify(
-                &format!("Unknown permission mode \"{req}\" — use ask, auto or full"),
+                &format!("Unknown permission mode \"{req}\" — use ask, auto, full or make-default"),
                 "warning",
             );
             return;
         };
-        self.set_mode(mode);
-        notify(&format!("Permission mode: {req}"), "info");
+        self.set_mode(mode, cx.session_id());
+        notify(&format!("Permission mode: {req} (this chat only)"), "info");
     }
 
     async fn plan_submit(&self, cx: &ToolCtx) -> ToolResult {
@@ -677,7 +745,10 @@ impl Workflow {
         if !cx.is_child() {
             let imported = settings::import_legacy(&self.settings);
             if imported > 0 {
-                self.debug(&format!("imported {imported} saved rules into settings"));
+                self.debug(
+                    cx.session_id(),
+                    &format!("imported {imported} saved rules into settings"),
+                );
             }
         }
         let cwd = cx.cwd().display().to_string();
@@ -686,7 +757,7 @@ impl Workflow {
         let display = plan::display_plan_path(&cwd, state.plan_file.as_deref());
         let active = state.active;
         self.plans.with(cx.session_id(), |s| *s = state);
-        let mode = self.resolved().mode;
+        let mode = self.resolved(cx.session_id()).mode;
         self.register_namespace();
         update_status(Some(active), Some(mode.as_str()));
         unipi_kit::bus::emit(&PermissionModeChanged {
@@ -778,19 +849,20 @@ impl Extension for Workflow {
                     .and_then(|k| serde_json::from_value(k.clone()).ok())
                     .unwrap_or_default();
                 if keys.iter().any(|k| k == "mode") {
-                    // A hub edit of the project mode supersedes the stored one.
+                    // A legacy project `mode` edit is dropped: modes never live in a repo
+                    // (E-18) — the setting is dead, the session state decides.
                     let mut s = settings::load(RuleScope::Project);
                     s.mode = None;
                     settings::save(RuleScope::Project, &s);
                 }
-                update_status(None, Some(ext.resolved().mode.as_str()));
+                update_status(None, Some(ext.resolved("settings-changed").mode.as_str()));
             }
             Ok(())
         });
 
         cx.command(
             Command::<Self>::new("permission")
-                .description("Permission mode — ask · auto (jev-judged) · full")
+                .description("Permission mode — ask · auto (jev-judged) · full · make-default")
                 .run(|ext, args, cx| async move {
                     ext.permission_command(&args, &cx.cx);
                     Ok(())
@@ -799,12 +871,17 @@ impl Extension for Workflow {
                     completions(
                         &prefix,
                         &[
-                            ("ask", "Prompt before every write, bash call and other tool"),
+                            ("ask", "Prompt before every write, bash call and other tool (this chat)"),
                             (
                                 "auto",
-                                "Read-only and workspace writes run; jev judges ambiguous bash (default)",
+                                "Read-only and workspace writes run; jev judges ambiguous bash (this chat)",
                             ),
-                            ("full", "Run everything — only saved deny rules block"),
+                            ("full", "Run everything — only saved deny rules block (this chat)"),
+                            ("make-default", "Set the default mode new chats start with (this PC)"),
+                            ("make-default ask", "Default: prompt before every tool call"),
+                            ("make-default auto", "Default: jev judges ambiguous bash"),
+                            ("make-default full", "Default: run everything but deny rules"),
+                            ("status", "Show this chat's mode and the default"),
                         ],
                     )
                 }),
@@ -892,8 +969,8 @@ impl Extension for Workflow {
             Shortcut::<Self>::new("unipi.permission.cycle", &["alt+m"])
                 .description("Cycle permission mode (ask → auto → full)")
                 .run(|ext, cx| async move {
-                    let next = ext.resolved().mode.next();
-                    ext.set_mode(next);
+                    let next = ext.resolved(cx.session_id()).mode.next();
+                    ext.set_mode(next, cx.session_id());
                     if cx.has_ui() {
                         let label = match next {
                             Mode::Ask => "ask (always prompt)",

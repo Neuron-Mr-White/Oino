@@ -397,6 +397,7 @@ impl RpcClient {
         self.typed(AgentCommand::SetModel {
             provider: provider.into(),
             model_id: model_id.into(),
+            persist: None,
         })
         .await
     }
@@ -407,7 +408,7 @@ impl RpcClient {
     ///
     /// Persisting the selection failed.
     pub async fn cycle_model(&self) -> Result<Option<CycleModelResult>, ClientError> {
-        self.typed(AgentCommand::CycleModel).await
+        self.typed(AgentCommand::CycleModel { models: None }).await
     }
 
     /// `get_available_models`.

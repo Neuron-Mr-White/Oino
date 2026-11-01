@@ -3,7 +3,7 @@
 
 use oino_ai::{JsonValue, Message, Model, ThinkingLevel};
 use oino_models::resolver::{
-    ThinkingSwitch, next_available_model, next_scoped_model, thinking_level_for_model_switch,
+    ThinkingSwitch, next_curated_model, next_scoped_model, thinking_level_for_model_switch,
 };
 use oino_models::virtual_models::{
     BranchEntryRef, ModelRoute, RouteReason, RouteResult, VIRTUAL_MODEL_STATE_ENTRY,
@@ -181,6 +181,10 @@ impl AgentSession {
 
     /// C y c l e   M o d e l.
     ///
+    /// Walks the `enabledModels` scope when one is set, else the curated `models` keys
+    /// (`provider/id`, e.g. fusion's list), skipping non-chat models — never the whole
+    /// catalogue (F-04). `None` when no domain remains.
+    ///
     /// # Errors
     ///
     /// Persisting the selection failed.
@@ -188,12 +192,13 @@ impl AgentSession {
         &self,
         direction: CycleDirection,
         persist: bool,
+        curated: &[String],
     ) -> Result<Option<CycleModelResult>, SessionOpError> {
         let available = self.inner.models.available();
         let current = self.model();
         let scope = self.scoped_models();
         let (next, explicit, is_scoped) = if scope.is_empty() {
-            match next_available_model(&available, current.as_ref(), direction) {
+            match next_curated_model(curated, &available, current.as_ref(), direction) {
                 Some(model) => (model, None, false),
                 None => return Ok(None),
             }

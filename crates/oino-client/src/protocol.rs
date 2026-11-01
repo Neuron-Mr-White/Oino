@@ -132,9 +132,21 @@ pub enum AgentCommand {
         provider: String,
         /// Model id.
         model_id: String,
+        /// Persist the choice as the PC's default model (E-19). Absent = `true`
+        /// (the TUI/CLI keep saving it); the app sends `false` for an in-chat pick
+        /// so only that chat switches, and `true` for an explicit startup default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        persist: Option<bool>,
     },
     /// Cycle to the next model.
-    CycleModel,
+    #[serde(rename_all = "camelCase")]
+    CycleModel {
+        /// Curated cycle keys (`provider/id`, F-04: the fusion list). Given instead of a
+        /// `enabledModels` scope, the cycle walks only these; without either the cycle is
+        /// a no-op — never a walk over the whole catalogue.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        models: Option<Vec<String>>,
+    },
     /// Models with credentials.
     GetAvailableModels,
     /// Set the thinking level.
@@ -635,7 +647,7 @@ impl AgentCommand {
             Self::NewSession { .. } => "new_session",
             Self::GetState => "get_state",
             Self::SetModel { .. } => "set_model",
-            Self::CycleModel => "cycle_model",
+            Self::CycleModel { .. } => "cycle_model",
             Self::GetAvailableModels => "get_available_models",
             Self::SetThinkingLevel { .. } => "set_thinking_level",
             Self::CycleThinkingLevel => "cycle_thinking_level",

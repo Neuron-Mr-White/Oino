@@ -141,7 +141,8 @@ mod tests {
             fake.send(
                 AgentCommand::SetModel {
                     provider: "a".into(),
-                    model_id: "b".into()
+                    model_id: "b".into(),
+                    persist: None,
                 }
                 .into()
             )

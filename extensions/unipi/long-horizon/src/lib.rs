@@ -3,7 +3,7 @@
 //!
 //! | unipi | here |
 //! |---|---|
-//! | gate at `before_agent_start` (child → explicit → owner → jev judge → default), mode section, tool exposure | [`Lh::gate`]; `set-active-tools` (no payload surgery, unipi-port §2.5); `tool_call` blocks hidden mode tools |
+//! | gate at `before_agent_start` (child → explicit → owner → jev judge → default), mode section, tool exposure | [`Lh::gate`]; `set-active-tools` (no payload surgery, unipi-port §2.5); `tool_call` blocks hidden mode tools. Mode state (pending/override/turn mode) is per session id (F-06): children share the instance and never read or clobber the lead's mode |
 //! | owner coordinator (`state.json`, leases, history 10) | [`modes::Owners`] in `/ext-workspace/<wsid>/state.json` |
 //! | goal machine, verifier, continuation, task gate, wait backoff, recovery outbox (`goal.json`) | [`goal`]; verifier through `models.complete` |
 //! | ralph task files `.unipi/ralph/<name>.md` | `.oino/ralph/<name>.md` (+ `.state.json`) ([`ralph`]) |
@@ -123,12 +123,15 @@ struct State {
     ralph: Option<LoopState>,
     todos: Vec<ralph::Todo>,
     stash: Option<Stash>,
-    pending_explicit: Option<Mode>,
-    session_override: Option<Mode>,
+    /// Mode state is per session (F-06): child workers share this one extension
+    /// instance, so a child's gate must never read, clear or clobber the lead's
+    /// pending/override/turn mode. Keyed by session id.
+    pending_explicit: std::collections::HashMap<String, Mode>,
+    session_override: std::collections::HashMap<String, Mode>,
     display: Option<Mode>,
     last_badge: Option<Mode>,
-    turn_mode: Option<(Mode, String)>,
-    turn: Turn,
+    turn_modes: std::collections::HashMap<String, (Mode, String)>,
+    turns: std::collections::HashMap<String, Turn>,
     proposal: Option<(String, Option<String>, bool)>,
     waits: u32,
     verifier_reason: Option<String>,
@@ -418,13 +421,16 @@ impl Lh {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_owned();
+        let session = cx.session_id().to_owned();
         let (mode, source, confidence) = if cx.is_child() {
-            self.state.borrow_mut().pending_explicit = None;
             (Mode::None, "child", None)
         } else {
             let (fresh, sticky) = {
                 let st = self.state.borrow();
-                (st.pending_explicit, st.session_override)
+                (
+                    st.pending_explicit.get(&session).copied(),
+                    st.session_override.get(&session).copied(),
+                )
             };
             let mut explicit = fresh.or(sticky);
             if let Some(m) = explicit {
@@ -468,7 +474,7 @@ impl Lh {
             } else {
                 (self.settings().default_mode, "default", None)
             };
-            self.state.borrow_mut().pending_explicit = None;
+            self.state.borrow_mut().pending_explicit.remove(&session);
             let sticky_badge = fresh.is_none() && sticky.is_some() && explicit == sticky;
             if sticky_badge { (r.0, r.1, r.2) } else { r }
         };
@@ -479,10 +485,11 @@ impl Lh {
         let show_badge = {
             let mut st = self.state.borrow_mut();
             st.display = Some(mode);
-            st.turn_mode = Some((mode, source.to_owned()));
+            st.turn_modes
+                .insert(session.clone(), (mode, source.to_owned()));
             let show = source == "explicit" || st.last_badge != Some(mode);
             st.last_badge = Some(mode);
-            st.turn = Turn::default();
+            st.turns.insert(session, Turn::default());
             show
         };
         let mut resolved = json!({"mode": mode.as_str(), "source": source});
@@ -509,14 +516,14 @@ impl Lh {
         Some(json!({"systemPromptOptions": opts}))
     }
 
-    fn tool_call(&self, ev: &Event) -> Option<Value> {
+    fn tool_call(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
         let name = ev
             .get("toolName")
             .and_then(Value::as_str)
             .unwrap_or_default();
         let input = ev.get("input").cloned().unwrap_or(Value::Null);
         let mut st = self.state.borrow_mut();
-        let (mode, _) = st.turn_mode.clone()?;
+        let (mode, _) = st.turn_modes.get(cx.session_id()).cloned()?;
         if modes::hidden_tools(mode).contains(&name) {
             return Some(
                 json!({"block": true, "reason": format!("long-horizon: \"{name}\" is not available in {} mode. Switch with /goal, /ralph, /swarm, or /graph.", mode.as_str())}),
@@ -525,9 +532,10 @@ impl Lh {
         if mode == Mode::None {
             return None;
         }
-        st.turn.tool_calls += 1;
+        let turn = st.turns.entry(cx.session_id().to_owned()).or_default();
+        turn.tool_calls += 1;
         if let Some(c) = input.get("command").and_then(Value::as_str) {
-            st.turn.commands.push(c.chars().take(200).collect());
+            turn.commands.push(c.chars().take(200).collect());
         }
         if matches!(name, "edit" | "write")
             && let Some(p) = input
@@ -535,12 +543,12 @@ impl Lh {
                 .or_else(|| input.get("file_path"))
                 .and_then(Value::as_str)
         {
-            st.turn.files.push(p.chars().take(200).collect());
+            turn.files.push(p.chars().take(200).collect());
         }
         None
     }
 
-    async fn tool_result(&self, ev: &Event) {
+    async fn tool_result(&self, ev: &Event, cx: &Ctx) {
         let step = ralph::Step {
             tool: ev
                 .get("toolName")
@@ -566,13 +574,19 @@ impl Lh {
         };
         let reminder = {
             let mut st = self.state.borrow_mut();
-            if st.owners.active.is_none() || st.turn.steered {
+            if st.owners.active.is_none() {
                 return;
             }
-            st.turn.steps.push(step);
-            match ralph::detect(&st.turn.steps, REMIND_AFTER) {
+            let Some(turn) = st.turns.get_mut(cx.session_id()) else {
+                return;
+            };
+            if turn.steered {
+                return;
+            }
+            turn.steps.push(step);
+            match ralph::detect(&turn.steps, REMIND_AFTER) {
                 Some((sig, n)) => {
-                    st.turn.steered = true;
+                    turn.steered = true;
                     Some(ralph::runaway_reminder(sig, n))
                 }
                 None => None,
@@ -672,7 +686,7 @@ impl Lh {
 
     /// unipi `GoalContinuation.onTurnEnd` (goal owner only).
     #[allow(clippy::too_many_lines, reason = "one continuation decision, as unipi")]
-    async fn goal_turn_end(&self, aborted: bool) {
+    async fn goal_turn_end(&self, aborted: bool, session: &str) {
         let (goal, is_goal_owner) = {
             let st = self.state.borrow();
             (
@@ -705,14 +719,12 @@ impl Lh {
         }
         let (proposal, activity) = {
             let mut st = self.state.borrow_mut();
-            (
-                st.proposal.take(),
-                (
-                    st.turn.tool_calls,
-                    st.turn.files.clone(),
-                    st.turn.commands.clone(),
-                ),
-            )
+            let activity = st
+                .turns
+                .get(session)
+                .map(|t| (t.tool_calls, t.files.clone(), t.commands.clone()))
+                .unwrap_or_default();
+            (st.proposal.take(), activity)
         };
         let tokens = Self::tokens();
         let todos: Vec<String> = self
@@ -956,7 +968,7 @@ impl Lh {
                 }
                 Err(e) => text(format!("Todo list rejected: {e}")),
             },
-            "ralph_done" => self.ralph_done().await,
+            "ralph_done" => self.ralph_done(cx.session_id()).await,
             "loop_status" => {
                 let st = self.state.borrow();
                 match &st.ralph {
@@ -1217,7 +1229,12 @@ impl Lh {
 
     // ── ralph ──────────────────────────────────────────────────────────────
 
-    fn ralph_start(&self, name: &str, content: &str) -> std::result::Result<String, String> {
+    fn ralph_start(
+        &self,
+        name: &str,
+        content: &str,
+        session: &str,
+    ) -> std::result::Result<String, String> {
         let mut st = self.state.borrow_mut();
         if let Some(a) = &st.owners.active {
             return Err(format!(
@@ -1269,7 +1286,7 @@ impl Lh {
         st.machine.mark_kickoff(&now_iso());
         st.machine.record_pending(&prompt, 0);
         st.ralph = Some(state.clone());
-        st.session_override = Some(Mode::Ralph);
+        st.session_override.insert(session.to_owned(), Mode::Ralph);
         drop(st);
         Self::owner_event("activated", o.as_ref(), None);
         unipi_kit::bus::emit_raw(
@@ -1279,7 +1296,7 @@ impl Lh {
         Ok(prompt)
     }
 
-    async fn ralph_done(&self) -> ToolResult {
+    async fn ralph_done(&self, session: &str) -> ToolResult {
         let (state, owner_ok) = {
             let st = self.state.borrow();
             (
@@ -1348,7 +1365,7 @@ impl Lh {
                     if let Some(l) = st.ralph.as_mut() {
                         l.status = "complete".into();
                     }
-                    st.session_override = None;
+                    st.session_override.remove(session);
                     st.owners
                         .finish("complete(verifier_met)", &now_iso(), timers::now_ms())
                 };
@@ -1536,7 +1553,13 @@ impl Lh {
                 });
             }
         }
-        let mode = match self.state.borrow().turn_mode.as_ref().map(|t| t.0) {
+        let mode = match self
+            .state
+            .borrow()
+            .turn_modes
+            .get(cx.session_id())
+            .map(|t| t.0)
+        {
             Some(Mode::Swarm) => GraphMode::Swarm,
             _ => GraphMode::Graph,
         };
@@ -1950,7 +1973,7 @@ impl Lh {
 
     // ── commands ───────────────────────────────────────────────────────────
 
-    fn stop_owner(&self, kind: Option<OwnerKind>) -> Option<String> {
+    fn stop_owner(&self, kind: Option<OwnerKind>, session: &str) -> Option<String> {
         let mut st = self.state.borrow_mut();
         let active = st.owners.active.clone()?;
         if kind.is_some_and(|k| k != active.kind) {
@@ -1970,7 +1993,7 @@ impl Lh {
             l.status = "complete".into();
         }
         st.stash = None;
-        st.session_override = None;
+        st.session_override.remove(session);
         st.owners.finish(reason, &now_iso(), timers::now_ms());
         drop(st);
         Self::owner_event("finished", Some(&active), Some(reason));
@@ -2026,7 +2049,7 @@ impl Lh {
                 ));
                 return;
             }
-            match self.ralph_start(name, &content.replace("\\n", "\n")) {
+            match self.ralph_start(name, &content.replace("\\n", "\n"), cx.session_id()) {
                 Ok(prompt) => {
                     self.save();
                     self.send(&prompt, "Ralph").await;
@@ -2106,7 +2129,7 @@ impl Lh {
             _ => None,
         };
         if mode != Mode::Ralph && sub == "stop" {
-            let stopped = self.stop_owner(owner_kind);
+            let stopped = self.stop_owner(owner_kind, cx.session_id());
             notify(&if stopped.is_some() {
                 format!("{} stopped.", def.label())
             } else {
@@ -2122,7 +2145,7 @@ impl Lh {
             let s = self.settings();
             let msg = {
                 let st = self.state.borrow();
-                let current = st.turn_mode.as_ref().map_or_else(
+                let current = st.turn_modes.get(cx.session_id()).map_or_else(
                     || "none yet".to_owned(),
                     |(m, src)| format!("{} ({src})", m.as_str()),
                 );
@@ -2171,7 +2194,9 @@ impl Lh {
                 let r = st.owners.resume(&now_iso());
                 if r.is_some() {
                     st.machine.resume(&now_iso());
-                    st.pending_explicit = r.as_ref().map(|o| o.kind.mode());
+                    if let Some(o) = r.as_ref().map(|o| o.kind.mode()) {
+                        st.pending_explicit.insert(cx.session_id().to_owned(), o);
+                    }
                 }
                 r
             };
@@ -2260,8 +2285,8 @@ impl Lh {
         }
         {
             let mut st = self.state.borrow_mut();
-            st.pending_explicit = Some(mode);
-            st.session_override = Some(mode);
+            st.pending_explicit.insert(cx.session_id().to_owned(), mode);
+            st.session_override.insert(cx.session_id().to_owned(), mode);
             let tools = control::active_tools();
             if let Some(next) = modes::sync_mode_tools(&tools, mode) {
                 let _ = control::set_active_tools(&next);
@@ -2483,7 +2508,7 @@ impl Lh {
         let _ = ui::Panel::update(&id).fallback(spec).send();
     }
 
-    async fn runner(&'static self, name: &str, args: &str) -> Option<Value> {
+    async fn runner(&'static self, name: &str, args: &str, session: &str) -> Option<Value> {
         self.load();
         let a: Value = serde_json::from_str(args).unwrap_or_else(|_| json!({}));
         let s = |k: &str| {
@@ -2518,7 +2543,10 @@ impl Lh {
                         .unwrap_or_default()
                         .to_owned();
                     if t.starts_with("Goal set") {
-                        self.state.borrow_mut().pending_explicit = Some(Mode::Goal);
+                        self.state
+                            .borrow_mut()
+                            .pending_explicit
+                            .insert(session.to_owned(), Mode::Goal);
                         json!({"ok": true, "goalId": g.as_ref().map(|g| g.goal_id.clone()), "objective": obj})
                     } else {
                         json!({"ok": false, "reason": t})
@@ -2567,7 +2595,7 @@ impl Lh {
                         if st.owners.parked.is_some() {
                             st.owners.resume(&now_iso());
                         }
-                        st.pending_explicit = Some(Mode::Goal);
+                        st.pending_explicit.insert(session.to_owned(), Mode::Goal);
                         json!({"ok": true, "goalId": g.goal_id, "status": "active"})
                     }
                 }
@@ -2580,7 +2608,7 @@ impl Lh {
                     .goal
                     .as_ref()
                     .map(|g| g.goal_id.clone());
-                match self.stop_owner(Some(OwnerKind::Goal)) {
+                match self.stop_owner(Some(OwnerKind::Goal), session) {
                     Some(_) => json!({"ok": true, "goalId": gid}),
                     None => json!({"ok": false, "reason": "no active goal"}),
                 }
@@ -2598,8 +2626,8 @@ impl Lh {
                             json!({"ok": false, "reason": format!("the session is owned by a {} owner — finish or suspend it first", owner.map_or("", |k| k.as_str()))})
                         } else {
                             let mut st = self.state.borrow_mut();
-                            st.pending_explicit = Some(mode);
-                            st.session_override = Some(mode);
+                            st.pending_explicit.insert(session.to_owned(), mode);
+                            st.session_override.insert(session.to_owned(), mode);
                             json!({"ok": true, "mode": m})
                         }
                     }
@@ -2616,7 +2644,7 @@ impl Lh {
                 if n.is_empty() || c.trim().is_empty() {
                     json!({"ok": false, "reason": "name and content are required"})
                 } else {
-                    match self.ralph_start(&n, &c) {
+                    match self.ralph_start(&n, &c, session) {
                         Ok(p) => {
                             self.save();
                             self.send(&p, "Ralph").await;
@@ -2643,14 +2671,12 @@ impl Lh {
                     match open {
                         None => json!({"ok": false, "reason": "No agent graph is running."}),
                         Some(m) => {
-                            if self
-                                .stop_owner(Some(if m == GraphMode::Swarm {
-                                    OwnerKind::Swarm
-                                } else {
-                                    OwnerKind::Graph
-                                }))
-                                .is_none()
-                            {
+                            let kind = if m == GraphMode::Swarm {
+                                OwnerKind::Swarm
+                            } else {
+                                OwnerKind::Graph
+                            };
+                            if self.stop_owner(Some(kind), session).is_none() {
                                 self.state
                                     .borrow_mut()
                                     .graph
@@ -2685,10 +2711,13 @@ impl Lh {
             if matches!(
                 ev.get("reason").and_then(Value::as_str),
                 Some("new" | "resume" | "fork")
-            ) && st.session_override.is_some_and(|m| m != Mode::None)
-            {
-                st.session_override = None;
-                st.pending_explicit = None;
+            ) {
+                // This session's own mode keys restart; other sessions keep theirs
+                // (F-06: mode state is per chat, never a shared slot).
+                st.session_override.remove(cx.session_id());
+                st.pending_explicit.remove(cx.session_id());
+                st.turn_modes.remove(cx.session_id());
+                st.turns.remove(cx.session_id());
             }
         }
         self.load();
@@ -2706,7 +2735,12 @@ impl Lh {
         // Crash recovery: re-deliver the durable outbox (at most twice), else arm a recovery fragment.
         let redeliver = {
             let mut st = self.state.borrow_mut();
-            st.display = Some(st.session_override.unwrap_or(self.settings().default_mode));
+            st.display = Some(
+                st.session_override
+                    .get(cx.session_id())
+                    .copied()
+                    .unwrap_or(self.settings().default_mode),
+            );
             let driver = st.owners.active.as_ref().map(|o| o.kind);
             match st.machine.active().cloned() {
                 Some(g) if matches!(g.status, goal::Status::Active | goal::Status::Waiting) => {
@@ -2881,13 +2915,14 @@ impl Extension for Lh {
             );
         }
         cx.command(Command::<Self>::new("regular").description("Regular mode — stop any active owner and run prompts without long-horizon routing")
-            .run(|ext, _a, _cx| async move {
+            .run(|ext, _a, cx| async move {
                 ext.load();
-                ext.stop_owner(None);
+                ext.stop_owner(None, cx.session_id());
                 {
                     let mut st = ext.state.borrow_mut();
-                    st.pending_explicit = Some(Mode::None);
-                    st.session_override = Some(Mode::None);
+                    let session = cx.session_id().to_owned();
+                    st.pending_explicit.insert(session.clone(), Mode::None);
+                    st.session_override.insert(session, Mode::None);
                     // `/regular` clears the mode outright: `publish` falls back to `display`
                     // when no owner is active, so leaving the last resolved mode there keeps
                     // the `Goal`/`Ralph` status chip alive after the stop.
@@ -2913,7 +2948,9 @@ impl Extension for Lh {
                 Command::<Self>::new(*r)
                     .description("long-horizon runner")
                     .hidden()
-                    .run_value(move |ext, args, _cx| async move { Ok(ext.runner(r, &args).await) }),
+                    .run_value(move |ext, args, cx| async move {
+                        Ok(ext.runner(r, &args, cx.session_id()).await)
+                    }),
             );
         }
         cx.nudge_provider(|ext, cx| async move {
@@ -2943,14 +2980,15 @@ impl Extension for Lh {
         cx.on(EventKind::BeforeAgentStart, |ext, ev, cx| async move {
             Ok(ext.gate(&ev, &cx).await)
         });
-        cx.on(EventKind::ToolCall, |ext, ev, _cx| async move {
-            Ok(ext.tool_call(&ev))
+        cx.on(EventKind::ToolCall, |ext, ev, cx| async move {
+            Ok(ext.tool_call(&ev, &cx))
         });
-        cx.on(EventKind::ToolResult, |ext, ev, _cx| async move {
-            ext.tool_result(&ev).await;
+        cx.on(EventKind::ToolResult, |ext, ev, cx| async move {
+            ext.tool_result(&ev, &cx).await;
             Ok(())
         });
         cx.on(EventKind::AgentBeforeSettle, |ext, ev, cx| async move {
+            let session = cx.session_id().to_owned();
             if cx.is_child() {
                 return Ok(());
             }
@@ -2958,7 +2996,7 @@ impl Extension for Lh {
                 .get("outcome")
                 .and_then(Value::as_str)
                 .is_some_and(|o| o != "completed");
-            ext.goal_turn_end(aborted).await;
+            ext.goal_turn_end(aborted, &session).await;
             if ext.settings().goal_progress == "loop"
                 && ext.state.borrow().machine.active().is_some()
                 && ext

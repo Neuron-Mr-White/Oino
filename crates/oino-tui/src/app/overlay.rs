@@ -324,7 +324,14 @@ impl App {
                     .find(|m| model_label(m) == query || m.id == query);
                 if let Some(model) = exact {
                     let (provider, model_id) = (model.provider.clone(), model.id.clone());
-                    self.send(Tag::SetModel, AgentCommand::SetModel { provider, model_id });
+                    self.send(
+                        Tag::SetModel,
+                        AgentCommand::SetModel {
+                            provider,
+                            model_id,
+                            persist: None,
+                        },
+                    );
                 } else {
                     self.on_models(ModelsFor::Selector(Some(query)));
                 }
@@ -360,7 +367,14 @@ impl App {
                 let index = current.map_or(0, |i| wrap_index(i, -1, self.models.len()));
                 let model = &self.models[index];
                 let (provider, model_id) = (model.provider.clone(), model.id.clone());
-                self.send(Tag::SetModel, AgentCommand::SetModel { provider, model_id });
+                self.send(
+                    Tag::SetModel,
+                    AgentCommand::SetModel {
+                        provider,
+                        model_id,
+                        persist: None,
+                    },
+                );
             }
         }
     }
@@ -479,7 +493,14 @@ impl App {
                     if let Some(&i) = picker.filtered.get(picker.selected) {
                         let model = &self.models[i];
                         let (provider, model_id) = (model.provider.clone(), model.id.clone());
-                        self.send(Tag::SetModel, AgentCommand::SetModel { provider, model_id });
+                        self.send(
+                            Tag::SetModel,
+                            AgentCommand::SetModel {
+                                provider,
+                                model_id,
+                                persist: None,
+                            },
+                        );
                     }
                     false
                 } else {

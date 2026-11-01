@@ -15,7 +15,7 @@ use oino_ai::Model;
 
 pub use self::cli::{CliModel, CliModelError, CliModelRequest, resolve_cli_model};
 pub use self::cycle::{
-    CycleDirection, ThinkingSwitch, next_available_model, next_scoped_model,
+    CycleDirection, ThinkingSwitch, next_available_model, next_curated_model, next_scoped_model,
     thinking_level_for_model_switch,
 };
 pub use self::defaults::{

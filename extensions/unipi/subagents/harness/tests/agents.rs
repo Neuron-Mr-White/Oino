@@ -742,6 +742,110 @@ async fn long_horizon_graph_survives_child_session_start() {
     assert!(ids.contains(&"w1") && ids.contains(&"w2"), "{disk}");
 }
 
+/// F-06: the lead's long-horizon mode survives a child worker's turn. Before the fix the
+/// shared per-instance mode state was clobbered by the child's gate (children resolve
+/// `none`), so the lead's `yield_agent_graph` / `view_agent_graph` were refused mid-graph
+/// ("not available in none mode"). Now the mode state is per session: the lead stays in
+/// graph mode while its worker runs.
+#[tokio::test(flavor = "multi_thread")]
+async fn lead_keeps_graph_mode_while_a_child_turn_runs() {
+    let env = Env::new();
+    let (sa, _) = env.load("subagents").await;
+    let (lh, _) = env.load("long-horizon").await;
+    for ext in [&sa, &lh] {
+        env.event(
+            ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+    }
+
+    // The lead opens a graph: `/graph …` marks the chat's mode explicit-graph.
+    env.command(&lh, "graph", "Demo graph").await;
+    let lead = env.cx(CallKind::Event);
+    let resolved = lh
+        .on_event(
+            EventKind::BeforeAgentStart,
+            RawJson::from(json!({
+                "type": "before_agent_start",
+                "prompt": "run it",
+                "systemPrompt": "",
+                "systemPromptOptions": {}
+            })),
+            lead,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("lead turn start: {e}"));
+    let resolved = resolved.map(|r| r.to_value()).unwrap_or_default();
+    let fragment = resolved["systemPromptOptions"]["sections"]["long-horizon"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        fragment.contains("Mode: Graph"),
+        "the lead turn starts in graph mode: {fragment}"
+    );
+
+    // A child worker's turn starts on the same instance (session_start + gate).
+    let child = {
+        let mut cx = env.cx(CallKind::Event);
+        cx.is_child = true;
+        cx.session_id = "child-1".into();
+        cx
+    };
+    lh.on_event(
+        EventKind::SessionStart,
+        RawJson::from(json!({"type": "session_start", "reason": "new"})),
+        child.clone(),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("child session start: {e}"));
+    let child_resolved = lh
+        .on_event(
+            EventKind::BeforeAgentStart,
+            RawJson::from(json!({
+                "type": "before_agent_start",
+                "prompt": "do the work",
+                "systemPrompt": "",
+                "systemPromptOptions": {}
+            })),
+            child,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("child turn start: {e}"));
+    let child_value = child_resolved
+        .map(|r| r.to_value())
+        .unwrap_or_default();
+    let child_fragment = child_value["systemPromptOptions"]["sections"]["long-horizon"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        child_fragment.contains("Mode: Plain"),
+        "children run plain: {child_fragment}"
+    );
+
+    // The lead's graph control tools still work mid-graph (pre-fix: refused in "none
+    // mode" because the child's gate clobbered the shared turn mode).
+    for name in ["view_agent_graph", "yield_agent_graph"] {
+        let blocked = env
+            .event(
+                &lh,
+                EventKind::ToolCall,
+                json!({
+                    "type": "tool_call",
+                    "toolName": name,
+                    "toolCallId": format!("t-{name}"),
+                    "input": {}
+                }),
+            )
+            .await;
+        assert!(
+            blocked.is_none(),
+            "{name} must not be refused while a child runs: {blocked:?}"
+        );
+    }
+}
+
 /// The §2.1.8 restart gate for this suite's components, at both kill levels:
 ///
 /// * instance kill (the session-eviction path: the guest's WASM state dies, the host process,

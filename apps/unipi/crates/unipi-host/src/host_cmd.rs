@@ -85,11 +85,40 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
     dispatch(hub, &services, cmd).await
 }
 
+/// E-18/F-09: the permission mode is never written into a repo. The workflow extension no
+/// longer offers or writes a project `mode`; this refuses the raw settings paths too
+/// (`_oino/set_setting key: extensionSettings.permission.mode scope: project`, the same
+/// via `_oino/set_extension_setting`), so no UI or runner can reintroduce it.
+fn refused_into_repo(cmd: &HostCmd) -> Result<(), AppErrorDto> {
+    let project = |scope: &str| scope == "project";
+    let banned = match cmd {
+        HostCmd::SetSetting { key, scope, .. } => {
+            project(scope)
+                && (key == "extensionSettings.permission.mode"
+                    || key == "extensionSettings.permission.mode.")
+        }
+        HostCmd::SetExtensionSetting {
+            namespace,
+            key,
+            scope,
+            ..
+        } => project(scope) && namespace == "permission" && key == "mode",
+        _ => false,
+    };
+    if banned {
+        return Err(invalid(
+            "the permission mode is per chat; \"make default\" writes the PC default in the agent dir — never a project",
+        ));
+    }
+    Ok(())
+}
+
 async fn dispatch(
     hub: &Arc<SessionHub>,
     services: &Arc<Services>,
     cmd: HostCmd,
 ) -> Result<Value, AppErrorDto> {
+    refused_into_repo(&cmd)?;
     let registry = &services.extension_settings;
     match cmd {
         HostCmd::GetSettingsSchema => Ok(json!({ "namespaces": registry.schema() })),
@@ -506,4 +535,50 @@ fn shortcuts(services: &Services) -> Vec<Value> {
         }
     }
     by_id.into_values().collect()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+    use unipi_proto::settings::HostCmd;
+
+    #[test]
+    fn permission_mode_writes_into_a_project_are_refused() {
+        // E-18/F-09: neither the raw path nor the extension form may write the mode into
+        // <repo>/.oino/settings.json; the global default and unset stay allowed.
+        let banned = HostCmd::SetSetting {
+            key: "extensionSettings.permission.mode".into(),
+            value: Some(json!("ask")),
+            scope: "project".into(),
+        };
+        assert!(refused_into_repo(&banned).is_err());
+        let banned = HostCmd::SetExtensionSetting {
+            namespace: "permission".into(),
+            key: "mode".into(),
+            value: Some(json!("ask")),
+            scope: "project".into(),
+        };
+        assert!(refused_into_repo(&banned).is_err());
+        // The global default (the "make default" write path) is fine.
+        let ok = HostCmd::SetExtensionSetting {
+            namespace: "permission".into(),
+            key: "defaultMode".into(),
+            value: Some(json!("ask")),
+            scope: "global".into(),
+        };
+        assert!(refused_into_repo(&ok).is_ok());
+        let ok = HostCmd::SetSetting {
+            key: "extensionSettings.permission.rules".into(),
+            value: Some(json!([])),
+            scope: "project".into(),
+        };
+        assert!(refused_into_repo(&ok).is_ok());
+        let ok = HostCmd::UnsetExtensionSetting {
+            namespace: "permission".into(),
+            key: "mode".into(),
+            scope: "project".into(),
+        };
+        assert!(refused_into_repo(&ok).is_ok());
+    }
 }

@@ -15,8 +15,11 @@
 //!
 //! The session file is verified to exist before it is recorded — never a guess. A
 //! `time_limit_s` timeout kills the whole process group (so stray children die too) and
-//! records `timeout`; a nonzero exit is `failed`, zero is `ok`. A run whose accumulated
-//! cost exceeds the job's `cost_cap_usd` is recorded `failed` with reason `"cost cap"`.
+//! records `timeout`; a nonzero exit is `failed`, zero is `ok` — unless the JSON stream
+//! says the agent turn itself ended in an error (`stopReason: "error"`, a provider 401
+//! for example), which fails the run with exit 1 and the provider's words in the run file
+//! (F-03). A run whose accumulated cost exceeds the job's `cost_cap_usd` is recorded
+//! `failed` with reason `"cost cap"`.
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -100,9 +103,9 @@ pub fn resolve_oino(
     None
 }
 
-/// Incrementally parses a `--mode json` event stream for the run cost and the latest
-/// turn's final text. Fed raw bytes as they arrive; buffers a partial trailing line
-/// across calls.
+/// Incrementally parses a `--mode json` event stream for the run cost, the latest turn's
+/// final text, and a failed turn (F-03): an assistant message whose `stopReason` is
+/// `error` (a provider 401, rate limit, …) fails the run even when the process exits 0.
 #[derive(Default)]
 pub struct JsonStream {
     buf: Vec<u8>,
@@ -110,6 +113,8 @@ pub struct JsonStream {
     pub cost_usd: f64,
     /// The latest assistant turn's text.
     pub summary: Option<String>,
+    /// The last turn's error (`stopReason: "error"`), if any.
+    pub error: Option<String>,
 }
 
 impl JsonStream {
@@ -129,23 +134,64 @@ impl JsonStream {
     }
 
     fn handle(&mut self, value: &Value) {
-        if value.get("type").and_then(Value::as_str) == Some("turn_end") {
-            let message = value.get("message");
-            self.add_cost(message);
-            if let Some(content) = message
-                .and_then(|m| m.get("content"))
-                .and_then(Value::as_array)
-            {
-                let text: String = content
-                    .iter()
-                    .filter(|c| c.get("type").and_then(Value::as_str) == Some("text"))
-                    .filter_map(|c| c.get("text").and_then(Value::as_str))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if !text.trim().is_empty() {
-                    self.summary = Some(text.trim().to_owned());
+        match value.get("type").and_then(Value::as_str) {
+            Some("turn_end") => {
+                let message = value.get("message");
+                self.add_cost(message);
+                self.add_turn_error(message);
+                if let Some(content) = message
+                    .and_then(|m| m.get("content"))
+                    .and_then(Value::as_array)
+                {
+                    let text: String = content
+                        .iter()
+                        .filter(|c| c.get("type").and_then(Value::as_str) == Some("text"))
+                        .filter_map(|c| c.get("text").and_then(Value::as_str))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if !text.trim().is_empty() {
+                        self.summary = Some(text.trim().to_owned());
+                    }
                 }
             }
+            // The settle summary re-lists every turn message; the last assistant entry
+            // is the truth about how the run ended (F-03).
+            Some("agent_end") => {
+                if let Some(message) =
+                    value
+                        .get("messages")
+                        .and_then(Value::as_array)
+                        .and_then(|m| {
+                            m.iter().rev().find(|m| {
+                                m.get("role").and_then(Value::as_str) == Some("assistant")
+                            })
+                        })
+                {
+                    self.add_turn_error(Some(message));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Records an assistant message's verdict (`stopReason`): an `error` turn keeps the
+    /// provider's words, any other ended turn clears an earlier failure — the run's
+    /// verdict is its LAST turn, so a retry that succeeds succeeds (F-03).
+    fn add_turn_error(&mut self, message: Option<&Value>) {
+        let stop = message
+            .and_then(|m| m.get("stopReason"))
+            .and_then(Value::as_str);
+        if stop == Some("error") {
+            self.error = Some(
+                message
+                    .and_then(|m| m.get("errorMessage"))
+                    .and_then(Value::as_str)
+                    .filter(|e| !e.is_empty())
+                    .unwrap_or("the agent turn ended in an error")
+                    .to_owned(),
+            );
+        } else if stop.is_some() {
+            self.error = None;
         }
     }
 
@@ -389,6 +435,9 @@ pub async fn run(
         let s = stream.lock().await;
         (s.summary.clone().filter(|s| !s.is_empty()), s.cost_usd)
     };
+    // A failed agent turn (provider 401, rate limit, …) fails the run even when the
+    // process exited 0 (F-03): exit 1, and the provider's words land in the run file.
+    let turn_error = stream.lock().await.error.clone();
     let session_path = find_session_file(&paths.agent_dir, &spec.cwd, run_id)
         .map(|p| p.to_string_lossy().into_owned());
 
@@ -408,28 +457,15 @@ pub async fn run(
     }
 
     match wait {
-        Ok(Ok(status)) => {
-            let code = status.code();
-            if status.success() {
-                Outcome {
-                    status: RunStatus::Ok,
-                    exit_code: code,
-                    summary,
-                    reason: None,
-                    session_path,
-                    cost_usd: Some(cost_usd),
-                }
-            } else {
-                Outcome {
-                    status: RunStatus::Failed,
-                    exit_code: code,
-                    summary,
-                    reason: Some(format!("oino exited with status {status}")),
-                    session_path,
-                    cost_usd: Some(cost_usd),
-                }
-            }
-        }
+        Ok(Ok(status)) => exit_outcome(
+            status.success(),
+            status.code(),
+            turn_error,
+            summary,
+            cost_usd,
+            session_path,
+            &status.to_string(),
+        ),
         Ok(Err(e)) => Outcome {
             status: RunStatus::Failed,
             exit_code: None,
@@ -446,6 +482,50 @@ pub async fn run(
             session_path,
             cost_usd: Some(cost_usd),
         },
+    }
+}
+
+/// The wait outcome for a child that was waited on: a nonzero exit is `failed`, zero is
+/// `ok` — unless the JSON stream says the agent turn itself ended in an error
+/// (`stopReason: "error"`, a provider 401 for example), which fails the run with exit 1
+/// and the provider's words in the reason (F-03).
+fn exit_outcome(
+    success: bool,
+    code: Option<i32>,
+    turn_error: Option<String>,
+    summary: Option<String>,
+    cost_usd: f64,
+    session_path: Option<String>,
+    status_text: &str,
+) -> Outcome {
+    if success {
+        if let Some(error) = turn_error {
+            return Outcome {
+                status: RunStatus::Failed,
+                exit_code: Some(1),
+                summary,
+                reason: Some(format!("agent turn failed: {error}")),
+                session_path,
+                cost_usd: Some(cost_usd),
+            };
+        }
+        Outcome {
+            status: RunStatus::Ok,
+            exit_code: code,
+            summary,
+            reason: None,
+            session_path,
+            cost_usd: Some(cost_usd),
+        }
+    } else {
+        Outcome {
+            status: RunStatus::Failed,
+            exit_code: code,
+            summary,
+            reason: Some(format!("oino exited with status {status_text}")),
+            session_path,
+            cost_usd: Some(cost_usd),
+        }
     }
 }
 
@@ -605,6 +685,102 @@ mod tests {
             find_session_file(tmp.path(), "/home/me/project", "cabc123").as_ref(),
             Some(&path)
         );
+    }
+
+    /// A fake provider 401 (F-03): a stream whose turn ended in `stopReason: "error"`
+    /// fails a zero-exit run — failed, exit 1, the provider's words in the reason.
+    #[test]
+    fn an_error_turn_fails_a_zero_exit_run() {
+        let mut stream = JsonStream::default();
+        stream.feed(
+            br#"{"type":"turn_end","message":{"role":"assistant","stopReason":"error","errorMessage":"401 {\"type\":\"error\"}","usage":{"cost":{"total":0.0}}}}"#,
+        );
+        stream.feed(b"\n");
+        stream.feed(br#"{"type":"agent_settled","aborted":false}"#);
+        stream.feed(b"\n");
+        assert_eq!(
+            stream.error.as_deref(),
+            Some("401 {\"type\":\"error\"}"),
+            "the provider's words are kept"
+        );
+        let outcome = exit_outcome(
+            true,
+            Some(0),
+            stream.error.clone(),
+            stream.summary.clone(),
+            stream.cost_usd,
+            Some("/s.jsonl".into()),
+            "exit status: 0",
+        );
+        assert_eq!(outcome.status, RunStatus::Failed);
+        assert_eq!(outcome.exit_code, Some(1));
+        assert!(
+            outcome
+                .reason
+                .as_deref()
+                .unwrap()
+                .starts_with("agent turn failed: 401"),
+            "reason: {:?}",
+            outcome.reason
+        );
+    }
+
+    /// A healthy stream (turn ends in `stop`) keeps a zero-exit run `ok`.
+    #[test]
+    fn a_clean_turn_keeps_a_zero_exit_run_ok() {
+        let mut stream = JsonStream::default();
+        stream.feed(
+            br#"{"type":"turn_end","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"all done"}],"usage":{"cost":{"total":0.01}}}}"#,
+        );
+        stream.feed(b"\n");
+        assert_eq!(stream.error, None);
+        assert_eq!(stream.summary.as_deref(), Some("all done"));
+        let outcome = exit_outcome(
+            true,
+            Some(0),
+            stream.error.clone(),
+            stream.summary.clone(),
+            stream.cost_usd,
+            None,
+            "exit status: 0",
+        );
+        assert_eq!(outcome.status, RunStatus::Ok);
+        assert_eq!(outcome.exit_code, Some(0));
+        assert_eq!(outcome.reason, None);
+    }
+
+    /// The settle summary's last assistant message counts too: an `agent_end` whose last
+    /// turn errored fails the run even without a `turn_end` carrying it.
+    #[test]
+    fn agent_end_error_is_caught() {
+        let mut stream = JsonStream::default();
+        stream.feed(
+            br#"{"type":"agent_end","messages":[{"role":"user","content":[]},{"role":"assistant","stopReason":"error","errorMessage":"401 user not found"}],"willRetry":false}"#,
+        );
+        stream.feed(b"\n");
+        assert_eq!(stream.error.as_deref(), Some("401 user not found"));
+    }
+
+    /// The verdict is the run's LAST turn: a turn that fails then a turn that succeeds
+    /// (auto-retry) leaves no error; the reverse ends failed.
+    #[test]
+    fn the_last_turn_decides() {
+        let mut stream = JsonStream::default();
+        let failed = br#"{"type":"turn_end","message":{"role":"assistant","stopReason":"error","errorMessage":"boom"}}"#;
+        let ok = br#"{"type":"turn_end","message":{"role":"assistant","stopReason":"stop","content":[{"type":"text","text":"recovered"}]}}"#;
+        stream.feed(&failed[..failed.len() - 2]);
+        stream.feed(b"}\n");
+        stream.feed(&ok[..]);
+        stream.feed(b"\n");
+        assert_eq!(stream.error, None, "a recovered run is ok");
+        assert_eq!(stream.summary.as_deref(), Some("recovered"));
+        // The reverse order stays failed.
+        let mut stream = JsonStream::default();
+        stream.feed(&ok[..]);
+        stream.feed(b"\n");
+        stream.feed(&failed[..]);
+        stream.feed(b"\n");
+        assert_eq!(stream.error.as_deref(), Some("boom"));
     }
 
     #[test]

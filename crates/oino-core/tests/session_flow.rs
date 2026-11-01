@@ -371,6 +371,33 @@ async fn thinking_levels_and_models() {
     assert_eq!(error.to_string(), "No API key for nokey/faux-1");
 }
 
+/// E-19: `set_model(.., persist: false)` switches this session only — the PC default
+/// (`defaultProvider`/`defaultModel`) and the cycle scope stay as they were; `persist:
+/// true` keeps saving both (the TUI/CLI behaviour).
+#[tokio::test]
+async fn a_session_scoped_model_pick_does_not_persist_the_default() {
+    let provider = FauxProvider::new(Vec::new());
+    let session = TestSession::default().build(provider).await;
+    let model = FauxProvider::model();
+
+    session.set_model(model.clone(), false).await.unwrap();
+    let snapshot = session.with_settings(|s| s.snapshot());
+    assert_eq!(
+        snapshot.default_provider(),
+        None,
+        "per-chat pick saves no default"
+    );
+    assert_eq!(snapshot.default_model(), None);
+    assert_eq!(snapshot.enabled_models(), None, "no cycle-scope growth");
+    // The session itself runs the new model.
+    assert_eq!(session.model().map(|m| m.id), Some(model.id.clone()));
+
+    session.set_model(model.clone(), true).await.unwrap();
+    let snapshot = session.with_settings(|s| s.snapshot());
+    assert_eq!(snapshot.default_provider(), Some("faux"));
+    assert_eq!(snapshot.default_model(), Some("faux-1"));
+}
+
 /// `control.set-default-model` writes the fresh-session model into core settings without
 /// touching the running session (the v1 port, R4).
 #[tokio::test]

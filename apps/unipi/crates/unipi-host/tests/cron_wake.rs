@@ -130,6 +130,7 @@ async fn a_finished_run_wakes_its_linked_session_through_the_hub() {
         .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
+            persist: None,
         }))
         .await
         .unwrap();

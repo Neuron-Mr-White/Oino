@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-api"
-version = "1.0.2"
+version = "1.1.0"
 dependencies = [
  "futures",
  "oino-ai",
@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "oino-wasm-host"
-version = "1.0.2"
+version = "1.0.1"
 dependencies = [
  "base64",
  "bytes",

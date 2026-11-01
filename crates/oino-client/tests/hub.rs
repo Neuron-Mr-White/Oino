@@ -374,6 +374,7 @@ async fn create_session_is_live_reused_and_listed_after_the_first_message() {
             AgentCommand::SetModel {
                 provider: "faux".into(),
                 model_id: "faux-1".into(),
+                persist: None,
             }
             .into(),
         )

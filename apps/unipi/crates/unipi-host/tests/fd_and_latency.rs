@@ -264,6 +264,7 @@ async fn session_with_a_message(hub: &Arc<SessionHub>) -> String {
         .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
+            persist: None,
         }))
         .await
         .unwrap();

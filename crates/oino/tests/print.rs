@@ -176,6 +176,40 @@ fn print_mode_error_exit_code() {
 }
 
 #[test]
+fn json_mode_error_exit_code() {
+    // F-03: a fake provider 401 — JSON mode must exit non-zero (with the provider's
+    // words on stderr) so a headless runner records the run as failed, and the JSON
+    // event stream itself stays intact.
+    let sandbox = Sandbox::new();
+    let output = sandbox.run(
+        &json!([{"error": "401 {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\"}}"}]),
+        &["--no-session", "--mode", "json", "hi"],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let lines: Vec<Value> = stdout(&output)
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.last().unwrap()["type"], "agent_settled");
+    let failed = lines
+        .iter()
+        .find(|l| l["message"]["stopReason"] == "error")
+        .expect("the stream carries the failed turn");
+    assert!(
+        failed["message"]["errorMessage"]
+            .as_str()
+            .unwrap()
+            .starts_with("401"),
+    );
+    assert!(
+        stderr(&output).starts_with("401"),
+        "stderr: {}",
+        stderr(&output)
+    );
+}
+
+#[test]
 fn json_mode_streams_header_then_events() {
     let sandbox = Sandbox::new();
     let output = sandbox.run(

@@ -1,12 +1,14 @@
 //! `permission` settings namespace (unipi `src/permission/settings.ts`) and the values the gate
-//! writes itself (project `mode`, saved `rules`).
+//! writes itself (saved `rules` and the global `defaultMode`).
 //!
-//! Like unipi, `mode` goes to the project settings file and saved rules to the settings file of
-//! their scope (`extensionSettings.permission.rules`), through the host settings write path.
-//! Rules are read per file and concatenated (global ++ project), so a project list does not
-//! shadow global rules. The pre-write-path stores `/ext-workspace/<wsid>/permission.json`
-//! (project) and `/ext-global/permission.json` (global) are imported once ([`import_legacy`])
-//! and remain the fallback when a write is refused (untrusted project, host without writes).
+//! E-18/F-09: the permission **mode is never written into a project** — changing it in a
+//! chat is session state in the extension ([`crate::Workflow`]); the only persisted mode is
+//! the global default (`defaultMode` in the agent dir), set by the explicit "make default"
+//! action. Saved rules stay per-scope (`extensionSettings.permission.rules`), read per file
+//! and concatenated (global ++ project) so a project list does not shadow global rules. The
+//! pre-write-path stores `/ext-workspace/<wsid>/permission.json` (project) and
+//! `/ext-global/permission.json` (global) are imported once ([`import_legacy`]) and remain
+//! the fallback when a write is refused (untrusted project, host without writes).
 
 use std::path::PathBuf;
 
@@ -68,19 +70,12 @@ pub fn namespace(rule_count: usize) -> Namespace {
         .section(
             Section::new("permissions", "Permissions")
                 .description("Tool-call gate: ask, auto (jev judges ambiguous bash), or full.")
-                .field(
-                    Field::enumeration("mode", "Mode here", mode_options())
-                        .description("Tool-call gate for this project. Alt+M cycles it.")
-                        .scope(Scope::Project)
-                        .with_kind(|k| {
-                            if let Kind::Enum { clearable, .. } = k {
-                                *clearable = true;
-                            }
-                        }),
-                )
+                // E-18/F-09: no per-project `mode` field here — the mode is per chat
+                // (session state); writing one into a repo's settings.json is refused by
+                // the host. `defaultMode` is the global fallback new chats start from.
                 .field(
                     Field::enumeration("defaultMode", "Default mode", mode_options())
-                        .description("Mode for projects that set none of their own.")
+                        .description("Mode for chats that set none of their own (this PC).")
                         .scope(Scope::Global),
                 )
                 .field(
@@ -112,9 +107,12 @@ pub fn namespace(rule_count: usize) -> Namespace {
 /// What the gate stored itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stored {
-    /// Project mode set by `/permission` / Alt+M.
+    /// Legacy project mode (read-only compatibility; never written again, E-18).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
+    /// Legacy global default mode (the store fallback for refused writes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_mode: Option<String>,
     /// Saved rules.
     #[serde(default)]
     pub rules: Vec<PermissionRule>,
@@ -205,21 +203,20 @@ pub fn persist_rule(store: &Store, rule: PermissionRule) {
     add_rule(rule);
 }
 
-/// Sets the project mode in the project settings file; falls back to the local store.
-pub fn persist_mode(store: &Store, mode: &str) {
+/// Sets the **global** default mode in the agent dir (E-18: the only persisted mode — an
+/// explicit "make default" action, never a per-chat change); falls back to the global
+/// store. `WriteScope::Project` is refused outright: the repo's settings.json must never
+/// learn a permission mode.
+pub fn persist_default_mode(store: &Store, mode: &str) {
     if store
-        .write(NAMESPACE, "mode", &json!(mode), WriteScope::Project)
+        .write(NAMESPACE, "defaultMode", &json!(mode), WriteScope::Global)
         .is_ok()
     {
-        let mut s = load(RuleScope::Project);
-        if s.mode.take().is_some() {
-            save(RuleScope::Project, &s);
-        }
         return;
     }
-    let mut s = load(RuleScope::Project);
-    s.mode = Some(mode.to_owned());
-    save(RuleScope::Project, &s);
+    let mut s = load(RuleScope::Global);
+    s.default_mode = Some(mode.to_owned());
+    save(RuleScope::Global, &s);
 }
 
 /// Forgets every saved rule (both files and both local stores).
@@ -237,9 +234,10 @@ pub fn clear_rules(store: &Store) {
 }
 
 /// One-time import of the local stores into the settings files: rules are appended to the
-/// file's rules (deduplicated by tool + pattern), the stored project mode becomes the project
-/// `mode` unless the project file sets one. A store is removed once imported; refused writes
-/// keep it as the fallback layer. Returns the number of rules imported.
+/// file's rules (deduplicated by tool + pattern). A **mode is never imported into a
+/// project** (E-18); the global default mode moves into the global settings file when that
+/// still holds a legacy value. A store is removed once imported; refused writes keep it as
+/// the fallback layer. Returns the number of rules imported.
 pub fn import_legacy(store: &Store) -> usize {
     let mut imported = 0;
     for scope in [RuleScope::Global, RuleScope::Project] {
@@ -261,17 +259,15 @@ pub fn import_legacy(store: &Store) -> usize {
                 imported += stored.rules.len();
             }
         }
+        // A stored global default mode becomes the global `defaultMode`; a stored project
+        // mode is dropped — per-project modes are no longer a thing (E-18).
         if ok
-            && scope == RuleScope::Project
-            && let Some(mode) = &stored.mode
+            && scope == RuleScope::Global
+            && let Some(mode) = &stored.default_mode
         {
-            let project_has_mode = store
-                .layer(NAMESPACE, WriteScope::Project)
-                .is_some_and(|l| l.get("mode").is_some());
-            ok = project_has_mode
-                || store
-                    .write(NAMESPACE, "mode", &json!(mode), WriteScope::Project)
-                    .is_ok();
+            ok = store
+                .write(NAMESPACE, "defaultMode", &json!(mode), WriteScope::Global)
+                .is_ok();
         }
         if ok {
             let _ = std::fs::remove_file(&path);
@@ -285,7 +281,9 @@ pub fn import_legacy(store: &Store) -> usize {
 pub struct Resolved {
     /// Effective mode.
     pub mode: Mode,
-    /// Project mode, if any (`-` in status).
+    /// Session mode, if this chat set one (`-` in status means unset).
+    pub session_mode: Option<String>,
+    /// Legacy project mode, if the project still carries one (read-only, E-18).
     pub project_mode: Option<String>,
     /// Default mode.
     pub default_mode: Mode,
@@ -297,18 +295,32 @@ pub struct Resolved {
     pub debug: bool,
 }
 
-/// Layers stored values over the host settings: stored project `mode` → settings `mode` →
-/// `defaultMode` → `auto`. Rules: the settings files' rules (`files`, else the effective
-/// `rules`) ++ the local stores.
+/// Layers: the session's own mode → a legacy project mode (read-only; repos that carry one
+/// from before E-18) → settings `mode` (same legacy channel) → `defaultMode` → `auto`.
+/// Rules: the settings files' rules (`files`, else the effective `rules`) ++ the local
+/// stores.
 #[must_use]
-pub fn resolve(v: &Values, files: FileRules, project: &Stored, global: &Stored) -> Resolved {
+pub fn resolve(
+    v: &Values,
+    files: FileRules,
+    project: &Stored,
+    global: &Stored,
+    session_mode: Option<&str>,
+) -> Resolved {
     let project_mode = project
         .mode
         .clone()
         .or_else(|| v.get("mode").and_then(Value::as_str).map(ToOwned::to_owned));
-    let default_mode = Mode::coerce(v.get("defaultMode").and_then(Value::as_str));
-    let mode = project_mode
+    let default_mode = Mode::coerce(
+        global
+            .default_mode
+            .as_deref()
+            .or_else(|| v.get("defaultMode").and_then(Value::as_str)),
+    );
+    let session = session_mode.map(ToOwned::to_owned);
+    let mode = session
         .as_deref()
+        .or(project_mode.as_deref())
         .map_or(default_mode, |m| Mode::coerce(Some(m)));
     let conf = v
         .get("jevConfidence")
@@ -327,6 +339,7 @@ pub fn resolve(v: &Values, files: FileRules, project: &Stored, global: &Stored) 
     rules.extend(global.rules.iter().cloned());
     Resolved {
         mode,
+        session_mode: session,
         project_mode,
         default_mode,
         jev_confidence: conf,
@@ -367,14 +380,28 @@ mod tests {
             &defaults(),
             &json!({"jevConfidence": 2}),
         ));
-        let r = resolve(&v, None, &Stored::default(), &Stored::default());
+        let r = resolve(&v, None, &Stored::default(), &Stored::default(), None);
         assert_eq!(r.mode, Mode::Auto);
         assert_eq!(r.project_mode, None);
+        assert_eq!(r.session_mode, None);
         assert!((r.jev_confidence - 0.7).abs() < f64::EPSILON);
+        // A legacy project `mode` (a settings.json written before E-18) still resolves.
         let v = Values(json!({"mode": "ask", "defaultMode": "full"}));
         assert_eq!(
-            resolve(&v, None, &Stored::default(), &Stored::default()).mode,
+            resolve(&v, None, &Stored::default(), &Stored::default(), None).mode,
             Mode::Ask
+        );
+        // … but the session's own mode wins over it (E-18).
+        assert_eq!(
+            resolve(
+                &v,
+                None,
+                &Stored::default(),
+                &Stored::default(),
+                Some("full")
+            )
+            .mode,
+            Mode::Full
         );
         let stored = Stored {
             mode: Some("full".into()),
@@ -384,8 +411,9 @@ mod tests {
                 decision: RuleDecision::Allow,
                 scope: RuleScope::Project,
             }],
+            ..Stored::default()
         };
-        let r = resolve(&v, None, &stored, &Stored::default());
+        let r = resolve(&v, None, &stored, &Stored::default(), None);
         assert_eq!(r.mode, Mode::Full);
         assert_eq!(r.rules.len(), 1);
         let rule = |p: &str, scope| PermissionRule {
@@ -403,6 +431,7 @@ mod tests {
             files,
             &stored,
             &Stored::default(),
+            None,
         );
         let patterns: Vec<&str> = r.rules.iter().map(|r| r.pattern.as_str()).collect();
         assert_eq!(patterns, ["g", "p", "x"], "files then local stores");
@@ -416,8 +445,18 @@ mod tests {
         );
         let v = Values(json!({"defaultMode": "full"}));
         assert_eq!(
-            resolve(&v, None, &Stored::default(), &Stored::default()).mode,
+            resolve(&v, None, &Stored::default(), &Stored::default(), None).mode,
             Mode::Full
+        );
+        // The store's global default wins over the settings file (it was written by
+        // "make default" through the fallback path).
+        let global = Stored {
+            default_mode: Some("ask".into()),
+            ..Stored::default()
+        };
+        assert_eq!(
+            resolve(&v, None, &Stored::default(), &global, None).mode,
+            Mode::Ask
         );
     }
 
@@ -434,5 +473,27 @@ mod tests {
                 .contains("Clear 1 saved rule…")
         );
         assert_eq!(ns["namespace"], "permission");
+    }
+
+    #[test]
+    fn the_schema_never_offers_a_project_mode() {
+        // E-18/F-09: the Settings page writes what the schema offers — `mode` with a
+        // project scope would land in <repo>/.oino/settings.json.
+        let ns = namespace(0).to_json();
+        let fields: Vec<&Value> = ns["sections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|sec| sec["fields"].as_array().unwrap())
+            .collect();
+        assert!(
+            fields.iter().all(|f| f["key"] != "mode"),
+            "no `mode` field in the schema: {fields:?}"
+        );
+        let default_mode = fields
+            .iter()
+            .find(|f| f["key"] == "defaultMode")
+            .expect("defaultMode stays configurable");
+        assert_eq!(default_mode["scope"], "global");
     }
 }

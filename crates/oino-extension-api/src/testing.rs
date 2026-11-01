@@ -59,6 +59,8 @@ pub struct RecordingHostServices {
     ext_settings: Mutex<BTreeMap<(String, String), Value>>,
     /// Report texts of spawned fake agents, oldest first (default: `done`).
     agent_reports: Mutex<VecDeque<String>>,
+    /// The session's active tool list (`control › active_tools`); empty = none granted.
+    active_tools: Mutex<Vec<String>>,
 }
 
 /// Sets dot path `key` in `target` (`None` removes it).
@@ -117,6 +119,12 @@ impl RecordingHostServices {
     #[must_use]
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+    }
+
+    /// Sets the session's active tool list (what `control › active_tools` answers — the
+    /// profile grant a child worker runs with).
+    pub fn set_active_tools(&self, names: &[&str]) {
+        *guard(&self.active_tools) = names.iter().map(|n| (*n).to_owned()).collect();
     }
 
     fn record(&self, method: &str, ext: Option<&ExtensionId>, detail: Value) {
@@ -399,7 +407,9 @@ impl HostServices for RecordingHostServices {
             ControlOp::HasPendingMessages => ControlReply::Bool(false),
             ControlOp::ThinkingLevel => ControlReply::String("off".into()),
             ControlOp::SystemPrompt => ControlReply::String(String::new()),
-            ControlOp::ActiveTools => ControlReply::Strings(Vec::new()),
+            ControlOp::ActiveTools => {
+                ControlReply::Strings(guard(&self.active_tools).clone())
+            }
             ControlOp::Model | ControlOp::RoutedModel => ControlReply::MaybeJson(None),
             ControlOp::Abort | ControlOp::Shutdown | ControlOp::SetActiveTools(_) => {
                 ControlReply::Unit

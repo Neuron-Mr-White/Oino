@@ -1049,6 +1049,11 @@ where
                             write_json(write, &SessionReply::ok(id, Some(reply))).await?;
                             continue;
                         }
+                        // E-19/F-02: an in-chat model pick is per-chat; the catalogue rows
+                        // carry the hub's per-provider readiness. Both are app-path
+                        // semantics, applied at this boundary only (the TUI/CLI keep their
+                        // behaviour).
+                        let cmd = app_model_semantics(cmd);
                         // E-04: a dialog answer (`extension_ui_response`) is not an RPC
                         // command — it rides the same stream as one and must reach the
                         // waiting tool instead of dying as a schema rejection (the
@@ -1079,7 +1084,7 @@ where
                                     Arc::clone(session.backend()),
                                     service.clone(),
                                 );
-                                dispatch(session.clone(), id, request.command, replies.clone());
+                                dispatch(&service.upgrade().expect("service gone"), session.clone(), id, request.command, replies.clone());
                             }
                             Err(rejected) => {
                                 let error = AppErrorDto::new(
@@ -1162,7 +1167,73 @@ fn sniff_mime(bytes: &[u8]) -> &'static str {
 
 /// Runs one `SessionCmd` off the stream loop (a long `prompt` must not stall the writer) and
 /// answers it with the command's correlation id (§7.3).
+/// App-path command semantics (the session stream is the app's only command entry; the
+/// TUI/CLI never ride it):
+///
+/// - E-19: `set_model` without an explicit `persist` picks the model **for this chat**
+///   — the PC's default changes only through Settings or an explicit `persist: true`
+///   ("Use at startup").
+#[must_use]
+fn app_model_semantics(mut cmd: Value) -> Value {
+    if cmd.get("type").and_then(Value::as_str) == Some("set_model")
+        && cmd.get("persist").is_none()
+    {
+        cmd["persist"] = Value::Bool(false);
+    }
+    cmd
+}
+
+/// Enriches a `get_available_models` reply with the hub's per-provider readiness (F-02):
+/// each model row gains `ready: true` (the provider's credential validated), or
+/// `ready: false` + a human `reason` (`invalid_key` / `unreachable`). An unknown
+/// provider stays unmarked — the UI treats it as usable, nothing says otherwise.
+fn enrich_models_reply(
+    readiness: &std::collections::HashMap<String, crate::models_readiness::Readiness>,
+    data: &mut Value,
+) {
+    let Some(rows) = data.get_mut("models").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for row in rows {
+        let Some(provider) = row.get("provider").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(entry) = readiness.get(provider) else {
+            continue;
+        };
+        match entry.state {
+            crate::models_readiness::ReadinessState::Ready => {
+                row["ready"] = Value::Bool(true);
+            }
+            state => {
+                row["ready"] = Value::Bool(false);
+                row["reason"] = Value::String(readiness_reason(state, entry.detail.as_deref()));
+            }
+        }
+    }
+}
+
+/// The human line for a readiness state (mirrors the host's `auth_providers` wording).
+fn readiness_reason(
+    state: crate::models_readiness::ReadinessState,
+    detail: Option<&str>,
+) -> String {
+    let detail = detail
+        .map(|d| format!(" ({d})"))
+        .unwrap_or_default();
+    match state {
+        crate::models_readiness::ReadinessState::InvalidKey => {
+            format!("the key was rejected{detail}")
+        }
+        crate::models_readiness::ReadinessState::Unreachable => {
+            format!("the provider is unreachable{detail}")
+        }
+        crate::models_readiness::ReadinessState::Ready => "the key works".to_owned(),
+    }
+}
+
 fn dispatch(
+    service: &Arc<SessionService>,
     session: Arc<HubSession>,
     id: Option<Value>,
     command: RpcCommand,
@@ -1177,10 +1248,24 @@ fn dispatch(
         Value::String(text) => text.clone(),
         other => other.to_string(),
     });
+    // F-02: snapshot the readiness cache before the send (a mutex read, never a probe).
+    let readiness = std::sync::Arc::new(service.hub().readiness().snapshot());
     tokio::spawn(async move {
+        let is_models = matches!(
+            command,
+            RpcCommand::Agent(AgentCommand::GetAvailableModels)
+        );
         let reply =
             match tokio::time::timeout(limit, session.send_with_id(request_id, command)).await {
-                Ok(Ok(data)) => SessionReply::ok(id, data),
+                Ok(Ok(mut data)) => {
+                    if is_models {
+                        // F-02: per-provider readiness on every row (the app path only).
+                        if let Some(data) = data.as_mut() {
+                            enrich_models_reply(readiness.as_ref(), data);
+                        }
+                    }
+                    SessionReply::ok(id, data)
+                }
                 Ok(Err(error)) => SessionReply::failed(
                     id,
                     AppErrorDto::new(AppErrorCode::E_INTERNAL, error.to_string(), false),
@@ -1265,4 +1350,72 @@ fn merge_delta(into: &mut SessionEventDto, next: &SessionEventDto) -> bool {
     }
     into.seq = next.seq;
     true
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test assertions")]
+mod app_model_tests {
+    use super::*;
+
+    #[test]
+    fn an_app_model_pick_without_a_flag_is_per_chat() {
+        // E-19: the app's plain `set_model` (the picker) switches THIS chat only.
+        let cmd = serde_json::json!({"type": "set_model", "provider": "faux", "modelId": "faux-1"});
+        let cmd = app_model_semantics(cmd);
+        assert_eq!(cmd["persist"], false);
+        // An explicit `persist: true` ("Use at startup") is kept.
+        let cmd = app_model_semantics(serde_json::json!(
+            {"type": "set_model", "provider": "faux", "modelId": "faux-1", "persist": true}
+        ));
+        assert_eq!(cmd["persist"], true);
+        // Every other command passes through untouched.
+        let cmd = app_model_semantics(serde_json::json!({"type": "prompt", "text": "hi"}));
+        assert!(cmd.get("persist").is_none());
+    }
+
+    #[test]
+    fn model_rows_carry_the_provider_readiness() {
+        let cache = crate::models_readiness::ReadinessCache::new();
+        cache.store("live", crate::models_readiness::ReadinessState::Ready, None);
+        cache.store(
+            "dead",
+            crate::models_readiness::ReadinessState::InvalidKey,
+            Some("HTTP 401 Unauthorized".to_owned()),
+        );
+        cache.store(
+            "far",
+            crate::models_readiness::ReadinessState::Unreachable,
+            None,
+        );
+        let mut data = serde_json::json!({"models": [
+            {"provider": "live", "id": "a", "kind": "chat"},
+            {"provider": "dead", "id": "b", "kind": "chat"},
+            {"provider": "far", "id": "c", "kind": "chat"},
+            {"provider": "unknown", "id": "d", "kind": "chat"},
+            {"id": "providerless"}
+        ]});
+        let snapshot = cache.snapshot();
+        enrich_models_reply(&snapshot, &mut data);
+        let rows = data["models"].as_array().unwrap();
+        assert_eq!(rows[0]["ready"], true);
+        assert_eq!(rows[1]["ready"], false);
+        assert!(
+            rows[1]["reason"]
+                .as_str()
+                .unwrap()
+                .starts_with("the key was rejected"),
+            "{}",
+            rows[1]["reason"]
+        );
+        assert_eq!(rows[2]["ready"], false);
+        assert!(
+            rows[2]["reason"]
+                .as_str()
+                .unwrap()
+                .starts_with("the provider is unreachable")
+        );
+        // Unknown / absent providers stay unmarked (usable, nothing says otherwise).
+        assert!(rows[3].get("ready").is_none());
+        assert!(rows[4].get("ready").is_none());
+    }
 }

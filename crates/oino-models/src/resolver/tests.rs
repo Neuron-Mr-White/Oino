@@ -181,6 +181,79 @@ fn cycling() {
 }
 
 #[test]
+fn cycles_skip_non_chat_models_and_walk_curated_keys() {
+    // F-04: image/speech models never participate in a scoped cycle.
+    let available = vec![
+        model("openai", "gpt-5.5"),
+        model("p", "image-01"),
+        model("p", "speech-2.8-hd"),
+    ];
+    let scoped = vec![
+        ScopedModel {
+            model: model("openai", "gpt-5.5"),
+            thinking_level: None,
+        },
+        ScopedModel {
+            model: model("p", "image-01"),
+            thinking_level: None,
+        },
+        ScopedModel {
+            model: model("p", "speech-2.8-hd"),
+            thinking_level: None,
+        },
+    ];
+    // Only one chat model remains: no cycle.
+    assert!(next_scoped_model(&scoped, &available, None, CycleDirection::Forward).is_none());
+
+    // The curated domain (fusion's list): unknown keys and non-chat models are skipped,
+    // the chat models cycle, and neither an unknown current nor an absent one crashes.
+    let available = vec![
+        model("p", "image-01"),
+        model("openai", "gpt-5.5"),
+        model("local", "first"),
+    ];
+    let keys = [
+        "p/image-01".to_owned(),
+        "unknown/gone".to_owned(),
+        "openai/gpt-5.5".to_owned(),
+        "local/first".to_owned(),
+    ];
+    let next = next_curated_model(
+        &keys,
+        &available,
+        Some(&model("openai", "gpt-5.5")),
+        CycleDirection::Forward,
+    )
+    .unwrap();
+    assert_eq!(
+        (next.provider.as_str(), next.id.as_str()),
+        ("local", "first")
+    );
+    let next = next_curated_model(
+        &keys,
+        &available,
+        Some(&model("local", "first")),
+        CycleDirection::Forward,
+    )
+    .unwrap();
+    assert_eq!(
+        (next.provider.as_str(), next.id.as_str()),
+        ("openai", "gpt-5.5")
+    );
+    // Fewer than two usable chat keys: no cycle (never a catalogue walk).
+    assert!(
+        next_curated_model(
+            &["p/image-01".to_owned(), "unknown/gone".to_owned()],
+            &available,
+            None,
+            CycleDirection::Forward
+        )
+        .is_none()
+    );
+    assert!(next_curated_model(&[], &available, None, CycleDirection::Forward).is_none());
+}
+
+#[test]
 fn thinking_level_on_switch() {
     let levels: IndexMap<String, ThinkingLevel> =
         [("openai/gpt-5.5".to_owned(), ThinkingLevel::Minimal)].into();

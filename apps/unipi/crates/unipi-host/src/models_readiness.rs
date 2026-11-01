@@ -140,6 +140,21 @@ impl ReadinessCache {
     pub fn invalidate(&self, provider: &str) {
         self.entries().remove(provider);
     }
+
+    /// Every fresh entry (F-02: the app path enriches model rows from the snapshot).
+    #[must_use]
+    pub fn snapshot(&self) -> HashMap<String, Readiness> {
+        self.entries()
+            .iter()
+            .filter(|(_, readiness)| {
+                readiness
+                    .checked_at
+                    .elapsed()
+                    .is_ok_and(|age| age < readiness.state.ttl())
+            })
+            .map(|(provider, readiness)| (provider.clone(), readiness.clone()))
+            .collect()
+    }
 }
 
 /// The answer of [`choose_default_model`].

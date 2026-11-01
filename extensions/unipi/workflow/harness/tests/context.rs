@@ -157,6 +157,20 @@ impl Env {
             .map(|r| r.to_value())
     }
 
+    /// Like [`Self::event`], with an explicit call context (a second chat's session id).
+    async fn event_with(
+        &self,
+        ext: &Arc<dyn ExtensionInstance>,
+        kind: EventKind,
+        payload: Value,
+        cx: CallContext,
+    ) -> Option<Value> {
+        ext.on_event(kind, RawJson::from(payload), cx)
+            .await
+            .unwrap()
+            .map(|r| r.to_value())
+    }
+
     async fn command(&self, ext: &Arc<dyn ExtensionInstance>, name: &str, args: &str) {
         ext.run_command(
             name,
@@ -488,12 +502,58 @@ async fn settings_write_path_and_legacy_import() {
         "saved rule allows without asking"
     );
 
+    // E-18/F-09: a permission mode change is per chat — nothing is written into the
+    // project, and the same chat then runs dangerous bash without asking (full).
     env.command(&wf, "permission", "full").await;
+    let project = env
+        .host
+        .extension_setting_layer(SettingsScope::Project, "permission");
+    assert!(
+        project.get("mode").is_none(),
+        "no mode in the project layer: {project}"
+    );
+    let full = env.event(&wf, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "f1", "input": {"command": "rm -rf /tmp/x"}})).await;
+    assert_eq!(full, None, "this chat's full mode lets it run");
+    assert_eq!(
+        env.host.calls_named("ui_dialog").len(),
+        dialogs,
+        "no ask under full"
+    );
+
+    // The explicit "make default" writes the GLOBAL default in the agent dir — and never
+    // the project (the repo's settings.json must never learn a permission mode).
+    env.command(&wf, "permission", "make-default ask").await;
     assert_eq!(
         env.host
-            .extension_setting_layer(SettingsScope::Project, "permission")["mode"],
-        "full"
+            .extension_setting_layer(SettingsScope::Global, "permission")["defaultMode"],
+        "ask"
     );
+    assert!(
+        env.host
+            .extension_setting_layer(SettingsScope::Project, "permission")
+            .get("mode")
+            .is_none(),
+    );
+    // Another chat (a fresh session id) starts at the default, unaffected by the first
+    // chat's session mode — the mode never leaks across chats.
+    let other = {
+        let mut cx = env.cx(oino_extension_api::CallKind::Tool);
+        cx.session_id = "s2".into();
+        cx.tool_call_id = Some("f2".into());
+        cx
+    };
+    env.host
+        .queue_dialog_answer(json!({"value": {"optionId": "allow_once"}}));
+    let refused = env
+        .event_with(
+            &wf,
+            EventKind::ToolCall,
+            json!({"type": "tool_call", "toolName": "bash", "toolCallId": "f2", "input": {"command": "rm -rf /tmp/x"}}),
+            other,
+        )
+        .await;
+    assert_eq!(refused, None, "the new chat asks again (its own mode is the default)");
+
     env.command(&wf, "permission-clear-rules", "").await;
     assert!(
         env.host
@@ -878,5 +938,68 @@ async fn kill_and_restart_restores_plan_mode_and_pending_compaction() {
     assert!(
         cards.iter().any(|c| c["data"]["command"] == "compact-vcc"),
         "the restarted compaction is labelled with the restored command: {cards:?}"
+    );
+}
+
+/// F-06: child workers get the tools their profile grants. A background child's dialogs
+/// auto-deny, so an `ask` decision would always be a denial — when the tool is in the
+/// child's granted set (`control › active_tools`, the AgentSpec allowlist), the ask is
+/// waived. The lead's asks still prompt, and a child without the grant still can't.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_child_worker_runs_its_profile_granted_bash_without_asking() {
+    let env = Env::new();
+    let (wf, _) = env.load("workflow").await;
+    env.event(
+        &wf,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    // auto mode: jev judges ambiguous bash; without a decision model the call asks.
+    let child = {
+        let mut cx = env.cx(oino_extension_api::CallKind::Event);
+        cx.is_child = true;
+        cx.session_id = "worker-1".into();
+        cx
+    };
+    let bash = |id: &str| {
+        json!({
+            "type": "tool_call",
+            "toolName": "bash",
+            "toolCallId": id,
+            "input": {"command": "python3 calc.py"}
+        })
+    };
+
+    // Without the grant: the ask auto-denies in production; here the dialog is answered
+    // with a denial → blocked.
+    env.host
+        .queue_dialog_answer(json!({"value": {"optionId": "deny"}}));
+    let denied = env
+        .event_with(&wf, EventKind::ToolCall, bash("c1"), child.clone())
+        .await;
+    assert!(
+        denied.as_ref().is_some_and(|b| b["block"] == true),
+        "an ungranted child tool still asks (auto-denies): {denied:?}"
+    );
+
+    // With the profile grant (subagent_general grants bash): the child runs it.
+    env.host.set_active_tools(&["read", "bash", "edit", "write"]);
+    let allowed = env
+        .event_with(&wf, EventKind::ToolCall, bash("c2"), child)
+        .await;
+    assert_eq!(allowed, None, "granted child bash runs without asking");
+    env.host.set_active_tools(&[]);
+
+    // The lead (not a child) still gets the dialog for the same call.
+    env.host
+        .queue_dialog_answer(json!({"value": {"optionId": "allow_once"}}));
+    let lead = env.event(&wf, EventKind::ToolCall, bash("c3")).await;
+    assert_eq!(lead, None, "the lead approves via dialog");
+    assert!(
+        env.host.calls_named("ui_dialog").iter().any(|c| {
+            c.detail["toolName"] == "bash"
+        }),
+        "the lead was asked"
     );
 }

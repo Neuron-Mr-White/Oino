@@ -97,6 +97,7 @@ async fn session_with_file(hub: &Arc<SessionHub>) -> (HubSession, String) {
         .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
+            persist: None,
         }))
         .await
         .unwrap();
@@ -191,6 +192,7 @@ async fn a_run_owned_session_carries_source_cron() {
         s.send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
+            persist: None,
         }))
         .await
         .unwrap();

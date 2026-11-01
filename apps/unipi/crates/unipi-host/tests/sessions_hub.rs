@@ -112,6 +112,7 @@ async fn create(hub: &Arc<SessionHub>) -> HubSession {
         .send(RpcCommand::Agent(AgentCommand::SetModel {
             provider: "faux".into(),
             model_id: "faux-1".into(),
+            persist: None,
         }))
         .await
         .unwrap();
@@ -431,6 +432,7 @@ async fn fork_keeps_the_original_wired_to_its_own_runtime() {
     a.send(RpcCommand::Agent(AgentCommand::SetModel {
         provider: "faux".into(),
         model_id: "faux-1".into(),
+        persist: None,
     }))
     .await
     .unwrap();

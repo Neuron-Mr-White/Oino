@@ -140,6 +140,25 @@ fn text_result(messages: &[AgentMessage]) -> (String, Option<String>, i32) {
     (out, None, 0)
 }
 
+/// The exit code for a finished run: `1` (with the provider's error) when the last turn
+/// ended in an error or was aborted — never a silent success for whoever spawned the run
+/// (F-03). A truncated reply (`length`) stays exit `0` in JSON mode (the consumer reads
+/// the stream); text mode reports it through [`text_result`].
+fn json_exit_code(messages: &[AgentMessage]) -> (Option<String>, i32) {
+    let Some(AgentMessage::Assistant(last)) = messages.last() else {
+        return (None, 0);
+    };
+    if matches!(last.stop_reason, StopReason::Error | StopReason::Aborted) {
+        let message = last
+            .error_message
+            .clone()
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| format!("Request {}", stop_reason_name(last.stop_reason)));
+        return (Some(message), 1);
+    }
+    (None, 0)
+}
+
 /// Resolves once an extension called `ctx.shutdown()` and the session is idle.
 async fn shutdown_requested(runtime: &AgentSessionRuntime) {
     let mut requested = runtime.shutdown_requested();
@@ -175,16 +194,26 @@ pub async fn run(runtime: Arc<AgentSessionRuntime>, output: PrintOutput, input: 
             crate::eprintln_line(&message);
             1
         }
-        Ok(Ok(())) if output == PrintOutput::Text => {
-            let (text, error, code) = text_result(&runtime.session().messages());
-            let _ = stdout.write_all(text.as_bytes()).await;
-            let _ = stdout.flush().await;
-            if let Some(error) = error {
-                crate::eprintln_line(&error);
+        Ok(Ok(())) => {
+            // F-03: the exit code reflects the turn, in both modes — a run whose agent
+            // turn ended in a provider error (401, rate limit, abort) must not look
+            // successful to whoever spawned it (cron records the run from this code).
+            if output == PrintOutput::Text {
+                let (text, error, code) = text_result(&runtime.session().messages());
+                let _ = stdout.write_all(text.as_bytes()).await;
+                let _ = stdout.flush().await;
+                if let Some(error) = error {
+                    crate::eprintln_line(&error);
+                }
+                code
+            } else {
+                let (error, code) = json_exit_code(&runtime.session().messages());
+                if let Some(error) = error {
+                    crate::eprintln_line(&error);
+                }
+                code
             }
-            code
         }
-        Ok(Ok(())) => 0,
     };
     runtime.dispose().await;
     let _ = forwarder.await;

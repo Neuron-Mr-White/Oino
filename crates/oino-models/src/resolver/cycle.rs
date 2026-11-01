@@ -6,6 +6,7 @@ use oino_ai::{Model, ThinkingLevel};
 use super::defaults::DEFAULT_THINKING_LEVEL;
 use super::initial::model_thinking_level_key;
 use super::scope::ScopedModel;
+use crate::kind::model_kind;
 
 /// Cycle direction.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -30,7 +31,7 @@ fn step(len: usize, current: Option<usize>, direction: CycleDirection) -> usize 
 }
 
 /// The next scoped model among those still available; `None` when at
-/// most one remains.
+/// most one remains. Non-chat models (image/speech/…) never participate (F-04).
 #[must_use]
 pub fn next_scoped_model(
     scoped: &[ScopedModel],
@@ -40,12 +41,40 @@ pub fn next_scoped_model(
 ) -> Option<ScopedModel> {
     let candidates: Vec<&ScopedModel> = scoped
         .iter()
+        .filter(|s| model_kind(&s.model) == "chat")
         .filter(|s| available.iter().any(|m| same_model(m, &s.model)))
         .collect();
     if candidates.len() <= 1 {
         return None;
     }
     let index = current.and_then(|c| candidates.iter().position(|s| same_model(&s.model, c)));
+    Some(candidates[step(candidates.len(), index, direction)].clone())
+}
+
+/// The next curated (`provider/id` keys) chat model that is still available; `None` when
+/// fewer than two remain. This is the cycle domain the caller hands in (fusion's list,
+/// F-04); unknown keys and non-chat models are skipped — never a walk over the catalogue.
+#[must_use]
+pub fn next_curated_model(
+    curated: &[String],
+    available: &[Model],
+    current: Option<&Model>,
+    direction: CycleDirection,
+) -> Option<Model> {
+    let candidates: Vec<&Model> = curated
+        .iter()
+        .filter_map(|key| {
+            let (provider, id) = key.split_once('/')?;
+            available
+                .iter()
+                .find(|m| m.provider == provider && m.id == id)
+                .filter(|m| model_kind(m) == "chat")
+        })
+        .collect();
+    if candidates.len() <= 1 {
+        return None;
+    }
+    let index = current.and_then(|c| candidates.iter().position(|m| same_model(m, c)));
     Some(candidates[step(candidates.len(), index, direction)].clone())
 }
 
