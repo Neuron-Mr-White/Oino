@@ -18,6 +18,9 @@ pub(crate) enum Placement {
     Hidden(Arc<Display>),
     /// A real window.
     Window,
+    /// The embedding host's browser (attached mode, [`crate::attach`]): drawn wherever
+    /// the host put it.
+    Attached(crate::attach::AttachedDisplay),
 }
 
 impl Placement {
@@ -27,6 +30,7 @@ impl Placement {
             Self::Headless => "headless",
             Self::Hidden(_) => "hidden",
             Self::Window => "window",
+            Self::Attached(d) => d.as_str(),
         }
     }
 }
@@ -92,7 +96,7 @@ pub(crate) fn flags(spec: &LaunchSpec) -> Vec<String> {
             args.push("--mute-audio".into());
         }
         Placement::Hidden(_) => args.push("--ozone-platform=x11".into()),
-        Placement::Window => {}
+        Placement::Window | Placement::Attached(_) => {}
     }
     if spec.engine.kind == EngineKind::Cloak {
         let seed = seed(&spec.user_data_dir);
@@ -165,7 +169,7 @@ impl BrowserProcess {
             Placement::Headless => {
                 cmd.env_remove("DISPLAY").env_remove("WAYLAND_DISPLAY");
             }
-            Placement::Window => {}
+            Placement::Window | Placement::Attached(_) => {}
         }
         #[cfg(unix)]
         cmd.process_group(0);
@@ -210,13 +214,38 @@ impl BrowserProcess {
         })
     }
 
+    /// Connects to a browser the embedding host runs (attached mode): no child process,
+    /// nothing to kill — [`Self::shutdown`] only sends `Browser.close`, which the host's
+    /// gate scopes to this connection's own targets.
+    pub(crate) async fn attach(
+        ws_url: &str,
+        display: crate::attach::AttachedDisplay,
+    ) -> Result<Self, String> {
+        let transport = Transport::connect_ws(ws_url).await?;
+        Ok(Self {
+            child: std::sync::Mutex::new(None),
+            pid: None,
+            cdp: Cdp::start(transport),
+            placement: Placement::Attached(display),
+        })
+    }
+
     /// OS process id.
     pub(crate) fn pid(&self) -> Option<u32> {
         self.pid
     }
 
-    /// `Browser.close`, then kill the process group after a grace period.
+    /// The host owns the process (attached mode).
+    pub(crate) fn attached(&self) -> bool {
+        matches!(self.placement, Placement::Attached(_))
+    }
+
+    /// `Browser.close`, then kill the process group after a grace period. Attached: nothing
+    /// (the caller closed its own targets; the host decides about the process).
     pub(crate) async fn shutdown(&self) {
+        if self.attached() {
+            return;
+        }
         let _ = self
             .cdp
             .call_timeout(

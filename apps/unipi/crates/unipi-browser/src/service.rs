@@ -16,6 +16,7 @@ use unipi_browser_protocol::{
     TabOwner, UnavailableReason, Viewport,
 };
 
+use crate::attach::Attach;
 use crate::config::{BrowserSettings, DisplayChoice, TransportChoice, valid_profile_name};
 use crate::display::{self, Displays};
 use crate::engine::{self, EngineKind, EngineMissing};
@@ -30,7 +31,7 @@ use crate::tab::{Candidate, Tab, lock, residency_victim};
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Construction options.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct BrowserOptions {
     /// `~/.oino/browser` (profiles, shots, downloads, site permissions).
     pub root: PathBuf,
@@ -38,6 +39,20 @@ pub struct BrowserOptions {
     pub settings: BrowserSettings,
     /// `--browser=ephemeral`: temporary profiles deleted at exit.
     pub ephemeral: bool,
+    /// Attached mode ([`crate::attach`]): the embedding host runs the browsers and this
+    /// service connects to them instead of launching its own.
+    pub attach: Option<Arc<dyn Attach>>,
+}
+
+impl std::fmt::Debug for BrowserOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BrowserOptions")
+            .field("root", &self.root)
+            .field("settings", &self.settings)
+            .field("ephemeral", &self.ephemeral)
+            .field("attach", &self.attach.is_some())
+            .finish()
+    }
 }
 
 impl BrowserOptions {
@@ -48,6 +63,7 @@ impl BrowserOptions {
             root: agent_dir.join("browser"),
             settings: BrowserSettings::load(agent_dir),
             ephemeral: false,
+            attach: None,
         }
     }
 }
@@ -64,6 +80,7 @@ pub(crate) struct Inner {
     _ephemeral: Option<tempfile::TempDir>,
     pub(crate) site_allow: Mutex<HashSet<(String, String)>>,
     pub(crate) views: Mutex<HashMap<u64, (String, String)>>,
+    attach: Option<Arc<dyn Attach>>,
 }
 
 /// The browser service. Cheap to clone.
@@ -106,6 +123,7 @@ impl BrowserService {
                 _ephemeral: ephemeral,
                 site_allow: Mutex::new(HashSet::new()),
                 views: Mutex::new(HashMap::new()),
+                attach: options.attach,
             }),
         }
     }
@@ -271,6 +289,9 @@ impl BrowserService {
             return Ok(p);
         }
         lock(&self.inner.live).remove(name);
+        if let Some(attach) = self.inner.attach.clone() {
+            return self.ensure_attached(name, attach.as_ref()).await;
+        }
         let engine = engine::resolve(&settings).map_err(|m| match m {
             EngineMissing::NoEngine => BrowserResult::unavailable(
                 "no_engine",
@@ -406,6 +427,95 @@ impl BrowserService {
         Ok(rt)
     }
 
+    /// Attached mode: the host's browser for `name` (started by the host if needed).
+    #[allow(
+        clippy::result_large_err,
+        reason = "the error is the ready-made tool result"
+    )]
+    async fn ensure_attached(
+        &self,
+        name: &str,
+        attach: &dyn Attach,
+    ) -> Result<Arc<ProfileRt>, BrowserResult> {
+        let attached = match tokio::time::timeout(LAUNCH_TIMEOUT, attach.attach(name)).await {
+            Ok(Ok(a)) => a,
+            Ok(Err(e)) => return Err(BrowserResult::unavailable(&e.reason, e.message)),
+            Err(_) => {
+                return Err(BrowserResult::unavailable(
+                    "launch_failed",
+                    format!(
+                        "the browser did not start within {} s",
+                        LAUNCH_TIMEOUT.as_secs()
+                    ),
+                ));
+            }
+        };
+        let process = BrowserProcess::attach(&attached.ws_url, attached.display)
+            .await
+            .map_err(|e| {
+                BrowserResult::unavailable(
+                    "launch_failed",
+                    format!("could not reach the browser: {e}"),
+                )
+            })?;
+        let generation = self.inner.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let grants = crate::permissions::load(&self.inner.hub.paths.site_permissions());
+        let start = ProfileRt::start(
+            name.to_owned(),
+            generation,
+            attached.engine.clone(),
+            process,
+            Arc::clone(&self.inner.hub),
+            self.settings().downloads_dir.clone(),
+            &grants,
+        );
+        let rt = match tokio::time::timeout(LAUNCH_TIMEOUT, start).await {
+            Ok(Ok(rt)) => rt,
+            Ok(Err(e)) => {
+                return Err(BrowserResult::unavailable("launch_failed", e.to_string()));
+            }
+            Err(_) => {
+                return Err(BrowserResult::unavailable(
+                    "launch_failed",
+                    format!(
+                        "the browser did not answer CDP within {} s",
+                        LAUNCH_TIMEOUT.as_secs()
+                    ),
+                ));
+            }
+        };
+        lock(&self.inner.live).insert(name.to_owned(), Arc::clone(&rt));
+        self.start_reaper();
+        let status = self.status(None);
+        let _ = self.inner.hub.global.send(BrowserViewEvent::Status {
+            status: Box::new(status),
+        });
+        Ok(rt)
+    }
+
+    /// Ends every pending `browser_handoff` of profile `profile` as Done (attached mode:
+    /// the host's viewer gave the browser back). Returns how many ended.
+    #[must_use = "how many handoffs ended"]
+    pub fn end_handoffs(&self, profile: &str) -> usize {
+        let Some(rt) = lock(&self.inner.live).get(profile).cloned() else {
+            return 0;
+        };
+        let mut ended = 0;
+        for tab in rt.all_tabs() {
+            if lock(&tab.state).handoff.is_some() {
+                crate::frontend::end_handoff(&rt, &tab, true);
+                ended += 1;
+            }
+        }
+        ended
+    }
+
+    /// Attached mode is on (the host owns the browsers).
+    #[must_use]
+    pub fn is_attached(&self) -> bool {
+        self.inner.attach.is_some()
+    }
+
     fn start_reaper(&self) {
         if self.inner.reaper.swap(true, Ordering::SeqCst) {
             return;
@@ -463,6 +573,9 @@ impl BrowserService {
 
     fn status_for(&self, scope: Option<&BrowserScope>) -> BrowserStatus {
         let settings = self.settings();
+        if self.inner.attach.is_some() {
+            return self.attached_status(&settings, scope);
+        }
         let engine = engine::resolve(&settings);
         let live = lock(&self.inner.live).values().next().cloned();
         let mut st = BrowserStatus {
@@ -509,6 +622,45 @@ impl BrowserService {
         } else if !st.stealth && st.available {
             st.stealth_note = Some("Not stealthy: a regular Chrome-family browser".into());
         }
+        if let Some(scope) = scope {
+            st.session_profile = Some(self.profile_of(scope));
+            st.tabs = lock(&self.inner.live)
+                .values()
+                .flat_map(|p| p.session_tabs(Some(&scope.session_id)))
+                .collect();
+        }
+        st
+    }
+
+    /// Status in attached mode: availability is the setting (the host reports which engine
+    /// runs and where it draws — it patches `engine`/`product`/`stealth`/`display` in).
+    fn attached_status(
+        &self,
+        settings: &BrowserSettings,
+        scope: Option<&BrowserScope>,
+    ) -> BrowserStatus {
+        let live = lock(&self.inner.live)
+            .values()
+            .find(|p| !p.dead.load(Ordering::SeqCst))
+            .cloned();
+        let mut st = BrowserStatus {
+            enabled: settings.enabled,
+            available: settings.enabled,
+            reason: (!settings.enabled).then_some(UnavailableReason::Disabled),
+            engine: live.as_ref().map(|p| p.engine.clone()),
+            product: None,
+            version: live.as_ref().map(|p| p.version.clone()),
+            executable: None,
+            stealth: live.as_ref().is_some_and(|p| p.engine == "cloak"),
+            stealth_note: None,
+            display: live.as_ref().map_or_else(
+                || "hidden".to_owned(),
+                |p| p.process.placement.as_str().to_owned(),
+            ),
+            profiles: self.profiles(),
+            session_profile: None,
+            tabs: Vec::new(),
+        };
         if let Some(scope) = scope {
             st.session_profile = Some(self.profile_of(scope));
             st.tabs = lock(&self.inner.live)

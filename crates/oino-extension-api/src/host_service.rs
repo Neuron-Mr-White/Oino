@@ -8,6 +8,7 @@
 //! `host-service.call` from the registry before falling back to the inner
 //! [`crate::HostServices`] implementation.
 
+use crate::CallContext;
 use crate::HostError;
 use crate::RawJson;
 use crate::runtime::BoxFut;
@@ -30,4 +31,21 @@ pub trait HostService: Send + Sync {
         payload: RawJson,
         cancel: CancellationToken,
     ) -> BoxFut<'_, Result<RawJson, HostError>>;
+
+    /// [`Self::call`] with the caller's context (session id, cwd, …) — for services that
+    /// keep per-session state (the `"browser"` service scopes tabs by session, browser.md
+    /// §7). The hub calls this one; the default ignores `cx`.
+    ///
+    /// # Errors
+    /// As [`Self::call`].
+    fn call_in(
+        &self,
+        cx: &CallContext,
+        op: &str,
+        payload: RawJson,
+        cancel: CancellationToken,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        let _ = cx;
+        self.call(op, payload, cancel)
+    }
 }

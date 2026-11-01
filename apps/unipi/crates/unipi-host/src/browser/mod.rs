@@ -47,6 +47,7 @@
 
 pub mod agent;
 pub mod agent_endpoint;
+pub mod agent_service;
 pub mod cdp;
 pub mod cloak;
 pub mod cookies;

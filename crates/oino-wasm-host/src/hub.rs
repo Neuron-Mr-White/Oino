@@ -678,7 +678,8 @@ impl HostServices for Composite {
         // inner host; a name neither provides is `not-found` (v2 ext-abi §3.2).
         if let Some(service) = self.hub().and_then(|hub| hub.host_service(name)) {
             let op = op.to_owned();
-            return Box::pin(async move { service.call(&op, payload, cancel).await });
+            let cx = cx.clone();
+            return Box::pin(async move { service.call_in(&cx, &op, payload, cancel).await });
         }
         if !self
             .inner

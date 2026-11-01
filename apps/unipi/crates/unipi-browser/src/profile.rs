@@ -388,7 +388,20 @@ impl ProfileRt {
     /// Stops the browser.
     pub(crate) async fn shutdown(&self, reason: &str) {
         self.dead.store(true, Ordering::SeqCst);
+        let attached = self.process.attached();
         for tab in self.all_tabs() {
+            if attached && !self.cdp.is_closed() {
+                // The host's browser lives on: close only what this service opened.
+                let _ = self
+                    .cdp
+                    .call_timeout(
+                        None,
+                        "Target.closeTarget",
+                        json!({"targetId": tab.target_id}),
+                        Duration::from_secs(2),
+                    )
+                    .await;
+            }
             self.forget(&tab, reason);
         }
         self.process.shutdown().await;

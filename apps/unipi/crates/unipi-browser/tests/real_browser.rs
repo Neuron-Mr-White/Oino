@@ -101,6 +101,7 @@ impl Rig {
             root: root.path().to_path_buf(),
             settings,
             ephemeral: false,
+            attach: None,
         });
         let a = serve("127.0.0.1").await;
         let b = serve("localhost").await;
@@ -536,6 +537,7 @@ async fn port_transport_and_drop_cleanup() {
             ..BrowserSettings::default()
         },
         ephemeral: false,
+        attach: None,
     });
     let scope = BrowserScope::session("s", root.path().display().to_string());
     let r = svc

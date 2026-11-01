@@ -38,6 +38,10 @@ impl ActionError {
     }
 }
 
+/// What the embedding host's gate answers an agent command with while the user has taken
+/// over (unipi-host `browser::agent::TAKEN_OVER_MESSAGE`).
+const TAKEN_OVER_HINT: &str = "The user has taken over the browser";
+
 impl From<CdpError> for ActionError {
     fn from(e: CdpError) -> Self {
         match e {
@@ -48,6 +52,12 @@ impl From<CdpError> for ActionError {
             CdpError::Timeout(m) => Self::new(
                 BrowserErrorCode::Timeout,
                 format!("{m} did not answer; the page may be busy — retry or take a new snapshot"),
+            ),
+            // Attached mode: the host's gate refuses agent input while the user holds the
+            // browser (`-32000 "The user has taken over the browser; …"`).
+            CdpError::Protocol { message, .. } if message.contains(TAKEN_OVER_HINT) => Self::new(
+                BrowserErrorCode::TakenOver,
+                "the user has taken over the browser; wait for them to give it back, or ask them in chat",
             ),
             CdpError::Protocol { method, message } => Self::new(
                 BrowserErrorCode::ExecutionError,
@@ -1049,4 +1059,23 @@ pub(crate) async fn element_box(
         (x1 - x0).max(1.0),
         (y1 - y0).max(1.0),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_hosts_take_over_refusal_is_taken_over() {
+        let e = ActionError::from(CdpError::Protocol {
+            method: "Input.dispatchMouseEvent".into(),
+            message: "The user has taken over the browser; wait or ask them".into(),
+        });
+        assert_eq!(e.code, BrowserErrorCode::TakenOver);
+        let other = ActionError::from(CdpError::Protocol {
+            method: "DOM.focus".into(),
+            message: "Element is not focusable".into(),
+        });
+        assert_eq!(other.code, BrowserErrorCode::ExecutionError);
+    }
 }

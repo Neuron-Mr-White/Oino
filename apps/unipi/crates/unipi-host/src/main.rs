@@ -703,8 +703,16 @@ async fn main() -> anyhow::Result<()> {
                             std::sync::Arc::new(cron.clone())
                                 as std::sync::Arc<dyn oino_extension_api::host_service::HostService>
                         }),
-                        // Registered by its own WP (`spec-browser` WP-B7).
-                        browser: None,
+                        // WP-B7: the agent's `browser_*` tools, attached to the browser the
+                        // app's Browser pane shows (consent: `config.json` `browser`).
+                        browser: Some(std::sync::Arc::new(
+                            unipi_host::browser::agent_service::BrowserHostService::new(
+                                paths_for_cleanup.clone(),
+                                &cron_agent_dir,
+                                Some(local),
+                            ),
+                        )
+                            as std::sync::Arc<dyn oino_extension_api::host_service::HostService>),
                     },
                 );
                 tracing::info!(?names, "host services registered");

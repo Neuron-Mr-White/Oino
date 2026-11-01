@@ -18,6 +18,7 @@
 //! | [`BrowserOptions`] | root dir, [`BrowserSettings`], ephemeral mode |
 //! | [`BrowserSettings`] | `settings.json` `browser.*` (§12) |
 //! | [`engine`] | engine resolution (§4.1) |
+//! | [`Attach`] | attached mode: the embedding host runs the browser, the service connects |
 //!
 //! Internals: `cdp` (client + transports), `launch` (flags, process group), `display` (Xvfb),
 //! `profile` (per-profile runtime + CDP event pump), `tab` (state, rings, residency),
@@ -39,6 +40,7 @@
     )
 )]
 
+pub mod attach;
 mod cdp;
 mod commands;
 pub mod config;
@@ -59,6 +61,7 @@ mod service;
 mod snapshot;
 mod tab;
 
+pub use attach::{Attach, AttachError, Attached, AttachedDisplay};
 pub use config::BrowserSettings;
 pub use host::{Approval, BrowserHost, BrowserRequest, ViewStream};
 pub use service::{BrowserOptions, BrowserService};

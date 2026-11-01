@@ -44,6 +44,31 @@ impl HostService for Marker {
     }
 }
 
+/// A host service that answers with the caller's session (`call_in`, browser.md §7).
+struct WhoCalls;
+
+impl HostService for WhoCalls {
+    fn call(
+        &self,
+        _op: &str,
+        _payload: RawJson,
+        _cancel: CancellationToken,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        Box::pin(async { Ok(RawJson::from_json_value(&json!({"session": null}))) })
+    }
+
+    fn call_in(
+        &self,
+        cx: &CallContext,
+        _op: &str,
+        _payload: RawJson,
+        _cancel: CancellationToken,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        let session = cx.session_id.clone();
+        Box::pin(async move { Ok(RawJson::from_json_value(&json!({"session": session}))) })
+    }
+}
+
 /// A core stand-in that itself provides the host services `dup` and `inner` (the fallback
 /// below the hub registry).
 struct InnerHost;
@@ -181,6 +206,26 @@ async fn call_is_gated_per_name_but_discovery_is_not() {
     )
     .await;
     assert_eq!(denied["err"], "permission denied: hostServices:calc");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn registry_services_see_the_caller_context() {
+    let h = Harness::new().unwrap();
+    h.runtime
+        .local_services()
+        .unwrap()
+        .register_host_service("who", Arc::new(WhoCalls));
+    let ext = echo(&h, json!({"hostServices": ["who"]})).await;
+    assert_eq!(
+        probe(
+            &ext,
+            &h,
+            "host-service",
+            json!({"name": "who", "op": "x", "payload": {}}),
+        )
+        .await,
+        json!({"ok": {"session": "s1"}})
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
