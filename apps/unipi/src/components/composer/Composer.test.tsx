@@ -38,6 +38,13 @@ const COMMANDS = [
 function scenario(turns: number, running: boolean): MockScenario {
   const session = genSession(SESSION, { seed: 3, turns, toolsPerTurn: 1, cwd: CWD });
   session.snapshot.commands = COMMANDS as never;
+  // P1-01: the goal extension completes its sub-commands after `/unipi:goal `.
+  session.cmd = {
+    '_oino/get_completions': (cmd: { text?: unknown }) =>
+      String(cmd.text).startsWith('/unipi:goal ')
+        ? { groups: [{ source: 'command:unipi:goal', from: 12, items: [{ value: 'status', description: 'Show the goal' }, { value: 'clear' }] }] }
+        : { groups: [] },
+  } as never;
   session.events = running ? genLiveRun(SESSION, { seq: 1, running: true, at: 0 }) : [];
   return {
     name: 'composer-test',
@@ -484,5 +491,26 @@ describe('P0-07/P0-08: Mention in chat and insertEditorToken reach the mounted c
     await waitFor(() => expect(composerDraft(s.key).text).toContain('@"docs/my notes.md"'));
     resetMentions();
     resetEditorTokens();
+  });
+});
+
+describe('P1-01: /cmd <arg> completions from the extension', () => {
+  it('asks _oino/get_completions after `/unipi:goal ` and Enter applies the pick', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/unipi:goal ');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="arg-menu"]')).not.toBeNull());
+    expect(c.view.getByRole('option', { name: /status/ })).toBeTruthy();
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('/unipi:goal status '));
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
+  });
+
+  it('built-ins (no extension completer) never ask', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/model ');
+    await new Promise((r) => setTimeout(r, 150));
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === '_oino/get_completions')).toBe(false);
   });
 });

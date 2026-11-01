@@ -34,7 +34,7 @@ import {
   retryAttachment,
   withAttachmentMentions,
 } from '../../lib/composer/attachments';
-import { allCommands, applyAt, atQuery, isAppBuiltin, isKnownCommand, rankCommands, slashQuery } from '../../lib/chat/commands';
+import { allCommands, applyAt, argQuery, atQuery, isAppBuiltin, isKnownCommand, rankCommands, slashQuery, wantsArgCompletions } from '../../lib/chat/commands';
 import {
   builtinPlan,
   builtinWorksWithoutChat,
@@ -91,6 +91,7 @@ import { composerHistory } from '../../lib/composer/undo';
 import { pathCandidates } from '../../lib/composer/chips';
 import { ChipEditor, type ChipEditorApi } from './ChipEditor';
 import { SlashMenu } from './SlashMenu';
+import { ArgMenu, argItemsOf, type ArgItem } from './ArgMenu';
 import { MentionMenu, type MentionItem } from './MentionMenu';
 import { PlusMenu } from './PlusMenu';
 import { PastedTextChip } from './PastedTextChip';
@@ -226,6 +227,65 @@ export function Composer(props: ComposerProps) {
     });
   };
 
+  /* ── `/cmd <arg>` completions (P1-01: the extension's complete-command) ── */
+  const arg = createMemo(() => {
+    if (props.draft) return null;
+    const q = argQuery(draft().text, caret());
+    if (!q) return null;
+    const c = props.session.state.commands.find((x) => x.name === q.command);
+    return c && wantsArgCompletions(c.source) ? q : null;
+  });
+  const [argItems, setArgItems] = createSignal<{ command: string; from: number; items: ArgItem[] } | null>(null);
+  let argSeq = 0;
+  createEffect(
+    on(
+      () => {
+        const q = arg();
+        return q && dismissed() !== draft().text ? `${q.command}\u0000${q.prefix}` : null;
+      },
+      (keyed) => {
+        const seq = ++argSeq;
+        const q = arg();
+        if (keyed === null || !q) {
+          setArgItems(null);
+          return;
+        }
+        const text = draft().text;
+        const before = text.slice(0, caret());
+        const timer = setTimeout(() => {
+          void props.session
+            .cmd<unknown>({ type: '_oino/get_completions', text: before, cursor: [...before].length })
+            .then((reply) => {
+              if (seq !== argSeq) return;
+              const got = argItemsOf(reply, q.command, q.prefix);
+              // `from` is a character offset; the draft is indexed in UTF-16 units.
+              const from = got.from === null ? q.start : [...before].slice(0, got.from).join('').length;
+              setArgItems(got.items.length ? { command: q.command, from, items: got.items } : null);
+            })
+            .catch(() => {
+              if (seq === argSeq) setArgItems(null);
+            });
+        }, 90);
+        onCleanup(() => clearTimeout(timer));
+      },
+    ),
+  );
+  const argMenu = () => (arg() && dismissed() !== draft().text ? argItems() : null);
+  const pickArg = (item: ArgItem) => {
+    const menu = argMenu();
+    if (!menu) return;
+    const text = draft().text;
+    const at = caret();
+    const insert = /\s$/.test(item.value) ? item.value : `${item.value} `;
+    const next = `${text.slice(0, menu.from)}${insert}${text.slice(at).replace(/^\s+/, '')}`;
+    const pos = menu.from + insert.length;
+    commit(next, pos);
+    queueMicrotask(() => {
+      editor?.setCaret(pos);
+      setCaret(pos);
+    });
+  };
+
   /* ── `@` files (Z-62: fs_list for a bare @, fs_search for a query) ── */
   const at = createMemo(() => atQuery(draft().text, caret()));
   const [mentionItems, setMentionItems] = createSignal<MentionItem[]>([]);
@@ -304,10 +364,13 @@ export function Composer(props: ComposerProps) {
 
   /* ── menu keyboard selection (one menu open at a time) ────────────── */
   const menuItems = createMemo<MentionItem[] | undefined>(() => (mentionOpen() && mentionItems().length ? mentionItems() : undefined));
+  /** The arg menu yields to an `@` menu typed inside the argument. */
+  const argRows = () => (menuItems() ? undefined : argMenu()?.items);
   const [sel, setSel] = createSignal(0);
   createEffect(() => {
     void slashItems().length;
     void mentionItems().length;
+    void argMenu();
     setSel(0);
   });
 
@@ -733,7 +796,7 @@ export function Composer(props: ComposerProps) {
   /* ── keys ─────────────────────────────────────────────────────────── */
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
-      if (slashItems().length || menuItems()?.length) {
+      if (slashItems().length || menuItems()?.length || argRows()?.length) {
         e.preventDefault();
         setDismissed(draft().text);
         if (!props.phone) e.stopPropagation();
@@ -745,13 +808,20 @@ export function Composer(props: ComposerProps) {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       const items = slashItems();
       const mentions = menuItems();
-      if (items.length || mentions?.length) {
+      const args = argRows();
+      if (items.length || mentions?.length || args?.length) {
         e.preventDefault();
-        const count = items.length || mentions!.length;
+        const count = items.length || mentions?.length || args!.length;
         setSel((i) => (e.key === 'ArrowUp' ? (i <= 0 ? count - 1 : i - 1) : i + 1 >= count ? 0 : i + 1));
         return;
       }
       if (!e.shiftKey && historyKey(e, draft().text)) e.preventDefault();
+      return;
+    }
+    if (e.key === 'Tab' && !e.shiftKey && argRows()?.length) {
+      e.preventDefault();
+      const args = argRows()!;
+      pickArg(args[Math.min(sel(), args.length - 1)]!);
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
@@ -765,6 +835,12 @@ export function Composer(props: ComposerProps) {
       if (mentions?.length) {
         e.preventDefault();
         pickMention(mentions[Math.min(sel(), mentions.length - 1)]!);
+        return;
+      }
+      const args = argRows();
+      if (args?.length) {
+        e.preventDefault();
+        pickArg(args[Math.min(sel(), args.length - 1)]!);
         return;
       }
       // A touch keyboard's Enter is a newline; the send button sends.
@@ -795,6 +871,17 @@ export function Composer(props: ComposerProps) {
     >
       <Show when={slashItems().length}>
         <SlashMenu items={slashItems()} selected={Math.min(sel(), slashItems().length - 1)} onPick={pickCommand} onHover={setSel} />
+      </Show>
+      <Show when={argRows()?.length ? argMenu() : undefined}>
+        {(menu) => (
+          <ArgMenu
+            command={menu().command}
+            items={menu().items}
+            selected={Math.min(sel(), menu().items.length - 1)}
+            onPick={pickArg}
+            onHover={setSel}
+          />
+        )}
       </Show>
       <Show when={menuItems()}>
         <MentionMenu items={menuItems()!} selected={Math.min(sel(), menuItems()!.length - 1)} onPick={pickMention} onHover={setSel} />
