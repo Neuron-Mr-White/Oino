@@ -27,7 +27,7 @@ print / JSON / RPC modes and a fixed command line. Everything else is a client o
 extension:
 
 - **Providers are WASM components** (Anthropic Messages, OpenAI Responses, OpenAI-compatible
-  chat completions, the Oino Router). No provider code lives in core.
+  chat completions). No provider code lives in core.
 - **Extensions are WASM components too** — the SDK ships provider components plus example
   extensions; the full unipi 3.0.0 feature set (workflow, memory, subagents, kanboard, …)
   lives in the [UniPi distribution](#unipi--built-with-oino) below.

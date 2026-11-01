@@ -7,7 +7,6 @@ Providers are WASM components (D14), bundled into `oino`:
 | `oino.anthropic` | `anthropic-messages` | `anthropic` (API key or Claude Pro/Max OAuth token), `minimax`, `minimax-cn` |
 | `oino.openai-responses` | `openai-responses` | `openai`, `xai`, `meta` |
 | `oino.openai-compat` | `openai-completions` | `openrouter`, `groq`, `deepseek`, `together`, `fireworks`, `cerebras`, `huggingface`, `nvidia`, `moonshotai`, `kimi-coding`, `qwen-token-plan*`, `xiaomi*`, `zai`, `opencode`, `baseten`, `ant-ling`, `vercel-ai-gateway`, `ollama`, `lmstudio`, `mistral`, `deepinfra`, `chutes`, `perplexity` |
-| `oino.router` | `oino-router` | `oino` (Oino Router; Claude models stream over Anthropic Messages, the rest over chat completions) |
 
 Core dispatches every request by the **model's** `api` to the component that declares it, so
 a provider may list models that use another wire (for example Vercel AI Gateway's Claude
@@ -26,8 +25,7 @@ Resolution order per provider:
 ```json
 {
   "anthropic": { "type": "api_key", "key": "sk-ant-..." },
-  "openrouter": { "type": "api_key", "key": "sk-or-..." },
-  "oino": { "type": "api_key", "key": "..." }
+  "openrouter": { "type": "api_key", "key": "sk-or-..." }
 }
 ```
 
@@ -59,7 +57,7 @@ The flows are tested against recorded fixtures; live accounts have not been trie
 
 `oino --list-models [search]` shows every model with credentials. Catalogs are static (from
 ) except for `models: "dynamic"` providers (Ollama, LM Studio, Mistral, DeepInfra, Chutes,
-Perplexity, the Oino Router), which are listed at startup when credentials exist (keyless
+Perplexity), which are listed at startup when credentials exist (keyless
 local servers are probed with a 5 s timeout). `--offline` / `OINO_OFFLINE=1` skips that.
 
 Custom providers and model overrides go into `models.json` ([models.md](models.md)).

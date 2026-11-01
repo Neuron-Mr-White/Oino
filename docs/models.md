@@ -33,8 +33,8 @@ models or overrides built-in ones, with the fixed schema:
 }
 ```
 
-- `api` must be implemented by a loaded component: `openai-completions`, `openai-responses`,
-  `anthropic-messages` or `oino-router`.
+- `api` must be implemented by a loaded component: `openai-completions`, `openai-responses` or
+  `anthropic-messages`.
 - `apiKey` is a literal, an environment variable name, or `!command`.
 - `authHeader: true` sends `Authorization: Bearer <key>`.
 - A provider entry with only `baseUrl`/`headers`/`models` overrides an existing provider.

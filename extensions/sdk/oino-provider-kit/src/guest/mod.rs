@@ -53,7 +53,7 @@ const READ_CHUNK: usize = 16 * 1024;
 /// How a component streams one request.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StreamOptions {
-    /// Wire to use instead of the model's `api` (Oino Router).
+    /// Wire to use instead of the model's `api` (dual-wire gateways).
     pub wire: Option<Wire>,
     /// Allow requests without a credential (local servers).
     pub allow_missing_key: bool,

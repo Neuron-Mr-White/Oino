@@ -1131,15 +1131,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "provider-router"
-version = "1.0.0-alpha.5"
-dependencies = [
- "oino-extension",
- "oino-provider-kit",
- "serde_json",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"

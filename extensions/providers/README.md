@@ -13,7 +13,6 @@ component whose manifest lists that api in `provides.apis`.
 | `oino.azure` | `azure/` | `azure-openai-responses` | Azure OpenAI (`AZURE_OPENAI_*`; its chat-completions models stream through `oino.openai-compat`) |
 | `oino.google` | `google/` | `google-generative-ai`, `google-vertex` | Google (Gemini API key), Google Vertex AI (API key or Application Default Credentials) |
 | `oino.bedrock` | `bedrock/` | `bedrock-converse-stream` | Amazon Bedrock (bearer token or IAM credentials with SigV4; env or static `~/.aws` profiles) |
-| `oino.router` | `router/` | `oino-router` | `oino` (Oino Router: Claude models on Anthropic Messages, the rest on chat completions) |
 
 Providers whose models use several APIs (GitHub Copilot, Cloudflare AI Gateway, OpenRouter, Azure)
 are registered by one component and streamed by whichever component implements each model's `api`;

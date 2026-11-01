@@ -16,7 +16,6 @@ works when a component implements its provider id (built-ins) or its `api` (cust
 | `oino.google` | `google-generative-ai`, `google-vertex` | `google`, `google-vertex` |
 | `oino.bedrock` | `bedrock-converse-stream` | `amazon-bedrock` |
 | `oino.openai-compat` | `openai-completions` | `openrouter`, `groq`, `deepseek`, `together`, `fireworks`, `cerebras`, `huggingface`, `nvidia`, `moonshotai`, `moonshotai-cn`, `kimi-coding`, `qwen-token-plan*`, `xiaomi*`, `zai`, `zai-coding-cn`, `opencode`, `opencode-go`, `baseten`, `ant-ling`, `vercel-ai-gateway`, `ollama`, `lmstudio`, `mistral`, `deepinfra`, `chutes`, `perplexity`, `github-copilot`, `cloudflare-ai-gateway`, `cloudflare-workers-ai` |
-| `oino.router` | `oino-router` | `oino` |
 
 The live list: `printf '%s\n' '{"type":"_oino/auth_providers","id":"p"}' | oino --mode rpc`
 (`{providers: [{id, name, oauth, configured, stored, env}]}`).
