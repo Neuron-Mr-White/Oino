@@ -424,10 +424,35 @@ impl AgentSession {
         if deliver_as == Some(Delivery::NextTurn) {
             lock(&self.inner.book).pending_next_turn.push(message);
         } else if streaming && trigger_turn {
-            if deliver_as == Some(Delivery::FollowUp) {
-                self.inner.agent.follow_up(AgentMessage::Custom(message));
+            let follow = deliver_as == Some(Delivery::FollowUp);
+            let queued = AgentMessage::Custom(message.clone());
+            if follow {
+                self.inner.agent.follow_up(queued.clone());
             } else {
-                self.inner.agent.steer(AgentMessage::Custom(message));
+                self.inner.agent.steer(queued.clone());
+            }
+            // Lost-wake guard: a trigger queued while the run is ending can
+            // land after the run's last queue drain — the run then settles
+            // and nothing ever consumes it (a fast background subagent
+            // finishing exactly as the parent's turn ends loses its
+            // completion notification). If the run settled underneath the
+            // push, take the message back and give it a run of its own; when
+            // a newer run already drained it, the take-back finds nothing
+            // and the trigger is not duplicated.
+            if !self.is_streaming() {
+                let rescued = self
+                    .inner
+                    .agent
+                    .update_queue(follow, |queue| {
+                        queue
+                            .iter()
+                            .rposition(|m| *m == queued)
+                            .map(|at| queue.remove(at))
+                    })
+                    .is_some();
+                if rescued {
+                    return self.start_run(Trigger::Custom(message)).await;
+                }
             }
         } else if trigger_turn {
             if lock(&self.inner.book).emitting_settled {
@@ -577,37 +602,69 @@ impl AgentSession {
         if let Err(error) = self.inner.agent.prompt(messages).await {
             tracing::error!("agent prompt failed: {error}");
         }
+        // The settle tail runs once the decision loop breaks — unless a
+        // queued trigger arrived while it was deciding (lost-wake guard,
+        // below), in which case the run drives another round that drains it.
+        // The tail guard is bounded: a queue that somehow never drains must
+        // not keep the run from settling forever.
+        let mut tail_redrives = 0;
         loop {
-            if self.abort_requested() {
-                break;
-            }
-            if self.handle_post_agent_run().await {
+            // Every exit from this decision loop is a settle decision.
+            let settle = loop {
                 if self.abort_requested() {
-                    break;
+                    break true;
                 }
-                if self.inner.agent.continue_run().await.is_err() {
-                    break;
+                if self.handle_post_agent_run().await {
+                    if self.abort_requested() {
+                        break true;
+                    }
+                    if self.inner.agent.continue_run().await.is_err() {
+                        break true;
+                    }
+                    continue;
                 }
+                let boundary_ok =
+                    !self.abort_requested() && self.run_before_settle_boundary().await;
+                if !boundary_ok
+                    && (self.abort_requested() || !self.inner.agent.has_queued_messages())
+                {
+                    // Plain settle: aborted, or nothing pending. (When the
+                    // boundary said "nothing pending" but the lost-wake
+                    // guard below finds a queued trigger — one that landed
+                    // in the awaits since that read — we fall through to
+                    // `continue_run` and drive another round instead.)
+                    break true;
+                }
+                if self.abort_requested() || self.inner.agent.continue_run().await.is_err() {
+                    break true;
+                }
+            };
+            if self.abort_requested() {
+                self.finish_cancelled_retry();
+            }
+            {
+                let mut book = lock(&self.inner.book);
+                book.failed_response = None;
+                book.run_prompt_options = None;
+            }
+            self.flush_pending_bash_messages();
+            self.flush_pending_custom_messages();
+            // Lost-wake guard (settle tail): the flushes above await, so a
+            // trigger may have queued since the decision. Re-check with
+            // nothing between it and the flip in `emit_agent_settled` — a
+            // queued trigger drives another round instead of being buried.
+            if settle
+                && !self.abort_requested()
+                && self.inner.agent.has_queued_messages()
+                && tail_redrives < 3
+                && self.inner.agent.continue_run().await.is_ok()
+            {
+                tail_redrives += 1;
                 continue;
             }
-            if self.abort_requested() || !self.run_before_settle_boundary().await {
-                break;
-            }
-            if self.abort_requested() || self.inner.agent.continue_run().await.is_err() {
-                break;
-            }
+            self.emit_agent_settled().await;
+            return;
         }
-        if self.abort_requested() {
-            self.finish_cancelled_retry();
-        }
-        {
-            let mut book = lock(&self.inner.book);
-            book.failed_response = None;
-            book.run_prompt_options = None;
-        }
-        self.flush_pending_bash_messages();
-        self.flush_pending_custom_messages();
-        self.emit_agent_settled().await;
     }
 
     pub(crate) fn abort_requested(&self) -> bool {

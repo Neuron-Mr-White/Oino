@@ -77,9 +77,8 @@ fn list(reply: Control) -> PushListData {
 /// Also carves the temp dir out of the extra safe roots (UNI-220 makes
 /// /tmp readable by default), so the "outside" file below is only reachable
 /// as a push, like a file in a folder the owner never allowed.
-fn write_config(paths: &HostPaths, mut value: serde_json::Value) {
-    let tmp = std::env::temp_dir().canonicalize().unwrap();
-    value["fs"] = serde_json::json!({ "deny": [tmp.to_string_lossy()] });
+fn write_config(paths: &HostPaths, mut value: serde_json::Value, deny: &std::path::Path) {
+    value["fs"] = serde_json::json!({ "deny": [deny.to_string_lossy()] });
     std::fs::write(paths.config(), serde_json::to_vec(&value).unwrap()).unwrap();
 }
 
@@ -88,6 +87,39 @@ fn sha(bytes: &[u8]) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+/// The default `fs.deny` entry: the whole temp root, for tests whose files
+/// only ever ride a push and make no scope assertions of their own.
+fn deny_temp_root() -> std::path::PathBuf {
+    std::env::temp_dir().canonicalize().unwrap()
+}
+
+/// The "outside" file's directory plus the `fs.deny` entry that keeps it out
+/// of the phone's scope, wherever TMPDIR lives on this machine:
+/// - TMPDIR outside `$HOME` (the usual `/tmp`): the temp dir itself, denied
+///   wholesale — the carve-out applies because the temp root is an extra
+///   safe root, not home;
+/// - TMPDIR **inside** `$HOME` (e.g. `$HOME/.cache/…`): `fs.deny` cannot
+///   hide anything there (`FsScope::allows` grants `$HOME` unconditionally,
+///   deny carves extra roots only), so the file goes under `/var/tmp` (a
+///   default extra safe root) with its own carve-out instead.
+///
+/// The push's whole premise — the file is unreadable before the push — is
+/// re-verified against the real scope by the caller.
+fn outside_dir() -> (tempfile::TempDir, std::path::PathBuf) {
+    let home = unipi_host::fs::home_dir_opt().expect("the test host has a $HOME");
+    let temp_root = std::env::temp_dir().canonicalize().unwrap();
+    if !temp_root.starts_with(&home) {
+        let dir = tempfile::tempdir().unwrap();
+        return (dir, temp_root);
+    }
+    let dir = tempfile::Builder::new()
+        .prefix("unipi-push-outside-")
+        .tempdir_in("/var/tmp")
+        .expect("/var/tmp exists and is writable (a default extra safe root)");
+    let deny = dir.path().canonicalize().unwrap();
+    (dir, deny)
 }
 
 struct Host {
@@ -201,8 +233,9 @@ async fn push_lifecycle_cli_to_phone_and_back() {
     );
     pair(conn, paths, "Pixel").await;
 
-    // A file outside $HOME-ish places (tempdir): only reachable as a push.
-    let outside = tempfile::tempdir().unwrap();
+    // A file outside the phone's scope (wherever TMPDIR lives): only
+    // reachable as a push.
+    let (outside, deny) = outside_dir();
     let apk = outside.path().join("app.apk");
     let bytes: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
     std::fs::write(&apk, &bytes).unwrap();
@@ -221,8 +254,18 @@ async fn push_lifecycle_cli_to_phone_and_back() {
     assert!(!off.enabled && off.pushes.is_empty());
     assert_eq!(off.host_name, "push-test-pc");
 
-    // Enable (read per request — no restart).
-    write_config(paths, serde_json::json!({"push":{"enabled":true}}));
+    // Enable (read per request — no restart), keeping the file carved out.
+    write_config(paths, serde_json::json!({"push":{"enabled":true}}), &deny);
+    // Premise, verified against the real scope: the file is out of reach
+    // except through a pending push.
+    let scope = unipi_host::fs_scope::FsScope::load(&paths.config()).unwrap();
+    assert!(
+        !scope.allows(&apk.canonicalize().unwrap()),
+        "the test premise needs a file outside the phone's fs scope \
+         (home {}, file {})",
+        scope.home.display(),
+        apk.display()
+    );
 
     // The phone long-polls before anything is pending…
     let poll = tokio::spawn({
@@ -281,7 +324,7 @@ async fn push_lifecycle_cli_to_phone_and_back() {
     );
 
     // Disabling push mid-way closes the file again (gate re-read each time).
-    write_config(paths, serde_json::json!({"push":{"enabled":false}}));
+    write_config(paths, serde_json::json!({"push":{"enabled":false}}), &deny);
     let (closed, _) = blob_get(conn, &item.path).await;
     assert!(matches!(closed, Control::Err { .. }), "{closed:?}");
     let reply = request(
@@ -292,7 +335,7 @@ async fn push_lifecycle_cli_to_phone_and_back() {
     assert!(
         matches!(reply, Control::Err { ref error } if error.code == AppErrorCode::E_UNAUTHORIZED)
     );
-    write_config(paths, serde_json::json!({"push":{"enabled":true}}));
+    write_config(paths, serde_json::json!({"push":{"enabled":true}}), &deny);
 
     // The phone answers; the CLI prints the outcome and finishes.
     let reply = request(conn, serde_json::json!({"op":"push_done","id":id,"outcome":"installed","detail":"system installer opened"})).await;
@@ -343,6 +386,7 @@ async fn per_device_grant_device_filter_and_changed_file() {
     write_config(
         paths,
         serde_json::json!({"push":{"enabled":true,"devices":["Redmi"]}}),
+        &deny_temp_root(),
     );
     let off = list(request(&host.conn, serde_json::json!({"op":"push_list"})).await);
     assert!(!off.enabled, "not granted to Pixel");
@@ -355,6 +399,7 @@ async fn per_device_grant_device_filter_and_changed_file() {
     write_config(
         paths,
         serde_json::json!({"push":{"enabled":true,"devices":["Pixel"]}}),
+        &deny_temp_root(),
     );
     let mut lines = cli(paths, push_request(&file, &bytes, vec!["Galaxy".into()])).await;
     match next_event(&mut lines).await {

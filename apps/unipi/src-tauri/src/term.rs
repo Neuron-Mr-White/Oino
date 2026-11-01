@@ -119,7 +119,8 @@ pub(crate) struct TermHandle {
 /// Detaches a stream for good: stop its reader task, then tell its writer to
 /// half-close so the host drops the attach. Dropping the writer sender (the
 /// fallback when the channel is full or gone) ends the host stream too.
-fn close_handle(handle: TermHandle) {
+/// Shared with the LSP stream registry (same handle type, same lifecycle).
+pub(crate) fn close_handle(handle: TermHandle) {
     if let Some(reader) = handle.reader {
         reader.abort();
     }
@@ -143,7 +144,7 @@ impl TermRegistry {
 
     /// A fresh, never-repeated stream token (0 is never handed out, so a
     /// zero value can't be mistaken for a live stream's token).
-    fn next_token(&self) -> u64 {
+    pub(crate) fn next_token(&self) -> u64 {
         1 + self.next_token.fetch_add(1, Ordering::Relaxed)
     }
 

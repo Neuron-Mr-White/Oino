@@ -309,6 +309,49 @@ pub async fn download_and_replace(
 }
 
 /// Writes `bytes` as a sibling of `exe`, verifies `--version`, then replaces `exe`.
+/// Runs `<binary> --version` once, retrying only a *spawn* failure a few
+/// times: under heavy process churn (parallel tests, a busy machine)
+/// fork/posix_spawn can come back transiently refused (EAGAIN →
+/// `WouldBlock`) or the just-written binary can still be open for write
+/// (ETXTBSY), and a self-updater should ride those out, not report them.
+fn run_version(binary: &Path) -> anyhow::Result<std::process::Output> {
+    let mut last = None;
+    for attempt in 0..3 {
+        match std::process::Command::new(binary).arg("--version").output() {
+            Ok(output) => return Ok(output),
+            Err(e) => {
+                let transient = matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::ResourceBusy
+                ) || e.raw_os_error() == Some(26 /* ETXTBSY */);
+                last = Some(e);
+                if !transient || attempt == 2 {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(150));
+            }
+        }
+    }
+    Err(anyhow::anyhow!(
+        "the new binary doesn't run here: {}",
+        last.expect("a failed spawn always sets last")
+    ))
+}
+
+/// Runs the new binary's `--version` and refuses anything but
+/// `expect_version` (the advertised one).
+fn version_check(binary: &Path, expect_version: &str) -> anyhow::Result<()> {
+    let out = run_version(binary)?;
+    let said = String::from_utf8_lossy(&out.stdout);
+    let said = said.split_whitespace().nth(1).unwrap_or("").to_string();
+    if said != expect_version {
+        return Err(anyhow::anyhow!(
+            "the new binary says {said:?}, expected {expect_version} — nothing changed"
+        ));
+    }
+    Ok(())
+}
+
 pub fn install_bytes(bytes: &[u8], expect_version: &str, exe: &Path) -> anyhow::Result<()> {
     let dir = exe
         .parent()
@@ -330,17 +373,7 @@ pub fn install_bytes(bytes: &[u8], expect_version: &str, exe: &Path) -> anyhow::
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| cleanup(e.into()))?;
     }
-    let out = std::process::Command::new(&tmp)
-        .arg("--version")
-        .output()
-        .map_err(|e| cleanup(anyhow::anyhow!("the new binary doesn't run here: {e}")))?;
-    let said = String::from_utf8_lossy(&out.stdout);
-    let said = said.split_whitespace().nth(1).unwrap_or("").to_string();
-    if said != expect_version {
-        return Err(cleanup(anyhow::anyhow!(
-            "the new binary says {said:?}, expected {expect_version} — nothing changed"
-        )));
-    }
+    version_check(&tmp, expect_version).map_err(cleanup)?;
     #[cfg(windows)]
     {
         // A running .exe can't be overwritten but can be renamed.

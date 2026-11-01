@@ -755,10 +755,24 @@ mod tests {
 
     #[tokio::test]
     async fn connect_loopback_reports_closed_port() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        let error = connect_loopback(port).await.unwrap_err();
+        // A freed ephemeral port can be snapped up by any other process on
+        // the machine between `drop` and `connect` — then the connect
+        // succeeds and the assertion would fire. Re-pick a fresh port for
+        // a few rounds; a closed port must refuse every time.
+        let mut refused = None;
+        for _ in 0..10 {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            drop(listener);
+            match connect_loopback(port).await {
+                Err(error) => {
+                    refused = Some(error);
+                    break;
+                }
+                Ok(stream) => drop(stream), // someone else grabbed it: re-pick
+            }
+        }
+        let error = refused.expect("10 fresh ports all answered: the machine is hostile");
         assert_eq!(error.code, AppErrorCode::E_NOT_FOUND);
     }
 

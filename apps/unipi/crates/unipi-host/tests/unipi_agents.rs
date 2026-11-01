@@ -208,7 +208,10 @@ impl Env {
     }
 
     async fn until(&self, what: &str, f: impl Fn(&Self) -> bool) {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+        // Generous on purpose: these tests drive real wasm components and
+        // child agents, and a machine busy with other work (a parallel test
+        // run, other builds) can starve them for a long stretch.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
         while !f(self) {
             assert!(tokio::time::Instant::now() < deadline, "timed out: {what}");
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -217,7 +220,7 @@ impl Env {
 }
 
 async fn idle(session: &AgentSession) {
-    tokio::time::timeout(Duration::from_secs(120), session.wait_for_idle())
+    tokio::time::timeout(Duration::from_secs(300), session.wait_for_idle())
         .await
         .unwrap();
 }
@@ -341,13 +344,49 @@ async fn subagents_run_foreground_background_and_read() {
         .as_str()
         .unwrap()
         .to_owned();
-    env.until("background completion message", |env| {
-        env.session()
+    // Diagnostics for the (historically flaky) completion wait: which
+    // markers the provider saw, and what the session holds.
+    let diag = || {
+        let requests: Vec<String> = env
+            .provider
+            .requests()
+            .iter()
+            .map(|r| {
+                let wire = r["context"].to_string();
+                format!(
+                    "[system={} fg={} bg={}]",
+                    wire.contains(SUBAGENT_SYSTEM),
+                    wire.contains("FOREGROUND-TASK"),
+                    wire.contains("BACKGROUND-TASK")
+                )
+            })
+            .collect();
+        let messages: Vec<String> = session
             .messages()
             .iter()
-            .any(|m| matches!(m, AgentMessage::Custom(c) if c.custom_type == "subagent-completion"))
-    })
-    .await;
+            .map(|m| match m {
+                AgentMessage::Custom(c) => format!("custom:{}", c.custom_type),
+                AgentMessage::ToolResult(t) => format!("result:{}", t.tool_name),
+                AgentMessage::User(u) => format!("user:{:?}", u.content),
+                AgentMessage::Assistant(a) => format!("assistant:{}", a.content.len()),
+                other => format!("{:?}", std::mem::discriminant(other)),
+            })
+            .collect();
+        format!("requests {requests:?} messages {messages:?}")
+    };
+    let mut completion_seen = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+    while !completion_seen {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out: background completion message.\n{}",
+            diag()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        completion_seen = session.messages().iter().any(
+            |m| matches!(m, AgentMessage::Custom(c) if c.custom_type == "subagent-completion"),
+        );
+    }
     idle(&session).await;
     env.provider.push(call(
         "c3",

@@ -97,10 +97,15 @@ async fn watch_on_emits_one_change_per_burst_off_stops() {
     .await;
     assert_eq!(events.len(), 1, "rapid metadata writes coalesce");
 
-    // A later, separate change emits again.
-    std::fs::write(root.join("b.txt"), "new\n").unwrap();
-    git(&root, &["add", "b.txt"]);
-    let events = events_after(&root, || {}).await;
+    // A later, separate change emits again. The writes happen inside
+    // `events_after` (after its subscribe): subscribing only after the
+    // writes would race the 1 s debounce — a slow runner could let the
+    // debounced event fire before the subscription exists.
+    let events = events_after(&root, || {
+        std::fs::write(root.join("b.txt"), "new\n").unwrap();
+        git(&root, &["add", "b.txt"]);
+    })
+    .await;
     assert_eq!(events.len(), 1, "a later change notifies again");
 
     // Off: no more events.

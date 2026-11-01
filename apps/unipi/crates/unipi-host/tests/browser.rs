@@ -739,7 +739,14 @@ async fn remote_browser_streams_frames_and_takes_input() {
         )
         .await;
         let downs = downs["result"]["result"]["value"].as_u64().unwrap_or(0);
-        assert_eq!(downs, 5, "one keydown per typed character");
+        // One keydown per typed character — plus, whenever the humanizer's
+        // RNG simulates a mistype, one more for the wrong key and one for
+        // the Backspace that fixes it (each mistype adds exactly 2). The
+        // typed text itself is asserted next, through the input's value.
+        assert!(
+            downs >= 5 && (downs - 5) % 2 == 0,
+            "keydowns must be one per character plus mistype+backspace pairs: {downs}"
+        );
         let value = call(
             &mut agent,
             9,

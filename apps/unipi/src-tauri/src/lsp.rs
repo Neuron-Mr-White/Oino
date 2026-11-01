@@ -254,81 +254,25 @@ pub async fn lsp_open(
     });
 
     // Reader task: kind-1 data to `on_data`, controls to `on_event`;
-    // exactly one final event (taken / exit / closed) ends it.
-    let mut recv = opened.recv;
-    let registry = std::sync::Arc::clone(&streams.sessions);
-    let reader_lsp_id = lsp_id.clone();
-    tokio::spawn(async move {
-        let mut ended = false;
-        while !ended {
-            let mut kind_buffer = [0u8; 1];
-            let mut len_buffer = [0u8; 4];
-            if recv.read_exact(&mut kind_buffer).await.is_err()
-                || recv.read_exact(&mut len_buffer).await.is_err()
-            {
-                let _ = on_event.send(LspEvent::Closed { error: None });
-                break;
-            }
-            let len = u32::from_be_bytes(len_buffer) as usize;
-            if len > unipi_proto::MAX_FRAME {
-                let _ = on_event.send(LspEvent::Closed {
-                    error: Some(AppErrorDto::new(
-                        AppErrorCode::E_SCHEMA,
-                        "oversize frame",
-                        false,
-                    )),
-                });
-                break;
-            }
-            let mut payload = vec![0u8; len];
-            if recv.read_exact(&mut payload).await.is_err() {
-                let _ = on_event.send(LspEvent::Closed { error: None });
-                break;
-            }
-            match decode_frame(kind_buffer[0], &payload) {
-                Ok(Decoded::Data(bytes)) => {
-                    if on_data.send(InvokeResponseBody::Raw(bytes)).is_err() {
-                        break;
-                    }
-                }
-                Ok(Decoded::Event(event)) => {
-                    let is_final = matches!(
-                        event,
-                        LspEvent::Taken { .. } | LspEvent::Exit { .. } | LspEvent::Closed { .. }
-                    );
-                    if on_event.send(event).is_err() {
-                        break;
-                    }
-                    if is_final {
-                        ended = true;
-                    }
-                }
-                Ok(Decoded::Ignore) => {}
-                Err(Decoded::Event(closed)) => {
-                    let _ = on_event.send(closed);
-                    ended = true;
-                }
-                Err(_) => {
-                    let _ = on_event.send(LspEvent::Closed { error: None });
-                    ended = true;
-                }
-            }
-        }
-        registry
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&reader_lsp_id);
-    });
+    // exactly one final event (taken / exit / closed) ends it. Removes its
+    // own entry — compare-and-remove on its token — so a stream that ends
+    // late can't take a newer stream's entry out.
+    let token = streams.next_token();
+    let reader = tokio::spawn(pump_lsp_reader(
+        opened.recv,
+        on_data,
+        on_event,
+        LspRegistry::clone(&streams),
+        lsp_id.clone(),
+        token,
+    ));
 
-    streams.insert(
+    streams.register(
         lsp_id,
         crate::term::TermHandle {
             writer: writer_tx,
-            reader: None,
-            // LSP streams keep the pre-generation behavior (their registry
-            // removes entries unconditionally); 0 is never issued by
-            // [`crate::term::TermRegistry::next_token`].
-            token: 0,
+            reader: Some(reader),
+            token,
         },
     );
 
@@ -359,15 +303,84 @@ pub async fn lsp_write(
         .map_err(|_| ProtoError::Internal("LSP writer closed".into()).to_app_error())
 }
 
+/// One LSP reader task: forwards the stream's frames to the UI channels
+/// (kind-1 data to `on_data`, controls to `on_event`; exactly one final
+/// taken/exit/closed event goes out last), then removes its own registry
+/// entry — compare-and-remove on `token`, so a late-ending stream (e.g.
+/// the one a webview reload replaced) leaves the newer stream's entry
+/// alone. Mirrors [`crate::term::pump_reader`].
+async fn pump_lsp_reader(
+    mut recv: crate::op_stream::OpRecv,
+    on_data: tauri::ipc::Channel<InvokeResponseBody>,
+    on_event: tauri::ipc::Channel<LspEvent>,
+    streams: LspRegistry,
+    lsp_id: String,
+    token: u64,
+) {
+    let mut ended = false;
+    while !ended {
+        let mut kind_buffer = [0u8; 1];
+        let mut len_buffer = [0u8; 4];
+        if recv.read_exact(&mut kind_buffer).await.is_err()
+            || recv.read_exact(&mut len_buffer).await.is_err()
+        {
+            let _ = on_event.send(LspEvent::Closed { error: None });
+            break;
+        }
+        let len = u32::from_be_bytes(len_buffer) as usize;
+        if len > unipi_proto::MAX_FRAME {
+            let _ = on_event.send(LspEvent::Closed {
+                error: Some(AppErrorDto::new(
+                    AppErrorCode::E_SCHEMA,
+                    "oversize frame",
+                    false,
+                )),
+            });
+            break;
+        }
+        let mut payload = vec![0u8; len];
+        if recv.read_exact(&mut payload).await.is_err() {
+            let _ = on_event.send(LspEvent::Closed { error: None });
+            break;
+        }
+        match decode_frame(kind_buffer[0], &payload) {
+            Ok(Decoded::Data(bytes)) => {
+                if on_data.send(InvokeResponseBody::Raw(bytes)).is_err() {
+                    break;
+                }
+            }
+            Ok(Decoded::Event(event)) => {
+                let is_final = matches!(
+                    event,
+                    LspEvent::Taken { .. } | LspEvent::Exit { .. } | LspEvent::Closed { .. }
+                );
+                if on_event.send(event).is_err() {
+                    break;
+                }
+                if is_final {
+                    ended = true;
+                }
+            }
+            Ok(Decoded::Ignore) => {}
+            Err(Decoded::Event(closed)) => {
+                let _ = on_event.send(closed);
+                ended = true;
+            }
+            Err(_) => {
+                let _ = on_event.send(LspEvent::Closed { error: None });
+                ended = true;
+            }
+        }
+    }
+    streams.remove_own(&lsp_id, token);
+}
+
 /// Detaches this attach. The host keeps the server (idle timeout);
 /// `lsp_open` on the same `(root, language)` takes it back.
 #[tauri::command]
 pub async fn lsp_close(streams: State<'_, LspRegistry>, lsp_id: String) -> Result<(), AppErrorDto> {
     if let Some(handle) = streams.remove(&lsp_id) {
-        let _ = handle.writer.send(WriterMsg::Close).await;
-        if let Some(reader) = handle.reader {
-            reader.abort();
-        }
+        crate::term::close_handle(handle);
     }
     Ok(())
 }
@@ -422,11 +435,14 @@ fn closed(payload: &[u8]) -> Decoded {
 }
 
 /// Managed registry of the app's live LSP streams — one per attached
-/// `lsp_id` (the host owns the servers). Shared with each reader task so
-/// it can remove its own entry when the stream ends.
+/// `lsp_id` (the host owns the servers). Cloned into each reader task so
+/// it can remove its own entry — by generation token, compare-and-remove,
+/// exactly like [`crate::term::TermRegistry`] — when the stream ends.
 #[derive(Clone, Default)]
 pub struct LspRegistry {
     pub(crate) sessions: std::sync::Arc<Mutex<HashMap<String, crate::term::TermHandle>>>,
+    /// Source of the per-stream generation tokens.
+    next_token: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl LspRegistry {
@@ -434,11 +450,23 @@ impl LspRegistry {
         Self::default()
     }
 
-    fn insert(&self, id: String, handle: crate::term::TermHandle) {
-        self.sessions
+    /// A fresh, never-repeated stream token (0 is never handed out).
+    fn next_token(&self) -> u64 {
+        use std::sync::atomic::Ordering;
+        1 + self.next_token.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Registers a stream for `id`, cleanly replacing any stream an earlier
+    /// open left under the same id (the old one is closed first).
+    fn register(&self, id: String, handle: crate::term::TermHandle) {
+        let replaced = self
+            .sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(id, handle);
+        if let Some(old) = replaced {
+            crate::term::close_handle(old);
+        }
     }
 
     fn lookup_writer(&self, id: &str) -> Option<mpsc::Sender<WriterMsg>> {
@@ -454,6 +482,17 @@ impl LspRegistry {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(id)
+    }
+
+    /// Compare-and-remove: takes the entry out only while it is still *this*
+    /// stream's (`token` matches), so a stream that ends late (e.g. the one
+    /// a webview reload replaced) can't remove its replacement's entry.
+    fn remove_own(&self, id: &str, token: u64) -> Option<crate::term::TermHandle> {
+        let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
+        match sessions.get(id) {
+            Some(handle) if handle.token == token => sessions.remove(id),
+            _ => None,
+        }
     }
 }
 
@@ -502,5 +541,86 @@ mod tests {
             Decoded::Event(LspEvent::Exit { .. })
         ));
         assert!(decode_frame(7, b"x").is_err());
+    }
+
+    /// A stale LSP stream's late end must not remove its replacement's
+    /// entry (the same webview-reload race term's registry had): re-open
+    /// under the same id, the old stream ends after the new one is live,
+    /// and `lsp_write`-style routing still finds the new writer.
+    #[cfg(all(unix, test))]
+    #[tokio::test]
+    async fn a_late_ending_lsp_stream_never_removes_its_replacement() {
+        use tokio::io::AsyncWriteExt;
+
+        let streams = LspRegistry::new();
+
+        // Stream 1: the attach from before the reload.
+        let (client1, host1) = tokio::net::UnixStream::pair().expect("socket pair");
+        let (recv1, _client1_write) = client1.into_split();
+        let (tx1, mut rx1) = mpsc::channel::<WriterMsg>(4);
+        let token1 = streams.next_token();
+        let reader1 = tokio::spawn(pump_lsp_reader(
+            crate::op_stream::OpRecv::Local(recv1),
+            tauri::ipc::Channel::<InvokeResponseBody>::new(|_| Ok(())),
+            tauri::ipc::Channel::<LspEvent>::new(|_| Ok(())),
+            streams.clone(),
+            "lsp".into(),
+            token1,
+        ));
+        streams.register(
+            "lsp".into(),
+            crate::term::TermHandle {
+                writer: tx1,
+                reader: None,
+                token: token1,
+            },
+        );
+
+        // The reload: a new stream takes the id over (the old one closes).
+        let (client2, mut host2) = tokio::net::UnixStream::pair().expect("socket pair");
+        let (recv2, _client2_write) = client2.into_split();
+        let (tx2, mut rx2) = mpsc::channel::<WriterMsg>(4);
+        let token2 = streams.next_token();
+        let reader2 = tokio::spawn(pump_lsp_reader(
+            crate::op_stream::OpRecv::Local(recv2),
+            tauri::ipc::Channel::<InvokeResponseBody>::new(|_| Ok(())),
+            tauri::ipc::Channel::<LspEvent>::new(|_| Ok(())),
+            streams.clone(),
+            "lsp".into(),
+            token2,
+        ));
+        streams.register(
+            "lsp".into(),
+            crate::term::TermHandle {
+                writer: tx2,
+                reader: None,
+                token: token2,
+            },
+        );
+        assert!(
+            matches!(rx1.try_recv(), Ok(WriterMsg::Close)),
+            "re-registering an id must close the stream it replaces"
+        );
+
+        // The old stream ends late: its reader must leave the new entry
+        // alone, and bytes still flow through the new writer.
+        drop(host1);
+        reader1.await.expect("the old stream's reader ends");
+        streams
+            .lookup_writer("lsp")
+            .expect("the new stream survived the old one's late end")
+            .send(WriterMsg::Input(b"x".into()))
+            .await
+            .expect("send");
+        assert!(matches!(rx2.recv().await, Some(WriterMsg::Input(_))));
+
+        // The new stream's own end removes the entry.
+        let exit = serde_json::to_vec(&Control::Exit { code: Some(0) }).expect("json");
+        host2
+            .write_all(&encode(FrameKind::Control, &exit))
+            .await
+            .expect("write exit");
+        reader2.await.expect("the new stream's reader ends");
+        assert!(streams.lookup_writer("lsp").is_none());
     }
 }

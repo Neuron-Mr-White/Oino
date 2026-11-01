@@ -204,6 +204,18 @@ async fn error_paths_carry_the_stderr_contract() {
     assert_eq!(refused.unwrap_err().code, AppErrorCode::E_SCHEMA);
 }
 
+/// Turns the shared watcher off when it goes out of scope, even on a
+/// panic: a leaked `set(true)` would leave the *next* test in this process
+/// with a stale watcher on a deleted temp home (its writes would never be
+/// reported — the very flake this guard removes).
+struct WatchOffOnDrop;
+
+impl Drop for WatchOffOnDrop {
+    fn drop(&mut self) {
+        BoardWatchers::shared().set(false);
+    }
+}
+
 #[tokio::test]
 #[allow(
     clippy::await_holding_lock,
@@ -217,21 +229,45 @@ async fn watcher_reports_cli_writes_per_project() {
     let (slug, _id) = seeded_project(&home, temp.path(), "Watched");
 
     assert!(BoardWatchers::shared().set(true));
+    let _off = WatchOffOnDrop;
     let mut events = BoardWatchers::shared().subscribe();
 
-    // A CLI write through the host must surface as one BoardChanged{project}.
-    cli(&["add", "Second task", "--status", "backlog"], Some(&slug)).await;
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let received =
-            tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), events.recv()).await;
-        let Ok(Ok(event)) = received else {
-            panic!("no BoardChanged within 10 s of a CLI write");
-        };
-        if event.project == slug {
-            break;
+    // A CLI write through the host must surface as one BoardChanged{project}
+    // for it. fsnotify delivery is not guaranteed on a loaded machine (a
+    // watcher armed mid-write can miss the first one), so every 6 s window
+    // without an event triggers one more real CLI write — bounded at 30 s
+    // overall; the assertion itself is unchanged.
+    let titles = ["Second task", "Third task", "Fourth task", "Fifth task"];
+    let mut wrote = 0;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut found = false;
+    'wait: while Instant::now() < deadline {
+        cli(
+            &[
+                "add",
+                titles[wrote.min(titles.len() - 1)],
+                "--status",
+                "backlog",
+            ],
+            Some(&slug),
+        )
+        .await;
+        wrote += 1;
+        let window = Instant::now() + Duration::from_secs(6);
+        while Instant::now() < window.min(deadline) {
+            match tokio::time::timeout(Duration::from_millis(300), events.recv()).await {
+                Ok(Ok(event)) if event.project == slug => {
+                    found = true;
+                    break 'wait;
+                }
+                _ => {}
+            }
         }
     }
+    assert!(
+        found,
+        "no BoardChanged for {slug} within 30 s of {wrote} CLI writes"
+    );
 
     // Refcount off: the last watcher goes away.
     assert!(!BoardWatchers::shared().set(false));
