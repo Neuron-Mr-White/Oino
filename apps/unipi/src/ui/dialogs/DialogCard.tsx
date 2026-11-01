@@ -196,7 +196,7 @@ function Simple(props: { dialog: Dialog; onAnswer: (value: unknown) => void; onH
     <div class="dlg">
       <div class="dlg-head">
         <MessageCircleQuestion size={16} class="dlg-head-icon" />
-        <span class="dlg-eyebrow">pi asks</span>
+        <span class="dlg-eyebrow">Agent asks</span>
         <Countdown deadline={d().deadline} onExpire={() => props.onAnswer(null)} />
         <span class="flex-1" />
         <button type="button" class="dlg-x" aria-label="Dismiss" onClick={() => props.onAnswer(null)}>

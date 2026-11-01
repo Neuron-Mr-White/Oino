@@ -116,7 +116,7 @@ export const FEATURE_HELP: Record<FeatureKind, string> = {
   browser: 'A separate browser on this PC that phones can drive — never your own browser or its logins',
   desktop: "See (and control) this PC's screen from a phone",
   push: 'Let `unipi-host push <file>` send files to your phones',
-  cron: "See and manage this PC's scheduled, unattended pi runs",
+  cron: "See and manage this PC's scheduled, unattended agent runs",
 };
 
 /** The command a PC owner can still type (shown under "Or on the PC"). */

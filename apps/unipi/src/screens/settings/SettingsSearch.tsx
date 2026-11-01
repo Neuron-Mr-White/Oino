@@ -81,7 +81,7 @@ function flatten(value: Record<string, unknown>, prefix: string, depth: number, 
   for (const [key, child] of Object.entries(value)) {
     const dotted = prefix ? `${prefix}.${key}` : key;
     if (dotted === 'extensionSettings') continue; // the namespaces cover these
-    out.push({ section: 'agent', label: dotted, detail: `pi agent setting · ${describe(child)}`, kind: 'pi', anchor: `pi-${dotted}` });
+    out.push({ section: 'agent', label: dotted, detail: `Agent setting · ${describe(child)}`, kind: 'pi', anchor: `pi-${dotted}` });
     if (child && typeof child === 'object' && !Array.isArray(child)) flatten(child as Record<string, unknown>, dotted, depth + 1, out);
   }
 }

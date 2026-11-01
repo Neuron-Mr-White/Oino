@@ -51,7 +51,7 @@ const WHY: Record<FeatureKind, string> = {
   forward: "Open web apps running on the PC (dev servers on its loopback) here. Only the PC's own loopback is ever reachable.",
   browser: 'A separate Chrome on the PC with its own profile — never your everyday browser or its logins.',
   push: 'Lets the PC send files (like an APK) to this device.',
-  cron: "See and manage the PC's scheduled, unattended pi runs.",
+  cron: "See and manage the PC's scheduled, unattended agent runs.",
 };
 
 /** Options shared by the switch and the ask card. */

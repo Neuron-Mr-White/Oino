@@ -110,7 +110,7 @@ export function ProjectSheet(props: {
         {(error) => <p class="text-sm text-wm-red mb-3">{error().message}</p>}
       </Show>
       <Show when={store.state.projectsLoaded && store.state.projects.length === 0 && !store.state.projectsError}>
-        <p class="text-sm text-text-muted mb-3">No kanboard projects on this PC yet. Open the board from a pi session in a repo to register one.</p>
+        <p class="text-sm text-text-muted mb-3">No kanboard projects on this PC yet. Open the board from a UniPi session in a repo to register one.</p>
       </Show>
       <div class="settings-group rounded-card bg-surface-2/60">
         <For each={active()}>{(project) => <ProjectRow project={project} current={props.current} onPick={props.onPick} />}</For>

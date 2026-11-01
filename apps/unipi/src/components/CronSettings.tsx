@@ -95,7 +95,7 @@ export function CronSettingsCard() {
           <span class="settings-icon"><Clock size={18} /></span>
           <div class="min-w-0">
             <p class="text-[15px] text-text">Cron</p>
-            <p class="text-xs text-text-dim mt-0.5">This PC's scheduled, unattended pi runs.</p>
+            <p class="text-xs text-text-dim mt-0.5">This PC's scheduled, unattended agent runs.</p>
           </div>
           <div class="shrink-0">
             <button type="button" class="btn btn-ghost btn-sm" disabled={busy()} onClick={() => void load()} aria-label="Refresh cron settings">

@@ -498,7 +498,7 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
         </button>
         <Show when={cycleOpen()}>
           <div class="mp-cycle-body">
-            <p class="mp-hint">The set Ctrl+P cycles in the terminal (pi’s <code>enabledModels</code>). Every model stays selectable here.</p>
+            <p class="mp-hint">The set Ctrl+P cycles in the terminal (oino’s <code>enabledModels</code>). Every model stays selectable here.</p>
             <div class="mp-cycle-list" role="group" aria-label="Cycle set">
               <For each={models().slice(0, LIST_CAP)}>
                 {(m) => {

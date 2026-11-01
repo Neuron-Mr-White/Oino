@@ -153,9 +153,9 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Waypoints,
     cap: 'hosts',
-    keywords: ['pi', 'agent', 'settings', 'model', 'defaults', 'core'],
+    keywords: ['oino', 'agent', 'settings', 'model', 'defaults', 'core'],
     rows: [
-      { key: 'agent.settings', label: 'Agent settings', description: "The pi agent's settings.json (this PC)" },
+      { key: 'agent.settings', label: 'Agent settings', description: "The oino agent's settings.json (this PC)" },
     ],
   },
   {
@@ -257,8 +257,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: Bell,
     keywords: ['notifications', 'push', 'ntfy', 'needs you', 'desktop', 'phone', 'background'],
     rows: [
-      { key: 'notify.desktop', label: 'Desktop notifications', description: 'A system notification when pi needs you or finishes, while UniPi isn\u2019t in front' },
-      { key: 'notify.enabled', label: 'Enable phone notifications', description: 'Push alerts via your own ntfy server when pi needs you' },
+      { key: 'notify.desktop', label: 'Desktop notifications', description: 'A system notification when the agent needs you or finishes, while UniPi isn\u2019t in front' },
+      { key: 'notify.enabled', label: 'Enable phone notifications', description: 'Push alerts via your own ntfy server when the agent needs you' },
       { key: 'notify.keepListening', label: 'Keep listening', description: 'Poll the topic on resume + while the app is open (fallback when no distributor is installed)' },
     ],
   },
@@ -297,10 +297,11 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     title: 'About',
     group: 'about',
     icon: Info,
-    keywords: ['about', 'version', 'update', 'licence', 'changelog'],
+    keywords: ['about', 'version', 'update', 'licence', 'changelog', 'components', 'host', 'oino', 'engine', 'extensions', 'installed'],
     rows: [
       { key: 'about.update', label: 'Updates', description: 'One card: the app updater and the host\u2019s release' },
       { key: 'about.version', label: 'Version' },
+      { key: 'about.components', label: 'Components', description: 'What this install ships: the app, the agent host, the oino engine and the extensions' },
       { key: 'about.licence', label: 'Licences' },
     ],
   },

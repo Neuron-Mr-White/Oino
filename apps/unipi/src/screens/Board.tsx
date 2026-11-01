@@ -648,7 +648,7 @@ export default function Board() {
               >
                 <BoardState
                   title={`No projects on ${pc()?.name ?? 'this PC'}`}
-                  detail="Register a repo with unipi-kanboard project add (or open the board from a pi session there)."
+                  detail="Register a repo with unipi-kanboard project add (or open the board from a UniPi session there)."
                   onRetry={() => void refresh()}
                   retryLabel="Check again"
                 />

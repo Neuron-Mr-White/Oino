@@ -208,7 +208,7 @@ export default function Cron() {
                 <Show when={v.jobs.length === 0} fallback={<For each={v.jobs}>{(job) => <JobRow job={job} onOpen={() => setDetail(job.id)} />}</For>}>
                   <EmptyState
                     title="No cron jobs yet"
-                    body="Schedule an unattended pi run — a daily digest, a nightly cleanup, a weekly report."
+                    body="Schedule an unattended agent run — a daily digest, a nightly cleanup, a weekly report."
                     action={
                       <button type="button" class="empty-add bg-shell text-face rounded-pill" onClick={() => setFormOpen('new')} data-testid="cron-empty-add">
                         Add a job
@@ -437,9 +437,9 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
               </p>
               <Show when={d.value.run.session_path && d.value.run.status !== 'running'}>
                 <button type="button" class="cron-open-session" disabled={opening()} onClick={() => void openSession()} data-testid="cron-open-session">
-                  <MessageSquare size={16} /> {opening() ? 'Starting pi…' : 'Open session'}
+                  <MessageSquare size={16} /> {opening() ? 'Starting the agent…' : 'Open session'}
                 </button>
-                <p class="cron-run-note">Continue this run as a chat — a pi already on it, or a new one in the job's folder.</p>
+                <p class="cron-run-note">Continue this run as a chat — the agent already on it, or a new one in the job's folder.</p>
               </Show>
               <Show when={openError()}>
                 <p class="cron-form-error" role="alert" data-testid="cron-open-session-error">{openError()}</p>

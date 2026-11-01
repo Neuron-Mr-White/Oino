@@ -46,9 +46,9 @@ export function attentionOf(prev: SessionCard | undefined, card: SessionCard): A
 /** The OS notification's text (unipi wording; the title is neutral "UniPi" natively). */
 export function attentionText(kind: AttentionKind, card: SessionCard, hostName: string): { title: string; body: string } {
   const title = sessionTitle(card);
-  if (kind === 'finished') return { title: `${title} finished`, body: `pi on ${hostName} is done.` };
-  if (kind === 'crashed') return { title: `${title} stopped`, body: card.error?.trim() || `pi on ${hostName} crashed.` };
-  return { title: `${title} needs you`, body: `pi on ${hostName} is waiting for your answer.` };
+  if (kind === 'finished') return { title: `${title} finished`, body: `The agent on ${hostName} is done.` };
+  if (kind === 'crashed') return { title: `${title} stopped`, body: card.error?.trim() || `The agent on ${hostName} crashed.` };
+  return { title: `${title} needs you`, body: `The agent on ${hostName} is waiting for your answer.` };
 }
 
 export type PlanOptions = { focused?: SessionRef; windowFocused: boolean; max?: number };

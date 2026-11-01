@@ -105,12 +105,12 @@ export function NotificationsSection() {
   return (
     <Section title="Notifications" id="sec-notifications" icon={<Bell size={14} />}>
       <Show when={can('nativeNotifications')}>
-        <Row label="Desktop notifications" description="A system notification when pi needs you or finishes, while UniPi isn't in front">
+        <Row label="Desktop notifications" description="A system notification when the agent needs you or finishes, while UniPi isn't in front">
           <SwitchField label="Desktop notifications" checked={desktopOn()} onChange={(v) => (setDesktopNotifyOn(v), setDesktopOn(v))} />
         </Row>
       </Show>
       <Show when={can('notifications')}>
-        <Row label="Enable phone notifications" description="Push alerts via your own ntfy server when pi needs you">
+        <Row label="Enable phone notifications" description="Push alerts via your own ntfy server when the agent needs you">
           <SwitchField label="Enable phone notifications" checked={settings.notify.enabled} onChange={(v) => update('notify.enabled', v)} />
         </Row>
         <Show when={settings.notify.enabled}>

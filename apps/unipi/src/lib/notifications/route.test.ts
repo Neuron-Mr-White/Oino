@@ -63,8 +63,8 @@ describe('planNotifications', () => {
   });
 
   it('wording (unipi seed text)', () => {
-    expect(attentionText('finished', card(), 'coffee')).toEqual({ title: 'math helpers finished', body: 'pi on coffee is done.' });
-    expect(attentionText('waiting', card(), 'coffee')).toEqual({ title: 'math helpers needs you', body: 'pi on coffee is waiting for your answer.' });
+    expect(attentionText('finished', card(), 'coffee')).toEqual({ title: 'math helpers finished', body: 'The agent on coffee is done.' });
+    expect(attentionText('waiting', card(), 'coffee')).toEqual({ title: 'math helpers needs you', body: 'The agent on coffee is waiting for your answer.' });
     expect(attentionText('crashed', card({ error: 'overloaded' }), 'coffee')).toEqual({ title: 'math helpers stopped', body: 'overloaded' });
   });
 });

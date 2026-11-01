@@ -79,7 +79,7 @@ export function locateMatch(index: FindIndex, at: number): { turnId: string; occ
 /** A `search` command hit (v1 bridge shape, kept by oino hosts that offer it). */
 export type SearchHit = { id: string; role: string; snippet: string; marks: Array<[number, number]>; score: number; timestamp?: string };
 
-export const ROLE_LABEL: Record<string, string> = { user: 'You', assistant: 'pi', tool: 'Ran', output: 'Output', command: 'Command', note: 'Note' };
+export const ROLE_LABEL: Record<string, string> = { user: 'You', assistant: 'Agent', tool: 'Ran', output: 'Output', command: 'Command', note: 'Note' };
 
 /** Parses a `search` reply defensively (`null` = this host can't search). */
 export function parseSearchHits(data: unknown): SearchHit[] | null {

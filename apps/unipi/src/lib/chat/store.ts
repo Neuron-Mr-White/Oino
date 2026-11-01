@@ -150,7 +150,7 @@ export function reconcileBtwPages(own: BtwPage[], listed: BtwListPage[], complet
     for (const o of own) {
       if (!o.done && !claimed.has(o)) {
         o.done = true;
-        o.error = o.error ?? 'The answer was lost (pi restarted or the session changed). Ask again.';
+        o.error = o.error ?? 'The answer was lost (the agent restarted or the session changed). Ask again.';
       }
     }
   }
@@ -825,7 +825,7 @@ export function createChat(hostId: string, session: string) {
           const w = opWaiters.get(String(msg.ref))!;
           opWaiters.delete(String(msg.ref));
           if (msg.t === 'ack') w.resolve(msg);
-          else w.reject(msg.code === 'busy' ? new BusyError(String(msg.message ?? 'pi is busy')) : new Error(w.raw ? String(msg.message ?? 'Something went wrong') : friendlyError(msg.message as string | undefined)));
+          else w.reject(msg.code === 'busy' ? new BusyError(String(msg.message ?? 'The agent is busy')) : new Error(w.raw ? String(msg.message ?? 'Something went wrong') : friendlyError(msg.message as string | undefined)));
           return;
         }
         if (msg.t === 'hello') {
@@ -882,7 +882,7 @@ export function createChat(hostId: string, session: string) {
     if (!state.pending.length) return;
     let lost: Pending[] = [];
     setState(produce((s) => (lost = sweepPending(s, Date.now()))));
-    if (lost.length) setState('error', { message: lost.length === 1 ? "Your message didn't reach pi. Send it again." : `${lost.length} messages didn't reach pi.`, at: Date.now() });
+    if (lost.length) setState('error', { message: lost.length === 1 ? "Your message didn't reach the agent. Send it again." : `${lost.length} messages didn't reach the agent.`, at: Date.now() });
   }, 2000);
 
   const sendRaw = (msg: Record<string, unknown>) => {
@@ -1174,7 +1174,7 @@ export function createChat(hostId: string, session: string) {
     askBtw(question: string): { id: string; done: Promise<void> } {
       const ref = nextRef();
       if (state.conn !== 'live') {
-        setState('btwPages', (p) => [...p, { id: ref, question, answer: '', done: true, error: 'Not connected to pi. Ask again once it reconnects.' }]);
+        setState('btwPages', (p) => [...p, { id: ref, question, answer: '', done: true, error: 'Not connected to the agent. Ask again once it reconnects.' }]);
         return { id: ref, done: Promise.resolve() };
       }
       setState('btwPages', (p) => [...p, { id: ref, question, answer: '', done: false }]);
