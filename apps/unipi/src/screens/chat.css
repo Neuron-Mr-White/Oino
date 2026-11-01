@@ -651,3 +651,7 @@ html[data-shell=desktop] .new-chat-where-row[aria-checked=true]:hover { backgrou
 .chat-row-touch[data-flash] { animation: row-flash 2.2s ease-out; border-radius: 14px; }
 @keyframes row-flash { 0%, 35% { background: rgb(240 120 24 / 16%); box-shadow: 0 0 0 6px rgb(240 120 24 / 16%); } 100% { background: transparent; box-shadow: 0 0 0 6px transparent; } }
 @media (prefers-reduced-motion: reduce) { .chat-row-touch[data-flash] { animation: none; background: rgb(240 120 24 / 12%); } }
+/* Chat › More: a labelled pill, so Cron / Files / Ports are findable without a bottom-nav tab. */
+.chat-more-btn { display: inline-flex; align-items: center; gap: 6px; height: 40px; min-height: 40px; padding: 0 14px 0 11px; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text); font-size: 14px; font-weight: 500; }
+.chat-more-btn:active { background: var(--color-surface-3); }
+.chat-more-btn[aria-expanded=true] { background: var(--color-surface-3); }

@@ -52,13 +52,16 @@ export default function Chat() {
             <Show when={moreItems().length > 0}>
               <button
                 type="button"
-                class="ghost-icon-button"
+                class="chat-more-btn"
                 aria-label="More"
+                aria-haspopup="menu"
+                title="Cron, Files, Ports and extension pages"
                 data-tip="Cron, Files, Ports and extension pages"
                 data-testid="chat-more"
                 onClick={(e) => setMoreAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
               >
-                <Ellipsis size={22} />
+                <Ellipsis size={18} />
+                <span>More</span>
               </button>
             </Show>
           </>

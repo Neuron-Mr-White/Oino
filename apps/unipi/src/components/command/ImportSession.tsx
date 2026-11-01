@@ -16,6 +16,8 @@ import { sessions } from '../../lib/session/store';
 import { showActionNotice } from '../../lib/timeline/actions';
 import { manageChat } from '../../lib/settings/manage';
 import { LOCAL_HOST } from '../../lib/host/client';
+import { resolveHostId } from '../../lib/host/localId';
+import { refreshThisComputer, thisComputer } from '../../lib/thisComputer';
 
 const [open, setOpen] = createSignal(false);
 
@@ -50,18 +52,32 @@ export function ImportSessionDialog() {
   const [error, setError] = createSignal<string | undefined>();
   const problem = () => importPathProblem(path());
 
-  // `~/.oino/sessions` is where the file usually is: offer its folders as chips.
-  const [roots] = createResource(hostId, (id) => fsRoots(id).catch(() => undefined));
+  // The host's own sessions folder is where the file usually is: offer it (and the home folder) as chips.
+  // Only while the dialog is open — it is mounted at startup and must not list folders then — and the
+  // folder comes from the host (its data dir sits in its agent dir), never a guessed ~/.oino.
+  const [roots] = createResource(
+    () => (open() ? hostId() : undefined),
+    (id) => fsRoots(id).catch(() => undefined),
+  );
+  const [agentDir] = createResource(
+    () => (open() ? hostId() : undefined),
+    async (id) => {
+      if (id !== LOCAL_HOST && id !== resolveHostId(LOCAL_HOST)) return undefined;
+      if (thisComputer().kind !== 'ready') await refreshThisComputer();
+      const state = thisComputer();
+      return state.kind === 'ready' ? state.info.data_dir.replace(/[\\/]+host[\\/]*$/, '') : undefined;
+    },
+  );
   const firstRoot = (): string | undefined => {
     const r = roots.latest;
     return r && r.ok ? r.value.roots[0] : undefined;
   };
   const [files] = createResource(
-    () => ({ hostId: hostId(), root: firstRoot() }),
+    () => (open() ? { hostId: hostId(), root: firstRoot(), agent: agentDir.latest } : undefined),
     async (src) => {
       if (!src.root) return [];
       const root = src.root;
-      const dirs = [root, `${root}/.oino/sessions`];
+      const dirs = src.agent ? [root, `${src.agent}/sessions`] : [root];
       const rows: string[] = [];
       for (const dir of dirs) {
         const listing = await fsList(src.hostId, dir).catch(() => undefined);

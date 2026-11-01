@@ -118,8 +118,8 @@ describe('Board', () => {
     await waitFor(() => expect(screen.getByText('Token cache')).toBeInTheDocument());
     expect(screen.getByLabelText('Project: scratch')).toBeInTheDocument();
     expect(screen.getByLabelText(/^PC: coffee/)).toBeInTheDocument();
-    // Backlog is off by default (settings.board.showBacklog), archive hidden.
-    expect(pill('backlog')).toBeNull();
+    // Backlog is off by default but shows by itself while it has cards (S-7); archive hidden.
+    expect(within(pill('backlog')).getByText('1')).toBeInTheDocument();
     expect(pill('archived')).toBeNull();
     expect(within(pill('todo')).getByText('3')).toBeInTheDocument();
     expect(within(pill('in_progress')).getByText('1')).toBeInTheDocument();
@@ -137,7 +137,7 @@ describe('Board', () => {
     expect(within(document.querySelector<HTMLElement>('[data-id="S-5"]')!).getByText('Need a decision')).toBeInTheDocument();
     expect(screen.getByText('Nothing finished yet')).toBeInTheDocument(); // per-lane empty state
     expect(screen.getByText('Nothing cancelled')).toBeInTheDocument();
-    expect(screen.getByText(/6 tasks/)).toBeInTheDocument();
+    expect(screen.getByText(/7 tasks/)).toBeInTheDocument();
   });
 
   it('remembers the last PC + project and falls back to settings.board.defaultProject', () => {
@@ -160,7 +160,7 @@ describe('Board', () => {
     const sheet = await screen.findByTestId('filter-sheet');
     fireEvent.click(within(sheet).getByRole('button', { name: /^High$/ }));
     await waitFor(() => expect(within(pill('todo')).getByText('1')).toBeInTheDocument());
-    expect(screen.getByText('1 of 6 tasks')).toBeInTheDocument();
+    expect(screen.getByText('1 of 7 tasks')).toBeInTheDocument();
     expect(within(sheet).getByRole('button', { name: 'Show 1 task' })).toBeInTheDocument();
     fireEvent.click(within(sheet).getByRole('button', { name: 'Clear' }));
     await waitFor(() => expect(within(pill('todo')).getByText('3')).toBeInTheDocument());

@@ -24,3 +24,6 @@
 .ny-shell-badge { position: absolute; top: 2px; right: 1px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 9999px; display: grid; place-items: center; font-size: 9.5px; font-weight: 700; line-height: 1; background: var(--color-claw); color: var(--color-face); box-shadow: 0 0 0 2px var(--color-bg); pointer-events: none; }
 .ny-shell-bell[data-waiting] { color: var(--color-text); }
 .sb-bell { display: contents; }
+.ny-group-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 28px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: transparent; }
+.ny-group-chev { transition: transform 160ms ease-out; transform: rotate(-90deg); }
+.ny-group-chev[data-open] { transform: none; }

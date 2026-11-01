@@ -146,10 +146,23 @@ function createNeedsYou() {
 
   function unreadCount(): number {
     readVersion();
-    return list().filter((x) => !readIds.has(x.id)).length;
+    // The badge counts what is waiting on the user; finished chats show inside the drawer only.
+    return list().filter((x) => x.group === 'waiting' && !readIds.has(x.id)).length;
   }
 
-  return { list, setHostItems, upsert, remove, isRead, markRead, markAllRead, dismiss, clearAll, unreadCount };
+  /** The user opened this chat: its finished / other notes are seen and leave the drawer (a wait stays until answered). */
+  function settleSession(hostId: string, session: string): void {
+    const gone = list().filter((x) => x.hostId === hostId && x.session === session && x.group !== 'waiting');
+    if (gone.length === 0) return;
+    for (const item of gone) {
+      clearedIds.add(item.id);
+      readIds.delete(item.id);
+      remove(item.id);
+    }
+    persist();
+  }
+
+  return { list, setHostItems, upsert, remove, isRead, markRead, markAllRead, dismiss, clearAll, unreadCount, settleSession };
 }
 
 let shared: ReturnType<typeof createNeedsYou> | undefined;

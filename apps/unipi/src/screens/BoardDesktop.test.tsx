@@ -186,7 +186,8 @@ describe('desktop / web board: drag & drop', () => {
     release('backlog');
     await waitFor(() => expect(fake.sent('move S-2')).toHaveLength(1));
     expect(fake.sent('move S-2')[0]!.args).toEqual(['move', 'S-2', 'backlog']);
-    await waitFor(() => expect(column('backlog')).toBeNull());
+    // It now holds a card, so it stays (a hidden column never holds work).
+    await waitFor(() => expect(column('backlog')).toBeTruthy());
   });
 
   it('a card that may not go to Backlog does not reveal it', async () => {

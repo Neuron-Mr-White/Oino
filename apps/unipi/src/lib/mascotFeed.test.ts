@@ -73,7 +73,7 @@ describe('mascotLive', () => {
     expect(live.state()).toBe('idle');
     needsYou().upsert(item());
     expect(live.state()).toBe('done');
-    expect(live.count()).toBe(1);
+    expect(live.count()).toBe(0); // the badge counts Waiting only
     needsYou().upsert(item({ id: 'w', kind: 'ask_user', group: 'waiting' }));
     expect(live.state()).toBe('needs-you');
     needsYou().markAllRead();

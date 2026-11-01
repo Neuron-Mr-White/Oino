@@ -128,3 +128,15 @@ describe('UNI-200: read state is reactive', () => {
     store.dismiss('r1');
   });
 });
+
+describe('badge and settling', () => {
+  it('the unread badge counts Waiting only; opening a chat settles its finished notes', async () => {
+    const store = await freshStore();
+    store.upsert(item({ id: 'w', group: 'waiting', session: 's1' }));
+    store.upsert(item({ id: 'f', group: 'finished', kind: 'agent_end', session: 's1' }));
+    store.upsert(item({ id: 'f2', group: 'finished', kind: 'agent_end', session: 's2' }));
+    expect(store.unreadCount()).toBe(1);
+    store.settleSession('h1', 's1');
+    expect(store.list().map((i) => i.id).sort()).toEqual(['f2', 'w']);
+  });
+});

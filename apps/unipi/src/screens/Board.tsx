@@ -116,7 +116,10 @@ export default function Board() {
     const current = drag.drag();
     return !!current && desktopShell() && current.task.status !== 'backlog' && canMove(store.state.rules, current.task, 'backlog');
   });
-  const lanes = createMemo(() => visibleLanes(ui.display, settings.board.showBacklog || dragToBacklog(), ui.scope()));
+  // Backlog: hidden by default, but it shows whenever it has cards (a hidden column must never hold work).
+  const backlogCount = () => store.state.tasks.filter((task) => task.status === 'backlog').length;
+  const backlogShown = () => settings.board.showBacklog || dragToBacklog() || backlogCount() > 0;
+  const lanes = createMemo(() => visibleLanes(ui.display, backlogShown(), ui.scope()));
 
   // ── PC + project selection ──────────────────────────────────────────
   createEffect(() => {
@@ -353,7 +356,10 @@ export default function Board() {
   function hideLane(lane: string) {
     if (lane === 'backlog') update('board.showBacklog', false);
     else ui.toggleLane(lane);
-    ui.toast(`${laneLabel(lane)} hidden — turn it back on in Display`, 'info');
+    ui.toast(
+      lane === 'backlog' && backlogCount() > 0 ? 'Backlog stays visible while it has cards' : `${laneLabel(lane)} hidden — turn it back on in Display`,
+      'info',
+    );
   }
 
   // ── highlight (dep ids, search results, agents) ─────────────────────
@@ -397,7 +403,8 @@ export default function Board() {
   const count = (lane: string) => store.state.tasks.filter((task) => task.status === lane).length;
   const filtersOn = () => filterCount(ui.filters);
   const anyFilter = () => filtersOn() > 0 || ui.query().trim().length > 0 || ui.scope() !== 'all';
-  const fabLane = () => (desktopShell() || (ui.view() === 'board' && ui.activeLane() === 'todo') ? 'todo' : 'backlog');
+  // New tasks never land in a hidden column: Todo while Backlog is hidden.
+  const fabLane = () => (desktopShell() || !backlogShown() || (ui.view() === 'board' && ui.activeLane() === 'todo') ? 'todo' : 'backlog');
   const unavailable = () => {
     const state = availability()?.state;
     return state === 'offline' || state === 'not_installed' || state === 'error';

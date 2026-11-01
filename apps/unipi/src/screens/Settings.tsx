@@ -383,8 +383,8 @@ function BoardSection() {
           onChange={(e) => update('board.defaultProject', e.currentTarget.value.trim() === '' ? null : e.currentTarget.value.trim())}
         />
       </Row>
-      <Row label="Show backlog">
-        <SwitchField label="Show backlog" checked={settings.board.showBacklog} onChange={(v) => update('board.showBacklog', v)} />
+      <Row label="Always show backlog">
+        <SwitchField label="Always show backlog" checked={settings.board.showBacklog} onChange={(v) => update('board.showBacklog', v)} />
       </Row>
     </Section>
   );

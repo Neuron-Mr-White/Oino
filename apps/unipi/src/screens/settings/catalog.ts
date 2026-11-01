@@ -133,7 +133,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     keywords: ['board', 'kanban', 'project', 'backlog'],
     rows: [
       { key: 'board.defaultProject', label: 'Default project' },
-      { key: 'board.showBacklog', label: 'Show backlog' },
+      { key: 'board.showBacklog', label: 'Always show backlog', description: 'Backlog also shows by itself whenever it has cards' },
     ],
   },
   {

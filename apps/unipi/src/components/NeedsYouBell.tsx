@@ -9,9 +9,9 @@
  * (`lib/notifications/route`) into this store, the OS notifications and the
  * Z-86 foreground-completion bookkeeping. No polling anywhere.
  */
-import { createEffect, createMemo, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { useLocation } from '@solidjs/router';
-import { Bell, X } from 'lucide-solid';
+import { Bell, ChevronDown, X } from 'lucide-solid';
 import { Unicrab } from './Unicrab';
 import { mascotLive } from '../lib/mascotLive';
 import './mascot.css';
@@ -62,6 +62,9 @@ export function NeedsYouDrawer(props: { open: boolean; onClose: () => void }) {
   const hosts = useHosts();
   const store = needsYou();
   const grouped = createMemo(() => groupNeedsYou(store.list()));
+  // Finished is folded away while something is waiting (it is the quieter list); the user can still open it.
+  const [finishedToggled, setFinishedToggled] = createSignal<boolean | undefined>();
+  const finishedOpen = () => finishedToggled() ?? grouped().waiting.length === 0;
 
   const open = (item: NeedsYouItem) => {
     store.markRead(item.id);
@@ -94,12 +97,24 @@ export function NeedsYouDrawer(props: { open: boolean; onClose: () => void }) {
           {(group) => (
             <Show when={grouped()[group].length > 0}>
               <section class="ny-group">
-                <h3 class="ny-group-head">{GROUP_LABEL[group]}</h3>
-                <div class="ny-group-rows">
-                  <For each={grouped()[group]}>
-                    {(item) => <Row item={item} onOpen={() => open(item)} onDismiss={() => store.dismiss(item.id)} />}
-                  </For>
-                </div>
+                <Show
+                  when={group === 'finished' && grouped().waiting.length > 0}
+                  fallback={<h3 class="ny-group-head">{GROUP_LABEL[group]}</h3>}
+                >
+                  <h3 class="ny-group-head">
+                    <button type="button" class="ny-group-toggle" aria-expanded={finishedOpen()} onClick={() => setFinishedToggled(!finishedOpen())}>
+                      {GROUP_LABEL[group]} · {grouped()[group].length}
+                      <ChevronDown size={14} class="ny-group-chev" data-open={finishedOpen() ? '' : undefined} />
+                    </button>
+                  </h3>
+                </Show>
+                <Show when={group !== 'finished' || finishedOpen()}>
+                  <div class="ny-group-rows">
+                    <For each={grouped()[group]}>
+                      {(item) => <Row item={item} onOpen={() => open(item)} onDismiss={() => store.dismiss(item.id)} />}
+                    </For>
+                  </div>
+                </Show>
               </section>
             </Show>
           )}
@@ -236,6 +251,12 @@ export function NeedsYouFeed() {
 
   // Leaving the shown session moots its pending foreground completion (the
   // user moved on inside the app; only a blur right after marks it, Z-86).
+  // Opening a chat (from anywhere) settles its finished notes: they leave the drawer.
+  createEffect(() => {
+    const now = shown();
+    if (now) untrack(() => store.settleSession(now.hostId, now.sessionId));
+  });
+
   createEffect((prev?: SessionRef) => {
     const now = shown();
     if (prev) router.foreground.forget(prev);
