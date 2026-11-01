@@ -28,11 +28,35 @@ export function PaneBody(props: {
     const id = props.activeId;
     if (id && !seen().has(id)) setSeen((s) => new Set([...s, id]));
   });
-  const mounted = () => props.tabs.filter((t) => seen().has(t.id) || t.id === props.activeId);
+  // Keyed by tab id: a retitle (a browser tab following its page title) replaces the tab
+  // object, and must not remount the view (that would drop its stream / terminal / editor).
+  const mounted = () => props.tabs.filter((t) => seen().has(t.id) || t.id === props.activeId).map((t) => t.id);
+  const byId = (id: string): PaneTab | undefined => props.tabs.find((t) => t.id === id);
   return (
     <div class="pane-body" data-hidden={props.hidden ? '' : undefined}>
       <For each={mounted()}>
-        {(tab) => {
+        {(id) => {
+          // The live tab (the last known one while a closing tab is being dropped).
+          let last = byId(id)!;
+          const snap = (): PaneTab => (last = byId(id) ?? last);
+          const tab: PaneTab = {
+            id,
+            get kind() {
+              return snap().kind;
+            },
+            get params() {
+              return snap().params;
+            },
+            get title() {
+              return snap().title;
+            },
+            get badge() {
+              return snap().badge;
+            },
+            get sessionId() {
+              return snap().sessionId;
+            },
+          };
           const kind = () => paneKind(tab.kind);
           return (
             <div class="pane-tab-body" role="tabpanel" aria-label={tabTitle(tab)} hidden={tab.id !== props.activeId} data-kind={tab.kind}>

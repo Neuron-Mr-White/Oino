@@ -162,3 +162,36 @@ describe('stealthBadge: headless CloakBrowser (UNI-299)', () => {
     expect(b?.note).toContain('install Xvfb');
   });
 });
+
+describe('WP-B8: following the agent, picker geometry', () => {
+  const agent = { connected: true, driving: false, taken_over: false };
+  it('shows a tab the agent opened, never on the first list or the user’s own tab', async () => {
+    const { followTab, USER_TAB_WINDOW_MS } = await import('./browserPane');
+    const known = new Set(['T1']);
+    const tabs = [{ id: 'T1' }, { id: 'T2' }];
+    expect(followTab(known, tabs, 'T1', agent, 10_000)).toBe('T2');
+    expect(followTab(new Set(), tabs, 'T1', agent, 10_000)).toBeUndefined();
+    expect(followTab(known, tabs, 'T1', agent, USER_TAB_WINDOW_MS - 1)).toBeUndefined();
+    expect(followTab(known, tabs, 'T1', { ...agent, connected: false }, 10_000)).toBeUndefined();
+    expect(followTab(known, tabs, 'T1', { ...agent, taken_over: true }, 10_000)).toBeUndefined();
+    expect(followTab(known, tabs, 'T2', agent, 10_000)).toBeUndefined();
+    expect(followTab(known, [{ id: 'T1' }], 'T1', agent, 10_000)).toBeUndefined();
+  });
+
+  it('places the hover box over the letterboxed picture, clipped to it', async () => {
+    const { overlayRect } = await import('./browserPane');
+    // 800×600 frame in a 400×400 box: scale .5, 50 px bars top and bottom.
+    expect(overlayRect({ x: 100, y: 100, width: 200, height: 40 }, { width: 400, height: 400 }, { width: 800, height: 600 })).toEqual({ x: 50, y: 100, width: 100, height: 20 });
+    const clipped = overlayRect({ x: -50, y: 590, width: 100, height: 40 }, { width: 400, height: 400 }, { width: 800, height: 600 });
+    expect(clipped).toEqual({ x: 0, y: 345, width: 25, height: 5 });
+    expect(overlayRect({ x: 0, y: 0, width: 1, height: 1 }, { width: 10, height: 10 }, { width: 0, height: 0 }).width).toBe(0);
+  });
+
+  it('crops the element from the frame image (padded, clamped, scaled to ≤ 1600 px)', async () => {
+    const { cropRect, SHOT_MAX_SIDE } = await import('./browserPane');
+    // 2× DPR frame image.
+    expect(cropRect({ x: 10, y: 20, width: 100, height: 50 }, { width: 800, height: 600 }, { width: 1600, height: 1200 })).toEqual({ sx: 12, sy: 32, sw: 216, sh: 116, outWidth: 216, outHeight: 116 });
+    expect(cropRect(undefined, { width: 1280, height: 800 }, { width: 2560, height: 1600 })).toMatchObject({ sx: 0, sy: 0, sw: 2560, sh: 1600, outWidth: SHOT_MAX_SIDE, outHeight: 1000 });
+    expect(cropRect({ x: 900, y: 0, width: 10, height: 10 }, { width: 800, height: 600 }, { width: 800, height: 600 })).toBeUndefined();
+  });
+});

@@ -11,7 +11,8 @@
  * - `browserPane` — open / width (desktop, remembered) and the sheet (phone).
  */
 import { createRoot, createSignal } from 'solid-js';
-import type { BrowserAgent, BrowserOpenData, BrowserProfilesData } from '@unipi/protocol';
+import type { BrowserAgent, BrowserElement, BrowserOpenData, BrowserProfilesData } from '@unipi/protocol';
+import { fitRect } from './browser';
 import type { AppError } from '@unipi/protocol';
 
 // ------------------------------------------------------------- agent strip
@@ -28,6 +29,79 @@ export function agentStrip(agent: BrowserAgent | undefined): AgentStrip {
   if (agent.taken_over) return { kind: 'taken' };
   if (agent.driving) return { kind: 'driving' };
   return { kind: 'none' };
+}
+
+// ------------------------------------------------------------- follow the agent
+
+/** A tab the user opened here within this long is the user's, not the agent's. */
+export const USER_TAB_WINDOW_MS = 3000;
+
+/**
+ * WP-B8: which tab to show after the tab list changed. A tab that appeared while an
+ * agent is connected to the browser — and that the user did not just open here — is
+ * the agent's (`browser_navigate` opens one in the background): show it, so the pane
+ * follows the agent's work. `undefined` = stay. The first list (nothing known yet)
+ * never jumps.
+ */
+export function followTab(
+  known: ReadonlySet<string>,
+  tabs: ReadonlyArray<{ id: string }>,
+  active: string,
+  agent: BrowserAgent | undefined,
+  sinceUserTab: number,
+): string | undefined {
+  if (known.size === 0 || !agent?.connected || agent.taken_over) return undefined;
+  if (sinceUserTab < USER_TAB_WINDOW_MS) return undefined;
+  const fresh = tabs.filter((t) => !known.has(t.id));
+  const last = fresh[fresh.length - 1];
+  return last && last.id !== active ? last.id : undefined;
+}
+
+// ------------------------------------------------------------- element picker
+
+/** A picture handed to the chat (base64, no `data:` prefix). */
+export type BrowserShot = { mime: string; data: string; width: number; height: number };
+/** WP-B8: what the element picker hands to the chat. */
+export type BrowserPick = { element: BrowserElement; url: string; title: string; shot?: BrowserShot };
+
+type Size = { width: number; height: number };
+type Rect = { x: number; y: number; width: number; height: number };
+
+/** Where an element box (frame CSS px) sits over the letterboxed canvas (box px). */
+export function overlayRect(el: Rect, box: Size, frame: Size): Rect {
+  if (!frame.width || !frame.height) return { x: 0, y: 0, width: 0, height: 0 };
+  const fit = fitRect(box.width, box.height, frame.width, frame.height);
+  const k = fit.width / frame.width;
+  const x0 = Math.max(fit.x, fit.x + el.x * k);
+  const y0 = Math.max(fit.y, fit.y + el.y * k);
+  const x1 = Math.min(fit.x + fit.width, fit.x + (el.x + el.width) * k);
+  const y1 = Math.min(fit.y + fit.height, fit.y + (el.y + el.height) * k);
+  return { x: x0, y: y0, width: Math.max(0, x1 - x0), height: Math.max(0, y1 - y0) };
+}
+
+/** Longest side of a picture handed to the chat. */
+export const SHOT_MAX_SIDE = 1600;
+
+/**
+ * The source rectangle (image px) of a crop of the last frame — `rect` in frame CSS px,
+ * none = the whole frame — and its output size (≤ {@link SHOT_MAX_SIDE}). `undefined`
+ * when the crop is empty (element off screen).
+ */
+export function cropRect(rect: Rect | undefined, frame: Size, image: Size): { sx: number; sy: number; sw: number; sh: number; outWidth: number; outHeight: number } | undefined {
+  if (!frame.width || !frame.height || !image.width || !image.height) return undefined;
+  const kx = image.width / frame.width;
+  const ky = image.height / frame.height;
+  const r = rect ?? { x: 0, y: 0, width: frame.width, height: frame.height };
+  const pad = rect ? 4 : 0;
+  const x0 = Math.max(0, Math.floor((r.x - pad) * kx));
+  const y0 = Math.max(0, Math.floor((r.y - pad) * ky));
+  const x1 = Math.min(image.width, Math.ceil((r.x + r.width + pad) * kx));
+  const y1 = Math.min(image.height, Math.ceil((r.y + r.height + pad) * ky));
+  const sw = x1 - x0;
+  const sh = y1 - y0;
+  if (sw < 2 || sh < 2) return undefined;
+  const down = Math.min(1, SHOT_MAX_SIDE / Math.max(sw, sh));
+  return { sx: x0, sy: y0, sw, sh, outWidth: Math.max(1, Math.round(sw * down)), outHeight: Math.max(1, Math.round(sh * down)) };
 }
 
 // ------------------------------------------------------------- take over

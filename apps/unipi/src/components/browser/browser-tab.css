@@ -1,0 +1,64 @@
+/* ══ Browser pane tab (WP-B8) ═════════════════════════════════════════
+   Unipi tokens (DESIGN §1): the side-pane tab toolbars' 40 px row on surface-1
+   (same rhythm as the Diff / Tree tabs), compact 30 px controls, mono address,
+   claw for the live picker. The canvas below is the PC's screencast. */
+
+.browser-tab-pane { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--color-bg); }
+.browser-tab-pane .browser-embedded { flex: 1 1 auto; min-height: 0; }
+
+/* One toolbar row: ← → ⟳ [address] ◎ 📷 profile shield ⋯ */
+.browser-tab-head { gap: 2px; min-height: 40px; padding: 4px 6px; box-sizing: border-box; background: var(--color-surface-1); }
+.browser-tab-head .ghost-icon-button { width: 30px; height: 30px; min-height: 30px; border-radius: 8px; color: var(--color-text-muted); }
+.browser-tab-head .ghost-icon-button:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
+.browser-tab-head .ghost-icon-button:active:not(:disabled) { background: var(--color-surface-3); }
+.browser-tab-head .ghost-icon-button:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
+.browser-tab-head .ghost-icon-button:disabled { opacity: .35; }
+.browser-tab-head .preview-urlbar { height: 30px; margin: 0 4px; padding: 0 8px; border-radius: 8px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); transition: box-shadow 120ms ease-out; }
+.browser-tab-head .preview-urlbar:focus-within { box-shadow: inset 0 0 0 1px var(--color-claw); }
+.browser-tab-head .preview-url-input { font-size: 12.5px; caret-color: var(--color-claw); }
+.browser-tab-head .preview-url-input::placeholder { color: var(--color-text-dim); }
+.browser-tab-head .browser-profile-chip { height: 26px; min-height: 26px; max-width: 120px; margin: 0 2px; font-size: 12px; }
+.browser-tab-head .browser-profile-chip:hover:not(:disabled) { color: var(--color-text); }
+.browser-tab-head .browser-tool[aria-pressed='true'] { background: rgb(240 120 24 / 16%); color: var(--color-claw); box-shadow: inset 0 0 0 1px rgb(240 120 24 / 40%); }
+
+/* The engine badge as an icon (full wording in the tooltip). */
+.browser-badge.browser-badge-icon { width: 26px; height: 26px; padding: 0; justify-content: center; margin: 0 2px; }
+
+/* The PC's tab strip under the toolbar: compact, same surface. */
+.browser-tab-pane .browser-tabs { padding: 4px 6px; gap: 2px; }
+.browser-tab-pane .browser-tab { height: 28px; border-radius: 8px; max-width: 200px; }
+.browser-tab-pane .browser-tab:not([data-active]):hover { background: var(--color-surface-2); color: var(--color-text); }
+.browser-tab-pane .browser-tab-main { font-size: 12px; }
+.browser-tab-pane .browser-tab-main:focus-visible, .browser-tab-pane .browser-tab-close:focus-visible, .browser-tab-pane .browser-tab-new:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
+.browser-tab-pane .browser-tab-close { width: 22px; height: 22px; border-radius: 6px; opacity: .7; }
+.browser-tab-pane .browser-tab-close:hover:not(:disabled) { opacity: 1; background: var(--color-surface-3); color: var(--color-text); }
+.browser-tab-pane .browser-tab-new { width: 28px; height: 28px; border-radius: 8px; }
+.browser-tab-pane .browser-tab-new:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
+
+/* "Agent is using the browser · Take over" — slimmer inside a pane. */
+.browser-tab-pane .browser-agent-strip { min-height: 40px; padding: 4px 6px 4px 12px; font-size: 13px; }
+
+/* ── element picker ──────────────────────────────────────────────── */
+.browser-viewer[data-picking] .browser-canvas { cursor: crosshair; }
+.browser-pick-box {
+  position: absolute; z-index: 2; pointer-events: none; box-sizing: border-box;
+  border: 1.5px solid var(--color-claw); border-radius: 3px;
+  background: rgb(240 120 24 / 12%);
+  transition: left 80ms ease-out, top 80ms ease-out, width 80ms ease-out, height 80ms ease-out;
+}
+.browser-pick-label {
+  position: absolute; left: -1.5px; bottom: 100%; margin-bottom: 3px;
+  max-width: 280px; padding: 2px 6px; border-radius: 4px;
+  background: var(--color-claw); color: var(--color-ink);
+  font: 600 11px/16px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.browser-pick-label[data-below] { bottom: auto; top: 100%; margin: 3px 0 0; }
+.browser-pick-hint {
+  position: absolute; z-index: 3; left: 50%; bottom: 12px; transform: translateX(-50%);
+  max-width: calc(100% - 24px); padding: 6px 12px; border-radius: 9999px;
+  background: rgb(20 18 17 / 92%); color: var(--color-text); box-shadow: 0 6px 20px rgb(0 0 0 / 40%), inset 0 0 0 1px var(--color-line);
+  font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  animation: browser-pick-in 160ms ease-out both;
+}
+@keyframes browser-pick-in { from { opacity: 0; transform: translate(-50%, 4px); } }
+@media (prefers-reduced-motion: reduce) { .browser-pick-box { transition: none; } .browser-pick-hint { animation: none; } }

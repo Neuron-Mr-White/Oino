@@ -18,11 +18,12 @@
  * the "Agent is using the browser · Take over" strip while an agent drives
  * (and "You have control · Give back" while taken over).
  */
-import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch, type JSX } from 'solid-js';
 import {
   ArrowLeft,
   ArrowRight,
   AppWindow,
+  Camera,
   Check,
   ChevronDown,
   Hand,
@@ -38,11 +39,12 @@ import {
   RefreshCw,
   RotateCw,
   Square,
+  SquareMousePointer,
   TriangleAlert,
   Unplug,
   X,
 } from 'lucide-solid';
-import type { BrowserEvent, BrowserOpenData, BrowserProfilesData, BrowserStatusData, BrowserTab, BrowserViewport } from '@unipi/protocol';
+import type { BrowserElement, BrowserEvent, BrowserOpenData, BrowserProfilesData, BrowserStatusData, BrowserTab, BrowserViewport } from '@unipi/protocol';
 import type { Result } from '../lib/ipc';
 import { pushBack } from '../lib/back';
 import { imeInitial } from '../lib/ime';
@@ -72,7 +74,7 @@ import {
   type SessionState,
 } from '../lib/browser';
 import { isTauriMobile } from '../lib/platform';
-import { agentStrip, canPickProfile, profileChoices, stealthBadge, takeover, type TakeoverAction, type TakeoverState } from '../lib/browserPane';
+import { agentStrip, canPickProfile, cropRect, followTab, overlayRect, type BrowserPick, type BrowserShot, profileChoices, stealthBadge, takeover, type TakeoverAction, type TakeoverState } from '../lib/browserPane';
 import './preview.css';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { isUnreachable, OfflineState } from '../components/EmptyState';
@@ -259,12 +261,19 @@ export function BrowserViewer(props: {
   target?: string;
   onClose: () => void;
   CommandBox: CommandBoxComp;
-  /** `screen` (default): Preview's full-screen viewer; `pane` / `sheet`: beside the chat. */
-  variant?: 'screen' | 'pane' | 'sheet';
+  /** `screen` (default): Preview's full-screen viewer; `pane` / `sheet`: beside the chat;
+   *  `tab` (WP-B8): a side-pane tab — the pane's tab strip owns the title and close. */
+  variant?: 'screen' | 'pane' | 'sheet' | 'tab';
   /** UNI-296: the browser profile to show (default "default"). */
   profile?: string;
   /** UNI-296: the profile picker chose another one (the parent re-opens the view). */
   onProfile?: (name: string) => void;
+  /** The shown page changed (url/title): a pane tab titles itself with it. */
+  onPage?: (page: { url: string; title: string }) => void;
+  /** WP-B8: the element picker is offered; a pick hands over the element + its crop. */
+  onPick?: (pick: BrowserPick) => void;
+  /** WP-B8: the screenshot button is offered; it hands over the current picture. */
+  onCapture?: (shot: BrowserShot) => void;
 }) {
   const embedded = () => (props.variant ?? 'screen') !== 'screen';
   const [state, setState] = createSignal<SessionState>({ kind: 'starting' });
@@ -297,11 +306,53 @@ export function BrowserViewer(props: {
   let frameSize = { width: 0, height: 0 };
   let viewport: BrowserViewport | undefined;
   let imeState = imeInitial();
+  /** When the user last opened a tab here (its arrival is not the agent's). */
+  let lastUserTab = 0;
+  /** The last drawn frame (picker crop, screenshot). */
+  let lastImage: ImageBitmap | HTMLImageElement | undefined;
+  onCleanup(() => {
+    if (lastImage && 'close' in lastImage) lastImage.close();
+  });
+  // WP-B8 element picker: hover box (frame px) and whether a pick is armed.
+  const [picking, setPicking] = createSignal(false);
+  const [hover, setHover] = createSignal<BrowserElement | undefined>();
+  let inspectAt = 0;
+  let inspectBusy = false;
+  let pickTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(pickTimer));
+  const stopPicking = () => {
+    clearTimeout(pickTimer);
+    setPicking(false);
+    setHover(undefined);
+    inspectBusy = false;
+  };
+  const togglePicker = () => {
+    if (picking()) return stopPicking();
+    setPicking(true);
+    canvas?.focus({ preventScroll: true });
+  };
+  function shotOf(rect?: { x: number; y: number; width: number; height: number }): BrowserShot | undefined {
+    if (!lastImage || !frameSize.width) return undefined;
+    const iw = 'naturalWidth' in lastImage ? lastImage.naturalWidth : lastImage.width;
+    const ih = 'naturalHeight' in lastImage ? lastImage.naturalHeight : lastImage.height;
+    const crop = cropRect(rect, frameSize, { width: iw, height: ih });
+    if (!crop) return undefined;
+    const out = document.createElement('canvas');
+    out.width = crop.outWidth;
+    out.height = crop.outHeight;
+    const c = out.getContext('2d');
+    if (!c) return undefined;
+    c.drawImage(lastImage, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.outWidth, crop.outHeight);
+    const mime = rect ? 'image/png' : 'image/jpeg';
+    const url = out.toDataURL(mime, 0.9);
+    const data = url.slice(url.indexOf(',') + 1);
+    return data ? { mime, data, width: crop.outWidth, height: crop.outHeight } : undefined;
+  }
 
-  // Android Back / Esc closes the full-screen viewer and the sheet; the desktop pane stays
-  // (Esc typed into the page must not close it) — it has its own ✕.
+  // Android Back / Esc closes the full-screen viewer and the sheet; the desktop pane and a
+  // pane tab stay (Esc typed into the page must not close them) — they have their own ✕.
   createEffect(() => {
-    if (props.variant !== 'pane') onCleanup(pushBack(() => props.onClose()));
+    if (props.variant !== 'pane' && props.variant !== 'tab') onCleanup(pushBack(() => props.onClose()));
   });
 
   const mobile = () => isTauriMobile() || (typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches);
@@ -339,19 +390,37 @@ export function BrowserViewer(props: {
     ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(image, (w - dw) / 2, (h - dh) / 2, dw, dh);
-    if ('close' in image) image.close();
+    // Kept for the picker's crop and the screenshot button (the previous one is freed).
+    if (lastImage && lastImage !== image && 'close' in lastImage) lastImage.close();
+    lastImage = image;
     setHasFrame(true);
   }
 
   function onEvent(event: BrowserEvent) {
     if (event.kind === 'tabs') {
+      const known = new Set(tabs().map((t) => t.id));
       setTabs(event.tabs);
       setActive(event.active);
+      // WP-B8: a tab the agent opened (not one the user asked for) — show it, so the
+      // pane follows the agent's work instead of a stale tab.
+      const fresh = followTab(known, event.tabs, event.active, agent().agent, Date.now() - lastUserTab);
+      if (fresh) send({ op: 'tab_activate', id: fresh });
     } else if (event.kind === 'page') {
       setPage(event);
+      props.onPage?.({ url: event.url, title: event.title });
       if (!editing()) setAddress(displayUrl(event.url));
     } else if (event.kind === 'agent') {
       act({ kind: 'agent', agent: event.agent });
+    } else if (event.kind === 'element') {
+      inspectBusy = false;
+      if (!picking()) return;
+      if (!event.pick) {
+        setHover(event.element);
+        return;
+      }
+      const element = event.element;
+      stopPicking();
+      if (element) props.onPick?.({ element, url: page().url, title: page().title, shot: shotOf(element) });
     }
   }
 
@@ -444,6 +513,16 @@ export function BrowserViewer(props: {
 
   function onPointerDown(e: PointerEvent) {
     if (!live()) return;
+    if (picking()) {
+      e.preventDefault();
+      const p = pagePoint(e.clientX, e.clientY);
+      if (!p) return;
+      send({ op: 'inspect', x: p.x, y: p.y, pick: true });
+      // An older PC never answers: give the picker up rather than hang.
+      clearTimeout(pickTimer);
+      pickTimer = setTimeout(stopPicking, 4000);
+      return;
+    }
     canvas.focus({ preventScroll: true });
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -478,6 +557,18 @@ export function BrowserViewer(props: {
 
   function onPointerMove(e: PointerEvent) {
     if (!live()) return;
+    if (picking()) {
+      // Hover box: one inspect in flight, at most ~12 per second.
+      const now = performance.now();
+      if (inspectBusy && now - inspectAt < 600) return;
+      if (now - inspectAt < 80) return;
+      const p = pagePoint(e.clientX, e.clientY);
+      if (!p) return;
+      inspectAt = now;
+      inspectBusy = true;
+      send({ op: 'inspect', x: p.x, y: p.y });
+      return;
+    }
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinchStart && pointers.size === 2) return;
     const g = gesture;
@@ -511,6 +602,7 @@ export function BrowserViewer(props: {
 
   function onPointerUp(e: PointerEvent) {
     pointers.delete(e.pointerId);
+    if (picking()) return;
     if (pinchStart) {
       if (pointers.size < 2) {
         const remaining = [...pointers.values()];
@@ -546,6 +638,7 @@ export function BrowserViewer(props: {
 
   function onWheel(e: WheelEvent) {
     if (!live()) return;
+    if (picking()) setHover(undefined);
     e.preventDefault();
     const p = pagePoint(e.clientX, e.clientY);
     if (!p) return;
@@ -556,6 +649,11 @@ export function BrowserViewer(props: {
   // ------------------------------------------------------------ keyboard
   function onCanvasKey(e: KeyboardEvent) {
     if (!live()) return;
+    if (picking() && e.key === 'Escape') {
+      e.preventDefault();
+      stopPicking();
+      return;
+    }
     const cmd = keyCommand(e);
     if (!cmd) return;
     e.preventDefault();
@@ -698,6 +796,40 @@ export function BrowserViewer(props: {
       <Keyboard size={18} />
     </button>
   );
+  const pickerButton = () => (
+    <Show when={props.onPick}>
+      <button
+        type="button"
+        class="ghost-icon-button browser-tool"
+        aria-label={picking() ? 'Stop picking' : 'Pick an element for the chat'}
+        title={picking() ? 'Stop picking (Esc)' : 'Pick an element for the chat'}
+        aria-pressed={picking()}
+        data-testid="browser-picker"
+        disabled={!live() || !hasFrame()}
+        onClick={togglePicker}
+      >
+        <SquareMousePointer size={17} />
+      </button>
+    </Show>
+  );
+  const captureButton = () => (
+    <Show when={props.onCapture}>
+      <button
+        type="button"
+        class="ghost-icon-button browser-tool"
+        aria-label="Screenshot to the chat"
+        title="Screenshot to the chat"
+        data-testid="browser-capture"
+        disabled={!live() || !hasFrame()}
+        onClick={() => {
+          const shot = shotOf();
+          if (shot) props.onCapture?.(shot);
+        }}
+      >
+        <Camera size={17} />
+      </button>
+    </Show>
+  );
   const menuButton = () => (
     <button
       type="button"
@@ -714,16 +846,66 @@ export function BrowserViewer(props: {
     </button>
   );
 
+  // The pane/tab header pieces. `compact`: the tab toolbar — the badge is an icon with
+  // the full wording in its tooltip; the profile chip hides while there is only one.
+  const profileChip = (compact: boolean) => (
+    <Show when={!compact || canPickProfile(profiles())}>
+      <button
+        type="button"
+        class="browser-profile-chip"
+        data-testid="browser-profile-chip"
+        aria-haspopup={canPickProfile(profiles()) ? 'menu' : undefined}
+        disabled={!canPickProfile(profiles())}
+        title={canPickProfile(profiles()) ? `Browser profile ${profileName()} — switch` : `Browser profile ${profileName()}`}
+        onClick={(e) => setProfileMenu(profileMenu() ? undefined : e.currentTarget.getBoundingClientRect())}
+      >
+        <span class="truncate">{profileName()}</span>
+        <Show when={canPickProfile(profiles())}>
+          <ChevronDown size={14} />
+        </Show>
+      </button>
+    </Show>
+  );
+  const badgeChip = (compact: boolean) => (
+    <Show when={badge()}>
+      {(b) => (
+        <span
+          class="browser-badge"
+          classList={{ 'browser-badge-icon': compact }}
+          data-tone={b().tone}
+          title={b().title}
+          aria-label={compact ? b().label : undefined}
+          role={compact ? 'img' : undefined}
+          data-testid="browser-stealth-badge"
+        >
+          <Show when={b().tone === 'ok'} fallback={<ShieldAlert size={13} />}>
+            <ShieldCheck size={13} />
+          </Show>
+          <Show when={!compact}>{b().label}</Show>
+        </span>
+      )}
+    </Show>
+  );
+  const stealthNote = () => (
+    <Show when={badge()?.note}>
+      {(note) => (
+        <p class="browser-stealth-note" data-testid="browser-stealth-note">
+          <ShieldAlert size={13} /> <span>{note()}</span>
+        </p>
+      )}
+    </Show>
+  );
+
   return (
     <div
       class={embedded() ? 'browser-viewer browser-embedded' : 'preview-viewer browser-viewer'}
       data-variant={props.variant ?? 'screen'}
+      data-picking={picking() ? '' : undefined}
       data-testid="browser-viewer"
       data-state={state().kind}
     >
-      <Show
-        when={embedded()}
-        fallback={
+      <Switch>
+        <Match when={!embedded()}>
           <header class="preview-viewer-head browser-head detail-head">
             <button type="button" class="ghost-icon-button" aria-label="Back to Preview" onClick={props.onClose}>
               <X size={20} />
@@ -735,58 +917,47 @@ export function BrowserViewer(props: {
             {keyboardButton()}
             {menuButton()}
           </header>
-        }
-      >
-        <header class="browser-pane-head detail-head" data-testid="browser-pane-head">
-          <span class="browser-pane-title">
-            <Globe size={16} />
-            <span>Browser</span>
-          </span>
-          <button
-            type="button"
-            class="browser-profile-chip"
-            data-testid="browser-profile-chip"
-            aria-haspopup={canPickProfile(profiles()) ? 'menu' : undefined}
-            disabled={!canPickProfile(profiles())}
-            title={canPickProfile(profiles()) ? 'Switch browser profile' : `Browser profile ${profileName()}`}
-            onClick={(e) => setProfileMenu(profileMenu() ? undefined : e.currentTarget.getBoundingClientRect())}
-          >
-            <span class="truncate">{profileName()}</span>
-            <Show when={canPickProfile(profiles())}>
-              <ChevronDown size={14} />
-            </Show>
-          </button>
-          <Show when={badge()}>
-            {(b) => (
-              <span class="browser-badge" data-tone={b().tone} title={b().title} data-testid="browser-stealth-badge">
-                <Show when={b().tone === 'ok'} fallback={<ShieldAlert size={13} />}>
-                  <ShieldCheck size={13} />
-                </Show>
-                {b().label}
-              </span>
-            )}
-          </Show>
-          <span class="browser-pane-spacer" />
-          {menuButton()}
-          <button type="button" class="ghost-icon-button" aria-label="Close the browser" data-testid="browser-pane-close" onClick={props.onClose}>
-            <X size={19} />
-          </button>
-        </header>
-        <div class="preview-viewer-head browser-head browser-pane-nav">
-          {navBack()}
-          {navForward()}
-          {urlBar()}
-          {reloadButton()}
-          <Show when={mobile()}>{keyboardButton()}</Show>
-        </div>
-        <Show when={badge()?.note}>
-          {(note) => (
-            <p class="browser-stealth-note" data-testid="browser-stealth-note">
-              <ShieldAlert size={13} /> <span>{note()}</span>
-            </p>
-          )}
-        </Show>
-      </Show>
+        </Match>
+        <Match when={props.variant === 'tab'}>
+          {/* WP-B8: one toolbar row — the side pane's strip already names and closes the tab. */}
+          <div class="preview-viewer-head browser-head browser-tab-head" data-testid="browser-tab-head">
+            {navBack()}
+            {navForward()}
+            {reloadButton()}
+            {urlBar()}
+            <Show when={mobile()}>{keyboardButton()}</Show>
+            {pickerButton()}
+            {captureButton()}
+            {profileChip(true)}
+            {badgeChip(true)}
+            {menuButton()}
+          </div>
+          {stealthNote()}
+        </Match>
+        <Match when={embedded()}>
+          <header class="browser-pane-head detail-head" data-testid="browser-pane-head">
+            <span class="browser-pane-title">
+              <Globe size={16} />
+              <span>Browser</span>
+            </span>
+            {profileChip(false)}
+            {badgeChip(false)}
+            <span class="browser-pane-spacer" />
+            {menuButton()}
+            <button type="button" class="ghost-icon-button" aria-label="Close the browser" data-testid="browser-pane-close" onClick={props.onClose}>
+              <X size={19} />
+            </button>
+          </header>
+          <div class="preview-viewer-head browser-head browser-pane-nav">
+            {navBack()}
+            {navForward()}
+            {urlBar()}
+            {reloadButton()}
+            <Show when={mobile()}>{keyboardButton()}</Show>
+          </div>
+          {stealthNote()}
+        </Match>
+      </Switch>
       <Show when={profileMenu()}>
         {(anchor) => (
           <AnchoredMenu anchor={anchor()} label="Browser profile" width={260} onDismiss={() => setProfileMenu(undefined)}>
@@ -877,7 +1048,17 @@ export function BrowserViewer(props: {
             </div>
           )}
         </For>
-        <button type="button" class="browser-tab-new" aria-label="New tab" disabled={!live()} onClick={() => send({ op: 'tab_new' })}>
+        <button
+          type="button"
+          class="browser-tab-new"
+          aria-label="New tab"
+          title="New tab"
+          disabled={!live()}
+          onClick={() => {
+            lastUserTab = Date.now();
+            send({ op: 'tab_new' });
+          }}
+        >
           <Plus size={16} />
         </button>
       </div>
@@ -910,6 +1091,26 @@ export function BrowserViewer(props: {
           onKeyDown={onImeKey}
           onBlur={() => setKeyboard(false)}
         />
+        <Show when={picking()}>
+          <div class="browser-pick-hint" role="status" data-testid="browser-pick-hint">
+            Click an element to add it to the chat · Esc cancels
+          </div>
+        </Show>
+        <Show when={picking() && hover()}>
+          {(el) => {
+            const at = () => {
+              const b = box();
+              return overlayRect(el(), { width: b.width, height: b.height }, frameSize);
+            };
+            return (
+              <div class="browser-pick-box" data-testid="browser-pick-box" style={{ left: `${at().x}px`, top: `${at().y}px`, width: `${at().width}px`, height: `${at().height}px` }}>
+                <span class="browser-pick-label" data-below={at().y < 22 ? '' : undefined}>
+                  {el().label}
+                </span>
+              </div>
+            );
+          }}
+        </Show>
         <Show when={state().kind === 'starting' || (live() && !hasFrame()) || problem()?.kind === 'relaunch'}>
           <div class="browser-overlay" data-testid="browser-starting">
             <RefreshCw size={22} class="refresh-spinning" />
