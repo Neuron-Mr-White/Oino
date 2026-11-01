@@ -1,0 +1,241 @@
+/* ══ Terminal tab & phone layer (WP-A31, Z-105..Z-107) ═══════════════════ */
+
+/* The terminal surface is --color-surface-1, the active pane tab's colour:
+   tab and terminal read as one sheet (the xterm theme uses the same token). */
+.pane-tab-body[data-kind="terminal"] { overflow: hidden; background: var(--color-surface-1); }
+
+.term-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+/* ── Disconnected strip ─────────────────────────────────────────────── */
+.term-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 8px 4px 12px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface-2);
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--color-text-muted);
+  animation: fade-in 140ms ease-out both;
+}
+.term-status-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--color-amber); }
+.term-status-text { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.term-status-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 11px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.term-status-btn:hover { background: var(--color-line); }
+.term-status-btn:active { background: var(--color-line); transform: translateY(0.5px); }
+.term-status-btn:focus-visible { outline: 2px solid var(--color-shell); outline-offset: 2px; }
+
+/* ── xterm surface ──────────────────────────────────────────────────── */
+.term-surface {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-surface-1);
+}
+html:not([data-shell="desktop"]) .term-pane[data-phone] .term-surface { touch-action: none; }
+
+.term-xterm { width: 100%; height: 100%; }
+.term-pane .xterm { height: 100%; box-sizing: border-box; padding: 6px 0 2px 12px; }
+.term-pane[data-phone] .xterm { padding: 4px 0 2px 6px; }
+.term-pane .xterm:focus, .term-pane .xterm .xterm-helper-textarea:focus { outline: none; }
+.term-pane .xterm-viewport { background-color: var(--color-surface-1) !important; }
+
+/* Desktop: a thin, quiet scrollbar (xterm 6's overlay scrollable element). */
+.term-pane .xterm-scrollable-element > .scrollbar { background: transparent; opacity: 0; transition: opacity 160ms ease-out; }
+.term-pane:hover .xterm-scrollable-element > .scrollbar { opacity: 1; }
+.term-pane .xterm-scrollable-element > .scrollbar > .slider { border-radius: 4px; background: rgb(163 154 144 / 22%) !important; }
+.term-pane .xterm-scrollable-element > .scrollbar > .slider:hover,
+.term-pane .xterm-scrollable-element > .scrollbar > .slider.active { background: rgb(163 154 144 / 42%) !important; }
+/* Phone: no scrollbar (drag scrolls). */
+.term-pane[data-phone] .xterm-scrollable-element > .scrollbar { display: none !important; }
+
+/* The phone's IME textarea: focused for the soft keyboard, never seen. */
+.term-ime {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  resize: none;
+  pointer-events: none;
+}
+
+/* ── Phone drawers (composer · shortcuts · history), above the toolbar ─ */
+.term-drawer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 10px 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  background: var(--color-surface-2);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
+  animation: popover-in 150ms ease-out both;
+}
+.term-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.term-drawer-title { margin: 0; font-size: 11.5px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-dim); }
+.term-drawer-close { display: grid; place-items: center; width: 32px; height: 32px; min-height: 32px; border-radius: 50%; background: transparent; color: var(--color-text-muted); }
+.term-drawer-close:active { background: var(--color-surface-3); color: var(--color-text); }
+
+.term-composer-row { display: flex; align-items: flex-end; gap: 8px; }
+.term-composer-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 42px;
+  max-height: 132px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-input);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  caret-color: var(--color-shell);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 20px;
+  resize: none;
+}
+.term-composer-input::placeholder { color: var(--color-text-dim); }
+.term-composer-input:focus-visible { outline: none; border-color: var(--color-shell); }
+.term-composer-send { flex: none; display: grid; place-items: center; width: 42px; height: 42px; min-height: 42px; border-radius: 50%; background: var(--color-shell); color: var(--color-face); }
+.term-composer-send:active:not(:disabled) { background: var(--color-shell-hi); }
+.term-composer-send:disabled { opacity: .4; }
+
+.term-shortcuts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.term-shortcut-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+}
+.term-shortcut-chip:active { background: var(--color-line); }
+.term-shortcut-key { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--color-claw); }
+
+.term-history-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.term-history-row {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.term-history-row:active { background: var(--color-line); }
+.term-history-empty { margin: 2px 0; font-size: 13px; line-height: 19px; color: var(--color-text-muted); }
+
+/* ── Phone full-screen layer (§3.9) ─────────────────────────────────── */
+.term-phone-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-1);
+  padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px));
+  animation: fade-in 150ms ease-out both;
+}
+.term-phone-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 56px;
+  padding: 0 6px 0 4px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg);
+}
+.term-phone-icon-btn { flex: none; display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; border-radius: 50%; background: transparent; color: var(--color-text-muted); }
+.term-phone-icon-btn:hover { background: var(--color-surface-2); color: var(--color-text); }
+.term-phone-icon-btn:active { background: var(--color-surface-3); color: var(--color-text); }
+.term-phone-icon-btn:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
+.term-phone-tabs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px; }
+.term-phone-tabs::-webkit-scrollbar { display: none; }
+.term-phone-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  max-width: 190px;
+  padding: 0 4px 0 12px;
+  box-sizing: border-box;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 550;
+}
+.term-phone-pill[data-active] { background: rgb(240 48 24 / 14%); color: var(--color-text); box-shadow: inset 0 0 0 1px rgb(240 48 24 / 38%); }
+.term-phone-pill-main { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 36px; min-height: 36px; padding: 0 2px 0 0; background: transparent; color: inherit; font: inherit; }
+.term-phone-pill-main:focus-visible { outline: 2px solid var(--color-shell); outline-offset: 2px; border-radius: var(--radius-pill); }
+.term-phone-pill-icon { flex: none; }
+.term-phone-pill[data-active] .term-phone-pill-icon { color: var(--color-claw); }
+.term-phone-pill-label { min-width: 0; max-width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.term-phone-pill-close { position: relative; flex: none; display: grid; place-items: center; width: 28px; height: 28px; min-height: 28px; border-radius: 50%; background: transparent; color: var(--color-text-dim); }
+.term-phone-pill-close::after { content: ''; position: absolute; inset: -6px; }
+.term-phone-pill-close:hover { background: var(--color-surface-3); color: var(--color-text); }
+.term-phone-pill-close:active { background: var(--color-line); color: var(--color-text); }
+.term-phone-body { position: relative; flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.term-phone-body > .term-pane { flex: 1 1 auto; }
+
+/* ── Close confirmation (BoardSheet body) ───────────────────────────── */
+.term-close-body { margin: 0 0 16px; font-size: 14px; line-height: 21px; color: var(--color-text-muted); overflow-wrap: anywhere; }
+.term-close-code { padding: 1px 6px; border-radius: 6px; background: var(--color-surface-3); font-family: var(--font-mono); font-size: 12.5px; color: var(--color-cream); }
+
+@media (prefers-reduced-motion: reduce) {
+  .term-status, .term-drawer, .term-phone-layer { animation: none; }
+}

@@ -117,6 +117,13 @@ export function imeKeyBytes(key: string, ctrl: boolean, alt: boolean): string {
   if (key === 'Tab') return ctrl ? '\x1b[27;5;9~' : '\t';
   if (key === 'Enter') return '\r';
   if (key === 'Backspace') return '\x7f';
+  if (key.length === 1) {
+    if (ctrl) {
+      const control = ctrlByte(key);
+      if (control !== null) return alt ? `\x1b${control}` : control;
+    }
+    if (alt) return `\x1b${key}`;
+  }
   return '';
 }
 

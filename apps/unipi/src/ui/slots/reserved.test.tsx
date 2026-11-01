@@ -201,10 +201,13 @@ describe('U12 reserved gates (§8 rule 2)', () => {
 
   it('a row whose pane view is not in this build falls back instead of routing', () => {
     allOwnersOn();
-    // Terminal (A29) registers its pane component later; until then the entry is not
-    // routed and its owner tree renders (§8 rule 3). Browser (B8) is plugged in.
-    expect(paneKind('terminal')?.component).toBeUndefined();
+    // A kind without its pane component is not routed: its owner tree renders (§8 rule 3).
+    // Terminal (A31) and Browser (B8) are plugged in.
+    expect(paneKind('terminal')?.component).toBeTruthy();
+    expect(isReservedPaneEntry(reserved('host/terminal', 'terminal', 'bottomPane', 'terminal fallback'))).toBe(true);
+    const unplug = registerPaneKind({ ...paneKind('terminal')!, component: undefined });
     expect(isReservedPaneEntry(reserved('host/terminal', 'terminal', 'bottomPane', 'terminal fallback'))).toBe(false);
+    unplug();
     expect(paneKind('browser')?.component).toBeTruthy();
     expect(isReservedPaneEntry(reserved('unipi.browser/browser', 'browser', 'sidePane', 'browser fallback'))).toBe(true);
     // The turn footer renders in place: A27 registered its native body, so the

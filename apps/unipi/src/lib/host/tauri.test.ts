@@ -90,3 +90,56 @@ describe('tauri HostClient: session streams over chat.rs (WP-A2)', () => {
     expect(channelError({ message: 'x', code: 'E_NOT_FOUND' })).toMatchObject({ code: 'E_NOT_FOUND', retryable: false });
   });
 });
+
+describe('tauri HostClient: terminal streams over term.rs (WP-A31)', () => {
+  it('opens or re-attaches, routes data and events, serialises input, closes / kills', async () => {
+    let release: (() => void) | undefined;
+    invoke.mockImplementation(async (cmd) => {
+      if (cmd === 'term_open') return { termId: 't1', shell: '/bin/bash', path: 'local' };
+      if (cmd === 'term_input' && !release) await new Promise<void>((r) => (release = r));
+      return null;
+    });
+    const seen: string[] = [];
+    const stream = createTauriHost('h1').openTerm(
+      { cwd: '/p', cols: 100, rows: 30 },
+      {
+        data: (b) => seen.push(`data:${new TextDecoder().decode(b as Uint8Array)}`),
+        exit: (c) => seen.push(`exit:${c}`),
+        opened: (i) => seen.push(`opened:${i.termId}:${i.shell}`),
+        closed: (e) => seen.push(`closed:${e?.code ?? ''}`),
+      },
+    );
+    expect(invoke).toHaveBeenCalledWith('term_open', expect.objectContaining({ hostId: 'h1', cwd: '/p', cols: 100, rows: 30, termId: undefined }));
+    const [onData, onEvent] = channels;
+    onData!.onmessage!(new TextEncoder().encode('hi') as unknown as Msg);
+    await tick();
+    expect(seen).toEqual(['data:hi', 'opened:t1:/bin/bash']);
+    // One input in flight; the rest coalesces in order behind it.
+    stream.write('a');
+    stream.write('b');
+    stream.write('c');
+    stream.resize(120, 40);
+    await tick();
+    expect(invoke.mock.calls.filter(([c]) => c === 'term_input').map(([, a]) => a?.data)).toEqual(['a']);
+    release!();
+    await tick();
+    await tick();
+    expect(invoke.mock.calls.filter(([c]) => c === 'term_input').map(([, a]) => a?.data)).toEqual(['a', 'bc']);
+    expect(invoke).toHaveBeenCalledWith('term_resize', { termId: 't1', cols: 120, rows: 40 });
+    onEvent!.onmessage!({ type: 'exit', code: 0 });
+    expect(seen.at(-1)).toBe('exit:0');
+    stream.close();
+    expect(invoke).toHaveBeenCalledWith('term_close', { termId: 't1' });
+    await stream.kill!();
+    expect(invoke).toHaveBeenCalledWith('term_kill', { hostId: 'h1', termId: 't1' });
+  });
+
+  it('a re-attach sends the term id (no cwd); a failed open ends the stream with the error', async () => {
+    invoke.mockRejectedValue({ code: 'E_NOT_FOUND', message: 'terminal x is not open on the host', retryable: false });
+    const seen: string[] = [];
+    createTauriHost('h1').openTerm({ id: 'x', cols: 80, rows: 24 }, { data() {}, exit: () => seen.push('exit'), closed: (e) => seen.push(`closed:${e?.code}`) });
+    expect(invoke).toHaveBeenCalledWith('term_open', expect.objectContaining({ termId: 'x', cwd: undefined }));
+    await tick();
+    expect(seen).toEqual(['closed:E_NOT_FOUND']);
+  });
+});

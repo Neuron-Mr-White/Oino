@@ -16,6 +16,7 @@
 import { createSignal, lazy, type Component } from 'solid-js';
 import { Bot, FileDiff, FolderTree, GitBranch, Globe, Image, ListTree, MessageSquareText, Plug, Puzzle, SquareTerminal } from 'lucide-solid';
 import { reservedGate } from '../../ui/slots/reserved';
+import { confirmTerminalClose, endTerminal } from '../../components/panes/tabs/terminalClose';
 import { setPaneRules, type KindRule, type PaneArea, type PaneTab } from '../panes';
 
 export type PaneTabProps = {
@@ -43,6 +44,8 @@ export type PaneKindDef = KindRule & {
   launcher?: { label: string; order: number; needsSession?: boolean; keywords?: string };
   /** Reserved slot id it stands for (ui-protocol §8): its owner's gate offers the tab. */
   reserved?: string;
+  /** Optional guard before a user-initiated close. Return `false` to defer closing (call `proceed()` once confirmed). */
+  canUserClose?: (tab: PaneTab, proceed: () => void) => boolean;
   /** Runs before the store closes a tab of this kind (U10: `ext` sends the entry `$close`). */
   onUserClose?: (tab: PaneTab) => void;
 };
@@ -60,7 +63,7 @@ export const BUILTIN_KINDS: PaneKindDef[] = [
   { kind: 'preview', icon: Image, title: (p) => leaf(p.path, 'Preview'), singleton: (p) => str(p.path, ''), scope: 'project' },
   { kind: 'subagent', icon: Bot, title: (p) => str(p.name, 'Subagent'), singleton: (p) => str(p.agentId, ''), scope: 'session' },
   { kind: 'browser', icon: Globe, title: (p) => str(p.title, 'Browser'), singleton: false, scope: 'project', reserved: 'unipi.browser/browser', launcher: { label: 'Browser', order: 50 } },
-  { kind: 'terminal', icon: SquareTerminal, title: (p) => str(p.title, 'Terminal'), singleton: false, scope: 'project', areas: ['bottom', 'side'], reserved: 'host/terminal', launcher: { label: 'Terminal', order: 60 } },
+  { kind: 'terminal', icon: SquareTerminal, title: (p) => str(p.title, leaf(p.cwd, 'Terminal')), singleton: false, scope: 'project', noRecent: true, areas: ['bottom', 'side'], reserved: 'host/terminal', launcher: { label: 'Terminal', order: 60 } },
   { kind: 'ext', icon: Puzzle, title: (p) => str(p.title, 'Extension'), singleton: (p) => str(p.entryId, ''), scope: 'project', areas: ['side', 'bottom'] },
   // Z-104: a forwarded port of the host (the forward viewer until the browser tab lands).
   { kind: 'forward', icon: Plug, title: (p) => `localhost:${String(p.port ?? '')}`, singleton: (p) => `${String(p.hostId ?? '')}:${String(p.port ?? '')}`, scope: 'project' },
@@ -122,3 +125,6 @@ setPaneRules((kind) => kinds()[kind]);
 
 // WP-B8: the Browser tab (loaded on first show).
 setPaneComponent('browser', lazy(() => import('../../components/browser/BrowserTab')));
+
+// WP-A31: the Terminal tab (xterm loaded on first show); ✕ kills the shell, asking first while a program runs.
+registerPaneKind({ ...kinds().terminal!, component: lazy(() => import('../../components/panes/tabs/TerminalTab')), canUserClose: (tab, proceed) => confirmTerminalClose(tab, proceed, tabTitle(tab)), onUserClose: (tab) => endTerminal(tab.id) });

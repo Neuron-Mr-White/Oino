@@ -51,6 +51,7 @@ export function SidePane(props: {
 
   const close = (id: string) => {
     const tab = tabs().find((t) => t.id === id);
+    if (tab && paneKind(tab.kind)?.canUserClose?.(tab, () => close(id)) === false) return;
     if (tab) paneKind(tab.kind)?.onUserClose?.(tab);
     store.close(props.scope, 'side', props.view, id);
     if (tabs().length === 0) layout().toggleSide(false);

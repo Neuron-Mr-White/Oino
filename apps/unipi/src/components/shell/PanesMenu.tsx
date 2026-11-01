@@ -14,7 +14,7 @@
  * registering one. `diff` / `subagent` / `preview` are not launchable: they
  * open from their context (a tool call, an agent, a file), same as desktop.
  */
-import { For, Show } from 'solid-js';
+import { For, getOwner, Show, type Owner } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { MenuLabel, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { launchableKinds } from '../../lib/panes/kinds';
@@ -23,9 +23,10 @@ import { openStatusSection } from '../status/StatusPane';
 import { openBtwTab, openTreeTab } from '../panes/tabs/sessionTabs';
 import { PhonePanesGroup } from '../../ui/slots/paneTabs';
 import { openPhoneBrowser } from '../browser/phoneLayer';
+import { openPhoneTerminal } from '../panes/tabs/terminalPhone';
 import type { UiRegistry } from '../../ui/registry';
 
-type OpenCtx = { hostId: string; sessionId?: string; cwd?: string; navigate: (to: string) => void };
+type OpenCtx = { hostId: string; sessionId?: string; cwd?: string; navigate: (to: string) => void; owner?: Owner | null };
 
 /** kind → the §3.9 surface its tab opens as on the phone. */
 const PHONE_OPENERS: Record<string, (ctx: OpenCtx) => void> = {
@@ -41,6 +42,7 @@ const PHONE_OPENERS: Record<string, (ctx: OpenCtx) => void> = {
     if (c.sessionId) openBtwTab({ hostId: c.hostId, sessionId: c.sessionId, cwd: c.cwd });
   },
   browser: (c) => openPhoneBrowser(c.hostId), // WP-B8: the full-height browser sheet
+  terminal: (c) => openPhoneTerminal(c, c.owner), // WP-A31: the full-screen terminal layer
 };
 
 /** Registers a phone surface for a launchable kind (wave-3: terminal, browser). */
@@ -50,9 +52,12 @@ export function registerPhonePaneOpener(kind: string, open: (ctx: OpenCtx) => vo
 
 export function PanesMenu(props: { hostId: string; sessionId?: string; cwd?: string; registry?: UiRegistry; onOpen: () => void }) {
   const navigate = useNavigate();
-  const ctx = () => ({ hostId: props.hostId, sessionId: props.sessionId, cwd: props.cwd, navigate });
-  const kinds = () =>
-    [...launchableKinds('side', !!props.sessionId), ...launchableKinds('bottom', !!props.sessionId)].filter((k) => PHONE_OPENERS[k.kind]);
+  const owner = getOwner();
+  const ctx = () => ({ hostId: props.hostId, sessionId: props.sessionId, cwd: props.cwd, navigate, owner });
+  const kinds = () => {
+    const seen = new Set<string>();
+    return [...launchableKinds('side', !!props.sessionId), ...launchableKinds('bottom', !!props.sessionId)].filter((k) => PHONE_OPENERS[k.kind] && !seen.has(k.kind) && (seen.add(k.kind), true));
+  };
   return (
     <>
       <Show when={kinds().length > 0}>

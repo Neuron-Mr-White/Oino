@@ -8,8 +8,9 @@
  * `{kind:"closed"|"error"}`. `session_cmd{streamId, cmd, id}` resolves with
  * the command's data (chat.rs correlates by id and enforces 30 s / 2 s);
  * `session_stream_close` hangs up locally. `events_open` streams
- * `{kind:"hub_event", event}`. Terminal and LSP streams wait for H6 / A21
- * and report `E_UNSUPPORTED` through their sinks.
+ * `{kind:"hub_event", event}`. Terminals (`term_open`, WP-A31) and language
+ * servers (`lsp_open`) stream kind-1 bytes on a raw `onData` channel and
+ * their lifecycle on `onEvent`.
  */
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { createSignal } from 'solid-js';
@@ -35,6 +36,7 @@ import {
   type LspStream,
   type SessionSink,
   type SessionStream,
+  type TermRequest,
   type TermSink,
   type TermStream,
 } from './client';
@@ -96,9 +98,8 @@ export function createTauriHost(hostId: string): HostClient {
     openEvents(sink, closed): Closable {
       return openEventsChannel(hostId, sink, closed);
     },
-    openTerm(_req, sink: TermSink): TermStream {
-      queueMicrotask(() => sink.exit());
-      return { write() {}, resize() {}, close() {} };
+    openTerm(req: TermRequest, sink: TermSink): TermStream {
+      return openTermChannel(hostId, req, sink);
     },
     openLsp(req: LspRequest, sink: LspSink): LspStream {
       return openLspChannel(hostId, req, sink);
@@ -234,6 +235,133 @@ function openEventsChannel(hostId: string, sink: (event: HubEvent) => void, clos
       closing = true;
       ended = true;
       if (streamId) hangUp('events_close', streamId);
+    },
+  };
+}
+
+/** Events the `term.rs` reader task emits on `onEvent` (src-tauri term.rs `TermEvent`). */
+type TermEventMsg = { type: 'title'; title: string } | { type: 'exit'; code: number | null } | { type: 'closed'; error?: AppError };
+
+const clampDim = (n: number, fallback: number): number => (Number.isFinite(n) ? Math.max(1, Math.min(1000, Math.round(n))) : fallback);
+
+function bytesOf(raw: ArrayBuffer | Uint8Array | number[]): Uint8Array {
+  return raw instanceof Uint8Array ? raw : new Uint8Array(raw as ArrayBuffer);
+}
+
+/**
+ * One terminal stream (`term_open`, host.md §9.3): output arrives as raw bytes
+ * on `onData`, `title`/`exit`/`closed` on `onEvent` (exactly one of the last two
+ * ends it). Input and resizes go through `term_input` / `term_resize` one at a
+ * time — concurrent invokes could reorder keystrokes — with input coalesced and
+ * the size last-wins while a call is in flight. `close()` detaches
+ * (`term_close`; the host keeps the shell), `kill()` ends it (`term_kill`).
+ */
+function openTermChannel(hostId: string, req: TermRequest, sink: TermSink): TermStream {
+  let termId: string | undefined;
+  let ended = false;
+  let closing = false;
+  let queued = '';
+  let size: { cols: number; rows: number } | undefined;
+  let busy = false;
+  let killAfterOpen = false;
+  const kill = (id: string) => withWireId(hostId, (wire) => invoke('term_kill', { hostId: wire, termId: id })).catch(() => {});
+  const finish = (error?: AppError) => {
+    if (ended) return;
+    ended = true;
+    if (sink.closed) sink.closed(error);
+    else sink.exit();
+  };
+  const pump = () => {
+    if (busy || !termId || ended || closing) return;
+    let call: Promise<unknown> | undefined;
+    if (queued) {
+      const data = queued;
+      queued = '';
+      call = invoke('term_input', { termId, data });
+    } else if (size) {
+      const { cols, rows } = size;
+      size = undefined;
+      call = invoke('term_resize', { termId, cols, rows });
+    }
+    if (!call) return;
+    busy = true;
+    void call
+      .catch((error: unknown) => {
+        // The app lost this stream's writer (term.rs keys streams by terminal id, and a
+        // stale stream from before a reload can drop the newer one): end it, so the view re-attaches.
+        const app = toAppError(error);
+        if (app.code === 'E_NOT_FOUND') finish(app);
+      })
+      .finally(() => {
+        busy = false;
+        pump();
+      });
+  };
+
+  const onData = new Channel<ArrayBuffer | Uint8Array | number[]>();
+  onData.onmessage = (raw) => {
+    if (!ended && !closing) sink.data(bytesOf(raw));
+  };
+  const onEvent = new Channel<TermEventMsg>();
+  onEvent.onmessage = (event) => {
+    if (ended || closing) return;
+    if (event.type === 'title') sink.title?.(event.title);
+    else if (event.type === 'exit') {
+      ended = true;
+      sink.exit(event.code ?? undefined);
+    } else if (event.type === 'closed') finish(event.error);
+  };
+
+  void withWireId(hostId, (id) =>
+    invoke<{ termId: string; shell: string }>('term_open', {
+      hostId: id,
+      cwd: req.id ? undefined : (req.cwd ?? '~'),
+      cols: clampDim(req.cols, 80),
+      rows: clampDim(req.rows, 24),
+      termId: req.id,
+      shell: req.shell,
+      onData,
+      onEvent,
+    }),
+  ).then(
+    (result) => {
+      termId = result.termId;
+      if (closing) {
+        void (killAfterOpen ? kill(result.termId) : invoke('term_close', { termId }).catch(() => {}));
+        return;
+      }
+      sink.opened?.({ termId: result.termId, shell: result.shell });
+      pump();
+    },
+    (error: unknown) => {
+      if (!closing) finish(toAppError(error));
+    },
+  );
+
+  return {
+    write(data: string) {
+      if (ended || closing || !data) return;
+      queued += data;
+      pump();
+    },
+    resize(cols: number, rows: number) {
+      if (ended || closing) return;
+      size = { cols: clampDim(cols, 80), rows: clampDim(rows, 24) };
+      pump();
+    },
+    close() {
+      if (closing) return;
+      closing = true;
+      if (termId) void invoke('term_close', { termId }).catch(() => {});
+    },
+    async kill() {
+      const id = termId ?? req.id;
+      closing = true;
+      if (!id) {
+        killAfterOpen = true;
+        return;
+      }
+      await kill(id);
     },
   };
 }

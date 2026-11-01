@@ -72,14 +72,26 @@ export type HubEvent = ProtoHubEvent;
 /** One row of `sessions_list` / a `session_changed` card (host.md §4.2). */
 export type SessionCard = ProtoSessionCard;
 
-export type TermRequest = { cwd?: string; cols: number; rows: number; id?: string };
+/** `term_open` (host.md §9.3): a new PTY in `cwd`, or — `id` set — a re-attach to that terminal. */
+export type TermRequest = { cwd?: string; cols: number; rows: number; id?: string; shell?: string };
 export interface TermSink {
   data(bytes: Uint8Array | string): void;
+  /** The PTY's child exited (the stream ends). */
   exit(code?: number): void;
+  /** The host answered: the terminal's id (keep it to re-attach) and shell. */
+  opened?(info: { termId: string; shell: string }): void;
+  title?(title: string): void;
+  /** The stream ended without an exit (open failed, host gone, transport lost);
+   *  the PTY may still be alive — re-attach with `id`. Falls back to `exit()`. */
+  closed?(error?: AppError): void;
 }
 export interface TermStream extends Closable {
+  /** Input; ordered, coalesced while a write is in flight. */
   write(data: string): void;
+  /** Last-wins resize. */
   resize(cols: number, rows: number): void;
+  /** `close()` only detaches (the host keeps the shell); `kill()` ends the PTY. */
+  kill?(): Promise<void>;
 }
 
 export type LspRequest = { root: string; language: string };

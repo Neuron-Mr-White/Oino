@@ -40,6 +40,8 @@ export function TabStrip(props: {
   });
   const requestClose = (id: string) => {
     if (timers.has(id)) return;
+    const tab = props.tabs.find((t) => t.id === id);
+    if (tab && paneKind(tab.kind)?.canUserClose?.(tab, () => requestClose(id)) === false) return;
     if (prefersReducedMotion()) {
       props.onClose(id);
       return;

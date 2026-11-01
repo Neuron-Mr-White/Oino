@@ -4,16 +4,22 @@
  * conversation. Cmd/Ctrl+J toggles it; closing the last tab hides it; its
  * height is remembered (resize handle on its top edge, in AppShell).
  */
-import { createSignal, Show } from 'solid-js';
+import { createComputed, createRoot, createSignal, on, onMount, Show } from 'solid-js';
 import { PanelBottomClose } from 'lucide-solid';
 import { layout } from '../../lib/layout';
 import { panes, type PaneScope, type PaneView } from '../../lib/panes';
-import { paneKind } from '../../lib/panes/kinds';
+import { launchableKinds, paneKind } from '../../lib/panes/kinds';
 import { modKey } from '../../lib/shell';
 import { PaneBody } from './PaneBody';
 import { LauncherList, PaneLauncher, type LaunchSpec } from './PaneLauncher';
 import { TabOverview } from './TabOverview';
 import { TabStrip } from './TabStrip';
+
+/** When the user last opened the panel (Cmd/Ctrl+J, the header's Terminal button). */
+let openedAt = -Infinity;
+createRoot(() => createComputed(on(() => layout().bottomOpen(), (open, prev) => {
+  if (open && prev === false) openedAt = performance.now();
+})));
 
 export function BottomPanel(props: { scope: PaneScope; view: PaneView; localHost: boolean }) {
   const store = panes();
@@ -23,11 +29,17 @@ export function BottomPanel(props: { scope: PaneScope; view: PaneView; localHost
   const [overview, setOverview] = createSignal<DOMRect | undefined>();
   const close = (id: string) => {
     const tab = tabs().find((t) => t.id === id);
+    if (tab && paneKind(tab.kind)?.canUserClose?.(tab, () => close(id)) === false) return;
     if (tab) paneKind(tab.kind)?.onUserClose?.(tab);
     store.close(props.scope, 'bottom', props.view, id);
     if (tabs().length === 0) layout().toggleBottom(false);
   };
   const pick = (spec: LaunchSpec) => void store.open(props.scope, 'bottom', props.view, spec);
+  // Cmd/Ctrl+J or the header's Terminal button on an empty panel: a terminal in the session's folder
+  // (only when the user just opened it — not when a remembered-open panel mounts on navigation).
+  onMount(() => {
+    if (performance.now() - openedAt < 1000 && tabs().length === 0 && launchableKinds('bottom', !!props.view.sessionId).some((k) => k.kind === 'terminal')) pick({ kind: 'terminal' });
+  });
   return (
     <section class="bottom-panel" aria-label="Bottom panel" data-testid="bottom-panel">
       <TabStrip
