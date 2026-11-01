@@ -75,6 +75,9 @@ const RETRY_TIMER_PREFIX: &str = "lh-retry-";
 const WORK_FAILED_TOPIC: &str = "unipi:long-horizon:work-failed";
 const VERIFIER_TIMEOUT_MS: u64 = 30_000;
 const REMIND_AFTER: usize = 3;
+/// Second attempt for the `subagents.profiles` lookup after the 2 s probe misses on a
+/// cold start (services not registered yet).
+const PROFILE_LOOKUP_RETRY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Subagents run-done outcomes that mean the worker crashed / the process went away
 /// without a settle (D6 §9.1 row 1: transient, no retry-after).
@@ -1407,17 +1410,30 @@ impl Lh {
 
     // ── graph ──────────────────────────────────────────────────────────────
 
-    async fn profiles() -> Vec<String> {
-        services::call(
-            Some(unipi_kit::suite::pkg::SUBAGENTS.id),
-            "subagents.profiles",
-            &json!({}),
-            Some(Duration::from_secs(2)),
-        )
-        .await
-        .ok()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default()
+    /// The subagents profile list. On a cold host the subagents extension may not have
+    /// registered its services yet (startup race): the first short probe then fails or
+    /// comes back empty, so one retry with a longer timeout runs before giving up. The
+    /// error carries the last failure text ("timed out" ⇒ subagents are still starting).
+    async fn profiles() -> Result<Vec<String>, String> {
+        let mut last = String::from("no profiles service call was made");
+        for timeout in [Duration::from_secs(2), PROFILE_LOOKUP_RETRY_TIMEOUT] {
+            match services::call(
+                Some(unipi_kit::suite::pkg::SUBAGENTS.id),
+                "subagents.profiles",
+                &json!({}),
+                Some(timeout),
+            )
+            .await
+            {
+                Ok(v) => match serde_json::from_value::<Vec<String>>(v) {
+                    Ok(p) if !p.is_empty() => return Ok(p),
+                    Ok(_) => last = "empty profile list".into(),
+                    Err(e) => last = e.to_string(),
+                },
+                Err(e) => last = e.to_string(),
+            }
+        }
+        Err(last)
     }
 
     async fn update_graph(&'static self, args: &Value, cx: &ToolCtx) -> ToolResult {
@@ -1447,12 +1463,21 @@ impl Lh {
         let Some(op) = op else {
             return err("Set operation (add_work, stop or finish) and the matching field.");
         };
-        let available = Self::profiles().await;
-        if available.is_empty() {
-            return err(
-                "Agent graph is unavailable: subagents are not loaded or are disabled in this session (check /settings → subagents).",
-            );
-        }
+        let available = match Self::profiles().await {
+            Ok(p) => p,
+            // The retry also timed out: subagents exist but are still starting up —
+            // this is transient, not a config problem.
+            Err(e) if e.contains("timed out") => {
+                return err(
+                    "Agent graph is unavailable: subagents are still starting — try again.",
+                );
+            }
+            Err(_) => {
+                return err(
+                    "Agent graph is unavailable: subagents are not loaded or are disabled in this session (check /settings → subagents).",
+                );
+            }
+        };
         let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(ToOwned::to_owned);
         let mut add = Vec::new();
         if op == "add_work" {
@@ -1611,6 +1636,11 @@ impl Lh {
                 "Graph \"{task}\" finished with {n} selected result(s). Read anything you still need with agent_output, then deduplicate, verify, and synthesize for the user."
             ));
         }
+        // The graph is persisted before any worker spawns: a spawned worker's child
+        // session start re-reads the workspace state in this same process, and an
+        // unsaved graph would then vanish from under the reconcile below (the model
+        // would see "no graph" right after opening one).
+        self.save();
         let started = self.reconcile(&cx.cx).await;
         let st = self.state.borrow();
         let Some(g) = st.graph.current.as_ref() else {
@@ -2611,6 +2641,13 @@ impl Lh {
     }
 
     async fn session_start(&self, ev: &Event, cx: &Ctx) {
+        if cx.is_child() {
+            // Worker/child sessions share this process and its one piece of extension
+            // state: the parent's in-memory graph/owner state is the live truth (it can
+            // hold changes not yet on disk), and recovery / retry-rearm / mode-tool sync
+            // are parent duties. A child reload here wipes unsaved state mid-spawn.
+            return;
+        }
         {
             let mut st = self.state.borrow_mut();
             st.loaded = false;

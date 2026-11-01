@@ -643,6 +643,102 @@ async fn long_horizon_ralph_loop() {
     let _ = Path::new("/");
 }
 
+/// Graph mode cold start: the first add_work opens a graph and spawns the first worker;
+/// the graph is persisted before that spawn, and the worker's child session start
+/// (the real host delivers it to the same extension instance ~50 ms later) must not
+/// wipe the owner's in-memory graph. Regression for add-work answering "no graph"
+/// right after opening one (reported as "subagents disabled" by the model).
+#[tokio::test(flavor = "multi_thread")]
+async fn long_horizon_graph_survives_child_session_start() {
+    let env = Env::new();
+    let (sa, _) = env.load("subagents").await;
+    let (lh, _) = env.load("long-horizon").await;
+    for ext in [&sa, &lh] {
+        env.event(
+            ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+    }
+
+    // Fresh graph with one work item: opens the graph and starts the first worker
+    // (the recording host cannot nest sessions — the start fails and the step parks,
+    // which is fine for this assertion).
+    let opened = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({
+                "operation": "add_work",
+                "task": "Demo graph",
+                "add_work": [
+                    {"work_id": "w1", "instruction": "map the code", "profile": "subagent_explore"}
+                ]
+            }),
+        )
+        .await;
+    let t = text_of(&opened);
+    assert!(!t.contains("no graph"), "{t}");
+    assert!(t.starts_with("Opened graph"), "{t}");
+
+    // Persisted before the spawn: graph.json on disk already carries the fresh graph.
+    let ws_dir = env._agent.path().join("state/unipi.long-horizon/workspace");
+    let graph_json = std::fs::read_dir(&ws_dir)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join("graph.json");
+    let disk: Value = serde_json::from_slice(&std::fs::read(&graph_json).unwrap()).unwrap();
+    let graph_id = disk["current"]["graphId"].as_str().unwrap().to_owned();
+    assert_eq!(disk["current"]["task"], "Demo graph");
+    assert_eq!(disk["current"]["work"][0]["workId"], "w1");
+
+    // The worker's child session start lands on the same instance. The workspace
+    // copy may lag memory mid-run — here it is explicitly stale (pre-fix the child's
+    // reload-from-disk wiped the fresh graph out of memory).
+    std::fs::write(&graph_json, r#"{"v":1,"history":[]}"#).unwrap();
+    let mut child = env.cx(CallKind::Event);
+    child.is_child = true;
+    child.session_id = "child-1".into();
+    lh.on_event(
+        EventKind::SessionStart,
+        RawJson::from(json!({"type": "session_start", "reason": "new"})),
+        child,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("child session start: {e}"));
+
+    // The owner's graph survived the child session start: adding work keeps the SAME
+    // graph (same id, revision bump) instead of reporting "no graph" or opening a new one.
+    let more = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({
+                "operation": "add_work",
+                "add_work": [
+                    {"work_id": "w2", "instruction": "write it up", "profile": "subagent_general"}
+                ]
+            }),
+        )
+        .await;
+    let t = text_of(&more);
+    assert!(!t.contains("no graph"), "{t}");
+    assert!(t.contains(&graph_id), "same graph survives: {t}");
+    let disk: Value = serde_json::from_slice(&std::fs::read(&graph_json).unwrap()).unwrap();
+    assert_eq!(disk["current"]["graphId"], graph_id);
+    let ids: Vec<&str> = disk["current"]["work"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|w| w["workId"].as_str())
+        .collect();
+    assert!(ids.contains(&"w1") && ids.contains(&"w2"), "{disk}");
+}
+
 /// The §2.1.8 restart gate for this suite's components, at both kill levels:
 ///
 /// * instance kill (the session-eviction path: the guest's WASM state dies, the host process,
@@ -864,8 +960,7 @@ async fn kill_and_restart_restores_extension_state() {
     let status = env
         .calls("bus_publish")
         .into_iter()
-        .filter(|d| d["topic"] == "unipi:fusion:status")
-        .last()
+        .rfind(|d| d["topic"] == "unipi:fusion:status")
         .expect("fusion status published");
     assert_eq!(status["data"]["leadKey"], "faux/lead");
     assert_eq!(status["data"]["sidekickKey"], "faux/cheap");
