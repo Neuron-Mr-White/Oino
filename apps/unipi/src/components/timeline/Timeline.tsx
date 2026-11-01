@@ -444,6 +444,26 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
 }
 
 /**
+ * Measures one row under its *current* key, always. `measureElement` alone
+ * is not enough when a row's key changes while the list scrolls (the bottom
+ * lock pins on every growth): the virtualizer skips measuring while
+ * `isScrolling`, and the ResizeObserver already watching the node does not
+ * report again when its size did not change — the new key kept its estimate
+ * (72 px for a settled `/graph` turn of 334 px) and the next turn and the
+ * live tail drew over it. `resizeItem` writes the size regardless.
+ */
+export function measureRow(
+  virt: Pick<Virtualizer<HTMLDivElement, HTMLDivElement>, 'measureElement' | 'resizeItem'>,
+  node: HTMLElement,
+): void {
+  if (!node.isConnected) return;
+  virt.measureElement(node as HTMLDivElement);
+  const index = Number(node.dataset.index);
+  // 0 = not laid out (hidden pane, jsdom): leave the estimate.
+  if (Number.isInteger(index) && index >= 0 && node.offsetHeight > 0) virt.resizeItem(index, node.offsetHeight);
+}
+
+/**
  * The virtualized settled turns. Only mounts once the `.tl` scroller
  * exists, so `createVirtualizer`'s mount binds real scroll/rect observers
  * (the element is a prop, not a signal read after the fact).
@@ -495,12 +515,13 @@ function VirtualTurns(props: {
         {(item) => {
           const turn = () => props.settled()[item().index];
           let node: HTMLDivElement | undefined;
-          // The slot is reused for another turn: re-measure even when the
-          // height happens to match, so the new turn's row is real.
+          // The slot is reused for another turn — or the same turn's key moved
+          // (a live turn settles under its real entry id): re-measure even when
+          // the height happens to match, so the new key's row is real.
           createEffect(
             on(
               () => item().key,
-              () => queueMicrotask(() => node?.isConnected && virt.measureElement(node)),
+              () => queueMicrotask(() => node && measureRow(virt, node)),
             ),
           );
           return (
