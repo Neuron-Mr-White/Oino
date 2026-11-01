@@ -5,7 +5,7 @@
  * side-pane tab now), plus the `get_tree` reply → nodes build.
  */
 import { describe, expect, it } from 'vitest';
-import { buildTreeNodes, filterTree, flattenTree, kindOfEntry, TREE_FILTERS, TREE_MAX_DEPTH, type TreeNode } from './tree';
+import { buildTreeNodes, filterTree, flattenTree, kindOfEntry, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode } from './tree';
 import type { SessionEntry } from '../../../lib/session/types';
 
 describe('flattenTree (UNI-186, pi /tree layout)', () => {
@@ -123,5 +123,46 @@ describe('buildTreeNodes (get_tree reply → rows)', () => {
 
   it('depth compression keeps the last TREE_MAX_DEPTH cells', () => {
     expect(TREE_MAX_DEPTH).toBe(6);
+  });
+
+  it('hides system/model_change/custom leaves in default mode and promotes current to the conversation leaf, with readable labels in All (D-14)', () => {
+    const tree = [
+      {
+        entry: { type: 'message', id: 'sys', parentId: null, message: { role: 'system', content: '' } } as SessionEntry,
+        children: [
+          {
+            entry: { type: 'message', id: 'u1', parentId: 'sys', message: { role: 'user', content: 'hello' } } as SessionEntry,
+            children: [
+              {
+                entry: { type: 'message', id: 'a1', parentId: 'u1', message: { role: 'assistant', content: 'hi there' } } as SessionEntry,
+                children: [
+                  {
+                    entry: { type: 'model_change', id: 'm1', parentId: 'a1', modelId: 'deepseek-flash' } as SessionEntry,
+                    children: [
+                      {
+                        entry: { type: 'custom', id: 'c1', parentId: 'm1', customType: 'unipi-memory-session-card' } as SessionEntry,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const nodes = buildTreeNodes(tree as never, 'c1');
+    const def = filterTree(nodes, 'default');
+    expect(def.map((n) => [n.id, n.current])).toEqual([
+      ['u1', false],
+      ['a1', true],
+    ]);
+    const all = filterTree(nodes, 'all');
+    expect(all.map((n) => [n.id, n.preview, treeKindLabel(n.kind)])).toEqual([
+      ['u1', 'hello', 'User'],
+      ['a1', 'hi there', 'Assistant'],
+      ['m1', 'Model → DeepSeek Flash', 'Model'],
+      ['c1', 'Memory · session context', 'Note'],
+    ]);
   });
 });

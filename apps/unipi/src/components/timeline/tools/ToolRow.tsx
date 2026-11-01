@@ -18,7 +18,7 @@ import { TOOL_ICON } from './toolIcons';
 import { ToolBody } from './ToolBody';
 
 function fallbackTarget(args: Record<string, unknown>, cwd?: string): string {
-  for (const key of ['cmd', 'script', 'dir', 'directory', 'target', 'selector', 'ref', 'profile', 'subagent_type', 'action', 'id']) {
+  for (const key of ['cmd', 'script', 'dir', 'directory', 'target', 'selector', 'ref', 'profile', 'subagent_type', 'action', 'taskId', 'name', 'id']) {
     const v = args[key];
     if (typeof v === 'string' && v.trim()) {
       let s = v.trim().split('\n')[0]!;

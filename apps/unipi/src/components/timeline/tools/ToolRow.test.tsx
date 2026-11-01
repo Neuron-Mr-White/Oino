@@ -178,4 +178,33 @@ describe('extension tool renderer (render-only override)', () => {
     await waitFor(() => expect(r.container.querySelector('.tool-term')).toBeTruthy());
     expect(r.queryByTestId('tool-render')).toBeNull();
   });
+
+  it('bg_run with task details renders a clean native card without raw temp log paths (D-06)', async () => {
+    const ctx = fakeCtx([], { renderers: { 'tool/bg_run': { t: 'Paragraph', text: 'broken-wasm-card' } } });
+    const tool = run({
+      name: 'bg_run',
+      args: { name: 'Read calc and list dir', command: 'cat calc.py; ls -la', isAgent: false },
+      output: 'Started background task Read calc and list dir (t95714ebc0001)\nStatus: running\nPID: 42\nOutput: /home/oi/.cache/oino-qa/agent/tmp/tasks/t95714ebc0001/output.log',
+      details: {
+        task: {
+          id: 't95714ebc0001',
+          name: 'Read calc and list dir',
+          command: 'cat calc.py; ls -la',
+          status: 'running',
+          outputPath: '/home/oi/.cache/oino-qa/agent/tmp/tasks/t95714ebc0001/output.log',
+          notifyOnCompletion: true,
+          triggerOnCompletion: true,
+        },
+      },
+    });
+    const r = render(() => <ToolRow tool={tool} ctx={ctx} itemKey="bg1" />);
+    fireEvent.click(r.getByTestId('tl-tool-row'));
+    await waitFor(() => expect(r.getByTestId('tool-bg')).toBeTruthy());
+    expect(r.queryByTestId('tool-render')).toBeNull();
+    expect(r.container.textContent).toContain('Background');
+    expect(r.container.textContent).toContain('Read calc and list dir');
+    expect(r.container.textContent).toContain('started · wakes agent');
+    expect(r.container.textContent).toContain('cat calc.py; ls -la');
+    expect(r.container.textContent).not.toContain('output.log');
+  });
 });

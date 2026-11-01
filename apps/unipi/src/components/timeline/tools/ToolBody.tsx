@@ -14,7 +14,7 @@ import { sessionRenderCache, widthClassOf } from '../../../lib/session/renderCac
 import { NodeView } from '../../../ui/NodeView';
 import type { TimelineCtx } from '../context';
 import { toolRenderData } from './toolData';
-import { EditBody, HeadBody, IoBody, McpBody, RunBody, TodoBody, WriteBody } from './bodies';
+import { BgToolBody, EditBody, HeadBody, IoBody, isNativeBgTool, McpBody, RunBody, TodoBody, WriteBody } from './bodies';
 
 const isTodo = (name: string) => /todo/i.test(name);
 
@@ -39,7 +39,8 @@ const NATIVE_GUI_TOOLS = new Set([
 export function ToolBody(props: { tool: ToolRun; ctx: TimelineCtx; /** Z-91: the row is folding shut. */ leaving?: boolean }) {
   const t = () => props.tool;
   const lower = () => t().name.trim().toLowerCase();
-  const nativeOwned = () => NATIVE_GUI_TOOLS.has(lower()) || isTodo(lower()) || lower().startsWith('mcp__');
+  const bgOwned = () => isNativeBgTool(t());
+  const nativeOwned = () => NATIVE_GUI_TOOLS.has(lower()) || bgOwned() || isTodo(lower()) || lower().startsWith('mcp__');
   const cat = () => toolCategory(t().name);
   const render = () => {
     if (nativeOwned()) return null;
@@ -51,6 +52,9 @@ export function ToolBody(props: { tool: ToolRun; ctx: TimelineCtx; /** Z-91: the
   return (
     <div class="tool-body" data-leaving={props.leaving ? '' : undefined}>
       <Switch>
+        <Match when={bgOwned()}>
+          <BgToolBody tool={t()} ctx={props.ctx} />
+        </Match>
         <Match when={render()} keyed>
           {(node) => (
             <div class="tl-tool-render" data-testid="tool-render">

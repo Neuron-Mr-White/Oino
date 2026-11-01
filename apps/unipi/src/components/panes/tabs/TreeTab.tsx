@@ -13,7 +13,7 @@ import type { SessionEntry } from '../../../lib/session/types';
 import { focusComposer, restoreComposer } from '../../../lib/composer/drafts';
 import { setPaneComponent, type PaneTabProps } from '../../../lib/panes/kinds';
 import { tabBaseOf } from './sessionTabs';
-import { buildTreeNodes, filterTree, flattenTree, readTreeFilter, rememberTreeFilter, TREE_FILTERS, TREE_MAX_DEPTH, type TreeNode, type TreeFilter } from './tree';
+import { buildTreeNodes, filterTree, flattenTree, readTreeFilter, rememberTreeFilter, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode, type TreeFilter } from './tree';
 import './tabs.css';
 
 type WireNode = { entry: SessionEntry; children?: WireNode[]; label?: unknown };
@@ -137,9 +137,9 @@ export function TreeTab(props: PaneTabProps) {
                       </span>
                     </Show>
                     <span class="min-w-0 flex-1 text-left">
-                      <span class="block truncate">{node.preview || `(${node.kind})`}</span>
+                      <span class="block truncate">{node.preview || treeKindLabel(node.kind)}</span>
                       <span class="block truncate ttab-sub">
-                        {node.kind}
+                        {treeKindLabel(node.kind)}
                         {node.label ? ` · ${node.label}` : ''}
                       </span>
                     </span>

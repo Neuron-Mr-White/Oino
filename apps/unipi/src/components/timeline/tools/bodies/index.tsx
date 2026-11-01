@@ -17,6 +17,7 @@ import { ImageChipRow } from '../../../chat/ImageChip';
 import { openDiffTab } from '../../../panes/tabs/sessionTabs';
 import { toolImages } from '../toolData';
 import { useFullOutput } from './fullOutput';
+export { BgToolBody, isNativeBgTool, stripBgInternalPaths } from './BgBody';
 
 export const tail = (s: string, n: number) => (s.length > n ? `…\n${s.slice(s.length - n)}` : s);
 export const head = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}\n…` : s);

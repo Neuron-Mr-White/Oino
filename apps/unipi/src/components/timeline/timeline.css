@@ -275,18 +275,17 @@ html[data-shell=desktop] .tl-user:focus-within .tl-user-actions { opacity: 1; po
 }
 .tl-selection-quote button:hover { background: var(--color-surface-3); }
 
-/* action failures */
+/* action feedback: `<Toasts />` renders the visual toast stack; `.tl-notice` stays sr-only for screen readers. */
 .tl-notice {
-  width: max-content;
-  max-width: min(720px, calc(100vw - 32px));
-  margin: 0 auto 6px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: var(--color-surface-2);
-  box-shadow: inset 0 0 0 1px var(--color-line);
-  color: var(--color-amber);
-  font-size: 12px;
-  line-height: 18px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* composer handoff: quote + restored images */
@@ -555,3 +554,70 @@ html:not([data-shell=desktop]) .tl .tool-body { margin-left: 8px; }
 html[data-shell=phone] .tl-files-toggle,
 html[data-shell=phone] .tl-files-file,
 html[data-shell=phone] .tl-files-undo-all { min-height: 36px; }
+
+/* ── D-06: native background-task tool & completion cards ────────────── */
+.tool-bg {
+  min-width: 0;
+  border-radius: 12px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%);
+  overflow: hidden;
+}
+.tl-bg-card { margin: 2px 0 4px; }
+.tool-bg-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 7px 12px;
+  min-width: 0;
+}
+.tool-bg-head[data-border] {
+  border-bottom: 1px solid rgb(46 40 37 / 70%);
+}
+.tool-bg .tool-term-cmd[data-last] {
+  border-bottom: 0;
+}
+.tool-bg-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  background: rgb(240 120 24 / 14%);
+  color: var(--color-claw);
+}
+.tool-bg-badge[data-status=completed] { background: rgb(90 210 90 / 13%); color: var(--color-wm-green); }
+.tool-bg-badge[data-status=failed] { background: rgb(240 60 50 / 14%); color: #f6a39d; }
+.tool-bg-badge[data-status=killed] { background: rgb(240 168 24 / 14%); color: var(--color-amber); }
+.tool-bg-title {
+  flex: 1 1 120px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+.tool-bg-meta {
+  flex: 0 1 auto;
+  margin-left: auto;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.tool-bg-list { display: flex; flex-direction: column; }
+.tool-bg-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 7px 12px;
+}
+.tool-bg-item + .tool-bg-item { border-top: 1px solid rgb(46 40 37 / 60%); }
+
