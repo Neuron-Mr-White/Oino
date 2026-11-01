@@ -14,7 +14,7 @@ categories = ["gui"]
 indexmap.workspace = true
 oino-agent = { path = "../oino-agent", version = "1.0.2" }
 oino-ai = { path = "../oino-ai", version = "1.0.2" }
-oino-core = { path = "../oino-core", version = "1.0.2" }
+oino-core = { path = "../oino-core", version = "1.0.1" }
 oino-session = { path = "../oino-session", version = "1.0.2", default-features = false }
 oino-ui.workspace = true
 serde.workspace = true

@@ -14,8 +14,8 @@ path = "src/main.rs"
 unipi-proto = { path = "../unipi-proto" }
 # H3 (host.md §4.2): the host links oino-core in-process and runs every session through the
 # wave-1 lazy client hub; extensions load on the process-shared wasm engine.
-oino-client = { path = "../../../../crates/oino-client", version = "1.0.2" }
-oino-core = { path = "../../../../crates/oino-core", version = "1.0.2" }
+oino-client = { path = "../../../../crates/oino-client", version = "2.0.0" }
+oino-core = { path = "../../../../crates/oino-core", version = "1.0.1" }
 # H5 (host.md §8): the lease metadata that names the runner an open took the session over
 # from (D-LOCK advisory file; the kernel lock itself stays core's).
 oino-session = { path = "../../../../crates/oino-session", version = "1.0.2" }
@@ -30,7 +30,10 @@ unipi-cron = { path = "../unipi-cron" }
 # WP-A22 (app.md §3.14; ext-abi §5.5): the Board runs the `unipi-kanboard` CLI one process
 # per call; only the project watcher (`service::watch_projects`) is a library call.
 unipi-kanboard = { path = "../unipi-kanboard" }
-oino-wasm-host = { path = "../../../../crates/oino-wasm-host", version = "1.0.2" }
+oino-wasm-host = { path = "../../../../crates/oino-wasm-host", version = "1.0.1" }
+# WP-B7 (browser.md §7): the agent's browser tools — `unipi-browser`'s service, attached to
+# the browser this host's Manager runs for the app's viewers.
+unipi-browser = { path = "../unipi-browser" }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 # WP-A15 (app.md §3.14): fsnotify for the git watcher (Z-98 auto-refresh).
 notify = "8"
@@ -100,7 +103,7 @@ windows-sys = { version = "0.61", features = [
 [dev-dependencies]
 # WP-H3 acceptance (`tests/sessions_hub.rs`): the faux provider and fake components.
 oino-agent = { path = "../../../../crates/oino-agent", version = "1.0.2" }
-oino-core = { path = "../../../../crates/oino-core", version = "1.0.2", features = ["testing"] }
+oino-core = { path = "../../../../crates/oino-core", version = "1.0.1", features = ["testing"] }
 oino-ai = { path = "../../../../crates/oino-ai", version = "1.0.2" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tempfile = "3"

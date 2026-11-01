@@ -33,8 +33,8 @@ indexmap.workspace = true
 oino-acp = { path = "../oino-acp", version = "1.0.2" }
 oino-agent = { path = "../oino-agent", version = "1.0.2" }
 oino-ai = { path = "../oino-ai", version = "1.0.2" }
-oino-client = { path = "../oino-client", version = "1.0.2" }
-oino-core = { path = "../oino-core", version = "1.0.2" }
+oino-client = { path = "../oino-client", version = "2.0.0" }
+oino-core = { path = "../oino-core", version = "1.0.1" }
 oino-extension-api = { path = "../oino-extension-api", version = "1.0.2" }
 oino-models = { path = "../oino-models", version = "1.0.2" }
 oino-rpc = { path = "../oino-rpc", version = "1.0.2" }
@@ -42,7 +42,7 @@ oino-session = { path = "../oino-session", version = "1.0.2" }
 oino-tui = { path = "../oino-tui", version = "1.0.2" }
 oino-settings = { path = "../oino-settings", version = "1.0.2" }
 oino-tools = { path = "../oino-tools", version = "1.0.2" }
-oino-wasm-host = { path = "../oino-wasm-host", version = "1.0.2" }
+oino-wasm-host = { path = "../oino-wasm-host", version = "1.0.1" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
