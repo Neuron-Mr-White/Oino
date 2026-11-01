@@ -18,6 +18,14 @@ PORT=${QA_PORT:-4444}
 cmd=${1:-}
 case "$cmd" in
   up)
+    # Resource policy: this PC is shared with the owner's work. At most
+    # $QA_MAX_RIGS live rigs (default 2), and only with >= 6 GB available.
+    live=$(pgrep -fc "tauri-driver --port" || true)
+    if [ "$live" -ge "${QA_MAX_RIGS:-2}" ] && ! pgrep -f "tauri-driver --port $PORT" >/dev/null; then
+      echo "rig: $live rigs already running (max ${QA_MAX_RIGS:-2}); wait for one to finish (rig.sh down)" >&2; exit 75
+    fi
+    avail=$(awk '/MemAvailable/ {print int($2/1048576)}' /proc/meminfo)
+    [ "$avail" -ge 6 ] || { echo "rig: only ${avail} GB RAM available (need 6); not starting" >&2; exit 75; }
     pkg=${2:-$HOME/oino-qa-release/v2/unipi-oino_1.0.0_amd64.deb}
     mkdir -p "$QA_HOME"/{agent,run,shots}
     # The .deb's exact file tree (usr/bin/unipi-oino, unipi-oino-host, oino,

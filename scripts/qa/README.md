@@ -12,6 +12,8 @@ scripts/qa/rig-rebuild.sh [--host]   # rebuild from the working tree and restart
 scripts/qa/rig.sh down
 ```
 
+Resource policy: at most 2 rigs at once (QA_MAX_RIGS), only with >= 6 GB RAM free; rig-rebuild takes a global build lock and builds with 4 jobs at nice 10. Always `rig.sh down` when done.
+
 Parallel rigs: give each its own `QA_HOME`, `QA_DISPLAY` (e.g. `:151`) and `QA_PORT`
 (e.g. `4451`). The rig copies `~/.oino/auth.json` and `settings.json` into its own
 agent dir; it never touches `~/.oino`, `~/.unipi` or the apps the owner is running.

@@ -6,7 +6,10 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 QA_HOME=${QA_HOME:-$HOME/.cache/oino-qa}
-export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-8}
+export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
+# One app build at a time across all agents (rustc peaks at 2+ GB per job).
+exec 9>"${XDG_RUNTIME_DIR:-$HOME/.cache}/oino-build.lock"
+echo "rig-rebuild: waiting for the build lock…"; flock 9
 [ -d "$QA_HOME/app/usr/bin" ] || { echo "run scripts/qa/rig.sh up first" >&2; exit 1; }
 if [ "${1:-}" = --host ]; then
   (cd "$root/apps/unipi" && cargo build --release -p unipi-host 2>&1 | tail -3)
@@ -15,7 +18,7 @@ fi
 # vite build + the release shell with the custom protocol (what `cargo tauri build`
 # does, without its file watcher, which hits the inotify limit on busy machines).
 (cd "$root/apps/unipi" && npx vite build 2>&1 | grep -E "error|built in" | tail -3)
-(cd "$root/apps/unipi/src-tauri" && cargo build --release --features tauri/custom-protocol 2>&1 | grep -E "^error|Finished" | tail -5)
+(cd "$root/apps/unipi/src-tauri" && nice -n 10 cargo build --release --features tauri/custom-protocol 2>&1 | grep -E "^error|Finished" | tail -5)
 install -m 755 "$root/apps/unipi/src-tauri/target/release/unipi-mobile" "$QA_HOME/app/usr/bin/unipi-oino"  # cargo names it after the crate; the bundler renames it to mainBinaryName
 node "$root/scripts/qa/rig.mjs" start
 echo "rig restarted with the working tree build"
