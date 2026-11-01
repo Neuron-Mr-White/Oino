@@ -99,6 +99,66 @@ Copy with `cp -an` (never overwrite) unless a step says "merge". Create target d
 | notify, web-api, watchdog, background-tasks, compactor, footer, info-screen, updater, ask-user, command-enchantment, dream, subagents, app-bridge, decision-model, permission | `$UNIPI/config/<ns>/config.json` | `extensionSettings.<ns>` + secrets | settings-map §2–§4; nothing else to copy |
 | workflow (`unipi.workflow`) | permission rules inside `$UNIPI/config/permission/config.json` | `extensionSettings.permission` | same keys; global `mode` → `defaultMode` |
 
+### Cron (`unipi.cron`)
+
+The old scheduler kept everything under the host dir (`$UNIPI/app-host`, older builds
+`$UNIPI/host` — use whichever exists):
+
+| Source | Target | Transformation / note |
+|---|---|---|
+| `$UNIPI/app-host/cron/jobs.json` (JSON array of jobs, snake_case) | `$OINO/cron/jobs/<id>.json` (one file per job, `{"v": 2, …}` envelope, camelCase) | split and convert per job (script below); `id` must equal the file stem; on duplicate ids append `-2`, `-3`, … |
+| `$UNIPI/app-host/cron/runs/<job>/<run>.json` (+ `.log`) | `$OINO/cron/runs/<job>/` | copy as-is (same snake_case run records, same statuses `running/ok/failed/timeout/skipped/queued`) |
+| `cron` block of `$UNIPI/app-host/config.json` | `$OINO/cron/settings.json` | same snake_case keys (`concurrency`, `missed_window_s`, `retention_runs`, `retention_days`, `paused`, `default_time_limit_s`, `notify_default_events`); drop `enabled` (phone allow-list, no Oino equivalent) and `ntfy_topic` (channels come from `notify` now) |
+| `$UNIPI/config/cron/config.json` (settings mirror) | `extensionSettings.cron` | settings-map §2 with §3 rewrites (keys become camelCase) |
+
+The scheduler is embedded in the UniPi host: jobs fire only while the UniPi host runs
+(managing them works from a plain `oino` too). Job conversion (atomic per file, `file.tmp`
+then `mv`):
+
+```bash
+python3 - "$UNIPI" "$OINO" <<'PY'
+import json, os, sys
+src, dst = sys.argv[1], sys.argv[2]
+root = next(p for p in (f"{src}/app-host/cron/jobs.json", f"{src}/host/cron/jobs.json") if os.path.exists(p))
+jobs = json.load(open(root))
+os.makedirs(f"{dst}/cron/jobs", exist_ok=True)
+seen = set()
+for j in jobs:
+    jid, base, n = j["id"], j["id"], 1
+    while jid in seen: n += 1; jid = f"{base}-{n}"
+    seen.add(jid)
+    job = {"v": 2, "id": jid, "name": j["name"], "prompt": j["prompt"], "schedule": j["schedule"],
+           "tz": j["tz"], "cwd": j["cwd"], "enabled": j.get("enabled", True),
+           "timeLimitS": j.get("time_limit_s", 1800), "overlap": "skip", "missed": "run-latest",
+           "created": j["created"], "updated": j["updated"]}
+    for k in ("model", "thinking"):
+        if j.get(k): job[k] = j[k]
+    if j.get("cost_cap_usd") is not None: job["costCapUsd"] = j["cost_cap_usd"]
+    if j.get("notify"):
+        job["notify"] = {k: v for k, v in j["notify"].items() if v is not None}
+    if j.get("session_link"):
+        sl = {k: v for k, v in j["session_link"].items() if v}
+        sl = {"sessionFile": sl.get("session_file"), "sessionId": sl.get("session_id")}
+        if sl.get("sessionFile") and "/sessions/" in sl["sessionFile"]:
+            cand = os.path.join(dst, "sessions", sl["sessionFile"].split("/sessions/", 1)[1])
+            sl["sessionFile"] = cand if os.path.exists(cand) else None
+        sl = {k: v for k, v in sl.items() if v}
+        if sl: job["sessionLink"] = sl
+    with open(f"{dst}/cron/jobs/{jid}.json.tmp", "w") as f: json.dump(job, f, indent=2)
+    os.replace(f"{dst}/cron/jobs/{jid}.json.tmp", f"{dst}/cron/jobs/{jid}.json")
+    if not os.path.isdir(j["cwd"]): print("cwd missing:", jid, j["cwd"])
+PY
+```
+
+- `notify` carries over unchanged (`channels`, `events` — the run status names are the same
+  on both sides).
+- `sessionLink.sessionFile` is repointed from the old sessions dir to the migrated copy
+  under `$OINO/sessions/…` when that file exists; the link is dropped otherwise.
+- A job whose `cwd` no longer exists is migrated as it is — list it in the report so the
+  user can fix or remove it (its runs would be recorded as skipped).
+- Check: `/cron list` (UniPi host running) or the `cron_list` tool shows the jobs;
+  `/cron show <id>` shows the migrated runs.
+
 ## 7. Projects
 
 For each project found in phase 1 (only with the user's go-ahead per project):
@@ -123,7 +183,8 @@ project (copied from pi's trust in §2) or tell the user to trust it on first st
 All namespaces (`hints`, `decision-model`, `permission`, `long-horizon`, `memory`, `dream`,
 `utility`, `image`, `skills`, `info-screen`, `subagents`, `background-tasks`, `web-api`,
 `ask-user`, `mcp`, `notify`, `kanboard`, `command-enchantment`, `compactor`, `footer`,
-`updater`, `input-shortcuts`, `fusion`, `watchdog`, `app-bridge`) follow settings-map §2.
+`updater`, `input-shortcuts`, `fusion`, `watchdog`, `app-bridge`, `cron`) follow
+settings-map §2.
 The watchdog session caps are `watchdog.sessionCaps.{maxTurns,maxCostUsd,maxWallMinutes,
 maxConsecutiveToolErrors,summaryTurn}`; background task caps are
 `background-tasks.{maxFinishedTasks,maxOutputBytes}`.
@@ -134,8 +195,7 @@ maxConsecutiveToolErrors,summaryTurn}`; background task caps are
 |---|---|
 | `$PI_DIR/extensions/*.ts`, `settings.packages`, `$PI_DIR/npm`, `$PI_DIR/git` | TypeScript/npm pi packages cannot run in Oino (WASM extensions only); unipi itself is bundled |
 | `herdr` (`$PI_DIR/herdr-agent-state*`, `herdr:*` events) | herdr integration dropped (D22) |
-| cron (`$UNIPI/config/cron/`, `$UNIPI/app-host/cron/`, `/unipi:cron`) | no scheduler in Oino (dropped D22) |
-| UniPi desktop/phone app: `$UNIPI/app-host/`, `$UNIPI/bridge/`, `$UNIPI/gui/`, `notify/app-endpoints.json`, pairing/devices/push keys | the unipi app is not part of Oino; Oino Desktop/Mobile pair separately |
+| UniPi desktop/phone app: `$UNIPI/app-host/` (except `cron/`, migrated in §6), `$UNIPI/bridge/`, `$UNIPI/gui/`, `notify/app-endpoints.json`, pairing/devices/push keys | the unipi app is not part of Oino; Oino Desktop/Mobile pair separately |
 | tips (`$UNIPI/config/tips/`, `$UNIPI/global/tips/`) | replaced by hints |
 | caches and logs: `$UNIPI/cache/`, `$UNIPI/logs/`, `$UNIPI/tool-results/`, `$UNIPI/config/*-cache.json`, `$UNIPI/config/web-api/cache/`, `$UNIPI/global/updater/`, `$UNIPI/global/compactor/session.db`, `$UNIPI/db/`, `$PI_DIR/*crash*` | regenerated by Oino; tied to old versions |
 | `$UNIPI/workspace/<uuid>/state/{dream,subagents}`, `long-horizon/{state,graph}.json`, `$UNIPI/workspace/<uuid>/sessions/` | run state of old processes |

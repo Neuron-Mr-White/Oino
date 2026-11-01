@@ -1,0 +1,179 @@
+---
+name: web
+description: "Web search, read, and summarize tools with provider-based backend"
+---
+
+# Web Tools
+
+Use these tools to access web content. The read path uses a local smart-fetch engine by default — free, fast, and no API key required.
+
+## web_search
+
+Search the web for information. Lower `source` = simpler/cheaper providers.
+
+- **Quick facts:** source 1-2 (DuckDuckGo, Jina Search)
+- **Research:** source 3-5 (SerpAPI, Tavily, Perplexity)
+
+**Parameters:**
+- `query` (required): Search query string
+- `source` (optional): Provider selection (1-6)
+
+**Examples:**
+```
+web_search(query: "TypeScript generics tutorial")
+web_search(query: "latest AI research", source: 5)  # Use Tavily
+```
+
+## multi_web_content_read
+
+Read and extract content from URLs. Uses the **smart-fetch engine** by default (source=0 or omitted) — free, local, no API key required. Supports single URL or batch URLs.
+
+**Default behavior (source=0):**
+- Browser-grade TLS fingerprinting
+- Intelligent content extraction
+- Returns clean markdown with metadata (title, author, site, word count)
+- No API key required
+
+**Parameters:**
+- `url` (required): Single URL string or array of URLs for batch
+- `source` (optional): Provider selection (0=smart-fetch, 1=wigolo, 2=Jina Reader, 3=Firecrawl, 4=Perplexity)
+- `browser` (optional): TLS fingerprint profile (default: chrome_145)
+- `os` (optional): OS fingerprint (default: windows)
+- `format` (optional): Output format — markdown, html, text, json (default: markdown)
+- `maxChars` (optional): Maximum content characters (default: 50000)
+- `timeoutMs` (optional): Request timeout in ms (default: 15000)
+- `removeImages` (optional): Strip image references (default: false)
+- `includeReplies` (optional): Include comments/replies (default: extractors)
+- `proxy` (optional): Proxy URL
+- `batchConcurrency` (optional): Concurrent requests for batch (default: 8)
+- `verbose` (optional): Include metadata header (default: true)
+
+**Examples:**
+```
+# Single URL (uses smart-fetch engine by default)
+multi_web_content_read(url: "https://example.com/article")
+
+# Batch URLs
+multi_web_content_read(url: ["https://example.com/a", "https://example.com/b"])
+
+# Use provider fallback (Jina Reader)
+multi_web_content_read(url: "https://example.com/article", source: 2)
+
+# Custom options
+multi_web_content_read(url: "https://example.com/article", format: "json", maxChars: 10000)
+```
+
+## web_llm_summarize
+
+Summarize URL with an LLM. Higher cost (LLM tokens + provider).
+
+- Use for complex content that needs analysis
+- Custom prompts supported for targeted summaries
+
+**Parameters:**
+- `url` (required): URL to summarize
+- `prompt` (optional): Custom summarization prompt
+- `source` (optional): Provider selection for content fetch
+
+**Examples:**
+```
+web_llm_summarize(url: "https://example.com/long-article")
+web_llm_summarize(url: "https://example.com/research", prompt: "Extract key findings")
+```
+
+## Provider Selection
+
+- Omit `source` for auto-selection (smart-fetch engine for read, cheapest for search)
+- Specify `source` number for specific provider
+- If provider unavailable, tool throws descriptive error
+
+**Auto-selection falls through on failure.** With `source` omitted, a failing
+provider is skipped and the next-ranked one is tried, so an uninitialized
+wigolo never blocks a search. With an explicit `source`, the choice is
+respected and the error is reported instead.
+
+### Provider Rankings
+
+**Search providers:**
+1. wigolo (free, local) — default
+2. DuckDuckGo (free)
+3. Jina AI Search (freemium)
+4. SerpAPI (paid)
+5. Tavily (paid)
+6. Perplexity (paid)
+
+**Read providers:**
+0. **Smart-Fetch Engine** (free, local) — default
+1. wigolo (free, local)
+2. Jina AI Reader (freemium)
+3. Firecrawl (paid)
+4. Perplexity (paid)
+
+**Summarize providers:**
+1. Perplexity (paid)
+2. LLM Summarize (uses the session's model)
+
+## wigolo
+
+[wigolo](https://github.com/KnockOutEZ/wigolo) is a local-first web engine:
+multi-engine search (18 direct adapters) with rank fusion and on-device
+reranking, plus a tiered fetch router that escalates to a headless browser on
+anti-bot challenges. No API key, nothing leaves the machine, $0 per query.
+
+It is **not bundled** — wigolo is AGPL-licensed and Oino is MIT, so it is an
+optional dependency loaded at runtime only when the user installed it:
+
+```bash
+npm install -g wigolo && npx wigolo init
+```
+
+If it is missing or uninitialized, the provider raises an actionable error and
+auto-selection falls through to the next provider. Never tell the user wigolo
+is broken — tell them to run `npx wigolo init`, or to disable it in
+Settings › Extensions › Web API.
+
+## Smart-Fetch Engine
+
+The smart-fetch engine is a local content extraction pipeline:
+
+- **TLS fingerprinting**: Browser-grade TLS fingerprints (bypasses Cloudflare, etc.)
+- **defuddle**: Intelligent content extraction from HTML
+- **linkedom**: Server-side DOM parsing
+
+**Features:**
+- No API key required
+- Browser-level anti-bot bypass
+- Clean markdown output with metadata
+- Batch concurrent fetching with progress
+- Client-side meta redirect following
+- Multiple output formats
+
+**Configure defaults** via Settings › Extensions › Web API → "Smart Fetch Defaults"
+(browser/os profile, max chars, timeout, batch concurrency, images, replies).
+
+## Cost Awareness
+
+- **Smart-Fetch Engine:** Free (read only, no API key)
+- **wigolo:** Free (search + read, local, no API key) — prefer this
+- **DuckDuckGo:** Free (search only)
+- **Jina:** Freemium (search + read)
+- **SerpAPI/Tavily:** Paid (search)
+- **Firecrawl:** Paid (read)
+- **Perplexity:** Paid (search + summarize)
+- **LLM Summarize:** LLM token cost
+
+## Configuration
+
+Configure providers via Settings › Extensions › Web API (or `/settings`).
+
+- Add/remove API keys (stored in the Oino secret store, or picked up from env)
+- Enable/disable providers
+- Configure smart-fetch defaults
+- View provider status
+
+## Cache
+
+Web content is cached for 1 hour by default (including smart-fetch results,
+keyed by URL + browser + format + maxChars).
+
+- Clear cache: `/web-cache-clear`, or Settings › Extensions › Web API → "Clear web cache…"

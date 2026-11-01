@@ -6,6 +6,7 @@
   "kind": "extension",
   "description": "Checks GitHub for new Oino releases, shows what changed, and browses the bundled READMEs and the changelog.",
   "license": "MIT",
+  "resources": { "skills": ["skills"] },
   "permissions": {
     "network": {
       "hosts": ["api.github.com", "github.com", "objects.githubusercontent.com", "raw.githubusercontent.com"]

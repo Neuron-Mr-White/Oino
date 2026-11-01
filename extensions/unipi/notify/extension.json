@@ -6,6 +6,7 @@
   "kind": "extension",
   "description": "Desktop and phone notifications (native, Gotify, Telegram, ntfy) for agent events, plus the notify_user tool.",
   "license": "MIT",
+  "resources": { "skills": ["skills"] },
   "permissions": {
     "osNotify": true,
     "network": { "hosts": ["*"] },

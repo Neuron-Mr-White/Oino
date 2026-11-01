@@ -27,8 +27,13 @@ Run each check; report pass/fail per line in the final report.
     such as dangling dependencies, are reported, not fixed) (skip if `oino-kanboard` is not installed; then
     `grep -l '^strategy:\|^plan:\|owner: system\|mode: direct' -r "$STATE/unipi.kanboard/projects"`
     must print nothing).
+10b. **Cron** (when migrated): one `jobs/<id>.json` per source entry, each parses and has
+    `"v": 2` with `id` equal to the file stem; `~/.oino/cron/settings.json` parses; every
+    job's `cwd` exists (flag the ones that don't); `/cron list` shows the jobs (with the
+    UniPi host running) or the `cron_list` tool returns them.
 11. **Commands**: `grep -rn '/unipi:' <files of SKILL.md step 8>` prints nothing (or only
-    `/unipi:cron`, reported as having no equivalent).
+    removed commands — `/unipi:hint`, `/unipi:hint-reset`, `/unipi:footer` — reported as
+    having no equivalent).
 12. **Sources untouched**: `find "$PI_DIR" "$UNIPI" -newer "$MIG/discover.txt" -type f | head`
     lists only files written by other running programs (pi/unipi themselves), none by you.
 13. In a fresh interactive `oino`: `/doctor`, `/memory status`, `/skills`, `/agents`,

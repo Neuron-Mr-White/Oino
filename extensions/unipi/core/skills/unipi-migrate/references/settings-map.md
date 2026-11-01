@@ -36,9 +36,10 @@ Sources, in increasing precedence:
 
 Algorithm per namespace `ns`:
 
-1. Skip `ns` when it is not an Oino namespace (`fields.json` from phase 1). Known: `cron`
-   (dropped, no scheduler), `tips` (replaced by `hints`; tip counts do not carry over) — both
-   **not migrated**. `agents` is a profiles dir (state-map §5), not settings.
+1. Skip `ns` when it is not an Oino namespace (`fields.json` from phase 1). Known: `tips`
+   (replaced by `hints`; tip counts do not carry over) — **not migrated**. `agents` is a
+   profiles dir (state-map §5), not settings. `cron` is a namespace: rewrite its keys with
+   §3 (the scheduler block itself is migrated in state-map §6 "Cron").
 2. Load JSON; expand flat dotted keys (`"events.x.enabled": true`) into nested objects.
 3. Apply the §3 rewrites for `ns`.
 4. Flatten to dot keys. Keep a key when it equals a schema field key, is under a field key
@@ -88,6 +89,8 @@ These are the legacy shapes Oino no longer reads. Apply before filtering.
 | `notify` | `$UNIPI/config/notify/ntfy.json` `{enabled, priority, serverUrl, topic, token}` | `ntfy.enabled/priority/serverUrl/topic`, secret `ntfy.token` (config.json values win) |
 | `subagents` | `types.<name>.enabled` | not migrated as a setting; tell the user to toggle the profile in `/agents` |
 | `background-tasks` | `defaultTimeoutSeconds`, `delegate.*`, `fusion.*` | not migrated (no Oino equivalent) |
+| `cron` | `missed_window_s`, `retention_runs`, `retention_days`, `default_time_limit_s`, `notify_default_events` | `missedWindowS`, `retentionRuns`, `retentionDays`, `defaultTimeLimitS`, `notifyDefaultEvents` |
+| `cron` | `ntfy_topic` | not migrated (channels come from the `notify` namespace) |
 | `mcp` | `servers`, `sync.*` | not settings: state file, see state-map §6 |
 | `web-api` | `$UNIPI/config/web-api/auth.json` `{<provider>: "<key>"}` | secret `providers.<provider>.apiKey` |
 

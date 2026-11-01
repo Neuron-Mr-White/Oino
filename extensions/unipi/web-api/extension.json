@@ -6,6 +6,7 @@
   "kind": "extension",
   "description": "web_search, multi_web_content_read and web_llm_summarize: free providers first, TLS-fingerprinted smart fetch with readable markdown extraction, 1 h cache.",
   "license": "MIT",
+  "resources": { "skills": ["skills"] },
   "permissions": {
     "sessionControl": true,
     "network": { "hosts": ["*"], "fingerprint": true },

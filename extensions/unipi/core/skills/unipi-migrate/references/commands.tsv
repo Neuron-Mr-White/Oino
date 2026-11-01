@@ -41,7 +41,7 @@
 /unipi:plan-enter	/plan-enter	hidden runner
 /unipi:goal-start	/goal-start	hidden runner
 /unipi:goal-pause	/goal-pause	hidden runner
-/unipi:hint-reset	/hint-reset	hidden runner
+/unipi:hint-reset	—	removed: hints dropped (D1)
 /unipi:mcp-reload	/mcp-reload	hidden runner
 /unipi:rename-now	/rename-now	hidden runner
 /unipi:subagents	/subagents	
@@ -66,7 +66,7 @@
 /unipi:doctor	/doctor	
 /unipi:answer	/answer	
 /unipi:skills	/skills	
-/unipi:footer	/footer	
+/unipi:footer	—	removed: footer not ported (TUI-only)
 /unipi:readme	/readme	
 /unipi:ralph	/ralph	
 /unipi:swarm	/swarm	
@@ -78,8 +78,8 @@
 /unipi:goal	/goal	
 /unipi:move	/move	
 /unipi:info	/info	
-/unipi:hint	/hint	
-/unipi:cron	—	dropped: no Oino equivalent (cron)
+/unipi:hint	—	removed: hints dropped (D1)
+/unipi:cron	/cron	
 /unipi:btw	/btw	
 /unipi:app	/app	
 /unipi:bg	/bg	

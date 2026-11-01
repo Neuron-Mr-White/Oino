@@ -68,6 +68,9 @@ python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print(sorted(d))' "$P
 python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print({k:v.get("type") for k,v in d.items()})' "$PI_DIR/auth.json"
 python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print({k:(v.get("api"),len(v.get("models",[]))) for k,v in d.get("providers",{}).items()})' "$PI_DIR/models.json"
 ls "$UNIPI"/config "$UNIPI"/global 2>/dev/null; ls "$UNIPI"/config/*/ 2>/dev/null
+ls "$UNIPI"/app-host/cron "$UNIPI"/host/cron 2>/dev/null
+python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print([(j.get("id"),j.get("enabled"),j.get("schedule")) for j in d])' "$UNIPI"/app-host/cron/jobs.json 2>/dev/null || true
+python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("cron"))' "$UNIPI"/app-host/config.json 2>/dev/null || true
 ls "$UNIPI"/memory | head; find "$UNIPI"/memory -name '*.md' | wc -l
 ls "$UNIPI"/kanboard/projects 2>/dev/null; ls "$UNIPI"/skill-vault 2>/dev/null
 ls "$UNIPI"/workspace | wc -l
@@ -158,8 +161,9 @@ re-read on start).
    AGENTS.md / SYSTEM.md / APPEND_SYSTEM.md, trust.
 5. **Sessions** — `references/state-map.md` §1.
 6. **unipi module state** — `references/state-map.md` §3–§8: memory, skill vault and states,
-   subagent profiles, kanboard, long-horizon/ralph, fusion presets, MCP servers, hints,
-   input-shortcut stash, notify, web-api, updater, compactor, watchdog, background tasks.
+   subagent profiles, kanboard, long-horizon/ralph, fusion presets, MCP servers, cron jobs
+   and scheduler settings, hints, input-shortcut stash, notify, web-api, updater, compactor,
+   watchdog, background tasks.
 7. **Projects** — for each project: `.pi/` → `.oino/`, `.unipi/` → `.oino/` and project
    `extensionSettings` (`references/state-map.md` §7).
 8. **Command names** — rewrite `/unipi:*` in user files with `references/commands.tsv`
@@ -193,7 +197,8 @@ PY
 ```
 
 (`$SKILL_DIR` is this skill's directory.) After it, `grep -rn '/unipi:' <same files>` must
-only show `/unipi:cron` (no equivalent: flag it to the user) or nothing.
+only show removed commands (`/unipi:hint`, `/unipi:hint-reset`, `/unipi:footer` — flag them
+to the user as having no Oino equivalent) or nothing.
 
 ## Phase 6 — Verify and report
 
