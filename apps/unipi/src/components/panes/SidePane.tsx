@@ -12,8 +12,9 @@
 import { createSignal, Show } from 'solid-js';
 import { Maximize2, MessagesSquare, Minimize2, PanelRightClose } from 'lucide-solid';
 import { layout } from '../../lib/layout';
-import { panes, type PaneScope, type PaneView } from '../../lib/panes';
-import { paneKind } from '../../lib/panes/kinds';
+import { panes, type PaneScope, type PaneTab, type PaneView } from '../../lib/panes';
+import { confirmCloseMany } from './tabs/terminalClose';
+import { paneKind, tabTitle } from '../../lib/panes/kinds';
 import { modKey } from '../../lib/shell';
 import { SidebarReveal } from '../shell/ConversationHeader';
 import { PaneBody } from './PaneBody';
@@ -56,6 +57,15 @@ export function SidePane(props: {
     store.close(props.scope, 'side', props.view, id);
     if (tabs().length === 0) layout().toggleSide(false);
   };
+  /** Close others / Close all: one ask for every busy terminal (host-reported), then each closed tab's own end (a terminal's shell). */
+  const closeMany = (victims: PaneTab[], done: () => void) =>
+    void confirmCloseMany(
+      victims.map((tab) => ({ tab, title: tabTitle(tab) })),
+      () => {
+        for (const tab of victims) paneKind(tab.kind)?.onUserClose?.(tab);
+        done();
+      },
+    );
   const pick = (spec: LaunchSpec) => {
     store.open(props.scope, 'side', props.view, spec);
     props.onChat(false);
@@ -147,11 +157,13 @@ export function SidePane(props: {
             closed={store.recentlyClosed(props.scope, 'side', props.view)}
             onActivate={activate}
             onClose={close}
-            onCloseOthers={(id) => store.closeOthers(props.scope, 'side', props.view, id)}
-            onCloseAll={() => {
-              store.closeAll(props.scope, 'side', props.view);
-              layout().toggleSide(false);
-            }}
+            onCloseOthers={(id) => closeMany(tabs().filter((t) => t.id !== id), () => store.closeOthers(props.scope, 'side', props.view, id))}
+            onCloseAll={() =>
+              closeMany(tabs(), () => {
+                store.closeAll(props.scope, 'side', props.view);
+                layout().toggleSide(false);
+              })
+            }
             onReopen={(id) => store.reopen(props.scope, 'side', props.view, id)}
             onDismiss={() => setOverview(undefined)}
           />

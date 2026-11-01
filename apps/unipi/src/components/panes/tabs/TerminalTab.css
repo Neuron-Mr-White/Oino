@@ -235,6 +235,8 @@ html:not([data-shell="desktop"]) .term-pane[data-phone] .term-surface { touch-ac
 /* ── Close confirmation (BoardSheet body) ───────────────────────────── */
 .term-close-body { margin: 0 0 16px; font-size: 14px; line-height: 21px; color: var(--color-text-muted); overflow-wrap: anywhere; }
 .term-close-code { padding: 1px 6px; border-radius: 6px; background: var(--color-surface-3); font-family: var(--font-mono); font-size: 12.5px; color: var(--color-cream); }
+.term-close-list { margin: -8px 0 16px; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 21px; color: var(--color-text-muted); }
+.term-close-list li { overflow-wrap: anywhere; }
 
 @media (prefers-reduced-motion: reduce) {
   .term-status, .term-drawer, .term-phone-layer { animation: none; }

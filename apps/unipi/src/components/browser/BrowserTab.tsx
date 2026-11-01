@@ -34,12 +34,29 @@ export function browserTabTitle(page: { url: string; title: string }): string | 
   return displayUrl(page.url) || undefined;
 }
 
+const URL_USED = 'unipi.browserTab.urlUsed';
+/** A tab opened for a link (`params.url`) navigates there once — not again after a reload. */
+export function startUrlOnce(tabId: string, url: unknown): string | undefined {
+  if (typeof url !== 'string' || !url) return undefined;
+  try {
+    const used = new Set<string>(JSON.parse(sessionStorage.getItem(URL_USED) ?? '[]') as string[]);
+    if (used.has(tabId)) return undefined;
+    used.add(tabId);
+    sessionStorage.setItem(URL_USED, JSON.stringify([...used].slice(-50)));
+  } catch {
+    // storage blocked: navigate every open
+  }
+  return url;
+}
+
 export function BrowserTab(props: PaneTabProps) {
   const hosts = useHostsOptional();
   const pane = browserPane();
   const hostId = () => String(props.tab.params?.hostId ?? props.hostId);
   const hostName = () => hosts?.hosts().find((h) => h.id === hostId())?.name ?? 'this PC';
   const key = () => composerKeyOf(hostId(), props.sessionId);
+  // Read once per mount: the viewer reads `url` several times while it opens.
+  const startUrl = startUrlOnce(props.tab.id, props.tab.params?.url);
   /** The shown page's title (names a screenshot). */
   let pageTitle = '';
   return (
@@ -50,6 +67,7 @@ export function BrowserTab(props: PaneTabProps) {
             variant="tab"
             hostId={hostId()}
             hostName={hostName()}
+            url={startUrl}
             profile={pane.profileFor(hostId())}
             onProfile={(name) => pane.setProfileFor(hostId(), name)}
             CommandBox={CommandBoxInline}

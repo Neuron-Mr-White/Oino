@@ -7,8 +7,9 @@
 import { createComputed, createRoot, createSignal, on, onMount, Show } from 'solid-js';
 import { PanelBottomClose } from 'lucide-solid';
 import { layout } from '../../lib/layout';
-import { panes, type PaneScope, type PaneView } from '../../lib/panes';
-import { launchableKinds, paneKind } from '../../lib/panes/kinds';
+import { panes, type PaneScope, type PaneTab, type PaneView } from '../../lib/panes';
+import { confirmCloseMany } from './tabs/terminalClose';
+import { launchableKinds, paneKind, tabTitle } from '../../lib/panes/kinds';
 import { modKey } from '../../lib/shell';
 import { PaneBody } from './PaneBody';
 import { LauncherList, PaneLauncher, type LaunchSpec } from './PaneLauncher';
@@ -34,6 +35,15 @@ export function BottomPanel(props: { scope: PaneScope; view: PaneView; localHost
     store.close(props.scope, 'bottom', props.view, id);
     if (tabs().length === 0) layout().toggleBottom(false);
   };
+  /** Close others / Close all: one ask for every busy terminal (host-reported), then each closed tab's own end (a terminal's shell). */
+  const closeMany = (victims: PaneTab[], done: () => void) =>
+    void confirmCloseMany(
+      victims.map((tab) => ({ tab, title: tabTitle(tab) })),
+      () => {
+        for (const tab of victims) paneKind(tab.kind)?.onUserClose?.(tab);
+        done();
+      },
+    );
   const pick = (spec: LaunchSpec) => void store.open(props.scope, 'bottom', props.view, spec);
   // Cmd/Ctrl+J or the header's Terminal button on an empty panel: a terminal in the session's folder
   // (only when the user just opened it — not when a remembered-open panel mounts on navigation).
@@ -89,11 +99,13 @@ export function BottomPanel(props: { scope: PaneScope; view: PaneView; localHost
             closed={store.recentlyClosed(props.scope, 'bottom', props.view)}
             onActivate={(id) => store.activate(props.scope, 'bottom', props.view, id)}
             onClose={close}
-            onCloseOthers={(id) => store.closeOthers(props.scope, 'bottom', props.view, id)}
-            onCloseAll={() => {
-              store.closeAll(props.scope, 'bottom', props.view);
-              layout().toggleBottom(false);
-            }}
+            onCloseOthers={(id) => closeMany(tabs().filter((t) => t.id !== id), () => store.closeOthers(props.scope, 'bottom', props.view, id))}
+            onCloseAll={() =>
+              closeMany(tabs(), () => {
+                store.closeAll(props.scope, 'bottom', props.view);
+                layout().toggleBottom(false);
+              })
+            }
             onReopen={(id) => store.reopen(props.scope, 'bottom', props.view, id)}
             onDismiss={() => setOverview(undefined)}
           />

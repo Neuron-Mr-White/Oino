@@ -59,7 +59,7 @@ import { diffImeValue, imeInitial } from '../../../lib/ime';
 import { cellAt, clickSequence, scrollStepPx, scrollTargetFor, wheelSequence, arrowSequence, ScrollAccumulator, SCROLL_SLOP_PX } from '../../../lib/termScroll';
 import { termKey, nextFontSize } from '../../../lib/desktop';
 import { copyText } from '../../../lib/board/share';
-import { openLink } from '../../../lib/markdown/links';
+import { openUrlInBrowserTab } from '../../browser/openInBrowserTab';
 import { isTauri, platform } from '../../../lib/platform';
 import { useSettings } from '../../../settings/context';
 import { DEFAULT_SETTINGS, type SettingsV1 } from '../../../settings/schema';
@@ -134,7 +134,8 @@ function createRuntime(tabId: string, hostId: string, cwd: string, where: Where,
   const unicode = new Unicode11Addon();
   term.loadAddon(unicode);
   term.unicode.activeVersion = '11';
-  term.loadAddon(new WebLinksAddon((_event, uri) => void openLink(uri)));
+  // Z-106: http(s) links open in the side Browser tab (the system browser where there is none).
+  term.loadAddon(new WebLinksAddon((_event, uri) => void openUrlInBrowserTab(uri, { hostId })));
   const el = document.createElement('div');
   el.className = 'term-xterm';
   const [status, setStatus] = createSignal<Status>({ kind: 'connecting' });
@@ -142,7 +143,7 @@ function createRuntime(tabId: string, hostId: string, cwd: string, where: Where,
   const rt: Runtime = { tabId, hostId, cwd, where, term, fit, serialize, el, opened: false, tracker, status, setStatus, disposed: false, offBusy: () => {}, phone: false, healed: 0, stickBottom: false };
   rt.offBusy = registerTermBusy(
     tabId,
-    () => ({ running: tracker.isRunning(), hint: tracker.hint(), shell: rt.shell }),
+    () => ({ running: tracker.isRunning(), hint: tracker.hint(), shell: rt.shell, termId: rt.termId, hostId: rt.hostId }),
     () => disposeRuntime(rt, true),
   );
 
