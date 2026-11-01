@@ -458,7 +458,8 @@ impl Subagents {
     #[allow(clippy::too_many_arguments, reason = "unipi manager.start options")]
     async fn start(
         &'static self,
-        cx: &Ctx,
+        _cx: &Ctx,
+        sid: &str,
         title: &str,
         task: &str,
         profile: &Profile,
@@ -466,7 +467,7 @@ impl Subagents {
         resume: Option<&str>,
         graph: bool,
     ) -> std::result::Result<(Record, Rc<Run>), String> {
-        let sid = cx.session_id().to_owned();
+        let sid = sid.to_owned();
         let cfg = self.config();
         let (running, resume_running, prev) = self.sessions.with(&sid, |s| {
             (
@@ -658,9 +659,12 @@ impl Subagents {
         if run.graph {
             let status = rec.as_ref().map_or(Status::Failed, |r| r.status);
             let result = json!({"status": status.as_str(), "text": report.text, "error": report.error, "toolCalls": report.tool_calls, "usage": {"input": report.usage.input, "output": report.usage.output, "cost": report.usage.cost}});
+            // `sessionId` names the owner session the run was recorded under: bus
+            // deliveries swap the receiving handler's session for the publishing one,
+            // which mid-graph is the worker's session, not the lead's (E-02).
             unipi_kit::bus::emit_raw(
                 topics::SUBAGENTS_RUN_DONE,
-                &json!({"runId": id, "result": result}),
+                &json!({"runId": id, "sessionId": sid, "result": result}),
             );
         } else if self.delivery.should_deliver(id) && rec.as_ref().is_none_or(|r| r.background) {
             self.deliver(rec.as_ref(), report).await;
@@ -934,6 +938,7 @@ impl Subagents {
         let (rec, run) = match self
             .start(
                 &cx.cx,
+                cx.cx.session_id(),
                 &title,
                 &task,
                 &profile,
@@ -1674,10 +1679,22 @@ impl Subagents {
 
     async fn graph_run(&'static self, payload: &Value, cx: &Ctx) -> Value {
         let cfg = self.config();
-        if !cfg.enabled || cx.is_child() {
+        if !cfg.enabled {
             return json!({"error": "subagents are disabled in this session"});
         }
-        let sid = cx.session_id();
+        // Graph runs are the long-horizon lead's entries — the only caller of this
+        // service — and they must record under the lead's session. Event-driven
+        // reconciles (run-done, retry timers) can be delivered with a stale nested
+        // session context (E-02: the worker's session contaminated the delivery), so
+        // the lead declares the owner session in the payload; the ambient session is
+        // only the fallback. Long-horizon tools are never registered in child sessions,
+        // so a graph run can never legitimately originate inside one.
+        let sid = payload
+            .get("session")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| cx.session_id())
+            .to_owned();
         let s = |k: &str| {
             payload
                 .get(k)
@@ -1689,10 +1706,10 @@ impl Subagents {
             .get("resume")
             .and_then(Value::as_str)
             .map(ToOwned::to_owned);
-        let profiles = self.sessions.with(sid, |st| st.profiles.clone());
+        let profiles = self.sessions.with(&sid, |st| st.profiles.clone());
         let want = resume
             .as_deref()
-            .and_then(|r| self.record(sid, r))
+            .and_then(|r| self.record(&sid, r))
             .map_or_else(|| s("profile"), |r| r.profile);
         let Some(profile) = profiles.iter().find(|p| p.id == want).cloned() else {
             return json!({"error": format!("unknown subagent profile \"{}\" (available: {})", s("profile"), profiles.iter().map(|p| p.id.as_str()).collect::<Vec<_>>().join(", "))});
@@ -1700,6 +1717,7 @@ impl Subagents {
         match self
             .start(
                 cx,
+                &sid,
                 &s("title"),
                 &s("task"),
                 &profile,

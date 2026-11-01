@@ -56,6 +56,9 @@ pub enum FauxResponse {
         /// Error text.
         error_message: Option<String>,
     },
+    /// A stream that starts and then never produces another event: a wedged run for
+    /// abort tests (E-04: Stop must end the turn even over a run that never settles).
+    Never,
 }
 
 /// Picks a response for a request before the queue is consulted (`None` = use the queue).
@@ -128,6 +131,9 @@ impl FauxProvider {
             AssistantMessage::empty(FAUX_API, &model.provider, &model.id, oino_agent::now_ms());
         let mut events = vec![ProviderEvent::Start {}];
         let (content, stop_reason, usage, error) = match response {
+            FauxResponse::Never => {
+                return vec![ProviderEvent::Start {}];
+            }
             FauxResponse::Text(text) => (
                 vec![AssistantContent::text(text)],
                 StopReason::Stop,

@@ -964,6 +964,12 @@ impl AgentSession {
     }
 
     /// Aborts the current operation and waits for idle.
+    ///
+    /// Abort is unconditional (E-04): pending dialogs are cancelled (a tool future
+    /// waiting for an answer the user will never give must unwind with `Cancelled`),
+    /// running `!` commands are cancelled, and the idle wait is bounded — a wedged
+    /// run must not keep the turn on "Working…" forever; when the bound expires the
+    /// run is forced idle so the turn always ends.
     pub async fn abort(&self) {
         {
             let mut book = lock(&self.inner.book);
@@ -977,8 +983,16 @@ impl AgentSession {
         self.abort_retry();
         self.abort_compaction();
         self.abort_branch_summary();
+        self.abort_bash();
+        self.inner.ui.cancel_all();
         self.inner.agent.abort();
-        self.wait_for_idle().await;
+        if tokio::time::timeout(ABORT_IDLE_BOUND, self.wait_for_idle())
+            .await
+            .is_err()
+        {
+            tracing::warn!("abort: the run did not settle in time; forcing the turn to end");
+            self.inner.idle.send_replace(true);
+        }
     }
 
     /// Cancels the retry wait.
@@ -1215,6 +1229,12 @@ fn convert_with_block_images(settings: Arc<Mutex<SettingsManager>>) -> oino_agen
         converted.into_iter().map(block_images).collect()
     })
 }
+
+use std::time::Duration;
+
+/// How long `abort` waits for the run to settle before forcing the turn to end (E-04:
+/// Stop must always win, even over a tool future that ignores cancellation).
+const ABORT_IDLE_BOUND: Duration = Duration::from_secs(15);
 
 const IMAGE_DISABLED: &str = "Image reading is disabled.";
 

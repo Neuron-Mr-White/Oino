@@ -137,6 +137,11 @@ struct State {
     reported_attention: Vec<String>,
     judge_cache: Option<(String, Mode, f64, i64)>,
     loaded: bool,
+    /// Session that owns the live graph (the lead). Event deliveries and retry timers
+    /// can arrive with a stale nested-session context (E-02), so every graph-run start
+    /// names this session explicitly in the `subagents.graph-run` payload. In-memory
+    /// only: a fresh bind learns it from the parent's `session_start`.
+    graph_session: Option<String>,
 }
 
 /// The extension.
@@ -1437,6 +1442,11 @@ impl Lh {
     }
 
     async fn update_graph(&'static self, args: &Value, cx: &ToolCtx) -> ToolResult {
+        // The calling session owns whatever graph changes follow (tools are not
+        // registered for child sessions; the check keeps a stray delivery honest).
+        if !cx.cx.is_child() {
+            self.state.borrow_mut().graph_session = Some(cx.cx.session_id().to_owned());
+        }
         let given: Vec<&str> = [
             (
                 "add_work",
@@ -1685,7 +1695,10 @@ impl Lh {
         let mut started = Vec::new();
         for (work_id, profile, resume) in runnable {
             let (title, task) = self.run_payload(&work_id);
-            match Self::graph_run(&title, &task, &profile, resume.as_deref()).await {
+            match self
+                .graph_run(&title, &task, &profile, resume.as_deref())
+                .await
+            {
                 Ok(v) if v.get("runId").and_then(Value::as_str).is_some() => {
                     self.state.borrow_mut().graph.started(
                         &work_id,
@@ -1742,7 +1755,11 @@ impl Lh {
     }
 
     /// One `subagents.graph-run` call.
+    /// One `subagents.graph-run` call. The owner session (the lead) is declared in the
+    /// payload so the run records under the lead even when the delivery context is a
+    /// stale nested session (E-02); `None` lets subagents use the ambient session.
     async fn graph_run(
+        &self,
         title: &str,
         task: &str,
         profile: &str,
@@ -1751,6 +1768,9 @@ impl Lh {
         let mut payload = json!({"title": title, "task": task, "profile": profile});
         if let Some(r) = resume {
             payload["resume"] = json!(r);
+        }
+        if let Some(session) = self.state.borrow().graph_session.as_deref() {
+            payload["session"] = json!(session);
         }
         services::call(
             Some(unipi_kit::suite::pkg::SUBAGENTS.id),
@@ -1790,7 +1810,7 @@ impl Lh {
                 .fresh_spawn_once(work_id, &note)
             {
                 let (title, task) = self.run_payload(work_id);
-                match Self::graph_run(&title, &task, profile, None).await {
+                match self.graph_run(&title, &task, profile, None).await {
                     Ok(v) if v.get("runId").and_then(Value::as_str).is_some() => {
                         let op = v["runId"].as_str().unwrap_or_default().to_owned();
                         self.state.borrow_mut().graph.started(work_id, Ok(op));
@@ -1871,6 +1891,16 @@ impl Lh {
         let Some(run) = data.get("runId").and_then(Value::as_str) else {
             return;
         };
+        // The run-done payload names the owner session the run was recorded under;
+        // deliveries can carry a stale nested-session context (E-02), so prefer the
+        // declared owner for the graph runs this settle is about to start.
+        if let Some(owner) = data
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            self.state.borrow_mut().graph_session = Some(owner.to_owned());
+        }
         let r = data.get("result").cloned().unwrap_or_default();
         let error = r.get("error").and_then(Value::as_str);
         let crashed = worker_crashed(error);
@@ -2651,6 +2681,7 @@ impl Lh {
         {
             let mut st = self.state.borrow_mut();
             st.loaded = false;
+            st.graph_session = Some(cx.session_id().to_owned());
             if matches!(
                 ev.get("reason").and_then(Value::as_str),
                 Some("new" | "resume" | "fork")

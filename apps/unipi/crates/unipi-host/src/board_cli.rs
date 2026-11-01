@@ -121,7 +121,10 @@ fn project_add_root(args: &[String]) -> Result<String, String> {
         }
         let value = match value {
             Some(value) => value,
-            None => rest.next().cloned().ok_or_else(|| format!("{flag} needs a value"))?,
+            None => rest
+                .next()
+                .cloned()
+                .ok_or_else(|| format!("{flag} needs a value"))?,
         };
         if flag == "--root" {
             root = Some(value);
@@ -137,7 +140,10 @@ fn project_add_root(args: &[String]) -> Result<String, String> {
 /// # Errors
 ///
 /// `E_SCOPE` / `E_NOT_FOUND` from the scope check.
-pub fn scope_project_root(args: &[String], scope: &crate::fs::FsScope) -> Result<Vec<String>, AppErrorDto> {
+pub fn scope_project_root(
+    args: &[String],
+    scope: &crate::fs::FsScope,
+) -> Result<Vec<String>, AppErrorDto> {
     if !(args.first().is_some_and(|a| a == "project") && args.get(1).is_some_and(|a| a == "add")) {
         return Ok(args.to_vec());
     }
@@ -151,11 +157,18 @@ pub fn scope_project_root(args: &[String], scope: &crate::fs::FsScope) -> Result
             false,
         ));
     }
-    let mut out: Vec<String> = vec!["project".into(), "add".into(), "--root".into(), canon.display().to_string()];
+    let mut out: Vec<String> = vec![
+        "project".into(),
+        "add".into(),
+        "--root".into(),
+        canon.display().to_string(),
+    ];
     let mut rest = args.iter().skip(2);
     while let Some(arg) = rest.next() {
         let (flag, value) = match arg.split_once('=') {
-            Some((flag, value)) if flag.starts_with("--") => (flag.to_owned(), Some(value.to_owned())),
+            Some((flag, value)) if flag.starts_with("--") => {
+                (flag.to_owned(), Some(value.to_owned()))
+            }
             _ => (arg.clone(), None),
         };
         let value = match value {

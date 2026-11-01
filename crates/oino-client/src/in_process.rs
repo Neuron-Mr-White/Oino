@@ -178,6 +178,7 @@ impl Shared {
             follow_up_mode: session.follow_up_mode(),
             session_file: session.session_file().map(|p| p.display().to_string()),
             session_id: session.session_id(),
+            cwd: Some(session.cwd().display().to_string()),
             session_name: session.session_name(),
             auto_compaction_enabled,
             message_count: session.messages().len(),
@@ -271,8 +272,10 @@ impl Shared {
                 data(model)
             }
             AgentCommand::CycleModel => {
+                // E-19: a cycle is a per-session probe, not a choice — the PC's default
+                // model stays (use the picker's `set_model` to change it for real).
                 let result = session
-                    .cycle_model(CycleDirection::Forward, true)
+                    .cycle_model(CycleDirection::Forward, false)
                     .await
                     .map_err(failed)?;
                 data(result)

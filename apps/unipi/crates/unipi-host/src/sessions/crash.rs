@@ -49,6 +49,9 @@ pub enum StartOutcome {
     Success,
     /// The process exited (or died) before that.
     FastFail,
+    /// A clean, intentional exit (SIGTERM / Ctrl+C / a binary-replaced restart):
+    /// not a failure — the app restarting quickly must not trip safe mode (E-10).
+    Stopped,
 }
 
 /// One start record (`{ts, outcome, uptime_s}`).
@@ -172,6 +175,20 @@ impl HostSafeMode {
             ts: now_ms(),
             outcome: StartOutcome::Success,
             uptime_s,
+        });
+        self.save();
+    }
+
+    /// This start ended cleanly (SIGTERM/Ctrl+C, a self-update restart, the app closing):
+    /// release the open marker without converting it into a fast fail (E-10 — the app
+    /// killing its own host during a quick restart is not a crash) and break any
+    /// consecutive-failure streak the way any non-failure end does.
+    pub fn record_stopped(&mut self) {
+        self.history.open_start = None;
+        self.push(StartRecord {
+            ts: now_ms(),
+            outcome: StartOutcome::Stopped,
+            uptime_s: 0,
         });
         self.save();
     }
@@ -373,6 +390,58 @@ mod tests {
         )
         .unwrap();
         assert_eq!(HostSafeMode::load(dir.path()).consecutive_failures(), 1);
+    }
+
+    /// E-10: two quick app restarts kill the host cleanly (SIGTERM before the success
+    /// marker) — a clean stop is not a failed start and must never trip safe mode.
+    #[test]
+    fn clean_quick_restarts_do_not_trip_safe_mode() {
+        use StartOutcome::{FastFail, Stopped};
+        let dir = tempfile::tempdir().unwrap();
+
+        // Restart 1: the host begins, the app closes it before 60 s.
+        let mut first = HostSafeMode::load(dir.path());
+        first.begin_start();
+        first.record_stopped();
+        // Restart 2: same story.
+        let mut second = HostSafeMode::load(dir.path());
+        second.begin_start();
+        second.record_stopped();
+
+        let third = HostSafeMode::load(dir.path());
+        assert_eq!(third.consecutive_failures(), 0);
+        assert!(!third.trips(), "clean quick restarts are not crashes");
+        assert!(!third.plan(Vec::new()).disable_extensions);
+        assert!(read_history(&third.path).open_start.is_none());
+        let outcomes: Vec<StartOutcome> = third
+            .history
+            .starts
+            .iter()
+            .map(|record| record.outcome)
+            .collect();
+        assert_eq!(outcomes, vec![Stopped, Stopped]);
+
+        // A clean stop also breaks a failure streak that preceded it ...
+        std::fs::write(
+            dir.path().join(START_HISTORY_FILE),
+            history_text(&[FastFail, FastFail]),
+        )
+        .unwrap();
+        let mut after_break = HostSafeMode::load(dir.path());
+        assert!(after_break.trips());
+        after_break.begin_start();
+        after_break.record_stopped();
+        assert!(
+            !HostSafeMode::load(dir.path()).trips(),
+            "a clean stop ends the consecutive run"
+        );
+
+        // ... and real crashes after clean restarts still count.
+        let mut crashed = HostSafeMode::load(dir.path());
+        crashed.begin_start();
+        let mut crashed_again = HostSafeMode::load(dir.path());
+        crashed_again.begin_start();
+        assert!(HostSafeMode::load(dir.path()).trips());
     }
 
     #[test]

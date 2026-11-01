@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use oino_extension_api::manifest::Manifest;
 use oino_extension_api::testing::RecordingHostServices;
@@ -468,10 +468,13 @@ async fn subagents_tools_and_prompt() {
             json!({"title": "t", "task": "x", "profile": "subagent_explore"}),
         )
         .await;
+    // The recording host now spawns fake nested agents (one prompt, clean completion):
+    // the run completes with the staged report instead of failing to spawn.
     assert_eq!(
-        failed["isError"], true,
-        "the recording host has no nested agents: {failed}"
+        failed["isError"], false,
+        "the fake nested agent completes: {failed}"
     );
+    assert_eq!(failed["details"]["status"], json!("completed"), "{failed}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -965,4 +968,141 @@ async fn kill_and_restart_restores_extension_state() {
     assert_eq!(status["data"]["leadKey"], "faux/lead");
     assert_eq!(status["data"]["sidekickKey"], "faux/cheap");
     assert_eq!(status["data"]["leadEffort"], "high");
+}
+
+/// E-02 (QA pass 2): a graph with two dependent nodes must run BOTH, and `bg_run` must
+/// keep working in the owner chat afterwards. In the real host the worker's child session
+/// contaminates every extension instance's last-known call context, so the run-done
+/// delivery (and everything it triggers) arrives as a nested session; that used to make
+/// the dependent node's `graph_run` answer "subagents are disabled in this session" and
+/// the child's session shutdown set background-tasks' process-global `shutting_down`
+/// flag — every later bg_run refused until restart.
+///
+/// Here the contamination is reproduced for real: a child `session_start` fires through
+/// the same wasm instances before the first worker settles, and the run-done is then
+/// delivered by the real in-process hub with that child context.
+#[tokio::test(flavor = "multi_thread")]
+async fn graph_runs_two_dependent_nodes_and_bg_run_survives_the_child_session() {
+    let env = Env::new();
+    env.host.stage_agent_reports(vec![
+        "r-mk-a: created a.txt with A".to_owned(),
+        "r-mk-b: created b.txt with AB".to_owned(),
+    ]);
+    let (bg, _) = env.load("background-tasks").await;
+    let (sa, _) = env.load("subagents").await;
+    let (lh, _) = env.load("long-horizon").await;
+    for ext in [&bg, &sa, &lh] {
+        env.event(
+            ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+    }
+    // bg_run works before the graph (sanity for the "after" assertion below).
+    let warm = env
+        .tool(&bg, "bg_run", json!({"name": "warm", "command": "echo warm", "isAgent": false}))
+        .await;
+    assert!(
+        !text_of(&warm).contains("shutting down"),
+        "{}",
+        text_of(&warm)
+    );
+
+    // The worker's child session fires through the SAME instances: from here on, every
+    // instance's last-known context is the nested session (what the real host does).
+    let mut child = env.cx(CallKind::Event);
+    child.is_child = true;
+    child.session_id = "worker-1".into();
+    for ext in [&bg, &sa, &lh] {
+        ext.on_event(
+            EventKind::SessionStart,
+            RawJson::from(json!({"type": "session_start", "reason": "new"})),
+            child.clone(),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("child session start: {e}"));
+    }
+
+    // The lead opens a graph with a dependent node. mk-a starts at once (a spawn was
+    // recorded, under the OWNER session s1).
+    let opened = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({
+                "operation": "add_work",
+                "task": "Two dependent steps",
+                "add_work": [
+                    {"work_id": "mk-a", "instruction": "create a.txt = A", "profile": "subagent_general"},
+                    {"work_id": "mk-b", "instruction": "create b.txt from a.txt + B", "profile": "subagent_general", "input_ids": ["mk-a"]}
+                ]
+            }),
+        )
+        .await;
+    let t = text_of(&opened);
+    assert!(!t.contains("no graph"), "{t}");
+    assert!(!t.contains("subagents are not loaded"), "{t}");
+
+    // mk-a runs and settles on its own; the run-done then arrives (through the real hub)
+    // with the child session context, and mk-b must STILL start — and run to completion.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let spawns = env.host.calls_named("agent_spawn").len();
+        let graph = graph_json(&env);
+        let done = graph["current"]["work"].as_array().is_some_and(|work| {
+            work.iter()
+                .filter(|w| w["workId"] == json!("mk-b"))
+                .all(|w| w["status"] == json!("completed"))
+        });
+        if spawns >= 2 && done {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the dependent node never ran (spawns: {spawns}, graph: {graph})"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let graph = graph_json(&env);
+    for id in ["mk-a", "mk-b"] {
+        let work = graph["current"]["work"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["workId"] == json!(id))
+            .unwrap_or_else(|| panic!("{id} missing: {graph}"));
+        assert_eq!(work["status"], json!("completed"), "{id}: {graph}");
+    }
+
+    // The child session ends (the worker's session shutdown — delivered as a child
+    // context, exactly like the real host does). The owner's bg_run must STILL work.
+    bg.on_event(
+        EventKind::SessionShutdown,
+        RawJson::from(json!({"type": "session_shutdown"})),
+        child,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("child session shutdown: {e}"));
+    let after = env
+        .tool(&bg, "bg_run", json!({"name": "after", "command": "echo after", "isAgent": false}))
+        .await;
+    let t = text_of(&after);
+    assert!(
+        !t.contains("shutting down"),
+        "bg_run must work after a child session ends: {t}"
+    );
+}
+
+/// The graph file on disk (fresh workspace: one directory).
+fn graph_json(env: &Env) -> Value {
+    let ws_dir = env._agent.path().join("state/unipi.long-horizon/workspace");
+    let path = std::fs::read_dir(&ws_dir)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join("graph.json");
+    serde_json::from_slice(&std::fs::read(&path).unwrap_or_default()).unwrap_or(Value::Null)
 }

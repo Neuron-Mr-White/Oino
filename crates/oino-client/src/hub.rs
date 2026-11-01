@@ -470,6 +470,15 @@ impl SessionHub {
         Ok(())
     }
 
+    /// Whether `session_id` is a live runtime of this hub (created or woken here).
+    /// A session created by [`SessionHub::create_session`] is live before its first
+    /// conversation entry writes the file — it has no record yet, so id-based lookups
+    /// that go through [`SessionHub::list`] miss it (E-03).
+    #[must_use]
+    pub async fn is_live(&self, session_id: &str) -> bool {
+        self.inner.state.lock().await.live.contains_key(session_id)
+    }
+
     async fn wake(&self, target: &str) -> Result<Arc<dyn SessionBackend>, ClientError> {
         // The whole wake transition runs under the hub lock: opens, closes and evictions
         // serialise, so two opens of one record never race a lease against each other.

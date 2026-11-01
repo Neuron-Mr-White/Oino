@@ -940,6 +940,10 @@ impl Inner {
                 card.name = session.session_name;
                 card.message_count = session.message_count;
                 card.model = session.model.map(|model| model.id);
+                // The live runtime knows its cwd even before its file exists (E-03).
+                if let Some(cwd) = session.cwd {
+                    card.cwd = cwd;
+                }
             }
         }
         card.state = Self::state_of(&lock(&self.state), &card.session_id, CoreHubState::Live);
@@ -1078,16 +1082,35 @@ impl Inner {
     /// another host is asked to close (core D-TAKEOVER), reloaded here, and the runner it
     /// came from is attached to the result for the stream's `taken_over` notice.
     async fn open(self: &Arc<Self>, target: &str) -> Result<HubSession, HubError> {
-        let record = self.resolve(target).await?;
-        let id = record.info.id.clone();
-        let prior = Self::state_of(&lock(&self.state), &id, record.state);
+        // E-03: a session created in this hub (`session_new`) has no record until its
+        // first conversation entry writes the file, so `resolve` fails while the live
+        // runtime is still wakeable by exact id. Wake it instead of failing the open —
+        // that first send then lands and the file is written. No takeover and no record
+        // state applies: a file-less session has no lease and was never taken over.
+        let record = match self.resolve(target).await {
+            Ok(record) => Some(record),
+            // The resolve error is only reported when the target is not live either.
+            Err(_error) if self.core.is_live(target).await => None,
+            Err(error) => return Err(error),
+        };
+        let id = record
+            .as_ref()
+            .map_or_else(|| target.to_owned(), |record| record.info.id.clone());
+        let prior = Self::state_of(
+            &lock(&self.state),
+            &id,
+            record.as_ref().map_or(CoreHubState::Live, |r| r.state),
+        );
         // Read the previous holder before `core.open` overwrites the advisory metadata with
         // ours: a live holder means this open is a takeover (§8.1); a dead one is a stale
         // lock core reclaims silently (spec-core D-TAKEOVER step 1). A session live in this
         // hub is already ours — nothing to take over.
-        let taken_over = match record.state {
-            CoreHubState::Live => None,
-            _ => lease_holder(&record.info.path).map(|holder| takeover_from(&holder)),
+        let taken_over = match record.as_ref().map(|record| record.state) {
+            Some(CoreHubState::Live) | None => None,
+            Some(_) => {
+                let path = &record.as_ref().expect("record state checked").info.path;
+                lease_holder(path).map(|holder| takeover_from(&holder))
+            }
         };
         if matches!(prior, HubState::Crashed { .. }) {
             // §4.2: "crashed sessions are disposed on next open" — the resume layer repairs
@@ -1115,7 +1138,11 @@ impl Inner {
                 state.states.remove(&id);
             }
         }
-        let cwd = record_cwd(&record, &self.cwd);
+        let cwd = match &record {
+            Some(record) => record_cwd(record, &self.cwd),
+            // No record: the live runtime's own cwd (its header is not written yet).
+            None => self.cwd.clone(),
+        };
         let card = self.card_for(&backend, &cwd).await;
         self.emit(HubEvent::SessionChanged { card: card.clone() });
         Ok(HubSession::new(

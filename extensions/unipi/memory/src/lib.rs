@@ -26,7 +26,7 @@ pub mod search;
 pub mod settings;
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
@@ -197,6 +197,10 @@ struct Sess {
 pub struct Memory {
     settings: Store,
     sessions: SessionMap<Sess>,
+    /// Sessions that already have their wake-up card. Process-level on purpose: the
+    /// card is written exactly once per session even though `session_shutdown` clears
+    /// the per-session state (E-20: re-opening a chat must not append it again).
+    carded: RefCell<HashSet<String>>,
     install: RefCell<Option<Install>>,
     /// Resolved binaries, keyed by the `mempalaceBin` value they were probed for.
     bins: RefCell<Option<(String, Bins)>>,
@@ -908,20 +912,8 @@ impl Memory {
                     }
                 );
                 let _ = ui::status("unipi-memory", Some(&status));
-                if !self
-                    .sessions
-                    .with(&sid, |s| std::mem::replace(&mut s.card_done, true))
-                {
-                    let wake = self.sessions.with(&sid, |s| s.wake_up.clone().flatten());
-                    let mut card = json!({"project": project, "count": count});
-                    if let Some(w) = wake {
-                        card["wakeUp"] = json!(w);
-                    }
-                    if let Some(i) = self.install_issue() {
-                        card["issue"] = json!(i);
-                    }
-                    let _ = session::append_entry(CARD_CUSTOM_TYPE, Some(&card));
-                }
+                // E-20: the session card is written on the session's first real turn
+                // (see `before_agent_start`), never on merely viewing the chat.
             }
             self.replay().await;
             if Journal(&root()).count() > 0 {
@@ -953,9 +945,53 @@ impl Memory {
         });
     }
 
+    /// The once-per-session wake-up card (`unipi-memory-session-card`), written when the
+    /// session runs its first turn rather than on every (re-)open (E-20: repeated views
+    /// used to append the entry again after each close/reopen cycle).
+    async fn append_session_card(&self, cx: &Ctx) {
+        if cx.is_child() || !cx.has_ui() {
+            return;
+        }
+        let sid = cx.session_id();
+        if !self.carded.borrow_mut().insert(sid.to_owned()) {
+            return;
+        }
+        if self
+            .sessions
+            .with(sid, |s| std::mem::replace(&mut s.card_done, true))
+        {
+            return;
+        }
+        let project = Self::project(cx);
+        let count = Self::list(&project).len();
+        // The wake-up summary is computed by the session-start task; wait for it briefly
+        // so the card carries it when it exists.
+        let mut wake = None;
+        if self.cfg().wake_up {
+            for _ in 0..10 {
+                if let Some(w) = self.sessions.with(sid, |s| s.wake_up.clone()) {
+                    wake = w;
+                    break;
+                }
+                timers::sleep(Duration::from_millis(100)).await;
+            }
+        }
+        let mut card = json!({"project": project, "count": count});
+        if let Some(w) = wake {
+            card["wakeUp"] = json!(w);
+        }
+        if let Some(i) = self.install_issue() {
+            card["issue"] = json!(i);
+        }
+        let _ = session::append_entry(CARD_CUSTOM_TYPE, Some(&card));
+    }
+
     async fn before_agent_start(&self, cx: &Ctx) -> Option<Value> {
         let sid = cx.session_id().to_owned();
         self.sessions.with(&sid, |s| s.retro_queued = false);
+        // E-20: the "Memory System Active" card rides the session's first REAL turn —
+        // never a mere view of the chat, which fires `session_start` on every open.
+        self.append_session_card(cx).await;
         if self.sessions.with(&sid, |s| s.recall_done) {
             return None;
         }

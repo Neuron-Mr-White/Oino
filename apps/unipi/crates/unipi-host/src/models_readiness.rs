@@ -171,13 +171,11 @@ enum ProbeShape {
 /// The probe shape for a provider registration, when there is one.
 fn probe_shape(provider: &ProviderRegistration) -> Option<ProbeShape> {
     match provider.api.as_str() {
-        api if api.starts_with("openai") => Some(
-            if provider.id == "openrouter" {
-                ProbeShape::OpenRouterCompletion
-            } else {
-                ProbeShape::OpenAiModels
-            },
-        ),
+        api if api.starts_with("openai") => Some(if provider.id == "openrouter" {
+            ProbeShape::OpenRouterCompletion
+        } else {
+            ProbeShape::OpenAiModels
+        }),
         "anthropic-messages" if provider.id == "anthropic" => Some(ProbeShape::Anthropic),
         // OAuth-refreshed and signed APIs (google, bedrock, azure): no generic probe;
         // readiness stays honestly `unknown`.
@@ -241,9 +239,7 @@ async fn probe_provider(
     };
     match &shape {
         ProbeShape::OpenAiModels => {
-            let mut request = client
-                .get(format!("{base}/models"))
-                .timeout(PROBE_TIMEOUT);
+            let mut request = client.get(format!("{base}/models")).timeout(PROBE_TIMEOUT);
             if let Some(header) = bearer_header(auth.as_ref()) {
                 request = request.header("authorization", header);
             }
@@ -819,7 +815,10 @@ mod tests {
         );
         // openrouter's model lists answer the public catalog for any key, so the probe is a
         // 1-token completion with the key (D-37).
-        let request_line = seen.iter().find(|(name, _)| name == "post").map(|(_, v)| v.clone());
+        let request_line = seen
+            .iter()
+            .find(|(name, _)| name == "post")
+            .map(|(_, v)| v.clone());
         assert_eq!(
             request_line.as_deref(),
             Some("/chat/completions HTTP/1.1"),

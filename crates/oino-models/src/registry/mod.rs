@@ -468,23 +468,42 @@ impl ModelRegistry {
 
     /// Models whose provider has credentials and whose API a provider
     /// component implements (virtual models: provider credentials only).
+    ///
+    /// Duplicates are collapsed within a provider, first occurrence wins: identical
+    /// `(provider, id)` entries, and ids that differ only in case/punctuation (the
+    /// router feed's aliases, e.g. `ollamacloud/deepseek-v4.1-flash` vs
+    /// `ollama-cloud/deepseek-v4.1-flash`) are the same model — the picker and the
+    /// cycle showed them twice (QA pass 2 E-19). Distinct ids that merely share a
+    /// display name stay: they are separate catalog entries.
     #[must_use]
     pub fn available(&self) -> Vec<Model> {
         let state = self.read();
-        let mut available = Vec::new();
+        let mut available: Vec<Model> = Vec::new();
+        let mut seen: Vec<(String, String)> = Vec::new();
         for provider in &state.providers {
             if self.check_plan(&provider.id, &provider.auth).is_none() {
                 continue;
             }
-            available.extend(
-                provider
-                    .models
-                    .iter()
-                    .filter(|m| is_virtual_api(&m.api) || state.route_target(m).is_some())
-                    .cloned(),
-            );
+            for model in &provider.models {
+                if !(is_virtual_api(&model.api) || state.route_target(model).is_some()) {
+                    continue;
+                }
+                let key = Self::model_key(&model.provider, &model.id);
+                if seen.contains(&key) {
+                    continue;
+                }
+                seen.push(key);
+                available.push(model.clone());
+            }
         }
         available
+    }
+
+    /// The dedupe key of an available model: provider plus the id folded to lowercase
+    /// alphanumerics (case/punctuation-only differences are feed aliases of one model).
+    fn model_key(provider: &str, id: &str) -> (String, String) {
+        let folded: String = id.chars().filter(|c| c.is_alphanumeric()).collect();
+        (provider.to_lowercase(), folded.to_lowercase())
     }
 
     /// F i n d.

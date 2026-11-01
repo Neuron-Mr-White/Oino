@@ -623,3 +623,46 @@ async fn session_info_changed_re_emits_the_card_with_the_new_name() {
         assert!(Instant::now() < deadline, "no card carried the new name");
     }
 }
+
+/// E-04: a dialog answer rides the session stream as `SessionCmd{type:
+/// extension_ui_response}` — not an RPC command. The host must hand it to the session's
+/// UI bridge (the tool waiting on the approval card unblocks) instead of rejecting it
+/// as a schema error: "Allow once" then never ran and the turn hung on "Working…".
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn extension_ui_response_reaches_the_session_backend() {
+    let fixture = fixture().await;
+    let mut client = Client::open(
+        &fixture.service,
+        Request::SessionOpen {
+            session: fixture.session_id.clone().try_into().unwrap(),
+            since_seq: None,
+        },
+    );
+    let _ = client.snapshot().await;
+    client
+        .send(&Control::SessionCmd {
+            id: Some(json!("dlg-1")),
+            cmd: json!({"type": "extension_ui_response", "id": "approval-1", "confirmed": true}),
+        })
+        .await;
+    // The correlated reply: ok (the answer was delivered), not a schema rejection.
+    let deadline = Instant::now() + READ_TIMEOUT;
+    loop {
+        let value = tokio::time::timeout_at(deadline.into(), client.json())
+            .await
+            .expect("no reply for the dialog answer");
+        if value
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|t| t == "ok" || t == "err")
+        {
+            assert_eq!(
+                value["type"], "ok",
+                "the answer is delivered, not rejected: {value}"
+            );
+            assert_eq!(value["id"], json!("dlg-1"));
+            break;
+        }
+    }
+    client.close().await;
+}

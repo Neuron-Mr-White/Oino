@@ -746,3 +746,72 @@ async fn abort_settles_with_aborted_and_delivers_queued_steering() {
     let last = session.last_assistant_message().unwrap();
     assert_eq!(last.stop_reason, StopReason::Aborted);
 }
+
+/// E-04: Stop must always end a turn. A dialog the user never answers (the approval
+/// card whose "Allow once" never reached the tool) must not hold the run: abort
+/// cancels pending dialogs, answers them `Cancelled`, and returns even when a run is
+/// wedged (the 15 s force-idle bound).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn abort_cancels_pending_dialogs_and_always_ends_the_turn() {
+    let provider = FauxProvider::new(Vec::new());
+    let session = TestSession {
+        has_ui: true,
+        ..TestSession::default()
+    }
+    .build(Arc::clone(&provider))
+    .await;
+
+    // The wedged approval: a tool/handler waiting for an answer that never comes
+    // (no timeout, no cancel token — exactly the stuck card).
+    let bridge = session.ui();
+    let dialog = tokio::spawn(async move {
+        bridge
+            .dialog(
+                None,
+                "approval",
+                serde_json::from_value(json!({"title": "Allow bg_run once?"})).unwrap(),
+                None,
+            )
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let started = std::time::Instant::now();
+    session.abort().await;
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "abort must not wait on an unanswered dialog"
+    );
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), dialog)
+            .await
+            .unwrap()
+            .unwrap(),
+        oino_core::ui::UiAnswer::Cancelled,
+        "the pending dialog is cancelled"
+    );
+}
+
+/// E-04's hard bound: a run whose provider stream never settles cannot keep the turn
+/// on "Working…" — abort forces the run idle after the bound. Virtual time: the 15 s
+/// bound auto-advances on the paused clock while real time stays tiny.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn abort_forces_a_wedged_run_idle_within_the_bound() {
+    let provider = FauxProvider::new(vec![FauxResponse::Never]);
+    let session = TestSession::default().build(Arc::clone(&provider)).await;
+    session
+        .prompt("hi".into(), PromptOptions::default())
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!session.is_idle(), "the run is wedged (sanity)");
+
+    let started = std::time::Instant::now();
+    session.abort().await;
+    // Virtual time: the 15 s bound auto-advances; real time stays tiny.
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "abort returned (bounded wait)"
+    );
+    assert!(session.is_idle(), "the wedged run was forced idle");
+}

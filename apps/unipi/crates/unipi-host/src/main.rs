@@ -804,13 +804,20 @@ async fn main() -> anyhow::Result<()> {
                 .spawn();
             tracing::info!(relay_only, "host ready");
             // spec-host §4.4: a start that stays up this long is a success and clears the
-            // consecutive-failure counter.
+            // consecutive-failure counter. A clean exit before that (SIGTERM, Ctrl+C, a
+            // binary-replaced restart) records `stopped` instead: the app killing its own
+            // host during a quick restart is not a failed start (E-10).
+            let (safe_stop_tx, safe_stop_rx) = tokio::sync::oneshot::channel::<()>();
             let safe_task = tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(
-                    unipi_host::sessions::crash::FAST_FAIL_SECS,
-                ))
-                .await;
-                safe_mode.record_success(unipi_host::sessions::crash::FAST_FAIL_SECS);
+                let mut safe_mode = safe_mode;
+                tokio::select! {
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(
+                        unipi_host::sessions::crash::FAST_FAIL_SECS,
+                    )) => {
+                        safe_mode.record_success(unipi_host::sessions::crash::FAST_FAIL_SECS);
+                    }
+                    _ = safe_stop_rx => safe_mode.record_stopped(),
+                }
             });
             // A self-update ended the loop early: the binary on disk is the new
             // one, so this process steps aside (the app supervisor respawns it).
@@ -829,7 +836,10 @@ async fn main() -> anyhow::Result<()> {
                 // Stops ticking; running jobs are not killed (the next owner closes them).
                 cron_owner.shutdown();
             }
-            safe_task.abort();
+            // Record the clean stop (bounded: the write is small, but shutdown must not
+            // hang on a stuck fs) before the slower disposal below.
+            let _ = safe_stop_tx.send(());
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), safe_task).await;
             // Dispose the live sessions so extensions see `session_shutdown{quit}` and the
             // single-writer leases are released before this process goes away.
             if let Ok(cards) = hub.list().await {

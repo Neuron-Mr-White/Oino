@@ -150,8 +150,36 @@ fn rooted_in_agent_dir_with(home: Option<&Path>, host: PathBuf, agent_dir: &Path
     }
     match host.strip_prefix(&default) {
         Ok(rest) => agent_dir.join(rest),
-        Err(_) => host,
+        // v2 QA E-20: the memory palace grants (`~/.mempalace`, `~/.config/mempalace`)
+        // follow the host's agent dir of an ISOLATED profile, so it never reads the
+        // user's real palace (nor leaks its memories into QA chats). On a default
+        // install (the agent dir is the default) the user's palace keeps working where
+        // it is; an explicitly configured grant (any other path) is untouched.
+        Err(_) if agent_dir == default => host,
+        Err(_) => match home.filter(|home| is_memory_grant(home, &host)) {
+            // The palace dir is created on demand: the preopen only materializes for
+            // existing dirs.
+            Some(home) => {
+                let name = if host == home.join(".mempalace") {
+                    PathBuf::from("mempalace")
+                } else {
+                    PathBuf::from("mempalace").join("config")
+                };
+                let re_rooted = agent_dir.join(&name);
+                if std::fs::create_dir_all(&re_rooted).is_ok() {
+                    re_rooted
+                } else {
+                    host
+                }
+            }
+            None => host,
+        },
     }
+}
+
+/// Whether `host` is one of the memory extension's default palace grants under `home`.
+fn is_memory_grant(home: &Path, host: &Path) -> bool {
+    host == home.join(".mempalace") || host == home.join(".config").join("mempalace")
 }
 
 /// Refreshes the `/agent` view from the agent dir and returns it.
@@ -452,6 +480,50 @@ mod tests {
         assert_eq!(
             rooted_in_agent_dir_with(None, default_agent.join("cron"), &agent_dir),
             default_agent.join("cron")
+        );
+    }
+
+    /// v2 QA E-20: the memory palace grants follow the host's agent dir for isolated
+    /// profiles (never the user's real palace), and stay put on a default install.
+    #[test]
+    fn memory_palace_grants_follow_the_host_agent_dir() {
+        let home = tempfile::tempdir().unwrap();
+        let palace = home.path().join(".mempalace");
+        let palace_config = home.path().join(".config").join("mempalace");
+        std::fs::create_dir_all(&palace).unwrap();
+        std::fs::create_dir_all(&palace_config).unwrap();
+        let default_agent = home.path().join(".oino");
+        let isolated = tempfile::tempdir().unwrap();
+        let agent_dir = isolated.path().join("agent");
+
+        // Default install: the user's palace keeps working where it is.
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), palace.clone(), &default_agent),
+            palace
+        );
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), palace_config.clone(), &default_agent),
+            palace_config
+        );
+
+        // An isolated profile gets its own palace under the agent dir (created).
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), palace, &agent_dir),
+            agent_dir.join("mempalace")
+        );
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), palace_config, &agent_dir),
+            agent_dir.join("mempalace").join("config")
+        );
+        assert!(agent_dir.join("mempalace").is_dir());
+        assert!(agent_dir.join("mempalace").join("config").is_dir());
+
+        // An explicitly configured palace (any other path) is never re-rooted.
+        let custom = home.path().join("memories");
+        std::fs::create_dir_all(&custom).unwrap();
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), custom.clone(), &agent_dir),
+            custom
         );
     }
 }

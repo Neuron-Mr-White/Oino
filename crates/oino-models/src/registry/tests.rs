@@ -113,6 +113,30 @@ fn availability_needs_credentials_and_an_implementation() {
     assert_eq!(registry.provider_display_name("ollama"), "ollama");
 }
 
+/// QA pass 2 E-19: a feed's alias entries (same model listed under ids that differ
+/// only in case/punctuation, or plain duplicates) must not make the picker and the
+/// cycle show a model twice.
+#[test]
+fn available_collapses_duplicate_and_alias_ids() {
+    let registry = registry(MapEnv::new().with("OPENROUTER_API_KEY", "k"));
+    registry.register_provider("ext.or", openrouter()).unwrap();
+    registry
+        .set_provider_models(
+            "openrouter",
+            &[
+                model("openrouter", "ds/DeepSeek-Flash", "openai-completions"),
+                model("openrouter", "ds/DeepSeek-Flash", "openai-completions"),
+                model("openrouter", "ds/deepseek-flash", "openai-completions"),
+                model("openrouter", "ds/other", "openai-completions"),
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        keys(&registry.available()),
+        vec!["openrouter/ds/DeepSeek-Flash", "openrouter/ds/other"]
+    );
+}
+
 #[test]
 fn dynamic_models_and_cache() {
     let dir = tempfile::tempdir_in(test_tmp()).unwrap();

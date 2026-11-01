@@ -929,6 +929,9 @@ pub struct RpcSessionState {
     pub session_file: Option<String>,
     /// Session id.
     pub session_id: String,
+    /// Session cwd (a session that has not written its file yet still has one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
     /// Display name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_name: Option<String>,

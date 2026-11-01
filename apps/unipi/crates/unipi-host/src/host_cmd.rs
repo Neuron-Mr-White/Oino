@@ -297,11 +297,7 @@ fn with_manifest(mut row: Value, manifest: Option<Value>) -> Value {
 /// Validation is lazy by design: rows answer from the cache; configured-but-unvalidated
 /// providers are probed in the background (the next read sees the answer). `validate: true`
 /// waits for the probes of this call instead — bounded, parallel, once per provider per TTL.
-async fn auth_providers(
-    hub: &Arc<SessionHub>,
-    services: &Services,
-    validate: bool,
-) -> Vec<Value> {
+async fn auth_providers(hub: &Arc<SessionHub>, services: &Services, validate: bool) -> Vec<Value> {
     let (mut rows, to_probe) = provider_rows(hub, &services.models);
     if to_probe.is_empty() {
         return rows;
@@ -354,7 +350,10 @@ fn provider_rows(
         };
         let mut row = serde_json::to_value(&info).unwrap_or(Value::Null);
         if let Some(object) = row.as_object_mut() {
-            let configured = object.get("configured").and_then(Value::as_bool).unwrap_or(false);
+            let configured = object
+                .get("configured")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             match hub.readiness().get(&id) {
                 Some(readiness) => {
                     object.insert("state".into(), json!(readiness.state.as_str()));
@@ -364,7 +363,10 @@ fn provider_rows(
                     );
                     object.insert(
                         "reason".into(),
-                        json!(readiness_reason(readiness.state, readiness.detail.as_deref())),
+                        json!(readiness_reason(
+                            readiness.state,
+                            readiness.detail.as_deref()
+                        )),
                     );
                     if let Some(detail) = &readiness.detail {
                         object.insert("detail".into(), json!(detail));
@@ -375,7 +377,11 @@ fn provider_rows(
                     );
                 }
                 None => {
-                    let state = if configured { "unknown" } else { "not_configured" };
+                    let state = if configured {
+                        "unknown"
+                    } else {
+                        "not_configured"
+                    };
                     object.insert("state".into(), json!(state));
                     if configured && crate::models_readiness::probeable(&registration) {
                         to_probe.push(id);
@@ -394,7 +400,10 @@ fn provider_rows(
 }
 
 /// One line of "why not ready" for a provider row (D-37: no more `Ready` on a dead key).
-fn readiness_reason(state: crate::models_readiness::ReadinessState, detail: Option<&str>) -> String {
+fn readiness_reason(
+    state: crate::models_readiness::ReadinessState,
+    detail: Option<&str>,
+) -> String {
     let detail = detail.unwrap_or_default();
     match state {
         crate::models_readiness::ReadinessState::Ready => "the key works".to_owned(),
@@ -418,7 +427,10 @@ fn readiness_reason(state: crate::models_readiness::ReadinessState, detail: Opti
 /// `default_model` (D-01): the model `session_new` will start on, the source of the choice
 /// and why the configured default (when there is one) was not used — so the draft chip shows
 /// what the first send will actually use, or says why it cannot.
-async fn default_model_reply(hub: &Arc<SessionHub>, services: &Arc<Services>) -> Result<Value, AppErrorDto> {
+async fn default_model_reply(
+    hub: &Arc<SessionHub>,
+    services: &Arc<Services>,
+) -> Result<Value, AppErrorDto> {
     // A snapshot, not the lock: the chooser awaits probes and the guard must not cross one.
     let settings = services
         .settings

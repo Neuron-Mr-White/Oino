@@ -437,3 +437,33 @@ async fn fork_keeps_the_original_wired_to_its_own_runtime() {
     let b_file_after = std::fs::read_to_string(b_state.session_file.unwrap()).unwrap();
     assert_eq!(b_file_after, b_file, "the fork's file must not change");
 }
+
+/// E-03: a session created here (`session_new`) has no record until its first
+/// conversation entry writes the file. Opening it by id before that first send must
+/// wake the same live runtime instead of failing with "No session found matching"
+/// (the app's "Couldn't open this session" on the first `/graph` message).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn open_before_first_write_wakes_the_created_session() {
+    let fixture = hub_with(vec![FauxResponse::Text("graph reply".into())]);
+    let hub = &fixture.hub;
+
+    // A fresh chat: the runtime exists, no session file yet.
+    let fresh = hub.create_session(None, None).await.unwrap();
+    let id = fresh.session_id();
+    assert!(hub.card(&id).await.unwrap().is_none(), "no record yet");
+
+    // The app's first send opens the session by id (a new stream): the same live
+    // runtime comes back, and the turn lands and writes the file.
+    let reopened = hub.open(&id).await.expect("a live file-less session opens");
+    assert_eq!(reopened.session_id(), id);
+    prompt(&reopened, "hi").await;
+    wait_text(&reopened).await;
+    wait_idle(&reopened).await;
+    let card = hub
+        .card(&id)
+        .await
+        .expect("card lookup")
+        .expect("the record exists after the first entry");
+    assert!(Path::new(&card.file).is_file(), "{}", card.file.display());
+    assert_eq!(card.cwd, fixture._dir.path().display().to_string());
+}

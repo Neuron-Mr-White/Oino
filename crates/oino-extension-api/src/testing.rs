@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use futures::channel::oneshot;
+use futures::stream::{self, BoxStream};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -22,7 +23,8 @@ use crate::registry::{
     ToolSpec,
 };
 use crate::runtime::{
-    BoxFut, ExtensionInstance, ExtensionRuntime, HostServices, LoadedPackage, ProviderInstance,
+    AgentHandle, BoxFut, ExtensionInstance, ExtensionRuntime, HostServices, LoadedPackage,
+    ProviderInstance,
 };
 use crate::types::{CallContext, ExtensionError, ExtensionId, HostError};
 
@@ -55,6 +57,8 @@ pub struct RecordingHostServices {
     panels: Mutex<u32>,
     /// Extension settings layers: `(scope, namespace)` → values object.
     ext_settings: Mutex<BTreeMap<(String, String), Value>>,
+    /// Report texts of spawned fake agents, oldest first (default: `done`).
+    agent_reports: Mutex<VecDeque<String>>,
 }
 
 /// Sets dot path `key` in `target` (`None` removes it).
@@ -195,6 +199,11 @@ impl RecordingHostServices {
     /// Sets a CLI flag value.
     pub fn set_flag(&self, name: &str, value: Value) {
         guard(&self.flags).insert(name.to_owned(), RawJson::from(value));
+    }
+
+    /// Stages the report texts of the next spawned fake agents (`done` by default).
+    pub fn stage_agent_reports(&self, reports: Vec<String>) {
+        *guard(&self.agent_reports) = reports.into_iter().collect();
     }
 }
 
@@ -578,6 +587,102 @@ impl HostServices for RecordingHostServices {
     ) -> BoxFut<'_, Result<RawJson, HostError>> {
         self.record("service_call", Some(ext), json!({"target": target.map(ToString::to_string), "name": name, "payload": payload.to_value()}));
         Box::pin(async { Err(HostError::NotFound("service".into())) })
+    }
+
+    fn agent_spawn(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        spec: RawJson,
+    ) -> BoxFut<'_, Result<Arc<dyn AgentHandle>, HostError>> {
+        self.record(
+            "agent_spawn",
+            Some(ext),
+            json!({"spec": spec.to_value(), "session": cx.session_id}),
+        );
+        let text = guard(&self.agent_reports)
+            .pop_front()
+            .unwrap_or_else(|| "done".to_owned());
+        Box::pin(async move { Ok(Arc::new(FakeAgent::new(text)) as Arc<dyn AgentHandle>) })
+    }
+}
+
+/// A nested agent double: one prompt, two lifecycle events, then the stream ends — the
+/// minimal shape `drive`-style consumers (run → settle → run-done) need.
+struct FakeAgent {
+    id: String,
+    text: String,
+}
+
+impl FakeAgent {
+    fn new(text: String) -> Self {
+        Self {
+            id: format!("fake-{}", uuid_like()),
+            text,
+        }
+    }
+}
+
+fn uuid_like() -> u128 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos())
+}
+
+impl AgentHandle for FakeAgent {
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    fn session_file(&self) -> Option<String> {
+        None
+    }
+
+    fn prompt(
+        &self,
+        _text: String,
+        _delivery: Option<String>,
+    ) -> BoxFut<'_, Result<String, HostError>> {
+        Box::pin(async { Ok("started".to_owned()) })
+    }
+
+    fn steer(&self, _text: String) -> BoxFut<'_, Result<(), HostError>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn follow_up(&self, _text: String) -> BoxFut<'_, Result<(), HostError>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn abort(&self) {}
+
+    fn set_thinking(&self, level: &str) -> Result<String, HostError> {
+        Ok(level.to_owned())
+    }
+
+    fn last_assistant_text(&self) -> Option<String> {
+        Some(self.text.clone())
+    }
+
+    fn wait_idle(&self) -> BoxFut<'_, Result<(), HostError>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn usage(&self) -> RawJson {
+        RawJson::from(json!({"input": 0, "output": 0, "cost": 0.0}))
+    }
+
+    fn events(&self) -> BoxStream<'static, String> {
+        let id = self.id.clone();
+        Box::pin(stream::iter(vec![
+            json!({"type": "agent_start", "id": id}).to_string(),
+            json!({"type": "agent_end", "id": id}).to_string(),
+        ]))
+    }
+
+    fn close(&self, _grace: Duration) -> BoxFut<'_, ()> {
+        Box::pin(async {})
     }
 }
 

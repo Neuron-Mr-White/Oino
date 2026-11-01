@@ -203,6 +203,22 @@ impl Env {
             .path()
             .join("state/unipi.memory/global/memory/unipi")
     }
+
+    /// One extension event in session `s1`.
+    async fn event(&self, ext: &Arc<dyn ExtensionInstance>, kind: EventKind, payload: Value) {
+        ext.on_event(kind, RawJson::from(payload), self.cx(CallKind::Event))
+            .await
+            .unwrap();
+    }
+
+    /// How many wake-up cards were appended to the session file.
+    fn cards(&self) -> usize {
+        self.host
+            .calls_named("session_write")
+            .iter()
+            .filter(|c| c.detail["appendEntry"] == json!("unipi-memory-session-card"))
+            .count()
+    }
 }
 
 /// All text of a node tree (the rows the frontend would draw).
@@ -345,4 +361,30 @@ async fn memory_panel_spec_uses_known_node_kinds() {
     assert!(text.contains("\"t\":\"List\""), "{text}");
     assert!(text.contains("\"t\":\"Button\""), "{text}");
     assert!(text.contains("\"t\":\"KeyHints\""), "{text}");
+}
+
+/// E-20: opening (and re-opening) a chat must not append the wake-up card — it is
+/// written once, when the session runs its first real turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn session_card_is_written_once_on_a_real_turn_never_on_view() {
+    let env = Env::new();
+    let ext = env.load().await;
+    let start = json!({"type": "session_start", "reason": "startup"});
+    let turn = json!({"type": "before_agent_start"});
+
+    // View the chat: opens fire `session_start` — no entries.
+    env.event(&ext, EventKind::SessionStart, start.clone()).await;
+    env.event(&ext, EventKind::SessionShutdown, json!({"type": "session_shutdown"})).await;
+    env.event(&ext, EventKind::SessionStart, start.clone()).await;
+    assert_eq!(env.cards(), 0, "viewing a chat must not write entries");
+
+    // The first real turn writes exactly one card.
+    env.event(&ext, EventKind::BeforeAgentStart, turn.clone()).await;
+    assert_eq!(env.cards(), 1);
+
+    // Close and re-open, then another turn: still one card for this session.
+    env.event(&ext, EventKind::SessionShutdown, json!({"type": "session_shutdown"})).await;
+    env.event(&ext, EventKind::SessionStart, start).await;
+    env.event(&ext, EventKind::BeforeAgentStart, turn).await;
+    assert_eq!(env.cards(), 1, "re-opening a chat must not repeat the card");
 }

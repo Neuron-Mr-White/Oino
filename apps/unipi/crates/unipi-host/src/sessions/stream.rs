@@ -47,6 +47,7 @@ use tokio::task::JoinHandle;
 use oino_client::backend::SessionBackend;
 use oino_client::protocol::{AgentCommand, RpcCommand, RpcRequest, RpcSessionState};
 use oino_core::events::ClientEvent;
+use oino_core::ui::UiResponse;
 use oino_ui::slot::UiCapabilities;
 use unipi_proto::{
     AppErrorCode, AppErrorDto, Control, HubEvent as WireHubEvent, NoticeLevel, Request, RunState,
@@ -1046,6 +1047,28 @@ where
                             flush_batch(write, &mut batch, &mut seen_through).await?;
                             flush_at = None;
                             write_json(write, &SessionReply::ok(id, Some(reply))).await?;
+                            continue;
+                        }
+                        // E-04: a dialog answer (`extension_ui_response`) is not an RPC
+                        // command — it rides the same stream as one and must reach the
+                        // waiting tool instead of dying as a schema rejection (the
+                        // approval card's "Allow once" then never ran and the turn hung
+                        // on "Working…" until restart).
+                        if cmd.get("type").and_then(Value::as_str) == Some("extension_ui_response")
+                        {
+                            let reply = match serde_json::from_value::<UiResponse>(cmd) {
+                                Ok(response) => {
+                                    session.backend().ui_respond(response);
+                                    SessionReply::ok(id, None)
+                                }
+                                Err(error) => SessionReply::failed(
+                                    id,
+                                    AppErrorDto::new(AppErrorCode::E_SCHEMA, error.to_string(), false),
+                                ),
+                            };
+                            flush_batch(write, &mut batch, &mut seen_through).await?;
+                            flush_at = None;
+                            write_json(write, &reply).await?;
                             continue;
                         }
                         match RpcRequest::from_value(cmd) {

@@ -853,6 +853,20 @@ impl Bg {
         }
     }
 
+    /// A nested session's end: stop its own tasks (per-session cleanup) but leave the
+    /// process-global shutdown state alone — a worker session finishing is not "Oino
+    /// shutting down" (E-02: the subagent session's shutdown made every later `bg_run`
+    /// in the owner chat refuse to start until restart).
+    async fn on_child_shutdown_event(&self, cx: &Ctx) {
+        let (_, failures) = self.stop_all(cx, Some(SHUTDOWN_REASON)).await;
+        if !failures.is_empty() && cx.has_ui() {
+            let _ = ui::notify(
+                &format!("Background task cleanup failed:\n{}", failures.join("\n")),
+                "error",
+            );
+        }
+    }
+
     fn on_tick(&self, cx: &Ctx) {
         let (open, any_running) = (
             self.sessions.with(cx.session_id(), |s| s.tray_open),
@@ -1115,7 +1129,11 @@ impl Extension for Bg {
             text::pending_wake_reason(&ext.snapshots(&cx))
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
-            ext.shutting_down.set(false);
+            // A nested session starting neither restores owner state nor clears the
+            // owner lifecycle flag (E-02: the flag must survive worker churn).
+            if !cx.is_child() {
+                ext.shutting_down.set(false);
+            }
             ext.restore_local_state(&cx);
             ext.publish(&cx);
             Ok(())
@@ -1127,7 +1145,11 @@ impl Extension for Bg {
             Ok(())
         });
         cx.on(EventKind::SessionShutdown, |ext, _ev, cx| async move {
-            ext.on_shutdown_event(&cx).await;
+            if cx.is_child() {
+                ext.on_child_shutdown_event(&cx).await;
+            } else {
+                ext.on_shutdown_event(&cx).await;
+            }
             Ok(())
         });
         cx.on(EventKind::OinoTask, |ext, ev, cx| async move {
