@@ -14,7 +14,7 @@ import { createMockHost, type MockWorld } from '../../dev/mock/host';
 import { setHostClientFactory } from '../../lib/host/factory';
 import type { SessionSnapshot } from '../../lib/host/client';
 import { resetLayout, setDesktopOverride } from '../../lib/layout';
-import { launchableKinds, paneKind, setPaneComponent } from '../../lib/panes/kinds';
+import { launchableKinds, paneKind, registerPaneKind, setPaneComponent } from '../../lib/panes/kinds';
 import { panes, resetPanes } from '../../lib/panes';
 import { setPlatformOverride } from '../../lib/platform';
 import { resetSessions, sessions, type SessionHandle } from '../../lib/session/store';
@@ -201,12 +201,12 @@ describe('U12 reserved gates (§8 rule 2)', () => {
 
   it('a row whose pane view is not in this build falls back instead of routing', () => {
     allOwnersOn();
-    // Browser (B8) and terminal (A29) register their pane component later; until
-    // then the entry is not routed and its owner tree renders (§8 rule 3).
-    expect(paneKind('browser')?.component).toBeUndefined();
+    // Terminal (A29) registers its pane component later; until then the entry is not
+    // routed and its owner tree renders (§8 rule 3). Browser (B8) is plugged in.
     expect(paneKind('terminal')?.component).toBeUndefined();
-    expect(isReservedPaneEntry(reserved('unipi.browser/browser', 'browser', 'sidePane', 'browser fallback'))).toBe(false);
     expect(isReservedPaneEntry(reserved('host/terminal', 'terminal', 'bottomPane', 'terminal fallback'))).toBe(false);
+    expect(paneKind('browser')?.component).toBeTruthy();
+    expect(isReservedPaneEntry(reserved('unipi.browser/browser', 'browser', 'sidePane', 'browser fallback'))).toBe(true);
     // The turn footer renders in place: A27 registered its native body, so the
     // row is routed (the component itself hides on a turn without files).
     expect(reservedGate('unipi.file-summary/turn-files')).toBe(true);
@@ -294,9 +294,16 @@ describe('U12 openPanel focuses the native view', () => {
 
   it('a row the build does not implement is left to its fallback tree', () => {
     allOwnersOn();
-    const browserRow = reserved('unipi.browser/browser', 'browser', 'sidePane', 'browser fallback');
-    expect(isReservedPaneEntry(browserRow)).toBe(false);
-    expect(focusReservedEntry(browserRow, { hostId: HOST, navigate: () => undefined })).toBe(false);
+    // A build without the Browser view (WP-B8 plugs one in): the row stays on its fallback.
+    const browser = paneKind('browser')!;
+    const restore = registerPaneKind({ ...browser, component: undefined });
+    try {
+      const browserRow = reserved('unipi.browser/browser', 'browser', 'sidePane', 'browser fallback');
+      expect(isReservedPaneEntry(browserRow)).toBe(false);
+      expect(focusReservedEntry(browserRow, { hostId: HOST, navigate: () => undefined })).toBe(false);
+    } finally {
+      restore();
+    }
   });
 
   it('a reserved page row opened with `focus` navigates once (openPanel)', async () => {

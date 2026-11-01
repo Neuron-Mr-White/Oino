@@ -13,7 +13,7 @@
  * A kind without a component is never offered by the launcher and a
  * persisted tab of it renders the "not available" state.
  */
-import { createSignal, type Component } from 'solid-js';
+import { createSignal, lazy, type Component } from 'solid-js';
 import { Bot, FileDiff, FolderTree, GitBranch, Globe, Image, ListTree, MessageSquareText, Plug, Puzzle, SquareTerminal } from 'lucide-solid';
 import { reservedGate } from '../../ui/slots/reserved';
 import { setPaneRules, type KindRule, type PaneArea, type PaneTab } from '../panes';
@@ -119,3 +119,6 @@ setPaneRules((kind) => kinds()[kind]);
 // append-only registration point). This module must not import them: the tab
 // modules reach the side pane and the shown workspace, which import this
 // registry.
+
+// WP-B8: the Browser tab (loaded on first show).
+setPaneComponent('browser', lazy(() => import('../../components/browser/BrowserTab')));

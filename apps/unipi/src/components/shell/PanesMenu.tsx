@@ -22,6 +22,7 @@ import { setFilesTarget } from '../../lib/filesTarget';
 import { openStatusSection } from '../status/StatusPane';
 import { openBtwTab, openTreeTab } from '../panes/tabs/sessionTabs';
 import { PhonePanesGroup } from '../../ui/slots/paneTabs';
+import { openPhoneBrowser } from '../browser/phoneLayer';
 import type { UiRegistry } from '../../ui/registry';
 
 type OpenCtx = { hostId: string; sessionId?: string; cwd?: string; navigate: (to: string) => void };
@@ -39,6 +40,7 @@ const PHONE_OPENERS: Record<string, (ctx: OpenCtx) => void> = {
   btw: (c) => {
     if (c.sessionId) openBtwTab({ hostId: c.hostId, sessionId: c.sessionId, cwd: c.cwd });
   },
+  browser: (c) => openPhoneBrowser(c.hostId), // WP-B8: the full-height browser sheet
 };
 
 /** Registers a phone surface for a launchable kind (wave-3: terminal, browser). */
