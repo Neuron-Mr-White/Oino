@@ -264,11 +264,22 @@ impl NotifyConfig {
 }
 
 /// unipi `DEFAULT_CONFIG` as settings JSON (+ ntfy defaults).
+///
+/// Owner ruling 2026-11-02: `input_needed` and `agent_settled` are **on by
+/// default, platform `ntfy` only** — that platform names the host's E2E phone
+/// push (the host owns it, see `unipi-host` `notify.rs`), so a paired phone
+/// gets needs-you/finished pushes with zero configuration while the desktop
+/// surfaces stay quiet (the plain ntfy account is off unless the user's wizard
+/// turns it on; `ntfy` in a platform list is filtered by `ntfy.enabled`).
 pub(crate) fn defaults() -> Value {
     let mut events = Map::new();
     for e in EVENTS {
-        let on = matches!(e, "ralph_loop_end" | "mcp_server_error");
-        events.insert(e.to_owned(), json!({"enabled": on, "platforms": []}));
+        let (on, platforms) = match e {
+            "input_needed" | "agent_settled" => (true, vec!["ntfy"]),
+            "ralph_loop_end" | "mcp_server_error" => (true, vec![]),
+            _ => (false, vec![]),
+        };
+        events.insert(e.to_owned(), json!({"enabled": on, "platforms": platforms}));
     }
     json!({
         "defaultPlatforms": ["native"],
@@ -667,7 +678,18 @@ mod tests {
         assert!(c.event("ralph_loop_end").is_some_and(|e| e.enabled));
         assert!(c.event("mcp_server_error").is_some_and(|e| e.enabled));
         assert!(c.event("agent_end").is_some_and(|e| !e.enabled));
-        assert!(c.event("input_needed").is_some_and(|e| !e.enabled));
+        // Owner ruling 2026-11-02: needs-you and run-finished are on by
+        // default, ntfy-only (the host's E2E phone push surface).
+        assert!(c.event("input_needed").is_some_and(|e| e.enabled));
+        assert!(
+            c.event("input_needed")
+                .is_some_and(|e| e.platforms == ["ntfy"])
+        );
+        assert!(c.event("agent_settled").is_some_and(|e| e.enabled));
+        assert!(
+            c.event("agent_settled")
+                .is_some_and(|e| e.platforms == ["ntfy"])
+        );
         assert!(c.native.enabled);
         assert_eq!(c.gotify.priority, 5);
         assert_eq!(c.ntfy.priority, 3);

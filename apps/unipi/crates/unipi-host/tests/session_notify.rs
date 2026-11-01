@@ -103,6 +103,17 @@ impl Fixture {
         fixture
     }
 
+    /// Owner ruling 2026-11-02: writes a paired phone into `devices.json`, so
+    /// the default-on pushes (`input_needed`/`agent_settled`) fire even with
+    /// an empty explicit matrix.
+    fn pair_phone(&self) {
+        std::fs::write(
+            self.host_data.join("devices.json"),
+            r#"[{"id":"ph1","name":"Pixel","paired_at":1}]"#,
+        )
+        .unwrap();
+    }
+
     /// Writes the notify extension's settings block: ntfy on (pointing at
     /// `server`), plus `events` toggles.
     fn configure(&self, server: &str, events: &str) {
@@ -251,17 +262,17 @@ async fn wait_for_card(hub: &Arc<SessionHub>, sid: &str) -> unipi_host::sessions
     panic!("card never appeared for {sid}");
 }
 
-/// Dialogs: `needs_you` flips on the card, and the push that leaves is the full
-/// old-unipi shape — `unipi1:` envelope (decryptable with the host's key,
+/// Dialogs: `needs_you` flips on the card, and — with a paired phone and no
+/// user configuration — the default-on `input_needed` push leaves in the full
+/// old-unipi shape: `unipi1:` envelope (decryptable with the host's key,
 /// carrying `kind`/`host`/`session`/`options`) plus the `unipi://s/…` `click`.
 #[tokio::test]
 async fn dialog_open_flips_needs_you_and_pushes_e2e_with_deep_link() {
     let (server, seen) = fake_ntfy().await;
     let fixture = Fixture::new();
-    fixture.configure(
-        &server,
-        r#"{"input_needed":{"enabled":true,"platforms":[]}}"#,
-    );
+    fixture.pair_phone();
+    // No event matrix at all: the owner ruling's default-on applies.
+    fixture.configure(&server, "{}");
     let _env = EnvGuard::set(&[
         (
             notify::UNIPI_NOTIFY_CONFIG_ENV,
@@ -316,12 +327,47 @@ async fn dialog_open_flips_needs_you_and_pushes_e2e_with_deep_link() {
     assert_eq!(seen.lock().unwrap().len(), 1);
 }
 
+/// No phone paired: the default-on matrix sends nothing, but the card's
+/// `needs_you` (UI state, not push) still flips.
+#[tokio::test]
+async fn unpaired_phone_sends_nothing_but_needs_you_still_flips() {
+    let (server, seen) = fake_ntfy().await;
+    let fixture = Fixture::new(); // no devices, no endpoints
+    fixture.configure(&server, "{}");
+    let _env = EnvGuard::set(&[
+        (
+            notify::UNIPI_NOTIFY_CONFIG_ENV,
+            fixture.settings.as_os_str().to_owned(),
+        ),
+        (
+            notify::UNIPI_NOTIFY_ENDPOINTS_ENV,
+            fixture.endpoints.as_os_str().to_owned(),
+        ),
+    ]);
+    let hub = fixture.hub();
+    let session = create(&hub).await;
+    prime(&hub, &session).await;
+    let sid = session.session_id();
+
+    notify::on_session_event(
+        &hub,
+        &fixture.paths(),
+        &dialog("d-1", "input", serde_json::json!({"title": "Name?"})),
+        &sid,
+    )
+    .await;
+    assert!(wait_for_card(&hub, &sid).await.needs_you);
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    assert_eq!(seen.lock().unwrap().len(), 0, "no phone paired: no push");
+}
+
 /// Rapid successive dialogs de-duplicate to one push (unipi `PROMPT_DEDUP_MS`),
 /// and `needs_you` only clears when the *last* dialog closes.
 #[tokio::test]
 async fn overlapping_dialogs_dedup_pushes_and_keep_needs_you_until_the_last_closes() {
     let (server, seen) = fake_ntfy().await;
     let fixture = Fixture::new();
+    fixture.pair_phone();
     fixture.configure(&server, r#"{"input_needed":{"enabled":true}}"#);
     let _env = EnvGuard::set(&[
         (
@@ -357,17 +403,17 @@ async fn overlapping_dialogs_dedup_pushes_and_keep_needs_you_until_the_last_clos
     assert!(!wait_for_card(&hub, &sid).await.needs_you);
 }
 
-/// The settle push respects the matrix: `agent_settled` on → one push with the
-/// session's name in the body; everything off → silence.
+/// The settle push respects the matrix: defaults (paired phone) push
+/// `agent_settled` once even with `agent_end` also on; an explicit off matrix
+/// sends nothing.
 #[tokio::test]
 async fn settle_pushes_once_and_only_when_enabled() {
     let (server, seen) = fake_ntfy().await;
     let fixture = Fixture::new();
-    // agent_settled on, agent_end on too — still exactly one "finished".
-    fixture.configure(
-        &server,
-        r#"{"agent_settled":{"enabled":true},"agent_end":{"enabled":true}}"#,
-    );
+    fixture.pair_phone();
+    // No agent_settled switch (default on); agent_end explicitly on too —
+    // still exactly one "finished".
+    fixture.configure(&server, r#"{"agent_end":{"enabled":true,"platforms":[]}}"#);
     let _env = EnvGuard::set(&[
         (
             notify::UNIPI_NOTIFY_CONFIG_ENV,
@@ -393,9 +439,7 @@ async fn settle_pushes_once_and_only_when_enabled() {
     assert_eq!(payload["title"], "Oino — Agent Complete");
     assert_eq!(payload["body"], "Agent is complete");
 
-    // A second settle does not duplicate within the same fan-out window
-    // (one notification per run): it pushes again only for a *new* run —
-    // the matrix is the gate, so a disabled matrix sends nothing at all.
+    // An explicit off matrix silences the default, paired or not.
     let (server2, seen2) = fake_ntfy().await;
     fixture.configure(
         &server2,
@@ -406,14 +450,15 @@ async fn settle_pushes_once_and_only_when_enabled() {
     assert_eq!(seen2.lock().unwrap().len(), 0, "disabled matrix: no push");
 }
 
-/// `notify_user` tool calls push their message when the explicit platforms
-/// (or the `defaultPlatforms` fallback) include ntfy; otherwise not.
+/// `notify_user` tool calls push their message to the paired phone whatever
+/// platforms the tool picked (the platforms route the other surfaces); with no
+/// phone paired nothing is sent.
 #[tokio::test]
-async fn notify_user_tool_pushes_by_its_platforms() {
+async fn notify_user_tool_pushes_to_the_paired_phone_by_default() {
     let (server, seen) = fake_ntfy().await;
     let fixture = Fixture::new();
-    // defaultPlatforms = ntfy (configured above in `configure`).
-    fixture.configure(&server, r#"{}"#);
+    fixture.pair_phone();
+    fixture.configure(&server, "{}");
     let _env = EnvGuard::set(&[
         (
             notify::UNIPI_NOTIFY_CONFIG_ENV,
@@ -447,9 +492,7 @@ async fn notify_user_tool_pushes_by_its_platforms() {
     assert_eq!(payload["title"], "Nightly");
     assert_eq!(payload["body"], "build finished");
 
-    // Explicit native-only platforms → no phone push.
-    let (server2, seen2) = fake_ntfy().await;
-    fixture.configure(&server2, r#"{}"#);
+    // The tool's own platform choice never excludes the phone (ruling).
     let mut native = oino_ai::JsonObject::new();
     native.insert("message".to_owned(), serde_json::json!("desktop only"));
     native.insert("platforms".to_owned(), serde_json::json!(["native"]));
@@ -460,18 +503,41 @@ async fn notify_user_tool_pushes_by_its_platforms() {
         parent_tool_call_id: None,
     });
     notify::on_session_event(&hub, &paths, &tool, &sid).await;
+    wait_for_request(&seen, 2).await;
+
+    // No phone paired (no devices, no endpoints): nothing at all.
+    drop(_env);
+    let (server2, seen2) = fake_ntfy().await;
+    let bare = Fixture::new();
+    bare.configure(&server2, "{}");
+    let _env2 = EnvGuard::set(&[
+        (
+            notify::UNIPI_NOTIFY_CONFIG_ENV,
+            bare.settings.as_os_str().to_owned(),
+        ),
+        (
+            notify::UNIPI_NOTIFY_ENDPOINTS_ENV,
+            bare.endpoints.as_os_str().to_owned(),
+        ),
+    ]);
+    let bare_hub = bare.hub();
+    let bare_session = create(&bare_hub).await;
+    prime(&bare_hub, &bare_session).await;
+    notify::on_session_event(&bare_hub, &bare.paths(), &tool, &bare_session.session_id()).await;
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-    assert_eq!(seen2.lock().unwrap().len(), 0, "native-only: no phone push");
+    assert_eq!(seen2.lock().unwrap().len(), 0, "no phone paired: no push");
 }
 
-/// The UnifiedPush fan-out: every registered endpoint gets the same encrypted
-/// body (without the `topic` field — the URL already names it).
+/// The UnifiedPush fan-out (a registered endpoint also counts as the paired
+/// phone the ruling needs): every registered endpoint gets the same encrypted
+/// body (without the `topic` field — the URL already names it), default matrix
+/// on.
 #[tokio::test]
 async fn unifiedpush_endpoints_are_fanned_out() {
     let (server, seen) = fake_ntfy().await;
     let (endpoint_server, endpoint_seen) = fake_ntfy().await;
     let fixture = Fixture::new();
-    fixture.configure(&server, r#"{"input_needed":{"enabled":true}}"#);
+    fixture.configure(&server, "{}");
     std::fs::write(
         &fixture.endpoints,
         format!(r#"{{"endpoints":[{{"url":"{endpoint_server}/up-topic","addedAt":0}}]}}"#),

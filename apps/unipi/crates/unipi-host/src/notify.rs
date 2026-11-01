@@ -28,7 +28,11 @@
 //!   `unipi1:` E2E payload (`title/body/kind/host/session`, the phone's
 //!   `NotifyPayload`) + the content-free `unipi://s/<host>/<session>` deep link
 //!   on the ntfy `click` + the UnifiedPush endpoint fan-out, gated by the
-//!   notify extension's own event matrix ([`PhonePushSettings`]).
+//!   notify extension's own event matrix ([`PhonePushSettings`]) — which is
+//!   **on by default for `input_needed` and `agent_settled` once a phone is
+//!   paired** (owner ruling 2026-11-02; [`DEFAULT_PHONE_EVENTS`],
+//!   [`phone_paired`]): an explicit user setting (off, or a different event
+//!   matrix) still wins, and with no phone paired nothing is ever sent.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -103,9 +107,6 @@ struct NotifyConfigJson {
     /// must not fail the whole block — each entry parses or defaults off.
     #[serde(default)]
     events: HashMap<String, serde_json::Value>,
-    /// `defaultPlatforms` (the `notify_user` tool's platform fallback).
-    #[serde(default, rename = "defaultPlatforms")]
-    default_platforms: Option<Vec<String>>,
 }
 
 /// One `events.<name>` switch of the notify extension's matrix.
@@ -118,16 +119,13 @@ struct EventBlock {
 }
 
 /// The phone-push-relevant slice of the `unipi.notify` extension's settings
-/// (P0-06): its event matrix and ntfy enablement, read from the same settings
+/// (P0-06): its **explicitly written** event matrix, read from the same settings
 /// file the extension writes (`extensionSettings.notify`, dotted keys
-/// expanded). The host pushes only what the user switched on.
+/// expanded). Absent entries mean "no user configuration" — the owner ruling
+/// (2026-11-02) then pushes [`DEFAULT_PHONE_EVENTS`] to paired phones.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PhonePushSettings {
-    /// `ntfy.enabled`.
-    pub ntfy_enabled: bool,
-    /// `defaultPlatforms` (fallback of the `notify_user` tool).
-    pub default_platforms: Vec<String>,
-    /// `events.<name>` switches.
+    /// `events.<name>` switches the user (or a wizard) explicitly wrote.
     pub events: HashMap<String, EventSwitch>,
 }
 
@@ -136,27 +134,50 @@ pub struct PhonePushSettings {
 pub struct EventSwitch {
     /// Enabled.
     pub enabled: bool,
-    /// Platforms (empty = every enabled platform).
+    /// Platforms (empty = every platform, phone included).
     pub platforms: Vec<String>,
 }
 
+impl EventSwitch {
+    /// Whether the switch's platform list includes the phone surface: an empty
+    /// list ("every platform") or one that names `ntfy`.
+    #[must_use]
+    fn includes_ntfy(&self) -> bool {
+        self.platforms.is_empty() || self.platforms.iter().any(|p| p == "ntfy")
+    }
+}
+
+/// The events whose phone push is on with **no user configuration** (owner
+/// ruling 2026-11-02): the agent needs the user, and the run finished. Only
+/// paired phones ([`phone_paired`]) ever receive them.
+pub const DEFAULT_PHONE_EVENTS: [&str; 2] = ["input_needed", "agent_settled"];
+
+/// Whether a phone is paired with this host (owner ruling): a device in
+/// `devices.json` (the pairing flow) or a registered UnifiedPush endpoint
+/// (`notify_register`). No phone paired → the host never session-pushes,
+/// whatever the matrix says.
+#[must_use]
+pub fn phone_paired(paths: &HostPaths) -> bool {
+    !read_app_endpoints(&app_endpoints_path(paths)).is_empty()
+        || crate::devices::DeviceStore::new(paths.devices())
+            .list()
+            .map(|devices| !devices.is_empty())
+            .unwrap_or(false)
+}
+
 impl PhonePushSettings {
-    /// Reads the settings from `path` (the agent settings file; missing or
-    /// corrupt \u2192 everything off, never an error).
+    /// Reads the explicitly written switches from `path` (the agent settings
+    /// file; missing or corrupt → none, never an error).
     #[must_use]
     pub fn read(path: &Path) -> Self {
         let parsed = notify_block(path);
-        let switch = |raw: &serde_json::Value| {
-            serde_json::from_value::<EventBlock>(raw.clone()).unwrap_or_default()
-        };
-        Self {
-            ntfy_enabled: parsed.ntfy.enabled,
-            default_platforms: parsed.default_platforms.unwrap_or_default(),
+        PhonePushSettings {
             events: parsed
                 .events
                 .iter()
                 .map(|(name, raw)| {
-                    let block = switch(raw);
+                    let block =
+                        serde_json::from_value::<EventBlock>(raw.clone()).unwrap_or_default();
                     (
                         name.clone(),
                         EventSwitch {
@@ -169,20 +190,16 @@ impl PhonePushSettings {
         }
     }
 
-    /// Whether `platforms` resolve to a phone push for ntfy (the extension's
-    /// `resolve_platforms`, ntfy side: empty = every enabled platform; either
-    /// way ntfy itself must be enabled).
-    fn platforms_push(&self, platforms: &[String]) -> bool {
-        (platforms.is_empty() || platforms.iter().any(|p| p == "ntfy")) && self.ntfy_enabled
-    }
-
-    /// Whether the event's phone push is on (`events.<event>.{enabled,
-    /// platforms}`, ntfy side).
+    /// Whether the event's phone push is on. An explicit switch wins — off is
+    /// off, and a platform list that names only other platforms excludes the
+    /// phone; with **no** switch the default-on events
+    /// ([`DEFAULT_PHONE_EVENTS`]) push once a phone is paired.
     #[must_use]
     pub fn event_push_enabled(&self, event: &str) -> bool {
-        self.events
-            .get(event)
-            .is_some_and(|switch| switch.enabled && self.platforms_push(&switch.platforms))
+        match self.events.get(event) {
+            Some(switch) => switch.enabled && switch.includes_ntfy(),
+            None => DEFAULT_PHONE_EVENTS.contains(&event),
+        }
     }
 
     /// Which event owns the run-finished push (unipi `finish_key`:
@@ -195,16 +212,6 @@ impl PhonePushSettings {
             Some("agent_end")
         } else {
             None
-        }
-    }
-
-    /// Whether a `notify_user` tool call reaches the phone: its explicit
-    /// `platforms` when given, else the `defaultPlatforms` fallback.
-    #[must_use]
-    pub fn tool_push_enabled(&self, explicit: Option<&[String]>) -> bool {
-        match explicit {
-            Some(platforms) => self.platforms_push(platforms),
-            None => self.platforms_push(&self.default_platforms),
         }
     }
 }
@@ -994,9 +1001,14 @@ fn now_ms() -> i64 {
 }
 
 /// The session tap hook (P0-06): one runtime event \u2192 the hub card's
-/// `needs_you` flag and, gated by the notify extension's event matrix, the
-/// phone push. Called for every event the tap sees; everything not a
-/// [`SessionNotice`] returns immediately.
+/// `needs_you` flag and the phone push. Called for every event the tap sees;
+/// everything not a [`SessionNotice`] returns immediately.
+///
+/// Pushes need a **paired phone** ([`phone_paired`] — owner ruling 2026-11-02:
+/// no phone paired, nothing sent, whatever the matrix says) and the event on:
+/// `input_needed` and `agent_settled` are on with no user configuration
+/// ([`DEFAULT_PHONE_EVENTS`]); an explicit switch (off, or a different
+/// platform matrix) always wins.
 ///
 /// - Dialog open \u2192 `needs_you` on the card + one `input_needed` push
 ///   (de-duplicated within [`PROMPT_DEDUP_MS`], like the extension).
@@ -1004,8 +1016,8 @@ fn now_ms() -> i64 {
 /// - Settle \u2192 the run-finished push (`agent_settled`, or `agent_end`
 ///   when only that is on) + a defensive `needs_you` clear (a dialog cannot
 ///   outlive the run that opened it).
-/// - `notify_user` tool call \u2192 its message, per its explicit platforms
-///   or the `defaultPlatforms` fallback.
+/// - `notify_user` tool call \u2192 its message; the tool's `platforms` pick
+///   the other surfaces, the paired phone is included by default.
 ///
 /// `paths` is the host data dir (`HostPaths::resolve()` at the tap; a serve
 /// started with `--data-dir` overrides it and is not visible here).
@@ -1019,7 +1031,12 @@ pub async fn on_session_event(
     let Some(notice) = session_notice(event) else {
         return;
     };
-    let settings = PhonePushSettings::read(&notify_config_json_path());
+    let paired = phone_paired(paths);
+    let settings = if paired {
+        PhonePushSettings::read(&notify_config_json_path())
+    } else {
+        PhonePushSettings::default()
+    };
     let host = hostname_for_route();
     match &notice {
         SessionNotice::DialogOpen { id, options, .. } => {
@@ -1031,7 +1048,7 @@ pub async fn on_session_event(
                 state.last_push_ms = now;
                 !deduped
             });
-            if push && settings.event_push_enabled("input_needed") {
+            if push && paired && settings.event_push_enabled("input_needed") {
                 push_notice(&notice, &settings, hub, paths, session_id, &host, options).await;
             }
         }
@@ -1050,12 +1067,14 @@ pub async fn on_session_event(
                 state.last_push_ms = 0;
             });
             hub.set_needs_you(session_id, false).await;
-            if settings.finish_event().is_some() {
+            if paired && settings.finish_event().is_some() {
                 push_notice(&notice, &settings, hub, paths, session_id, &host, &[]).await;
             }
         }
-        SessionNotice::NotifyUser { platforms, .. } => {
-            if settings.tool_push_enabled(platforms.as_deref()) {
+        SessionNotice::NotifyUser { .. } => {
+            // The tool's platforms route the other surfaces (the extension's
+            // own dispatch); the paired phone is included by default (ruling).
+            if paired {
                 push_notice(&notice, &settings, hub, paths, session_id, &host, &[]).await;
             }
         }
@@ -1328,57 +1347,107 @@ mod tests {
         )
         .expect("write");
         let settings = PhonePushSettings::read(&path);
-        assert!(settings.ntfy_enabled);
-        // Empty platforms = every enabled platform \u2192 ntfy on.
+        // Empty platforms = every platform, phone included.
         assert!(settings.event_push_enabled("agent_settled"));
-        // Explicit ntfy \u2192 on; explicit native-only \u2192 off.
+        // Explicit ntfy → on; explicit native-only excludes the phone.
         assert!(settings.event_push_enabled("input_needed"));
         assert!(!settings.event_push_enabled("agent_end"));
-        // Unknown or absent events never push.
-        assert!(!settings.event_push_enabled("ask_user_prompt"));
+        // Events with no switch keep their default (below).
         // finish: agent_settled wins over agent_end (one notification).
         assert_eq!(settings.finish_event(), Some("agent_settled"));
-        // notify_user defaults to defaultPlatforms (native) \u2192 no phone.
-        assert!(!settings.tool_push_enabled(None));
-        assert!(settings.tool_push_enabled(Some(&["ntfy".to_owned()])));
+    }
+
+    /// Owner ruling 2026-11-02: with no user configuration at all,
+    /// `input_needed` and `agent_settled` push once a phone is paired — and
+    /// pairing is devices.json or a registered endpoint.
+    #[test]
+    fn default_on_with_paired_phone() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // No events written anywhere (a missing file is the same thing).
+        let settings = PhonePushSettings::read(&tmp.path().join("missing.json"));
+        assert!(settings.event_push_enabled("input_needed"));
+        assert!(settings.event_push_enabled("agent_settled"));
+        assert!(!settings.event_push_enabled("agent_end"));
+        assert!(!settings.event_push_enabled("ask_user_prompt"));
+        assert_eq!(settings.finish_event(), Some("agent_settled"));
+        assert_eq!(PhonePushSettings::default(), settings);
+
+        // Paired: a device in devices.json …
+        let paths = HostPaths::from_dir(tmp.path().join("host"));
+        std::fs::create_dir_all(paths.root.clone()).expect("dir");
+        assert!(!phone_paired(&paths), "nothing paired yet");
+        std::fs::write(
+            paths.devices(),
+            r#"[{"id":"abc","name":"Pixel","paired_at":1}]"#,
+        )
+        .expect("write");
+        assert!(phone_paired(&paths));
+        // … or a registered UnifiedPush endpoint.
+        let other = HostPaths::from_dir(tmp.path().join("host2"));
+        std::fs::create_dir_all(other.root.clone()).expect("dir");
+        register_app_endpoint(&app_endpoints_path(&other), "https://ntfy.sh/up1")
+            .expect("register");
+        assert!(phone_paired(&other));
+    }
+
+    /// The ruling's escape hatch: an explicit off (or a different matrix)
+    /// always wins over the default-on.
+    #[test]
+    fn explicit_off_wins() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"extensionSettings":{"notify":{
+                "events.input_needed.enabled":false,
+                "events.agent_settled.enabled":false,
+                "events.agent_end":{"enabled":true,"platforms":[]}
+            }}}"#,
+        )
+        .expect("write");
+        let settings = PhonePushSettings::read(&path);
+        assert!(!settings.event_push_enabled("input_needed"), "explicit off");
+        assert!(
+            !settings.event_push_enabled("agent_settled"),
+            "explicit off"
+        );
+        // The user's own matrix still routes: agent_end takes over "finished".
+        assert!(settings.event_push_enabled("agent_end"));
+        assert_eq!(settings.finish_event(), Some("agent_end"));
+        // A different platform matrix excludes the phone too.
+        let settings = PhonePushSettings {
+            events: [(
+                "input_needed".to_owned(),
+                EventSwitch {
+                    enabled: true,
+                    platforms: vec!["native".to_owned(), "telegram".to_owned()],
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
+        assert!(!settings.event_push_enabled("input_needed"));
     }
 
     #[test]
-    fn phone_push_settings_expand_dotted_keys_and_default_off() {
+    fn phone_push_settings_expand_dotted_keys() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().join("settings.json");
         std::fs::write(
             &path,
             r#"{"extensionSettings":{"notify":{
                 "ntfy.enabled":true,
-                "defaultPlatforms":["ntfy"],
-                "events.agent_end.enabled":true
+                "events.agent_end.enabled":true,
+                "events.agent_settled.enabled":false
             }}}"#,
         )
         .expect("write");
         let settings = PhonePushSettings::read(&path);
         assert!(settings.event_push_enabled("agent_end"));
+        // Dotted agent_settled off (explicit wins over the default-on) →
+        // agent_end owns "finished".
+        assert!(!settings.event_push_enabled("agent_settled"));
         assert_eq!(settings.finish_event(), Some("agent_end"));
-        assert!(settings.tool_push_enabled(None));
-        // A missing file is everything off (never an error).
-        let empty = PhonePushSettings::read(&tmp.path().join("missing.json"));
-        assert_eq!(empty, PhonePushSettings::default());
-        assert_eq!(empty.finish_event(), None);
-    }
-
-    #[test]
-    fn phone_push_needs_ntfy_enabled_even_when_listed() {
-        let mut settings = PhonePushSettings::default();
-        settings.events.insert(
-            "input_needed".to_owned(),
-            EventSwitch {
-                enabled: true,
-                platforms: vec!["ntfy".to_owned()],
-            },
-        );
-        assert!(!settings.event_push_enabled("input_needed"));
-        settings.ntfy_enabled = true;
-        assert!(settings.event_push_enabled("input_needed"));
     }
 
     fn ui_dialog(method: &str, params: serde_json::Value) -> ClientEvent {

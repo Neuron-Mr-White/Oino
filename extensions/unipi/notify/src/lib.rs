@@ -334,6 +334,13 @@ impl Notify {
     async fn dispatch(&self, sid: &str, job: &Job) -> Vec<PlatformResult> {
         let cfg = self.config();
         let enabled = cfg.resolve_platforms(&job.platforms);
+        if enabled.is_empty() {
+            // Default phone-only events (`input_needed` / `agent_settled`,
+            // platforms `["ntfy"]` with the plain ntfy account off) resolve to
+            // nothing here: the host's E2E phone push owns them — no send and
+            // no misleading NOTIFICATION_SENT failure.
+            return Vec::new();
+        }
         let last_input = self.sessions.with(sid, |s| s.last_input_at);
         let (send, silenced) = messages::filter_after_input(
             &enabled,
@@ -1278,12 +1285,16 @@ mod tests {
     #[test]
     fn finish_key_prefers_settled() {
         let mut c = config::from_values(&config::defaults());
-        assert_eq!(Notify::finish_key(&c), None);
+        // Owner ruling 2026-11-02: agent_settled is on by default (the host's
+        // phone push reads the same matrix).
+        assert_eq!(Notify::finish_key(&c), Some("agent_settled"));
         c.events
             .iter_mut()
             .for_each(|(k, e)| e.enabled = k == "agent_end");
         assert_eq!(Notify::finish_key(&c), Some("agent_end"));
         c.events.iter_mut().for_each(|(_, e)| e.enabled = true);
         assert_eq!(Notify::finish_key(&c), Some("agent_settled"));
+        c.events.iter_mut().for_each(|(_, e)| e.enabled = false);
+        assert_eq!(Notify::finish_key(&c), None);
     }
 }
