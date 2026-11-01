@@ -36,6 +36,24 @@ export function toneOf(tone: Color | undefined): StatusSegment['tone'] {
   }
 }
 
+/** F-13: an extension's raw status text → a human label; `null` hides it (zero counts, internal words). */
+export function humanStatus(raw: string): string | null {
+  const text = raw
+    .replace(/[\p{Extended_Pictographic}\u25CF\u2022\uFE0F]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return null;
+  const mem = /^(\d+)\s+mem(?:ories|ory)?$/i.exec(text);
+  if (mem) return Number(mem[1]) > 0 ? `${mem[1]} ${mem[1] === '1' ? 'memory' : 'memories'}` : null;
+  const skills = /^skills:\s*(\d+)\s*\/\s*(\d+)\s+listed$/i.exec(text);
+  if (skills) return Number(skills[1]) > 0 ? `${skills[1]} ${skills[1] === '1' ? 'skill' : 'skills'} ready` : null;
+  if (/^skills:\s*waiting/i.test(text)) return null;
+  if (/^graph$/i.test(text)) return null;
+  const zero = /^(.*?)[\s:]+0$/.exec(text);
+  if (zero) return null;
+  return text;
+}
+
 /** One status/footer entry as a strip segment. */
 export function segmentOf(entry: UiEntry): StatusSegment & { key: string } {
   if (entry.slot === 'footer' && entry.view.kind === 'tree') {
@@ -49,7 +67,17 @@ export function segmentOf(entry: UiEntry): StatusSegment & { key: string } {
 
 /** The ordered segments of both slots (status first by registry order each). */
 export function statusListOf(registry: UiRegistry): Array<StatusSegment & { key: string }> {
-  return [...registry.entriesFor('status')(), ...registry.entriesFor('footer')()].map(segmentOf);
+  const out: Array<StatusSegment & { key: string }> = [];
+  for (const entry of [...registry.entriesFor('status')(), ...registry.entriesFor('footer')()]) {
+    const seg = segmentOf(entry);
+    if (seg.node) {
+      out.push(seg);
+      continue;
+    }
+    const text = humanStatus(seg.text);
+    if (text !== null) out.push({ ...seg, text });
+  }
+  return out;
 }
 
 /**

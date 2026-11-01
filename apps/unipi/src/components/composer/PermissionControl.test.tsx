@@ -86,13 +86,16 @@ describe('permission chip (G-6)', () => {
     const view = render(() => <PermissionControl session={s} onCommand={(cmd) => s.send(cmd, { mode: 'prompt' })} />);
     fireEvent.click(view.getByTestId('permission-chip'));
     const rows = [...document.querySelectorAll('.perm-menu-row')] as HTMLElement[];
-    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Ask'), expect.stringContaining('Auto'), expect.stringContaining('Full')]);
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Ask'), expect.stringContaining('Auto'), expect.stringContaining('Full'), expect.stringContaining('Make default for new chats')]);
+    expect(document.querySelector('[data-testid=permission-scope]')?.textContent).toBe('Applies to this chat only.');
     // The current mode is a no-op.
     fireEvent.click(rows[1]!);
     expect(prompts()).toEqual([]);
     fireEvent.click(view.getByTestId('permission-chip'));
     fireEvent.click([...document.querySelectorAll('.perm-menu-row')][2] as HTMLElement);
     await waitFor(() => expect(prompts()).toEqual(['/permission full']));
+    // F-07: the chip follows the pick at once, before the topic confirms.
+    expect(view.getByTestId('permission-label').textContent).toBe('Full');
   });
 
   it('a session without the extension offers no control', async () => {

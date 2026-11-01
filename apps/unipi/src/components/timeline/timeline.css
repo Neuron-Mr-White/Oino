@@ -66,7 +66,7 @@ html:not([data-shell=desktop]) :is(.tl-turn, .tl-tail, .tl-skeleton, .tl-empty) 
   border-radius: 8px;
   transition: background-color 140ms ease-out, color 140ms ease-out;
 }
-html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 38px; }
+html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 40px; }
 .tl :is(.proc-head, .tool-row):hover:not(:disabled) { background-color: var(--color-surface-1); color: var(--color-text); }
 .tl :is(.proc-head, .tool-row):active:not(:disabled) { background-color: var(--color-surface-2); transform: none; }
 .tl :is(.proc-head, .tool-row):focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: -1.5px; }
@@ -216,7 +216,7 @@ html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 38px; }
 
 /* phone touch targets (≥ 40 px hit area via compact row) */
 html[data-shell=phone] .tl-actions { gap: 2px; }
-html[data-shell=phone] .tl-act { width: 34px; height: 34px; min-height: 34px; border-radius: 9999px; }
+html[data-shell=phone] .tl-act { width: 40px; height: 40px; min-height: 40px; border-radius: 9999px; }
 html[data-shell=phone] .tl-tail-line { gap: 6px; }
 
 /* actions are hover-revealed on the desktop, always visible on the phone (§3.9) */

@@ -1,23 +1,24 @@
 /**
- * Model cycling (P0-10, the TUI's Ctrl+P): `model.cycle` (Mod+Alt+P — Mod+P
- * is Command center · Files and Alt+P is the workflow's plan toggle) steps
- * the focused session to the next model of
+ * Model cycling (P0-10, F-04): `model.cycle` (Mod+Alt+P — Mod+P is Command center · Files and
+ * Alt+P is the workflow's plan toggle) steps **this chat** to the next model of a short list:
  *
- * 1. the **cycle set** (pi `enabledModels`, `/scoped-models`) when one is
- *    stored — the engine's own `cycle_model` walks it (globs and `:level`
- *    suffixes included, exactly as the terminal does);
- * 2. else Fusion's curated `ranked` list (recent → leads → sidekicks) — the
- *    app steps it with `set_model` (through `fusion.set-pair` while Fusion is
- *    on) and applies the curated default effort;
- * 3. else the engine's `cycle_model` over every model (TUI parity).
+ * 1. the **cycle set** (`enabledModels`, `/scoped-models`) when one is stored;
+ * 2. else Fusion's curated `ranked` list (recent → leads → sidekicks);
+ * 3. else every usable chat model, but only when there are few of them.
  *
- * One small toast says where it landed: "Model → <name>".
+ * Only chat models of working providers take part (no image / speech / embedding models, no
+ * dead keys), the pick never changes the PC default (E-19), and one toast says where it landed:
+ * "Model → <name>".
  */
 import type { SessionHandle } from '../../lib/session/store';
 import { toasts } from '../../lib/toasts';
 import { fetchFusion, fusionAvailable, setFusionActive } from '../../lib/model/fusion';
 import { modelDisplayName } from '../../lib/model/displayName';
 import { modelKey, parseModels, shortModelName } from '../../lib/model/picker';
+import { cycleList } from '../../lib/model/cycle';
+import { splitAvailability } from '../../lib/model/availability';
+import { hostReadiness } from '../../lib/model/readiness';
+import { setChatModel } from '../../lib/model/chatModel';
 
 /** The toast text. */
 export const cycleToast = (name: string): string => `Model → ${name}`;
@@ -29,9 +30,9 @@ export function nextKey(list: readonly string[], current: string | undefined): s
   return list[(at + 1) % list.length];
 }
 
-const storedScope = (reply: unknown): boolean => {
+const storedPatterns = (reply: unknown): string[] => {
   const v = (reply as { value?: unknown } | undefined)?.value;
-  return Array.isArray(v) && v.some((x) => typeof x === 'string' && x.trim() !== '');
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.trim() !== '') : [];
 };
 
 const busy = new Set<string>();
@@ -41,39 +42,41 @@ export async function cycleSessionModel(s: SessionHandle): Promise<string | unde
   if (busy.has(s.key)) return undefined;
   busy.add(s.key);
   try {
-    const [scope, fusionOn] = await Promise.all([
+    const [scope, fusionOn, modelsReply, readiness] = await Promise.all([
       s.cmd<unknown>({ type: '_oino/get_settings', key: 'enabledModels' }).catch(() => undefined),
       fusionAvailable(s),
+      s.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined),
+      hostReadiness(s.hostId).catch(() => undefined),
     ]);
-    const fusion = !storedScope(scope) && fusionOn ? await fetchFusion(s) : undefined;
-    const ranked = fusion?.curated?.ranked ?? [];
-    let text: string | undefined;
-    if (ranked.length) {
-      const models = parseModels(await s.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined));
-      const catalogue = new Map(models.map((m) => [modelKey(m), m]));
-      const list = ranked.map((e) => e.key).filter((k) => catalogue.size === 0 || catalogue.has(k));
-      const cur = s.state.model?.provider && s.state.model.id ? modelKey(s.state.model) : undefined;
-      const key = nextKey(list, cur);
-      if (!key || key === cur) return undefined;
-      if (fusion?.active) await setFusionActive(s, { kind: 'single', model: key });
-      else {
-        const slash = key.indexOf('/');
-        await s.cmd({ type: 'set_model', provider: key.slice(0, slash), modelId: key.slice(slash + 1) });
-      }
-      const effort = fusion?.curated?.effort[key];
-      if (effort) await s.cmd({ type: 'set_thinking_level', level: effort }).catch(() => undefined);
-      const m = catalogue.get(key);
-      const name = (m && modelDisplayName(m)) || ranked.find((e) => e.key === key)?.name || key;
-      text = cycleToast(shortModelName(name));
-    } else {
-      const reply = await s.cmd<{ model?: { provider?: string; id?: string; name?: string } } | null>({ type: 'cycle_model' });
-      const m = reply?.model;
-      if (!m) {
-        toasts().push('No other model to cycle to', 'info');
-        return undefined;
-      }
-      text = cycleToast(shortModelName(modelDisplayName(m) || m.id || ''));
+    const models = parseModels(modelsReply);
+    const cur = s.state.model?.provider && s.state.model.id ? modelKey(s.state.model) : undefined;
+    const usableModels = splitAvailability(models, readiness, cur).usable;
+    const catalogue = new Map(usableModels.map((m) => [modelKey(m), m]));
+    const fusion = fusionOn ? await fetchFusion(s).catch(() => undefined) : undefined;
+    const list = cycleList({
+      patterns: storedPatterns(scope),
+      curated: (fusion?.curated?.ranked ?? []).map((e) => e.key),
+      usable: [...catalogue.keys()],
+    });
+    if (!list) {
+      toasts().push('Choose the models to cycle in the model picker (Cycle set)', 'info');
+      return undefined;
     }
+    const key = nextKey(list, cur);
+    if (!key || key === cur) {
+      toasts().push('No other model to cycle to', 'info');
+      return undefined;
+    }
+    if (fusion?.active) await setFusionActive(s, { kind: 'single', model: key });
+    else {
+      const slash = key.indexOf('/');
+      await setChatModel(s, key.slice(0, slash), key.slice(slash + 1));
+    }
+    const effort = fusion?.curated?.effort[key];
+    if (effort) await s.cmd({ type: 'set_thinking_level', level: effort }).catch(() => undefined);
+    const m = catalogue.get(key);
+    const name = (m && modelDisplayName(m)) || fusion?.curated?.ranked.find((e) => e.key === key)?.name || key;
+    const text = cycleToast(shortModelName(name));
     toasts().push(text, 'info');
     return text;
   } catch (e) {

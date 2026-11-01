@@ -15,7 +15,15 @@ import { copyText } from '../../lib/board/share';
 /** The row's line: the first non-empty line of the raw error. */
 export function errorHeadline(text: string): string {
   const line = text.split('\n').map((l) => l.trim()).find(Boolean);
-  return line ?? 'The turn failed.';
+  if (!line) return 'The turn failed.';
+  // F-02: a provider's raw JSON body is never the headline — it stays under Details.
+  if (/^(\d{3}\s+)?[{[]/.test(line) || /"type"\s*:\s*"error"/.test(line)) {
+    if (/\b(401|403)\b|authentication|unauthori[sz]ed|invalid.{0,12}key/i.test(line)) return 'This model’s provider rejected the key.';
+    if (/\b429\b|rate.?limit|quota|overloaded/i.test(line)) return 'This model’s provider is limiting requests.';
+    if (/\b404\b|not.found/i.test(line)) return 'This provider has no such model.';
+    return 'This model’s provider returned an error.';
+  }
+  return line;
 }
 
 /** A short next step for the errors a user can act on (D-24); undefined for the rest. */

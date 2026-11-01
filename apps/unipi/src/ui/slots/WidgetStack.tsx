@@ -11,13 +11,14 @@
 import { createSignal, For, Show } from 'solid-js';
 import { ChevronDown, ChevronUp } from 'lucide-solid';
 import { EntryView } from '../NodeView';
+import { liveTrayEntries } from './trayHint';
 import type { UiEntry } from '../types';
 import type { UiTarget } from '../actions';
 
 const PHONE_MAX = 3;
 
 export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone?: boolean }) {
-  const entries = () => props.entries;
+  const entries = () => liveTrayEntries(props.entries);
   const over = () => (props.phone ? Math.max(0, entries().length - PHONE_MAX) : 0);
   const [expanded, setExpanded] = createSignal(false);
   const shown = () => (over() && !expanded() ? entries().slice(0, PHONE_MAX) : entries());

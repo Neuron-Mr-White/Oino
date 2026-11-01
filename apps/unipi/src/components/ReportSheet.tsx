@@ -8,7 +8,8 @@
 import { createSignal, Show } from 'solid-js';
 import { Check, Copy, X } from 'lucide-solid';
 import { BoardSheet } from './board/BoardSheet';
-import { closeReport, openReport } from '../lib/reports';
+import { Markdown } from './board/Markdown';
+import { closeReport, looksMarkdown, openReport } from '../lib/reports';
 import { copyText } from '../lib/board/share';
 import './report.css';
 
@@ -46,9 +47,18 @@ export function ReportSheet() {
         </div>
       }
     >
-      <pre class="report-body" data-kind={openReport()?.kind} data-testid="report-body">
-        {openReport()?.body}
-      </pre>
+      <Show
+        when={looksMarkdown(openReport()?.body ?? '')}
+        fallback={
+          <pre class="report-body" data-kind={openReport()?.kind} data-testid="report-body">
+            {openReport()?.body}
+          </pre>
+        }
+      >
+        <div class="report-body report-md" data-kind={openReport()?.kind} data-testid="report-body">
+          <Markdown text={openReport()?.body} />
+        </div>
+      </Show>
     </BoardSheet>
   );
 }

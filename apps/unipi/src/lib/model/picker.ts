@@ -26,6 +26,13 @@ export type ModelInfo = {
   maxTokens?: number;
   /** pi `thinkingLevelMap`: `null` = the level is off for this model, a string = provider-mapped. */
   thinkingLevelMap?: Record<string, unknown>;
+  /** F-02: pi output modalities. */
+  output?: string[];
+  /** F-02: the host's model kind (`chat`, `image`, `speech`, `embedding`…) when it sends one. */
+  kind?: string;
+  /** F-02: the host's per-model readiness when it sends one. */
+  ready?: boolean;
+  reason?: string;
 };
 
 /** `provider/id` — the key both the host and the state use. */
@@ -59,6 +66,10 @@ export function parseModels(reply: unknown): ModelInfo[] {
       ...(str(o.name) ? { name: str(o.name) } : {}),
       ...(typeof o.reasoning === 'boolean' ? { reasoning: o.reasoning } : {}),
       ...(Array.isArray(o.input) ? { input: o.input.filter((x): x is string => typeof x === 'string') } : {}),
+      ...(Array.isArray(o.output) ? { output: o.output.filter((x): x is string => typeof x === 'string') } : {}),
+      ...(str(o.kind) ? { kind: str(o.kind)!.toLowerCase() } : {}),
+      ...(typeof o.ready === 'boolean' ? { ready: o.ready } : {}),
+      ...(str(o.reason) ? { reason: str(o.reason) } : {}),
       ...(num(o.contextWindow) !== undefined ? { contextWindow: num(o.contextWindow) } : {}),
       ...(num(o.maxTokens) !== undefined ? { maxTokens: num(o.maxTokens) } : {}),
       ...(o.thinkingLevelMap && typeof o.thinkingLevelMap === 'object' && !Array.isArray(o.thinkingLevelMap)

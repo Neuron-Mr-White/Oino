@@ -106,6 +106,8 @@ export function createBottomLock(): BottomLock {
       if (el.scrollHeight - el.clientHeight <= OVERFLOW_PX) {
         setLocked(true);
         setUnread(false);
+        // F-12: content that fits shows from the top — a stale offset left the first bubble cut off above empty space.
+        if (el.scrollTop > 0) el.scrollTop = 0;
       }
     },
     jump(el) {

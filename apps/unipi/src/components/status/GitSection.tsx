@@ -659,7 +659,8 @@ export function GitSection(props: {
         </>
       );
     }
-    const cleanEmpty = sourceFiles().length === 0 && !findQuery().trim();
+    // E-24: Unstaged lists only the non-staged files while `sourceFiles` holds all of them — judge emptiness by the rows shown.
+    const cleanEmpty = groups().length === 0 && !findQuery().trim();
     const sourceEmpty = cleanEmpty
       ? source() === 'turn'
         ? turnLoading()

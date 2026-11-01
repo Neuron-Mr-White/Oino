@@ -34,7 +34,7 @@ import {
   retryAttachment,
   withAttachmentMentions,
 } from '../../lib/composer/attachments';
-import { allCommands, applyAt, argQuery, atQuery, isAppBuiltin, isKnownCommand, rankCommands, slashQuery, wantsArgCompletions } from '../../lib/chat/commands';
+import { allCommands, applyAt, commandNeedsTask, argQuery, atQuery, isAppBuiltin, isKnownCommand, rankCommands, slashQuery, wantsArgCompletions } from '../../lib/chat/commands';
 import {
   builtinPlan,
   builtinWorksWithoutChat,
@@ -129,6 +129,8 @@ export type ComposerProps = {
    * chat (`/model`, `/btw`, the ⋯ actions) and the context ring stay out.
    */
   draft?: boolean;
+  /** F-01: why a plain message can't leave yet (no provider…). Send is disabled and the typed text is never touched. `/` commands still run. */
+  sendHold?: () => string | undefined;
   /** Draft: replaces the model chip (the session-bound picker can't open yet). */
   modelSlot?: JSX.Element;
   /** A row inside the card, above the field (the draft's workspace picker). */
@@ -716,6 +718,12 @@ export function Composer(props: ComposerProps) {
       afterRoute(text);
       return;
     }
+    // E-05: `/bg-tasks` opens the TUI's work tray, which the app doesn't have — its Running tab is the same list.
+    if (!props.draft && cmd && (cmd[1] === 'bg-tasks' || cmd[1] === 'unipi:bg-tasks') && !cmd[2]?.trim()) {
+      openSessionModal({ hostId: props.session.hostId, sessionId: props.session.sessionId(), tab: 'running' });
+      afterRoute(text);
+      return;
+    }
     if (cmd && isAppBuiltin(cmd[1]!, props.session.state.commands)) {
       const name = cmd[1]!;
       // P0-02: every engine built-in runs here (an app action or its oino RPC);
@@ -737,6 +745,7 @@ export function Composer(props: ComposerProps) {
       showActionNotice(`Unknown command /${cmd[1]}`);
       return;
     }
+    if (!cmd && props.sendHold?.()) return;
     if (cmd) noteCommandRun(key(), text.trim().split('\n')[0]!.slice(1, 80));
     const item = props.session.send(text, { ...(mode ? { mode } : {}), ...(images.length ? { images } : {}) });
     promptStore().add(text);
@@ -772,6 +781,11 @@ export function Composer(props: ComposerProps) {
     setHistRev((n) => n + 1);
     setDismissed(null);
     histIndex = null;
+    // F-05/D-11: the field is rebuilt from the (now empty) draft — Enter's default handling must not leave the text or a stray newline behind.
+    queueMicrotask(() => editor?.syncFromStore());
+    setTimeout(() => {
+      if (!draft().text) editor?.syncFromStore();
+    }, 0);
   };
   /**
    * A `/command` the app routes (`/model`, `/btw`, every pi built-in, WP-A25)
@@ -839,7 +853,7 @@ export function Composer(props: ComposerProps) {
       if (items.length) {
         const chosen = items[Math.min(sel(), items.length - 1)]!;
         // D-08: the whole command is already typed (`/compact`): Enter sends it, it doesn't complete it again.
-        if (draft().text.trim() === `/${chosen.name}`) {
+        if (draft().text.trim() === `/${chosen.name}` && !commandNeedsTask(chosen)) {
           e.preventDefault();
           send(sendModeForEnter(e, running()));
           return;
@@ -870,7 +884,8 @@ export function Composer(props: ComposerProps) {
   const pending = () => pendingAttachmentsFor(key());
   const empty = () => !draft().text.trim() && !draft().quotes.length && !pending().length && !draft().chips.length;
   /** Z-60: Send waits for the attachments; a failed one keeps it closed. */
-  const canSend = () => props.readOnly || (attachmentsReady(key()) && !props.busy);
+  const held = () => (/^\/\S/.test(draft().text.trim()) ? undefined : props.sendHold?.());
+  const canSend = () => props.readOnly || (attachmentsReady(key()) && !props.busy && !held());
   onMount(() => {
     if (props.autofocus && !props.readOnly) queueMicrotask(() => editor?.focus());
   });
@@ -1027,7 +1042,7 @@ export function Composer(props: ComposerProps) {
                 disabled={props.readOnly}
                 empty={empty()}
                 blocked={!canSend()}
-                blockedReason={props.busy ? 'Starting the chat…' : 'Waiting for the attachments — Send unlocks when they are ready'}
+                blockedReason={props.busy ? 'Starting the chat…' : held() ? held() : 'Waiting for the attachments — Send unlocks when they are ready'}
                 onSend={() => send()}
                 onStop={stop}
                 onSendNow={sendNow}

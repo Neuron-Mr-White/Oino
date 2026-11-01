@@ -37,6 +37,7 @@ import {
   contextBadge,
   FUSION_EFFORTS,
   hasVision,
+  hits as modelHits,
   modelKey,
   modelName,
   nextSinglePick,
@@ -51,6 +52,9 @@ import {
   type ModelInfo,
   type Selection,
 } from '../../lib/model/picker';
+import { setChatModel } from '../../lib/model/chatModel';
+import { hostReadiness, type Readiness } from '../../lib/model/readiness';
+import { calmModelError, splitAvailability } from '../../lib/model/availability';
 import { closeModelPicker, modelPickerTarget, type ModelPickerTarget } from './target';
 import { curatedFirst, groupedModels, routeLabel, rowTitle, startupKey } from './suggested';
 import { thinkingLabel } from '../../lib/model/thinking';
@@ -63,7 +67,7 @@ const LIST_CAP = 2000;
 
 const errText = (e: unknown): string => String((e as { message?: unknown })?.message ?? e);
 
-type PickerData = { models: ModelInfo[]; fusion?: FusionState; cycle?: unknown; startup?: string };
+type PickerData = { readiness?: Readiness; models: ModelInfo[]; fusion?: FusionState; cycle?: unknown; startup?: string };
 
 const valueOf = (reply: unknown): unknown => (reply as { value?: unknown } | undefined)?.value;
 
@@ -78,7 +82,7 @@ function fusionStartup(reply: unknown): string | undefined {
 /** Loads the catalogue, the Fusion pair (when enabled) and the cycle set (`enabledModels`). */
 async function loadPicker(s: SessionHandle): Promise<PickerData> {
   const fusionOn = await fusionAvailable(s);
-  const [modelsReply, fusion, settings, provider, model, fusionSettings] = await Promise.all([
+  const [modelsReply, fusion, settings, provider, model, fusionSettings, readiness] = await Promise.all([
     s.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined),
     fusionOn ? fetchFusion(s) : Promise.resolve(undefined),
     // WP-A25 (G-15 `/scoped-models`): pi's `enabledModels` — the cycle set.
@@ -86,10 +90,11 @@ async function loadPicker(s: SessionHandle): Promise<PickerData> {
     s.cmd<unknown>({ type: '_oino/get_settings', key: 'defaultProvider' }).catch(() => undefined),
     s.cmd<unknown>({ type: '_oino/get_settings', key: 'defaultModel' }).catch(() => undefined),
     fusionOn ? s.cmd<unknown>({ type: '_oino/get_extension_settings', namespace: 'fusion' }).catch(() => undefined) : Promise.resolve(undefined),
+    hostReadiness(s.hostId).catch(() => undefined),
   ]);
   const cycle = valueOf(settings);
   const startup = fusionStartup(fusionSettings) ?? startupKey(valueOf(provider), valueOf(model));
-  return { models: parseModels(modelsReply), ...(fusion ? { fusion } : {}), cycle, ...(startup ? { startup } : {}) };
+  return { models: parseModels(modelsReply), ...(readiness ? { readiness } : {}), ...(fusion ? { fusion } : {}), cycle, ...(startup ? { startup } : {}) };
 }
 
 /** Scrolls the chosen row of each Fusion column into view (often below its fold). */
@@ -109,10 +114,31 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
   onCleanup(s().acquire());
   const [data] = createResource(liveSource(s), async (state) => (state === 'live' ? loadPicker(s()) : undefined));
 
-  const models = () => data.latest?.models ?? [];
+  const allModels = () => data.latest?.models ?? [];
   const fusion = () => data.latest?.fusion;
-  const byKey = createMemo(() => new Map(models().map((m) => [modelKey(m), m])));
+  const byKey = createMemo(() => new Map(allModels().map((m) => [modelKey(m), m])));
   const current = (): Selection | undefined => selectionOf(s().state.model, fusion()?.active);
+  /** F-02: chat models of working providers (the running model always stays); the rest sit under "Unavailable". */
+  const split = createMemo(() => {
+    const c = current();
+    return splitAvailability(allModels(), data.latest?.readiness, c?.kind === 'single' ? c.key : undefined);
+  });
+  const models = () => split().usable;
+  const [showUnavailable, setShowUnavailable] = createSignal(false);
+  const unavailableRows = () => {
+    const q = query().trim().toLowerCase();
+    return split().unavailable.filter((u) => !q || modelHits(u.model, q));
+  };
+  /** One line per failing provider: "OpenRouter: the key was rejected · 470 models". */
+  const unavailableProviders = () => {
+    const by = new Map<string, { reason: string; count: number }>();
+    for (const u of split().unavailable) {
+      const e = by.get(u.model.provider);
+      if (e) e.count += 1;
+      else by.set(u.model.provider, { reason: u.reason, count: 1 });
+    }
+    return [...by.values()];
+  };
   const fusionOn = () => !!fusion();
   const activePair = () => {
     const c = current();
@@ -208,7 +234,8 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
       await op();
       closeModelPicker();
     } catch (e) {
-      setError(errText(e));
+      const k = pick();
+      setError(calmModelError(e, k ? shortModelName(nameOf(k)) : undefined));
     } finally {
       setBusy(false);
     }
@@ -223,7 +250,7 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
         await setFusionActive(s(), { kind: 'single', model: key });
       } else {
         const slash = key.indexOf('/');
-        await s().cmd({ type: 'set_model', provider: key.slice(0, slash), modelId: key.slice(slash + 1) });
+        await setChatModel(s(), key.slice(0, slash), key.slice(slash + 1));
       }
       // The curated default effort comes with a suggested pick (the TUI picker's per-model effort).
       const effort = curated()?.effort[key];
@@ -446,6 +473,39 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
               >
                 {(m) => <SingleRow m={m} />}
               </For>
+              <Show when={unavailableRows().length > 0}>
+                <button
+                  type="button"
+                  class="mp-group mp-unavail-toggle"
+                  aria-expanded={showUnavailable()}
+                  onClick={() => setShowUnavailable((v) => !v)}
+                  data-testid="model-group-unavailable"
+                >
+                  <Show when={showUnavailable()} fallback={<ChevronRight size={13} />}>
+                    <ChevronDown size={13} />
+                  </Show>
+                  Unavailable ({unavailableRows().length})
+                </button>
+                <Show when={showUnavailable()}>
+                  <For each={unavailableProviders()}>
+                    {(p) => (
+                      <p class="mp-hint mp-unavail-note">
+                        {p.reason} · {p.count} model{p.count === 1 ? '' : 's'}
+                      </p>
+                    )}
+                  </For>
+                  <For each={unavailableRows().slice(0, 200)}>
+                    {(u) => (
+                      <button type="button" class="mp-row" disabled aria-disabled="true" title={`${modelName(u.model)}\n${u.reason}`} data-testid="model-row-unavailable">
+                        <span class="mp-row-main">
+                          <span class="mp-row-name">{modelName(u.model)}</span>
+                          <span class="mp-row-sub">{u.reason}</span>
+                        </span>
+                      </button>
+                    )}
+                  </For>
+                </Show>
+              </Show>
             </div>
           </Show>
         }
@@ -562,6 +622,9 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
           <Show when={!action()}>
             <p class="mp-hint">{current()?.kind === 'fusion' ? 'Fusion is on. Pick a model to switch to it.' : 'Pick a model to switch.'}</p>
           </Show>
+          <p class="mp-hint mp-scope-note" data-testid="model-picker-scope">
+            Your pick applies to this chat only. “Use at startup” sets the model new chats start with.
+          </p>
           <Show when={startupTarget()}>
             {(target) => (
               <button

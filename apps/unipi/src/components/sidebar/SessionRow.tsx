@@ -18,6 +18,7 @@ import type { SessionMeta } from '../../lib/session/hub';
 import { sessions, type SessionHandle } from '../../lib/session/store';
 import { openRowMenu } from '../../lib/session/actions';
 import { relativeTimeMs } from '../../lib/time';
+import { cronRunFailed, cronRunLabel } from '../../lib/cronRunLabels';
 
 export type RowVariant = 'sidebar' | 'page';
 
@@ -116,7 +117,12 @@ export function SessionRow(props: {
     }, LONG_PRESS_MS);
   };
   const pinTitle = () => (props.meta?.pinned ? `Unpin "${titleText()}"` : `Pin "${titleText()}"`);
-  const titleText = () => sessionTitle(props.card, open()?.state, 'New chat');
+  /** F-11: a cron run's job name and outcome. */
+  const cronRun = () => (props.card.source === 'cron' ? cronRunLabel(props.hostId, props.card.session_id) : undefined);
+  const titleText = () => {
+    const named = open()?.state.name?.trim() || props.card.name?.trim();
+    return !named && cronRun() ? cronRun()!.jobName : sessionTitle(props.card, open()?.state, 'New chat');
+  };
   const folder = () => (!isHomeCwd(props.card.cwd) ? props.card.cwd?.split(/[\\/]/).filter(Boolean).pop() : undefined);
   const stateWord = () => STATE_WORD[state()];
   const subFolder = () => {
@@ -223,9 +229,11 @@ export function SessionRow(props: {
                 )}
               </Show>
               <Show when={props.card.source === 'cron'}>
-                <span class="srow-cron" title="Run by the cron scheduler">
-                  <Clock size={12} />
-                  <span class="srow-cron-label">cron</span>
+                <span class="srow-cron" data-failed={cronRunFailed(cronRun()) ? '' : undefined} title={cronRunFailed(cronRun()) ? `This cron run failed${cronRun()?.reason ? `: ${cronRun()!.reason}` : ''}` : 'Run by the cron scheduler'}>
+                  <Show when={cronRunFailed(cronRun())} fallback={<Clock size={12} />}>
+                    <CircleAlert size={12} />
+                  </Show>
+                  <span class="srow-cron-label">{cronRunFailed(cronRun()) ? (cronRun()?.status === 'timeout' ? 'timed out' : 'failed') : 'cron'}</span>
                 </span>
               </Show>
             </span>

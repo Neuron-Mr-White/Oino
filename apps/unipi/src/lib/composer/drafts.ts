@@ -170,13 +170,15 @@ export function restoreComposer(key: string, draft: { text: string; images?: Out
 /** Starts the composer over (a send): text, quotes, chips and attachments. */
 export function clearComposer(key: string): void {
   clearAttachments(key);
+  // D-11: the stored copy goes first — dropping the in-memory draft makes readers fall back to
+  // storage, which would still hold the text just sent and leave Send enabled on an empty field.
+  persist(key, '');
   setDrafts((all) => {
     if (!(key in all)) return all;
     const next = { ...all };
     delete next[key];
     return next;
   });
-  persist(key, '');
 }
 
 /** Adds a chip (paste, B8 element/screenshot) to a session's draft. */

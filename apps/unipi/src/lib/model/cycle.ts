@@ -51,3 +51,38 @@ export function cycleLabel(exact: readonly string[], custom: readonly string[], 
 export function cycleKeyOf(provider: string, id: string): string {
   return `${provider}/${id}`;
 }
+
+const globRe = (pattern: string): RegExp =>
+  new RegExp(`^${pattern.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`, 'i');
+
+/**
+ * F-04: the keys Ctrl+Alt+P steps through, in order — never the whole catalogue.
+ * The stored cycle set (exact keys and globs, `:level` suffixes dropped) resolved against
+ * the models that can chat and run; else Fusion's curated `ranked` list; else — only when the
+ * catalogue is small — every usable chat model. `undefined` = nothing sensible to cycle.
+ */
+export function cycleList(opts: {
+  patterns: readonly string[];
+  curated: readonly string[];
+  usable: readonly string[];
+  smallMax?: number;
+}): string[] | undefined {
+  const usable = new Set(opts.usable);
+  const keep = (keys: Iterable<string>) => [...new Set(keys)].filter((k) => usable.has(k));
+  if (opts.patterns.length) {
+    const out: string[] = [];
+    for (const raw of opts.patterns) {
+      const pattern = raw.replace(/:(off|minimal|low|medium|high|xhigh)$/i, '');
+      if (!/[*?]/.test(pattern)) out.push(pattern);
+      else {
+        const re = globRe(pattern);
+        for (const k of opts.usable) if (re.test(k)) out.push(k);
+      }
+    }
+    const list = keep(out);
+    if (list.length) return list;
+  }
+  const curated = keep(opts.curated);
+  if (curated.length) return curated;
+  return opts.usable.length > 0 && opts.usable.length <= (opts.smallMax ?? 12) ? [...opts.usable] : undefined;
+}

@@ -514,3 +514,4 @@ html:not([data-shell='desktop']) .srow-confirm-yes { min-height: 40px; padding: 
 .sb-sessions[data-variant='page'] .sb-archived-restore,
 .sb-sessions[data-variant='page'] .sb-archived-del { height: 34px; min-height: 34px; font-size: 12.5px; }
 .sb-sessions[data-variant='page'] .sb-archived-del:not(.sb-archived-del-confirm) { width: 34px; }
+.srow-cron[data-failed] { color: var(--color-wm-red); }

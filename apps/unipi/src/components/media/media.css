@@ -119,3 +119,6 @@ html[data-shell=desktop] .img-edit-tools { order: -1; }
 .ptab-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .ptab .reader-pre { margin: 0; }
 .ptab .chat-block { padding: 12px 16px; }
+.chat-path-thumb-row { padding: 2px 4px 6px 28px; }
+.chat-path-thumb { width: auto; min-width: 96px; max-width: 220px; height: 96px; }
+.chat-path-thumb .chat-image-chip-img { width: auto; max-width: 220px; height: 96px; object-fit: contain; }

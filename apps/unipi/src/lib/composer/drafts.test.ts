@@ -30,6 +30,15 @@ afterEach(() => {
   localStorage.clear();
 });
 
+describe('D-11 clearComposer with a persisted draft', () => {
+  it('reads back empty at once, even when the text was already stored', () => {
+    setComposerText(KEY, '/copy');
+    flushComposerDrafts();
+    clearComposer(KEY);
+    expect(composerDraft(KEY).text).toBe('');
+  });
+});
+
 describe('text persistence (Z-59)', () => {
   it('persists debounced 500 ms and only while non-empty', () => {
     vi.useFakeTimers();

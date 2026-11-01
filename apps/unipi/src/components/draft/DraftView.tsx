@@ -131,6 +131,15 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
     ),
   );
 
+  /** F-01: why Send is held — the typed text is never sent nor cleared meanwhile. */
+  const sendHold = (): string | undefined => {
+    const ready = draft()?.readiness();
+    if (ready?.known && !ready.any) return 'Connect a provider first — your message stays here';
+    const model = draft()?.state.model;
+    const dead = ready?.known && model?.provider ? ready.providers.find((p) => p.id === model.provider && p.ready === false) : undefined;
+    return dead ? `${dead.name || dead.id} isn't working — pick another model` : undefined;
+  };
+
   return (
     <div class="draft" data-testid="draft-view">
       <div class="draft-mark" aria-hidden="true">
@@ -147,6 +156,7 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
               <Composer
                 session={session}
                 draft
+                sendHold={sendHold}
                 busy={busy()}
                 autofocus={layout().desktop()}
                 phone={!layout().desktop()}

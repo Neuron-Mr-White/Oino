@@ -22,6 +22,7 @@ import type { SessionHandle } from '../../lib/session/store';
 import { parseWorkflowStatus, WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { menuKeys } from './menuKeys';
+import { toasts } from '../../lib/toasts';
 
 /** The three modes the extension's `/permission` accepts (`rules::Mode`). */
 export const PERMISSION_MODES = ['ask', 'auto', 'full'] as const;
@@ -66,7 +67,17 @@ export function PermissionControl(props: {
   onCommand: (command: string) => void;
   disabled?: boolean;
 }) {
-  const { mode } = useWorkflow(() => props.session);
+  const { mode: reported } = useWorkflow(() => props.session);
+  /** F-07: the pick shows at once; the workflow topic confirms (or a timeout drops it). */
+  const [wanted, setWanted] = createSignal<PermissionMode | undefined>();
+  let wantedTimer: ReturnType<typeof setTimeout> | undefined;
+  const mode = (): PermissionMode => wanted() ?? reported();
+  createEffect(
+    on(reported, (m) => {
+      if (m === wanted()) setWanted(undefined);
+    }),
+  );
+  onCleanup(() => clearTimeout(wantedTimer));
   const available = () => offered(props.session, 'permission');
   const [open, setOpen] = createSignal(false);
   let anchor: HTMLButtonElement | undefined;
@@ -79,7 +90,20 @@ export function PermissionControl(props: {
   };
   const pick = (value: PermissionMode) => {
     setOpen(false);
-    if (value !== mode()) props.onCommand(`/permission ${value}`);
+    if (value === mode()) return;
+    setWanted(value);
+    clearTimeout(wantedTimer);
+    wantedTimer = setTimeout(() => setWanted(undefined), 6000);
+    props.onCommand(`/permission ${value}`);
+  };
+  /** "Make default for new chats": the one way (besides Settings) to change what new chats start with. */
+  const makeDefault = () => {
+    const value = mode();
+    setOpen(false);
+    props.session
+      .cmd({ type: '_oino/set_extension_setting', namespace: 'permission', key: 'mode', value, scope: 'global' })
+      .then(() => toasts().push(`New chats start in ${MODE_LABEL[value]}`, 'success'))
+      .catch(() => toasts().push('Could not save the default', 'error'));
   };
 
   return (
@@ -124,7 +148,11 @@ export function PermissionControl(props: {
               </button>
             )}
           </For>
-          <p class="perm-menu-scope" data-testid="permission-scope">Applies to all chats in this project.</p>
+          <button type="button" role="menuitem" class="perm-menu-row perm-menu-default" onClick={makeDefault} data-testid="permission-make-default">
+            <span class="perm-menu-check" />
+            <span class="perm-menu-label">Make default for new chats</span>
+          </button>
+          <p class="perm-menu-scope" data-testid="permission-scope">Applies to this chat only.</p>
           </div>
         </AnchoredMenu>
       </Show>

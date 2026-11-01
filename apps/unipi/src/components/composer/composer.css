@@ -483,3 +483,5 @@ html:not([data-shell='desktop']) .cmenu {
 .att-retry { color: var(--color-claw); }
 .att-fail { align-self: center; display: grid; place-items: center; color: #f6a89d; }
 html[data-shell=phone] .att-remove { width: 26px; height: 26px; min-height: 26px; }
+.perm-menu-default { min-height: 40px; margin-top: 4px; border-top: 1px solid var(--color-line); border-radius: 0 0 12px 12px; }
+.perm-menu-default .perm-menu-check { grid-row: 1; }

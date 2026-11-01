@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@solidjs/testing-library';
 import { createStore } from 'solid-js/store';
-import { ImageChipRow, imageRefFile, loadImage, resetImageCacheForTests } from './ImageChip';
+import { imagePathIn, ImageChipRow, imageRefFile, loadImage, resetImageCacheForTests } from './ImageChip';
 import type { Chat } from '../../lib/chat/store';
 import type { ImageRef } from '../../lib/chat/model';
 
@@ -85,5 +85,13 @@ describe('imageRefFile (UNI-290: re-attach a sent image)', () => {
     const fetched = await imageRefFile(chat, { mime: 'image/jpeg', mediaRef: 'm1-1' }, 'b.jpg');
     expect(chat.media).toHaveBeenCalledWith('m1-1', 'image/jpeg');
     expect([...new Uint8Array(await fetched.arrayBuffer())]).toEqual([1, 2, 3]);
+  });
+});
+
+describe('F-08 screenshot path', () => {
+  it('finds the saved image path in a tool result', () => {
+    expect(imagePathIn('Saved: /home/me/.cache/shots/t1-1793550901511.png')).toBe('/home/me/.cache/shots/t1-1793550901511.png');
+    expect(imagePathIn('…t1-1.pngSaved: /home/me/a b.png and /tmp/x.jpg.')).toBe('/tmp/x.jpg');
+    expect(imagePathIn('no image here /etc/passwd')).toBeUndefined();
   });
 });

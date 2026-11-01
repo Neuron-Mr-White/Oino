@@ -4,7 +4,7 @@
  * globs/thinking suffixes stay as written.
  */
 import { describe, expect, it } from 'vitest';
-import { cycleKeyOf, cycleKeysOf, cycleLabel, isExactPattern, toggleCycleKey } from './cycle';
+import { cycleKeyOf, cycleKeysOf, cycleLabel, cycleList, isExactPattern, toggleCycleKey } from './cycle';
 
 describe('isExactPattern', () => {
   it('accepts provider/model, rejects globs and thinking suffixes', () => {
@@ -48,5 +48,18 @@ describe('cycleLabel', () => {
 describe('cycleKeyOf', () => {
   it('is the provider/id form `enabledModels` stores', () => {
     expect(cycleKeyOf('anthropic', 'claude-opus-5-5')).toBe('anthropic/claude-opus-5-5');
+  });
+});
+
+describe('F-04 cycleList', () => {
+  const usable = ['a/x', 'a/y', 'b/z'];
+  it('uses the stored set (globs resolved, level suffix dropped), only usable models', () => {
+    expect(cycleList({ patterns: ['b/z:high', 'a/*', 'gone/q'], curated: [], usable })).toEqual(['b/z', 'a/x', 'a/y']);
+  });
+  it('falls back to the curated list, then to a small catalogue; never a big one', () => {
+    expect(cycleList({ patterns: [], curated: ['a/y', 'nope/x'], usable })).toEqual(['a/y']);
+    expect(cycleList({ patterns: [], curated: [], usable })).toEqual(usable);
+    const big = Array.from({ length: 40 }, (_, i) => `p/m${i}`);
+    expect(cycleList({ patterns: [], curated: [], usable: big })).toBeUndefined();
   });
 });

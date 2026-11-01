@@ -23,6 +23,11 @@ export function isReport(message: string): boolean {
   return text.includes('\n') || text.length > REPORT_MIN_CHARS;
 }
 
+/** E-05: a report written in Markdown (`# Heading`, `**bold**`, lists, tables, fences) is rendered; aligned plain text stays monospace. */
+export function looksMarkdown(body: string): boolean {
+  return /^\s{0,3}#{1,6}\s+\S/m.test(body) || /\*\*[^*\n]+\*\*/.test(body) || /^\s*\|.+\|\s*$/m.test(body) || /^```/m.test(body) || /^\s*[-*]\s+\S.*$/m.test(body) && /\*\*|`[^`\n]+`/.test(body);
+}
+
 const [current, setCurrent] = createSignal<Report | null>(null);
 const recent = new Map<string, { command: string; at: number }>();
 let seq = 0;
@@ -49,12 +54,19 @@ export function reportHeadline(body: string): string {
  * or toasts its first line with "Show"; anything else is a plain toast.
  */
 export function routeNotify(message: string, kind: ToastKind, sessionKey?: string, now = Date.now()): void {
+  const ran = sessionKey ? recent.get(sessionKey) : undefined;
+  const answering = !!ran && now - ran.at <= REPORT_COMMAND_WINDOW_MS;
   if (!isReport(message)) {
+    if (answering) {
+      // E-05: a one-line answer to a command the user just ran (`/kanboard status`) must not vanish unread:
+      // the toast lingers (it carries an action) and "Show" opens it in the report panel.
+      const report: Report = { id: ++seq, title: `/${ran!.command}`, body: message.trim(), kind, at: now };
+      toasts().push(message, kind, { label: 'Show', run: () => void setCurrent(report) });
+      return;
+    }
     toasts().push(message, kind);
     return;
   }
-  const ran = sessionKey ? recent.get(sessionKey) : undefined;
-  const answering = !!ran && now - ran.at <= REPORT_COMMAND_WINDOW_MS;
   const report: Report = {
     id: ++seq,
     title: answering ? `/${ran!.command}` : reportHeadline(message) || 'Report',

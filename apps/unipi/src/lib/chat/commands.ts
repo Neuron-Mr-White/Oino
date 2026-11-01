@@ -180,3 +180,11 @@ export function applyAt(text: string, caret: number, at: { start: number }, valu
   const pos = at.start + insert.length - (dir && value.endsWith('"') ? 1 : 0);
   return { text: next, caret: pos };
 }
+
+/** F-05: commands whose bare form has nothing to do — Enter in the menu completes `/graph ` and waits for the task. */
+const TASK_COMMANDS = new Set(['graph', 'goal', 'ralph', 'swarm', 'unipi:graph', 'unipi:goal', 'unipi:ralph', 'unipi:swarm']);
+export function commandNeedsTask(c: CommandInfo): boolean {
+  if (TASK_COMMANDS.has(c.name)) return true;
+  const hint = c.argumentHint ?? c.argument_hint;
+  return typeof hint === 'string' && hint.trim().startsWith('<');
+}

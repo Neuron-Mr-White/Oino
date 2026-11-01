@@ -169,6 +169,20 @@ describe('DraftView (Z-19)', () => {
     expect(composerDraft(draftKey('this-pc')).text).toBe('Hello there');
   });
 
+  it('F-01: with no provider Enter/Send never sends and never clears the typed text', async () => {
+    boot([{ id: 'oino', configured: false }]);
+    await waitFor(() => expect(screen.getByTestId('connect-provider-card')).toBeTruthy());
+    typeInto('hello no provider');
+    const send = () => screen.getByTestId('send-send') as HTMLButtonElement;
+    await waitFor(() => expect(send().disabled).toBe(true));
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    fireEvent.click(send());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(start).not.toHaveBeenCalled();
+    expect(composerDraft(draftKey('this-pc')).text).toBe('hello no provider');
+    expect(screen.getByTestId('connect-provider-card')).toBeTruthy();
+  });
+
   it('an empty draft cannot send', async () => {
     boot();
     await waitFor(() => expect(screen.getByTestId('send-send')).toBeTruthy());

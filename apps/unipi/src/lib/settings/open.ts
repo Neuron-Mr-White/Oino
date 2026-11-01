@@ -5,6 +5,7 @@
  */
 import { createSignal } from 'solid-js';
 import { appNavigate } from '../nav';
+import { layout } from '../layout';
 
 const FLASH_MS = 1400;
 
@@ -52,7 +53,10 @@ export function openSettingsAt(section: string, anchor?: string): void {
   const land = () => {
     const el = document.getElementById(anchor);
     if (el) {
-      el.scrollIntoView?.({ block: anchor.startsWith('sec-') ? 'start' : 'center' });
+      if (anchor.startsWith('sec-') && layout().desktop()) {
+        // F-10: the desktop shows one section per page — land at the very top (title and search visible), not 16 px down.
+        for (let p = el.parentElement; p; p = p.parentElement) if (p.scrollTop > 0 || p.classList.contains('app-content')) p.scrollTop = 0;
+      } else el.scrollIntoView?.({ block: anchor.startsWith('sec-') ? 'start' : 'center' });
       el.classList.remove('settings-flash-target');
       void el.offsetWidth;
       el.classList.add('settings-flash-target');

@@ -17,3 +17,6 @@ html:not([data-shell=desktop]) .report-copy { height: 40px; min-height: 40px; pa
 /* Above the phone workspace layer (z 40) and the phone pane (z 60), like the other chat sheets. */
 body > div:has(> .sheet.report-sheet) > .sheet-overlay { z-index: 69; }
 .sheet.report-sheet { z-index: 70; }
+.report-body.report-md { font-family: var(--font-sans, inherit); white-space: normal; font-size: 13.5px; line-height: 21px; }
+.report-body.report-md h1, .report-body.report-md h2, .report-body.report-md h3 { margin: 12px 0 6px; line-height: 1.3; }
+.report-body.report-md > :first-child { margin-top: 0; }

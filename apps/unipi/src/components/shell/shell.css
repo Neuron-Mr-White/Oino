@@ -310,3 +310,39 @@ html[data-shell=phone] .send-btn-chevron { min-width: 40px; min-height: 40px; }
 html[data-shell=phone] .srow-pin,
 html[data-shell=phone] .sb-sessions[data-variant='page'] .srow-pin[data-pinned] { width: 40px; height: 40px; min-height: 40px; min-width: 40px; }
 html[data-shell=phone] .chat-group-new { width: 40px; height: 40px; min-height: 40px; margin: -10px -8px -10px 0; }
+
+/* D-43 (pass 3): the rest of the listed phone targets — 40 px boxes. */
+html[data-shell=phone] :is(.mode-chip, .hdr-mode) { min-height: 40px; height: 40px; min-width: 40px; }
+html[data-shell=phone] .tl-act,
+html[data-shell=phone] .tl-user-edit { width: 40px; height: 40px; min-height: 40px; min-width: 40px; }
+html[data-shell=phone] .tl-actions { gap: 0; }
+html[data-shell=phone] .proc-head,
+html[data-shell=phone] .tool-row { min-height: 40px; }
+html[data-shell=phone] .ctx-ring { width: 40px; height: 40px; min-height: 40px; min-width: 40px; }
+html[data-shell=phone] .report-copy,
+html[data-shell=phone] .tl-error-copy,
+html[data-shell=phone] .tl-error-details,
+html[data-shell=phone] .cb-copy,
+html[data-shell=phone] .md-copy-path { min-width: 40px; min-height: 40px; }
+html[data-shell=phone] .chat-group-new,
+html[data-shell=phone] .sb-new,
+html[data-shell=phone] .sidebar-new { width: 40px; height: 40px; min-height: 40px; }
+/* Inline "Copy path" glyph: a 40 px box that takes no more line height than the 20 px one. */
+html[data-shell=phone] .md .code-copy { width: 40px; height: 40px; min-width: 40px; margin: -10px -10px -10px -9px; vertical-align: middle; }
+html[data-shell=phone] .md .cb-copy { min-height: 40px; min-width: 52px; }
+
+/* D-43: the key row scrolls under a wide fade, so a half-visible key never reads as stacked under "Composer". */
+html[data-shell=phone] .term-key-scroll { margin-right: 4px; padding-right: 6px; scroll-padding-inline-end: 28px; -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%); }
+html[data-shell=phone] .term-toolbar-pinned { position: relative; z-index: 1; padding-left: 4px; background: var(--color-surface-2); border-radius: 0 20px 20px 0; }
+
+/* D-43 sweep: the remaining small phone controls (sidebar +, PC chip, project title, settings steppers/search). */
+html[data-shell=phone] [class*='sb-project-new'],
+html[data-shell=phone] .pc-chip,
+html[data-shell=phone] .project-title,
+html[data-shell=phone] .settings-iconbtn,
+html[data-shell=phone] .settings-search-input,
+html[data-shell=phone] .field-reset { min-height: 40px; min-width: 40px; }
+html[data-shell=phone] [class*='sb-project-new'] { width: 40px; height: 40px; }
+html[data-shell=phone] button.rounded-input.w-8.h-8 { width: 40px; height: 40px; }
+html[data-shell=phone] .settings-iconbtn { width: 40px; }
+html[data-shell=phone] .settings-page button.rounded-pill { min-height: 40px; }

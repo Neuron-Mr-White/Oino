@@ -17,6 +17,7 @@ import type { FileMention } from '../../lib/composer/attachments';
 import { classifyMedia } from '../../lib/media/previewer';
 import { openPreviewer, ownedObjectUrl } from '../../lib/media/previewerState';
 import { openFilePath, resolvePathToken } from '../../lib/media/pathTokens';
+import { blobTransport } from '../../lib/blob';
 
 export function ImageChipRow(props: { chat: RefChat; images: ImageRef[] }) {
   return (
@@ -306,5 +307,64 @@ function FileMentionChip(props: { chat: RefChat; mention: FileMention }) {
         <span class="chat-image-chip-error">!</span>
       </Show>
     </button>
+  );
+}
+
+/**
+ * F-08: a tool that only *names* a screenshot file ("Saved: /home/me/.../t1.png", the browser
+ * tool) still shows it: a small inline thumbnail read through the blob channel, click opens the
+ * previewer. Nothing renders when the file can't be read.
+ */
+export const IMAGE_PATH = /(?:^|[\s:"'(])(\/[^\s"'()<>]+\.(?:png|jpe?g|webp|gif))(?=$|[\s"'.,;)])/i;
+
+/** The absolute image path a tool's text mentions (the last one), if any. */
+export function imagePathIn(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  let found: string | undefined;
+  for (const m of text.matchAll(new RegExp(IMAGE_PATH.source, 'gi'))) found = m[1];
+  return found;
+}
+
+export function PathThumb(props: { chat: RefChat; path: string }) {
+  const [url, setUrl] = createSignal<string | undefined>();
+  const [gone, setGone] = createSignal(false);
+  const name = () => props.path.split('/').pop() ?? props.path;
+  onMount(() => {
+    void (async () => {
+      const release = await slot();
+      try {
+        let result;
+        try {
+          result = await blobTransport().getBytes(props.chat.hostId, { path: props.path });
+        } catch (error) {
+          const code = (error as { code?: string })?.code;
+          if ((code !== 'E_UNAUTHORIZED' && code !== 'E_NOT_FOUND') || !props.chat.shareFile) throw error;
+          await props.chat.shareFile(props.path);
+          result = await blobTransport().getBytes(props.chat.hostId, { path: props.path });
+        }
+        setUrl(ownedObjectUrl(new Blob([result.bytes as BlobPart], { type: result.mime || 'image/png' })));
+      } catch {
+        setGone(true);
+      } finally {
+        release();
+      }
+    })();
+  });
+  return (
+    <Show when={!gone()}>
+      <div class="chat-image-row chat-path-thumb-row">
+        <button
+          type="button"
+          class="chat-image-chip chat-path-thumb"
+          classList={{ 'is-loading': !url() }}
+          aria-label={`Open ${name()}`}
+          title={name()}
+          onClick={() => void openFilePath(props.chat, props.path).catch(() => setGone(true))}
+          data-testid="path-thumb"
+        >
+          <Show when={url()}>{(src) => <img class="chat-image-chip-img" src={src()} alt={name()} draggable={false} />}</Show>
+        </button>
+      </div>
+    </Show>
   );
 }
