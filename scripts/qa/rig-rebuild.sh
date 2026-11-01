@@ -16,6 +16,6 @@ fi
 # does, without its file watcher, which hits the inotify limit on busy machines).
 (cd "$root/apps/unipi" && npx vite build 2>&1 | grep -E "error|built in" | tail -3)
 (cd "$root/apps/unipi/src-tauri" && cargo build --release --features tauri/custom-protocol 2>&1 | grep -E "^error|Finished" | tail -5)
-install -m 755 "$root/apps/unipi/src-tauri/target/release/unipi-oino" "$QA_HOME/app/usr/bin/unipi-oino"
+install -m 755 "$root/apps/unipi/src-tauri/target/release/unipi-mobile" "$QA_HOME/app/usr/bin/unipi-oino"  # cargo names it after the crate; the bundler renames it to mainBinaryName
 node "$root/scripts/qa/rig.mjs" start
 echo "rig restarted with the working tree build"
