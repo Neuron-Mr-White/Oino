@@ -450,7 +450,8 @@ function ThisComputer(props: { s: SharingStatus; Section: (p: { title: string; i
         <div class="settings-row">
           <span class="settings-icon"><Monitor size={18} /></span>
           <div class="min-w-0">
-            <p class="text-[15px] text-text">unipi-host {props.s.version}</p>
+            {/* The host's version lives in About › Components (one place); this row is what runs it. */}
+            <p class="text-[15px] text-text">Agent host</p>
             <p class="text-xs text-text-dim mt-0.5" data-testid="tc-host-line">
               {runBy() ? `${runBy()} · ` : ''}
               {props.s.host_dir} · {props.s.devices.length} paired device{props.s.devices.length === 1 ? '' : 's'}

@@ -208,7 +208,9 @@ describe('Settings → Sharing with phones (desktop app)', () => {
     expect((await screen.findByTestId('host-update-available')).textContent).toContain('0.4.5 is available');
     fireEvent.click(screen.getByTestId('host-update'));
     await waitFor(() => expect(screen.queryByTestId('host-update')).toBeNull());
-    expect(screen.getByTestId('share-this-computer').textContent).toContain('unipi-host 0.4.5');
+    // The version row moved to About › Components; here the update notice is gone once updated.
+    expect(screen.queryByTestId('host-update-available')).toBeNull();
+    expect(screen.getByTestId('share-this-computer').textContent).not.toContain('unipi-host 0.4');
     expect(screen.getByTestId('share-this-computer').textContent).toContain('asked here first');
     fireEvent.click(within(screen.getByTestId('host-update-auto')).getByRole('switch'));
     await waitFor(() => expect(screen.getByTestId('share-this-computer').textContent).toContain('installed as soon as it is out'));
