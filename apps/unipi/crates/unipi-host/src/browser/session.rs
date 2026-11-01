@@ -878,7 +878,7 @@ where
                 }
                 let s = state.tab.session.clone();
                 let s = Some(s.as_str());
-                if !matches!(cmd, BrowserCmd::Ack { .. } | BrowserCmd::Viewport { .. }) {
+                if !matches!(cmd, BrowserCmd::Ack { .. } | BrowserCmd::Viewport { .. } | BrowserCmd::Inspect { .. }) {
                     // The user's own input keeps a take-over alive.
                     manager.gate.note_user_input();
                 }
@@ -927,6 +927,12 @@ where
                             page_dirty = true;
                             tabs_dirty = Some(Instant::now());
                         }
+                    }
+                    BrowserCmd::Inspect { x, y, pick } => {
+                        // WP-B8 element picker: DOM-only on hover, isolated world on a pick.
+                        state.refresh_visual().await;
+                        let element = super::picker::inspect(&cdp, &state.tab.session, &state.visual, *x, *y, *pick).await;
+                        send_event(write, BrowserEvent::Element { pick: *pick, element: element.map(Box::new) }).await?;
                     }
                     BrowserCmd::Viewport { viewport } => {
                         state.viewport = *viewport;

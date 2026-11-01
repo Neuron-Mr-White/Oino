@@ -54,6 +54,7 @@ pub mod cookies;
 pub mod display;
 pub mod gate;
 pub mod humanize;
+pub mod picker;
 pub mod profiles;
 pub mod session;
 

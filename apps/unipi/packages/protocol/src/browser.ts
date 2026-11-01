@@ -172,6 +172,8 @@ export const BrowserCmdSchema = z.discriminatedUnion("op", [
   }),
   z.object({ op: z.literal("text"), text: z.string().max(BROWSER_MAX_TEXT) }),
   z.object({ op: z.literal("ack"), seq: z.number().int().min(0) }),
+  // WP-B8: element picker — what is under (x, y)? (`pick`: the click, details wanted).
+  z.object({ op: z.literal("inspect"), x: finite, y: finite, pick: z.boolean().default(false) }),
 ]);
 export type BrowserCmd = z.input<typeof BrowserCmdSchema>;
 
@@ -181,6 +183,32 @@ export const BrowserFrameMetaSchema = z.object({
   css_height: z.number(),
   quality: z.number().int().min(1).max(100),
 });
+
+/** WP-B8: the picked element (ZCode web-element context field set). */
+export const BrowserElementDetailSchema = z.object({
+  url: z.string(),
+  title: z.string(),
+  tag: z.string(),
+  role: z.string().nullish(),
+  name: z.string().nullish(),
+  selector: z.string().nullish(),
+  xpath: z.string().nullish(),
+  text: z.string().nullish(),
+  attributes: z.record(z.string(), z.string()).default({}),
+  html: z.string().nullish(),
+});
+export type BrowserElementDetail = z.infer<typeof BrowserElementDetailSchema>;
+
+/** WP-B8: an element under the picker, in the frame's CSS px. */
+export const BrowserElementSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+  label: z.string(),
+  detail: BrowserElementDetailSchema.optional(),
+});
+export type BrowserElement = z.infer<typeof BrowserElementSchema>;
 
 export const BrowserEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("tabs"), tabs: z.array(BrowserTabSchema), active: z.string() }),
@@ -197,5 +225,7 @@ export const BrowserEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("closed"), reason: z.string() }),
   // UNI-296 (1.17.0)
   z.object({ kind: z.literal("agent"), agent: BrowserAgentSchema }),
+  // WP-B8 element picker answer (`element` absent = nothing there).
+  z.object({ kind: z.literal("element"), pick: z.boolean(), element: BrowserElementSchema.optional() }),
 ]);
 export type BrowserEvent = z.infer<typeof BrowserEventSchema>;

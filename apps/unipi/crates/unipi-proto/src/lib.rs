@@ -39,9 +39,9 @@ pub use board::{
     BOARD_SLUG_MAX,
 };
 pub use browser::{
-    BrowserAgent, BrowserCmd, BrowserEvent, BrowserFrameMeta, BrowserInfo, BrowserOpenData,
-    BrowserProfile, BrowserProfileInfo, BrowserProfilesData, BrowserStatusData, BrowserTab,
-    BrowserUrl, BrowserViewport,
+    BrowserAgent, BrowserCmd, BrowserElement, BrowserElementDetail, BrowserEvent, BrowserFrameMeta,
+    BrowserInfo, BrowserOpenData, BrowserProfile, BrowserProfileInfo, BrowserProfilesData,
+    BrowserStatusData, BrowserTab, BrowserUrl, BrowserViewport,
 };
 pub use control::{
     Control, Dimension, HostId, HostName, NotifyAppDetail, NotifyConfigData, NotifyEndpoint,

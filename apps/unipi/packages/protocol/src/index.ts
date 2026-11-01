@@ -158,6 +158,8 @@ export {
   BROWSER_MAX_URL,
   BROWSER_PROFILE_MAX,
   BrowserCmdSchema,
+  BrowserElementDetailSchema,
+  BrowserElementSchema,
   BrowserEngineSchema,
   BrowserEventSchema,
   BrowserFrameMetaSchema,
@@ -174,6 +176,8 @@ export {
 } from "./browser.js";
 export type {
   BrowserAgent,
+  BrowserElement,
+  BrowserElementDetail,
   BrowserProfileInfo,
   BrowserProfilesData,
   BrowserCmd,

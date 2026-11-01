@@ -40,6 +40,14 @@
 //!   `stealth` itself stays true). The existing `headless`/`browser_window`
 //!   toggle now switches hidden ↔ window for CloakBrowser too.
 //!
+//! - WP-B8 (v2), additive: the element picker. `browser_cmd{op:"inspect", x, y,
+//!   pick}` asks what is under a point of the picture; the host answers
+//!   `browser_event{kind:"element", pick, element?}` — a box + short label while
+//!   hovering (`pick: false`, DOM box model only, no page JS), plus the
+//!   details (selector, XPath, role, name, text, safe attributes, HTML excerpt)
+//!   computed in an isolated world on the click (`pick: true`). Older hosts
+//!   never answer; the app times the picker out.
+//!
 //! Flow control: the host keeps at most a couple of frames in flight; the
 //! phone acks each `frame` (`ack{seq}`) once drawn. Quality/fps adapt to how
 //! fast acks come back.
@@ -427,6 +435,14 @@ pub enum BrowserCmd {
     Ack {
         seq: u64,
     },
+    /// WP-B8: what is under (x, y)? Answered with [`BrowserEvent::Element`].
+    Inspect {
+        x: f64,
+        y: f64,
+        /// The user clicked (details wanted), not just hovering.
+        #[serde(default)]
+        pick: bool,
+    },
 }
 
 impl BrowserCmd {
@@ -436,6 +452,9 @@ impl BrowserCmd {
         match self {
             BrowserCmd::Mouse { x, y, dx, dy, .. } if !finite(&[*x, *y, *dx, *dy]) => {
                 Err("mouse coordinates must be finite".into())
+            }
+            BrowserCmd::Inspect { x, y, .. } if !finite(&[*x, *y]) => {
+                Err("inspect coordinates must be finite".into())
             }
             BrowserCmd::Touch { points, .. }
                 if points.len() > 10 || !points.iter().all(|p| finite(&[p.x, p.y])) =>
@@ -469,6 +488,47 @@ pub struct BrowserFrameMeta {
     pub quality: u8,
 }
 
+/// WP-B8: an element under the picker, in the picture's CSS px (the frame's
+/// `css_width` × `css_height` space).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BrowserElement {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// Short label: `button#send.primary`.
+    pub label: String,
+    /// Only for a pick: what the composer chip carries.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub detail: Option<BrowserElementDetail>,
+}
+
+/// WP-B8: the picked element (ZCode web-element context field set).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct BrowserElementDetail {
+    pub url: String,
+    pub title: String,
+    pub tag: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub role: Option<String>,
+    /// Accessible name (aria-label, alt, label text, …).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub selector: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub xpath: Option<String>,
+    /// Visible text (truncated; password fields masked).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub text: Option<String>,
+    /// Safe attributes only (no values of inputs, no event handlers).
+    #[serde(default)]
+    pub attributes: std::collections::BTreeMap<String, String>,
+    /// Sanitized outer HTML excerpt.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub html: Option<String>,
+}
+
 /// Host → phone events on a `browser_open` stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -499,5 +559,11 @@ pub enum BrowserEvent {
     /// UNI-296: what agents are doing with this browser changed.
     Agent {
         agent: BrowserAgent,
+    },
+    /// WP-B8: the answer to an `inspect` (`element: None` = nothing there).
+    Element {
+        pick: bool,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        element: Option<Box<BrowserElement>>,
     },
 }
