@@ -87,3 +87,22 @@ describe('Toasts', () => {
     expect(stack.list()[0]!.leaving).toBe(true);
   });
 });
+
+describe('P2-04: phone toasts move to the top while a bottom sheet is open', () => {
+  it('phoneSheetOpen: phone shell + an open sheet only', async () => {
+    const { phoneSheetOpen } = await import('./Toasts');
+    const root = document.documentElement;
+    const prev = root.dataset.shell;
+    const sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    root.dataset.shell = 'phone';
+    expect(phoneSheetOpen()).toBe(false);
+    document.body.append(sheet);
+    expect(phoneSheetOpen()).toBe(true);
+    root.dataset.shell = 'desktop';
+    expect(phoneSheetOpen()).toBe(false);
+    sheet.remove();
+    if (prev === undefined) delete root.dataset.shell;
+    else root.dataset.shell = prev;
+  });
+});

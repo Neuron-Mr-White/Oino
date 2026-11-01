@@ -18,6 +18,23 @@
   right: var(--toast-right, 12px);
   bottom: var(--toast-bottom, calc(76px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))));
 }
+/* P2-04: a phone bottom sheet is open — the stack sits at the top, under the safe area, above the sheet. */
+.app-toasts[data-pos='top'] {
+  top: calc(max(env(safe-area-inset-top), var(--inset-top, 0px)) + 10px);
+  bottom: auto;
+  left: 12px;
+  right: 12px;
+  align-items: center;
+  max-width: none;
+  z-index: 80;
+}
+.app-toasts[data-pos='top'] .app-toast { animation-name: app-toast-in-top; }
+@keyframes app-toast-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
 .app-toast {
   pointer-events: auto;
   display: inline-flex;

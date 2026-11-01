@@ -47,7 +47,7 @@ export const APP_BINDINGS: AppBinding[] = [
   { id: 'model.open', title: 'Change model', group: 'Chat', chords: ['Mod+M'], scope: 'conversation' },
   { id: 'model.cycle', title: 'Cycle the model (cycle set, else Fusion suggestions)', group: 'Chat', chords: ['Mod+Alt+P'], scope: 'conversation' },
   { id: 'thinking.cycle', title: 'Cycle the thinking level', group: 'Chat', chords: ['Mod+T'], scope: 'conversation' },
-  { id: 'mode.cycle', title: 'Cycle the working-mode starter (Goal / Ralph / Graph)', group: 'Chat', chords: ['Mod+Shift+M'], scope: 'conversation' },
+  { id: 'mode.cycle', title: 'Cycle the working-mode starter (Goal / Ralph / Swarm / Graph)', group: 'Chat', chords: ['Mod+Shift+M'], scope: 'conversation' },
   { id: 'chat.send', title: 'Send (while running: last Steer/Queue choice)', group: 'Chat', chords: ['Enter'], scope: 'conversation', displayOnly: true },
   { id: 'chat.newline', title: 'New line', group: 'Chat', chords: ['Shift+Enter'], scope: 'conversation', displayOnly: true },
   { id: 'chat.back', title: 'Back / close the top layer', group: 'Chat', chords: ['Esc'], scope: 'conversation', displayOnly: true },
@@ -62,7 +62,6 @@ export const SCREEN_KEYS: ScreenKeyGroup[] = [
     title: 'Chat keys',
     items: [
       { keys: 'S / Q', what: 'In the Steer/Queue choice: Steer / Queue (←/→ switch, Enter picks)' },
-      { keys: 'Alt ↑ / Alt ↓', what: 'Previous / next chat' },
       { keys: 'Ctrl V', what: 'Paste an image from the clipboard as an attachment' },
       { keys: 'Drop files', what: 'Attach files dropped on the chat' },
     ],

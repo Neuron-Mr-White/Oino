@@ -12,13 +12,20 @@ import './toasts.css';
 
 const ICON: Record<ToastKind, typeof Info> = { info: Info, success: CheckCircle2, warning: TriangleAlert, error: AlertCircle };
 
+/** P2-04 (§3.2): on the phone, a bottom sheet / full-screen layer owns the bottom edge — the stack moves to the top. */
+export function phoneSheetOpen(doc: Document = document): boolean {
+  if (doc.documentElement.dataset.shell !== 'phone') return false;
+  return !!doc.querySelector('.sheet, .ui-phone-pane, .browser-sheet');
+}
+
 /** Computes right/bottom offsets so toasts stay bottom-right of `.conv` and above the composer. */
-function measureToastOffsets(): { right: number; bottom: number } {
+function measureToastOffsets(): { right: number; bottom: number; top?: boolean } {
   if (typeof window === 'undefined' || typeof document === 'undefined') return { right: 16, bottom: 96 };
   const vw = window.innerWidth || 1440;
   const vh = window.innerHeight || 900;
   const phone = document.documentElement.dataset.shell === 'phone';
   const edgePad = phone ? 12 : 16;
+  if (phoneSheetOpen()) return { right: edgePad, bottom: 0, top: true };
 
   const conv = document.querySelector<HTMLElement>('.ws-layer .conv, .conv');
   const convRect = conv?.getBoundingClientRect();
@@ -61,9 +68,11 @@ export function Toasts() {
     if (stack.list().length === 0 || !rootEl || typeof window === 'undefined') return;
     const el = rootEl;
     const sync = () => {
-      const { right, bottom } = measureToastOffsets();
+      const { right, bottom, top } = measureToastOffsets();
       el.style.setProperty('--toast-right', `${right}px`);
       el.style.setProperty('--toast-bottom', `${bottom}px`);
+      if (top) el.dataset.pos = 'top';
+      else delete el.dataset.pos;
     };
     sync();
     window.addEventListener('resize', sync, { passive: true });
