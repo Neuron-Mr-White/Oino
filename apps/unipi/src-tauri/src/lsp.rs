@@ -325,6 +325,10 @@ pub async fn lsp_open(
         crate::term::TermHandle {
             writer: writer_tx,
             reader: None,
+            // LSP streams keep the pre-generation behavior (their registry
+            // removes entries unconditionally); 0 is never issued by
+            // [`crate::term::TermRegistry::next_token`].
+            token: 0,
         },
     );
 

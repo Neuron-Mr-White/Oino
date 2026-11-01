@@ -8,10 +8,17 @@
 //! - Closing the tab (`term_close`) only *detaches*: the host keeps the shell
 //!   running (ZCode parity), so a reopened tab or another device re-attaches
 //!   it. `term_kill` really ends it.
+//! - Every stream carries a generation token: a reader task removes its
+//!   registry entry only while its token is still current
+//!   (compare-and-remove), so a stream that ends late — e.g. the one a
+//!   webview reload replaced — cannot remove the entry of the stream that
+//!   took its place, and opening an already-tracked id replaces the previous
+//!   stream cleanly (closing it first).
 //! - The host keeps no scrollback: a re-attached tab sees new output only, so
 //!   the app owns its xterm buffer per live tab.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -100,16 +107,33 @@ pub(crate) enum WriterMsg {
 
 pub(crate) struct TermHandle {
     pub(crate) writer: mpsc::Sender<WriterMsg>,
-    /// Aborted on close; not cloneable, so `lookup` returns writer only.
+    /// The reader task's handle (aborted when the stream is replaced or
+    /// closed; not cloneable, so `lookup` returns the writer only).
     pub(crate) reader: Option<tokio::task::JoinHandle<()>>,
+    /// Generation token of *this* stream (fresh per `term_open`, unique even
+    /// under one terminal id): the reader task removes the entry only while
+    /// the token still matches, so streams can't remove each other.
+    pub(crate) token: u64,
+}
+
+/// Detaches a stream for good: stop its reader task, then tell its writer to
+/// half-close so the host drops the attach. Dropping the writer sender (the
+/// fallback when the channel is full or gone) ends the host stream too.
+fn close_handle(handle: TermHandle) {
+    if let Some(reader) = handle.reader {
+        reader.abort();
+    }
+    let _ = handle.writer.try_send(WriterMsg::Close);
 }
 
 /// Managed registry of the app's live terminal streams (the host owns the
-/// PTYs; this is one stream per open tab). Shared (Arc) with each reader task
-/// so the task can remove its own entry when the stream ends for any reason.
+/// PTYs; this is one stream per open tab). Cloned into each reader task so a
+/// task can remove its own entry — by token — when the stream ends.
 #[derive(Clone, Default)]
 pub struct TermRegistry {
     pub(crate) sessions: std::sync::Arc<Mutex<HashMap<String, TermHandle>>>,
+    /// Source of the per-stream generation tokens.
+    next_token: std::sync::Arc<AtomicU64>,
 }
 
 impl TermRegistry {
@@ -117,11 +141,24 @@ impl TermRegistry {
         Self::default()
     }
 
-    fn insert(&self, id: String, handle: TermHandle) {
-        self.sessions
+    /// A fresh, never-repeated stream token (0 is never handed out, so a
+    /// zero value can't be mistaken for a live stream's token).
+    fn next_token(&self) -> u64 {
+        1 + self.next_token.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Registers a stream for `id`, cleanly replacing any stream an earlier
+    /// open left under the same id: the old one is closed first (reader
+    /// aborted, writer told to detach).
+    fn register(&self, id: String, handle: TermHandle) {
+        let replaced = self
+            .sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(id, handle);
+        if let Some(old) = replaced {
+            close_handle(old);
+        }
     }
 
     fn lookup_writer(&self, id: &str) -> Option<mpsc::Sender<WriterMsg>> {
@@ -132,13 +169,26 @@ impl TermRegistry {
             .map(|handle| handle.writer.clone())
     }
 
-    /// Removes and returns a handle. Idempotent: a missing id (the
-    /// reader already removed it after a natural end) returns `None`.
+    /// Removes and returns a handle, whatever stream it belongs to (the
+    /// explicit close/kill of this tab's current stream). Idempotent: a
+    /// missing id (the reader already removed it after a natural end)
+    /// returns `None`.
     fn remove(&self, id: &str) -> Option<TermHandle> {
         self.sessions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(id)
+    }
+
+    /// Compare-and-remove: takes the entry out only while it is still *this*
+    /// stream's (`token` matches), so a stream that ends late cannot remove
+    /// the entry of the stream that replaced it (the webview-reload race).
+    fn remove_own(&self, id: &str, token: u64) -> Option<TermHandle> {
+        let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
+        match sessions.get(id) {
+            Some(handle) if handle.token == token => sessions.remove(id),
+            _ => None,
+        }
     }
 }
 
@@ -329,75 +379,24 @@ pub async fn term_open(
 
     // Reader task: forwards frames to the UI channels; exactly one
     // terminal (exit/closed) event is sent last. Removes its own registry
-    // entry when it ends for any reason.
-    let mut recv = streams.recv;
-    let registry = std::sync::Arc::clone(&terms.sessions);
-    let reader_term_id = term_id.clone();
-    tokio::spawn(async move {
-        let mut ended = false;
-        while !ended {
-            let mut kind_buffer = [0u8; 1];
-            let mut len_buffer = [0u8; 4];
-            if recv.read_exact(&mut kind_buffer).await.is_err()
-                || recv.read_exact(&mut len_buffer).await.is_err()
-            {
-                let _ = on_event.send(TermEvent::Closed { error: None });
-                break;
-            }
-            let len = u32::from_be_bytes(len_buffer) as usize;
-            if len > unipi_proto::MAX_FRAME {
-                let _ = on_event.send(TermEvent::Closed {
-                    error: Some(AppErrorDto::new(
-                        AppErrorCode::E_SCHEMA,
-                        "oversize frame",
-                        false,
-                    )),
-                });
-                break;
-            }
-            let mut payload = vec![0u8; len];
-            if recv.read_exact(&mut payload).await.is_err() {
-                let _ = on_event.send(TermEvent::Closed { error: None });
-                break;
-            }
-            match decode_frame(kind_buffer[0], &payload) {
-                Ok(Decoded::Data(bytes)) => {
-                    if on_data.send(InvokeResponseBody::Raw(bytes)).is_err() {
-                        break;
-                    }
-                }
-                Ok(Decoded::Event(event)) => {
-                    let is_final =
-                        matches!(event, TermEvent::Exit { .. } | TermEvent::Closed { .. });
-                    if on_event.send(event).is_err() {
-                        break;
-                    }
-                    if is_final {
-                        ended = true;
-                    }
-                }
-                Ok(Decoded::Ignore) => {}
-                Err(Decoded::Event(closed)) => {
-                    let _ = on_event.send(closed);
-                    ended = true;
-                }
-                Err(_) => {
-                    let _ = on_event.send(TermEvent::Closed { error: None });
-                    ended = true;
-                }
-            }
-        }
-        registry
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&reader_term_id);
-    });
+    // entry — compare-and-remove on its token — when it ends for any
+    // reason, so it can never take a newer stream's entry out.
+    let token = terms.next_token();
+    let reader = tokio::spawn(pump_reader(
+        streams.recv,
+        on_data,
+        on_event,
+        TermRegistry::clone(&terms),
+        term_id.clone(),
+        token,
+    ));
 
-    terms.insert(
+    terms.register(
         term_id.clone(),
         TermHandle {
             writer: writer_tx,
-            reader: None,
+            reader: Some(reader),
+            token,
         },
     );
 
@@ -406,6 +405,74 @@ pub async fn term_open(
         shell,
         path,
     })
+}
+
+/// One reader task: forwards a terminal stream's frames to the UI channels
+/// (data to `on_data`, events to `on_event`; exactly one terminal
+/// exit/closed event goes out last), then removes its own registry entry —
+/// compare-and-remove on `token`, so a late-ending stream (e.g. the one a
+/// webview reload replaced) leaves the newer stream's entry alone.
+async fn pump_reader(
+    mut recv: crate::op_stream::OpRecv,
+    on_data: Channel<InvokeResponseBody>,
+    on_event: Channel<TermEvent>,
+    terms: TermRegistry,
+    term_id: String,
+    token: u64,
+) {
+    let mut ended = false;
+    while !ended {
+        let mut kind_buffer = [0u8; 1];
+        let mut len_buffer = [0u8; 4];
+        if recv.read_exact(&mut kind_buffer).await.is_err()
+            || recv.read_exact(&mut len_buffer).await.is_err()
+        {
+            let _ = on_event.send(TermEvent::Closed { error: None });
+            break;
+        }
+        let len = u32::from_be_bytes(len_buffer) as usize;
+        if len > unipi_proto::MAX_FRAME {
+            let _ = on_event.send(TermEvent::Closed {
+                error: Some(AppErrorDto::new(
+                    AppErrorCode::E_SCHEMA,
+                    "oversize frame",
+                    false,
+                )),
+            });
+            break;
+        }
+        let mut payload = vec![0u8; len];
+        if recv.read_exact(&mut payload).await.is_err() {
+            let _ = on_event.send(TermEvent::Closed { error: None });
+            break;
+        }
+        match decode_frame(kind_buffer[0], &payload) {
+            Ok(Decoded::Data(bytes)) => {
+                if on_data.send(InvokeResponseBody::Raw(bytes)).is_err() {
+                    break;
+                }
+            }
+            Ok(Decoded::Event(event)) => {
+                let is_final = matches!(event, TermEvent::Exit { .. } | TermEvent::Closed { .. });
+                if on_event.send(event).is_err() {
+                    break;
+                }
+                if is_final {
+                    ended = true;
+                }
+            }
+            Ok(Decoded::Ignore) => {}
+            Err(Decoded::Event(closed)) => {
+                let _ = on_event.send(closed);
+                ended = true;
+            }
+            Err(_) => {
+                let _ = on_event.send(TermEvent::Closed { error: None });
+                ended = true;
+            }
+        }
+    }
+    terms.remove_own(&term_id, token);
 }
 
 /// Every terminal the host holds (`cwd` = its workspace), live or exited —
@@ -493,10 +560,7 @@ pub async fn term_kill(
         Control::Ok { .. } => {
             // Drop this app's stream too (no-op when the tab was detached).
             if let Some(handle) = terms.remove(&term_id) {
-                let _ = handle.writer.send(WriterMsg::Close).await;
-                if let Some(reader) = handle.reader {
-                    reader.abort();
-                }
+                close_handle(handle);
             }
             Ok(())
         }
@@ -557,17 +621,14 @@ pub async fn term_resize(
 
 /// Detaches this tab's stream. The host keeps the PTY (and its shell) alive;
 /// `term_kill` is what ends it. Idempotent: the reader task removes its own
-/// entry when the stream ends naturally.
+/// entry (by token) when the stream ends naturally.
 #[tauri::command]
 pub async fn term_close(
     terms: State<'_, TermRegistry>,
     term_id: String,
 ) -> Result<(), AppErrorDto> {
     if let Some(handle) = terms.remove(&term_id) {
-        let _ = handle.writer.send(WriterMsg::Close).await;
-        if let Some(reader) = handle.reader {
-            reader.abort();
-        }
+        close_handle(handle);
     }
     Ok(())
 }
@@ -609,21 +670,93 @@ mod tests {
     }
 
     #[test]
-    fn registry_insert_lookup_remove() {
+    fn registry_register_lookup_remove() {
         let registry = TermRegistry::new();
         let (tx, _rx) = mpsc::channel::<WriterMsg>(4);
-        registry.insert(
+        registry.register(
             "abc".into(),
             TermHandle {
                 writer: tx.clone(),
                 reader: None,
+                token: registry.next_token(),
             },
         );
         assert!(registry.lookup_writer("abc").is_some());
         assert!(registry.remove("abc").is_some());
         assert!(registry.lookup_writer("abc").is_none());
-        assert!(registry.remove("abc").is_none());
+        assert!(registry.remove("abc").is_none(), "remove is idempotent");
         drop(tx);
+    }
+
+    #[test]
+    fn register_replaces_the_previous_stream_and_closes_it() {
+        let registry = TermRegistry::new();
+        let (tx1, mut rx1) = mpsc::channel::<WriterMsg>(4);
+        let (tx2, mut rx2) = mpsc::channel::<WriterMsg>(4);
+        registry.register(
+            "abc".into(),
+            TermHandle {
+                writer: tx1,
+                reader: None,
+                token: registry.next_token(),
+            },
+        );
+        registry.register(
+            "abc".into(),
+            TermHandle {
+                writer: tx2.clone(),
+                reader: None,
+                token: registry.next_token(),
+            },
+        );
+        // The replaced stream is told to detach (graceful half-close)…
+        assert!(
+            matches!(rx1.try_recv(), Ok(WriterMsg::Close)),
+            "the previous stream must be closed when its id is re-registered"
+        );
+        // …and the new one answers input while the old one is unreachable.
+        registry
+            .lookup_writer("abc")
+            .expect("the new stream is registered")
+            .try_send(WriterMsg::Input(b"x".into()))
+            .expect("send");
+        assert!(matches!(rx2.try_recv(), Ok(WriterMsg::Input(_))));
+        drop(tx2);
+    }
+
+    #[test]
+    fn remove_own_only_removes_the_stream_with_the_matching_token() {
+        let registry = TermRegistry::new();
+        let (tx1, _rx1) = mpsc::channel::<WriterMsg>(4);
+        let (tx2, _rx2) = mpsc::channel::<WriterMsg>(4);
+        let token1 = registry.next_token();
+        registry.register(
+            "t".into(),
+            TermHandle {
+                writer: tx1,
+                reader: None,
+                token: token1,
+            },
+        );
+        let token2 = registry.next_token();
+        registry.register(
+            "t".into(),
+            TermHandle {
+                writer: tx2,
+                reader: None,
+                token: token2,
+            },
+        );
+        // A stale generation ending late removes nothing.
+        assert!(registry.remove_own("t", token1).is_none());
+        assert!(
+            registry.lookup_writer("t").is_some(),
+            "a late-ending stream must not remove its replacement's entry"
+        );
+        // The current generation's end does remove it (exactly once).
+        assert!(registry.remove_own("t", token2).is_some());
+        assert!(registry.lookup_writer("t").is_none());
+        assert!(registry.remove_own("t", token2).is_none(), "idempotent");
     }
 
     #[test]
@@ -676,5 +809,114 @@ mod tests {
         // stray ok is ignored
         let ok = serde_json::to_vec(&Control::Ok { data: None }).unwrap();
         assert!(matches!(decode_frame(0, &ok), Ok(Decoded::Ignore)));
+    }
+
+    #[cfg(test)]
+    fn event_channel(sink: &std::sync::Arc<Mutex<Vec<TermEvent>>>) -> Channel<TermEvent> {
+        let sink = std::sync::Arc::clone(sink);
+        Channel::new(move |body: InvokeResponseBody| {
+            if let InvokeResponseBody::Json(json) = body {
+                if let Ok(event) = serde_json::from_str::<TermEvent>(&json) {
+                    sink.lock().unwrap_or_else(|e| e.into_inner()).push(event);
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// The reported race, end to end: a webview reload re-opens the same
+    /// terminal (a new stream under the same id) while the *old* stream's
+    /// reader ends late. The old stream must not remove the new stream's
+    /// registry entry — input keeps flowing — and only the new stream's own
+    /// end removes the entry.
+    #[cfg(all(unix, test))]
+    #[tokio::test]
+    async fn a_late_ending_stream_never_removes_its_replacement() {
+        use tokio::io::AsyncWriteExt;
+
+        let registry = TermRegistry::new();
+        let events: std::sync::Arc<Mutex<Vec<TermEvent>>> = Default::default();
+
+        // Stream 1 — the tab's stream from before the reload.
+        let (client1, host1) = tokio::net::UnixStream::pair().expect("socket pair");
+        let (recv1, _client1_write) = client1.into_split();
+        let (tx1, mut rx1) = mpsc::channel::<WriterMsg>(4);
+        let token1 = registry.next_token();
+        let reader1 = tokio::spawn(pump_reader(
+            crate::op_stream::OpRecv::Local(recv1),
+            Channel::<InvokeResponseBody>::new(|_| Ok(())),
+            event_channel(&events),
+            registry.clone(),
+            "t".into(),
+            token1,
+        ));
+        registry.register(
+            "t".into(),
+            TermHandle {
+                writer: tx1,
+                reader: None,
+                token: token1,
+            },
+        );
+
+        // The reload: `term_open` again registers a new stream for the id…
+        let (client2, mut host2) = tokio::net::UnixStream::pair().expect("socket pair");
+        let (recv2, _client2_write) = client2.into_split();
+        let (tx2, mut rx2) = mpsc::channel::<WriterMsg>(4);
+        let token2 = registry.next_token();
+        let reader2 = tokio::spawn(pump_reader(
+            crate::op_stream::OpRecv::Local(recv2),
+            Channel::<InvokeResponseBody>::new(|_| Ok(())),
+            event_channel(&events),
+            registry.clone(),
+            "t".into(),
+            token2,
+        ));
+        registry.register(
+            "t".into(),
+            TermHandle {
+                writer: tx2,
+                reader: None,
+                token: token2,
+            },
+        );
+
+        // …closing the old one first: its writer is told to detach.
+        assert!(
+            matches!(rx1.try_recv(), Ok(WriterMsg::Close)),
+            "re-registering an id must close the stream it replaces"
+        );
+
+        // The old stream ends late (its host side drops: EOF). Its reader
+        // runs to completion — and must leave the NEW stream's entry alone.
+        drop(host1);
+        reader1.await.expect("the old stream's reader ends");
+        assert!(
+            registry.lookup_writer("t").is_some(),
+            "the old stream's late end must not remove the new stream's entry"
+        );
+
+        // Input still flows through the new stream.
+        registry
+            .lookup_writer("t")
+            .expect("the new stream survived")
+            .send(WriterMsg::Input(b"k".into()))
+            .await
+            .expect("send");
+        assert!(matches!(rx2.recv().await, Some(WriterMsg::Input(_))));
+
+        // The new stream ends naturally (the host sends `exit`): only now
+        // does the entry go away, and each stream sent its terminal event.
+        let exit = serde_json::to_vec(&Control::Exit { code: Some(0) }).expect("json");
+        host2
+            .write_all(&encode(FrameKind::Control, &exit))
+            .await
+            .expect("write exit");
+        reader2.await.expect("the new stream's reader ends");
+        assert!(registry.lookup_writer("t").is_none());
+        let seen = events.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        assert_eq!(seen.len(), 2, "one terminal event per stream: {seen:?}");
+        assert!(matches!(seen[0], TermEvent::Closed { .. }));
+        assert!(matches!(seen[1], TermEvent::Exit { code: Some(0) }));
     }
 }

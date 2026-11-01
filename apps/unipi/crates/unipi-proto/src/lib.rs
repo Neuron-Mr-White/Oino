@@ -84,5 +84,8 @@ pub use sharing::{
     FeatureKind, FeatureLeaveData, FeatureLeaveScope, FeatureNote, FeatureRequestItem,
     FeatureRequestStatus, FeatureRequestsData, FeatureScope, FEATURE_NOTE_MAX, FEATURE_PORTS_MAX,
 };
-pub use term::{TermAttachData, TermId, TermInfo, TermShell, TERM_ID_MAX, TERM_SHELL_MAX};
+pub use term::{
+    TermAttachData, TermForeground, TermId, TermInfo, TermShell, TERM_FOREGROUND_NAME_MAX,
+    TERM_ID_MAX, TERM_SHELL_MAX,
+};
 pub use version::{is_strict_semver, Semver, PROTO_VERSION};

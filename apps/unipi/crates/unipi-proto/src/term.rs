@@ -17,6 +17,9 @@ use serde::{Deserialize, Serialize};
 pub const TERM_ID_MAX: usize = 64;
 /// Longest shell path/command accepted (a `$SHELL -l` style program).
 pub const TERM_SHELL_MAX: usize = 256;
+/// Longest foreground process name reported (a best-effort string; extra
+/// characters are dropped, never rejected).
+pub const TERM_FOREGROUND_NAME_MAX: usize = 128;
 
 /// A host-side terminal id: 1..=64 characters of `[0-9a-zA-Z_-]`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -112,6 +115,20 @@ impl Default for TermShell {
     }
 }
 
+/// The foreground process of a terminal's PTY, best effort: present only
+/// while a process *other than the shell* holds the terminal's foreground
+/// process group (e.g. `vim`, `sleep`), so a UI can show "running: …" and
+/// warn before killing. Absent ⇔ the shell itself is in the foreground
+/// (idle prompt) or the host cannot tell (best effort per OS).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TermForeground {
+    /// The process name (`/proc/<pgid>/comm` on Linux, `ps` on macOS);
+    /// `None` when a non-shell process is in the foreground but its name
+    /// could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
 /// One row of `term_list`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TermInfo {
@@ -124,6 +141,11 @@ pub struct TermInfo {
     pub alive: bool,
     /// Unix seconds of the last input or output byte.
     pub last_activity: u64,
+    /// The foreground process while it isn't the shell itself (additive:
+    /// rows from hosts/clients that predate the field deserialize without
+    /// it as `None`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foreground: Option<TermForeground>,
 }
 
 /// The `term_open` / `term_attach` reply (`ok{data:…}`) sent before the
@@ -172,6 +194,7 @@ mod tests {
             shell: "/bin/sh".to_string().try_into().expect("shell"),
             alive: true,
             last_activity: 1_700_000_000,
+            foreground: None,
         };
         assert_eq!(
             serde_json::to_value(&info).expect("serialize"),
@@ -186,6 +209,56 @@ mod tests {
         let parsed: TermInfo =
             serde_json::from_value(serde_json::to_value(&info).expect("serialize")).expect("parse");
         assert_eq!(parsed, info);
+
+        // A row with a foreground process: `foreground` is an object whose
+        // `name` is present only when it could be read.
+        let running = TermInfo {
+            foreground: Some(TermForeground {
+                name: Some("vim".into()),
+            }),
+            ..info.clone()
+        };
+        assert_eq!(
+            serde_json::to_value(&running).expect("serialize"),
+            serde_json::json!({
+                "term_id": "abc",
+                "cwd": "/tmp/project",
+                "shell": "/bin/sh",
+                "alive": true,
+                "last_activity": 1_700_000_000u64,
+                "foreground": { "name": "vim" },
+            })
+        );
+        let unnamed = TermInfo {
+            foreground: Some(TermForeground { name: None }),
+            ..info
+        };
+        assert_eq!(
+            serde_json::to_value(&unnamed).expect("serialize"),
+            serde_json::json!({
+                "term_id": "abc",
+                "cwd": "/tmp/project",
+                "shell": "/bin/sh",
+                "alive": true,
+                "last_activity": 1_700_000_000u64,
+                "foreground": {},
+            })
+        );
+    }
+
+    #[test]
+    fn term_info_accepts_rows_without_the_foreground_field() {
+        // Additive: pre-foreground hosts sent (and older clients stored)
+        // rows without `foreground` — they must deserialize as `None`.
+        let legacy = serde_json::json!({
+            "term_id": "abc",
+            "cwd": "/tmp/project",
+            "shell": "/bin/sh",
+            "alive": true,
+            "last_activity": 1_700_000_000u64,
+        });
+        let parsed: TermInfo = serde_json::from_value(legacy).expect("parse");
+        assert_eq!(parsed.foreground, None);
     }
 
     #[test]

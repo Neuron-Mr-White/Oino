@@ -118,6 +118,77 @@ async fn open_write_read_then_exit() {
     assert!(!listed[0].alive, "exited terminal must read alive=false");
 }
 
+/// `term_list` reports the foreground process while a job the shell started
+/// holds the terminal (job-control `sleep` in its own process group), and
+/// none while the shell itself is in the foreground (Linux: `tcgetpgrp` on
+/// the PTY master vs the shell pid, name from `/proc/<pgid>/comm`).
+#[tokio::test]
+async fn term_list_reports_the_foreground_process() {
+    let fixture = fixture(4);
+    let (term_id, mut attached) = open(&fixture, 80, 24);
+
+    let foreground = |registry: &unipi_host::term::TermRegistry, id: &str| {
+        registry
+            .list()
+            .into_iter()
+            .find(|info| info.term_id.as_str() == id)
+            .and_then(|info| info.foreground)
+    };
+
+    // Idle prompt: the shell itself is the foreground group.
+    attached.input(b"echo ready\n").expect("write");
+    let (out, _) = read_until(&mut attached, "ready", TIMEOUT).await;
+    assert!(text(&out).contains("ready"), "got {:?}", text(&out));
+    assert_eq!(
+        foreground(&fixture.registry, &term_id),
+        None,
+        "an idle shell must not report a foreground process"
+    );
+
+    // A foreground job (`sleep`) gets its own process group and is reported
+    // by name until it exits.
+    attached.input(b"sleep 5\n").expect("write sleep");
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let mut seen = None;
+    while tokio::time::Instant::now() < deadline {
+        seen = foreground(&fixture.registry, &term_id);
+        if matches!(&seen, Some(unipi_proto::TermForeground { name: Some(name) }) if name == "sleep")
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        seen,
+        Some(unipi_proto::TermForeground {
+            name: Some("sleep".to_string())
+        }),
+        "`sleep 5` must be reported as the foreground process"
+    );
+
+    // Once the shell is back (job done), the field is gone again.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+    while tokio::time::Instant::now() < deadline {
+        if foreground(&fixture.registry, &term_id).is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(
+        foreground(&fixture.registry, &term_id),
+        None,
+        "the field must clear once the shell is the foreground again"
+    );
+
+    // And an exited terminal never reports one.
+    attached.input(b"exit 0\n").expect("write exit");
+    let (_, exit) = read_until(&mut attached, "never-printed", TIMEOUT).await;
+    assert_eq!(exit, Some(Some(0)), "shell must exit");
+    let listed = fixture.registry.list();
+    assert!(!listed[0].alive);
+    assert_eq!(listed[0].foreground, None);
+}
+
 #[tokio::test]
 async fn resize_is_throttled_last_wins() {
     let fixture = fixture(4);

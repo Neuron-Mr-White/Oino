@@ -41,7 +41,8 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc;
 use unipi_proto::{
-    AppErrorCode, AppErrorDto, Control, Request, TermAttachData, TermId, TermInfo, TermShell,
+    AppErrorCode, AppErrorDto, Control, Request, TermAttachData, TermForeground, TermId, TermInfo,
+    TermShell, TERM_FOREGROUND_NAME_MAX,
 };
 
 use crate::{
@@ -189,6 +190,9 @@ struct TermEntry {
     cwd: PathBuf,
     shell: TermShell,
     created: u64,
+    /// The shell's pid (session leader ⇒ pid == pgid), for the foreground
+    /// check in [`foreground`](TermEntry::foreground).
+    child_pid: Option<u32>,
     last_activity: AtomicU64,
     alive: AtomicBool,
     /// Set once by the waiter/pump threads (or by `kill`).
@@ -222,6 +226,37 @@ impl TermEntry {
     /// Has the child been reaped (or the terminal killed)?
     fn exited(&self) -> bool {
         lock(&self.exit).is_some()
+    }
+
+    /// The foreground process while it isn't the shell itself: the PTY's
+    /// foreground process group vs the shell's own (session-leader) group.
+    /// Best effort per OS; `None` = shell/idle (or cannot tell).
+    #[cfg(unix)]
+    fn foreground(&self) -> Option<TermForeground> {
+        if !self.alive.load(Ordering::SeqCst) {
+            return None;
+        }
+        let shell_pid = self.child_pid?;
+        let fd = lock(&self.master).as_raw_fd()?;
+        // SAFETY: tcgetpgrp only queries the tty's foreground process group.
+        let group = unsafe { libc::tcgetpgrp(fd) };
+        if group <= 0 {
+            return None;
+        }
+        let group = group as u32;
+        if group == shell_pid {
+            return None; // the shell itself is in the foreground
+        }
+        Some(TermForeground {
+            name: foreground_name(group),
+        })
+    }
+
+    /// Windows (ConPTY) has no foreground process group to compare: the
+    /// host reports "unknown" rather than guessing.
+    #[cfg(windows)]
+    fn foreground(&self) -> Option<TermForeground> {
+        None
     }
 
     fn set_exit(&self, code: Option<i64>) {
@@ -516,6 +551,7 @@ impl TermRegistry {
                 shell: entry.shell.clone(),
                 alive: entry.alive.load(Ordering::SeqCst),
                 last_activity: entry.last_activity.load(Ordering::Relaxed),
+                foreground: entry.foreground(),
             })
             .collect()
     }
@@ -590,6 +626,43 @@ impl TermEntry {
         self.set_exit(None);
         self.fanout(TermOutput::Exit(None));
     }
+}
+
+/// Trims and clamps a best-effort process name to the wire limit (never
+/// fails; whitespace-only reads as unknown).
+fn clamp_name(name: String) -> Option<String> {
+    let clamped: String = name.trim().chars().take(TERM_FOREGROUND_NAME_MAX).collect();
+    (!clamped.is_empty()).then_some(clamped)
+}
+
+/// The name of a foreground process group's leader (best effort).
+///
+/// Linux: `/proc/<pgid>/comm` — the group leader is the job the shell put
+/// in the foreground (e.g. `vim`, or a pipeline's first process).
+#[cfg(target_os = "linux")]
+fn foreground_name(group: u32) -> Option<String> {
+    let comm = std::fs::read_to_string(format!("/proc/{group}/comm")).ok()?;
+    clamp_name(comm)
+}
+
+/// macOS: no `/proc`; a tiny `ps` per reported terminal (only terminals
+/// with a non-shell foreground) keeps the lookup dependency-free.
+#[cfg(target_os = "macos")]
+fn foreground_name(group: u32) -> Option<String> {
+    let output = std::process::Command::new("ps")
+        .args(["-o", "comm=", "-p", &group.to_string()])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    clamp_name(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Other unixes: report the foreground group without a name.
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn foreground_name(_group: u32) -> Option<String> {
+    None
 }
 
 /// `$SHELL`, else the platform default; clamped to what the wire accepts.
@@ -670,6 +743,7 @@ fn spawn_pty(
             ),
         )
     })?;
+    let child_pid = child.process_id();
     drop(pair.slave);
     let reader = pair.master.try_clone_reader().map_err(internal)?;
     let writer = pair.master.take_writer().map_err(internal)?;
@@ -682,6 +756,7 @@ fn spawn_pty(
         cwd,
         shell,
         created,
+        child_pid,
         last_activity: AtomicU64::new(crate::pairing::now_unix()),
         alive: AtomicBool::new(true),
         exit: Mutex::new(None),
@@ -962,6 +1037,30 @@ mod tests {
             Some((139, 83)),
             "the trailing apply takes the last request"
         );
+    }
+
+    #[test]
+    fn clamp_name_caps_and_rejects_empty() {
+        assert_eq!(clamp_name("vim".into()).as_deref(), Some("vim"));
+        assert_eq!(clamp_name("".into()), None);
+        assert_eq!(clamp_name(" \n".into()), None);
+        let long = "x".repeat(TERM_FOREGROUND_NAME_MAX + 10);
+        assert_eq!(
+            clamp_name(long).map(|name| name.chars().count()),
+            Some(TERM_FOREGROUND_NAME_MAX)
+        );
+    }
+
+    /// Linux: the leader's `/proc/<pid>/comm` is the reported name. This
+    /// test process is its own group leader, so it resolves.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn foreground_name_reads_proc_comm() {
+        let name = foreground_name(std::process::id()).expect("own comm");
+        assert!(!name.is_empty());
+        assert!(name.chars().count() <= TERM_FOREGROUND_NAME_MAX);
+        // A dead group reads as unknown, not as an error.
+        assert_eq!(foreground_name(u32::MAX), None);
     }
 
     #[test]
