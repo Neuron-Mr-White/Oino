@@ -40,6 +40,16 @@ latency, refused opens). Additive API only — no breaking changes.
   lmstudio are unreachable.
 - No public API changes.
 
+### oino-extension-api 1.1.0
+
+- `HostService` (the trait hosts implement for `host-service.call`) gains a **defaulted**
+  method `call_in(&self, cx: &CallContext, op, payload, cancel)` — [`HostService::call`]
+  with the caller's context (session id, cwd, …), for services that keep per-session
+  state (e.g. a browser service scoping its tabs by session). The default ignores `cx`
+  and delegates to `call`, so existing implementations and callers are unaffected;
+  hosts that need the context override `call_in`.
+- No other changes; no breaking changes.
+
 ### oino-wasm-host 1.0.1
 
 - One log descriptor per wasm instance instead of two: an extension's stdout and stderr
@@ -47,4 +57,8 @@ latency, refused opens). Additive API only — no breaking changes.
   writes atomic), saving one file descriptor per extension instance — about 31 per
   services set on a full install, which mattered for hosts near their
   `RLIMIT_NOFILE` budget.
+- The hub forwards host-service calls through `HostService::call_in`
+  (oino-extension-api 1.1.0), passing the caller's `CallContext`, so per-session host
+  services scope their state correctly; services implementing only `call` behave
+  exactly as before. Requires `oino-extension-api ^1.1.0`.
 - No public API changes.
