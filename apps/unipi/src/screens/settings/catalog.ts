@@ -177,11 +177,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Brain,
     cap: 'hosts',
-    keywords: ['memory', 'remember', 'recall', 'mempalace', 'browse', 'forget', 'consolidate'],
+    keywords: ['memory', 'remember', 'recall', 'mempalace', 'browse', 'forget', 'consolidate', 'dream', 'reflection'],
     rows: [
       { key: 'memory.form', label: 'Recall and write', description: 'When the agent reads and writes memories, and the palace paths' },
       { key: 'memory.browse', label: 'Browse memories', description: 'List, search and forget what this project remembers' },
       { key: 'memory.consolidate', label: 'Consolidate this session', description: 'Let the agent write what this chat is worth remembering' },
+      { key: 'dream.status', label: 'Dream', description: 'Status, the latest dream report, or dream now' },
     ],
   },
   {

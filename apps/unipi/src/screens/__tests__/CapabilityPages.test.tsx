@@ -79,9 +79,23 @@ describe('Settings › MCP (G-8)', () => {
     for (const id of ['mcp.status', 'mcp.servers', 'mcp.catalog', 'mcp.sync', 'mcp.reload']) {
       expect(r.getByTestId(`manage-${id}`), id).toBeTruthy();
     }
-    // R8: no chat ⇒ the block says why and offers the one-click chat.
+    // R8 / P1-07: no chat ⇒ a hint says where the panel opens; the rows still work.
     expect(r.getByTestId('cap-mcp-nochat')).toBeTruthy();
-    expect(r.getByTestId('cap-mcp-newchat')).toBeTruthy();
+  });
+
+  it('P1-07: with no chat open, Manage opens the latest chat on this PC and runs there', async () => {
+    const base = capMcpNoChat.hosts[0]!;
+    // The hub lists cap001 as this PC's most recent chat.
+    const latest = { session_id: 'cap001', run_state: 'idle' as const, last_activity: Date.now() + 60_000 };
+    const world = createMockHost({ ...capMcpNoChat, hosts: [{ ...base, cards: [latest, ...(base.cards ?? [])] }] });
+    setHostClientFactory(world.client);
+    const r = renderAt('mcp');
+    await waitFor(() => expect(r.getByTestId('manage-mcp.servers')).toBeTruthy());
+    r.getByTestId('manage-mcp.servers').click();
+    await waitFor(
+      () => expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/mcp-settings')).toBe(true),
+      { timeout: 4000 },
+    );
   });
 
   it('with a chat open, Manage runs the extension command there (the panel opens in that chat)', async () => {

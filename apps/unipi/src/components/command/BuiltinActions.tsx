@@ -12,7 +12,9 @@ import { useNavigate } from '@solidjs/router';
 import { Wrench } from 'lucide-solid';
 import { registerChatAction } from '../shell/ConversationHeader';
 import { registerCommands } from '../../lib/shell';
-import { MANAGE_ACTIONS, runManageAction } from '../../lib/settings/manage';
+import { MANAGE_ACTIONS, runManageActionAnywhere } from '../../lib/settings/manage';
+import { LOCAL_HOST } from '../../lib/host/client';
+import { useHostsOptional } from '../../hosts/context';
 import { exportSession } from '../../lib/session/exportSession';
 import { duplicateSession } from '../../lib/session/duplicate';
 import { setAppNavigate } from '../../lib/nav';
@@ -20,6 +22,7 @@ import { ImportSessionDialog } from './ImportSession';
 
 export function BuiltinActions() {
   const navigate = useNavigate();
+  const hosts = useHostsOptional();
   onCleanup(setAppNavigate((href, opts) => navigate(href, opts)));
 
   onCleanup(
@@ -44,7 +47,7 @@ export function BuiltinActions() {
         keywords: `${action.keywords ?? ''} manage panel`,
         icon: () => <Wrench size={16} />,
         when: () => true,
-        run: () => void runManageAction(action, { navigate }),
+        run: () => void runManageActionAnywhere(action, { navigate, hostId: hosts?.hosts().find((h) => h.transport === 'local')?.id ?? LOCAL_HOST }),
       })),
     ),
   );

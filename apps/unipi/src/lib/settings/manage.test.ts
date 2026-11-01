@@ -46,7 +46,7 @@ afterEach(() => {
 describe('the Manage table', () => {
   it('names the extension commands the four pages run', () => {
     expect(manageActionsFor('mcp').map((a) => a.command)).toEqual(['mcp-status', 'mcp-settings', 'mcp-add', 'mcp-sync', 'mcp-reload']);
-    expect(manageActionsFor('memory').map((a) => a.command)).toEqual(['memory', 'memory-consolidate', 'global-memory-list']);
+    expect(manageActionsFor('memory').map((a) => a.command)).toEqual(['memory', 'memory-consolidate', 'global-memory-list', 'dream status', 'dream report', 'dream run']);
     expect(manageActionsFor('skills').map((a) => a.command)).toEqual(['skills', 'skills-editor']);
     expect(manageActionsFor('subagents').map((a) => a.command)).toEqual(['agents']);
   });
@@ -60,6 +60,8 @@ describe('the Manage table', () => {
   it('chatHasCommand tolerates a leading slash (fixtures carry one)', () => {
     expect(chatHasCommand({ state: { commands: [{ name: '/memory' }] } }, 'memory')).toBe(true);
     expect(chatHasCommand({ state: { commands: [{ name: 'memory' }] } }, 'memory')).toBe(true);
+    // P1-07: a command with arguments (`dream run`) needs only its command.
+    expect(chatHasCommand({ state: { commands: [{ name: 'dream' }] } }, 'dream run')).toBe(true);
     expect(chatHasCommand({ state: { commands: [{ name: 'mcp' }] } }, 'memory')).toBe(false);
   });
 });

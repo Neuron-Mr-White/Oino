@@ -8,11 +8,15 @@
  * The same actions are command-center entries (`components/command/
  * BuiltinActions.tsx`), so `/mcp-settings` is reachable with no chat view.
  *
- * R8: a panel needs a chat. With none open, the buttons say "Open a chat to
- * manage" and a one-click "New chat here" starts one (the settings forms keep
- * working without a chat).
+ * R8 / P1-07: a panel needs a chat. With none open, `runManageActionAnywhere`
+ * opens this PC's most recent chat (or starts an empty one when there is
+ * none), waits for its commands and runs the action there — the button always
+ * works; the settings forms keep working without a chat at all.
  */
 import { sessions } from '../session/store';
+import { hubs } from '../session/hub';
+import { newSession } from '../session/newSession';
+import { noteCommandRun } from '../reports';
 import { currentSessionRoute } from '../../components/shell/AppShell';
 import { openSettingsAt } from './open';
 
@@ -25,7 +29,7 @@ export type ManageAction = {
   label: string;
   /** Description under the button (what panel opens). */
   description: string;
-  /** The extension command, without the slash. */
+  /** The extension command (and its arguments), without the slash. */
   command: string;
   /** Command-center wording (the same action from the palette). */
   title: string;
@@ -120,6 +124,38 @@ export const MANAGE_ACTIONS: ManageAction[] = [
     keywords: 'memory global all projects list',
     group: 'Agent',
   },
+  // P1-07: Dream (background reflection over past sessions → memory lessons and
+  // proposals) has no idle tray tab; its actions live with Memory.
+  {
+    id: 'dream.status',
+    page: 'memory',
+    label: 'Dream status',
+    description: 'Last dream, whether one is due, proposals waiting',
+    command: 'dream status',
+    title: 'Dream: status',
+    keywords: 'dream status reflection consolidation proposals',
+    group: 'Agent',
+  },
+  {
+    id: 'dream.report',
+    page: 'memory',
+    label: 'Latest dream report',
+    description: 'What the last dream learned and proposed',
+    command: 'dream report',
+    title: 'Dream: latest report',
+    keywords: 'dream report past dreams proposals lessons',
+    group: 'Agent',
+  },
+  {
+    id: 'dream.run',
+    page: 'memory',
+    label: 'Dream now',
+    description: 'Reflect over recent sessions in the background',
+    command: 'dream run',
+    title: 'Dream: run now',
+    keywords: 'dream run now reflect consolidate background',
+    group: 'Agent',
+  },
   {
     id: 'skills.hub',
     page: 'skills',
@@ -176,9 +212,17 @@ export function chatHref(hostId: string, sessionId: string): string {
 
 export type ManageOutcome = 'sent' | 'no-chat' | 'missing';
 
+/** Sends the action's command; a multi-line reply opens the report panel titled with it (P1-02). */
+function sendAction(handle: { key: string; send: (text: string, opts: { mode: 'prompt' }) => unknown }, action: ManageAction): void {
+  noteCommandRun(handle.key, action.command);
+  handle.send(`/${action.command}`, { mode: 'prompt' });
+}
+
 /** The chat's own command list carries `name` (a leading slash is tolerated: fixtures use it). */
 export function chatHasCommand(handle: { state: { commands: ReadonlyArray<{ name: string }> } }, command: string): boolean {
-  return handle.state.commands.some((c) => c.name.replace(/^\//, '') === command);
+  // `dream run` → the `dream` command with an argument.
+  const name = command.split(' ')[0]!;
+  return handle.state.commands.some((c) => c.name.replace(/^\//, '') === name);
 }
 
 /**
@@ -195,7 +239,7 @@ export function runManageAction(action: ManageAction, deps: { navigate: (href: s
     const handle = chat ? sessions().peek(chat.hostId, chat.sessionId) : undefined;
     if (handle) {
       if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command)) return 'missing';
-      handle.send(`/${action.command}`, { mode: 'prompt' });
+      sendAction(handle, action);
       return 'sent';
     }
     openSettingsAt('skills', 'sec-skills');
@@ -207,8 +251,60 @@ export function runManageAction(action: ManageAction, deps: { navigate: (href: s
   if (!handle) return 'no-chat';
   // A disabled extension has no command: say so instead of sending prompt text.
   if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command)) return 'missing';
-  handle.send(`/${action.command}`, { mode: 'prompt' });
+  sendAction(handle, action);
   deps.navigate(chatHref(chat.hostId, chat.sessionId));
+  return 'sent';
+}
+
+/** The most recently active, non-cron session on `hostId` (from the hub's cards), if any. */
+export function latestChatOn(hostId: string): string | undefined {
+  const cards = Object.values(hubs().ensure(hostId).state.cards).filter(
+    (card) => card.source !== 'cron' && (card as { archived?: unknown }).archived !== true,
+  );
+  cards.sort((a, b) => (b.last_activity ?? b.updated_at ?? 0) - (a.last_activity ?? a.updated_at ?? 0));
+  return cards[0]?.session_id;
+}
+
+/** Resolves once the chat lists its commands (the extension panels are commands), or soon after
+ *  it is live without any (an old host), or after `ms`. */
+function commandsReady(handle: { state: { commands: ReadonlyArray<unknown>; conn?: string } }, ms = 6000): Promise<void> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    let liveAt: number | undefined;
+    const tick = () => {
+      const now = Date.now();
+      if (handle.state.conn === 'live') liveAt ??= now;
+      if (handle.state.commands.length > 0 || now - start > ms || (liveAt !== undefined && now - liveAt > 1200)) resolve();
+      else setTimeout(tick, 80);
+    };
+    tick();
+  });
+}
+
+/**
+ * P1-07: a Manage action from anywhere (Settings, the command center) with no
+ * chat needed up front: with none open it opens this PC's latest chat — or
+ * starts an empty one — and runs the action there once its commands load.
+ */
+export async function runManageActionAnywhere(
+  action: ManageAction,
+  deps: { navigate: (href: string) => void; hostId: string; start?: typeof newSession },
+): Promise<ManageOutcome> {
+  const first = runManageAction(action, deps);
+  if (first !== 'no-chat') return first;
+  const hub = hubs().ensure(deps.hostId);
+  if (!hub.state.loaded) await hub.reload().catch(() => undefined);
+  let sessionId = latestChatOn(deps.hostId);
+  if (!sessionId) {
+    const created = await (deps.start ?? newSession)(deps.hostId);
+    if (!created.ok) return 'no-chat';
+    sessionId = created.value.session;
+  }
+  deps.navigate(chatHref(deps.hostId, sessionId));
+  const handle = sessions().ensure(deps.hostId, sessionId);
+  await commandsReady(handle);
+  if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command)) return 'missing';
+  sendAction(handle, action);
   return 'sent';
 }
 

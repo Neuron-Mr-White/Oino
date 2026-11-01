@@ -6,9 +6,9 @@
  * (U10 renders the UI v2 entry there), never as a second list in Settings
  * (DIRECTION §4.2.2).
  *
- * R8: a panel needs an open chat. Without one the rows say "Open a chat to
- * manage" and offer "New chat here" in one click; the form keeps working with
- * no chat at all.
+ * R8 / P1-07: a panel opens inside a chat. With none open a row opens this
+ * PC's latest chat (or starts one) and runs there — no dead button; the form
+ * keeps working with no chat at all.
  */
 import { For, Show, createMemo, createResource, createSignal, type Component } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
@@ -17,13 +17,12 @@ import { NamespaceForm } from '../../ui/settings/form';
 import { settingsSchema } from '../../ui/settings/data';
 import type { Namespace } from '../../ui/settings/types';
 import { LOCAL_HOST } from '../../lib/host/client';
-import { appNavigate } from '../../lib/nav';
 import {
   MISSING_EXTENSION,
   NEEDS_CHAT,
   manageActionsFor,
   manageChat,
-  runManageAction,
+  runManageActionAnywhere,
   type ManageAction,
 } from '../../lib/settings/manage';
 import { useHostsOptional } from '../../hosts/context';
@@ -53,18 +52,18 @@ export function CapabilityPage(props: CapabilityPageProps) {
   // The Manage rows re-render with the session registry: `manageChat()` tracks it.
   const hasChat = () => !!manageChat();
   const [note, setNote] = createSignal<string | undefined>();
-  const run = (action: ManageAction) => {
-    const outcome = runManageAction(action, { navigate });
-    if (outcome === 'sent') {
-      setNote(undefined);
-      return;
+  const [busy, setBusy] = createSignal<string | undefined>();
+  const localHost = () => hosts?.hosts().find((host) => host.transport === 'local')?.id ?? LOCAL_HOST;
+  const run = async (action: ManageAction) => {
+    if (busy()) return;
+    setBusy(action.id);
+    setNote(undefined);
+    try {
+      const outcome = await runManageActionAnywhere(action, { navigate, hostId: localHost() });
+      if (outcome !== 'sent') setNote(outcome === 'no-chat' ? NEEDS_CHAT : MISSING_EXTENSION);
+    } finally {
+      setBusy(undefined);
     }
-    setNote(outcome === 'no-chat' ? NEEDS_CHAT : MISSING_EXTENSION);
-  };
-  /** R8: one click from a disabled Manage row to a chat in the current project. */
-  const newChatHere = () => {
-    const ws = hosts?.hosts().find((host) => host.transport === 'local');
-    appNavigate(`/new/${encodeURIComponent(ws?.id ?? LOCAL_HOST)}`);
   };
 
   return (
@@ -82,10 +81,11 @@ export function CapabilityPage(props: CapabilityPageProps) {
             type="button"
             class="settings-namespace-row"
             data-testid={`manage-${action.id}`}
-            data-needs-chat={hasChat() ? undefined : ''}
             aria-label={`${action.label} — ${action.description}`}
             aria-describedby={hasChat() ? undefined : `cap-${props.page}-nochat`}
-            onClick={() => run(action)}
+            aria-busy={busy() === action.id ? 'true' : undefined}
+            disabled={!!busy() && busy() !== action.id}
+            onClick={() => void run(action)}
           >
             <span class="min-w-0">
               <span class="block text-[15px] text-text truncate">{action.label}</span>
@@ -96,12 +96,9 @@ export function CapabilityPage(props: CapabilityPageProps) {
         )}
       </For>
       <Show when={!hasChat()}>
-        <div class="settings-manage-empty" id={`cap-${props.page}-nochat`} data-testid={`cap-${props.page}-nochat`}>
-          <p class="text-xs text-text-dim">A panel opens inside a chat, so it can talk to the session’s extensions.</p>
-          <button type="button" class="btn-secondary settings-btn" data-testid={`cap-${props.page}-newchat`} onClick={newChatHere}>
-            New chat here
-          </button>
-        </div>
+        <p class="settings-field-hint" id={`cap-${props.page}-nochat`} data-testid={`cap-${props.page}-nochat`}>
+          Panels open inside a chat: your latest chat on this PC opens (or a new one starts).
+        </p>
       </Show>
       <Show when={note()}>
         <p class="settings-field-hint settings-field-hint-bad" role="status" data-testid={`cap-${props.page}-note`}>
