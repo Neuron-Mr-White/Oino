@@ -7,7 +7,7 @@
  * deleted entry closes the host, §6.6). Pending dialogs (§3) sit above:
  * the dock's dialog panel outranks this modal (§6.4 "dialogs always above").
  */
-import { createEffect, on, onCleanup, For, Show } from 'solid-js';
+import { createEffect, createSignal, on, onCleanup, For, Show } from 'solid-js';
 import { X } from 'lucide-solid';
 import { EntryView } from '../NodeView';
 import { ICONS } from '../nodes/icons';
@@ -21,7 +21,12 @@ const SIZE_WIDTH: Record<string, string> = { small: '420px', medium: '560px', la
 
 /** Locally dismissed `id:seq` pairs; reopening (new `seq`) shows again. */
 const dismissed = new Set<string>();
-export const resetOverlayDismissals = () => dismissed.clear();
+/** Bumped on every local dismissal: the Set is not reactive, `top()` reads this. */
+const [dismissRev, setDismissRev] = createSignal(0);
+export const resetOverlayDismissals = () => {
+  dismissed.clear();
+  setDismissRev((n) => n + 1);
+};
 
 /**
  * §8 rule 1 (WP-U12): a reserved entry whose native surface *is* the overlay
@@ -35,7 +40,7 @@ const nativeOverlay = (entry: UiEntry): boolean => {
 };
 
 export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: boolean }) {
-  const top = () => [...props.stack].reverse().find((e) => !dismissed.has(`${e.id}:${e.seq}`) && !nativeOverlay(e));
+  const top = () => (void dismissRev(), [...props.stack].reverse().find((e) => !dismissed.has(`${e.id}:${e.seq}`) && !nativeOverlay(e)));
   let shown: { target: UiTarget; id: string } | undefined;
   createEffect(
     on(
@@ -55,6 +60,7 @@ export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: b
   });
   const close = (entry: UiEntry) => {
     dismissed.add(`${entry.id}:${entry.seq}`);
+    setDismissRev((n) => n + 1);
     uiTransport().action(props.target, { entryId: entry.id, actionId: '$close' }).catch(() => {});
   };
   return (

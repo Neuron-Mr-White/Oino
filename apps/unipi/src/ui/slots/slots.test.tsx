@@ -316,6 +316,8 @@ describe('U10 overlay slot', () => {
     await waitFor(() => expect(screen.getByText('first panel')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Close First' }));
     await waitFor(() => expect(sent).toContainEqual({ entryId: 'ext/panel:a', actionId: '$close' }));
+    // An owner that keeps the entry after `$close` (the updater's changelog) still leaves the screen.
+    await waitFor(() => expect(screen.queryByTestId('ui-modal')).toBeNull());
   });
 
   it('unmounts cleanly inside a parent memo scope without throwing in Solid cleanNode', async () => {
