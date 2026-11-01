@@ -14,7 +14,7 @@ path = "src/main.rs"
 unipi-proto = { path = "../unipi-proto" }
 # H3 (host.md §4.2): the host links oino-core in-process and runs every session through the
 # wave-1 lazy client hub; extensions load on the process-shared wasm engine.
-oino-client = { path = "../../../../crates/oino-client", version = "2.0.0" }
+oino-client = { path = "../../../../crates/oino-client", version = "1.1.0" }
 oino-core = { path = "../../../../crates/oino-core", version = "1.0.1" }
 # H5 (host.md §8): the lease metadata that names the runner an open took the session over
 # from (D-LOCK advisory file; the kernel lock itself stays core's).

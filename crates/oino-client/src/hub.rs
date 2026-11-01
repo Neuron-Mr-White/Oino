@@ -108,12 +108,6 @@ pub struct HubOptions {
     pub tools: ToolSelection,
     /// `--exclude-tools` applied to every woken session.
     pub exclude_tools: Vec<String>,
-    /// Overrides `extensionSettings.hub.maxServices` for this hub. `None` keeps the
-    /// setting (default 4). An embedding host sets this from its own budget: every
-    /// cached services set holds one wasm instance per extension, and those hold
-    /// preopen directory and log file descriptors, so a host with a low
-    /// `RLIMIT_NOFILE` cannot afford the default.
-    pub max_services: Option<usize>,
 }
 
 impl HubOptions {
@@ -138,6 +132,30 @@ impl HubOptions {
                 }
             },
         )
+    }
+}
+
+/// Host-level limits of one hub, layered over the `extensionSettings.hub.*` values;
+/// [`HubLimits::default`] keeps every setting. Kept separate from [`HubOptions`] (a
+/// plain struct literal, frozen at 1.0) so new knobs here stay additive:
+/// `#[non_exhaustive]`, grown by builder methods only.
+#[derive(Clone, Copy, Debug, Default)]
+#[non_exhaustive]
+pub struct HubLimits {
+    /// Overrides `extensionSettings.hub.maxServices` (`None` keeps the setting, default 4).
+    /// Every cached services set holds one wasm instance per extension — preopen dirs and
+    /// log descriptors — so a host with a low `RLIMIT_NOFILE` cannot afford the default.
+    max_services: Option<usize>,
+}
+
+impl HubLimits {
+    /// Caps this hub at `max` services sets, overriding `extensionSettings.hub.maxServices`
+    /// (clamped to `1..=1024` at create). An embedding host derives this from its own
+    /// file-descriptor budget, not from user settings.
+    #[must_use]
+    pub fn with_max_services(mut self, max: usize) -> Self {
+        self.max_services = Some(max);
+        self
     }
 }
 
@@ -263,15 +281,26 @@ impl std::fmt::Debug for SessionHub {
 
 impl SessionHub {
     /// Creates the hub: resolves the sessions root, reads `extensionSettings.hub.*` and
-    /// starts the idle monitor (unless both idles are disabled).
+    /// starts the idle monitor (unless both idles are disabled). See [`Self::create_with`]
+    /// for host-level limits over those settings.
     ///
     /// # Errors
     ///
     /// Never today; `Result` keeps room for settings failures.
     pub fn create(opts: HubOptions) -> Result<Arc<Self>, ClientError> {
+        Self::create_with(opts, HubLimits::default())
+    }
+
+    /// [`Self::create`] with host-level `limits` layered over `extensionSettings.hub.*`:
+    /// the embedding host's process budgets (fd limits), which the user did not set.
+    ///
+    /// # Errors
+    ///
+    /// Never today; `Result` keeps room for settings failures.
+    pub fn create_with(opts: HubOptions, limits: HubLimits) -> Result<Arc<Self>, ClientError> {
         let settings = SettingsManager::create(&opts.cwd, &opts.agent_dir, false);
         let mut config = HubConfig::read(settings.settings().merged());
-        if let Some(max) = opts.max_services {
+        if let Some(max) = limits.max_services {
             config.max_services = max.clamp(1, 1024);
         }
         let sessions_root = opts.sessions_root(&settings);
@@ -503,7 +532,7 @@ impl SessionHub {
         self.services_for(&mut state, cwd).await
     }
 
-    /// The effective `maxServices` of this hub (setting or override).
+    /// The effective `maxServices` of this hub: the setting, or the [`HubLimits`] override.
     #[must_use]
     pub fn max_services(&self) -> usize {
         self.inner.config.max_services

@@ -5,29 +5,30 @@ workspace version and is released separately.
 
 ## 2026-11-01 — host-embedding fixes (fd budget + open latency)
 
-### oino-client 2.0.0
+### oino-client 1.1.0
 
 Fixes for session hosts that embed `SessionHub` (descriptor exhaustion, first-open
-latency, refused opens).
+latency, refused opens). Additive API only — no breaking changes.
 
-- **Breaking:** `HubOptions` gains a `max_services: Option<usize>` field that overrides
-  the `extensionSettings.hub.maxServices` setting for one hub. An embedding host sets it
-  from its own file-descriptor budget: every cached services set holds one wasm
-  instance per extension (preopen directories + log files), and the default of 4 sets
-  can exceed a GUI-launched host's `RLIMIT_NOFILE`. Migration is one line — exhaustive
-  `HubOptions { .. }` literals add `max_services: None` (or their budget); there is no
-  `Default`, so this is the only construction pattern and the reason for the major
-  bump.
+- Added `SessionHub::create_with(opts, limits)` and the new `HubLimits` type
+  (`#[non_exhaustive]`, `Default`, builder): host-level limits layered over the
+  `extensionSettings.hub.*` settings. First knob: `HubLimits::default()
+  .with_max_services(n)` caps the services LRU at `n` sets — an embedding host sets it
+  from its own file-descriptor budget, because every cached services set holds one wasm
+  instance per extension (preopen directories + log files) and the default of 4 sets
+  can exceed a GUI-launched host's `RLIMIT_NOFILE`. `SessionHub::create` is unchanged.
 - Added `SessionHub::warm_services(&cwd)`: pre-warms (or returns) the cached services of
   a project directory with no session runtime, so a later `session_open` there does not
   pay services creation (extension discovery, wasm instances) on the click path.
 - Added `SessionHub::max_services()`: the effective cap of this hub (setting or
-  override).
+  `HubLimits` override).
 - The hub no longer refuses an open when its services cache is full: it evicts the
   least-recently-used **idle** services set (its idle sessions return to records and
   re-wake on demand, exactly like the idle monitor's eviction) and, when every cached
   set has a busy session (running turn, attached stream, open dialog), exceeds the cap
   by one with a warning instead of erroring. Only an open past that bound is refused.
+- Note for a future 2.0: `HubOptions` itself stays a plain (exhaustively-constructible)
+  struct literal; host knobs live in `HubLimits` so they can grow additively.
 
 ### oino-core 1.0.1
 

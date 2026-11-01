@@ -233,6 +233,24 @@ fn fd_count() -> usize {
         .unwrap_or(0)
 }
 
+/// The fd-bound asserts below check that the table comes back down — not that async
+/// teardown is instant. Watchers, sockets and wasm caches close lazily (dispose is
+/// async, and a loaded machine stretches it), so a single snapshot races the close:
+/// poll until two samples 100 ms apart agree (3 s ceiling) before asserting.
+#[cfg(target_os = "linux")]
+async fn fd_count_settled() -> usize {
+    let mut after = fd_count();
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let next = fd_count();
+        if next == after {
+            break;
+        }
+        after = next;
+    }
+    after
+}
+
 /// Serializes the tests that assert on the process-wide fd count (they run in one
 /// process; concurrent fixtures would move the number under each other). Async-aware:
 /// the guard is held across the whole test.
@@ -379,7 +397,7 @@ async fn many_opens_keep_the_fd_table_bounded() {
     // Let the feed taps and supervisors notice the closed streams.
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    let after = fd_count();
+    let after = fd_count_settled().await;
     assert!(
         after <= baseline + 8,
         "fd table grew across {OPEN_CYCLES} open/close cycles: {baseline} -> {after}"
@@ -414,7 +432,7 @@ async fn services_cap_evicts_idle_sets_and_never_blocks_an_idle_open() {
     // (the new sessions have written no files yet, so the list shows none of them).
     #[cfg(target_os = "linux")]
     {
-        let after = fd_count();
+        let after = fd_count_settled().await;
         assert!(
             after <= baseline + 8,
             "fd table grew while rotating idle sets: {baseline} -> {after}"
@@ -774,7 +792,7 @@ async fn cycling_projects_beyond_the_cap_stay_bounded() {
             .unwrap_or_else(|error| panic!("project {index} must open: {error}"));
         live.push(session.session_id());
     }
-    let after = fd_count();
+    let after = fd_count_settled().await;
     assert!(
         after <= baseline + 8,
         "fd table grew while cycling projects beyond the cap: {baseline} -> {after}"

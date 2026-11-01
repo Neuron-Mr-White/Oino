@@ -15,7 +15,7 @@ agent-client-protocol = { version = "=3.5.0", features = ["stdio", "unstable_ses
 futures.workspace = true
 oino-agent = { path = "../oino-agent", version = "1.0.2" }
 oino-ai = { path = "../oino-ai", version = "1.0.2" }
-oino-client = { path = "../oino-client", version = "2.0.0" }
+oino-client = { path = "../oino-client", version = "1.1.0" }
 oino-core = { path = "../oino-core", version = "1.0.1" }
 oino-models = { path = "../oino-models", version = "1.0.2" }
 oino-session = { path = "../oino-session", version = "1.0.2" }

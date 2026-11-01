@@ -19,7 +19,7 @@ use futures::future::BoxFuture;
 use oino_agent::AgentToolResult;
 use oino_ai::AgentMessage;
 use oino_client::backend::SessionBackend;
-use oino_client::hub::{HubOptions, HubSessionState, SessionHub};
+use oino_client::hub::{HubLimits, HubOptions, HubSessionState, SessionHub};
 use oino_client::protocol::{AgentCommand, RpcCommand, RpcResponseData, RpcSessionState};
 use oino_core::extensions::api::{
     ExtensionInstance, ExtensionMode, Registration, ToolExposure, ToolSpec,
@@ -113,7 +113,6 @@ fn hub_with(
         models: Some(models),
         tools,
         exclude_tools: Vec::new(),
-        max_services: None,
     })
     .unwrap();
     (dir, hub, loads, provider)
@@ -245,6 +244,49 @@ async fn prompt(backend: &Arc<dyn SessionBackend>, message: &str) {
 
 /// Listing shows records without engines/leases (lazy); opening acquires the lease,
 /// repairs the interrupted turn and lists `live`; closing returns it to a record.
+#[tokio::test]
+async fn hub_limits_override_and_default_keeps_the_max_services_setting() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("sessions")).unwrap();
+    std::fs::create_dir_all(dir.path().join("agent")).unwrap();
+    std::fs::write(
+        dir.path().join("agent/settings.json"),
+        r#"{"extensionSettings":{"hub":{"maxServices":8}}}"#,
+    )
+    .unwrap();
+    let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
+    models.set_runtime_api_key("faux", "k");
+    let options = |models: Option<ModelRegistry>| HubOptions {
+        cwd: dir.path().to_path_buf(),
+        agent_dir: dir.path().join("agent"),
+        docs_root: None,
+        session_dir: Some(dir.path().join("sessions")),
+        mode: ExtensionMode::Rpc,
+        has_ui: false,
+        approve: Some(false),
+        flags: ResourceFlags {
+            no_context_files: true,
+            ..ResourceFlags::default()
+        },
+        loader: Arc::new(StaticLoader(Vec::new())),
+        models,
+        tools: ToolSelection::Default,
+        exclude_tools: Vec::new(),
+    };
+    let capped = SessionHub::create_with(
+        options(Some(models.clone())),
+        HubLimits::default().with_max_services(2),
+    )
+    .unwrap();
+    assert_eq!(
+        capped.max_services(),
+        2,
+        "the host limit wins over the setting"
+    );
+    let plain = SessionHub::create(options(None)).unwrap();
+    assert_eq!(plain.max_services(), 8, "default keeps the setting");
+}
+
 #[tokio::test]
 async fn list_is_lazy_open_wakes_with_lease_and_repair() {
     let (dir, hub, loads, _provider) =

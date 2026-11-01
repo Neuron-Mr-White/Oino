@@ -42,8 +42,8 @@ use tokio::sync::broadcast;
 
 use oino_client::backend::{ClientError, SessionBackend};
 use oino_client::hub::{
-    HubOptions as CoreHubOptions, HubSession as CoreHubSession, HubSessionState as CoreHubState,
-    SessionHub as CoreHub,
+    HubLimits as CoreHubLimits, HubOptions as CoreHubOptions, HubSession as CoreHubSession,
+    HubSessionState as CoreHubState, SessionHub as CoreHub,
 };
 use oino_client::protocol::{AgentCommand, RpcCommand, RpcResponseData, RpcSessionState};
 use oino_core::events::{ClientEvent, OinoEvent};
@@ -408,7 +408,6 @@ impl SessionHub {
             models: options.models,
             tools: options.tools,
             exclude_tools: options.exclude_tools,
-            max_services: options.services_cap,
         };
         // The host writes session files (create/fork/archive) too: resolve the sessions root
         // once, with core's own chain, and pin it so both sides always agree.
@@ -416,7 +415,13 @@ impl SessionHub {
         let sessions_root = core_options.sessions_root(&settings);
         core_options.session_dir = Some(sessions_root.clone());
         let (events, _) = broadcast::channel(EVENTS_CAPACITY);
-        let core = CoreHub::create(core_options)?;
+        // The host's fd budget caps the services LRU (fd_budget.rs) — a host-level
+        // limit layered over user settings, not a user knob.
+        let mut limits = CoreHubLimits::default();
+        if let Some(cap) = options.services_cap {
+            limits = limits.with_max_services(cap);
+        }
+        let core = CoreHub::create_with(core_options, limits)?;
         let host_data = options
             .host_data_dir
             .clone()

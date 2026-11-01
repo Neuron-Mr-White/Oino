@@ -3324,7 +3324,7 @@ dependencies = [
 
 [[package]]
 name = "oino-client"
-version = "1.0.2"
+version = "1.1.0"
 dependencies = [
  "futures",
  "indexmap",
@@ -3343,7 +3343,7 @@ dependencies = [
 
 [[package]]
 name = "oino-core"
-version = "1.0.2"
+version = "1.0.1"
 dependencies = [
  "futures",
  "ignore",
@@ -3473,7 +3473,7 @@ dependencies = [
 
 [[package]]
 name = "oino-wasm-host"
-version = "1.0.2"
+version = "1.0.1"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -5494,6 +5494,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "unipi-browser",
  "unipi-cron",
  "unipi-kanboard",
  "unipi-proto",
