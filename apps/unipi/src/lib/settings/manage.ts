@@ -24,7 +24,7 @@ import { openSettingsAt } from './open';
 export type ManageAction = {
   id: string;
   /** Settings page that lists it (`settings/<page>`). */
-  page: 'mcp' | 'memory' | 'skills' | 'subagents';
+  page: 'mcp' | 'memory' | 'skills' | 'subagents' | 'about';
   /** Button label on the page. */
   label: string;
   /** Description under the button (what panel opens). */
@@ -36,6 +36,20 @@ export type ManageAction = {
   keywords?: string;
   /** Group in the command center. */
   group: string;
+  /** A hidden extension command (not in the chat's command list): run it without the listed-check. */
+  hidden?: boolean;
+};
+
+/** P1-08: the updater extension's changelog browser (About › What's new → "Browse changelog"). */
+export const CHANGELOG_ACTION: ManageAction = {
+  id: 'updater.changelog',
+  page: 'about',
+  label: 'Browse changelog',
+  description: 'Every release, newest first',
+  command: 'changelog',
+  title: 'Browse the changelog',
+  group: 'App',
+  hidden: true,
 };
 
 /**
@@ -219,7 +233,8 @@ function sendAction(handle: { key: string; send: (text: string, opts: { mode: 'p
 }
 
 /** The chat's own command list carries `name` (a leading slash is tolerated: fixtures use it). */
-export function chatHasCommand(handle: { state: { commands: ReadonlyArray<{ name: string }> } }, command: string): boolean {
+export function chatHasCommand(handle: { state: { commands: ReadonlyArray<{ name: string }> } }, command: string, hidden = false): boolean {
+  if (hidden) return true;
   // `dream run` → the `dream` command with an argument.
   const name = command.split(' ')[0]!;
   return handle.state.commands.some((c) => c.name.replace(/^\//, '') === name);
@@ -238,7 +253,7 @@ export function runManageAction(action: ManageAction, deps: { navigate: (href: s
     const chat = manageChat();
     const handle = chat ? sessions().peek(chat.hostId, chat.sessionId) : undefined;
     if (handle) {
-      if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command)) return 'missing';
+      if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command, action.hidden)) return 'missing';
       sendAction(handle, action);
       return 'sent';
     }
@@ -250,7 +265,7 @@ export function runManageAction(action: ManageAction, deps: { navigate: (href: s
   const handle = sessions().peek(chat.hostId, chat.sessionId);
   if (!handle) return 'no-chat';
   // A disabled extension has no command: say so instead of sending prompt text.
-  if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command)) return 'missing';
+  if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command, action.hidden)) return 'missing';
   sendAction(handle, action);
   deps.navigate(chatHref(chat.hostId, chat.sessionId));
   return 'sent';
@@ -303,7 +318,7 @@ export async function runManageActionAnywhere(
   deps.navigate(chatHref(deps.hostId, sessionId));
   const handle = sessions().ensure(deps.hostId, sessionId);
   await commandsReady(handle);
-  if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command)) return 'missing';
+  if (handle.state.commands.length > 0 && !chatHasCommand(handle, action.command, action.hidden)) return 'missing';
   sendAction(handle, action);
   return 'sent';
 }

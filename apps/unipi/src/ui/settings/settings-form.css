@@ -174,3 +174,6 @@ html:not([data-shell=desktop]) .settings-iconbtn { width: 36px; height: 36px; }
 .import-session-recent ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .import-session-recent .settings-link { font-family: var(--font-mono); font-size: 11.5px; text-align: left; overflow-wrap: anywhere; }
 .import-session-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+/* P1-08: About › What's new — the notes read under the row, full width. */
+.about-whats-new { padding: 0 16px 14px 58px; margin-top: -4px; }
+.about-whats-new .about-notes { max-width: 72ch; padding: 10px 12px; border-radius: 10px; background: var(--color-surface-2); font-size: 13px; line-height: 19px; color: var(--color-text); }
