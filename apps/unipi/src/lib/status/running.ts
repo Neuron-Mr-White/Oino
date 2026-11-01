@@ -23,13 +23,18 @@ export function visibleTrayTabsOf(tabs: readonly TrayTab[]): TrayTab[] {
   return tabs.filter((t) => t.visible !== false && t.counts.total > 0);
 }
 
+/** E-17: the tabs that count as "running" — a finished history alone is not running work. */
+export function runningTrayTabsOf(tabs: readonly TrayTab[]): TrayTab[] {
+  return visibleTrayTabsOf(tabs).filter((t) => t.counts.running > 0);
+}
+
 /** The summary's counts — the same numbers the Session modal's sections show. */
 export function runningCounts(data: RunningData | undefined): RunningCounts {
   return {
     bash: data?.bash.length ?? 0,
     agents: data ? liveAgentsOf(data.agents).length : 0,
     sidekick: data?.sidekick ? 1 : 0,
-    tray: data ? visibleTrayTabsOf(data.tabs).length : 0,
+    tray: data ? runningTrayTabsOf(data.tabs).length : 0,
   };
 }
 
@@ -47,7 +52,7 @@ export function runningRows(data: RunningData | undefined, limit = 3): RunningRo
   for (const call of data.bash) rows.push({ kind: 'bash', id: call.toolCallId, title: call.command, state: 'running' });
   for (const agent of liveAgentsOf(data.agents)) rows.push({ kind: 'agent', id: agent.id, title: agent.label, sub: agent.role || agent.owner, state: agent.state });
   if (data.sidekick) rows.push({ kind: 'sidekick', id: 'fusion', title: data.sidekick.label, sub: data.sidekick.detail, state: 'running' });
-  for (const tab of visibleTrayTabsOf(data.tabs))
+  for (const tab of runningTrayTabsOf(data.tabs))
     rows.push({ kind: 'tray', id: tab.id, title: tab.label, sub: tab.counts.running > 0 ? `${tab.counts.running} running · ${tab.counts.total}` : `${tab.counts.total}`, state: 'running' });
   return rows.slice(0, limit);
 }

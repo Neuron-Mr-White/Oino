@@ -4,7 +4,7 @@
   "name": "Azure OpenAI",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "Azure OpenAI Responses wire (pi-ai 1.4.0 port): resource / base URL / deployment configuration from AZURE_OPENAI_* or request options.",
+  "description": "Azure OpenAI Responses wire: resource / base URL / deployment configuration from AZURE_OPENAI_* or request options.",
   "license": "MIT",
   "provides": {
     "apis": [

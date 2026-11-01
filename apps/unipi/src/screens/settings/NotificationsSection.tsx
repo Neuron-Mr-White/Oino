@@ -209,7 +209,7 @@ export function NotificationsSection() {
     <Show when={notifyNs()}>
       {(ns) => (
         <Section title={can('localSharing') ? 'What this PC sends' : 'What your PC sends'} navTitle="Notifications" id="sec-notify-pc" icon={<Bell size={14} />}>
-          <p class="settings-page-blurb">Events, channels (ntfy, Gotify, Telegram, desktop) and quiet hours of the PC’s notify extension.</p>
+          <p class="settings-page-blurb settings-notify-blurb">Events, channels (ntfy, Gotify, Telegram, desktop) and quiet hours of the PC’s notify extension.</p>
           <NamespaceForm
             namespace={ns()}
             hostId={notifyHost()}

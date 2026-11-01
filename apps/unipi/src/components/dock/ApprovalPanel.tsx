@@ -13,8 +13,9 @@
  * must never approve a shell command (v1 review P1-4). Esc handling belongs
  * to the conversation's escape rules (A11).
  */
-import { createSignal, Index, Show } from 'solid-js';
+import { createSignal, Index, onMount, Show } from 'solid-js';
 import { ShieldAlert, X } from 'lucide-solid';
+import { detailOf, humanizeArgs, humanizeLabel } from '../../lib/approvalText';
 import { NodeView } from '../../ui/NodeView';
 import type { UiRequest } from '../../ui/types';
 
@@ -41,7 +42,27 @@ export function ApprovalPanel(props: { dialog: UiRequest; onAnswer: (value: unkn
   let noteEl: HTMLTextAreaElement | undefined;
 
   const hasNote = () => note().trim().length > 0;
-  const summary = () => str(d().summary) ?? str(d().title) ?? 'Allow this action?';
+  const rawSummary = () => str(d().summary) ?? str(d().title) ?? 'Allow this action?';
+  const summary = () => humanizeArgs(rawSummary().split('\n')[0] ?? '');
+  const extra = () => detailOf(rawSummary());
+  let root: HTMLDivElement | undefined;
+  // The card takes focus when it opens unless the user is mid-sentence in the composer, so the
+  // number keys answer it; they never type into the composer (E-07).
+  onMount(() => {
+    const a = document.activeElement as HTMLElement | null;
+    const typing = !!a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT' || a.isContentEditable) && ((a as HTMLTextAreaElement).value ?? a.textContent ?? '').trim().length > 0;
+    if (!typing) root?.focus({ preventScroll: true });
+  });
+  const onKey = (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
+    const t = e.target as HTMLElement;
+    if (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') return;
+    const option = options()[Number(e.key) - 1];
+    if (!option || options().length < 2) return;
+    e.preventDefault();
+    e.stopPropagation();
+    pick(option);
+  };
   const origin = () => str(d().toolName) ?? str(d().extensionId) ?? 'Unipi';
   const placeholder = () => str((d().feedback as { placeholder?: unknown } | undefined)?.placeholder) ?? 'Tell the agent what to do instead (optional)';
 
@@ -57,7 +78,7 @@ export function ApprovalPanel(props: { dialog: UiRequest; onAnswer: (value: unkn
   };
 
   return (
-    <div class="dlg dlg-approval" data-testid="approval-panel">
+    <div class="dlg dlg-approval" data-testid="approval-panel" tabindex="-1" ref={root} onKeyDown={onKey}>
       <div class="dlg-head">
         <ShieldAlert size={16} class="dlg-head-icon" />
         <span class="dlg-eyebrow">Approval</span>
@@ -72,7 +93,12 @@ export function ApprovalPanel(props: { dialog: UiRequest; onAnswer: (value: unkn
       <p class="dlg-question" data-testid="approval-summary">
         {summary()}
       </p>
-      <Show when={d().detail}>
+      <Show when={extra()}>
+        {(x) => (
+          <pre class="ap-cmd" data-testid="approval-cmd">{x().text}</pre>
+        )}
+      </Show>
+      <Show when={d().detail && !extra()}>
         {(detail) => (
           <div class="ap-detail" data-testid="approval-detail">
             <NodeView node={detail() as never} path={['detail']} mode="auto" />
@@ -97,7 +123,7 @@ export function ApprovalPanel(props: { dialog: UiRequest; onAnswer: (value: unkn
               <Show when={options().length > 1}>
                 <span class="ap-num">{i + 1}</span>
               </Show>
-              {option().label ?? option().optionId ?? 'Allow'}
+              {humanizeLabel(option().label ?? option().optionId ?? 'Allow')}
             </button>
           )}
         </Index>

@@ -274,6 +274,8 @@ export function BrowserViewer(props: {
   onPick?: (pick: BrowserPick) => void;
   /** WP-B8: the screenshot button is offered; it hands over the current picture. */
   onCapture?: (shot: BrowserShot) => void;
+  /** E-15: a browser tool of the chat is running right now (click, evaluate, wait…): the agent holds the tab. */
+  agentBusy?: () => boolean;
 }) {
   const embedded = () => (props.variant ?? 'screen') !== 'screen';
   const [state, setState] = createSignal<SessionState>({ kind: 'starting' });
@@ -720,7 +722,10 @@ export function BrowserViewer(props: {
     const r = await browserTakeover(props.hostId, on, open()?.profile ?? props.profile);
     act(r.ok ? { kind: 'ok', agent: r.value } : { kind: 'failed', error: r.error });
   }
-  const strip = () => agentStrip(agent().agent);
+  const strip = (): ReturnType<typeof agentStrip> => {
+    const base = agentStrip(agent().agent);
+    return base.kind === 'none' && props.agentBusy?.() && !agent().agent?.taken_over ? { kind: 'driving' } : base;
+  };
   const badge = () => stealthBadge(open());
   async function toggleWindow() {
     setMenu(undefined);

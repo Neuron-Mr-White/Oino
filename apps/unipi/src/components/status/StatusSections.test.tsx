@@ -157,7 +157,7 @@ describe('capsule', () => {
     expect(screen.getByTestId('cap-branch').textContent).toContain('v2/status');
     expect(screen.getByTestId('cap-branch').textContent).toContain('+268');
     expect(screen.getByTestId('cap-lh').textContent).toContain('Graph');
-    expect(screen.getByTestId('cap-lh').textContent).toContain('4/7');
+    expect(screen.getByTestId('cap-lh').textContent).toContain('3/7');
     expect(screen.getByTestId('cap-running').textContent).toContain('running');
     fireEvent.click(screen.getByTestId('status-capsule').querySelector('button')!);
     // desktop: the side pane's git tab opens (one Git UI, Z-100)

@@ -124,6 +124,7 @@ export function PermissionControl(props: {
               </button>
             )}
           </For>
+          <p class="perm-menu-scope" data-testid="permission-scope">Applies to all chats in this project.</p>
           </div>
         </AnchoredMenu>
       </Show>

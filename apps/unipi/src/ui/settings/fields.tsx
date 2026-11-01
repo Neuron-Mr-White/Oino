@@ -434,21 +434,20 @@ function MultiSelect(props: { field: Field; value: Json; disabled: boolean; onCh
           const on = () => selected().includes(option.value);
           return (
             <li>
-              <label class="settings-check-row" data-disabled={props.disabled ? '' : undefined}>
-                <input
-                  type="checkbox"
-                  class="settings-check"
-                  checked={on()}
-                  disabled={props.disabled || (on() ? atMin() : atMax())}
-                  onChange={() => toggle(option.value)}
-                />
-                <span class="min-w-0">
+              <div class="settings-check-row" data-disabled={props.disabled ? '' : undefined}>
+                <span class="min-w-0 flex-1">
                   <span class="block text-sm text-text">{option.label}</span>
                   <Show when={option.description}>
                     <span class="block text-xs text-text-dim">{option.description}</span>
                   </Show>
                 </span>
-              </label>
+                <SwitchField
+                  label={option.label}
+                  checked={on()}
+                  disabled={props.disabled || (on() ? atMin() : atMax())}
+                  onChange={() => toggle(option.value)}
+                />
+              </div>
             </li>
           );
         }}

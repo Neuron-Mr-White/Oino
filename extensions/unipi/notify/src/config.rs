@@ -288,7 +288,7 @@ pub(crate) fn defaults() -> Value {
         "gotify": {"enabled": false, "priority": 5},
         "telegram": {"enabled": false},
         "ntfy": {"enabled": false, "serverUrl": "https://ntfy.sh", "priority": 3},
-        "recap": {"enabled": false, "model": "openrouter/openai/gpt-oss-20b", "disableThinking": false},
+        "recap": {"enabled": false, "model": "", "disableThinking": false},
         "silenceAfterInput": {"enabled": false, "windowMs": 10000, "platforms": ["native"]},
         "renotify": {"enabled": true, "intervalMs": 120_000, "maxRepeats": 3},
     })
@@ -429,7 +429,7 @@ pub(crate) fn from_values(values: &Value) -> NotifyConfig {
             model: recap
                 .get("model")
                 .and_then(Value::as_str)
-                .unwrap_or("openrouter/openai/gpt-oss-20b")
+                .unwrap_or("")
                 .to_owned(),
             disable_thinking: bool_or(recap, "disableThinking", false),
         },
@@ -694,7 +694,7 @@ mod tests {
         assert_eq!(c.gotify.priority, 5);
         assert_eq!(c.ntfy.priority, 3);
         assert_eq!(c.ntfy.server_url.as_deref(), Some("https://ntfy.sh"));
-        assert_eq!(c.recap.model, "openrouter/openai/gpt-oss-20b");
+        assert_eq!(c.recap.model, "");
         assert_eq!(c.silence_after_input.window_ms, 10_000);
         assert_eq!(c.silence_after_input.platforms, ["native"]);
         assert_eq!(

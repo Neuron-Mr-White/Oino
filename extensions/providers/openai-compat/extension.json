@@ -4,7 +4,7 @@
   "name": "OpenAI-compatible providers",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "OpenAI chat-completions wire for OpenRouter, Groq, DeepSeek, Together, Fireworks, Cerebras, GitHub Copilot (device-code OAuth), Cloudflare AI Gateway / Workers AI, Azure chat models, Ollama, LM Studio and other OpenAI-compatible providers (pi-ai 1.4.0 port).",
+  "description": "OpenAI chat-completions wire for OpenRouter, Groq, DeepSeek, Together, Fireworks, Cerebras, GitHub Copilot (device-code OAuth), Cloudflare AI Gateway / Workers AI, Azure chat models, Ollama, LM Studio and other OpenAI-compatible providers.",
   "license": "MIT",
   "provides": {
     "apis": [

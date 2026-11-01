@@ -22,6 +22,7 @@ import type { PaneTabProps } from '../../lib/panes/kinds';
 import { browserPane } from '../../lib/browserPane';
 import { displayUrl } from '../../lib/browser';
 import { toasts } from '../../lib/toasts';
+import { sessions } from '../../lib/session/store';
 import { BrowserViewer } from '../../screens/BrowserView';
 import { CommandBoxInline } from '../CommandBoxInline';
 import { composerKeyOf, sendPickToComposer, sendShotToComposer } from './elementContext';
@@ -71,6 +72,11 @@ export function BrowserTab(props: PaneTabProps) {
   const key = () => composerKeyOf(hostId(), props.sessionId);
   // Read once per mount: the viewer reads `url` several times while it opens.
   const startUrl = tabStartUrl(props.tab.id, props.tab.params?.url);
+  /** E-15: any browser_* tool of this chat still running = the agent holds the tab. */
+  const agentBusy = () => {
+    const live = (props.sessionId ? sessions().peek(hostId(), props.sessionId) : undefined)?.state.liveTools ?? {};
+    return Object.values(live).some((t) => !t.done && /^browser_/.test(t.name));
+  };
   /** The shown page's title (names a screenshot). */
   let pageTitle = '';
   return (
@@ -85,6 +91,7 @@ export function BrowserTab(props: PaneTabProps) {
             profile={pane.profileFor(hostId())}
             onProfile={(name) => pane.setProfileFor(hostId(), name)}
             CommandBox={CommandBoxInline}
+            agentBusy={agentBusy}
             onClose={() => props.close()}
             onPage={(page) => {
               pageTitle = page.title;

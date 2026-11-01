@@ -8,6 +8,7 @@ import { createRoot } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { SessionCard } from '../host/client';
 import { chatTransport, type AgentStatus, type SessionListData } from './link';
+import { sessionTitle } from './selectors';
 
 export type { AgentStatus } from './link';
 
@@ -53,7 +54,8 @@ export function cardTarget(hostId: string, card: SessionCard): ChatTarget {
   return {
     hostId,
     session: card.session_id,
-    title: card.name?.trim() || folderOf(card.cwd),
+    // Same name the sidebar shows (a chat in the bare home folder is "New chat", not the folder).
+    title: sessionTitle(card),
     cwd: short(card.cwd),
     cwdFull: card.cwd,
     status: card.run_state === 'working' ? 'working' : card.run_state === 'idle' || card.run_state === 'taken_over' ? 'idle' : 'unknown',

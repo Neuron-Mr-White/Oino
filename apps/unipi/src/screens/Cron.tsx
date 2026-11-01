@@ -7,7 +7,7 @@
  * `/cron add`). Needs the `cron` sharing feature on a phone (FeatureOff,
  * same pattern as Browser/Forward); the PC's own app always has it.
  */
-import { createEffect, createMemo, createResource, createSignal, For, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
 import { NamespaceForm } from '../ui/settings/form';
 import { settingsSchema } from '../ui/settings/data';
 import type { Namespace } from '../ui/settings/types';
@@ -163,6 +163,14 @@ export default function Cron() {
   });
 
   const view = createMemo<View>(() => viewFrom(result()));
+
+  // E-14: a run in flight is followed live — the row leaves "running" when the run ends.
+  createEffect(() => {
+    const v = view();
+    if (v.kind !== 'ready' || !v.jobs.some((j) => j.running)) return;
+    const t = setInterval(() => void refresh(), 2000);
+    onCleanup(() => clearInterval(t));
+  });
 
   return (
     <Show when={hosts.hosts().length > 0} fallback={<div class="page-screen"><PageHeader title="Cron" /><NoHostState what="scheduled runs" onAdd={() => setAddHostOpen(true)} /></div>}>
@@ -365,6 +373,19 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
     setData(await cronShow(props.hostId, props.id));
   }
   createEffect(() => void load());
+  // Poll while the job runs (or just started), so Run now shows its end without leaving the sheet.
+  const [justRan, setJustRan] = createSignal(false);
+  createEffect(() => {
+    const d = data();
+    const live = (d?.ok && d.value.job.running) || justRan();
+    if (!live) return;
+    const t = setInterval(() => {
+      void load();
+      props.onChanged();
+    }, 2000);
+    const stop = setTimeout(() => setJustRan(false), 6000);
+    onCleanup(() => (clearInterval(t), clearTimeout(stop)));
+  });
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -386,7 +407,7 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
               <p class="cron-detail-prompt">{job.prompt}</p>
               <dl class="cron-detail-fields">
                 <div><dt>Folder</dt><dd>{job.cwd}</dd></div>
-                <div><dt>Schedule</dt><dd>{job.schedule} ({job.tz})</dd></div>
+                <div><dt>Schedule</dt><dd title={job.schedule}>{humanSchedule(job.schedule)} ({job.tz})</dd></div>
                 <Show when={job.model}><div><dt>Model</dt><dd>{job.model}</dd></div></Show>
                 <div><dt>Time limit</dt><dd>{job.time_limit_s}s</dd></div>
                 <Show when={job.cost_cap_usd !== undefined}><div><dt>Cost cap</dt><dd>${job.cost_cap_usd?.toFixed(2)}</dd></div></Show>
@@ -395,7 +416,7 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
               </dl>
 
               <div class="cron-detail-actions">
-                <button type="button" disabled={busy()} onClick={() => void run(() => cronRun(props.hostId, job.id))} data-testid="cron-run-now">
+                <button type="button" disabled={busy()} onClick={() => (setJustRan(true), void run(() => cronRun(props.hostId, job.id)))} data-testid="cron-run-now">
                   <Play size={16} /> Run now
                 </button>
                 <Show when={job.running}>

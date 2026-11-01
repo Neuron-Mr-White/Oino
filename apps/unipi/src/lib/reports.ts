@@ -69,6 +69,20 @@ export function routeNotify(message: string, kind: ToastKind, sessionKey?: strin
   toasts().push(reportHeadline(message), kind, { label: 'Show', run: () => void setCurrent(report) });
 }
 
+/** The text of a live `unipi-response` command reply carried by a session event (message_end / entry_appended), else undefined. */
+export function reportTextOf(event: Record<string, unknown>): string | undefined {
+  const m = (event.type === 'message_end' ? event.message : event.type === 'entry_appended' ? event.entry : undefined) as
+    | { customType?: unknown; role?: unknown; type?: unknown; content?: unknown; display?: unknown }
+    | undefined;
+  if (!m || m.customType !== 'unipi-response' || m.display === false) return undefined;
+  if (typeof m.content === 'string') return m.content.trim() || undefined;
+  if (Array.isArray(m.content)) {
+    const t = m.content.map((p) => (p && typeof p === 'object' && typeof (p as { text?: unknown }).text === 'string' ? (p as { text: string }).text : '')).join('').trim();
+    return t || undefined;
+  }
+  return undefined;
+}
+
 /** Tests: forget everything. */
 export function resetReports(): void {
   recent.clear();

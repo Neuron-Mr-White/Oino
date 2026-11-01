@@ -164,7 +164,7 @@ export function rankChatsForProject<T extends { cwd?: string }>(chats: readonly 
 }
 
 /** A request for the Board's chat picker: go to a chat, optionally dropping text into its draft. */
-export type ChatPick = { hostId: string; mention?: string };
+export type ChatPick = { hostId: string; mention?: string; /** E-23: inserted as a composer chip instead of plain text. */ chip?: { kind: string; label: string; markdown: string } };
 const [chatPick, setChatPick] = createSignal<ChatPick | null>(null);
 export const pendingChatPick = chatPick;
 export function requestChatPick(next: ChatPick): void {

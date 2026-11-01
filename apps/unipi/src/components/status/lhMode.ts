@@ -86,7 +86,8 @@ export function modeChipCount(view: ModeView | undefined): string | undefined {
   if (!run) return undefined;
   if (run.mode === 'ralph' && run.ralph) return run.ralph.total > 0 ? `${run.ralph.checked}/${run.ralph.total}` : `#${run.ralph.iteration}`;
   if (run.mode === 'goal') return run.goal?.percent !== undefined ? `${Math.round(run.goal.percent)}%` : undefined;
-  return run.counts.total > 0 ? `${run.counts.done + run.counts.failed}/${run.counts.total}` : undefined;
+  // E-17: a failed node is not progress — the chip counts completed nodes only.
+  return run.counts.total > 0 ? `${run.counts.done}/${run.counts.total}` : undefined;
 }
 
 /** One plain line of live state for the popover. */
@@ -112,7 +113,7 @@ export function modeLiveText(run: LhRun): string {
 export function modePercent(run: LhRun): number | undefined {
   if (run.mode === 'goal') return run.goal?.percent;
   if (run.mode === 'ralph') return run.ralph && run.ralph.total > 0 ? Math.round((run.ralph.checked / run.ralph.total) * 100) : undefined;
-  return run.counts.total > 0 ? Math.round(((run.counts.done + run.counts.failed) / run.counts.total) * 100) : undefined;
+  return run.counts.total > 0 ? Math.round((run.counts.done / run.counts.total) * 100) : undefined;
 }
 
 /** The phase word the popover shows next to the mode. */

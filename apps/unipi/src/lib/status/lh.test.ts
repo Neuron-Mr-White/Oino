@@ -36,12 +36,12 @@ describe('parseLhState / parseLhProgress', () => {
 });
 
 describe('lhSummary', () => {
-  it('active graph: phase active, settled count, percent', () => {
+  it('active graph: phase active, completed count (a failed node is not progress), percent', () => {
     const m = lhSummary(state({ mode: 'graph', owner: { kind: 'graph', status: 'active' } }), progress({ mode: 'graph', graph: { mode: 'graph', task: 'Ship it', counts: { completed: 3, failed: 1, running: 2, queued: 1 } } }));
     expect(m!.phase).toBe('active');
     expect(m!.label).toBe('Graph');
-    expect(m!.countText).toBe('4/7');
-    expect(m!.percent).toBe(57);
+    expect(m!.countText).toBe('3/7');
+    expect(m!.percent).toBe(43);
   });
 
   it('parked mode (paused) without an active owner', () => {

@@ -129,7 +129,7 @@ export function ReorderRow(props: { task: Task; close: () => void }) {
 /** Board → chat portal (UNI-181/185): asks which chat on this PC, then drops the task id into its draft. */
 function addToChat(task: Task) {
   const hostId = boardStore().target()?.hostId;
-  if (hostId) requestChatPick({ hostId, mention: `${task.id} ` });
+  if (hostId) requestChatPick({ hostId, mention: `${task.id} `, chip: { kind: 'task', label: task.id, markdown: `Board task ${task.id}${task.title ? `: ${task.title}` : ''}` } });
 }
 
 function TailRows(props: { task: Task; close: () => void; detail?: boolean }) {

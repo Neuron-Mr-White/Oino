@@ -158,6 +158,9 @@ export function LhSection(props: { hostId: string; sessionId: string; onToast?: 
                     <Show when={graphSettled(g().counts).total > 0}>
                       <div class="status-bar" role="progressbar" aria-label="Graph progress" aria-valuemin={0} aria-valuemax={graphSettled(g().counts).total} aria-valuenow={graphSettled(g().counts).settled}>
                         <span style={{ width: `${m().percent ?? 0}%` }} data-mode={g().mode} />
+                        <Show when={graphSettled(g().counts).failed > 0}>
+                          <span class="status-bar-fail" style={{ width: `${(graphSettled(g().counts).failed / graphSettled(g().counts).total) * 100}%` }} data-testid="lh-graph-failed" />
+                        </Show>
                       </div>
                     </Show>
                     {/* P1-04: the DAG and one row per node, each opening its worker session. */}

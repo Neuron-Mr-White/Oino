@@ -616,6 +616,10 @@
 .add-project-hint { margin: 0 0 12px; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
 .add-project-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .add-project-path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.add-project-field { min-width: 0; flex: 1; height: 40px; padding: 0 12px; border-radius: 12px; border: 0; background: var(--color-surface-2); color: var(--color-text); font: inherit; font-size: 14px; font-family: var(--font-mono); }
+.add-project-field:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
+.add-project-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.add-project-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text); font-size: 13px; max-width: 100%; }
 .add-project-list { border-radius: 14px; background: var(--color-surface-2); overflow: hidden; }
 .add-project-list .picker-row { min-height: 48px; }
 .add-project-list .picker-row + .picker-row::before { left: 48px; }

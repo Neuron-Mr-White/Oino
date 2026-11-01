@@ -19,6 +19,7 @@ import { enqueue, loadOutbox, markAcked, markLost, markSending, removeItem, save
 import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
 import { hubs } from './hub';
+import { routeNotify, reportTextOf } from '../reports';
 import type { CommandInfo, OutboxImage, OutboxItem, OutboxMode, SessionEntry, SessionState } from './types';
 
 /** Live subscriptions kept open (app spec §3.3). */
@@ -211,7 +212,14 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       },
       events: (items) => {
         let r: ApplyResult = {};
+        const before = state.seq;
         batch(() => mutate((s) => (r = applyEvents(s, items))));
+        // E-05: an extension command's reply (`unipi-response`) is a report/toast, not a silent row.
+        for (const it of items) {
+          if (it.seq <= before) continue;
+          const text = reportTextOf((it.event ?? {}) as Record<string, unknown>);
+          if (text) routeNotify(text, 'info', keyOf(hostId, sessionId));
+        }
         follow(r);
         return r;
       },

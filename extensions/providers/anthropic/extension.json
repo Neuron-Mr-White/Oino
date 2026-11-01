@@ -4,7 +4,7 @@
   "name": "Anthropic Messages",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "Anthropic Messages wire with Claude Pro/Max OAuth (pi-ai 1.4.0 port); also serves anthropic-messages models of other providers.",
+  "description": "Anthropic Messages wire with Claude Pro/Max OAuth; also serves anthropic-messages models of other providers.",
   "license": "MIT",
   "provides": {
     "apis": [

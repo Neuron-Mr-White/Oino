@@ -24,8 +24,8 @@ describe('shared selectors (summary ≡ Session modal)', () => {
   });
 
   it('runningCounts mirrors the modal sections', () => {
-    expect(runningCounts(data())).toEqual({ bash: 1, agents: 2, sidekick: 0, tray: 2 });
-    expect(runningTotal(runningCounts(data()))).toBe(5);
+    expect(runningCounts(data())).toEqual({ bash: 1, agents: 2, sidekick: 0, tray: 1 });
+    expect(runningTotal(runningCounts(data()))).toBe(4);
     expect(runningCounts(undefined)).toEqual({ bash: 0, agents: 0, sidekick: 0, tray: 0 });
     expect(runningCounts(data({ sidekick: { label: 'Fusion', detail: 'Handoff running' } })).sidekick).toBe(1);
   });
@@ -34,10 +34,10 @@ describe('shared selectors (summary ≡ Session modal)', () => {
     const rows = runningRows(data());
     expect(rows.map((r) => r.kind)).toEqual(['bash', 'agent', 'agent']);
     expect(rows[0]!.title).toBe('cargo test');
-    expect(runningRows(data(), 5)).toHaveLength(5);
+    expect(runningRows(data(), 5)).toHaveLength(4);
     expect(runningRows(undefined)).toEqual([]);
     // tabs route to the modal too (G-20) when the front rows are quiet
-    expect(runningRows(data({ bash: [], agents: [] })).map((r) => r.kind)).toEqual(['tray', 'tray']);
+    expect(runningRows(data({ bash: [], agents: [] })).map((r) => r.kind)).toEqual(['tray']);
   });
 });
 

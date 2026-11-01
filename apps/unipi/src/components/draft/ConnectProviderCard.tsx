@@ -16,7 +16,7 @@ export function ConnectProviderCard() {
         <span class="connect-card-title">Connect a provider to start</span>
         <span class="connect-card-body">No model provider on this PC has a working key or sign-in yet.</span>
       </span>
-      <button type="button" class="btn-secondary connect-card-btn" onClick={() => openSettingsAt('providers', 'sec-providers')} data-testid="connect-provider-open">
+      <button type="button" class="btn btn-secondary connect-card-btn" onClick={() => openSettingsAt('providers', 'sec-providers')} data-testid="connect-provider-open">
         Connect a provider
       </button>
     </div>

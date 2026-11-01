@@ -4,7 +4,7 @@
   "name": "OpenAI Responses",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "OpenAI Responses wire for OpenAI (API key or Sign in with ChatGPT), xAI and Meta, and for openai-responses models of GitHub Copilot and Cloudflare AI Gateway (pi-ai 1.4.0 port).",
+  "description": "OpenAI Responses wire for OpenAI (API key or Sign in with ChatGPT), xAI and Meta, and for openai-responses models of GitHub Copilot and Cloudflare AI Gateway.",
   "license": "MIT",
   "provides": {
     "apis": [

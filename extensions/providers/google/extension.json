@@ -4,7 +4,7 @@
   "name": "Google Gemini and Vertex AI",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "Google Generative AI (Gemini API key) and Google Vertex AI (API key or Application Default Credentials) wires (pi-ai 1.4.0 port).",
+  "description": "Google Generative AI (Gemini API key) and Google Vertex AI (API key or Application Default Credentials) wires.",
   "license": "MIT",
   "provides": {
     "apis": [

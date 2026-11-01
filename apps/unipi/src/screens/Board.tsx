@@ -49,6 +49,7 @@ import { clearBoardJump, clearChatPick, pendingBoardJump, pendingChatPick, pickP
 import { clearReturnToChat, hasMarkedReturnToChat, openChat, openNewChat, resumeChatAfterTerminal } from '../lib/session/open';
 import { pushBack } from '../lib/back';
 import { queueMention } from '../lib/chat/mention';
+import { composerChips } from '../lib/composer/drafts';
 import type { ChatTarget } from '../lib/session/list';
 import { ChatPickSheet } from '../components/board/ChatPickSheet';
 import { boardActions, registerHighlighter } from '../lib/board/actions';
@@ -279,7 +280,8 @@ export default function Board() {
     // Leaving for a chat the user chose: drop any armed return-to-chat.
     portal = null;
     clearReturnToChat();
-    if (pick?.mention) queueMention(`${target.hostId}:${target.session}`, pick.mention);
+    if (pick?.chip) composerChips.add(`${target.hostId}/${target.session}`, pick.chip);
+    else if (pick?.mention) queueMention(`${target.hostId}:${target.session}`, pick.mention);
     // The task pane is a portal above the chat layer: close it so the chat shows.
     if (ui.openedTask()) ui.closeTask();
     openChat(target);
@@ -289,7 +291,8 @@ export default function Board() {
     clearChatPick();
     portal = null;
     clearReturnToChat();
-    if (pick?.mention) queueMention(`draft:${id}`, pick.mention);
+    if (pick?.chip) composerChips.add(`draft:${id}`, pick.chip);
+    else if (pick?.mention) queueMention(`draft:${id}`, pick.mention);
     if (ui.openedTask()) ui.closeTask();
     openNewChat(id, cwd);
   };

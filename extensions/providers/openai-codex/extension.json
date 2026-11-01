@@ -4,7 +4,7 @@
   "name": "OpenAI Codex (ChatGPT sign-in)",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "OpenAI Codex Responses wire over a ChatGPT Plus/Pro subscription with pi's browser and device-code OAuth (pi-ai 1.4.0 port; SSE transport).",
+  "description": "OpenAI Codex Responses wire over a ChatGPT Plus/Pro subscription with browser and device-code OAuth (SSE transport).",
   "license": "MIT",
   "provides": {
     "apis": [

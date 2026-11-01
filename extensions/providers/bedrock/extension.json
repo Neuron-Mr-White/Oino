@@ -4,7 +4,7 @@
   "name": "Amazon Bedrock",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "Amazon Bedrock ConverseStream wire (pi-ai 1.4.0 port): bearer tokens or IAM credentials (env or ~/.aws profiles) with SigV4.",
+  "description": "Amazon Bedrock ConverseStream wire: bearer tokens or IAM credentials (env or ~/.aws profiles) with SigV4.",
   "license": "MIT",
   "provides": {
     "apis": [

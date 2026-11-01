@@ -219,10 +219,10 @@
   background: var(--color-surface-2);
 }
 .connect-card-ic { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 9999px; background: rgb(240 120 24 / 12%); color: var(--color-claw); }
-.connect-card-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.connect-card-text { text-align: left; display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .connect-card-title { font-size: 14px; line-height: 19px; font-weight: 600; color: var(--color-text); }
 .connect-card-body { font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); }
-.connect-card-btn { flex: none; }
+.connect-card-btn { flex: none; height: 36px; min-height: 36px; padding: 0 16px; font-size: 14px; }
 @media (max-width: 640px) { .connect-card { flex-wrap: wrap; } .connect-card-btn { width: 100%; } }
 
 .draft-error {

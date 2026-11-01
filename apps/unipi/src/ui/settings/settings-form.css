@@ -62,7 +62,7 @@
 
 /* Multiselect: checkbox list */
 .settings-checklist { display: flex; flex-direction: column; gap: 2px; }
-.settings-check-row { display: flex; align-items: flex-start; gap: 9px; padding: 5px 0; }
+.settings-check-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 0; min-height: 40px; }
 .settings-check-row[data-disabled] { opacity: 0.55; }
 .settings-check { width: 16px; height: 16px; margin-top: 1px; accent-color: var(--color-shell); }
 
@@ -148,6 +148,7 @@ html:not([data-shell=desktop]) .settings-iconbtn { width: 36px; height: 36px; }
 
 /* WP-A25: capability pages — the Manage rows dim without a chat (R8). */
 .settings-page-blurb { margin: 0 0 10px; padding: 0 4px; font-size: 12.5px; line-height: 18px; color: var(--color-text-dim); }
+.settings-notify-blurb { padding: 10px 16px 8px; margin: 0; }
 .settings-namespace-row[data-needs-chat] { opacity: 0.55; }
 .settings-manage-empty {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
@@ -162,6 +163,7 @@ html:not([data-shell=desktop]) .settings-iconbtn { width: 36px; height: 36px; }
 .settings-provider-state[data-bad] { color: var(--color-danger, #e5584f); }
 /* D-37: the intro sits on the rows' 16px inset, not 4px from the card edge. */
 .settings-provider-blurb { padding: 12px 16px 4px; margin: 0; }
+.settings-provider-summary { margin: 0; padding: 0 16px 8px; font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); }
 .settings-provider-actions { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
 .settings-provider-key { display: flex; align-items: center; gap: 8px; padding: 0 16px 12px; }
 .settings-provider-key .settings-input { flex: 1; min-width: 0; }

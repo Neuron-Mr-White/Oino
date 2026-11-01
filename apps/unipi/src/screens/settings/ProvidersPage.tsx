@@ -59,6 +59,12 @@ export function oauthUrlIn(request: { [field: string]: unknown }): string | unde
   return undefined;
 }
 
+/** E-22: usable providers first, then configured-but-not-working, then the rest (names alphabetical inside a group). */
+export function sortProviders(list: readonly Provider[]): Provider[] {
+  const rank = (p: Provider) => (p.configured && p.ready !== false ? 0 : p.configured ? 1 : 2);
+  return [...list].sort((a, b) => rank(a) - rank(b) || (a.name || a.id).localeCompare(b.name || b.id));
+}
+
 export function ProvidersPage() {
   const navigate = useNavigate();
   const [providers, { refetch }] = createResource(async (): Promise<Provider[]> => {
@@ -151,7 +157,17 @@ export function ProvidersPage() {
       <Show when={!providers.loading && (providers.latest ?? []).length === 0}>
         <Row label="No providers" description="Install a provider extension (openai-compat, anthropic, …) in Settings › Extensions" />
       </Show>
-      <For each={providers.latest ?? []}>
+      <Show when={!providers.loading && (providers.latest ?? []).length > 0}>
+        <p class="settings-provider-summary" data-testid="providers-summary">
+          {(() => {
+            const all = providers.latest ?? [];
+            const ready = all.filter((p) => p.configured && p.ready !== false).length;
+            const broken = all.filter((p) => p.configured && p.ready === false).length;
+            return `${ready} ready${broken ? ` · ${broken} not working` : ''} · ${all.length - ready - broken} not set up`;
+          })()}
+        </p>
+      </Show>
+      <For each={sortProviders(providers.latest ?? [])}>
         {(p) => {
           const state = () => providerState(p);
           return (

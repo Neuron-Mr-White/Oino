@@ -137,8 +137,9 @@ function progressParts(progress: LhProgressTopic | undefined): Pick<LhSummary, '
     out.graph = progress.graph;
     const c = graphSettled(progress.graph.counts);
     if (c.total > 0) {
-      out.percent = Math.round((c.settled / c.total) * 100);
-      out.countText = `${c.settled}/${c.total}`;
+      const done = Math.max(0, c.settled - c.failed);
+      out.percent = Math.round((done / c.total) * 100);
+      out.countText = `${done}/${c.total}`;
     }
   }
   if (progress.todos) out.todosLine = progress.todos;
