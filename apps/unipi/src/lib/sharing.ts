@@ -60,13 +60,16 @@ export const SharingStatusSchema = z.object({
     found: z.object({ name: z.string(), path: z.string(), version: z.string().optional() }).optional(),
     devices: z.array(z.string()).default([]),
   }),
-  desktop: z.object({
-    enabled: z.boolean(),
-    view_only: z.boolean(),
-    devices: z.array(z.string()).default([]),
-    display: z.string(),
-    reason: z.string().optional(),
-  }),
+  /** Desktop streaming is deferred (D-15): the v2 host does not send this block. */
+  desktop: z
+    .object({
+      enabled: z.boolean(),
+      view_only: z.boolean(),
+      devices: z.array(z.string()).default([]),
+      display: z.string(),
+      reason: z.string().optional(),
+    })
+    .default({ enabled: false, view_only: true, devices: [], display: '' }),
   push: z.object({ enabled: z.boolean(), devices: z.array(z.string()).default([]) }),
   /** UNI-317/UNI-318: hosts before this milestone don't send it. */
   cron: z.object({ enabled: z.boolean(), devices: z.array(z.string()).default([]) }).optional(),
@@ -115,20 +118,21 @@ export const FEATURE_HELP: Record<FeatureKind, string> = {
   forward: "Open web apps running on this PC's loopback (dev servers) on your phone",
   browser: 'A separate browser on this PC that phones can drive — never your own browser or its logins',
   desktop: "See (and control) this PC's screen from a phone",
-  push: 'Let `unipi-host push <file>` send files to your phones',
+  push: 'Let `unipi-oino-host push <file>` send files to your phones',
   cron: "See and manage this PC's scheduled, unattended agent runs",
 };
 
 /** The command a PC owner can still type (shown under "Or on the PC"). */
 export const ENABLE_COMMANDS: Record<FeatureKind, string> = {
-  forward: 'unipi-host forward enable --any',
-  browser: 'unipi-host browser enable',
-  desktop: 'unipi-host desktop enable',
-  push: 'unipi-host push enable',
-  cron: 'unipi-host cron share',
+  forward: 'unipi-oino-host forward enable --any',
+  browser: 'unipi-oino-host browser enable',
+  desktop: 'unipi-oino-host desktop enable',
+  push: 'unipi-oino-host push enable',
+  cron: 'unipi-oino-host cron share',
 };
 
-export const INSTALL_COMMAND = 'curl -fsSL https://unipi.nrn.one/install.sh | sh';
+/** A missing / too-old host: the app ships its host, so the fix is the app itself (no separate installer). */
+export const HOST_FIX_HINT = 'Reinstall or update UniPi — the app ships its agent host.';
 
 // ------------------------------------------------------------- transport
 

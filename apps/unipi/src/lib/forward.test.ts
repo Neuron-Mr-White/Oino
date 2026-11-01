@@ -10,8 +10,8 @@ describe('pickerState (UNI-213)', () => {
     const st = pickerState({ ok: false, error: { code: 'E_SCHEMA', message: 'unknown variant `ports_list`, expected one of `list`, `attach`', retryable: false } });
     expect(st.kind).toBe('error');
     if (st.kind !== 'error') return;
-    expect(st.error.message).toBe('This PC runs an older unipi-host without port forwarding.');
-    expect(st.error.hint).toBe('Update unipi-host on the PC.');
+    expect(st.error.message).toBe('This PC runs an older agent host without port forwarding.');
+    expect(st.error.hint).toBe('Update UniPi on the PC.');
   });
   it('maps E_FORWARD_DISABLED to the disabled state and other errors to error', () => {
     expect(pickerState({ ok: false, error: err('E_FORWARD_DISABLED') }).kind).toBe('disabled');

@@ -21,7 +21,7 @@ import {
   changeSharing,
   ENABLE_COMMANDS,
   FEATURE_LABEL,
-  INSTALL_COMMAND,
+  HOST_FIX_HINT,
   isOldHost,
   isThisComputer,
   parsePorts,
@@ -138,7 +138,7 @@ function CommandFold(props: { feature: FeatureKind; CommandBox: CommandBoxComp; 
       </button>
       <Show when={open()}>
         <props.CommandBox command={ENABLE_COMMANDS[props.feature]} />
-        <p class="preview-muted">No restart needed. Turn it off again with <code>{props.feature === 'cron' ? 'unipi-host cron unshare' : `unipi-host ${props.feature} disable`}</code>.</p>
+        <p class="preview-muted">No restart needed. Turn it off again with <code>{props.feature === 'cron' ? 'unipi-oino-host cron unshare' : `unipi-oino-host ${props.feature} disable`}</code>.</p>
       </Show>
     </div>
   );
@@ -198,7 +198,7 @@ function LocalSwitch(props: { feature: FeatureKind; hostName: string; CommandBox
             <div>
               <p>{e().message}</p>
               <Show when={e().code === 'E_NOT_FOUND' || e().code === 'E_UNSUPPORTED'}>
-                <props.CommandBox command={INSTALL_COMMAND} />
+                <p class="preview-muted">{HOST_FIX_HINT}</p>
               </Show>
             </div>
           </div>

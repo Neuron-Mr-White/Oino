@@ -18,7 +18,6 @@ import {
   closePairPhone,
   countdown,
   groupCode,
-  installCommand,
   markExpired,
   pairPhoneOpen,
   pairPhoneState,
@@ -136,11 +135,11 @@ function ErrorState(props: { s: Extract<PairState, { kind: 'error' }> }) {
   };
   const title = () =>
     props.s.errorKind === 'not_installed'
-      ? "unipi-host isn't installed on this PC"
+      ? 'This UniPi install is missing its agent host'
       : props.s.errorKind === 'not_running'
-        ? "unipi-host isn't running"
+        ? "The agent host isn't running"
         : props.s.errorKind === 'too_old'
-          ? "This PC's unipi-host is too old"
+          ? "This PC's agent host is too old"
           : "Couldn't start pairing";
   return (
     <div class="pair-phone-body pair-phone-state" data-testid="pair-phone-error" data-kind={props.s.errorKind}>
@@ -148,10 +147,9 @@ function ErrorState(props: { s: Extract<PairState, { kind: 'error' }> }) {
       <h3 class="pair-phone-state-title">{title()}</h3>
       <Switch fallback={<p class="pair-phone-state-text">{props.s.message}{props.s.hint ? ` — ${props.s.hint}` : ''}</p>}>
         <Match when={props.s.errorKind === 'not_installed' || props.s.errorKind === 'too_old'}>
-          <p class="pair-phone-state-text">
-            {props.s.errorKind === 'too_old' ? 'Update it' : 'Install it'} in a terminal on this PC, then try again. The installer also starts it in the background.
+          <p class="pair-phone-state-text" data-testid="pair-phone-fix">
+            {props.s.errorKind === 'too_old' ? 'Update UniPi (Settings › About), then try again.' : 'Reinstall UniPi — the app ships its agent host — then try again.'}
           </p>
-          <CommandLine command={installCommand()} testId="pair-phone-install-cmd" />
         </Match>
         <Match when={props.s.errorKind === 'not_running'}>
           <p class="pair-phone-state-text">Phones pair through the host running on this PC. Start it here, or run this in a terminal:</p>
@@ -164,7 +162,7 @@ function ErrorState(props: { s: Extract<PairState, { kind: 'error' }> }) {
       <div class="dialog-actions pair-phone-actions">
         <Show when={props.s.errorKind === 'not_running'}>
           <button type="button" class="btn btn-primary" data-testid="pair-phone-start" disabled={busy()} onClick={() => void start()}>
-            <Show when={busy()} fallback={<><Play size={16} /> Start unipi-host</>}>
+            <Show when={busy()} fallback={<><Play size={16} /> Start the agent host</>}>
               <RefreshCw size={16} class="refresh-spinning" /> Starting…
             </Show>
           </button>
@@ -179,7 +177,7 @@ function ErrorState(props: { s: Extract<PairState, { kind: 'error' }> }) {
 
 const EXPIRED_TEXT: Record<string, string> = {
   timeout: 'The code ran out after 10 minutes. Make a new one to pair.',
-  replaced: 'Another pairing started on this PC (unipi-host pair), so this code stopped working.',
+  replaced: 'Another pairing started on this PC (unipi-oino-host pair), so this code stopped working.',
   locked: 'Too many wrong codes were tried, so this one was switched off.',
   cancelled: 'This code was cancelled.',
 };

@@ -185,12 +185,13 @@ describe('Settings → Sharing with phones (desktop app)', () => {
     await waitFor(() => expect(vi.mocked(call).mock.calls.some(([c]) => c === 'host_restart')).toBe(true));
   });
 
-  it('unipi-host missing: says how to install, Try again re-reads', async () => {
-    const status = vi.fn(async () => ({ ok: false as const, error: { code: 'E_NOT_FOUND' as const, message: "unipi-host isn't installed on this PC", retryable: false } }));
+  it('host missing: says to reinstall UniPi (no installer command), Try again re-reads', async () => {
+    const status = vi.fn(async () => ({ ok: false as const, error: { code: 'E_NOT_FOUND' as const, message: 'This UniPi install is missing its agent host', retryable: false } }));
     transport({ status });
     render(() => <SharingSettings />);
-    expect((await screen.findByTestId('share-settings')).textContent).toContain("isn't installed");
-    expect(screen.getByTestId('share-settings').textContent).toContain('install.sh');
+    expect((await screen.findByTestId('share-settings')).textContent).toContain('missing its agent host');
+    expect(screen.getByTestId('share-settings').textContent).toContain('Reinstall or update UniPi');
+    expect(screen.getByTestId('share-settings').textContent).not.toContain('install.sh');
     fireEvent.click(screen.getByText('Try again'));
     await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
   });

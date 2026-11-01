@@ -48,7 +48,7 @@ describe('statusView', () => {
   it('explains an old host that does not know the op', () => {
     const view = statusView({ ok: false, error: { code: 'E_SCHEMA', message: 'unknown variant browser_status', retryable: false } });
     expect(view.kind).toBe('error');
-    expect(view.kind === 'error' && view.error.message).toMatch(/older unipi-host/);
+    expect(view.kind === 'error' && view.error.message).toMatch(/older agent host/);
   });
 });
 

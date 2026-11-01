@@ -138,9 +138,9 @@ pub const BIN_NAME: &str = if cfg!(windows) {
     "unipi-oino-host"
 };
 
-/// Where to look for `unipi-host`, in order (UNI-266): `$UNIPI_HOST_BIN`;
-/// the installers' places — `~/.local/bin` (install.sh on Linux/macOS),
-/// `%LOCALAPPDATA%\UniPi` (install.ps1); then `PATH` (also
+/// Where to look for the host outside the app bundle, in order (UNI-266):
+/// `$UNIPI_HOST_BIN`; `~/.local/bin` (older standalone installs on
+/// Linux/macOS), `%LOCALAPPDATA%\UniPi`; then `PATH` (also
 /// `/opt/homebrew/bin` and `/usr/local/bin`, which a macOS app started from
 /// Finder doesn't have on its PATH).
 pub fn find_bin(
@@ -196,12 +196,39 @@ pub fn resolve_bin() -> Result<PathBuf, AppErrorDto> {
     bin().ok_or_else(not_installed)
 }
 
+/// The directories the app bundle ships its host sidecar in (beside the exe,
+/// the resource dir — `host_supervisor::sidecar_dirs`), recorded once at
+/// startup so the app-handle-less commands (sharing, pairing) find the same
+/// host the supervisor runs.
+static SIDECAR_DIRS: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
+
+/// Records [`SIDECAR_DIRS`] (the first call wins).
+pub fn set_sidecar_dirs(dirs: Vec<PathBuf>) {
+    let _ = SIDECAR_DIRS.set(dirs);
+}
+
+/// The host binary: `$UNIPI_HOST_BIN` (an explicit override), else the
+/// bundled sidecar — the installer always ships it — else an older
+/// standalone install (`~/.local/bin`, `PATH`).
 pub fn bin() -> Option<PathBuf> {
-    find_bin(
+    bin_in(
         std::env::var_os("UNIPI_HOST_BIN").as_deref(),
-        home().as_deref(),
-        std::env::var_os("PATH").as_deref(),
+        SIDECAR_DIRS.get().map_or(&[][..], Vec::as_slice),
+        || find_bin(None, home().as_deref(), std::env::var_os("PATH").as_deref()),
     )
+}
+
+/// [`bin`]'s order over explicit inputs (tests).
+pub fn bin_in(
+    env_bin: Option<&std::ffi::OsStr>,
+    sidecar_dirs: &[PathBuf],
+    otherwise: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
+    if let Some(bin) = env_bin.filter(|b| !b.is_empty()) {
+        let bin = PathBuf::from(bin);
+        return is_executable(&bin).then_some(bin);
+    }
+    crate::host_supervisor::sidecar_in(sidecar_dirs).or_else(otherwise)
 }
 
 /// Only the public id from endpoint.json.
@@ -381,20 +408,17 @@ pub fn argv(change: &SharingChange) -> Result<Vec<String>, AppErrorDto> {
     })
 }
 
-/// The one-line installer for this OS.
-pub const INSTALL_COMMAND: &str = if cfg!(windows) {
-    "irm https://unipi.nrn.one/install.ps1 | iex"
-} else {
-    "curl -fsSL https://unipi.nrn.one/install.sh | sh"
-};
+/// The fix for a broken install: the app ships its host, so reinstalling the
+/// app puts it back (there is no separate host installer).
+pub const REINSTALL_HINT: &str = "Reinstall UniPi: the app ships its agent host";
 
 fn not_installed() -> AppErrorDto {
     AppErrorDto::new(
         AppErrorCode::E_NOT_FOUND,
-        "unipi-host isn't installed on this PC",
+        "This UniPi install is missing its agent host",
         false,
     )
-    .with_hint(format!("Install it: {INSTALL_COMMAND}"))
+    .with_hint(REINSTALL_HINT)
 }
 
 /// `unipi-host` without a console window popping up on Windows.
@@ -439,10 +463,10 @@ pub async fn run(
     if stderr.contains("unrecognized subcommand") || stderr.contains("unexpected argument") {
         return Err(AppErrorDto::new(
             AppErrorCode::E_UNSUPPORTED,
-            "This PC's unipi-host is too old for one-click sharing",
+            "This PC's agent host is too old for one-click sharing",
             false,
         )
-        .with_hint(format!("Update it: {INSTALL_COMMAND}")));
+        .with_hint("Update UniPi (Settings › About)"));
     }
     let message = stderr
         .lines()
@@ -544,6 +568,31 @@ pub async fn sharing_change(change: SharingChange) -> Result<serde_json::Value, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn the_bundled_sidecar_beats_local_bin_and_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let mk = |dir: &str, name: &str| {
+            let d = tmp.path().join(dir);
+            std::fs::create_dir_all(&d).unwrap();
+            let p = d.join(name);
+            std::fs::write(&p, "#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        let sidecar = mk("usr/bin", crate::host_supervisor::SIDECAR_NAME);
+        let local = mk("home/.local/bin", BIN_NAME);
+        let env = mk("env", "my-host");
+        let dirs = vec![tmp.path().join("usr/bin")];
+        // The sidecar first, even with an older standalone host around.
+        assert_eq!(bin_in(None, &dirs, || Some(local.clone())), Some(sidecar));
+        // An explicit override still wins.
+        assert_eq!(bin_in(Some(env.as_os_str()), &dirs, || None), Some(env));
+        // No sidecar (a dev build): the standalone host.
+        assert_eq!(bin_in(None, &[], || Some(local.clone())), Some(local));
+    }
 
     #[test]
     fn changes_map_to_fixed_argv() {

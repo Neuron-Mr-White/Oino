@@ -113,7 +113,7 @@ describe('ask the PC (phone / other PC)', () => {
     transport({ requests: async () => ({ ok: false, error: { code: 'E_SCHEMA', message: 'unknown variant `feature_requests`', retryable: false } }) });
     render(() => <FeatureOff feature="push" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={() => {}} />);
     await waitFor(() => expect(screen.getByTestId('share-ask-push').dataset.state).toBe('old-host'));
-    expect(screen.getByTestId('cmd').textContent).toBe('unipi-host push enable');
+    expect(screen.getByTestId('cmd').textContent).toBe('unipi-oino-host push enable');
   });
 
   it('a failed ask shows the error and keeps the form', async () => {
@@ -141,9 +141,9 @@ describe('this computer (desktop app)', () => {
     expect(t.changes).toEqual([{ kind: 'browser_enable', headed: true }]);
   });
 
-  it('another PC from the desktop app still asks; unipi-host missing shows the installer', async () => {
+  it('another PC from the desktop app still asks; a missing host says to reinstall UniPi', async () => {
     setPlatformOverride('tauri-desktop');
-    transport({ change: async () => ({ ok: false, error: { code: 'E_NOT_FOUND', message: "unipi-host isn't installed on this PC", retryable: false } }) });
+    transport({ change: async () => ({ ok: false, error: { code: 'E_NOT_FOUND', message: 'This UniPi install is missing its agent host', retryable: false } }) });
     await loadLocalHost();
     render(() => (
       <>
@@ -153,7 +153,8 @@ describe('this computer (desktop app)', () => {
     ));
     expect(await screen.findByTestId('share-ask-forward')).toBeTruthy();
     fireEvent.click(screen.getByRole('switch'));
-    expect((await screen.findByRole('alert')).textContent).toContain("isn't installed");
-    expect(screen.getAllByTestId('cmd').some((c) => c.textContent?.includes('install.sh'))).toBe(true);
+    expect((await screen.findByRole('alert')).textContent).toContain('missing its agent host');
+    expect(screen.getByRole('alert').textContent).toContain('Reinstall or update UniPi');
+    expect(screen.queryAllByTestId('cmd').some((c) => c.textContent?.includes('install.sh'))).toBe(false);
   });
 });

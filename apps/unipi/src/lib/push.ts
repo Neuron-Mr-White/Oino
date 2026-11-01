@@ -23,7 +23,7 @@ import { can, isTauri, isTauriDesktop, isTauriMobile } from './platform';
 
 export const APK_MIME = 'application/vnd.android.package-archive';
 /** What the PC owner runs to switch push on (shown in help). */
-export const ENABLE_COMMAND = 'unipi-host push enable';
+export const ENABLE_COMMAND = 'unipi-oino-host push enable';
 
 export type FetchProgress = { done: number; total: number };
 

@@ -22,8 +22,8 @@ export function canForward(): boolean {
 }
 
 /** The exact command the PC owner runs to switch forwarding on. */
-export const ENABLE_COMMAND = 'unipi-host forward enable --any';
-export const ENABLE_PORT_COMMAND = (port: number) => `unipi-host forward enable --port ${port}`;
+export const ENABLE_COMMAND = 'unipi-oino-host forward enable --any';
+export const ENABLE_PORT_COMMAND = (port: number) => `unipi-oino-host forward enable --port ${port}`;
 
 export const ForwardInfoSchema = z.object({
   id: z.string(),
@@ -69,7 +69,7 @@ export function pickerState(result: Result<PortsListData> | undefined): PickerSt
     if (result.error.code === 'E_UNSUPPORTED' || result.error.code === 'E_SCHEMA') {
       // An older unipi-host that doesn't know ports_list (seen on the Redmi: the raw serde
       // "unknown variant `ports_list`, expected one of …" filled the page).
-      return { kind: 'error', error: { ...result.error, message: 'This PC runs an older unipi-host without port forwarding.', hint: 'Update unipi-host on the PC.' } };
+      return { kind: 'error', error: { ...result.error, message: 'This PC runs an older agent host without port forwarding.', hint: 'Update UniPi on the PC.' } };
     }
     return { kind: 'error', error: result.error };
   }

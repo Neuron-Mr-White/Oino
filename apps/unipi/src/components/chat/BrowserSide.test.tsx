@@ -122,7 +122,7 @@ describe('browser beside the chat (UNI-296)', () => {
     const f = fake({ agent: { connected: true, driving: true, taken_over: false } }, () => ({ ok: false, error: { code: 'E_SCHEMA', message: 'x', retryable: false } }));
     render(() => <BrowserSidePane show hostId="coffee" hostName="coffee" />);
     fireEvent.click(await screen.findByTestId('browser-takeover'));
-    expect((await screen.findByTestId('browser-takeover-error')).textContent).toBe('Update unipi-host on the PC to take over from the agent.');
+    expect((await screen.findByTestId('browser-takeover-error')).textContent).toBe('Update UniPi on the PC to take over from the agent.');
     expect(screen.getByTestId('browser-agent-strip').textContent).toContain('Agent is using the browser');
     expect(f.takeovers).toHaveLength(1);
   });

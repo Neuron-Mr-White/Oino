@@ -143,7 +143,7 @@ describe('Pair a phone dialog', () => {
     expect(await screen.findByText(/Another pairing started on this PC/)).toBeInTheDocument();
   });
 
-  it('host not running: the start command, Start unipi-host, then a new attempt', async () => {
+  it('host not running: the start command, Start the agent host, then a new attempt', async () => {
     let started = 0;
     startHost = async () => void started++;
     render(() => <PairPhoneDialog />);
@@ -152,7 +152,7 @@ describe('Pair a phone dialog', () => {
     emit({ state: 'error', message: "`unipi-host serve` isn't running on this PC — start unipi-host serve first", hint: 'Start it: systemctl --user start unipi-host' });
     const err = await screen.findByTestId('pair-phone-error');
     expect(err.dataset.kind).toBe('not_running');
-    expect(screen.getByText("unipi-host isn't running")).toBeInTheDocument();
+    expect(screen.getByText("The agent host isn't running")).toBeInTheDocument();
     expect(screen.getByTestId('pair-phone-start-cmd').textContent).toContain('systemctl --user start unipi-host');
     fireEvent.click(screen.getByTestId('pair-phone-start'));
     await waitFor(() => expect(started).toBe(1));
@@ -172,27 +172,28 @@ describe('Pair a phone dialog', () => {
     expect(starts).toBe(1);
   });
 
-  it('not installed (the core throws E_NOT_FOUND): the install command for this OS', async () => {
+  it('not installed (the core throws E_NOT_FOUND): reinstall UniPi, never a separate installer', async () => {
     startImpl = async () => {
-      throw { code: 'E_NOT_FOUND', message: "unipi-host isn't installed on this PC", hint: 'Install it: …', retryable: false };
+      throw { code: 'E_NOT_FOUND', message: 'This UniPi install is missing its agent host', hint: 'Reinstall UniPi: the app ships its agent host', retryable: false };
     };
     setPlatformOverride({ mode: 'tauri-desktop', os: 'windows', tauri: true });
     render(() => <PairPhoneDialog />);
     openPairPhone();
-    expect(await screen.findByText("unipi-host isn't installed on this PC")).toBeInTheDocument();
-    expect(screen.getByTestId('pair-phone-install-cmd').textContent).toContain('irm https://unipi.nrn.one/install.ps1 | iex');
+    expect(await screen.findByText('This UniPi install is missing its agent host')).toBeInTheDocument();
+    expect(screen.getByTestId('pair-phone-fix').textContent).toContain('Reinstall UniPi');
+    expect(document.body.textContent).not.toMatch(/install\.(sh|ps1)/);
     expect(screen.queryByTestId('pair-phone-start')).toBeNull();
     fireEvent.click(screen.getByTestId('pair-phone-retry'));
     await waitFor(() => expect(starts).toBe(2));
   });
 
-  it('too old a host: update command', async () => {
+  it('too old a host: update UniPi', async () => {
     render(() => <PairPhoneDialog />);
     openPairPhone();
     await waitFor(() => expect(starts).toBe(1));
-    emit({ state: 'error', code: 'E_UNSUPPORTED', message: "This PC's unipi-host is too old to pair from here" });
-    expect(await screen.findByText("This PC's unipi-host is too old")).toBeInTheDocument();
-    expect(screen.getByTestId('pair-phone-install-cmd').textContent).toContain('install.sh');
+    emit({ state: 'error', code: 'E_UNSUPPORTED', message: "This PC's agent host is too old to pair from here" });
+    expect(await screen.findByText("This PC's agent host is too old")).toBeInTheDocument();
+    expect(screen.getByTestId('pair-phone-fix').textContent).toContain('Update UniPi');
   });
 
   it('closing while waiting cancels the code; late events of that attempt are ignored', async () => {

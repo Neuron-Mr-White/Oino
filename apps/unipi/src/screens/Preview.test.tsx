@@ -92,8 +92,8 @@ describe('Preview page (UNI-213)', () => {
     expect(notice.textContent).toContain('Web apps are off on this PC');
     expect(screen.getByRole('radio', { name: 'Any port' }).getAttribute('aria-checked')).toBe('true');
     fireEvent.click(screen.getByText('Or run this on the PC'));
-    expect(notice.textContent).toContain('unipi-host forward enable --any');
-    expect(notice.textContent).toContain('unipi-host forward disable');
+    expect(notice.textContent).toContain('unipi-oino-host forward enable --any');
+    expect(notice.textContent).toContain('unipi-oino-host forward disable');
     // Asking for listed ports sends that scope; the PC says yes → the picker reloads.
     let asked: Record<string, unknown> | undefined;
     mockIpc({
@@ -209,7 +209,7 @@ describe('Preview page (UNI-213)', () => {
     mount();
     (await screen.findByLabelText('Open port 22')).click();
     const error = await screen.findByTestId('preview-start-error');
-    expect(error.textContent).toContain('unipi-host forward enable --port 22');
+    expect(error.textContent).toContain('unipi-oino-host forward enable --port 22');
   });
 
   it('manual port box validates', async () => {

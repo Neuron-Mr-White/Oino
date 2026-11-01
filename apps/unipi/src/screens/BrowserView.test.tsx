@@ -89,8 +89,8 @@ describe('Preview → Browser mode (UNI-215)', () => {
     expect(notice.textContent?.toLowerCase()).not.toContain('brave');
     expect(notice.textContent).toContain('Show its window on the PC');
     fireEvent.click(screen.getByText('Or run this on the PC'));
-    expect(notice.textContent).toContain('unipi-host browser enable');
-    expect(notice.textContent).toContain('unipi-host browser disable');
+    expect(notice.textContent).toContain('unipi-oino-host browser enable');
+    expect(notice.textContent).toContain('unipi-oino-host browser disable');
     expect(screen.getByRole('tab', { name: /Browser/ }).getAttribute('aria-selected')).toBe('true');
   });
 
@@ -203,7 +203,7 @@ describe('Preview → Browser mode (UNI-215)', () => {
     fake(status(), { ok: false, error: { code: 'E_BROWSER_DISABLED', message: 'The remote browser is off on this PC', hint: 'x', retryable: false } });
     fireEvent.click(screen.getByTestId('browser-start'));
     const problem = await screen.findByTestId('browser-problem');
-    expect(problem.textContent).toContain('unipi-host browser enable');
+    expect(problem.textContent).toContain('unipi-oino-host browser enable');
   });
 
   it('launch_failed: the message explains itself, the stderr tail is behind Details (UNI-287)', async () => {
@@ -277,7 +277,7 @@ describe('Preview → Browser mode (UNI-215)', () => {
       await waitFor(() => expect(f.opened).toHaveLength(1));
       fireEvent.click(screen.getByTestId('browser-menu-button'));
       fireEvent.click(await screen.findByRole('menuitem', { name: /Show window on coffee/ }));
-      expect((await screen.findByRole('alert')).textContent).toContain('Update unipi-host on the PC');
+      expect((await screen.findByRole('alert')).textContent).toContain('Update UniPi on the PC');
     } finally {
       windowResult = undefined;
     }

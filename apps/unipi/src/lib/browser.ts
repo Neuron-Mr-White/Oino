@@ -36,8 +36,8 @@ export function canBrowse(): boolean {
   return can('portForward');
 }
 
-export const ENABLE_BROWSER_COMMAND = 'unipi-host browser enable';
-export const ENABLE_BROWSER_HEADED_COMMAND = 'unipi-host browser enable --headed';
+export const ENABLE_BROWSER_COMMAND = 'unipi-oino-host browser enable';
+export const ENABLE_BROWSER_HEADED_COMMAND = 'unipi-oino-host browser enable --headed';
 /** How to get Google Chrome onto the PC, per its OS (UNI-268: Chrome is the one we name). */
 export const INSTALL_STEPS: { os: string; text: string; command?: string }[] = [
   { os: 'Linux', text: 'Download the .deb or .rpm from google.com/chrome and open it, then on Debian/Ubuntu:', command: 'sudo apt install ./google-chrome-stable_current_amd64.deb' },
@@ -111,7 +111,7 @@ export function statusView(result: Result<BrowserStatusData> | undefined): Statu
     if (result.error.code === 'E_BROWSER_DISABLED') return { kind: 'disabled', error: result.error };
     if (result.error.code === 'E_UNSUPPORTED' || result.error.code === 'E_SCHEMA') {
       // An older unipi-host that doesn't know browser_status.
-      return { kind: 'error', error: { ...result.error, message: 'This PC runs an older unipi-host without the remote browser.', hint: 'Update unipi-host on the PC.' } };
+      return { kind: 'error', error: { ...result.error, message: 'This PC runs an older agent host without the remote browser.', hint: 'Update UniPi on the PC.' } };
     }
     return { kind: 'error', error: result.error };
   }
@@ -153,7 +153,7 @@ export function problemFromError(error: AppError): SessionProblem {
 
 export function problemFromClose(reason: string): SessionProblem {
   if (reason === 'idle') return { kind: 'closed', message: 'The browser on the PC was closed because nobody was watching.' };
-  if (reason === 'host_exit') return { kind: 'closed', message: 'unipi-host stopped on the PC.' };
+  if (reason === 'host_exit') return { kind: 'closed', message: 'The agent host stopped on the PC.' };
   if (reason === 'relaunch') return { kind: 'relaunch', message: 'Switching the window on the PC…' };
   return { kind: 'closed', message: 'The browser on the PC was closed.' };
 }

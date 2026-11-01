@@ -30,7 +30,7 @@ import {
   FEATURE_HELP,
   FEATURE_LABEL,
   featureOn,
-  INSTALL_COMMAND,
+  HOST_FIX_HINT,
   OWNER_POLL_MS,
   parsePorts,
   pendingRequests,
@@ -310,8 +310,7 @@ export function SharingSettings(props: { Section?: (p: { title: string; icon: JS
               <div class="share-row-detail" style={{ 'padding-left': '16px', 'padding-top': '14px' }}>
                 <p class="text-[15px] text-text">{e().message}</p>
                 <Show when={e().code === 'E_NOT_FOUND' || e().code === 'E_UNSUPPORTED'}>
-                  <p class="preview-muted">Install or update unipi-host on this PC:</p>
-                  <code class="preview-muted">{INSTALL_COMMAND}</code>
+                  <p class="preview-muted">{HOST_FIX_HINT}</p>
                 </Show>
                 <button type="button" class="btn btn-secondary" style={{ 'align-self': 'flex-start' }} onClick={() => void refreshSharing()}>
                   <RefreshCw size={16} /> Try again

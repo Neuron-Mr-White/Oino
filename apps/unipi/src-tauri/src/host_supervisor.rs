@@ -937,6 +937,11 @@ fn plan_name(plan: Plan) -> &'static str {
 /// PATH / `~/.local/bin`. Split out of [`host_bin`] so tests can pass a sidecar
 /// (and its fallback) without a Tauri `AppHandle`.
 pub fn host_bin(app: Option<&tauri::AppHandle>) -> Option<PathBuf> {
+    if let Some(app) = app {
+        // Sharing / pairing resolve the host without an AppHandle (`sharing::bin`):
+        // record the bundle's sidecar dirs so they find the same host (setup calls this).
+        crate::sharing::set_sidecar_dirs(sidecar_dirs(app));
+    }
     host_bin_in(app.and_then(sidecar), crate::sharing::bin)
 }
 

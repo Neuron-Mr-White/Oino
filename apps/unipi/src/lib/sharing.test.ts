@@ -106,3 +106,21 @@ describe('sharing helpers (UNI-248)', () => {
     expect(isThisComputer('ffff')).toBe(false);
   });
 });
+
+describe('the v2 host status (no desktop block)', () => {
+  it('parses without `desktop` (streaming is deferred) and treats it as off', async () => {
+    const { SharingStatusSchema, featureOn } = await import('./sharing');
+    const s = SharingStatusSchema.parse({
+      version: '1.0.0',
+      host_dir: '/h',
+      forward: { enabled: false, any: false, ports: [], devices: [] },
+      browser: { enabled: true, headless: true, idle_minutes: 10, devices: [] },
+      push: { enabled: false, devices: [] },
+      cron: { enabled: false, devices: [] },
+      devices: [],
+      requests: [],
+    });
+    expect(featureOn(s, 'desktop')).toBe(false);
+    expect(featureOn(s, 'browser')).toBe(true);
+  });
+});

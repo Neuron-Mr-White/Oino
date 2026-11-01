@@ -81,7 +81,7 @@ export function OfflineState(props: {
       compact={props.compact}
       icon={<CloudOff size={props.compact ? 20 : 24} />}
       title={`Can't reach ${props.pc ?? 'the PC'}`}
-      body={props.hint ?? props.message ?? 'Is unipi-host running on the PC?'}
+      body={props.hint ?? props.message ?? 'Is UniPi running on the PC?'}
       testId="offline-state"
       action={
         props.onRetry || props.secondary ? (

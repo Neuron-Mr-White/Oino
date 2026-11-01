@@ -129,7 +129,7 @@ export function BrowserPanel(props: {
         <Notice icon={<Globe size={22} />} title="Google Chrome isn't installed on the PC" tone="warn" testId="browser-not-found">
           <InstallChrome CommandBox={CommandBox} />
           <p class="preview-muted">
-            Installed somewhere unusual? Point unipi-host at it: <code>unipi-host browser enable --path /path/to/chrome</code>
+            Installed somewhere unusual? Point the agent host at it: <code>unipi-oino-host browser enable --path /path/to/chrome</code>
           </p>
           <button type="button" class="preview-btn" onClick={() => void refresh()}>
             <RefreshCw size={16} class={refreshing() ? 'refresh-spinning' : ''} /> Check again
@@ -731,7 +731,7 @@ export function BrowserViewer(props: {
     setSwitching(false);
     if (!r.ok) {
       const old = r.error.code === 'E_SCHEMA' || r.error.code === 'E_UNSUPPORTED';
-      setWindowError(old ? 'Update unipi-host on the PC to show the browser there.' : r.error.message);
+      setWindowError(old ? 'Update UniPi on the PC to show the browser there.' : r.error.message);
       return;
     }
     setCanShow(canShowWindow(r.value));

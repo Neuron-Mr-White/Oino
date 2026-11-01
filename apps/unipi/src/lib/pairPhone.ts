@@ -105,10 +105,7 @@ export function setPairPhoneTransport(t: PairPhoneTransport | undefined): void {
 }
 const transport = () => override ?? ((window as { __UNIPI_PAIR_PHONE__?: PairPhoneTransport }).__UNIPI_PAIR_PHONE__ ?? tauriTransport);
 
-/** The commands shown when unipi-host is missing / stopped, for this OS. */
-export function installCommand(os = platform().os): string {
-  return os === 'windows' ? 'irm https://unipi.nrn.one/install.ps1 | iex' : 'curl -fsSL https://unipi.nrn.one/install.sh | sh';
-}
+/** The command shown when the agent host is stopped, for this OS. */
 export function startCommand(os = platform().os): string {
   if (os === 'windows') return 'schtasks /Run /TN "UniPi Host"';
   if (os === 'macos') return 'launchctl kickstart gui/$(id -u)/dev.unipi.host';
@@ -116,7 +113,7 @@ export function startCommand(os = platform().os): string {
 }
 
 export function errorKind(message: string, code?: string): PairErrorKind {
-  if (code === 'E_NOT_FOUND' || /isn't installed/i.test(message)) return 'not_installed';
+  if (code === 'E_NOT_FOUND' || /isn't installed|missing its agent host/i.test(message)) return 'not_installed';
   if (code === 'E_UNSUPPORTED' || /too old/i.test(message)) return 'too_old';
   if (/serve first|isn't running/i.test(message)) return 'not_running';
   return 'other';

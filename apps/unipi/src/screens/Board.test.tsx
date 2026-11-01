@@ -290,7 +290,7 @@ describe('Board', () => {
     await waitFor(() => expect(screen.getByText("Can't reach laptop")).toBeInTheDocument());
     // F60: the same OfflineState as Files/Chat/Preview (+ Switch PC with more than one PC).
     expect(screen.getByTestId('offline-state')).toBeInTheDocument();
-    expect(screen.getByText('Is unipi-host running on the PC?')).toBeInTheDocument();
+    expect(screen.getByText('Is UniPi running on the PC?')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Switch PC' })).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('PC: laptop'));
