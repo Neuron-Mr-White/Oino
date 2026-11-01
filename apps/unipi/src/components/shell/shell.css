@@ -284,3 +284,29 @@ html[data-shell=desktop] .settings-page > .settings-top { grid-column: 1 / -1; m
 .settings-namespace-row:hover { background: var(--color-surface-2); }
 /* The Update card's host row (G-14). */
 .update-host { display: flex; align-items: center; gap: 8px; padding: 10px 14px 0; margin-top: 10px; border-top: 1px dashed var(--color-line); color: var(--color-text-muted); font-size: 12.5px; }
+
+/* ── Phone touch targets (D-43, ui-bar Phone: ≥ 40 px) ───────────────────
+   Phone-only rules, kept here so the desktop chips keep their compact size. */
+html[data-shell=phone] .shell-icon-btn,
+html[data-shell=phone] .composer-plus-btn,
+html[data-shell=phone] .tb-chip,
+html[data-shell=phone] .tl-composer-send { min-width: 40px; min-height: 40px; }
+html[data-shell=phone] .shell-icon-btn,
+html[data-shell=phone] .composer-plus-btn,
+html[data-shell=phone] .tb-chip:not(:has(.tb-label)),
+html[data-shell=phone] .tl-composer-send { width: 40px; height: 40px; }
+html[data-shell=phone] .ws-chip { min-height: 40px; }
+
+/* D-44: the 32 px scroll-clearance spacer must not make a full-height screen scroll under its header. */
+.app-content:has(:is(.chat-tab, .page-screen))::after { display: none; }
+
+/* Terminal key bar + tab pills on the phone (D-43): 40 px keys, hit zones that don't overlap. */
+html[data-shell=phone] .term-key { width: 40px; height: 40px; min-height: 40px; flex-basis: 40px; }
+html[data-shell=phone] .term-key-text { width: auto; flex-basis: auto; min-width: 40px; }
+html[data-shell=phone] .term-key::after { inset: -2px 0; }
+html[data-shell=phone] .term-phone-pill-close { width: 40px; height: 40px; min-height: 40px; }
+html[data-shell=phone] .term-phone-pill-main { min-height: 40px; min-width: 40px; }
+html[data-shell=phone] .send-btn-chevron { min-width: 40px; min-height: 40px; }
+html[data-shell=phone] .srow-pin,
+html[data-shell=phone] .sb-sessions[data-variant='page'] .srow-pin[data-pinned] { width: 40px; height: 40px; min-height: 40px; min-width: 40px; }
+html[data-shell=phone] .chat-group-new { width: 40px; height: 40px; min-height: 40px; margin: -10px -8px -10px 0; }

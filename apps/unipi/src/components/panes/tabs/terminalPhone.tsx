@@ -50,6 +50,20 @@ function Layer(props: { s: Shown }) {
       off?.();
     });
   });
+  // D-42: a system Back that slips past the layer's own handler (pressed before it registered, or
+  // the OS popping a history entry) used to leave the route on the chat list with the layer still
+  // on top. The layer closes with the route change and the chat comes back — one press.
+  createEffect(() => {
+    if (typeof window === 'undefined') return;
+    const openedAt = window.location.hash;
+    const onHash = () => {
+      if (window.location.hash === openedAt) return;
+      close();
+      window.location.replace(openedAt || '#/');
+    };
+    window.addEventListener('hashchange', onHash);
+    onCleanup(() => window.removeEventListener('hashchange', onHash));
+  });
   const closeTab = (tab: PaneTab) => {
     if (!confirmTerminalClose(tab, () => closeTab(tab), tab.title)) return;
     endTerminal(tab.id);
