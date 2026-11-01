@@ -17,7 +17,6 @@ import type { AppError } from '@unipi/protocol';
 import { SwitchField } from './Switch';
 import { BoardSheet } from './board/BoardSheet';
 import { HostSupervisorCard, hostLog, restartHost } from './HostSupervisorCard';
-import { CronSettingsCard } from './CronSettings';
 import { useAutostart } from './LifecycleUi';
 import { call } from '../lib/ipc';
 import { can } from '../lib/platform';
@@ -506,7 +505,6 @@ function ThisComputer(props: { s: SharingStatus; Section: (p: { title: string; i
           </div>
         </Show>
         <HostLogRow busy={!!change.busy()} />
-        <CronSettingsCard />
         <ErrorLine error={change.error()} />
       </div>
     </Section>

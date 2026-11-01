@@ -15,6 +15,26 @@ const KNOWN_SECTIONS = new Set([
   'hosts', 'connection', 'sharing', 'notifications', 'unicrab', 'host', 'about',
 ]);
 
+/**
+ * P2-03: extension namespaces that have their own place in the app — opening
+ * them goes there, never to a second copy under Settings › Extensions.
+ * `[route, anchor?]`.
+ */
+export const NAMESPACE_HOME: Record<string, { href: string; anchor?: string; label: string }> = {
+  notify: { href: '/settings/notifications', anchor: 'sec-notify-pc', label: 'Notifications' },
+  cron: { href: '/cron', anchor: 'cron-scheduler', label: 'Cron' },
+};
+
+/** Opens a namespace's own place (`NAMESPACE_HOME`); false when it has none. */
+export function openNamespaceHome(namespace: string): boolean {
+  const home = NAMESPACE_HOME[namespace];
+  if (!home) return false;
+  setPendingNamespace(undefined);
+  if (home.href.startsWith('/settings/')) openSettingsAt(home.href.slice('/settings/'.length), home.anchor);
+  else appNavigate(home.href);
+  return true;
+}
+
 const [pendingNamespace, setPendingNamespace] = createSignal<string | undefined>();
 
 /** Consumes a pending extension settings namespace requested by `openSettings`. */
@@ -65,6 +85,7 @@ export function openSettingsFor(opts: { namespace?: string; section?: string; qu
       openSettingsAt(rawNs, `sec-${rawNs}`);
       return;
     }
+    if (openNamespaceHome(rawNs)) return;
     if (rawNs.startsWith('oino.')) {
       setPendingNamespace(undefined);
       openSettingsAt('agent', 'sec-agent');

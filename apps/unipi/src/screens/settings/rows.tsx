@@ -11,9 +11,11 @@ export const SectionNav = createContext<{ active: () => string | undefined }>();
 
 /** Section wrapper: a titled card in the settings list (DESIGN.md §3.10).
  *  `id` anchors search jumps (`sec-<section id>`). */
-export function Section(props: { title: string; icon: JSX.Element; children: JSX.Element; id?: string }) {
+export function Section(props: { title: string; icon: JSX.Element; children: JSX.Element; id?: string; navTitle?: string }) {
   const nav = useContext(SectionNav);
-  const hide = () => !!nav?.active() && nav.active() !== props.title;
+  // `navTitle`: the nav section this card belongs to when its own title differs
+  // (Sharing › "This computer", Notifications › "What this PC sends").
+  const hide = () => !!nav?.active() && nav.active() !== (props.navTitle ?? props.title);
   return (
     <section class="mb-7" id={props.id} data-section={props.title} hidden={hide() ? true : undefined}>
       <h2 class="section-label settings-section-label">

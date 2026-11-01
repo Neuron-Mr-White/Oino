@@ -302,7 +302,8 @@ function ConnectionSection(props: { relayUrl: string; onRelayUrlChange: (v: stri
 }
 
 function SharingSection() {
-  return <SharingSettings Section={Section} />;
+  // Its cards ("Sharing with phones", "This computer") belong to the Sharing nav section.
+  return <SharingSettings Section={(p) => <Section {...p} navTitle="Sharing" />} />;
 }
 
 function TerminalSection() {

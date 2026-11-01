@@ -71,3 +71,10 @@
 .cron-open-session { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 9999px; background: var(--color-shell); color: var(--color-face); font-weight: 600; font-size: 14px; align-self: flex-start; }
 .cron-open-session:disabled { opacity: .6; }
 .cron-checks-label { font-size: 13px; color: var(--color-text-dim); align-self: center; }
+/* P2-03: scheduler settings (the cron extension's form) at the foot of the jobs. */
+.cron-scheduler { margin: 16px 12px 24px; border-radius: 14px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 60%); overflow: hidden; }
+.cron-scheduler-toggle { width: 100%; background: transparent; cursor: pointer; transition: background-color 120ms ease-out; }
+.cron-scheduler-toggle:hover { background: var(--color-surface-2); }
+.cron-scheduler-toggle:focus-visible { outline: 2px solid var(--color-wm-cyan); outline-offset: -2px; }
+.cron-scheduler-chevron { transition: transform 160ms ease-out; }
+.cron-scheduler-chevron[data-open] { transform: rotate(180deg); }

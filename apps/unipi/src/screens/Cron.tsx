@@ -7,9 +7,12 @@
  * `/cron add`). Needs the `cron` sharing feature on a phone (FeatureOff,
  * same pattern as Browser/Forward); the PC's own app always has it.
  */
-import { createEffect, createMemo, createSignal, For, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, Show, type JSX } from 'solid-js';
+import { NamespaceForm } from '../ui/settings/form';
+import { settingsSchema } from '../ui/settings/data';
+import type { Namespace } from '../ui/settings/types';
 import { useNavigate, useSearchParams } from '@solidjs/router';
-import { Bell, ChevronRight, Clock, MessageSquare, Pause, Play, Plus, RefreshCw, Square, Trash2 } from 'lucide-solid';
+import { Bell, ChevronDown, ChevronRight, Clock, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, Square, Trash2 } from 'lucide-solid';
 import type { AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
 import {
@@ -216,6 +219,7 @@ export default function Cron() {
                     }
                   />
                 </Show>
+                <SchedulerSettings hostId={hostId()!} />
               </div>
             );
           })()}
@@ -251,6 +255,45 @@ export default function Cron() {
         </Show>
       </div>
     </Show>
+  );
+}
+
+/** The `cron` namespace without what this screen already shows (Pause all). Pure. */
+export function schedulerNamespace(ns: Namespace): Namespace {
+  return { ...ns, sections: ns.sections.map((section) => ({ ...section, fields: section.fields.filter((f) => f.key !== 'paused') })).filter((section) => section.fields.length > 0) };
+}
+
+/**
+ * P2-03: the scheduler's settings (concurrency, missed window, retention, time
+ * limit, default notify events) — the one place for them, on this screen for
+ * the PC it shows (the cron extension's own form; Settings › Extensions links here).
+ */
+function SchedulerSettings(props: { hostId: string }) {
+  const [open, setOpen] = createSignal(false);
+  const [ns] = createResource(
+    () => (open() ? props.hostId : undefined),
+    async (hostId) => {
+      const r = await settingsSchema(hostId);
+      const found = r.ok ? r.value.find((n) => n.namespace === 'cron') : undefined;
+      return found ? schedulerNamespace(found) : null;
+    },
+  );
+  return (
+    <div class="cron-scheduler" id="cron-scheduler" data-testid="cron-scheduler">
+      <button type="button" class="cron-scheduler-toggle settings-row" aria-expanded={open()} onClick={() => setOpen(!open())} data-testid="cron-scheduler-toggle">
+        <span class="settings-icon"><Settings2 size={18} /></span>
+        <span class="min-w-0 flex-1 text-left">
+          <span class="block text-[15px] text-text">Scheduler settings</span>
+          <span class="block text-xs text-text-dim mt-0.5">How many run at once, missed runs, history kept, time limit, default notifications</span>
+        </span>
+        <ChevronDown size={16} class="cron-scheduler-chevron text-text-dim shrink-0" data-open={open() ? '' : undefined} />
+      </button>
+      <Show when={open()}>
+        <Show when={ns()} fallback={<p class="cron-hint px-4 pb-3">{ns.loading ? 'Loading…' : 'This PC’s cron extension reports no settings.'}</p>}>
+          {(n) => <NamespaceForm namespace={n()} hostId={props.hostId} bare flat testId="cron-scheduler-form" />}
+        </Show>
+      </Show>
+    </div>
   );
 }
 
@@ -613,7 +656,7 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
             </For>
           </div>
           <Show when={notifyMode() === 'default'}>
-            <p class="cron-hint">{notifyText(undefined, pcDefault()).replace('PC default: ', 'On ')} — set in Settings → This computer → Cron.</p>
+            <p class="cron-hint">{notifyText(undefined, pcDefault()).replace('PC default: ', 'On ')} — set in Scheduler settings on the Cron screen.</p>
           </Show>
           <Show when={notifyMode() === 'choose'}>
             <div class="cron-checks">
@@ -630,7 +673,7 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
           <Show when={notifyMode() !== 'never'}>
             <Show
               when={available().length > 0}
-              fallback={<p class="cron-hint" data-testid="cron-notify-no-channels">No notification channel is set up on this PC yet (ntfy, Gotify or Telegram — /unipi:settings → Notify in pi).</p>}
+              fallback={<p class="cron-hint" data-testid="cron-notify-no-channels">No notification channel is set up on this PC yet (ntfy, Gotify or Telegram — Settings › Notifications).</p>}
             >
               <Show when={available().length > 1}>
                 <div class="cron-checks" aria-label="Channels">

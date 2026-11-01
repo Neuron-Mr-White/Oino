@@ -1,11 +1,22 @@
 /**
- * Notifications section (WP-A24): desktop notifications (this app) and phone
+ * Notifications section (WP-A24): desktop notifications (this app), phone
  * notifications (UNI-161: the user's own ntfy server/topic/token + the
- * per-pairing E2E key + background delivery through UnifiedPush), merged into
- * one group from the old one-file Settings screen.
+ * per-pairing E2E key + background delivery through UnifiedPush) and — P2-03,
+ * the one notifications place — the PC's `notify` extension settings (event
+ * matrix, Gotify / Telegram / ntfy channels, silence & renotify), rendered by
+ * the same form engine as Settings › Extensions (whose `notify` row now opens
+ * here instead of a second copy).
+ *
+ * The phone switch is about *receiving on this phone*. Sending is the PC's
+ * side: once a phone is paired, the PC pushes "needs you" and "agent finished"
+ * to it by default; which events notify is the event matrix below.
  */
-import { For, Show, createSignal, onCleanup, onMount } from 'solid-js';
-import { Bell } from 'lucide-solid';
+import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from 'solid-js';
+import { Bell, ChevronRight } from 'lucide-solid';
+import { NamespaceForm } from '../../ui/settings/form';
+import { settingsSchema } from '../../ui/settings/data';
+import type { Namespace } from '../../ui/settings/types';
+import { LOCAL_HOST } from '../../lib/host/client';
 import { z } from 'zod';
 import { call } from '../../lib/ipc';
 import { can } from '../../lib/platform';
@@ -102,7 +113,17 @@ export function NotificationsSection() {
     setTestMessage(server ? 'Configured from the PC.' : 'Key configured — set a server/topic on the PC to finish.');
   }
 
+  // P2-03: the PC's notify extension settings live here (one place). The phone reads its paired PC's.
+  const notifyHost = () => (can('localSharing') ? LOCAL_HOST : (currentHostId() ?? LOCAL_HOST));
+  const [namespaces] = createResource(notifyHost, async (hostId): Promise<Namespace[]> => {
+    const result = await settingsSchema(hostId);
+    return result.ok ? result.value : [];
+  });
+  const notifyNs = createMemo(() => (namespaces.latest ?? []).find((ns) => ns.namespace === 'notify'));
+  const toEvents = () => scrollToNotifySection('events');
+
   return (
+    <>
     <Section title="Notifications" id="sec-notifications" icon={<Bell size={14} />}>
       <Show when={can('nativeNotifications')}>
         <Row label="Desktop notifications" description="A system notification when the agent needs you or finishes, while UniPi isn't in front">
@@ -110,9 +131,21 @@ export function NotificationsSection() {
         </Row>
       </Show>
       <Show when={can('notifications')}>
-        <Row label="Enable phone notifications" description="Push alerts via your own ntfy server when the agent needs you">
-          <SwitchField label="Enable phone notifications" checked={settings.notify.enabled} onChange={(v) => update('notify.enabled', v)} />
+        <Row
+          label="Receive on this phone"
+          description="Show the alerts your paired PCs push through your ntfy server. Each PC sends “needs you” and “agent finished” by default once this phone is paired; turning this off only silences this phone."
+        >
+          <SwitchField label="Receive on this phone" checked={settings.notify.enabled} onChange={(v) => update('notify.enabled', v)} />
         </Row>
+        <Show when={notifyNs()}>
+          <button type="button" class="settings-namespace-row" data-testid="notify-events-link" onClick={toEvents}>
+            <span class="min-w-0">
+              <span class="block text-[15px] text-text">Which events notify</span>
+              <span class="block text-xs text-text-dim">The PC’s event matrix: needs you, agent finished, errors…</span>
+            </span>
+            <ChevronRight size={15} class="text-text-dim shrink-0" />
+          </button>
+        </Show>
         <Show when={settings.notify.enabled}>
           <div class="px-4 py-3 space-y-3">
             <div>
@@ -170,7 +203,27 @@ export function NotificationsSection() {
         </Row>
       </Show>
     </Section>
+    <Show when={notifyNs()}>
+      {(ns) => (
+        <Section title={can('localSharing') ? 'What this PC sends' : 'What your PC sends'} navTitle="Notifications" id="sec-notify-pc" icon={<Bell size={14} />}>
+          <p class="settings-page-blurb">Events, channels (ntfy, Gotify, Telegram, desktop) and quiet hours of the PC’s notify extension.</p>
+          <NamespaceForm namespace={ns()} hostId={notifyHost()} bare flat testId="notify-pc-form" />
+        </Section>
+      )}
+    </Show>
+    </>
   );
+}
+
+/** Scrolls to one section of the embedded notify form (`events`, `platforms`, …) and flashes it. */
+export function scrollToNotifySection(id: string): void {
+  const el = document.querySelector<HTMLElement>(`[data-testid="notify-pc-form"] [data-section-id="${id}"]`) ?? document.getElementById('sec-notify-pc');
+  if (!el) return;
+  el.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  el.classList.remove('settings-flash-target');
+  void el.offsetWidth;
+  el.classList.add('settings-flash-target');
+  window.setTimeout(() => el.classList.remove('settings-flash-target'), 1400);
 }
 
 /** UNI-161: background delivery through the ntfy app (UnifiedPush). */

@@ -256,10 +256,11 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     title: 'Notifications',
     group: 'hosts',
     icon: Bell,
-    keywords: ['notifications', 'push', 'ntfy', 'needs you', 'desktop', 'phone', 'background'],
+    keywords: ['notifications', 'push', 'ntfy', 'needs you', 'desktop', 'phone', 'background', 'notify', 'gotify', 'telegram', 'events', 'silence', 'renotify'],
     rows: [
       { key: 'notify.desktop', label: 'Desktop notifications', description: 'A system notification when the agent needs you or finishes, while UniPi isn\u2019t in front' },
-      { key: 'notify.enabled', label: 'Enable phone notifications', description: 'Push alerts via your own ntfy server when the agent needs you' },
+      { key: 'notify.enabled', label: 'Receive on this phone', description: 'Show the alerts your paired PCs push; each PC sends needs you and agent finished by default' },
+      { key: 'notify.events', label: 'Which events notify', description: 'The PC’s event matrix, channels (ntfy, Gotify, Telegram) and quiet hours' },
       { key: 'notify.keepListening', label: 'Keep listening', description: 'Poll the topic on resume + while the app is open (fallback when no distributor is installed)' },
     ],
   },

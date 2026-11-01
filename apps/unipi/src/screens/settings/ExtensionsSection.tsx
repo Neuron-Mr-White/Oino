@@ -24,6 +24,7 @@ import { NamespaceForm } from '../../ui/settings/form';
 import { sortNamespaces, type Namespace } from '../../ui/settings/types';
 import { settingsSchema } from '../../ui/settings/data';
 import { extensionNamespaces } from '../../ui/slots/SettingsSections';
+import { NAMESPACE_HOME, openNamespaceHome } from '../../lib/settings/open';
 
 /** The hub notices that name suspects (the safe-mode banner names them). */
 export function safeModeNotices(notices: Array<{ level: string; text: string }>): Array<{ level: string; text: string }> {
@@ -156,7 +157,11 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
                 class="settings-namespace-row"
                 id={`ns-${ns.namespace}`}
                 data-testid={`ns-${ns.namespace}`}
-                onClick={() => props.onNamespace(ns.namespace)}
+                onClick={() => {
+                  // P2-03: a namespace with its own place opens there (one place per setting).
+                  if (!openNamespaceHome(ns.namespace)) props.onNamespace(ns.namespace);
+                }}
+                title={NAMESPACE_HOME[ns.namespace] ? `Opens ${NAMESPACE_HOME[ns.namespace]!.label}` : undefined}
               >
                 <span class="settings-namespace-icon"><IconView icon={ns.icon ?? 'gear'} size={16} /></span>
                 <span class="min-w-0">
@@ -165,7 +170,9 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
                     <span class="block text-xs text-text-dim truncate">{ns.description}</span>
                   </Show>
                 </span>
-                <span class="text-xs text-text-dim font-mono shrink-0">{ns.namespace}</span>
+                <Show when={NAMESPACE_HOME[ns.namespace]} fallback={<span class="text-xs text-text-dim font-mono shrink-0">{ns.namespace}</span>}>
+                  {(home) => <span class="text-xs text-text-dim shrink-0">in {home().label}</span>}
+                </Show>
                 <ChevronRight size={15} class="text-text-dim shrink-0" />
               </button>
             )}
