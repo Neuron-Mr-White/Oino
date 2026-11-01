@@ -299,7 +299,18 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
         data-key={key}
         onClick={() => {
           setError(null);
-          setPick(nextSinglePick(current(), pick(), key));
+          // D-07: one click switches. Only a running Fusion pair keeps the explicit
+          // "Turn Fusion off & switch" step (it ends something the user set up).
+          if (isCurrent()) {
+            setPick(undefined);
+            return;
+          }
+          if (current()?.kind === 'fusion') {
+            setPick(nextSinglePick(current(), pick(), key));
+            return;
+          }
+          setPick(key);
+          applySingle();
         }}
       >
         <span class="mp-row-main">
@@ -393,6 +404,14 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
       <Show when={mode() === 'fusion' || models().length > 6}>
         <input
           class="mp-search"
+          ref={(el) => {
+            // D-07: typing works at once — the dialog's own focus yields to the search field.
+            if (!layout().desktop()) return;
+            createEffect(() => {
+              if (!data.latest) return;
+              queueMicrotask(() => el.isConnected && el.focus({ preventScroll: true }));
+            });
+          }}
           type="search"
           placeholder={mode() === 'fusion' ? `Search both columns (${models().length} models)` : `Search all ${models().length} models`}
           aria-label="Search models"

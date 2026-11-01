@@ -615,7 +615,11 @@ export function Composer(props: ComposerProps) {
           .then((reply) => {
             const match = matchModel(parseModels(reply), query, s.state.model);
             if ('ambiguous' in match) {
-              const names = match.ambiguous.slice(0, 3).map((m) => `${modelName(m)} (${m.provider})`).join(', ');
+              // D-13: same-named rows (two routes to one model) are told apart by provider · id.
+              const shown = match.ambiguous.slice(0, 3);
+              const names = shown
+                .map((m) => (shown.filter((o) => modelName(o) === modelName(m)).length > 1 ? `${modelName(m)} (${m.provider} · ${m.id})` : `${modelName(m)} (${m.provider})`))
+                .join(', ');
               showActionNotice(`“${query}” matches ${match.ambiguous.length} models — ${names}${match.ambiguous.length > 3 ? '…' : ''}. Type more, or /model to pick`);
               return;
             }
@@ -647,10 +651,13 @@ export function Composer(props: ComposerProps) {
           .catch(failed('Could not set the thinking level'));
       },
       compact: (focus) => {
-        showActionNotice('Compacting the conversation…');
         void s.cmd({ type: 'compact', ...(focus ? { customInstructions: focus } : {}) }).then(
           () => showActionNotice('Compacted'),
-          failed('Compaction failed'),
+          (error: unknown) => {
+            // D-08: a chat too short to compact is not a failure.
+            if (/nothing to compact|too small|too short/i.test(errorText(error))) showActionNotice('Nothing to compact yet');
+            else failed('Compaction failed')(error);
+          },
         );
       },
       newChat: () => {
@@ -830,8 +837,15 @@ export function Composer(props: ComposerProps) {
       const items = slashItems();
       const mentions = menuItems();
       if (items.length) {
+        const chosen = items[Math.min(sel(), items.length - 1)]!;
+        // D-08: the whole command is already typed (`/compact`): Enter sends it, it doesn't complete it again.
+        if (draft().text.trim() === `/${chosen.name}`) {
+          e.preventDefault();
+          send(sendModeForEnter(e, running()));
+          return;
+        }
         e.preventDefault();
-        pickCommand(items[Math.min(sel(), items.length - 1)]!.name);
+        pickCommand(chosen.name);
         return;
       }
       if (mentions?.length) {
@@ -1040,7 +1054,7 @@ export function Composer(props: ComposerProps) {
             anchor={anchor()}
             onDismiss={() => setPlusAnchor(null)}
             onPhoto={() => photoInput?.click()}
-            onCamera={() => cameraInput?.click()}
+            onCamera={isTauriDesktop() ? undefined : () => cameraInput?.click()}
             onFile={() => fileInput?.click()}
             onSideQuestion={props.draft ? undefined : () => openSideQuestion(draft().text.trim() || undefined)}
             onAddTask={() => addTaskFromChat(hostId(), cwd() || undefined)}

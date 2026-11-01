@@ -53,7 +53,7 @@ export function rememberModels(hostId: string, models: readonly ModelInfo[]): vo
   if (!models.length) return;
   write(
     KEY(hostId, 'models'),
-    models.map((m) => ({ provider: m.provider, id: m.id, ...(m.name ? { name: m.name } : {}), ...(m.reasoning !== undefined ? { reasoning: m.reasoning } : {}), ...(m.input ? { input: m.input } : {}) })),
+    models.map((m) => ({ provider: m.provider, id: m.id, ...(m.name ? { name: m.name } : {}), ...(m.reasoning !== undefined ? { reasoning: m.reasoning } : {}), ...(m.input ? { input: m.input } : {}), ...(m.thinkingLevelMap ? { thinkingLevelMap: m.thinkingLevelMap } : {}) })),
   );
 }
 

@@ -5,17 +5,19 @@
  * on the same PC when one is open) or, before any chat ran, the default. The
  * pick is applied to the new session before its first prompt.
  */
-import { createResource, createSignal, For, Show } from 'solid-js';
+import { createResource, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Check, ChevronUp, Cpu } from 'lucide-solid';
 import { AnchoredMenu } from '../board/AnchoredMenu';
-import { modelKey, modelName, parseModels, type ModelInfo } from '../../lib/model/picker';
+import { hits as modelHits, modelKey, modelName, parseModels, type ModelInfo } from '../../lib/model/picker';
 import { modelChipLabel, modelChipTitle } from '../model/ModelChip';
 import { RollingLabel } from '../RollingLabel';
+import { menuKeys } from '../composer/menuKeys';
 import type { DraftSession } from './draftSession';
 
 export function DraftModelChip(props: { session: DraftSession; disabled?: boolean }) {
   const [anchor, setAnchor] = createSignal<DOMRect | undefined>();
-  const label = () => modelChipLabel(props.session.state.model);
+  // D-01: no usable model on show → say so, never a name the new chat can't run.
+  const label = () => (props.session.state.model?.id ? modelChipLabel(props.session.state.model) : 'Choose a model');
   const current = () => modelKey(props.session.state.model ?? {});
   const [models] = createResource(
     () => (anchor() ? props.session.hostId : undefined),
@@ -23,13 +25,14 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
     async (): Promise<ModelInfo[]> => parseModels(await props.session.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined)),
   );
   const [query, setQuery] = createSignal('');
+  let chip: HTMLButtonElement | undefined;
   /** The current model first, then the catalogue filtered by the query (name, id, provider); ≤ 80 rows. */
   const list = (): ModelInfo[] => {
     const all = models() ?? [];
     const m = props.session.state.model;
     const rows = all.length || !m?.id ? all : [{ provider: m.provider ?? '', id: m.id, name: m.name ?? m.id } as ModelInfo];
     const q = query().trim().toLowerCase();
-    const hit = q ? rows.filter((r) => `${modelName(r)} ${r.id} ${r.provider}`.toLowerCase().includes(q)) : rows;
+    const hit = q ? rows.filter((r) => modelHits(r, q)) : rows;
     const cur = hit.filter((r) => modelKey(r) === current());
     return [...cur, ...hit.filter((r) => modelKey(r) !== current())].slice(0, 80);
   };
@@ -43,6 +46,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
         aria-expanded={!!anchor()}
         title={modelChipTitle(props.session.state.model)}
         disabled={props.disabled}
+        ref={chip}
         onClick={(e) => {
           setQuery('');
           if (anchor()) setAnchor(undefined);
@@ -57,7 +61,11 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
       <Show when={anchor()}>
         {(rect) => (
           <AnchoredMenu anchor={rect()} alignEnd width={300} label="Model" onDismiss={() => setAnchor(undefined)}>
-            <div class="ws-menu dm-menu" data-testid="draft-model-menu">
+            <div
+              class="ws-menu dm-menu"
+              data-testid="draft-model-menu"
+              ref={(el) => onCleanup(menuKeys(el, { close: () => setAnchor(undefined), trigger: () => chip, autoFocus: false }))}
+            >
               <input
                 class="dm-search"
                 type="search"
@@ -85,6 +93,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                       role="menuitemradio"
                       aria-checked={modelKey(m) === current()}
                       class="ws-row"
+                      data-label={modelName(m)}
                       title={`${modelName(m)} — ${m.provider} · ${m.id}`}
                       onClick={() => {
                         setAnchor(undefined);

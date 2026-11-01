@@ -202,6 +202,28 @@
 }
 .ws-btn-primary { background: var(--color-claw); color: var(--color-ink); }
 .ws-btn-primary:hover { background: var(--color-amber); }
+.ws-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* D-21: the toolbar keeps its place but paints once, final (no Off/Model → Auto/Plan/Medium/… pop). */
+.draft-composer[data-pending] .comp-bar { visibility: hidden; }
+
+.connect-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: var(--color-surface-2);
+}
+.connect-card-ic { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 9999px; background: rgb(240 120 24 / 12%); color: var(--color-claw); }
+.connect-card-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.connect-card-title { font-size: 14px; line-height: 19px; font-weight: 600; color: var(--color-text); }
+.connect-card-body { font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); }
+.connect-card-btn { flex: none; }
+@media (max-width: 640px) { .connect-card { flex-wrap: wrap; } .connect-card-btn { width: 100%; } }
 
 .draft-error {
   margin: 0;

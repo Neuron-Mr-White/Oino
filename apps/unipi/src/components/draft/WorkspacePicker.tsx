@@ -62,7 +62,8 @@ export function WorkspacePicker(props: {
 
   const [listing] = createResource(browse, async (path) => {
     const res = await fsList(props.hostId, path);
-    if (!res.ok) return { error: res.error.message, dirs: [] as string[] };
+    // D-20: a folder the PC doesn't let the app see reads calmly (no raw scope message, no CLI hint).
+    if (!res.ok) return { error: /outside the allowed|allowed folders|E_SCOPE|scope/i.test(String(res.error.message)) ? 'UniPi can’t open this folder on the PC. Go back to a folder it lists.' : String(res.error.message), dirs: [] as string[] };
     return {
       error: undefined,
       dirs: res.value.entries
@@ -193,7 +194,7 @@ export function WorkspacePicker(props: {
                       <button type="button" class="ws-btn" onClick={() => setBrowse(undefined)}>
                         Back
                       </button>
-                      <button type="button" class="ws-btn ws-btn-primary" onClick={() => pick(dir())} data-testid="workspace-use">
+                      <button type="button" class="ws-btn ws-btn-primary" disabled={listing.loading || !!listing()?.error} onClick={() => pick(dir())} data-testid="workspace-use">
                         <FolderOpen size={14} />
                         Use this folder
                       </button>

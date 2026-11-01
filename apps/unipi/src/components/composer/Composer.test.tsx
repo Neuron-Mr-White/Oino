@@ -323,7 +323,7 @@ describe('the + menu (Z-63)', () => {
     // AnchoredMenu portals into document.body.
     await waitFor(() => expect(document.body.querySelector('[role="menu"]')).not.toBeNull());
     const menu = document.body.querySelector('[role="menu"]')!;
-    for (const label of ['Photo', 'Camera', 'File', 'Side question', 'Board task…']) expect(menu.textContent).toContain(label);
+    for (const label of ['Photo', 'File', 'Side question', 'Board task…']) expect(menu.textContent).toContain(label);
     expect(menu.textContent).not.toContain('New session');
     expect(menu.textContent).not.toContain('Resume');
   });

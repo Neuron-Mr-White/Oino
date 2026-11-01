@@ -100,11 +100,32 @@ describe('ThinkingChip (Z-71)', () => {
     expect(menu.textContent).toContain('Off');
     expect(menu.textContent).toContain('Minimal');
     expect(menu.textContent).toContain('High');
-    fireEvent.click([...menu.querySelectorAll('[role="menuitem"]')].find((r) => r.textContent === 'Low')!);
+    // D-23: label + one-line description, like the permission menu.
+    fireEvent.click(screen.getByTestId('thinking-option-low'));
     await waitFor(() => expect(cmdArgs(world, 'set_thinking_level')).toHaveLength(1));
     expect(cmdArgs(world, 'set_thinking_level')[0]).toMatchObject({ level: 'low' });
     // the host's thinking_level_changed event follows into the store
     await waitFor(() => expect(s.state.thinkingLevel).toBe('low'));
+  });
+
+  it('is keyboard operable (D-05): opens on the checked row, arrows move, Enter picks, Esc returns focus to the chip', async () => {
+    const world = await open('thinking-chip');
+    const s = sessions().ensure(HOST, SESSION);
+    render(() => <ThinkingChip session={s} />);
+    await waitFor(() => expect(screen.getByTestId('thinking-chip-label').textContent).toBe('High'));
+    const chip = screen.getByTestId('thinking-chip');
+    fireEvent.click(chip);
+    const menu = await screen.findByRole('menu');
+    await waitFor(() => expect(document.activeElement?.getAttribute('data-testid')).toBe('thinking-option-high'));
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('thinking-option-off');
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    fireEvent.keyDown(document.activeElement!, { key: 'l' });
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('thinking-option-low');
+    fireEvent.click(document.activeElement!);
+    await waitFor(() => expect(cmdArgs(world, 'set_thinking_level')).toHaveLength(1));
+    expect(menu.isConnected).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(chip));
   });
 
   it('is hidden for a model without reasoning levels', async () => {

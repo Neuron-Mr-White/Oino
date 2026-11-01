@@ -324,6 +324,9 @@ html[data-shell=desktop] .tl-user:focus-within .tl-user-actions { opacity: 1; po
 .tl-error-details:hover { background: rgb(246 163 157 / 18%); color: var(--color-text); }
 .tl-error-caret { transition: transform 140ms ease-out; }
 .tl-error-caret[data-open] { transform: rotate(90deg); }
+.tl-error-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 6px 0 0; font-size: 12.5px; line-height: 17px; }
+.tl-error-facts dt { color: var(--color-text-dim); }
+.tl-error-facts dd { margin: 0; color: var(--color-text); overflow-wrap: anywhere; }
 .tl-error-raw {
   margin: 6px 0 0; padding: 8px 10px;
   border-radius: 10px; background: var(--color-surface-1);

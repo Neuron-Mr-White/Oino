@@ -39,7 +39,7 @@ const card = (id: string, cwd: string): SessionCard => ({
   message_count: 2,
 });
 
-const boot = () => {
+const boot = (providers: Array<{ id: string; configured?: boolean }> = [{ id: 'oino', configured: true }]) => {
   const scenario: MockScenario = {
     name: 't',
     hosts: [
@@ -53,6 +53,7 @@ const boot = () => {
         settings: {
           pi: { defaultProvider: 'oino', defaultModel: 'deepseek-flash' },
           extensions: [{ id: 'unipi.workflow', kind: 'extension', enabled: true, loaded: true }],
+          providers,
         },
       },
     ],
@@ -116,6 +117,18 @@ describe('DraftView (Z-19)', () => {
     // No old pill rows and no bare textarea.
     expect(document.querySelector('textarea')).toBeNull();
     expect(screen.queryByTestId('draft-folders')).toBeNull();
+  });
+
+  it('D-01: no working provider → "Choose a model" chip and a Connect a provider card', async () => {
+    boot([{ id: 'oino', configured: false }]);
+    await waitFor(() => expect(screen.getByTestId('connect-provider-card')).toBeTruthy());
+    expect(screen.getByTestId('model-chip-label').textContent).toBe('Choose a model');
+  });
+
+  it('D-01: a working provider shows the model and no card', async () => {
+    boot();
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('DeepSeek Flash'));
+    expect(screen.queryByTestId('connect-provider-card')).toBeNull();
   });
 
   it('the workspace menu lists recent folders and the roots; a pick shows in the chip', async () => {

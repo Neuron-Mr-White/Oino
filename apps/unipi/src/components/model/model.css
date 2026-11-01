@@ -145,6 +145,8 @@
    the search fit (Z-69 "wider dialog"). */
 .model-picker-dialog.sm-dialog { width: min(780px, 100%); max-height: min(86vh, 820px); }
 .mp-body { gap: 0; }
+/* D-25: the dialog keeps its height while a search narrows the list (it re-centred on every keystroke). */
+.model-picker-dialog .mp-list:not(.mp-col-list) { min-height: min(40vh, 340px); }
 
 /* Phone sheet: the body is the sheet's scrolling area. */
 .model-picker-sheet .mp { padding-bottom: 4px; }

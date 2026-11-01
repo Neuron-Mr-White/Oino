@@ -28,26 +28,23 @@ import { manageChat } from '../../lib/settings/manage';
 import { appNavigate } from '../../lib/nav';
 import { ErrorBanner } from '../../components/ErrorBanner';
 import type { AppError } from '@unipi/protocol';
+import { ProviderSchema, ProvidersSchema, type Provider } from '../../lib/model/readiness';
 import { Row, Section } from './rows';
 
-/** One provider row of `_oino/auth_providers` (core `AuthProviderInfo`). */
-export const ProviderSchema = z.object({
-  id: z.string(),
-  name: z.string().default(''),
-  oauth: z.boolean().default(false),
-  configured: z.boolean().default(false),
-  stored: z.string().optional(),
-  env: z.array(z.string()).default([]),
-});
-export type Provider = z.infer<typeof ProviderSchema>;
+export { ProviderSchema, type Provider };
 
-const ProvidersSchema = z.object({ providers: z.array(ProviderSchema) });
-
-/** How one provider reads on the page: what makes it configured. */
-export function providerState(p: Provider): { label: string; detail?: string } {
+/**
+ * How one provider reads on the page (D-37): "Ready" only when the host
+ * checked the credential; a key that is merely present reads "Key set", and a
+ * rejected one says so — never "Ready" for a dead key.
+ */
+export function providerState(p: Provider): { label: string; detail?: string; bad?: boolean } {
+  if (p.configured && p.ready === false) return { label: 'Not working', detail: p.reason ?? 'the provider rejected this credential', bad: true };
+  const how = p.stored === 'oauth' ? 'OAuth' : p.stored === 'api_key' ? 'API key' : p.env.length ? `from ${p.env.join(' / ')}` : 'environment';
+  if (p.configured && p.ready === true) return { label: p.stored === 'oauth' ? 'Signed in' : 'Ready', detail: how };
   if (p.stored === 'oauth') return { label: 'Signed in', detail: 'OAuth' };
   if (p.stored === 'api_key') return { label: 'API key saved' };
-  if (p.configured) return { label: 'Ready', detail: p.env.length ? `from ${p.env.join(' / ')}` : 'environment' };
+  if (p.configured) return { label: 'Key found', detail: `${how} · not checked yet` };
   return { label: 'Not configured' };
 }
 
@@ -137,7 +134,7 @@ export function ProvidersPage() {
 
   return (
     <Section title="Providers" id="sec-providers" icon={<Plug size={14} />}>
-      <p class="settings-page-blurb">Model providers this host can reach, and how each one is signed in.</p>
+      <p class="settings-page-blurb settings-provider-blurb">Model providers this host can reach, and how each one is signed in.</p>
       <Show when={error()} keyed>
         {(err) => (
           <div class="p-3">
@@ -163,7 +160,7 @@ export function ProvidersPage() {
                 <span class="min-w-0">
                   <span class="block text-[15px] text-text truncate">{p.name || p.id}</span>
                   <span class="block text-xs text-text-dim">
-                    <span class="settings-provider-state" data-ok={p.configured ? '' : undefined}>
+                    <span class="settings-provider-state" data-ok={p.configured && state().bad !== true ? '' : undefined} data-bad={state().bad ? '' : undefined}>
                       {state().label}
                     </span>
                     <Show when={state().detail}>{(detail) => <span> · {detail()}</span>}</Show>

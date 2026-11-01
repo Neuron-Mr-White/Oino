@@ -159,6 +159,9 @@ html:not([data-shell=desktop]) .settings-iconbtn { width: 36px; height: 36px; }
 .settings-provider-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--color-line); }
 .settings-provider-row:first-of-type { border-top: 0; }
 .settings-provider-state[data-ok] { color: var(--color-claw); }
+.settings-provider-state[data-bad] { color: var(--color-danger, #e5584f); }
+/* D-37: the intro sits on the rows' 16px inset, not 4px from the card edge. */
+.settings-provider-blurb { padding: 12px 16px 4px; margin: 0; }
 .settings-provider-actions { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
 .settings-provider-key { display: flex; align-items: center; gap: 8px; padding: 0 16px 12px; }
 .settings-provider-key .settings-input { flex: 1; min-width: 0; }

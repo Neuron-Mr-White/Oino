@@ -21,7 +21,8 @@ import { initialState } from '../../lib/session/reducer';
 import { sessions, type SendOptions, type SessionHandle } from '../../lib/session/store';
 import type { CommandInfo, OutboxImage, OutboxItem, SessionState } from '../../lib/session/types';
 import type { RpcCommand } from '../../lib/host/client';
-import { THINKING_ORDER } from '../../lib/model/thinking';
+import { clampLevel, levelsOfModel, THINKING_ORDER } from '../../lib/model/thinking';
+import { hostReadiness, type Readiness } from '../../lib/model/readiness';
 import { WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
 import { hostCmd, listExtensions } from '../../settings/hostCmd';
 import { parseModels, type ModelInfo } from '../../lib/model/picker';
@@ -42,6 +43,10 @@ export type DraftSession = SessionHandle & {
   /** A live chat on the same PC (borrowed for the model catalogue), if one is open. */
   peer(): SessionHandle | undefined;
   pickModel(model: DraftModel): void;
+  /** Whether a provider on this PC can run a model (D-01): `checking` until the host answers. */
+  readiness: () => Readiness | undefined;
+  /** The toolbar's chips are final (defaults + the PC's commands answered, or a short grace passed) — D-21. */
+  ready: () => boolean;
 };
 
 /** The levels offered before a chat knows its model's (pi's common set). */
@@ -72,20 +77,52 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
     return undefined;
   };
 
-  // The host's defaults: the model + thinking level a new session starts with.
-  void hostCmd({ kind: 'get_settings' }, SettingsSchema, hostId)
-    .then((res) => {
+  const [readiness, setReadiness] = createSignal<Readiness | undefined>();
+  const [defaultsIn, setDefaultsIn] = createSignal(false);
+  const [commandsIn, setCommandsIn] = createSignal(false);
+  /** D-21: the chips paint once, final; a slow host never keeps them hidden past the grace. */
+  const [graceOver, setGraceOver] = createSignal(false);
+  setTimeout(() => setGraceOver(true), 1500);
+
+  /** The catalogue row of the draft's model (the PC's remembered list, else a live chat's). */
+  const catalogueRow = (): ModelInfo | undefined => {
+    const m = state.model;
+    if (!m?.id) return undefined;
+    return (cachedModels(hostId) ?? []).find((row) => row.id === m.id && (!m.provider || row.provider === m.provider));
+  };
+  /** The levels the draft's model offers, when the catalogue knows (D-02). */
+  const knownLevels = (): string[] | undefined => levelsOfModel(catalogueRow());
+  /** Shows the level the new session will actually run: a level the model lacks is clamped like the host does. */
+  const settleThinking = () => {
+    const levels = knownLevels();
+    const want = choices().thinking ?? defaultLevel;
+    if (!want) return;
+    setState('thinkingLevel', levels ? clampLevel(want, levels) : want);
+  };
+  let defaultLevel: string | undefined;
+
+  // The host's defaults: the model + thinking level a new session starts with,
+  // and which providers can run one (D-01: a default whose provider has no
+  // working credential is not what the session will use — the chip says so).
+  void Promise.all([hostCmd({ kind: 'get_settings' }, SettingsSchema, hostId), hostReadiness(hostId)])
+    .then(([res, ready]) => {
+      setReadiness(ready);
       if (!res.ok) return;
       const s = res.value.settings ?? {};
       const provider = str(s.defaultProvider);
       const id = str(s.defaultModel);
-      const level = str(s.defaultThinkingLevel);
+      defaultLevel = str(s.defaultThinkingLevel) ?? 'medium';
       batch(() => {
-        if (id && !choices().model) setState('model', { provider, id, name: id });
-        if (!choices().thinking) setState('thinkingLevel', level ?? 'medium');
+        const usable = !provider || ready.providerReady(provider);
+        if (id && usable && !choices().model) {
+          const known = (cachedModels(hostId) ?? []).find((row) => row.id === id && (!provider || row.provider === provider));
+          setState('model', { provider, id, name: known?.name ?? id });
+        }
+        settleThinking();
       });
     })
-    .catch(() => undefined);
+    .catch(() => undefined)
+    .finally(() => setDefaultsIn(true));
 
   // The `/` menu: a live chat's commands, else the ones a chat on this PC
   // listed last (P0-09), else the workflow controls alone when this PC runs
@@ -94,6 +131,7 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
   const remembered = cachedCommands(hostId);
   if (fromPeer?.length) setState('commands', [...fromPeer] as CommandInfo[]);
   else if (remembered?.length) setState('commands', remembered);
+  if (fromPeer?.length || remembered?.length) setCommandsIn(true);
   else
     void listExtensions(hostId)
       .then((res) => {
@@ -105,7 +143,8 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
           { name: 'plan', description: 'Plan mode: on | off', source: 'extension' },
         ]);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setCommandsIn(true));
 
   const setWorkflow = (patch: { permissionMode?: string; planMode?: boolean }) => {
     mutate((s) => {
@@ -151,6 +190,8 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
     abort: async () => {},
     async cmd<T = unknown>(cmd: RpcCommand): Promise<T> {
       if (cmd.type === 'get_available_thinking_levels') {
+        const fromCatalogue = knownLevels();
+        if (fromCatalogue) return { levels: fromCatalogue } as T;
         const p = peer();
         const same = p && p.state.model?.id === state.model?.id && p.state.model?.provider === state.model?.provider;
         if (same) {
@@ -165,6 +206,7 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
         const models: ModelInfo[] = reply ? parseModels(reply) : [];
         if (models.length) {
           rememberModels(hostId, models);
+          settleThinking();
           return { models } as T;
         }
         return { models: cachedModels(hostId) ?? [] } as T;
@@ -176,7 +218,7 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
       }
       if (cmd.type === 'set_thinking_level' && typeof cmd.level === 'string') {
         setChoices((c) => ({ ...c, thinking: cmd.level as string }));
-        setState('thinkingLevel', cmd.level);
+        settleThinking();
         return null as T;
       }
       throw { code: 'E_UNSUPPORTED', message: 'Start the chat first', retryable: false };
@@ -189,9 +231,13 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
     close() {},
     choices,
     peer,
+    readiness,
+    ready: () => graceOver() || (defaultsIn() && commandsIn()),
     pickModel(model) {
       setChoices((c) => ({ ...c, model }));
       setState('model', { provider: model.provider, id: model.modelId, name: model.name ?? model.modelId });
+      // The new model may not offer the level on show (D-02).
+      settleThinking();
     },
   };
   return handle;

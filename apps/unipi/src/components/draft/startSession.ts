@@ -64,8 +64,12 @@ export async function startSession(hostId: string, req: StartRequest, client: Ho
     const cmd = (c: RpcCommand) => stream.cmd(c);
     const { model, thinking, permission, plan } = req.choices;
     // A failed preference never blocks the prompt: the chat shows what runs.
-    if (model) await cmd({ type: 'set_model', provider: model.provider, modelId: model.modelId }).catch(() => undefined);
-    if (thinking) await cmd({ type: 'set_thinking_level', level: thinking }).catch(() => undefined);
+    // D-02: only what differs from the new session's own start — a replay of the same
+    // model / level would put "Model → … / Thinking → …" rows atop a fresh chat.
+    const started = (snap.state ?? {}) as { model?: { provider?: string; id?: string }; thinkingLevel?: string };
+    const sameModel = !!model && started.model?.id === model.modelId && (!started.model.provider || started.model.provider === model.provider);
+    if (model && !sameModel) await cmd({ type: 'set_model', provider: model.provider, modelId: model.modelId }).catch(() => undefined);
+    if (thinking && thinking !== started.thinkingLevel) await cmd({ type: 'set_thinking_level', level: thinking }).catch(() => undefined);
     if (permission) await cmd({ type: 'prompt', message: `/permission ${permission}` }).catch(() => undefined);
     if (plan) await cmd({ type: 'prompt', message: '/plan on' }).catch(() => undefined);
     armed = true;

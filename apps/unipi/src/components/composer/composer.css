@@ -403,6 +403,10 @@ html:not([data-shell='desktop']) .cmenu {
   color: var(--color-text);
 }
 .perm-menu-row:hover { background: var(--color-surface-3); }
+/* D-05: the keyboard's row — same fill as hover, the ring drawn inside (the menu clips outside rings). */
+.perm-menu-row:focus-visible { background: var(--color-surface-3); outline: 2px solid var(--color-shell); outline-offset: -2px; }
+/* The keyboard wrapper of a toolbar menu adds no box of its own. */
+.menu-keys { display: contents; }
 .perm-menu-row[aria-checked='true'] { background: rgb(240 120 24 / 9%); }
 .perm-menu-check { grid-row: 1 / span 2; display: grid; place-items: center; color: var(--color-claw); }
 .perm-menu-label { grid-column: 2; display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 19px; font-weight: 600; white-space: nowrap; }

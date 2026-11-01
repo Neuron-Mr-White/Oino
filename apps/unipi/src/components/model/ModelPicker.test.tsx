@@ -79,9 +79,8 @@ describe('the picker sheet (Z-69)', () => {
     const world = await boot('model-picker');
     picker();
     await waitFor(() => expect(screen.getByTestId('model-picker-list').textContent).toContain('GPT-5'));
+    // D-07: one click switches — no second "Switch model" step.
     fireEvent.click(screen.getByText('GPT-5'));
-    const apply = await screen.findByText('Switch model');
-    fireEvent.click(apply);
     await waitFor(() => expect(cmds(world, 'set_model')).toHaveLength(1));
     expect(cmds(world, 'set_model')[0]!.args).toMatchObject({ provider: 'openai', modelId: 'gpt-5' });
     await waitFor(() => expect(toasts().list().some((t) => t.message === 'Switched from Claude Sonnet 4.5 to GPT-5')).toBe(true));
@@ -244,27 +243,27 @@ describe('Suggested (P0-10, fusion.status.curated)', () => {
     picker();
     await waitFor(() => expect(screen.getByTestId('model-group-suggested')).toBeTruthy());
     fireEvent.click(screen.getByTestId('model-picker-list').querySelector('[data-key="openai/gpt-5"]')!);
-    fireEvent.click(await screen.findByText('Turn Fusion off & switch').catch(() => screen.findByText('Switch model')));
+    const apply = await screen.findByText('Turn Fusion off & switch').catch(() => undefined);
+    if (apply) fireEvent.click(apply);
     await waitFor(() => expect(cmds(world, 'set_thinking_level').at(-1)?.args).toMatchObject({ level: 'high' }));
   });
 
-  it('"Use at startup" writes the default model (and Fusion\'s startup.model)', async () => {
+  it('"Use at startup" writes the running model as the default (and Fusion\'s startup.model)', async () => {
     const world = await bootCurated();
     picker();
     await waitFor(() => expect(screen.getByTestId('model-group-suggested')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('model-picker-list').querySelector('[data-key="openai/gpt-5"]')!);
+    // D-07: a click on another row switches at once, so "Use at startup" acts on the running model.
     fireEvent.click(screen.getByTestId('model-use-startup'));
     await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toBe('Startup model'));
     const sets = cmds(world, '_oino/set_setting').map((l) => l.args as { key: string; value: unknown });
     expect(sets).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ key: 'defaultProvider', value: 'openai' }),
-        expect.objectContaining({ key: 'defaultModel', value: 'gpt-5' }),
-        expect.objectContaining({ key: 'defaultThinkingLevel', value: 'high' }),
+        expect.objectContaining({ key: 'defaultProvider', value: 'anthropic' }),
+        expect.objectContaining({ key: 'defaultModel', value: 'claude-sonnet-4-5' }),
       ]),
     );
-    expect(cmds(world, '_oino/set_extension_setting').at(-1)?.args).toMatchObject({ namespace: 'fusion', key: 'startup.model', value: 'openai/gpt-5' });
-    expect(screen.getByTestId('model-picker-list').querySelector('[data-key="openai/gpt-5"]')!.textContent).toContain('Startup');
+    expect(cmds(world, '_oino/set_extension_setting').at(-1)?.args).toMatchObject({ namespace: 'fusion', key: 'startup.model', value: 'anthropic/claude-sonnet-4-5' });
+    expect(screen.getByTestId('model-picker-list').querySelector('[data-key="anthropic/claude-sonnet-4-5"]')!.textContent).toContain('Startup');
   });
 
   it('the Fusion columns put their curated lists first and take the curated default pair', async () => {

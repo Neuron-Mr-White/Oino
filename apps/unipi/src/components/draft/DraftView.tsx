@@ -26,6 +26,7 @@ import { sessionHref } from '../shell/Sidebar';
 import { createDraftSession, draftKey } from './draftSession';
 import { DraftModelChip } from './DraftModelChip';
 import { startSession } from './startSession';
+import { ConnectProviderCard } from './ConnectProviderCard';
 import { HostPicker, WorkspacePicker, homeOf } from './WorkspacePicker';
 import type { OutboxImage } from '../../lib/session/types';
 import './draft.css';
@@ -107,7 +108,10 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
       </div>
       <div class="draft-center">
         <EmptyChat cwd={folder()} hostName={hostName()} variant="start" />
-        <div class="draft-composer" data-testid="draft-composer">
+        <Show when={draft()?.readiness()?.known && !draft()?.readiness()?.any}>
+          <ConnectProviderCard />
+        </Show>
+        <div class="draft-composer" data-testid="draft-composer" data-pending={draft()?.ready() ? undefined : ''}>
           <Show when={draft()} keyed>
             {(session) => (
               <Composer

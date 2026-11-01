@@ -19,6 +19,54 @@ export function thinkingLabel(level: string): string {
   return level[0]!.toUpperCase() + level.slice(1);
 }
 
+const HINTS: Record<string, string> = {
+  off: 'No reasoning, fastest replies',
+  minimal: 'A brief think before answering',
+  low: 'Light reasoning for simple tasks',
+  medium: 'Balanced depth and speed',
+  high: 'Deeper reasoning for hard problems',
+  xhigh: 'Very deep reasoning, slower',
+  max: 'The most the model can reason',
+};
+
+/** The thinking menu's one-line description of a level (D-23); empty for an unknown id. */
+export function thinkingHint(level: string): string {
+  return HINTS[level] ?? '';
+}
+
+/**
+ * The level a session actually runs when `want` is asked of a model offering
+ * `levels` (oino's `ThinkingLevel::clamp`: the nearest offered level at or
+ * above, else the highest below) — the draft shows this, not a level the new
+ * chat can't keep (D-02).
+ */
+export function clampLevel(want: string, levels: readonly string[]): string {
+  if (!levels.length || levels.includes(want)) return want;
+  const rank = (level: string) => THINKING_ORDER.indexOf(level as (typeof THINKING_ORDER)[number]);
+  const w = rank(want);
+  if (w < 0) return levels[0]!;
+  const sorted = sortLevels(levels).filter((level) => rank(level) >= 0);
+  return sorted.find((level) => rank(level) >= w) ?? sorted[sorted.length - 1] ?? want;
+}
+
+/**
+ * The levels a catalogue model offers (oino's `Model::available_thinking_levels`):
+ * a model that doesn't reason has only `off`; otherwise every level except the
+ * ones its `thinkingLevelMap` nulls — and `xhigh` / `max` only when the map
+ * lists them. `undefined` when the catalogue row says nothing about reasoning.
+ */
+export function levelsOfModel(m: { reasoning?: boolean; thinkingLevelMap?: Record<string, unknown> } | undefined): string[] | undefined {
+  if (!m || m.reasoning === undefined) return undefined;
+  if (!m.reasoning) return ['off'];
+  const map = m.thinkingLevelMap ?? {};
+  return THINKING_ORDER.filter((level) => {
+    const entry = map[level];
+    if (entry === null) return false;
+    if (entry === undefined) return level !== 'xhigh' && level !== 'max';
+    return true;
+  });
+}
+
 /** pi order, unknown future ids last (they still show). */
 export function sortLevels(levels: readonly string[]): string[] {
   const rank = (level: string) => {

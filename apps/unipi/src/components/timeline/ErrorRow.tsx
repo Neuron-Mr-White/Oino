@@ -18,7 +18,21 @@ export function errorHeadline(text: string): string {
   return line ?? 'The turn failed.';
 }
 
-export function ErrorRow(props: { text: string; testId?: string }) {
+/** A short next step for the errors a user can act on (D-24); undefined for the rest. */
+export function errorHint(text: string): string | undefined {
+  if (/\b(401|403)\b|unauthori[sz]ed|invalid api key|user not found|authentication/i.test(text)) return 'The provider rejected the credential. Check the key or sign in again in Settings › Providers, or pick another model.';
+  if (/\b429\b|rate.?limit|quota|overloaded|\b529\b/i.test(text)) return 'The provider is limiting or overloaded. Wait a moment and retry, or pick another model.';
+  if (/\b(404)\b|model.*not found|unknown model/i.test(text)) return 'This provider has no such model. Pick another model.';
+  if (/network|fetch failed|ECONN|ENOTFOUND|timed? ?out/i.test(text)) return 'The provider could not be reached. Check the connection and retry.';
+  return undefined;
+}
+
+export function ErrorRow(props: {
+  text: string;
+  testId?: string;
+  /** The model that failed (D-24): "Provider · model-id", shown with the raw error. */
+  model?: string;
+}) {
   const [open, setOpen] = createSignal(false);
   const [copied, setCopied] = createSignal(false);
   const copy = () => {
@@ -44,6 +58,18 @@ export function ErrorRow(props: { text: string; testId?: string }) {
           Details
         </button>
         <Show when={open()}>
+          <Show when={props.model || errorHint(props.text)}>
+            <dl class="tl-error-facts" data-testid="tl-error-facts">
+              <Show when={props.model}>
+                <dt>Model</dt>
+                <dd>{props.model}</dd>
+              </Show>
+              <Show when={errorHint(props.text)}>
+                <dt>What to do</dt>
+                <dd>{errorHint(props.text)}</dd>
+              </Show>
+            </dl>
+          </Show>
           <pre class="tl-error-raw" data-testid="tl-error-raw">
             {props.text}
           </pre>

@@ -9,11 +9,12 @@
  * `set_thinking_level`); a model that does not reason has one level, so the
  * chip stays hidden rather than offering a dead control.
  */
-import { createEffect, createSignal, For, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Brain, Check, ChevronUp } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
-import { canThink, ensureThinkingLevels, setThinkingLevel, thinkingLabel, thinkingLevels } from '../../lib/model/thinking';
-import { AnchoredMenu, MenuRow } from '../board/AnchoredMenu';
+import { canThink, ensureThinkingLevels, setThinkingLevel, thinkingHint, thinkingLabel, thinkingLevels } from '../../lib/model/thinking';
+import { AnchoredMenu } from '../board/AnchoredMenu';
+import { menuKeys } from '../composer/menuKeys';
 import { RollingLabel } from '../RollingLabel';
 
 export function ThinkingChip(props: { session: SessionHandle; disabled?: boolean }) {
@@ -28,6 +29,7 @@ export function ThinkingChip(props: { session: SessionHandle; disabled?: boolean
   const current = () => props.session.state.thinkingLevel ?? levels()?.[0] ?? 'off';
   const [open, setOpen] = createSignal(false);
   const [anchor, setAnchor] = createSignal<DOMRect | undefined>();
+  let chip: HTMLButtonElement | undefined;
 
   const toggle = (e: MouseEvent) => {
     if (props.disabled) return;
@@ -53,6 +55,7 @@ export function ThinkingChip(props: { session: SessionHandle; disabled?: boolean
         aria-expanded={open()}
         title={`Thinking: ${thinkingLabel(current())}`}
         disabled={props.disabled}
+        ref={chip}
         onClick={toggle}
         data-testid="thinking-chip"
       >
@@ -61,16 +64,29 @@ export function ThinkingChip(props: { session: SessionHandle; disabled?: boolean
         <ChevronUp size={12} class="tb-chev" />
       </button>
       <Show when={open() && anchor()}>
-        <AnchoredMenu anchor={anchor()!} width={200} label="Thinking level" onDismiss={() => setOpen(false)}>
-          <For each={levels()}>
-            {(level) => (
-              <MenuRow
-                icon={level === current() ? <Check size={16} /> : <span class="tb-menu-dot" />}
-                label={thinkingLabel(level)}
-                onSelect={() => pick(level)}
-              />
-            )}
-          </For>
+        {/* D-23: the permission menu's look — label over a one-line description; D-05: keyboard. */}
+        <AnchoredMenu anchor={anchor()!} width={276} label="Thinking level" onDismiss={() => setOpen(false)}>
+          <div class="menu-keys" ref={(el) => onCleanup(menuKeys(el, { close: () => setOpen(false), trigger: () => chip }))}>
+            <For each={levels()}>
+              {(level) => (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={level === current()}
+                  class="perm-menu-row think-menu-row"
+                  data-label={thinkingLabel(level)}
+                  onClick={() => pick(level)}
+                  data-testid={`thinking-option-${level}`}
+                >
+                  <span class="perm-menu-check">{level === current() ? <Check size={16} /> : null}</span>
+                  <span class="perm-menu-label">{thinkingLabel(level)}</span>
+                  <Show when={thinkingHint(level)}>
+                    <span class="perm-menu-desc">{thinkingHint(level)}</span>
+                  </Show>
+                </button>
+              )}
+            </For>
+          </div>
         </AnchoredMenu>
       </Show>
     </Show>

@@ -9,6 +9,8 @@ import type { WorkItem, WorkNode } from '../../../lib/session/turns';
 import { Prose } from '../Prose';
 import { Compaction } from '../Compaction';
 import { ErrorRow } from '../ErrorRow';
+import { sessions } from '../../../lib/session/store';
+import { modelOrigin } from '../../../lib/model/displayName';
 import { ToolRow } from './ToolRow';
 import { ThinkingRow } from './ThinkingRow';
 import { StepRow } from './StepRow';
@@ -18,6 +20,12 @@ import { ToolGroup } from './ToolGroup';
 /** `item` narrowed to one `WorkItem` kind for a `<Match>` `when`. */
 const ofKind = <K extends WorkItem['kind']>(item: WorkItem, kind: K): Extract<WorkItem, { kind: K }> | false =>
   item.kind === kind ? (item as Extract<WorkItem, { kind: K }>) : false;
+
+/** "Provider · model-id" of the session the error row is in (D-24). */
+function failedModel(ctx: TimelineCtx): string | undefined {
+  const m = sessions().peek(ctx.hostId, ctx.sessionId())?.state.model;
+  return m?.id ? modelOrigin(m) : undefined;
+}
 
 export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
   const item = () => props.item;
@@ -29,7 +37,7 @@ export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
       <Match when={ofKind(item(), 'step')}>{(i) => <StepRow entry={i().entry} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'card')}>{(i) => <CardRow entry={i().entry} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'compaction')}>{(i) => <Compaction entry={i().entry} sessionId={props.ctx.sessionId} />}</Match>
-      <Match when={ofKind(item(), 'error')}>{(i) => <ErrorRow text={i().text} />}</Match>
+      <Match when={ofKind(item(), 'error')}>{(i) => <ErrorRow text={i().text} model={failedModel(props.ctx)} />}</Match>
     </Switch>
   );
 }

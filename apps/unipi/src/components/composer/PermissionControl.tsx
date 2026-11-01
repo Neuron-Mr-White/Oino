@@ -21,6 +21,7 @@ import { Check, ChevronUp, ListTree, ShieldCheck } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import { parseWorkflowStatus, WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
 import { AnchoredMenu } from '../board/AnchoredMenu';
+import { menuKeys } from './menuKeys';
 
 /** The three modes the extension's `/permission` accepts (`rules::Mode`). */
 export const PERMISSION_MODES = ['ask', 'auto', 'full'] as const;
@@ -104,6 +105,7 @@ export function PermissionControl(props: {
       </button>
       <Show when={open() && anchorRect()}>
         <AnchoredMenu anchor={anchorRect()!} width={276} label="Permission mode" onDismiss={() => setOpen(false)}>
+          <div class="menu-keys" ref={(el) => onCleanup(menuKeys(el, { close: () => setOpen(false), trigger: () => anchor }))}>
           <For each={PERMISSION_MODES}>
             {(value) => (
               <button
@@ -112,6 +114,7 @@ export function PermissionControl(props: {
                 aria-checked={mode() === value}
                 class="perm-menu-row"
                 data-mode={value}
+                data-label={MODE_LABEL[value]}
                 onClick={() => pick(value)}
                 data-testid={`permission-option-${value}`}
               >
@@ -121,6 +124,7 @@ export function PermissionControl(props: {
               </button>
             )}
           </For>
+          </div>
         </AnchoredMenu>
       </Show>
     </Show>

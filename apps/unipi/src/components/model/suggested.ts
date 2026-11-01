@@ -7,11 +7,11 @@
  * first the same way. Pure rules; the picker is markup.
  */
 import type { FusionCurated } from '../../lib/model/fusion';
-import { modelKey, type ModelInfo, type Selection } from '../../lib/model/picker';
+import { hits as modelHits, modelKey, type ModelInfo, type Selection } from '../../lib/model/picker';
 
 export type SuggestedRow = { model: ModelInfo; lead: boolean; sidekick: boolean; effort?: string };
 
-const hits = (m: ModelInfo, q: string): boolean => `${modelKey(m)} ${m.name ?? ''}`.toLowerCase().includes(q);
+const hits = modelHits;
 
 /** The curated roles + default effort of one model key. */
 export function curatedRole(curated: FusionCurated | undefined, key: string): { lead: boolean; sidekick: boolean; effort?: string } {

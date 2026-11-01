@@ -418,6 +418,9 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       if ((e as { display?: unknown }).display === false || (e.message as { display?: unknown } | undefined)?.display === false) continue;
       seg.work.push({ kind: 'card', key: e.id, entry: e });
     } else if (e.type === 'model_change' || e.type === 'branch_summary' || e.type === 'thinking_level_change') {
+      // D-02: before the first prompt these are the chat's starting settings (the composer
+      // chips show them), not changes — no "Model → … / Thinking → …" rows atop a new chat.
+      if (start.kind === 'preamble' && e.type !== 'branch_summary') continue;
       seg.work.push({ kind: 'card', key: e.id, entry: e });
     } else if (e.type === 'compaction') {
       seg.work.push({ kind: 'compaction', key: e.id, entry: e });

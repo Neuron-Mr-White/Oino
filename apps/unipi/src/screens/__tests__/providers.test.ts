@@ -13,7 +13,10 @@ describe('providerState', () => {
   it('reads the stored credential, then the environment', () => {
     expect(providerState(provider({ stored: 'oauth', configured: true }))).toEqual({ label: 'Signed in', detail: 'OAuth' });
     expect(providerState(provider({ stored: 'api_key', configured: true }))).toEqual({ label: 'API key saved' });
-    expect(providerState(provider({ configured: true, env: ['ANTHROPIC_API_KEY'] }))).toEqual({ label: 'Ready', detail: 'from ANTHROPIC_API_KEY' });
+    expect(providerState(provider({ configured: true, env: ['ANTHROPIC_API_KEY'] }))).toEqual({ label: 'Key found', detail: 'from ANTHROPIC_API_KEY · not checked yet' });
+    // D-37: "Ready" is the host's word, and a rejected key says so.
+    expect(providerState(provider({ configured: true, ready: true, env: ['ANTHROPIC_API_KEY'] }))).toEqual({ label: 'Ready', detail: 'from ANTHROPIC_API_KEY' });
+    expect(providerState(provider({ configured: true, ready: false, env: ['X'], reason: 'the key was rejected (401)' }))).toEqual({ label: 'Not working', detail: 'the key was rejected (401)', bad: true });
     expect(providerState(provider())).toEqual({ label: 'Not configured' });
   });
 });

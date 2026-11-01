@@ -24,6 +24,8 @@ export type ModelInfo = {
   /** Context window in tokens. */
   contextWindow?: number;
   maxTokens?: number;
+  /** pi `thinkingLevelMap`: `null` = the level is off for this model, a string = provider-mapped. */
+  thinkingLevelMap?: Record<string, unknown>;
 };
 
 /** `provider/id` — the key both the host and the state use. */
@@ -59,6 +61,9 @@ export function parseModels(reply: unknown): ModelInfo[] {
       ...(Array.isArray(o.input) ? { input: o.input.filter((x): x is string => typeof x === 'string') } : {}),
       ...(num(o.contextWindow) !== undefined ? { contextWindow: num(o.contextWindow) } : {}),
       ...(num(o.maxTokens) !== undefined ? { maxTokens: num(o.maxTokens) } : {}),
+      ...(o.thinkingLevelMap && typeof o.thinkingLevelMap === 'object' && !Array.isArray(o.thinkingLevelMap)
+        ? { thinkingLevelMap: o.thinkingLevelMap as Record<string, unknown> }
+        : {}),
     });
   }
   return out;
@@ -108,7 +113,20 @@ export function selectionOf(
   return key ? { kind: 'single', key } : undefined;
 }
 
-const hits = (m: ModelInfo, q: string): boolean => `${modelKey(m)} ${m.name ?? ''}`.toLowerCase().includes(q);
+/**
+ * A search hit (D-25): every word of the query appears somewhere in the key,
+ * the catalogue name or the display name — "deepseek flash" finds "DeepSeek V4
+ * Flash" whatever the word order or the ids in between.
+ */
+export const hits = (m: ModelInfo, q: string): boolean => {
+  const hay = `${modelKey(m)} ${m.name ?? ''} ${modelDisplayName(m)}`.toLowerCase();
+  const squashed = hay.replace(/[\s_\-/:.]+/g, '');
+  return q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => hay.includes(word) || squashed.includes(word.replace(/[\s_\-/:.]+/g, '')));
+};
 
 /**
  * The Single tab's rows: the running model first, then the catalogue in the
