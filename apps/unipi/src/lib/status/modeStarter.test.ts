@@ -35,12 +35,14 @@ describe('withStarter', () => {
 });
 
 describe('cycleStarter (Ctrl/Cmd+Shift+M)', () => {
-  it('goes Goal → Ralph → Graph → plain → Goal', () => {
+  it('goes Goal → Ralph → Swarm → Graph → plain → Goal', () => {
     let step = cycleStarter('ship it');
     expect(step).toEqual({ text: '/goal ship it', mode: 'goal' });
     step = cycleStarter(step.text);
     expect(step.mode).toBe('ralph');
     expect(step.text).toBe('/ralph start ship it');
+    step = cycleStarter(step.text);
+    expect(step).toEqual({ text: '/swarm ship it', mode: 'swarm' });
     step = cycleStarter(step.text);
     expect(step.mode).toBe('graph');
     expect(step.text).toBe('/graph ship it');

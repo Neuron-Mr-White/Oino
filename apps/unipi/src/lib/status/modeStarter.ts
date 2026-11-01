@@ -1,16 +1,16 @@
 /**
  * Working-mode starters (WP-A14, Z-74): the header chip starts Goal / Ralph /
- * Graph by putting long-horizon's own command in the composer — the modes
+ * Swarm / Graph by putting long-horizon's own command in the composer — the modes
  * begin with an objective (`/goal <objective>`, `/ralph start <name> …`,
  * `/graph <prompt>`); there is no promptless switch, and `/regular` is the
  * one command that leaves a mode. Ctrl/Cmd+Shift+M cycles the starter
- * through Goal → Ralph → Graph → plain without opening the menu.
+ * through Goal → Ralph → Swarm → Graph → plain without opening the menu.
  *
  * Pure text rules so the chip, the shortcut and the tests share them.
  */
 
-/** The starters the chip offers (Z-74 names these three). */
-export const STARTER_ORDER = ['goal', 'ralph', 'graph'] as const;
+/** The starters the chip offers (Z-74's three plus Swarm, P1-04). */
+export const STARTER_ORDER = ['goal', 'ralph', 'swarm', 'graph'] as const;
 export type ModeStarter = (typeof STARTER_ORDER)[number];
 /** Mode or plain. */
 export type ModeChoice = ModeStarter | 'none';
@@ -19,6 +19,7 @@ export type ModeChoice = ModeStarter | 'none';
 export const STARTER_COMMAND: Record<ModeStarter, string> = {
   goal: '/goal ',
   ralph: '/ralph start ',
+  swarm: '/swarm ',
   graph: '/graph ',
 };
 
@@ -26,6 +27,7 @@ export const STARTER_COMMAND: Record<ModeStarter, string> = {
 export const STARTER_HINT: Record<ModeStarter, string> = {
   goal: 'One objective, until it is verifiably true',
   ralph: 'A task file worked one item at a time',
+  swarm: 'Independent items in parallel, then one synthesis',
   graph: 'Steps whose results feed the later ones',
 };
 
@@ -37,6 +39,7 @@ export function starterOf(text: string): ModeChoice {
   const body = bodyOf(text);
   if (body === '/goal' || body.startsWith('/goal ')) return 'goal';
   if (body === '/ralph start' || body.startsWith('/ralph start ')) return 'ralph';
+  if (body === '/swarm' || body.startsWith('/swarm ')) return 'swarm';
   if (body === '/graph' || body.startsWith('/graph ')) return 'graph';
   return 'none';
 }

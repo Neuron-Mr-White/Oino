@@ -100,3 +100,27 @@ html[data-shell=phone] .cap-lh-label { display: none; }
    header — the capsule would cover its action button (§3.9 review, A29). */
 .conv:has(.tl-banner) .status-capsule { top: 118px; }
 html[data-shell=phone] .conv:has(.tl-banner) .status-capsule { top: 114px; }
+
+/* P1-04: graph / swarm inspector — DAG + node rows with their worker sessions. */
+.lh-graph { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.lh-graph-head { display: flex; align-items: center; gap: 4px; }
+.lh-icon-btn { display: grid; place-items: center; width: 26px; height: 26px; min-height: 26px; border-radius: 7px; background: transparent; color: var(--color-text-dim); transition: background-color 120ms ease-out, color 120ms ease-out; }
+.lh-icon-btn:hover { background: var(--color-surface-2); color: var(--color-text); }
+.lh-icon-btn:focus-visible, .lh-node-main:focus-visible, .lh-graph-svg:focus-visible { outline: 2px solid var(--color-wm-cyan); outline-offset: 1px; }
+.lh-graph-svg { display: block; width: 100%; max-height: 260px; overflow: hidden; padding: 8px; border-radius: 10px; background: var(--color-surface-2); cursor: zoom-in; }
+.lh-graph-svg svg { display: block; max-width: 100%; max-height: 244px; height: auto; margin: 0 auto; }
+.lh-nodes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.lh-node { display: flex; align-items: flex-start; gap: 8px; padding: 4px 4px 4px 6px; border-radius: 8px; }
+.lh-node:hover { background: var(--color-surface-2); }
+.lh-dot { flex: none; width: 8px; height: 8px; margin-top: 5px; border-radius: 9999px; background: var(--color-text-dim); }
+.lh-dot[data-state=running] { background: var(--color-wm-cyan); box-shadow: 0 0 0 3px rgb(40 190 240 / 18%); }
+.lh-dot[data-state=queued] { background: var(--color-amber); }
+.lh-dot[data-state=done] { background: var(--color-wm-green); }
+.lh-dot[data-state=failed] { background: var(--color-wm-red); }
+.lh-node-main { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: baseline; gap: 8px; padding: 0; background: transparent; text-align: left; font-size: 12.5px; line-height: 18px; color: var(--color-text); }
+.lh-node-id { font-family: var(--font-mono); font-size: 12px; }
+.lh-node-status { font-size: 11.5px; color: var(--color-text-dim); }
+.lh-node[data-status=failed] .lh-node-status { color: var(--color-wm-red); }
+.lh-node[data-status=running] .lh-node-status { color: var(--color-wm-cyan); }
+.lh-node-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); }
+.lh-node-text[data-open] { white-space: normal; overflow-wrap: anywhere; grid-column: 1 / -1; }

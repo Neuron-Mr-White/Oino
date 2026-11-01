@@ -12,6 +12,7 @@ import { sessions, type SessionHandle } from '../../lib/session/store';
 import { liveSource, parseExtensions } from '../session/modalData';
 import { ModeIcon } from '../chat/ModeChip';
 import { durationText } from './lhProgress';
+import { LhGraph } from './LhGraph';
 import {
   graphCountLine,
   graphSettled,
@@ -159,6 +160,8 @@ export function LhSection(props: { hostId: string; sessionId: string; onToast?: 
                         <span style={{ width: `${m().percent ?? 0}%` }} data-mode={g().mode} />
                       </div>
                     </Show>
+                    {/* P1-04: the DAG and one row per node, each opening its worker session. */}
+                    <LhGraph s={s()} counts={JSON.stringify(g().counts)} onToast={props.onToast} />
                   </div>
                 )}
               </Show>

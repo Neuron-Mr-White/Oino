@@ -41,6 +41,7 @@ import type { UiEntry } from '../types';
 import { registerReservedBody, type ReservedBodyProps, type ReservedRow } from './reserved';
 import {
   RESERVED_ROWS,
+  lhFocusQuiet,
   reservedGatesStale,
   reservedGate,
   reservedRowFor,
@@ -143,6 +144,7 @@ function focusReservedPane(entry: UiEntry, row: ReservedRow, ctx: ReservedFocusC
   const token = `${entry.id}:${entry.seq}:${path}`;
   if (focused.has(token)) return false;
   focused.add(token);
+  if (row.component === 'lhStatus' && lhFocusQuiet()) return true;
   const isGit = row.component === 'git' || row.component === 'lhStatus';
   const section = row.component === 'lhStatus' ? ('lh' as const) : undefined;
   if (!desktopShell()) {

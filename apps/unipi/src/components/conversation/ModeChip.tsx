@@ -70,7 +70,7 @@ export function ModeChip(props: { hostId: string; sessionId: string }) {
         aria-label={aria()}
         aria-haspopup="menu"
         aria-expanded={open()}
-        title="Working mode — Goal / Ralph / Graph (Ctrl Shift M)"
+        title="Working mode — Goal / Ralph / Swarm / Graph (Ctrl Shift M)"
         onClick={(e) => {
           setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect());
           setOpen(!open());

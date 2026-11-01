@@ -222,3 +222,13 @@ export function reservedGate(rowOrComponent: ReservedRow | ReservedComponent | s
   return true;
 }
 
+
+/** P1-04: the LH section's own graph inspector asks `/visualize-progress` in place —
+ *  that answer must not re-focus (scroll) the status pane each time. */
+let lhQuietUntil = 0;
+export function quietLhFocus(ms = 4000): void {
+  lhQuietUntil = Date.now() + ms;
+}
+export function lhFocusQuiet(now = Date.now()): boolean {
+  return now < lhQuietUntil;
+}
