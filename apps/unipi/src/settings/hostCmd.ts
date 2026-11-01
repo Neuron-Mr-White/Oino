@@ -17,6 +17,10 @@ export const ExtensionInfoSchema = z.object({
   enabled: z.boolean(),
   loaded: z.boolean(),
   path: z.string().optional(),
+  /** From the package's extension.json (the host adds them; older hosts don't). */
+  name: z.string().optional(),
+  version: z.string().optional(),
+  description: z.string().optional(),
 });
 export type ExtensionInfo = z.infer<typeof ExtensionInfoSchema>;
 

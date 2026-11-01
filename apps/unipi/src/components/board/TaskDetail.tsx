@@ -340,7 +340,7 @@ function TaskPage(props: { id: string }) {
                   </dl>
                   <Show when={current().path}>
                     <button type="button" class="path-box" aria-label="Copy file path" onClick={() => void copyToClipboard(current().path ?? '', 'the file path')}>
-                      <span class="truncate">{current().path}</span>
+                      <span class="truncate" title={current().path}>{(current().path ?? '').split('/').slice(-2).join('/')}</span>
                     </button>
                   </Show>
                 </Section>

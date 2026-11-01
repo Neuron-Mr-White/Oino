@@ -2,7 +2,7 @@
 import { render, screen, waitFor, cleanup, fireEvent } from '@solidjs/testing-library';
 import { HashRouter, Route } from '@solidjs/router';
 import { vi, it, describe, expect, afterEach, beforeEach } from 'vitest';
-import Cron, { lastRunChip, nextFireText, wakeText } from './Cron';
+import Cron, { humanSchedule, lastRunChip, nextFireText, wakeText } from './Cron';
 import { notifyFromForm, notifyModeOf, notifyText } from '../lib/cron';
 import { openChatState, closeChat } from '../lib/session/open';
 import { HostsProvider } from '../hosts/context';
@@ -76,7 +76,7 @@ describe('Cron screen (UNI-317)', () => {
     mount();
     const row = await screen.findByTestId('cron-job-digest');
     expect(row).toHaveTextContent('daily digest');
-    expect(row).toHaveTextContent('0 0 9 * * *');
+    expect(row).toHaveTextContent('Every day at 9:00');
     expect(row).toHaveTextContent('ok');
   });
 
@@ -292,5 +292,14 @@ describe('WP-A23: form preview and the /cron add entry', () => {
     expect(await screen.findByTestId('cron-form-sheet')).toBeInTheDocument();
     // The param is consumed: back/refresh is the plain list.
     await waitFor(() => expect(location.hash).toBe('#/cron'));
+  });
+});
+
+describe('humanSchedule (D-33)', () => {
+  it('says common schedules in words and leaves the rest as written', async () => {
+    expect(humanSchedule('0 0 9 * * *')).toBe('Every day at 9:00');
+    expect(humanSchedule('30 8 * * 1')).toBe('Every Monday at 8:30');
+    expect(humanSchedule('0 0 7 * * 1-5')).toBe('Weekdays at 7:00');
+    expect(humanSchedule('*/5 * * * *')).toBe('*/5 * * * *');
   });
 });

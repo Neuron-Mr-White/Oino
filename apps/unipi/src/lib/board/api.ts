@@ -438,6 +438,10 @@ export const api = {
     }
     return url;
   },
+  /** "Add project": registers a folder on the PC (the host checks it is inside the folders the app may see). */
+  addProject: async (hostId: string, root: string, name?: string): Promise<void> => {
+    await cli(hostId, ['project', 'add', '--root', root, ...(name ? ['--name', name] : [])]);
+  },
   updateProject: async (hostId: string, slug: string, patch: { archived?: boolean }): Promise<ProjectSummary> => {
     if (patch.archived === undefined) return (await api.projects(hostId)).find((project) => project.slug === slug)!;
     await cli(hostId, ['project', patch.archived ? 'archive' : 'unarchive', slug]);

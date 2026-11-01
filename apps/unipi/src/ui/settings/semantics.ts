@@ -156,7 +156,8 @@ export function resolve(namespace: Namespace, layers: Layers = {}): Resolved {
     for (let index = 0; index < candidates.length; index += 1) {
       const layer = candidates[index]!;
       const candidate = lookup(layer, field.key);
-      if (candidate === undefined) continue;
+      // A stored null is an unset optional key (core writes them on a fresh install): not a wrong-type value.
+      if (candidate === undefined || candidate === null) continue;
       const message = checkValue(field, candidate);
       if (!message) {
         effective = candidate;

@@ -180,3 +180,7 @@ html:not([data-shell=desktop]) .settings-iconbtn { width: 36px; height: 36px; }
 /* P1-08: About › What's new — the notes read under the row, full width. */
 .about-whats-new { padding: 0 16px 14px 58px; margin-top: -4px; }
 .about-whats-new .about-notes { max-width: 72ch; padding: 10px 12px; border-radius: 10px; background: var(--color-surface-2); font-size: 13px; line-height: 19px; color: var(--color-text); }
+
+/* D-35: flat forms live inside a card — their heading row and Global | Project toggle keep the card's 16 px inset. */
+.settings-form-list .settings-form-head { margin: 0; padding: 14px 16px 8px; align-items: center; }
+.settings-form-list .settings-form + .settings-form { margin-top: 0; border-top: 1px solid var(--color-line); }

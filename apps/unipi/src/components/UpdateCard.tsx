@@ -26,6 +26,7 @@ import { openExternal } from '../lib/board/share';
 import { hostClient } from '../lib/host/factory';
 import { LOCAL_HOST } from '../lib/host/client';
 import { resolveHostId } from '../lib/host/localId';
+import { refreshThisComputer, thisComputer } from '../lib/thisComputer';
 import { hubs } from '../lib/session/hub';
 import { can, platform } from '../lib/platform';
 
@@ -36,8 +37,13 @@ type HostInfoLike = { version?: string; name?: string };
 /** The host's release row inside the card: its version + any update notice. */
 function HostRow() {
   const hub = () => hubs().peek(resolveHostId(LOCAL_HOST));
+  // D-22: the version comes from the local admin channel (the same `host_info` Settings › This computer
+  // reads); the host-session request has no version field, so the row used to read "Host —".
   const [info] = createResource(async (): Promise<HostInfoLike | undefined> => {
     try {
+      if (thisComputer().kind !== 'ready') await refreshThisComputer();
+      const state = thisComputer();
+      if (state.kind === 'ready') return { version: state.info.version };
       return await hostClient(LOCAL_HOST).request<HostInfoLike>('host_info');
     } catch {
       return undefined;

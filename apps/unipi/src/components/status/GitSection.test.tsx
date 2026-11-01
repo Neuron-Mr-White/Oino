@@ -339,6 +339,17 @@ describe('Git section (WP-A15) — desktop pane', () => {
   });
 });
 
+describe('Git commit key inside the message box (D-39)', () => {
+  it('Ctrl+Enter pressed in the focused message textarea commits', async () => {
+    mountDesktop();
+    await screen.findByTestId('git-composer');
+    const box = screen.getByLabelText('Commit message');
+    fireEvent.input(box, { target: { value: 'Typed commit' } });
+    fireEvent.keyDown(box, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(gitOps().some((c) => c.action === 'commit' && c.message === 'Typed commit')).toBe(true));
+  });
+});
+
 describe('Git auto-refresh (Z-98)', () => {
   it('watches the repo root; one git_changed → exactly one extra status refresh; unmount stops the watch', async () => {
     mountDesktop();

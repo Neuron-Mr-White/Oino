@@ -579,6 +579,14 @@ export function GitSection(props: {
         placeholder={stagedCount() > 0 || amend() ? 'Commit message' : 'Stage changes, then write a message'}
         aria-label="Commit message"
         value={message()}
+        onKeyDown={(e) => {
+          // D-39: the hint next to Amend promises it — the global handler skips text fields.
+          if (isCommitKey(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+            commit();
+          }
+        }}
         onInput={(e) => {
           setMessage(e.currentTarget.value);
           e.currentTarget.style.height = 'auto';
@@ -659,7 +667,9 @@ export function GitSection(props: {
           : { title: 'No files from the last turn', body: 'Write or edit a file in a turn and it lands here.' }
         : source() === 'branch'
           ? { title: branchData()?.base ? `Even with ${branchData()!.base}` : 'No base to compare', body: branchData()?.base ? 'Nothing changed on this branch.' : 'Give the branch an upstream (or a main) to compare against.' }
-          : { title: 'Nothing to commit', body: status()?.head ? 'The working tree is clean.' : 'No commits yet — add some files.' }
+          : source() === 'unstaged' && stagedCount() > 0
+            ? { title: 'Everything is staged', body: 'Write a message and commit, or switch the list to Staged to review it.' }
+            : { title: 'Nothing to commit', body: status()?.head ? 'The working tree is clean.' : 'No commits yet — add some files.' }
       : undefined;
     return (
       <>

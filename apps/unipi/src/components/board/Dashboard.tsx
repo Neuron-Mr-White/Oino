@@ -536,7 +536,7 @@ export function Dashboard(props: { hostId: string; onOpenTask: (slug: string, id
                 </For>
               </div>
             </div>
-            <Show when={store.state.projects.length > 0} fallback={<p class="dash-empty">No projects yet. Register one with unipi-kanboard project add.</p>}>
+            <Show when={store.state.projects.length > 0} fallback={<p class="dash-empty">No projects yet. Use “Add project…” in the Board menu.</p>}>
               <div class="dash-projects">
                 <For each={projects()}>
                   {(project) => (

@@ -17,7 +17,7 @@
         "title": "UniPi",
         "width": 1280,
         "height": 820,
-        "minWidth": 480,
+        "minWidth": 360,
         "minHeight": 560,
         "center": true,
         "resizable": true,

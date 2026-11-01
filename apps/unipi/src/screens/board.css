@@ -611,3 +611,19 @@
 .sheet-textarea.tall { min-height: min(38vh, 300px); }
 
 
+
+/* Add project (D-27): folder browser */
+.add-project-hint { margin: 0 0 12px; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+.add-project-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.add-project-path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.add-project-list { border-radius: 14px; background: var(--color-surface-2); overflow: hidden; }
+.add-project-list .picker-row { min-height: 48px; }
+.add-project-list .picker-row + .picker-row::before { left: 48px; }
+.add-project-note { margin: 0; padding: 16px; font-size: 14px; color: var(--color-text-dim); }
+.add-project-error { margin: 0 0 8px; font-size: 13px; color: #f6a39d; }
+
+/* D-28: New task fields — text inset 12 px inside a bordered field, the app's focus ring. */
+.new-task-title, .new-task-body { padding-left: 12px; padding-right: 12px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface-1); transition: border-color 120ms ease-out, box-shadow 120ms ease-out; }
+.new-task-title { padding-top: 10px; padding-bottom: 10px; }
+.new-task-body { padding-top: 8px; padding-bottom: 8px; }
+.new-task-title:focus-visible, .new-task-body:focus-visible, .new-task-title:focus, .new-task-body:focus { outline: none; border-color: var(--color-shell); box-shadow: 0 0 0 2px rgb(240 48 24 / 28%); }

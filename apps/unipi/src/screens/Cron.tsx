@@ -83,6 +83,26 @@ export function nextFireText(job: Pick<CronJob, 'next_fire' | 'enabled'>): strin
   return `in ${Math.round(h / 24)} d`;
 }
 
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const clock = (hour: string, minute: string) => `${Number(hour)}:${minute.padStart(2, '0')}`;
+
+/** A cron expression in plain words ("0 0 9 * * *" → "Every day at 9:00"); anything it can't say simply stays as written. */
+export function humanSchedule(expression: string): string {
+  const parts = expression.trim().split(/\s+/);
+  if (parts.length !== 5 && parts.length !== 6) return expression;
+  const [min, hour, dom, mon, dow] = parts.length === 6 ? parts.slice(1) : parts;
+  const sec = parts.length === 6 ? parts[0] : '0';
+  if (sec !== '0' || mon !== '*' || !/^\d+$/.test(min!)) return expression;
+  if (/^\d+$/.test(hour!) && dom === '*') {
+    const at = clock(hour!, min!);
+    if (dow === '*') return `Every day at ${at}`;
+    if (/^[0-7]$/.test(dow!)) return `Every ${DAYS[Number(dow) % 7]} at ${at}`;
+    if (dow === '1-5') return `Weekdays at ${at}`;
+  }
+  if (hour === '*' && dom === '*' && dow === '*') return min === '0' ? 'Every hour' : `Every hour at :${min!.padStart(2, '0')}`;
+  return expression;
+}
+
 export function lastRunChip(job: Pick<CronJob, 'last_run_status' | 'running'>): string | undefined {
   if (job.running) return 'running';
   return job.last_run_status ? STATUS_LABEL[job.last_run_status] ?? job.last_run_status : undefined;
@@ -149,14 +169,14 @@ export default function Cron() {
       <div class="page-screen cron-screen" data-testid="cron-screen">
         <PageHeader
           title="Cron"
-          lead={<PcChip name={hosts.hosts().find((h) => h.id === hostId())?.name} onClick={() => setHostSheetOpen(true)} />}
+          lead={<PcChip name={hosts.hosts().find((h) => h.id === hostId())?.name} state={view().kind === "error" ? "offline" : view().kind === "loading" ? "checking" : "ok"} onClick={() => setHostSheetOpen(true)} />}
           tools={
             <>
-              <button type="button" class="icon-btn" aria-label="Refresh" onClick={() => void refresh()}>
+              <button type="button" class="ghost-icon-button" aria-label="Refresh" onClick={() => void refresh()}>
                 <RefreshCw size={18} class={refreshing() ? 'refresh-spinning' : undefined} />
               </button>
               <Show when={view().kind === 'ready'}>
-                <button type="button" class="icon-btn" aria-label="Add a job" onClick={() => setFormOpen('new')} data-testid="cron-add">
+                <button type="button" class="ghost-icon-button" aria-label="Add a job" onClick={() => setFormOpen('new')} data-testid="cron-add">
                   <Plus size={18} />
                 </button>
               </Show>
@@ -324,7 +344,7 @@ function JobRow(props: { job: CronJob; onOpen: () => void }) {
       <div class="min-w-0 flex-1">
         <p class="text-[15px] text-text truncate">{props.job.name}</p>
         <p class="text-xs text-text-dim mt-0.5 truncate">
-          {props.job.schedule} · {nextFireText(props.job)}
+          {humanSchedule(props.job.schedule)} · {nextFireText(props.job)}
           <Show when={chip()}> · <span class="cron-chip" data-status={props.job.last_run_status ?? (props.job.running ? 'running' : undefined)}>{chip()}</span></Show>
         </p>
       </div>
@@ -615,11 +635,11 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
         </label>
         <label>
           <span>Folder</span>
-          <input value={cwd()} onInput={(e) => setCwd(e.currentTarget.value)} placeholder="/home/me/jobs/digest" data-testid="cron-form-cwd" />
+          <input value={cwd()} onInput={(e) => setCwd(e.currentTarget.value)} placeholder="e.g. /home/me/projects/app" data-testid="cron-form-cwd" />
         </label>
         <label>
           <span>Schedule</span>
-          <input value={schedule()} onInput={(e) => setSchedule(e.currentTarget.value)} placeholder="every day at 9:00" data-testid="cron-form-schedule" />
+          <input value={schedule()} onInput={(e) => setSchedule(e.currentTarget.value)} placeholder="e.g. every day at 9:00" data-testid="cron-form-schedule" />
         </label>
         <Show when={preview()}>
           {(p) =>
@@ -634,15 +654,15 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
         </Show>
         <label>
           <span>Timezone</span>
-          <input value={tz()} onInput={(e) => setTz(e.currentTarget.value)} placeholder="this PC's zone" data-testid="cron-form-tz" />
+          <input value={tz()} onInput={(e) => setTz(e.currentTarget.value)} placeholder="This PC’s time zone (default)" data-testid="cron-form-tz" />
         </label>
         <label>
           <span>Model (optional)</span>
-          <input value={model()} onInput={(e) => setModel(e.currentTarget.value)} data-testid="cron-form-model" />
+          <input value={model()} onInput={(e) => setModel(e.currentTarget.value)} placeholder="Default model" data-testid="cron-form-model" />
         </label>
         <label>
           <span>Time limit (seconds)</span>
-          <input value={timeLimit()} onInput={(e) => setTimeLimit(e.currentTarget.value)} placeholder="1800" data-testid="cron-form-time-limit" />
+          <input value={timeLimit()} onInput={(e) => setTimeLimit(e.currentTarget.value)} placeholder="e.g. 1800 (30 minutes)" data-testid="cron-form-time-limit" />
         </label>
         <fieldset class="cron-fieldset" data-testid="cron-form-notify">
           <legend><Bell size={14} /> Notify when a run ends</legend>

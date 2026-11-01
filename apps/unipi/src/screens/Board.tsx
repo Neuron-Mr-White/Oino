@@ -20,6 +20,7 @@ import {
   EllipsisVertical,
   Eye,
   Filter,
+  FolderPlus,
   Keyboard,
   LayoutDashboard,
   List,
@@ -56,6 +57,7 @@ import { filterCount, hue, matches, visibleLanes } from '../lib/board/view';
 import { LanePager, LaneStrip, CardSkeletons } from '../components/board/BoardLanes';
 import { BoardList } from '../components/board/BoardList';
 import { FilterSheet, DisplaySheet } from '../components/board/FilterDisplaySheets';
+import { AddProjectSheet } from '../components/board/AddProjectSheet';
 import { PcSheet, ProjectMenu, ProjectSheet } from '../components/board/PickerSheets';
 import { SearchSheet } from '../components/board/SearchSheet';
 import { NewTaskSheet } from '../components/board/NewTaskSheet';
@@ -100,6 +102,7 @@ export default function Board() {
   const [hostId, setHostId] = createSignal<string | undefined>(store.target()?.hostId);
   const [refreshing, setRefreshing] = createSignal(false);
   const [menu, setMenu] = createSignal<DOMRect | undefined>();
+  const [addProjectOpen, setAddProjectOpen] = createSignal(false);
   let pagerApi: { scrollToLane: (lane: string, smooth?: boolean) => void; pageFor: (lane: string) => HTMLElement | undefined } | undefined;
 
   const haptic = (kind: HapticKind = 'tap') => void hapticTick(settings.input.haptics, kind);
@@ -138,7 +141,8 @@ export default function Board() {
   useBoardLive(store, () => {
     const at = store.target();
     const id = hostId();
-    return at?.slug && at.hostId === id && availability()?.state === 'ok' ? { hostId: id, slug: at.slug } : null;
+    if (!id || availability()?.state !== 'ok') return null;
+    return { hostId: id, slug: at?.hostId === id ? (at.slug ?? null) : null };
   });
 
   async function openHost(id: string) {
@@ -648,9 +652,10 @@ export default function Board() {
               >
                 <BoardState
                   title={`No projects on ${pc()?.name ?? 'this PC'}`}
-                  detail="Register a repo with unipi-kanboard project add (or open the board from a UniPi session there)."
-                  onRetry={() => void refresh()}
-                  retryLabel="Check again"
+                  detail="Add a repo's folder to start a board for it."
+                  onRetry={() => setAddProjectOpen(true)}
+                  retryLabel="Add project"
+                  secondary={{ label: 'Check again', run: () => void refresh() }}
                 />
               </Show>
             }
@@ -705,6 +710,9 @@ export default function Board() {
         {(anchor) => (
           <AnchoredMenu anchor={anchor()} alignEnd width={256} label="Board menu" onDismiss={() => setMenu(undefined)}>
             <MenuRow icon={<RefreshCw size={18} />} label="Refresh" onSelect={runMenu(() => void refresh())} />
+            <Show when={availability()?.state === 'ok' && hostId()}>
+              <MenuRow icon={<FolderPlus size={18} />} label="Add project…" onSelect={runMenu(() => setAddProjectOpen(true))} />
+            </Show>
             <Show when={availability()?.state === 'ok'}>
               <MenuRow
                 icon={<LayoutDashboard size={18} />}
@@ -764,6 +772,17 @@ export default function Board() {
         onAgent={(item) => {
           ui.setSheet(null);
           void openAgent(item);
+        }}
+      />
+      <AddProjectSheet
+        open={addProjectOpen()}
+        onClose={() => setAddProjectOpen(false)}
+        hostId={hostId()}
+        onAdded={() => {
+          void refresh().then(() => {
+            const first = store.state.projects.find((project) => !project.archived);
+            if (!slug() && first) chooseProject(first.slug);
+          });
         }}
       />
       <ProjectMenu onPick={chooseProject} />

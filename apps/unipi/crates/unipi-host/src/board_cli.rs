@@ -56,8 +56,12 @@ pub const ALLOWED_SUBCOMMANDS: &[&str] = &[
 ];
 
 /// The `project` sub-subcommands allowed (`list`, `show`, `archive`,
-/// `unarchive` — registering/rebinding projects is not the app's to do).
-const ALLOWED_PROJECT_SUBCOMMANDS: &[&str] = &["list", "show", "archive", "unarchive"];
+/// `unarchive`, and `add` with an explicit `--root` inside the PC's allowed
+/// folders — the Board's "Add project"; rebinding stays the CLI's).
+const ALLOWED_PROJECT_SUBCOMMANDS: &[&str] = &["list", "show", "archive", "unarchive", "add"];
+
+/// The flags `project add` may carry from the app (each takes one value).
+const PROJECT_ADD_FLAGS: &[&str] = &["--root", "--name", "--prefix"];
 
 /// One board change the watcher reports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,10 +91,82 @@ pub fn check_allowed(args: &[String]) -> Result<(), AppErrorDto> {
             .is_some_and(|next| ALLOWED_PROJECT_SUBCOMMANDS.contains(&next.as_str()))
     {
         return Err(refused(
-            "board_cli `project` only allows list, show, archive, unarchive".to_string(),
+            "board_cli `project` only allows list, show, archive, unarchive, add".to_string(),
         ));
     }
+    if sub == "project" && args.get(1).is_some_and(|next| next == "add") {
+        let root = project_add_root(args)
+            .map_err(|message| refused(format!("board_cli `project add`: {message}")))?;
+        if !std::path::Path::new(&root).is_absolute() {
+            return Err(refused(
+                "board_cli `project add` needs an absolute --root".to_string(),
+            ));
+        }
+    }
     Ok(())
+}
+
+/// The `--root` of a `project add` argv, after checking every other argument
+/// is one of [`PROJECT_ADD_FLAGS`] with its value (no positional, no other flag).
+fn project_add_root(args: &[String]) -> Result<String, String> {
+    let mut root = None;
+    let mut rest = args.iter().skip(2);
+    while let Some(arg) = rest.next() {
+        let (flag, value) = match arg.split_once('=') {
+            Some((flag, value)) if flag.starts_with("--") => (flag, Some(value.to_owned())),
+            _ => (arg.as_str(), None),
+        };
+        if !PROJECT_ADD_FLAGS.contains(&flag) {
+            return Err(format!("`{arg}` is not allowed"));
+        }
+        let value = match value {
+            Some(value) => value,
+            None => rest.next().cloned().ok_or_else(|| format!("{flag} needs a value"))?,
+        };
+        if flag == "--root" {
+            root = Some(value);
+        }
+    }
+    root.ok_or_else(|| "--root is required".to_string())
+}
+
+/// `project add` registers the folder the user picked: it must be inside the
+/// PC's allowed folders (the same scope the folder browser lists), and the
+/// CLI gets its canonical path. Other argv pass through unchanged.
+///
+/// # Errors
+///
+/// `E_SCOPE` / `E_NOT_FOUND` from the scope check.
+pub fn scope_project_root(args: &[String], scope: &crate::fs::FsScope) -> Result<Vec<String>, AppErrorDto> {
+    if !(args.first().is_some_and(|a| a == "project") && args.get(1).is_some_and(|a| a == "add")) {
+        return Ok(args.to_vec());
+    }
+    let root = project_add_root(args)
+        .map_err(|message| AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false))?;
+    let canon = crate::fs::canonicalize_scoped(std::path::Path::new(&root), scope, false)?;
+    if !canon.is_dir() {
+        return Err(AppErrorDto::new(
+            AppErrorCode::E_SCHEMA,
+            format!("{} is not a folder", canon.display()),
+            false,
+        ));
+    }
+    let mut out: Vec<String> = vec!["project".into(), "add".into(), "--root".into(), canon.display().to_string()];
+    let mut rest = args.iter().skip(2);
+    while let Some(arg) = rest.next() {
+        let (flag, value) = match arg.split_once('=') {
+            Some((flag, value)) if flag.starts_with("--") => (flag.to_owned(), Some(value.to_owned())),
+            _ => (arg.clone(), None),
+        };
+        let value = match value {
+            Some(value) => value,
+            None => rest.next().cloned().unwrap_or_default(),
+        };
+        if flag != "--root" {
+            out.push(format!("{flag}={value}"));
+        }
+    }
+    Ok(out)
 }
 
 /// The agent dir the extension bin dir and the default board home hang off
@@ -387,6 +463,8 @@ mod tests {
             vec!["add", "T-1", "--status", "todo"],
             vec!["move", "T-1", "done"],
             vec!["validate"],
+            vec!["project", "add", "--root", "/home/u/repo"],
+            vec!["project", "add", "--root=/home/u/repo", "--name", "Repo"],
         ] {
             let args: Vec<String> = args.into_iter().map(String::from).collect();
             assert!(check_allowed(&args).is_ok(), "{args:?}");
@@ -397,6 +475,9 @@ mod tests {
             vec!["reap"],
             vec!["release", "T-1", "--to", "todo", "--comment", "x"],
             vec!["project", "add", "--root", "."],
+            vec!["project", "add"],
+            vec!["project", "add", "--root", "/x", "--force"],
+            vec!["project", "add", "/x"],
             vec!["project", "rebind", "p", "--root", "."],
             vec!["frobnicate"],
             vec![],

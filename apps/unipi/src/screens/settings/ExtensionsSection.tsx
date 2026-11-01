@@ -37,6 +37,22 @@ export function crashNotices(notices: Array<{ level: string; text: string }>): A
   return notices.filter((notice) => notice.level === 'warning' && !/safe mode/i.test(notice.text));
 }
 
+/** D-36: the package's display name; the raw id only when the host sent none. */
+export function extensionTitle(extension: ExtensionInfo): string {
+  return extension.name?.trim() || extension.id;
+}
+
+/** What it does, its version, and — only when something is off — its state. */
+export function extensionBlurb(extension: ExtensionInfo): string {
+  const state = extension.loaded
+    ? undefined
+    : extension.enabled
+      ? 'Not loaded yet — starts with the next session'
+      : 'Off — starts with the next session';
+  const parts = [extension.description?.trim(), extension.version ? `v${extension.version}` : undefined, state ?? (extension.description ? undefined : 'Loaded')];
+  return parts.filter(Boolean).join(' · ');
+}
+
 /** Z-113: the standard secondary-page back button (ghost, 32 px, 16 px arrow). */
 export function SettingsBackButton(props: { onBack: () => void; label?: string }) {
   return (
@@ -80,6 +96,8 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
   /** §7: a disabled extension's namespace is hidden, its stored values are kept. */
   const shownNamespaces = () =>
     sortNamespaces(extensionNamespaces(namespaces.latest ?? []).filter((space) => owner(space)?.enabled !== false));
+
+  const namespaceOf = (id: string) => shownNamespaces().find((space) => space.extensionId === id);
 
   const safeMode = () => safeModeNotices(hub().state.notices);
   const crashes = () => crashNotices(hub().state.notices);
@@ -135,9 +153,24 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
         <For each={list.latest ?? []}>
           {(extension) => (
             <Row
-              label={extension.id}
-              description={extension.loaded ? 'Loaded' : extension.enabled ? 'Not loaded yet — starts with the next session' : 'Disabled — starts with the next session'}
+              icon={<Puzzle size={18} />}
+              label={extensionTitle(extension)}
+              description={extensionBlurb(extension)}
             >
+              <Show when={namespaceOf(extension.id)}>
+                {(ns) => (
+                  <button
+                    type="button"
+                    class="rounded-pill bg-surface-2 text-text-muted px-3 py-1.5 text-xs mr-2"
+                    data-testid={`ext-settings-${extension.id}`}
+                    onClick={() => {
+                      if (!openNamespaceHome(ns().namespace)) props.onNamespace(ns().namespace);
+                    }}
+                  >
+                    Settings
+                  </button>
+                )}
+              </Show>
               <SwitchField
                 label={`Enable ${extension.id}`}
                 checked={extension.enabled}

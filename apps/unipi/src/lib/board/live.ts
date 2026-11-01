@@ -29,7 +29,8 @@ import { pcAvailability } from './pcs';
 
 export const LIVE_DEBOUNCE_MS = 250;
 
-export type LiveTarget = { hostId: string; slug: string };
+/** `slug: null` = the PC's projects only (no project open yet: a fresh install still hears a project being added). */
+export type LiveTarget = { hostId: string; slug: string | null };
 
 export type BoardLiveOptions = {
   store: Pick<BoardStore, 'reload' | 'loadProjects' | 'setConn'>;

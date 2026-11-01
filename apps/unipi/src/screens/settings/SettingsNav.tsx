@@ -5,9 +5,9 @@
  * settings column. Group titles are structure, not links; entries keep
  * tooltips, `aria-current` and keyboard arrows.
  */
-import { For, Show, createSignal, onCleanup, onMount } from 'solid-js';
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, type SettingsSection } from './catalog';
-import { can } from '../../lib/platform';
+import { can, isTauriDesktop } from '../../lib/platform';
 import { desktopShell } from '../../lib/layout';
 
 /** Below this window width the nav collapses to the 64 px icon rail (ZCode's
@@ -41,8 +41,15 @@ export function SettingsNav(props: { sections: SettingsSection[]; active: () => 
     (e.currentTarget as HTMLElement).querySelector<HTMLElement>(`[data-nav="${next}"]`)?.focus();
   };
 
+  let navEl: HTMLElement | undefined;
+  // D-22: opening a deep section (About, at the foot) must leave its nav item in view.
+  createEffect(() => {
+    const id = props.active();
+    queueMicrotask(() => navEl?.querySelector<HTMLElement>(`[data-nav="${id}"]`)?.scrollIntoView?.({ block: 'nearest' }));
+  });
+
   return (
-    <nav class={`settings-nav ${narrow() ? 'settings-nav-rail' : ''}`} aria-label="Settings sections" data-testid="settings-nav" onKeyDown={onNavKey}>
+    <nav ref={(el) => (navEl = el)} class={`settings-nav ${narrow() ? 'settings-nav-rail' : ''}`} aria-label="Settings sections" data-testid="settings-nav" onKeyDown={onNavKey}>
       <For each={groups()}>
         {(group) => (
           <div class="settings-nav-group" role="group" aria-label={group.title}>
@@ -76,6 +83,7 @@ export function SettingsNav(props: { sections: SettingsSection[]; active: () => 
 
 /** The sections this build shows: caps + shell (web/phone hide desktop-only). */
 export function visibleSections(): SettingsSection[] {
-  const desktop = desktopShell();
+  // D-45: "desktop-only" means the desktop *app* (tray, local host) — a narrow window keeps General.
+  const desktop = desktopShell() || isTauriDesktop();
   return SETTINGS_SECTIONS.filter((section) => (!section.cap || can(section.cap)) && (!section.desktopOnly || desktop));
 }

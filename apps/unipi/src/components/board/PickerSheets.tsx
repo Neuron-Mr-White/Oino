@@ -18,6 +18,7 @@ import { AnchoredMenu, MenuRow, MenuSeparator } from './AnchoredMenu';
 import { BoardSheet } from './BoardSheet';
 import { ProjectTile } from './Glyphs';
 import { now } from './TaskCard';
+import { desktopShell } from '../../lib/layout';
 
 export function PcSheet(props: { open: boolean; onClose: () => void; pcs: Pc[]; current?: string; onPick: (id: string) => void }) {
   const avail = pcAvailability();
@@ -105,12 +106,12 @@ export function ProjectSheet(props: {
   const active = () => store.state.projects.filter((project) => !project.archived);
   const archived = () => store.state.projects.filter((project) => project.archived);
   return (
-    <BoardSheet open={props.open} onClose={props.onClose} label="Projects" testId="project-sheet" class="board-sheet-tall">
+    <BoardSheet open={props.open} onClose={props.onClose} label="Projects" testId="project-sheet" class={desktopShell() ? undefined : "board-sheet-tall"}>
       <Show when={store.state.projectsError}>
         {(error) => <p class="text-sm text-wm-red mb-3">{error().message}</p>}
       </Show>
       <Show when={store.state.projectsLoaded && store.state.projects.length === 0 && !store.state.projectsError}>
-        <p class="text-sm text-text-muted mb-3">No kanboard projects on this PC yet. Open the board from a UniPi session in a repo to register one.</p>
+        <p class="text-sm text-text-muted mb-3">No projects on this PC yet. Use “Add project…” in the Board menu to add a repo’s folder.</p>
       </Show>
       <div class="settings-group rounded-card bg-surface-2/60">
         <For each={active()}>{(project) => <ProjectRow project={project} current={props.current} onPick={props.onPick} />}</For>

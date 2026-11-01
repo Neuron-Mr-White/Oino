@@ -9,7 +9,6 @@ import { Check, MessagesSquare, Plus } from 'lucide-solid';
 import { BoardSheet } from './BoardSheet';
 import { chatGroups, chatLists, STATUS_WORD, type ChatTarget } from '../../lib/session/list';
 import { activeChatTargetFor } from '../../lib/session/open';
-import { sessions } from '../../lib/session/store';
 import { rankChatsForProject } from '../../lib/board/portal';
 
 export function ChatPickSheet(props: {
@@ -33,8 +32,8 @@ export function ChatPickSheet(props: {
   });
   const isOpen = (t: ChatTarget) => {
     const active = activeChatTargetFor(t.hostId);
-    if (active?.kind === 'session' && active.sessionId === t.session) return true;
-    return !!sessions().peek(t.hostId, t.session);
+    // D-30: the tick is the chat in front, not every chat this run has loaded.
+    return active?.kind === 'session' && active.sessionId === t.session;
   };
   // Fresh list on open; a single candidate needs no question.
   createEffect(

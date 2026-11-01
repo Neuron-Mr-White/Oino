@@ -74,7 +74,7 @@ function ToolbarEditor() {
       <p class="text-sm text-text mb-3">Toolbar</p>
       <ul class="space-y-2 mb-4">
         {toolbar().map((key, index) => (
-          <li class="flex items-center gap-2 bg-surface-2 rounded-input px-3 py-2">
+          <li class="flex items-center gap-2 bg-surface-2 rounded-input px-3 py-2 min-h-[60px]">
             <span class="text-sm flex-1">{TOOLBAR_LABELS[key]}</span>
             <Show when={key !== 'ctrl'}>
               <button type="button" aria-label={`Move ${TOOLBAR_LABELS[key]} up`} class="text-text-muted" disabled={index <= 1} onClick={() => move(index, -1)}>

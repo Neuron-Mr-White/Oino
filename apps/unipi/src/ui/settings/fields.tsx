@@ -47,7 +47,8 @@ const FIELD_ICONS: Record<FieldType, typeof Info> = {
 
 /** Stored value of `field` in the write layer, if any (→ "modified"). */
 export function storedValue(ctx: EditContext, field: Field): Json | undefined {
-  return lookup(ctx.layer === 'project' ? ctx.project : ctx.global, field.key);
+  const stored = lookup(ctx.layer === 'project' ? ctx.project : ctx.global, field.key);
+  return stored === null ? undefined : stored; // a stored null is an unset optional key
 }
 
 /** The layer below the write layer at `field.key` (what a default write falls back to). */

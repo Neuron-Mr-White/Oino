@@ -103,7 +103,7 @@
 .feditor-tab-diag { flex: none; min-width: 15px; padding: 0 3px; border-radius: 6px; font-size: 10px; font-weight: 650; text-align: center; background: color-mix(in srgb, var(--color-warn, #d9a13b) 22%, transparent); color: var(--color-warn, #d9a13b); }
 .feditor-tab-diag.err { background: color-mix(in srgb, var(--color-danger, #d95757) 22%, transparent); color: var(--color-danger, #d95757); }
 .feditor-tools { flex: none; display: flex; align-items: center; gap: 3px; padding: 0 6px; }
-.feditor-lsp { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+.feditor-lsp { display: flex; align-items: center; gap: 4px; width: auto; flex: none; padding: 0 8px; font-size: 11px; white-space: nowrap; } /* D-38: .ftree-tool is a 26 px square; the chip carries text */
 .feditor-lsp.ready { color: var(--color-text-muted); }
 .feditor-lsp.taken, .feditor-lsp.degraded { color: var(--color-warn, #d9a13b); }
 .feditor-lsp-name { max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

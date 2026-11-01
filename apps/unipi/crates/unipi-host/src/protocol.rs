@@ -572,6 +572,14 @@ impl Handler {
             Request::BoardCli { args, project } => {
                 let joined = args.join(" ");
                 tracing::info!(op = "board_cli", argv = %joined, "request");
+                crate::board_cli::check_allowed(&args)?;
+                // "Add project": the picked folder must be one the PC lets the app see.
+                let args = if args.first().is_some_and(|a| a == "project") {
+                    let scope = crate::fs::FsScope::load(&self.paths.config())?;
+                    crate::board_cli::scope_project_root(&args, &scope)?
+                } else {
+                    args
+                };
                 let data =
                     crate::board_cli::run_cli(&args, project.as_ref().map(|slug| slug.as_str()))
                         .await?;
