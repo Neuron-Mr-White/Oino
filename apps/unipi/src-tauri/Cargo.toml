@@ -74,6 +74,8 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "b
 # images and copied files from the page). Same gtk Tauri already links.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+# E-13: the same WebKitGTK binding wry uses (version pinned to Cargo.lock) — web-process-terminated.
+webkit2gtk = "=2.0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

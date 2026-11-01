@@ -15,7 +15,7 @@ import type { RefChat } from '../../lib/chat/pathStat';
 import type { AttachmentRef, ImageRef } from '../../lib/chat/model';
 import type { FileMention } from '../../lib/composer/attachments';
 import { classifyMedia } from '../../lib/media/previewer';
-import { openPreviewer } from '../../lib/media/previewerState';
+import { openPreviewer, ownedObjectUrl } from '../../lib/media/previewerState';
 import { openFilePath, resolvePathToken } from '../../lib/media/pathTokens';
 
 export function ImageChipRow(props: { chat: RefChat; images: ImageRef[] }) {
@@ -239,7 +239,7 @@ function AttachmentChip(props: { chat: RefChat; attachment: AttachmentRef }) {
         const blob = await response.blob();
         const nonImageKind = kind() as Exclude<ReturnType<typeof kind>, 'image'>;
         if (nonImageKind === 'pdf' || nonImageKind === 'audio' || nonImageKind === 'video') {
-          openPreviewer({ kind: nonImageKind, name: name(), mime: result.mime, url: URL.createObjectURL(blob) });
+          openPreviewer({ kind: nonImageKind, name: name(), mime: result.mime, url: ownedObjectUrl(blob) });
         } else {
           openPreviewer({ kind: nonImageKind, name: name(), mime: result.mime, text: await blob.text() });
         }

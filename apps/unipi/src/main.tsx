@@ -43,6 +43,7 @@ import { can, isWeb, type Capability } from './lib/platform';
 import { dismissSplashWhenReady } from './lib/splash';
 import { watchForUpdates } from './lib/update';
 import { watchDesktopUpdates } from './lib/desktopUpdate';
+import { announceWebviewRecovery } from './lib/webviewRecovery';
 import './components/media/media.css';
 import '@xterm/xterm/css/xterm.css';
 import './style.css';
@@ -195,4 +196,5 @@ if (root) {
   watchDesktopUpdates();
   render(() => <Root />, root);
   void dismissSplashWhenReady();
+  if (can('hosts')) void announceWebviewRecovery();
 }

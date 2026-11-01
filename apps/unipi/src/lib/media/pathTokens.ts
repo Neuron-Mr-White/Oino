@@ -10,7 +10,7 @@
 import type { RefChat } from '../chat/pathStat';
 import { blobTransport } from '../blob';
 import { classifyMedia } from './previewer';
-import { openPreviewer, type PreviewItem } from './previewerState';
+import { openPreviewer, ownedObjectUrl, type PreviewItem } from './previewerState';
 
 /** Extensions worth treating as "this inline-code token is a file path".
  * Deliberately generous — a false positive just opens a previewer that
@@ -62,7 +62,7 @@ export async function openFilePath(chat: RefChat, path: string): Promise<void> {
   }
   const kind = classifyMedia(result.mime, path);
   const blob = new Blob([result.bytes as BlobPart], { type: result.mime || 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
+  const url = ownedObjectUrl(blob);
   if (kind === 'image') {
     const item: PreviewItem = { url, mime: result.mime, name };
     openPreviewer({ kind: 'image', items: [item], index: 0 });

@@ -47,6 +47,7 @@ mod push;
 mod retry;
 mod sharing;
 mod term;
+mod webview_recover;
 
 use commands::app_info;
 
@@ -74,6 +75,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             app_info,
+            webview_recover::take_webview_recovery,
             hosts_commands::pair_host,
             hosts_commands::list_hosts,
             hosts_commands::forget_host,
@@ -247,6 +249,7 @@ pub fn run() {
         )
         .setup(|app| {
             desktop::restore_window_size(app.handle());
+            webview_recover::watch(app.handle());
             if let Err(error) = desktop::setup_tray(app.handle()) {
                 log::warn!("tray unavailable: {error}");
             }

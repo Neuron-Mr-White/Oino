@@ -6602,6 +6602,7 @@ dependencies = [
  "tokio",
  "unipi-proto",
  "url",
+ "webkit2gtk",
 ]
 
 [[package]]

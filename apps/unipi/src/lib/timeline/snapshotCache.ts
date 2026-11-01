@@ -13,12 +13,16 @@ import type { SessionEntry } from '../session/types';
 
 const STORAGE_INDEX_KEY = 'unipi.tl.snap.index.v1';
 const STORAGE_ITEM_PREFIX = 'unipi.tl.snap.item.v1:';
-const MEM_LIMIT = 64;
+/** In-memory ceiling for the whole cache, in (approximate) serialized bytes — not a session count. */
+export const MEM_BYTE_LIMIT = 32 * 1024 * 1024;
+/** One session never takes more than this share (an oversized chat is simply not cached in memory). */
+const MEM_ENTRY_MAX = 8 * 1024 * 1024;
 const DISK_LIMIT = 20;
 const DISK_MAX_TURNS = 24;
 const DISK_STR_CAP = 6_200;
 
-const memCache = new Map<string, Turn[]>();
+/** Least recently used first. `bytes` = 0 while a write is still pending (the entry then holds the live array). */
+const memCache = new Map<string, { turns: Turn[]; bytes: number }>();
 const pendingWrites = new Map<string, ReturnType<typeof setTimeout>>();
 
 const trimStr = (s: string | undefined, cap = DISK_STR_CAP): string | undefined =>
@@ -126,11 +130,9 @@ function readDiskIndex(): string[] {
   }
 }
 
-function persistToDisk(sessionKey: string, turns: readonly Turn[]): void {
-  if (typeof localStorage === 'undefined' || !turns.length) return;
+function persistToDisk(sessionKey: string, payload: string): void {
+  if (typeof localStorage === 'undefined') return;
   try {
-    const slice = turns.slice(-DISK_MAX_TURNS).map(slimTurnForDisk);
-    const payload = JSON.stringify(slice);
     localStorage.setItem(STORAGE_ITEM_PREFIX + sessionKey, payload);
     const next = [...readDiskIndex().filter((k) => k !== sessionKey), sessionKey];
     while (next.length > DISK_LIMIT) {
@@ -143,13 +145,35 @@ function persistToDisk(sessionKey: string, turns: readonly Turn[]): void {
   }
 }
 
+function memBytes(): number {
+  let n = 0;
+  for (const e of memCache.values()) n += e.bytes;
+  return n;
+}
+
+/** Drops least-recently-used sessions until the cache fits `MEM_BYTE_LIMIT` (never the entry just written). */
+function evictMem(keep?: string): void {
+  let total = memBytes();
+  for (const [k, e] of memCache) {
+    if (total <= MEM_BYTE_LIMIT) break;
+    if (k === keep) continue;
+    total -= e.bytes;
+    memCache.delete(k);
+  }
+}
+
+/** Test seam: current in-memory size (approximate bytes) and session count. */
+export function snapshotCacheStats(): { bytes: number; sessions: number } {
+  return { bytes: memBytes(), sessions: memCache.size };
+}
+
 /** Last-known turns for `sessionKey` (`hostId/sessionId`), or `undefined` when uncached. */
 export function readTimelineSnapshot(sessionKey: string): Turn[] | undefined {
   const hit = memCache.get(sessionKey);
-  if (hit && hit.length) {
+  if (hit && hit.turns.length) {
     memCache.delete(sessionKey);
     memCache.set(sessionKey, hit);
-    return hit;
+    return hit.turns;
   }
   if (typeof localStorage === 'undefined') return undefined;
   try {
@@ -158,31 +182,43 @@ export function readTimelineSnapshot(sessionKey: string): Turn[] | undefined {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed) || !parsed.length) return undefined;
     const turns = parsed as Turn[];
-    memCache.set(sessionKey, turns);
+    memCache.set(sessionKey, { turns, bytes: raw.length * 2 });
+    evictMem(sessionKey);
     return turns;
   } catch {
     return undefined;
   }
 }
 
-/** Records settled/current turns for `sessionKey`; persists to disk off the hot path. */
+/**
+ * Records settled/current turns for `sessionKey`. The write is debounced: until it
+ * lands the entry points at the live array (no copy on the streaming hot path);
+ * then the cache keeps only the slimmed copy (no base64 images, capped strings, last
+ * `DISK_MAX_TURNS` turns), measures it, and evicts by total bytes.
+ */
 export function writeTimelineSnapshot(sessionKey: string, turns: readonly Turn[]): void {
   if (!sessionKey || !turns.length) return;
-  const settledCopy = turns.map((t) => (t.live ? slimTurnForDisk(t) : t));
+  const prevEntry = memCache.get(sessionKey);
   memCache.delete(sessionKey);
-  memCache.set(sessionKey, settledCopy);
-  while (memCache.size > MEM_LIMIT) {
-    const oldest = memCache.keys().next();
-    if (oldest.done) break;
-    memCache.delete(oldest.value);
-  }
+  memCache.set(sessionKey, { turns: turns as Turn[], bytes: prevEntry?.bytes ?? 0 });
   const prev = pendingWrites.get(sessionKey);
   if (prev !== undefined) clearTimeout(prev);
   pendingWrites.set(
     sessionKey,
     setTimeout(() => {
       pendingWrites.delete(sessionKey);
-      persistToDisk(sessionKey, settledCopy);
+      const slim = turns.slice(-DISK_MAX_TURNS).map(slimTurnForDisk);
+      let payload: string | undefined;
+      try {
+        payload = JSON.stringify(slim);
+      } catch {
+        payload = undefined;
+      }
+      const bytes = (payload?.length ?? 0) * 2;
+      if (!payload || bytes > MEM_ENTRY_MAX) memCache.delete(sessionKey);
+      else if (memCache.has(sessionKey)) memCache.set(sessionKey, { turns: slim, bytes });
+      evictMem(sessionKey);
+      if (payload) persistToDisk(sessionKey, payload);
     }, 250),
   );
 }

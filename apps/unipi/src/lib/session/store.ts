@@ -23,7 +23,7 @@ import { routeNotify, reportTextOf } from '../reports';
 import type { CommandInfo, OutboxImage, OutboxItem, OutboxMode, SessionEntry, SessionState } from './types';
 
 /** Live subscriptions kept open (app spec §3.3). */
-export const SESSION_LRU = 8;
+export const SESSION_LRU = 4;
 /** How often in-flight outbox items are time-settled. */
 const SWEEP_MS = 2_000;
 

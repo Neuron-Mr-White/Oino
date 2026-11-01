@@ -26,7 +26,12 @@ export function Image(props: NodeProps<ImageNode>) {
   const [url, setUrl] = createSignal<string | undefined>(dataUrl(props.node.src ?? ({} as ImageSource)));
   const [failed, setFailed] = createSignal(false);
   let objectUrl: string | undefined;
-  onCleanup(() => objectUrl && URL.revokeObjectURL(objectUrl));
+  let disposed = false;
+  onCleanup(() => {
+    disposed = true;
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = undefined;
+  });
 
   const fetchRemote = async () => {
     const src = props.node.src;
@@ -36,6 +41,8 @@ export function Image(props: NodeProps<ImageNode>) {
     if (!ref) return setFailed(true);
     try {
       const got = await blobTransport().getBytes(hostId, ref);
+      // The row unmounted while the bytes were in flight: nothing will ever revoke a URL made now.
+      if (disposed) return;
       objectUrl = URL.createObjectURL(new Blob([got.bytes as BlobPart], { type: got.mime || 'image/png' }));
       setUrl(objectUrl);
     } catch {

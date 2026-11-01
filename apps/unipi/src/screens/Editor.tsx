@@ -31,7 +31,7 @@ import { desktopShell } from '../lib/layout';
 import { fsRead, fsWrite } from '../lib/fs';
 import { blobTransport } from '../lib/blob';
 import { classifyMedia } from '../lib/media/previewer';
-import { openPreviewer } from '../lib/media/previewerState';
+import { openPreviewer, ownedObjectUrl } from '../lib/media/previewerState';
 import { pushBack } from '../lib/back';
 import { hapticTick } from '../lib/haptics';
 import { useSettings } from '../settings/context';
@@ -195,9 +195,9 @@ export default function Editor() {
       const name = target.path.split('/').pop() ?? target.path;
       const source = { hostId: target.hostId, path: target.path };
       if (kind === 'image') {
-        openPreviewer({ kind: 'image', items: [{ url: URL.createObjectURL(blob), mime: got.mime, name }], index: 0 });
+        openPreviewer({ kind: 'image', items: [{ url: ownedObjectUrl(blob), mime: got.mime, name }], index: 0 });
       } else if (kind === 'pdf' || kind === 'audio' || kind === 'video' || kind === 'other') {
-        openPreviewer({ kind, name, mime: got.mime, url: URL.createObjectURL(blob), source });
+        openPreviewer({ kind, name, mime: got.mime, url: ownedObjectUrl(blob), source });
       } else {
         openPreviewer({ kind, name, mime: got.mime, text: await blob.text(), source });
       }

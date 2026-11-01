@@ -35,12 +35,36 @@ export type PreviewRequest =
 
 const [request, setRequest] = createSignal<PreviewRequest | undefined>();
 
+/** `blob:` URLs the previewer owns: revoked when the request is replaced or closed (E-25). */
+const owned = new Set<string>();
+/** Creates an object URL that is revoked when the previewer closes or moves to another request. */
+export function ownedObjectUrl(blob: Blob): string {
+  const url = URL.createObjectURL(blob);
+  owned.add(url);
+  return url;
+}
+function releaseOwned(keep?: PreviewRequest): void {
+  if (!owned.size) return;
+  const live = new Set<string>();
+  if (keep) {
+    if ('items' in keep) for (const i of keep.items) live.add(i.url);
+    else if ('url' in keep && keep.url) live.add(keep.url);
+  }
+  for (const u of [...owned]) {
+    if (live.has(u)) continue;
+    owned.delete(u);
+    URL.revokeObjectURL(u);
+  }
+}
+
 export function previewerRequest() {
   return request;
 }
 export function openPreviewer(req: PreviewRequest): void {
   setRequest(req);
+  releaseOwned(req);
 }
 export function closePreviewer(): void {
   setRequest(undefined);
+  releaseOwned();
 }
