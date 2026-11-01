@@ -25,9 +25,18 @@ case "$(uname -s)" in
   *) echo "unsupported host: $(uname -s)" >&2; exit 1 ;;
 esac
 
-if [ ! -f extensions/dist/checksums.json ]; then
-  echo "==> extensions/dist missing: cargo xtask wasm"
+# Rebuild the extension dist when it is missing or incomplete (a killed
+# `cargo xtask wasm` leaves checksums.json with only some packages built).
+dist_ok() {
+  [ -f extensions/dist/checksums.json ] || return 1
+  local n
+  n=$(find extensions/dist -mindepth 2 -maxdepth 2 -name extension.json | wc -l)
+  [ "$n" -ge 30 ]
+}
+if ! dist_ok; then
+  echo "==> extensions/dist missing or incomplete: cargo xtask wasm"
   cargo xtask wasm
+  dist_ok || { echo "extensions/dist still incomplete after cargo xtask wasm" >&2; exit 1; }
 fi
 sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
 
@@ -101,3 +110,10 @@ echo "==> cargo tauri build ${args[*]}"
 echo "==> bundles ($label):"
 find "$out" -maxdepth 2 -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' -o -name '*-setup.exe' \) \
   | sed 's/^/    /'
+
+# Gate: a bundle without its extensions is not a release (it opens with no providers).
+for deb in $(find "$out" -maxdepth 2 -name '*.deb'); do
+  n=$(dpkg-deb -c "$deb" | grep -c 'extensions/[^/]*/extension.json$' || true)
+  [ "$n" -ge 30 ] || { echo "ERROR: $deb bundles only $n extensions" >&2; exit 1; }
+  echo "    $deb: $n extensions bundled"
+done
