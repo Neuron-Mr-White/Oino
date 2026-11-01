@@ -112,8 +112,8 @@ find "$out" -maxdepth 2 -type f \( -name '*.deb' -o -name '*.AppImage' -o -name 
   | sed 's/^/    /'
 
 # Gate: a bundle without its extensions is not a release (it opens with no providers).
-for deb in $(find "$out" -maxdepth 2 -name '*.deb'); do
+while IFS= read -r -d '' deb; do
   n=$(dpkg-deb -c "$deb" | grep -c 'extensions/[^/]*/extension.json$' || true)
   [ "$n" -ge 30 ] || { echo "ERROR: $deb bundles only $n extensions" >&2; exit 1; }
   echo "    $deb: $n extensions bundled"
-done
+done < <(find "$out" -maxdepth 2 -name '*.deb' -print0)
