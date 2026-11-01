@@ -91,6 +91,7 @@ import { composerHistory } from '../../lib/composer/undo';
 import { pathCandidates } from '../../lib/composer/chips';
 import { ChipEditor, type ChipEditorApi } from './ChipEditor';
 import { SlashMenu } from './SlashMenu';
+import { noteCommandRun } from '../../lib/reports';
 import { ArgMenu, argItemsOf, type ArgItem } from './ArgMenu';
 import { MentionMenu, type MentionItem } from './MentionMenu';
 import { PlusMenu } from './PlusMenu';
@@ -729,6 +730,7 @@ export function Composer(props: ComposerProps) {
       showActionNotice(`Unknown command /${cmd[1]}`);
       return;
     }
+    if (cmd) noteCommandRun(key(), text.trim().split('\n')[0]!.slice(1, 80));
     const item = props.session.send(text, { ...(mode ? { mode } : {}), ...(images.length ? { images } : {}) });
     promptStore().add(text);
     // A send that failed keeps no history entry (compare-and-rollback once

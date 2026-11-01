@@ -18,6 +18,7 @@ import { can } from '../../lib/platform';
 import { sessions } from '../../lib/session/store';
 import { openSettingsFor } from '../../lib/settings/open';
 import { toasts } from '../../lib/toasts';
+import { routeNotify } from '../../lib/reports';
 import { onUiEffect, onUiInvalidate } from '../registries';
 import type { UiTarget } from '../actions';
 import type { Invalidation } from '../registry';
@@ -38,7 +39,8 @@ function applyEffect(target: UiTarget, req: { method: string; [k: string]: unkno
   switch (req.method) {
     case 'notify': {
       const message = typeof req.message === 'string' ? req.message : '';
-      if (message) toasts().push(message, toastKindOf(req.notifyType));
+      // P1-02: a multi-line / long report opens the report panel, never a 3 s toast.
+      if (message) routeNotify(message, toastKindOf(req.notifyType), sessionKeyFor(target));
       return;
     }
     case 'set_editor_text': {

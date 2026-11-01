@@ -24,6 +24,7 @@ import { SettingsProvider, useSettings } from '../../settings/context';
 import { Pairing } from '../Pairing';
 import { FloatingBell } from '../FloatingBell';
 import { NeedsYouFeed } from '../NeedsYouBell';
+import { ReportSheet } from '../ReportSheet';
 import { Toasts } from '../Toasts';
 import { TooltipHost } from '../Tooltip';
 import { NotifyInitRunner } from '../NotifyInitRunner';
@@ -361,6 +362,7 @@ export function AppShell(props: ParentProps) {
         <LinkAnchorMenu />
         <CommandCenter />
         <Toasts />
+        <ReportSheet />
         {/* Z-116: the one tooltip bubble for every icon-only control. */}
         <TooltipHost />
         <SessionModalLayer />
