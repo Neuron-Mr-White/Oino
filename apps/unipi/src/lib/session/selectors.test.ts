@@ -2,15 +2,18 @@ import { describe, expect, it } from 'vitest';
 import type { SessionCard } from '../host/client';
 import { initialState } from './reducer';
 import { enqueue, markAcked, PENDING_ACKED_MS, PENDING_LOST_MS, settleByMessage, settleByQueue, sweep } from './outbox';
-import { connBanner, isRunning, needsYou, outboxLabel, projectsOf, sessionCost, sessionCwd, sessionTitle, shortCwd } from './selectors';
+import { connBanner, isHomeCwd, isRunning, needsYou, NO_WORKSPACE_LABEL, outboxLabel, projectsOf, sessionCost, sessionCwd, sessionTitle, shortCwd } from './selectors';
 
 const card = (id: string, over: Partial<SessionCard> = {}): SessionCard => ({ session_id: id, run_state: 'idle', ...over });
 
 describe('selectors', () => {
-  it('title: session name, else card name, else folder', () => {
+  it('title: session name, else card name, else project folder (or New chat when in No workspace, D-18)', () => {
     expect(sessionTitle(card('a', { name: ' Fix ', cwd: '/x/proj' }))).toBe('Fix');
     expect(sessionTitle(card('a', { cwd: '/x/proj/' }))).toBe('proj');
+    expect(sessionTitle(card('a', { cwd: '/home/oi' }))).toBe('New chat');
     expect(sessionTitle(card('a', { name: 'Card' }), { name: 'Live' })).toBe('Live');
+    expect(isHomeCwd('/home/oi')).toBe(true);
+    expect(isHomeCwd('/home/oi/qa1ws')).toBe(false);
     expect(sessionCwd(card('a', { cwd: '/x/proj/' }))).toBe('/x/proj');
     expect(shortCwd('/home/dev/p')).toBe('~/p');
   });
@@ -45,6 +48,7 @@ describe('selectors', () => {
         card('pin', { cwd: '/p/a', updated_at: 1 }),
         card('new', { cwd: '/p/a', updated_at: 20 }),
         card('b1', { cwd: '/p/b', updated_at: 30 }),
+        card('home1', { cwd: '/home/oi', updated_at: 3 }),
         card('none', { updated_at: 2 }),
       ],
       { pin: { pinned: true } },
@@ -52,7 +56,7 @@ describe('selectors', () => {
     expect(groups.map((g) => [g.label, g.cards.map((c) => c.session_id)])).toEqual([
       ['b', ['b1']],
       ['a', ['pin', 'run', 'ask', 'new', 'old']],
-      ['No folder', ['none']],
+      [NO_WORKSPACE_LABEL, ['home1', 'none']],
     ]);
     expect(groups[1]).toMatchObject({ running: 1, needsYou: 1, lastActivity: 20 });
   });

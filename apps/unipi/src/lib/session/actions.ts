@@ -22,6 +22,7 @@ import { panes } from '../panes';
 import type { SessionCard } from '../host/client';
 import { forkFrom, showActionNotice } from '../timeline/actions';
 import { hubs } from './hub';
+import { sessions } from './store';
 import { sessionHref } from '../../components/shell/Sidebar';
 
 /** The row whose context menu is open (right-click / long-press). */
@@ -53,21 +54,24 @@ export async function markUnread(hostId: string, sessionId: string): Promise<voi
 }
 
 /** Z-15: a manual name wins over auto-rename (`title_locked`; the utility extension skips it). */
-export async function renameSession(hostId: string, sessionId: string, name: string): Promise<void> {
+export async function renameSession(hostId: string, sessionId: string, name: string, opts?: { notify?: boolean }): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) return;
   const hub = hubOf(hostId);
   try {
     await hostClient(hostId).request('session_rename', { session: sessionId, name: trimmed });
+    hub.patchCard(sessionId, { name: trimmed });
     await hub.setMeta(sessionId, { titleLock: true });
-    showActionNotice('Renamed');
+    if (opts?.notify) showActionNotice(`Renamed to “${trimmed.slice(0, 60)}”`);
   } catch (error) {
-    failed(error);
+    if (opts?.notify) failed(error);
+    else throw error;
   }
 }
 
 /** Z-13: archive moves the session's file to the host's trash; the Archived list restores it. */
 export async function archiveSession(hostId: string, sessionId: string): Promise<void> {
+  sessions().close(hostId, sessionId);
   const hub = hubOf(hostId);
   await hub.archive(sessionId);
   if (hub.state.error) {
@@ -78,6 +82,7 @@ export async function archiveSession(hostId: string, sessionId: string): Promise
 }
 
 export async function restoreSession(hostId: string, sessionId: string): Promise<void> {
+  sessions().close(hostId, sessionId);
   await hubOf(hostId).restore(sessionId);
   showActionNotice('Restored');
 }
@@ -97,6 +102,7 @@ export async function emptyTrash(hostId: string): Promise<void> {
  * session is archived first — the same move Archive does — and then removed.
  */
 export async function deleteSession(hostId: string, sessionId: string): Promise<void> {
+  sessions().close(hostId, sessionId);
   const hub = hubOf(hostId);
   await hub.archive(sessionId);
   if (hub.state.error) {

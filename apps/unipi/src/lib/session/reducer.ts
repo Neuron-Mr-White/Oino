@@ -45,6 +45,8 @@ export type ApplyResult = {
   takenOver?: boolean;
   /** `session_replaced`: the runtime now serves this session id. */
   replacedBy?: string;
+  /** `session_info_changed` / snapshot `sessionName`: sync live title to the hub card (D-03). */
+  nameChanged?: string;
   /** ui-protocol registry traffic for the U9 registry (`extension_ui_request`, `_dismiss`, `oino_ui_patch`). */
   ui?: Array<Record<string, unknown>>;
 };
@@ -150,7 +152,10 @@ export function applySnapshot(s: SessionState, snap: SessionSnapshot, now = Date
   // A user message the host already holds settles its outbox bubble.
   for (const e of entries.slice(-8)) if (e.message?.role === 'user') settleByMessage(s, e.message);
   const ui = isObject(snap.ui) ? [{ type: 'oino_ui_snapshot', ...snap.ui }] : undefined;
-  return ui ? { ui } : {};
+  const out: ApplyResult = {};
+  if (ui) out.ui = ui;
+  if (s.name !== undefined) out.nameChanged = s.name;
+  return out;
 }
 
 function mergeResult(into: ApplyResult, r: ApplyResult): void {
@@ -159,6 +164,7 @@ function mergeResult(into: ApplyResult, r: ApplyResult): void {
   if (r.resync) into.resync = true;
   if (r.takenOver) into.takenOver = true;
   if (r.replacedBy) into.replacedBy = r.replacedBy;
+  if (r.nameChanged !== undefined) into.nameChanged = r.nameChanged;
   if (r.gap) into.gap = true;
   if (r.ui) (into.ui ??= []).push(...r.ui);
 }
@@ -443,7 +449,7 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       const name = str(event.name);
       if (name === undefined) delete s.name;
       else s.name = name;
-      return {};
+      return { nameChanged: name ?? '' };
     }
     case 'thinking_level_changed':
       if (typeof event.level === 'string') s.thinkingLevel = event.level;

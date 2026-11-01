@@ -15,6 +15,7 @@ export function AnchoredMenu(props: {
   onDismiss: () => void;
   label: string;
   width?: number;
+  class?: string;
   /** Align the menu's right edge with the anchor's (header ⋯ buttons). */
   alignEnd?: boolean;
   children: JSX.Element;
@@ -71,7 +72,7 @@ export function AnchoredMenu(props: {
         ref={menu}
         role="menu"
         aria-label={props.label}
-        class="recent-popover board-menu"
+        class={`recent-popover board-menu${props.class ? ` ${props.class}` : ''}`}
         data-leaving={leave.leaving() ? '' : undefined}
         style={{ left: `${pos().left}px`, top: `${pos().top}px`, width: `${width()}px`, 'transform-origin': pos().origin }}
         onClick={(event) => event.stopPropagation()}

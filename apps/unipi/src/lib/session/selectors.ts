@@ -9,12 +9,23 @@ import type { SessionCard } from '../host/client';
 import type { SessionMeta } from './hub';
 import { isProvisional, type SessionState } from './types';
 
-const folderOf = (cwd?: string) => (cwd ? cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd : 'No folder');
+export const NO_WORKSPACE_LABEL = 'No workspace';
 
-/** Card / session display title: the session name, else its folder. */
-export function sessionTitle(card?: SessionCard, state?: Pick<SessionState, 'name'>): string {
+const folderOf = (cwd?: string) => (cwd ? cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd : NO_WORKSPACE_LABEL);
+
+/** True when `cwd` is absent or points to a user's bare home directory ("No workspace" in the draft chip, D-18). */
+export function isHomeCwd(cwd?: string | null): boolean {
+  if (!cwd) return true;
+  const clean = cwd.replace(/[\\/]+$/, '');
+  return !clean || clean === '~' || /^\/home\/[^/]+$|^\/Users\/[^/]+$|^\/root$|^[A-Za-z]:[\\/]Users[\\/][^\\/]+$/.test(clean);
+}
+
+/** Card / session display title: the session name, else its project folder (or `fallback` when in No workspace). */
+export function sessionTitle(card?: SessionCard, state?: Pick<SessionState, 'name'>, fallback = 'New chat'): string {
   const name = state?.name?.trim() || card?.name?.trim();
-  return name || folderOf(card?.cwd);
+  if (name) return name;
+  if (card?.cwd && !isHomeCwd(card.cwd)) return folderOf(card.cwd);
+  return fallback;
 }
 
 /** The project folder a session belongs to (`""` = none). */
@@ -85,15 +96,16 @@ function comparePinned(a: SessionCard, b: SessionCard): number {
   return rank(a) - rank(b) || lastActivity(b) - lastActivity(a) || a.session_id.localeCompare(b.session_id);
 }
 
-/** Sessions grouped by project folder (D-9), projects by latest activity. */
+/** Sessions grouped by project folder (D-9), projects by latest activity; home/empty cwd groups as "No workspace" (D-18). */
 export function projectsOf(cards: Readonly<Record<string, SessionCard>> | readonly SessionCard[], meta: Readonly<Record<string, SessionMeta>> = {}): ProjectGroup[] {
   const list = Array.isArray(cards) ? cards : Object.values(cards);
   const byCwd = new Map<string, ProjectGroup>();
   for (const card of list) {
-    const cwd = sessionCwd(card);
+    const rawCwd = sessionCwd(card);
+    const cwd = isHomeCwd(rawCwd) ? '' : rawCwd;
     let g = byCwd.get(cwd);
     if (!g) {
-      g = { cwd, label: folderOf(cwd || undefined), cards: [], running: 0, needsYou: 0, lastActivity: 0 };
+      g = { cwd, label: cwd ? folderOf(cwd) : NO_WORKSPACE_LABEL, cards: [], running: 0, needsYou: 0, lastActivity: 0 };
       byCwd.set(cwd, g);
     }
     g.cards.push(card);

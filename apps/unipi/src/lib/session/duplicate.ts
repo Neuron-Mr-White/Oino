@@ -12,11 +12,13 @@
 import { hostClient } from '../host/factory';
 import { appNavigate } from '../nav';
 import { sessions } from './store';
-import { showActionNotice } from '../timeline/actions';
+import { hubs } from './hub';
+import { forkTitleOf, showActionNotice } from '../timeline/actions';
 import { chatHref } from '../settings/manage';
 
 /** The fork's id from the first snapshot (or undefined when the host refuses). */
 export function forkAtLeaf(hostId: string, sessionId: string): Promise<string | undefined> {
+  const name = forkTitleOf(hostId, sessionId, 'copy');
   return new Promise((resolve) => {
     let settled = false;
     const done = (value: string | undefined) => {
@@ -24,10 +26,11 @@ export function forkAtLeaf(hostId: string, sessionId: string): Promise<string | 
       settled = true;
       clearTimeout(timer);
       stream.close();
+      if (value) hubs().peek(hostId)?.patchCard(value, { name });
       resolve(value);
     };
     const stream = hostClient(hostId).openSession(
-      { kind: 'fork', session: sessionId },
+      { kind: 'fork', session: sessionId, name },
       {
         snapshot: (snap) => done(snap.session_id),
         events: () => {},

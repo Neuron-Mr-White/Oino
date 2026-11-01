@@ -8,13 +8,18 @@
 import { onCleanup } from 'solid-js';
 import { registerChatAction } from '../shell/ConversationHeader';
 import { forkSession } from '../../lib/session/actions';
+import { hubs } from '../../lib/session/hub';
+import { sessions } from '../../lib/session/store';
 import { openRenameDialog, RenameDialog } from './RenameDialog';
 import { SessionMenu } from '../sidebar/SessionMenu';
 
 export function SessionActions() {
   onCleanup(
     registerChatAction('rename', {
-      run: (ctx) => openRenameDialog({ hostId: ctx.hostId, sessionId: ctx.sessionId, name: ctx.title }),
+      run: (ctx) => {
+        const current = sessions().peek(ctx.hostId, ctx.sessionId)?.state.name ?? hubs().peek(ctx.hostId)?.state.cards[ctx.sessionId]?.name ?? ctx.title;
+        openRenameDialog({ hostId: ctx.hostId, sessionId: ctx.sessionId, name: current });
+      },
     }),
   );
   onCleanup(

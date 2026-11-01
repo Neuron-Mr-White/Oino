@@ -11,7 +11,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } fro
 import { Plus } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import type { SessionMeta } from '../../lib/session/hub';
-import { shortCwd } from '../../lib/session/selectors';
+import { NO_WORKSPACE_LABEL, shortCwd } from '../../lib/session/selectors';
 import { SessionRow, type ModeBadge, type RowVariant } from './SessionRow';
 
 /** Rows shown before "Show more" (Z-11). */
@@ -80,18 +80,18 @@ export function ProjectGroup(props: {
 
   return (
     <div class="sb-project" data-testid={`sb-project-${props.label}`}>
-      <div class="sb-project-head" title={shortCwd(props.cwd || '~')} data-testid="sb-project-head">
-        <span class="sb-project-label">{props.label || 'No folder'}</span>
+      <div class="sb-project-head" title={props.cwd ? shortCwd(props.cwd) : NO_WORKSPACE_LABEL} data-testid="sb-project-head">
+        <span class="sb-project-label">{props.label || NO_WORKSPACE_LABEL}</span>
         <Show when={props.cards.length > 1}>
           <span class="sb-project-count" title={`${props.cards.length} sessions`}>{props.cards.length}</span>
         </Show>
         {/* Z-19 (WP-A5): a per-project draft in this folder (`/new/:host?cwd=`); a
-            project-less group starts the host's default draft. */}
+            project-less group starts the host's default draft ("No workspace", D-18). */}
         <a
           class="sb-project-new"
           href={`#/new/${encodeURIComponent(props.hostId)}${props.cwd ? `?cwd=${encodeURIComponent(props.cwd)}` : ''}`}
-          title="New chat in this folder"
-          aria-label={`New chat in ${props.label || 'this folder'}`}
+          title={props.cwd ? 'New chat in this folder' : 'New chat'}
+          aria-label={props.cwd ? `New chat in ${props.label || NO_WORKSPACE_LABEL}` : 'New chat'}
           data-testid={`sb-project-new-${props.label}`}
           onClick={(e) => e.stopPropagation()}
         >

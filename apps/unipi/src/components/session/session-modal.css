@@ -122,19 +122,29 @@ body > div:has(> .sheet.session-sheet) > .sheet-overlay { z-index: 69; }
 .sheet.session-sheet .sm-row .sm-indent-1 { margin-left: 0; }
 .sheet.session-sheet .sm-dialog { display: contents; }
 
-/* ── rename dialog (Z-15, WP-A5; sm-overlay/sm-dialog shell) ──────────── */
-.rename-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px 18px; }
+/* ── rename dialog (Z-15, WP-A5; sm-overlay/sm-dialog shell, D-15) ────── */
+.sm-dialog.rename-dialog { width: min(420px, 100%); }
+.rename-form { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 18px; }
 .rename-input {
+  box-sizing: border-box;
+  width: 100%;
   min-height: 40px;
   padding: 0 12px;
   border-radius: 11px;
   border: 1px solid var(--color-line);
   background: var(--color-surface-2);
   color: var(--color-text);
+  caret-color: var(--color-text);
   font: inherit;
   font-size: 14px;
+  transition: border-color 140ms ease-out;
 }
-.rename-input:focus { outline: none; border-color: var(--color-text-dim); }
+.rename-input:focus,
+.rename-input:focus-visible {
+  outline: 2px solid var(--color-shell);
+  outline-offset: 1px;
+  border-color: transparent;
+}
 .rename-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .rename-actions .btn {
   min-height: 36px;
@@ -144,9 +154,27 @@ body > div:has(> .sheet.session-sheet) > .sheet-overlay { z-index: 69; }
   background: var(--color-surface-2);
   color: var(--color-text);
   font-size: 13px;
+  font-weight: 550;
+  transition: background-color 140ms ease-out, color 140ms ease-out, filter 140ms ease-out;
 }
-.rename-actions .btn:not(:disabled) { background: var(--color-claw); color: var(--color-ink); border-color: transparent; }
-.rename-actions .btn:disabled { opacity: 0.5; }
+.rename-actions .btn.ghost {
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  border-color: var(--color-line);
+}
+.rename-actions .btn.ghost:hover:not(:disabled) {
+  background: var(--color-surface-3);
+  color: var(--color-text);
+}
+.rename-actions .btn:not(.ghost):not(:disabled) {
+  background: var(--color-claw);
+  color: var(--color-ink);
+  border-color: transparent;
+  font-weight: 620;
+}
+.rename-actions .btn:not(.ghost):hover:not(:disabled) { filter: brightness(1.06); }
+.rename-actions .btn:focus-visible { outline: 2px solid var(--color-shell); outline-offset: 2px; }
+.rename-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* P1-03: extension status cards (info-screen.groups) and the extension's own Usage / Tools pages. */
 .sm-section-gap { margin-top: 10px; }

@@ -12,15 +12,15 @@
 import { createSignal, For, Show } from 'solid-js';
 import { ArchiveRestore, ChevronDown, ChevronRight, Trash2 } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
-import { deleteArchived, emptyTrash, restoreSession } from '../../lib/session/actions';
+import { deleteArchived, emptyTrash, restoreSession, sessionHref } from '../../lib/session/actions';
 import { hubs } from '../../lib/session/hub';
+import { sessionTitle } from '../../lib/session/selectors';
 import { relativeTimeMs } from '../../lib/time';
-import type { RowVariant } from './SessionRow';
+import { observeTitleOverflow, type RowVariant } from './SessionRow';
 
-const titleOf = (card: SessionCard): string =>
-  card.name?.trim() || (card.cwd ? card.cwd.split(/[\\/]/).filter(Boolean).pop() ?? card.session_id : card.session_id);
+const titleOf = (card: SessionCard): string => sessionTitle(card, undefined, card.session_id);
 
-export function ArchivedList(props: { hostId: string; variant: RowVariant }) {
+export function ArchivedList(props: { hostId: string; variant: RowVariant; activeSessionId?: string }) {
   const hub = () => hubs().ensure(props.hostId);
   const state = hub().state;
   const [open, setOpen] = createSignal(false);
@@ -41,7 +41,7 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant }) {
         type="button"
         class="sb-archived-head"
         aria-expanded={open()}
-        title="Sessions moved to this PC's trash — restore or delete them"
+        title="Sessions moved to this PC's trash — open, restore or delete them"
         data-testid={`sb-archived-head-${props.hostId}`}
         onClick={toggle}
       >
@@ -66,49 +66,81 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant }) {
             {(error) => <p class="sb-empty sb-empty-error" role="alert">{error.message}</p>}
           </Show>
           <For each={state.archived}>
-            {(card) => (
-              <div class="sb-archived-row" data-testid={`sb-archived-row-${card.session_id}`}>
-                <span class="sb-archived-title" title={card.cwd ? `${titleOf(card)} · ${card.cwd}` : titleOf(card)}>
-                  {titleOf(card)}
-                </span>
-                <span class="srow-time">{relativeTimeMs(card.last_activity ?? card.updated_at)}</span>
-                <Show
-                  when={confirmId() !== card.session_id}
-                  fallback={
-                    <button
-                      type="button"
-                      class="sb-archived-del sb-archived-del-confirm text-wm-red"
-                      title="Confirm delete"
-                      onClick={() => {
-                        setConfirmId(undefined);
-                        void deleteArchived(props.hostId, card.session_id);
-                      }}
-                    >
-                      Delete?
-                    </button>
-                  }
+            {(card) => {
+              const title = () => titleOf(card);
+              const confirming = () => confirmId() === card.session_id;
+              const active = () => props.activeSessionId === card.session_id;
+              return (
+                <div
+                  class="sb-archived-row"
+                  data-confirm={confirming() ? '' : undefined}
+                  aria-current={active() ? 'page' : undefined}
+                  data-testid={`sb-archived-row-${card.session_id}`}
                 >
-                  <button
-                    type="button"
-                    class="sb-archived-restore"
-                    title="Put the session back in its project"
-                    onClick={() => void restoreSession(props.hostId, card.session_id)}
+                  <a
+                    href={`#${sessionHref(props.hostId, card.session_id)}`}
+                    class="sb-archived-open"
+                    title={title()}
+                    aria-current={active() ? 'page' : undefined}
+                    data-testid={`sb-archived-open-${card.session_id}`}
                   >
-                    <ArchiveRestore size={13} />
-                    Restore
-                  </button>
-                  <button
-                    type="button"
-                    class="sb-archived-del"
-                    aria-label="Delete archived session"
-                    title="Delete this archived session"
-                    onClick={() => setConfirmId(card.session_id)}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </Show>
-              </div>
-            )}
+                    <span ref={observeTitleOverflow} class="srow-title sb-archived-title">
+                      {title()}
+                    </span>
+                  </a>
+                  <span class="srow-time sb-archived-time">{relativeTimeMs(card.last_activity ?? card.updated_at)}</span>
+                  <div class="sb-archived-actions">
+                    <Show
+                      when={!confirming()}
+                      fallback={
+                        <>
+                          <button
+                            type="button"
+                            class="sb-archived-cancel"
+                            onClick={() => setConfirmId(undefined)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            class="sb-archived-del sb-archived-del-confirm text-wm-red"
+                            title="Confirm delete"
+                            onClick={() => {
+                              setConfirmId(undefined);
+                              void deleteArchived(props.hostId, card.session_id);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      }
+                    >
+                      <button
+                        type="button"
+                        class="sb-archived-restore"
+                        aria-label={`Restore ${title()}`}
+                        title="Restore session"
+                        onClick={() => void restoreSession(props.hostId, card.session_id)}
+                      >
+                        <ArchiveRestore size={13} />
+                        <Show when={props.variant === 'page'}>
+                          <span>Restore</span>
+                        </Show>
+                      </button>
+                      <button
+                        type="button"
+                        class="sb-archived-del"
+                        aria-label="Delete archived session"
+                        title="Delete archived session"
+                        onClick={() => setConfirmId(card.session_id)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </Show>
+                  </div>
+                </div>
+              );
+            }}
           </For>
           <Show when={state.archivedLoaded && state.archived.length > 0}>
             <Show

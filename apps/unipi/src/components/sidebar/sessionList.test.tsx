@@ -176,4 +176,24 @@ describe('SessionList', () => {
     expect(row.querySelector('.srow-cwd')).toBeNull();
     expect(row.querySelector('.srow-sub')).toBeNull();
   });
+
+  it('updates row title live on session_changed, groups home cwd under No workspace, and keeps pinned sidebar rows single-line (D-03, D-18, D-19)', async () => {
+    boot([
+      card('home-chat', { name: undefined, cwd: '/home/oi' }),
+      card('pinned-proj', { name: 'Pinned reply', cwd: '/home/oi/qa1ws', pinned: true }),
+    ]);
+    await waitFor(() => expect(screen.getByTestId('sb-project-No workspace')).toBeTruthy());
+    const homeRow = screen.getByTestId('srow-home-chat');
+    expect(homeRow.getAttribute('title')).toBe('New chat');
+    const pinnedRow = screen.getByTestId('srow-pinned-proj');
+    expect(pinnedRow.querySelector('.srow-sub')).toBeNull();
+    // Host pushes session_changed with the auto-generated title -> row updates live.
+    world.emit({
+      kind: 'session_changed',
+      card: card('home-chat', { name: 'Ping Pong Reply', cwd: '/home/oi' }),
+    });
+    const hostEl = screen.getByTestId('sb-host-this-pc');
+    await waitFor(() => expect(within(hostEl).getByTestId('srow-home-chat').getAttribute('title')).toBe('Ping Pong Reply'));
+    expect(within(within(hostEl).getByTestId('srow-home-chat')).getByText('Ping Pong Reply')).toBeTruthy();
+  });
 });

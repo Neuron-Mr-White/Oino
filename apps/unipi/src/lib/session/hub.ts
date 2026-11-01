@@ -69,7 +69,7 @@ let noticeSeq = 0;
 export function applyHubEvent(s: HubState, event: HubEvent, now = Date.now()): void {
   switch (event.kind) {
     case 'session_changed': {
-      const card = event.card;
+      const card = { ...event.card };
       s.cards[card.session_id] = card;
       s.meta[card.session_id] = metaOf(card);
       return;
@@ -102,6 +102,8 @@ export type HubHandle = {
   readonly state: HubState;
   /** Re-runs `sessions_list` (the events stream keeps it current after that). */
   reload(): Promise<void>;
+  /** Patches a known card in memory (e.g. live `session_info_changed` name before the next hub sync, D-03). */
+  patchCard(sessionId: string, patch: Partial<SessionCard>): void;
   /** `session_meta_set` (§3.14): pin / unread / title lock — optimistic here, persisted by the host. */
   setMeta(sessionId: string, patch: { pinned?: boolean; unread?: boolean; titleLock?: boolean }): Promise<void>;
   /** `sessions_list{archived:true}` (§3.14, Z-13): the archived list of this host (once, unless `force`). */
@@ -162,7 +164,7 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
         const byId: Record<string, SessionCard> = {};
         const meta: Record<string, SessionMeta> = {};
         for (const c of cards) {
-          byId[c.session_id] = c;
+          byId[c.session_id] = { ...c };
           meta[c.session_id] = metaOf(c);
         }
         batch(() => {
@@ -218,6 +220,18 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
     hostId,
     state,
     reload,
+    patchCard(sessionId, patch) {
+      if (!state.cards[sessionId]) return;
+      setState('cards', sessionId, (prev) => {
+        if (!prev) return prev;
+        const next: Record<string, unknown> = { ...prev };
+        for (const [k, v] of Object.entries(patch)) {
+          if (v === undefined) delete next[k];
+          else next[k] = v;
+        }
+        return next as SessionCard;
+      });
+    },
     async setMeta(sessionId, patch) {
       // Optimistic: the events stream will carry the host's card a moment later.
       setState('meta', sessionId, (m) => ({ ...m, ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}), ...(patch.unread !== undefined ? { unread: patch.unread } : {}), ...(patch.titleLock !== undefined ? { titleLock: patch.titleLock } : {}) }));

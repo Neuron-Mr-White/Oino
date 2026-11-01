@@ -107,12 +107,18 @@ describe('SessionMenu (Z-16)', () => {
     await waitFor(() => expect(screen.queryByTestId('srow-a')).toBeNull());
   });
 
-  it('Fork opens a fork stream and routes to it (Z-17)', async () => {
-    boot([card('a')]);
+  it('Fork opens a fork stream with a distinguishable "(fork)" title and routes to it (Z-17, D-10)', async () => {
+    boot([card('a', { name: 'Named by slash' })]);
     await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
     await openMenuOn('a');
     fireEvent.click(screen.getByRole('menuitem', { name: 'Fork' }));
-    await waitFor(() => expect(world.log.some((e) => e.kind === 'open' && e.op === 'session_fork')).toBe(true));
+    await waitFor(() =>
+      expect(
+        world.log.some(
+          (e) => e.kind === 'open' && e.op === 'session_fork' && (e.args as { name?: string }).name === 'Named by slash (fork)',
+        ),
+      ).toBe(true),
+    );
   });
 
   it('Copy id / path / log copy the card fields', async () => {
@@ -143,13 +149,17 @@ describe('SessionMenu (Z-16)', () => {
     await waitFor(() => expect(world.log.some((e) => e.kind === 'open' && e.op === 'session_open')).toBe(true));
   });
 
-  it('Delete asks first, then archives + deletes (Z-20)', async () => {
-    boot([card('a')]);
+  it('Delete asks first with full unclipped prompt + Cancel/Yes, delete, then archives + deletes (Z-20, D-04, D-16)', async () => {
+    const longTitle = 'Hello Number 4 Reply With A Longer Title';
+    boot([card('a', { name: longTitle })]);
     await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
     await openMenuOn('a');
+    expect(screen.queryByText('Archived list')).toBeNull();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
-    // One click only armed the confirm row; nothing went out yet.
+    // One click only armed the confirm row; full title + Yes, delete + Cancel are all visible.
     expect(ops()).not.toContain('session_archive');
+    expect(screen.getByTestId('srow-delete-confirm').textContent).toContain(`Delete “${longTitle}”?`);
+    expect(screen.getByRole('menuitem', { name: 'Cancel' })).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /Yes, delete/ }));
     await waitFor(() => expect(opWith('session_archive')?.args).toMatchObject({ session: 'a' }));
     await waitFor(() => expect(opWith('session_delete')?.args).toMatchObject({ session: 'a' }));

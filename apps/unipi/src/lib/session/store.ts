@@ -18,6 +18,7 @@ import { applyEvents, applySnapshot, initialState, reconcileEntries, reconcileSi
 import { enqueue, loadOutbox, markAcked, markLost, markSending, removeItem, saveOutbox, sweep } from './outbox';
 import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
+import { hubs } from './hub';
 import type { CommandInfo, OutboxImage, OutboxItem, OutboxMode, SessionEntry, SessionState } from './types';
 
 /** Live subscriptions kept open (app spec §3.3). */
@@ -191,6 +192,7 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
   };
 
   const follow = (r: ApplyResult) => {
+    if (r.nameChanged !== undefined) hubs().peek(hostId)?.patchCard(id(), { name: r.nameChanged || undefined });
     if (r.ui) for (const m of r.ui) uiSink(hostId, id(), m);
     if (r.reconcile) queueMicrotask(reconcile);
     if (r.commandsChanged) queueMicrotask(refreshCommands);

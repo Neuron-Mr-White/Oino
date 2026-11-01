@@ -123,8 +123,13 @@ export function channelError(msg: { message: string; code?: string }): AppError 
 
 /** The `invoke` command + args that open a session stream (host.md §7.3). */
 export function openArgs(hostId: string, req: OpenSessionRequest): { command: string; args: Record<string, unknown> } {
-  if (req.kind === 'new') return { command: 'session_new', args: { hostId, ...(req.cwd ? { cwd: req.cwd } : {}) } };
-  if (req.kind === 'fork') return { command: 'session_fork', args: { hostId, session: req.session, ...(req.fromEntry ? { entryId: req.fromEntry } : {}) } };
+  if (req.kind === 'new') return { command: 'session_new', args: { hostId, ...(req.cwd ? { cwd: req.cwd } : {}), ...(req.name ? { name: req.name } : {}) } };
+  if (req.kind === 'fork') {
+    return {
+      command: 'session_fork',
+      args: { hostId, session: req.session, ...(req.fromEntry ? { entryId: req.fromEntry } : {}), ...(req.name ? { name: req.name } : {}) },
+    };
+  }
   return { command: 'session_open', args: { hostId, session: req.session, ...(req.sinceSeq !== undefined ? { sinceSeq: req.sinceSeq } : {}) } };
 }
 

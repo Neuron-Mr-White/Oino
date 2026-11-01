@@ -10,21 +10,24 @@
  * row — confirm first, then the archive+unlink move (Z-20). The ⋯ header keeps
  * chat-scoped rows only; this menu owns the row-scoped ones.
  */
-import { createMemo, createSignal, For, Show } from 'solid-js';
+import { createMemo, createSignal, Show } from 'solid-js';
 import { Archive, ArchiveRestore, Copy, FileText, Folder, FolderOpen, GitFork, Pencil, Pin, PinOff, Share, Trash2 } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
+import { desktopShell } from '../../lib/layout';
 import { exportSession } from '../../lib/session/exportSession';
 import { openRenameDialog, type RenameTarget } from '../session/RenameDialog';
 import { archiveSession, closeRowMenu, copyFromRow, deleteSession, forkSession, markUnread, revealFolder, setPinned, openRowMenuState } from '../../lib/session/actions';
 import { hubs } from '../../lib/session/hub';
+import { sessionTitle } from '../../lib/session/selectors';
 import { sessions } from '../../lib/session/store';
 
 export function SessionMenu() {
   const state = openRowMenuState;
-  /** Z-20: Delete asks once (the row turns into a confirm pair). */
+  /** Z-20: Delete asks once (the row expands into an unclipped confirm pair, D-04). */
   const [confirmDelete, setConfirmDelete] = createSignal(false);
   const reset = () => setConfirmDelete(false);
   const pinned = createMemo(() => !!(state() && hubs().peek(state()!.hostId)?.state.meta[state()!.card.session_id]?.pinned));
+  const iconSize = () => (desktopShell() ? 15 : 17);
   const run = (fn: () => unknown) => () => {
     closeRowMenu();
     reset();
@@ -35,10 +38,18 @@ export function SessionMenu() {
       {(s) => {
         const { hostId, card } = s();
         const archiveLabel = () => (pinned() ? 'Archive (pinned)' : 'Archive');
+        const liveName = () => sessions().peek(hostId, card.session_id)?.state.name ?? card.name ?? '';
+        const title = () => sessionTitle(card, sessions().peek(hostId, card.session_id)?.state, card.session_id);
         return (
-          <AnchoredMenu anchor={s().anchor} width={248} label={`Session ${card.name || card.session_id}`} onDismiss={() => (closeRowMenu(), reset())}>
+          <AnchoredMenu
+            anchor={s().anchor}
+            width={desktopShell() ? 220 : 248}
+            class="srow-menu"
+            label={`Session ${title()}`}
+            onDismiss={() => (closeRowMenu(), reset())}
+          >
             <MenuRow
-              icon={pinned() ? <PinOff size={17} /> : <Pin size={17} />}
+              icon={pinned() ? <PinOff size={iconSize()} /> : <Pin size={iconSize()} />}
               label={pinned() ? 'Unpin' : 'Pin'}
               onSelect={() => {
                 // Capture before the menu unmounts: `pinned()` reads the row
@@ -48,27 +59,43 @@ export function SessionMenu() {
               }}
             />
             <MenuRow
-              icon={<Pencil size={17} />}
+              icon={<Pencil size={iconSize()} />}
               label="Rename…"
-              onSelect={run(() => openRenameDialog({ hostId, sessionId: card.session_id, name: card.name ?? '' } satisfies RenameTarget))}
+              onSelect={run(() => openRenameDialog({ hostId, sessionId: card.session_id, name: liveName() } satisfies RenameTarget))}
             />
-            <MenuRow icon={<Archive size={17} />} label={archiveLabel()} hint="Archived list" onSelect={run(() => archiveSession(hostId, card.session_id))} />
-            <MenuRow icon={<ArchiveRestore size={17} />} label="Mark as unread" onSelect={run(() => markUnread(hostId, card.session_id))} />
+            <MenuRow icon={<Archive size={iconSize()} />} label={archiveLabel()} onSelect={run(() => archiveSession(hostId, card.session_id))} />
+            <MenuRow icon={<ArchiveRestore size={iconSize()} />} label="Mark as unread" onSelect={run(() => markUnread(hostId, card.session_id))} />
             <MenuSeparator />
-            <MenuRow icon={<GitFork size={17} />} label="Fork" onSelect={run(() => forkSession(hostId, card.session_id))} />
-            <MenuRow icon={<Copy size={17} />} label="Copy session id" onSelect={run(() => copyFromRow('id', card))} />
-            <MenuRow icon={<Folder size={17} />} label="Copy path" disabled={!card.cwd} onSelect={run(() => copyFromRow('path', card))} />
-            <MenuRow icon={<FileText size={17} />} label="Copy log path" disabled={!card.file} onSelect={run(() => copyFromRow('log', card))} />
-            <MenuRow icon={<FolderOpen size={17} />} label="Reveal folder" disabled={!card.cwd} onSelect={run(() => revealFolder(hostId, card.cwd))} />
-            <MenuRow icon={<Share size={17} />} label="Export…" onSelect={run(() => { sessions().ensure(hostId, card.session_id); return exportSession(hostId, card.session_id); })} />
+            <MenuRow icon={<GitFork size={iconSize()} />} label="Fork" onSelect={run(() => forkSession(hostId, card.session_id))} />
+            <MenuRow icon={<Copy size={iconSize()} />} label="Copy session id" onSelect={run(() => copyFromRow('id', card))} />
+            <MenuRow icon={<Folder size={iconSize()} />} label="Copy path" disabled={!card.cwd} onSelect={run(() => copyFromRow('path', card))} />
+            <MenuRow icon={<FileText size={iconSize()} />} label="Copy log path" disabled={!card.file} onSelect={run(() => copyFromRow('log', card))} />
+            <MenuRow icon={<FolderOpen size={iconSize()} />} label="Reveal folder" disabled={!card.cwd} onSelect={run(() => revealFolder(hostId, card.cwd))} />
+            <MenuRow icon={<Share size={iconSize()} />} label="Export…" onSelect={run(() => { sessions().ensure(hostId, card.session_id); return exportSession(hostId, card.session_id); })} />
             <MenuSeparator />
             <Show
               when={!confirmDelete()}
               fallback={
-                <MenuRow icon={<Trash2 size={17} />} label={`Delete “${rowTitle(card)}”? Yes, delete`} tone="danger" onSelect={run(() => deleteSession(hostId, card.session_id))} />
+                <div class="srow-confirm" role="group" aria-label={`Confirm deleting ${title()}`} data-testid="srow-delete-confirm">
+                  <p class="srow-confirm-prompt">Delete “{title()}”?</p>
+                  <div class="srow-confirm-actions">
+                    <button type="button" role="menuitem" class="srow-confirm-cancel" onClick={() => setConfirmDelete(false)}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="srow-confirm-yes"
+                      onClick={run(() => deleteSession(hostId, card.session_id))}
+                    >
+                      <Trash2 size={14} />
+                      Yes, delete
+                    </button>
+                  </div>
+                </div>
               }
             >
-              <MenuRow icon={<Trash2 size={17} />} label="Delete" tone="danger" onSelect={() => setConfirmDelete(true)} />
+              <MenuRow icon={<Trash2 size={iconSize()} />} label="Delete" tone="danger" onSelect={() => setConfirmDelete(true)} />
             </Show>
           </AnchoredMenu>
         );
@@ -76,6 +103,3 @@ export function SessionMenu() {
     </Show>
   );
 }
-
-const rowTitle = (card: { name?: string | null; cwd?: string | null; session_id: string }): string =>
-  card.name?.trim() || (card.cwd ? card.cwd.split(/[\\/]/).filter(Boolean).pop() ?? card.session_id : card.session_id);

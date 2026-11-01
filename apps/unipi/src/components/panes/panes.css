@@ -11,7 +11,8 @@
 .conv-head { flex: none; display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 10px 0 20px; box-sizing: border-box; border-bottom: 1px solid var(--shell-rule, var(--color-line)); }
 .sb-reveal { flex: none; display: flex; align-items: center; gap: 2px; margin-left: -12px; margin-right: 2px; }
 .conv-head-text { flex: 1; min-width: 0; }
-.conv-title { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.conv-title { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; }
+.conv-title[data-overflow] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
 .conv-sub { display: flex; align-items: center; gap: 5px; min-width: 0; margin: 1px 0 0; font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
 .conv-sub > svg { flex: none; }
 .conv-sub > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

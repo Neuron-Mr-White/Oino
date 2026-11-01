@@ -12,7 +12,8 @@ import { CircleAlert, Clock, LoaderCircle, MessageCircleQuestion, MessageSquare,
 import type { SessionCard } from '../../lib/host/client';
 import { hostClient } from '../../lib/host/factory';
 import { LONG_PRESS_MS } from '../../lib/gestures';
-import { changesOf } from '../../lib/session/selectors';
+import { menuAnchor } from '../../lib/layout';
+import { changesOf, isHomeCwd, sessionTitle } from '../../lib/session/selectors';
 import type { SessionMeta } from '../../lib/session/hub';
 import { sessions, type SessionHandle } from '../../lib/session/store';
 import { openRowMenu } from '../../lib/session/actions';
@@ -49,11 +50,11 @@ export const STATE_WORD: Record<ReturnType<typeof rowState>, string> = {
 
 /** Shared ResizeObserver so `.srow-title` only fades when text genuinely overflows. */
 let titleRo: ResizeObserver | undefined;
-function syncTitleOverflow(el: HTMLElement): void {
+export function syncTitleOverflow(el: HTMLElement): void {
   const over = el.scrollWidth > el.clientWidth + 1;
   if (over !== el.hasAttribute('data-overflow')) el.toggleAttribute('data-overflow', over);
 }
-function observeTitleOverflow(el: HTMLElement): void {
+export function observeTitleOverflow(el: HTMLElement): void {
   if (typeof ResizeObserver === 'undefined') return;
   titleRo ??= new ResizeObserver((entries) => {
     for (const entry of entries) syncTitleOverflow(entry.target as HTMLElement);
@@ -78,7 +79,8 @@ export function SessionRow(props: {
   showFolder?: boolean;
   onPin?: (card: SessionCard, pinned: boolean) => void;
 }): JSX.Element {
-  const state = () => liveRowState(props.card, sessions().peek(props.hostId, props.card.session_id));
+  const open = () => sessions().peek(props.hostId, props.card.session_id);
+  const state = () => liveRowState(props.card, open());
   const changes = () => changesOf(props.card);
   const at = () => props.card.last_activity ?? props.card.updated_at;
   const time = () => relativeTimeMs(at());
@@ -92,12 +94,12 @@ export function SessionRow(props: {
     e.stopPropagation();
     props.onPin?.(props.card, !props.meta?.pinned);
   };
-  // Z-16 (WP-A5): right-click (desktop) / long-press (phone) opens the row's
-  // context menu — one menu app-wide, anchored to this row.
+  // Z-16 (WP-A5): right-click (desktop, at pointer, D-16) / long-press (phone) opens the row's
+  // context menu — one menu app-wide.
   const menuAt = (el: HTMLElement) => openRowMenu(props.hostId, props.card, el.getBoundingClientRect());
   const onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
-    menuAt(e.currentTarget as HTMLElement);
+    openRowMenu(props.hostId, props.card, menuAnchor(e, e.currentTarget as HTMLElement));
   };
   let pressTimer: ReturnType<typeof setTimeout> | undefined;
   const cancelPress = () => {
@@ -114,8 +116,8 @@ export function SessionRow(props: {
     }, LONG_PRESS_MS);
   };
   const pinTitle = () => (props.meta?.pinned ? `Unpin "${titleText()}"` : `Pin "${titleText()}"`);
-  const titleText = () => props.card.name?.trim() || folder() || props.card.session_id;
-  const folder = () => props.card.cwd?.split(/[\\/]/).filter(Boolean).pop();
+  const titleText = () => sessionTitle(props.card, open()?.state, 'New chat');
+  const folder = () => (!isHomeCwd(props.card.cwd) ? props.card.cwd?.split(/[\\/]/).filter(Boolean).pop() : undefined);
   const stateWord = () => STATE_WORD[state()];
   const subFolder = () => {
     const f = folder();

@@ -22,7 +22,9 @@ import { copyText } from '../board/share';
 import { desktopShell, menuAnchor } from '../layout';
 import { imagesOf, textOf, type Part } from '../chat/model';
 import type { SessionEntry, SessionState, OutboxImage } from '../session/types';
-import type { SessionHandle } from '../session/store';
+import { sessions, type SessionHandle } from '../session/store';
+import { hubs } from '../session/hub';
+import { sessionTitle } from '../session/selectors';
 import type { Turn } from '../session/turns';
 import { addComposerQuote, focusComposer, restoreComposer } from '../composer/drafts';
 import { hostClient } from '../host/factory';
@@ -168,12 +170,28 @@ export async function retryTurn(session: SessionHandle, turn: Turn): Promise<voi
   session.send(text, images.length ? { images, mode: 'prompt' } : { mode: 'prompt' });
 }
 
+/** Builds a distinct title for a forked/cloned chat ("Title (fork)", "Title (fork 2)", D-10). */
+export function forkTitleOf(hostId: string, sessionId: string, suffix: 'fork' | 'copy' = 'fork'): string {
+  const hub = hubs().peek(hostId);
+  const raw = sessionTitle(hub?.state.cards[sessionId], sessions().peek(hostId, sessionId)?.state);
+  const base = raw.replace(/\s*\((?:fork|copy)(?:\s+\d+)?\)$/i, '').trim() || 'Chat';
+  const taken = new Set(Object.values(hub?.state.cards ?? {}).map((c) => c.name?.trim()).filter(Boolean));
+  let n = 1;
+  for (;;) {
+    const tag = n === 1 ? ` (${suffix})` : ` (${suffix} ${n})`;
+    const candidate = `${base.slice(0, Math.max(1, 256 - tag.length))}${tag}`;
+    if (!taken.has(candidate) || n > 99) return candidate;
+    n += 1;
+  }
+}
+
 /**
  * Fork before a user message (`session_fork`, pi's `fork`): the host keeps the
  * original and streams the fork; its first snapshot names the new session,
  * which `onOpen` receives so the app can route there.
  */
 export function forkFrom(hostId: string, sessionId: string, entryId: string | undefined, onOpen?: (sessionId: string) => void): Promise<void> {
+  const name = forkTitleOf(hostId, sessionId, 'fork');
   return new Promise((resolve, reject) => {
     let settled = false;
     let stream: { close(): void } | undefined;
@@ -186,11 +204,14 @@ export function forkFrom(hostId: string, sessionId: string, entryId: string | un
     };
     try {
       stream = hostClient(hostId).openSession(
-        { kind: 'fork', session: sessionId, ...(entryId ? { fromEntry: entryId } : {}) },
+        { kind: 'fork', session: sessionId, ...(entryId ? { fromEntry: entryId } : {}), name },
         {
           snapshot(snapshot) {
             const id = (snapshot as { session_id?: string }).session_id;
-            if (id && id !== sessionId) onOpen?.(id);
+            if (id && id !== sessionId) {
+              hubs().peek(hostId)?.patchCard(id, { name });
+              onOpen?.(id);
+            }
             finish();
           },
           events() {

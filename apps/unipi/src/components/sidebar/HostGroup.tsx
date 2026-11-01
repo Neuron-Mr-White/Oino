@@ -131,7 +131,7 @@ export function HostGroup(props: {
                       active={props.activeSession?.hostId === props.host.id && props.activeSession?.sessionId === card.session_id}
                       variant={props.variant}
                       mode={props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
-                      showFolder
+                      showFolder={props.variant === 'page'}
                       onPin={pin}
                     />
                   )}
@@ -155,8 +155,12 @@ export function HostGroup(props: {
               />
             )}
           </For>
-          {/* Z-13 (WP-A5): the host's trash — restore or delete archived sessions. */}
-          <ArchivedList hostId={props.host.id} variant={props.variant} />
+          {/* Z-13 (WP-A5): the host's trash — open read-only, restore or delete archived sessions. */}
+          <ArchivedList
+            hostId={props.host.id}
+            variant={props.variant}
+            activeSessionId={props.activeSession?.hostId === props.host.id ? props.activeSession.sessionId : undefined}
+          />
         </div>
       </Show>
     </section>

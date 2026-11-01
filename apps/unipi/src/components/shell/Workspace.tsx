@@ -21,6 +21,7 @@ import { backDepth } from '../../lib/back';
 import { layout, SIDE_DEFAULT, BOTTOM_DEFAULT } from '../../lib/layout';
 import { panes, type PaneScope, type PaneView } from '../../lib/panes';
 import { hubs } from '../../lib/session/hub';
+import { sessions } from '../../lib/session/store';
 import { sessionCwd, sessionTitle, shortCwd } from '../../lib/session/selectors';
 import { Conversation } from '../conversation/Conversation';
 import { ModeChip } from '../conversation/ModeChip';
@@ -64,16 +65,23 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
   const hosts = useHostsOptional();
   const L = layout();
   const hub = createMemo(() => hubs().ensure(props.hostId));
-  const card = () => (props.sessionId ? hub().state.cards[props.sessionId] : undefined);
+  const liveCard = () => (props.sessionId ? hub().state.cards[props.sessionId] : undefined);
+  const archivedCard = () => (props.sessionId ? hub().state.archived.find((c) => c.session_id === props.sessionId) : undefined);
+  const card = () => liveCard() ?? archivedCard();
+  const openSession = () => (props.sessionId ? sessions().peek(props.hostId, props.sessionId) : undefined);
+  const liveState = () => {
+    const s = openSession()?.state;
+    return s && (s.conn === 'live' || s.name) ? s : undefined;
+  };
   const host = () => hosts?.hosts().find((h) => h.id === props.hostId);
   const localHost = () => host()?.transport === 'local';
-  const cwd = () => (props.sessionId ? sessionCwd(card()) : (props.cwd ?? ''));
+  const cwd = () => (props.sessionId ? sessionCwd(card(), liveState()) : (props.cwd ?? ''));
   const scope = createMemo<PaneScope>((prev) => {
     const next = { hostId: props.hostId, projectKey: projectKeyOf(cwd()) };
     return prev && prev.hostId === next.hostId && prev.projectKey === next.projectKey ? prev : next;
   });
   const view = createMemo<PaneView>((prev) => (prev && prev.sessionId === props.sessionId ? prev : { sessionId: props.sessionId }));
-  const title = () => (props.sessionId ? (card() ? sessionTitle(card()) : 'Session') : 'New chat');
+  const title = () => (props.sessionId ? (card() || (hub().state.loaded && liveState()) ? sessionTitle(card(), liveState()) : 'Session') : 'New chat');
   const newChat = () => navigate(`/new/${encodeURIComponent(props.hostId)}`);
   const desktop = () => L.desktop();
   const mode = () => (L.fullView() ? 'full' : L.sideMode());
@@ -86,7 +94,12 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
   createEffect(on(L.fullView, (full) => setChatActive(full && panes().visible(scope(), 'side', view()).length === 0)));
 
   createEffect(() => {
-    if (props.sessionId) writeLastSession(props.hostId, props.sessionId);
+    if (props.sessionId && !archivedCard()) writeLastSession(props.hostId, props.sessionId);
+  });
+  createEffect(() => {
+    if (props.sessionId && hub().state.loaded && !liveCard() && !hub().state.archivedLoaded && !hub().state.archivedLoading) {
+      void hub().loadArchived();
+    }
   });
   createEffect(() => setCurrent({ scope: scope(), view: view() }));
   onCleanup(() => setCurrent(undefined));

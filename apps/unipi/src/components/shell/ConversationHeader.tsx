@@ -11,9 +11,10 @@
  *
  *   registerChatAction('rename', { run: (ctx) => openRename(ctx) });
  */
-import { createSignal, For, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
 import { ArrowLeft, Copy, CopyPlus, Ellipsis, FileText, Folder, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
+import { observeTitleOverflow, syncTitleOverflow } from '../sidebar/SessionRow';
 import { copyText } from '../../lib/board/share';
 import { layout } from '../../lib/layout';
 import { modKey } from '../../lib/shell';
@@ -112,6 +113,11 @@ export function ConversationHeader(props: {
   const rows = () => (props.ctx ? chatActionsFor(props.ctx) : []);
   const hasExtra = () => !!props.extraMenu;
   const sub = () => [props.project, props.hostName].filter(Boolean).join(' · ');
+  let titleEl: HTMLHeadingElement | undefined;
+  createEffect(() => {
+    void props.title;
+    if (titleEl && typeof ResizeObserver !== 'undefined') queueMicrotask(() => titleEl && syncTitleOverflow(titleEl));
+  });
   return (
     <header class="conv-head" data-testid="conv-head">
       <Show when={props.onBack}>
@@ -123,7 +129,15 @@ export function ConversationHeader(props: {
         <SidebarReveal onNewChat={props.onNewChat} />
       </Show>
       <div class="conv-head-text">
-        <h1 class="conv-title" title={props.title} data-testid="conv-title">
+        <h1
+          ref={(el) => {
+            titleEl = el;
+            observeTitleOverflow(el);
+          }}
+          class="conv-title"
+          title={props.title}
+          data-testid="conv-title"
+        >
           {props.title}
         </h1>
         <Show when={sub()}>

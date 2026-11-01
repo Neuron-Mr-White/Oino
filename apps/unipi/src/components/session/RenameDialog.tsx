@@ -49,7 +49,7 @@ export function RenameDialog() {
           const name = value().trim();
           if (!name || busy()) return;
           setBusy(true);
-          await renameSession(t().hostId, t().sessionId, name);
+          await renameSession(t().hostId, t().sessionId, name, { notify: true });
           setBusy(false);
           closeRenameDialog();
         };

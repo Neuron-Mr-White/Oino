@@ -44,6 +44,7 @@ export type OpenSessionRequest = {
   sinceSeq?: number;
   cwd?: string;
   fromEntry?: string;
+  name?: string;
 };
 
 /** Any oino RPC command verbatim (`{type:'prompt', …}`, `{type:'_oino/render', …}`). */

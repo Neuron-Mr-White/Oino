@@ -12,6 +12,7 @@ import { SettingsProvider } from '../../settings/context';
 import { createMockHost, type MockScenario } from '../../dev/mock/host';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { resetHubs } from '../../lib/session/hub';
+import { parseArchivedJsonl } from '../../lib/session/archivedSession';
 import type { SessionCard } from '../../lib/host/client';
 import { SessionList } from './SessionList';
 
@@ -107,5 +108,28 @@ describe('ArchivedList (Z-13)', () => {
     await waitFor(() => expect(screen.getByTestId('srow-live')).toBeTruthy());
     await openArchived();
     await waitFor(() => expect(screen.getByText('Nothing archived')).toBeTruthy());
+  });
+
+  it('archived rows render an openable link with full title tooltip, and parseArchivedJsonl extracts read-only transcript entries (D-17)', async () => {
+    boot([card('live')], [card('gone', { name: 'Hello Number 2 Reply' })]);
+    await waitFor(() => expect(screen.getByTestId('srow-live')).toBeTruthy());
+    await openArchived();
+    const link = await screen.findByTestId('sb-archived-open-gone');
+    expect(link.tagName).toBe('A');
+    expect(link.getAttribute('href')).toBe('#/s/this-pc/gone');
+    expect(link.getAttribute('title')).toBe('Hello Number 2 Reply');
+
+    const parsed = parseArchivedJsonl(
+      [
+        JSON.stringify({ type: 'session', version: 3, id: 'gone', cwd: '/home/oi' }),
+        JSON.stringify({ type: 'session_info', id: 'i1', parentId: null, name: 'Hello Number 2 Reply' }),
+        JSON.stringify({ type: 'message', id: 'u1', parentId: 'i1', message: { role: 'user', content: 'ping' } }),
+        JSON.stringify({ type: 'message', id: 'a1', parentId: 'u1', message: { role: 'assistant', content: 'pong' } }),
+      ].join('\n'),
+    );
+    expect(parsed.sessionName).toBe('Hello Number 2 Reply');
+    expect(parsed.cwd).toBe('/home/oi');
+    expect(parsed.entries).toHaveLength(3);
+    expect(parsed.leafId).toBe('a1');
   });
 });

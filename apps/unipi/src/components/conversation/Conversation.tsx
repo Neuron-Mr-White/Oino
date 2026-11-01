@@ -10,8 +10,10 @@
  */
 import { createEffect, createMemo, createSignal, on, onCleanup, Show, type JSX } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { CircleAlert, RefreshCw } from 'lucide-solid';
+import { ArchiveRestore, CircleAlert, RefreshCw } from 'lucide-solid';
 import { hubs } from '../../lib/session/hub';
+import { createArchivedSession } from '../../lib/session/archivedSession';
+import { restoreSession } from '../../lib/session/actions';
 import { sessions, type SessionHandle } from '../../lib/session/store';
 import { connBanner, sessionCwd } from '../../lib/session/selectors';
 import { sessionRefChat } from '../../lib/timeline/refChat';
@@ -99,7 +101,26 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
     return h && h.transport !== 'local' ? h.name : undefined;
   };
   const hub = createMemo(() => hubs().ensure(props.hostId));
-  const session = createMemo(() => (props.sessionId ? sessions().ensure(props.hostId, props.sessionId) : undefined));
+  const liveCard = () => (props.sessionId ? hub().state.cards[props.sessionId] : undefined);
+  const archivedCard = createMemo(() => {
+    const id = props.sessionId;
+    if (!id || liveCard()) return undefined;
+    return hub().state.archived.find((c) => c.session_id === id);
+  });
+  const archivedHandle = createMemo<SessionHandle | undefined>(() => {
+    const card = archivedCard();
+    if (!card) return undefined;
+    const h = createArchivedSession(props.hostId, card);
+    onCleanup(() => h.close());
+    return h;
+  });
+  const isArchived = () => !!archivedCard();
+  const session = createMemo<SessionHandle | undefined>(() => {
+    if (!props.sessionId) return undefined;
+    const arch = archivedHandle();
+    if (arch) return arch;
+    return sessions().ensure(props.hostId, props.sessionId);
+  });
   // Pin the session against LRU eviction while shown; release on change/unmount.
   createMemo(() => {
     const s = session();
@@ -108,7 +129,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
   });
   const cwd = () => {
     const s = session();
-    return props.sessionId ? sessionCwd(props.sessionId ? hub().state.cards[props.sessionId] : undefined, s?.state) : props.cwd;
+    return props.sessionId ? sessionCwd(liveCard() ?? archivedCard(), s?.state) : props.cwd;
   };
   const refs = createMemo<RefChat | undefined>(() => {
     const s = session();
@@ -156,7 +177,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
   createEffect(() => {
     const id = props.sessionId;
     const s = session();
-    if (!id || !s || s.state.conn !== 'live' || askedShortcuts.has(id)) return;
+    if (!id || !s || isArchived() || s.state.conn !== 'live' || askedShortcuts.has(id)) return;
     askedShortcuts.add(id);
     void s
       .cmd<unknown>({ type: '_oino/get_shortcuts' })
@@ -216,6 +237,20 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
         <Show when={session()}>
           {(s) => (
             <ConversationBoundary>
+              <Show when={isArchived()}>
+                <div class="chat-banner tl-banner tl-readonly" data-kind="archived" data-testid="tl-archived-banner" role="status">
+                  <ArchiveRestore size={18} class="shrink-0" />
+                  <span class="min-w-0 flex-1">Archived chat · Read-only. Restore it to continue the conversation.</span>
+                  <button
+                    type="button"
+                    class="chat-banner-action"
+                    data-testid="tl-restore-archived"
+                    onClick={() => props.sessionId && void restoreSession(props.hostId, props.sessionId)}
+                  >
+                    <ArchiveRestore size={14} /> Restore
+                  </button>
+                </div>
+              </Show>
               <Banners session={s()} />
               <Show when={ctx()}>
                 {(c) => (
@@ -233,7 +268,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                               session={s()}
                               dialogs={dialogs()}
                               onAnswer={answer}
-                              readOnly={isTakenOverReadOnly(s().state)}
+                              readOnly={isArchived() || isTakenOverReadOnly(s().state)}
                               phone={!layout().desktop()}
                               widgets={<WidgetStack entries={widgets()} target={target()} phone={!layout().desktop()} />}
                               widgetBelow={<WidgetStack entries={widgetBelow()} target={target()} />}
@@ -242,7 +277,8 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                                 <Composer
                                   session={s()}
                                   cwd={cwd}
-                                  readOnly={isTakenOverReadOnly(s().state)}
+                                  readOnly={isArchived() || isTakenOverReadOnly(s().state)}
+                                  placeholder={isArchived() ? 'Archived chat — restore to reply' : undefined}
                                   phone={!layout().desktop()}
                                 />
                               }
