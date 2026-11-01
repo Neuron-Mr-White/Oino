@@ -72,7 +72,8 @@ describe('G-8..G-11: the capability pages and their Manage actions', () => {
       const actions = MANAGE_ACTIONS.filter((action) => action.page === page);
       expect(actions.length, page).toBeGreaterThan(0);
       for (const action of actions) {
-        expect(action.command).toMatch(/^[a-z][a-z0-9-]*$/);
+        // A command, optionally with its sub-command (`dream run`, P1-07).
+        expect(action.command).toMatch(/^[a-z][a-z0-9-]*( [a-z][a-z0-9-]*)?$/);
         expect(action.title.trim()).not.toBe('');
       }
     }
