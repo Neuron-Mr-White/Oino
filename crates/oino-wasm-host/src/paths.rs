@@ -130,6 +130,30 @@ fn expand_home(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
+/// Re-roots a manifest grant that names the **default** agent dir (`~/.oino/…`) onto this
+/// host's agent dir (v2 QA D-46: `OINO_AGENT_DIR` runs an isolated profile — an extension
+/// granting `~/.oino/cron` must reach *this profile's* `cron`, never the real `~/.oino`).
+/// Anything else (`~/Documents`, absolute paths) is untouched, and on a default install the
+/// re-root is the identity.
+fn rooted_in_agent_dir(host: PathBuf, agent_dir: &Path) -> PathBuf {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    rooted_in_agent_dir_with(home.as_deref().map(Path::new), host, agent_dir)
+}
+
+/// [`rooted_in_agent_dir`] with the home directory given (tests).
+fn rooted_in_agent_dir_with(home: Option<&Path>, host: PathBuf, agent_dir: &Path) -> PathBuf {
+    let Ok(default) = oino_settings::paths::agent_dir_from(None, home) else {
+        return host;
+    };
+    if host == default {
+        return agent_dir.to_path_buf();
+    }
+    match host.strip_prefix(&default) {
+        Ok(rest) => agent_dir.join(rest),
+        Err(_) => host,
+    }
+}
+
 /// Refreshes the `/agent` view from the agent dir and returns it.
 ///
 /// Each file is staged and renamed into place: the watcher and instance creation can refresh
@@ -200,7 +224,7 @@ pub(crate) fn preopens(paths: &ExtPaths, perms: &Permissions, cwd: &Path) -> Vec
         if grant.access == FsAccess::None {
             continue;
         }
-        let host = expand_home(&grant.path);
+        let host = rooted_in_agent_dir(expand_home(&grant.path), &paths.agent_dir);
         if host.is_dir() {
             out.push(Preopen {
                 name: grant.alias.trim_matches('/').to_owned(),
@@ -388,5 +412,50 @@ mod tests {
         assert_eq!(id.len(), 16);
         assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
         assert_eq!(id, workspace_id(Path::new("/home/u/project")));
+    }
+
+    /// v2 QA D-46: a manifest's `~/.oino/...` grant follows the host's agent dir — an
+    /// isolated profile (`OINO_AGENT_DIR`) never preopens the real `~/.oino`.
+    #[test]
+    fn agent_dir_grants_follow_the_host_agent_dir() {
+        let home = tempfile::tempdir().unwrap();
+        let default_agent = home.path().join(".oino");
+        let isolated = tempfile::tempdir().unwrap();
+        let agent_dir = isolated.path().join("agent");
+        std::fs::create_dir_all(default_agent.join("cron")).unwrap();
+        std::fs::create_dir_all(agent_dir.join("cron")).unwrap();
+        // The default install: `~/.oino/cron` is the agent dir's `cron` (identity).
+        assert_eq!(
+            rooted_in_agent_dir_with(
+                Some(home.path()),
+                default_agent.join("cron"),
+                &default_agent
+            ),
+            default_agent.join("cron")
+        );
+        // An isolated profile re-roots the very same grant onto its own agent dir.
+        assert_eq!(
+            rooted_in_agent_dir_with(
+                Some(home.path()),
+                default_agent.join("cron").join("jobs"),
+                &agent_dir
+            ),
+            agent_dir.join("cron").join("jobs")
+        );
+        // Other home paths are untouched.
+        let documents = home.path().join("Documents");
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), documents.clone(), &agent_dir),
+            documents
+        );
+        // Without a home there is no default agent dir to re-root against.
+        assert_eq!(
+            rooted_in_agent_dir_with(
+                None,
+                default_agent.join("cron"),
+                &agent_dir
+            ),
+            default_agent.join("cron")
+        );
     }
 }

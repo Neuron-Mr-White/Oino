@@ -82,10 +82,14 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
         .core_services()
         .await
         .map_err(|error| failed(error.to_string()))?;
-    dispatch(&services, cmd).await
+    dispatch(hub, &services, cmd).await
 }
 
-async fn dispatch(services: &Arc<Services>, cmd: HostCmd) -> Result<Value, AppErrorDto> {
+async fn dispatch(
+    hub: &Arc<SessionHub>,
+    services: &Arc<Services>,
+    cmd: HostCmd,
+) -> Result<Value, AppErrorDto> {
     let registry = &services.extension_settings;
     match cmd {
         HostCmd::GetSettingsSchema => Ok(json!({ "namespaces": registry.schema() })),
@@ -171,7 +175,11 @@ async fn dispatch(services: &Arc<Services>, cmd: HostCmd) -> Result<Value, AppEr
                 .map_err(failed)?;
             Ok(Value::Null)
         }
-        HostCmd::AuthProviders => Ok(json!({ "providers": auth_providers(services) })),
+        HostCmd::AuthProviders { validate } => Ok(json!({
+            "providers": auth_providers(hub, services, validate.unwrap_or(false)).await
+        })),
+        // `default_model` (D-01): the model a new session will start on, with why.
+        HostCmd::DefaultModel => default_model_reply(hub, services).await,
         HostCmd::Login { .. } => Err(unsupported(
             "OAuth sign-in opens from a chat session (its dialogs need a frontend); set an API key instead",
         )),
@@ -181,6 +189,7 @@ async fn dispatch(services: &Arc<Services>, cmd: HostCmd) -> Result<Value, AppEr
                 .auth_storage()
                 .remove(&provider)
                 .map_err(failed)?;
+            hub.readiness().invalidate(&provider);
             Ok(Value::Null)
         }
         HostCmd::SetApiKey { provider, key } => {
@@ -208,6 +217,8 @@ async fn dispatch(services: &Arc<Services>, cmd: HostCmd) -> Result<Value, AppEr
                 Some(json!({"type": "api_key", "key": key})),
             )
             .await;
+            // The new key must be validated afresh (D-37).
+            hub.readiness().invalidate(&provider);
             Ok(Value::Null)
         }
         HostCmd::GetShortcuts => Ok(json!({ "shortcuts": shortcuts(services) })),
@@ -250,44 +261,202 @@ fn extension_infos(services: &Services) -> Vec<Value> {
     rows
 }
 
-/// `_oino/auth_providers`: the same rows the session command builds, straight
-/// from the model registry (`frontend.rs` needs a session only for its runner).
-fn auth_providers(services: &Services) -> Vec<Value> {
-    let models = &services.models;
-    let mut providers: Vec<Value> = models
-        .registered_providers()
-        .into_iter()
-        .filter_map(|id| {
-            let registration = models.registration(&id)?;
-            let stored = models
-                .auth_storage()
-                .stored(&id)
-                .ok()
-                .flatten()
-                .map(|credential| {
-                    match credential {
-                        oino_models::auth::credential::AuthCredential::ApiKey(_) => "api_key",
-                        oino_models::auth::credential::AuthCredential::Oauth(_) => "oauth",
+/// `_oino/auth_providers`: the same rows the session command builds, straight from the
+/// model registry (`frontend.rs` needs a session only for its runner), plus the hub's
+/// cached credential validation (D-37): `state` (`ready` | `invalid_key` | `unreachable` |
+/// `unknown`), `ready` (present iff validated), `reason`, `checkedAt`.
+///
+/// Validation is lazy by design: rows answer from the cache; configured-but-unvalidated
+/// providers are probed in the background (the next read sees the answer). `validate: true`
+/// waits for the probes of this call instead — bounded, parallel, once per provider per TTL.
+async fn auth_providers(hub: &Arc<SessionHub>, services: &Services, validate: bool) -> Vec<Value> {
+    let (mut rows, to_probe) = provider_rows(hub, &services.models);
+    if to_probe.is_empty() {
+        return rows;
+    }
+    if validate {
+        crate::models_readiness::probe_all(hub.readiness(), &services.models, &to_probe).await;
+        let (fresh, _) = provider_rows(hub, &services.models);
+        rows = fresh;
+        return rows;
+    }
+    // Lazy: fill the cache in the background; the next read carries the answer.
+    let hub = Arc::clone(hub);
+    let models = services.models.clone();
+    tokio::spawn(async move {
+        crate::models_readiness::probe_all(hub.readiness(), &models, &to_probe).await;
+    });
+    rows
+}
+
+/// The rows plus which configured providers still need a probe (cache miss).
+fn provider_rows(
+    hub: &Arc<SessionHub>,
+    models: &oino_models::ModelRegistry,
+) -> (Vec<Value>, Vec<String>) {
+    let mut rows: Vec<Value> = Vec::new();
+    let mut to_probe: Vec<String> = Vec::new();
+    for id in models.registered_providers() {
+        let Some(registration) = models.registration(&id) else {
+            continue;
+        };
+        let stored = models
+            .auth_storage()
+            .stored(&id)
+            .ok()
+            .flatten()
+            .map(|credential| {
+                match credential {
+                    oino_models::auth::credential::AuthCredential::ApiKey(_) => "api_key",
+                    oino_models::auth::credential::AuthCredential::Oauth(_) => "oauth",
+                }
+                .to_owned()
+            });
+        let info = oino_core::session::AuthProviderInfo {
+            name: registration.display_name().to_owned(),
+            oauth: registration.oauth,
+            configured: models.has_configured_auth(&id),
+            stored,
+            env: registration.auth_env.clone(),
+            id: id.clone(),
+        };
+        let mut row = serde_json::to_value(&info).unwrap_or(Value::Null);
+        if let Some(object) = row.as_object_mut() {
+            let configured = object
+                .get("configured")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            match hub.readiness().get(&id) {
+                Some(readiness) => {
+                    object.insert("state".into(), json!(readiness.state.as_str()));
+                    object.insert(
+                        "ready".into(),
+                        json!(readiness.state == crate::models_readiness::ReadinessState::Ready),
+                    );
+                    object.insert(
+                        "reason".into(),
+                        json!(readiness_reason(
+                            readiness.state,
+                            readiness.detail.as_deref()
+                        )),
+                    );
+                    if let Some(detail) = &readiness.detail {
+                        object.insert("detail".into(), json!(detail));
                     }
-                    .to_owned()
-                });
-            let info = oino_core::session::AuthProviderInfo {
-                name: registration.display_name().to_owned(),
-                oauth: registration.oauth,
-                configured: models.has_configured_auth(&id),
-                stored,
-                env: registration.auth_env.clone(),
-                id,
-            };
-            serde_json::to_value(&info).ok()
-        })
-        .collect();
+                    object.insert(
+                        "checkedAt".into(),
+                        json!(crate::models_readiness::epoch_ms(readiness.checked_at)),
+                    );
+                }
+                None => {
+                    let state = if configured {
+                        "unknown"
+                    } else {
+                        "not_configured"
+                    };
+                    object.insert("state".into(), json!(state));
+                    if configured && crate::models_readiness::probeable(&registration) {
+                        to_probe.push(id);
+                    }
+                }
+            }
+        }
+        rows.push(row);
+    }
     // Display order, like the session command.
-    providers.sort_by(|a, b| {
+    rows.sort_by(|a, b| {
         let name = |value: &Value| value["name"].as_str().unwrap_or_default().to_lowercase();
         name(a).cmp(&name(b))
     });
-    providers
+    (rows, to_probe)
+}
+
+/// One line of "why not ready" for a provider row (D-37: no more `Ready` on a dead key).
+fn readiness_reason(
+    state: crate::models_readiness::ReadinessState,
+    detail: Option<&str>,
+) -> String {
+    let detail = detail.unwrap_or_default();
+    match state {
+        crate::models_readiness::ReadinessState::Ready => "the key works".to_owned(),
+        crate::models_readiness::ReadinessState::InvalidKey => {
+            if detail.is_empty() {
+                "the provider rejected the key".to_owned()
+            } else {
+                format!("the provider rejected the key ({detail})")
+            }
+        }
+        crate::models_readiness::ReadinessState::Unreachable => {
+            if detail.is_empty() {
+                "could not reach the provider".to_owned()
+            } else {
+                format!("could not reach the provider ({detail})")
+            }
+        }
+    }
+}
+
+/// `default_model` (D-01): the model `session_new` will start on, the source of the choice
+/// and why the configured default (when there is one) was not used — so the draft chip shows
+/// what the first send will actually use, or says why it cannot.
+async fn default_model_reply(
+    hub: &Arc<SessionHub>,
+    services: &Arc<Services>,
+) -> Result<Value, AppErrorDto> {
+    // A snapshot, not the lock: the chooser awaits probes and the guard must not cross one.
+    let settings = services
+        .settings
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .snapshot();
+    let choice = crate::models_readiness::choose_default_model(
+        &services.models,
+        &settings,
+        hub.readiness(),
+        false,
+    )
+    .await;
+    let default_configured = match (settings.default_provider(), settings.default_model()) {
+        (Some(provider), Some(model)) => json!({ "provider": provider, "model": model }),
+        _ => Value::Null,
+    };
+    // The chosen model's provider, else the configured default's (when nothing was usable).
+    let kick = choice
+        .model
+        .as_ref()
+        .map(|model| model.provider.clone())
+        .or_else(|| {
+            default_configured
+                .get("provider")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        });
+    let provider_state = kick.as_deref().and_then(|provider| {
+        hub.readiness()
+            .get(provider)
+            .map(|readiness| readiness.state.as_str())
+    });
+    // Refresh that provider's validation in the background so the next read — and
+    // `session_new`'s fallback — is informed.
+    if let Some(provider) = kick.filter(|provider| {
+        services
+            .models
+            .registration(provider)
+            .is_some_and(|registration| crate::models_readiness::probeable(&registration))
+    }) {
+        let hub = Arc::clone(hub);
+        let models = services.models.clone();
+        tokio::spawn(async move {
+            crate::models_readiness::probe_and_cache(hub.readiness(), &models, &provider).await;
+        });
+    }
+    Ok(json!({
+        "model": choice.model,
+        "source": choice.source,
+        "reason": choice.reason,
+        "defaultConfigured": default_configured,
+        "providerState": provider_state,
+    }))
 }
 
 /// `_oino/get_shortcuts`: every loaded extension's registrations (later

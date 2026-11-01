@@ -45,9 +45,11 @@ pub struct OinoCommand {
 }
 
 /// Resolves the `oino` binary to spawn: `$OINO_CRON_BIN`, then this process's own
-/// executable **when it is `oino` itself**, then `oino` on `PATH`. `None` when nothing
-/// found. (The owner is no longer the `oino` binary — under v2 it is unipi-host — so a
-/// foreign current executable must not be used.)
+/// executable **when it is `oino` itself**, then an `oino` sitting **beside** this
+/// executable (the bundle's `usr/bin/oino` next to `usr/bin/unipi-oino-host`), then `oino`
+/// on `PATH`. `None` when nothing found. (The owner is no longer the `oino` binary —
+/// under v2 it is unipi-host — so a foreign current executable must not be *spawned*, but
+/// its directory is exactly where the bundled `oino` lives.)
 #[must_use]
 pub fn resolve_oino(
     env_bin: Option<std::ffi::OsString>,
@@ -63,12 +65,24 @@ pub fn resolve_oino(
     let oino_name = if cfg!(windows) { "oino.exe" } else { "oino" };
     if let Some(exe) = exe
         && exe.is_file()
-        && exe.file_name().is_some_and(|n| n == oino_name)
     {
-        return Some(OinoCommand {
-            program: exe.to_path_buf(),
-            args: Vec::new(),
-        });
+        if exe.file_name().is_some_and(|n| n == oino_name) {
+            return Some(OinoCommand {
+                program: exe.to_path_buf(),
+                args: Vec::new(),
+            });
+        }
+        // v2 QA D-41: the host ships with `oino` beside it — use that bundled binary
+        // before whatever a shell `PATH` would surface (a dev install, another version).
+        if let Some(dir) = exe.parent() {
+            let sibling = dir.join(oino_name);
+            if sibling.is_file() {
+                return Some(OinoCommand {
+                    program: sibling,
+                    args: Vec::new(),
+                });
+            }
+        }
     }
     let path_env = path_env?;
     for dir in std::env::split_paths(&path_env) {
@@ -238,7 +252,7 @@ pub async fn run(
         std::env::var_os("PATH").as_deref(),
         std::env::current_exe().ok().as_deref(),
     ) else {
-        let message = "couldn't find the oino binary (set OINO_CRON_BIN, or run the scheduler with oino on PATH)".to_owned();
+        let message = "couldn't find the oino binary to run the job (install it beside the host, set OINO_CRON_BIN, or add oino to PATH)".to_owned();
         let _ = store::append_log(paths, job_id, run_id, message.as_bytes());
         return Outcome {
             status: RunStatus::Failed,
@@ -499,17 +513,34 @@ mod tests {
         std::fs::write(&exe, b"#! /bin/sh\n").unwrap();
         let found = resolve_oino(None, None, Some(&exe)).unwrap();
         assert_eq!(found.program, exe);
-        // A foreign current executable (the v2 owner is unipi-host) must not be spawned.
-        let foreign = tmp.path().join("unipi-host");
+        // A foreign current executable (the v2 owner is unipi-host) must not be spawned
+        // itself, and a directory without `oino` beside it resolves nothing …
+        let foreign_dir = tempfile::tempdir().unwrap();
+        let foreign = foreign_dir.path().join("unipi-host");
         std::fs::write(&foreign, b"#! /bin/sh\n").unwrap();
         assert!(resolve_oino(None, None, Some(&foreign)).is_none());
-        // No exe → PATH search.
-        let on_path = tmp.path().join("oino");
+        // … but a bundled `oino` beside it wins (D-41), even over one on PATH.
+        let sibling = foreign_dir.path().join(oino_sibling_name());
+        std::fs::write(&sibling, b"#! /bin/sh\n").unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let on_path = elsewhere.path().join(oino_sibling_name());
         std::fs::write(&on_path, b"#! /bin/sh\n").unwrap();
-        let path = std::env::join_paths([&tmp.path()]).unwrap();
+        let path = std::env::join_paths([&elsewhere.path()]).unwrap();
+        let found = resolve_oino(None, Some(path.as_os_str()), Some(&foreign)).unwrap();
+        assert_eq!(found.program, sibling);
+        // No exe → PATH search.
         let found = resolve_oino(None, Some(path.as_os_str()), None).unwrap();
         assert_eq!(found.program, on_path);
         assert!(resolve_oino(None, None, None).is_none());
+    }
+
+    /// The `oino` file name `resolve_oino` looks for on this platform.
+    fn oino_sibling_name() -> std::ffi::OsString {
+        if cfg!(windows) {
+            "oino.exe".into()
+        } else {
+            "oino".into()
+        }
     }
 
     #[test]

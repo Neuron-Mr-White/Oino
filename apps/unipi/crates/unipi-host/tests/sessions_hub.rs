@@ -376,3 +376,64 @@ async fn host_notices_are_retained_for_late_clients() {
     let live = events.recv().await.unwrap();
     assert!(matches!(live, HubEvent::HostNotice { .. }), "{live:?}");
 }
+
+/// v2 QA D-09: after `session_fork`, the ORIGINAL session keeps its own runtime — a prompt
+/// or a model change sent through the original's open stream lands in the original's file,
+/// and the fork (a new id over a new file) sees only its own conversation. The old in-place
+/// fork re-keyed the shared runtime to the fork, silently wiring the original chat to it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fork_keeps_the_original_wired_to_its_own_runtime() {
+    let fixture = hub_with(vec![
+        FauxResponse::Text("first reply".into()),
+        FauxResponse::Text("original check".into()),
+    ]);
+    let hub = &fixture.hub;
+    let a = create(hub).await;
+    let a_id = a.session_id();
+    prompt(&a, "first").await;
+    wait_text(&a).await;
+    wait_idle(&a).await;
+    let before = state_of(&a).await.message_count;
+
+    // Fork at the leaf: a new id over a new file, with the conversation copied.
+    let b = hub.fork(&a_id, None, None).await.unwrap();
+    let b_id = b.session_id();
+    assert_ne!(b_id, a_id);
+    // D-09's core regression: the original's handle still serves the original session
+    // (the in-place fork made this backend report the fork's id).
+    assert_eq!(a.session_id(), a_id);
+
+    // A prompt through the ORIGINAL's stream answers there …
+    prompt(&a, "ORIGINALCHECK").await;
+    wait_text(&a).await;
+    wait_idle(&a).await;
+    // … lands in the original's file …
+    let a_state = state_of(&a).await;
+    assert_eq!(a.session_id(), a_id);
+    assert!(a_state.message_count > before, "{a_state:?}");
+    let a_file = std::fs::read_to_string(a_state.session_file.clone().unwrap()).unwrap();
+    assert!(
+        a_file.contains("ORIGINALCHECK"),
+        "the prompt must reach A's file"
+    );
+    // … and never in the fork's.
+    let b_state = state_of(&b).await;
+    assert_eq!(b.session_id(), b_id);
+    assert_eq!(
+        b_state.message_count, before,
+        "the fork must not receive the original's later turns"
+    );
+    let b_file = std::fs::read_to_string(b_state.session_file.clone().unwrap()).unwrap();
+    assert!(!b_file.contains("ORIGINALCHECK"));
+    assert_ne!(a_state.session_file, b_state.session_file);
+
+    // A model change in the original (the Ctrl+Alt+P repro) stays out of the fork's file.
+    a.send(RpcCommand::Agent(AgentCommand::SetModel {
+        provider: "faux".into(),
+        model_id: "faux-1".into(),
+    }))
+    .await
+    .unwrap();
+    let b_file_after = std::fs::read_to_string(b_state.session_file.unwrap()).unwrap();
+    assert_eq!(b_file_after, b_file, "the fork's file must not change");
+}

@@ -365,6 +365,23 @@ impl SessionHub {
         cwd: Option<&Path>,
         name: Option<&str>,
     ) -> Result<Arc<dyn SessionBackend>, ClientError> {
+        self.create_session_with_model(cwd, name, None).await
+    }
+
+    /// [`SessionHub::create_session`] with an explicit initial model (the host's
+    /// `session_new` picker, D-01): the model is the session's starting selection —
+    /// no `model_change` entry, nothing persisted — exactly like the CLI's resolved
+    /// `--model`. `None` keeps [`SessionOptions`]' own initial selection.
+    ///
+    /// # Errors
+    ///
+    /// Services creation or session-open failures.
+    pub async fn create_session_with_model(
+        &self,
+        cwd: Option<&Path>,
+        name: Option<&str>,
+        model: Option<oino_ai::Model>,
+    ) -> Result<Arc<dyn SessionBackend>, ClientError> {
         let mut state = self.inner.state.lock().await;
         let cwd = cwd.map_or_else(|| self.inner.cwd.clone(), Path::to_path_buf);
         let services = self.services_for(&mut state, &cwd).await?;
@@ -372,6 +389,7 @@ impl SessionHub {
             source: SessionSource::New,
             session_dir: Some(self.inner.sessions_root.clone()),
             name: name.map(str::to_owned),
+            model,
             tools: self.inner.tools.clone(),
             exclude_tools: self.inner.exclude_tools.clone(),
             ..SessionOptions::default()

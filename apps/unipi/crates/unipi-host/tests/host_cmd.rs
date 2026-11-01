@@ -207,7 +207,9 @@ async fn api_key_and_providers_without_a_session() {
     )
     .await
     .unwrap();
-    let providers = run_on(&hub, HostCmd::AuthProviders).await.unwrap();
+    let providers = run_on(&hub, HostCmd::AuthProviders { validate: None })
+        .await
+        .unwrap();
     let faux = providers["providers"]
         .as_array()
         .unwrap()
@@ -227,4 +229,87 @@ async fn api_key_and_providers_without_a_session() {
     .await
     .unwrap_err();
     assert!(err.contains("session"), "{err}");
+}
+
+/// v2 QA D-01/D-37: `default_model` reports the model a new session will start on and
+/// `auth_providers` rows carry the hub's credential validation — `unknown` for an API the
+/// host cannot probe (never a fake `ready`), and a cached answer rides every row.
+#[tokio::test]
+async fn default_model_and_provider_readiness_without_a_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub(&dir);
+
+    // No default configured: the only credentialed provider (faux — not probeable) is the
+    // choice, reported as an unvalidated fallback with its provider state.
+    let reply = run_on(&hub, HostCmd::DefaultModel).await.unwrap();
+    assert_eq!(reply["source"], serde_json::json!("fallback"));
+    assert_eq!(reply["model"]["provider"], serde_json::json!("faux"));
+    assert_eq!(reply["model"]["id"], serde_json::json!("faux-1"));
+    assert_eq!(reply["defaultConfigured"], serde_json::Value::Null);
+
+    // Configure the faux default: the choice is the user's, source `settings`.
+    let settings = hub.core_services().await.unwrap();
+    settings
+        .settings
+        .lock()
+        .unwrap()
+        .set_default_model_and_provider("faux", "faux-1")
+        .unwrap();
+    let reply = run_on(&hub, HostCmd::DefaultModel).await.unwrap();
+    assert_eq!(reply["source"], serde_json::json!("settings"));
+    assert_eq!(reply["model"]["id"], serde_json::json!("faux-1"));
+    assert_eq!(
+        reply["defaultConfigured"]["provider"],
+        serde_json::json!("faux")
+    );
+
+    // A stored validation rides the provider row: state, ready, reason, checkedAt.
+    hub.readiness().store(
+        "faux",
+        unipi_host::models_readiness::ReadinessState::InvalidKey,
+        Some("HTTP 401".into()),
+    );
+    let providers = run_on(&hub, HostCmd::AuthProviders { validate: None })
+        .await
+        .unwrap();
+    let faux = providers["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "faux")
+        .unwrap_or_else(|| panic!("{providers:?}"));
+    assert_eq!(faux["state"], serde_json::json!("invalid_key"));
+    assert_eq!(faux["ready"], serde_json::json!(false));
+    assert!(faux["reason"].as_str().unwrap().contains("rejected"));
+    assert!(faux["checkedAt"].as_u64().is_some());
+
+    // With the key rejected, `default_model` falls back (unverified) and says why.
+    let reply = run_on(&hub, HostCmd::DefaultModel).await.unwrap();
+    assert_eq!(reply["source"], serde_json::json!("fallback-unverified"));
+    assert!(reply["reason"].as_str().unwrap().contains("was rejected"));
+
+    // A fresh key clears the verdict.
+    run_on(
+        &hub,
+        HostCmd::SetApiKey {
+            provider: "faux".into(),
+            key: "sk-2".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let providers = run_on(&hub, HostCmd::AuthProviders { validate: None })
+        .await
+        .unwrap();
+    let faux = providers["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "faux")
+        .unwrap();
+    assert_eq!(faux["state"], serde_json::json!("unknown"));
+    assert!(
+        faux.get("ready").is_none(),
+        "unvalidated rows carry no `ready`"
+    );
 }

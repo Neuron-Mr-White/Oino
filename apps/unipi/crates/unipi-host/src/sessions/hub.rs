@@ -51,7 +51,7 @@ use oino_core::extensions::api::ExtensionMode;
 use oino_core::runtime::ToolSelection;
 use oino_core::services::{ExtensionLoader, ResourceFlags};
 use oino_models::ModelRegistry;
-use oino_session::LeaseInfo;
+use oino_session::{EntryId, LeaseInfo, SessionManager};
 use oino_settings::SettingsManager;
 
 use super::card::{HubState, ProjectGroup, SessionCard};
@@ -359,6 +359,8 @@ struct Inner {
     cron: crate::cron_serve::CronSessions,
     /// When the last background project pre-warm ran (throttle).
     warmed_at: Mutex<Option<Instant>>,
+    /// Per-provider credential validation (D-01/D-37): cached, lazily probed.
+    readiness: crate::models_readiness::ReadinessCache,
     /// The host data dir (`~/.oino/host`; the fallback hermetic tests use) — where the
     /// blob store media references point.
     host_data: PathBuf,
@@ -439,6 +441,7 @@ impl SessionHub {
             focus: FocusRegistry::default(),
             cron: crate::cron_serve::CronSessions::new(&agent_dir),
             warmed_at: Mutex::new(None),
+            readiness: crate::models_readiness::ReadinessCache::new(),
             host_data,
             started: SystemTime::now(),
         });
@@ -654,6 +657,37 @@ impl SessionHub {
     /// forwards the registry's snapshot and patches verbatim).
     pub fn emit_ui(&self, snapshot: Option<serde_json::Value>, patch: Option<serde_json::Value>) {
         self.inner.emit(HubEvent::Ui { snapshot, patch });
+    }
+
+    /// The hub's per-provider credential validation cache (D-01/D-37).
+    #[must_use]
+    pub fn readiness(&self) -> &crate::models_readiness::ReadinessCache {
+        &self.inner.readiness
+    }
+
+    /// The model a new session on this hub will start on (D-01): the configured default
+    /// when its provider is available, else the first validated fallback. `session_new`
+    /// starts the runtime on it and `host_cmd › default_model` reports it.
+    ///
+    /// # Errors
+    ///
+    /// Services creation failures (core hub texts).
+    pub async fn default_model(
+        &self,
+    ) -> Result<crate::models_readiness::DefaultModelChoice, HubError> {
+        let services = self.core_services().await?;
+        let settings = services
+            .settings
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .snapshot();
+        Ok(crate::models_readiness::choose_default_model(
+            &services.models,
+            &settings,
+            &self.inner.readiness,
+            false,
+        )
+        .await)
     }
 
     /// Emits a board project change on `events_open` (app.md §3.14 `board_watch`, WP-A22):
@@ -989,17 +1023,55 @@ impl Inner {
         );
     }
 
-    /// `session_new{cwd, name?}`.
+    /// `session_new{cwd, name?}` (§4.2): a new runtime over a fresh session file (core
+    /// writes the header when the first message arrives). The runtime starts on
+    /// [`SessionHub::default_model`]'s choice (D-01), so the draft chip, the snapshot and
+    /// the first send all agree on one model that actually exists on this host.
     async fn create_session(
         self: &Arc<Self>,
         cwd: Option<&Path>,
         name: Option<&str>,
     ) -> Result<HubSession, HubError> {
         let cwd = cwd.map_or_else(|| self.cwd.clone(), Path::to_path_buf);
-        let backend = self.core.create_session(Some(&cwd), name).await?;
+        let model = self.default_model_for(&cwd).await?;
+        let backend = self
+            .core
+            .create_session_with_model(Some(&cwd), name, model)
+            .await?;
         let card = self.card_for(&backend, &cwd).await;
         self.emit(HubEvent::SessionChanged { card: card.clone() });
         Ok(HubSession::new(Arc::downgrade(self), backend, card, None))
+    }
+
+    /// The chooser behind `session_new`: the same services the runtime will run on, so the
+    /// choice reflects that project's provider implementations; a chooser failure never
+    /// blocks the session (the engine's own selection takes over).
+    async fn default_model_for(&self, cwd: &Path) -> Result<Option<oino_ai::Model>, HubError> {
+        let services = match self.core.warm_services(cwd).await {
+            Ok(services) => services,
+            Err(_) => self.core.services().await?,
+        };
+        let settings = services
+            .settings
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .snapshot();
+        let choice = crate::models_readiness::choose_default_model(
+            &services.models,
+            &settings,
+            &self.readiness,
+            true,
+        )
+        .await;
+        if let Some(reason) = &choice.reason {
+            tracing::info!(
+                source = choice.source,
+                model = choice.model.as_ref().map(|model| model.id.as_str()).unwrap_or("none"),
+                reason = %reason,
+                "session_new model choice"
+            );
+        }
+        Ok(choice.model)
     }
 
     /// `session_open{session}` — with takeover (§8): a session held by the TUI, a CLI run or
@@ -1054,38 +1126,41 @@ impl Inner {
         ))
     }
 
-    /// `session_fork{session, entry_id?, name?}`.
+    /// `session_fork{session, entry_id?, name?}` — a **file-level** fork (v2 QA D-09):
+    /// the fork is written from the target's session file (branch before `entry_id`, or at
+    /// the leaf) and woken as **its own runtime with its own id**; the original keeps its
+    /// runtime, feed and stream untouched. Core's in-place `fork`/`clone` RPCs stay as they
+    /// are for in-stream use, where the issuing stream *follows* the new session — a
+    /// host-level fork must never rewire a session somebody else is looking at.
     async fn fork(
         self: &Arc<Self>,
         target: &str,
         entry_id: Option<&str>,
         name: Option<&str>,
     ) -> Result<HubSession, HubError> {
-        let session = self.open(target).await?;
-        let command = match entry_id {
-            Some(entry) => AgentCommand::Fork {
-                entry_id: entry.to_owned(),
-            },
-            // pi `clone`: fork at the leaf (the whole conversation).
-            None => AgentCommand::Clone,
-        };
-        session.send(RpcCommand::Agent(command)).await?;
+        let record = self.resolve(target).await?;
+        let cwd = record_cwd(&record, &self.cwd);
+        // 1. Write the fork's file from the target's file (no runtime touched: the target
+        //    keeps its lease, its live state and its events).
+        let path = fork_file(&record.info.path, &cwd, &self.sessions_root, entry_id)?;
+        // 2. Wake the fork's fresh record as its own runtime (a new file: no other holder).
+        let backend = self.core.open(&path.to_string_lossy()).await?;
         if let Some(name) = name {
-            session
+            backend
                 .send(RpcCommand::Agent(AgentCommand::SetSessionName {
                     name: name.to_owned(),
                 }))
                 .await?;
         }
-        let cwd = PathBuf::from(&session.card.cwd);
-        let card = self.card_for(&session.backend, &cwd).await;
+        let card = self.card_for(&backend, &cwd).await;
         self.emit(HubEvent::SessionChanged { card: card.clone() });
-        Ok(HubSession::new(
-            Arc::downgrade(self),
-            Arc::clone(&session.backend),
-            card,
-            session.taken_over.clone(),
-        ))
+        tracing::info!(
+            fork = %card.session_id,
+            from = %record.info.id,
+            path = %path.display(),
+            "session forked (file-level)"
+        );
+        Ok(HubSession::new(Arc::downgrade(self), backend, card, None))
     }
 
     /// `session_archive{session}`: dispose, then move the file to `trash/` (§14.2).
@@ -1399,6 +1474,53 @@ fn record_cwd(record: &CoreHubSession, default: &Path) -> PathBuf {
     } else {
         cwd.to_path_buf()
     }
+}
+
+/// Writes a fork of `source` under `sessions_root` and returns the new session file
+/// (D-09): the new file's header gets a fresh id and `parentSession = source`, and its
+/// entries are the source's **current branch** — up to and including `leaf_fork`'s entry,
+/// or before the given `entry_id` (pi `fork` semantics: the entry must be a user message,
+/// and the branch restarts at its parent). Nothing is woken and the source is only read.
+///
+/// # Errors
+///
+/// Reading/parsing the source, an unknown or non-user `entry_id` (core's own text), or a
+/// source without conversation entries (nothing to fork).
+fn fork_file(
+    source: &Path,
+    cwd: &Path,
+    sessions_root: &Path,
+    entry_id: Option<&str>,
+) -> Result<PathBuf, HubError> {
+    let mut manager = SessionManager::open(source, sessions_root, Some(cwd))
+        .map_err(|error| HubError::failed(format!("reading {}: {error}", source.display())))?;
+    let leaf = match entry_id {
+        // pi `fork` before an entry: the entry must be a user message; the fork branches
+        // at its parent (core `fork_with_reason`'s own rule and text).
+        Some(entry) => {
+            let selected = manager
+                .entry(&EntryId::from(entry))
+                .ok_or_else(|| HubError::failed("Invalid entry ID for forking"))?;
+            if selected
+                .message()
+                .is_none_or(|message| message.role() != "user")
+            {
+                return Err(HubError::failed("Invalid entry ID for forking"));
+            }
+            selected.parent_id.clone()
+        }
+        // pi `clone`: the whole current branch, at its leaf.
+        None => manager.leaf_id().cloned(),
+    };
+    let branched = match leaf {
+        Some(leaf) => manager
+            .branch_into_new_session(&leaf)
+            .map_err(|error| HubError::failed(format!("forking {}: {error}", source.display())))?,
+        // A fork before the first entry (or of a session without conversation entries)
+        // would be an empty session; core refuses the clone with the same idea.
+        None => return Err(HubError::failed("Nothing to fork yet")),
+    };
+    branched.ok_or_else(|| HubError::failed("Nothing to fork yet"))
 }
 
 /// `<dir>/<name>`, or `<dir>/<stem>.<n><ext>` when an archived file of that name exists.

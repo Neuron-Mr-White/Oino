@@ -21,6 +21,8 @@ oino-core = { path = "../../../../crates/oino-core", version = "1.0.1" }
 oino-session = { path = "../../../../crates/oino-session", version = "1.0.2" }
 oino-extension-api = { path = "../../../../crates/oino-extension-api", version = "1.0.2" }
 oino-models = { path = "../../../../crates/oino-models", version = "1.0.2" }
+# D-01: the `Model` the new-session chooser hands the runtime (`SessionOptions.model`).
+oino-ai = { path = "../../../../crates/oino-ai", version = "1.0.2" }
 oino-settings = { path = "../../../../crates/oino-settings", version = "1.0.2" }
 # H4 (host.md §7.3): the app's `UiCapabilities` for the implicit `_oino/hello`.
 oino-ui = { path = "../../../../crates/oino-ui", version = "1.0.2" }
@@ -104,7 +106,6 @@ windows-sys = { version = "0.61", features = [
 # WP-H3 acceptance (`tests/sessions_hub.rs`): the faux provider and fake components.
 oino-agent = { path = "../../../../crates/oino-agent", version = "1.0.2" }
 oino-core = { path = "../../../../crates/oino-core", version = "1.0.1", features = ["testing"] }
-oino-ai = { path = "../../../../crates/oino-ai", version = "1.0.2" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }

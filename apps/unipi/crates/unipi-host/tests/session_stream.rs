@@ -586,3 +586,40 @@ fn state_json() -> RpcSessionState {
     }))
     .unwrap()
 }
+
+/// v2 QA D-03: when the agent names a session (`session_info_changed`, e.g. the auto-title
+/// after the first turn), the host re-emits the card on `events_open` — the sidebar row and
+/// the header update live instead of after a restart.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn session_info_changed_re_emits_the_card_with_the_new_name() {
+    let fixture = fixture().await;
+    let mut events = fixture.hub.subscribe();
+    // The tap is what watches the runtime (the feed only numbers once something taps).
+    let feed = fixture.service.feed(&fixture.session_id);
+    let session = fixture.hub.open(&fixture.session_id).await.unwrap();
+    feed.ensure_tap(
+        Arc::clone(session.backend()),
+        Arc::downgrade(&fixture.service),
+    );
+    session
+        .send(RpcCommand::Agent(AgentCommand::SetSessionName {
+            name: "Ping Pong Reply".into(),
+        }))
+        .await
+        .unwrap();
+    let deadline = Instant::now() + READ_TIMEOUT;
+    loop {
+        let event = tokio::time::timeout_at(deadline.into(), events.recv())
+            .await
+            .expect("the card never arrived")
+            .expect("the hub event channel closed");
+        let unipi_host::sessions::HubEvent::SessionChanged { card } = event else {
+            continue;
+        };
+        if card.session_id == fixture.session_id && card.name.as_deref() == Some("Ping Pong Reply")
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "no card carried the new name");
+    }
+}

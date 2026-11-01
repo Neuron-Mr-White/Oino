@@ -336,7 +336,17 @@ impl Feed {
                         continue;
                     };
                     let replaced = replaced_session(&value);
+                    // v2 QA D-03: the agent names the session mid-run (`session_info_changed`,
+                    // e.g. the auto-title after the first turn) — re-list the card so the
+                    // Sessions list and the header pick the name up live, not after a restart.
+                    let renamed = value.get("type").and_then(Value::as_str)
+                        == Some("session_info_changed");
                     self.publish(value).await;
+                    if renamed {
+                        if let Some(service) = service.upgrade() {
+                            service.hub().refresh(&self.session_id()).await;
+                        }
+                    }
                     // §7.4: the host adds its own kinds next to the core event that caused
                     // them, carrying the resolved text for the app's banner.
                     match event {

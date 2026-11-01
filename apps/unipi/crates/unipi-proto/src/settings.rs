@@ -216,9 +216,21 @@ pub enum HostCmd {
     /// `_oino/set_extension_enabled`: add to / remove from `disabledExtensions`
     /// (applies to sessions created afterwards). → `null`.
     SetExtensionEnabled { id: String, enabled: bool },
-    /// `_oino/auth_providers`: providers with sign-in support and credential
-    /// state → `{providers: […]}`.
-    AuthProviders,
+    /// `_oino/auth_providers`: providers with sign-in support and credential state →
+    /// `{providers: […]}`. Rows carry the hub's cached credential validation (D-37):
+    /// `state` (`ready` | `invalid_key` | `unreachable` | `unknown` | `not_configured`),
+    /// `ready` (present iff validated), `reason`, `checkedAt`. With `validate: true` the
+    /// host waits for this call's probes (bounded, parallel) instead of answering from
+    /// the cache and refreshing in the background.
+    AuthProviders {
+        /// Wait for fresh validation of configured providers.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        validate: Option<bool>,
+    },
+    /// `default_model` (D-01): the model a new session will start on →
+    /// `{model, source, reason, defaultConfigured, providerState}` — the draft chip shows
+    /// `model`, or (with `model: null`) that no usable provider exists yet.
+    DefaultModel,
     /// `_oino/login`: **not served here** — the OAuth flow needs a session's
     /// frontend for its dialogs; the app opens it from a chat (WP-A25).
     Login { provider: String },
@@ -244,7 +256,8 @@ impl HostCmd {
             Self::UnsetExtensionSetting { .. } => "unset_extension_setting",
             Self::Extensions => "extensions",
             Self::SetExtensionEnabled { .. } => "set_extension_enabled",
-            Self::AuthProviders => "auth_providers",
+            Self::AuthProviders { .. } => "auth_providers",
+            Self::DefaultModel => "default_model",
             Self::Login { .. } => "login",
             Self::Logout { .. } => "logout",
             Self::SetApiKey { .. } => "set_api_key",
@@ -327,7 +340,7 @@ mod tests {
         for (cmd, name) in [
             (HostCmd::GetSettingsSchema, "get_settings_schema"),
             (HostCmd::Extensions, "extensions"),
-            (HostCmd::AuthProviders, "auth_providers"),
+            (HostCmd::AuthProviders { validate: None }, "auth_providers"),
             (HostCmd::GetShortcuts, "get_shortcuts"),
         ] {
             assert_eq!(cmd.kind(), name);
