@@ -8,7 +8,8 @@
  */
 import { createSignal, For, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { Ellipsis, SquarePen } from 'lucide-solid';
+import { Ellipsis, FolderOpen, Plug, SquarePen } from 'lucide-solid';
+import { can } from '../lib/platform';
 import { PageHeader } from '../components/PageHeader';
 import { AnchoredMenu, MenuRow } from '../components/board/AnchoredMenu';
 import { SessionList } from '../components/sidebar/SessionList';
@@ -16,9 +17,14 @@ import { useNewChatHost } from '../components/shell/Sidebar';
 import { railItems } from '../components/shell/Rail';
 import './chat.css';
 
-/** The "More" pages of the Chat header menu (§3.9): Cron + extension pages. */
-function moreItems() {
-  return railItems().filter((item) => item.id !== 'board');
+/** The "More" pages of the Chat header menu (§3.9): Cron, extension pages, and the
+ *  phone's Files and Ports screens (P1-05: reachable without opening a chat first). */
+export function moreItems() {
+  const phonePages = [
+    ...(can('files') ? [{ id: 'files', label: 'Files', href: '/files', icon: FolderOpen, order: 30 }] : []),
+    ...(can('portForward') ? [{ id: 'preview', label: 'Ports', href: '/preview', icon: Plug, order: 31 }] : []),
+  ];
+  return [...railItems().filter((item) => item.id !== 'board'), ...phonePages];
 }
 
 export default function Chat() {
@@ -48,7 +54,7 @@ export default function Chat() {
                 type="button"
                 class="ghost-icon-button"
                 aria-label="More"
-                data-tip="Cron and extension pages"
+                data-tip="Cron, Files, Ports and extension pages"
                 data-testid="chat-more"
                 onClick={(e) => setMoreAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
               >

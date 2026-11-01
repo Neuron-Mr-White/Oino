@@ -10,6 +10,8 @@ import './DiffTab';
 import './TreeTab';
 import './BtwTab';
 import './SubagentTab';
+// P1-05: the port-forward tab registers with the other pane views (SidePane imports it too).
+import '../ForwardTab';
 
 export { SessionTabLayer } from './SessionTabLayer';
 export { BtwTab } from './BtwTab';
