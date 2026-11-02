@@ -145,10 +145,12 @@ export function NeedsYouBell(props: { onOpen: () => void }) {
  * so pending approvals / questions on every PC are one click away on every
  * screen. The phone keeps the floating Unicrab.
  */
+/** The desktop shell bell ([ui-shell] #5): a red dot while anything is unread (clears once read),
+ *  the count in its accessible label. */
 export function ShellNeedsYouBell(props: { onOpen: () => void }) {
   const unread = () => needsYou().unreadCount();
   const waiting = () => needsYou().list().some((i) => i.group === 'waiting' && !needsYou().isRead(i.id));
-  const label = () => (unread() > 0 ? `Needs you · ${unread()} unread` : 'Needs you');
+  const label = () => (unread() > 0 ? `Notifications, ${unread()} unread` : 'Notifications');
   return (
     <button
       type="button"
@@ -156,12 +158,13 @@ export function ShellNeedsYouBell(props: { onOpen: () => void }) {
       aria-label={label()}
       title={label()}
       data-waiting={waiting() ? '' : undefined}
+      data-unread={unread() > 0 ? '' : undefined}
       data-testid="shell-needs-you"
       onClick={() => props.onOpen()}
     >
       <Bell size={16} />
       <Show when={unread() > 0}>
-        <span class="ny-shell-badge">{unread() > 9 ? '9+' : unread()}</span>
+        <span class="ny-shell-dot" aria-hidden="true" data-testid="shell-needs-you-dot" />
       </Show>
     </button>
   );
