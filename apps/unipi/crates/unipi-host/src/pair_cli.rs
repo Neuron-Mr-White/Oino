@@ -99,7 +99,33 @@ pub const NOT_RUNNING: &str =
 /// The hint for "serve isn't running": v2 has no service install, so the
 /// host is either the app's own sidecar or one started by hand.
 pub fn start_hint() -> &'static str {
-    "Start it: open the Unipi app (it starts its host), or run `unipi-host serve` in a terminal"
+    #[cfg(target_os = "linux")]
+    {
+        "Start it: open the Unipi app (it starts its host), start the service (`systemctl --user start unipi-oino-host`, from `install.sh --host`), or run `unipi-host serve` in a terminal"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "Start it: open the Unipi app (it starts its host), start the service (`launchctl kickstart gui/$(id -u)/dev.unipi.oino.host`, from `install.sh --host`), or run `unipi-host serve` in a terminal"
+    }
+    #[cfg(windows)]
+    {
+        "Start it: open the Unipi app (it starts its host), start the service (`Start-ScheduledTask -TaskName 'UniPi Oino host'`, from `install.ps1 -HostInstall`), or run `unipi-host serve` in a terminal"
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+    {
+        "Start it: open the Unipi app (it starts its host), or run `unipi-host serve` in a terminal"
+    }
+}
+
+/// The human (non `--json`) screen of `pair`: the QR, then the same link as
+/// plain text on its own line (copyable over ssh, no colour codes in it), then
+/// how long the code works. `qr` is the already rendered terminal QR.
+pub fn human_text(started: &Started, qr: &str, now: u64) -> String {
+    let minutes = started.state.expires_at.saturating_sub(now).div_ceil(60).max(1);
+    format!(
+        "{qr}\n\nScan with the Unipi app (Add a PC → Pair with QR), or paste this link there:\n{}\n\nHost {} · the code works once, for {minutes} min · waiting…",
+        started.link, started.host
+    )
 }
 
 /// Is a `serve` answering on this data dir's control channel?
@@ -300,6 +326,30 @@ pub async fn stdin_closed() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn human_text_keeps_the_link_on_its_own_line() {
+        let started = Started {
+            state: PairingState {
+                code: "AB12".into(),
+                created_at: 1_000,
+                expires_at: 1_000 + 600,
+                attempts: 0,
+                used: false,
+            },
+            link: "unipi://pair?t=x&c=AB12&n=box".into(),
+            host: "box".into(),
+        };
+        let text = human_text(&started, "QR", 1_000);
+        assert!(text.starts_with("QR\n\n"));
+        assert!(text
+            .lines()
+            .any(|line| line == "unipi://pair?t=x&c=AB12&n=box"));
+        assert!(text.contains("for 10 min"), "{text}");
+        // a code about to run out still says at least a minute
+        assert!(human_text(&started, "QR", 1_599).contains("for 1 min"));
+        assert!(human_text(&started, "QR", 9_999).contains("for 1 min"));
+    }
 
     #[test]
     fn json_lines_shape() {

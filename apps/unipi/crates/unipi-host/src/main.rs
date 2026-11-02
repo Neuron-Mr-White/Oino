@@ -2120,9 +2120,8 @@ async fn pair_command(paths: &HostPaths, ttl: &str, json: bool) -> anyhow::Resul
     use std::io::IsTerminal;
     let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
     println!(
-        "{}\n\nScan with the Unipi app (Add a host → Pair with QR), or paste this link:\n{}",
-        qr.to_terminal_string(color),
-        started.link
+        "{}",
+        pair_cli::human_text(&started, &qr.to_terminal_string(color), now_unix())
     );
     tracing::debug!(version = qr.version, columns = qr.columns(), "pairing QR");
     match pair_cli::wait(paths, &started.state, std::future::pending()).await? {
