@@ -103,6 +103,8 @@ export type MockExtension = {
   path?: string;
   /** Row-level note ("trapped in a session: …"), shown under the toggle. */
   note?: string;
+  /** User-installed (`<agent dir>/extensions`): Settings offers Remove (ext-install). */
+  removable?: boolean;
 };
 
 /** One OSS-2 settings namespace of the `get_settings_schema` answer (WP-U11):
@@ -454,7 +456,7 @@ function mockHostCmd(cmd: { kind: string } & Record<string, unknown>, h: MockHos
     }
     case 'extensions': {
       const list = (fixtures.extensions ??= []);
-      return { extensions: list.map((e) => ({ id: e.id, kind: e.kind ?? 'extension', enabled: e.enabled !== false, loaded: e.loaded !== false && e.enabled !== false, ...(e.path ? { path: e.path } : {}) })) };
+      return { extensions: list.map((e) => ({ id: e.id, kind: e.kind ?? 'extension', enabled: e.enabled !== false, loaded: e.loaded !== false && e.enabled !== false, ...(e.path ? { path: e.path } : {}), ...(e.removable !== undefined ? { removable: e.removable } : {}) })) };
     }
     case 'set_extension_enabled': {
       const list = (fixtures.extensions ??= []);

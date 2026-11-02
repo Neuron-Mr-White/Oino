@@ -9,10 +9,15 @@
  * that section's first row, so an extension's settings and its on/off live in
  * one place. A disabled extension's namespace is hidden here but its stored
  * values are kept (§7).
+ *
+ * "Install extension…" (ext-install, `ExtensionInstall.tsx`) installs a package into the
+ * host's `<agent dir>/extensions`; user-installed rows offer Remove. Both need an agent
+ * host restart (one shared restart affordance), after which a new extension's own
+ * settings page opens.
  */
 import { For, Show, createResource, createSignal } from 'solid-js';
 import type { AppError } from '@unipi/protocol';
-import { AlertTriangle, ArrowLeft, ChevronRight, Puzzle, RefreshCw } from 'lucide-solid';
+import { AlertTriangle, ArrowLeft, ChevronRight, Puzzle, RefreshCw, Trash2 } from 'lucide-solid';
 import { LOCAL_HOST } from '../../lib/host/client';
 import { hubs } from '../../lib/session/hub';
 import { listExtensions, setExtensionEnabled, type ExtensionInfo } from '../../settings/hostCmd';
@@ -27,6 +32,7 @@ import { extensionNamespaces } from '../../ui/slots/SettingsSections';
 import { NAMESPACE_HOME, openNamespaceHome } from '../../lib/settings/open';
 import { recalledScroll, rememberScroll, settingsScroller } from '../../lib/settings/memory';
 import { layout } from '../../lib/layout';
+import { ExtensionInstallCard, removeInstalled, type InstallPhase } from './ExtensionInstall';
 
 const LIST_SCROLL_KEY = 'extensions:list';
 
@@ -80,7 +86,7 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
     setError(undefined);
     return result.value;
   });
-  const [namespaces] = createResource(async (): Promise<Namespace[]> => {
+  const [namespaces, { refetch: refetchNamespaces }] = createResource(async (): Promise<Namespace[]> => {
     const result = await settingsSchema(hostId());
     return result.ok ? result.value : [];
   });
@@ -94,6 +100,31 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
       return;
     }
     await refetch();
+  };
+
+  const [phase, setPhase] = createSignal<InstallPhase>({ kind: 'idle' });
+  const [removing, setRemoving] = createSignal<string | undefined>();
+  const [confirmRemove, setConfirmRemove] = createSignal<string | undefined>();
+  const remove = async (extension: ExtensionInfo) => {
+    setConfirmRemove(undefined);
+    setRemoving(extension.id);
+    const result = await removeInstalled(hostId(), extension.id, extensionTitle(extension));
+    setRemoving(undefined);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setPhase(result.phase);
+    await refetch();
+  };
+  /** After an install is live: refetch and open the extension's own settings page. */
+  const onLive = async (id: string): Promise<boolean> => {
+    await refetch();
+    const spaces = (await refetchNamespaces()) ?? [];
+    const ns = sortNamespaces(extensionNamespaces(spaces)).find((space) => space.extensionId === id);
+    if (!ns) return false;
+    open(ns.namespace);
+    return true;
   };
 
   const owner = (space: Namespace) => list.latest?.find((extension) => extension.id === space.extensionId);
@@ -185,7 +216,7 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
           )}
         </Show>
         <Show when={!list.loading && list.latest?.length === 0}>
-          <Row label="No extensions" description="Extensions install into ~/.oino/extensions on this PC" />
+          <Row label="No extensions" description="Install one below — packages go into the agent's extensions folder on the PC" />
         </Show>
         <For each={list.latest ?? []}>
           {(extension) => (
@@ -205,6 +236,38 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
                     Settings
                   </button>
                 )}
+              </Show>
+              <Show when={extension.removable}>
+                <Show
+                  when={confirmRemove() === extension.id}
+                  fallback={
+                    <button
+                      type="button"
+                      class="rounded-pill bg-surface-2 text-text-muted px-2 py-1.5 text-xs mr-2 inline-flex items-center"
+                      data-testid={`ext-remove-${extension.id}`}
+                      aria-label={`Remove ${extensionTitle(extension)}`}
+                      title="Remove (installed by you)"
+                      disabled={removing() === extension.id}
+                      onClick={() => setConfirmRemove(extension.id)}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  }
+                >
+                  <span class="inline-flex items-center gap-1.5 mr-2" data-testid={`ext-remove-confirm-${extension.id}`}>
+                    <button
+                      type="button"
+                      class="rounded-pill bg-surface-2 text-wm-red px-3 py-1.5 text-xs"
+                      data-testid={`ext-remove-yes-${extension.id}`}
+                      onClick={() => void remove(extension)}
+                    >
+                      Remove
+                    </button>
+                    <button type="button" class="rounded-pill bg-surface-2 text-text-muted px-3 py-1.5 text-xs" onClick={() => setConfirmRemove(undefined)}>
+                      Keep
+                    </button>
+                  </span>
+                </Show>
               </Show>
               <SwitchField
                 label={`Enable ${extension.id}`}
@@ -244,6 +307,7 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
             )}
           </For>
         </Show>
+        <ExtensionInstallCard hostId={hostId()} onChanged={async () => { await refetch(); }} onLive={onLive} phase={phase} setPhase={setPhase} />
         <div class="px-4 py-3 flex justify-end">
           <button type="button" class="rounded-pill bg-surface-2 text-text-muted px-3 py-2 text-xs flex items-center gap-1.5" onClick={() => void refetch()}>
             <RefreshCw size={13} /> Refresh

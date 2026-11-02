@@ -21,6 +21,9 @@ export const ExtensionInfoSchema = z.object({
   name: z.string().optional(),
   version: z.string().optional(),
   description: z.string().optional(),
+  /** User-installed (`<agent dir>/extensions`), so Settings may offer Remove; bundled
+   *  packages are the installer's (older hosts omit it → not removable). */
+  removable: z.boolean().optional(),
 });
 export type ExtensionInfo = z.infer<typeof ExtensionInfoSchema>;
 
@@ -53,6 +56,8 @@ export type HostCmdOp =
   | { kind: 'unset_extension_setting'; namespace: string; key: string; scope: 'global' | 'project' }
   | { kind: 'extensions' }
   | { kind: 'set_extension_enabled'; id: string; enabled: boolean }
+  | { kind: 'install_extension'; path: string; replace?: boolean }
+  | { kind: 'remove_extension'; id: string }
   | { kind: 'auth_providers'; validate?: boolean }
   | { kind: 'default_model' }
   | { kind: 'available_models' }
@@ -88,6 +93,44 @@ export function setExtensionEnabled(id: string, enabled: boolean, hostId = LOCAL
     if (result.ok) markReservedGatesStale();
     return result;
   });
+}
+
+/** `install_extension` reply: installed, or a same-id package needs a confirm first. */
+export const InstallReplySchema = z.object({
+  installed: z.boolean(),
+  confirm: z
+    .object({ id: z.string(), name: z.string(), version: z.string(), installedVersion: z.string().nullish() })
+    .optional(),
+  id: z.string(),
+  name: z.string(),
+  version: z.string(),
+  path: z.string().optional(),
+  /** The replaced user package's version ('' when unreadable). */
+  replaced: z.string().optional(),
+  warnings: z.array(z.string()).default([]),
+  settingsNamespaces: z.array(z.string()).default([]),
+  /** The running host loads it only after "Restart agent host". */
+  needsRestart: z.boolean().default(false),
+});
+export type InstallReply = z.infer<typeof InstallReplySchema>;
+
+export const RemoveReplySchema = z.object({
+  id: z.string(),
+  path: z.string(),
+  bundledRemains: z.boolean().default(false),
+  needsRestart: z.boolean().default(false),
+});
+export type RemoveReply = z.infer<typeof RemoveReplySchema>;
+
+/** `install_extension`: install the package at `path` **on the host** (folder or .zip). */
+export function installExtension(path: string, replace = false, hostId = LOCAL_HOST): Promise<HostResult<InstallReply>> {
+  const cmd: HostCmdOp = replace ? { kind: 'install_extension', path, replace: true } : { kind: 'install_extension', path };
+  return hostCmd(cmd, InstallReplySchema, hostId);
+}
+
+/** `remove_extension`: delete a user-installed package (bundled ones are refused). */
+export function removeExtension(id: string, hostId = LOCAL_HOST): Promise<HostResult<RemoveReply>> {
+  return hostCmd({ kind: 'remove_extension', id }, RemoveReplySchema, hostId);
 }
 
 /** `_oino/get_settings_schema`: every extension settings namespace. */
