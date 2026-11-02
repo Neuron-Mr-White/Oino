@@ -34,7 +34,10 @@ export function modelView(
   query: string,
   startup?: string,
 ): ModelView {
-  const split = splitAvailability(all, readiness, current?.kind === 'single' ? current.key : undefined);
+  const curKey = current?.kind === 'single' ? current.key : undefined;
+  const curProvider = curKey ? curKey.slice(0, curKey.indexOf('/')) : undefined;
+  const keepKey = curKey && (!curProvider || !readiness?.known || readiness.providerReady(curProvider)) ? curKey : undefined;
+  const split = splitAvailability(all, readiness, keepKey);
   const grouped = groupedModels(split.usable, curated, current, query, startup);
   const q = query.trim().toLowerCase();
   return {

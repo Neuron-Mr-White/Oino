@@ -132,7 +132,9 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
         void hostCmd({ kind: 'default_model' }, DefaultModelSchema, hostId)
           .then((def) => {
             const m = def.ok ? def.value.model : undefined;
+            const curReady = readiness() ?? ready;
             if (!m?.id || choices().model || state.model?.id) return;
+            if (m.provider && !curReady.providerReady(m.provider)) return;
             setState('model', { provider: m.provider, id: m.id, name: m.name ?? m.id });
             settleThinking();
           })

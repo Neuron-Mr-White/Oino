@@ -44,6 +44,7 @@ export function splitAvailability(
     const key = `${m.provider}/${m.id}`;
     if (!isChatModel(m) && key !== keepKey) continue;
     const reason = unavailableReason(m, readiness);
+    // F-02 / G-06: keepKey preserves an explicitly requested key for direct callers.
     if (reason && key !== keepKey) unavailable.push({ model: m, reason });
     else usable.push(m);
   }
