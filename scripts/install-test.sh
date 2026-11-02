@@ -99,13 +99,21 @@ if [ "$(uname -s)" = Linux ]; then
   case "$out" in *"Not started (--no-start)"*) ;; *) fail "--no-start still started: $out" ;; esac
   if command -v systemd-analyze >/dev/null 2>&1; then
     # verify needs the ExecStart binary to exist: it does (the fake host).
-    vout=$(systemd-analyze --user verify "$UNIT" 2>&1) || { printf '%s\n' "$vout" >&2; fail "systemd-analyze verify failed"; }
+    skipped=0
+    if vout=$(systemd-analyze --user verify "$UNIT" 2>&1); then :
+    elif printf '%s\n' "$vout" | grep -q 'Failed to initialize manager'; then
+      # no systemd here at all (container / VM without systemd as PID 1)
+      printf 'skip systemd-analyze verify (no systemd manager: %s)\n' "$(printf '%s' "$vout" | head -1)"
+      vout="" skipped=1
+    else
+      printf '%s\n' "$vout" >&2; fail "systemd-analyze verify failed"
+    fi
     # (other units pulled in via default.target may warn on their own; only
     # lines about ours count)
     if printf '%s\n' "$vout" | grep -q 'unipi-oino-host'; then
       printf '%s\n' "$vout" >&2; fail "systemd-analyze verify warned about the unit"
     fi
-    ok "unit passes systemd-analyze --user verify"
+    [ "$skipped" = 1 ] || ok "unit passes systemd-analyze --user verify"
   fi
   ok "systemd --user unit written (Restart=on-failure, not started)"
 fi
