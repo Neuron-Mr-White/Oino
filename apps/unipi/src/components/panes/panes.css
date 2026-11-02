@@ -25,7 +25,8 @@ html:not([data-shell=desktop]) .status-strip { border-top: 0; border-bottom: 1px
 /* D-44: phone / narrow subbar holds StatusStrip + git/LH Capsule in-flow so nothing floats over chat bubbles. */
 .conv-subbar { flex: none; display: flex; align-items: center; gap: 8px; padding: 3px 10px 3px 16px; border-bottom: 1px solid var(--color-line); min-width: 0; }
 .conv-subbar:empty { display: none; }
-.conv-subbar .status-strip { flex: 1 1 auto; min-width: 0; border-bottom: 0; padding: 0; height: auto; }
+.conv-subbar .status-strip,
+html:not([data-shell=desktop]) .conv-subbar .status-strip { flex: 1 1 auto; min-width: 0; border-bottom: 0; padding: 0; height: auto; }
 .conv-subbar .status-capsule { position: static; margin-left: auto; flex: 0 1 auto; min-width: 0; }
 .status-seg { min-width: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 .status-seg[data-tone=warn], .status-pop-row[data-tone=warn] { color: var(--color-amber); }
