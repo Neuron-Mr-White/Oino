@@ -49,11 +49,7 @@ import { recalledPlace, recalledScroll, rememberPlace, rememberScroll, settingsS
 import { PageScaffold } from '../components/phone';
 import { PhoneSettingsRoot, pcScoped, phoneSectionTitle } from './settings/PhoneSettings';
 import { AgentProfilesPage } from './settings/AgentProfilesPage';
-import * as PreviewScreen from './Preview';
-import type { Component } from 'solid-js';
-
-/** Settings › Ports & previews (§3.12): A's `PortsSection`; the full Preview screen until it lands. */
-const PortsSection: Component = (PreviewScreen as unknown as { PortsSection?: Component }).PortsSection ?? PreviewScreen.default;
+import { PortsSection } from './Preview';
 import { settingsHostId } from '../settings/target';
 import './settings/phoneSettings.css';
 
