@@ -542,11 +542,25 @@ async fn install(
         .into_iter()
         .filter(|n| !excluded.contains(n))
         .collect();
+    // An embedder that passes no built-ins (the desktop hub's `SessionOptions { ..default() }`)
+    // still gets read/bash/edit/write/grep/find/ls: without them every hub session declared
+    // only extension tools and the model's `bash`/`read` calls failed "Tool bash not found".
+    let mut own_context = None;
     let builtin = if matches!(
         options.tools,
         ToolSelection::NoBuiltin | ToolSelection::None
     ) {
         Vec::new()
+    } else if options.builtin_tools.is_empty() {
+        let context = Arc::new(crate::builtin::SessionToolContext::default());
+        let entries = crate::builtin::builtin_tool_entries(
+            options.session_cwd(services),
+            &services.agent_dir,
+            &settings,
+            Arc::clone(&context),
+        );
+        own_context = Some(context);
+        entries
     } else {
         options.builtin_tools.clone()
     };
@@ -573,6 +587,9 @@ async fn install(
         flag_values: services.flag_values.clone(),
         child: None,
     });
+    if let Some(context) = own_context {
+        context.bind(&session);
+    }
     if matches!(options.tools, ToolSelection::Default) {
         session.restore_tools_from_transcript(&[]);
     }

@@ -354,3 +354,66 @@ async fn package_skills_and_opt_in_skills() {
     let enabled = provider.requests()[2]["context"]["messages"].to_string();
     assert!(enabled.contains("<name>acme-migrate</name>"), "{enabled}");
 }
+
+/// An embedder that passes no built-ins (the desktop hub) still gets the default ones.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn runtime_defaults_builtin_tools_when_the_embedder_passes_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = FauxProvider::new(vec![FauxResponse::Text("ok".into())]);
+    let services = services(dir.path(), Arc::clone(&provider), Vec::new()).await;
+    let runtime = AgentSessionRuntime::create(
+        Arc::clone(&services),
+        SessionOptions {
+            source: SessionSource::InMemory,
+            ..SessionOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        runtime.session().active_tool_names(),
+        vec!["read", "bash", "edit", "write"]
+    );
+}
+
+/// A transcript whose recorded loadout lost every built-in (a pi session whose first Oino turn
+/// ran without them) gets the default built-ins back on open.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn open_restores_builtins_missing_from_the_recorded_loadout() {
+    let dir = tempfile::tempdir().unwrap();
+    let sessions = dir.path().join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let file = sessions.join("2026-11-02T00-00-00-000Z_s1.jsonl");
+    let cwd = dir.path().display().to_string();
+    let decl = |name: &str| json!({"name": name, "description": "", "parameters": {}});
+    let lines = [
+        json!({"type": "session", "version": 3, "id": "s1", "timestamp": "2026-11-02T00:00:00.000Z", "cwd": cwd}),
+        json!({"type": "message", "id": "m1", "parentId": null, "timestamp": "2026-11-02T00:00:01.000Z",
+            "message": {"role": "system", "content": "", "timestamp": 1,
+                "toolsAdded": [decl("read"), decl("bash"), decl("codemode")]}}),
+        json!({"type": "message", "id": "m2", "parentId": "m1", "timestamp": "2026-11-02T00:00:02.000Z",
+            "message": {"role": "system", "content": "", "timestamp": 2,
+                "toolsRemoved": [{"name": "read"}, {"name": "bash"}, {"name": "codemode"}],
+                "toolsAdded": [decl("memory_store")]}}),
+        json!({"type": "message", "id": "m3", "parentId": "m2", "timestamp": "2026-11-02T00:00:03.000Z",
+            "message": {"role": "user", "content": "hi", "timestamp": 3}}),
+    ];
+    let text: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    std::fs::write(&file, text).unwrap();
+    let provider = FauxProvider::new(vec![FauxResponse::Text("ok".into())]);
+    let services = services(dir.path(), Arc::clone(&provider), Vec::new()).await;
+    let runtime = AgentSessionRuntime::create(
+        Arc::clone(&services),
+        SessionOptions {
+            source: SessionSource::Open(file),
+            session_dir: Some(sessions),
+            ..SessionOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+    let active = runtime.session().active_tool_names();
+    for name in ["read", "bash", "edit", "write"] {
+        assert!(active.iter().any(|a| a == name), "{name} missing from {active:?}");
+    }
+}

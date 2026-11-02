@@ -572,14 +572,35 @@ impl AgentSession {
                     .chain(m.tools_removed.iter().flatten().map(|t| t.name.clone()))
             })
             .collect();
-        let recorded: Vec<String> = oino_ai::transcript::SystemState::fold(systems.iter())
+        let mut recorded: Vec<String> = oino_ai::transcript::SystemState::fold(systems.iter())
             .tools
             .into_iter()
             .map(|t| t.name)
             .collect();
+        let default_tools = lock(&self.inner.settings)
+            .snapshot()
+            .default_tools()
+            .unwrap_or_else(|| {
+                oino_settings::tools::DEFAULT_TOOL_NAMES
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect()
+            });
         let names = {
             let state = lock(&self.inner.tools);
             let builtin: HashSet<&str> = state.builtin.iter().map(ToolEntry::name).collect();
+            // A transcript whose loadout holds no built-in at all was written by a runtime
+            // that had none registered (the desktop hub before built-ins were defaulted, or a
+            // session cloned from pi whose next Oino turn recorded them as removed): restore
+            // the default built-ins instead of carrying the loss forward forever.
+            if !builtin.is_empty() && !recorded.iter().any(|n| builtin.contains(n.as_str())) {
+                let missing: Vec<String> = default_tools
+                    .iter()
+                    .filter(|n| builtin.contains(n.as_str()))
+                    .cloned()
+                    .collect();
+                recorded.splice(0..0, missing);
+            }
             let new_tools: Vec<String> = state
                 .registry
                 .keys()
