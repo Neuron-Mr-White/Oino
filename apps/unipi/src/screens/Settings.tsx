@@ -6,7 +6,7 @@
  * labels. Secondary pages (an extension's settings namespace) use the
  * standard Back (Z-113).
  */
-import { For, Show, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import { For, Show, createEffect, createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import { useNavigate, useParams } from '@solidjs/router';
 import { FolderKanban, Keyboard as KeyboardIcon, Server, TerminalSquare, Unplug, MonitorSmartphone } from 'lucide-solid';
 import { HostsSettings } from '../components/HostsSettings';
@@ -19,6 +19,10 @@ import { can } from '../lib/platform';
 import { useSettings } from '../settings/context';
 import { TOOLBAR_KEYS, type ToolbarKey } from '../settings/schema';
 import { useHosts } from '../hosts/context';
+import { LOCAL_HOST } from '../lib/host';
+import { api as boardApi } from '../lib/board/api';
+import { boardStore } from '../lib/board/store';
+import { EnumSelect } from '../ui/settings/fields';
 import { Requires } from '../components/Requires';
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-solid';
 import { SectionNav, Row, Section, Segmented, Stepper } from './settings/rows';
@@ -372,15 +376,32 @@ function EditorSection() {
 
 function BoardSection() {
   const [settings, update] = useSettings();
+  const hosts = useHosts();
+  // The projects the Board screen lists (same board CLI), from the PC the Board last used.
+  const hostId = () => boardStore().target()?.hostId ?? hosts.hosts()[0]?.id ?? LOCAL_HOST;
+  const [projects] = createResource(hostId, (id) => boardApi.projects(id).catch(() => []));
+  const NONE = '';
+  const options = () => {
+    const list = (projects.latest ?? []).filter((p) => !p.archived).map((p) => ({ value: p.slug, label: p.name || p.slug }));
+    const current = settings.board.defaultProject;
+    // A stored project the list doesn't know (another PC, renamed) stays visible, never silently dropped.
+    const known = current ? (projects.latest ?? []).find((p) => p.slug.toLowerCase() === current.toLowerCase() || p.name.toLowerCase() === current.toLowerCase()) : undefined;
+    return [{ value: NONE, label: 'None' }, ...list, ...(current && !known && !list.some((o) => o.value === current) ? [{ value: current, label: current }] : [])];
+  };
+  const selected = () => {
+    const current = settings.board.defaultProject;
+    if (!current) return NONE;
+    const hit = (projects.latest ?? []).find((p) => p.slug.toLowerCase() === current.toLowerCase() || p.name.toLowerCase() === current.toLowerCase());
+    return hit ? hit.slug : current;
+  };
   return (
     <Section title="Board" id="sec-board" icon={<FolderKanban size={14} />}>
-      <Row label="Default project">
-        <input
-          type="text"
-          class="rounded-input bg-surface-2 border border-line px-3 py-1.5 text-sm text-text w-36"
-          value={settings.board.defaultProject ?? ''}
-          placeholder="none"
-          onChange={(e) => update('board.defaultProject', e.currentTarget.value.trim() === '' ? null : e.currentTarget.value.trim())}
+      <Row label="Default project" description="The project the Board opens first, when you haven’t opened one before.">
+        <EnumSelect
+          field={{ key: 'board.defaultProject', label: 'Default project', options: options() }}
+          value={selected()}
+          disabled={false}
+          onChange={(next) => update('board.defaultProject', next === NONE ? null : next)}
         />
       </Row>
       <Row label="Always show backlog">

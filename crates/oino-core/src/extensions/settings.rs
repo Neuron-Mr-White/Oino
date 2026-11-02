@@ -1089,8 +1089,9 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                     "Model",
                     vec![
                         {
-                            let mut field = core_string("defaultModel", "Default model");
-                            field.props.placeholder = Some("provider/model".into());
+                            // The picker field: stores the model id; the app writes `defaultProvider` beside it.
+                            let mut field = core_field("defaultModel", "Default model", FieldType::Model);
+                            field.description = Some("The model new chats start on. Empty = the first model of a working provider.".into());
                             field
                         },
                         core_choice(
@@ -1119,7 +1120,22 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                             )));
                             field
                         },
-                        core_field("thinkingBudgets", "Thinking budgets", FieldType::Json),
+                        {
+                            // One token budget per level (core's `ThinkingBudgets`); blank = the provider default.
+                            let mut field = core_field("thinkingBudgets", "Thinking budgets", FieldType::Json);
+                            field.description = Some("Token budget per thinking level. Blank = the provider default.".into());
+                            field.props.schema = Some(serde_json::json!({
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                    "minimal": {"type": "integer", "minimum": 0, "title": "Minimal", "unit": "tokens"},
+                                    "low": {"type": "integer", "minimum": 0, "title": "Low", "unit": "tokens"},
+                                    "medium": {"type": "integer", "minimum": 0, "title": "Medium", "unit": "tokens"},
+                                    "high": {"type": "integer", "minimum": 0, "title": "High", "unit": "tokens"}
+                                }
+                            }));
+                            field
+                        },
                     ],
                 )],
             ),
@@ -1265,7 +1281,11 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                             defaults::ENABLE_SKILL_COMMANDS,
                         ),
                         {
-                            let mut field = core_string("sessionDir", "Session directory");
+                            let mut field = core_string("sessionDir", "Session storage folder");
+                            field.description = Some(
+                                "Where chat history files are saved. Empty = ~/.oino/sessions (default)."
+                                    .into(),
+                            );
                             field.props.format = Some(oino_ui::settings::StringFormat::Path);
                             field
                         },

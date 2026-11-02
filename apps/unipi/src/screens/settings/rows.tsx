@@ -93,7 +93,7 @@ export function Segmented<T extends string>(props: { value: T; options: readonly
             type="button"
             role="radio"
             aria-checked={props.value === opt}
-            class={`px-3 py-1 text-xs rounded-pill transition-colors ${props.value === opt ? 'bg-surface-2 text-text' : 'text-text-muted'}`}
+            class={`px-3 py-1 text-xs rounded-pill transition-colors whitespace-nowrap ${props.value === opt ? 'bg-surface-2 text-text' : 'text-text-muted'}`}
             onClick={() => props.onChange(opt)}
           >
             {props.labels?.[opt] ?? opt}

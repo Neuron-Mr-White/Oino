@@ -101,10 +101,8 @@ describe('OSS-2 form: every field type', () => {
       expect(element.dataset.type, key).toBe(type);
       // Label, description and the default/modified meta line are always there.
       expect(element.textContent).toContain(namespaceLabel(namespace, key));
-      expect(
-        element.querySelector('[data-testid=field-default], [data-testid=field-modified], .settings-field-unset'),
-        key,
-      ).toBeTruthy();
+      // No "default" caption any more: only "modified · Reset" (and "not set" for keys).
+      expect(element.querySelector('[data-testid=field-default]'), key).toBeNull();
       expect(sanitize(element.outerHTML)).toMatchSnapshot(`${type}-desktop`);
     }
     // Phone: the same rows, the wide controls on their own line.
@@ -187,7 +185,7 @@ describe('OSS-2 form: every field type', () => {
     mount(namespace);
     await loaded();
     // autoRecall: not stored → default (true); topK: stored 20 vs default 12 → modified.
-    expect(row('memory', 'autoRecall').querySelector('[data-testid=field-default]')).toBeTruthy();
+    expect(row('memory', 'autoRecall').querySelector('[data-testid=field-modified]')).toBeNull();
     const modified = row('memory', 'topK').querySelector('[data-testid=field-modified]')!;
     expect(modified).toBeTruthy();
     expect(row('memory', 'topK').querySelector('[data-testid=field-reset]')).toBeTruthy();
@@ -199,7 +197,7 @@ describe('OSS-2 form: every field type', () => {
     await loaded();
     fireEvent.click(row('memory', 'topK').querySelector('[data-testid=field-reset]')!);
     await waitFor(() => expect('topK' in global).toBe(false));
-    await waitFor(() => expect(row('memory', 'topK').querySelector('[data-testid=field-default]')).toBeTruthy());
+    await waitFor(() => expect(row('memory', 'topK').querySelector('[data-testid=field-modified]')).toBeNull());
   });
 
   it('a boolean writes; writing the default back unsets the key (§7.2)', async () => {
@@ -210,7 +208,7 @@ describe('OSS-2 form: every field type', () => {
     await waitFor(() => expect(global.autoRecall).toBe(false));
     // false equals the default → it is stored (the field default is a value, not the below-layer key)
     switchOf('set-autoRecall').click();
-    await waitFor(() => expect(row('memory', 'autoRecall').querySelector('[data-testid=field-default]')).toBeTruthy());
+    await waitFor(() => expect(row('memory', 'autoRecall').querySelector('[data-testid=field-modified]')).toBeNull());
   });
 
   it('the scope toggle switches to the project layer and back', async () => {
@@ -256,7 +254,7 @@ describe('OSS-2 form: every field type', () => {
     const { namespace, global } = setup();
     mount(namespace);
     await loaded();
-    expect(screen.getByTestId('secret-token').textContent).toBe('••••••');
+    expect(screen.getByTestId('secret-token').textContent).toBe('•••• set');
     fireEvent.click(screen.getByTestId('replace-token'));
     const input = (await screen.findByLabelText('New Embedding API key')) as HTMLInputElement;
     expect(input.type).toBe('password');

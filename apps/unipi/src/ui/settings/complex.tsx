@@ -3,19 +3,22 @@
  * order, model, action, list, dict and json — the field types whose control
  * takes the full row width.
  */
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
+import { For, Show, createEffect, createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { json as jsonLang } from '@codemirror/lang-json';
-import { ChevronDown, ChevronUp, Minus, Plus, Search, Trash2 } from 'lucide-solid';
+import { ChevronDown, ChevronUp, Minus, Plus, Trash2 } from 'lucide-solid';
 import { useSettings } from '../../settings/context';
-import { parseModels, modelKey, type ModelInfo } from '../../lib/model/picker';
+import { setPiSetting, hostCmd } from '../../settings/hostCmd';
+import { z } from 'zod';
+import { LOCAL_HOST } from '../../lib/host';
 import { sessions } from '../../lib/session/store';
+import { ModelPickerField } from './ModelPickerField';
 import { desktopShell } from '../../lib/layout';
 import type { Field, Json } from './types';
 import { jsonEqual, lookup } from './semantics';
-import { FieldRow, type EditContext } from './fields';
+import { FieldRow, NumberControl, type EditContext } from './fields';
 
 const asString = (value: Json): string => (typeof value === 'string' ? value : '');
 const asArray = (value: Json): Json[] => (Array.isArray(value) ? value : []);
@@ -45,7 +48,7 @@ export function ComplexField(props: {
         <OrderField field={field()} value={value()} disabled={props.disabled} set={props.set} />
       </Show>
       <Show when={field().type === 'model'}>
-        <ModelField field={field()} value={value()} disabled={props.disabled} set={props.set} />
+        <ModelField field={field()} ctx={props.ctx} value={value()} disabled={props.disabled} set={props.set} />
       </Show>
       <Show when={field().type === 'action'}>
         <ActionField field={field()} disabled={props.disabled} />
@@ -57,17 +60,19 @@ export function ComplexField(props: {
         <DictField field={field()} value={value()} disabled={props.disabled} set={props.set} />
       </Show>
       <Show when={field().type === 'json'}>
-        <JsonField field={field()} value={value()} disabled={props.disabled} set={props.set} />
+        <Show when={shapeOf(field())} fallback={<JsonField field={field()} value={value()} disabled={props.disabled} set={props.set} />}>
+          {(shape) => <ShapeField field={field()} shape={shape()} value={value()} disabled={props.disabled} set={props.set} />}
+        </Show>
       </Show>
     </FieldRow>
   );
 }
 
-/** `secret`: never echoed — the stored value arrives masked; "Replace…" writes a new one. */
+/** `secret`: never echoed — a status ("Not set" / "•••• set") and a real button; entering a key opens an input with Save / Cancel. */
 function SecretField(props: { field: Field; value: Json; disabled: boolean; set: (value: Json | undefined) => void; onError: (message: string | undefined) => void }) {
   const [replacing, setReplacing] = createSignal(false);
   const [draft, setDraft] = createSignal('');
-  const set = () => (typeof props.value === 'string' ? props.value : '');
+  const isSet = () => typeof props.value === 'string' && props.value !== '';
   const save = () => {
     if (!draft()) {
       props.onError('Enter a value first');
@@ -77,6 +82,11 @@ function SecretField(props: { field: Field; value: Json; disabled: boolean; set:
     props.set(draft());
     setDraft('');
     setReplacing(false);
+  };
+  const cancel = () => {
+    setReplacing(false);
+    setDraft('');
+    props.onError(undefined);
   };
   return (
     <div class="settings-secret">
@@ -92,19 +102,22 @@ function SecretField(props: { field: Field; value: Json; disabled: boolean; set:
             onInput={(e) => setDraft(e.currentTarget.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') save();
-              if (e.key === 'Escape') setReplacing(false);
+              if (e.key === 'Escape') cancel();
             }}
+            ref={(el) => queueMicrotask(() => el.focus())}
           />
-          <button type="button" class="btn-secondary settings-btn" onClick={save}>Save</button>
-          <button type="button" class="settings-link" onClick={() => { setReplacing(false); setDraft(''); }}>Cancel</button>
+          <button type="button" class="btn-secondary settings-btn" onClick={save} data-testid={`secret-save-${props.field.key}`}>Save</button>
+          <button type="button" class="btn-secondary settings-btn" onClick={cancel}>Cancel</button>
         </div>
       }>
-        <span class="settings-secret-value" data-testid={`secret-${props.field.key}`}>{set() || 'Not set'}</span>
-        <button type="button" class="settings-link" disabled={props.disabled} onClick={() => setReplacing(true)} data-testid={`replace-${props.field.key}`}>
-          Replace…
+        <span class="settings-secret-value" data-set={isSet() ? '' : undefined} data-testid={`secret-${props.field.key}`}>
+          {isSet() ? '•••• set' : 'Not set'}
+        </span>
+        <button type="button" class="btn-secondary settings-btn" disabled={props.disabled} onClick={() => setReplacing(true)} data-testid={`replace-${props.field.key}`}>
+          {isSet() ? 'Replace…' : 'Set key…'}
         </button>
-        <Show when={set()}>
-          <button type="button" class="settings-link" disabled={props.disabled} onClick={() => props.set(undefined)}>Clear</button>
+        <Show when={isSet()}>
+          <button type="button" class="btn-secondary settings-btn" disabled={props.disabled} onClick={() => props.set(undefined)}>Clear</button>
         </Show>
       </Show>
     </div>
@@ -172,74 +185,66 @@ function OrderField(props: { field: Field; value: Json; disabled: boolean; set: 
   );
 }
 
-/** `model`: `provider/model` text plus a catalogue browse popover (from an open chat). */
-function ModelField(props: { field: Field; value: Json; disabled: boolean; set: (value: Json) => void }) {
-  const [open, setOpen] = createSignal(false);
-  const [query, setQuery] = createSignal('');
-  const [models, setModels] = createSignal<ModelInfo[]>([]);
-  const [loading, setLoading] = createSignal(false);
-  const load = async () => {
-    setLoading(true);
-    const key = () => sessions().keys()[0];
-    const keyValue = key();
-    const handle = keyValue ? sessions().peek(keyValue.split('/')[0]!, keyValue.split('/').slice(1).join('/')) : undefined;
-    const reply = handle ? await handle.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined) : undefined;
-    setModels(parseModels(reply));
-    setLoading(false);
+const ProviderReply = z.object({ value: z.unknown().optional() });
+/** The core `defaultModel` stores the bare id; `defaultProvider` sits beside it. */
+const pairsProvider = (ctx: EditContext, field: Field): boolean => ctx.ns === 'oino.model' && field.key === 'defaultModel';
+
+/** The empty-value meaning: the field's placeholder, "Inherit" when it says so, else the session model. */
+function modelFallback(field: Field): string {
+  const holder = field.placeholder?.trim();
+  if (holder && !holder.includes('/')) return holder;
+  if (/inherit/i.test(`${field.description ?? ''} ${field.hint ?? ''}`)) return 'Inherit';
+  if (field.key === 'defaultModel' && /^default/i.test(field.label)) return 'First working model';
+  return 'Session model';
+}
+
+/** `model`: the composer's model picker as a popover on a button. */
+function ModelField(props: { field: Field; ctx: EditContext; value: Json; disabled: boolean; set: (value: Json | undefined) => void }) {
+  const hostId = () => props.ctx.hostId ?? LOCAL_HOST;
+  const paired = () => pairsProvider(props.ctx, props.field);
+  const [bump, setBump] = createSignal(0);
+  const [provider] = createResource(
+    () => (paired() ? ([hostId(), bump()] as const) : undefined),
+    async ([id]) => {
+      const res = await hostCmd({ kind: 'get_settings', key: 'defaultProvider' }, ProviderReply, id).catch(() => undefined);
+      return res?.ok && typeof res.value.value === 'string' ? res.value.value : '';
+    },
+  );
+  const stored = () => asString(props.value);
+  const full = () => {
+    const id = stored();
+    if (!id || id.includes('/') || !paired()) return id;
+    const prov = provider.latest ?? '';
+    return prov ? `${prov}/${id}` : id;
   };
-  const filtered = createMemo(() => {
-    const q = query().trim().toLowerCase();
-    const list = models();
-    if (!q) return list.slice(0, 40);
-    return list.filter((m) => `${modelKey(m)} ${m.name ?? ''}`.toLowerCase().includes(q)).slice(0, 40);
-  });
+  const pick = (key: string | undefined) => {
+    if (!paired()) {
+      props.set(key);
+      return;
+    }
+    if (!key) {
+      props.set(undefined);
+      void setPiSetting('defaultProvider', null, 'global', hostId()).then(() => setBump((n) => n + 1));
+      return;
+    }
+    const slash = key.indexOf('/');
+    if (slash < 0) {
+      props.set(key);
+      return;
+    }
+    props.set(key.slice(slash + 1));
+    void setPiSetting('defaultProvider', key.slice(0, slash), 'global', hostId()).then(() => setBump((n) => n + 1));
+  };
   return (
-    <div class="settings-model">
-      <div class="settings-model-row">
-        <input
-          type="text"
-          class="settings-input"
-          aria-label={props.field.label}
-          placeholder={props.field.placeholder ?? 'provider/model'}
-          spellcheck={false}
-          disabled={props.disabled}
-          data-testid={`set-${props.field.key}`}
-          value={asString(props.value)}
-          onChange={(e) => props.set(e.currentTarget.value)}
-        />
-        <button type="button" class="btn-secondary settings-btn" disabled={props.disabled} onClick={() => { setOpen((cur) => !cur); if (!models().length) void load(); }}>
-          Browse…
-        </button>
-      </div>
-      <Show when={open()}>
-        <div class="settings-model-pop" data-testid={`model-pop-${props.field.key}`}>
-          <label class="settings-model-search">
-            <Search size={14} />
-            <input type="search" aria-label="Search models" value={query()} onInput={(e) => setQuery(e.currentTarget.value)} />
-          </label>
-          <Show when={!loading() && filtered().length === 0}>
-            <p class="settings-model-empty">No catalogue here — open a chat, or type the id.</p>
-          </Show>
-          <ul class="settings-model-list">
-            <For each={filtered()}>
-              {(model) => (
-                <li>
-                  <button
-                    type="button"
-                    class="settings-model-item"
-                    data-current={jsonEqual(modelKey(model), props.value) ? '' : undefined}
-                    onClick={() => { props.set(modelKey(model)); setOpen(false); }}
-                  >
-                    <span class="truncate">{model.name ?? model.id}</span>
-                    <span class="settings-model-key">{modelKey(model)}</span>
-                  </button>
-                </li>
-              )}
-            </For>
-          </ul>
-        </div>
-      </Show>
-    </div>
+    <ModelPickerField
+      hostId={hostId()}
+      label={props.field.label}
+      value={full()}
+      fallback={modelFallback(props.field)}
+      disabled={props.disabled}
+      testId={`set-${props.field.key}`}
+      onPick={pick}
+    />
   );
 }
 
@@ -419,6 +424,87 @@ function emptyOf(field: Field | undefined): Json {
   }
 }
 
+type ShapeProp = { key: string; label: string; kind: 'number' | 'string' | 'boolean'; min?: number; integer: boolean; unit?: string };
+
+/** Known level keys when a host sends `thinkingBudgets` without a schema (core's `ThinkingBudgets`). */
+const KNOWN_SHAPES: Record<string, ShapeProp[]> = {
+  thinkingBudgets: ['minimal', 'low', 'medium', 'high'].map((key) => ({
+    key, label: key[0]!.toUpperCase() + key.slice(1), kind: 'number' as const, min: 0, integer: true, unit: 'tokens',
+  })),
+};
+
+/** The typed properties of an object field with a known shape (JSON-schema `properties` of scalars). */
+function shapeOf(field: Field): ShapeProp[] | undefined {
+  const schema = asObject(field.schema);
+  const props = asObject(schema.properties as Json);
+  const out: ShapeProp[] = [];
+  for (const [key, raw] of Object.entries(props)) {
+    const def = asObject(raw);
+    const type = def.type;
+    const kind = type === 'integer' || type === 'number' ? 'number' : type === 'string' ? 'string' : type === 'boolean' ? 'boolean' : undefined;
+    if (!kind) return KNOWN_SHAPES[field.key];
+    out.push({
+      key,
+      label: typeof def.title === 'string' ? def.title : key[0]!.toUpperCase() + key.slice(1),
+      kind,
+      ...(typeof def.minimum === 'number' ? { min: def.minimum } : {}),
+      integer: type === 'integer',
+      ...(typeof def.unit === 'string' ? { unit: def.unit } : {}),
+    });
+  }
+  return out.length ? out : KNOWN_SHAPES[field.key];
+}
+
+/** A typed editor for an object of known shape: one control per property, blank = default. */
+function ShapeField(props: { field: Field; shape: ShapeProp[]; value: Json; disabled: boolean; set: (value: Json | undefined) => void }) {
+  const current = () => asObject(props.value);
+  const write = (key: string, next: Json | undefined) => {
+    const out = { ...current() };
+    if (next === undefined || next === '') delete out[key];
+    else out[key] = next;
+    props.set(Object.keys(out).length ? out : undefined);
+  };
+  return (
+    <div class="settings-shape" data-testid={`set-${props.field.key}`}>
+      <For each={props.shape}>
+        {(prop) => (
+          <div class="settings-shape-row">
+            <span class="settings-shape-label">{prop.label}</span>
+            <Show when={prop.kind === 'number'}>
+              <NumberControl
+                field={{ ...props.field, key: `${props.field.key}.${prop.key}`, label: `${props.field.label} · ${prop.label}`, type: 'number', default: undefined, min: prop.min, max: undefined, step: undefined, unit: prop.unit, integer: prop.integer }}
+                value={typeof current()[prop.key] === 'number' ? (current()[prop.key] as number) : undefined}
+                disabled={props.disabled}
+                set={(next) => write(prop.key, next)}
+              />
+            </Show>
+            <Show when={prop.kind === 'string'}>
+              <input
+                class="settings-input"
+                aria-label={`${props.field.label} · ${prop.label}`}
+                placeholder="default"
+                disabled={props.disabled}
+                value={asString(current()[prop.key])}
+                onChange={(e) => write(prop.key, e.currentTarget.value.trim())}
+              />
+            </Show>
+            <Show when={prop.kind === 'boolean'}>
+              <input
+                type="checkbox"
+                class="settings-check"
+                aria-label={`${props.field.label} · ${prop.label}`}
+                disabled={props.disabled}
+                checked={current()[prop.key] === true}
+                onChange={(e) => write(prop.key, e.currentTarget.checked)}
+              />
+            </Show>
+          </div>
+        )}
+      </For>
+    </div>
+  );
+}
+
 /** `json`: the escape hatch, edited in a CodeMirror JSON document (§7). */
 function JsonField(props: { field: Field; value: Json; disabled: boolean; set: (value: Json) => void }) {
   const [settings] = useSettings();
@@ -484,6 +570,7 @@ function JsonField(props: { field: Field; value: Json; disabled: boolean; set: (
 
   return (
     <div class="settings-json" data-testid={`set-${props.field.key}`}>
+      <p class="settings-field-hint settings-json-note">Free-form JSON — no fixed shape.</p>
       <div ref={host} class="settings-json-editor" />
       <Show when={error()} keyed>
         {(message) => <p class="settings-field-error" role="alert" data-testid="field-error">Invalid JSON — {message}</p>}

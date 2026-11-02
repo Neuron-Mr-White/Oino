@@ -1,7 +1,7 @@
 /**
  * The OSS-2 form engine's row chrome and per-type editors (ui-protocol §7,
  * WP-U11). Every row shows its label, description, hint/badge, a scope badge
- * and "default" or "modified · Reset"; the control follows the §7 table:
+ * and "modified · Reset" (nothing when the value is the default); the control follows the §7 table:
  * boolean → switch, enum → segmented (≤ 4 options) or select, multiselect →
  * checkbox list, string → input/textarea, number → stepper with unit,
  * secret → masked + "Replace…", order → drag list (desktop) / up-down (phone),
@@ -20,6 +20,7 @@ import type { Field, FieldType, Json } from './types';
 import { fieldAnchor, fieldScope, pageAnchor, storesValue } from './types';
 import { fieldEnabled, lookup, type Diagnostic, type WriteLayer } from './semantics';
 import { ComplexField } from './complex';
+import { FolderField } from './FolderField';
 
 export type EditContext = {
   ns: string;
@@ -33,6 +34,8 @@ export type EditContext = {
   diagnostics: Diagnostic[];
   /** The whole form is read-only (e.g. a disabled extension). */
   readonly?: boolean;
+  /** The PC the form edits (model pickers ask it for its catalogue). */
+  hostId?: string;
   /** Write one value; `undefined` unsets it in `layer`. */
   set: (field: Field, value: Json | undefined) => void;
   /** Closes an open `page` drill-in (its own Back). */
@@ -120,13 +123,9 @@ export function FieldRow(props: {
         <Show when={props.field.hint}>
           <p class="settings-field-hint">{props.field.hint}</p>
         </Show>
-        <Show when={storesValue(props.field)}>
+        <Show when={storesValue(props.field) && (modified() || (props.field.type === 'secret' && !hasDefault()))}>
         <p class="settings-field-meta">
-          <Show when={modified()} fallback={
-            <Show when={hasDefault()} fallback={<span class="settings-field-unset">not set</span>}>
-              <span data-testid="field-default">default</span>
-            </Show>
-          }>
+          <Show when={modified()} fallback={<span class="settings-field-unset">not set</span>}>
             <span data-testid="field-modified">modified</span>
             <span class="settings-field-dot">·</span>
             <button
@@ -178,7 +177,7 @@ export function SettingsField(props: { field: Field; ctx: EditContext }) {
           fallback={<ComplexField field={field()} ctx={ctx()} disabled={disabled()} set={set} error={error()} onError={setError} />}
         >
           <FieldRow field={field()} ctx={ctx()} error={error()}>
-            <ScalarControl field={field()} value={value()} disabled={disabled()} set={set} onError={setError} />
+            <ScalarControl field={field()} hostId={ctx().hostId} value={value()} disabled={disabled()} set={set} onError={setError} />
           </FieldRow>
         </Show>
       </Show>
@@ -195,9 +194,18 @@ function isComplex(type: FieldType): boolean {
   return COMPLEX.includes(type);
 }
 
+/** A segment must never wrap: the control is for ≤ 3 options whose labels are all short. */
+const SEGMENT_MAX_CHARS = 14;
+export function segmentedFits(field: Pick<Field, 'options' | 'display'>): boolean {
+  if (field.display === 'select' || field.display === 'radio') return false;
+  const { options } = field;
+  return options.length >= 2 && options.length <= 3 && options.every((option) => option.label.length <= SEGMENT_MAX_CHARS);
+}
+
 /** Boolean / enum / multiselect-free scalars: switch, segmented, select, input, number. */
 function ScalarControl(props: {
   field: Field;
+  hostId?: string;
   value: Json;
   disabled: boolean;
   set: (value: Json | undefined) => void;
@@ -205,8 +213,8 @@ function ScalarControl(props: {
 }) {
   const label = props.field.label;
   const asString = () => (typeof props.value === 'string' ? props.value : '');
-  const asNumber = () => (typeof props.value === 'number' ? props.value : 0);
-  const enumSegmented = () => props.field.display === 'segmented' || (!props.field.display && props.field.options.length <= 4);
+  const asNumber = () => (typeof props.value === 'number' ? props.value : undefined);
+  const enumSegmented = () => segmentedFits(props.field);
 
   return (
     <>
@@ -228,7 +236,7 @@ function ScalarControl(props: {
                 type="button"
                 role="radio"
                 aria-checked={props.value === option.value}
-                class={`px-3 py-1 text-xs rounded-pill transition-colors ${props.value === option.value ? 'bg-surface-2 text-text' : 'text-text-muted'}`}
+                class={`px-3 py-1 text-xs rounded-pill transition-colors whitespace-nowrap ${props.value === option.value ? 'bg-surface-2 text-text' : 'text-text-muted'}`}
                 disabled={props.disabled}
                 onClick={() => props.set(option.value)}
               >
@@ -270,7 +278,11 @@ function ScalarControl(props: {
         />
       </Show>
 
-      <Show when={props.field.type === 'string' && !props.field.multiline}>
+      <Show when={props.field.type === 'string' && !props.field.multiline && props.field.format === 'path'}>
+        <FolderField field={props.field} hostId={props.hostId} value={asString()} disabled={props.disabled} set={props.set} />
+      </Show>
+
+      <Show when={props.field.type === 'string' && !props.field.multiline && props.field.format !== 'path'}>
         <StringInput
           field={props.field}
           value={asString()}
@@ -287,52 +299,85 @@ function ScalarControl(props: {
   );
 }
 
-/** `number`: one control — decrement, the numeric value with its unit, increment. */
-function NumberControl(props: { field: Field; value: number; disabled: boolean; set: (value: Json | undefined) => void }) {
+/** `number`: one control — the value (text-aligned, unit inside) with optional −/+ steppers. */
+export function NumberControl(props: { field: Field; value: number | undefined; disabled: boolean; set: (value: Json | undefined) => void }) {
   const step = () => props.field.step ?? 1;
   const min = () => props.field.min ?? Number.NEGATIVE_INFINITY;
   const max = () => props.field.max ?? Number.POSITIVE_INFINITY;
-  const clamp = (value: number) => Math.min(max(), Math.max(min(), Math.round(value * 100) / 100));
+  const clamp = (value: number) => {
+    const rounded = Math.round(value * 100) / 100;
+    return Math.min(max(), Math.max(min(), props.field.integer ? Math.round(rounded) : rounded));
+  };
+  const base = () => props.value ?? (typeof props.field.default === 'number' ? props.field.default : 0);
+  const [draft, setDraft] = createSignal<string | undefined>();
+  const shown = () => draft() ?? (props.value === undefined ? '' : String(props.value));
+  const commit = (text: string) => {
+    setDraft(undefined);
+    const trimmed = text.trim();
+    if (trimmed === '') {
+      if (props.value !== undefined) props.set(undefined);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) props.set(clamp(parsed));
+  };
+  const nudge = (direction: 1 | -1) => {
+    setDraft(undefined);
+    props.set(clamp(base() + direction * step()));
+  };
   return (
-    <div class="settings-number" role="group" aria-label={props.field.label}>
-      <button
-        type="button"
-        class="settings-iconbtn"
-        aria-label={`Decrease ${props.field.label}`}
-        disabled={props.disabled || props.value <= min()}
-        onClick={() => props.set(clamp(props.value - step()))}
-      >
-        <Minus size={15} />
-      </button>
+    <div class="settings-number" role="group" aria-label={props.field.label} data-disabled={props.disabled ? '' : undefined}>
       <span class="settings-number-box">
         <input
-          type="number"
+          type="text"
+          inputmode={props.field.integer ? 'numeric' : 'decimal'}
           class="settings-number-input"
           aria-label={`${props.field.label} value`}
+          role="spinbutton"
+          aria-valuenow={props.value}
+          aria-valuemin={props.field.min}
+          aria-valuemax={props.field.max}
+          autocomplete="off"
+          spellcheck={false}
           disabled={props.disabled}
-          min={props.field.min}
-          max={props.field.max}
-          step={step()}
-          value={String(props.value)}
+          placeholder={typeof props.field.default === 'number' ? String(props.field.default) : 'default'}
+          value={shown()}
           data-testid={`set-${props.field.key}`}
-          onChange={(e) => {
-            const parsed = Number(e.currentTarget.value);
-            if (Number.isFinite(parsed)) props.set(clamp(parsed));
+          onInput={(e) => setDraft(e.currentTarget.value)}
+          onBlur={(e) => draft() !== undefined && commit(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowUp') { e.preventDefault(); nudge(1); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-1); }
+            else if (e.key === 'Enter') commit(e.currentTarget.value);
+            else if (e.key === 'Escape') setDraft(undefined);
           }}
         />
         <Show when={props.field.unit}>
           <span class="settings-unit">{props.field.unit}</span>
         </Show>
       </span>
-      <button
-        type="button"
-        class="settings-iconbtn"
-        aria-label={`Increase ${props.field.label}`}
-        disabled={props.disabled || props.value >= max()}
-        onClick={() => props.set(clamp(props.value + step()))}
-      >
-        <Plus size={15} />
-      </button>
+      <span class="settings-number-steps">
+        <button
+          type="button"
+          class="settings-number-step"
+          aria-label={`Decrease ${props.field.label}`}
+          tabindex={-1}
+          disabled={props.disabled || (props.value !== undefined && props.value <= min())}
+          onClick={() => nudge(-1)}
+        >
+          <Minus size={14} />
+        </button>
+        <button
+          type="button"
+          class="settings-number-step"
+          aria-label={`Increase ${props.field.label}`}
+          tabindex={-1}
+          disabled={props.disabled || (props.value !== undefined && props.value >= max())}
+          onClick={() => nudge(1)}
+        >
+          <Plus size={14} />
+        </button>
+      </span>
     </div>
   );
 }
@@ -371,7 +416,7 @@ function StringInput(props: {
 }
 
 /** Kobalte select for enums with > 4 options or `display: "select"`. */
-function EnumSelect(props: { field: Field; value: Json; disabled: boolean; onChange: (value: string) => void }) {
+export function EnumSelect(props: { field: Pick<Field, 'options' | 'label' | 'key'>; value: Json; disabled: boolean; onChange: (value: string) => void }) {
   const current = createMemo(() => props.field.options.find((option) => option.value === props.value) ?? null);
   return (
     <div class="ui-select settings-select">

@@ -15,7 +15,7 @@ import { RefreshCw } from 'lucide-solid';
 import { ErrorBanner } from '../../components/ErrorBanner';
 import { LOCAL_HOST } from '../../lib/host';
 import type { Field, Json, Namespace, Section } from './types';
-import { fieldScope, storesValue } from './types';
+import { appHidden, fieldScope, storesValue } from './types';
 import { fieldVisible, resolve, setPath, removePath, checkValue, zodMessage, toZod, type WriteLayer } from './semantics';
 import { loadNamespaceLayers, simplifyWrite, writeFieldValue, type NamespaceLayers } from './data';
 import { FieldRow, SettingsField, type EditContext } from './fields';
@@ -135,10 +135,11 @@ export function NamespaceForm(props: {
     project: current().project,
     diagnostics: diagnostics(),
     readonly: props.readonly,
+    hostId: hostId(),
     set: (field, value) => void write(field, value),
   });
 
-  const fieldsOf = (section: Section) => section.fields.filter((field) => fieldVisible(field, values()) && (advanced() || !(field.advanced ?? false)));
+  const fieldsOf = (section: Section) => section.fields.filter((field) => !appHidden(props.namespace.namespace, field.key) && fieldVisible(field, values()) && (advanced() || !(field.advanced ?? false)));
 
   return (
     <section

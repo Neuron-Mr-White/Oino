@@ -290,3 +290,14 @@ export function fieldAnchor(namespace: string, key: string): string {
 export function pageAnchor(namespace: string, key: string): string {
   return `${fieldAnchor(namespace, key)}-page`;
 }
+
+/**
+ * Fields that exist in the schema for the CLI but do nothing in the app, so the
+ * app's settings never show them (`namespace:key`). `quietStartup` only hides the
+ * terminal startup banner.
+ */
+const CLI_ONLY = new Set(['oino.agent:quietStartup']);
+
+export function appHidden(namespace: string, key: string): boolean {
+  return CLI_ONLY.has(`${namespace}:${key}`) || (key === 'quietStartup' && namespace.startsWith('oino.'));
+}
