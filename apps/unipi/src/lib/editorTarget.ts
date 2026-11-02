@@ -12,6 +12,8 @@ export type EditorTarget = {
   /** UNI-191 "Edit as text": open even a binary file as text (read-only
    *  until the user taps "Edit anyway"), via fs_read's `as_text`. */
   asText?: boolean;
+  /** Put the caret in the editor once it shows (tree menu "Edit as text"). */
+  focus?: boolean;
 };
 
 const [target, setTargetSignal] = createSignal<EditorTarget | null>(null);

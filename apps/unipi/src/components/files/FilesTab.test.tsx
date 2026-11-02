@@ -173,16 +173,35 @@ describe('FileTree', () => {
     });
   });
 
-  it('row menu: rename mutates and refreshes the tree', async () => {
+  it('row menu: a vertical menu with keyboard nav; Escape closes it', async () => {
+    await tree();
+    fireEvent.contextMenu(screen.getByText('README.md'));
+    const menu = await screen.findByRole('menu');
+    const items = Array.from(menu.querySelectorAll('[role=menuitem]'));
+    expect(items.map((i) => i.textContent)).toEqual(['Edit as text', 'Rename…', 'Copy path', 'Mention in chat', 'Delete…']);
+    // Every item is one row: its icon sits beside the label in the same button.
+    for (const item of items) expect(item.classList.contains('board-menu-row')).toBe(true);
+    await waitFor(() => expect(document.activeElement).toBe(items[0]));
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(items[4]);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  });
+
+  it('row menu: rename is inline in the tree row', async () => {
     await tree();
     fireEvent.click(screen.getByText('src'));
     await waitFor(() => screen.getByText('math.ts'));
     fireEvent.contextMenu(screen.getByText('math.ts'));
     await screen.findByRole('menu');
     fireEvent.click(screen.getByText('Rename…'));
-    const input = await screen.findByTestId('files-name-input');
-    fireEvent.input(input, { target: { value: 'math2.ts' } });
-    fireEvent.click(screen.getByTestId('files-name-save'));
+    const input = (await screen.findByTestId('files-rename-input')) as HTMLInputElement;
+    expect(input.closest('[role=treeitem]')?.getAttribute('data-test-row')).toBe(`${ROOT}/src/math.ts`);
+    input.value = 'math2.ts';
+    fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(screen.getByText('Renamed to math2.ts')).toBeTruthy());
     await waitFor(() => expect(screen.getByText('math2.ts')).toBeTruthy());
     expect(world.log.some((e) => e.op === 'fs_rename' && (e.args as { to?: string }).to === `${ROOT}/src/math2.ts`)).toBe(true);

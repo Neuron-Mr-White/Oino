@@ -9,6 +9,15 @@ import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { pushBack } from '../../lib/back';
 import { createExit } from '../../lib/motion';
+import './anchored-menu.css';
+
+/** The menu's enabled items, in order (roving focus for arrow keys). */
+function menuItems(menu: HTMLElement | undefined): HTMLElement[] {
+  if (!menu) return [];
+  return Array.from(menu.querySelectorAll<HTMLElement>('[role=menuitem],[role=menuitemradio],[role=menuitemcheckbox]')).filter(
+    (el) => !(el as HTMLButtonElement).disabled && el.getAttribute('aria-disabled') !== 'true',
+  );
+}
 
 export function AnchoredMenu(props: {
   anchor: DOMRect;
@@ -48,6 +57,14 @@ export function AnchoredMenu(props: {
     }
     setPos({ left: leftFor(), top, origin: `${origin} ${props.alignEnd ? 'right' : 'left'}` });
     onCleanup(pushBack(() => dismiss()));
+    // Keyboard: the first item takes focus (arrows / Home / End move it,
+    // Escape closes via the Back stack); focus goes back where it was.
+    const opener = document.activeElement as HTMLElement | null;
+    if (!menu?.contains(document.activeElement)) menuItems(menu)[0]?.focus({ preventScroll: true });
+    onCleanup(() => {
+      const active = document.activeElement;
+      if (opener?.isConnected && (!active || active === document.body || menu?.contains(active))) opener.focus({ preventScroll: true });
+    });
     window.addEventListener('resize', dismiss);
     onCleanup(() => window.removeEventListener('resize', dismiss));
   });
@@ -76,6 +93,25 @@ export function AnchoredMenu(props: {
         data-leaving={leave.leaving() ? '' : undefined}
         style={{ left: `${pos().left}px`, top: `${pos().top}px`, width: `${width()}px`, 'transform-origin': pos().origin }}
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          const items = menuItems(menu);
+          if (items.length === 0) return;
+          const at = items.indexOf(document.activeElement as HTMLElement);
+          let next: number | undefined;
+          if (event.key === 'ArrowDown') next = at < 0 ? 0 : (at + 1) % items.length;
+          else if (event.key === 'ArrowUp') next = at < 0 ? items.length - 1 : (at - 1 + items.length) % items.length;
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = items.length - 1;
+          else if (event.key === 'Tab') {
+            event.preventDefault();
+            dismiss();
+            return;
+          }
+          if (next === undefined) return;
+          event.preventDefault();
+          event.stopPropagation();
+          items[next]!.focus({ preventScroll: true });
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -93,6 +129,7 @@ export function MenuRow(props: {
   hint?: JSX.Element;
   tone?: 'danger';
   disabled?: boolean;
+  testId?: string;
   onSelect: () => void;
 }) {
   return (
@@ -100,6 +137,7 @@ export function MenuRow(props: {
       type="button"
       role="menuitem"
       class={`recent-popover-row board-menu-row${props.tone === 'danger' ? ' text-wm-red' : ''}`}
+      data-testid={props.testId}
       disabled={props.disabled}
       onClick={() => props.onSelect()}
     >

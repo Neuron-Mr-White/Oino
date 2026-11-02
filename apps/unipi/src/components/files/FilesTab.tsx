@@ -58,8 +58,8 @@ export function FilesTab(props: PaneTabProps) {
   const scope = (): PaneScope => currentWorkspace()?.scope ?? { hostId: hostId(), projectKey: props.projectKey };
   const view = (): PaneView => currentWorkspace()?.view ?? {};
 
-  function openFile(path: string, opts?: { line?: number; asText?: boolean }) {
-    const next: EditorTarget = { hostId: hostId(), path, line: opts?.line, asText: opts?.asText };
+  function openFile(path: string, opts?: { line?: number; asText?: boolean; focus?: boolean }) {
+    const next: EditorTarget = { hostId: hostId(), path, line: opts?.line, asText: opts?.asText, focus: opts?.focus };
     if (desktopShell()) {
       // A dirty editor asks first through its guard (UNI-117).
       switchEditorTarget(next);

@@ -61,6 +61,10 @@ export function TreeRowView(props: {
   selected: boolean;
   onActivate: (row: TreeRow) => void;
   onMenu: (row: TreeRow, anchor: DOMRect) => void;
+  /** Inline rename (F2 / menu "Rename…"): the name becomes an input. */
+  renaming?: boolean;
+  /** Commit (`name`) or cancel (`undefined`) the inline rename. */
+  onRenameDone?: (name: string | undefined) => void;
 }) {
   const row = () => props.row;
   const isDir = () => row().kind === 'dir' || row().kind === 'root';
@@ -79,12 +83,15 @@ export function TreeRowView(props: {
       tabindex={-1}
       style={{ 'padding-left': `${6 + row().depth * 14}px` }}
       title={row().error ? `${row().path} — ${row().error}` : row().path}
-      onClick={(e) => props.onActivate(row())}
+      onClick={() => {
+        if (!props.renaming) props.onActivate(row());
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         props.onMenu(row(), (e.currentTarget as HTMLElement).getBoundingClientRect());
       }}
       onKeyDown={(e) => {
+        if (props.renaming) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           props.onActivate(row());
@@ -101,7 +108,10 @@ export function TreeRowView(props: {
       <span class="ftree-icon" aria-hidden="true">
         <Dynamic component={isDir() ? Folder : row().kind === 'symlink' ? FileSymlink : fileIcon(row().name)} size={15} strokeWidth={1.7} />
       </span>
-      <span class="ftree-name" data-error={row().error ? '' : undefined}>
+      <Show when={props.renaming}>
+        <RenameInput name={row().name} isDir={isDir()} onDone={(name) => props.onRenameDone?.(name)} />
+      </Show>
+      <span class="ftree-name" data-error={row().error ? '' : undefined} hidden={props.renaming}>
         {row().name}
         <Show when={row().empty}>
           <span class="ftree-empty"> (empty)</span>
@@ -142,5 +152,45 @@ export function TreeRowView(props: {
         <MoreHorizontal size={14} />
       </button>
     </div>
+  );
+}
+
+/** The tree's inline rename field: the stem is pre-selected (extension
+ *  kept), Enter / blur commit, Escape cancels. */
+function RenameInput(props: { name: string; isDir: boolean; onDone: (name: string | undefined) => void }) {
+  let done = false;
+  const finish = (name: string | undefined) => {
+    if (done) return;
+    done = true;
+    props.onDone(name);
+  };
+  return (
+    <input
+      class="ftree-rename"
+      data-testid="files-rename-input"
+      aria-label={`Rename ${props.name}`}
+      value={props.name}
+      spellcheck={false}
+      autocomplete="off"
+      ref={(el) =>
+        queueMicrotask(() => {
+          el.focus({ preventScroll: true });
+          const dot = props.isDir ? -1 : props.name.lastIndexOf('.');
+          el.setSelectionRange(0, dot > 0 ? dot : props.name.length);
+        })
+      }
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          finish(e.currentTarget.value);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          finish(undefined);
+        }
+      }}
+      onBlur={(e) => finish(e.currentTarget.value)}
+    />
   );
 }

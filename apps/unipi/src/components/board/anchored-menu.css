@@ -1,0 +1,16 @@
+/* Shared anchored menu (AnchoredMenu / MenuRow): a plain vertical menu —
+   icon left, label, one item per row. Lived in screens/board.css, which
+   only loads with the Board, so Files' row menu rendered unstyled (owner5
+   #24: icons stacked above labels, labels running together). */
+.board-menu { padding: 6px 0; max-height: 70vh; overflow-y: auto; }
+.board-menu-row { min-height: 46px; gap: 12px; text-align: left; }
+.board-menu-row:disabled { opacity: .4; }
+.board-menu-row:focus-visible { outline: none; background: var(--color-surface-3); }
+.board-menu-icon { flex: 0 0 auto; display: grid; place-items: center; width: 20px; color: var(--color-text-muted); }
+.text-wm-red .board-menu-icon { color: inherit; }
+.board-menu-hint { flex: 0 0 auto; font-size: 13px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
+.board-menu-sep { height: 1px; margin: 6px 0; background: var(--color-line); }
+.board-menu-label { padding: 8px 14px 6px; font-size: 12px; color: var(--color-text-dim); }
+/* Pointer desktops: standard menu density. */
+html[data-shell=desktop] .board-menu { padding: 4px 0; }
+html[data-shell=desktop] .board-menu-row { min-height: 34px; gap: 10px; padding: 0 12px; font-size: 14px; }

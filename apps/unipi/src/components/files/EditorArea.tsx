@@ -47,7 +47,10 @@ export function EditorArea(props: { root?: () => string | undefined; onBinary: (
     const target = getEditorTarget();
     if (!target) return;
     clearEditorTarget();
-    store.open(target);
+    const tab = store.open(target);
+    if (target.focus) {
+      void store.viewReady(tab.id).then((view) => requestAnimationFrame(() => view?.focus()));
+    }
   });
 
   const active = () => {

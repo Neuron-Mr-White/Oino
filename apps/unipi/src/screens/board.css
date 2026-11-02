@@ -232,15 +232,7 @@
 .board-loading { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .board-loading .lane-pill { display: inline-block; }
 
-/* ── menus ──────────────────────────────────────────────────────────── */
-.board-menu { padding: 6px 0; max-height: 70vh; overflow-y: auto; }
-.board-menu-row { min-height: 46px; gap: 12px; }
-.board-menu-row:disabled { opacity: .4; }
-.board-menu-icon { flex: 0 0 auto; display: grid; place-items: center; width: 20px; color: var(--color-text-muted); }
-.text-wm-red .board-menu-icon { color: inherit; }
-.board-menu-hint { flex: 0 0 auto; font-size: 13px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
-.board-menu-sep { height: 1px; margin: 6px 0; background: var(--color-line); }
-.board-menu-label { padding: 8px 14px 6px; font-size: 12px; color: var(--color-text-dim); }
+/* ── menus: components/board/anchored-menu.css (shared by Files, chat, Board) ── */
 
 /* ── sheets ─────────────────────────────────────────────────────────── */
 .board-sheet { display: flex; flex-direction: column; padding-left: 0; padding-right: 0; padding-bottom: 0; overflow: hidden; }

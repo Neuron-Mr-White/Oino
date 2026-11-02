@@ -38,7 +38,7 @@ import {
 } from '../../lib/fs';
 import { uploadPicked } from '../../lib/blob';
 import { queueMention } from '../../lib/chat/mention';
-import { clearReturnToChat, openChatHref, openNewChat } from '../../lib/session/open';
+import { clearReturnToChat, openChatHref, openNewChat, parseChatRoute } from '../../lib/session/open';
 import type { ChatTarget } from '../../lib/session/list';
 import { useHostsOptional } from '../../hosts/context';
 import { createDirWatch } from '../../lib/files/watch';
@@ -51,7 +51,7 @@ import { hapticTick } from '../../lib/haptics';
 import { useSettings } from '../../settings/context';
 import { BoardSheet } from '../board/BoardSheet';
 import { ChatPickSheet } from '../board/ChatPickSheet';
-import { AnchoredMenu } from '../board/AnchoredMenu';
+import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { EmptyState } from '../EmptyState';
 import { TreeRowView } from './TreeRow';
 import { FileSearch } from './FileSearch';
@@ -61,15 +61,13 @@ const ROW_H = 26;
 
 type MenuAction = 'open' | 'preview' | 'edit-text' | 'rename' | 'delete' | 'copy' | 'mention' | 'new-file' | 'new-dir';
 
-const menuItem = (id: MenuAction, label: string) => ({ id, label });
-
 export function FileTree(props: {
   hostId: string;
   /** The tree's starting folder (the project), or the host roots when it is `~`. */
   root: string | undefined;
   roots: () => string[] | undefined;
   /** Text file opened in the editor area. */
-  openFile: (path: string, opts?: { line?: number; asText?: boolean }) => void;
+  openFile: (path: string, opts?: { line?: number; asText?: boolean; focus?: boolean }) => void;
   onPreview: (path: string, siblings: string[]) => void;
 }) {
   const navigate = useNavigate();
@@ -178,7 +176,8 @@ export function FileTree(props: {
       case 'preview':
         return openPath(row.path);
       case 'edit-text':
-        return props.openFile(row.path, { asText: true });
+        pushRecent(props.hostId, row.path);
+        return props.openFile(row.path, { asText: true, focus: true });
       case 'rename':
         return setRenameTarget({ path: row.path, name: basename(row.path) });
       case 'delete':
@@ -189,7 +188,7 @@ export function FileTree(props: {
           () => showToast('Could not copy'),
         );
       case 'mention':
-        return setMentionFor(row.path);
+        return mentionPath(row.path);
       case 'new-file':
         return setNewIn({ dir: row.path, kind: 'file' });
       case 'new-dir':
@@ -198,6 +197,17 @@ export function FileTree(props: {
   }
 
   const [mentionFor, setMentionFor] = createSignal<string | undefined>();
+  /** Desktop with a chat open next to Files: the chip goes straight into
+   *  that chat's composer (focused); otherwise ask which chat. */
+  function mentionPath(path: string) {
+    const shown = desktopShell() && typeof location !== 'undefined' ? parseChatRoute(location.hash) : undefined;
+    if (shown && shown.hostId === props.hostId) {
+      queueMention(shown.mentionKey, `@${path} `);
+      showToast(`Added @${basename(path)} to the chat draft`);
+      return;
+    }
+    setMentionFor(path);
+  }
   function mentionPicked(target: ChatTarget) {
     const path = mentionFor();
     setMentionFor(undefined);
@@ -218,13 +228,27 @@ export function FileTree(props: {
   }
 
   // ── Mutations (rename / delete / new / upload) ─────────────────────────
+  /** Inline rename done: commit, then hand focus back to the tree row. */
+  async function finishRename(name: string | undefined) {
+    const target = renameTarget();
+    if (name === undefined) setRenameTarget(undefined);
+    else await doRename(name);
+    const at = selected() ?? target?.path;
+    if (at) scroller?.querySelector<HTMLElement>(`[data-test-row="${CSS.escape(at)}"]`)?.focus({ preventScroll: true });
+  }
+
   async function doRename(name: string) {
     const target = renameTarget();
     setRenameTarget(undefined);
     if (!target || !name.trim() || name.trim() === target.name) return;
+    if (name.includes('/')) {
+      showToast("Names can't contain /");
+      return;
+    }
     const result = await fsRename(props.hostId, target.path, joinPath(dirname(target.path), name.trim()));
     if (result.ok) {
       showToast(`Renamed to ${name.trim()}`);
+      setSelected(joinPath(dirname(target.path), name.trim()));
       watch.mutated();
     } else showToast(result.error.message);
   }
@@ -389,14 +413,14 @@ export function FileTree(props: {
             when={virtual()}
             fallback={
               <For each={rows()}>
-                {(row) => <TreeRowView row={row} selected={selected() === row.path} onActivate={activate} onMenu={(r, anchor) => setMenu({ path: r.path, kind: r.kind, anchor })} />}
+                {(row) => <TreeRowView row={row} selected={selected() === row.path} onActivate={activate} onMenu={(r, anchor) => setMenu({ path: r.path, kind: r.kind, anchor })} renaming={renameTarget()?.path === row.path} onRenameDone={(name) => void finishRename(name)} />}
               </For>
             }
           >
             <VirtualWindow virt={virt} fixed>
               {(index) => {
                 const row = rows()[index]!;
-                return <TreeRowView row={row} selected={selected() === row.path} onActivate={activate} onMenu={(r, anchor) => setMenu({ path: r.path, kind: r.kind, anchor })} />;
+                return <TreeRowView row={row} selected={selected() === row.path} onActivate={activate} onMenu={(r, anchor) => setMenu({ path: r.path, kind: r.kind, anchor })} renaming={renameTarget()?.path === row.path} onRenameDone={(name) => void finishRename(name)} />;
               }}
             </VirtualWindow>
           </Show>
@@ -451,19 +475,14 @@ export function FileTree(props: {
       <Show when={toolsMenu()}>
         {(anchor) => (
           <AnchoredMenu anchor={anchor()} width={230} alignEnd label="Files actions" onDismiss={() => setToolsMenu(undefined)}>
-            <div class="board-menu-list" role="none">
-              <ToolItem icon={<FilePlus2 size={15} />} label="New file" onClick={() => { setToolsMenu(undefined); setNewIn({ dir: uploadDir() ?? '', kind: 'file' }); }} />
-              <ToolItem icon={<FolderPlus size={15} />} label="New folder" onClick={() => { setToolsMenu(undefined); setNewIn({ dir: uploadDir() ?? '', kind: 'dir' }); }} />
-              <ToolItem icon={<Upload size={15} />} label="Upload files…" onClick={() => { setToolsMenu(undefined); uploadInput?.click(); }} />
-              <ToolItem icon={<UnfoldVertical size={15} />} label="Collapse all" onClick={() => { setToolsMenu(undefined); setModel((m) => ({ ...m, expanded: new Set() })); }} />
-            </div>
+            <MenuRow icon={<FilePlus2 size={15} />} label="New file" onSelect={() => { setToolsMenu(undefined); setNewIn({ dir: uploadDir() ?? '', kind: 'file' }); }} />
+            <MenuRow icon={<FolderPlus size={15} />} label="New folder" onSelect={() => { setToolsMenu(undefined); setNewIn({ dir: uploadDir() ?? '', kind: 'dir' }); }} />
+            <MenuRow icon={<Upload size={15} />} label="Upload files…" onSelect={() => { setToolsMenu(undefined); uploadInput?.click(); }} />
+            <MenuRow icon={<UnfoldVertical size={15} />} label="Collapse all" onSelect={() => { setToolsMenu(undefined); setModel((m) => ({ ...m, expanded: new Set() })); }} />
           </AnchoredMenu>
         )}
       </Show>
 
-      <Show when={renameTarget()}>
-        {(t) => <NameSheet label="Rename" initial={t().name} action="Rename" onDone={doRename} onClose={() => setRenameTarget(undefined)} />}
-      </Show>
       <Show when={newIn()}>
         {(t) => <NameSheet label={t().kind === 'file' ? 'New file' : 'New folder'} initial="" action="Create" onDone={(name) => void doNew(name, t().kind)} onClose={() => setNewIn(undefined)} />}
       </Show>
@@ -497,31 +516,24 @@ function MenuItems(props: { kind: string; path: string; onRun: (id: MenuAction) 
   const isDir = () => props.kind === 'dir' || props.kind === 'root';
   const media = () => !isDir() && isDirectPreview(props.path);
   return (
-    <div class="board-menu-list" role="none">
+    <>
       <Show when={isDir()}>
-        <ToolItem icon={<FilePlus2 size={15} />} label="New file" onClick={() => props.onRun('new-file')} />
-        <ToolItem icon={<FolderPlus size={15} />} label="New folder" onClick={() => props.onRun('new-dir')} />
+        <MenuRow icon={<FilePlus2 size={15} />} label="New file" onSelect={() => props.onRun('new-file')} />
+        <MenuRow icon={<FolderPlus size={15} />} label="New folder" onSelect={() => props.onRun('new-dir')} />
+        <MenuSeparator />
       </Show>
       <Show when={media()}>
-        <ToolItem icon={<Eye size={15} />} label="Preview" onClick={() => props.onRun('preview')} />
+        <MenuRow icon={<Eye size={15} />} label="Preview" onSelect={() => props.onRun('preview')} />
       </Show>
       <Show when={!isDir() && !media()}>
-        <ToolItem icon={<FileText size={15} />} label="Edit as text" onClick={() => props.onRun('edit-text')} />
+        <MenuRow icon={<FileText size={15} />} label="Edit as text" onSelect={() => props.onRun('edit-text')} />
       </Show>
-      <ToolItem icon={<FilePenLine size={15} />} label="Rename…" onClick={() => props.onRun('rename')} />
-      <ToolItem icon={<Copy size={15} />} label="Copy path" onClick={() => props.onRun('copy')} />
-      <ToolItem icon={<MessageSquarePlus size={15} />} label="Mention in chat" testId="files-mention" onClick={() => props.onRun('mention')} />
-      <ToolItem icon={<Trash2 size={15} />} label="Delete…" danger onClick={() => props.onRun('delete')} />
-    </div>
-  );
-}
-
-function ToolItem(props: { icon: JSX.Element; label: string; onClick: () => void; testId?: string; danger?: boolean }) {
-  return (
-    <button type="button" role="menuitem" class="board-menu-item" data-testid={props.testId} onClick={props.onClick} data-danger={props.danger ? '' : undefined}>
-      <span class="board-menu-icon" aria-hidden="true">{props.icon}</span>
-      <span>{props.label}</span>
-    </button>
+      <MenuRow icon={<FilePenLine size={15} />} label="Rename…" onSelect={() => props.onRun('rename')} />
+      <MenuRow icon={<Copy size={15} />} label="Copy path" onSelect={() => props.onRun('copy')} />
+      <MenuRow icon={<MessageSquarePlus size={15} />} label="Mention in chat" testId="files-mention" onSelect={() => props.onRun('mention')} />
+      <MenuSeparator />
+      <MenuRow icon={<Trash2 size={15} />} label="Delete…" tone="danger" onSelect={() => props.onRun('delete')} />
+    </>
   );
 }
 

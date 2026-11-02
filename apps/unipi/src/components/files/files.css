@@ -36,6 +36,7 @@
 .ftree-icon { flex: none; display: grid; place-items: center; color: var(--color-text-dim); }
 .ftree-row[data-selected] .ftree-icon { color: var(--color-text-muted); }
 .ftree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 12px; }
+.ftree-rename { flex: 1 1 auto; min-width: 0; height: 22px; padding: 0 6px; border: 1px solid var(--color-text-dim); border-radius: 5px; background: var(--color-surface-1); color: var(--color-text); font-family: var(--font-mono); font-size: 12px; outline: none; }
 .ftree-name[data-error] { color: var(--color-wm-red); }
 .ftree-empty, .ftree-more { color: var(--color-text-dim); font-style: italic; }
 .ftree-err { margin-left: auto; font-size: 10.5px; color: var(--color-wm-red); }
