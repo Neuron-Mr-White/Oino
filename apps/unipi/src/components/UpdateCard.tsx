@@ -9,8 +9,8 @@
  * the slim `UpdateBanner` above Home content (absorbed from the former
  * DesktopUpdate.tsx — one file, one updater surface).
  */
-import { Match, Show, Switch, createResource } from 'solid-js';
-import { Download, ExternalLink, RefreshCw, Server, Sparkles } from 'lucide-solid';
+import { Match, Show, Switch, createResource, createSignal } from 'solid-js';
+import { Download, ExternalLink, RefreshCw, Server, Sparkles, X } from 'lucide-solid';
 import { BoardSheet } from './board/BoardSheet';
 import {
   checkDesktopUpdate,
@@ -280,22 +280,46 @@ function IosBody() {
   );
 }
 
-/** Slim banner above the content when an update is waiting (tap → Settings). */
+const BANNER_DISMISSED_KEY = 'unipi.updateBanner.dismissed';
+function readBannerDismissed(): string | undefined {
+  try {
+    return localStorage.getItem(BANNER_DISMISSED_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+const [bannerDismissed, setBannerDismissed] = createSignal<string | undefined>(readBannerDismissed());
+function dismissBanner(version: string): void {
+  setBannerDismissed(version);
+  try {
+    localStorage.setItem(BANNER_DISMISSED_KEY, version);
+  } catch {
+    /* storage unavailable: dismissed until the app restarts */
+  }
+}
+
+/** Slim banner above the content when an update is waiting (tap → Settings). Dismissible (×) per
+ *  version, remembered: a newer version shows it again ([ui-shell] #4). */
 export function UpdateBanner(props: { onOpen: () => void }) {
   const s = updateState;
   const d = desktopUpdateState;
   const desktopReady = () => d().kind === 'available';
+  const apk = () => s() as { release: { version: string; build: number } };
+  const version = () =>
+    desktopReady() ? (d() as { info: { version: string } }).info.version : s().kind === 'available' || s().kind === 'ready' ? `${apk().release.version}+${apk().release.build}` : undefined;
+  const label = () => (desktopReady() ? `Unipi ${(d() as { info: { version: string } }).info.version} is available` : `Unipi ${apk().release.version} (${apk().release.build}) is ready`);
   return (
-    <Show when={s().kind === 'available' || s().kind === 'ready' || desktopReady()}>
-      <button type="button" class="update-banner" onClick={() => props.onOpen()}>
-        <Sparkles size={15} class="shrink-0" />
-        <span class="flex-1 truncate text-left">
-          <Show when={desktopReady()} fallback={<>Unipi {(s() as { release: { version: string; build: number } }).release.version} ({(s() as { release: { build: number } }).release.build}) is ready</>}>
-            Unipi {(d() as { info: { version: string } }).info.version} is available
-          </Show>
-        </span>
-        <span class="update-banner-go">{desktopReady() || s().kind === 'available' ? 'Update' : 'Install'}</span>
-      </button>
+    <Show when={version() !== undefined && version() !== bannerDismissed()}>
+      <div class="update-banner" data-testid="update-banner">
+        <button type="button" class="update-banner-main" onClick={() => props.onOpen()}>
+          <Sparkles size={15} class="shrink-0" />
+          <span class="flex-1 truncate text-left">{label()}</span>
+          <span class="update-banner-go">{desktopReady() || s().kind === 'available' ? 'Update' : 'Install'}</span>
+        </button>
+        <button type="button" class="update-banner-close" aria-label={`Dismiss: ${label()}`} title="Dismiss" data-testid="update-banner-dismiss" onClick={() => dismissBanner(version()!)}>
+          <X size={15} />
+        </button>
+      </div>
     </Show>
   );
 }

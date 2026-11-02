@@ -2,7 +2,7 @@
 /** The one Update card (G-14, WP-A24): desktop body + prompt; one card, one surface. */
 import { render, screen, cleanup, fireEvent, waitFor } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DesktopUpdatePrompt, UpdateCard } from './UpdateCard';
+import { DesktopUpdatePrompt, UpdateBanner, UpdateCard } from './UpdateCard';
 import { checkDesktopUpdate, resetDesktopUpdate, setDesktopUpdateTransport } from '../lib/desktopUpdate';
 import { setPlatformOverride } from '../lib/platform';
 
@@ -81,5 +81,30 @@ describe('the one Update card (desktop)', () => {
     render(() => <UpdateCard />);
     fireEvent.click(screen.getByTestId('desktop-update-check'));
     expect((await screen.findByTestId('desktop-update-error')).textContent).toContain('offline');
+  });
+});
+
+describe('update banner ([ui-shell] #4)', () => {
+  it('names Unipi, opens Settings, and × dismisses it for that version (remembered); a newer one shows again', async () => {
+    localStorage.removeItem('unipi.updateBanner.dismissed');
+    setDesktopUpdateTransport({ check: async () => info, install });
+    await checkDesktopUpdate(true);
+    const onOpen = vi.fn();
+    render(() => <UpdateBanner onOpen={onOpen} />);
+    const banner = await screen.findByTestId('update-banner');
+    expect(banner.textContent).toContain('Unipi 0.4.5 is available');
+    fireEvent.click(screen.getByText('Update'));
+    expect(onOpen).toHaveBeenCalled();
+    const close = screen.getByTestId('update-banner-dismiss');
+    expect(close.getAttribute('aria-label')).toBe('Dismiss: Unipi 0.4.5 is available');
+    fireEvent.click(close);
+    await waitFor(() => expect(screen.queryByTestId('update-banner')).toBeNull());
+    expect(localStorage.getItem('unipi.updateBanner.dismissed')).toBe('0.4.5');
+    cleanup();
+    render(() => <UpdateBanner onOpen={onOpen} />);
+    expect(screen.queryByTestId('update-banner')).toBeNull();
+    setDesktopUpdateTransport({ check: async () => ({ ...info, version: '0.4.6' }), install });
+    await checkDesktopUpdate(true);
+    expect((await screen.findByTestId('update-banner')).textContent).toContain('Unipi 0.4.6 is available');
   });
 });

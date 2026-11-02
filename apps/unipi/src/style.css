@@ -304,7 +304,14 @@ html.qr-scanning .app-shell, html.qr-scanning [data-corvu-drawer-content], html.
 .update-progress{position:relative;height:22px;border-radius:9999px;background:var(--color-surface-3);overflow:hidden;}
 .update-progress>span{position:absolute;inset:0 auto 0 0;background:rgb(240 48 24 / 45%);transition:width .2s;}
 .update-progress>em{position:relative;display:block;text-align:center;font-style:normal;font-size:11.5px;line-height:22px;color:var(--color-text);}
-.update-banner{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;margin:0 0 10px;padding:0 12px;border-radius:12px;background:var(--color-surface-2);box-shadow:inset 0 0 0 1px rgb(240 48 24 / 35%);color:var(--color-text);font-size:13px;}
+/* Update banner ([ui-shell] #4): inset with the page gutter on full-bleed pages, dismissible (×). */
+.update-banner{display:flex;align-items:center;gap:2px;min-height:40px;margin:12px 0 4px;padding:0 4px 0 0;border-radius:12px;background:var(--color-surface-2);box-shadow:inset 0 0 0 1px rgb(240 48 24 / 35%);color:var(--color-text);font-size:13px;}
+.app-content:has(:is(.page-screen, .chat-tab, .board-screen, .files-screen, .preview-screen)) > .update-banner{margin-left:var(--page-gutter);margin-right:var(--page-gutter);}
+.update-banner-main{flex:1;min-width:0;display:flex;align-items:center;gap:8px;min-height:40px;padding:0 8px 0 12px;border-radius:12px;background:transparent;color:inherit;font:inherit;}
+.update-banner-main:active:not(:disabled){transform:none;}
+.update-banner-close{flex:none;display:grid;place-items:center;width:32px;height:32px;min-height:32px;border-radius:8px;background:transparent;color:var(--color-text-muted);}
+.update-banner-close:hover{background:var(--color-surface-3);color:var(--color-text);}
+.update-banner-main:focus-visible,.update-banner-close:focus-visible{outline:2px solid var(--color-shell);outline-offset:-2px;}
 .update-banner-go{flex:0 0 auto;padding:0 10px;border-radius:9999px;line-height:24px;background:var(--color-shell);color:var(--color-face);font-size:12px;}
 
 /* ── Shared markdown (UNI-156): one .md stylesheet for chat and board ──── */
