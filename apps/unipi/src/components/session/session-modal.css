@@ -19,16 +19,18 @@
 .sm-tabs { display: flex; gap: 4px; padding: 10px 16px 0; }
 .sm-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 11px; background: transparent; color: var(--color-text-muted); font-size: 13px; border: none; }
 .sm-tab[aria-selected="true"] { background: var(--color-surface-3); color: var(--color-text); }
-.sm-tab .sm-badge { min-width: 18px; padding: 1px 5px; border-radius: 9999px; background: var(--color-claw); color: var(--color-ink); font-size: 11px; font-weight: 700; text-align: center; }
+.sm-tab .sm-badge { min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9999px; background: var(--color-claw); color: var(--color-ink); font-size: 11px; line-height: 18px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* ── body ──────────────────────────────────────────────────────────────── */
-.sm-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+.sm-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 16px 18px 20px; display: flex; flex-direction: column; gap: 16px; }
 .sm-note { margin: 0; font-size: 13px; color: var(--color-text-muted); }
 .sm-empty { padding: 18px 6px; text-align: center; font-size: 13px; color: var(--color-text-dim); }
 .sm-skeleton { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
 .sm-skeleton > span { height: 14px; border-radius: 7px; background: var(--color-surface-2); animation: sm-fade 0.9s ease-in-out infinite alternate; }
 .sm-section-title { display: flex; align-items: center; gap: 8px; margin: 4px 0 -4px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-dim); }
-.sm-section-title .sm-grow { flex: 1 1 auto; }
+.sm-section-title .sm-grow, .sm-grow { flex: 1 1 auto; }
+/* A title right above its rows/kv (Info › Tools / Skills groups): a real gap, not the -4px pull. */
+.sm-section-title + .sm-rows, .sm-section-title + .sm-kv, .sm-section-title + .sm-note { margin-top: 10px; }
 .sm-section-title button { min-height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--color-line); background: transparent; color: var(--color-text-muted); font-size: 12px; }
 .sm-section-title button:hover { color: var(--color-text); border-color: var(--color-text-dim); }
 
@@ -52,6 +54,38 @@
 .sm-indent-1 { margin-left: 18px; }
 .sm-indent-2 { margin-left: 36px; }
 
+
+/* ── running tab ([ui-chat-bits]): sections with a head, rows, empty states ── */
+.sm-running { display: flex; flex-direction: column; gap: 14px; }
+.sm-sec { display: flex; flex-direction: column; border-radius: 16px; border: 1px solid var(--color-line); background: var(--color-surface-2); overflow: hidden; }
+.sm-sec-head { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--color-line); }
+.sm-sec-icon { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: var(--color-surface-3); color: var(--color-text-muted); }
+.sm-sec-title { margin: 0; font-size: 13px; font-weight: 640; color: var(--color-text); }
+.sm-sec-count { min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 6px; border-radius: 9999px; background: color-mix(in srgb, var(--color-wm-green) 18%, transparent); color: var(--color-wm-green); font-size: 11px; line-height: 18px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.sm-sec-tool { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--color-line); background: transparent; color: var(--color-text-muted); font-size: 12px; white-space: nowrap; }
+.sm-sec-tool:hover { color: var(--color-text); border-color: var(--color-text-dim); }
+.sm-sec-icon-btn { width: 30px; padding: 0; }
+.sm-sec-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 14px 16px; color: var(--color-text-dim); font-size: 13px; }
+.sm-sec-empty svg { flex: none; color: var(--color-text-dim); opacity: 0.8; }
+.sm-sec-empty-text { color: var(--color-text-muted); font-weight: 560; }
+.sm-sec-empty-hint { font-size: 12.5px; }
+.sm-list { display: flex; flex-direction: column; }
+.sm-list > .sm-row { border-radius: 0; padding: 11px 12px 11px 14px; }
+.sm-list > .sm-row + .sm-row { border-top: 1px solid var(--color-line); }
+.sm-list > .sm-row:hover { background: var(--color-surface-3); }
+.sm-row-main { gap: 2px; }
+.sm-row-title-text { font-family: inherit; }
+.sm-elapsed { flex: none; min-width: 52px; text-align: right; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--color-text-muted); white-space: nowrap; }
+.sm-state-pill { flex: none; padding: 2px 8px; border-radius: 9999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; background: var(--color-surface-3); color: var(--color-text-muted); }
+.sm-state-pill[data-state="running"] { background: color-mix(in srgb, var(--color-wm-green) 16%, transparent); color: var(--color-wm-green); }
+.sm-state-pill[data-state="idle"] { background: color-mix(in srgb, var(--color-amber) 16%, transparent); color: var(--color-amber); }
+.sm-state-pill[data-state="closed"] { color: var(--color-text-dim); }
+.sm-trees { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.sm-tree-head { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; }
+.sm-tree-label { font-size: 12.5px; font-weight: 640; color: var(--color-text); }
+.sm-list > .sm-row.sm-indent-1 { margin-left: 0; padding-left: 32px; }
+.sm-list > .sm-row.sm-indent-2 { margin-left: 0; padding-left: 50px; }
+
 /* context tab */
 .sm-ctx-meter { display: flex; flex-direction: column; gap: 7px; padding: 14px; border-radius: 16px; background: var(--color-surface-2); }
 .sm-ctx-meter-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -72,10 +106,13 @@
 .sm-actions .hint { align-self: center; font-size: 12px; color: var(--color-text-dim); }
 
 /* info tab */
+.sm-info { display: flex; flex-direction: column; gap: 16px; }
+.sm-info > div:has(> .sm-section-title) + div:has(> .sm-section-title) { margin-top: 6px; }
 .sm-pages { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; border-radius: 14px; background: var(--color-surface-2); }
 .sm-page { flex: 1 1 auto; min-width: max-content; min-height: 34px; padding: 0 12px; border-radius: 11px; border: none; background: transparent; color: var(--color-text-muted); font-size: 12.5px; }
 .sm-page[aria-selected="true"] { background: var(--color-surface-3); color: var(--color-text); }
 .sm-kv { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; }
+.sm-info > .sm-kv { gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--color-surface-2); }
 .sm-kv-row { display: flex; gap: 12px; align-items: baseline; font-size: 13px; }
 .sm-kv-key { flex: none; width: 150px; color: var(--color-text-dim); }
 .sm-kv-val { min-width: 0; overflow-wrap: break-word; font-family: var(--font-mono); font-size: 12.5px; }
@@ -120,6 +157,17 @@ body > div:has(> .sheet.session-sheet) > .sheet-overlay { z-index: 69; }
 .sheet.session-sheet .sm-row .sm-dot { position: absolute; left: 10px; top: 15px; }
 .sheet.session-sheet .sm-row { position: relative; padding-left: 24px; }
 .sheet.session-sheet .sm-row .sm-indent-1 { margin-left: 0; }
+/* Running rows on the phone: title + sub full width; pill · elapsed · actions on one line below. */
+.sheet.session-sheet .sm-list > .sm-row { padding: 11px 12px 11px 28px; row-gap: 8px; }
+.sheet.session-sheet .sm-list > .sm-row .sm-dot { left: 12px; top: 17px; }
+.sheet.session-sheet .sm-list > .sm-row.sm-indent-1 { padding-left: 40px; }
+.sheet.session-sheet .sm-list > .sm-row.sm-indent-1 .sm-dot { left: 24px; }
+.sheet.session-sheet .sm-list > .sm-row.sm-indent-2 { padding-left: 52px; }
+.sheet.session-sheet .sm-list > .sm-row.sm-indent-2 .sm-dot { left: 36px; }
+.sheet.session-sheet .sm-elapsed { min-width: 0; text-align: left; }
+.sheet.session-sheet .sm-row-actions { flex-wrap: wrap; }
+.sheet.session-sheet .sm-sec-head { padding-left: 12px; }
+.sheet.session-sheet .sm-info > .sm-kv { padding: 10px 12px; }
 .sheet.session-sheet .sm-dialog { display: contents; }
 
 /* ── rename dialog (Z-15, WP-A5; sm-overlay/sm-dialog shell, D-15) ────── */

@@ -11,13 +11,13 @@
  *   OUS tree through U9 `NodeView` (G-20), actions routed to the tab's owner
  *   through `work-tray.action` — the tray panel itself is never opened.
  */
-import { For, Show, createEffect, createResource, createSignal, onCleanup, type Accessor } from 'solid-js';
-import { Bot, ChevronRight, RefreshCw, SquareTerminal } from 'lucide-solid';
+import { For, Show, createEffect, createResource, createSignal, onCleanup, type Accessor, type JSX } from 'solid-js';
+import { Bot, CircleCheck, Layers, RefreshCw, Sparkles, SquareTerminal } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import { EntryContext, type EntryActions, type UiTarget } from '../../ui/actions';
 import { NodeView } from '../../ui/NodeView';
 import { formatDurationMs, liveSource, parseAgents, parseExtensions, parseRunningBash, parseTrayTabs, serviceCall, type AgentInfo, type TrayTab } from './modalData';
-import { liveAgentsOf, visibleTrayTabsOf } from '../../lib/status/running';
+import { liveAgentsOf, runningCounts, runningTotal, visibleTrayTabsOf, type RunningData } from '../../lib/status/running';
 
 /** Now, ticking once a second while the tab is mounted (durations). */
 export function useClock(): Accessor<number> {
@@ -125,11 +125,11 @@ function trayEntryActions(s: SessionHandle, tab: TrayTab, refresh: () => void): 
   };
 }
 
-export function RunningTab(props: { s: SessionHandle }) {
-  const s = () => props.s;
-  const now = useClock();
+/** The Running data of one session, refetched on its stream's moves (throttled). Shared by the
+ * modal's tab badge and the tab body, so both count the same snapshot. */
+export function useRunningData(s: () => SessionHandle): { data: Accessor<RunningData | undefined>; refetch: () => void } {
   const [data, { refetch }] = createResource(liveSource(s), async (state) => (state === 'live' ? fetchRunning(s()) : undefined));
-  // Live sessions keep moving: refresh on run-state changes and topic/agent events (seq), throttled by the resource's own dedupe.
+  // Live sessions keep moving: refresh on run-state changes and topic/agent events (seq), throttled.
   let last = 0;
   createEffect(() => {
     void s().state.seq;
@@ -138,119 +138,206 @@ export function RunningTab(props: { s: SessionHandle }) {
       refetch();
     }
   });
-  const agents = () => data.latest?.agents ?? [];
+  return { data: () => data.latest, refetch: () => void refetch() };
+}
+
+/** How much runs right now (the tab badge): shells + live agents + sidekick + running tray tabs. */
+export const runningBadgeCount = (data: RunningData | undefined): number => runningTotal(runningCounts(data));
+
+/**
+ * When the app first saw each agent (`_oino/agents` carries no start time): the agent row's
+ * elapsed counts from here — exact for agents started while the app watched, a lower bound
+ * otherwise. Keyed by session + agent id; kept for the app's lifetime (a handful of ids).
+ */
+const agentSeen = new Map<string, number>();
+export function agentSeenAt(sessionKey: string, agentId: string, now = Date.now()): number {
+  const key = `${sessionKey}\u0000${agentId}`;
+  let at = agentSeen.get(key);
+  if (at === undefined) {
+    at = now;
+    agentSeen.set(key, at);
+  }
+  return at;
+}
+
+/** "19:40" (today) or "Nov 1, 19:40" — a row's start time. */
+export function startedText(at: number, now = Date.now()): string {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(now).toDateString() === d.toDateString() ? time : `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${time}`;
+}
+
+const AGENT_STATE_LABEL: Record<AgentInfo['state'], string> = { running: 'Running', idle: 'Idle', hibernated: 'Hibernated', closed: 'Closed' };
+
+/** One Running section: icon + title + count, an optional tool, then rows or its empty state. */
+function Section(props: { icon: JSX.Element; title: string; count?: number; tool?: JSX.Element; empty?: string; testId?: string; children: JSX.Element }) {
+  return (
+    <section class="sm-sec" data-testid={props.testId}>
+      <header class="sm-sec-head">
+        <span class="sm-sec-icon">{props.icon}</span>
+        <h3 class="sm-sec-title">{props.title}</h3>
+        <Show when={(props.count ?? 0) > 0}>
+          <span class="sm-sec-count">{props.count}</span>
+        </Show>
+        <span class="sm-grow" />
+        {props.tool}
+      </header>
+      {props.children}
+    </section>
+  );
+}
+
+/** The quiet "Nothing running" line of an empty section. */
+function EmptyLine(props: { text: string; hint?: string }) {
+  return (
+    <div class="sm-sec-empty">
+      <CircleCheck size={16} />
+      <span class="sm-sec-empty-text">{props.text}</span>
+      <Show when={props.hint}>
+        <span class="sm-sec-empty-hint">{props.hint}</span>
+      </Show>
+    </div>
+  );
+}
+
+export function RunningTab(props: { s: SessionHandle; running?: { data: Accessor<RunningData | undefined>; refetch: () => void } }) {
+  const s = () => props.s;
+  const now = useClock();
+  // The modal passes its shared snapshot (the tab badge counts the same); standalone use fetches its own.
+  const own = props.running ? undefined : useRunningData(s);
+  const data = () => (props.running ?? own!).data();
+  const refetch = () => (props.running ?? own!).refetch();
+  const agents = () => data()?.agents ?? [];
   const liveAgents = () => liveAgentsOf(agents());
-  const bash = () => data.latest?.bash ?? [];
-  const tabs = () => visibleTrayTabsOf(data.latest?.tabs ?? []);
+  const bash = () => data()?.bash ?? [];
+  const tabs = () => visibleTrayTabsOf(data()?.tabs ?? []);
   const toBackground = () => void s().cmd({ type: '_oino/invoke_shortcut', shortcutId: 'unipi.subagents.foreground' }).catch(() => {});
   const stopAgent = (id: string) => void s().cmd({ type: '_oino/agent_abort', agentId: id }).then(() => refetch()).catch(() => {});
 
   return (
-    <div data-testid="sm-running">
-      <div class="sm-section-title">
-        <SquareTerminal size={13} /> Bash <span class="sm-grow" />
-        <button type="button" onClick={() => refetch()} aria-label="Refresh">
-          <RefreshCw size={13} />
-        </button>
-      </div>
-      <Show when={bash().length > 0} fallback={<p class="sm-note">No shell call is running.</p>}>
-        <div class="sm-rows">
-          <For each={bash()}>
-            {(call) => (
-              <div class="sm-row" data-testid="sm-bash-row">
-                <span class="sm-dot" data-state="running" />
-                <span class="sm-row-main">
-                  <span class="sm-row-title">{call.command}</span>
-                  <span class="sm-row-sub">
-                    {formatDurationMs(now() - call.startedAt)}
-                    {call.pid ? ` · pid ${call.pid}` : ''}
+    <div class="sm-running" data-testid="sm-running">
+      <Section
+        icon={<SquareTerminal size={14} />}
+        title="Bash"
+        count={bash().length}
+        testId="sm-sec-bash"
+        tool={
+          <button type="button" class="sm-sec-tool sm-sec-icon-btn" onClick={() => refetch()} aria-label="Refresh" title="Refresh">
+            <RefreshCw size={13} />
+          </button>
+        }
+      >
+        <Show when={bash().length > 0} fallback={<EmptyLine text="Nothing running" hint="No shell command is running." />}>
+          <div class="sm-list">
+            <For each={bash()}>
+              {(call) => (
+                <div class="sm-row" data-testid="sm-bash-row">
+                  <span class="sm-dot" data-state="running" />
+                  <span class="sm-row-main">
+                    <span class="sm-row-title" title={call.command}>{call.command}</span>
+                    <span class="sm-row-sub">
+                      Started {startedText(call.startedAt, now())}
+                      {call.pid ? ` · pid ${call.pid}` : ''}
+                    </span>
                   </span>
-                </span>
-                <span class="sm-row-actions">
-                  <Show when={canDetachBash(s(), bash().length)}>
-                    <button type="button" onClick={() => void detachBash(s()).then(() => refetch()).catch(() => {})}>
-                      Send to background
+                  <span class="sm-elapsed" title="Elapsed">{formatDurationMs(now() - call.startedAt)}</span>
+                  <span class="sm-row-actions">
+                    <Show when={canDetachBash(s(), bash().length)}>
+                      <button type="button" onClick={() => void detachBash(s()).then(() => refetch()).catch(() => {})}>
+                        Send to background
+                      </button>
+                    </Show>
+                    <button type="button" data-tone="danger" onClick={() => void stopRun(s()).then(() => refetch()).catch(() => {})}>
+                      Stop run
                     </button>
-                  </Show>
-                  <button type="button" data-tone="danger" onClick={() => void stopRun(s()).then(() => refetch()).catch(() => {})}>
-                    Stop run
-                  </button>
-                </span>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      <div class="sm-section-title">
-        <Bot size={13} /> Subagents <span class="sm-grow" />
-        <Show when={liveAgents().length > 0}>
-          <button type="button" onClick={toBackground} title="Alt+B">All to background</button>
+                  </span>
+                </div>
+              )}
+            </For>
+          </div>
         </Show>
-      </div>
-      <Show when={agents().length > 0} fallback={<p class="sm-note">No subagents.</p>}>
-        <div class="sm-rows">
-          <For each={agents()}>
-            {(a) => (
-              <div class="sm-row" classList={{ [`sm-indent-${Math.min(2, Math.max(0, a.depth - 1))}`]: a.depth > 1 }} data-testid="sm-agent-row">
-                <span class="sm-dot" data-state={a.state} />
-                <span class="sm-row-main">
-                  <span class="sm-row-title" style={{ 'font-family': 'inherit' }}>{a.label}</span>
-                  <span class="sm-row-sub">
-                    {a.role || a.owner} · {a.state}
-                  </span>
-                </span>
-                <span class="sm-row-actions">
-                  <Show when={a.state === 'running' || a.state === 'idle'}>
-                    <button type="button" data-tone="danger" onClick={() => stopAgent(a.id)}>
-                      Stop
-                    </button>
-                  </Show>
-                </span>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
+      </Section>
 
-      <Show when={data.latest?.sidekick}>
+      <Section
+        icon={<Bot size={14} />}
+        title="Subagents"
+        count={liveAgents().length}
+        testId="sm-sec-agents"
+        tool={
+          <Show when={liveAgents().length > 0}>
+            <button type="button" class="sm-sec-tool" onClick={toBackground} title="Alt+B">All to background</button>
+          </Show>
+        }
+      >
+        <Show when={agents().length > 0} fallback={<EmptyLine text="Nothing running" hint="No subagents in this chat." />}>
+          <div class="sm-list">
+            <For each={agents()}>
+              {(a) => {
+                const live = () => a.state === 'running' || a.state === 'idle';
+                const seen = agentSeenAt(s().key, a.id);
+                return (
+                  <div class="sm-row" classList={{ [`sm-indent-${Math.min(2, Math.max(0, a.depth - 1))}`]: a.depth > 1 }} data-testid="sm-agent-row">
+                    <span class="sm-dot" data-state={a.state} />
+                    <span class="sm-row-main">
+                      <span class="sm-row-title sm-row-title-text" title={a.label}>{a.label}</span>
+                      <span class="sm-row-sub">{a.role || a.owner}</span>
+                    </span>
+                    <span class="sm-state-pill" data-state={a.state}>{AGENT_STATE_LABEL[a.state]}</span>
+                    <Show when={live()}>
+                      <span class="sm-elapsed" title="Running for at least">{formatDurationMs(now() - seen)}</span>
+                    </Show>
+                    <span class="sm-row-actions">
+                      <Show when={live()}>
+                        <button type="button" data-tone="danger" onClick={() => stopAgent(a.id)}>
+                          Stop
+                        </button>
+                      </Show>
+                    </span>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
+      </Section>
+
+      <Show when={data()?.sidekick}>
         {(sk) => (
-          <>
-            <div class="sm-section-title">
-              <ChevronRight size={13} /> Sidekick
-            </div>
-            <div class="sm-rows">
+          <Section icon={<Sparkles size={14} />} title="Sidekick" count={1} testId="sm-sec-sidekick">
+            <div class="sm-list">
               <div class="sm-row">
                 <span class="sm-dot" data-state="running" />
                 <span class="sm-row-main">
-                  <span class="sm-row-title" style={{ 'font-family': 'inherit' }}>{sk().label}</span>
+                  <span class="sm-row-title sm-row-title-text">{sk().label}</span>
                   <span class="sm-row-sub">{sk().detail}</span>
                 </span>
               </div>
             </div>
-          </>
+          </Section>
         )}
       </Show>
 
       <Show when={tabs().length > 0}>
-        <div class="sm-section-title">
-          <ChevronRight size={13} /> Work tray
-        </div>
-        <For each={tabs()}>
-          {(tab) => (
-            <div class="sm-tree" data-testid={`sm-tray-${tab.id}`}>
-              <div class="sm-section-title" style={{ margin: '2px 0 6px' }}>
-                {tab.label} <span class="sm-grow" />
-                <span class="sm-tree-count">
-                  {tab.counts.running > 0 ? `${tab.counts.running} running · ${tab.counts.total}` : `${tab.counts.total}`}
-                </span>
-              </div>
-              <EntryContext.Provider value={trayEntryActions(s(), tab, refetch)}>
-                <NodeView node={sanitizeTrayBody(tab.body, tab.counts.running > 0) as never} path={[tab.id]} mode="auto" />
-              </EntryContext.Provider>
-            </div>
-          )}
-        </For>
+        <Section icon={<Layers size={14} />} title="Work tray" testId="sm-sec-tray">
+          <div class="sm-trees">
+            <For each={tabs()}>
+              {(tab) => (
+                <div class="sm-tree" data-testid={`sm-tray-${tab.id}`}>
+                  <div class="sm-tree-head">
+                    <span class="sm-tree-label">{tab.label}</span>
+                    <span class="sm-grow" />
+                    <span class="sm-tree-count">
+                      {tab.counts.running > 0 ? `${tab.counts.running} running · ${tab.counts.total}` : `${tab.counts.total}`}
+                    </span>
+                  </div>
+                  <EntryContext.Provider value={trayEntryActions(s(), tab, refetch)}>
+                    <NodeView node={sanitizeTrayBody(tab.body, tab.counts.running > 0) as never} path={[tab.id]} mode="auto" />
+                  </EntryContext.Provider>
+                </div>
+              )}
+            </For>
+          </div>
+        </Section>
       </Show>
     </div>
   );

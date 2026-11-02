@@ -27,7 +27,7 @@ import { uiTransport } from '../../ui/actions';
 import type { UiEntry } from '../../ui/types';
 import { ContextTab } from './ContextTab';
 import { InfoTab } from './InfoTab';
-import { RunningTab } from './RunningTab';
+import { RunningTab, runningBadgeCount, useRunningData } from './RunningTab';
 import { openSessionModal, sessionModal, setSessionModalTarget, type InfoPage, type SessionModalTab, type SessionModalTarget } from './modalTarget';
 import './session-modal.css';
 
@@ -77,7 +77,10 @@ export function SessionModalBody(props: { target: SessionModalTarget }) {
   onCleanup(s.acquire());
   const [tab, setTab] = createSignal<SessionModalTab>(props.target.tab);
   createEffect(on(() => props.target, (t) => t && setTab(t.tab), { defer: true }));
-  const running = () => s.state.run.running || s.state.run.phase === 'compacting' || s.state.run.phase === 'retrying';
+  // One Running snapshot for the tab badge and the tab body: the badge counts what the tab lists
+  // (shells, live subagents, sidekick, running tray work) — never just "a turn is going".
+  const running = useRunningData(() => s);
+  const runningCount = () => runningBadgeCount(running.data());
 
   return (
     <>
@@ -87,8 +90,10 @@ export function SessionModalBody(props: { target: SessionModalTarget }) {
             <button type="button" role="tab" aria-selected={tab() === t.id} class="sm-tab" data-testid={`sm-tab-${t.id}`} onClick={() => setTab(t.id)}>
               <t.icon size={15} />
               {t.label}
-              <Show when={t.id === 'running' && running()}>
-                <span class="sm-badge" aria-label="run active">•</span>
+              <Show when={t.id === 'running' && runningCount() > 0}>
+                <span class="sm-badge" data-testid="sm-running-badge" aria-label={`${runningCount()} running`}>
+                  {runningCount()}
+                </span>
               </Show>
             </button>
           )}
@@ -99,7 +104,7 @@ export function SessionModalBody(props: { target: SessionModalTarget }) {
           <ContextTab s={s} />
         </Show>
         <Show when={tab() === 'running'}>
-          <RunningTab s={s} />
+          <RunningTab s={s} running={running} />
         </Show>
         <Show when={tab() === 'info'}>
           <InfoTab s={s} initialPage={props.target.infoPage} />

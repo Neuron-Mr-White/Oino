@@ -223,3 +223,34 @@ describe('openSessionModal', () => {
     expect(screen.getByTestId('sm-tab-running').getAttribute('aria-selected')).toBe('true');
   });
 });
+
+describe('Running tab badge and empty states ([ui-chat-bits])', () => {
+  it('nothing running: no badge, each section says "Nothing running"', async () => {
+    const world = createMockHost({ ...SCENARIOS['modal-context']!, speed: 0 });
+    setHostClientFactory(world.client);
+    render(() => <SessionModalLayer />);
+    openSessionModal({ hostId: 'this-pc', sessionId: 's001', tab: 'running' });
+    await waitFor(() => expect(screen.getByTestId('sm-running')).toBeTruthy());
+    await tick();
+    expect(screen.queryByTestId('sm-running-badge')).toBeNull();
+    expect(screen.getByTestId('sm-sec-bash').textContent).toContain('Nothing running');
+    expect(screen.getByTestId('sm-sec-agents').textContent).toContain('Nothing running');
+  });
+
+  it('running work: the badge counts it (shell + live agents + sidekick + running tray)', async () => {
+    await boot('modal-running');
+    const badge = await screen.findByTestId('sm-running-badge');
+    // 1 shell + 2 live agents + the fusion sidekick + the running tray tabs.
+    await waitFor(() => expect(Number(badge.textContent)).toBeGreaterThanOrEqual(4));
+    expect(badge.getAttribute('aria-label')).toBe(`${badge.textContent} running`);
+    expect(screen.getByTestId('sm-sec-bash').textContent).toContain('Started');
+    expect(screen.getAllByTestId('sm-agent-row')[0]!.textContent).toContain('Running');
+  });
+
+  it('startedText: time today, date + time otherwise', async () => {
+    const { startedText } = await import('./RunningTab');
+    const now = new Date(2026, 10, 2, 12, 0).getTime();
+    expect(startedText(new Date(2026, 10, 2, 9, 5).getTime(), now)).toMatch(/09:05/);
+    expect(startedText(new Date(2026, 10, 1, 19, 40).getTime(), now)).toMatch(/Nov 1.*19:40/);
+  });
+});

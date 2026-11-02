@@ -348,7 +348,7 @@ export function InfoTab(props: { s: SessionHandle; initialPage?: InfoPage }) {
   });
 
   return (
-    <div data-testid="sm-info">
+    <div class="sm-info" data-testid="sm-info">
       <div class="sm-pages" role="tablist" aria-label="Info pages">
         <For each={PAGES}>
           {(p) => (
