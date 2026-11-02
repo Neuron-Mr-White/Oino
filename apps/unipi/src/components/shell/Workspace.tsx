@@ -21,7 +21,7 @@ import { backDepth } from '../../lib/back';
 import { layout, SIDE_DEFAULT, BOTTOM_DEFAULT } from '../../lib/layout';
 import { panes, type PaneScope, type PaneView } from '../../lib/panes';
 import { hubs } from '../../lib/session/hub';
-import { sessions } from '../../lib/session/store';
+import { sessionMissing, sessions } from '../../lib/session/store';
 import { isScratchCwd, sessionCwd, sessionTitle, shortCwd } from '../../lib/session/selectors';
 import { Conversation } from '../conversation/Conversation';
 import { ModeChip } from '../conversation/ModeChip';
@@ -51,6 +51,26 @@ function writeLastSession(hostId: string, sessionId: string): void {
   } catch {
     // not remembered
   }
+}
+
+/** Forgets the remembered last session when it is `sessionId` (it no longer exists). */
+export function forgetLastSession(hostId: string, sessionId: string): void {
+  const last = readLastSession();
+  if (last?.hostId !== hostId || last.sessionId !== sessionId) return;
+  try {
+    localStorage.removeItem(LAST_KEY);
+  } catch {
+    // nothing remembered
+  }
+}
+
+/**
+ * A chat route whose session is gone for good: the host answered `E_NOT_FOUND` and
+ * neither the live list nor (once checked) the trash has it. Archived chats open
+ * read-only from the trash, so the trash must have answered first.
+ */
+export function chatGone(input: { missing: boolean; live: boolean; archived: boolean; listLoaded: boolean; archivedChecked: boolean }): boolean {
+  return input.missing && !input.live && !input.archived && input.listLoaded && input.archivedChecked;
 }
 
 /** The project key panes are scoped to: the session's folder, `~` when it has none. */
@@ -100,6 +120,24 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
     if (props.sessionId && hub().state.loaded && !liveCard() && !hub().state.archivedLoaded && !hub().state.archivedLoading) {
       void hub().loadArchived();
     }
+  });
+  // A vanished session (deleted, parked, the app's remembered last chat after a cleanup):
+  // forget it and land on New chat — no retry loop against the host.
+  createEffect(() => {
+    const id = props.sessionId;
+    const state = openSession()?.state;
+    if (!id || !state) return;
+    const h = hub().state;
+    const gone = chatGone({
+      missing: sessionMissing(state),
+      live: !!liveCard(),
+      archived: !!archivedCard(),
+      listLoaded: h.loaded,
+      archivedChecked: h.archivedLoaded || (!h.archivedLoading && h.error !== undefined),
+    });
+    if (!gone) return;
+    forgetLastSession(props.hostId, id);
+    navigate(`/new/${encodeURIComponent(props.hostId)}`, { replace: true });
   });
   createEffect(() => setCurrent({ scope: scope(), view: view() }));
   onCleanup(() => setCurrent(undefined));

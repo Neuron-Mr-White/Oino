@@ -3,7 +3,7 @@ import { createRoot } from 'solid-js';
 import { unwrap } from 'solid-js/store';
 import { createMockHost, type MockScenario, type MockSession, type MockWorld } from '../host/mock';
 import type { SessionEventDto, SessionSnapshot } from '../host/client';
-import { createSession, createSessionRegistry, type SessionHandle } from './store';
+import { createSession, createSessionRegistry, openFailed, sessionMissing, type SessionHandle } from './store';
 import { applySnapshot, initialState } from './reducer';
 import { connBanner } from './selectors';
 import roundtrip from './fixtures/roundtrip.json';
@@ -306,6 +306,36 @@ describe('a rejected open recovers (never a blank chat forever)', () => {
     expect(f.calls()).toBe(3);
     expect(s.state.conn).toBe('live');
     dispose();
+  });
+
+  it('a missing session (E_NOT_FOUND) is final: no backoff retries, no retry on revisit', async () => {
+    const c = clock();
+    let calls = 0;
+    const client = {
+      hostId: 'h1',
+      openSession(_req: unknown, sink: { closed(e?: unknown): void }) {
+        calls += 1;
+        queueMicrotask(() => sink.closed({ code: 'E_NOT_FOUND', message: "No session found matching 'gone'", retryable: false }));
+        return { cmd: async () => ({}), close() {} };
+      },
+    };
+    const reg = createRoot(() => createSessionRegistry(8, (h, id) => createSession(h, id, { client: client as never, schedule: c.schedule, setTimer: c.setTimer, clearTimer: c.clearTimer, now: c.now })));
+    const s = reg.ensure('h1', 'gone');
+    for (const ms of [600, 1_500, 3_000, 6_000, 10_000]) {
+      await tick();
+      c.advance(ms);
+    }
+    await tick();
+    expect(calls).toBe(1);
+    expect(s.state.conn).toBe('closed');
+    expect(s.state.connError?.code).toBe('E_NOT_FOUND');
+    expect(sessionMissing(s.state)).toBe(true);
+    expect(openFailed(s.state)).toBe(false);
+    // Coming back to it does not re-open it either (the Workspace forgets it instead).
+    reg.ensure('h1', 'gone');
+    await tick();
+    await tick();
+    expect(calls).toBe(1);
   });
 
   it('after the retries it shows the failure; Retry (and a revisit) opens again', async () => {

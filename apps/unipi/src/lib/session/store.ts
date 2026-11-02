@@ -346,7 +346,14 @@ type Entry = { handle: SessionHandle & { readonly refs: number }; dispose: () =>
  */
 export function openFailed(state: Pick<SessionState, 'conn' | 'connError' | 'banner'>): boolean {
   if (state.banner?.kind === 'taken_over') return false;
+  // Gone for good (the host has no such session): never re-opened behind the user's back.
+  if (sessionMissing(state)) return false;
   return state.conn === 'lost' || (state.conn === 'closed' && !!state.connError);
+}
+
+/** The host answered that this session does not exist (`E_NOT_FOUND`). */
+export function sessionMissing(state: Pick<SessionState, 'conn' | 'connError'>): boolean {
+  return state.conn === 'closed' && state.connError?.code === 'E_NOT_FOUND';
 }
 
 /** Retries a failed session outside the caller's computation (ensure runs inside memos). */

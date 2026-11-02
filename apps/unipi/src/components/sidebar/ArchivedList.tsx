@@ -9,7 +9,7 @@
  *
  * The same component serves the phone Chat tab (`variant="page"`).
  */
-import { createSignal, For, Show } from 'solid-js';
+import { createMemo, createSignal, For, Show } from 'solid-js';
 import { ArchiveRestore, ChevronDown, ChevronRight, Trash2 } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { deleteArchived, emptyTrash, restoreSession, sessionHref } from '../../lib/session/actions';
@@ -20,6 +20,9 @@ import { observeTitleOverflow, type RowVariant } from './SessionRow';
 
 const titleOf = (card: SessionCard): string => sessionTitle(card, undefined, card.session_id);
 
+/** Archived rows shown before "Show more" (a trash of hundreds of chats). */
+export const ARCHIVED_PAGE = 30;
+
 export function ArchivedList(props: { hostId: string; variant: RowVariant; activeSessionId?: string }) {
   const hub = () => hubs().ensure(props.hostId);
   const state = hub().state;
@@ -28,6 +31,16 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant; activ
   const [confirmAll, setConfirmAll] = createSignal(false);
   /** Which row's Delete is confirming. */
   const [confirmId, setConfirmId] = createSignal<string | undefined>();
+  const [limit, setLimit] = createSignal(ARCHIVED_PAGE);
+  /** The first `limit` rows, plus the shown chat wherever it sorts. */
+  const shown = createMemo(() => {
+    const all = state.archived;
+    if (all.length <= limit()) return all;
+    const head = all.slice(0, limit());
+    const active = props.activeSessionId ? all.slice(limit()).find((c) => c.session_id === props.activeSessionId) : undefined;
+    return active ? [...head, active] : head;
+  });
+  const hidden = () => Math.max(0, state.archived.length - limit());
 
   const toggle = () => {
     const next = !open();
@@ -56,8 +69,10 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant; activ
       </button>
       <Show when={open()}>
         <div class="sb-archived-body" data-testid={`sb-archived-body-${props.hostId}`}>
-          <Show when={state.archivedLoading}>
-            <p class="sb-empty">Loading…</p>
+          <Show when={state.archivedLoading && !state.archivedLoaded}>
+            <div class="sb-skeleton" role="status" aria-label="Loading archived sessions" data-testid={`sb-archived-skeleton-${props.hostId}`}>
+              <For each={[70, 82, 60]}>{(w) => <span class="sb-skel-row" style={{ width: `${w}%` }} />}</For>
+            </div>
           </Show>
           <Show when={state.archivedLoaded && state.archived.length === 0 && !state.archivedLoading}>
             <p class="sb-empty">Nothing archived</p>
@@ -65,7 +80,7 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant; activ
           <Show when={!state.archivedLoaded ? state.error : undefined} keyed>
             {(error) => <p class="sb-empty sb-empty-error" role="alert">{error.message}</p>}
           </Show>
-          <For each={state.archived}>
+          <For each={shown()}>
             {(card) => {
               const title = () => titleOf(card);
               const confirming = () => confirmId() === card.session_id;
@@ -142,6 +157,18 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant; activ
               );
             }}
           </For>
+          <Show when={hidden() > 0}>
+            <button
+              type="button"
+              class="sb-more"
+              data-testid={`sb-archived-more-${props.hostId}`}
+              title={`${hidden()} more archived`}
+              onClick={() => setLimit((n) => n + ARCHIVED_PAGE)}
+            >
+              Show more
+              <span class="sb-more-count">{Math.min(hidden(), ARCHIVED_PAGE)}</span>
+            </button>
+          </Show>
           <Show when={state.archivedLoaded && state.archived.length > 0}>
             <Show
               when={!confirmAll()}

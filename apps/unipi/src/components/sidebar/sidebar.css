@@ -273,6 +273,19 @@
 .sb-empty { margin: 0; padding: 4px 10px 6px; font-size: 12.5px; line-height: 18px; color: var(--color-text-dim); }
 .sb-empty-error { color: var(--color-wm-red); }
 
+/* First load of a host's sessions: skeleton rows (a big store takes a moment cold). */
+.sb-skeleton { display: flex; flex-direction: column; gap: 10px; padding: 8px 10px 10px; }
+.sb-skel-row {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-surface-2) 20%, var(--color-surface-3) 50%, var(--color-surface-2) 80%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .sb-skel-row { animation: none; } }
+.sb-more-projects { margin-top: 2px; }
+
 /* --- Z-19 (WP-A5): per-project "+" draft -------------------------------- */
 .sb-project-new {
   display: inline-flex;

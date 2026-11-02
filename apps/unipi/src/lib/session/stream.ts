@@ -32,8 +32,12 @@ export const SESSION_GIVE_UP_MS = 120_000;
  * own backoff before the chat shows "Couldn't open this chat · Retry".
  */
 export const OPEN_RETRY_MS = [600, 1_500, 3_000, 6_000] as const;
-/** Rejections that no retry can fix (the session or the protocol is wrong). */
-const FINAL_OPEN_CODES = new Set(['E_SCHEMA', 'E_UNSUPPORTED', 'E_UNAUTHORIZED', 'E_FORBIDDEN', 'E_TAKEN_OVER']);
+/**
+ * Rejections that no retry can fix (the session or the protocol is wrong). `E_NOT_FOUND`:
+ * the host has no such session (deleted, moved away, parked) — retrying only costs the
+ * host a lookup each time, so the chat forgets it instead (Workspace).
+ */
+const FINAL_OPEN_CODES = new Set(['E_SCHEMA', 'E_UNSUPPORTED', 'E_UNAUTHORIZED', 'E_FORBIDDEN', 'E_TAKEN_OVER', 'E_NOT_FOUND']);
 /** app spec §3.2 command budgets. */
 export const CMD_TIMEOUT_MS = 30_000;
 export const RENDER_TIMEOUT_MS = 2_000;

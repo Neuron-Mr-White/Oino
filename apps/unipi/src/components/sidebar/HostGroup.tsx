@@ -55,6 +55,20 @@ export function resetHostCollapse(): void {
   }
 }
 
+/** Project groups shown before "Show more projects" (a host with hundreds of folders). */
+export const PROJECTS_PAGE = 15;
+
+/**
+ * The project groups to render: the first `limit`, plus the one holding the shown
+ * session wherever it sorts (the active row never disappears behind paging).
+ */
+export function visibleProjects<G extends { cards: readonly { session_id: string }[] }>(groups: readonly G[], limit: number, activeId?: string): G[] {
+  if (groups.length <= limit) return [...groups];
+  const head = groups.slice(0, limit);
+  const active = activeId ? groups.slice(limit).find((g) => g.cards.some((c) => c.session_id === activeId)) : undefined;
+  return active ? [...head, active] : head;
+}
+
 export function HostGroup(props: {
   host: HostInfo;
   variant: RowVariant;
@@ -68,11 +82,20 @@ export function HostGroup(props: {
   const local = () => props.host.transport === 'local';
   const offline = () => hub().state.error !== undefined && !hub().state.loaded;
   const paging = createPaging();
+  const [projectLimit, setProjectLimit] = createSignal(PROJECTS_PAGE);
+  const activeId = () => (props.activeSession?.hostId === props.host.id ? props.activeSession.sessionId : undefined);
+  const shownProjects = createMemo(() => visibleProjects(groups().projects, projectLimit(), activeId()));
+  const hiddenProjects = () => Math.max(0, groups().projects.length - projectLimit());
+  // First load (or a reload after going offline): skeleton rows, not an empty list.
+  const loading = () => !hub().state.loaded && !offline();
 
   // Collapsing the host resets the projects' paging (ZCode WSTP-05).
   createEffect(
     on(isCollapsed, (now, was) => {
-      if (now !== was) paging.reset();
+      if (now !== was) {
+        paging.reset();
+        setProjectLimit(PROJECTS_PAGE);
+      }
     }),
   );
 
@@ -109,6 +132,11 @@ export function HostGroup(props: {
       </button>
       <Show when={!isCollapsed()}>
         <div class="sb-host-body">
+          <Show when={loading()}>
+            <div class="sb-skeleton" role="status" aria-label="Loading sessions" data-testid={`sb-skeleton-${props.host.id}`}>
+              <For each={[78, 64, 86, 58, 72]}>{(w) => <span class="sb-skel-row" style={{ width: `${w}%` }} />}</For>
+            </div>
+          </Show>
           <Show when={hub().state.loaded && total() === 0 && !offline()}>
             <p class="sb-empty">{hub().state.loading ? 'Loading…' : 'No sessions yet'}</p>
           </Show>
@@ -139,7 +167,7 @@ export function HostGroup(props: {
               </div>
             </div>
           </Show>
-          <For each={groups().projects}>
+          <For each={shownProjects()}>
             {(group) => (
               <ProjectGroup
                 hostId={props.host.id}
@@ -155,6 +183,18 @@ export function HostGroup(props: {
               />
             )}
           </For>
+          <Show when={hiddenProjects() > 0}>
+            <button
+              type="button"
+              class="sb-more sb-more-projects"
+              data-testid={`sb-more-projects-${props.host.id}`}
+              title={`${hiddenProjects()} more project folders`}
+              onClick={() => setProjectLimit((n) => n + PROJECTS_PAGE)}
+            >
+              Show more projects
+              <span class="sb-more-count">{hiddenProjects()}</span>
+            </button>
+          </Show>
           {/* Z-13 (WP-A5): the host's trash — open read-only, restore or delete archived sessions. */}
           <ArchivedList
             hostId={props.host.id}
