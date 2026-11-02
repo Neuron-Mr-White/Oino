@@ -1,5 +1,11 @@
 # Real-app QA rig
 
+> **The owner uses UniPi Oino daily on this PC (since 2026-11-02).** Never touch the live
+> app or its state: no requests to `~/.oino/host/app.sock`, no reads/writes of `~/.oino`
+> sessions, no `pkill` of `/usr/bin/unipi-oino` or its host. Every test, probe and rig
+> runs with its own `QA_HOME` (isolated `HOME`/XDG dirs, `OINO_AGENT_DIR`,
+> `OINO_HOST_DIR`). Heavy builds go to the Agent37 sandbox, not this PC.
+
 UI work is verified on the **real installed app** (the `.deb` file tree, the real
 `unipi-oino-host`, the real bundled extensions, real providers), never on the mock
 capture harness. The app runs in a private Xvfb display, driven over WebDriver.
