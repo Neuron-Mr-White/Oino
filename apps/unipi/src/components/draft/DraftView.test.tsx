@@ -209,7 +209,7 @@ describe('draft session (stand-in handle)', () => {
 });
 
 describe('the draft model chip opens the ONE model dialog', () => {
-  it('same dialog as the chat (Now, search, list, Cycle set, scope line); a pick sets the draft; Use at startup writes the host default', async () => {
+  it('same dialog as the chat (Now, search, Cycle set chip, list with ⋯, scope line); a pick sets the draft; Use at startup writes the host default', async () => {
     rememberModels('this-pc', [
       { provider: 'oino', id: 'deepseek-flash', name: 'DeepSeek Flash' },
       { provider: 'oino', id: 'glm-4.7', name: 'GLM 4.7' },
@@ -226,7 +226,9 @@ describe('the draft model chip opens the ONE model dialog', () => {
     // "Now" is the model the new chat will start with.
     expect(screen.getByTestId('model-picker-now').textContent).toContain('DeepSeek Flash');
     expect(screen.getByTestId('model-picker-scope').textContent).toContain('the chat about to start');
-    expect(screen.getByTestId('model-picker-cycle-toggle').textContent).toContain('Cycle set');
+    expect(screen.getByTestId('model-filter-cycle').textContent).toContain('Cycle set');
+    expect(screen.queryByTestId('model-picker-cycle')).toBeNull();
+    expect(screen.getAllByTestId('model-row-more').length).toBeGreaterThan(0);
     // No Fusion tab: a pair needs a running chat.
     expect(screen.queryByTestId('model-tab-fusion')).toBeNull();
     // The host default is the running pick: "Startup model", nothing to do.

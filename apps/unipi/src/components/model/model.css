@@ -6,7 +6,7 @@
    settings and Cron model fields) is the full "Model" dialog — the Session
    modal's chrome (session-modal.css: `.sm-overlay` / `.sm-dialog` /
    `.sm-head` / `.sm-tabs`) plus its width, the Now line, the shared search,
-   the Fusion columns, the Cycle set and the right-aligned footer — and a
+   the Fusion columns, the Cycle set chip and the right-aligned footer — and a
    full-screen sheet with the same content on the phone. */
 
 /* ── composer chips ─────────────────────────────────────────────────────── */
@@ -173,31 +173,23 @@ body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 74; }
 .mp-sheet-body .mp-fusion { flex-direction: column; }
 .model-picker-sheet .mp-apply { min-height: 44px; }
 
-/* ── Cycle set (WP-A25, /scoped-models) ─────────────────────────────── */
-.mp-cycle { border-top: 1px solid var(--color-line); padding-top: 6px; margin-top: 2px; }
-.mp-cycle-toggle {
-  display: flex; align-items: center; gap: 6px; width: 100%;
-  padding: 6px 4px; background: none; border: 0; cursor: pointer;
-  color: var(--color-text-muted); font-size: 12.5px; text-align: left;
+/* ── Cycle set (WP-A25, /scoped-models): a filter chip + a mark on member rows ── */
+.mp-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: -2px; }
+.mp-filter-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px;
+  border: 0; border-radius: 9999px; background: transparent; box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-text-muted); font-size: 12.5px; cursor: pointer;
+  transition: background 120ms ease-out, color 120ms ease-out;
 }
-.mp-cycle-toggle:hover { color: var(--color-text); }
-.mp-cycle-toggle:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; border-radius: 8px; }
-.mp-cycle-body { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 6px; }
-.mp-cycle-list { display: flex; flex-direction: column; max-height: 168px; overflow-y: auto; gap: 1px; }
-.mp-cycle-name { min-width: 0; overflow-wrap: anywhere; }
-.mp-cycle-row {
-  display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px;
-  padding: 5px 6px; border: 0; border-radius: 8px; background: none; cursor: pointer;
-  color: var(--color-text); font-size: 13px; text-align: left;
-}
-.mp-cycle-row:hover { background: var(--color-surface-2); }
-.mp-cycle-box {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; border-radius: 5px;
-  border: 1.5px solid var(--color-text-dim); color: var(--color-face);
-}
-.mp-cycle-row[aria-pressed='true'] .mp-cycle-box { background: var(--color-shell); border-color: var(--color-shell); }
-.mp-cycle-key { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-dim); }
+.mp-filter-chip:hover { background: var(--color-surface-2); color: var(--color-text); }
+.mp-filter-chip[aria-pressed='true'] { background: var(--color-shell); box-shadow: none; color: var(--color-face); }
+.mp-filter-chip:focus-visible { outline: 2px solid var(--color-claw); outline-offset: 1px; }
+.mp-filter-count { font-variant-numeric: tabular-nums; opacity: 0.75; }
+.mp-filter-hint { font-size: 12px; }
+.mp-cycle-mark { display: inline-grid; place-items: center; margin-left: 6px; vertical-align: -1px; color: var(--color-text-dim); }
+.mp-cycle-mark svg { display: block; }
+.model-picker-sheet .mp-filter-chip { min-height: 34px; padding: 0 14px; }
+@media (prefers-reduced-motion: reduce) { .mp-filter-chip { transition: none; } }
 
 /* ── Suggested (P0-10: Fusion's curated preset ranks the list) ──────── */
 .mp-group {
@@ -221,7 +213,7 @@ body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 74; }
 .mp-mod-arrow { display: inline-grid; place-items: center; width: 13px; opacity: 0.7; }
 .mp-mod.mp-mod-out { color: var(--color-text-muted); background: var(--color-surface-3); }
 .mp-row-sub { font-family: inherit; font-size: 12px; }
-.mp-row:focus-visible, .mp-pill:focus-visible, .mp-cycle-row:focus-visible, .mp-apply:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
+.mp-row:focus-visible, .mp-pill:focus-visible, .mp-apply:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
 .mp-apply.pair-primary:hover:not(:disabled) { background: var(--color-shell-hi); }
 
 /* F-02 / E-19: dead providers set apart. */

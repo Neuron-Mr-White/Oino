@@ -10,7 +10,7 @@ import { createSignal } from 'solid-js';
 export type ModelPickerTarget = {
   hostId: string;
   sessionId: string;
-  /** `/scoped-models` opens the **Cycle set** block (WP-A25, G-15). */
+  /** `/scoped-models` opens with the **Cycle set** filter chip on (WP-A25, G-15). */
   focus?: 'cycle';
 };
 

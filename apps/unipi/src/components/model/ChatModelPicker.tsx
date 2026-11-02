@@ -2,10 +2,11 @@
  * The in-chat model picker (WP-A14, Z-69 + Z-76): the ONE model dialog
  * (`ModelDialog` + `ModelPickerPanel`) with this chat's data — the old
  * "Model" dialog: Now line, Single / Fusion tabs (Fusion only when the
- * extension is on), one search over the list *and* both Fusion columns, the
- * collapsible Cycle set, the scope line and "Use at startup". Entry points
- * (Z-70): the composer's model chip, Ctrl/Cmd+M, `/model` and
- * `/scoped-models` (opens with the Cycle set expanded).
+ * extension is on), one search over the list *and* both Fusion columns, a ⋯
+ * menu per row (Fusion lead / sidekick, cycle set, startup), the "Cycle set"
+ * filter chip, the scope line and "Use at startup". Entry points (Z-70): the
+ * composer's model chip, Ctrl/Cmd+M, `/model` and `/scoped-models` (opens
+ * with the Cycle set filter on).
  *
  * Data is the host's: `get_available_models` for the catalogue, plus
  * `unipi.fusion`'s `fusion.status` / `fusion.set-pair` when the extension is
@@ -52,7 +53,6 @@ import { curatedFirst, rowTitle, startupKey } from './suggested';
 import { LIST_CAP, modelView, type RowActions } from './ModelList';
 import {
   createCycleSet,
-  CycleSetSection,
   fusionStartup,
   ModeTabs,
   ModelDialog,
@@ -408,16 +408,8 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
       pickedKey={pick()}
       startupKey={startup()}
       rowActions={data.latest ? rowActions() : undefined}
+      cycleFilter={{ set: cycle, initial: props.target.focus === 'cycle' }}
       onSelect={onSelect}
-      section={
-        <CycleSetSection
-          cycle={cycle}
-          models={models()}
-          suggestedCount={list().suggested.length}
-          query={query()}
-          defaultOpen={props.target.focus === 'cycle'}
-        />
-      }
       notice={
         <>
           <Show when={mode() === 'single' && current()?.kind === 'fusion' && !action()}>

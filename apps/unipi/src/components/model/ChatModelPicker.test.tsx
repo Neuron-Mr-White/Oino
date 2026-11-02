@@ -154,42 +154,6 @@ describe('Fusion (Z-76)', () => {
   });
 });
 
-describe('the Cycle set (WP-A25, G-15 /scoped-models)', () => {
-  it('opens expanded, shows the stored references and writes `enabledModels`', async () => {
-    const world = await boot('model-cycle-set');
-    render(() => <ChatModelPicker target={{ hostId: HOST, sessionId: SESSION, focus: 'cycle' }} />);
-    await waitFor(() => expect(screen.getByTestId('model-picker-cycle-list')).toBeTruthy());
-    const toggle = screen.getByTestId('model-picker-cycle-toggle');
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    // the list stays above the expanded set
-    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
-    // A custom pattern (a glob) is kept as written, not turned into a checkbox.
-    await waitFor(() => expect(screen.getByTestId('model-picker-cycle-custom').textContent).toContain('anthropic/*'));
-    expect(toggle.textContent).toContain('Cycle set · 1 of');
-    const row = screen.getByTestId('cycle-anthropic/claude-sonnet-4-5');
-    expect(row.getAttribute('aria-pressed')).toBe('true');
-    // Untick it: the setting keeps the glob, the checked reference goes.
-    fireEvent.click(row);
-    await waitFor(() => expect(cmds(world, '_oino/set_setting').length).toBeGreaterThan(0));
-    const call = cmds(world, '_oino/set_setting').at(-1)!;
-    expect(call.args).toMatchObject({ key: 'enabledModels', value: ['anthropic/*'], scope: 'global' });
-    await waitFor(() => expect(screen.getByTestId('cycle-anthropic/claude-sonnet-4-5').getAttribute('aria-pressed')).toBe('false'));
-  });
-
-  it('is a collapsed "Cycle set · …" section of the normal picker that expands in place', async () => {
-    await boot('model-picker');
-    picker();
-    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
-    expect(screen.getByTestId('model-picker-cycle-toggle').textContent).toContain('Cycle set ·');
-    expect(screen.queryByTestId('model-picker-cycle-list')).toBeNull();
-    fireEvent.click(screen.getByTestId('model-picker-cycle-toggle'));
-    await waitFor(() => expect(screen.getByTestId('model-picker-cycle-list')).toBeTruthy());
-    expect(screen.getByTestId('model-picker-list')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('model-picker-cycle-toggle'));
-    await waitFor(() => expect(screen.queryByTestId('model-picker-cycle-list')).toBeNull());
-  });
-});
-
 // ── the per-row ⋯ menu ──────────────────────────────────────────────────
 const rowOf = (key: string) => screen.getByTestId('model-picker-list').querySelector<HTMLElement>(`.mp-row[data-key="${key}"]`)!;
 const moreOf = (key: string) => rowOf(key).parentElement!.querySelector<HTMLElement>('[data-testid="model-row-more"]')!;
@@ -300,6 +264,45 @@ describe('the row ⋯ menu', () => {
       // the dialog is still open
       expect(screen.getByTestId('model-picker-list')).toBeTruthy();
     }
+  });
+});
+
+describe('the Cycle set (WP-A25, G-15 /scoped-models)', () => {
+  it('/scoped-models opens with the "Cycle set" filter on: only members, the ⋯ hint, custom patterns kept', async () => {
+    await bootFresh('model-cycle-set');
+    render(() => <ChatModelPicker target={{ hostId: HOST, sessionId: SESSION, focus: 'cycle' }} />);
+    await waitFor(() => expect(screen.getByTestId('model-filter-cycle').getAttribute('aria-pressed')).toBe('true'));
+    await waitFor(() => expect(screen.getByTestId('model-picker-list').querySelectorAll('.mp-row')).toHaveLength(1));
+    expect(screen.getByTestId('model-picker-list').querySelector('.mp-row')!.getAttribute('data-key')).toBe('anthropic/claude-sonnet-4-5');
+    expect(screen.getByTestId('model-filter-cycle-hint').textContent).toBe('Use ⋯ to add or remove');
+    expect(screen.getByTestId('model-filter-cycle').textContent).toContain('1');
+    expect(screen.getByTestId('model-filter-cycle-custom').textContent).toContain('anthropic/*');
+    // the chip turns the filter off: the whole catalogue again
+    fireEvent.click(screen.getByTestId('model-filter-cycle'));
+    await waitFor(() => expect(screen.getByTestId('model-picker-list').querySelectorAll('.mp-row').length).toBeGreaterThan(1));
+    expect(screen.queryByTestId('model-filter-cycle-hint')).toBeNull();
+  });
+
+  it('removing the last member from the filtered list leaves an empty state that says how to add', async () => {
+    await bootFresh('model-cycle-set');
+    render(() => <ChatModelPicker target={{ hostId: HOST, sessionId: SESSION, focus: 'cycle' }} />);
+    await waitFor(() => expect(screen.getByTestId('model-picker-list').querySelectorAll('.mp-row')).toHaveLength(1));
+    const menu = await openMenu('anthropic/claude-sonnet-4-5');
+    fireEvent.click(menu.querySelector('[data-testid="model-menu-cycle"]')!);
+    await waitFor(() => expect(screen.getByTestId('model-filter-cycle-empty').textContent).toContain('Use ⋯ on a model to add it'));
+  });
+
+  it('the old collapsible "Cycle set · …" section is gone; members carry a repeat mark', async () => {
+    await bootFresh('model-cycle-set');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    expect(screen.queryByTestId('model-picker-cycle')).toBeNull();
+    expect(screen.queryByTestId('model-picker-cycle-toggle')).toBeNull();
+    expect(screen.queryByTestId('model-picker-cycle-list')).toBeNull();
+    // the filter is off by default
+    expect(screen.getByTestId('model-filter-cycle').getAttribute('aria-pressed')).toBe('false');
+    await waitFor(() => expect(rowOf('anthropic/claude-sonnet-4-5').querySelector('[aria-label="In the cycle set"]')).toBeTruthy());
+    expect(rowOf('openai/gpt-5').querySelector('[aria-label="In the cycle set"]')).toBeNull();
   });
 });
 
@@ -422,7 +425,7 @@ describe('Suggested (P0-10, fusion.status.curated)', () => {
 });
 
 describe('one dialog (owner: one model picker, the full one)', () => {
-  it('is the centred "Model" dialog: title, close, Now, search, list, Cycle set, scope line and Use at startup', async () => {
+  it('is the centred "Model" dialog: title, close, Now, search, Cycle set chip, list, scope line and Use at startup', async () => {
     await boot('model-picker');
     picker();
     await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
@@ -437,7 +440,8 @@ describe('one dialog (owner: one model picker, the full one)', () => {
     const foot = screen.getByTestId('model-picker-foot');
     expect(foot.contains(screen.getByTestId('model-use-startup'))).toBe(true);
     expect(screen.getByTestId('model-picker-scope').textContent).toBe('Your pick applies to this chat only. “Use at startup” sets the model new chats start with.');
-    expect(foot.contains(screen.getByTestId('model-picker-cycle-toggle'))).toBe(false);
+    expect(foot.contains(screen.getByTestId('model-filter-cycle'))).toBe(false);
+    expect(screen.queryByTestId('model-picker-cycle')).toBeNull();
   });
 
   it('closes with ✕, Esc and a backdrop click; nothing is sent', async () => {
@@ -465,7 +469,9 @@ describe('one dialog (owner: one model picker, the full one)', () => {
     const sheet = screen.getByTestId('model-picker-dialog-sheet');
     await waitFor(() => expect(sheet.contains(screen.getByTestId('model-picker-list'))).toBe(true));
     expect(sheet.contains(screen.getByTestId('model-use-startup'))).toBe(true);
-    expect(sheet.contains(screen.getByTestId('model-picker-cycle-toggle'))).toBe(true);
+    expect(sheet.contains(screen.getByTestId('model-filter-cycle'))).toBe(true);
+    // touch: the ⋯ is on every row
+    expect(sheet.querySelectorAll('[data-testid="model-row-more"]').length).toBeGreaterThan(0);
     expect(screen.queryByTestId('model-picker-overlay')).toBeNull();
   });
 

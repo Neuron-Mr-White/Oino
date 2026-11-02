@@ -6,7 +6,7 @@
  * curated ranking); this is only markup. Styles: `model.css` (`.mp-*`).
  */
 import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
-import { Check, ChevronDown, ChevronRight, Crown, Ellipsis, Minus, Plus, Rocket, Users } from 'lucide-solid';
+import { Check, ChevronDown, ChevronRight, Crown, Ellipsis, Minus, Plus, Repeat, Rocket, Users } from 'lucide-solid';
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { contextBadge, hits as modelHits, modelKey, modelName, type ModelInfo, type Selection } from '../../lib/model/picker';
 import type { FusionCurated } from '../../lib/model/fusion';
@@ -204,7 +204,14 @@ export function ModelRow(props: {
       onClick={props.onSelect}
     >
       <span class="mp-row-main">
-        <span class="mp-row-name">{name}</span>
+        <span class="mp-row-name">
+          {name}
+          <Show when={props.actions?.cycle?.has(key)}>
+            <span class="mp-cycle-mark" role="img" aria-label="In the cycle set" title="In the cycle set (Ctrl+Alt+P)" data-testid="model-cycle-mark">
+              <Repeat size={12} stroke-width={2.2} aria-hidden="true" />
+            </span>
+          </Show>
+        </span>
         <span class="mp-row-sub">{routeLabel(props.m)}</span>
       </span>
       <Show when={props.lead}>

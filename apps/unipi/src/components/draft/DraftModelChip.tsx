@@ -4,9 +4,10 @@
  * `ModelPickerPanel`): this PC's catalogue (a live chat's list on the same
  * PC, else the host's), readiness, the curated ranking. "Now" is the model
  * the new chat will start with; a pick applies to the chat about to start
- * (before its first prompt). The Cycle set section (pi's `enabledModels`,
- * written to the host) and "Use at startup" (the host's `defaultProvider` /
- * `defaultModel`) sit where the chat's do. No Fusion tab: a pair needs a
+ * (before its first prompt). The rows' ⋯ menu (cycle set — pi's
+ * `enabledModels`, written to the host — and "Use at startup", the host's
+ * `defaultProvider` / `defaultModel`), the Cycle set filter chip and the
+ * footer's "Use at startup" sit where the chat's do. No Fusion tab: a pair needs a
  * running chat (`fusion.set-pair`), so it is set from the chat's picker.
  */
 import { createMemo, createResource, createSignal, Show } from 'solid-js';
@@ -17,7 +18,7 @@ import { openSettingsAt } from '../../lib/settings/open';
 import { toasts } from '../../lib/toasts';
 import { modelView } from '../model/ModelList';
 import { startupKey } from '../model/suggested';
-import { createCycleSet, CycleSetSection, ModelDialog, ModelPickerPanel, PickerError, PickerSecondary, writeStartupModel } from '../model/ModelPopover';
+import { createCycleSet, ModelDialog, ModelPickerPanel, PickerError, PickerSecondary, writeStartupModel } from '../model/ModelPopover';
 import { modelChipLabel, modelChipTitle } from '../model/ModelChip';
 import { RollingLabel } from '../RollingLabel';
 import type { DraftSession } from './draftSession';
@@ -168,11 +169,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                 : undefined
             }
             onSelect={(m) => pick(m)}
-            section={
-              <Show when={data.latest && !noUsable()}>
-                <CycleSetSection cycle={cycle} models={view().usable} suggestedCount={view().suggested.length} query={query()} />
-              </Show>
-            }
+            cycleFilter={data.latest ? { set: cycle } : undefined}
             notice={<PickerError error={error()} />}
             scope={noUsable() ? undefined : 'Your pick applies to the chat about to start. “Use at startup” sets the model new chats start with.'}
             actions={

@@ -8,9 +8,11 @@
  *   title (+ ✕) · "Now …" · Single / Fusion tabs (when the context has
  *   Fusion) · full-width search "Search all N models" · the list (Suggested,
  *   provider rows, the collapsed Unavailable group with its reasons, the
- *   Startup badge, modality icons, context chip) · the collapsible "Cycle set · …"
- *   section (chat / draft) · the footer: the explanatory line and the
- *   context's action ("Use at startup", or a field's "Use default").
+ *   Startup badge, modality icons, context chip, a ⋯ menu per row in chat /
+ *   draft: Fusion roles, cycle set, startup) · the "Cycle set" filter chip
+ *   (chat / draft; on at open for `/scoped-models`) · the footer: the
+ *   explanatory line and the context's action ("Use at startup", or a
+ *   field's "Use default").
  *
  * Shell (`ModelDialog`): a centred modal on the desktop (`model-picker-overlay`,
  * portalled so it sits above sheets and settings), a full-screen sheet with
@@ -18,18 +20,18 @@
  * rows, ↑ goes back, Enter in the search picks the first hit, Esc closes,
  * Tab wraps inside; focus returns to the opener on close.
  */
-import { createEffect, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, onCleanup, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import { Check, ChevronDown, ChevronRight, X } from 'lucide-solid';
+import { Repeat, X } from 'lucide-solid';
 import { BoardSheet } from '../board/BoardSheet';
 import { menuKeys } from '../composer/menuKeys';
 import { layout } from '../../lib/layout';
 import { pushBack } from '../../lib/back';
 import { wrapTab } from '../../lib/focusTrap';
 import type { SessionHandle } from '../../lib/session/store';
-import { hits as modelHits, modelKey, modelName, type ModelInfo } from '../../lib/model/picker';
-import { cycleKeyOf, cycleKeysOf, cycleLabel, toggleCycleKey } from '../../lib/model/cycle';
-import { LIST_CAP, ModelList, type ModelView, type RowActions } from './ModelList';
+import { modelKey, type ModelInfo } from '../../lib/model/picker';
+import { cycleKeysOf, toggleCycleKey } from '../../lib/model/cycle';
+import { ModelList, type ModelView, type RowActions } from './ModelList';
 import '../session/session-modal.css';
 import './model.css';
 
@@ -163,8 +165,8 @@ export const PickerSkeleton = () => (
 
 /**
  * The dialog's content every context shares, in the old dialog's order:
- * Now · tabs · search · list (or `content`, e.g. Fusion's columns) · section
- * (the Cycle set) · notice (an error) · footer (scope line + actions).
+ * Now · tabs · search · filter chip · list (or `content`, e.g. Fusion's
+ * columns) · section · notice (an error) · footer (scope line + actions).
  */
 export function ModelPickerPanel(props: {
   view: ModelView;
@@ -185,8 +187,13 @@ export function ModelPickerPanel(props: {
   startupKey?: string;
   /** The rows' ⋯ menu (Fusion roles, cycle set, startup); none → no ⋯. */
   rowActions?: RowActions;
+  /**
+   * The "Cycle set" filter chip (chat / draft): narrows the list to the cycle
+   * set's members; `initial` = on at open (`/scoped-models`).
+   */
+  cycleFilter?: { set: CycleSet; initial?: boolean };
   onSelect: (m: ModelInfo, isCurrent: boolean) => void;
-  /** Under the list (the Cycle set). */
+  /** Under the list. */
   section?: JSX.Element;
   /** An error / a confirm step. */
   notice?: JSX.Element;
@@ -196,7 +203,17 @@ export function ModelPickerPanel(props: {
   actions?: JSX.Element;
   testId?: string;
 }) {
-  const first = () => props.view.suggested[0]?.model ?? props.view.rest[0];
+  const [onlyCycle, setOnlyCycle] = createSignal(!!props.cycleFilter?.initial);
+  const filtering = () => !!props.cycleFilter && onlyCycle();
+  /** The list as shown: the whole view, or only the cycle set's members (no Unavailable group). */
+  const view = (): ModelView => {
+    const set = props.cycleFilter?.set;
+    if (!set || !onlyCycle()) return props.view;
+    const on = (m: ModelInfo) => set.has(modelKey(m));
+    return { ...props.view, suggested: props.view.suggested.filter((r) => on(r.model)), rest: props.view.rest.filter(on), unavailable: [] };
+  };
+  const filteredEmpty = () => filtering() && view().suggested.length === 0 && view().rest.length === 0;
+  const first = () => view().suggested[0]?.model ?? view().rest[0];
   return (
     <div class="mp" data-testid={props.testId ?? 'model-picker'}>
       <NowLine value={props.now} />
@@ -214,21 +231,60 @@ export function ModelPickerPanel(props: {
               }
         }
       />
+      <Show when={props.cycleFilter && !props.content && !props.showEmpty}>
+        <div class="mp-filters" role="group" aria-label="Filter models">
+          <button
+            type="button"
+            class="mp-filter-chip"
+            aria-pressed={onlyCycle() ? 'true' : 'false'}
+            title="Show only the models Ctrl+Alt+P steps through"
+            onClick={() => setOnlyCycle((v) => !v)}
+            data-testid="model-filter-cycle"
+          >
+            <Repeat size={13} aria-hidden="true" />
+            <span>Cycle set</span>
+            <span class="mp-filter-count">{props.cycleFilter!.set.exact().length}</span>
+          </button>
+          <Show when={onlyCycle()}>
+            <span class="mp-hint mp-filter-hint" data-testid="model-filter-cycle-hint">
+              Use ⋯ to add or remove
+            </span>
+          </Show>
+        </div>
+      </Show>
       <Show
         when={!props.content}
         fallback={props.content}
       >
         <Show when={!props.loading} fallback={<PickerSkeleton />}>
           <Show when={!props.showEmpty} fallback={props.empty}>
-            <ModelList
-              view={props.view}
-              query={props.query}
-              currentKey={props.currentKey}
-              pickedKey={props.pickedKey}
-              startupKey={props.startupKey}
-              actions={props.rowActions}
-              onSelect={props.onSelect}
-            />
+            <Show when={filtering() && props.cycleFilter!.set.custom().length > 0}>
+              <p class="mp-hint" data-testid="model-filter-cycle-custom">
+                Also cycles (patterns kept as written): {props.cycleFilter!.set.custom().join(', ')}
+              </p>
+            </Show>
+            <Show
+              when={!filteredEmpty()}
+              fallback={
+                <div class="mp-list" data-testid="model-picker-list">
+                  <p class="mp-empty" data-testid="model-filter-cycle-empty">
+                    {props.query.trim()
+                      ? `No model in the cycle set matches “${props.query.trim()}”.`
+                      : 'No models in the cycle set yet. Use ⋯ on a model to add it.'}
+                  </p>
+                </div>
+              }
+            >
+              <ModelList
+                view={view()}
+                query={props.query}
+                currentKey={props.currentKey}
+                pickedKey={props.pickedKey}
+                startupKey={props.startupKey}
+                actions={props.rowActions}
+                onSelect={props.onSelect}
+              />
+            </Show>
           </Show>
         </Show>
       </Show>
@@ -331,69 +387,6 @@ export function createCycleSet(opts: {
       }
     },
   };
-}
-
-/** The collapsible "Cycle set · …" section over a `CycleSet`. */
-export function CycleSetSection(props: {
-  cycle: CycleSet;
-  models: ModelInfo[];
-  suggestedCount: number;
-  query: string;
-  defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = createSignal(!!props.defaultOpen);
-  const rows = () => {
-    const q = props.query.trim().toLowerCase();
-    return q ? props.models.filter((m) => modelHits(m, q)) : props.models;
-  };
-  const isOn = (m: ModelInfo) => props.cycle.has(cycleKeyOf(m.provider, m.id));
-  const flip = (key: string, on: boolean) => void props.cycle.toggle(key, on);
-  return (
-    <div class="mp-cycle" data-testid="model-picker-cycle">
-      <button type="button" class="mp-cycle-toggle" aria-expanded={open()} onClick={() => setOpen((v) => !v)} data-testid="model-picker-cycle-toggle">
-        <Show when={open()} fallback={<ChevronRight size={14} />}>
-          <ChevronDown size={14} />
-        </Show>
-        <span>{cycleLabel(props.cycle.exact(), props.cycle.custom(), props.models.length, props.suggestedCount)}</span>
-      </button>
-      <Show when={open()}>
-        <div class="mp-cycle-body">
-          <p class="mp-hint">Models Ctrl+Alt+P steps through in a chat. Every model stays selectable above.</p>
-          <div class="mp-cycle-list" role="group" aria-label="Cycle set" data-testid="model-picker-cycle-list">
-            <For each={rows().slice(0, LIST_CAP)}>
-              {(m) => {
-                const key = cycleKeyOf(m.provider, m.id);
-                return (
-                  <button
-                    type="button"
-                    role="menuitemcheckbox"
-                    class="mp-cycle-row"
-                    aria-checked={isOn(m)}
-                    aria-pressed={isOn(m) ? 'true' : 'false'}
-                    data-testid={`cycle-${key}`}
-                    onClick={() => flip(key, !isOn(m))}
-                  >
-                    <span class="mp-cycle-box" aria-hidden="true">
-                      <Show when={isOn(m)}>
-                        <Check size={12} />
-                      </Show>
-                    </span>
-                    <span class="mp-cycle-name">{modelName(m)}</span>
-                    <span class="mp-cycle-key">{key}</span>
-                  </button>
-                );
-              }}
-            </For>
-          </div>
-          <Show when={props.cycle.custom().length > 0}>
-            <p class="mp-hint" data-testid="model-picker-cycle-custom">
-              Custom patterns (kept as written): {props.cycle.custom().join(', ')}
-            </p>
-          </Show>
-        </div>
-      </Show>
-    </div>
-  );
 }
 
 /**
