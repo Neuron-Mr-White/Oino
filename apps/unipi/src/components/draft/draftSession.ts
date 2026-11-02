@@ -237,7 +237,13 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
       }
       if (cmd.type === 'get_available_models') {
         const p = peer();
-        const reply = p ? await p.cmd<unknown>(cmd).catch(() => undefined) : undefined;
+        // No chat open on this PC: ask the host for the catalogue itself (a remembered list
+        // can be stale — e.g. saved while extensions were off — and hide the real providers).
+        const reply = p
+          ? await p.cmd<unknown>(cmd).catch(() => undefined)
+          : await hostCmd({ kind: 'available_models' }, z.unknown(), hostId)
+              .then((res) => (res.ok ? res.value : undefined))
+              .catch(() => undefined);
         const models: ModelInfo[] = reply ? parseModels(reply) : [];
         if (models.length) {
           rememberModels(hostId, models);

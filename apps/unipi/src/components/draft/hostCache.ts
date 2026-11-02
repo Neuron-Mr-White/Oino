@@ -9,7 +9,7 @@ import type { CommandInfo } from '../../lib/session/types';
 import type { ModelInfo } from '../../lib/model/picker';
 
 const KEY = (hostId: string, what: 'commands' | 'models') => `unipi.draft.${what}.${hostId}`;
-const MAX_ROWS = 400;
+const MAX_ROWS = 2000;
 
 function read<T>(key: string): T[] | undefined {
   try {

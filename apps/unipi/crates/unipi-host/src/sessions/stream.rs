@@ -1186,7 +1186,7 @@ fn app_model_semantics(mut cmd: Value) -> Value {
 /// each model row gains `ready: true` (the provider's credential validated), or
 /// `ready: false` + a human `reason` (`invalid_key` / `unreachable`). An unknown
 /// provider stays unmarked — the UI treats it as usable, nothing says otherwise.
-fn enrich_models_reply(
+pub(crate) fn enrich_models_reply(
     readiness: &std::collections::HashMap<String, crate::models_readiness::Readiness>,
     data: &mut Value,
 ) {

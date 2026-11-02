@@ -231,6 +231,10 @@ pub enum HostCmd {
     /// `{model, source, reason, defaultConfigured, providerState}` — the draft chip shows
     /// `model`, or (with `model: null`) that no usable provider exists yet.
     DefaultModel,
+    /// `available_models`: the model catalogue a new session would offer (`{models}`, the
+    /// `get_available_models` shape, each row with the hub's readiness) — the draft's
+    /// picker asks this when no chat is open, instead of a stale remembered list.
+    AvailableModels,
     /// `_oino/login`: **not served here** — the OAuth flow needs a session's
     /// frontend for its dialogs; the app opens it from a chat (WP-A25).
     Login { provider: String },
@@ -258,6 +262,7 @@ impl HostCmd {
             Self::SetExtensionEnabled { .. } => "set_extension_enabled",
             Self::AuthProviders { .. } => "auth_providers",
             Self::DefaultModel => "default_model",
+            Self::AvailableModels => "available_models",
             Self::Login { .. } => "login",
             Self::Logout { .. } => "logout",
             Self::SetApiKey { .. } => "set_api_key",

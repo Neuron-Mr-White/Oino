@@ -209,6 +209,11 @@ async fn dispatch(
         })),
         // `default_model` (D-01): the model a new session will start on, with why.
         HostCmd::DefaultModel => default_model_reply(hub, services).await,
+        HostCmd::AvailableModels => {
+            let mut data = json!({ "models": services.models.available() });
+            crate::sessions::stream::enrich_models_reply(&hub.readiness().snapshot(), &mut data);
+            Ok(data)
+        }
         HostCmd::Login { .. } => Err(unsupported(
             "OAuth sign-in opens from a chat session (its dialogs need a frontend); set an API key instead",
         )),
