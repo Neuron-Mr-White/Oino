@@ -97,7 +97,7 @@ html[data-shell=phone] .editor-head .ghost-icon-button { width: 48px; height: 48
 html[data-shell=phone] .editor-title-name { font-size: 17px; line-height: 22px; }
 html[data-shell=phone] .editor-title-path { font-size: 13px; line-height: 18px; }
 html[data-shell=phone] .editor-phone-action {
-  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; margin-block: 4px;
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; margin-block: 2px;
   border-radius: 999px; background: var(--color-surface-2); color: var(--color-text); font-size: 14px; font-weight: 600;
 }
 html[data-shell=phone] .editor-phone-action.primary { background: var(--color-shell); color: var(--color-face); }

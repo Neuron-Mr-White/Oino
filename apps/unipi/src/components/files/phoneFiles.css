@@ -11,7 +11,7 @@ html[data-shell=phone] .phfiles-crumbs {
 }
 html[data-shell=phone] .phfiles-crumbs::-webkit-scrollbar { display: none; }
 html[data-shell=phone] .phfiles-crumb {
-  flex: none; min-height: 44px; padding: 0 12px; border-radius: 999px;
+  flex: none; min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 999px;
   font-size: 14px; line-height: 20px; color: var(--color-text-muted); white-space: nowrap;
 }
 html[data-shell=phone] .phfiles-crumb[aria-current=page] { color: var(--color-text); font-weight: 600; background: var(--color-surface-2); }

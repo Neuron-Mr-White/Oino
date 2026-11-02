@@ -140,3 +140,7 @@ html[data-shell=phone] .cron-detail-page .cron-detail-actions button { min-heigh
 html[data-shell=phone] .cron-detail-page .cron-runs-heading { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--color-text-muted); text-transform: none; letter-spacing: 0; margin: var(--ph-2, 8px) 4px 0; }
 html[data-shell=phone] .cron-detail-page .cron-run-row { min-height: 72px; width: 100%; }
 html[data-shell=phone] .cron-detail-page .cron-run-summary { font-size: 14px; line-height: 20px; }
+html[data-shell=phone] .cron-phone { padding-inline: var(--ph-gutter, 16px); }
+html[data-shell=phone] .cron-phone .cron-pause-row { margin: 0; }
+html[data-shell=phone] .cron-detail-page { padding: var(--ph-3, 12px) var(--ph-gutter, 16px) 0; }
+html[data-shell=phone] .cron-detail-page .cron-detail-fields dt { padding-left: 0; }

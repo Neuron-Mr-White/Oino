@@ -638,3 +638,7 @@ html[data-shell=phone] .lane-pill { min-height: 44px; height: 44px; }
 html[data-shell=phone] .lane-info { font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
 /* "Create task" always reads as ready (title optional). */
 html[data-shell=phone] .new-task-create:not([data-busy]) { opacity: 1; }
+html[data-shell=phone] .board-head .ghost-icon-button { width: 48px; height: 48px; min-height: 48px; }
+html[data-shell=phone] .board-head .project-title { min-height: 48px; }
+html[data-shell=phone] .board-toolbar .tool-chip { min-height: 44px; }
+html[data-shell=phone] .board-toolbar .view-toggle button { min-width: 44px; min-height: 44px; }
