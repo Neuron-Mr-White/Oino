@@ -28,6 +28,7 @@ import { HeaderBand } from '../../ui/slots/HeaderBand';
 import { PhonePaneLayer } from '../../ui/slots/paneTabs';
 import { SlotModal } from '../../ui/slots/SlotModal';
 import { WidgetStack } from '../../ui/slots/WidgetStack';
+import { BG_TASKS_TOPIC, SUBAGENTS_LIST_TOPIC, topicRunningTrayLabel } from '../../lib/status/running';
 import { installUiEffects } from '../../ui/slots/effects';
 import { reservedGate } from '../../ui/slots/reserved';
 import { DraftView } from '../draft/DraftView';
@@ -222,6 +223,14 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
   // Suppress the TUI-only ASCII Unicrab startup splash (`unipi.info-screen/setHeader:splash`) —
   // the GUI already renders native Unicrab/EmptyChat and the 14-line ASCII banner causes a 280 px jump on open.
   const headerEntries = () => (registry()?.entriesFor('header')() ?? []).filter((e) => e.id !== 'unipi.info-screen/setHeader:splash');
+  createEffect(() => {
+    const s = session();
+    if (s && props.sessionId) s.subscribeTopics([BG_TASKS_TOPIC, SUBAGENTS_LIST_TOPIC]);
+  });
+  const trayFallback = () => {
+    const s = session();
+    return s && props.sessionId ? topicRunningTrayLabel(s.state.topics) : undefined;
+  };
   installConversationSlots({ hostId: props.hostId, sessionId: props.sessionId ?? '', cwd, registry, session });
 
   return (
@@ -270,8 +279,8 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                               onAnswer={answer}
                               readOnly={isArchived() || isTakenOverReadOnly(s().state)}
                               phone={!layout().desktop()}
-                              widgets={<WidgetStack entries={widgets()} target={target()} phone={!layout().desktop()} />}
-                              widgetBelow={<WidgetStack entries={widgetBelow()} target={target()} />}
+                              widgets={<WidgetStack entries={widgets()} target={target()} phone={!layout().desktop()} fallbackTrayLabel={!layout().desktop() ? trayFallback() : undefined} />}
+                              widgetBelow={<WidgetStack entries={widgetBelow()} target={target()} fallbackTrayLabel={layout().desktop() ? trayFallback() : undefined} />}
                               composerTray={trayStack().length ? <ComposerTray stack={trayStack()} target={target()} /> : undefined}
                               composer={
                                 <Composer

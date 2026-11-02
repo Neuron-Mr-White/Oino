@@ -62,13 +62,23 @@ export function runningRows(data: RunningData | undefined, limit = 3): RunningRo
 export const BG_TASKS_TOPIC = 'unipi:bg:tasks';
 export const SUBAGENTS_LIST_TOPIC = 'unipi:subagents:list';
 
-const runningStatus = (v: unknown): boolean => {
-  const list = (v as { tasks?: unknown[]; records?: unknown[] } | undefined | null) ?? {};
-  const items = Array.isArray(list.tasks) ? list.tasks : Array.isArray(list.records) ? list.records : [];
-  return items.some((it) => !!it && typeof it === 'object' && (it as { status?: unknown }).status === 'running');
+const runningCountIn = (v: unknown): number => {
+  const list = (v as { tasks?: unknown[]; records?: unknown[]; agents?: unknown[] } | undefined | null) ?? {};
+  const items = Array.isArray(list.tasks) ? list.tasks : Array.isArray(list.records) ? list.records : Array.isArray(list.agents) ? list.agents : [];
+  return items.filter((it) => !!it && typeof it === 'object' && (it as { status?: unknown }).status === 'running').length;
 };
 
 /** Running bg tasks + running subagents from the session's sticky topics. */
 export function topicRunningCount(topics: Record<string, TopicValue>): number {
-  return (runningStatus(topics[BG_TASKS_TOPIC]?.data) ? 1 : 0) + (runningStatus(topics[SUBAGENTS_LIST_TOPIC]?.data) ? 1 : 0);
+  return (runningCountIn(topics[BG_TASKS_TOPIC]?.data) > 0 ? 1 : 0) + (runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data) > 0 ? 1 : 0);
+}
+
+/** G-08: live running-only label from the session's sticky topics (survives app restarts even when `unipi.core`'s strip doesn't fire). */
+export function topicRunningTrayLabel(topics: Record<string, TopicValue>): string | undefined {
+  const bg = runningCountIn(topics[BG_TASKS_TOPIC]?.data);
+  const sa = runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data);
+  const parts: string[] = [];
+  if (bg > 0) parts.push(`Background tasks ${bg} running`);
+  if (sa > 0) parts.push(`Subagents ${sa} running`);
+  return parts.length ? parts.join(' · ') : undefined;
 }

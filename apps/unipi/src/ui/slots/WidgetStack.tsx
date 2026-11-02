@@ -18,14 +18,37 @@ import type { UiTarget } from '../actions';
 
 const PHONE_MAX = 3;
 
-export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone?: boolean }) {
+export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone?: boolean; fallbackTrayLabel?: string }) {
   const entries = () => liveTrayEntries(props.entries);
+  const hasEntryTray = () => !!props.target.sessionId && entries().some((e) => typeof trayButtonText(e) === 'string');
+  const synthLabel = () => (props.target.sessionId && !hasEntryTray() ? props.fallbackTrayLabel : undefined);
   const over = () => (props.phone ? Math.max(0, entries().length - PHONE_MAX) : 0);
   const [expanded, setExpanded] = createSignal(false);
   const shown = () => (over() && !expanded() ? entries().slice(0, PHONE_MAX) : entries());
   return (
-    <Show when={entries().length > 0}>
-      <div class="ui-widgets" data-count={entries().length} data-testid="ui-widgets">
+    <Show when={entries().length > 0 || !!synthLabel()}>
+      <div class="ui-widgets" data-count={entries().length + (synthLabel() ? 1 : 0)} data-testid="ui-widgets">
+        <Show when={synthLabel()}>
+          {(label) => (
+            <div class="ui-widget" data-entry="work-tray-strip">
+              <button
+                type="button"
+                class="ui-tray-btn"
+                onClick={() =>
+                  props.target.sessionId &&
+                  openSessionModal({ hostId: props.target.hostId, sessionId: props.target.sessionId, tab: 'running' })
+                }
+                data-testid="work-tray-button"
+              >
+                <span class="ui-tray-dot" aria-hidden="true" />
+                <span class="ui-tray-btn-label">{label()}</span>
+                <span class="ui-tray-btn-open">
+                  Open <ChevronRight size={13} />
+                </span>
+              </button>
+            </div>
+          )}
+        </Show>
         <For each={shown()}>
           {(entry) => {
             const trayLabel = () => (props.target.sessionId ? trayButtonText(entry) : undefined);
