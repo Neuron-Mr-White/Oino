@@ -45,11 +45,16 @@
 .cron-run-summary { color: var(--color-text-muted); min-width: 0; }
 
 .cron-run-log { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 24px; }
+.cron-run-cause { margin: 0; font-size: 13px; line-height: 18px; color: var(--color-wm-red); background: rgb(240 60 50 / 10%); border: 1px solid rgb(240 60 50 / 28%); border-radius: 10px; padding: 8px 12px; }
 .cron-run-note { font-size: 12px; color: var(--color-text-dim); margin: 0; }
-.cron-log-text { white-space: pre-wrap; font-size: 12px; background: var(--color-surface-2); border-radius: 12px; padding: 12px; max-height: 50vh; overflow-y: auto; }
+.cron-log-text { white-space: pre-wrap; overflow-wrap: break-word; font-size: 12.5px; line-height: 18px; background: var(--color-surface-2); border-radius: 12px; padding: 12px; max-height: 50vh; overflow-y: auto; }
 
 .cron-form { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 16px; }
 .cron-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--color-text-dim); }
+.cron-field-group { display: flex; flex-direction: column; gap: 6px; }
+.cron-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cron-field-head label { flex-direction: row; margin: 0; }
+.cron-form-footer { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .cron-form input, .cron-form textarea { font-size: 15px; color: var(--color-text); background: var(--color-surface-2); border-radius: 10px; padding: 10px 12px; border: 1px solid var(--color-line); font-family: inherit; }
 .cron-preview { font-size: 12px; color: var(--color-text-muted); margin: -6px 0 0; }
 .cron-preview-error { font-size: 12px; color: var(--color-wm-red); margin: -6px 0 0; }

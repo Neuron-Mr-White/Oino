@@ -3,7 +3,7 @@ import { render, screen, waitFor, cleanup, fireEvent } from '@solidjs/testing-li
 import { HashRouter, Route } from '@solidjs/router';
 import { vi, it, describe, expect, afterEach, beforeEach } from 'vitest';
 import Cron, { humanSchedule, lastRunChip, nextFireText, wakeText } from './Cron';
-import { notifyFromForm, notifyModeOf, notifyText } from '../lib/cron';
+import { notifyFromForm, notifyModeOf, notifyText, parseCronRunLog } from '../lib/cron';
 import { openChatState, closeChat } from '../lib/session/open';
 import { HostsProvider } from '../hosts/context';
 import { SettingsProvider } from '../settings/context';
@@ -301,5 +301,77 @@ describe('humanSchedule (D-33)', () => {
     expect(humanSchedule('30 8 * * 1')).toBe('Every Monday at 8:30');
     expect(humanSchedule('0 0 7 * * 1-5')).toBe('Weekdays at 7:00');
     expect(humanSchedule('*/5 * * * *')).toBe('*/5 * * * *');
+  });
+});
+
+describe('G-07 / D-32: readable failed cron run sheet & accessible pickers', () => {
+  it('parses JSONL cron logs into cause + readable transcript without raw JSON events', () => {
+    const rawLog = [
+      'oreground.\\n- Resume a finished subagent","toolsAdded":[{"name":"read","parameters":{"type":"object"}}]}',
+      '{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"Reply with exactly: cron-ok"}]}}',
+      '{"type":"message_end","message":{"role":"custom","customType":"unipi-memory-recall-reminder","content":"## Memory"}}',
+      '{"type":"message_end","message":{"role":"assistant","content":[],"provider":"openrouter","model":"moonshotai/kimi-k2.6","stopReason":"error","errorMessage":"401: {\\"message\\":\\"User not found.\\",\\"code\\":401}"}}',
+      '{"type":"agent_end","messages":[{"role":"system","sections":{"preamble":"huge system prompt',
+      '401: {"message":"User not found.","code":401}',
+    ].join('\n');
+    const parsed = parseCronRunLog(rawLog, 'oino exited with status exit status: 1', 'openrouter/moonshotai/kimi-k2.6');
+    expect(parsed.cause).toBe('OpenRouter rejected the key (401)');
+    expect(parsed.transcript).toContain('Prompt: Reply with exactly: cron-ok');
+    expect(parsed.transcript).not.toContain('toolsAdded');
+    expect(parsed.transcript).not.toContain('huge system prompt');
+    expect(parsed.transcript).not.toContain('{"type"');
+  });
+
+  it('titles the failed run sheet with the job name, shows the cause banner, and exposes accessible form controls', async () => {
+    const failedRun = {
+      id: 'c1a199b7d9810000',
+      job_id: 'digest',
+      status: 'failed' as const,
+      fired_at: 1700000000000,
+      reason: 'oino exited with status exit status: 1',
+      session_path: '/tmp/s.jsonl',
+      missed: false,
+    };
+    const rawLog = [
+      '{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"Summarize inbox"}]}}',
+      '{"type":"message_end","message":{"role":"assistant","content":[],"provider":"openrouter","stopReason":"error","errorMessage":"401: {\\"message\\":\\"User not found.\\",\\"code\\":401}"}}',
+    ].join('\n');
+    vi.mocked(call).mockImplementation(async (cmd: string) =>
+      (cmd === 'list_hosts'
+        ? { ok: true, value: hosts }
+        : cmd === 'cron_list'
+          ? { ok: true, value: { jobs: [job], paused: false } }
+          : cmd === 'cron_show'
+            ? { ok: true, value: { job, runs: [failedRun] } }
+            : cmd === 'cron_log'
+              ? { ok: true, value: { job_id: 'digest', run: failedRun, log: rawLog } }
+              : { ok: true, value: null }) as never,
+    );
+    mount();
+    fireEvent.click(await screen.findByTestId('cron-job-digest'));
+    const historyRow = await screen.findByTestId('cron-run-c1a199b7d9810000');
+    expect(historyRow).toHaveTextContent('Exited with code 1');
+    fireEvent.click(historyRow);
+    const sheet = await screen.findByTestId('cron-run-log-sheet');
+    expect(sheet).toHaveTextContent('daily digest');
+    expect(sheet).not.toHaveTextContent('Run c1a199b7d9810000');
+    const cause = await screen.findByTestId('cron-run-cause');
+    expect(cause).toHaveTextContent('Failed — OpenRouter rejected the key (401)');
+    expect(screen.getByTestId('cron-log-text')).not.toHaveTextContent('{"type"');
+
+    // D-32: accessible names + Folder & Model pickers + empty-form Save error in footer.
+    cleanup();
+    mockIpc();
+    mount();
+    fireEvent.click(await screen.findByTestId('cron-add'));
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Prompt')).toBeInTheDocument();
+    expect(screen.getByLabelText('Folder')).toBeInTheDocument();
+    expect(screen.getByLabelText('Schedule')).toBeInTheDocument();
+    expect(screen.getByLabelText('Model (optional)')).toBeInTheDocument();
+    expect(screen.getByTestId('workspace-chip')).toBeInTheDocument();
+    expect(screen.getByTestId('cron-model-picker-btn')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('cron-save'));
+    expect(await screen.findByTestId('cron-form-error')).toHaveTextContent('Name, prompt, folder and schedule are all required.');
   });
 });

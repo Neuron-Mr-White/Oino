@@ -7,12 +7,12 @@
  * `/cron add`). Needs the `cron` sharing feature on a phone (FeatureOff,
  * same pattern as Browser/Forward); the PC's own app always has it.
  */
-import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, Show, untrack, type JSX } from 'solid-js';
 import { NamespaceForm } from '../ui/settings/form';
 import { settingsSchema } from '../ui/settings/data';
 import type { Namespace } from '../ui/settings/types';
 import { useNavigate, useSearchParams } from '@solidjs/router';
-import { Bell, ChevronDown, ChevronRight, Clock, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, Square, Trash2 } from 'lucide-solid';
+import { Bell, Check, ChevronDown, ChevronRight, Clock, Cpu, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, Square, Trash2 } from 'lucide-solid';
 import type { AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
 import {
@@ -31,14 +31,27 @@ import {
   cronSettingsGet,
   cronShow,
   cronStop,
+  humanCronRunReason,
   NOTIFY_EVENT_LABEL,
   NOTIFY_EVENTS,
   notifyFromForm,
   notifyModeOf,
   notifyText,
+  parseCronRunLog,
   type NotifyMode,
 } from '../lib/cron';
-import { folderName } from '../lib/session/newSession';
+import { fsRoots } from '../lib/fs';
+import { folderChoices, folderName } from '../lib/session/newSession';
+import { hubs } from '../lib/session/hub';
+import { sessions } from '../lib/session/store';
+import { cachedModels, rememberModels } from '../components/draft/hostCache';
+import { WorkspacePicker, homeOf } from '../components/draft/WorkspacePicker';
+import { AnchoredMenu } from '../components/board/AnchoredMenu';
+import { ModelList, modelView } from '../components/model/ModelList';
+import { modelKey, modelName, parseModels, type ModelInfo } from '../lib/model/picker';
+import { hostReadiness } from '../lib/model/readiness';
+import '../components/draft/draft.css';
+import '../components/model/model.css';
 import { openSessionRoute } from '../lib/notifyInit';
 import { useHosts } from '../hosts/context';
 import { PageHeader } from '../components/PageHeader';
@@ -463,7 +476,7 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
                         <button type="button" class="cron-run-row" onClick={() => setOpenRun(r)} data-testid={`cron-run-${r.id}`}>
                           <span class="cron-chip" data-status={r.status}>{STATUS_LABEL[r.status] ?? r.status}</span>
                           <span class="cron-run-when">{new Date(r.fired_at).toLocaleString()}</span>
-                          <span class="cron-run-summary truncate">{r.summary ?? r.reason ?? ''}</span>
+                          <span class="cron-run-summary truncate">{r.summary ?? humanCronRunReason(r.reason, undefined, job.model) ?? ''}</span>
                         </button>
                       </li>
                     )}
@@ -512,19 +525,29 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
     void cronLog(props.hostId, props.run.id).then(setData);
   });
   return (
-    <BoardSheet open={true} onClose={props.onClose} label="Run log" testId="cron-run-log-sheet" title={`Run ${props.run.id}`}>
+    <BoardSheet open={true} onClose={props.onClose} label="Run log" testId="cron-run-log-sheet" title={props.job.name}>
       <Show when={data()?.ok} fallback={<p class="p-4 text-text-muted text-sm">{(() => { const d = data(); return d && !d.ok ? d.error.message : 'Loading…'; })()}</p>}>
         {(() => {
           const d = data()!;
           if (!d.ok) return null;
+          const run = d.value.run;
+          const parsed = parseCronRunLog(d.value.log, run.reason, props.job.model);
+          const failed = run.status === 'failed' || run.status === 'timeout';
           return (
             <div class="cron-run-log">
               <p class="text-xs text-text-dim">
-                {STATUS_LABEL[d.value.run.status] ?? d.value.run.status}
-                <Show when={d.value.run.session_path}> · session saved</Show>
-                <Show when={d.value.run.cost_usd !== undefined}> · ${d.value.run.cost_usd?.toFixed(4)}</Show>
+                <span class="cron-chip" data-status={run.status}>{STATUS_LABEL[run.status] ?? run.status}</span>
+                {' · '}
+                {new Date(run.fired_at).toLocaleString()}
+                <Show when={run.session_path}> · session saved</Show>
+                <Show when={run.cost_usd !== undefined}> · ${run.cost_usd?.toFixed(4)}</Show>
               </p>
-              <Show when={d.value.run.session_path && d.value.run.status !== 'running'}>
+              <Show when={failed && parsed.cause}>
+                <p class="cron-run-cause" role="alert" data-testid="cron-run-cause">
+                  {run.status === 'timeout' ? 'Timed out' : 'Failed'} — {parsed.cause}
+                </p>
+              </Show>
+              <Show when={run.session_path && run.status !== 'running'}>
                 <button type="button" class="cron-open-session" disabled={opening()} onClick={() => void openSession()} data-testid="cron-open-session">
                   <MessageSquare size={16} /> {opening() ? 'Starting the agent…' : 'Open session'}
                 </button>
@@ -533,12 +556,117 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
               <Show when={openError()}>
                 <p class="cron-form-error" role="alert" data-testid="cron-open-session-error">{openError()}</p>
               </Show>
-              <pre class="cron-log-text">{d.value.log || '(no output)'}</pre>
+              <pre class="cron-log-text" data-testid="cron-log-text">{parsed.transcript || '(no output)'}</pre>
             </div>
           );
         })()}
       </Show>
     </BoardSheet>
+  );
+}
+
+/** D-32: Model picker popover for Cron job form (Default model + shared ModelList). */
+function CronModelPicker(props: { hostId: string; value: string; onChange: (modelKey: string) => void }) {
+  const [anchor, setAnchor] = createSignal<DOMRect | undefined>();
+  const [query, setQuery] = createSignal('');
+  const [data] = createResource(
+    () => (anchor() ? props.hostId : undefined),
+    async (id): Promise<{ models: ModelInfo[]; readiness?: Awaited<ReturnType<typeof hostReadiness>> }> => {
+      const reg = sessions();
+      const key = reg.keys().find((k) => k.startsWith(`${id}/`));
+      const peer = key ? reg.peek(id, key.slice(id.length + 1)) : undefined;
+      const [reply, readiness] = await Promise.all([
+        peer && peer.state.conn === 'live' ? peer.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined) : Promise.resolve(undefined),
+        hostReadiness(id).catch(() => undefined),
+      ]);
+      const live = reply ? parseModels(reply) : [];
+      if (live.length) rememberModels(id, live);
+      const models = live.length ? live : (cachedModels(id) ?? []);
+      return { models, ...(readiness ? { readiness } : {}) };
+    },
+  );
+  const view = createMemo(() =>
+    modelView(
+      data.latest?.models ?? [],
+      data.latest?.readiness,
+      undefined,
+      props.value ? { kind: 'single', key: props.value } : undefined,
+      query(),
+    ),
+  );
+  const buttonLabel = () => {
+    const v = props.value.trim();
+    if (!v) return 'Choose model…';
+    const known = (data.latest?.models ?? cachedModels(props.hostId) ?? []).find((m) => modelKey(m) === v);
+    return known ? modelName(known) : v.slice(v.indexOf('/') + 1);
+  };
+  return (
+    <>
+      <button
+        type="button"
+        class="ws-chip"
+        aria-haspopup="menu"
+        aria-expanded={!!anchor()}
+        onClick={(e) => (anchor() ? setAnchor(undefined) : (setQuery(''), setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())))}
+        data-testid="cron-model-picker-btn"
+      >
+        <Cpu size={14} class="ws-chip-ic" />
+        <span class="ws-chip-label">{buttonLabel()}</span>
+        <ChevronDown size={13} class="ws-chip-chev" />
+      </button>
+      <Show when={anchor()}>
+        {(rect) => (
+          <AnchoredMenu anchor={rect()} alignEnd width={340} label="Job model" onDismiss={() => setAnchor(undefined)}>
+            <div class="ws-menu dm-menu" data-testid="cron-model-menu">
+              <input
+                type="search"
+                class="dm-search"
+                placeholder="Search models…"
+                aria-label="Search models"
+                value={query()}
+                onInput={(e) => setQuery(e.currentTarget.value)}
+              />
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={!props.value.trim()}
+                class="ws-row"
+                onClick={() => {
+                  props.onChange('');
+                  setAnchor(undefined);
+                }}
+                data-testid="cron-model-default"
+              >
+                <Cpu size={15} class="ws-row-ic" />
+                <span class="ws-row-text">
+                  <span class="ws-row-label">Default model</span>
+                  <span class="ws-row-detail">Uses this PC’s startup model</span>
+                </span>
+                <Show when={!props.value.trim()}>
+                  <Check size={15} class="ws-row-check" />
+                </Show>
+              </button>
+              <Show when={!data.loading || data.latest} fallback={<div class="ws-browse-note">Loading…</div>}>
+                <Show
+                  when={(data.latest?.models.length ?? 0) > 0}
+                  fallback={<div class="ws-browse-note">Open a chat once on this PC to browse every model, or type provider/model directly.</div>}
+                >
+                  <ModelList
+                    view={view()}
+                    query={query()}
+                    currentKey={props.value.trim() || undefined}
+                    onSelect={(m) => {
+                      props.onChange(modelKey(m));
+                      setAnchor(undefined);
+                    }}
+                  />
+                </Show>
+              </Show>
+            </div>
+          </AnchoredMenu>
+        )}
+      </Show>
+    </>
   );
 }
 
@@ -579,6 +707,19 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
   const wakeLabel = () => (wake() === 'off' ? 'Off' : job?.wake ? wakeText(job) : 'Off');
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | undefined>(undefined);
+
+  // D-32: folder roots + recent session folders for the Folder picker.
+  const hub = createMemo(on(() => hostId, (id) => untrack(() => hubs().peek(id))));
+  const [roots] = createResource(() => hostId, async (id) => {
+    const res = await fsRoots(id).catch(() => undefined);
+    return res?.ok ? res.value.roots : [];
+  });
+  const home = createMemo(() => homeOf(roots.latest ?? []));
+  const recentFolders = createMemo(() => {
+    const cards = hub()?.state.loaded ? Object.values(hub()!.state.cards) : [];
+    const sorted = [...cards].sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
+    return folderChoices(sorted, [], undefined);
+  });
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   createEffect(() => {
@@ -645,27 +786,44 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
       testId="cron-form-sheet"
       title={job ? 'Edit job' : 'Add a job'}
       footer={
-        <button type="button" class="cron-save-btn" disabled={saving()} onClick={() => void save()} data-testid="cron-save">
-          {saving() ? 'Saving…' : 'Save'}
-        </button>
+        <div class="cron-form-footer">
+          <Show when={error()}>
+            <p class="cron-form-error" role="alert" data-testid="cron-form-error">{error()}</p>
+          </Show>
+          <button type="button" class="cron-save-btn" disabled={saving()} onClick={() => void save()} data-testid="cron-save">
+            {saving() ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       }
     >
       <div class="cron-form">
-        <label>
+        <label for="cron-field-name">
           <span>Name</span>
-          <input value={name()} onInput={(e) => setName(e.currentTarget.value)} data-testid="cron-form-name" />
+          <input id="cron-field-name" aria-label="Name" value={name()} onInput={(e) => setName(e.currentTarget.value)} placeholder="e.g. Daily inbox digest" data-testid="cron-form-name" />
         </label>
-        <label>
+        <label for="cron-field-prompt">
           <span>Prompt</span>
-          <textarea value={prompt()} onInput={(e) => setPrompt(e.currentTarget.value)} rows={4} data-testid="cron-form-prompt" />
+          <textarea id="cron-field-prompt" aria-label="Prompt" value={prompt()} onInput={(e) => setPrompt(e.currentTarget.value)} rows={4} placeholder="What the unattended run should do…" data-testid="cron-form-prompt" />
         </label>
-        <label>
-          <span>Folder</span>
-          <input value={cwd()} onInput={(e) => setCwd(e.currentTarget.value)} placeholder="e.g. /home/me/projects/app" data-testid="cron-form-cwd" />
-        </label>
-        <label>
+        <div class="cron-field-group">
+          <div class="cron-field-head">
+            <label for="cron-field-cwd">Folder</label>
+            <WorkspacePicker
+              hostId={hostId}
+              value={cwd().trim() || undefined}
+              onChange={(p) => p && setCwd(p)}
+              recent={recentFolders()}
+              roots={roots.latest ?? []}
+              home={home()}
+              allowNone={false}
+              placeholder="Browse folders…"
+            />
+          </div>
+          <input id="cron-field-cwd" aria-label="Folder" value={cwd()} onInput={(e) => setCwd(e.currentTarget.value)} placeholder="e.g. /home/me/projects/app" data-testid="cron-form-cwd" />
+        </div>
+        <label for="cron-field-schedule">
           <span>Schedule</span>
-          <input value={schedule()} onInput={(e) => setSchedule(e.currentTarget.value)} placeholder="e.g. every day at 9:00" data-testid="cron-form-schedule" />
+          <input id="cron-field-schedule" aria-label="Schedule" value={schedule()} onInput={(e) => setSchedule(e.currentTarget.value)} placeholder="e.g. every day at 9:00" data-testid="cron-form-schedule" />
         </label>
         <Show when={preview()}>
           {(p) =>
@@ -678,17 +836,20 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
             )
           }
         </Show>
-        <label>
+        <label for="cron-field-tz">
           <span>Timezone</span>
-          <input value={tz()} onInput={(e) => setTz(e.currentTarget.value)} placeholder="This PC’s time zone (default)" data-testid="cron-form-tz" />
+          <input id="cron-field-tz" aria-label="Timezone" value={tz()} onInput={(e) => setTz(e.currentTarget.value)} placeholder="This PC’s time zone (default)" data-testid="cron-form-tz" />
         </label>
-        <label>
-          <span>Model (optional)</span>
-          <input value={model()} onInput={(e) => setModel(e.currentTarget.value)} placeholder="Default model" data-testid="cron-form-model" />
-        </label>
-        <label>
+        <div class="cron-field-group">
+          <div class="cron-field-head">
+            <label for="cron-field-model">Model (optional)</label>
+            <CronModelPicker hostId={hostId} value={model()} onChange={setModel} />
+          </div>
+          <input id="cron-field-model" aria-label="Model (optional)" value={model()} onInput={(e) => setModel(e.currentTarget.value)} placeholder="Default model" data-testid="cron-form-model" />
+        </div>
+        <label for="cron-field-time-limit">
           <span>Time limit (seconds)</span>
-          <input value={timeLimit()} onInput={(e) => setTimeLimit(e.currentTarget.value)} placeholder="e.g. 1800 (30 minutes)" data-testid="cron-form-time-limit" />
+          <input id="cron-field-time-limit" aria-label="Time limit (seconds)" value={timeLimit()} onInput={(e) => setTimeLimit(e.currentTarget.value)} placeholder="e.g. 1800 (30 minutes)" data-testid="cron-form-time-limit" />
         </label>
         <fieldset class="cron-fieldset" data-testid="cron-form-notify">
           <legend><Bell size={14} /> Notify when a run ends</legend>
@@ -751,10 +912,6 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
           </div>
           <p class="cron-hint">The chat gets a short message with the result — run now if it's idle, queued if it's busy.</p>
         </fieldset>
-
-        <Show when={error()}>
-          <p class="cron-form-error" role="alert">{error()}</p>
-        </Show>
       </div>
     </BoardSheet>
   );

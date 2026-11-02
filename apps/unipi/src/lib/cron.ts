@@ -12,6 +12,7 @@
  */
 import { z } from 'zod';
 import { hostCall } from './host/factory';
+import { humanProviderError } from './model/humanError';
 import {
   CronAddRequestSchema,
   CronEditRequestSchema,
@@ -183,4 +184,140 @@ export function notifyText(notify: CronNotify | undefined, pcDefault: readonly s
   const words = events.map((e) => (NOTIFY_EVENT_LABEL[e] ?? e).toLowerCase()).join(', ');
   const via = notify?.channels?.length ? ` via ${notify.channels.join(', ')}` : '';
   return `${mode === 'default' ? 'PC default: ' : ''}${words}${via}`;
+}
+
+export type CronTranscriptEntry = {
+  kind: 'prompt' | 'tool' | 'assistant' | 'error' | 'log';
+  label?: string;
+  text: string;
+};
+
+const providerOfModelKey = (model: string | undefined): string | undefined => {
+  if (!model) return undefined;
+  const slash = model.indexOf('/');
+  return slash > 0 ? model.slice(0, slash) : undefined;
+};
+
+function messageBlocksText(content: unknown): string {
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((p) => (p && typeof p === 'object' && (p as { type?: unknown }).type === 'text' && typeof (p as { text?: unknown }).text === 'string' ? (p as { text: string }).text : ''))
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function looksTruncatedJsonFragment(line: string): boolean {
+  const t = line.trim();
+  if (!t || t.startsWith('{')) return false;
+  return (t.includes('","') || t.includes('":{') || t.includes('"parameters":{')) && (t.endsWith('}') || t.includes('\\n'));
+}
+
+/** G-07: humanizes `run.reason` ("oino exited with status exit status: 1" → cause or clean exit code). */
+export function humanCronRunReason(reason: string | undefined, cause?: string, jobModel?: string): string | undefined {
+  if (cause) return cause;
+  const r = (reason ?? '').trim();
+  if (!r) return undefined;
+  const exit = /(?:oino\s+)?exited with status(?:\s+exit status:)?\s*(\d+)/i.exec(r);
+  if (exit) return `Exited with code ${exit[1]}`;
+  if (/^\d{3}\b|\{.*"message"/i.test(r)) return humanProviderError(r, providerOfModelKey(jobModel));
+  return r;
+}
+
+/**
+ * G-07: parses a cron run's raw `.log` (which may be `oino --mode json` JSONL
+ * events + stderr, or plain text) into a clean cause line and human transcript,
+ * never exposing raw JSON event blobs, system prompts, or tool schemas.
+ */
+export function parseCronRunLog(
+  rawLog: string | undefined,
+  runReason?: string,
+  jobModel?: string,
+): { cause?: string; entries: CronTranscriptEntry[]; transcript: string } {
+  const raw = rawLog ?? '';
+  if (!raw.trim()) {
+    const cause = humanCronRunReason(runReason, undefined, jobModel);
+    return { ...(cause ? { cause } : {}), entries: [], transcript: '' };
+  }
+  const lines = raw.split(/\r?\n/);
+  const entries: CronTranscriptEntry[] = [];
+  let sawJsonEvent = false;
+  let errorProvider = providerOfModelKey(jobModel);
+  let rawError: string | undefined;
+
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx]!;
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (idx === 0 && looksTruncatedJsonFragment(trimmed)) continue;
+
+    if (trimmed.startsWith('{')) {
+      try {
+        const ev = JSON.parse(trimmed) as Record<string, unknown>;
+        if (typeof ev.type === 'string') {
+          sawJsonEvent = true;
+          if (ev.type === 'message_end' || ev.type === 'turn_end') {
+            const msg = (ev.message && typeof ev.message === 'object' ? ev.message : undefined) as Record<string, unknown> | undefined;
+            if (!msg) continue;
+            if (typeof msg.provider === 'string' && msg.provider) errorProvider = msg.provider;
+            if (msg.stopReason === 'error' && typeof msg.errorMessage === 'string' && msg.errorMessage.trim()) {
+              rawError = msg.errorMessage.trim();
+            }
+            if (ev.type !== 'message_end') continue;
+            const role = msg.role;
+            if (role === 'user') {
+              const text = messageBlocksText(msg.content);
+              if (text) entries.push({ kind: 'prompt', label: 'Prompt', text });
+            } else if (role === 'assistant') {
+              const content = Array.isArray(msg.content) ? msg.content : [];
+              for (const part of content) {
+                if (!part || typeof part !== 'object') continue;
+                const p = part as Record<string, unknown>;
+                if (p.type === 'toolCall' && typeof p.name === 'string') {
+                  const args = p.arguments && typeof p.arguments === 'object' ? (p.arguments as Record<string, unknown>) : {};
+                  const argPreview = typeof args.command === 'string' ? args.command : typeof args.path === 'string' ? args.path : '';
+                  entries.push({ kind: 'tool', label: p.name, text: argPreview ? `${p.name}: ${argPreview}` : p.name });
+                }
+              }
+              const text = messageBlocksText(msg.content);
+              if (text) entries.push({ kind: 'assistant', label: 'Reply', text });
+            } else if (role === 'toolResult') {
+              const toolName = typeof msg.toolName === 'string' ? msg.toolName : 'tool';
+              const isErr = msg.isError === true;
+              const firstLine = messageBlocksText(msg.content).split('\n')[0]?.slice(0, 160) ?? '';
+              entries.push({
+                kind: isErr ? 'error' : 'tool',
+                label: toolName,
+                text: `${isErr ? '✗' : '✓'} ${toolName}${firstLine ? ` — ${firstLine}` : ''}`,
+              });
+            }
+          }
+          continue;
+        }
+      } catch {
+        // Truncated trailing JSON event line (`agent_end` with huge system prompt cut at cap): drop it.
+        if (/^\{"type":"(?:agent_|turn_|message_|session|tool_)/.test(trimmed)) {
+          sawJsonEvent = true;
+          continue;
+        }
+      }
+    }
+
+    if (/^(?:HTTP\s+)?\d{3}:\s*\{/i.test(trimmed) || /^\{\s*"(?:error|message)"/.test(trimmed)) {
+      rawError ??= trimmed;
+      continue;
+    }
+    entries.push({ kind: 'log', text: line });
+  }
+
+  const causeFromLog = rawError ? humanProviderError(rawError, errorProvider) : undefined;
+  if (causeFromLog && !entries.some((e) => e.kind === 'error')) {
+    entries.push({ kind: 'error', label: 'Error', text: causeFromLog });
+  }
+  const cause = humanCronRunReason(runReason, causeFromLog, jobModel);
+  const transcript = sawJsonEvent
+    ? entries.map((e) => (e.label && e.kind !== 'tool' ? `${e.label}: ${e.text}` : e.text)).join('\n\n')
+    : entries.map((e) => e.text).join('\n');
+  return { ...(cause ? { cause } : {}), entries, transcript };
 }

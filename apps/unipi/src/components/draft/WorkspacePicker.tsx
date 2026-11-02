@@ -34,20 +34,29 @@ export function WorkspacePicker(props: {
   recent: readonly string[];
   roots: readonly string[];
   home?: string;
+  /** Hide the "No workspace" choice (e.g. Cron jobs require an explicit folder). */
+  allowNone?: boolean;
+  placeholder?: string;
   disabled?: boolean;
 }) {
   const [anchor, setAnchor] = createSignal<DOMRect | undefined>();
   /** The folder browser's current path (`undefined` = the list view). */
   const [browse, setBrowse] = createSignal<string | undefined>();
+  const [filter, setFilter] = createSignal('');
+  const openBrowse = (dir: string) => {
+    setFilter('');
+    setBrowse(dir);
+  };
   const close = () => {
     setAnchor(undefined);
     setBrowse(undefined);
+    setFilter('');
   };
   const pick = (path: string | undefined) => {
     props.onChange(path);
     close();
   };
-  const label = () => (props.value ? folderName(props.value) : 'No workspace');
+  const label = () => (props.value ? folderName(props.value) : (props.placeholder ?? 'No workspace'));
   const short = (p: string) => shortPath(p, props.home);
 
   const recentItems = createMemo<Item[]>(() =>
@@ -122,16 +131,18 @@ export function WorkspacePicker(props: {
                 when={browse()}
                 fallback={
                   <>
-                    <button type="button" role="menuitemradio" aria-checked={!props.value} class="ws-row" onClick={() => pick(undefined)} data-testid="workspace-none">
-                      <House size={15} class="ws-row-ic" />
-                      <span class="ws-row-text">
-                        <span class="ws-row-label">No workspace</span>
-                        <span class="ws-row-detail">Runs in {props.home ? short(props.home) : 'your home folder'}</span>
-                      </span>
-                      <Show when={!props.value}>
-                        <Check size={15} class="ws-row-check" />
-                      </Show>
-                    </button>
+                    <Show when={props.allowNone !== false}>
+                      <button type="button" role="menuitemradio" aria-checked={!props.value} class="ws-row" onClick={() => pick(undefined)} data-testid="workspace-none">
+                        <House size={15} class="ws-row-ic" />
+                        <span class="ws-row-text">
+                          <span class="ws-row-label">No workspace</span>
+                          <span class="ws-row-detail">Runs in {props.home ? short(props.home) : 'your home folder'}</span>
+                        </span>
+                        <Show when={!props.value}>
+                          <Check size={15} class="ws-row-check" />
+                        </Show>
+                      </button>
+                    </Show>
                     <Show when={recentItems().length}>
                       <div class="ws-label">Recent</div>
                       <For each={recentItems()}>{row}</For>
@@ -145,7 +156,7 @@ export function WorkspacePicker(props: {
                       type="button"
                       role="menuitem"
                       class="ws-row ws-row-open"
-                      onClick={() => setBrowse(props.value ?? props.home ?? props.roots[0] ?? '/')}
+                      onClick={() => openBrowse(props.value || props.home || props.roots[0] || '/')}
                       data-testid="workspace-open"
                     >
                       <FolderSearch size={15} class="ws-row-ic" />
@@ -156,7 +167,13 @@ export function WorkspacePicker(props: {
                   </>
                 }
               >
-                {(dir) => (
+                {(dir) => {
+                  const filteredDirs = () => {
+                    const all = listing()?.dirs ?? [];
+                    const q = filter().trim().toLowerCase();
+                    return q ? all.filter((n) => n.toLowerCase().includes(q)) : all;
+                  };
+                  return (
                   <div class="ws-browse" data-testid="workspace-browser">
                     <div class="ws-browse-head">
                       <button
@@ -164,7 +181,7 @@ export function WorkspacePicker(props: {
                         class="ws-browse-up"
                         aria-label="Up one folder"
                         disabled={dir() === '/'}
-                        onClick={() => setBrowse(parentOf(dir()))}
+                        onClick={() => openBrowse(parentOf(dir()))}
                       >
                         <ArrowLeft size={15} />
                       </button>
@@ -172,13 +189,24 @@ export function WorkspacePicker(props: {
                         {short(dir())}
                       </span>
                     </div>
+                    <Show when={(listing()?.dirs.length ?? 0) > 6}>
+                      <input
+                        type="search"
+                        class="dm-search"
+                        placeholder="Filter folders…"
+                        aria-label="Filter folders"
+                        value={filter()}
+                        onInput={(e) => setFilter(e.currentTarget.value)}
+                        data-testid="workspace-filter"
+                      />
+                    </Show>
                     <div class="ws-browse-list">
                       <Show when={!listing.loading} fallback={<div class="ws-browse-note">Loading…</div>}>
                         <Show when={!listing()?.error} fallback={<div class="ws-browse-note">{listing()?.error}</div>}>
-                          <Show when={listing()?.dirs.length} fallback={<div class="ws-browse-note">No folders inside</div>}>
-                            <For each={listing()?.dirs ?? []}>
+                          <Show when={filteredDirs().length} fallback={<div class="ws-browse-note">{filter().trim() ? `No folder matches “${filter().trim()}”` : 'No folders inside'}</div>}>
+                            <For each={filteredDirs()}>
                               {(name) => (
-                                <button type="button" class="ws-row ws-row-dir" onClick={() => setBrowse(join(dir(), name))}>
+                                <button type="button" class="ws-row ws-row-dir" onClick={() => openBrowse(join(dir(), name))}>
                                   <Folder size={15} class="ws-row-ic" />
                                   <span class="ws-row-text">
                                     <span class="ws-row-label">{name}</span>
@@ -191,7 +219,7 @@ export function WorkspacePicker(props: {
                       </Show>
                     </div>
                     <div class="ws-browse-foot">
-                      <button type="button" class="ws-btn" onClick={() => setBrowse(undefined)}>
+                      <button type="button" class="ws-btn" onClick={() => (setFilter(''), setBrowse(undefined))}>
                         Back
                       </button>
                       <button type="button" class="ws-btn ws-btn-primary" disabled={listing.loading || !!listing()?.error} onClick={() => pick(dir())} data-testid="workspace-use">
@@ -200,7 +228,8 @@ export function WorkspacePicker(props: {
                       </button>
                     </div>
                   </div>
-                )}
+                  );
+                }}
               </Show>
             </div>
           </AnchoredMenu>
