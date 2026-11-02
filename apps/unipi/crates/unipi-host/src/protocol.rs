@@ -32,6 +32,13 @@ pub enum Peer {
 }
 
 impl Peer {
+    /// `iroh` / `local`, for log lines.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Peer::Iroh(_) => "iroh",
+            Peer::Local => "local",
+        }
+    }
     /// The id used in device allow lists / push / sharing.
     pub fn device_id(&self) -> String {
         match self {
@@ -81,6 +88,18 @@ impl ProtocolHandler for Handler {
         }
     }
 }
+/// The `op` [`Handler::handle`] records for a connection that closed before sending
+/// a request (the app's connect-only liveness probe): logged at trace, not rejected.
+const PROBE: &str = "(probe)";
+
+/// The first frame failed because the peer closed the stream before sending one
+/// (EOF), not because it sent something malformed.
+fn closed_before_request(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|e| e.kind() == std::io::ErrorKind::UnexpectedEof)
+}
+
 pub async fn read_frame<R: AsyncRead + Unpin>(read: &mut R) -> anyhow::Result<(u8, Vec<u8>)> {
     let kind = read.read_u8().await?;
     let len = read.read_u32().await? as usize;
@@ -118,9 +137,24 @@ impl Handler {
         remote: impl Into<Peer>,
     ) -> anyhow::Result<()> {
         let remote: Peer = remote.into();
-        let result = self.request(&mut read, &mut write, remote).await;
+        let mut op: Option<String> = None;
+        let peer = remote.kind();
+        let result = self.request(&mut read, &mut write, remote, &mut op).await;
         if let Err(error) = result {
-            tracing::warn!(code=?error.code,"operation rejected");
+            if op.as_deref() == Some(PROBE) {
+                // fix5-host: a liveness probe (connect, then close without a request —
+                // the app's `socket_alive`) is not a rejected operation; it used to log
+                // a WARN every 2 s while the app ran.
+                tracing::trace!("connection closed before a request (liveness probe)");
+                return Ok(());
+            }
+            tracing::warn!(
+                code = ?error.code,
+                op = op.as_deref().unwrap_or("?"),
+                peer,
+                reason = %error.message,
+                "operation rejected"
+            );
             write_control(&mut write, &Control::Err { error }).await?;
         }
         // A finished `tcp_forward` pipe has already closed the send side.
@@ -132,6 +166,7 @@ impl Handler {
         read: &mut R,
         write: &mut W,
         peer: Peer,
+        op: &mut Option<String>,
     ) -> Result<(), AppErrorDto> {
         let (kind, bytes) =
             tokio::time::timeout(std::time::Duration::from_secs(10), read_frame(read))
@@ -142,7 +177,12 @@ impl Handler {
                         "First frame timed out after 10 seconds",
                     )
                 })?
-                .map_err(|e| error(AppErrorCode::E_SCHEMA, e.to_string()))?;
+                .map_err(|e| {
+                    if closed_before_request(&e) {
+                        *op = Some(PROBE.to_owned());
+                    }
+                    error(AppErrorCode::E_SCHEMA, e.to_string())
+                })?;
         if kind != 0 {
             return Err(error(
                 AppErrorCode::E_SCHEMA,
@@ -151,6 +191,7 @@ impl Handler {
         }
         let value: serde_json::Value = serde_json::from_slice(&bytes)
             .map_err(|e| error(AppErrorCode::E_SCHEMA, e.to_string()))?;
+        *op = value["req"]["op"].as_str().map(str::to_owned);
         if value["proto"].as_str().and_then(|s| s.split('.').next()) != Some("2") {
             return Err(error(
                 AppErrorCode::E_PROTO_VERSION,
