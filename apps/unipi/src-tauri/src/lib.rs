@@ -276,6 +276,8 @@ pub fn run() {
                 use tauri::Manager;
                 // The user's shell PATH for the host's tools, off the UI thread.
                 shell_path::warm();
+                // The supervisor's `host-liveness` events go out on this handle.
+                host_supervisor::set_app(app.handle().clone());
                 if let Some(dir) = local_host::host_dir() {
                     let shared = app.state::<host_supervisor::Shared>().inner().clone();
                     let bin = host_supervisor::host_bin(Some(app.handle()));

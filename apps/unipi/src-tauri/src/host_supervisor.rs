@@ -406,24 +406,50 @@ pub const TERM_GRACE: Duration = Duration::from_secs(5);
 /// A wedged host still *accepts* connections (the kernel queues them; EMFILE
 /// only breaks `accept()`) — only a reply proves it works.
 pub async fn answers(socket: &Path) -> bool {
-    tokio::time::timeout(PING_TIMEOUT, ping(socket))
-        .await
-        .unwrap_or(false)
+    probe(socket).await == Probe::Answered
 }
 
-/// One connect + `host_info` round trip: `true` when any `Control` frame comes
-/// back (an error reply still means the host is alive and listening).
-async fn ping(socket: &Path) -> bool {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use unipi_proto::{Control, PROTO_VERSION};
+/// What one liveness ping found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Probe {
+    /// A `Control` frame came back within [`PING_TIMEOUT`].
+    Answered,
+    /// The socket took the connection but nothing came back (wedged, SIGSTOPped).
+    Silent,
+    /// Nobody listens on the socket (the host is gone).
+    Gone,
+}
+
+/// One `host_info` round trip, classified. This is also the "is it there"
+/// check: a separate connect-only probe used to hit the host every 2 s with an
+/// empty connection it logged as `operation rejected code=E_SCHEMA` (fix5-host).
+pub async fn probe(socket: &Path) -> Probe {
+    match tokio::time::timeout(PING_TIMEOUT, ping(socket)).await {
+        Ok(Some(true)) => Probe::Answered,
+        Ok(None) => Probe::Gone,
+        Ok(Some(false)) | Err(_) => Probe::Silent,
+    }
+}
+
+/// One connect + `host_info` round trip: `Some(true)` when any `Control` frame
+/// comes back (an error reply still means the host is alive and listening),
+/// `None` when the connection itself is refused.
+async fn ping(socket: &Path) -> Option<bool> {
     let local = crate::local_host::LocalHost {
         id: String::new(),
         ticket: String::new(),
         socket: socket.to_path_buf(),
     };
-    let Ok((mut send, mut recv)) = crate::local_host::connect(&local).await else {
-        return false;
-    };
+    let (send, recv) = crate::local_host::connect(&local).await.ok()?;
+    Some(ping_on(send, recv).await)
+}
+
+async fn ping_on(
+    mut send: crate::op_stream::OpSend,
+    mut recv: crate::op_stream::OpRecv,
+) -> bool {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use unipi_proto::{Control, PROTO_VERSION};
     let hello = serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":{"op":"host_info"}});
     let frame = unipi_proto::frame::encode(
         unipi_proto::FrameKind::Control,
@@ -481,10 +507,10 @@ pub fn lock_holder(dir: &Path) -> Option<u32> {
 /// touched; off Linux this skips with a clear error. Every step is logged.
 pub async fn recover(dir: &Path) -> Result<(), String> {
     let socket = crate::local_host::listen_addr(dir);
-    if tokio::time::timeout(PING_RECHECK, ping(&socket))
-        .await
-        .unwrap_or(false)
-    {
+    if matches!(
+        tokio::time::timeout(PING_RECHECK, ping(&socket)).await,
+        Ok(Some(true))
+    ) {
         let message = "the host answers, so it stays (only a silent one is replaced)".to_string();
         log::info!("host recovery: {message}");
         return Err(message);
@@ -714,6 +740,58 @@ pub const WATCH_EVERY: Duration = Duration::from_millis(250);
 pub const LOCK_FAST_EVERY: Duration = Duration::from_millis(200);
 pub const LOCK_FAST_FOR: Duration = Duration::from_secs(15);
 pub const LOCK_SLOW_EVERY: Duration = Duration::from_secs(2);
+/// Liveness ping gap for the host we run ourselves (fix5-host): three silent
+/// pings in a row ([`PING_FAILURES`]) and it is killed and respawned.
+pub const OWN_PING_EVERY: Duration = Duration::from_secs(5);
+/// A child that never answered yet is still starting for this long (extension
+/// loading); only after it does a silent socket count against it.
+pub const OWN_STARTUP_GRACE: Duration = Duration::from_secs(90);
+/// A child that ran this long before it died or wedged is not a quick failure:
+/// the restart starts a fresh failure count (host.md §4.4's 60 s).
+pub const SURVIVED: Duration = Duration::from_secs(60);
+/// A lock holder younger than this is still starting, never "wedged" (fix5-host).
+pub const HOLDER_STARTUP_GRACE: Duration = Duration::from_secs(45);
+/// The line for a host that takes connections but does not answer.
+pub const SILENT_MESSAGE: &str = "The PC stopped answering";
+/// The supervisor state's line after a wedged host was killed for a restart.
+pub const WEDGED_MESSAGE: &str = "The host on this PC stopped answering. Restarting…";
+/// Tauri event: `{ answering: bool, message?: string }` whenever this PC's host
+/// stops / starts answering the supervisor's liveness ping (fix5-host).
+pub const LIVENESS_EVENT: &str = "host-liveness";
+
+static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// Gives the supervisor the app handle its [`LIVENESS_EVENT`]s go out on.
+pub fn set_app(app: tauri::AppHandle) {
+    let _ = APP.set(app);
+}
+
+/// Emits [`LIVENESS_EVENT`] to the UI (no-op in tests / before [`set_app`]).
+fn emit_liveness(answering: bool, message: Option<&str>) {
+    use tauri::Emitter;
+    if let Some(app) = APP.get() {
+        let _ = app.emit(
+            LIVENESS_EVENT,
+            serde_json::json!({ "answering": answering, "message": message }),
+        );
+    }
+}
+
+/// Did `dir`'s lock holder take the lock less than [`HOLDER_STARTUP_GRACE`] ago
+/// (`host.lock`'s `started_at`, unix seconds)? Unknown → `false`.
+fn holder_starting(dir: &Path) -> bool {
+    let Some(started_at) = std::fs::read_to_string(dir.join("host.lock"))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw.trim()).ok())
+        .and_then(|v| v.get("started_at").and_then(serde_json::Value::as_u64))
+    else {
+        return false;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    now.saturating_sub(started_at) < HOLDER_STARTUP_GRACE.as_secs()
+}
 
 // ------------------------------------------------------------- supervisor
 
@@ -730,6 +808,8 @@ pub struct Supervisor {
     state: Mutex<SupervisorState>,
     /// Set to stop the loop (app exit, the lock moved to someone else).
     stop: tokio::sync::watch::Sender<bool>,
+    /// Liveness ping gap for our own child ([`OWN_PING_EVERY`]; tests pass a fast one).
+    own_ping_every: Duration,
 }
 
 impl Supervisor {
@@ -742,6 +822,15 @@ impl Supervisor {
         bin: PathBuf,
         backoff: Arc<dyn Fn(u32) -> Duration + Send + Sync>,
     ) -> Arc<Supervisor> {
+        Self::with_timing(dir, bin, backoff, OWN_PING_EVERY)
+    }
+
+    pub fn with_timing(
+        dir: PathBuf,
+        bin: PathBuf,
+        backoff: Arc<dyn Fn(u32) -> Duration + Send + Sync>,
+        own_ping_every: Duration,
+    ) -> Arc<Supervisor> {
         let (stop, _) = tokio::sync::watch::channel(false);
         Arc::new(Supervisor {
             dir,
@@ -750,6 +839,7 @@ impl Supervisor {
             child: Mutex::new(None),
             state: Mutex::new(SupervisorState::AppManaged),
             stop,
+            own_ping_every,
         })
     }
 
@@ -787,6 +877,63 @@ impl Supervisor {
         }
     }
 
+    /// Pings our own child every [`Supervisor::own_ping_every`] once it first
+    /// answered (or, if it never did, once [`OWN_STARTUP_GRACE`] is over and its
+    /// socket takes connections without replying). After [`PING_FAILURES`] silent
+    /// pings in a row it SIGKILLs the child's process group and sets `wedged`;
+    /// `run_child` then reaps it and the loop respawns through the usual backoff.
+    /// Never returns.
+    async fn watch_own_child(
+        &self,
+        socket: &Path,
+        started: std::time::Instant,
+        wedged: &std::sync::atomic::AtomicBool,
+    ) {
+        let mut answered_once = false;
+        let mut silent: u32 = 0;
+        loop {
+            tokio::time::sleep(self.own_ping_every).await;
+            let found = probe(socket).await;
+            if found == Probe::Answered {
+                if silent > 0 || !answered_once {
+                    emit_liveness(true, None);
+                }
+                answered_once = true;
+                silent = 0;
+                continue;
+            }
+            // Still starting: a socket that is not up yet, or not answering yet.
+            if !answered_once && (found == Probe::Gone || started.elapsed() < OWN_STARTUP_GRACE) {
+                continue;
+            }
+            silent += 1;
+            log::warn!("host: no answer to ping {silent}/{PING_FAILURES} from our own host");
+            emit_liveness(false, Some(SILENT_MESSAGE));
+            if silent < PING_FAILURES {
+                continue;
+            }
+            let pid = *self.child.lock().await;
+            let Some(pid) = pid else {
+                silent = 0;
+                continue;
+            };
+            log::warn!("host: our host (pid {pid}) stopped answering; killing it for a restart");
+            wedged.store(true, std::sync::atomic::Ordering::SeqCst);
+            #[cfg(unix)]
+            {
+                // Its own process group (process_group(0)): SIGKILL reaches a
+                // SIGSTOPped host and the browser it runs.
+                let _ = std::process::Command::new("kill")
+                    .args(["-KILL", "--", &format!("-{pid}")])
+                    .status();
+            }
+            #[cfg(not(unix))]
+            let _ = pid;
+            // `run_child` reaps it; this future is dropped with the select.
+            std::future::pending::<()>().await;
+        }
+    }
+
     /// The supervise loop: run the host, and when it dies, back off and run it
     /// again — unless the lock moved on (someone else owns the host now, code
     /// 75) or we were told to stop.
@@ -811,15 +958,22 @@ impl Supervisor {
                     // silent (connects but never replies — a wedged accept() loop)
                     // for [`PING_FAILURES`] pings, replace it with ours.
                     while !stopped() {
-                        if !socket_alive(&socket) {
-                            break;
-                        }
-                        if answers(&socket).await {
-                            silent = 0;
-                            tokio::time::sleep(PING_EVERY).await;
-                            continue;
+                        // One round trip answers both "is it there" and "does it
+                        // work" (a bare connect logged E_SCHEMA on the host).
+                        match probe(&socket).await {
+                            Probe::Gone => break,
+                            Probe::Answered => {
+                                if silent > 0 {
+                                    emit_liveness(true, None);
+                                }
+                                silent = 0;
+                                tokio::time::sleep(PING_EVERY).await;
+                                continue;
+                            }
+                            Probe::Silent => {}
                         }
                         silent += 1;
+                        emit_liveness(false, Some(SILENT_MESSAGE));
                         log::warn!(
                             "host: no answer to ping {silent}/{PING_FAILURES} from the adopted host"
                         );
@@ -845,14 +999,22 @@ impl Supervisor {
                     log::info!("host: the adopted host stopped answering; starting ours");
                 }
                 crate::local_host::expect_host_soon();
-                let status = match run_child(ChildSpec {
+                let started = std::time::Instant::now();
+                let wedged = std::sync::atomic::AtomicBool::new(false);
+                let child = run_child(ChildSpec {
                     dir: &me.dir,
                     bin: &me.bin,
                     parent_pid: std::process::id(),
                     child_slot: &me.child,
-                })
-                .await
-                {
+                });
+                // fix5-host: our own child is pinged too — a SIGSTOPped or wedged
+                // host used to sit there for minutes. The watch never finishes on its
+                // own: after killing a wedged child it waits for `run_child` to reap it.
+                let result = tokio::select! {
+                    result = child => result,
+                    _ = me.watch_own_child(&socket, started, &wedged) => unreachable!(),
+                };
+                let status = match result {
                     Ok(status) => status,
                     Err(error) => {
                         me.set_state(SupervisorState::Failing {
@@ -878,6 +1040,12 @@ impl Supervisor {
                     let since = *held_since.get_or_insert_with(std::time::Instant::now);
                     me.set_state(SupervisorState::Held).await;
                     if answers(&socket).await {
+                        silent = 0;
+                    } else if holder_starting(&me.dir) {
+                        // fix5-host: a holder that took the lock moments ago is still
+                        // starting (loading extensions before its socket is up), not
+                        // wedged: replacing it killed every other start of two racing
+                        // app instances and pushed the host into safe mode.
                         silent = 0;
                     } else {
                         silent += 1;
@@ -905,13 +1073,20 @@ impl Supervisor {
                     continue;
                 }
                 held_since = None;
+                // A host that served for a while before it died (or wedged) starts a
+                // fresh failure count: only quick deaths in a row back off and nag.
+                if started.elapsed() >= SURVIVED {
+                    failures = 0;
+                }
                 failures += 1;
                 let delay = (me.backoff)(failures);
-                me.set_state(SupervisorState::Failing {
-                    failures,
-                    message: failing_message(&status),
-                })
-                .await;
+                let message = if wedged.load(std::sync::atomic::Ordering::SeqCst) {
+                    WEDGED_MESSAGE.to_string()
+                } else {
+                    failing_message(&status)
+                };
+                me.set_state(SupervisorState::Failing { failures, message })
+                    .await;
                 tokio::time::sleep(delay).await;
             }
         });
@@ -1208,6 +1383,133 @@ mod tests {
         assert!(mark.exists(), "our host was not started");
         supervisor.stop();
         tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    /// fix5-host: our own child is pinged too. A fake host answers on app.sock
+    /// (python), gets SIGSTOPped, and the supervisor kills it and starts a new one
+    /// that answers again — well within a minute even at fast test timings.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn our_own_wedged_child_is_killed_and_respawned() {
+        let Some(python) = std::process::Command::new("sh")
+            .args(["-c", "command -v python3"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+        else {
+            eprintln!("SKIP: no python3");
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let host_dir = tempfile::tempdir().unwrap();
+        let mark = dir.path().join("runs.txt");
+        let server = dir.path().join("server.py");
+        std::fs::write(
+            &server,
+            r#"import os, socket, struct
+path = os.path.join(os.environ["OINO_HOST_DIR"], "app.sock")
+try:
+    os.unlink(path)
+except FileNotFoundError:
+    pass
+s = socket.socket(socket.AF_UNIX)
+s.bind(path)
+s.listen(16)
+body = b'{"type":"ok"}'
+while True:
+    c, _ = s.accept()
+    try:
+        c.recv(65536)
+        c.sendall(bytes([0]) + struct.pack(">I", len(body)) + body)
+    finally:
+        c.close()
+"#,
+        )
+        .unwrap();
+        let bin = fake_bin(
+            dir.path(),
+            "unipi-host",
+            &format!(
+                "echo run >> {mark}; exec {python} {server}",
+                mark = mark.display(),
+                server = server.display()
+            ),
+        );
+        let socket = crate::local_host::listen_addr(host_dir.path());
+        let supervisor = Supervisor::with_timing(
+            host_dir.path().to_path_buf(),
+            bin,
+            Arc::new(|_| Duration::from_millis(10)),
+            Duration::from_millis(300),
+        );
+        supervisor.spawn();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !answers(&socket).await && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(answers(&socket).await, "the fake host never answered");
+        let first = supervisor.child.lock().await.expect("a running child");
+        // Let the supervisor's own ping see it answer (a child that never answered
+        // is still starting and gets [`OWN_STARTUP_GRACE`]).
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        // Wedge it: the socket still takes connections, nothing answers.
+        assert!(std::process::Command::new("kill")
+            .args(["-STOP", &first.to_string()])
+            .status()
+            .unwrap()
+            .success());
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        loop {
+            let runs = std::fs::read_to_string(&mark).map_or(0, |m| m.lines().count());
+            let current = *supervisor.child.lock().await;
+            if runs >= 2 && current.is_some_and(|pid| pid != first) && answers(&socket).await {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the wedged child was not replaced (runs {runs}, child {current:?})"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(
+            !Path::new(&format!("/proc/{first}")).exists()
+                || std::fs::read_to_string(format!("/proc/{first}/stat"))
+                    .is_ok_and(|s| s.rsplit_once(')').is_some_and(|(_, r)| r.trim_start().starts_with('Z'))),
+            "the wedged child is gone"
+        );
+        assert_eq!(
+            supervisor.state().await,
+            SupervisorState::Failing {
+                failures: 1,
+                message: WEDGED_MESSAGE.to_string()
+            }
+        );
+        supervisor.stop();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[test]
+    fn a_holder_that_just_took_the_lock_is_still_starting() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!holder_starting(dir.path()), "no lock file");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        std::fs::write(
+            dir.path().join("host.lock"),
+            format!(r#"{{"pid":1,"version":"1","mode":"app","started_at":{now}}}"#),
+        )
+        .unwrap();
+        assert!(holder_starting(dir.path()));
+        std::fs::write(
+            dir.path().join("host.lock"),
+            r#"{"pid":1,"version":"1","mode":"app","started_at":0}"#,
+        )
+        .unwrap();
+        assert!(!holder_starting(dir.path()));
     }
 
     // ------------------------------------------------- wedged-host recovery
