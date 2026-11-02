@@ -71,7 +71,7 @@ function HostMenu(props: { anchor: DOMRect; onDismiss: () => void; alignEnd?: bo
     if (draft !== undefined && decodeURIComponent(draft) !== id) navigate(`/new/${encodeURIComponent(id)}`);
   };
   return (
-    <AnchoredMenu anchor={props.anchor} onDismiss={props.onDismiss} label="Choose a PC" width={desktopShell() ? Math.max(232, Math.round(props.anchor.width)) : 288} alignEnd={props.alignEnd} class="hs-menu">
+    <AnchoredMenu anchor={props.anchor} onDismiss={props.onDismiss} label="Choose a PC" width={desktopShell() ? Math.max(252, Math.round(props.anchor.width)) : 288} alignEnd={props.alignEnd} class="hs-menu">
       <div class="board-menu-label">Computers</div>
       <For each={hosts?.hosts() ?? []}>
         {(host) => {
