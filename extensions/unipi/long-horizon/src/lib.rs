@@ -62,7 +62,7 @@ use unipi_kit::topics;
 use unipi_kit::{fanout, jev};
 
 use crate::goal::{Evidence, Hint, Machine, Settlement};
-use crate::graph::{AddWork, GraphFile, GraphMode, Selected, Update};
+use crate::graph::{AddWork, GraphFile, GraphMode, Selected, Update, finish_args};
 use crate::modes::{EXTENSION_ID, Mode, NAMESPACE, OwnerKind, Owners, Settings};
 use crate::ralph::{LoopState, RALPH_DIR, RALPH_GUEST_DIR};
 
@@ -1578,18 +1578,10 @@ impl Lh {
                 Vec::new()
             },
             finish: if op == "finish" {
-                args.get("finish").map(|f| {
-                    (
-                        f.get("result_ids")
-                            .and_then(Value::as_array)
-                            .into_iter()
-                            .flatten()
-                            .filter_map(Value::as_str)
-                            .map(ToOwned::to_owned)
-                            .collect(),
-                        s(f, "reason").unwrap_or_default(),
-                    )
-                })
+                // G-11: the schema's nested `finish:{result_ids, reason}` and the flat
+                // top-level `{operation:"finish", result_ids, reason}` both parse — the
+                // flat form used to be refused ("nothing to do") and cost a failed turn.
+                finish_args(args)
             } else {
                 None
             },

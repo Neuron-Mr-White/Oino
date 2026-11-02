@@ -398,6 +398,42 @@ pub struct Updated {
     pub stop_operators: Vec<String>,
 }
 
+/// The finish arguments of an `update_agent_graph` call (G-11): the schema's nested
+/// `finish:{result_ids, reason}` — or the flat top-level `{operation:"finish",
+/// result_ids, reason}` models keep sending (a refusal cost a whole turn summary with
+/// "1 failed" on a fully successful graph). `None` when neither form is present — the
+/// update then refuses with "nothing to do" as before.
+#[must_use]
+pub fn finish_args(args: &Value) -> Option<(Vec<String>, String)> {
+    let ids_of = |v: &Value| {
+        v.get("result_ids")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>()
+    };
+    match args.get("finish").filter(|f| !f.is_null()) {
+        Some(nested) => Some((
+            ids_of(nested),
+            nested
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+        )),
+        None if !ids_of(args).is_empty() => Some((
+            ids_of(args),
+            args.get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+        )),
+        _ => None,
+    }
+}
+
 /// Outcome of [`GraphFile::settle`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SettleOutcome {
@@ -1660,6 +1696,41 @@ mod tests {
     }
 
     // ── WP-X7 (D6): transient-failure recovery ────────────────────────────
+
+    #[test]
+    fn finish_parses_nested_and_flat_forms() {
+        // G-11: the flat form the lead sent in QA (`operation:"finish"` with top-level
+        // result_ids/reason) parses like the nested one.
+        let flat = json!({"operation": "finish", "result_ids": ["r-w1", "r-w2"], "reason": "done"});
+        assert_eq!(
+            finish_args(&flat),
+            Some((
+                vec!["r-w1".to_owned(), "r-w2".to_owned()],
+                "done".to_owned()
+            ))
+        );
+        let nested =
+            json!({"operation": "finish", "finish": {"result_ids": ["r-w1"], "reason": "ok"}});
+        assert_eq!(
+            finish_args(&nested),
+            Some((vec!["r-w1".to_owned()], "ok".to_owned()))
+        );
+        // The nested form wins when both are present.
+        let both = json!({"finish": {"result_ids": ["r-a"], "reason": "nested"}, "result_ids": ["r-b"], "reason": "flat"});
+        assert_eq!(
+            finish_args(&both),
+            Some((vec!["r-a".to_owned()], "nested".to_owned()))
+        );
+        // Neither form -> None (the update refuses with "nothing to do" as before).
+        assert_eq!(finish_args(&json!({"operation": "finish"})), None);
+        assert_eq!(finish_args(&json!({})), None);
+        assert_eq!(finish_args(&json!({"finish": null})), None);
+        // A nested form with empty ids still counts (unchanged old behaviour).
+        assert_eq!(
+            finish_args(&json!({"finish": {"result_ids": [], "reason": "x"}})),
+            Some((Vec::new(), "x".to_owned()))
+        );
+    }
 
     #[test]
     fn classify_failure_table() {

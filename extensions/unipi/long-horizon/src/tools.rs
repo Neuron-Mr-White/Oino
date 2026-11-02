@@ -49,7 +49,7 @@ pub fn all() -> Vec<(&'static str, &'static str, String, Value)> {
             "task": {"type": "string", "description": "One-line title of the overall graph (first add_work only)."},
             "add_work": {"type": "array", "items": work, "maxItems": MAX_ADD_WORK},
             "stop": {"type": "array", "maxItems": MAX_STOP, "items": {"type": "object", "properties": {"target_id": {"type": "string", "description": "Work id or operator id."}, "reason": {"type": "string"}}, "required": ["target_id", "reason"]}},
-            "finish": {"type": "object", "properties": {"result_ids": {"type": "array", "items": {"type": "string"}, "description": "Committed result ids (r-<work_id>) selected as the final result.", "maxItems": MAX_RESULT_IDS}, "reason": {"type": "string"}}, "required": ["result_ids", "reason"]},
+            "finish": {"type": "object", "properties": {"result_ids": {"type": "array", "items": {"type": "string"}, "description": "Committed result ids (r-<work_id>) selected as the final result.", "maxItems": MAX_RESULT_IDS}, "reason": {"type": "string"}}, "required": ["result_ids", "reason"], "description": "OR set result_ids + reason at the top level next to operation:\"finish\" (the flat form is accepted)."},
         }})),
         ("view_agent_graph", "View Agent Graph", "Inspect the durable agent graph: work status, waits, operators, failures, committed result ids, and (history:true) earlier graphs.".into(), json!({"type": "object", "properties": {
             "graph_id": {"type": "string", "description": "An earlier graph id; default the current graph."},
