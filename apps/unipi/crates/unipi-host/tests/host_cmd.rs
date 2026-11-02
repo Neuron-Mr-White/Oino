@@ -65,6 +65,74 @@ fn hub(dir: &tempfile::TempDir) -> Arc<SessionHub> {
     .unwrap()
 }
 
+/// A hub whose registry holds one openai-shaped provider with a static model, so the
+/// readiness probe has a real endpoint to hit (G-05).
+fn hub_with_probeable(dir: &tempfile::TempDir, id: &str, base: &str) -> Arc<SessionHub> {
+    let provider = FauxProvider::new(
+        (0..4)
+            .map(|_| oino_core::testing::FauxResponse::Text("ok".into()))
+            .collect(),
+    );
+    let cwd = dir.path().to_path_buf();
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
+    models.register_api_implementor("openai-completions", "ext");
+    let _ = models.register_provider(
+        "ext",
+        oino_models::ProviderRegistration {
+            id: id.to_owned(),
+            name: Some(id.to_owned()),
+            api: "openai-completions".to_owned(),
+            base_url: Some(base.to_owned()),
+            auth_env: vec![format!("{}_API_KEY", id.to_uppercase())],
+            auth_header: oino_models::AuthHeaderMode::None,
+            oauth: false,
+            headers: indexmap::IndexMap::new(),
+            compat: None,
+            models: oino_models::ProviderModels::Static(vec![oino_models::ProviderModelConfig {
+                id: format!("{id}-m"),
+                name: None,
+                api: None,
+                base_url: None,
+                reasoning: false,
+                thinking_level_map: None,
+                input: vec![oino_ai::InputModality::Text],
+                input_limits: None,
+                cost: oino_ai::ModelCost::default(),
+                prompt_cache: None,
+                context_window: 128_000,
+                max_tokens: 16_384,
+                sampling_params: None,
+                sampling_params_by_thinking_level: None,
+                headers: None,
+                compat: None,
+            }]),
+        },
+    );
+    SessionHub::create(HostHubOptions {
+        cwd,
+        agent_dir,
+        docs_root: None,
+        session_dir: None,
+        mode: ExtensionMode::Desktop,
+        has_ui: false,
+        approve: Some(false),
+        flags: ResourceFlags {
+            no_context_files: true,
+            ..ResourceFlags::default()
+        },
+        loader: Arc::new(StaticLoader(vec![Arc::new(FauxComponent(provider))
+            as Arc<dyn oino_core::extensions::api::ExtensionInstance>])),
+        models: Some(models),
+        tools: ToolSelection::Default,
+        exclude_tools: Vec::new(),
+        services_cap: None,
+        host_data_dir: Some(dir.path().join("host")),
+    })
+    .unwrap()
+}
+
 async fn run(dir: &tempfile::TempDir, cmd: HostCmd) -> Result<serde_json::Value, String> {
     let hub = hub(dir);
     run_on(&hub, cmd).await
@@ -229,6 +297,59 @@ async fn api_key_and_providers_without_a_session() {
     .await
     .unwrap_err();
     assert!(err.contains("session"), "{err}");
+}
+
+/// G-05: a saved key is validated right away — the first `auth_providers` read after the
+/// save already carries the probe's verdict (a dead key is `invalid_key`, never `ready`
+/// by assumption), without a first send failing first.
+#[tokio::test]
+async fn saving_a_dead_key_reports_invalid_right_away() {
+    // One canned 401 endpoint the probe can hit.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut buf = [0u8; 4096];
+        let _ = socket.read(&mut buf).await;
+        let body = "[]";
+        let reply = format!(
+            "HTTP/1.1 401 Unauthorized\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = socket.write_all(reply.as_bytes()).await;
+        let _ = socket.shutdown().await;
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub_with_probeable(&dir, "probe", &format!("http://{addr}"));
+
+    run_on(
+        &hub,
+        HostCmd::SetApiKey {
+            provider: "probe".into(),
+            key: "sk-dead".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let _ = server.await;
+
+    // The next read (the UI's refetch after Save) sees the probe's answer.
+    let providers = run_on(&hub, HostCmd::AuthProviders { validate: None })
+        .await
+        .unwrap();
+    let row = providers["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "probe")
+        .unwrap_or_else(|| panic!("{providers:?}"));
+    assert_eq!(row["state"], serde_json::json!("invalid_key"), "{row:?}");
+    assert_eq!(row["ready"], serde_json::json!(false));
+    assert!(
+        row["detail"].as_str().unwrap_or_default().contains("401"),
+        "{row:?}"
+    );
 }
 
 /// v2 QA D-01/D-37: `default_model` reports the model a new session will start on and

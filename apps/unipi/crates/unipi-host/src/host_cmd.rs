@@ -246,8 +246,13 @@ async fn dispatch(
                 Some(json!({"type": "api_key", "key": key})),
             )
             .await;
-            // The new key must be validated afresh (D-37).
+            // The new key must be validated afresh (D-37) — and right away (G-05): the
+            // bounded probe runs before the reply, so the UI's refetch sees the real
+            // answer (a dead key is "Not working · HTTP 401", never "ready" until the
+            // first send fails).
             hub.readiness().invalidate(&provider);
+            crate::models_readiness::probe_and_cache(hub.readiness(), &services.models, &provider)
+                .await;
             Ok(Value::Null)
         }
         HostCmd::GetShortcuts => Ok(json!({ "shortcuts": shortcuts(services) })),
