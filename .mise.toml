@@ -12,6 +12,10 @@ run = "cargo run -p oino-cli --bin oino"
 description = "Core benchmarks (WP-C11), e.g. `mise run bench -- subagents --n 50`"
 run = "cargo xtask bench"
 
+[tasks.perf]
+description = "Perf bench (scripts/perf/README.md): host RAM/CPU, subagent graph, long session, soak, app. Runs on an Agent37 VM via scripts/perf/remote.sh — never on the owner's PC"
+run = "scripts/perf/remote.sh"
+
 [tasks.gc]
 description = "Trim build caches back under OINO_TARGET_BUDGET_GB (stale tmp, incremental, old artifacts)"
 run = "scripts/target-gc.sh"

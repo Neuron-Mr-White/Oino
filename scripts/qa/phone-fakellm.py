@@ -12,10 +12,10 @@ Prompt keywords pick a script:
   "edit"   -> edit/write tool calls (diff rows)
   anything else -> medium markdown answer with code block + table, streamed slowly
 """
-import json, sys, time, re
+import json, os, sys, time, re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-LOG = open("/root/qa/fakellm.log", "a")
+LOG = None  # opened in main(); importable (scripts/perf/fakellm.py reuses the SSE helpers)
 DEMO = "/root/qa/home/projects/demo-app"
 
 MD = """Here is a **quick overview** of the project.
@@ -127,4 +127,6 @@ class H(BaseHTTPRequestHandler):
         sse(self, {"id": "c1", "object": "chat.completion.chunk", "choices": [], "usage": {"prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500}})
         self.wfile.write(b"data: [DONE]\n\n"); self.wfile.flush()
 
-ThreadingHTTPServer(("127.0.0.1", 11434), H).serve_forever()
+if __name__ == "__main__":
+    LOG = open(os.environ.get("FAKELLM_LOG", "/root/qa/fakellm.log"), "a")
+    ThreadingHTTPServer(("127.0.0.1", 11434), H).serve_forever()
