@@ -25,6 +25,7 @@ import { sessionMissing, sessions } from '../../lib/session/store';
 import { isScratchCwd, sessionCwd, sessionTitle, shortCwd } from '../../lib/session/selectors';
 import { Conversation } from '../conversation/Conversation';
 import { ModeChip } from '../conversation/ModeChip';
+import { CronChip } from '../chat/CronChip';
 import { BottomPanel } from '../panes/BottomPanel';
 import { SidePane } from '../panes/SidePane';
 import { Capsule, capsuleVisible } from '../status/Capsule';
@@ -187,7 +188,12 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
           ctx={ctx()}
           chips={
             <Show when={props.sessionId}>
-              {(sessionId) => <ModeChip hostId={props.hostId} sessionId={sessionId()} />}
+              {(sessionId) => (
+                <>
+                  <CronChip hostId={props.hostId} sessionId={sessionId()} />
+                  <ModeChip hostId={props.hostId} sessionId={sessionId()} />
+                </>
+              )}
             </Show>
           }
           desktop={desktop()}

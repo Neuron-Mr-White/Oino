@@ -90,6 +90,10 @@ export const SessionCardSchema = z
     title_locked: z.boolean().optional(),
     /** Who runs the session when it is not the user (`"cron"`; A22 fills it). */
     source: z.string().optional(),
+    /** The cron job whose run owns the session (`source: "cron"`): its id … */
+    cron_job_id: z.string().optional(),
+    /** … and its name, when the job still exists (the chat header's cron chip). */
+    cron_job_name: z.string().optional(),
     /** Line changes (`+N −M`) when a summary exists. */
     changes: CardChangesSchema.optional(),
     /** Last activity the host knows (epoch ms); the row's relative time. */

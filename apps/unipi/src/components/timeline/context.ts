@@ -29,6 +29,9 @@ export type TimelineCtx = {
    * `unipi.file-summary` extension is enabled (D-1). Absent ⇒ hidden.
    */
   undoFiles?: UndoFiles;
+  /** The cron scheduler started this chat (card `source: "cron"`): its first user
+   * message is the job's prompt, marked "Scheduled run". Absent ⇒ a user chat. */
+  cronRun?: () => boolean;
 };
 
 /** The file-summary capability the edit menu needs (WP-A27 fills it). */

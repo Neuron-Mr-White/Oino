@@ -98,12 +98,15 @@ function TurnHead(props: {
   const text = () => textOf(m()?.content as string | Part[] | undefined);
   const images = () => imagesOf(m()?.content as string | Part[] | undefined);
   const hidden = () => !!t().command?.hidden;
+  /** A cron run's chat: its first user message is the job's prompt (the scheduler sent it). */
+  const scheduled = () =>
+    !!props.ctx.cronRun?.() && props.ctx.session.turns().find((x) => x.kind === 'turn')?.turnId === t().turnId;
   return (
     <Show when={!hidden()}>
-      <Show when={t().source === 'cron'}>
+      <Show when={t().source === 'cron' || scheduled()}>
         <div class="tl-cron" data-testid="tl-cron">
           <Clock size={12} />
-          <span>Sent by cron</span>
+          <span>{scheduled() ? 'Scheduled run' : 'Sent by cron'}</span>
         </div>
       </Show>
       <Show

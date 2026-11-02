@@ -80,6 +80,12 @@ pub struct SessionCard {
     /// cron runs store — a fired run's session id is its run id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// The cron job whose run owns the session (`source == "cron"`): its id …
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron_job_id: Option<String>,
+    /// … and its name, when the job still exists (the chat header's "Cron · <job>" chip).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron_job_name: Option<String>,
     /// Line changes (`+N −M`) when a summary exists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub changes: Option<CardChanges>,
@@ -181,6 +187,8 @@ mod tests {
             unread: false,
             title_locked: false,
             source: None,
+            cron_job_id: None,
+            cron_job_name: None,
             changes: None,
             last_activity: updated_at,
         }

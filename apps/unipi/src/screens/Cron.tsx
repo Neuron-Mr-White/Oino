@@ -249,6 +249,19 @@ export default function Cron() {
     }
   });
 
+  // [ui-chat-bits] A cron-run chat's header chip lands here with ?job=<id>[&host=<id>]:
+  // pick that PC, open the job's detail once, then clear the params (Back = the list).
+  createEffect(() => {
+    const job = typeof searchParams.job === 'string' ? searchParams.job : undefined;
+    const host = typeof searchParams.host === 'string' ? searchParams.host : undefined;
+    if (!job && !host) return;
+    untrack(() => {
+      if (host && hosts.hosts().some((h) => h.id === host)) setHostId(host);
+      if (job) setDetail(job);
+    });
+    void setSearchParams({ job: undefined, host: undefined }, { replace: true });
+  });
+
   async function refresh() {
     const id = hostId();
     if (!id) return;

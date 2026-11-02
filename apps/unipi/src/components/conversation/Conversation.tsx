@@ -150,6 +150,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
       commands: () => commandNames(s.state.commands),
       columnWidth: () => colW() || 720,
       // A7 Fork: the host streams the fork's new id; route the workspace there.
+      cronRun: () => hubs().ensure(props.hostId).state.cards[s.sessionId()]?.source === 'cron',
       openSession: (id: string) => navigate(`/s/${encodeURIComponent(props.hostId)}/${encodeURIComponent(id)}`),
       // Z-28 "Also undo file changes": A27's file-summary capability. The gate is
       // read in the handler (not tracked), so disabling the owner hides the option

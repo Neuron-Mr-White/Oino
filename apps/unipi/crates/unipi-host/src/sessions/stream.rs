@@ -555,6 +555,8 @@ fn wire_card(card: &HostCard) -> SessionCard {
         unread: card.unread,
         title_locked: card.title_locked,
         source: card.source.clone(),
+        cron_job_id: card.cron_job_id.clone(),
+        cron_job_name: card.cron_job_name.clone(),
         changes: card.changes,
         last_activity: card.last_activity,
     }

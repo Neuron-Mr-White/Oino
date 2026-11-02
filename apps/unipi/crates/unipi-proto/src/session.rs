@@ -245,6 +245,12 @@ pub struct SessionCard {
     /// Who runs the session when it is not the user (`"cron"`; A22 fills it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// The cron job whose run owns the session (`source = "cron"`): its id …
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron_job_id: Option<String>,
+    /// … and its name, when the job still exists (the chat header's cron chip).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron_job_name: Option<String>,
     /// Line changes (`+N −M` of the row, Z-12) when a summary exists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub changes: Option<CardChanges>,
@@ -603,6 +609,8 @@ mod tests {
             unread: false,
             title_locked: true,
             source: None,
+            cron_job_id: None,
+            cron_job_name: None,
             changes: Some(CardChanges { add: 12, del: 4 }),
             last_activity: 1_700_000_000_000,
         };

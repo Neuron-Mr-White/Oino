@@ -305,6 +305,20 @@ describe('WP-A23: form preview and the /cron add entry', () => {
     // The param is consumed: back/refresh is the plain list.
     await waitFor(() => expect(location.hash).toBe('#/cron'));
   });
+
+  it("?job=<id>&host=<id> (a cron chat's header chip) opens that job's detail once", async () => {
+    location.hash = '#/cron?job=digest&host=host-1';
+    vi.mocked(call).mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_hosts') return { ok: true, value: hosts } as never;
+      if (cmd === 'cron_list') return { ok: true, value: { jobs: [job], paused: false } } as never;
+      if (cmd === 'cron_show') return { ok: true, value: { job, runs: [] } } as never;
+      return { ok: true, value: null } as never;
+    });
+    mount();
+    const sheet = await screen.findByTestId('cron-detail-sheet');
+    await waitFor(() => expect(sheet).toHaveTextContent("Summarize today's inbox"));
+    await waitFor(() => expect(location.hash).toBe('#/cron'));
+  });
 });
 
 describe('humanSchedule (D-33)', () => {

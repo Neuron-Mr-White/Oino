@@ -1000,6 +1000,7 @@ impl Inner {
     /// The card of one record, with the host's live state merged in.
     fn card_from(&self, state: &State, record: &CoreHubSession) -> SessionCard {
         let info = &record.info;
+        let cron = self.cron.owner_of(&info.id, &info.path);
         self.meta.onto(SessionCard {
             session_id: info.id.clone(),
             file: info.path.clone(),
@@ -1017,7 +1018,9 @@ impl Inner {
             unread: false,
             title_locked: false,
             // App spec §3.14 (WP-A23, Z-112): a run-owned session says who runs it.
-            source: self.cron.source_of(&info.id, &info.path).map(str::to_owned),
+            source: cron.as_ref().map(|_| "cron".to_owned()),
+            cron_job_id: cron.as_ref().map(|c| c.job_id.clone()),
+            cron_job_name: cron.and_then(|c| c.job_name),
             changes: None,
             last_activity: epoch_ms(info.modified),
         })
@@ -1069,6 +1072,8 @@ impl Inner {
             unread: false,
             title_locked: false,
             source: None,
+            cron_job_id: None,
+            cron_job_name: None,
             changes: None,
             last_activity: now,
         };
@@ -1478,6 +1483,8 @@ impl Inner {
                     unread: false,
                     title_locked: false,
                     source: None,
+                    cron_job_id: None,
+                    cron_job_name: None,
                     changes: None,
                     last_activity: updated_at,
                 };
@@ -1533,6 +1540,8 @@ impl Inner {
             unread: false,
             title_locked: false,
             source: None,
+            cron_job_id: None,
+            cron_job_name: None,
             changes: None,
             last_activity: epoch_ms(entry.modified),
         });

@@ -57,10 +57,19 @@ pub struct CronSessions {
 struct CronCache {
     /// When the set was last read (`None` = never).
     at: Option<std::time::Instant>,
-    /// Run ids (= the fired sessions' ids).
-    ids: std::collections::HashSet<String>,
-    /// The run records' session files, as stored (absolute paths).
-    files: std::collections::HashSet<String>,
+    /// Run ids (= the fired sessions' ids) → the run's job.
+    ids: std::collections::HashMap<String, CronOwner>,
+    /// The run records' session files, as stored (absolute paths) → the run's job.
+    files: std::collections::HashMap<String, CronOwner>,
+}
+
+/// The job behind a cron-run session (the chat header's "Cron · <job>" chip links to it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CronOwner {
+    /// The owning job's id.
+    pub job_id: String,
+    /// The job's name, when the job still exists.
+    pub job_name: Option<String>,
 }
 
 impl CronSessions {
@@ -80,6 +89,12 @@ impl CronSessions {
     /// `Some("cron")` when a run owns the session (by id or file), `None` otherwise.
     #[must_use]
     pub fn source_of(&self, session_id: &str, file: &Path) -> Option<&'static str> {
+        self.owner_of(session_id, file).map(|_| "cron")
+    }
+
+    /// The job whose run owns the session (by id or file), `None` when no run does.
+    #[must_use]
+    pub fn owner_of(&self, session_id: &str, file: &Path) -> Option<CronOwner> {
         let mut cache = self
             .state
             .lock()
@@ -92,28 +107,33 @@ impl CronSessions {
         }
         cache
             .ids
-            .contains(session_id)
-            .then_some("cron")
-            .or_else(|| {
-                cache
-                    .files
-                    .contains(&file.display().to_string())
-                    .then_some("cron")
-            })
+            .get(session_id)
+            .or_else(|| cache.files.get(&file.display().to_string()))
+            .cloned()
     }
 }
 
 impl CronCache {
     /// The run store's answer, empty on any read trouble (a broken store must not take
-    /// the sessions list down).
+    /// the sessions list down). Job names come from the job files (a missing or broken
+    /// job just leaves the name out).
     fn from_runs(paths: &CronPaths) -> Self {
         let runs = store::load_all_runs(paths).unwrap_or_default();
+        let names: std::collections::HashMap<String, String> = store::load_jobs(paths)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|job| (job.id, job.name))
+            .collect();
         let mut cache = Self::default();
         for run in runs {
-            cache.ids.insert(run.id);
+            let owner = CronOwner {
+                job_name: names.get(&run.job_id).cloned(),
+                job_id: run.job_id,
+            };
             if let Some(file) = run.session_path {
-                cache.files.insert(file);
+                cache.files.insert(file, owner.clone());
             }
+            cache.ids.insert(run.id, owner);
         }
         cache
     }
@@ -866,6 +886,24 @@ mod tests {
         assert_eq!(
             sessions.source_of("other", Path::new("/unrelated.jsonl")),
             None
+        );
+        // The owner names the job (the chat header's "Cron · <job>" chip).
+        assert_eq!(
+            sessions.owner_of("digest-0182", Path::new("/unrelated.jsonl")),
+            Some(CronOwner {
+                job_id: "digest".to_owned(),
+                job_name: Some("digest".to_owned()),
+            })
+        );
+        // A run whose job file is gone still names the job id.
+        store::save_run(&paths, &run("gone-0001", "gone", None)).unwrap();
+        let sessions = CronSessions::new(&dir.path().join("agent"));
+        assert_eq!(
+            sessions.owner_of("gone-0001", Path::new("/x.jsonl")),
+            Some(CronOwner {
+                job_id: "gone".to_owned(),
+                job_name: None,
+            })
         );
     }
 

@@ -118,6 +118,8 @@ function cronCards() {
           name: 'Daily inbox digest · run 182',
           cwd: CWD,
           source: 'cron' as const,
+          cron_job_id: 'daily-digest',
+          cron_job_name: 'Daily inbox digest',
           run_state: 'idle' as const,
         }
       : card,
@@ -170,6 +172,8 @@ export const cronBadge: MockScenario = {
           updated_at: now - 40_000,
           message_count: 8,
           source: 'cron' as const,
+          cron_job_id: 'weekly-report',
+          cron_job_name: 'Weekly usage report',
           changes: { add: 40, del: 6 },
         },
         ...genCards(5, { seed: 9, prefix: 'w', folders: ['oino', 'website', 'mobile'], changes: true, needsYou: 3, unread: 2 }),
