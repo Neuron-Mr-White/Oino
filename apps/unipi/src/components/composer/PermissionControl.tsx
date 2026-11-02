@@ -19,7 +19,7 @@
 import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { Check, ChevronUp, ListTree, ShieldCheck } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
-import { parseWorkflowStatus, WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
+import { latestPermissionEntry, latestPlanEntry, parseWorkflowStatus, WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { menuKeys } from './menuKeys';
 import { toasts } from '../../lib/toasts';
@@ -37,22 +37,57 @@ const MODE_HINT: Record<PermissionMode, string> = {
 
 const isMode = (value: string | undefined): value is PermissionMode => !!value && (PERMISSION_MODES as readonly string[]).includes(value);
 
-/** Subscribes to the workflow topic and reads it (the control owns no state). */
+/** Per-host default permission mode (`extensionSettings.permission.defaultMode`), kept in sync with Make default. */
+const [hostDefaults, setHostDefaults] = createSignal<Record<string, PermissionMode>>({});
+const fetchedHosts = new Set<string>();
+
+function ensureHostDefault(session: SessionHandle): void {
+  const hostId = session.hostId;
+  if (!hostId || fetchedHosts.has(hostId)) return;
+  fetchedHosts.add(hostId);
+  session
+    .cmd<{ values?: Record<string, unknown> }>({ type: '_oino/get_extension_settings', namespace: 'permission' })
+    .then((reply) => {
+      const vals = reply?.values ?? {};
+      const raw = typeof vals.defaultMode === 'string' ? vals.defaultMode : typeof vals.mode === 'string' ? vals.mode : undefined;
+      if (isMode(raw)) setHostDefaults((cur) => ({ ...cur, [hostId]: cur[hostId] ?? raw }));
+    })
+    .catch(() => {
+      fetchedHosts.delete(hostId);
+    });
+}
+
+/** Subscribes to the workflow topic and reads the session's real permission & plan state. */
 function useWorkflow(session: () => SessionHandle) {
   createEffect(
     on(session, (handle) => {
       const release = handle.acquire();
       handle.subscribeTopics([WORKFLOW_STATUS_TOPIC]);
+      ensureHostDefault(handle);
       onCleanup(release);
     }),
   );
   const status = () => parseWorkflowStatus(session().state.topics[WORKFLOW_STATUS_TOPIC]?.data);
-  /** The extension's default mode (`settings::defaults` → `auto`) until the topic says otherwise. */
-  const mode = (): PermissionMode => {
-    const value = status()?.permissionMode;
-    return isMode(value) ? value : 'auto';
+  const entryMode = () => {
+    const raw = latestPermissionEntry(session().state.entries);
+    return isMode(raw) ? raw : undefined;
   };
-  return { status, mode };
+  const planEntry = () => latestPlanEntry(session().state.entries);
+  /** G-01: this chat's workflow topic → this chat's persisted entry → the PC's configured default → `auto`. */
+  const mode = (): PermissionMode => {
+    const fromTopic = status()?.permissionMode;
+    if (isMode(fromTopic)) return fromTopic;
+    const fromEntry = entryMode();
+    if (fromEntry) return fromEntry;
+    return hostDefaults()[session().hostId] ?? 'auto';
+  };
+  /** G-03: plan state from the live topic when subscribed, else the session's `unipi:plan-mode` entry. */
+  const planOn = (): boolean => {
+    const s = status();
+    if (s !== undefined) return s.planMode;
+    return planEntry()?.active === true;
+  };
+  return { status, mode, planOn };
 }
 
 /** Whether the session offers one of the workflow extension's commands. */
@@ -68,13 +103,30 @@ export function PermissionControl(props: {
   disabled?: boolean;
 }) {
   const { mode: reported } = useWorkflow(() => props.session);
-  /** F-07: the pick shows at once; the workflow topic confirms (or a timeout drops it). */
-  const [wanted, setWanted] = createSignal<PermissionMode | undefined>();
+  /** Optimistic pick for THIS session only — cleared immediately on session switch or when confirmed. */
+  const [wanted, setWanted] = createSignal<{ key: string; mode: PermissionMode } | undefined>();
   let wantedTimer: ReturnType<typeof setTimeout> | undefined;
-  const mode = (): PermissionMode => wanted() ?? reported();
+  const mode = (): PermissionMode => {
+    const w = wanted();
+    return w && w.key === props.session.key ? w.mode : reported();
+  };
+  createEffect(
+    on(
+      () => props.session.key,
+      () => {
+        clearTimeout(wantedTimer);
+        setWanted(undefined);
+        setOpen(false);
+      },
+    ),
+  );
   createEffect(
     on(reported, (m) => {
-      if (m === wanted()) setWanted(undefined);
+      const w = wanted();
+      if (w && w.key === props.session.key && m === w.mode) {
+        clearTimeout(wantedTimer);
+        setWanted(undefined);
+      }
     }),
   );
   onCleanup(() => clearTimeout(wantedTimer));
@@ -90,19 +142,28 @@ export function PermissionControl(props: {
   };
   const pick = (value: PermissionMode) => {
     setOpen(false);
-    if (value === mode()) return;
-    setWanted(value);
+    // G-01: never skip sending `/permission <mode>` — picking any mode in the menu always applies it.
+    const key = props.session.key;
+    setWanted({ key, mode: value });
     clearTimeout(wantedTimer);
-    wantedTimer = setTimeout(() => setWanted(undefined), 6000);
+    wantedTimer = setTimeout(() => setWanted((cur) => (cur?.key === key ? undefined : cur)), 6000);
     props.onCommand(`/permission ${value}`);
   };
-  /** "Make default for new chats": the one way (besides Settings) to change what new chats start with. */
+  /** G-09: "Make default for new chats" writes global `defaultMode` (`permission` namespace) on any screen. */
   const makeDefault = () => {
     const value = mode();
+    const hostId = props.session.hostId;
     setOpen(false);
     props.session
-      .cmd({ type: '_oino/set_extension_setting', namespace: 'permission', key: 'mode', value, scope: 'global' })
-      .then(() => toasts().push(`New chats start in ${MODE_LABEL[value]}`, 'success'))
+      .cmd({ type: '_oino/set_extension_setting', namespace: 'permission', key: 'defaultMode', value, scope: 'global' })
+      .catch(() =>
+        props.session.cmd({ type: '_oino/set_setting', key: 'extensionSettings.permission.defaultMode', value, scope: 'global' }),
+      )
+      .then(async () => {
+        await props.session.cmd({ type: '_oino/set_setting', key: 'extensionSettings.permission.mode', value: null, scope: 'global' }).catch(() => undefined);
+        if (hostId) setHostDefaults((cur) => ({ ...cur, [hostId]: value }));
+        toasts().push(`New chats start in ${MODE_LABEL[value]}`, 'success');
+      })
       .catch(() => toasts().push('Could not save the default', 'error'));
   };
 
@@ -160,26 +221,58 @@ export function PermissionControl(props: {
   );
 }
 
-/** The Plan-mode toggle: on = the topic says plan mode is on. */
+/** The Plan-mode toggle: on = the topic / plan entry says plan mode is on; toggles explicitly `/plan on` / `/plan off`. */
 export function PlanToggle(props: {
   session: SessionHandle;
   onCommand: (command: string) => void;
   disabled?: boolean;
 }) {
-  const { status } = useWorkflow(() => props.session);
+  const { planOn: reported } = useWorkflow(() => props.session);
+  const [wanted, setWanted] = createSignal<{ key: string; on: boolean } | undefined>();
+  let wantedTimer: ReturnType<typeof setTimeout> | undefined;
+  const isOn = () => {
+    const w = wanted();
+    return w && w.key === props.session.key ? w.on : reported();
+  };
+  createEffect(
+    on(
+      () => props.session.key,
+      () => {
+        clearTimeout(wantedTimer);
+        setWanted(undefined);
+      },
+    ),
+  );
+  createEffect(
+    on(reported, (r) => {
+      const w = wanted();
+      if (w && w.key === props.session.key && r === w.on) {
+        clearTimeout(wantedTimer);
+        setWanted(undefined);
+      }
+    }),
+  );
+  onCleanup(() => clearTimeout(wantedTimer));
   const available = () => offered(props.session, 'plan');
-  const on = () => status()?.planMode === true;
+  const toggle = () => {
+    const next = !isOn();
+    const key = props.session.key;
+    setWanted({ key, on: next });
+    clearTimeout(wantedTimer);
+    wantedTimer = setTimeout(() => setWanted((cur) => (cur?.key === key ? undefined : cur)), 6000);
+    props.onCommand(`/plan ${next ? 'on' : 'off'}`);
+  };
   return (
     <Show when={available()}>
       <button
         type="button"
         class="tb-chip tb-chip-plan"
-        data-on={on() ? '' : undefined}
-        aria-pressed={on()}
-        aria-label={`Plan mode ${on() ? 'on' : 'off'}`}
-        title={on() ? 'Plan mode: on — the agent plans before acting' : 'Plan mode: off'}
+        data-on={isOn() ? '' : undefined}
+        aria-pressed={isOn()}
+        aria-label={`Plan mode ${isOn() ? 'on' : 'off'}`}
+        title={isOn() ? 'Plan mode: on — the agent plans before acting' : 'Plan mode: off'}
         disabled={props.disabled}
-        onClick={() => props.onCommand(`/plan ${on() ? 'off' : 'on'}`)}
+        onClick={toggle}
         data-testid="plan-toggle"
       >
         <ListTree size={15} class="tb-ic" />

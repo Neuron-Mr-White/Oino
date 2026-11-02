@@ -103,7 +103,7 @@ export function Toasts() {
   });
 
   return (
-    <div ref={rootEl} class="app-toasts" aria-live="polite" data-testid="app-toasts">
+    <div ref={rootEl} class="app-toasts" data-testid="app-toasts">
       <For each={stack.list()}>
         {(toast) => {
           const Icon = ICON[toast.kind];

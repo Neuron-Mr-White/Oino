@@ -192,6 +192,25 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       .catch(() => {});
   };
 
+  const desiredTopics = new Set<string>();
+  const sendTopicSub = (patterns: readonly string[]) => {
+    if (!patterns.length) return;
+    stream
+      .cmd<{ topics?: unknown[] }>({ type: '_oino/topics', subscribe: [...patterns], unsubscribe: [] })
+      .then((reply) => {
+        const list = Array.isArray(reply?.topics) ? reply!.topics! : [];
+        if (!list.length) return;
+        mutate((s) => {
+          for (const raw of list) {
+            const t = raw as { topic?: unknown; data?: unknown; sticky?: unknown; publisher?: unknown };
+            if (typeof t.topic !== 'string' || !t.topic) continue;
+            s.topics[t.topic] = { data: t.data, sticky: t.sticky !== false, publisher: typeof t.publisher === 'string' ? t.publisher : '' };
+          }
+        });
+      })
+      .catch(() => {});
+  };
+
   const follow = (r: ApplyResult) => {
     if (r.nameChanged !== undefined) hubs().peek(hostId)?.patchCard(id(), { name: r.nameChanged || undefined });
     if (r.ui) for (const m of r.ui) uiSink(hostId, id(), m);
@@ -208,6 +227,7 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
         let r: ApplyResult = {};
         batch(() => mutate((s) => (r = applySnapshot(s, snap))));
         follow(r);
+        if (desiredTopics.size > 0) queueMicrotask(() => stream.live && sendTopicSub([...desiredTopics]));
         return r;
       },
       events: (items) => {
@@ -274,21 +294,15 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     abort: () => stream.cmd({ type: 'abort' }).then(() => undefined),
     cmd: (cmd) => stream.cmd(cmd),
     subscribeTopics(patterns) {
+      const fresh: string[] = [];
+      for (const p of patterns) {
+        if (!desiredTopics.has(p)) {
+          desiredTopics.add(p);
+          fresh.push(p);
+        }
+      }
       if (!stream.live) return;
-      stream
-        .cmd<{ topics?: unknown[] }>({ type: '_oino/topics', subscribe: [...patterns], unsubscribe: [] })
-        .then((reply) => {
-          const list = Array.isArray(reply?.topics) ? reply!.topics! : [];
-          if (!list.length) return;
-          mutate((s) => {
-            for (const raw of list) {
-              const t = raw as { topic?: unknown; data?: unknown; sticky?: unknown; publisher?: unknown };
-              if (typeof t.topic !== 'string' || !t.topic) continue;
-              s.topics[t.topic] = { data: t.data, sticky: t.sticky !== false, publisher: typeof t.publisher === 'string' ? t.publisher : '' };
-            }
-          });
-        })
-        .catch(() => {});
+      sendTopicSub(fresh.length ? fresh : patterns);
     },
     async getEntries(ids) {
       const reply = await stream.cmd<{ entries?: SessionEntry[] }>({ type: 'get_entries', ids: [...ids] });

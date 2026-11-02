@@ -94,7 +94,7 @@
 .app-toast-msg {
   min-width: 0;
   flex: 1 1 auto;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .app-toast-count {
   color: var(--color-text-dim);

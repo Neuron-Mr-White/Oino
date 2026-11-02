@@ -53,6 +53,11 @@ export type DraftSession = SessionHandle & {
 const DEFAULT_LEVELS = THINKING_ORDER.filter((level) => level !== 'minimal' && level !== 'max');
 
 const SettingsSchema = z.object({ settings: z.record(z.string(), z.unknown()).optional() }).passthrough();
+const DefaultModelSchema = z
+  .object({
+    model: z.object({ provider: z.string().optional(), id: z.string(), name: z.string().optional() }).nullable().optional(),
+  })
+  .passthrough();
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : undefined);
 
@@ -109,10 +114,13 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
       setReadiness(ready);
       if (!res.ok) return;
       const s = res.value.settings ?? {};
+      const extPerm = ((s.extensionSettings as Record<string, unknown> | undefined)?.permission ?? {}) as Record<string, unknown>;
+      const permDefault = str(extPerm.defaultMode) ?? str(extPerm.mode);
       const provider = str(s.defaultProvider);
       const id = str(s.defaultModel);
       defaultLevel = str(s.defaultThinkingLevel) ?? 'medium';
       batch(() => {
+        if (permDefault && !choices().permission) setWorkflow({ permissionMode: permDefault });
         const usable = !provider || ready.providerReady(provider);
         if (id && usable && !choices().model) {
           const known = (cachedModels(hostId) ?? []).find((row) => row.id === id && (!provider || row.provider === provider));
@@ -120,6 +128,16 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
         }
         settleThinking();
       });
+      if (!id && !choices().model) {
+        void hostCmd({ kind: 'default_model' }, DefaultModelSchema, hostId)
+          .then((def) => {
+            const m = def.ok ? def.value.model : undefined;
+            if (!m?.id || choices().model || state.model?.id) return;
+            setState('model', { provider: m.provider, id: m.id, name: m.name ?? m.id });
+            settleThinking();
+          })
+          .catch(() => undefined);
+      }
     })
     .catch(() => undefined)
     .finally(() => setDefaultsIn(true));
@@ -230,6 +248,38 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
       if (cmd.type === 'set_thinking_level' && typeof cmd.level === 'string') {
         setChoices((c) => ({ ...c, thinking: cmd.level as string }));
         settleThinking();
+        return null as T;
+      }
+      if (cmd.type === '_oino/set_extension_setting' && typeof cmd.namespace === 'string' && typeof cmd.key === 'string') {
+        const scope = cmd.scope === 'project' ? 'project' : 'global';
+        const res = await hostCmd({ kind: 'set_extension_setting', namespace: cmd.namespace, key: cmd.key, value: cmd.value, scope }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        if (cmd.namespace === 'permission' && (cmd.key === 'defaultMode' || cmd.key === 'mode') && typeof cmd.value === 'string' && !choices().permission) {
+          setWorkflow({ permissionMode: cmd.value });
+        }
+        return null as T;
+      }
+      if (cmd.type === '_oino/unset_extension_setting' && typeof cmd.namespace === 'string' && typeof cmd.key === 'string') {
+        const scope = cmd.scope === 'project' ? 'project' : 'global';
+        const res = await hostCmd({ kind: 'unset_extension_setting', namespace: cmd.namespace, key: cmd.key, scope }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        return null as T;
+      }
+      if (cmd.type === '_oino/get_extension_settings' && typeof cmd.namespace === 'string') {
+        const layer = cmd.layer === 'global' || cmd.layer === 'project' ? cmd.layer : 'effective';
+        const res = await hostCmd({ kind: 'get_extension_settings', namespace: cmd.namespace, layer }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        return res.value as T;
+      }
+      if (cmd.type === '_oino/get_settings') {
+        const res = await hostCmd({ kind: 'get_settings', ...(typeof cmd.key === 'string' ? { key: cmd.key } : {}) }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        return res.value as T;
+      }
+      if (cmd.type === '_oino/set_setting' && typeof cmd.key === 'string') {
+        const scope = cmd.scope === 'project' ? 'project' : 'global';
+        const res = await hostCmd({ kind: 'set_setting', key: cmd.key, value: cmd.value, scope }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
         return null as T;
       }
       throw { code: 'E_UNSUPPORTED', message: 'Start the chat first', retryable: false };

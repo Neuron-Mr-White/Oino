@@ -54,6 +54,7 @@ export type HostCmdOp =
   | { kind: 'extensions' }
   | { kind: 'set_extension_enabled'; id: string; enabled: boolean }
   | { kind: 'auth_providers'; validate?: boolean }
+  | { kind: 'default_model' }
   | { kind: 'logout'; provider: string }
   | { kind: 'set_api_key'; provider: string; key: string }
   | { kind: 'get_shortcuts' };

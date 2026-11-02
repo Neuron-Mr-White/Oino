@@ -12,6 +12,7 @@ import type { AgentMessage, LiveTool, SessionEntry } from '../session/types';
 export const WORKFLOW_EXTENSION_ID = 'unipi.workflow';
 export const WORKFLOW_STATUS_TOPIC = 'unipi:workflow:status';
 export const PLAN_ENTRY_TYPE = 'unipi:plan-mode';
+export const PERMISSION_ENTRY_TYPE = 'unipi:permission-mode';
 /** The todo tool (long-horizon's `todowrite`; a `todo_write` alias is accepted). */
 export const TODO_TOOLS = ['todowrite', 'todo_write'];
 
@@ -20,8 +21,11 @@ export type WorkflowStatus = { planMode: boolean; permissionMode?: string };
 export function parseWorkflowStatus(v: unknown): WorkflowStatus | undefined {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
   const o = v as Record<string, unknown>;
-  if (typeof o.planMode !== 'boolean') return undefined;
-  return { planMode: o.planMode, ...(typeof o.permissionMode === 'string' && o.permissionMode ? { permissionMode: o.permissionMode } : {}) };
+  const perm = typeof o.permissionMode === 'string' && o.permissionMode ? o.permissionMode : undefined;
+  if (typeof o.planMode !== 'boolean') {
+    return o.planMode === undefined && perm ? { planMode: false, permissionMode: perm } : undefined;
+  }
+  return { planMode: o.planMode, ...(perm ? { permissionMode: perm } : {}) };
 }
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
@@ -80,6 +84,29 @@ export function latestPlanEntry(entries: readonly SessionEntry[]): { active: boo
     if (e.customType !== PLAN_ENTRY_TYPE) continue;
     const data = e.data as { active?: unknown; planFile?: unknown } | undefined;
     return { active: data?.active === true, ...(typeof data?.planFile === 'string' && data.planFile ? { planFile: data.planFile } : {}) };
+  }
+  return undefined;
+}
+
+/** The latest `unipi:permission-mode` custom entry (or `/permission <mode>` command echo) on this chat. */
+export function latestPermissionEntry(entries: readonly SessionEntry[]): string | undefined {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i]!;
+    if (e.customType === PERMISSION_ENTRY_TYPE) {
+      const mode = (e.data as { mode?: unknown } | undefined)?.mode;
+      if (typeof mode === 'string' && mode) return mode;
+    }
+    if (e.customType === 'oino.command-echo') {
+      const d = e.data as { name?: unknown; args?: unknown } | undefined;
+      if (d?.name === 'permission' && typeof d.args === 'string') {
+        const arg = d.args.trim().toLowerCase();
+        if (arg === 'ask' || arg === 'auto' || arg === 'full') return arg;
+      }
+    }
+    if (e.customType === 'unipi-command-echo') {
+      const m = /^\/permission\s+(ask|auto|full)\s*$/i.exec(String((e.data as { text?: unknown } | undefined)?.text ?? ''));
+      if (m) return m[1]!.toLowerCase();
+    }
   }
   return undefined;
 }

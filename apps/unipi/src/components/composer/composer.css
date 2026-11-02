@@ -386,6 +386,10 @@ html:not([data-shell='desktop']) .cmenu {
   justify-content: center;
 }
 
+/* P3: keep the active permission mode (Ask / Auto / Full — 3–4 chars) readable on phone. */
+html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permission'] .tb-label { display: inline; font-size: 12px; }
+html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permission'] .tb-chip { width: auto; padding: 0 9px; gap: 5px; }
+
 /* The permission menu rows (`.tb-menu-*` inside an AnchoredMenu). */
 .tb-menu-dot { display: block; width: 16px; height: 16px; }
 .tb-menu-hint { font-size: 11px; color: var(--color-text-dim); white-space: nowrap; }

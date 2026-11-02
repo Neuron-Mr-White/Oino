@@ -43,10 +43,35 @@ export function noteCommandRun(sessionKey: string, command: string, now = Date.n
   recent.set(sessionKey, { command, at: now });
 }
 
-/** First non-empty line, trimmed to fit a toast. Pure. */
+/** First non-empty line, trimmed at a word boundary to fit a toast. Pure. */
 export function reportHeadline(body: string): string {
   const line = body.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
-  return line.length > 90 ? `${line.slice(0, 89)}…` : line;
+  if (line.length <= 90) return line;
+  const cut = line.slice(0, 89);
+  const space = cut.lastIndexOf(' ');
+  return `${(space >= 60 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+const capMode = (m: string): string => (m ? m[0]!.toUpperCase() + m.slice(1).toLowerCase() : m);
+
+/** G-10: rewrites terse extension status strings into one clean human line. */
+export function humanCommandNotice(raw: string): string {
+  const text = raw.trim();
+  const perm = /^Permission mode:\s*(\w+)\s*\(this chat:\s*([^\s·)]+)\s*·\s*default:\s*([^\s)]+)\)\s*$/i.exec(text);
+  if (perm) {
+    const [, eff, chat, def] = perm;
+    const effective = capMode(eff!);
+    const defaultLabel = def && def !== '-' ? capMode(def) : undefined;
+    if (!chat || chat === '-') {
+      return defaultLabel && defaultLabel.toLowerCase() !== eff!.toLowerCase()
+        ? `Permission: ${effective} (default: ${defaultLabel})`
+        : `Permission: ${effective} (default)`;
+    }
+    return defaultLabel ? `Permission: ${effective} (this chat · default: ${defaultLabel})` : `Permission: ${effective} (this chat)`;
+  }
+  const permSet = /^Permission mode:\s*(ask|auto|full)\s*\(this chat only\)\s*$/i.exec(text);
+  if (permSet) return `Permission: ${capMode(permSet[1]!)} (this chat only)`;
+  return text;
 }
 
 /**
@@ -54,23 +79,26 @@ export function reportHeadline(body: string): string {
  * or toasts its first line with "Show"; anything else is a plain toast.
  */
 export function routeNotify(message: string, kind: ToastKind, sessionKey?: string, now = Date.now()): void {
+  const trimmed = message.trim();
+  if (!trimmed) return;
   const ran = sessionKey ? recent.get(sessionKey) : undefined;
   const answering = !!ran && now - ran.at <= REPORT_COMMAND_WINDOW_MS;
-  if (!isReport(message)) {
-    if (answering) {
-      // E-05: a one-line answer to a command the user just ran (`/kanboard status`) must not vanish unread:
-      // the toast lingers (it carries an action) and "Show" opens it in the report panel.
-      const report: Report = { id: ++seq, title: `/${ran!.command}`, body: message.trim(), kind, at: now };
-      toasts().push(message, kind, { label: 'Show', run: () => void setCurrent(report) });
+  if (!isReport(trimmed)) {
+    const oneLine = humanCommandNotice(trimmed);
+    if (answering && oneLine.length > 72) {
+      // E-05: a long one-line command reply keeps "Show" so nothing is missed; short status lines fit whole in one toast (G-10).
+      const report: Report = { id: ++seq, title: `/${ran!.command}`, body: oneLine, kind, at: now };
+      toasts().push(reportHeadline(oneLine), kind, { label: 'Show', run: () => void setCurrent(report) });
       return;
     }
-    toasts().push(message, kind);
+    toasts().push(oneLine, kind);
     return;
   }
+  const headline = reportHeadline(trimmed);
   const report: Report = {
     id: ++seq,
-    title: answering ? `/${ran!.command}` : reportHeadline(message) || 'Report',
-    body: message.replace(/\s+$/, ''),
+    title: answering ? `/${ran!.command}` : headline || 'Report',
+    body: trimmed,
     kind,
     at: now,
   };
@@ -78,7 +106,8 @@ export function routeNotify(message: string, kind: ToastKind, sessionKey?: strin
     setCurrent(report);
     return;
   }
-  toasts().push(reportHeadline(message), kind, { label: 'Show', run: () => void setCurrent(report) });
+  if (!headline) return;
+  toasts().push(headline, kind, { label: 'Show', run: () => void setCurrent(report) });
 }
 
 /** The text of a live `unipi-response` command reply carried by a session event (message_end / entry_appended), else undefined. */

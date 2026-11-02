@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isReport, noteCommandRun, openReport, reportHeadline, resetReports, routeNotify } from './reports';
+import { isReport, humanCommandNotice, noteCommandRun, openReport, reportHeadline, resetReports, routeNotify } from './reports';
 import { toasts } from './toasts';
 
 afterEach(() => {
@@ -39,5 +39,16 @@ describe('P1-02: command reports', () => {
 
   it('headline trims to one toast line', () => {
     expect(reportHeadline(`${'a'.repeat(120)}\nb`)).toHaveLength(90);
+    expect(reportHeadline(`${'word '.repeat(25)}\nb`).endsWith('…')).toBe(true);
+    expect(reportHeadline(`${'word '.repeat(25)}\nb`)).not.toMatch(/wor…$/);
+  });
+
+  it('G-10: ignores empty/whitespace notices and formats permission status on one readable line', () => {
+    noteCommandRun('h/s', 'plan status', 1000);
+    routeNotify('   \n  ', 'info', 'h/s', 1200);
+    expect(toasts().list()).toHaveLength(0);
+    expect(openReport()).toBeNull();
+    expect(humanCommandNotice('Permission mode: full (this chat: - · default: full)')).toBe('Permission: Full (default)');
+    expect(humanCommandNotice('Permission mode: ask (this chat: ask · default: full)')).toBe('Permission: Ask (this chat · default: Full)');
   });
 });

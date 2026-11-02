@@ -38,7 +38,8 @@ function sessionKeyFor(target: UiTarget): string | undefined {
 function applyEffect(target: UiTarget, req: { method: string; [k: string]: unknown }): void {
   switch (req.method) {
     case 'notify': {
-      const message = typeof req.message === 'string' ? req.message : '';
+      const raw = typeof req.message === 'string' ? req.message : typeof req.text === 'string' ? req.text : '';
+      const message = raw.trim();
       // P1-02: a multi-line / long report opens the report panel, never a 3 s toast.
       if (message) routeNotify(message, toastKindOf(req.notifyType), sessionKeyFor(target));
       return;
