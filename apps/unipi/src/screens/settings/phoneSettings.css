@@ -1,12 +1,18 @@
 /* Phone Settings (phone spec §3.9): root list + one pushed page per section.
    Every rule is scoped to the phone shell; the desktop two-column Settings is untouched. */
 
-html[data-shell=phone] .settings-phone { display: block; padding: 0; }
+html[data-shell=phone] .settings-phone { display: block; }
 html[data-shell=phone] .settings-phone-root { display: flex; flex-direction: column; gap: var(--ph-6, 24px); padding-bottom: var(--ph-6, 24px); }
-html[data-shell=phone] .settings-phone-root .settings-search { margin: 0; }
+
 
 /* Section page: the page header already names the section, so its first card label goes (no duplicate title). */
-html[data-shell=phone] .settings-phone-section .settings-body > section:first-child > .settings-section-label { display: none; }
+html[data-shell=phone] .settings-phone-section .settings-body > section:first-child > .settings-section-label,
+html[data-shell=phone] .settings-phone-section .settings-body > .contents:first-child + section > .settings-section-label,
+html[data-shell=phone] .settings-phone-section .settings-body > .contents:first-child > section:first-child > .settings-section-label { display: none; }
+/* The scaffold body is full-bleed here: Settings brings its own gutter. */
+html[data-shell=phone] .settings-phone-section { padding: 0 var(--ph-gutter, 16px); }
+html[data-shell=phone] .settings-phone-root .settings-search { margin: 0 var(--ph-gutter, 16px); }
+html[data-shell=phone] .settings-phone-section .settings-body { padding-top: var(--ph-3, 12px); }
 /* Sub-pages bring their own Back + hero; the page header does both on the phone. */
 html[data-shell=phone] .settings-phone-section .settings-subpage-head { display: none; }
 
@@ -53,3 +59,15 @@ html[data-shell=phone] .agent-editor-sheet .settings-cmd-foot .settings-link { b
 html[data-shell=phone] .agent-editor-sheet input,
 html[data-shell=phone] .agent-editor-sheet textarea,
 html[data-shell=phone] .agent-editor-sheet select { font-size: 16px; min-height: 48px; }
+
+/* Provider / capability rows: 14 px secondary text, not 12.5 (≤ 5 sizes per screen). */
+html[data-shell=phone] .settings-phone .text-\[12\.5px\],
+html[data-shell=phone] .settings-phone .text-\[13px\] { font-size: 14px; line-height: 20px; }
+html[data-shell=phone] .settings-phone .text-\[15px\] { font-size: 16px; line-height: 22px; }
+
+/* Sub-pages: the page header already names the page — no second title or icon in the hero. */
+html[data-shell=phone] .settings-phone-section .settings-subpage-title,
+html[data-shell=phone] .settings-phone-section .settings-subpage-hero > .settings-namespace-icon { display: none; }
+html[data-shell=phone] .settings-phone-section .settings-subpage-desc { font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+html[data-shell=phone] .settings-phone-section .settings-subpage-hero .settings-btn { min-height: 48px; }
+html[data-shell=phone] .settings-phone .settings-in-card-label { font-size: 14px; line-height: 20px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--color-text-muted); }
