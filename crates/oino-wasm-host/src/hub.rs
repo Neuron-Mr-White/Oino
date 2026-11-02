@@ -37,10 +37,23 @@ use crate::tasks::{TaskInfo, TaskService, TaskSpec};
 /// Custom message type of task completion notifications.
 pub const TASK_NOTIFICATION_TYPE: &str = "background-task-notification";
 
+/// One load of an extension id: the instance plus the host it was wrapped around.
+#[derive(Clone)]
+struct PastLoad {
+    instance: Weak<WasmInstance>,
+    inner: Weak<dyn HostServices>,
+}
+
 #[derive(Default)]
 struct ExtEntry {
     instance: Option<Weak<WasmInstance>>,
     inner: Option<Weak<dyn HostServices>>,
+    /// Complete `(instance, inner)` pairs of earlier loads of the same extension id
+    /// (a second services set loading the extension replaces the entry, last one wins).
+    /// A task started by an older load must still be able to deliver its completion
+    /// after the newer load died (G-04): the wake route is the starting load's inner,
+    /// and any live registration can render `tasks.notification`.
+    past: Vec<PastLoad>,
     events: HashSet<EventKind>,
     services: HashSet<String>,
     bus: HashSet<String>,
@@ -73,6 +86,13 @@ pub fn topic_matches(pattern: &str, topic: &str) -> bool {
         || pattern
             .strip_suffix('*')
             .is_some_and(|prefix| topic.starts_with(prefix))
+}
+
+/// Drops past registrations whose instance and host have both gone.
+fn prune_past(entry: &mut ExtEntry) {
+    entry
+        .past
+        .retain(|r| r.instance.upgrade().is_some() || r.inner.upgrade().is_some());
 }
 
 impl LocalServices {
@@ -152,17 +172,35 @@ impl LocalServices {
     }
 
     /// Wraps the host given to extension `id` (held weakly: a disposed service must not be
-    /// kept alive by the shared hub).
+    /// kept alive by the shared hub). The entry's previous complete registration moves to
+    /// `past` so it stays reachable while either half is alive (G-04).
     pub(crate) fn wrap(
         self: &Arc<Self>,
         id: &ExtensionId,
         inner: Arc<dyn HostServices>,
     ) -> Arc<dyn HostServices> {
-        lock(&self.exts).entry(id.clone()).or_default().inner = Some(Arc::downgrade(&inner));
+        let mut exts = lock(&self.exts);
+        let entry = exts.entry(id.clone()).or_default();
+        if let (Some(instance), Some(inner)) = (entry.instance.take(), entry.inner.take()) {
+            entry.past.push(PastLoad { instance, inner });
+        }
+        entry.inner = Some(Arc::downgrade(&inner));
+        drop(exts);
         Arc::new(Composite {
             inner,
             hub: Arc::downgrade(self),
         })
+    }
+
+    /// [`LocalServices::wrap`] for harness tests (feature `testing`): the component
+    /// harnesses exercise the real wake path, which runs through the wrapped host (G-04).
+    #[cfg(feature = "testing")]
+    pub fn wrap_for_test(
+        self: &Arc<Self>,
+        id: &ExtensionId,
+        inner: Arc<dyn HostServices>,
+    ) -> Arc<dyn HostServices> {
+        self.wrap(id, inner)
     }
 
     pub(crate) fn register_instance(self: &Arc<Self>, instance: &Arc<WasmInstance>) {
@@ -181,18 +219,28 @@ impl LocalServices {
         entry.services.extend(reg.services.iter().cloned());
     }
 
+    /// A live instance of `id`: the last registered one, else any earlier registration
+    /// that is still alive (G-04 — the last loader may have died while an older
+    /// services set still runs the extension).
     fn instance(&self, id: &ExtensionId) -> Option<Arc<WasmInstance>> {
-        lock(&self.exts)
-            .get(id)
-            .and_then(|e| e.instance.as_ref())
-            .and_then(Weak::upgrade)
+        let mut exts = lock(&self.exts);
+        let entry = exts.get_mut(id)?;
+        if let Some(instance) = entry.instance.as_ref().and_then(Weak::upgrade) {
+            return Some(instance);
+        }
+        entry.past.iter().find_map(|r| r.instance.upgrade())
     }
 
+    /// A live host route of `id`: the last registered one, else any earlier registration
+    /// that is still alive (G-04).
     fn inner(&self, id: &ExtensionId) -> Option<Arc<dyn HostServices>> {
-        lock(&self.exts)
-            .get(id)
-            .and_then(|e| e.inner.as_ref())
-            .and_then(Weak::upgrade)
+        let mut exts = lock(&self.exts);
+        let entry = exts.get_mut(id)?;
+        prune_past(entry);
+        if let Some(inner) = entry.inner.as_ref().and_then(Weak::upgrade) {
+            return Some(inner);
+        }
+        entry.past.iter().find_map(|r| r.inner.upgrade())
     }
 
     /// Delivers a host-produced event to `id` when it subscribed to `kind`.
@@ -298,11 +346,14 @@ impl LocalServices {
         }
     }
 
+    /// Serves the `tasks.*` operations. `via` is the calling session's own host route,
+    /// captured so the completion wake survives later re-loads of the extension (G-04).
     fn tasks_op(
         self: &Arc<Self>,
         ext: &ExtensionId,
         cx: &CallContext,
         op: TaskOp,
+        via: Option<Weak<dyn HostServices>>,
     ) -> Result<RawJson, HostError> {
         let to_json = |v: serde_json::Value| RawJson::from(v);
         match op {
@@ -318,7 +369,7 @@ impl LocalServices {
                     spec,
                     Arc::new(move |info| {
                         if let Some(hub) = hub.upgrade() {
-                            hub.task_finished(info);
+                            hub.task_finished(info, via.clone());
                         }
                     }),
                 )?;
@@ -368,6 +419,7 @@ impl LocalServices {
             .take_bash(ext, cx, tool_call_id, &task_id, reason)
             .await?;
         let hub = Arc::downgrade(self);
+        let via = Arc::downgrade(inner);
         self.tasks.adopt(
             &task_id,
             ext,
@@ -375,14 +427,18 @@ impl LocalServices {
             detached,
             Arc::new(move |info| {
                 if let Some(hub) = hub.upgrade() {
-                    hub.task_finished(info);
+                    hub.task_finished(info, Some(via.clone()));
                 }
             }),
         )?;
         Ok(task_id)
     }
 
-    fn task_finished(self: Arc<Self>, info: TaskInfo) {
+    /// A task ended: deliver the `oino_task` event, render the notification (any live
+    /// registration of the owner) and wake the starting session through the route the
+    /// task was started from (G-04) — the process-global registration of the extension
+    /// may point at a newer load that has since died.
+    fn task_finished(self: Arc<Self>, info: TaskInfo, via: Option<Weak<dyn HostServices>>) {
         let Ok(owner) = ExtensionId::new(info.owner.clone()) else {
             return;
         };
@@ -396,25 +452,34 @@ impl LocalServices {
         }
         let hub = Arc::clone(&self);
         tokio::spawn(async move {
-            let Some(instance) = hub.instance(&owner) else {
-                return;
+            // Rendering is best-effort: without a live instance the fallback text goes out
+            // and the notification still wakes the agent.
+            let mut cx = CallContext {
+                session_id: info.session_id.clone(),
+                kind: CallKind::Service,
+                ..CallContext::default()
             };
-            let mut cx = lock(&instance.shared.last_cx)
-                .clone()
-                .with_kind(CallKind::Service);
-            cx.session_id.clone_from(&info.session_id);
-            let info_json = RawJson::from(serde_json::to_value(&info).unwrap_or_default());
-            let has_renderer = lock(&hub.exts)
-                .get(&owner)
-                .is_some_and(|e| e.services.contains("tasks.notification"));
-            let rendered = if has_renderer {
-                instance
-                    .handle_service("tasks.notification", info_json, &owner, cx.clone())
-                    .await
-                    .ok()
-                    .and_then(|v| v.to_value().as_str().map(ToOwned::to_owned))
-            } else {
-                None
+            let rendered = match hub.instance(&owner) {
+                Some(instance) => {
+                    cx = lock(&instance.shared.last_cx)
+                        .clone()
+                        .with_kind(CallKind::Service);
+                    cx.session_id.clone_from(&info.session_id);
+                    let info_json = RawJson::from(serde_json::to_value(&info).unwrap_or_default());
+                    let has_renderer = lock(&hub.exts)
+                        .get(&owner)
+                        .is_some_and(|e| e.services.contains("tasks.notification"));
+                    if has_renderer {
+                        instance
+                            .handle_service("tasks.notification", info_json, &owner, cx.clone())
+                            .await
+                            .ok()
+                            .and_then(|v| v.to_value().as_str().map(ToOwned::to_owned))
+                    } else {
+                        None
+                    }
+                }
+                None => None,
             };
             let text = rendered.unwrap_or_else(|| {
                 format!(
@@ -434,10 +499,34 @@ impl LocalServices {
                 deliver_as: Some(Delivery::FollowUp),
                 provenance: None,
             };
-            if let Some(inner) = hub.inner(&owner) {
-                let _ = inner
+            // G-04: the wake goes through the route the task was started from (held weakly
+            // by the finish closure), falling back to any live registration of the owner.
+            // The old code only knew the process-global "last one wins" entry — when the
+            // newest load of the extension died (its services set was disposed), every
+            // completion of tasks started by older loads was silently dropped and the
+            // agent was never woken.
+            let route = via
+                .as_ref()
+                .and_then(Weak::upgrade)
+                .or_else(|| hub.inner(&owner));
+            if let Some(inner) = route {
+                if let Err(error) = inner
                     .session_write(&owner, &cx, SessionWrite::SendMessage { message, options })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        task = %info.id,
+                        session = %info.session_id,
+                        "background-task completion could not be delivered: {error}"
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    task = %info.id,
+                    session = %info.session_id,
+                    extension = %owner,
+                    "background-task completion lost: no live host route for the owning extension"
+                );
             }
         });
     }
@@ -717,7 +806,9 @@ impl HostServices for Composite {
                 let adopt = hub.adopt_bash(&self.inner, ext, cx, tool_call_id, reason);
                 block_on_runtime(adopt).map(|id| RawJson::from(json!(id)))
             }
-            (_, Some(hub)) => hub.tasks_op(ext, cx, op),
+            // G-04: capture the calling session's own host route so the completion wake
+            // does not depend on the process-global registration of the extension.
+            (_, Some(hub)) => hub.tasks_op(ext, cx, op, Some(Arc::downgrade(&self.inner))),
             (_, None) => self.inner.tasks(ext, cx, op),
         }
     }
