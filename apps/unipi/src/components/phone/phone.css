@@ -341,3 +341,5 @@ html[data-shell=phone][data-size=medium] .ph-tabbar a { max-width: 120px; }
 html[data-shell=phone][data-short] .ph-tabbar { height: calc(48px + var(--safe-bottom)); }
 html[data-shell=phone][data-short] .ph-tabbar a > span:last-child { display: none; }
 html[data-shell=phone][data-short] .ph-tabbar a svg { padding-block: 2px; }
+html[data-shell=phone][data-short] .ph-fab .ph-fab-label { display: none; }
+html[data-shell=phone][data-short] .ph-fab { padding: 0 16px; }
