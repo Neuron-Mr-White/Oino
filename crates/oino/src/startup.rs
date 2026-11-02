@@ -627,6 +627,7 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         exclude_tools: args.exclude_tools.clone().unwrap_or_default(),
         builtin_tools,
         custom_tools: Vec::new(),
+        cwd: None,
     };
     let runtime = match AgentSessionRuntime::create(Arc::clone(&services), options).await {
         Ok(runtime) => runtime,

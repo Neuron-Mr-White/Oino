@@ -129,6 +129,7 @@ pub fn run() {
             chat::trash_empty,
             chat::session_rename,
             chat::session_close,
+            chat::session_move,
             chat::session_meta_set,
             chat::events_open,
             chat::events_close,

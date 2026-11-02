@@ -52,7 +52,8 @@ pub struct SessionCard {
     /// Latest name (`session_info` entry), if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Project working directory (header).
+    /// Project working directory: the header cwd, or the workspace the chat moved to
+    /// (`oino.cwd_change`).
     pub cwd: String,
     /// Last activity, epoch milliseconds.
     pub updated_at: u64,

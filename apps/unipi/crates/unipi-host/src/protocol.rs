@@ -1108,6 +1108,7 @@ impl Handler {
             | Request::TrashEmpty
             | Request::SessionRename { .. }
             | Request::SessionClose { .. }
+            | Request::SessionMove { .. }
             | Request::SessionMetaSet { .. }
             | Request::HostCmd { .. } => {
                 let Some(service) = crate::sessions::SessionService::shared() else {

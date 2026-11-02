@@ -82,6 +82,19 @@ pub struct SessionOptions {
     pub builtin_tools: Vec<ToolEntry>,
     /// SDK custom tools.
     pub custom_tools: Vec<ToolEntry>,
+    /// The session's own working directory when it differs from the services' project
+    /// (`services.cwd`): an embedding hub may run several per-session folders (the
+    /// desktop's "No workspace" scratch dirs) on one shared services set. New sessions
+    /// record it as their header cwd and the system prompt names it. `None` =
+    /// `services.cwd`.
+    pub cwd: Option<PathBuf>,
+}
+
+impl SessionOptions {
+    /// The session's cwd: [`SessionOptions::cwd`], else the services' project.
+    fn session_cwd<'a>(&'a self, services: &'a Services) -> &'a Path {
+        self.cwd.as_deref().unwrap_or(&services.cwd)
+    }
 }
 
 impl std::fmt::Debug for SessionOptions {
@@ -106,6 +119,7 @@ impl Default for SessionOptions {
             exclude_tools: Vec::new(),
             builtin_tools: Vec::new(),
             custom_tools: Vec::new(),
+            cwd: None,
         }
     }
 }
@@ -537,7 +551,7 @@ async fn install(
         options.builtin_tools.clone()
     };
     let session = AgentSession::new(SessionConfig {
-        cwd: services.cwd.clone(),
+        cwd: options.session_cwd(services).to_path_buf(),
         agent_dir: services.agent_dir.clone(),
         docs_root: services.docs_root.clone(),
         manager,
@@ -596,13 +610,13 @@ async fn source_under_lease(
     services: &Services,
     source: &SessionSource,
     root: &Path,
+    cwd: &Path,
 ) -> Result<(SessionManager, Option<SessionLease>), SessionOpError> {
     Ok(match source {
         SessionSource::New => {
             fresh_under_lease(
                 services,
-                SessionManager::create(&services.cwd, root, CreateOptions::default())
-                    .map_err(op_error)?,
+                SessionManager::create(cwd, root, CreateOptions::default()).map_err(op_error)?,
             )
             .await?
         }
@@ -610,7 +624,7 @@ async fn source_under_lease(
             fresh_under_lease(
                 services,
                 SessionManager::create(
-                    &services.cwd,
+                    cwd,
                     root,
                     CreateOptions {
                         id: Some(id.clone()),
@@ -623,12 +637,12 @@ async fn source_under_lease(
         }
         SessionSource::Open(path) => open_under_lease(services, path, root, None).await?,
         SessionSource::ContinueRecent => {
-            match SessionManager::find_most_recent(&services.cwd, root).map_err(op_error)? {
-                Some(path) => open_under_lease(services, &path, root, Some(&services.cwd)).await?,
+            match SessionManager::find_most_recent(cwd, root).map_err(op_error)? {
+                Some(path) => open_under_lease(services, &path, root, Some(cwd)).await?,
                 None => {
                     fresh_under_lease(
                         services,
-                        SessionManager::create(&services.cwd, root, CreateOptions::default())
+                        SessionManager::create(cwd, root, CreateOptions::default())
                             .map_err(op_error)?,
                     )
                     .await?
@@ -636,7 +650,7 @@ async fn source_under_lease(
             }
         }
         SessionSource::Resume(id) => {
-            match SessionManager::find_by_id(&services.cwd, id, root).map_err(op_error)? {
+            match SessionManager::find_by_id(cwd, id, root).map_err(op_error)? {
                 Some(path) => open_under_lease(services, &path, root, None).await?,
                 None => {
                     return Err(SessionOpError::Failed(format!(
@@ -648,13 +662,13 @@ async fn source_under_lease(
         SessionSource::Fork(path) => {
             fresh_under_lease(
                 services,
-                SessionManager::fork_from(path, &services.cwd, root, CreateOptions::default())
+                SessionManager::fork_from(path, cwd, root, CreateOptions::default())
                     .map_err(op_error)?,
             )
             .await?
         }
         SessionSource::InMemory => (
-            SessionManager::in_memory(&services.cwd, CreateOptions::default(), Vec::new()),
+            SessionManager::in_memory(cwd, CreateOptions::default(), Vec::new()),
             None,
         ),
     })
@@ -696,7 +710,13 @@ impl AgentSessionRuntime {
         options: SessionOptions,
     ) -> Result<Self, SessionOpError> {
         let root = services.sessions_root(options.session_dir.as_deref());
-        let (manager, lease) = source_under_lease(&services, &options.source, &root).await?;
+        let (manager, lease) = source_under_lease(
+            &services,
+            &options.source,
+            &root,
+            options.session_cwd(&services),
+        )
+        .await?;
         let hub = EventHub::new();
         let (current, fallback) =
             install(&services, &options, &hub, None, manager, "startup", None).await?;
@@ -929,10 +949,14 @@ impl RuntimeCore {
         // "Next session": keep the runtime coherent — the taken-over file is gone from here.
         let (persisted, root) = self.persisted();
         let manager = if persisted {
-            SessionManager::create(&self.services.cwd, &root, CreateOptions::default())
+            SessionManager::create(
+                self.options.session_cwd(&self.services),
+                &root,
+                CreateOptions::default(),
+            )
         } else {
             Ok(SessionManager::in_memory(
-                &self.services.cwd,
+                self.options.session_cwd(&self.services),
                 CreateOptions::default(),
                 Vec::new(),
             ))
@@ -1069,12 +1093,17 @@ impl RuntimeCore {
         let (manager, lease) = if persisted {
             fresh_under_lease(
                 &self.services,
-                SessionManager::create(&self.services.cwd, &root, options).map_err(op_error)?,
+                SessionManager::create(self.options.session_cwd(&self.services), &root, options)
+                    .map_err(op_error)?,
             )
             .await?
         } else {
             (
-                SessionManager::in_memory(&self.services.cwd, options, Vec::new()),
+                SessionManager::in_memory(
+                    self.options.session_cwd(&self.services),
+                    options,
+                    Vec::new(),
+                ),
                 None,
             )
         };
@@ -1192,7 +1221,8 @@ impl RuntimeCore {
             )));
         }
         let (_, root) = self.persisted();
-        let dir = oino_session::manager::cwd_session_dir(&root, &self.services.cwd);
+        let dir =
+            oino_session::manager::cwd_session_dir(&root, self.options.session_cwd(&self.services));
         tokio::fs::create_dir_all(&dir).await.map_err(op_error)?;
         let destination = dir.join(path.file_name().unwrap_or_default());
         if destination != path {

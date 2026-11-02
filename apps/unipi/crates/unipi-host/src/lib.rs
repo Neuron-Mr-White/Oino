@@ -28,6 +28,7 @@ pub mod pair_link;
 pub mod pairing;
 pub mod protocol;
 pub mod push;
+pub mod scratch;
 pub mod secret;
 pub mod sessions;
 pub mod settings;

@@ -46,6 +46,7 @@ fn parses(schema: &str, value: &Value) -> Result<(), String> {
                 | Request::TrashEmpty
                 | Request::SessionRename { .. }
                 | Request::SessionClose { .. }
+                | Request::SessionMove { .. }
                 | Request::SessionMetaSet { .. },
             ) => Ok(()),
             Ok(_) => Err("not a session request".into()),

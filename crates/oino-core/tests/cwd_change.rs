@@ -157,7 +157,12 @@ async fn change_cwd_appends_a_reminder_and_keeps_the_prompt_prefix() {
     assert_eq!(session.work_cwd(), workspace);
     // A second move to the same folder is refused; a missing folder too.
     assert!(session.change_cwd(workspace.clone()).await.is_err());
-    assert!(session.change_cwd(root.path().join("missing")).await.is_err());
+    assert!(
+        session
+            .change_cwd(root.path().join("missing"))
+            .await
+            .is_err()
+    );
 
     // Next turn: tools run in the workspace, the prefix is byte-identical.
     ask(&session, "read the notes").await;
@@ -174,7 +179,10 @@ async fn change_cwd_appends_a_reminder_and_keeps_the_prompt_prefix() {
         result.content,
         vec![oino_ai::UserContent::text("from the workspace\n")]
     );
-    let bash = session.execute_bash("pwd".into(), true, None).await.unwrap();
+    let bash = session
+        .execute_bash("pwd".into(), true, None)
+        .await
+        .unwrap();
     assert_eq!(
         Path::new(bash.output.trim()).canonicalize().unwrap(),
         workspace.canonicalize().unwrap()
@@ -197,9 +205,7 @@ async fn change_cwd_appends_a_reminder_and_keeps_the_prompt_prefix() {
             .contains("The workspace changed"),
         "{reminder}"
     );
-    assert!(
-        cwd_change_reminder(&scratch, &workspace).contains(&workspace.display().to_string())
-    );
+    assert!(cwd_change_reminder(&scratch, &workspace).contains(&workspace.display().to_string()));
 
     // Reopen: same services (header cwd), the session keeps working in the workspace and the
     // system prompt is still the original one.
@@ -210,6 +216,9 @@ async fn change_cwd_appends_a_reminder_and_keeps_the_prompt_prefix() {
     ask(&session, "again").await;
     let requests = provider.requests();
     let third = messages(requests.last().unwrap());
-    assert_eq!(third[0], first[0], "the reopened session's system prompt is unchanged");
+    assert_eq!(
+        third[0], first[0],
+        "the reopened session's system prompt is unchanged"
+    );
     runtime.dispose().await;
 }

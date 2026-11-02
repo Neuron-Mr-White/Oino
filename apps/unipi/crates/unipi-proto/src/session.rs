@@ -184,6 +184,20 @@ pub struct CardChanges {
 /// The §3.14 meta fields (`pinned`, `unread`, `title_locked`, `source`, `changes`,
 /// `last_activity`) are stored host-side in `session-meta.json` and merged into every
 /// card (WP-A4).
+/// `session_move`'s reply: the moved chat's card (its `cwd` is the workspace now) and
+/// what the optional file copy did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionMoveData {
+    /// The moved chat.
+    pub card: SessionCard,
+    /// Scratch files copied into the workspace.
+    #[serde(default)]
+    pub copied: usize,
+    /// Scratch files left out because the workspace already had them.
+    #[serde(default)]
+    pub skipped: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionCard {
     /// Session id (header).

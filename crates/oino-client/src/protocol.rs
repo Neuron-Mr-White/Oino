@@ -562,6 +562,13 @@ pub enum OinoCommand {
         #[serde(default)]
         data: JsonValue,
     },
+    /// Moves the session's working directory from the next turn on (append-only: one
+    /// `oino.cwd_change` reminder message; the system prompt and earlier entries stay).
+    #[serde(rename = "_oino/set_cwd")]
+    SetCwd {
+        /// The new working directory (absolute, existing).
+        cwd: String,
+    },
     /// Enable or disable an extension (`disabledExtensions`; applies to new sessions).
     #[serde(rename = "_oino/set_extension_enabled")]
     SetExtensionEnabled {
@@ -581,7 +588,7 @@ const fn protocol_version() -> u32 {
 }
 
 /// Oino command types implemented by [`OinoCommand`].
-pub const OINO_COMMAND_TYPES: [&str; 37] = [
+pub const OINO_COMMAND_TYPES: [&str; 38] = [
     "_oino/hello",
     "_oino/ui_snapshot",
     "_oino/ui_visible",
@@ -618,6 +625,7 @@ pub const OINO_COMMAND_TYPES: [&str; 37] = [
     "_oino/running_bash",
     "_oino/extensions",
     "_oino/set_extension_enabled",
+    "_oino/set_cwd",
     "_oino/render",
 ];
 
@@ -718,6 +726,7 @@ impl OinoCommand {
             Self::RunningBash => "_oino/running_bash",
             Self::Extensions => "_oino/extensions",
             Self::SetExtensionEnabled { .. } => "_oino/set_extension_enabled",
+            Self::SetCwd { .. } => "_oino/set_cwd",
             Self::Render { .. } => "_oino/render",
         }
     }

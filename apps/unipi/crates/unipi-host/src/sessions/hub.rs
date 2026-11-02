@@ -45,7 +45,9 @@ use oino_client::hub::{
     HubLimits as CoreHubLimits, HubOptions as CoreHubOptions, HubSession as CoreHubSession,
     HubSessionState as CoreHubState, SessionHub as CoreHub,
 };
-use oino_client::protocol::{AgentCommand, RpcCommand, RpcResponseData, RpcSessionState};
+use oino_client::protocol::{
+    AgentCommand, OinoCommand, RpcCommand, RpcResponseData, RpcSessionState,
+};
 use oino_core::events::{ClientEvent, OinoEvent};
 use oino_core::extensions::api::ExtensionMode;
 use oino_core::runtime::ToolSelection;
@@ -174,6 +176,17 @@ pub struct HostHubOptions {
     /// Host data dir (`~/.oino/host`): where `session-meta.json` lives (app spec
     /// §3.14). `None` falls back to `<agent_dir>/host` (hermetic tests).
     pub host_data_dir: Option<PathBuf>,
+}
+
+/// What [`SessionHub::move_to_workspace`] did.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct MoveOutcome {
+    /// The moved chat's card (its `cwd` is the workspace now).
+    pub card: SessionCard,
+    /// Scratch files copied into the workspace.
+    pub copied: usize,
+    /// Scratch files left out because the workspace already had them.
+    pub skipped: usize,
 }
 
 /// One live session as the host hands it to a frontend (H4's stream, the tests).
@@ -364,6 +377,9 @@ struct Inner {
     /// The host data dir (`~/.oino/host`; the fallback hermetic tests use) — where the
     /// blob store media references point.
     host_data: PathBuf,
+    /// Where "No workspace" chats run: `<scratch root>/<session id>` (scratch.rs). All of
+    /// them share the root's services set.
+    scratch_root: PathBuf,
     started: SystemTime,
 }
 
@@ -423,6 +439,18 @@ impl SessionHub {
         if let Some(cap) = options.services_cap {
             limits = limits.with_max_services(cap);
         }
+        // "No workspace" chats run in per-chat scratch folders (never `$HOME`), all on the
+        // root's one services set. Hermetic hubs (no host data dir: tests) keep them under
+        // their own agent dir; a real host uses the OS data dir (scratch.rs).
+        let scratch_root = if options.host_data_dir.is_some() {
+            crate::scratch::default_scratch_root()
+        } else {
+            agent_dir.join("scratch")
+        };
+        if let Err(error) = std::fs::create_dir_all(&scratch_root) {
+            tracing::warn!(root = %scratch_root.display(), "scratch root not created: {error}");
+        }
+        limits = limits.with_shared_services_root(scratch_root.clone());
         let core = CoreHub::create_with(core_options, limits)?;
         let host_data = options
             .host_data_dir
@@ -443,6 +471,7 @@ impl SessionHub {
             warmed_at: Mutex::new(None),
             readiness: crate::models_readiness::ReadinessCache::new(),
             host_data,
+            scratch_root,
             started: SystemTime::now(),
         });
         Ok(Arc::new(Self { inner }))
@@ -452,6 +481,12 @@ impl SessionHub {
     #[must_use]
     pub fn cwd(&self) -> &Path {
         &self.inner.cwd
+    }
+
+    /// Where "No workspace" chats run: one `<root>/<session id>` folder per chat.
+    #[must_use]
+    pub fn scratch_root(&self) -> &Path {
+        &self.inner.scratch_root
     }
 
     /// The agent dir (`~/.oino`).
@@ -578,7 +613,11 @@ impl SessionHub {
                 if cwds >= inner.core.max_services() {
                     break;
                 }
-                let cwd = PathBuf::from(&record.info.cwd);
+                let mut cwd = PathBuf::from(&record.info.cwd);
+                // Every scratch chat runs on the scratch root's one services set.
+                if crate::scratch::is_scratch(&inner.scratch_root, &cwd) {
+                    cwd = inner.scratch_root.clone();
+                }
                 if record.info.cwd.is_empty()
                     || !cwd.is_absolute()
                     || !cwd.is_dir()
@@ -736,7 +775,38 @@ impl SessionHub {
         cwd: Option<&Path>,
         name: Option<&str>,
     ) -> Result<HubSession, HubError> {
-        self.inner.create_session(cwd, name).await
+        self.inner.create_session(cwd, name, None).await
+    }
+
+    /// `session_new{name?}` without a `cwd` — a "No workspace" chat: a new session whose
+    /// cwd is its own private scratch folder `<scratch root>/<session id>`, created here.
+    /// Never the user's home (the agent could read and write all of it).
+    ///
+    /// # Errors
+    ///
+    /// The folder cannot be created; services creation or session-open failures.
+    pub async fn create_scratch_session(&self, name: Option<&str>) -> Result<HubSession, HubError> {
+        self.inner.create_scratch_session(name).await
+    }
+
+    /// "Move to a workspace…": a scratch chat moves to `cwd` from its next turn on — one
+    /// way only ([`crate::scratch::check_move`]). Append-only: the core appends one
+    /// `oino.cwd_change` reminder; the header cwd, the system prompt and earlier entries
+    /// stay byte-identical (prompt cache). The session file stays where it is (under the
+    /// scratch cwd's sessions dir — listing scans every dir, and the reopen finds the move
+    /// in the file). With `copy_files`, the scratch folder's files are copied into `cwd`
+    /// first, never overwriting. Emits the moved card (the Sessions list regroups it).
+    ///
+    /// # Errors
+    ///
+    /// Unknown session, the one-way rule, a busy agent, copy failures.
+    pub async fn move_to_workspace(
+        &self,
+        target: &str,
+        cwd: &Path,
+        copy_files: bool,
+    ) -> Result<MoveOutcome, HubError> {
+        self.inner.move_to_workspace(target, cwd, copy_files).await
     }
 
     /// `session_open{session}`: wake (or reuse) the session, taking the lease over from any
@@ -862,7 +932,8 @@ impl Inner {
             session_id: info.id.clone(),
             file: info.path.clone(),
             name: info.name.clone(),
-            cwd: info.cwd.clone(),
+            // A chat that moved to a workspace (`oino.cwd_change`) is listed there.
+            cwd: info.moved_cwd.clone().unwrap_or_else(|| info.cwd.clone()),
             updated_at: epoch_ms(info.modified),
             message_count: info.message_count,
             state: Self::state_of(state, &info.id, record.state),
@@ -1035,16 +1106,99 @@ impl Inner {
         self: &Arc<Self>,
         cwd: Option<&Path>,
         name: Option<&str>,
+        id: Option<String>,
     ) -> Result<HubSession, HubError> {
         let cwd = cwd.map_or_else(|| self.cwd.clone(), Path::to_path_buf);
         let model = self.default_model_for(&cwd).await?;
         let backend = self
             .core
-            .create_session_with_model(Some(&cwd), name, model)
+            .create_session_with_id(Some(&cwd), name, model, id)
             .await?;
         let card = self.card_for(&backend, &cwd).await;
         self.emit(HubEvent::SessionChanged { card: card.clone() });
         Ok(HubSession::new(Arc::downgrade(self), backend, card, None))
+    }
+
+    /// [`SessionHub::create_scratch_session`]: the id is chosen first so the folder can be
+    /// named after it before the runtime (and its header cwd) exists.
+    async fn create_scratch_session(
+        self: &Arc<Self>,
+        name: Option<&str>,
+    ) -> Result<HubSession, HubError> {
+        let id = uuid::Uuid::now_v7().hyphenated().to_string();
+        let dir = crate::scratch::scratch_dir(&self.scratch_root, &id);
+        std::fs::create_dir_all(&dir).map_err(|error| {
+            HubError::failed(format!(
+                "Could not create the chat's scratch folder {}: {error}",
+                dir.display()
+            ))
+        })?;
+        tracing::info!(session_id = %id, cwd = %dir.display(), "scratch chat (No workspace)");
+        self.create_session(Some(&dir), name, Some(id)).await
+    }
+
+    /// [`SessionHub::move_to_workspace`].
+    async fn move_to_workspace(
+        self: &Arc<Self>,
+        target: &str,
+        cwd: &Path,
+        copy_files: bool,
+    ) -> Result<MoveOutcome, HubError> {
+        let opened = self.open(target).await?;
+        let id = opened.session_id();
+        let backend = Arc::clone(&opened.backend);
+        // The live runtime is the truth for the current folder (a moved file-less chat has
+        // no record yet).
+        let current = match backend
+            .send(RpcCommand::Agent(AgentCommand::GetState))
+            .await
+        {
+            Ok(Some(data)) => serde_json::from_value::<RpcSessionState>(data)
+                .ok()
+                .and_then(|state| state.cwd)
+                .unwrap_or_else(|| opened.card.cwd.clone()),
+            _ => opened.card.cwd.clone(),
+        };
+        // Judged on canonical paths (a symlinked temp/data dir must not hide that the
+        // target sits inside the scratch area).
+        let canon = |path: &Path| dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let current = canon(Path::new(&current));
+        let target_dir = canon(cwd);
+        crate::scratch::check_move(&canon(&self.scratch_root), &current, &target_dir)
+            .map_err(HubError::failed)?;
+        let copied = if copy_files {
+            crate::scratch::copy_missing(&current, &target_dir).map_err(|error| {
+                HubError::failed(format!(
+                    "Copying the scratch files into {} failed: {error}",
+                    target_dir.display()
+                ))
+            })?
+        } else {
+            crate::scratch::CopyReport::default()
+        };
+        backend
+            .send(RpcCommand::Oino(OinoCommand::SetCwd {
+                cwd: target_dir.display().to_string(),
+            }))
+            .await?;
+        tracing::info!(
+            session_id = %id,
+            from = %current.display(),
+            to = %target_dir.display(),
+            copied = copied.copied,
+            skipped = copied.skipped,
+            "chat moved to a workspace"
+        );
+        let card = match self.card(&id).await? {
+            Some(card) => card,
+            None => self.card_for(&backend, &target_dir).await,
+        };
+        self.emit(HubEvent::SessionChanged { card: card.clone() });
+        Ok(MoveOutcome {
+            card,
+            copied: copied.copied,
+            skipped: copied.skipped,
+        })
     }
 
     /// The chooser behind `session_new`: the same services the runtime will run on, so the

@@ -654,10 +654,17 @@ fn cwd_change_is_append_only_and_listed_as_moved_cwd() {
     assert_eq!(sm.cwd(), Path::new(CWD), "the header cwd stays");
     assert_eq!(sm.moved_cwd().as_deref(), Some(Path::new("/work/real")));
     let listed = SessionManager::list_all(root.path(), None, None).unwrap();
-    assert_eq!(listed.len(), 1, "the file stays in the old cwd's dir and is still listed");
+    assert_eq!(
+        listed.len(),
+        1,
+        "the file stays in the old cwd's dir and is still listed"
+    );
     assert_eq!(listed[0].cwd, CWD);
     assert_eq!(listed[0].moved_cwd.as_deref(), Some("/work/real"));
     // Reopened: the move survives.
     let reopened = SessionManager::open(&file, root.path(), None).unwrap();
-    assert_eq!(reopened.moved_cwd().as_deref(), Some(Path::new("/work/real")));
+    assert_eq!(
+        reopened.moved_cwd().as_deref(),
+        Some(Path::new("/work/real"))
+    );
 }

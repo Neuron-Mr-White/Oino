@@ -223,6 +223,7 @@ impl SessionFactory for CoreSessionFactory {
                 exclude_tools: self.defaults.exclude_tools.clone(),
                 builtin_tools,
                 custom_tools: Vec::new(),
+                cwd: None,
             };
             let runtime = AgentSessionRuntime::create(services, options)
                 .await

@@ -626,10 +626,14 @@ where
                 }
                 None => None,
             };
-            let session = hub
-                .create_session(cwd.as_deref(), name.as_ref().map(|name| name.as_str()))
-                .await
-                .map_err(hub_error)?;
+            let name = name.as_ref().map(|name| name.as_str());
+            // No cwd = "No workspace": the chat's own private scratch folder, never the
+            // user's home (scratch.rs).
+            let session = match cwd.as_deref() {
+                Some(cwd) => hub.create_session(Some(cwd), name).await,
+                None => hub.create_scratch_session(name).await,
+            }
+            .map_err(hub_error)?;
             open_stream(service, Arc::new(session), None, read, write).await
         }
         Request::SessionOpen { session, since_seq } => {
@@ -706,6 +710,27 @@ where
                 .map_err(hub_error)?;
             hub.refresh(&opened.session_id()).await;
             write_control(write, &Control::Ok { data: None }).await
+        }
+        Request::SessionMove {
+            session,
+            cwd,
+            copy_files,
+        } => {
+            tracing::info!(op = "session_move", session = session.as_str(), "request");
+            let home = crate::fs::home_dir_opt()
+                .ok_or_else(|| internal("the host has no home directory for this workspace"))?;
+            let cwd = crate::fs::resolve_request_path(cwd.as_str(), &home)?;
+            let moved = hub
+                .move_to_workspace(session.as_str(), &cwd, copy_files)
+                .await
+                .map_err(hub_error)?;
+            let data = serde_json::to_value(unipi_proto::session::SessionMoveData {
+                card: wire_card(&moved.card),
+                copied: moved.copied,
+                skipped: moved.skipped,
+            })
+            .map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
         }
         Request::SessionClose { session } => {
             tracing::info!(op = "session_close", session = session.as_str(), "request");

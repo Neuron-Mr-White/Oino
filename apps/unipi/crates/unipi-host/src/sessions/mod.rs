@@ -12,7 +12,8 @@ pub mod stream;
 
 pub use card::{HubState, ProjectGroup, SessionCard};
 pub use hub::{
-    takeover_from, HostHubOptions, HubError, HubEvent, HubSession, NoticeLevel, SessionHub,
+    takeover_from, HostHubOptions, HubError, HubEvent, HubSession, MoveOutcome, NoticeLevel,
+    SessionHub,
 };
 pub use meta::{FocusRegistry, MetaStore, SessionMetaFlags};
 pub use stream::{Feed, SessionService, Subscription};

@@ -147,7 +147,7 @@ impl Shared {
         if path.is_absolute() {
             path.to_path_buf()
         } else {
-            self.runtime.services().cwd.join(path)
+            self.runtime.session().work_cwd().join(path)
         }
     }
 
@@ -178,7 +178,7 @@ impl Shared {
             follow_up_mode: session.follow_up_mode(),
             session_file: session.session_file().map(|p| p.display().to_string()),
             session_id: session.session_id(),
-            cwd: Some(session.cwd().display().to_string()),
+            cwd: Some(session.work_cwd().display().to_string()),
             session_name: session.session_name(),
             auto_compaction_enabled,
             message_count: session.messages().len(),
@@ -532,7 +532,8 @@ impl Shared {
             | OinoCommand::Rewind { .. }
             | OinoCommand::RunningBash
             | OinoCommand::Extensions
-            | OinoCommand::SetExtensionEnabled { .. }) => self.gui(&session, command).await,
+            | OinoCommand::SetExtensionEnabled { .. }
+            | OinoCommand::SetCwd { .. }) => self.gui(&session, command).await,
             command => self.frontend(&session, command).await,
         }
     }
@@ -587,6 +588,13 @@ impl Shared {
                     .set_extension_enabled(&id, enabled)
                     .map_err(failed)?;
                 Ok(None)
+            }
+            OinoCommand::SetCwd { cwd } => {
+                session
+                    .change_cwd(PathBuf::from(cwd))
+                    .await
+                    .map_err(failed)?;
+                data(json!({ "cwd": session.work_cwd().display().to_string() }))
             }
             other => Err(ClientError::Protocol(format!(
                 "{} is not a GUI command",
@@ -778,6 +786,7 @@ impl Shared {
             | OinoCommand::RunningBash
             | OinoCommand::Extensions
             | OinoCommand::SetExtensionEnabled { .. }
+            | OinoCommand::SetCwd { .. }
             | OinoCommand::UiSnapshot
             | OinoCommand::UiVisible { .. }
             | OinoCommand::UiResync { .. }

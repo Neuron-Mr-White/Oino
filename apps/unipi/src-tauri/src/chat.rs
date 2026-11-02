@@ -11,7 +11,7 @@
 //! session_stream_close(streamId)             local hang-up (the session keeps running)
 //! events_open(hostId, onEvent)               → stream id; {kind:"hub_event", event}
 //! events_close(streamId)                     local hang-up
-//! session_archive|restore|delete|rename|close   one-shot session ops
+//! session_archive|restore|delete|rename|close|move   one-shot session ops
 //! trash_empty(hostId)                          delete every archived session
 //! ```
 //!
@@ -802,6 +802,32 @@ pub async fn session_rename(
         &state,
         &host_id,
         Request::SessionRename { session, name },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
+/// `session_move` (UniPi Oino "Move to a workspace…"): a "No workspace" chat moves to a
+/// real folder from its next turn on — one way only. JS args: `{hostId, session, cwd,
+/// copyFiles}`. → `{card, copied, skipped}`.
+#[tauri::command]
+pub async fn session_move(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    session: SessionTarget,
+    cwd: unipi_proto::FsPath,
+    copy_files: Option<bool>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionMove {
+            session,
+            cwd,
+            copy_files: copy_files.unwrap_or(false),
+        },
         REPLY_TIMEOUT,
     )
     .await

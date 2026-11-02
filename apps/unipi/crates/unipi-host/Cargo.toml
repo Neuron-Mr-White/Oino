@@ -44,6 +44,10 @@ tokio-util.workspace = true
 
 tokio = { version = "1", features = ["full"] }
 dunce = "1"
+# "No workspace" chats: the per-OS data dir of the scratch folders (scratch.rs) and the
+# session id the folder is named after before the runtime exists.
+dirs.workspace = true
+uuid = { version = "1", features = ["v7"] }
 iroh.workspace = true
 iroh-tickets.workspace = true
 clap = { version = "4", features = ["derive"] }

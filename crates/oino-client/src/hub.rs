@@ -139,13 +139,16 @@ impl HubOptions {
 /// [`HubLimits::default`] keeps every setting. Kept separate from [`HubOptions`] (a
 /// plain struct literal, frozen at 1.0) so new knobs here stay additive:
 /// `#[non_exhaustive]`, grown by builder methods only.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct HubLimits {
     /// Overrides `extensionSettings.hub.maxServices` (`None` keeps the setting, default 4).
     /// Every cached services set holds one wasm instance per extension — preopen dirs and
     /// log descriptors — so a host with a low `RLIMIT_NOFILE` cannot afford the default.
     max_services: Option<usize>,
+    /// Sessions whose cwd is a direct child of this dir share the services set of the dir
+    /// itself (see [`HubLimits::with_shared_services_root`]).
+    shared_services_root: Option<PathBuf>,
 }
 
 impl HubLimits {
@@ -155,6 +158,16 @@ impl HubLimits {
     #[must_use]
     pub fn with_max_services(mut self, max: usize) -> Self {
         self.max_services = Some(max);
+        self
+    }
+
+    /// Sessions whose cwd is a direct child of `root` run on the one services set of `root`
+    /// (settings, resources, extensions) while each keeps its own cwd — the desktop's
+    /// per-chat "No workspace" scratch folders, which would otherwise cost one services
+    /// set (and its descriptors) per chat.
+    #[must_use]
+    pub fn with_shared_services_root(mut self, root: PathBuf) -> Self {
+        self.shared_services_root = Some(root);
         self
     }
 }
@@ -258,6 +271,8 @@ struct Inner {
     tools: ToolSelection,
     exclude_tools: Vec<String>,
     config: HubConfig,
+    /// [`HubLimits::with_shared_services_root`].
+    shared_services_root: Option<PathBuf>,
     state: tokio::sync::Mutex<State>,
 }
 
@@ -322,6 +337,7 @@ impl SessionHub {
             tools: opts.tools,
             exclude_tools: opts.exclude_tools,
             config,
+            shared_services_root: limits.shared_services_root,
             state: tokio::sync::Mutex::new(State {
                 services: Vec::new(),
                 live: HashMap::new(),
@@ -382,11 +398,30 @@ impl SessionHub {
         name: Option<&str>,
         model: Option<oino_ai::Model>,
     ) -> Result<Arc<dyn SessionBackend>, ClientError> {
+        self.create_session_with_id(cwd, name, model, None).await
+    }
+
+    /// [`SessionHub::create_session_with_model`] with an explicit session id (`None` = a
+    /// fresh `UUIDv7`): the embedding host can name a per-session folder (the desktop's
+    /// "No workspace" scratch dir) after the id before the runtime exists.
+    ///
+    /// # Errors
+    ///
+    /// Services creation or session-open failures (an invalid id included).
+    pub async fn create_session_with_id(
+        &self,
+        cwd: Option<&Path>,
+        name: Option<&str>,
+        model: Option<oino_ai::Model>,
+        id: Option<String>,
+    ) -> Result<Arc<dyn SessionBackend>, ClientError> {
         let mut state = self.inner.state.lock().await;
-        let cwd = cwd.map_or_else(|| self.inner.cwd.clone(), Path::to_path_buf);
+        let session_cwd = cwd.map_or_else(|| self.inner.cwd.clone(), Path::to_path_buf);
+        let cwd = self.services_cwd(&session_cwd);
         let services = self.services_for(&mut state, &cwd).await?;
         let options = SessionOptions {
-            source: SessionSource::New,
+            source: id.map_or(SessionSource::New, SessionSource::NewWithId),
+            cwd: (session_cwd != cwd).then_some(session_cwd),
             session_dir: Some(self.inner.sessions_root.clone()),
             name: name.map(str::to_owned),
             model,
@@ -500,10 +535,12 @@ impl SessionHub {
             *lock(&live.last_active) = Instant::now();
             return Ok(lazy_backend(live));
         }
-        let cwd = self.record_cwd(info);
+        let session_cwd = self.record_cwd(info);
+        let cwd = self.services_cwd(&session_cwd);
         let services = self.services_for(&mut state, &cwd).await?;
         let options = SessionOptions {
             source: SessionSource::Open(info.path.clone()),
+            cwd: (session_cwd != cwd).then_some(session_cwd),
             session_dir: Some(self.inner.sessions_root.clone()),
             tools: self.inner.tools.clone(),
             exclude_tools: self.inner.exclude_tools.clone(),
@@ -555,8 +592,9 @@ impl SessionHub {
     ///
     /// Services creation failures.
     pub async fn warm_services(&self, cwd: &Path) -> Result<Arc<Services>, ClientError> {
+        let cwd = self.services_cwd(cwd);
         let mut state = self.inner.state.lock().await;
-        self.services_for(&mut state, cwd).await
+        self.services_for(&mut state, &cwd).await
     }
 
     /// The effective `maxServices` of this hub: the setting, or the [`HubLimits`] override.
@@ -660,6 +698,15 @@ impl SessionHub {
     }
 
     /// The services cwd of a record: its header cwd when absolute, else the hub's primary.
+    /// The services cwd of a session cwd: the shared root for its direct children
+    /// ([`HubLimits::with_shared_services_root`]), else the cwd itself.
+    fn services_cwd(&self, session_cwd: &Path) -> PathBuf {
+        match &self.inner.shared_services_root {
+            Some(root) if session_cwd.parent() == Some(root.as_path()) => root.clone(),
+            _ => session_cwd.to_path_buf(),
+        }
+    }
+
     fn record_cwd(&self, info: &SessionInfo) -> PathBuf {
         let cwd = Path::new(&info.cwd);
         if info.cwd.is_empty() || !cwd.is_absolute() {

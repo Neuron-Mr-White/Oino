@@ -738,6 +738,21 @@ pub enum Request {
         /// The new name.
         name: crate::session::SessionName,
     },
+    /// UniPi Oino "Move to a workspace…": a "No workspace" chat (it runs in its
+    /// private scratch folder) moves to the real folder `cwd` from its next turn on —
+    /// one way only (never back to scratch, never workspace → workspace).
+    /// Append-only: one reminder message is added; the system prompt and earlier
+    /// messages stay as they were. `copy_files` copies the scratch folder's files
+    /// into `cwd` first, never overwriting. → `SessionMoveData`.
+    SessionMove {
+        /// Exact id, unique prefix or session file path.
+        session: crate::session::SessionTarget,
+        /// The workspace folder (absolute or `~/…`).
+        cwd: FsPath,
+        /// Copy the scratch files into the workspace (default off).
+        #[serde(default)]
+        copy_files: bool,
+    },
     /// host.md §4.2 (WP-H4): dispose the runtime when idle and no other
     /// subscriber; the session file stays. → `null`.
     SessionClose {
