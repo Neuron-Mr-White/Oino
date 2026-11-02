@@ -1,0 +1,17 @@
+--------- beginning of crash
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: FATAL EXCEPTION: main
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: Process: dev.unipi.app.dev, PID: 5870
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: java.lang.NullPointerException: Attempt to invoke virtual method 'java.lang.Class java.lang.Object.getClass()' on a null object reference
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at no1.<init>(r8-map-id-49adc7132a39a266b02751c09a9a6376f56fbe67009b28f5a6f0c88c54153331:57)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at yo1.e(r8-map-id-49adc7132a39a266b02751c09a9a6376f56fbe67009b28f5a6f0c88c54153331:144)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at pj.f(r8-map-id-49adc7132a39a266b02751c09a9a6376f56fbe67009b28f5a6f0c88c54153331:28)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at app.tauri.barcodescanner.BarcodeScannerPlugin.a(r8-map-id-49adc7132a39a266b02751c09a9a6376f56fbe67009b28f5a6f0c88c54153331:293)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at zy.run(r8-map-id-49adc7132a39a266b02751c09a9a6376f56fbe67009b28f5a6f0c88c54153331:97)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at android.os.Handler.handleCallback(Handler.java:958)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:205)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:294)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+11-02 13:47:20.673  5870  5870 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)

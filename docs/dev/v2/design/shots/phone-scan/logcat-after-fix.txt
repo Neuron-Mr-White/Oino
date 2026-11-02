@@ -1,0 +1,19 @@
+# after fix (APK d051927a): scanner opened with camera granted ~30 s, denied path, code pairing, Enter code instead
+# logcat -b crash -d:
+# (empty = no crash)
+# app log excerpt:
+11-02 15:00:02.910  6868  7043 W DynamiteModule: Local module descriptor class for com.google.mlkit.dynamite.barcode not found.
+11-02 15:00:03.089  6868  7038 D TransportRuntime.SQLiteEventStore: Storing event with priority=VERY_LOW, name=FIREBASE_ML_SDK for destination cct
+11-02 15:00:03.091  6868  7038 D TransportRuntime.JobInfoScheduler: Upload for context TransportContext(cct, VERY_LOW, MSRodHRwczovL2ZpcmViYXNlbG9nZ2luZy5nb29nbGVhcGlzLmNvbS92MGNjL2xvZy9iYXRjaD9mb3JtYXQ9anNvbl9wcm90bzNc) is already scheduled. Returning...
+11-02 15:00:03.431  6868  6888 D EGL_emulation: app_time_stats: avg=239.41ms min=196.37ms max=262.70ms count=5
+11-02 15:00:03.712  6868  7062 W DynamiteModule: Local module descriptor class for com.google.mlkit.dynamite.barcode not found.
+11-02 15:00:04.198  6868  7043 W DynamiteModule: Local module descriptor class for com.google.mlkit.dynamite.barcode not found.
+11-02 15:00:04.465  6868  6888 D EGL_emulation: app_time_stats: avg=258.49ms min=203.48ms max=286.21ms count=4
+11-02 15:00:04.736  6868  7062 W DynamiteModule: Local module descriptor class for com.google.mlkit.dynamite.barcode not found.
+11-02 15:00:05.210  6868  7043 W DynamiteModule: Local module descriptor class for com.google.mlkit.dynamite.barcode not found.
+11-02 15:00:05.475  6868  6888 D EGL_emulation: app_time_stats: avg=252.46ms min=199.35ms max=277.75ms count=4
+11-02 15:00:05.751  6868  7062 W DynamiteModule: Local module descriptor class for com.google.mlkit.dynamite.barcode not found.
+11-02 15:00:06.516  6868  6888 D EGL_emulation: app_time_stats: avg=260.28ms min=212.32ms max=315.29ms count=4
+11-02 15:00:06.517  6868  7043 W DynamiteModule: Local module descriptor class for com.google.mlkit.dynamite.barcode not found.
+11-02 15:00:06.522  6868  7038 D TransportRuntime.SQLiteEventStore: Storing event with priority=VERY_LOW, name=FIREBASE_ML_SDK for destination cct
+11-02 15:00:06.594  6868  7038 D TransportRuntime.JobInfoScheduler: Upload for context TransportContext(cct, VERY_LOW, MSRodHRwczovL2ZpcmViYXNlbG9nZ2luZy5nb29nbGVhcGlzLmNvbS92MGNjL2xvZy9iYXRjaD9mb3JtYXQ9anNvbl9wcm90bzNc) is already scheduled. Returning...
