@@ -781,12 +781,20 @@ impl Subagents {
             if timers::now_ms() - started >= timeout_ms {
                 break Wait::Timeout;
             }
-            let calls = run.progress.borrow().tool_calls;
+            let (calls, current) = {
+                let p = run.progress.borrow();
+                (p.tool_calls, p.current())
+            };
             // The streamed details carry the resolved profile (QA-8): the parent model may
             // call run_subagent without an `agent`/`profile` arg, and the UI names the
             // AgentRow from these details while the run is live.
             let mut live = view::details(rec, None, Status::Running);
             live["startedAt"] = json!(rec.started_at);
+            live["toolCalls"] = json!(calls);
+            if let Some(current) = current {
+                // The timeline card's live activity line (current child tool + argument).
+                live["current"] = current;
+            }
             cx.progress(
                 &ToolResult::text(format!(
                     "Subagent \"{}\" working · {}",

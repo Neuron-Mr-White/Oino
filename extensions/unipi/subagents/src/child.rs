@@ -237,6 +237,26 @@ pub struct Progress {
 }
 
 impl Progress {
+    /// The child's latest still-running tool as `{name, arg, startedAt}` (the timeline
+    /// card's live activity line), if any.
+    #[must_use]
+    pub fn current(&self) -> Option<Value> {
+        self.events.iter().rev().find_map(|e| match e {
+            ChildEvent::Tool {
+                name,
+                args,
+                done: false,
+                started_at,
+                ..
+            } => Some(json!({
+                "name": name,
+                "arg": clip(&primary_arg(name, args.as_ref()), 200),
+                "startedAt": started_at,
+            })),
+            _ => None,
+        })
+    }
+
     fn push(&mut self, e: ChildEvent) {
         self.events.push(e);
         if self.events.len() > MAX_EVENTS {
@@ -658,10 +678,15 @@ mod tests {
             }]
         );
         p.apply(&json!({"type": "tool_execution_update", "toolCallId": "c1", "partialResult": {"content": [{"type": "text", "text": "par"}]}}), 4);
+        assert_eq!(
+            p.current(),
+            Some(json!({"name": "read", "arg": "/a", "startedAt": 3}))
+        );
         let steps = p.apply(&json!({"type": "tool_execution_end", "toolCallId": "c1", "toolName": "read", "isError": false, "result": {"content": [{"type": "text", "text": "full"}]}}), 10);
         assert!(
             matches!(&steps[0], Step::Tool { name, arg, output, duration_ms: 7, .. } if name == "read" && arg == "/a" && output == "full")
         );
+        assert_eq!(p.current(), None);
         assert_eq!(p.tool_calls, 1);
         assert_eq!(p.recent_tools, ["read({\"path\":\"/a\\nb\"})"]);
         p.apply(&delta("Final report"), 11);
