@@ -790,8 +790,17 @@ impl WebApi {
     /// unipi `syncWebTools`: one `setActiveTools` at most, other tools untouched.
     fn sync_tools(&self) {
         let current = control::active_tools();
-        if let Some(next) = sync_list(&current, self.availability()) {
-            let _ = control::set_active_tools(&next);
+        let availability = self.availability();
+        if sync_list(&current, availability).is_some() {
+            let (enable, disable): (Vec<String>, Vec<String>) = {
+                let (on, off): (Vec<_>, Vec<_>) =
+                    TOOLS.iter().zip(availability).partition(|(_, a)| *a);
+                (
+                    on.into_iter().map(|(t, _)| (*t).to_owned()).collect(),
+                    off.into_iter().map(|(t, _)| (*t).to_owned()).collect(),
+                )
+            };
+            let _ = control::update_active_tools(&enable, &disable);
         }
     }
 

@@ -833,13 +833,12 @@ impl Memory {
     // ── session lifecycle ────────────────────────────────────────────────────
 
     fn write_tools_active(on: bool) {
-        let mut active = control::active_tools();
-        active.retain(|t| t != "memory_store" && t != "memory_delete");
-        if on {
-            active.push("memory_store".into());
-            active.push("memory_delete".into());
-        }
-        let _ = control::set_active_tools(&active);
+        let tools = ["memory_store".to_owned(), "memory_delete".to_owned()];
+        let _ = if on {
+            control::update_active_tools(&tools, &[])
+        } else {
+            control::update_active_tools(&[], &tools)
+        };
     }
 
     #[allow(clippy::too_many_lines, reason = "session start upkeep, as in unipi")]

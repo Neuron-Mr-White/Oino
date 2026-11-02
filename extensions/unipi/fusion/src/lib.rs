@@ -666,15 +666,14 @@ impl Fusion {
 
     fn sync_tools(&self, cx: &Ctx) {
         let want = self.fusion_on(cx.session_id());
-        let mut tools = control::active_tools();
-        let has = tools.iter().any(|t| t == "sidekick");
+        let has = control::active_tools().iter().any(|t| t == "sidekick");
         if has != want {
-            if want {
-                tools.push("sidekick".into());
+            let tool = ["sidekick".to_owned()];
+            let _ = if want {
+                control::update_active_tools(&tool, &[])
             } else {
-                tools.retain(|t| t != "sidekick");
-            }
-            let _ = control::set_active_tools(&tools);
+                control::update_active_tools(&[], &tool)
+            };
         }
     }
 

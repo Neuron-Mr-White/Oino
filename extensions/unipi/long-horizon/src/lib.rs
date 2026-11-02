@@ -3,7 +3,7 @@
 //!
 //! | unipi | here |
 //! |---|---|
-//! | gate at `before_agent_start` (child → explicit → owner → jev judge → default), mode section, tool exposure | [`Lh::gate`]; `set-active-tools` (no payload surgery, unipi-port §2.5); `tool_call` blocks hidden mode tools. Mode state (pending/override/turn mode) is per session id (F-06): children share the instance and never read or clobber the lead's mode |
+//! | gate at `before_agent_start` (child → explicit → owner → jev judge → default), mode section, tool exposure | [`Lh::gate`]; `update-active-tools` naming only mode tools (no payload surgery, unipi-port §2.5); `tool_call` blocks hidden mode tools. Mode state (pending/override/turn mode) is per session id (F-06): children share the instance and never read or clobber the lead's mode |
 //! | owner coordinator (`state.json`, leases, history 10) | [`modes::Owners`] in `/ext-workspace/<wsid>/state.json` |
 //! | goal machine, verifier, continuation, task gate, wait backoff, recovery outbox (`goal.json`) | [`goal`]; verifier through `models.complete` |
 //! | ralph task files `.unipi/ralph/<name>.md` | `.oino/ralph/<name>.md` (+ `.state.json`) ([`ralph`]) |
@@ -152,6 +152,15 @@ struct State {
 pub struct Lh {
     settings: Store,
     state: RefCell<State>,
+}
+
+/// Puts exactly `mode`'s control tools among the mode tools, through the host's atomic
+/// `update-active-tools`: only mode tools are named, so a stale or empty active-tools read
+/// can never take the core tools (read/bash/edit/write) or other extensions' tools away.
+fn apply_mode_tools(mode: Mode) {
+    if let Some((enable, disable)) = modes::mode_tool_update(&control::active_tools(), mode) {
+        let _ = control::update_active_tools(&enable, &disable);
+    }
 }
 
 fn now_iso() -> String {
@@ -478,10 +487,7 @@ impl Lh {
             let sticky_badge = fresh.is_none() && sticky.is_some() && explicit == sticky;
             if sticky_badge { (r.0, r.1, r.2) } else { r }
         };
-        let tools = control::active_tools();
-        if let Some(next) = modes::sync_mode_tools(&tools, mode) {
-            let _ = control::set_active_tools(&next);
-        }
+        apply_mode_tools(mode);
         let show_badge = {
             let mut st = self.state.borrow_mut();
             st.display = Some(mode);
@@ -2279,10 +2285,7 @@ impl Lh {
             let mut st = self.state.borrow_mut();
             st.pending_explicit.insert(cx.session_id().to_owned(), mode);
             st.session_override.insert(cx.session_id().to_owned(), mode);
-            let tools = control::active_tools();
-            if let Some(next) = modes::sync_mode_tools(&tools, mode) {
-                let _ = control::set_active_tools(&next);
-            }
+            apply_mode_tools(mode);
         }
         self.save();
         let busy = !control::is_idle();
@@ -2713,7 +2716,6 @@ impl Lh {
             }
         }
         self.load();
-        let tools = control::active_tools();
         let owner_mode = self
             .state
             .borrow()
@@ -2721,9 +2723,7 @@ impl Lh {
             .active
             .as_ref()
             .map_or(Mode::None, |o| o.kind.mode());
-        if let Some(next) = modes::sync_mode_tools(&tools, owner_mode) {
-            let _ = control::set_active_tools(&next);
-        }
+        apply_mode_tools(owner_mode);
         // Crash recovery: re-deliver the durable outbox (at most twice), else arm a recovery fragment.
         let redeliver = {
             let mut st = self.state.borrow_mut();
@@ -2920,9 +2920,7 @@ impl Extension for Lh {
                     // the `Goal`/`Ralph` status chip alive after the stop.
                     st.display = Some(Mode::None);
                 }
-                if let Some(next) = modes::sync_mode_tools(&control::active_tools(), Mode::None) {
-                    let _ = control::set_active_tools(&next);
-                }
+                apply_mode_tools(Mode::None);
                 ext.save();
                 ui::notify("Regular mode.", "info")
             }));

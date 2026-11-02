@@ -85,7 +85,8 @@ fn restore_tools() {
         return;
     };
     if let Some(next) = restored_tools(&active, &all) {
-        let _ = oino_extension::control::set_active_tools(&next);
+        let missing: Vec<String> = next.into_iter().filter(|t| !active.contains(t)).collect();
+        let _ = oino_extension::control::update_active_tools(&missing, &[]);
     }
 }
 

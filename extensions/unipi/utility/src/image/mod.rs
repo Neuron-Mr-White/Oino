@@ -474,8 +474,14 @@ pub fn gate(model: Option<&Value>) {
         .or_else(control::model)
         .unwrap_or(Value::Null);
     let active = control::active_tools();
-    if let Some(next) = models::apply_recognize_gating(&active, &model, RECOGNIZE) {
-        let _ = control::set_active_tools(&next);
+    if models::apply_recognize_gating(&active, &model, RECOGNIZE).is_some() {
+        // Only the gated tool is named: a stale active-tools read cannot shrink the rest.
+        let tool = [RECOGNIZE.to_owned()];
+        let _ = if models::is_vision(&model) {
+            control::update_active_tools(&[], &tool)
+        } else {
+            control::update_active_tools(&tool, &[])
+        };
     }
 }
 

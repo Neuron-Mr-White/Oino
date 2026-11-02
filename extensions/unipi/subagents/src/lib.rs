@@ -424,18 +424,18 @@ impl Subagents {
             .sessions
             .with(cx.session_id(), |s| !s.externals.is_empty());
         let want_read = cfg.enabled || externals;
-        let mut tools = control::active_tools();
-        let before = tools.clone();
+        let tools = control::active_tools();
+        let (mut enable, mut disable) = (Vec::new(), Vec::new());
         for (name, want) in [("run_subagent", want_run), ("read_subagent", want_read)] {
             let has = tools.iter().any(|t| t == name);
             if want && !has {
-                tools.push(name.to_owned());
+                enable.push(name.to_owned());
             } else if !want && has {
-                tools.retain(|t| t != name);
+                disable.push(name.to_owned());
             }
         }
-        if tools != before {
-            let _ = control::set_active_tools(&tools);
+        if !enable.is_empty() || !disable.is_empty() {
+            let _ = control::update_active_tools(&enable, &disable);
         }
     }
 

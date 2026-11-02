@@ -142,15 +142,12 @@ impl AskUser {
         if active.iter().any(|t| t == TOOL) == want {
             return;
         }
-        let next: Vec<String> = if want {
-            active
-                .into_iter()
-                .chain(std::iter::once(TOOL.to_owned()))
-                .collect()
+        let tool = [TOOL.to_owned()];
+        let _ = if want {
+            control::update_active_tools(&tool, &[])
         } else {
-            active.into_iter().filter(|t| t != TOOL).collect()
+            control::update_active_tools(&[], &tool)
         };
-        let _ = control::set_active_tools(&next);
     }
 }
 

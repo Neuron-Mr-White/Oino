@@ -196,6 +196,23 @@ pub fn sync_mode_tools(current: &[String], mode: Mode) -> Option<Vec<String>> {
     Some(kept)
 }
 
+/// [`sync_mode_tools`] as a delta for `control::update_active_tools`: `(enable, disable)`
+/// touching ONLY mode tools, so a `current` that came back empty or partial (a stale read
+/// while the session wakes, or an instance replaying init after a trap) can never shrink
+/// the rest of the tool set. `None` when `current` already holds exactly `mode`'s tools.
+#[must_use]
+pub fn mode_tool_update(current: &[String], mode: Mode) -> Option<(Vec<String>, Vec<String>)> {
+    sync_mode_tools(current, mode)?;
+    let wanted = mode.control_tools();
+    let enable = wanted.iter().map(|t| (*t).to_owned()).collect();
+    let disable = all_mode_tools()
+        .into_iter()
+        .filter(|t| !wanted.contains(t))
+        .map(str::to_owned)
+        .collect();
+    Some((enable, disable))
+}
+
 /// unipi `hiddenToolNames`.
 #[must_use]
 pub fn hidden_tools(mode: Mode) -> Vec<&'static str> {
@@ -604,6 +621,42 @@ mod tests {
         assert!(!hidden_tools(Mode::Goal).contains(&"todowrite"));
         assert_eq!(Mode::parse("swarm"), Some(Mode::Swarm));
         assert_eq!(OwnerKind::RalphLoop.mode(), Mode::Ralph);
+    }
+
+    /// P0 [fix-tools]: graph mode applied over an EMPTY active-tools read (services rewoken /
+    /// init replayed after a trap) only toggles mode tools; the core tools stay.
+    #[test]
+    fn mode_tool_update_never_touches_other_tools() {
+        let registry: Vec<String> = ["read", "bash", "edit", "write", "memory_store", "get_goal"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let (enable, disable) = mode_tool_update(&[], Mode::Graph).unwrap();
+        for t in Mode::Graph.control_tools() {
+            assert!(enable.iter().any(|e| e == t), "{t}");
+        }
+        for t in ["read", "bash", "edit", "write", "memory_store"] {
+            assert!(!disable.iter().any(|d| d == t), "{t} disabled");
+        }
+        assert!(disable.iter().any(|d| d == "get_goal"));
+        // The host applies the delta to the CURRENT registry (oino-core update_active_tools).
+        let mut active = registry.clone();
+        active.retain(|t| !disable.contains(t) || enable.contains(t));
+        for e in &enable {
+            if !active.contains(e) {
+                active.push(e.clone());
+            }
+        }
+        for t in ["read", "bash", "edit", "write", "memory_store"] {
+            assert!(active.iter().any(|a| a == t), "{t} lost: {active:?}");
+        }
+        // Back to regular: only mode tools leave.
+        let (enable, disable) = mode_tool_update(&active, Mode::None).unwrap();
+        assert!(enable.iter().all(|e| Mode::None.control_tools().contains(&e.as_str())));
+        assert!(disable.iter().all(|d| all_mode_tools().contains(&d.as_str())));
+        // Already in sync: nothing to send.
+        let synced = sync_mode_tools(&registry, Mode::None).unwrap_or(registry);
+        assert!(mode_tool_update(&synced, Mode::None).is_none());
     }
 
     #[test]
