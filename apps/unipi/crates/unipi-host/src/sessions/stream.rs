@@ -942,7 +942,9 @@ async fn file_open(hub: &Arc<SessionHub>, target: &str) -> Option<(HostCard, Ses
     // A live runtime answers its own snapshot — unless another session's wake holds the
     // hub lock (the runtime path would wait for it): then the file serves this one too
     // (a live idle session's file is current) and the "wake" just reattaches.
-    if hub.is_live(&card.session_id).await && !hub.core_busy() {
+    // A running turn always takes the runtime path (its in-flight message is not in the
+    // file yet).
+    if hub.is_live(&card.session_id).await && (!hub.core_busy() || card.state.is_working()) {
         return None;
     }
     let file = session_file(hub, &card)?;
