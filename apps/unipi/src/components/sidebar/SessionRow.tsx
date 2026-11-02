@@ -3,12 +3,18 @@
  * + word (DESIGN §1.3 colour+icon+word), mode badge, title with a fade mask
  * (no marquee, no ellipsis — full title in the tooltip), relative time (Z-10),
  * `+N −M` changes, the unread dot (wm-green, "done unseen") and the cron
- * clock badge slot. Two lines, like the phone: the title (fade) and its time,
- * then the state word (or the project folder when idle) and the badges —
- * 264 px cannot hold all of Z-12 on one line without hiding the title.
+ * clock badge slot.
+ *
+ * [ui-sessions] layout: comfortable rows are the title line + ONE meta line of
+ * small chips (status word in its colour, cron clock, folder / model when
+ * shown, changes) with the time right-aligned — never a wrapped third line; a
+ * failed / timed-out cron run is the glyph + a short coloured word with the
+ * reason in the tooltip. Compact rows (Properties › Compact view) are one line:
+ * title, icon chips, time. The glyph slot is fixed (16 px), so a running row's
+ * spinner never moves the layout.
  */
-import { createEffect, onCleanup, Show, type JSX } from 'solid-js';
-import { CircleAlert, Clock, LoaderCircle, MessageCircleQuestion, MessageSquare, Pin, PinOff } from 'lucide-solid';
+import { createEffect, Match, onCleanup, Show, Switch, type JSX } from 'solid-js';
+import { Archive, CircleAlert, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, MessageSquare, Pin, PinOff, TimerOff } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { hostClient } from '../../lib/host/factory';
 import { LONG_PRESS_MS } from '../../lib/gestures';
@@ -19,6 +25,7 @@ import { sessions, type SessionHandle } from '../../lib/session/store';
 import { openRowMenu } from '../../lib/session/actions';
 import { relativeTimeMs } from '../../lib/time';
 import { cronRunFailed, cronRunLabel } from '../../lib/cronRunLabels';
+import { DEFAULT_PROPS, type PropKey } from '../../lib/session/listView';
 
 export type RowVariant = 'sidebar' | 'page';
 
@@ -67,6 +74,14 @@ export function observeTitleOverflow(el: HTMLElement): void {
 /** The working mode badge (Z-12 keeps unipi's): a slot until A16's status pane exposes the live mode. */
 export type ModeBadge = { mode: string; label: string; paused?: boolean };
 
+/** Which meta chips a row shows (the Properties menu's "Property visibility"). */
+export type RowProps = Record<PropKey, boolean>;
+
+/** The status a row's glyph + chip show: the live state, refined by a cron run's outcome. */
+export type RowStatus = ReturnType<typeof rowState> | 'failed' | 'timed-out';
+
+const STATUS_WORD: Record<RowStatus, string> = { ...STATE_WORD, failed: 'Failed', 'timed-out': 'Timed out' };
+
 export function SessionRow(props: {
   hostId: string;
   card: SessionCard;
@@ -75,20 +90,27 @@ export function SessionRow(props: {
   variant: RowVariant;
   /** The open session's live mode badge, when the app knows it (LRU sessions). */
   mode?: ModeBadge;
-  /** Show the project folder under the title when there is no state word (the Pinned group
+  /** Show the project folder chip even when the Workspace property is off (the Pinned group
    *  spans projects; the phone always does, §3.9). */
   showFolder?: boolean;
+  /** Meta chips to show (default: time, status, automation, archived). */
+  show?: RowProps;
+  /** One line per row: title + icon chips (the Properties menu's Compact view). */
+  compact?: boolean;
+  /** An archived chat (the Archived filter lists the trash too). */
+  archived?: boolean;
   onPin?: (card: SessionCard, pinned: boolean) => void;
 }): JSX.Element {
   const open = () => sessions().peek(props.hostId, props.card.session_id);
   const state = () => liveRowState(props.card, open());
+  const show = (k: PropKey) => (props.show ?? DEFAULT_PROPS)[k];
   const changes = () => changesOf(props.card);
   const at = () => props.card.last_activity ?? props.card.updated_at;
   const time = () => relativeTimeMs(at());
   /** The exact moment behind the relative time (hover). */
   const stamp = () => {
     const ms = at();
-    return ms ? new Date(ms).toLocaleString() : undefined;
+    return ms ? `Updated ${new Date(ms).toLocaleString()}` : undefined;
   };
   const pin = () => (e: MouseEvent) => {
     e.preventDefault();
@@ -100,6 +122,7 @@ export function SessionRow(props: {
   const menuAt = (el: HTMLElement) => openRowMenu(props.hostId, props.card, el.getBoundingClientRect());
   const onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
+    if (props.archived) return;
     openRowMenu(props.hostId, props.card, menuAnchor(e, e.currentTarget as HTMLElement));
   };
   let pressTimer: ReturnType<typeof setTimeout> | undefined;
@@ -108,7 +131,7 @@ export function SessionRow(props: {
     pressTimer = undefined;
   };
   const onPointerDown = (e: PointerEvent & { currentTarget: HTMLElement }) => {
-    if (e.pointerType !== 'touch' || e.button !== 0) return;
+    if (props.archived || e.pointerType !== 'touch' || e.button !== 0) return;
     const row = e.currentTarget;
     cancelPress();
     pressTimer = setTimeout(() => {
@@ -117,34 +140,115 @@ export function SessionRow(props: {
     }, LONG_PRESS_MS);
   };
   const pinTitle = () => (props.meta?.pinned ? `Unpin "${titleText()}"` : `Pin "${titleText()}"`);
+  const cron = () => props.card.source === 'cron';
   /** F-11: a cron run's job name and outcome. */
-  const cronRun = () => (props.card.source === 'cron' ? cronRunLabel(props.hostId, props.card.session_id) : undefined);
+  const cronRun = () => (cron() ? cronRunLabel(props.hostId, props.card.session_id) : undefined);
+  /** needs-you / working win; an idle cron run that failed or timed out says so. */
+  const status = (): RowStatus => {
+    const s = state();
+    if (s !== 'idle') return s;
+    const run = cronRun();
+    if (run?.status === 'timeout') return 'timed-out';
+    if (cronRunFailed(run)) return 'failed';
+    return 'idle';
+  };
+  const statusWord = () => STATUS_WORD[status()];
+  const statusTip = () => {
+    const word = statusWord();
+    if (!word) return undefined;
+    if ((status() === 'failed' || status() === 'timed-out') && cronRun()?.reason) return `${word}: ${cronRun()!.reason}`;
+    if (status() === 'crashed' && props.card.error) return `${word}: ${props.card.error}`;
+    return word;
+  };
   const titleText = () => {
     const named = open()?.state.name?.trim() || props.card.name?.trim();
     return !named && cronRun() ? cronRun()!.jobName : sessionTitle(props.card, open()?.state, 'New chat');
   };
   const folder = () => (!isHomeCwd(props.card.cwd) ? props.card.cwd?.split(/[\\/]/).filter(Boolean).pop() : undefined);
-  const stateWord = () => STATE_WORD[state()];
-  const subFolder = () => {
+  const folderChip = () => {
     const f = folder();
     if (!f || f === titleText()) return undefined;
-    return (!stateWord() && props.showFolder) || (props.variant === 'page' && !!stateWord()) ? f : undefined;
+    return show('workspace') || props.showFolder ? f : undefined;
   };
-  const hasSub = () => Boolean(stateWord() || subFolder() || props.mode || changes() || props.card.source === 'cron');
+  const model = () => {
+    if (!show('model')) return undefined;
+    const live = open()?.state.model;
+    const id = (live?.id ? String(live.id) : '') || props.card.model || '';
+    return id ? (id.includes('/') ? id.split('/').pop() : id) : undefined;
+  };
+  const cronTip = () => {
+    const run = cronRun();
+    return run ? `Automation · ${run.jobName}` : 'Automation (run by the cron scheduler)';
+  };
   let titleEl: HTMLSpanElement | undefined;
   createEffect(() => {
     titleText();
     if (titleEl && typeof ResizeObserver !== 'undefined') queueMicrotask(() => titleEl && syncTitleOverflow(titleEl));
   });
+  /** The meta chips (comfortable: the second line; compact: icons after the title). */
+  const chips = () => (
+    <>
+      <Show when={show('status') && statusWord() && !props.compact}>
+        <span class="srow-word" data-state={status()} title={statusTip()}>
+          {statusWord()}
+        </span>
+      </Show>
+      <Show when={show('automation') && cron()}>
+        <span class="srow-chip srow-cron" data-failed={status() === 'failed' || status() === 'timed-out' ? '' : undefined} title={cronTip()} aria-label={cronTip()}>
+          <Clock size={12} />
+        </span>
+      </Show>
+      <Show when={folderChip()}>
+        {(f) => (
+          <span class="srow-chip srow-cwd" title={props.card.cwd}>
+            <Folder size={11} />
+            <span class="srow-chip-text">{f()}</span>
+          </span>
+        )}
+      </Show>
+      <Show when={model()}>
+        {(m) => (
+          <span class="srow-chip srow-model" title={`Model: ${m()}`}>
+            <Cpu size={11} />
+            <span class="srow-chip-text">{m()}</span>
+          </span>
+        )}
+      </Show>
+      <Show when={props.mode && !props.compact}>
+        <span class="srow-mode" data-paused={props.mode!.paused ? '' : undefined} title={`Working mode: ${props.mode!.label}`}>
+          {props.mode!.label}
+        </span>
+      </Show>
+      <Show when={changes() && !props.compact}>
+        <span class="srow-changes" aria-label={`${changes()!.add} lines added, ${changes()!.del} removed`}>
+          <span class="add">+{changes()!.add}</span>
+          <span class="del">−{changes()!.del}</span>
+        </span>
+      </Show>
+      <Show when={props.archived && show('archived')}>
+        <span class="srow-chip srow-archived" title="Archived — restore it from Archived">
+          <Archive size={11} />
+        </span>
+      </Show>
+    </>
+  );
+  const timeEl = () => (
+    <Show when={show('updated') && time()}>
+      <span class="srow-time" title={stamp()}>{time()}</span>
+    </Show>
+  );
   return (
     <a
       href={`#/s/${encodeURIComponent(props.hostId)}/${encodeURIComponent(props.card.session_id)}`}
       class="srow"
       data-variant={props.variant}
       data-state={state()}
-      data-sub={hasSub() ? '' : undefined}
+      data-status={status()}
+      data-sub={props.compact ? undefined : ''}
+      data-compact={props.compact ? '' : undefined}
       data-unread={props.meta?.unread ? '' : undefined}
-      data-cron={props.card.source === 'cron' ? '' : undefined}
+      data-cron={cron() ? '' : undefined}
+      data-archived={props.archived ? '' : undefined}
       aria-current={props.active ? 'page' : undefined}
       data-testid={`srow-${props.card.session_id}`}
       title={titleText()}
@@ -154,24 +258,21 @@ export function SessionRow(props: {
       onPointerCancel={cancelPress}
       onPointerLeave={cancelPress}
     >
-      <span class="srow-glyph" data-state={state()} aria-hidden="true">
-        <Show
-          when={state() === 'working'}
-          fallback={
-            <Show
-              when={state() === 'needs-you'}
-              fallback={
-                <Show when={state() === 'crashed' || state() === 'taken-over'} fallback={<MessageSquare size={14} />}>
-                  <CircleAlert size={14} />
-                </Show>
-              }
-            >
-              <MessageCircleQuestion size={14} />
-            </Show>
-          }
-        >
-          <LoaderCircle size={14} class="srow-spin" />
-        </Show>
+      <span class="srow-glyph" data-state={status()} aria-hidden={statusTip() ? undefined : 'true'} title={statusTip()} aria-label={statusTip()} role={statusTip() ? 'img' : undefined}>
+        <Switch fallback={<MessageSquare size={14} />}>
+          <Match when={status() === 'working'}>
+            <LoaderCircle size={14} class="srow-spin" />
+          </Match>
+          <Match when={status() === 'needs-you'}>
+            <MessageCircleQuestion size={14} />
+          </Match>
+          <Match when={status() === 'timed-out'}>
+            <TimerOff size={14} />
+          </Match>
+          <Match when={status() !== 'idle'}>
+            <CircleAlert size={14} />
+          </Match>
+        </Switch>
       </span>
       <span class="srow-main">
         <span class="srow-title-line">
@@ -187,8 +288,11 @@ export function SessionRow(props: {
           <Show when={props.meta?.unread}>
             <span class="srow-unread" title="Unread" aria-label="Unread" />
           </Show>
-          <span class="srow-time" title={stamp()}>{time()}</span>
-          <Show when={props.onPin}>
+          <Show when={props.compact}>
+            <span class="srow-chips">{chips()}</span>
+            {timeEl()}
+          </Show>
+          <Show when={props.onPin && !props.archived}>
             <button
               type="button"
               class="srow-pin"
@@ -204,39 +308,10 @@ export function SessionRow(props: {
             </button>
           </Show>
         </span>
-        <Show when={hasSub()}>
+        <Show when={!props.compact}>
           <span class="srow-sub">
-            <Show when={stateWord()}>
-              <span class="srow-word" data-state={state()}>{stateWord()}</span>
-            </Show>
-            <Show when={subFolder()}>
-              <span class="srow-cwd">{subFolder()}</span>
-            </Show>
-            <Show when={props.mode}>
-              {(m) => (
-                <span class="srow-mode" data-paused={m().paused ? '' : undefined} title={`Working mode: ${m().label}`}>
-                  {m().label}
-                </span>
-              )}
-            </Show>
-            <span class="srow-tail">
-              <Show when={changes()}>
-                {(c) => (
-                  <span class="srow-changes" aria-label={`${c().add} lines added, ${c().del} removed`}>
-                    <span class="add">+{c().add}</span>
-                    <span class="del">−{c().del}</span>
-                  </span>
-                )}
-              </Show>
-              <Show when={props.card.source === 'cron'}>
-                <span class="srow-cron" data-failed={cronRunFailed(cronRun()) ? '' : undefined} title={cronRunFailed(cronRun()) ? `This cron run failed${cronRun()?.reason ? `: ${cronRun()!.reason}` : ''}` : 'Run by the cron scheduler'}>
-                  <Show when={cronRunFailed(cronRun())} fallback={<Clock size={12} />}>
-                    <CircleAlert size={12} />
-                  </Show>
-                  <span class="srow-cron-label">{cronRunFailed(cronRun()) ? (cronRun()?.status === 'timeout' ? 'timed out' : 'failed') : 'cron'}</span>
-                </span>
-              </Show>
-            </span>
+            <span class="srow-chips">{chips()}</span>
+            {timeEl()}
           </span>
         </Show>
       </span>

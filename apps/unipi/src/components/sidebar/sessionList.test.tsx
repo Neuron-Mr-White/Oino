@@ -154,10 +154,11 @@ describe('SessionList', () => {
     expect(within(u).getByText('−4')).toBeTruthy();
     expect(u.querySelector('.srow-cron')).toBeTruthy();
     expect(u.getAttribute('title')).toBe('Nightly build');
-    // Idle rows show no state word and omit .srow-sub when empty; never a π glyph.
+    // Idle rows show no state word — their one meta line holds just the time; never a π glyph.
     const idleRow = screen.getByTestId('srow-z');
     expect(within(idleRow).queryByText('Idle')).toBeNull();
-    expect(idleRow.querySelector('.srow-sub')).toBeNull();
+    expect(idleRow.querySelector('.srow-word')).toBeNull();
+    expect(idleRow.querySelector('.srow-sub')!.textContent).toBe('2m ago');
     expect(idleRow.textContent).not.toContain('π');
     expect(idleRow.querySelector('.srow-glyph svg')).toBeTruthy();
   });
@@ -174,7 +175,7 @@ describe('SessionList', () => {
     const row = screen.getByTestId('srow-nameless');
     expect(row.getAttribute('title')).toBe('tmp');
     expect(row.querySelector('.srow-cwd')).toBeNull();
-    expect(row.querySelector('.srow-sub')).toBeNull();
+    expect(row.querySelector('.srow-word')).toBeNull();
   });
 
   it('updates row title live on session_changed, groups home cwd under No workspace, and keeps pinned sidebar rows single-line (D-03, D-18, D-19)', async () => {
@@ -186,7 +187,9 @@ describe('SessionList', () => {
     const homeRow = screen.getByTestId('srow-home-chat');
     expect(homeRow.getAttribute('title')).toBe('New chat');
     const pinnedRow = screen.getByTestId('srow-pinned-proj');
-    expect(pinnedRow.querySelector('.srow-sub')).toBeNull();
+    // One meta line, no folder chip (the sidebar's Workspace property is off by default).
+    expect(pinnedRow.querySelector('.srow-cwd')).toBeNull();
+    expect(pinnedRow.querySelectorAll('.srow-sub')).toHaveLength(1);
     // Host pushes session_changed with the auto-generated title -> row updates live.
     world.emit({
       kind: 'session_changed',
