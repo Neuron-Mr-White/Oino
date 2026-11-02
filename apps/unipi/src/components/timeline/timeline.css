@@ -243,8 +243,10 @@ html[data-shell=desktop] .tl-user:focus-within .tl-user-actions { opacity: 1; po
 .tl-user-actions .tl-act { width: 26px; height: 26px; min-height: 26px; }
 .tl-bubble { position: relative; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%); }
 .tl-bubble-body { display: block; }
+/* Clip whenever the body can fold: the expand/collapse max-height transition must never
+   let text spill outside the bubble mid-animation (the mask only applies while folded). */
+.tl-bubble[data-foldable] .tl-bubble-body { overflow: hidden; }
 .tl-bubble[data-folded] .tl-bubble-body {
-  overflow: hidden;
   -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
   mask-image: linear-gradient(to bottom, #000 62%, transparent);
 }

@@ -242,7 +242,7 @@ export function UserBubble(props: {
       <Show when={props.steer}>
         <span class="tl-steer-tag">Steer</span>
       </Show>
-      <div class="chat-bubble tl-bubble" data-folded={folds() && !expanded() ? '' : undefined}>
+      <div class="chat-bubble tl-bubble" data-foldable={folds() ? '' : undefined} data-folded={folds() && !expanded() ? '' : undefined}>
         <span class="tl-bubble-body" ref={setBodyEl} style={bodyStyle()}>
           <For each={segs()}>{(seg) => ('chip' in seg ? <BubbleChip chat={props.chat} chip={seg.chip} resolved={resolvedFor(seg.chip)} images={props.images} /> : <BubbleText chat={props.chat} text={seg.text} />)}</For>
         </span>
