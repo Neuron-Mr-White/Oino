@@ -797,6 +797,35 @@ fn holder_starting(dir: &Path) -> bool {
 
 /// The app-managed host: one child at a time, restarted with backoff, with a
 /// failure count the UI turns into a banner.
+/// Closes the host's open start in `start-history.json` as `stopped` (the host's own
+/// `HostSafeMode::record_stopped_in` shape: `{v, starts[{ts, outcome, uptime_s}], openStart?}`).
+/// Used when the supervisor kills a host it judged frozen — that is not a crash of the
+/// start, so it must not count toward safe mode. Best effort: an unreadable file is left alone.
+fn record_stopped(dir: &Path) {
+    let path = dir.join("start-history.json");
+    let Ok(text) = std::fs::read_to_string(&path) else { return };
+    let Ok(mut history) = serde_json::from_str::<serde_json::Value>(&text) else { return };
+    let Some(open) = history.get("openStart").and_then(serde_json::Value::as_u64) else { return };
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(open, |d| u64::try_from(d.as_millis()).unwrap_or(open));
+    let uptime_s = now_ms.saturating_sub(open) / 1000;
+    if let Some(object) = history.as_object_mut() {
+        object.remove("openStart");
+        object.insert("v".into(), serde_json::json!(1));
+        let starts = object.entry("starts").or_insert_with(|| serde_json::json!([]));
+        if let Some(list) = starts.as_array_mut() {
+            list.push(serde_json::json!({ "ts": open, "outcome": "stopped", "uptime_s": uptime_s }));
+        }
+    }
+    if let Ok(text) = serde_json::to_string_pretty(&history) {
+        let tmp = path.with_extension("json.tmp");
+        if std::fs::write(&tmp, text).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+    }
+}
+
 pub struct Supervisor {
     dir: PathBuf,
     bin: PathBuf,
@@ -919,6 +948,9 @@ impl Supervisor {
             };
             log::warn!("host: our host (pid {pid}) stopped answering; killing it for a restart");
             wedged.store(true, std::sync::atomic::Ordering::SeqCst);
+            // A host we kill for not answering is not a failed start: close its open start
+            // as `stopped` so two quick watchdog restarts never trip safe mode.
+            record_stopped(&self.dir);
             #[cfg(unix)]
             {
                 // Its own process group (process_group(0)): SIGKILL reaches a

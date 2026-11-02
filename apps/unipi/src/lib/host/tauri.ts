@@ -79,6 +79,22 @@ export function createTauriHost(hostId: string): HostClient {
       throw error;
     }
   };
+  // The supervisor's liveness watch on the host it runs (`host-liveness`): a frozen
+  // host shows Offline (with Restart agent host) before any request has to time out,
+  // and the state clears as soon as it answers again.
+  if (hostId === LOCAL_HOST || (localHostId() !== undefined && hostId === localHostId())) {
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) =>
+        listen<{ answering: boolean; message: string | null }>('host-liveness', (e) => {
+          if (e.payload.answering) {
+            if (conn().state !== 'connected') setConn({ state: 'connected' });
+          } else {
+            setConn({ state: 'offline', message: e.payload.message ?? 'The PC stopped answering' });
+          }
+        }),
+      )
+      .catch(() => undefined);
+  }
   return {
     hostId,
     conn,
