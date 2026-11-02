@@ -171,3 +171,12 @@ describe('AgentsGroup + AgentCard', () => {
     expect(after[0]!.querySelector('[data-testid=tl-agent-counters]')!.textContent).toBe('3 tools');
   });
 });
+
+describe('working message split (turn header readability)', () => {
+  it('moves key hints out of the title', async () => {
+    const { splitWorkingMessage } = await import('../SegmentFold');
+    expect(splitWorkingMessage('Subagent running · Ctrl+B to run in background')).toEqual({ head: 'Subagent running', hint: 'Ctrl+B to run in background' });
+    expect(splitWorkingMessage('Compacting')).toEqual({ head: 'Compacting' });
+    expect(splitWorkingMessage(undefined)).toBeUndefined();
+  });
+});
