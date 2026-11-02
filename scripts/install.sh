@@ -10,6 +10,12 @@
 #                  Linux: AppImage into ~/.local/bin + .desktop + icon
 #                         (--deb: the .deb via apt, needs sudo)
 #                  macOS: .dmg → /Applications/UniPi.app, quarantine cleared
+#   --host       install the agent host without the desktop app (GUI-less
+#                machines, sandboxes): `unipi-oino-host` + `oino` into
+#                <prefix>/bin and the bundled extensions into
+#                <prefix>/share/oino/extensions. Safe to rerun (upgrades in
+#                place, also while the host runs).
+#   --prefix DIR install prefix (same as OINO_PREFIX; default ~/.local)
 #   --help       usage
 #
 # Every download is verified against the release's SHA256SUMS. Without a
@@ -43,15 +49,27 @@ REPO=${OINO_REPO:-"https://github.com/$REPO_SLUG.git"}
 SRC_DIR=${OINO_DIR:-"$HOME/.cache/oino/source"}
 DRY_RUN=${OINO_DRY_RUN:-0}
 
-app=0 deb=0
-for arg in "$@"; do
-  case "$arg" in
+app=0 deb=0 host=0
+while [ $# -gt 0 ]; do
+  case "$1" in
     --app) app=1 ;;
     --deb) deb=1 ;;
-    -h|--help) sed -n '3,26p' "$0"; exit 0 ;;
-    *) err "unknown argument: $arg (want --app / --deb)" ;;
+    --host) host=1 ;;
+    --prefix)
+      [ $# -ge 2 ] && [ -n "$2" ] || err "--prefix needs a directory"
+      PREFIX=$2; shift ;;
+    --prefix=*) PREFIX=${1#--prefix=}; [ -n "$PREFIX" ] || err "--prefix needs a directory" ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    *) err "unknown argument: $1 (want --app / --deb / --host / --prefix DIR)" ;;
   esac
+  shift
 done
+[ "$app" = 1 ] && [ "$host" = 1 ] && err "--app and --host are separate installs; run them one at a time"
+case "$PREFIX" in
+  /*) ;;
+  *) PREFIX="$(pwd)/$PREFIX" ;; # the service unit needs absolute paths
+esac
+BIN_DIR="$PREFIX/bin"
 
 # ── release layout (release.yml) ────────────────────────────────────────────
 # Assets live next to SHA256SUMS; `latest` is a GitHub permalink. A custom
@@ -152,7 +170,9 @@ install_cli_release() {
 
 # ── CLI from source (fallback, unchanged in spirit) ─────────────────────────
 
-source_install() {
+# Sets SRC to an Oino checkout (this dir, else a clone in OINO_DIR) and makes
+# sure cargo exists.
+prepare_source() {
   if [ -f "Cargo.toml" ] && [ -d "crates/oino-core" ]; then
     SRC=$(pwd)
   else
@@ -177,6 +197,10 @@ source_install() {
       . "$HOME/.cargo/env"
     fi
   fi
+}
+
+source_install() {
+  prepare_source
   # rust-toolchain.toml pins the toolchain and the wasm32-wasip2 target.
   (cd "$SRC" && run cargo xtask wasm)
   run cargo build --manifest-path "$SRC/Cargo.toml" --release -p oino-cli
@@ -320,7 +344,96 @@ install_app_macos() {
   return 0
 }
 
+# ── the host without the GUI (--host) ───────────────────────────────────────
+# Release asset: unipi-oino-host-<version>-<target>.tar.gz =
+#   bin/unipi-oino-host  bin/oino  share/oino/extensions/<pkg>/
+# (scripts/release/pack-host.sh). Both binaries find the extensions through
+# their exe-relative <prefix>/share/oino/extensions candidate (dist.md §5).
+
+HOST_BIN=unipi-oino-host
+EXT_DIR="$PREFIX/share/oino/extensions"
+
+# place_host_tree <staged root> — move a staged bin/ + share/ tree into the
+# prefix. Binaries are renamed over the old ones (a running host keeps its
+# inode, no "text file busy"); the extension tree is swapped as a whole so a
+# package dropped by the new release does not linger.
+place_host_tree() {
+  stage=$1
+  [ -x "$stage/bin/$HOST_BIN" ] || err "archive layout changed: no bin/$HOST_BIN"
+  [ -x "$stage/bin/oino" ] || err "archive layout changed: no bin/oino"
+  mkdir -p "$BIN_DIR" "$PREFIX/share/oino"
+  for name in "$HOST_BIN" oino; do
+    cp "$stage/bin/$name" "$BIN_DIR/.$name.new"
+    chmod 755 "$BIN_DIR/.$name.new"
+    mv -f "$BIN_DIR/.$name.new" "$BIN_DIR/$name"
+  done
+  if [ -d "$stage/share/oino/extensions" ]; then
+    rm -rf "$EXT_DIR.new" "$EXT_DIR.old"
+    cp -R "$stage/share/oino/extensions" "$EXT_DIR.new"
+    if [ -d "$EXT_DIR" ]; then mv "$EXT_DIR" "$EXT_DIR.old"; fi
+    mv "$EXT_DIR.new" "$EXT_DIR"
+    rm -rf "$EXT_DIR.old"
+  fi
+  say "Placed $BIN_DIR/$HOST_BIN, $BIN_DIR/oino and $(ls -1 "$EXT_DIR" 2>/dev/null | wc -l | tr -d ' ') extension packages in $EXT_DIR"
+}
+
+install_host_release() {
+  [ "${OINO_FROM_SOURCE:-0}" != "1" ] || return 1
+  [ -n "$target" ] || return 1
+  fetch_sums || return 1
+  htmp=$(mktemp -d "${TMPDIR:-/tmp}/oino-host.XXXXXX")
+  trap 'rm -rf "$htmp" "$sums"' EXIT INT TERM
+  fetch_asset "$HOST_BIN-.*-$target\\.tar\\.gz\$" "$htmp/host.tar.gz" || return 1
+  mkdir -p "$htmp/x"
+  tar -xzf "$htmp/host.tar.gz" -C "$htmp/x"
+  place_host_tree "$htmp/x"
+  rm -rf "$htmp"
+  return 0
+}
+
+# The fallback: build both binaries from a checkout (heavy: needs Rust and a
+# few GB of RAM), stage them like the release archive, then place them.
+source_host_install() {
+  prepare_source
+  (cd "$SRC" && run cargo xtask wasm)
+  run cargo build --manifest-path "$SRC/Cargo.toml" --release -p oino-cli
+  # unipi-host lives in the apps/unipi cargo workspace.
+  run cargo build --manifest-path "$SRC/apps/unipi/Cargo.toml" --release -p unipi-host
+  htmp=$(mktemp -d "${TMPDIR:-/tmp}/oino-host-src.XXXXXX")
+  trap 'rm -rf "$htmp" "$sums"' EXIT INT TERM
+  mkdir -p "$htmp/bin" "$htmp/share/oino"
+  cp "$SRC/target/release/oino" "$htmp/bin/oino"
+  cp "$SRC/apps/unipi/target/release/unipi-host" "$htmp/bin/$HOST_BIN"
+  bash "$SRC/scripts/release/stage-dist.sh" "$htmp/share/oino"
+  place_host_tree "$htmp"
+  rm -rf "$htmp"
+}
+
+install_host() {
+  if [ "$DRY_RUN" = "1" ]; then
+    say "dry run: would install $HOST_BIN + oino (${target:-source build}) into $PREFIX"
+    say "  release: $(base_url) ($HOST_BIN-<version>-${target:-?}.tar.gz)"
+    say "  bin: $BIN_DIR  extensions: $EXT_DIR"
+    return 0
+  fi
+  if install_host_release; then
+    say "Installed the host into $PREFIX"
+  else
+    say "No host release for ${target:-this platform} (or download failed); building from source."
+    source_host_install
+    say "Built and installed the host from source into $PREFIX"
+  fi
+}
+
 # ── main ────────────────────────────────────────────────────────────────────
+
+if [ "$host" = "1" ]; then
+  install_host
+  add_to_path
+  path_hint
+  say "Done. Start it: $BIN_DIR/unipi-oino-host serve   (pair a phone: unipi-oino-host pair)"
+  exit 0
+fi
 
 if [ "$app" = "1" ]; then
   install_app

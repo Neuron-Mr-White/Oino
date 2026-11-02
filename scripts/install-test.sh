@@ -36,7 +36,19 @@ tar -czf "$REL/oino-$VERSION-$TARGET.tar.gz" -C "$TMP/stage" bin share
 printf '#!/bin/sh\necho fake appimage\n' > "$REL/UniPi_${VERSION}_amd64.AppImage"
 chmod 755 "$REL/UniPi_${VERSION}_amd64.AppImage"
 
-(cd "$REL" && sha256sum oino-*.tar.gz UniPi_*.AppImage > SHA256SUMS)
+# ── fake host archive (bin/unipi-oino-host + bin/oino + share/oino/extensions)
+mkdir -p "$TMP/hstage/bin" "$TMP/hstage/share/oino/extensions/oino.example" \
+  "$TMP/hstage/share/oino/extensions/oino.dropped"
+printf '#!/bin/sh\necho "unipi-host %s (fake)"\n' "$VERSION" > "$TMP/hstage/bin/unipi-oino-host"
+cp "$TMP/stage/bin/oino" "$TMP/hstage/bin/oino"
+chmod 755 "$TMP/hstage/bin/unipi-oino-host"
+cp "$TMP/stage/share/oino/extensions/oino.example/extension.json" \
+  "$TMP/hstage/share/oino/extensions/oino.example/"
+printf '{"id":"oino.dropped"}\n' > "$TMP/hstage/share/oino/extensions/oino.dropped/extension.json"
+tar -czf "$REL/unipi-oino-host-$VERSION-$TARGET.tar.gz" -C "$TMP/hstage" bin share
+
+sums() { (cd "$REL" && sha256sum oino-*.tar.gz unipi-oino-host-*.tar.gz UniPi_*.AppImage > SHA256SUMS); }
+sums
 
 run_install() {
   HOME="$HOME_DIR" OINO_PREFIX="$HOME_DIR/.local" \
@@ -60,7 +72,31 @@ out=$(run_install --app 2>&1) || { printf '%s\n' "$out" >&2; fail "install.sh --
 case "$out" in *"Installed Unipi"*) ;; *) fail "unexpected --app output" ;; esac
 ok "--app AppImage install + desktop entry"
 
-# ── 3. a tampered archive must fail the checksum ────────────────────────────
+# ── 3. --host installs the host + CLI + extensions into --prefix, no GUI ──
+HP="$TMP/host prefix"   # a space on purpose
+out=$(run_install --host --prefix "$HP" 2>&1) \
+  || { printf '%s\n' "$out" >&2; fail "install.sh --host exited non-zero"; }
+[ "$("$HP/bin/unipi-oino-host")" = "unipi-host $VERSION (fake)" ] || fail "no host in --prefix"
+[ -x "$HP/bin/oino" ] || fail "no oino next to the host"
+[ -f "$HP/share/oino/extensions/oino.dropped/extension.json" ] || fail "no host extension tree"
+[ ! -e "$HP/bin/UniPi.AppImage" ] || fail "--host installed the GUI"
+case "$out" in *"Installed the host into"*) ;; *) fail "unexpected --host output: $out" ;; esac
+ok "--host into --prefix (bin + share/oino/extensions, no GUI)"
+
+# rerun = upgrade in place: a package the new release dropped goes away,
+# nothing is left behind (no .new / .old), --prefix=DIR form works too
+rm -rf "$TMP/hstage/share/oino/extensions/oino.dropped"
+tar -czf "$REL/unipi-oino-host-$VERSION-$TARGET.tar.gz" -C "$TMP/hstage" bin share
+sums
+out=$(run_install --host --prefix="$HP" 2>&1) \
+  || { printf '%s\n' "$out" >&2; fail "second --host run exited non-zero"; }
+[ ! -e "$HP/share/oino/extensions/oino.dropped" ] || fail "dropped package lingers after rerun"
+[ -f "$HP/share/oino/extensions/oino.example/extension.json" ] || fail "rerun lost a package"
+leftover=$(find "$HP" -name '*.new' -o -name '*.old' -o -name '.*.new')
+[ -z "$leftover" ] || fail "rerun left staging files: $leftover"
+ok "--host rerun is idempotent (upgrade in place)"
+
+# ── 4. a tampered archive must fail the checksum ────────────────────────────
 printf 'tampered' > "$REL/oino-$VERSION-$TARGET.tar.gz"  # sums stay stale
 rm -rf "$HOME_DIR/.local"
 if out=$(run_install 2>&1); then

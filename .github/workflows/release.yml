@@ -5,6 +5,9 @@ name: release
 #
 #   oino-<version>-<target>.tar.gz|zip   the oino CLI/TUI + the extension
 #                                        share tree (`bin/` + `share/oino/`)
+#   unipi-oino-host-<version>-<target>.tar.gz|zip  the GUI-less host
+#                                        (`bin/unipi-oino-host` + `bin/oino` +
+#                                        the extension tree; install.sh --host)
 #   UniPi_<version>_amd64.deb / .AppImage  Linux desktop app (sidecar + dist)
 #   UniPi_<version>_x64-setup.exe          Windows NSIS installer
 #   UniPi_<version>_universal.dmg          macOS (unsigned/ad-hoc, see BUILDING.md)
@@ -111,16 +114,19 @@ jobs:
               pip3 install cargo-zigbuild
               cargo zigbuild --release -p oino-cli --target "$TARGET"
               (cd apps/unipi && cargo zigbuild --release -p unipi-kanboard --target "$TARGET")
+              (cd apps/unipi && cargo zigbuild --release -p unipi-host --target "$TARGET")
               ;;
             Darwin*)
               cargo build --release -p oino-cli --target "$TARGET"
               (cd apps/unipi && cargo build --release -p unipi-kanboard --target "$TARGET")
+              (cd apps/unipi && cargo build --release -p unipi-host --target "$TARGET")
               ;;
             *)
               # Windows: native MSVC; build.rs embeds the exe icon
               # (crates/oino/build.rs) on a Windows host.
               cargo build --release -p oino-cli --target "$TARGET"
               (cd apps/unipi && cargo build --release -p unipi-kanboard --target "$TARGET")
+              (cd apps/unipi && cargo build --release -p unipi-host --target "$TARGET")
               ;;
           esac
       - name: Stage the archive (bin + share/oino/extensions, dist.md §5)
@@ -160,6 +166,20 @@ jobs:
         with:
           name: oino-${{ matrix.target }}
           path: oino-${{ needs.version.outputs.version }}-${{ matrix.target }}.*
+      # The GUI-less host (`install.sh --host` / `install.ps1 -HostInstall`):
+      # unipi-oino-host + oino + the same extension tree (kanboard CLI included).
+      - name: Pack unipi-oino-host-$VERSION-$TARGET (the GUI-less host)
+        shell: bash
+        run: |
+          exe=""; [[ "$TARGET" == *windows* ]] && exe=".exe"
+          HOST_STAGE_EXTENSIONS="$PWD/target/dist-stage/extensions" \
+            bash scripts/release/pack-host.sh "$VERSION" "$TARGET" \
+              "apps/unipi/target/$TARGET/release/unipi-host$exe" \
+              "target/$TARGET/release/oino$exe" "$PWD"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unipi-host-${{ matrix.target }}
+          path: unipi-oino-host-${{ needs.version.outputs.version }}-${{ matrix.target }}.*
 
   # ── UniPi desktop app ──────────────────────────────────────────────────────
 
@@ -425,7 +445,7 @@ jobs:
         run: |
           cp scripts/install.sh scripts/install.ps1 out/
           cd out
-          sha256sum UniPi_* oino-* install.sh install.ps1 > SHA256SUMS
+          sha256sum UniPi_* oino-* unipi-oino-host-* install.sh install.ps1 > SHA256SUMS
           cat SHA256SUMS
           python3 - <<'PY'
           import hashlib, json, os
