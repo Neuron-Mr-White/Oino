@@ -16,7 +16,9 @@
  * file changes" once that capability exists (Z-28).
  */
 import { createEffect, createSignal, on, onCleanup, Show } from 'solid-js';
-import { Check, Copy, Ellipsis, Pencil, Quote, RotateCcw, Share2, SquareStack } from 'lucide-solid';
+import { Check, Copy, Ellipsis, FileCode, Pencil, Quote, RotateCcw, Share2, SquareStack, TextSelect } from 'lucide-solid';
+import { layout } from '../../lib/layout';
+import { ActionSheet, haptic, type ActionItem } from '../conversation/phoneShim';
 import { formatDuration } from '../../lib/chat/model';
 import { copyText } from '../../lib/board/share';
 import type { Turn } from '../../lib/session/turns';
@@ -34,6 +36,7 @@ import {
   forkFrom,
   messageText,
   openEditRequest,
+  openMessageMenu,
   quoteIntoComposer,
   restoreComposer,
   retryTurn,
@@ -127,7 +130,44 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
       showActionNotice(`Couldn't share: ${actionError(error)}`);
     }
   };
+  const phone = () => !layout().desktop();
   return (
+    <Show
+      when={!phone()}
+      fallback={
+        // Phone (§3.4, PH-26): no per-turn footer — only the last settled turn shows
+        // time · Copy · Retry · ⋯; every other action is a long-press on the message.
+        <Show when={props.last && turn().kind === 'turn' && !turn().live}>
+          <div class="tl-tail-line ph-turn-tail" data-testid="tl-turn-tail">
+            <Show when={turnTime(turn()) !== undefined}>
+              <TimeLabel at={turnTime(turn())} />
+            </Show>
+            <div class="tl-actions" role="toolbar" aria-label="Turn actions">
+              <button type="button" class="tl-act" data-testid="tl-copy" data-copied={copy.copied() ? '' : undefined} aria-label={copy.copied() ? 'Copied' : 'Copy turn'} onClick={() => void copy.copy()}>
+                <Show when={copy.copied()} fallback={<Copy size={20} />}>
+                  <Check size={20} class="tl-act-check" />
+                </Show>
+              </button>
+              <button type="button" class="tl-act" data-testid="tl-retry" aria-label="Retry this turn" disabled={running()} onClick={() => void retry()}>
+                <RotateCcw size={20} />
+              </button>
+              <button
+                type="button"
+                class="tl-act"
+                data-testid="tl-more"
+                aria-label="More turn actions"
+                onClick={(event) => {
+                  const answer = turnText(turn());
+                  openMessageMenu(event.currentTarget.getBoundingClientRect(), { text: answer, role: 'assistant', userEntryId: turn().user?.id, turnId: turn().turnId });
+                }}
+              >
+                <Ellipsis size={20} />
+              </button>
+            </div>
+          </div>
+        </Show>
+      }
+    >
     <Show when={turn().kind === 'turn' && !turn().live}>
       <div class="tl-tail-line" data-testid="tl-turn-tail">
         <div class="tl-meta">
@@ -208,6 +248,120 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
         </Show>
       </div>
     </Show>
+    </Show>
+  );
+}
+
+/** Markdown → the plain text a phone "Copy" gives (Copy as Markdown keeps the source). */
+export function plainOfMarkdown(md: string): string {
+  return md
+    .replace(/```[^\n]*\n([\s\S]*?)```/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^*\w])[*_]([^*_\n]+)[*_](?=[^*\w]|$)/g, '$1$2')
+    .replace(/^\s*[-*+]\s+/gm, '• ')
+    .trim();
+}
+
+/**
+ * Phone (§3.4, PH-26): the long-press sheet of a message. Assistant: Copy · Copy as
+ * Markdown · Quote in reply · Fork from here · Retry · Select text, with the turn's
+ * info ("Done in 3s · 11:47") as the subtitle. User: Copy · Edit & resend · Quote ·
+ * Select text. "Select text" turns native selection on for that message (long-press
+ * itself opens this sheet, so it can't also start a selection).
+ */
+function PhoneMessageSheet(props: { ctx: TimelineCtx; state: NonNullable<ReturnType<typeof currentMessageMenu>> }) {
+  const target = () => props.state.target;
+  const turn = () => props.ctx.session.turns().find((t) => t.turnId === target().turnId);
+  const copy = (text: string) => void copyWithFallback(text).then((ok) => showActionNotice(ok ? 'Copied' : "Couldn't copy the message."));
+  const info = () => {
+    const t = turn();
+    if (!t || target().role !== 'assistant') return undefined;
+    const done = t.stopped ? 'Stopped' : t.error ? 'Failed' : t.durationMs !== undefined ? `Done in ${formatDuration(t.durationMs)}` : t.live ? 'Working…' : 'Done';
+    const cost = t.costUsd !== undefined && t.costUsd >= 0.0005 ? `$${t.costUsd.toFixed(t.costUsd < 0.1 ? 3 : 2)}` : undefined;
+    const at = turnTime(t);
+    return [done, at !== undefined ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined, cost].filter(Boolean).join(' · ');
+  };
+  const selectText = () => {
+    const el = document.querySelector(`[data-testid="tl-turn-${CSS.escape(target().turnId)}"]`) as HTMLElement | null;
+    const root = el;
+    root?.setAttribute('data-select-text', '');
+    showActionNotice('Text selection is on for this message');
+  };
+  const sections = (): ActionItem[][] => {
+    const t = target();
+    const s = props.ctx.session;
+    if (t.role === 'user') {
+      return [
+        [
+          { id: 'copy', label: 'Copy', icon: Copy, onSelect: () => copy(t.text) },
+          ...(t.entryId
+            ? [
+                {
+                  id: 'edit',
+                  label: 'Edit & resend',
+                  icon: Pencil,
+                  onSelect: () => {
+                    const entry = s.state.entries.find((e) => e.id === t.entryId);
+                    const tr = turn();
+                    if (entry && tr) void requestEdit(props.ctx, tr, entry, props.state.anchor);
+                  },
+                },
+              ]
+            : []),
+          { id: 'quote', label: 'Quote', icon: Quote, onSelect: () => quoteIntoComposer(s.key, t.text) },
+        ],
+        [{ id: 'select', label: 'Select text', icon: TextSelect, onSelect: selectText }],
+      ];
+    }
+    const tr = turn();
+    return [
+      [
+        { id: 'copy', label: 'Copy', icon: Copy, onSelect: () => copy(plainOfMarkdown(t.text)) },
+        { id: 'copy-md', label: 'Copy as Markdown', icon: FileCode, onSelect: () => copy(t.text) },
+        { id: 'quote', label: 'Quote in reply', icon: Quote, onSelect: () => quoteIntoComposer(s.key, t.text) },
+      ],
+      [
+        ...(t.userEntryId
+          ? [
+              {
+                id: 'fork',
+                label: 'Fork from here',
+                icon: SquareStack,
+                onSelect: () => void forkFrom(props.ctx.hostId, s.sessionId(), t.userEntryId, props.ctx.openSession).catch((error) => showActionNotice(`Couldn't fork: ${actionError(error)}`)),
+              },
+            ]
+          : []),
+        ...(tr && tr.kind === 'turn' && !tr.live
+          ? [
+              {
+                id: 'retry',
+                label: 'Retry',
+                icon: RotateCcw,
+                disabled: !!s.state.run.running,
+                onSelect: () => void retryTurn(s, tr).catch((error) => showActionNotice(`Couldn't retry: ${actionError(error)}`)),
+              },
+            ]
+          : []),
+        { id: 'share', label: 'Share', icon: Share2, onSelect: () => tr && void shareTurn(tr).catch((error) => showActionNotice(`Couldn't share: ${actionError(error)}`)) },
+        { id: 'select', label: 'Select text', icon: TextSelect, onSelect: selectText },
+      ],
+    ];
+  };
+  haptic('impact');
+  return (
+    <ActionSheet
+      open
+      onClose={closeMessageMenu}
+      title={target().role === 'user' ? 'Your message' : 'Reply'}
+      subtitle={info()}
+      sections={sections()}
+      testId="message-sheet"
+    />
   );
 }
 
@@ -261,7 +415,10 @@ export function TurnMenus(props: { ctx: TimelineCtx }) {
   const menu = currentMessageMenu;
   return (
     <>
-      <Show when={menu()} keyed>
+      <Show when={!layout().desktop() && menu()} keyed>
+        {(state) => <PhoneMessageSheet ctx={props.ctx} state={state} />}
+      </Show>
+      <Show when={layout().desktop() && menu()} keyed>
         {(state) => (
           <AnchoredMenu anchor={state.anchor} onDismiss={closeMessageMenu} label="Message actions" width={224}>
             <MenuRow

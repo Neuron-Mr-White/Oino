@@ -15,12 +15,17 @@ import { resetSessionRenderCaches } from '../../../lib/session/renderCache';
 import { ToolRow } from './ToolRow';
 import { WorkNodes } from './WorkItem';
 import { fakeCtx } from './testutil';
+import { setDesktopOverride } from '../../../lib/layout';
 
 beforeEach(() => {
+  setDesktopOverride(true);
   clearFullOutputs();
   resetSessionRenderCaches();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  setDesktopOverride(undefined);
+});
 
 const run = (over: Partial<ToolRun> = {}): ToolRun => ({ id: 't1', name: 'bash', args: { command: 'npm test -- --run' }, state: 'ok', output: '✓ 12 tests', ...over });
 

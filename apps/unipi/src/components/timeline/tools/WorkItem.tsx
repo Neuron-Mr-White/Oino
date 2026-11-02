@@ -3,7 +3,9 @@
  * thinking / prose / step / card / compaction / error renderers. Split out
  * of `SegmentFold` so groups nest member rows through the same path.
  */
-import { Match, Switch } from 'solid-js';
+import { Match, Show, Switch } from 'solid-js';
+import { layout } from '../../../lib/layout';
+import { PhoneErrorCard } from '../PhoneErrorCard';
 import type { TimelineCtx } from '../context';
 import type { WorkItem, WorkNode } from '../../../lib/session/turns';
 import { Prose } from '../Prose';
@@ -41,7 +43,14 @@ export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
       <Match when={ofKind(item(), 'step')}>{(i) => <StepRow entry={i().entry} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'card')}>{(i) => <CardRow entry={i().entry} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'compaction')}>{(i) => <Compaction entry={i().entry} sessionId={props.ctx.sessionId} />}</Match>
-      <Match when={ofKind(item(), 'error')}>{(i) => <ErrorRow text={i().text} model={failedModel(props.ctx)} />}</Match>
+      <Match when={ofKind(item(), 'error')}>
+        {(i) => (
+          // Phone (§3.4, PH-14/PH-28): one actionable card per failed turn.
+          <Show when={layout().desktop()} fallback={<PhoneErrorCard item={i()} ctx={props.ctx} />}>
+            <ErrorRow text={i().text} model={failedModel(props.ctx)} />
+          </Show>
+        )}
+      </Match>
     </Switch>
   );
 }

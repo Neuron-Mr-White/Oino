@@ -7,14 +7,19 @@
  */
 import { cleanup, fireEvent, render } from '@solidjs/testing-library';
 import { createSignal } from 'solid-js';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setDesktopOverride } from '../../../lib/layout';
 import { buildTurns, type TurnsInput, type WorkNode } from '../../../lib/session/turns';
 import type { LiveTool, SessionEntry } from '../../../lib/session/types';
 import { WorkNodes } from './WorkItem';
 import { AGENT_STEP_CAP } from './AgentCard';
 import { fakeCtx } from './testutil';
 
-afterEach(cleanup);
+beforeEach(() => setDesktopOverride(true));
+afterEach(() => {
+  cleanup();
+  setDesktopOverride(undefined);
+});
 
 const T0 = Date.UTC(2026, 10, 2, 13, 0, 0);
 let n = 0;

@@ -18,6 +18,7 @@ import { clearScrollMemory } from '../../lib/timeline/scrollMemory';
 import { clearComposer, composerDraft } from '../../lib/timeline/actions';
 import { commandNames, type TimelineCtx } from './context';
 import { Timeline } from './Timeline';
+import { setDesktopOverride } from '../../lib/layout';
 import roundtrip from '../../lib/session/fixtures/roundtrip.json';
 
 const rt = roundtrip as unknown as { fresh: SessionSnapshot };
@@ -31,6 +32,8 @@ let clientOf: () => HostClient = () => {
 };
 
 beforeEach(() => {
+  // The desktop turn tail (the phone's is covered in TurnActions.phone.test.tsx).
+  setDesktopOverride(true);
   localStorage.clear();
   clearScrollMemory();
   clearComposer('h1/s1');
@@ -61,6 +64,7 @@ beforeEach(() => {
 
 let disposers: Array<() => void> = [];
 afterEach(() => {
+  setDesktopOverride(undefined);
   disposers.forEach((d) => d());
   disposers = [];
   cleanup();

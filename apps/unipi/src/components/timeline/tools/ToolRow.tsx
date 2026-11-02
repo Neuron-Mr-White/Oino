@@ -6,7 +6,9 @@
  * or open). The body mounts only while open (`expansion` keeps the state
  * across remounts).
  */
-import { Show } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
+import { layout } from '../../../lib/layout';
+import { Sheet } from '../../conversation/phoneShim';
 import { Dynamic } from 'solid-js/web';
 import { ChevronRight, CircleAlert } from 'lucide-solid';
 import { diffStat, formatDuration, toolCategory, toolSubject } from '../../../lib/chat/model';
@@ -44,19 +46,22 @@ export function formatToolDuration(ms: number): string {
 export function ToolRow(props: { tool: ToolRun; ctx: TimelineCtx; itemKey: string }) {
   const t = () => props.tool;
   const open = () => expansionOpen(props.ctx.sessionId(), `tool:${props.itemKey}`, false);
-  const toggle = () => toggleExpansion(props.ctx.sessionId(), `tool:${props.itemKey}`, false);
+  // Phone (§3.7, PH-27): a call's input/output opens in a full sheet — never a growing inline card.
+  const phone = () => !layout().desktop();
+  const [sheet, setSheet] = createSignal(false);
+  const toggle = () => (phone() ? setSheet(true) : toggleExpansion(props.ctx.sessionId(), `tool:${props.itemKey}`, false));
   const cat = () => toolCategory(t().name);
   const busy = () => t().state === 'running' || t().state === 'preparing';
   const errLine = () => (t().state === 'error' ? (t().output ?? '').split('\n').map((l) => l.trim()).find(Boolean) : undefined);
   const stat = () => diffStat({ name: t().name, args: t().args });
   const target = () => toolSubject({ name: t().name, args: t().args }, props.ctx.cwd()) || fallbackTarget(t().args, props.ctx.cwd());
-  const subject = () => errLine() ?? (t().state === 'preparing' ? 'preparing…' : target());
+  const subject = () => (phone() ? undefined : errLine()) ?? (t().state === 'preparing' ? 'preparing…' : target());
   const dur = () => {
     const ms = t().durationMs;
     return !busy() && ms !== undefined && Number.isFinite(ms) && ms >= 50 ? formatToolDuration(ms) : undefined;
   };
   const statusBadge = () => {
-    if (t().state === 'error' && !errLine()) return 'failed';
+    if (t().state === 'error' && (phone() || !errLine())) return 'failed';
     if (t().state === 'stopped') return 'stopped';
     return undefined;
   };
@@ -84,7 +89,7 @@ export function ToolRow(props: { tool: ToolRun; ctx: TimelineCtx; itemKey: strin
         </span>
         <Show when={subject()}>
           <span class="tool-sep" />
-          <span class="tool-subject" data-error={errLine() ? '' : undefined}>
+          <span class="tool-subject" data-error={errLine() && !phone() ? '' : undefined}>
             {subject()}
           </span>
         </Show>
@@ -112,8 +117,15 @@ export function ToolRow(props: { tool: ToolRun; ctx: TimelineCtx; itemKey: strin
       <Show when={!busy() && /browser|screenshot|snap/i.test(t().name) && toolImages(props.ctx, t()).length === 0 ? imagePathIn(t().output) : undefined} keyed>
         {(path) => <PathThumb chat={props.ctx.refs} path={path} />}
       </Show>
-      <Show when={body.mounted()}>
+      <Show when={!phone() && body.mounted()}>
         <ToolBody tool={t()} ctx={props.ctx} leaving={body.leaving()} />
+      </Show>
+      <Show when={phone()}>
+        <Sheet open={sheet()} onClose={() => setSheet(false)} label={t().name} title={<span class="ph-tool-sheet-title">{t().name}{target() ? <span class="ph-tool-sheet-sub">{target()}</span> : null}</span>} detents={['full']} initialDetent="full" class="ph-tool-sheet" testId="tool-sheet">
+          <Show when={sheet()}>
+            <ToolBody tool={t()} ctx={props.ctx} leaving={false} />
+          </Show>
+        </Sheet>
       </Show>
     </div>
   );

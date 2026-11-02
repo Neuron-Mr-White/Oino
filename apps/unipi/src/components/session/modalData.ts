@@ -57,6 +57,17 @@ const str = (v: unknown, or = ''): string => (typeof v === 'string' ? v : or);
 export const liveSource = (s: () => SessionHandle) => (): 'live' | 'down' =>
   s().state.conn === 'live' ? 'live' : 'down';
 
+/** Tool calls the transcript itself shows (assistant `toolCall` parts, failed ones too) — PH-40:
+ *  the host's count can miss calls whose result never landed, so the sheet shows the larger. */
+export function transcriptToolCalls(entries: ReadonlyArray<{ message?: { role?: string; content?: unknown } }>): number {
+  let n = 0;
+  for (const e of entries) {
+    const content = e.message?.role === 'assistant' ? e.message.content : undefined;
+    if (Array.isArray(content)) for (const part of content) if ((part as { type?: unknown })?.type === 'toolCall') n += 1;
+  }
+  return n;
+}
+
 export function parseContextUsage(v: unknown): ContextUsage | undefined {
   if (!v || typeof v !== 'object') return undefined;
   const o = v as Record<string, unknown>;
