@@ -57,6 +57,9 @@ export function openSettingsAt(section: string, anchor?: string): void {
         // F-10: the desktop shows one section per page — land at the very top (title and search visible), not 16 px down.
         for (let p = el.parentElement; p; p = p.parentElement) if (p.scrollTop > 0 || p.classList.contains('app-content')) p.scrollTop = 0;
       } else el.scrollIntoView?.({ block: anchor.startsWith('sec-') ? 'start' : 'center' });
+      // owner5 #10: a whole section never flashes (landing on it is feedback enough);
+      // a deep-linked row gets the neutral flash.
+      if (anchor.startsWith('sec-')) return;
       el.classList.remove('settings-flash-target');
       void el.offsetWidth;
       el.classList.add('settings-flash-target');

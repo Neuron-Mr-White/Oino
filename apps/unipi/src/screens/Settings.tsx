@@ -158,8 +158,8 @@ export default function Settings() {
       const el = anchor ?? document.getElementById(`sec-${hit.section}`);
       if (el) {
         el.scrollIntoView?.({ block: 'center' });
-        // A row anchor (a form field) flashes itself; a section flashes its card.
-        flash(anchor ?? el);
+        // A row anchor (a form field) flashes itself (neutral); a section never flashes (owner5 #10).
+        if (anchor && !hit.anchor.startsWith('sec-')) flash(anchor);
         return;
       }
       tries += 1;

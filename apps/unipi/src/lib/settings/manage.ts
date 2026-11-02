@@ -40,6 +40,8 @@ export type ManageAction = {
   hidden?: boolean;
   /** The extension that owns the command (default: derived from it, `lib/settings/run.ts`). */
   extension?: string;
+  /** Settings opens this settings namespace's form in a sheet instead of running the command. */
+  form?: string;
 };
 
 /** P1-08: the updater extension's changelog browser (About › What's new → "Browse changelog"). */
@@ -176,8 +178,9 @@ export const MANAGE_ACTIONS: ManageAction[] = [
     id: 'skills.hub',
     page: 'skills',
     label: 'Skills hub',
-    description: 'Exposure, pins and the vault (the extension’s own panel)',
+    description: 'Exposure, pins and the vault',
     command: 'skills',
+    form: 'skills',
     title: 'Skills: open the hub',
     keywords: 'skills exposure pins vault hub',
     group: 'Agent',

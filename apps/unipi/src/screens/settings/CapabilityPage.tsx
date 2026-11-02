@@ -10,7 +10,8 @@
  * owner5 #7: an extension that is off greys its rows with the reason and a
  * "Turn on" button, inline.
  */
-import { For, Show, createEffect, createMemo, createResource, type Component, type JSX } from 'solid-js';
+import { For, Show, createEffect, createMemo, createResource, createSignal, type Component, type JSX } from 'solid-js';
+import { BoardSheet } from '../../components/board/BoardSheet';
 import { ArrowUpRight, ChevronRight, CircleAlert } from 'lucide-solid';
 import { NamespaceForm } from '../../ui/settings/form';
 import { settingsSchema } from '../../ui/settings/data';
@@ -47,6 +48,8 @@ export function CapabilityPage(props: CapabilityPageProps) {
   const actions = () => manageActionsFor(props.page);
   const localHost = () => hosts?.hosts().find((host) => host.transport === 'local')?.id ?? LOCAL_HOST;
   const extensions = createExtensionStates(localHost);
+  // owner5 #10: a row that is "this extension's settings" (Skills hub) opens its form in a sheet.
+  const [formSheet, setFormSheet] = createSignal<ManageAction | undefined>();
   /** The extensions behind this page's rows that are off (in row order, once each). */
   const offOwners = () => {
     const out: string[] = [];
@@ -85,9 +88,19 @@ export function CapabilityPage(props: CapabilityPageProps) {
             hostId={localHost()}
             off={extensions.enabled(action.extension ?? commandOwner(action.command)) === false}
             onTurnedOn={() => void extensions.refresh()}
+            onOpen={action.form ? () => setFormSheet(action) : undefined}
           />
         )}
       </For>
+      <Show when={formSheet()}>
+        {(action) => (
+          <BoardSheet open onClose={() => setFormSheet(undefined)} label={action().label} class="settings-cmd-sheet" testId="settings-form-sheet">
+            <Show when={(namespaces.latest ?? []).find((ns) => ns.namespace === action().form)} fallback={<p class="settings-cmd-wait">This host does not report these settings yet.</p>}>
+              {(ns) => <NamespaceForm namespace={ns()} bare flat testId={`sheet-${ns().namespace}-form`} />}
+            </Show>
+          </BoardSheet>
+        )}
+      </Show>
       {props.extraManage}
     </Section>
   );

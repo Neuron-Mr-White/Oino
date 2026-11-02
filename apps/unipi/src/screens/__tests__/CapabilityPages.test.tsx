@@ -129,6 +129,33 @@ describe('Settings › MCP (G-8)', () => {
   });
 });
 
+describe('Settings › Skills hub (owner5 #10)', () => {
+  beforeEach(() => {
+    setPlatformOverride('tauri-desktop');
+    setDesktopOverride(true);
+  });
+  afterEach(() => {
+    cleanup();
+    resetHubs();
+    resetSessions();
+    setPlatformOverride(undefined);
+    setDesktopOverride(undefined);
+    setHostClientFactory(undefined);
+  });
+
+  it('opens the hub in a Settings sheet: no navigation, no command, no flash', async () => {
+    const world = createMockHost(capMcpNoChat);
+    setHostClientFactory(world.client);
+    const r = renderAt('skills');
+    await waitFor(() => expect(r.getByTestId('manage-skills.hub')).toBeTruthy());
+    r.getByTestId('manage-skills.hub').click();
+    await waitFor(() => expect(document.querySelector('[data-testid=settings-form-sheet]')).toBeTruthy());
+    expect(location.hash).toBe('#/settings/skills');
+    expect(world.log.some((entry) => entry.kind === 'cmd' && (entry.args as { message?: string }).message === '/skills')).toBe(false);
+    expect(document.querySelector('.settings-flash-target')).toBeNull();
+  });
+});
+
 describe('Settings › Providers (G-15 /login, /logout)', () => {
   beforeEach(() => {
     setPlatformOverride('tauri-desktop');
