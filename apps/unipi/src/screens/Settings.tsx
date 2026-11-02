@@ -45,6 +45,7 @@ import { UnicrabSection } from './settings/UnicrabSection';
 import { sectionById } from './settings/catalog';
 import { consumePendingSettingsNamespace } from '../lib/settings/open';
 import { pushBack } from '../lib/back';
+import { recalledPlace, recalledScroll, rememberPlace, rememberScroll, settingsScroller } from '../lib/settings/memory';
 
 const TOOLBAR_LABELS: Record<ToolbarKey, string> = {
   ctrl: 'Ctrl', shift: 'Shift', opt: 'Opt', history: 'History', esc: 'Esc', tab: 'Tab',
@@ -129,9 +130,63 @@ export default function Settings() {
     if (ns) setNamespace(ns);
   });
 
+  // owner5 #16: Settings remembers its section, sub-page and scroll for the
+  // app session. `/settings` (the rail, ⌘,) returns there; a deep link
+  // (`/settings/<section>`, a search hit, an extension's openSettings) wins.
+  let pageEl: HTMLDivElement | undefined;
+  const scrollKey = () => (!desktop() ? 'phone' : namespace() ? `ns:${namespace()}` : `section:${active()}`);
+  const saveScroll = () => {
+    const sc = settingsScroller(pageEl);
+    if (sc) rememberScroll(scrollKey(), sc.scrollTop);
+  };
+  const restoreScroll = (key: string) => {
+    const top = recalledScroll(key) ?? 0;
+    let tries = 0;
+    const land = () => {
+      const sc = settingsScroller(pageEl);
+      if (!sc) return;
+      // Sections fill in after their host reads: wait until the page is tall enough.
+      if (sc.scrollHeight - sc.clientHeight >= top - 1 || ++tries >= 40) {
+        sc.scrollTop = top;
+        return;
+      }
+      window.setTimeout(land, 50);
+    };
+    requestAnimationFrame(land);
+  };
+  const remembered = recalledPlace();
+  const restoring = !params.section && !!remembered.section;
+  if (restoring && remembered.namespace) setNamespace(remembered.namespace);
+  onMount(() => {
+    if (!restoring) return;
+    if (desktop() && sections().some((s) => s.id === remembered.section)) navigate(`/settings/${remembered.section}`, { replace: true });
+    restoreScroll(scrollKey());
+  });
+  createEffect(() => rememberPlace({ section: active(), namespace: namespace() }));
+  // Track the scroll as it happens (at unmount the page may already be detached).
+  onMount(() => {
+    let lastKey = scrollKey();
+    const onScroll = (event: Event) => {
+      const sc = settingsScroller(pageEl);
+      if (!sc || (event.target !== sc && !(event.target === document && sc === document.scrollingElement))) return;
+      // A section switch resets the scroll before the key changes: never write it under the new key early.
+      const key = scrollKey();
+      if (key !== lastKey) {
+        lastKey = key;
+        return;
+      }
+      rememberScroll(key, sc.scrollTop);
+    };
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    onCleanup(() => window.removeEventListener('scroll', onScroll, { capture: true }));
+  });
+
   const pickSection = (id: string) => {
+    if (id === active() && !namespace()) return;
+    saveScroll();
     setNamespace(undefined);
     navigate(`/settings/${id}`, { replace: true });
+    if (desktop()) restoreScroll(`section:${id}`);
   };
 
   /** Flash one element once (search feedback, Z-113). */
@@ -218,7 +273,7 @@ export default function Settings() {
 
   return (
     <SectionNav.Provider value={{ active: desktop() ? activeTitle : () => undefined }}>
-      <div class="settings-page" data-testid="settings-page">
+      <div class="settings-page" data-testid="settings-page" ref={pageEl}>
         <div class="settings-top">
           <SettingsSearch onPick={onSearchPick} />
         </div>

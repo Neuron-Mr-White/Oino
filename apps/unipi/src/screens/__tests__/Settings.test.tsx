@@ -18,6 +18,7 @@ import { setHostClientFactory } from '../../lib/host/factory';
 import { createMockHost } from '../../dev/mock/host';
 import { settingsSearch as settingsSearchScenario, settingsExtensions as settingsExtensionsScenario, settingsSafeMode } from '../../dev/mock/scenarios/settings';
 import { resetHubs } from '../../lib/session/hub';
+import { resetSettingsMemory } from '../../lib/settings/memory';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), Channel: class {} }));
 
@@ -32,6 +33,47 @@ function renderSettings(adapter = createMemoryAdapter(undefined)) {
   ));
 }
 
+describe('Settings remembers where you were (owner5 #16)', () => {
+  beforeEach(() => {
+    setPlatformOverride('tauri-desktop');
+    setDesktopOverride(true);
+    resetSettingsMemory();
+  });
+  afterEach(() => {
+    cleanup();
+    resetHubs();
+    resetSettingsMemory();
+    setPlatformOverride(undefined);
+    setDesktopOverride(undefined);
+    setHostClientFactory(undefined);
+  });
+
+  it('leaving and coming back to /settings reopens the last section and extension page; a deep link wins', async () => {
+    setHostClientFactory(createMockHost(settingsSearchScenario).client);
+    renderSettings();
+    location.hash = '#/settings/extensions';
+    fireEvent.click(await screen.findByTestId('ns-memory'));
+    await screen.findByTestId('namespace-page');
+    cleanup();
+    // Back to Settings from the rail (`/settings`, no section): same place.
+    renderSettings();
+    await waitFor(() => expect(location.hash).toBe('#/settings/extensions'));
+    await screen.findByTestId('namespace-page');
+    cleanup();
+    // A deep link to another section overrides the memory.
+    location.hash = '#/settings/about';
+    render(() => (
+      <SettingsProvider adapter={createMemoryAdapter(undefined)}>
+        <HashRouter>
+          <Route path="/settings/:section?" component={() => <HostsProvider><Settings /></HostsProvider>} />
+        </HashRouter>
+      </SettingsProvider>
+    ));
+    await waitFor(() => expect(document.getElementById('sec-about')).toBeTruthy());
+    expect(screen.queryByTestId('namespace-page')).toBeNull();
+  });
+});
+
 describe('Settings screen', () => {
   beforeEach(() => {
     setPlatformOverride('tauri-mobile');
@@ -40,6 +82,7 @@ describe('Settings screen', () => {
   afterEach(() => {
     cleanup();
     resetHubs();
+    resetSettingsMemory();
     setPlatformOverride(undefined);
     setDesktopOverride(undefined);
     setHostClientFactory(undefined);

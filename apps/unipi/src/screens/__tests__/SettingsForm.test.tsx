@@ -16,6 +16,7 @@ import { createMemoryAdapter } from '../../settings/adapter';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { setDesktopOverride } from '../../lib/layout';
 import { setPlatformOverride } from '../../lib/platform';
+import { resetSettingsMemory } from '../../lib/settings/memory';
 import { resetHubs } from '../../lib/session/hub';
 import { createMockHost, type MockHostSpec, type MockNamespace } from '../../dev/mock/host';
 import { memoryFormNamespace, modelNamespace } from '../../dev/mock/fixtures/settingsForm';
@@ -66,6 +67,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetHubs();
+  resetSettingsMemory();
   setPlatformOverride(undefined);
   setDesktopOverride(undefined);
   setHostClientFactory(undefined);

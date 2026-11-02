@@ -22,6 +22,7 @@ import { createMemoryAdapter } from '../../settings/adapter';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { createMockHost } from '../../dev/mock/host';
 import { capMcpNoChat, providersNoChat } from '../../dev/mock/scenarios/capabilities';
+import { resetSettingsMemory } from '../../lib/settings/memory';
 import { resetHubs } from '../../lib/session/hub';
 import { sessions, resetSessions } from '../../lib/session/store';
 
@@ -63,6 +64,7 @@ describe('Settings › MCP (G-8)', () => {
   afterEach(() => {
     cleanup();
     resetHubs();
+    resetSettingsMemory();
     resetSessions();
     setPlatformOverride(undefined);
     setDesktopOverride(undefined);
@@ -137,6 +139,7 @@ describe('Settings › Skills hub (owner5 #10)', () => {
   afterEach(() => {
     cleanup();
     resetHubs();
+    resetSettingsMemory();
     resetSessions();
     setPlatformOverride(undefined);
     setDesktopOverride(undefined);
@@ -164,6 +167,7 @@ describe('Settings › Providers (G-15 /login, /logout)', () => {
   afterEach(() => {
     cleanup();
     resetHubs();
+    resetSettingsMemory();
     resetSessions();
     setPlatformOverride(undefined);
     setDesktopOverride(undefined);
