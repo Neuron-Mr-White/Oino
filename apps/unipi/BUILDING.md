@@ -1,11 +1,11 @@
-# Building UniPi
+# Building Unipi
 
-How to build the UniPi desktop app (and phone app) from this checkout. For what
+How to build the Unipi desktop app (and phone app) from this checkout. For what
 ships in a release, see `.github/workflows/release.yml`.
 
 ## Never collide with the installed app
 
-The installed UniPi release uses the identifier **`dev.unipi.app`** and keeps
+The installed Unipi release uses the identifier **`dev.unipi.app`** and keeps
 its data in `~/.oino` (host state: `~/.oino/host`). Locally built dev/test
 artifacts must never share either, or a test run would lock/overwrite the real
 app's data. That is why every local task here merges
@@ -14,10 +14,39 @@ app's data. That is why every local task here merges
 | | Installed release | Local dev/test build |
 |---|---|---|
 | identifier | `dev.unipi.app` | `dev.unipi.app.dev` |
-| productName / bundle | `UniPi` | `UniPi Dev` (own app-data dir, tray, menu) |
+| productName (identity, not shown) | `UniPi Oino` desktop, `Unipi` phones | `UniPi Dev` (own app-data dir) |
+| visible name | `Unipi` | `Unipi` |
 | host data dir | `~/.oino/host` | `apps/unipi/target/unipi-dev/host` (`OINO_HOST_DIR`) |
 
 CI release builds are the **only** `dev.unipi.app` builds.
+
+## The visible name is "Unipi"; productName is identity
+
+On desktop, tauri derives install identities from `productName`, so it stays
+`UniPi Oino` (dev: `UniPi Dev`) and the visible name is set separately:
+
+- **Linux**: the deb `Package:` is `kebab(productName)` = `uni-pi-oino`
+  (no override in tauri-bundler 2.10), plus `/usr/share/applications/UniPi Oino.desktop`,
+  `/usr/lib/UniPi Oino/` and the `UniPi Oino_<v>_amd64.{deb,AppImage}` file
+  names. Renaming would ship a new package `unipi` that fights `uni-pi-oino`
+  over `/usr/bin/unipi-oino`. The menu entry's `Name=Unipi` comes from
+  `src-tauri/linux/unipi.desktop` (`bundle.linux.deb.desktopTemplate`, also
+  used by the AppImage). Binaries stay `unipi-oino` / `unipi-oino-host` / `oino`
+  (`mainBinaryName`, sidecar), data stays under `dev.unipi.oino` / `~/.oino`.
+- **macOS**: `src-tauri/Info.plist` sets `CFBundleName`/`CFBundleDisplayName`
+  to `Unipi`; the bundle stays `UniPi Oino.app` because `Unipi.app` would be
+  the old UniPi app's `/Applications/UniPi.app` on case-insensitive APFS.
+- **Windows**: NSIS uses `productName` for the install dir
+  (`%LOCALAPPDATA%\UniPi Oino`), the uninstall key and the shortcut names;
+  `Unipi` would land in the old app's `%LOCALAPPDATA%\UniPi` (NTFS is
+  case-insensitive), so the Start menu entry still reads `UniPi Oino` until a
+  custom NSIS template overrides the shortcut name.
+- **Phones**: `productName` is only the display name there (the Android/iOS
+  identity is `identifier` + the Cargo crate name), so it is `Unipi`; the
+  Android launcher label comes from `@string/app_name` (release) or the
+  `appLabel` placeholder (`UNIPI_ANDROID_ID_SUFFIX=.dev` builds,
+  `dev.unipi.app.dev`), both `Unipi`.
+- Window title, tray, menus and every in-app string say `Unipi`.
 
 ## Prerequisites
 

@@ -148,7 +148,7 @@ class MascotOverlayService : Service() {
   private fun startInForeground() {
     val manager = getSystemService(NotificationManager::class.java)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.getNotificationChannel(CHANNEL_ID) == null) {
-      manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "UniPi - Unicrab over other apps", NotificationManager.IMPORTANCE_MIN).apply {
+      manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Unipi - Unicrab over other apps", NotificationManager.IMPORTANCE_MIN).apply {
         description = "Shown while the Unicrab floats over other apps."
         setShowBadge(false)
       })
@@ -391,7 +391,7 @@ class MascotOverlayService : Service() {
         payload.host?.let { append("host=").append(Uri.encode(it)) }
         payload.pid?.let { append("&pid=").append(it) }
       }
-      val text = if (payload.body.isBlank() || payload.body == "Tap to open in UniPi") payload.title else "${payload.title}: ${payload.body}"
+      val text = if (payload.body.isBlank() || payload.body == "Tap to open in UniPi" || payload.body == "Tap to open in Unipi") payload.title else "${payload.title}: ${payload.body}"
       newest = JSONObject().put("state", stateForKind(payload.kind)).put("bubble", JSONObject().put("id", entry.optString("id")).put("text", text.take(140)).put("link", link))
       added += 1
     }

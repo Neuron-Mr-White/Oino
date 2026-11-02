@@ -11,14 +11,14 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>UniPi uses the camera to scan the pairing QR code from your computer and to take photos you attach to chats and tasks.</string>
+	<string>Unipi uses the camera to scan the pairing QR code from your computer and to take photos you attach to chats and tasks.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>UniPi lets you pick photos and videos to attach to chats and tasks.</string>
+	<string>Unipi lets you pick photos and videos to attach to chats and tasks.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>UniPi saves images and files you download from your computer to your photo library.</string>
+	<string>Unipi saves images and files you download from your computer to your photo library.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>UniPi uses the microphone when you record a video to attach to a chat or task.</string>
+	<string>Unipi uses the microphone when you record a video to attach to a chat or task.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>UniPi connects directly to your computers on the local network for faster, private connections.</string>
+	<string>Unipi connects directly to your computers on the local network for faster, private connections.</string>
 </dict>
 </plist>

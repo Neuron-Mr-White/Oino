@@ -22,7 +22,7 @@ import org.unifiedpush.android.connector.UnifiedPush
  * window.UniPiUpdate pattern (UpdateBridge.kt).
  *
  * - show/cancel: a plain local notification (e.g. the ongoing "Running"
- *   activity indicator) on the "UniPi - needs you" channel.
+ *   activity indicator) on the "Unipi - needs you" channel.
  * - requestPermission: POST_NOTIFICATIONS on API 33+ (manifest already
  *   declares it; this just triggers the system prompt).
  * - registerPush/pushStatus: UnifiedPush registration with whatever
@@ -53,12 +53,12 @@ class NotificationBridge(private val activity: Activity, private val view: WebVi
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
       val manager = context.getSystemService(NotificationManager::class.java)
       if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-        val channel = NotificationChannel(CHANNEL_ID, "UniPi - needs you", NotificationManager.IMPORTANCE_HIGH)
+        val channel = NotificationChannel(CHANNEL_ID, "Unipi - needs you", NotificationManager.IMPORTANCE_HIGH)
         channel.description = "Pi is waiting for an answer, or a background task finished."
         manager.createNotificationChannel(channel)
       }
       if (manager.getNotificationChannel(RUNNING_CHANNEL_ID) == null) {
-        val running = NotificationChannel(RUNNING_CHANNEL_ID, "UniPi - running", NotificationManager.IMPORTANCE_LOW)
+        val running = NotificationChannel(RUNNING_CHANNEL_ID, "Unipi - running", NotificationManager.IMPORTANCE_LOW)
         running.description = "A quiet, ongoing notice while pi works, with a Stop button."
         running.setShowBadge(false)
         manager.createNotificationChannel(running)
@@ -147,7 +147,7 @@ class NotificationBridge(private val activity: Activity, private val view: WebVi
     activity.runOnUiThread {
       UnifiedPush.tryUseCurrentOrDefaultDistributor(activity) { success ->
         if (success) {
-          UnifiedPush.register(activity, messageForDistributor = "UniPi - needs you")
+          UnifiedPush.register(activity, messageForDistributor = "Unipi - needs you")
         } else {
           emit("window.__unipiPushStatus && window.__unipiPushStatus(${JSONObject().put("state", "no_distributor")})")
         }

@@ -19,7 +19,7 @@ val tauriProperties = Properties().apply {
 // unsigned and debug builds use the debug key, as before.
 val releaseKeystore: String? = System.getenv("UNIPI_ANDROID_KEYSTORE")
 // QA/dev builds that install next to the released app: UNIPI_ANDROID_ID_SUFFIX=.dev
-// gives package dev.unipi.app.dev and the launcher name "UniPi Dev" (own data, own signature).
+// gives package dev.unipi.app.dev and the launcher name "Unipi" (own data, own signature).
 val idSuffix: String? = System.getenv("UNIPI_ANDROID_ID_SUFFIX")?.takeIf { it.isNotBlank() }
 
 android {
@@ -40,7 +40,7 @@ android {
         applicationId = "dev.unipi.app"
         if (idSuffix != null) {
             applicationIdSuffix = idSuffix
-            manifestPlaceholders["appLabel"] = "UniPi Dev"
+            manifestPlaceholders["appLabel"] = "Unipi"
         } else {
             manifestPlaceholders["appLabel"] = "@string/app_name"
         }

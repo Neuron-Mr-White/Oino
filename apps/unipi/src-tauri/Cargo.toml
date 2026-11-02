@@ -1,8 +1,8 @@
 [package]
 name = "unipi-mobile"
 version = "1.0.0"
-description = "UniPi App — Tauri core"
-authors = ["UniPi"]
+description = "Unipi App — Tauri core"
+authors = ["Unipi"]
 edition = "2021"
 license = "MIT"
 
