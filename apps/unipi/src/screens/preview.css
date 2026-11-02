@@ -174,3 +174,14 @@ html[data-shell=desktop][data-browser-pane=fold] .shell-splitter { display: none
 .browser-sheet .browser-pane-head { padding-top: 2px; }
 @keyframes browser-sheet-in { from { transform: translateY(24px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .browser-sheet { animation: none; } }
+
+/* Settings › Ports & previews (phone spec §3.12) */
+.ports-section { padding-top: 4px; }
+.ports-section .ph-group { margin-bottom: var(--ph-6, 24px); }
+.ports-browser { padding: 12px 16px 16px; }
+.ports-browser .section-label { font-size: 14px; letter-spacing: normal; text-transform: none; }
+.ports-off, .ports-inline { margin: 0 var(--ph-gutter, 16px) var(--ph-4, 16px); }
+.ports-section .preview-leave { display: flex; justify-content: center; padding: 0 16px 16px; }
+.ph-field-label { display: block; margin: 0 0 8px 4px; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--color-text-muted); }
+.ph-input { width: 100%; box-sizing: border-box; min-height: 48px; font-size: 16px; border-radius: 12px; }
+.ports-section .preview-leave { margin-top: 8px; }

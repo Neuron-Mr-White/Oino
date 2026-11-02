@@ -27,3 +27,6 @@
 .ny-group-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 28px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: transparent; }
 .ny-group-chev { transition: transform 160ms ease-out; transform: rotate(-90deg); }
 .ny-group-chev[data-open] { transform: none; }
+/* Phone sheet (phone spec §3.3) */
+.ny-unread { font-weight: 600; }
+.ny-phone-foot { display: flex; justify-content: center; padding-top: 4px; }

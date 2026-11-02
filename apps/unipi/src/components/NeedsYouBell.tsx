@@ -16,6 +16,9 @@ import { Unicrab } from './Unicrab';
 import { mascotLive } from '../lib/mascotLive';
 import './mascot.css';
 import { BoardSheet } from './board/BoardSheet';
+import { ListGroup, ListRow, Sheet } from './phone';
+import { layout } from '../lib/layout';
+import './phone/chats.css';
 import { groupNeedsYou, needsYou, type NeedsYouGroup, type NeedsYouItem } from '../lib/needsYou';
 import { sessionHref, routeSession } from './shell/Sidebar';
 import { useHosts, useHostsOptional } from '../hosts/context';
@@ -71,6 +74,57 @@ export function NeedsYouDrawer(props: { open: boolean; onClose: () => void }) {
     openNeedsYouItem(item, hosts.hosts(), () => undefined);
     props.onClose();
   };
+
+  // Phone spec §3.3: on the phone a half/full sheet of 72 px rows (swipe to dismiss), no ✕.
+  if (!layout().desktop()) {
+    return (
+      <Sheet
+        open={props.open}
+        onClose={props.onClose}
+        label="Needs you"
+        title="Needs you"
+        detents={['half', 'full']}
+        initialDetent="half"
+        headerAction={
+          <Show when={store.list().length > 0}>
+            <button type="button" class="ph-text-btn" onClick={() => store.markAllRead()} data-testid="ny-mark-all">
+              Mark all read
+            </button>
+          </Show>
+        }
+        testId="needs-you-drawer"
+      >
+        <Show when={store.list().length > 0} fallback={<p class="ny-empty">Nothing needs you right now.</p>}>
+          <For each={GROUP_ORDER}>
+            {(group) => (
+              <Show when={grouped()[group].length > 0}>
+                <ListGroup title={`${GROUP_LABEL[group]} · ${grouped()[group].length}`} inset>
+                  <For each={grouped()[group]}>
+                    {(item) => (
+                      <ListRow
+                        testId={`ny-row-${item.id}`}
+                        leading={<span class="chat-glyph" data-state={group === 'waiting' ? 'needs-you' : 'idle'}>{group === 'waiting' ? <span class="chat-glyph-dot">!</span> : <Bell size={20} />}</span>}
+                        title={<span classList={{ 'ny-unread': !store.isRead(item.id) }}>{item.title}</span>}
+                        subtitle={[item.hostName, item.what].filter(Boolean).join(' · ')}
+                        caption={relativeTime(item.since).replace(' ago', '')}
+                        onClick={() => open(item)}
+                        swipeEnd={{ label: 'Dismiss', icon: X, tone: 'neutral', onTrigger: () => store.dismiss(item.id) }}
+                      />
+                    )}
+                  </For>
+                </ListGroup>
+              </Show>
+            )}
+          </For>
+          <div class="ny-phone-foot">
+            <button type="button" class="ph-btn" data-kind="ghost" onClick={() => store.clearAll()}>
+              Clear all
+            </button>
+          </div>
+        </Show>
+      </Sheet>
+    );
+  }
 
   return (
     <BoardSheet

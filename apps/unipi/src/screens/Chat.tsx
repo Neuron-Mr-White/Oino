@@ -10,7 +10,7 @@
  */
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { Archive, ArchiveRestore, ArrowDownAZ, CheckSquare, Clock, Ellipsis, MessageSquare, SquarePen, Trash2 } from 'lucide-solid';
+import { Archive, ArchiveRestore, ArrowDownAZ, CheckSquare, Clock, Ellipsis, MessageSquare, SquarePen, Trash2, WifiOff } from 'lucide-solid';
 import { can } from '../lib/platform';
 import { useHostsOptional } from '../hosts/context';
 import { hubs } from '../lib/session/hub';
@@ -140,7 +140,10 @@ export default function Chat() {
               <Show
                 when={total() > 0 || loading()}
                 fallback={
-                  <Show when={!offline()}>
+                  <Show
+                    when={!offline()}
+                    fallback={<EmptyState icon={<WifiOff size={22} />} title={`Can't reach ${selected()?.name ?? 'your PC'}`} body="Its chats show up here once it is back." compact testId="chats-offline" />}
+                  >
                     <EmptyState
                       title={`No chats on ${selected()?.name ?? 'this PC'} yet`}
                       body="Start one and it shows up here."

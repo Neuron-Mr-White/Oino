@@ -62,7 +62,6 @@ export function HostSheetButton() {
                   title={host.name}
                   subtitle={host.transport === 'local' ? `This computer · ${statusWord(s())}` : statusWord(s())}
                   trailing={current() ? <Check size={22} class="ph-check" aria-label="Selected" /> : undefined}
-                  selected={current()}
                   onClick={() => pick(host.id)}
                 />
               );

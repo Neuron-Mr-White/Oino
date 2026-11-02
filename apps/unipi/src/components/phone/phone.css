@@ -285,7 +285,7 @@ html[data-sheet=open] .ph-fab, html[data-kb=open] .ph-fab { opacity: 0; pointer-
   transition: background-color 80ms ease-out, transform 200ms cubic-bezier(.2,0,0,1);
 }
 .ph-group[data-inset] .ph-row { background: var(--color-surface-1); }
-.ph-sheet .ph-row { background: var(--color-surface-2); }
+.ph-sheet .ph-row, .ph-sheet .ph-group[data-inset] .ph-row { background: var(--color-surface-2); }
 .ph-row[data-dragging] { transition: background-color 80ms ease-out; }
 .ph-row[data-two] { min-height: var(--ph-row-h2); }
 .ph-row-wrap + .ph-row-wrap .ph-row::before { content: ''; position: absolute; top: 0; right: 0; left: 72px; height: 1px; background: rgb(46 40 37 / 60%); }
@@ -322,3 +322,22 @@ button.ph-row:active:not(:disabled), a.ph-row:active { background: var(--color-s
 @media (prefers-reduced-motion: reduce) {
   .ph-row, .ph-fab, .ph-switch-thumb, .ph-top-collapsed { transition-duration: 1ms !important; }
 }
+
+/* ── Shell frame (§1.1) ─────────────────────────────────────────────────── */
+/* A screen on PageScaffold brings its own header: drop the legacy one. */
+html[data-shell=phone] .ph-shell:has(.ph-page) > .ph-legacy-head { display: none; }
+html[data-shell=phone] .ph-tabbar { z-index: var(--z-tabbar); }
+html[data-shell=phone] .ph-tabbar a { min-height: 48px; font-size: var(--ph-fs-caption); line-height: 16px; font-weight: 600; color: var(--color-text-muted); }
+html[data-shell=phone] .ph-tabbar a[aria-current=page] { color: var(--color-text); }
+html[data-shell=phone] .ph-tabbar a[aria-current=page] svg { color: var(--color-shell); }
+.ph-tab-icon { position: relative; display: inline-flex; }
+.ph-tab-badge {
+  position: absolute; top: -2px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box;
+  border-radius: 9999px; background: var(--color-shell); color: #fff; font-size: 11px; line-height: 16px; font-weight: 700; text-align: center;
+  box-shadow: 0 0 0 2px var(--color-bg);
+}
+html[data-shell=phone][data-size=medium] .ph-tabbar { justify-content: center; }
+html[data-shell=phone][data-size=medium] .ph-tabbar a { max-width: 120px; }
+html[data-shell=phone][data-short] .ph-tabbar { height: calc(48px + var(--safe-bottom)); }
+html[data-shell=phone][data-short] .ph-tabbar a > span:last-child { display: none; }
+html[data-shell=phone][data-short] .ph-tabbar a svg { padding-block: 2px; }

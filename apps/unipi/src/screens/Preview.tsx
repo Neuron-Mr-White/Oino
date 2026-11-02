@@ -72,6 +72,7 @@ import {
 import { BrowserPanel, BrowserViewer } from './BrowserView';
 import { UnavailableNotice } from '../components/Requires';
 import { FeatureOff } from '../components/FeatureOff';
+import { Button, IconButton, ListGroup, ListRow, RowIcon, Sheet } from '../components/phone';
 import '../components/Requires.css';
 import './preview.css';
 
@@ -410,6 +411,235 @@ function PreviewApp() {
         )}
       </Show>
     </Show>
+  );
+}
+
+/**
+ * Settings › <PC> › Ports & previews (phone spec §3.12): the body of the
+ * `/settings/ports` pushed page (C renders it inside its PageScaffold). Two
+ * groups instead of the old segmented control — "Web apps on <PC>" (the PC's
+ * listening ports; tap opens the preview, open forwards first with Stop) and
+ * "Browser tabs" (the in-app browser on the PC). Follows the selected PC.
+ * Off state = the shared FeatureOff card (same as Cron, PH-38).
+ */
+export function PortsSection() {
+  const hosts = useHosts();
+  const hostId = () => hosts.selectedId() ?? hosts.hosts()[0]?.id;
+  const hostName = (id: string | undefined) => hosts.hosts().find((h) => h.id === id)?.name ?? 'PC';
+  const isLocal = (id: string | undefined) => hosts.hosts().find((h) => h.id === id)?.transport === 'local';
+  const [ports, setPorts] = createSignal<Result<PortsListData> | undefined>();
+  const [refreshing, setRefreshing] = createSignal(false);
+  const [forwards, setForwards] = createSignal<ForwardInfo[]>([]);
+  const [starting, setStarting] = createSignal<number | undefined>();
+  const [startError, setStartError] = createSignal<{ port: number; error: AppError } | undefined>();
+  const [viewing, setViewing] = createSignal<ForwardInfo | undefined>();
+  const [browsing, setBrowsing] = createSignal<{ hostId: string; url?: string; target?: string } | undefined>();
+  const [otherOpen, setOtherOpen] = createSignal(false);
+  const [manual, setManual] = createSignal('');
+  const [manualError, setManualError] = createSignal<string | undefined>();
+  const [leaving, setLeaving] = createSignal(false);
+
+  async function refresh() {
+    const id = hostId();
+    if (!id) return;
+    setRefreshing(true);
+    const [list, running] = await Promise.all([portsList(id), forwardList()]);
+    setRefreshing(false);
+    if (id !== hostId()) return;
+    setPorts(list);
+    if (running.ok) setForwards(running.value);
+  }
+  createEffect(() => {
+    hostId();
+    setPorts(undefined);
+    setStartError(undefined);
+    void refresh();
+  });
+  async function open(port: number) {
+    const id = hostId();
+    if (!id || starting() !== undefined) return;
+    if (isLocal(id)) {
+      setViewing({ id: `local-${port}`, hostId: id, remotePort: port, localPort: port, url: `http://127.0.0.1:${port}/`, startedAt: Date.now(), active: 0, total: 0 } as ForwardInfo);
+      return;
+    }
+    setStarting(port);
+    setStartError(undefined);
+    const result = await forwardStart(id, port);
+    setStarting(undefined);
+    if (!result.ok) {
+      setStartError({ port, error: result.error });
+      if (result.error.code === 'E_FORWARD_DISABLED') setPorts({ ok: false, error: result.error });
+      return;
+    }
+    setViewing(result.value);
+    const running = await forwardList();
+    if (running.ok) setForwards(running.value);
+  }
+  async function stop(id: string) {
+    if (!id.startsWith('local-')) await forwardStop(id);
+    if (viewing()?.id === id) setViewing(undefined);
+    const running = await forwardList();
+    if (running.ok) setForwards(running.value);
+  }
+  const submitOther = () => {
+    const parsed = parsePortInput(manual());
+    if (!parsed.ok) return setManualError(parsed.message);
+    setManualError(undefined);
+    setOtherOpen(false);
+    void open(parsed.port);
+  };
+  const hostForwards = () => forwards().filter((f) => f.hostId === hostId());
+  const state = () => pickerState(ports());
+  const portRow = (p: ListeningPort) => (
+    <ListRow
+      testId={`port-row-${p.port}`}
+      leading={<RowIcon icon={p.http ? Globe : Plug} tint={p.allowed ? 'accent' : 'neutral'} />}
+      title={`:${p.port} · ${portLabel(p)}`}
+      subtitle={p.allowed ? (p.cmd ?? `bound to ${p.bind}`) : 'Not allowed on the PC'}
+      trailing={starting() === p.port ? <RefreshCw size={18} class="refresh-spinning" /> : undefined}
+      chevron={starting() !== p.port}
+      disabled={starting() !== undefined}
+      onClick={() => void open(p.port)}
+    />
+  );
+
+  return (
+    <div class="ports-section" data-testid="ports-section">
+      <Show when={canForward()} fallback={<div data-testid="preview-needs-app"><UnavailableNotice cap="portForward" /></div>}>
+        <Show when={hosts.hosts().length > 0} fallback={<NoHostState what="its web apps and browser" onAdd={() => setAddHostOpen(true)} />}>
+          <Show when={hostForwards().length > 0}>
+            <ListGroup title="Open now" inset>
+              <For each={hostForwards()}>
+                {(f) => (
+                  <ListRow
+                    leading={<RowIcon icon={Globe} tint="green" />}
+                    title={`:${f.remotePort}`}
+                    subtitle={`${f.active} live connection${f.active === 1 ? '' : 's'}`}
+                    onClick={() => setViewing(f)}
+                    trailing={<IconButton icon={Square} label={`Stop forwarding port ${f.remotePort}`} onClick={(e) => (e.stopPropagation(), void stop(f.id))} />}
+                  />
+                )}
+              </For>
+            </ListGroup>
+          </Show>
+          <Show when={startError() && startError()!.error.code !== 'E_FORWARD_DISABLED' && startError()}>
+            {(failure) => (
+              <div class="preview-inline-error ports-inline" role="alert" data-testid="preview-start-error">
+                <TriangleAlert size={18} />
+                <div>
+                  <p>{failure().error.code === 'E_NOT_FOUND' ? `Port ${failure().port} is closed: nothing is listening there on the PC.` : failure().error.message}</p>
+                  <Show when={failure().error.code === 'E_UNAUTHORIZED'}>
+                    <p class="preview-muted">Allow it on the PC:</p>
+                    <CommandBox command={ENABLE_PORT_COMMAND(failure().port)} />
+                  </Show>
+                </div>
+              </div>
+            )}
+          </Show>
+          <Show when={state().kind === 'disabled' && hostId()}>
+            {(id) => (
+              <div class="ports-off" data-testid="preview-disabled">
+                <FeatureOff feature="forward" hostId={id()} hostName={hostName(id())} CommandBox={CommandBox} onChanged={() => void refresh()} />
+              </div>
+            )}
+          </Show>
+          <Show when={state().kind === 'error' && (state() as { error: AppError }).error}>
+            {(err) => (
+              <div class="ports-off">
+                <Show when={isUnreachable(err().code)} fallback={<ErrorBanner error={err()} retry={() => void refresh()} />}>
+                  <OfflineState compact pc={hostName(hostId())} message={err().message} hint={err().hint} onRetry={() => void refresh()} />
+                </Show>
+              </div>
+            )}
+          </Show>
+          <Show when={state().kind === 'loading' || state().kind === 'empty' || state().kind === 'ports'}>
+            <ListGroup
+              title={`Web apps on ${hostName(hostId())}`}
+              inset
+              footer={
+                <Show when={state().kind === 'ports' && !(state() as { any: boolean }).any}>
+                  This PC only forwards {(state() as { allowed: number[] }).allowed.length ? `ports ${(state() as { allowed: number[] }).allowed.join(', ')}` : 'listed ports'}.
+                </Show>
+              }
+            >
+              <Show when={state().kind === 'loading'}>
+                <ListRow leading={<RefreshCw size={20} class="refresh-spinning" />} title="Looking for ports on the PC…" />
+              </Show>
+              <Show when={state().kind === 'empty'}>
+                <ListRow leading={<RowIcon icon={Plug} />} title="No open ports" subtitle="Start a dev server on the PC, like npm run dev" wrap />
+              </Show>
+              <Show when={state().kind === 'ports' && (state() as Extract<ReturnType<typeof pickerState>, { kind: 'ports' }>)}>
+                {(st) => (
+                  <>
+                    <For each={st().web}>{portRow}</For>
+                    <For each={st().other}>{portRow}</For>
+                  </>
+                )}
+              </Show>
+              <ListRow testId="ports-other" leading={<RowIcon icon={Plug} />} title="Open another port" chevron onClick={() => setOtherOpen(true)} />
+              <ListRow testId="ports-refresh" leading={<RowIcon icon={RefreshCw} />} title={refreshing() ? 'Refreshing…' : 'Refresh'} onClick={() => void refresh()} />
+            </ListGroup>
+          </Show>
+          <Show when={hostId()}>
+            {(id) => (
+              <ListGroup title="Browser tabs" inset>
+                <div class="ports-browser">
+                  <BrowserPanel hostId={id()} hostName={hostName(id())} Notice={Notice} CommandBox={CommandBox} onOpen={(args) => setBrowsing({ hostId: id(), ...args })} />
+                </div>
+              </ListGroup>
+            )}
+          </Show>
+          <div class="preview-leave">
+            <LeaveButton onClick={() => setLeaving(true)} label="Turn off web apps for this phone" testId="forward-leave" />
+          </div>
+          <LeaveSheet open={leaving()} onClose={() => setLeaving(false)} hostId={hostId() ?? ''} feature="forward" allowed />
+          <Sheet
+            open={otherOpen()}
+            onClose={() => setOtherOpen(false)}
+            label="Open another port"
+            title="Open another port"
+            footer={
+              <Button kind="primary" block disabled={starting() !== undefined} onClick={submitOther} testId="ports-other-open">
+                Open
+              </Button>
+            }
+          >
+            <label class="ph-field-label" for="ports-other-input">Port on {hostName(hostId())}</label>
+            <input
+              id="ports-other-input"
+              class="preview-input ph-input"
+              inputmode="numeric"
+              enterkeyhint="go"
+              placeholder="e.g. 5173"
+              autofocus
+              value={manual()}
+              aria-invalid={manualError() ? 'true' : undefined}
+              onInput={(e) => (setManual(e.currentTarget.value), setManualError(undefined))}
+              onKeyDown={(e) => e.key === 'Enter' && submitOther()}
+            />
+            <Show when={manualError()}>
+              <p class="preview-field-error" role="alert">{manualError()}</p>
+            </Show>
+          </Sheet>
+          <Show when={browsing()}>
+            {(b) => <BrowserViewer hostId={b().hostId} hostName={hostName(b().hostId)} url={b().url} target={b().target} CommandBox={CommandBox} onClose={() => setBrowsing(undefined)} />}
+          </Show>
+          <Show when={viewing()}>
+            {(current) => (
+              <Viewer
+                forward={current()}
+                hostName={hostName(current().hostId)}
+                onClose={() => {
+                  setViewing(undefined);
+                  void refresh();
+                }}
+                onStop={() => void stop(current().id)}
+              />
+            )}
+          </Show>
+        </Show>
+      </Show>
+    </div>
   );
 }
 
