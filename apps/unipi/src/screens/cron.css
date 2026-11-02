@@ -3,26 +3,50 @@
 .cron-body { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 24px; }
 .cron-pause-row { border-radius: 14px; background: var(--color-surface-2); margin: 0 12px 4px; padding: 10px 12px; }
 
-.cron-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: calc(100% - 24px);
-  box-sizing: border-box;
-  text-align: left;
-  padding: 12px 16px;
-  border-radius: 14px;
-  margin: 0 12px;
-  background: var(--color-surface-2);
-}
-.cron-row + .cron-row { margin-top: 6px; }
-.cron-off-badge { font-size: 11px; color: var(--color-text-dim); border: 1px solid var(--color-line); border-radius: 9999px; padding: 2px 8px; flex: none; }
+/* [ui-chat-bits] Job rows: state icon · name + schedule in words · last-run icon chip · toggle on the right. */
+.cron-jobs { display: flex; flex-direction: column; gap: 6px; margin: 0 12px; }
+.cron-row { display: flex; align-items: center; gap: 4px; min-width: 0; border-radius: 14px; background: var(--color-surface-2); padding-right: 14px; transition: background-color 120ms ease-out; }
+.cron-row:hover { background: color-mix(in srgb, var(--color-surface-3) 60%, var(--color-surface-2)); }
+.cron-row-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 12px 8px 12px 14px; text-align: left; background: transparent; border-radius: 14px; }
+.cron-row-main:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
+.cron-row-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--color-surface-3); color: var(--color-text-muted); }
+.cron-row-icon[data-state="scheduled"] { color: var(--color-wm-cyan); background: color-mix(in srgb, var(--color-wm-cyan) 13%, transparent); }
+.cron-row-icon[data-state="running"] { color: var(--color-shell); background: color-mix(in srgb, var(--color-shell) 14%, transparent); }
+.cron-row-icon[data-state="failed"] { color: var(--color-wm-red); background: color-mix(in srgb, var(--color-wm-red) 13%, transparent); }
+.cron-row-icon[data-state="disabled"] { color: var(--color-text-dim); }
+.cron-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cron-row-name { font-size: 15px; line-height: 20px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cron-row[data-state="disabled"] .cron-row-name { color: var(--color-text-muted); }
+.cron-row-sub { font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cron-row-toggle { flex: none; display: flex; align-items: center; padding-left: 10px; border-left: 1px solid var(--color-line); height: 28px; }
 
-.cron-chip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); }
+/* A run status: icon + short label, one line, coloured by outcome. */
+.cron-status { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px 0 7px; border-radius: 9999px; font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; background: var(--color-surface-3); color: var(--color-text-muted); }
+.cron-status svg { flex: none; }
+.cron-status[data-status="ok"] { color: var(--color-wm-green); background: color-mix(in srgb, var(--color-wm-green) 13%, transparent); }
+.cron-status[data-status="failed"] { color: var(--color-wm-red); background: color-mix(in srgb, var(--color-wm-red) 13%, transparent); }
+.cron-status[data-status="timeout"] { color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 14%, transparent); }
+.cron-status[data-status="running"] { color: var(--color-shell); background: color-mix(in srgb, var(--color-shell) 14%, transparent); }
+.cron-status[data-compact] { height: 22px; font-size: 11.5px; padding: 0 8px 0 6px; }
+
+/* Legacy text chip (other screens may still use it). */
+.cron-chip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); white-space: nowrap; }
 .cron-chip[data-status="ok"] { color: var(--color-wm-green); }
 .cron-chip[data-status="failed"] { color: var(--color-wm-red); }
 .cron-chip[data-status="timeout"] { color: var(--color-amber); }
 .cron-chip[data-status="running"] { color: var(--color-shell); }
+.cron-off-badge { font-size: 11px; color: var(--color-text-dim); border: 1px solid var(--color-line); border-radius: 9999px; padding: 2px 8px; flex: none; }
+
+/* Phone / narrow: the last-run chip keeps its icon only; the toggle stays right. */
+@media (max-width: 520px) {
+  .cron-jobs { margin: 0 10px; }
+  .cron-row { padding-right: 10px; }
+  .cron-row-main { gap: 10px; padding: 11px 6px 11px 12px; }
+  .cron-row-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .cron-row .cron-status[data-compact] { width: 24px; padding: 0; justify-content: center; }
+  .cron-row .cron-status[data-compact] .cron-status-label { display: none; }
+  .cron-row-toggle { padding-left: 8px; }
+}
 
 .cron-command { display: block; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--color-surface-2); overflow-x: auto; }
 
@@ -38,11 +62,23 @@
 .cron-detail-actions button:disabled { opacity: .5; }
 .cron-delete-btn { color: var(--color-wm-red); }
 
-.cron-runs-heading { font-size: 13px; font-weight: 600; color: var(--color-text-dim); margin: 0; }
-.cron-runs-list { display: flex; flex-direction: column; gap: 4px; list-style: none; margin: 0; padding: 0; }
-.cron-run-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; border-radius: 10px; background: var(--color-surface-2); font-size: 13px; }
-.cron-run-when { color: var(--color-text-dim); flex: none; }
-.cron-run-summary { color: var(--color-text-muted); min-width: 0; }
+.cron-runs-heading { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-dim); margin: 6px 0 -4px; }
+.cron-runs-list { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; border-radius: 14px; background: var(--color-surface-2); overflow: hidden; }
+.cron-runs-list > li + li { border-top: 1px solid var(--color-line); }
+.cron-run-row { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 12px 12px 12px 14px; background: transparent; font-size: 13px; transition: background-color 120ms ease-out; }
+.cron-run-row:hover { background: var(--color-surface-3); }
+.cron-run-row:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
+.cron-run-row > .cron-status { min-width: 92px; margin-top: 1px; }
+.cron-run-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cron-run-when { color: var(--color-text); font-variant-numeric: tabular-nums; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cron-run-rel { color: var(--color-text-dim); }
+.cron-run-tag { margin-left: 8px; padding: 1px 7px; border-radius: 9999px; font-size: 11px; color: var(--color-text-muted); background: var(--color-surface-3); }
+.cron-run-summary { color: var(--color-text-muted); font-size: 12.5px; line-height: 17px; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.cron-run-chevron { flex: none; align-self: center; color: var(--color-text-dim); }
+@media (max-width: 520px) {
+  .cron-run-row { gap: 10px; padding: 11px 10px 11px 12px; }
+  .cron-run-row > .cron-status { min-width: 0; }
+}
 
 .cron-run-log { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 24px; }
 .cron-run-cause { margin: 0; font-size: 13px; line-height: 18px; color: var(--color-wm-red); background: rgb(240 60 50 / 10%); border: 1px solid rgb(240 60 50 / 28%); border-radius: 10px; padding: 8px 12px; }

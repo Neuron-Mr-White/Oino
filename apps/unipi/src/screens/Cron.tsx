@@ -12,7 +12,7 @@ import { NamespaceForm } from '../ui/settings/form';
 import { settingsSchema } from '../ui/settings/data';
 import type { Namespace } from '../ui/settings/types';
 import { useNavigate, useSearchParams } from '@solidjs/router';
-import { Bell, ChevronDown, ChevronRight, Clock, Cpu, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, Square, Trash2 } from 'lucide-solid';
+import { Bell, CalendarClock, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CirclePause, ClockAlert, Cpu, Hourglass, LoaderCircle, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, SkipForward, Square, Trash2 } from 'lucide-solid';
 import type { AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
 import {
@@ -115,6 +115,92 @@ export function humanSchedule(expression: string): string {
   }
   if (hour === '*' && dom === '*' && dow === '*') return min === '0' ? 'Every hour' : `Every hour at :${min!.padStart(2, '0')}`;
   return expression;
+}
+
+/** [ui-chat-bits] The schedule in plain words, a step further than `humanSchedule`: one-shot
+ * `at:` times, every N minutes / hours, several weekdays, a day of the month. Pure. */
+export function scheduleText(expression: string, now = Date.now()): string {
+  const e = expression.trim();
+  if (e.startsWith('at:')) {
+    const ms = Date.parse(e.slice(3));
+    return Number.isNaN(ms) ? e : `Once, ${runWhenText(ms, now).abs}`;
+  }
+  const simple = humanSchedule(e);
+  if (simple !== e) return simple;
+  const parts = e.split(/\s+/);
+  if (parts.length !== 5 && parts.length !== 6) return e;
+  const [min, hour, dom, mon, dow] = parts.length === 6 ? parts.slice(1) : parts;
+  const sec = parts.length === 6 ? parts[0] : '0';
+  if (sec !== '0' || mon !== '*') return e;
+  const step = (f: string) => /^(?:\*|0)\/(\d+)$/.exec(f)?.[1];
+  if (step(min!) && hour === '*' && dom === '*' && dow === '*') return `Every ${Number(step(min!))} min`;
+  if (/^\d+$/.test(min!) && step(hour!) && dom === '*' && dow === '*') {
+    const n = Number(step(hour!));
+    return `Every ${n} h${min === '0' ? '' : ` at :${min!.padStart(2, '0')}`}`;
+  }
+  if (/^\d+$/.test(min!) && /^\d+$/.test(hour!)) {
+    const at = clock(hour!, min!);
+    if (dom === '*' && (dow === '0,6' || dow === '6,0')) return `Weekends at ${at}`;
+    if (dom === '*' && /^[0-7](,[0-7])+$/.test(dow!)) return `${dow!.split(',').map((d) => DAYS[Number(d) % 7]!.slice(0, 3)).join(', ')} at ${at}`;
+    if (/^\d+$/.test(dom!) && dow === '*') return `Monthly on day ${Number(dom)} at ${at}`;
+  }
+  return e;
+}
+
+/** A run's time: "Nov 1, 19:40" (the year when not this one) + relative ("2 h ago"). Pure. */
+export function runWhenText(at: number, now = Date.now()): { abs: string; rel: string } {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
+  const date = d.toLocaleDateString('en-US', sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+  const diff = now - at;
+  const ahead = diff < 0;
+  const a = Math.abs(diff);
+  const min = Math.round(a / 60_000);
+  const span = min < 1 ? undefined : min < 60 ? `${min} min` : min < 48 * 60 ? `${Math.round(min / 60)} h` : `${Math.round(min / 1440)} d`;
+  const rel = !span ? 'just now' : ahead ? `in ${span}` : `${span} ago`;
+  return { abs: `${date}, ${time}`, rel };
+}
+
+/** How long a run took ("42s", "3m 05s", "1h 02m"); `undefined` until it ended. Pure. */
+export function runDurationText(run: Pick<CronRun, 'started_at' | 'ended_at'>): string | undefined {
+  if (run.started_at === undefined || run.ended_at === undefined) return undefined;
+  const s = Math.max(0, Math.round((run.ended_at - run.started_at) / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+/** A run status as an icon + short label (never wraps) + tone. */
+const RUN_STATUS: Record<string, { label: string; icon: typeof CircleCheck }> = {
+  ok: { label: 'OK', icon: CircleCheck },
+  failed: { label: 'Failed', icon: CircleAlert },
+  timeout: { label: 'Timed out', icon: ClockAlert },
+  skipped: { label: 'Skipped', icon: SkipForward },
+  queued: { label: 'Queued', icon: Hourglass },
+  running: { label: 'Running', icon: LoaderCircle },
+};
+
+export function RunStatusChip(props: { status: string; compact?: boolean; testId?: string }) {
+  const meta = () => RUN_STATUS[props.status] ?? { label: props.status, icon: CircleAlert };
+  return (
+    <span class="cron-status" data-status={props.status} data-compact={props.compact ? '' : undefined} title={meta().label} data-testid={props.testId}>
+      {(() => {
+        const Icon = meta().icon;
+        return <Icon size={14} aria-hidden="true" class={props.status === 'running' ? 'refresh-spinning' : undefined} />;
+      })()}
+      <span class="cron-status-label">{meta().label}</span>
+    </span>
+  );
+}
+
+/** The job's state for its row icon: running › failed last run › disabled › scheduled. Pure. */
+export function jobState(job: Pick<CronJob, 'enabled' | 'running' | 'last_run_status'>): 'running' | 'failed' | 'disabled' | 'scheduled' {
+  if (job.running) return 'running';
+  if (!job.enabled) return 'disabled';
+  if (job.last_run_status === 'failed' || job.last_run_status === 'timeout') return 'failed';
+  return 'scheduled';
 }
 
 export function lastRunChip(job: Pick<CronJob, 'last_run_status' | 'running'>): string | undefined {
@@ -254,7 +340,9 @@ export default function Cron() {
                   />
                 </div>
 
-                <Show when={v.jobs.length === 0} fallback={<For each={v.jobs}>{(job) => <JobRow job={job} onOpen={() => setDetail(job.id)} />}</For>}>
+                <Show when={v.jobs.length === 0} fallback={<div class="cron-jobs">
+                  <For each={v.jobs}>{(job) => <JobRow job={job} hostId={hostId()!} onOpen={() => setDetail(job.id)} onChanged={() => void refresh()} />}</For>
+                </div>}>
                   <EmptyState
                     title="No cron jobs yet"
                     body="Schedule an unattended agent run — a daily digest, a nightly cleanup, a weekly report."
@@ -362,21 +450,40 @@ function HostSheetCron(props: { open: boolean; onClose: () => void; hostIds: str
   );
 }
 
-function JobRow(props: { job: CronJob; onOpen: () => void }) {
-  const chip = () => lastRunChip(props.job);
+function JobRow(props: { job: CronJob; hostId: string; onOpen: () => void; onChanged: () => void }) {
+  const [busy, setBusy] = createSignal(false);
+  const [enabled, setEnabled] = createSignal(props.job.enabled);
+  createEffect(() => setEnabled(props.job.enabled));
+  const state = () => jobState({ ...props.job, enabled: enabled() });
+  const last = () => (props.job.running ? 'running' : props.job.last_run_status);
+  const toggle = (on: boolean) => {
+    setEnabled(on);
+    setBusy(true);
+    void (on ? cronEnable(props.hostId, props.job.id) : cronDisable(props.hostId, props.job.id)).then((r) => {
+      setBusy(false);
+      if (!(r as { ok?: boolean }).ok) setEnabled(!on);
+      props.onChanged();
+    });
+  };
   return (
-    <button type="button" class="cron-row" data-testid={`cron-job-${props.job.id}`} onClick={props.onOpen}>
-      <span class="settings-icon"><Clock size={18} /></span>
-      <div class="min-w-0 flex-1">
-        <p class="text-[15px] text-text truncate">{props.job.name}</p>
-        <p class="text-xs text-text-dim mt-0.5 truncate">
-          {humanSchedule(props.job.schedule)} · {nextFireText(props.job)}
-          <Show when={chip()}> · <span class="cron-chip" data-status={props.job.last_run_status ?? (props.job.running ? 'running' : undefined)}>{chip()}</span></Show>
-        </p>
-      </div>
-      <Show when={!props.job.enabled}><span class="cron-off-badge">off</span></Show>
-      <ChevronRight size={16} class="text-text-muted" />
-    </button>
+    <div class="cron-row" data-state={state()}>
+      <button type="button" class="cron-row-main" data-testid={`cron-job-${props.job.id}`} onClick={props.onOpen}>
+        <span class="cron-row-icon" data-state={state()} title={state() === 'failed' ? 'Last run failed' : state() === 'disabled' ? 'Disabled' : state() === 'running' ? 'Running now' : 'Scheduled'}>
+          {state() === 'running' ? <LoaderCircle size={18} class="refresh-spinning" /> : state() === 'failed' ? <CircleAlert size={18} /> : state() === 'disabled' ? <CirclePause size={18} /> : <CalendarClock size={18} />}
+        </span>
+        <span class="cron-row-text">
+          <span class="cron-row-name">{props.job.name}</span>
+          <span class="cron-row-sub" title={`${props.job.schedule} (${props.job.tz})`}>
+            {scheduleText(props.job.schedule)}
+            <span class="cron-row-next"> · {enabled() ? nextFireText(props.job) : 'off'}</span>
+          </span>
+        </span>
+        <Show when={last()}>{(st) => <RunStatusChip status={st()} compact testId={`cron-job-last-${props.job.id}`} />}</Show>
+      </button>
+      <span class="cron-row-toggle">
+        <SwitchField label={enabled() ? `Disable ${props.job.name}` : `Enable ${props.job.name}`} checked={enabled()} disabled={busy()} onChange={toggle} testId={`cron-job-toggle-${props.job.id}`} />
+      </span>
+    </div>
   );
 }
 
@@ -474,9 +581,19 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
                     {(r) => (
                       <li>
                         <button type="button" class="cron-run-row" onClick={() => setOpenRun(r)} data-testid={`cron-run-${r.id}`}>
-                          <span class="cron-chip" data-status={r.status}>{STATUS_LABEL[r.status] ?? r.status}</span>
-                          <span class="cron-run-when">{new Date(r.fired_at).toLocaleString()}</span>
-                          <span class="cron-run-summary truncate">{r.summary ?? humanCronRunReason(r.reason, undefined, job.model) ?? ''}</span>
+                          <RunStatusChip status={r.status} />
+                          <span class="cron-run-main">
+                            <span class="cron-run-when" title={new Date(r.fired_at).toLocaleString()}>
+                              {runWhenText(r.fired_at).abs}
+                              <span class="cron-run-rel"> · {runWhenText(r.fired_at).rel}</span>
+                              <Show when={runDurationText(r)}>{(d) => <span class="cron-run-rel"> · took {d()}</span>}</Show>
+                              <Show when={r.missed}><span class="cron-run-tag">catch-up</span></Show>
+                            </span>
+                            <Show when={r.summary ?? humanCronRunReason(r.reason, undefined, job.model)}>
+                              {(text) => <span class="cron-run-summary">{text()}</span>}
+                            </Show>
+                          </span>
+                          <ChevronRight size={16} class="cron-run-chevron" aria-hidden="true" />
                         </button>
                       </li>
                     )}
@@ -536,9 +653,9 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
           return (
             <div class="cron-run-log">
               <p class="text-xs text-text-dim">
-                <span class="cron-chip" data-status={run.status}>{STATUS_LABEL[run.status] ?? run.status}</span>
+                <RunStatusChip status={run.status} />
                 {' · '}
-                {new Date(run.fired_at).toLocaleString()}
+                {runWhenText(run.fired_at).abs} ({runWhenText(run.fired_at).rel})
                 <Show when={run.session_path}> · session saved</Show>
                 <Show when={run.cost_usd !== undefined}> · ${run.cost_usd?.toFixed(4)}</Show>
               </p>

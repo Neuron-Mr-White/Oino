@@ -2,7 +2,7 @@
 import { render, screen, waitFor, cleanup, fireEvent } from '@solidjs/testing-library';
 import { HashRouter, Route } from '@solidjs/router';
 import { vi, it, describe, expect, afterEach, beforeEach } from 'vitest';
-import Cron, { humanSchedule, lastRunChip, nextFireText, wakeText } from './Cron';
+import Cron, { humanSchedule, jobState, lastRunChip, nextFireText, runDurationText, runWhenText, scheduleText, wakeText } from './Cron';
 import { notifyFromForm, notifyModeOf, notifyText, parseCronRunLog } from '../lib/cron';
 import { openChatState, closeChat } from '../lib/session/open';
 import { HostsProvider } from '../hosts/context';
@@ -77,7 +77,19 @@ describe('Cron screen (UNI-317)', () => {
     const row = await screen.findByTestId('cron-job-digest');
     expect(row).toHaveTextContent('daily digest');
     expect(row).toHaveTextContent('Every day at 9:00');
-    expect(row).toHaveTextContent('ok');
+    // The last run is an icon chip with a short label.
+    expect(screen.getByTestId('cron-job-last-digest')).toHaveTextContent('OK');
+    expect(screen.getByTestId('cron-job-last-digest').querySelector('svg')).toBeTruthy();
+  });
+
+  it('the row toggle disables / enables the job in place', async () => {
+    mockIpc();
+    mount();
+    const toggle = await screen.findByTestId('cron-job-toggle-digest');
+    const input = toggle.querySelector('input')!;
+    expect(input.checked).toBe(true);
+    fireEvent.click(input);
+    await waitFor(() => expect(call).toHaveBeenCalledWith('cron_disable', expect.objectContaining({ id: 'digest' }), expect.anything()));
   });
 
   it('empty state offers to add a job', async () => {
@@ -382,5 +394,34 @@ describe('G-07 / D-32: readable failed cron run sheet & accessible pickers', () 
     await waitFor(() => expect(screen.queryByTestId('cron-model-menu')).toBeNull());
     fireEvent.click(screen.getByTestId('cron-save'));
     expect(await screen.findByTestId('cron-form-error')).toHaveTextContent('Name, prompt, folder and schedule are all required.');
+  });
+});
+
+describe('[ui-chat-bits] cron words', () => {
+  const now = new Date(2026, 10, 2, 21, 40).getTime();
+  it('scheduleText: one-shots, steps, weekday lists, monthly; the rest as written', () => {
+    expect(scheduleText('0 0 9 * * *')).toBe('Every day at 9:00');
+    expect(scheduleText('0 */15 * * * *')).toBe('Every 15 min');
+    expect(scheduleText('0 0 */6 * * *')).toBe('Every 6 h');
+    expect(scheduleText('0 30 8 * * 1,3,5')).toBe('Mon, Wed, Fri at 8:30');
+    expect(scheduleText('0 0 10 * * 0,6')).toBe('Weekends at 10:00');
+    expect(scheduleText('0 0 7 1 * *')).toBe('Monthly on day 1 at 7:00');
+    expect(scheduleText(`at:${new Date(2026, 10, 1, 19, 40).toISOString()}`, now)).toBe('Once, Nov 1, 19:40');
+    expect(scheduleText('0 0 9 1-7 * 1')).toBe('0 0 9 1-7 * 1');
+  });
+  it('runWhenText: short date + 24h time and a relative part', () => {
+    expect(runWhenText(new Date(2026, 10, 1, 19, 40).getTime(), now)).toEqual({ abs: 'Nov 1, 19:40', rel: '26 h ago' });
+    expect(runWhenText(now - 5 * 60_000, now).rel).toBe('5 min ago');
+    expect(runWhenText(now, now).rel).toBe('just now');
+    expect(runWhenText(new Date(2025, 0, 3, 7, 5).getTime(), now).abs).toBe('Jan 3, 2025, 07:05');
+  });
+  it('runDurationText and jobState', () => {
+    expect(runDurationText({ started_at: 0, ended_at: 42_000 })).toBe('42s');
+    expect(runDurationText({ started_at: 0, ended_at: 185_000 })).toBe('3m 05s');
+    expect(runDurationText({ started_at: 0 })).toBeUndefined();
+    expect(jobState({ enabled: true, running: true })).toBe('running');
+    expect(jobState({ enabled: false, running: false, last_run_status: 'failed' })).toBe('disabled');
+    expect(jobState({ enabled: true, running: false, last_run_status: 'timeout' })).toBe('failed');
+    expect(jobState({ enabled: true, running: false, last_run_status: 'ok' })).toBe('scheduled');
   });
 });
