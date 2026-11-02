@@ -33,10 +33,19 @@ export function backgroundApp(): void {
   }
 }
 
+/** Pure: UI font size (12–20, default 15) → the phone type scale (0.85–1.25). */
+export function phoneScale(uiFontSize: number | undefined): number {
+  const px = typeof uiFontSize === 'number' && Number.isFinite(uiFontSize) ? uiFontSize : 15;
+  return Math.round(Math.min(1.25, Math.max(0.85, px / 15)) * 100) / 100;
+}
+
 /** Mirrors phone-relevant settings into the phone services (haptics, UI scale). */
 function PhoneServices() {
   const [settings] = useSettings();
   createEffect(() => setHapticsEnabled(settings.input.haptics));
+  // §2.2: the "UI font size" setting (default 15) scales the phone type tokens.
+  createEffect(() => document.documentElement.style.setProperty('--ph-scale', String(phoneScale(settings.appearance.uiFontSize))));
+  onCleanup(() => document.documentElement.style.removeProperty('--ph-scale'));
   return null;
 }
 
