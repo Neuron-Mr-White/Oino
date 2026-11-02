@@ -611,6 +611,7 @@ export default function Board() {
         <Show when={unavailable() && availability()?.state === 'offline'}>
           <OfflineState
             pc={pc()?.name}
+            local={hosts.hosts().find((h) => h.id === hostId())?.transport === 'local'}
             onRetry={() => hostId() && void avail.check(hostId()!)}
             secondary={pcs().length > 1 ? { label: 'Switch PC', run: () => ui.setSheet('pc') } : undefined}
           />

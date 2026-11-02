@@ -67,10 +67,7 @@ export function CapabilityPage(props: CapabilityPageProps) {
   };
 
   return (
-    <Section title={props.title} id={props.sectionId} icon={<props.icon size={14} />}>
-      <Show when={props.blurb}>
-        <p class="settings-page-blurb">{props.blurb}</p>
-      </Show>
+    <Section title={props.title} id={props.sectionId} icon={<props.icon size={14} />} intro={props.blurb}>
       <Show when={namespace()} fallback={<Row label="Settings" description="This host does not report this extension’s settings yet." />}>
         {(ns) => <NamespaceForm namespace={ns()} bare flat testId={`cap-${props.page}-form`} />}
       </Show>

@@ -11,7 +11,7 @@ export const SectionNav = createContext<{ active: () => string | undefined }>();
 
 /** Section wrapper: a titled card in the settings list (DESIGN.md §3.10).
  *  `id` anchors search jumps (`sec-<section id>`). */
-export function Section(props: { title: string; icon: JSX.Element; children: JSX.Element; id?: string; navTitle?: string }) {
+export function Section(props: { title: string; icon: JSX.Element; children: JSX.Element; id?: string; navTitle?: string; intro?: string }) {
   const nav = useContext(SectionNav);
   // `navTitle`: the nav section this card belongs to when its own title differs
   // (Sharing › "This computer", Notifications › "What this PC sends").
@@ -22,6 +22,9 @@ export function Section(props: { title: string; icon: JSX.Element; children: JSX
         {props.icon}
         {props.title}
       </h2>
+      <Show when={props.intro}>
+        <p class="settings-page-blurb" data-testid="settings-intro">{props.intro}</p>
+      </Show>
       <div class="settings-group rounded-card bg-surface-1">{props.children}</div>
     </section>
   );

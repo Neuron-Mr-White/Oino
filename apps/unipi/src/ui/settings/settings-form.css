@@ -147,7 +147,7 @@ html:not([data-shell=desktop]) .settings-iconbtn { width: 36px; height: 36px; }
 .settings-namespace-icon { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; background: var(--color-surface-2); color: var(--color-text-muted); }
 
 /* WP-A25: capability pages — the Manage rows dim without a chat (R8). */
-.settings-page-blurb { margin: 0 0 10px; padding: 0 4px; font-size: 12.5px; line-height: 18px; color: var(--color-text-dim); }
+.settings-page-blurb { margin: 0 0 12px; padding: 0 4px; font-size: 12.5px; line-height: 18px; color: var(--color-text-dim); }
 .settings-notify-blurb { padding: 10px 16px 8px; margin: 0; }
 .settings-namespace-row[data-needs-chat] { opacity: 0.55; }
 .settings-manage-empty {

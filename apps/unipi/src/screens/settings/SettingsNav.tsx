@@ -12,8 +12,8 @@ import { desktopShell } from '../../lib/layout';
 
 /** Below this window width the nav collapses to the 64 px icon rail (ZCode's
  *  `lg` is 1024 px of content; plus the 264 px sidebar and the gutters that is
- *  a 1360 px window; shell.css uses the same breakpoint). */
-const NAV_RAIL_WINDOW_MAX = 1360;
+ *  labels return at 1100 px; shell.css uses the same breakpoint). */
+const NAV_RAIL_WINDOW_MAX = 1100;
 
 /** Sections that have at least one visible entry, in catalog group order
  *  (the phone page renders these with their group titles). */
@@ -64,7 +64,8 @@ export function SettingsNav(props: { sections: SettingsSection[]; active: () => 
                   data-nav={section.id}
                   data-testid={`settings-nav-${section.id}`}
                   aria-current={props.active() === section.id ? 'page' : undefined}
-                  title={narrow() ? section.title : undefined}
+                  title={section.title}
+                  aria-label={section.title}
                   onClick={() => props.onPick(section.id)}
                 >
                   <section.icon size={17} />

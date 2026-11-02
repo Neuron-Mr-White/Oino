@@ -43,6 +43,7 @@ import { openSessionRoute } from '../lib/notifyInit';
 import { useHosts } from '../hosts/context';
 import { PageHeader } from '../components/PageHeader';
 import { PcChip } from '../components/PcChip';
+import { within } from '../lib/host/within';
 import { EmptyState, NoHostState, OfflineState, isUnreachable } from '../components/EmptyState';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { setAddHostOpen } from '../components/Pairing';
@@ -131,6 +132,7 @@ export default function Cron() {
   createEffect(() => {
     if (!hostId() && hosts.selectedId()) setHostId(hosts.selectedId());
   });
+  const isLocalHost = (id: string | undefined) => hosts.hosts().find((h) => h.id === id)?.transport === 'local';
   const hostName = (id: string | undefined) => hosts.hosts().find((h) => h.id === id)?.name ?? 'this PC';
 
   const [result, setResult] = createSignal<Result<{ jobs: CronJob[]; paused: boolean }> | undefined>();
@@ -152,7 +154,10 @@ export default function Cron() {
     const id = hostId();
     if (!id) return;
     setRefreshing(true);
-    const r = await cronList(id);
+    const r = await within<Result<{ jobs: CronJob[]; paused: boolean }>>(cronList(id), () => ({
+      ok: false,
+      error: { code: 'E_TIMEOUT', message: 'This computer did not answer in time.', retryable: true } as AppError,
+    }));
     setRefreshing(false);
     if (id === hostId()) setResult(r);
   }
@@ -206,7 +211,7 @@ export default function Cron() {
           {(() => {
             const v = view() as { kind: 'error'; error: AppError };
             return isUnreachable(v.error.code) ? (
-              <OfflineState pc={hostName(hostId())} onRetry={() => void refresh()} />
+              <OfflineState pc={hostName(hostId())} local={isLocalHost(hostId())} onRetry={() => void refresh()} />
             ) : (
               <ErrorBanner error={v.error} retry={() => void refresh()} />
             );

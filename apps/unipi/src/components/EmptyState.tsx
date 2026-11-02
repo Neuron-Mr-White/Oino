@@ -4,10 +4,11 @@
  * columns and inline list states. Anchored to the top of its box at a fixed
  * offset (not vh), so it doesn't drift with the window height.
  */
-import { Show, type JSX } from 'solid-js';
+import { Show, createSignal, type JSX } from 'solid-js';
 import { CloudOff, RefreshCw } from 'lucide-solid';
 import crab from '../assets/unicrab-pixel.png';
 import { isUnreachableCode } from '../lib/host/client';
+import { canRestartHost, restartAgentHost } from '../lib/host/restart';
 
 export function EmptyState(props: {
   title: string;
@@ -74,21 +75,35 @@ export function OfflineState(props: {
   compact?: boolean;
   /** A second action after Retry (Board: "Switch PC"). */
   secondary?: { label: string; run: () => void };
+  /** This computer (the local agent host): calmer title + "Restart agent host". */
+  local?: boolean;
 }) {
+  const [restarting, setRestarting] = createSignal(false);
+  const restart = async () => {
+    setRestarting(true);
+    await restartAgentHost();
+    setRestarting(false);
+    props.onRetry?.();
+  };
   return (
     <EmptyState
       tone="error"
       compact={props.compact}
       icon={<CloudOff size={props.compact ? 20 : 24} />}
-      title={`Can't reach ${props.pc ?? 'the PC'}`}
+      title={props.local ? "This computer isn't answering" : `Can't reach ${props.pc ?? 'the PC'}`}
       body={props.hint ?? props.message ?? 'Is UniPi running on the PC?'}
       testId="offline-state"
       action={
-        props.onRetry || props.secondary ? (
+        props.onRetry || props.secondary || (props.local && canRestartHost()) ? (
           <>
             <Show when={props.onRetry}>
               <button type="button" class="btn btn-secondary" onClick={() => props.onRetry?.()}>
                 <RefreshCw size={16} /> Retry
+              </button>
+            </Show>
+            <Show when={props.local && canRestartHost()}>
+              <button type="button" class="btn btn-ghost" data-testid="restart-host" disabled={restarting()} onClick={() => void restart()}>
+                {restarting() ? 'Restarting…' : 'Restart agent host'}
               </button>
             </Show>
             <Show when={props.secondary}>

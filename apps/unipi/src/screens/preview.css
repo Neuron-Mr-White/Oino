@@ -24,7 +24,7 @@
 .preview-chevron { flex: none; color: var(--color-text-dim); }
 .preview-badge { flex: none; padding: 1px 7px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: 11px; font-weight: 500; }
 
-.preview-loading { display: flex; align-items: center; gap: 10px; padding: 24px 4px; color: var(--color-text-muted); font-size: 14px; }
+.preview-loading { display: flex; align-items: center; gap: 10px; padding: 24px var(--page-gutter); color: var(--color-text-muted); font-size: 14px; }
 .preview-notice { margin-top: 16px; padding: 20px; border-radius: 18px; background: var(--color-surface-1); border: 1px solid var(--color-line); }
 .preview-notice[data-tone=warn] { border-color: rgb(240 168 24 / 35%); }
 .preview-notice-icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--color-surface-3); color: var(--color-claw); margin-bottom: 12px; }

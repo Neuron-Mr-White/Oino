@@ -236,7 +236,7 @@ html[data-shell=desktop] .app-content:has(.settings-page) > .settings-page { max
 html[data-shell=desktop] .settings-page > .settings-body { grid-column: 2; min-width: 0; }
 html[data-shell=desktop] .settings-page > .settings-top { grid-column: 1 / -1; margin-bottom: 12px; }
 /* Below `lg` (1024 px content) the nav collapses to the 64 px icon rail. */
-@media (max-width: 1360px) {
+@media (max-width: 1099px) {
   html[data-shell=desktop] .app-content:has(.settings-page) > .settings-page { grid-template-columns: 64px minmax(0, 1fr); gap: 0 20px; }
 }
 .settings-nav { grid-column: 1; grid-row: 2 / span 40; position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 2px; max-height: calc(100dvh - 170px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--color-surface-3) transparent; }

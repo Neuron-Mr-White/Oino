@@ -8,6 +8,7 @@
  */
 import { createRoot } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import { within } from '../host/within';
 import { boardTransport, type BoardAvailability } from './transport';
 
 export type Pc = { id: string; name: string };
@@ -26,8 +27,7 @@ function createAvailability() {
     const running = inflight.get(hostId);
     if (running) return running;
     if (!map[hostId] || map[hostId]!.state !== 'ok') setMap(hostId, { state: 'checking' });
-    const promise = boardTransport()
-      .availability(hostId)
+    const promise = within<BoardAvailability>(boardTransport().availability(hostId), () => ({ state: 'offline' }))
       .catch((error): BoardAvailability => ({ state: 'error', message: String((error as Error)?.message ?? error) }))
       .then((result) => {
         setMap(hostId, result);

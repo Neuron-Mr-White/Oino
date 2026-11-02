@@ -503,10 +503,10 @@ export default function Editor() {
 
       <div class="editor-body">
         <Show when={state().kind === 'loading'}>
-          <p class="p-4 text-text-muted">Loading…</p>
+          <p class="py-4 px-[var(--page-gutter)] text-text-muted">Loading…</p>
         </Show>
         <Show when={state().kind === 'error'}>
-          <p class="p-4 text-wm-red">{(state() as { message: string }).message}</p>
+          <p class="py-4 px-[var(--page-gutter)] text-wm-red">{(state() as { message: string }).message}</p>
         </Show>
         <div class="editor-cm" ref={container} classList={{ hidden: state().kind !== 'ready' || (isMarkdown() && preview()) }} />
         <Show when={state().kind === 'ready' && isMarkdown() && preview()}>
