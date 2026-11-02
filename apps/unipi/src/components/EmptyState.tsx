@@ -9,6 +9,9 @@ import { CloudOff, RefreshCw } from 'lucide-solid';
 import crab from '../assets/unicrab-pixel.png';
 import { isUnreachableCode } from '../lib/host/client';
 import { canRestartHost, restartAgentHost } from '../lib/host/restart';
+import { desktopShell } from '../lib/layout';
+import { Button, Sheet } from './phone';
+import './emptyState.css';
 
 export function EmptyState(props: {
   title: string;
@@ -45,8 +48,18 @@ export function EmptyState(props: {
 }
 
 /** Shared "no PC paired yet" state for every host-dependent screen (F12);
- *  `HostGate` (ConnectionState.tsx) picks it, OfflineState or the content. */
-export function NoHostState(props: { what: string; onAdd: () => void }) {
+ *  `HostGate` (ConnectionState.tsx) picks it, OfflineState or the content.
+ *  Phone (§3.1): the Chats tab gets the first-run onboarding instead. */
+export function NoHostState(props: { what: string; onAdd: () => void; onboarding?: boolean }) {
+  const onboarding = () => props.onboarding ?? (!desktopShell() && /sessions|chats/i.test(props.what));
+  return (
+    <Show when={!onboarding()} fallback={<PhoneOnboarding onAdd={props.onAdd} />}>
+      <NoHostCard what={props.what} onAdd={props.onAdd} />
+    </Show>
+  );
+}
+
+function NoHostCard(props: { what: string; onAdd: () => void }) {
   return (
     <EmptyState
       title="No PC paired yet"
@@ -58,6 +71,33 @@ export function NoHostState(props: { what: string; onAdd: () => void }) {
         </button>
       }
     />
+  );
+}
+
+/**
+ * First run on the phone (§3.1): crab, "Connect Unipi to your PC", one line,
+ * primary "Add a PC" (opens the pairing sheet) and "How it works" (3 steps).
+ */
+export function PhoneOnboarding(props: { onAdd: () => void }) {
+  const [how, setHow] = createSignal(false);
+  return (
+    <div class="onboard" data-testid="no-host-state" data-onboarding="" role="status">
+      <img src={crab} class="onboard-crab" alt="" />
+      <h2 class="onboard-title">Connect Unipi to your PC</h2>
+      <p class="onboard-body">Your chats run on your PC. This phone shows them and lets you reply from anywhere.</p>
+      <div class="onboard-actions">
+        <Button kind="primary" block onClick={props.onAdd} testId="onboard-add">Add a PC</Button>
+        <Button kind="ghost" block onClick={() => setHow(true)} testId="onboard-how">How it works</Button>
+      </div>
+      <Sheet open={how()} onClose={() => setHow(false)} label="How it works" title="How it works" testId="onboard-how-sheet"
+        footer={<Button kind="primary" block onClick={() => (setHow(false), props.onAdd())}>Add a PC</Button>}>
+        <ol class="onboard-steps">
+          <li><b>Install Unipi on your PC.</b> It runs your chats, files and agents there.</li>
+          <li><b>On the PC, open Settings › Hosts › Pair a phone.</b> It shows a QR code and a link.</li>
+          <li><b>Here, tap Add a PC</b> and scan the code — or paste the link.</li>
+        </ol>
+      </Sheet>
+    </div>
   );
 }
 
