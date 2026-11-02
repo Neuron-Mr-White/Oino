@@ -46,6 +46,20 @@ via `release-manifest.json`.
 | macOS | mounts the `universal.dmg`, copies `UniPi.app` to `/Applications`, then clears the `com.apple.quarantine` xattr **with a printed notice** — the build is ad-hoc signed, not notarized; removing quarantine is your trust decision ([apps/unipi/BUILDING.md](../apps/unipi/BUILDING.md)). First launch may still need right-click → Open. |
 | Windows | runs the NSIS installer silently (`/S`, per-user, no admin). |
 
+### `--host` / `-HostInstall`: the host only (no GUI)
+
+For servers, VMs and sandboxes the Unipi apps connect to. Installs the release
+archive `unipi-oino-host-<version>-<target>.tar.gz|zip` — `bin/unipi-oino-host`,
+`bin/oino` and the extension tree — into the prefix (`--prefix DIR` /
+`-Prefix DIR`, default as above), then a per-user service that restarts the host
+when it fails: a systemd `--user` unit (Linux; the installer prints, but does not
+run, `loginctl enable-linger $USER`), a LaunchAgent (macOS), a logon scheduled
+task with a restarting wrapper (Windows). Reruns upgrade in place.
+`--no-service` / `-NoService`, `--no-start` / `-NoStart`, and
+`--host --uninstall` / `-HostInstall -Uninstall` (keeps `oino`, the extensions and
+`~/.oino/host`). Pair with `unipi-oino-host pair`. Details: the README's *Host*
+section.
+
 ## Fallbacks and knobs
 
 Without a matching release binary the installers build from source: clone into
