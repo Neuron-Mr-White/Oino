@@ -278,6 +278,10 @@ html.qr-scanning .app-shell, html.qr-scanning [data-corvu-drawer-content], html.
 .qr-scan-line { position: absolute; left: 10%; right: 10%; top: 12%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--color-shell), transparent); box-shadow: 0 0 12px rgb(240 48 24 / 80%); animation: qr-sweep 2.2s ease-in-out infinite alternate; }
 @keyframes qr-sweep { to { top: 88%; } }
 .qr-scan-close { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 160px; min-height: 48px; padding: 0 24px; border-radius: 9999px; background: rgb(28 25 23 / 88%); color: var(--color-text); font-size: 16px; font-weight: 500; backdrop-filter: blur(12px); }
+.qr-scan-code { display: block; margin: 12px auto 0; min-height: 48px; padding: 0 20px; border-radius: 9999px; color: var(--color-text); font-size: 15px; text-decoration: underline; text-underline-offset: 3px; text-shadow: 0 1px 4px rgb(0 0 0 / 60%); }
+.pair-camera-off { display: flex; gap: 12px; align-items: flex-start; margin-top: 16px; padding: 16px; border-radius: var(--radius-card, 16px); background: var(--color-surface-2); border: 1px solid var(--color-line); }
+.pair-camera-off-icon { flex: none; margin-top: 2px; color: var(--color-text-muted); }
+.pair-camera-off-settings { display: inline-flex; align-items: center; min-height: 44px; margin-top: 4px; padding: 0; color: var(--color-shell); font-size: 15px; font-weight: 500; }
 
 /* Terminal: we own one-finger scrolling (lib/termScroll), so the
    browser must not pan/cancel the pointer stream. */

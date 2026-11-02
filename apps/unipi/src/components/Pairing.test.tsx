@@ -11,6 +11,16 @@ import { pairPhoneOpen, resetPairPhone, setPairPhoneTransport } from '../lib/pai
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 
+const scanner = vi.hoisted(() => ({
+  checkPermissions: vi.fn(),
+  requestPermissions: vi.fn(),
+  scan: vi.fn(),
+  cancel: vi.fn(),
+  openAppSettings: vi.fn(),
+  Format: { QRCode: 'QR_CODE' },
+}));
+vi.mock('@tauri-apps/plugin-barcode-scanner', () => scanner);
+
 // A real `unipi-host pair` link (minimal id + relay ticket).
 const LINK = 'unipi://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkaiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4&c=G6R2ANK7QA&n=oi';
 
@@ -104,6 +114,43 @@ describe('Pairing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText(/This phone will be able/)).toBeInTheDocument();
     expect(screen.getByDisplayValue('Phone')).toBeInTheDocument();
+  });
+
+  it('phone-scan: a refused camera shows a calm note and opens code entry, not an error', async () => {
+    setPlatformOverride({ mode: 'tauri-mobile', os: 'android', tauri: true });
+    scanner.checkPermissions.mockResolvedValue('prompt');
+    scanner.requestPermissions.mockResolvedValue('denied');
+    scanner.openAppSettings.mockResolvedValue(undefined);
+    mount();
+    setAddHostOpen(true);
+    fireEvent.click(await screen.findByText('Pair with QR'));
+    const note = await screen.findByTestId('camera-off-note');
+    expect(note).toHaveAttribute('role', 'status');
+    expect(note.textContent).toContain('The camera is off for Unipi');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(scanner.scan).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Allow the camera in Settings' }));
+    expect(scanner.openAppSettings).toHaveBeenCalled();
+    // The code fallback is already open and pairs as usual.
+    const input = screen.getByLabelText('Pairing link');
+    expect(input).toHaveAttribute('placeholder', 'Pairing link or code');
+    fireEvent.input(input, { target: { value: LINK } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText(/This phone will be able/)).toBeInTheDocument();
+  });
+
+  it('phone-scan: "Enter code instead" on the scanner cancels the scan and opens code entry', async () => {
+    setPlatformOverride({ mode: 'tauri-mobile', os: 'android', tauri: true });
+    scanner.checkPermissions.mockResolvedValue('granted');
+    scanner.scan.mockReturnValue(new Promise(() => undefined));
+    scanner.cancel.mockResolvedValue(undefined);
+    mount();
+    setAddHostOpen(true);
+    fireEvent.click(await screen.findByText('Pair with QR'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enter code instead' }));
+    expect(scanner.cancel).toHaveBeenCalled();
+    expect(await screen.findByLabelText('Pairing link')).toBeInTheDocument();
+    expect(screen.queryByTestId('qr-viewfinder')).toBeNull();
   });
 
   it('UNI-266: the desktop app links to "Pair a phone with this PC"; phones don\'t', async () => {

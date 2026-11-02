@@ -16,7 +16,7 @@ import { X } from 'lucide-solid';
 
 export const SCANNING_CLASS = 'qr-scanning';
 
-export function QrScanner(props: { onClose: () => void }) {
+export function QrScanner(props: { onClose: () => void; onEnterCode?: () => void }) {
   onMount(() => {
     document.documentElement.classList.add(SCANNING_CLASS);
     let unregister: (() => void) | undefined;
@@ -64,6 +64,12 @@ export function QrScanner(props: { onClose: () => void }) {
         <button type="button" class="qr-scan-close" onClick={() => props.onClose()}>
           <X size={18} /> Close
         </button>
+        {/* No camera picture (none on the device, or it failed to start)? The code always works. */}
+        {props.onEnterCode && (
+          <button type="button" class="qr-scan-code" onClick={() => props.onEnterCode?.()}>
+            Enter code instead
+          </button>
+        )}
       </div>
     </div>
   );

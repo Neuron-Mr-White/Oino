@@ -1,5 +1,5 @@
 import { can, isTauri, platform } from '../lib/platform';
-import { QrCode, Link, SquareTerminal, Copy, ClipboardPaste, Smartphone } from 'lucide-solid';
+import { QrCode, Link, SquareTerminal, Copy, ClipboardPaste, Smartphone, CameraOff } from 'lucide-solid';
 import { openPairPhone } from '../lib/pairPhone';
 import crab from '../assets/unicrab-pixel.png';
 import Drawer from "corvu/drawer";
@@ -102,6 +102,19 @@ export function Pairing() {
     // rejecting it, so nothing else waits on it.
     void scanner?.cancel().catch((e) => console.warn("[scan] cancel failed", e));
   };
+  /** Camera refused: say so calmly and open the code entry instead. */
+  const cameraOff = () => {
+    setCameraDenied(true);
+    setError(undefined);
+    setPaste(true);
+    setAddHostOpen(true);
+  };
+  /** From the scanner: give up on the camera and type the code. */
+  const enterCodeInstead = () => {
+    stopScan();
+    setPaste(true);
+    setAddHostOpen(true);
+  };
   const startScan = async () => {
     setError(undefined);
     setCameraDenied(false);
@@ -114,13 +127,8 @@ export function Pairing() {
       let permission = await scanner.checkPermissions();
       if (permission !== "granted") permission = await scanner.requestPermissions();
       if (permission !== "granted") {
-        setCameraDenied(true);
-        setError({
-          code: "E_PAIRING_INVALID",
-          message: "Camera access is off",
-          hint: "Allow the camera in Settings to scan, or paste the pairing link instead.",
-          retryable: false,
-        });
+        // Not an error: a calm note with the code fallback opened right away.
+        cameraOff();
         return;
       }
       setAddHostOpen(false);
@@ -135,6 +143,11 @@ export function Pairing() {
       setScanning(false);
       if (String(e).includes("cancel")) return;
       console.warn("[scan] failed", e);
+      // A permission refusal can also surface as a rejected promise.
+      if (!wasScanning && /permission|denied/i.test(String(e))) {
+        cameraOff();
+        return;
+      }
       setError({ code: "E_PAIRING_INVALID", message: `Scan failed: ${String(e)}`, retryable: false });
       if (wasScanning) setAddHostOpen(true);
     }
@@ -187,7 +200,7 @@ export function Pairing() {
         </div>
       </Show>
       <Show when={scanning()}>
-        <QrScanner onClose={() => { stopScan(); setAddHostOpen(true); }} />
+        <QrScanner onClose={() => { stopScan(); setAddHostOpen(true); }} onEnterCode={enterCodeInstead} />
       </Show>
       <BoardSheet open={addHostOpen()} onClose={() => setAddHostOpen(false)} label="Add a PC" testId="add-host-sheet" class="pair-sheet">
             <p class="pair-intro">Pair Unipi with your own PC.</p>
@@ -217,6 +230,22 @@ export function Pairing() {
             <Show when={!paste()}><button disabled class="option-card text-text-dim">
               <span class="option-tile"><SquareTerminal size={24}/></span><span><strong class="block">Connect with SSH</strong><span class="block text-xs mt-2">Coming in M3</span></span>
             </button></Show>
+            <Show when={cameraDenied()}>
+              <div role="status" class="pair-camera-off" data-testid="camera-off-note">
+                <CameraOff size={20} class="pair-camera-off-icon" />
+                <div class="flex-1">
+                  <strong class="block text-base font-medium">The camera is off for Unipi</strong>
+                  <span class="block text-sm text-text-muted mt-1">That's fine. Enter the pairing code instead: paste the link <code>unipi-host pair</code> prints, or its two codes.</span>
+                  <button
+                    type="button"
+                    class="pair-camera-off-settings"
+                    onClick={() => void scanner?.openAppSettings().catch((e) => console.warn("[scan] settings", e))}
+                  >
+                    Allow the camera in Settings
+                  </button>
+                </div>
+              </div>
+            </Show>
             <Show when={paste()}>
               <div class="pair-paste">
                 <div class="relative">
@@ -227,7 +256,7 @@ export function Pairing() {
                     value={link()}
                     onInput={(e) => setLink(e.currentTarget.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") void accept(link()); }}
-                    placeholder="unipi://pair?t=…&c=…"
+                    placeholder={cameraDenied() ? "Pairing link or code" : "unipi://pair?t=…&c=…"}
                     autocapitalize="off"
                     autocorrect="off"
                     spellcheck={false}
@@ -260,15 +289,6 @@ export function Pairing() {
             <Show when={can("localSharing")}>
               <button type="button" class="pair-phone-link" data-testid="add-host-pair-phone" onClick={() => { setAddHostOpen(false); openPairPhone(); }}>
                 <Smartphone size={16} /> Pair a phone with this PC
-              </button>
-            </Show>
-            <Show when={cameraDenied()}>
-              <button
-                type="button"
-                class="mt-3 w-full rounded-pill bg-surface-3"
-                onClick={() => void scanner?.openAppSettings()}
-              >
-                Open camera settings
               </button>
             </Show>
       </BoardSheet>

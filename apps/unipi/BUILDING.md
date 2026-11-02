@@ -151,3 +151,12 @@ cargo tauri android build --apk --config tauri.dev.conf.json
 Needs `ANDROID_HOME` (SDK + NDK) and a JDK 17; signing env for a release key:
 `UNIPI_ANDROID_KEYSTORE` (path), `UNIPI_ANDROID_KEYSTORE_PASSWORD`,
 `UNIPI_ANDROID_KEY_ALIAS`, `UNIPI_ANDROID_KEY_PASSWORD`.
+
+Release builds run R8 in full mode (AGP 9). Libraries that create classes by
+reflection need keep rules in `src-tauri/gen/android/app/proguard-rules.pro`
+(tracked, unlike the regenerated `proguard-tauri.pro`). Full mode does not keep
+the no-arg constructor of a class kept with a bare `-keep class`. ML Kit's
+component registrars lost theirs, and QR scanning crashed on the first camera
+frame. Debug builds don't minify, so they never show this. Check release-only
+crashes against `app/build/outputs/mapping/<variant>/usage.txt`, which lists
+what R8 removed.

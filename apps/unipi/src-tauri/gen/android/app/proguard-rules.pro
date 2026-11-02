@@ -25,3 +25,17 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 -keep class dev.unipi.app.UpdateBridge { *; }
+
+# [phone-scan] QR scanning crashed release builds on the first camera frame
+# (NPE in mlkit_vision_common zzkx.<init>: MlKitContext.get(SharedPrefManager)
+# returned null). AGP 9 runs R8 in full mode, where `-keep class X` no longer
+# keeps X's no-arg constructor. firebase-components only ships
+# `-keep class * implements ComponentRegistrar`, so R8 removed the <init>() of
+# ML Kit's CommonComponentRegistrar / VisionCommonRegistrar / BarcodeRegistrar
+# (see build/outputs/mapping/*/usage.txt). ComponentDiscovery instantiates them
+# by reflection from the manifest; without the constructor no ML Kit component
+# was registered. Keep the constructors (and the registrars' getComponents).
+-keep class * implements com.google.firebase.components.ComponentRegistrar {
+    <init>();
+    public java.util.List getComponents();
+}
