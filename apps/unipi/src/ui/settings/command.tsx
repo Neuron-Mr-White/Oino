@@ -95,7 +95,12 @@ export function createSettingsCommand(spec: () => CommandSpec, hostId: () => str
       set(outcome === 'sent' ? { status: 'opened' } : outcome === 'missing' ? { status: 'off', extension: owner() } : { status: 'no-chat' });
       return;
     }
-    const outcome = await runInBackground(spec().command, { hostId: hostId(), hidden: spec().hidden });
+    const outcome = await runInBackground(spec().command, {
+      hostId: hostId(),
+      hidden: spec().hidden,
+      // The row shows each line as it comes ("Syncing…" → "Synced 12 servers").
+      onProgress: (replies) => set({ status: 'done', replies }),
+    });
     if (outcome.kind === 'done') set({ status: 'done', replies: outcome.replies });
     else if (outcome.kind === 'missing') set({ status: 'off', extension: owner() });
     else set({ status: outcome.kind });
@@ -123,7 +128,8 @@ export function CommandResult(props: { cmd: SettingsCommand; testId?: string }) 
     return s.status === 'done' ? s.replies : [];
   };
   const body = () => replies().map((r) => r.text).join('\n\n');
-  const firstLine = () => body().split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+  /** The newest reply's headline (a progress line is replaced by its result). */
+  const firstLine = () => (replies().at(-1)?.text ?? '').split('\n').map((l) => l.trim()).find(Boolean) ?? '';
   const long = () => body().includes('\n') || body().length > 120;
   const bad = () => replies().some((r) => r.kind === 'error');
   return (

@@ -200,7 +200,7 @@ export type BackgroundOutcome =
  */
 export async function runInBackground(
   command: string,
-  opts: { hostId: string; hidden?: boolean; waitMs?: number; settleMs?: number; start?: typeof newSession },
+  opts: { hostId: string; hidden?: boolean; waitMs?: number; settleMs?: number; start?: typeof newSession; onProgress?: (replies: Reply[]) => void },
 ): Promise<BackgroundOutcome> {
   const replies: Reply[] = [];
   let wake: (() => void) | undefined;
@@ -208,18 +208,24 @@ export async function runInBackground(
     ...opts,
     onReply: (reply) => {
       replies.push(reply);
+      opts.onProgress?.([...replies]);
       wake?.();
     },
   });
   if (!started.ok) return { kind: started.reason };
   try {
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, opts.waitMs ?? 45_000);
+      const total = setTimeout(resolve, opts.waitMs ?? 90_000);
+      let quiet: ReturnType<typeof setTimeout> | undefined;
+      const done = () => {
+        clearTimeout(total);
+        resolve();
+      };
+      // Late lines of the same answer ("syncing…" then "synced 12 servers") still
+      // count: wait until the command has been quiet for a while.
       wake = () => {
-        clearTimeout(timer);
-        wake = undefined;
-        // Late lines of the same answer (a "syncing…" then "synced") still count.
-        setTimeout(resolve, opts.settleMs ?? 600);
+        clearTimeout(quiet);
+        quiet = setTimeout(done, opts.settleMs ?? 8000);
       };
       if (replies.length) wake();
     });
