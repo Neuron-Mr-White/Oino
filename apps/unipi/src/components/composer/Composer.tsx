@@ -106,7 +106,9 @@ import { ModelChip } from '../model/ModelChip';
 import { ThinkingChip } from '../model/ThinkingChip';
 import { ContextRing } from '../model/ContextRing';
 import { openModelPicker } from '../model/target';
+import { thinkGlow } from './thinkGlow';
 import './composer.css';
+import './thinkGlow.css';
 
 /** A paste's tooltip head (Z-61): the first lines, whitespace-collapsed. */
 const pasteHead = (text: string): string => {
@@ -963,6 +965,7 @@ export function Composer(props: ComposerProps) {
         data-readonly={props.readOnly ? '' : undefined}
         data-draft={props.draft ? '' : undefined}
         data-drop={dropOver() ? '' : undefined}
+        data-think-glow={thinkGlow(props.session.state.thinkingLevel, props.readOnly)}
         onMouseDown={(e) => {
           // A press on the card's padding lands in the field (the whole card reads as the input).
           if (e.target === e.currentTarget && !props.readOnly) {
@@ -971,6 +974,8 @@ export function Composer(props: ComposerProps) {
           }
         }}
       >
+        {/* The X-high / Max glow ring (CSS only, outside the card's edge; thinkGlow.css). */}
+        <span class="think-glow" aria-hidden="true" />
         <Show when={props.header}>
           <div class="comp-head" data-testid="composer-head">
             {props.header}

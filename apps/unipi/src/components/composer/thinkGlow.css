@@ -1,0 +1,76 @@
+/* ══ Deep-thinking glow (thinking level X-high / Max) ════════════════════
+   `data-think-glow="xhigh|max"` on the composer card (`thinkGlow.ts`).
+   Layout-neutral: the ring is an absolutely positioned, pointer-less span
+   (`.think-glow`) masked to a 1.5 px band along the card's edge; its
+   `::before` is a large square conic gradient that only ROTATES (a
+   composited transform — no per-frame repaint, no box-shadow animation).
+   The soft outer glow is a static box-shadow, painted once. Reduced
+   motion: the same gradient ring, still. */
+
+.think-glow { display: none; }
+.tl-composer[data-think-glow] > .think-glow {
+  display: block;
+  position: absolute;
+  inset: -1.5px;
+  z-index: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  /* Keep only the padding band: the ring. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0.7;
+  contain: strict;
+}
+.tl-composer[data-think-glow] > .think-glow::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* A square wider than the card's diagonal: rotating it keeps the ring covered. */
+  width: max(170%, 900px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  background: conic-gradient(
+    from 0deg,
+    #ff3d5a, #ff8a1f, #ffd23f, #3ddc84, #2ec5ff, #6a5cff, #d24bff, #ff3d5a
+  );
+  will-change: transform;
+  animation: think-glow-spin 9s linear infinite;
+}
+@keyframes think-glow-spin { to { transform: rotate(1turn); } }
+
+/* The halo: a static box-shadow (painted once, never animated). `html` lifts
+   it over the draft card's own shadow; focus keeps the claw ring inside. */
+html .tl-composer.tl-composer-dock[data-think-glow='xhigh'] {
+  --think-halo: -6px 0 22px -6px rgb(210 75 255 / 22%), 6px 0 22px -6px rgb(46 197 255 / 22%), 0 6px 22px rgb(0 0 0 / 30%);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), var(--think-halo);
+}
+/* Max: brighter, faster ring and a fuller halo. */
+html .tl-composer.tl-composer-dock[data-think-glow='max'] {
+  --think-halo: -10px -2px 34px -6px rgb(255 61 90 / 32%), 10px 2px 34px -6px rgb(46 197 255 / 32%), 0 10px 30px -8px rgb(106 92 255 / 34%),
+    0 6px 22px rgb(0 0 0 / 30%);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), var(--think-halo);
+}
+html .tl-composer.tl-composer-dock[data-think-glow]:focus-within {
+  box-shadow: inset 0 0 0 1px rgb(240 120 24 / 55%), var(--think-halo);
+}
+.tl-composer[data-think-glow='max'] > .think-glow { opacity: 1; padding: 2px; inset: -2px; }
+.tl-composer[data-think-glow='max'] > .think-glow::before { animation-duration: 5s; }
+
+/* The ring sits just OUTSIDE the card's edge (inset −1.5 px, the band is the
+   padding), so it never covers the field or the toolbar. */
+
+/* A light theme (none ships yet; `html[data-theme=light]` is the hook): a softer halo. */
+html[data-theme='light'] .tl-composer.tl-composer-dock[data-think-glow='xhigh'] {
+  --think-halo: -6px 0 18px -6px rgb(210 75 255 / 16%), 6px 0 18px -6px rgb(46 197 255 / 16%);
+}
+html[data-theme='light'] .tl-composer.tl-composer-dock[data-think-glow='max'] {
+  --think-halo: -10px 0 28px -6px rgb(255 61 90 / 22%), 10px 0 28px -6px rgb(46 197 255 / 22%), 0 8px 24px -8px rgb(106 92 255 / 22%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-composer[data-think-glow] > .think-glow::before { animation: none; will-change: auto; }
+}

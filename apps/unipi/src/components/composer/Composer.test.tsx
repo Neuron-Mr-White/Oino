@@ -530,3 +530,22 @@ describe('P1-01: /cmd <arg> completions from the extension', () => {
     expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === '_oino/get_completions')).toBe(false);
   });
 });
+
+describe('the deep-thinking glow (X-high / Max)', () => {
+  it('toggles data-think-glow on the card with the thinking level', async () => {
+    const session = await openSession(1);
+    const { view } = mountComposer(session);
+    const card = () => view.getByTestId('tl-composer');
+    // the decorative ring is in the card, hidden from assistive tech
+    expect(card().querySelector(':scope > .think-glow')?.getAttribute('aria-hidden')).toBe('true');
+    await session.cmd({ type: 'set_thinking_level', level: 'high' });
+    await waitFor(() => expect(session.state.thinkingLevel).toBe('high'));
+    expect(card().hasAttribute('data-think-glow')).toBe(false);
+    await session.cmd({ type: 'set_thinking_level', level: 'xhigh' });
+    await waitFor(() => expect(card().getAttribute('data-think-glow')).toBe('xhigh'));
+    await session.cmd({ type: 'set_thinking_level', level: 'max' });
+    await waitFor(() => expect(card().getAttribute('data-think-glow')).toBe('max'));
+    await session.cmd({ type: 'set_thinking_level', level: 'medium' });
+    await waitFor(() => expect(card().hasAttribute('data-think-glow')).toBe(false));
+  });
+});
