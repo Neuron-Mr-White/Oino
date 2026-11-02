@@ -462,8 +462,12 @@ impl SessionHub {
     ///
     /// Listing I/O failures.
     pub async fn list(&self) -> Result<Vec<HubSession>, ClientError> {
-        let records = SessionManager::list_all(&self.inner.sessions_root, None, None)
-            .map_err(|error| ClientError::Command(error.to_string()))?;
+        // Card index (bounded reads, cached by path + size + mtime), on the blocking pool:
+        // a cold listing of a big store never stalls the async workers.
+        let root = self.inner.sessions_root.clone();
+        let records = tokio::task::spawn_blocking(move || SessionManager::list_all_cards(&root))
+            .await
+            .map_err(|error| ClientError::Command(format!("listing sessions: {error}")))?;
         let mut state = self.inner.state.lock().await;
         // A locked marker only stands while the holder's lease metadata does.
         state
@@ -488,6 +492,39 @@ impl SessionHub {
                 info,
             })
             .collect())
+    }
+
+    /// One record by session file path, exact id or unique id prefix (≥ 4 chars), merged
+    /// with live state — from file names and the card index, never a content scan, so an
+    /// unknown id answers at once.
+    ///
+    /// # Errors
+    ///
+    /// Unknown or ambiguous target (the [`SessionHub::open`] texts).
+    pub async fn find(&self, target: &str) -> Result<HubSession, ClientError> {
+        let info = find_record(&self.inner.sessions_root, target).await?;
+        let state = self.inner.state.lock().await;
+        let session_state = if state.live.contains_key(&info.id) {
+            if state.crashed.contains(&info.id) {
+                HubSessionState::Crashed
+            } else {
+                HubSessionState::Live
+            }
+        } else if state.crashed.contains(&info.id) {
+            HubSessionState::Crashed
+        } else if state
+            .locked
+            .get(&info.id)
+            .is_some_and(|(path, _)| lock_metadata_path(path).exists())
+        {
+            HubSessionState::Locked
+        } else {
+            HubSessionState::Record
+        };
+        Ok(HubSession {
+            info,
+            state: session_state,
+        })
     }
 
     /// Closes `session_id` if it is live (`session_shutdown{reason:"quit"}`, lease
@@ -515,20 +552,19 @@ impl SessionHub {
     }
 
     async fn wake(&self, target: &str) -> Result<Arc<dyn SessionBackend>, ClientError> {
-        // The whole wake transition runs under the hub lock: opens, closes and evictions
-        // serialise, so two opens of one record never race a lease against each other.
-        let mut state = self.inner.state.lock().await;
         // Live by exact id: hand out a fresh backend over the shared runtime.
-        if let Some(live) = state.live.get(target) {
+        if let Some(live) = self.inner.state.lock().await.live.get(target) {
             let live = Arc::clone(live);
-            drop(state);
             *lock(&live.last_active) = Instant::now();
             return Ok(lazy_backend(live));
         }
-        let records = SessionManager::list_all(&self.inner.sessions_root, None, None)
-            .map_err(|error| ClientError::Command(error.to_string()))?;
-        let info = resolve_target(target, &records)?;
-        // Live under the resolved id (opened by prefix or path).
+        // Resolve the record outside the hub lock (file names + card index, off the async
+        // workers): an unknown id fails fast and never holds up other opens or listings.
+        let info = &find_record(&self.inner.sessions_root, target).await?;
+        // The wake transition itself runs under the hub lock: opens, closes and evictions
+        // serialise, so two opens of one record never race a lease against each other.
+        let mut state = self.inner.state.lock().await;
+        // Live under the resolved id (opened by prefix or path, or by a concurrent open).
         if let Some(live) = state.live.get(&info.id) {
             let live = Arc::clone(live);
             drop(state);
@@ -841,49 +877,33 @@ async fn dispose_services(services: &Arc<Services>) {
     }
 }
 
-/// Resolves `target` against the records: a session file path, an exact id, or a unique
-/// id prefix of at least 4 characters (the `find_by_id` rules).
-fn resolve_target<'a>(
-    target: &str,
-    records: &'a [SessionInfo],
-) -> Result<&'a SessionInfo, ClientError> {
-    let path = Path::new(target);
-    if path.exists() {
-        return records
-            .iter()
-            .find(|info| info.path == path)
-            .ok_or_else(|| {
-                ClientError::Command(format!("Not an Oino session in the hub: {target}"))
-            });
-    }
-    let exact: Vec<&SessionInfo> = records.iter().filter(|info| info.id == target).collect();
-    if exact.len() == 1 {
-        return Ok(exact[0]);
-    }
-    if exact.len() > 1 {
-        return Err(ClientError::Command(format!(
+/// The text of an unknown session target (hosts map it to "not found").
+#[must_use]
+pub fn not_found_text(target: &str) -> String {
+    format!("No session found matching '{target}'")
+}
+
+/// Resolves `target` under `sessions_root`: a session file path, an exact id, or a unique
+/// id prefix of at least 4 characters (the `find_by_id` rules) — from file names and the
+/// card index ([`SessionManager::find_card`]), on the blocking pool.
+async fn find_record(sessions_root: &Path, target: &str) -> Result<SessionInfo, ClientError> {
+    let root = sessions_root.to_path_buf();
+    let owned = target.to_owned();
+    let found = tokio::task::spawn_blocking(move || SessionManager::find_card(&root, &owned))
+        .await
+        .map_err(|error| ClientError::Command(format!("finding a session: {error}")))?;
+    match found {
+        Ok(Some(info)) => Ok(info),
+        Ok(None) if Path::new(target).exists() => Err(ClientError::Command(format!(
+            "Not an Oino session in the hub: {target}"
+        ))),
+        Ok(None) => Err(ClientError::Command(not_found_text(target))),
+        Err(oino_session::SessionError::AmbiguousId(paths)) => Err(ClientError::Command(format!(
             "Ambiguous session id {target}: it matches {} sessions",
-            exact.len()
-        )));
+            paths.len()
+        ))),
+        Err(error) => Err(ClientError::Command(error.to_string())),
     }
-    if target.len() >= 4 {
-        let prefixed: Vec<&SessionInfo> = records
-            .iter()
-            .filter(|info| info.id.starts_with(target))
-            .collect();
-        match prefixed.len() {
-            1 => return Ok(prefixed[0]),
-            0 => {}
-            n => {
-                return Err(ClientError::Command(format!(
-                    "Ambiguous session id {target}: it matches {n} sessions"
-                )));
-            }
-        }
-    }
-    Err(ClientError::Command(format!(
-        "No session found matching '{target}'"
-    )))
 }
 
 /// Follows one live session's client events (on the runtime stream, which survives session
