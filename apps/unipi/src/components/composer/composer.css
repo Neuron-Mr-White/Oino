@@ -489,3 +489,56 @@ html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permis
 html[data-shell=phone] .att-remove { width: 26px; height: 26px; min-height: 26px; }
 .perm-menu-default { min-height: 40px; margin-top: 4px; border-top: 1px solid var(--color-line); border-radius: 0 0 12px 12px; }
 .perm-menu-default .perm-menu-check { grid-row: 1; }
+
+/* ── Phone composer (phone spec §3.5, PH-11 / PH-22 / PH-29) ─────────────
+   In flow at the bottom of the chat column; a 24 px card; the native
+   textarea field (16/22, autogrow to 6 lines / 40 % of the visible height);
+   one 48 px toolbar row (+ · Mode · Model · ring · Send), no overflow at 360. */
+html[data-shell=phone] .tl-composer.tl-composer-dock { border-radius: 24px; padding: 8px 8px 4px 12px; gap: 0; }
+html[data-shell=phone] .tl-composer .ph-field {
+  display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 8px 4px 6px; resize: none; border: 0; outline: none;
+  background: transparent; color: var(--color-text); font: inherit; font-size: 16px; line-height: 22px;
+  min-height: 36px; max-height: min(138px, calc(var(--vvh, 100dvh) * 0.4)); overflow-y: auto; overscroll-behavior: contain;
+}
+html[data-shell=phone][data-short] .tl-composer .ph-field { max-height: calc(var(--vvh, 100dvh) * 0.4 - 56px); }
+html[data-shell=phone] .tl-composer .ph-field::placeholder { color: var(--color-text-dim); }
+html[data-shell=phone] .tl-composer .ph-field:disabled { opacity: .7; }
+html[data-shell=phone] .comp-bar { height: 48px; gap: 4px; margin-left: -8px; }
+html[data-shell=phone] .comp-bar .composer-plus-btn { width: 48px; height: 48px; min-height: 48px; border-radius: 9999px; }
+html[data-shell=phone] .comp-bar .tb-chip { position: relative; height: 36px; min-height: 36px; padding: 0 10px; font-size: 14px; gap: 6px; }
+html[data-shell=phone] .comp-bar .tb-chip::after { content: ''; position: absolute; inset: -6px -2px; }
+html[data-shell=phone] .comp-bar .tb-chip .tb-chev { display: none; }
+html[data-shell=phone] .comp-bar .tb-chip-model { min-width: 0; }
+html[data-shell=phone] .comp-bar .tb-slot[data-slot=model] { min-width: 0; flex: 0 1 auto; }
+html[data-shell=phone] .comp-bar .tb-chip-model .tb-label { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-shell=phone] .comp-bar .tb-think-glyph { flex: none; color: var(--color-shell); }
+html[data-shell=phone] .comp-bar .tb-end-group { height: 48px; gap: 2px; }
+html[data-shell=phone] .comp-bar .ctx-ring { position: relative; width: 28px; height: 28px; margin: 0 10px; }
+html[data-shell=phone] .comp-bar .ctx-ring::after { content: ''; position: absolute; inset: -10px; }
+html[data-shell=phone] .tl-composer-chips { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; padding-top: 4px; }
+html[data-shell=phone] .tl-composer-chips .tl-chip { flex: none; min-height: 36px; }
+html[data-shell=phone] .tl-composer-chips .tl-chip-x { position: relative; }
+html[data-shell=phone] .tl-composer-chips .tl-chip-x::after { content: ''; position: absolute; inset: -12px; }
+
+/* The `/` and `@` lists: flush on the composer card (0 gap), 48 px rows, ~5.5 rows with a fade, no badges. */
+html[data-shell=phone] .cmenu {
+  transform: translateY(-100%); max-height: 264px; padding: 4px; border-radius: 20px 20px 0 0;
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(46 40 37 / 80%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px); mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+  z-index: var(--z-sticky, 10);
+}
+html[data-shell=phone][data-short] .cmenu { max-height: 152px; }
+html[data-shell=phone] .cmenu-row { min-height: 48px; padding: 4px 12px; font-size: 16px; line-height: 22px; gap: 10px; }
+html[data-shell=phone] .cmenu-name { font-size: 16px; }
+html[data-shell=phone] .cmenu-desc { font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-shell=phone] .cmenu-src { display: none; }
+html[data-shell=phone] .cmenu-src[data-src='command'] { display: inline; background: none; padding: 0; font-size: 12px; color: var(--color-text-dim); text-transform: none; letter-spacing: 0; }
+html[data-shell=phone] .tl-composer-wrap:has(.cmenu) .tl-composer.tl-composer-dock { border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* Model sheet footer: Thinking (§3.5). */
+.ph-think-foot { display: flex; flex-direction: column; gap: 8px; }
+.ph-think-title { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--color-text-muted); }
+/* Send / Stop / Queue: one 44 px circle with a 48 px hit; the options chevron is a 44 px target. */
+html[data-shell=phone] .comp-bar .tl-composer-send,
+html[data-shell=phone] .comp-bar .tl-composer-stop { width: 44px; height: 44px; min-height: 44px; }
+html[data-shell=phone] .comp-bar .send-btn-chevron { width: 28px; height: 44px; min-height: 44px; }

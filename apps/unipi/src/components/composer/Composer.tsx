@@ -22,7 +22,7 @@
  * extension (G-6, `./PermissionControl`).
  */
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show, untrack, type JSX } from 'solid-js';
-import { Paperclip, Quote } from 'lucide-solid';
+import { Camera, FilePlus, FolderOpen, Image as ImageIcon, ListPlus, MessageSquareText, Paperclip, Plus, Quote } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import {
   MAX_ATTACHMENTS,
@@ -90,6 +90,9 @@ import { promptHistory, walkDown, walkUp } from '../../lib/composer/history';
 import { composerHistory } from '../../lib/composer/undo';
 import { pathCandidates } from '../../lib/composer/chips';
 import { ChipEditor, type ChipEditorApi } from './ChipEditor';
+import { PhoneField } from './PhoneField';
+import { ActionSheet } from '../conversation/phoneShim';
+import { useHostsOptional } from '../../hosts/context';
 import { SlashMenu } from './SlashMenu';
 import { noteCommandRun } from '../../lib/reports';
 import { toasts } from '../../lib/toasts';
@@ -512,7 +515,13 @@ export function Composer(props: ComposerProps) {
   let cameraInput: HTMLInputElement | undefined;
   let fileInput: HTMLInputElement | undefined;
 
-  /* ── the `+` menu (Z-63) ──────────────────────────────────────────── */
+  /* ── the `+` menu (Z-63; an action sheet on the phone, §3.5) ──────── */
+  const hosts = useHostsOptional();
+  /** "File from <PC>": the chat's PC name ("your PC" for This computer). */
+  const pcName = () => {
+    const h = hosts?.hosts().find((x) => x.id === hostId());
+    return h && h.transport !== 'local' ? h.name : 'your PC';
+  };
   const [plusAnchor, setPlusAnchor] = createSignal<DOMRect | null>(null);
   // Z-31: the `btw` side chat (WP-A10) — a pane tab on the desktop, a sheet on
   // the phone; the extension's own `editorReplace` panel is never opened.
@@ -1042,26 +1051,49 @@ export function Composer(props: ComposerProps) {
             e.currentTarget.value = '';
           }}
         />
-        <ChipEditor
-          class="tl-composer-field"
-          value={draft().text}
-          disabled={props.readOnly}
-          placeholder={placeholder()}
-          ariaLabel="Message"
-          opts={tokenOpts}
-          api={(api) => (editor = api)}
-          onHistory={travel}
-          onChange={(text, at, kind) => {
-            commit(text, at, kind);
-            setCaret(at);
-            setDismissed(null);
-          }}
-          onCaret={setCaret}
-          onKeyDown={onKeyDown}
-          onPasteFiles={props.phone ? undefined : (files) => attachPicked(files)}
-          onPasteNative={!props.phone && isTauriDesktop() ? pasteNative : undefined}
-          onPasteText={onPasteText}
-        />
+        <Show
+          when={props.phone}
+          fallback={
+            <ChipEditor
+              class="tl-composer-field"
+              value={draft().text}
+              disabled={props.readOnly}
+              placeholder={placeholder()}
+              ariaLabel="Message"
+              opts={tokenOpts}
+              api={(api) => (editor = api)}
+              onHistory={travel}
+              onChange={(text, at, kind) => {
+                commit(text, at, kind);
+                setCaret(at);
+                setDismissed(null);
+              }}
+              onCaret={setCaret}
+              onKeyDown={onKeyDown}
+              onPasteFiles={props.phone ? undefined : (files) => attachPicked(files)}
+              onPasteNative={!props.phone && isTauriDesktop() ? pasteNative : undefined}
+              onPasteText={onPasteText}
+            />
+          }
+        >
+          <PhoneField
+            class="tl-composer-field"
+            value={draft().text}
+            disabled={props.readOnly}
+            placeholder={placeholder()}
+            ariaLabel="Message"
+            api={(api) => (editor = api)}
+            onHistory={travel}
+            onChange={(text, at, kind) => {
+              commit(text, at, kind);
+              setCaret(at);
+              setDismissed(null);
+            }}
+            onCaret={setCaret}
+            onKeyDown={onKeyDown}
+            onPasteText={onPasteText}
+          />
+        </Show>
         <Toolbar
           phone={props.phone}
           lead={
@@ -1074,7 +1106,9 @@ export function Composer(props: ComposerProps) {
               onClick={(e) => setPlusAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
               data-testid="composer-plus"
             >
-              <Paperclip size={17} />
+              <Show when={props.phone} fallback={<Paperclip size={17} />}>
+                <Plus size={22} />
+              </Show>
             </button>
           }
           end={
@@ -1099,16 +1133,39 @@ export function Composer(props: ComposerProps) {
           <ToolbarSlot slot="permission">
             <PermissionControl session={props.session} onCommand={runCommand} disabled={props.readOnly} phone={props.phone} />
           </ToolbarSlot>
-          <ToolbarSlot slot="plan">
-            <PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} />
-          </ToolbarSlot>
-          <ToolbarSlot slot="think">
-            <ThinkingChip session={props.session} disabled={props.readOnly} />
-          </ToolbarSlot>
+          {/* Phone (§3.5): Plan lives in the Mode sheet, thinking in the model sheet's footer. */}
+          <Show when={!props.phone}>
+            <ToolbarSlot slot="plan">
+              <PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} />
+            </ToolbarSlot>
+            <ToolbarSlot slot="think">
+              <ThinkingChip session={props.session} disabled={props.readOnly} />
+            </ToolbarSlot>
+          </Show>
           <ToolbarSlot slot="model">{props.modelSlot ?? <ModelChip session={props.session} disabled={props.readOnly} />}</ToolbarSlot>
         </Toolbar>
       </div>
-      <Show when={plusAnchor()}>
+      <Show when={props.phone}>
+        <ActionSheet
+          open={plusAnchor() !== null}
+          onClose={() => setPlusAnchor(null)}
+          title="Add to the message"
+          testId="composer-plus-sheet"
+          sections={[
+            [
+              { id: 'photos', label: 'Photos', icon: ImageIcon, onSelect: () => photoInput?.click() },
+              { id: 'camera', label: 'Camera', icon: Camera, onSelect: () => cameraInput?.click() },
+              { id: 'file-phone', label: 'File from phone', icon: FilePlus, onSelect: () => fileInput?.click() },
+              ...(cwd() ? [{ id: 'file-pc', label: `File from ${pcName()}`, icon: FolderOpen, onSelect: () => insertAtCaret('@') }] : []),
+            ],
+            [
+              ...(props.draft ? [] : [{ id: 'side-question', label: 'Side question', icon: MessageSquareText, onSelect: () => openSideQuestion(draft().text.trim() || undefined) }]),
+              { id: 'board-task', label: 'Board task', icon: ListPlus, onSelect: () => addTaskFromChat(hostId(), cwd() || undefined) },
+            ],
+          ]}
+        />
+      </Show>
+      <Show when={!props.phone && plusAnchor()}>
         {(anchor) => (
           <PlusMenu
             anchor={anchor()}

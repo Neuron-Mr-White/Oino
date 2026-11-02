@@ -147,7 +147,44 @@ describe('placeholder by state (Z-57)', () => {
   it('the phone short form on an empty session', async () => {
     const empty = await openSession(0);
     const c = mountComposer(empty, { phone: true });
-    expect(c.field().getAttribute('data-placeholder')).toBe('Ask anything…');
+    expect(c.view.container.querySelector('textarea.ph-field')!.getAttribute('placeholder')).toBe('Ask anything…');
+  });
+});
+
+describe('phone field (phone spec §3.5, PH-11)', () => {
+  it('is a native textarea: the typed text is exactly what is sent, Enter on touch is a newline, Send sends', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s, { phone: true });
+    const field = c.view.container.querySelector('textarea.ph-field') as HTMLTextAreaElement;
+    expect(field).not.toBeNull();
+    expect(c.view.container.querySelector('.chip-field')).toBeNull();
+    // An IME composition (Gboard): intermediate inputs while composing, then the final text.
+    fireEvent.compositionStart(field);
+    field.value = 'Give me an overview';
+    fireEvent.input(field);
+    field.value = 'Give me an overview of this project';
+    fireEvent.input(field);
+    fireEvent.compositionEnd(field);
+    expect(composerDraft(s.key).text).toBe('Give me an overview of this project');
+    expect(field.value).toBe('Give me an overview of this project');
+    // A touch keyboard's Enter is a newline (default action), not a send.
+    const had = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes('coarse'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList) as typeof window.matchMedia;
+    fireEvent.keyDown(field, { key: 'Enter' });
+    window.matchMedia = had;
+    expect(world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt')).toHaveLength(0);
+    fireEvent.click(c.view.container.querySelector('[data-testid="send-button"]') ?? c.view.container.querySelector('.tl-composer-send')!);
+    await waitFor(() => expect(world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt')).toHaveLength(1));
+    const cmd = world.log.find((e) => e.kind === 'cmd' && e.op === 'prompt')!.args as { message?: string };
+    expect(cmd.message).toBe('Give me an overview of this project');
+    await waitFor(() => expect(field.value).toBe(''));
+  });
+
+  it('the toolbar has no Plan toggle or Thinking chip on the phone (they live in sheets)', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s, { phone: true });
+    expect(c.view.container.querySelector('[data-testid="plan-toggle"]')).toBeNull();
+    expect(c.view.container.querySelector('[data-testid="thinking-chip"]')).toBeNull();
   });
 });
 

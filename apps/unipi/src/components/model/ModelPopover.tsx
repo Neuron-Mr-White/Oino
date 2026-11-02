@@ -23,7 +23,7 @@
 import { createEffect, createSignal, onCleanup, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { Repeat, X } from 'lucide-solid';
-import { BoardSheet } from '../board/BoardSheet';
+import { Sheet } from '../conversation/phoneShim';
 import { menuKeys } from '../composer/menuKeys';
 import { layout } from '../../lib/layout';
 import { pushBack } from '../../lib/back';
@@ -46,9 +46,18 @@ export function ModelDialog(props: {
   onClose: () => void;
   /** The chip / field that opened it: focus returns there (default: whatever had focus at open). */
   trigger?: () => HTMLElement | undefined;
+  /** Phone: the sheet's sticky footer (the thinking level, §3.5). */
+  footer?: JSX.Element;
   children: JSX.Element;
 }) {
   const desktop = () => layout().desktop();
+  // PH-05: on touch the tap that opened the sheet can be followed by a focus / outside-press
+  // (the keyboard closing, a ghost click) — a dismiss right after opening is that race, not the user.
+  const openedAt = Date.now();
+  const phoneClose = () => {
+    if (Date.now() - openedAt < 450) return;
+    props.onClose();
+  };
   const openedFrom = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
   const trigger = () => props.trigger?.() ?? (openedFrom && openedFrom !== document.body ? openedFrom : undefined);
   const keys = (el: HTMLElement) => onCleanup(menuKeys(el, { close: props.onClose, trigger, autoFocus: false, tabCloses: false }));
@@ -60,11 +69,21 @@ export function ModelDialog(props: {
     <Show
       when={desktop()}
       fallback={
-        <BoardSheet open onClose={props.onClose} label={props.title} title={props.title} testId={`${props.testId}-sheet`} class="model-picker-sheet">
+        <Sheet
+          open
+          onClose={phoneClose}
+          label={props.title}
+          title={props.title}
+          detents={['full']}
+          initialDetent="full"
+          footer={props.footer}
+          testId={`${props.testId}-sheet`}
+          class="model-picker-sheet"
+        >
           <div class="mp-sheet-body" data-testid={props.testId} ref={keys}>
             {props.children}
           </div>
-        </BoardSheet>
+        </Sheet>
       }
     >
       <Portal>

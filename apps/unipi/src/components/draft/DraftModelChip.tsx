@@ -11,7 +11,10 @@
  * running chat (`fusion.set-pair`), so it is set from the chat's picker.
  */
 import { createMemo, createResource, createSignal, Show } from 'solid-js';
-import { ChevronUp, Cpu, Plug } from 'lucide-solid';
+import { Brain, ChevronUp, Cpu, Plug } from 'lucide-solid';
+import { layout } from '../../lib/layout';
+import type { SessionHandle } from '../../lib/session/store';
+import { ThinkingFooter } from '../model/ThinkingFooter';
 import { modelKey, modelName, parseModels, shortModelName, type ModelInfo, type Selection } from '../../lib/model/picker';
 import { fetchFusion, fusionAvailable, type FusionCurated } from '../../lib/model/fusion';
 import { openSettingsAt } from '../../lib/settings/open';
@@ -19,7 +22,7 @@ import { toasts } from '../../lib/toasts';
 import { modelView } from '../model/ModelList';
 import { startupKey } from '../model/suggested';
 import { createCycleSet, ModelDialog, ModelPickerPanel, PickerError, PickerSecondary, writeStartupModel } from '../model/ModelPopover';
-import { modelChipLabel, modelChipTitle } from '../model/ModelChip';
+import { modelChipLabel, modelChipTitle, thinkingOn } from '../model/ModelChip';
 import { RollingLabel } from '../RollingLabel';
 import type { DraftSession } from './draftSession';
 
@@ -123,10 +126,19 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
       >
         <Cpu size={15} class="tb-ic" />
         <RollingLabel class="tb-label" text={label()} testId="model-chip-label" />
+        <Show when={!layout().desktop() && thinkingOn(props.session.state.thinkingLevel)}>
+          <Brain size={14} class="tb-think-glyph" aria-hidden="true" />
+        </Show>
         <ChevronUp size={12} class="tb-chev" />
       </button>
       <Show when={open()}>
-        <ModelDialog title="Model" testId="draft-model-menu" onClose={close} trigger={() => chip}>
+        <ModelDialog
+          title="Model"
+          testId="draft-model-menu"
+          onClose={close}
+          trigger={() => chip}
+          footer={layout().desktop() ? undefined : <ThinkingFooter session={props.session as unknown as SessionHandle} />}
+        >
           <ModelPickerPanel
             view={view()}
             query={query()}

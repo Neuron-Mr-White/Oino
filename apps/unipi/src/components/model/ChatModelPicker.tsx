@@ -49,6 +49,8 @@ import { setChatModel } from '../../lib/model/chatModel';
 import { hostReadiness, type Readiness } from '../../lib/model/readiness';
 import { calmModelError } from '../../lib/model/availability';
 import { closeModelPicker, modelPickerTarget, type ModelPickerTarget } from './target';
+import { ThinkingFooter } from './ThinkingFooter';
+import { layout } from '../../lib/layout';
 import { curatedFirst, rowTitle, startupKey } from './suggested';
 import { LIST_CAP, modelView, type RowActions } from './ModelList';
 import {
@@ -470,7 +472,12 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
 export function ChatModelPicker(props: { target: ModelPickerTarget }) {
   return (
     // No `trigger`: focus goes back where it was (the chip when clicked, the composer after Ctrl/Cmd+M).
-    <ModelDialog title="Model" testId="model-picker-dialog" onClose={closeModelPicker}>
+    <ModelDialog
+      title="Model"
+      testId="model-picker-dialog"
+      onClose={closeModelPicker}
+      footer={layout().desktop() ? undefined : <ThinkingFooter session={sessions().ensure(props.target.hostId, props.target.sessionId)} />}
+    >
       <ChatModelPickerBody target={props.target} />
     </ModelDialog>
   );
