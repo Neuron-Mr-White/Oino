@@ -8,6 +8,7 @@ import { openChatState, closeChat } from '../lib/session/open';
 import { HostsProvider } from '../hosts/context';
 import { SettingsProvider } from '../settings/context';
 import { call } from '../lib/ipc';
+import { setDesktopOverride } from '../lib/layout';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 // The chat layer (opened by "Open session") talks over this; keep it inert.
@@ -50,7 +51,9 @@ function mockIpc(overrides: Record<string, unknown> = {}) {
   );
 }
 
-function mount() {
+function mount(desktop = true) {
+  // The list/sheet flows below are the desktop page; the phone tab page has its own tests.
+  setDesktopOverride(desktop);
   return render(() => (
     <HashRouter>
       <Route path="*" component={() => <SettingsProvider><HostsProvider><Cron /></HostsProvider></SettingsProvider>} />
@@ -60,8 +63,27 @@ function mount() {
 
 afterEach(() => {
   cleanup();
+  setDesktopOverride(undefined);
   vi.resetAllMocks();
   location.hash = '#/';
+});
+
+describe('Cron on the phone (§3.10)', () => {
+  it('a tab page: 72 px job rows; a tap opens /cron/job/:id as a pushed page', async () => {
+    mockIpc();
+    mount(false);
+    const row = await screen.findByTestId('cron-job-digest');
+    expect(row).toHaveTextContent('daily digest');
+    expect(screen.queryByTestId('cron-job-toggle-digest')).toBeNull();
+    fireEvent.click(row);
+    await waitFor(() => expect(location.hash).toBe('#/cron/job/digest'));
+  });
+
+  it('off on the PC: the shared FeatureOffCard names the PC once (PH-38)', async () => {
+    mockIpc({ cron_list: { ok: false, error: { code: 'E_UNAUTHORIZED', message: 'off', retryable: false } } });
+    mount(false);
+    await screen.findByTestId('cron-disabled');
+  });
 });
 
 describe('Cron screen (UNI-317)', () => {

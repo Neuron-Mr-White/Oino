@@ -124,3 +124,19 @@
 /* D-32: placeholders are hints, not values. */
 .cron-form input::placeholder, .cron-form textarea::placeholder { color: var(--color-text-dim); opacity: .75; font-style: italic; }
 .cron-form input:focus-visible, .cron-form textarea:focus-visible { outline: 2px solid var(--color-shell); outline-offset: 0; border-color: transparent; }
+
+/* ── Phone Cron (phone spec §3.10): tab page body + job detail pushed page. ── */
+html[data-shell=phone] .cron-phone { display: flex; flex-direction: column; gap: var(--ph-4, 16px); padding-bottom: calc(var(--ph-8, 32px) + 56px); }
+html[data-shell=phone] .cron-phone .cron-body { display: flex; flex-direction: column; gap: var(--ph-4, 16px); }
+html[data-shell=phone] .cron-phone .cron-pause-row { border-radius: var(--ph-radius-card, 16px); background: var(--color-surface-1); min-height: 72px; }
+html[data-shell=phone] .cron-phone .cron-pause-row p:first-child { font-size: 16px; line-height: 22px; }
+html[data-shell=phone] .cron-phone .cron-pause-row p.text-xs { font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+html[data-shell=phone] .cron-phone .cron-scheduler-toggle { min-height: 56px; }
+html[data-shell=phone] .cron-detail-page .cron-detail { display: flex; flex-direction: column; gap: var(--ph-4, 16px); padding-bottom: var(--ph-6, 24px); }
+html[data-shell=phone] .cron-detail-page .cron-detail-prompt { font-size: 16px; line-height: 24px; }
+html[data-shell=phone] .cron-detail-page .cron-detail-fields { font-size: 14px; line-height: 20px; }
+html[data-shell=phone] .cron-detail-page .cron-detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ph-2, 8px); }
+html[data-shell=phone] .cron-detail-page .cron-detail-actions button { min-height: 48px; font-size: 16px; justify-content: center; }
+html[data-shell=phone] .cron-detail-page .cron-runs-heading { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--color-text-muted); text-transform: none; letter-spacing: 0; margin: var(--ph-2, 8px) 4px 0; }
+html[data-shell=phone] .cron-detail-page .cron-run-row { min-height: 72px; width: 100%; }
+html[data-shell=phone] .cron-detail-page .cron-run-summary { font-size: 14px; line-height: 20px; }

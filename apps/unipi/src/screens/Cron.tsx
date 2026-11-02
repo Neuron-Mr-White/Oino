@@ -11,7 +11,7 @@ import { createEffect, createMemo, createResource, createSignal, For, on, onClea
 import { NamespaceForm } from '../ui/settings/form';
 import { settingsSchema } from '../ui/settings/data';
 import type { Namespace } from '../ui/settings/types';
-import { useNavigate, useSearchParams } from '@solidjs/router';
+import { useNavigate, useParams, useSearchParams } from '@solidjs/router';
 import { Bell, CalendarClock, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CirclePause, ClockAlert, Cpu, Hourglass, LoaderCircle, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, SkipForward, Square, Trash2 } from 'lucide-solid';
 import type { AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
@@ -65,6 +65,8 @@ import { FeatureOff } from '../components/FeatureOff';
 import { BoardSheet } from '../components/board/BoardSheet';
 import { SwitchField } from '../components/Switch';
 import type { Result } from '../lib/ipc';
+import { ActionSheet, IconButton, ListGroup, ListRow, PageScaffold, RowIcon, confirmSheet, type ActionItem } from '../components/phone';
+import { Ellipsis } from 'lucide-solid';
 import './cron.css';
 
 type CommandBoxComp = (props: { command: string }) => JSX.Element;
@@ -227,6 +229,9 @@ function viewFrom(result: Result<{ jobs: CronJob[]; paused: boolean }> | undefin
 export default function Cron() {
   const hosts = useHosts();
   const navigate = useNavigate();
+  const params = useParams<{ id?: string }>();
+  // Phone (§3.10): a tab page; a job is its own pushed page `/cron/job/:id`.
+  const phone = () => !desktopShell();
   const [searchParams, setSearchParams] = useSearchParams();
   // The PC is the app-wide selection (sidebar host row / phone chip, [ui-shell] #1).
   const hostId = () => hosts.selectedId();
@@ -289,26 +294,8 @@ export default function Cron() {
     onCleanup(() => clearInterval(t));
   });
 
-  return (
-    <Show when={hosts.hosts().length > 0} fallback={<div class="page-screen"><PageHeader title="Cron" /><NoHostState what="scheduled runs" onAdd={() => setAddHostOpen(true)} /></div>}>
-      <div class="page-screen cron-screen" data-testid="cron-screen">
-        <PageHeader
-          title="Cron"
-          lead={desktopShell() ? undefined : <PcChip name={hosts.hosts().find((h) => h.id === hostId())?.name} state={view().kind === "error" ? "offline" : view().kind === "loading" ? "checking" : "ok"} onClick={() => setHostSheetOpen(true)} />}
-          tools={
-            <>
-              <button type="button" class="ghost-icon-button" aria-label="Refresh" onClick={() => void refresh()}>
-                <RefreshCw size={18} class={refreshing() ? 'refresh-spinning' : undefined} />
-              </button>
-              <Show when={view().kind === 'ready'}>
-                <button type="button" class="ghost-icon-button" aria-label="Add a job" onClick={() => setFormOpen('new')} data-testid="cron-add">
-                  <Plus size={18} />
-                </button>
-              </Show>
-            </>
-          }
-        />
-
+  const body = () => (
+    <>
         <Show when={view().kind === 'loading'}>
           <div class="preview-loading" data-testid="cron-loading"><RefreshCw size={18} class="refresh-spinning" /> Checking cron on {hostName(hostId())}…</div>
         </Show>
@@ -354,7 +341,11 @@ export default function Cron() {
                 </div>
 
                 <Show when={v.jobs.length === 0} fallback={<div class="cron-jobs">
-                  <For each={v.jobs}>{(job) => <JobRow job={job} hostId={hostId()!} onOpen={() => setDetail(job.id)} onChanged={() => void refresh()} />}</For>
+                  <Show when={phone()} fallback={<For each={v.jobs}>{(job) => <JobRow job={job} hostId={hostId()!} onOpen={() => setDetail(job.id)} onChanged={() => void refresh()} />}</For>}>
+                    <ListGroup>
+                      <For each={v.jobs}>{(job) => <PhoneJobRow job={job} hostId={hostId()!} onOpen={() => navigate(`/cron/job/${encodeURIComponent(job.id)}`)} onEdit={() => setFormOpen(job)} onChanged={() => void refresh()} />}</For>
+                    </ListGroup>
+                  </Show>
                 </div>}>
                   <EmptyState
                     title="No cron jobs yet"
@@ -372,6 +363,10 @@ export default function Cron() {
           })()}
         </Show>
 
+    </>
+  );
+  const overlays = () => (
+    <>
         <HostSheetCron open={hostSheetOpen()} hostIds={hosts.hosts().map((h) => h.id)} names={hosts.hosts()} current={hostId()} onPick={(id) => (setHostId(id), setHostSheetOpen(false))} onClose={() => setHostSheetOpen(false)} />
 
         <Show when={detail()}>
@@ -400,7 +395,88 @@ export default function Cron() {
             />
           )}
         </Show>
-      </div>
+    </>
+  );
+  const [menuOpen, setMenuOpen] = createSignal(false);
+  const phoneMenu = (): ActionItem[][] => {
+    const v = view();
+    const paused = v.kind === 'ready' && v.paused;
+    return [[
+      ...(v.kind === 'ready'
+        ? [{ id: 'pause', label: 'Pause all jobs', icon: Pause, checked: paused, onSelect: () => {
+            const id = hostId();
+            if (id) void (paused ? cronResumeAll(id) : cronPauseAll(id)).then(() => void refresh());
+          } }]
+        : []),
+      { id: 'settings', label: 'Scheduler settings', icon: Settings2, onSelect: () => document.getElementById('cron-scheduler')?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) },
+    ]];
+  };
+
+  return (
+    <Show when={hosts.hosts().length > 0} fallback={
+      <Show when={phone()} fallback={<div class="page-screen"><PageHeader title="Cron" /><NoHostState what="scheduled runs" onAdd={() => setAddHostOpen(true)} /></div>}>
+        <PageScaffold title="Cron" testId="cron-screen"><NoHostState what="scheduled runs" onAdd={() => setAddHostOpen(true)} /></PageScaffold>
+      </Show>
+    }>
+      <Show
+        when={phone()}
+        fallback={
+          <div class="page-screen cron-screen" data-testid="cron-screen">
+        <PageHeader
+          title="Cron"
+          lead={desktopShell() ? undefined : <PcChip name={hosts.hosts().find((h) => h.id === hostId())?.name} state={view().kind === "error" ? "offline" : view().kind === "loading" ? "checking" : "ok"} onClick={() => setHostSheetOpen(true)} />}
+          tools={
+            <>
+              <button type="button" class="ghost-icon-button" aria-label="Refresh" onClick={() => void refresh()}>
+                <RefreshCw size={18} class={refreshing() ? 'refresh-spinning' : undefined} />
+              </button>
+              <Show when={view().kind === 'ready'}>
+                <button type="button" class="ghost-icon-button" aria-label="Add a job" onClick={() => setFormOpen('new')} data-testid="cron-add">
+                  <Plus size={18} />
+                </button>
+              </Show>
+            </>
+          }
+        />
+
+            {body()}
+            {overlays()}
+          </div>
+        }
+      >
+        <Show
+          when={params.id}
+          keyed
+          fallback={
+            <PageScaffold
+              title="Cron"
+              testId="cron-screen"
+              onRefresh={refresh}
+              tools={<IconButton icon={Ellipsis} label="More cron actions" onClick={() => setMenuOpen(true)} testId="cron-more" />}
+              fab={view().kind === 'ready' ? { icon: Plus, label: 'New job', onClick: () => setFormOpen('new') } : undefined}
+            >
+              <div class="cron-screen cron-phone">{body()}</div>
+              <ActionSheet open={menuOpen()} onClose={() => setMenuOpen(false)} title="Cron" sections={phoneMenu()} testId="cron-menu" />
+              {overlays()}
+            </PageScaffold>
+          }
+        >
+          {(id) => (
+            <>
+              <JobDetailSheet
+                page
+                hostId={hostId()!}
+                hostName={hostName(hostId())}
+                id={decodeURIComponent(id)}
+                onClose={() => navigate('/cron', { replace: true })}
+                onEdit={(job) => setFormOpen(job)}
+                onChanged={() => void refresh()}
+              />
+              {overlays()}
+            </>
+          )}
+        </Show>
+      </Show>
     </Show>
   );
 }
@@ -500,7 +576,45 @@ function JobRow(props: { job: CronJob; hostId: string; onOpen: () => void; onCha
   );
 }
 
-function JobDetailSheet(props: { hostId: string; hostName: string; id: string; onClose: () => void; onEdit: (job: CronJob) => void; onChanged: () => void }) {
+/**
+ * Phone job row (§3.10): 72 px — name, human schedule · next run, trailing
+ * last-run pill; tap opens `/cron/job/:id`, long-press: Run now · Pause/Resume · Edit · Delete.
+ */
+function PhoneJobRow(props: { job: CronJob; hostId: string; onOpen: () => void; onEdit: () => void; onChanged: () => void }) {
+  const [menu, setMenu] = createSignal(false);
+  const state = () => jobState(props.job);
+  const last = () => (props.job.running ? 'running' : props.job.last_run_status);
+  const icon = () => (state() === 'running' ? LoaderCircle : state() === 'failed' ? CircleAlert : state() === 'disabled' ? CirclePause : CalendarClock);
+  const tint = () => (state() === 'failed' ? 'red' : state() === 'running' ? 'accent' : state() === 'disabled' ? 'neutral' : 'green') as 'red' | 'accent' | 'neutral' | 'green';
+  const act = (fn: () => Promise<unknown>) => void fn().then(props.onChanged);
+  const items = (): ActionItem[][] => [
+    [
+      { id: 'run', label: 'Run now', icon: Play, onSelect: () => act(() => cronRun(props.hostId, props.job.id)) },
+      props.job.enabled
+        ? { id: 'pause', label: 'Pause', icon: Pause, onSelect: () => act(() => cronDisable(props.hostId, props.job.id)) }
+        : { id: 'resume', label: 'Resume', icon: Play, onSelect: () => act(() => cronEnable(props.hostId, props.job.id)) },
+      { id: 'edit', label: 'Edit', icon: Settings2, onSelect: props.onEdit },
+    ],
+    [{ id: 'delete', label: 'Delete', icon: Trash2, tone: 'danger', confirm: `Delete "${props.job.name}"? Its run history goes too.`, onSelect: () => act(() => cronRemove(props.hostId, props.job.id)) }],
+  ];
+  return (
+    <>
+      <ListRow
+        title={props.job.name}
+        subtitle={<>{scheduleText(props.job.schedule)} · {props.job.enabled ? nextFireText(props.job) : 'paused'}</>}
+        leading={<RowIcon icon={icon()} tint={tint()} />}
+        trailing={<Show when={last()}>{(st) => <RunStatusChip status={st()} compact testId={`cron-job-last-${props.job.id}`} />}</Show>}
+        dim={!props.job.enabled}
+        onClick={props.onOpen}
+        onLongPress={() => setMenu(true)}
+        testId={`cron-job-${props.job.id}`}
+      />
+      <ActionSheet open={menu()} onClose={() => setMenu(false)} title={props.job.name} subtitle={humanSchedule(props.job.schedule)} sections={items()} testId="cron-job-menu" />
+    </>
+  );
+}
+
+function JobDetailSheet(props: { hostId: string; hostName: string; id: string; onClose: () => void; onEdit: (job: CronJob) => void; onChanged: () => void; page?: boolean }) {
   const [data, setData] = createSignal<Result<{ job: CronJob; runs: CronRun[] }> | undefined>();
   const [pcDefault, setPcDefault] = createSignal<string[]>([]);
   void cronSettingsGet(props.hostId).then((r) => r.ok && r.value && setPcDefault(r.value.notify_default_events ?? []));
@@ -533,8 +647,22 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
     props.onChanged();
   }
 
+  const jobTitle = () => {
+    const d = data();
+    return d?.ok ? d.value.job.name : 'Job';
+  };
+  const Frame = (f: { children: JSX.Element }) =>
+    props.page ? (
+      <PageScaffold title={jobTitle()} subtitle={(() => { const d = data(); return d?.ok ? <>{humanSchedule(d.value.job.schedule)}</> : undefined; })()} back={props.onClose} testId="cron-detail-sheet">
+        <div class="cron-detail-page">{f.children}</div>
+      </PageScaffold>
+    ) : (
+      <BoardSheet open={true} onClose={props.onClose} label="Job detail" testId="cron-detail-sheet" title={jobTitle()}>
+        {f.children}
+      </BoardSheet>
+    );
   return (
-    <BoardSheet open={true} onClose={props.onClose} label="Job detail" testId="cron-detail-sheet" title={(() => { const d = data(); return d?.ok ? d.value.job.name : 'Job'; })()}>
+    <Frame>
       <Show when={data()?.ok} fallback={<p class="p-4 text-text-muted text-sm">{(() => { const d = data(); return d && !d.ok ? d.error.message : 'Loading…'; })()}</p>}>
         {(() => {
           const d = data()!;
@@ -578,8 +706,10 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
                   disabled={busy()}
                   class="cron-delete-btn"
                   onClick={() => {
-                    if (!confirm(`Delete "${job.name}"? Its run history goes too.`)) return;
-                    void run(() => cronRemove(props.hostId, job.id)).then(props.onClose);
+                    const ask = props.page
+                      ? confirmSheet({ title: `Delete "${job.name}"?`, body: 'Its run history goes too.', confirm: 'Delete', tone: 'danger' })
+                      : Promise.resolve(confirm(`Delete "${job.name}"? Its run history goes too.`));
+                    void ask.then((ok) => ok && void run(() => cronRemove(props.hostId, job.id)).then(props.onClose));
                   }}
                   data-testid="cron-delete"
                 >
@@ -621,7 +751,7 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
           );
         })()}
       </Show>
-    </BoardSheet>
+    </Frame>
   );
 }
 
