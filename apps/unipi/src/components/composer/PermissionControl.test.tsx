@@ -193,5 +193,16 @@ describe('plan toggle (G-6)', () => {
     fireEvent.click(view.getByTestId('permission-chip'));
     fireEvent.click(document.querySelector('[data-testid=permission-make-default]')!);
     await waitFor(() => expect(toasts().list().some((t) => t.message === 'New chats start in Full')).toBe(true));
+
+    // 7f8a79a6: per-session `unipi:workflow:status:<sessionId>` beats a polluted global `unipi:workflow:status`.
+    world.push(HOST, 's-a', [
+      { session: 's-a', seq: 9_100, event: { type: 'topic', topic: `${WORKFLOW_STATUS}:s-a`, data: { planMode: true, permissionMode: 'ask' }, sticky: true, publisher: 'unipi.workflow' } } as never,
+      { session: 's-a', seq: 9_101, event: { type: 'topic', topic: WORKFLOW_STATUS, data: { planMode: false, permissionMode: 'full' }, sticky: true, publisher: 'unipi.workflow' } } as never,
+    ]);
+    setCur(a);
+    await waitFor(() => {
+      expect(view.getByTestId('plan-toggle').getAttribute('aria-pressed')).toBe('true');
+      expect(view.getByTestId('permission-label').textContent).toBe('Ask');
+    });
   });
 });

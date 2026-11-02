@@ -19,7 +19,7 @@
 import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { Check, ChevronUp, ListTree, ShieldCheck } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
-import { latestPermissionEntry, latestPlanEntry, parseWorkflowStatus, WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
+import { latestPermissionEntry, latestPlanEntry, readSessionWorkflowStatus, sessionWorkflowTopic } from '../../lib/status/plan';
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { menuKeys } from './menuKeys';
 import { toasts } from '../../lib/toasts';
@@ -57,17 +57,20 @@ function ensureHostDefault(session: SessionHandle): void {
     });
 }
 
-/** Subscribes to the workflow topic and reads the session's real permission & plan state. */
+/** Subscribes to the per-session workflow topic (`unipi:workflow:status:<sessionId>`) and reads real state. */
 function useWorkflow(session: () => SessionHandle) {
   createEffect(
-    on(session, (handle) => {
-      const release = handle.acquire();
-      handle.subscribeTopics([WORKFLOW_STATUS_TOPIC]);
-      ensureHostDefault(handle);
-      onCleanup(release);
-    }),
+    on(
+      () => [session(), session().sessionId()] as const,
+      ([handle, sid]) => {
+        const release = handle.acquire();
+        handle.subscribeTopics([sessionWorkflowTopic(sid)]);
+        ensureHostDefault(handle);
+        onCleanup(release);
+      },
+    ),
   );
-  const status = () => parseWorkflowStatus(session().state.topics[WORKFLOW_STATUS_TOPIC]?.data);
+  const status = () => readSessionWorkflowStatus(session().state.topics, session().sessionId());
   const entryMode = () => {
     const raw = latestPermissionEntry(session().state.entries);
     return isMode(raw) ? raw : undefined;

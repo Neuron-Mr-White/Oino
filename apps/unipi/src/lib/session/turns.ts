@@ -146,6 +146,7 @@ const INTERNAL_CUSTOM_TYPES = new Set([
   'unipi:auto-name',
   'unipi:skills-judged',
   'unipi:plan-mode',
+  'unipi:permission-mode',
   'long-horizon-decision',
   'unipi-cleared-input',
   'unipi-progress',

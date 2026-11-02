@@ -12,10 +12,10 @@ import { sessions } from '../../lib/session/store';
 import {
   latestPlanEntry,
   latestTodos,
-  parseWorkflowStatus,
   planFileLabel,
+  readSessionWorkflowStatus,
+  sessionWorkflowTopic,
   todoProgress,
-  WORKFLOW_STATUS_TOPIC,
   type TodoItem,
 } from '../../lib/status/plan';
 import './status.css';
@@ -32,11 +32,11 @@ export function PlanSection(props: { hostId: string; sessionId: string }) {
   createEffect(
     on(s, (handle) => {
       const release = handle.acquire();
-      handle.subscribeTopics([WORKFLOW_STATUS_TOPIC]);
+      handle.subscribeTopics([sessionWorkflowTopic(props.sessionId)]);
       onCleanup(release);
     }),
   );
-  const workflow = () => parseWorkflowStatus(s().state.topics[WORKFLOW_STATUS_TOPIC]?.data);
+  const workflow = () => readSessionWorkflowStatus(s().state.topics, props.sessionId);
   const planEntry = () => latestPlanEntry(s().state.entries);
   const todos = createMemo(() => latestTodos(s().state.entries, s().state.liveTools));
   const progress = () => todoProgress(todos());

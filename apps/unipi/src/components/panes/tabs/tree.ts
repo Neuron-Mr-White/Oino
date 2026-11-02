@@ -102,6 +102,7 @@ const KNOWN_CUSTOM_TITLES: Record<string, string> = {
   'unipi:bg-tasks': 'Background tasks',
   'unipi:plan-mode': 'Plan mode',
   'unipi:plan-mode-message': 'Plan mode',
+  'unipi:permission-mode': 'Permission mode',
   'unipi:attachments': 'Attachments',
   'background-task-notification': 'Background task finished',
   'subagent-completion': 'Subagent finished',

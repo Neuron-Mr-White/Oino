@@ -49,6 +49,8 @@ describe('P1-02: command reports', () => {
     expect(toasts().list()).toHaveLength(0);
     expect(openReport()).toBeNull();
     expect(humanCommandNotice('Permission mode: full (this chat: - · default: full)')).toBe('Permission: Full (default)');
-    expect(humanCommandNotice('Permission mode: ask (this chat: ask · default: full)')).toBe('Permission: Ask (this chat · default: Full)');
+    expect(humanCommandNotice('Permission mode: ask (this chat: ask · default for new chats: auto)')).toBe('Permission: Ask (this chat · default: Auto)');
+    expect(humanCommandNotice('Plan mode: on — the plan goes to docs/plans/2026-11-02-x.md (/plan view · /plan off)')).toBe('Plan mode: on (2026-11-02-x.md)');
+    expect(humanCommandNotice('Plan mode: off (/plan to plan before acting)')).toBe('Plan mode: off');
   });
 });

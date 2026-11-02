@@ -57,7 +57,7 @@ const capMode = (m: string): string => (m ? m[0]!.toUpperCase() + m.slice(1).toL
 /** G-10: rewrites terse extension status strings into one clean human line. */
 export function humanCommandNotice(raw: string): string {
   const text = raw.trim();
-  const perm = /^Permission mode:\s*(\w+)\s*\(this chat:\s*([^\s·)]+)\s*·\s*default:\s*([^\s)]+)\)\s*$/i.exec(text);
+  const perm = /^Permission mode:\s*(\w+)\s*\(this chat:\s*([^\s·)]+)\s*·\s*default(?:\s+for\s+new\s+chats)?:\s*([^\s)]+)\)\s*$/i.exec(text);
   if (perm) {
     const [, eff, chat, def] = perm;
     const effective = capMode(eff!);
@@ -71,6 +71,12 @@ export function humanCommandNotice(raw: string): string {
   }
   const permSet = /^Permission mode:\s*(ask|auto|full)\s*\(this chat only\)\s*$/i.exec(text);
   if (permSet) return `Permission: ${capMode(permSet[1]!)} (this chat only)`;
+  const planOn = /^Plan mode:\s*on\s*—\s*the plan goes to\s+(\S+)(?:\s*\(.*\))?$/i.exec(text);
+  if (planOn) {
+    const base = planOn[1]!.split('/').pop() || planOn[1]!;
+    return `Plan mode: on (${base})`;
+  }
+  if (/^Plan mode:\s*off\b/i.test(text)) return 'Plan mode: off';
   return text;
 }
 

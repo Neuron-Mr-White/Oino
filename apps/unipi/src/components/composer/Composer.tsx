@@ -93,7 +93,7 @@ import { ChipEditor, type ChipEditorApi } from './ChipEditor';
 import { SlashMenu } from './SlashMenu';
 import { noteCommandRun } from '../../lib/reports';
 import { toasts } from '../../lib/toasts';
-import { latestPlanEntry, parseWorkflowStatus, planFileLabel, WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
+import { latestPlanEntry, planFileLabel, readSessionWorkflowStatus } from '../../lib/status/plan';
 import { ArgMenu, argItemsOf, type ArgItem } from './ArgMenu';
 import { MentionMenu, type MentionItem } from './MentionMenu';
 import { PlusMenu } from './PlusMenu';
@@ -726,9 +726,9 @@ export function Composer(props: ComposerProps) {
       afterRoute(text);
       return;
     }
-    // G-10: `/plan status` answers with one readable toast line from this chat's real plan state.
-    if (cmd && cmd[1] === 'plan' && cmd[2]?.trim().toLowerCase() === 'status' && props.session.state.commands.some((c) => c.name === 'plan')) {
-      const topicPlan = parseWorkflowStatus(props.session.state.topics[WORKFLOW_STATUS_TOPIC]?.data)?.planMode;
+    // G-10: on the New-chat draft (no live workflow runner yet), `/plan status` answers locally.
+    if (props.draft && cmd && cmd[1] === 'plan' && cmd[2]?.trim().toLowerCase() === 'status' && props.session.state.commands.some((c) => c.name === 'plan')) {
+      const topicPlan = readSessionWorkflowStatus(props.session.state.topics, props.session.sessionId())?.planMode;
       const entry = latestPlanEntry(props.session.state.entries);
       const active = topicPlan ?? entry?.active ?? false;
       const file = active ? planFileLabel(entry?.planFile) : undefined;

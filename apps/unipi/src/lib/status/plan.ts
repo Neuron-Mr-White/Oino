@@ -13,6 +13,20 @@ export const WORKFLOW_EXTENSION_ID = 'unipi.workflow';
 export const WORKFLOW_STATUS_TOPIC = 'unipi:workflow:status';
 export const PLAN_ENTRY_TYPE = 'unipi:plan-mode';
 export const PERMISSION_ENTRY_TYPE = 'unipi:permission-mode';
+
+/** G-01/G-03 (`7f8a79a6`): each chat publishes its own sticky status on `unipi:workflow:status:<sessionId>`. */
+export function sessionWorkflowTopic(sessionId: string | undefined): string {
+  return sessionId ? `${WORKFLOW_STATUS_TOPIC}:${sessionId}` : WORKFLOW_STATUS_TOPIC;
+}
+
+/** Reads this chat's workflow status: per-session topic first, falling back to `WORKFLOW_STATUS_TOPIC` only for drafts/fixtures. */
+export function readSessionWorkflowStatus(topics: Record<string, { data?: unknown }>, sessionId: string | undefined): WorkflowStatus | undefined {
+  if (sessionId) {
+    const perSession = parseWorkflowStatus(topics[sessionWorkflowTopic(sessionId)]?.data);
+    if (perSession) return perSession;
+  }
+  return parseWorkflowStatus(topics[WORKFLOW_STATUS_TOPIC]?.data);
+}
 /** The todo tool (long-horizon's `todowrite`; a `todo_write` alias is accepted). */
 export const TODO_TOOLS = ['todowrite', 'todo_write'];
 
