@@ -353,10 +353,23 @@ function PhoneMessageSheet(props: { ctx: TimelineCtx; state: NonNullable<ReturnT
     ];
   };
   haptic('impact');
+  // The long-press finger is still down when the sheet opens: its release (and the click that
+  // follows) lands on the new scrim and would close the sheet at once. Arm dismissal only after it.
+  let armed = false;
+  const arm = () => setTimeout(() => (armed = true), 350);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pointerup', arm, { once: true, capture: true });
+    window.addEventListener('pointercancel', arm, { once: true, capture: true });
+    setTimeout(() => (armed = true), 2000);
+    onCleanup(() => {
+      window.removeEventListener('pointerup', arm, true);
+      window.removeEventListener('pointercancel', arm, true);
+    });
+  }
   return (
     <ActionSheet
       open
-      onClose={closeMessageMenu}
+      onClose={() => armed && closeMessageMenu()}
       title={target().role === 'user' ? 'Your message' : 'Reply'}
       subtitle={info()}
       sections={sections()}

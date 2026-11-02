@@ -5,9 +5,10 @@
  * The chat title and the (deleted) footer tray are not entry points (Z-70);
  * Ctrl/Cmd+M and `/model` reach the same dialog.
  */
-import { Show } from 'solid-js';
+import { createEffect, Show } from 'solid-js';
 import { Brain, ChevronUp, Cpu } from 'lucide-solid';
 import { layout } from '../../lib/layout';
+import { canThink, ensureThinkingLevels, thinkingLevels } from '../../lib/model/thinking';
 import type { SessionHandle } from '../../lib/session/store';
 import { modKey } from '../../lib/shell';
 import { RollingLabel } from '../RollingLabel';
@@ -30,6 +31,12 @@ export const thinkingOn = (level: string | undefined): boolean => !!level && lev
 
 export function ModelChip(props: { session: SessionHandle; disabled?: boolean }) {
   const label = () => modelChipLabel(props.session.state.model);
+  // Phone: no Thinking chip fetches the levels — the chip's glyph needs them (§3.5).
+  createEffect(() => {
+    void props.session.state.model?.id;
+    void props.session.state.conn;
+    if (!layout().desktop()) ensureThinkingLevels(props.session as unknown as SessionHandle);
+  });
   const open = () => openModelPicker({ hostId: props.session.hostId, sessionId: props.session.sessionId() });
   return (
     <button
@@ -50,7 +57,7 @@ export function ModelChip(props: { session: SessionHandle; disabled?: boolean })
       <Cpu size={15} class="tb-ic" />
       <RollingLabel class="tb-label" text={label()} testId="model-chip-label" />
       {/* Phone (§3.5): no Thinking chip — a glyph says the model thinks above Off. */}
-      <Show when={!layout().desktop() && thinkingOn(props.session.state.thinkingLevel)}>
+      <Show when={!layout().desktop() && thinkingOn(props.session.state.thinkingLevel) && canThink(thinkingLevels(props.session as unknown as SessionHandle))}>
         <Brain size={14} class="tb-think-glyph" aria-hidden="true" />
       </Show>
       <Show when={!props.disabled}>

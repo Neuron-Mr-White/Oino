@@ -252,3 +252,7 @@ html[data-shell=phone] .term-phone-head { height: 56px; }
 html[data-shell=phone][data-short] .term-phone-head { height: 48px; }
 html[data-shell=phone] .term-phone-icon-btn { width: 48px; height: 48px; min-height: 48px; }
 html[data-shell=phone] .term-phone-pill-close::after { inset: -10px; }
+/* PH-06: the hidden IME textarea sits at the TOP of the pane on the phone. At the bottom it was
+   under the rising keyboard when focused, so the WebView panned the visual viewport by the
+   keyboard height on top of the --kb frame shrink (the key bar floated mid-screen). */
+html[data-shell=phone] .term-pane .term-ime { top: 0; bottom: auto; }

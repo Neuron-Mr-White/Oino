@@ -206,3 +206,6 @@ html:not([data-shell='desktop']) .stab-sheet .stab-title,
 html:not([data-shell='desktop']) .stab-sheet .stab-head > .grow,
 html:not([data-shell='desktop']) .stab-layer .dtab-path { display: none; }
 html:not([data-shell='desktop']) .stab-sheet .stab-head { justify-content: flex-start; }
+/* Phone spec §2.12: the z scale owns sheet stacking on the phone shell (scrim under sheet). */
+html[data-shell=phone] body > div:has(> .sheet.stab-sheet) > .sheet-overlay { z-index: var(--z-scrim, 60); }
+html[data-shell=phone] .sheet.stab-sheet { z-index: var(--z-sheet, 61); }

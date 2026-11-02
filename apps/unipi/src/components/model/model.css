@@ -254,3 +254,7 @@ body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 74; }
 div:has(> .recent-popover.mp-row-menu) > .recent-popover-backdrop { z-index: 76; }
 .mp-menu-row[aria-checked='true'] .board-menu-icon { color: var(--color-claw); }
 @media (prefers-reduced-motion: reduce) { .mp-more { transition: none; } }
+/* Phone spec §2.12: on the phone shell the z scale owns sheet stacking (A's phone.css puts the
+   sheet at --z-sheet); the scrim must stay under it, or the full-screen model sheet reads dimmed. */
+html[data-shell=phone] body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: var(--z-scrim, 60); }
+html[data-shell=phone] .sheet.model-picker-sheet { z-index: var(--z-sheet, 61); }

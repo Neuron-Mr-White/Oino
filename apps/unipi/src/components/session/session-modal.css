@@ -244,3 +244,6 @@ body > div:has(> .sheet.session-sheet) > .sheet-overlay { z-index: 69; }
 .move-ws-copy { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 18px; color: var(--color-text-dim); cursor: pointer; }
 .move-ws-copy input { margin-top: 2px; }
 .move-ws-error { margin: 0; font-size: 13px; color: var(--color-danger, #d33); }
+/* Phone spec §2.12: the z scale owns sheet stacking on the phone shell (scrim under sheet). */
+html[data-shell=phone] body > div:has(> .sheet.session-sheet) > .sheet-overlay { z-index: var(--z-scrim, 60); }
+html[data-shell=phone] .sheet.session-sheet { z-index: var(--z-sheet, 61); }

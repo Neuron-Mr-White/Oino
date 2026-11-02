@@ -10,11 +10,12 @@
  * footer's "Use at startup" sit where the chat's do. No Fusion tab: a pair needs a
  * running chat (`fusion.set-pair`), so it is set from the chat's picker.
  */
-import { createMemo, createResource, createSignal, Show } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, Show } from 'solid-js';
 import { Brain, ChevronUp, Cpu, Plug } from 'lucide-solid';
 import { layout } from '../../lib/layout';
 import type { SessionHandle } from '../../lib/session/store';
 import { ThinkingFooter } from '../model/ThinkingFooter';
+import { canThink, ensureThinkingLevels, thinkingLevels } from '../../lib/model/thinking';
 import { modelKey, modelName, parseModels, shortModelName, type ModelInfo, type Selection } from '../../lib/model/picker';
 import { fetchFusion, fusionAvailable, type FusionCurated } from '../../lib/model/fusion';
 import { openSettingsAt } from '../../lib/settings/open';
@@ -32,6 +33,12 @@ const valueOf = (reply: unknown): unknown => (reply as { value?: unknown } | und
 
 export function DraftModelChip(props: { session: DraftSession; disabled?: boolean }) {
   const [open, setOpen] = createSignal(false);
+  // Phone: no Thinking chip fetches the levels — the chip's glyph needs them (§3.5).
+  createEffect(() => {
+    void props.session.state.model?.id;
+    void props.session.state.conn;
+    if (!layout().desktop()) ensureThinkingLevels(props.session as unknown as SessionHandle);
+  });
   // D-01: no usable model on show → say so, never a name the new chat can't run.
   const label = () => (props.session.state.model?.id ? modelChipLabel(props.session.state.model) : 'Choose a model');
   const current = () => modelKey(props.session.state.model ?? {});
@@ -126,7 +133,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
       >
         <Cpu size={15} class="tb-ic" />
         <RollingLabel class="tb-label" text={label()} testId="model-chip-label" />
-        <Show when={!layout().desktop() && thinkingOn(props.session.state.thinkingLevel)}>
+        <Show when={!layout().desktop() && thinkingOn(props.session.state.thinkingLevel) && canThink(thinkingLevels(props.session as unknown as SessionHandle))}>
           <Brain size={14} class="tb-think-glyph" aria-hidden="true" />
         </Show>
         <ChevronUp size={12} class="tb-chev" />

@@ -61,14 +61,14 @@ html[data-shell=phone] .tl-bubble { max-width: 85%; border-radius: 20px; }
 .ph-answer-empty { margin: 0; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
 
 /* ── Tool rows (§3.7, PH-27): 48 px rows, failures as a pill, detail in a sheet ── */
-html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 48px; font-size: 15px; line-height: 20px; gap: 10px; }
-html[data-shell=phone] .tl .tool-row .tool-subject { font-family: var(--font-mono); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-html[data-shell=phone] .tl .tool-row .tool-dur { font-size: 12px; }
-html[data-shell=phone] .tl .tool-row .tool-status { font-size: 12px; padding: 2px 8px; border-radius: 9999px; background: rgb(240 48 24 / 14%); color: #F6A39D; }
-html[data-shell=phone] .tl .ph-group-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
+html[data-shell=phone] .conv-tl .tl :is(.proc-head, .tool-row) { min-height: 48px; font-size: 15px; line-height: 20px; gap: 10px; }
+html[data-shell=phone] .conv-tl .tl .tool-row .tool-subject { font-family: var(--font-mono); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-shell=phone] .conv-tl .tl .tool-row .tool-dur { font-size: 12px; }
+html[data-shell=phone] .conv-tl .tl .tool-row .tool-status { font-size: 12px; padding: 2px 8px; border-radius: 9999px; background: rgb(240 48 24 / 14%); color: #F6A39D; }
+html[data-shell=phone] .conv-tl .tl .ph-group-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
 .ph-fail-pill { flex: none; padding: 2px 8px; border-radius: 9999px; background: rgb(240 48 24 / 14%); color: #F6A39D; font-size: 12px; line-height: 16px; font-weight: 500; }
-html[data-shell=phone] .tl :is(.tl-group, .tl-tool, .tool-body, .tl-card) { max-width: 100%; min-width: 0; box-sizing: border-box; }
-html[data-shell=phone] .tl pre { max-width: 100%; overflow-x: auto; }
+html[data-shell=phone] .conv-tl .tl :is(.tl-group, .tl-tool, .tool-body, .tl-card) { max-width: 100%; min-width: 0; box-sizing: border-box; }
+html[data-shell=phone] .conv-tl .tl pre { max-width: 100%; overflow-x: auto; }
 .ph-tool-sheet-title { display: flex; flex-direction: column; min-width: 0; }
 .ph-tool-sheet-sub { font-family: var(--font-mono); font-size: 13px; line-height: 20px; font-weight: 400; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ph-tool-sheet .board-sheet-body pre { overflow-x: auto; max-width: 100%; }
@@ -79,3 +79,19 @@ html[data-shell=phone] .tl-jump::after { content: ''; position: absolute; inset:
 
 /* Offline (PH-15): the composer waits, dimmed. */
 html[data-shell=phone] .tl-composer[data-readonly] { opacity: .75; }
+
+/* Type scale on the phone (§2.2, PH-23): inline code 14, tables 14, code-block chrome 12/14,
+   the composer chips 14 — no 11 / 13.5 / 13.76 px text. Copy on a code block is a 48 px target. */
+html[data-shell=phone] .conv-tl .md code:not(pre code) { font-size: 14px; }
+html[data-shell=phone] .conv-tl .md table { font-size: 14px; line-height: 20px; }
+html[data-shell=phone] .conv-tl .md .cb-lang { font-size: 12px; }
+html[data-shell=phone] .conv-tl .md .cb-copy { min-height: 48px; min-width: 64px; font-size: 14px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-chip .tb-label { font-size: 14px; }
+
+/* Short (landscape) by the viewport too, in case html[data-short] lags a rotation (PH-08 / PH-31). */
+@media (max-height: 479px) {
+  html[data-shell=phone] .conv-head.ph-chat-head { height: 48px; }
+  html[data-shell=phone] .ph-chat-sub { display: none; }
+  html[data-shell=phone][data-kb=open] .conv-head.ph-chat-head { display: none; }
+  html[data-shell=phone] .cmenu { max-height: 152px; }
+}
