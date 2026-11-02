@@ -6,16 +6,16 @@ Oino ships as one binary plus its extension packages:
 |---|---|
 | `oino` | the agent: terminal UI, print / JSON / RPC / ACP modes. |
 | `share/oino/extensions` | the extension packages that came with the release (`~/.oino/extensions` shadows them per id; `OINO_DIST_EXTENSIONS` overrides everything). |
-| UniPi desktop app | optional: the Tauri app around the same host ([docs/unipi.md](unipi.md), [docs/desktop.md](desktop.md)). |
+| Unipi desktop app | optional: the Tauri app around the same host ([docs/unipi.md](unipi.md), [docs/desktop.md](desktop.md)). |
 
-UniPi's native extras (e.g. the `unipi-kanboard` CLI) are not on PATH: they ship
+Unipi's native extras (e.g. the `unipi-kanboard` CLI) are not on PATH: they ship
 inside their extension packages in the share tree.
 
 ## One-liners
 
 ```bash
 curl -fsSL https://oino.dev/install.sh | sh                # macOS / Linux
-curl -fsSL https://oino.dev/install.sh | sh -s -- --app    # … + the UniPi desktop app
+curl -fsSL https://oino.dev/install.sh | sh -s -- --app    # … + the Unipi desktop app
 ```
 
 ```powershell
@@ -38,7 +38,7 @@ Linux release binaries are **static musl** — one binary per arch that runs on
 glibc and musl distributions alike. `oino update` resolves the same artifact
 via `release-manifest.json`.
 
-### `--app` / `-App`: the UniPi desktop app
+### `--app` / `-App`: the Unipi desktop app
 
 | OS | Steps |
 |---|---|
@@ -73,7 +73,7 @@ cargo xtask wasm                              # extensions/dist/<id>/{extension.
 cargo build --release -p oino-cli
 ```
 
-The UniPi desktop app builds with `mise run unipi:dev` / `mise run unipi:build`
+The Unipi desktop app builds with `mise run unipi:dev` / `mise run unipi:build`
 ([apps/unipi/BUILDING.md](../apps/unipi/BUILDING.md)); macOS and iOS specifics
 (including signing) are documented there.
 

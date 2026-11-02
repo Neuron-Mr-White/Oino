@@ -85,23 +85,23 @@ description = "Run all workspace tests"
 run = "cargo test --workspace"
 
 [tasks."unipi:check"]
-description = "Check the UniPi distribution workspace (apps/unipi)"
+description = "Check the Unipi distribution workspace (apps/unipi)"
 run = "cargo check --workspace --manifest-path apps/unipi/Cargo.toml"
 
 [tasks."unipi:lint"]
-description = "Clippy on the UniPi distribution workspace"
+description = "Clippy on the Unipi distribution workspace"
 run = "cargo clippy --workspace --all-targets --manifest-path apps/unipi/Cargo.toml -- -D warnings"
 
 [tasks."unipi:test"]
-description = "Run UniPi distribution workspace tests (apps/unipi; add -- --ignored for the e2e)"
+description = "Run Unipi distribution workspace tests (apps/unipi; add -- --ignored for the e2e)"
 run = "cargo test --workspace --manifest-path apps/unipi/Cargo.toml"
 
 [tasks."unipi:dev"]
-description = "Run the UniPi desktop app from source (identifier dev.unipi.app.dev, productName 'UniPi Dev', isolated host dir)"
+description = "Run the Unipi desktop app from source (identifier dev.unipi.app.dev, productName 'UniPi Dev', isolated host dir)"
 run = "scripts/unipi-dev.sh"
 
 [tasks."unipi:build"]
-description = "Local release bundle of the UniPi app for this OS (dev identifier dev.unipi.app.dev; apps/unipi/BUILDING.md)"
+description = "Local release bundle of the Unipi app for this OS (dev identifier dev.unipi.app.dev; apps/unipi/BUILDING.md)"
 run = "scripts/unipi-build.sh"
 
 [tasks.doc]

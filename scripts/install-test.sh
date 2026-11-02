@@ -57,7 +57,7 @@ ok "CLI + share tree installed, checksum verified"
 out=$(run_install --app 2>&1) || { printf '%s\n' "$out" >&2; fail "install.sh --app exited non-zero"; }
 [ -x "$HOME_DIR/.local/bin/UniPi.AppImage" ] || fail "no ~/.local/bin/UniPi.AppImage"
 [ -f "$HOME_DIR/.local/share/applications/unipi.desktop" ] || fail "no unipi.desktop"
-case "$out" in *"Installed UniPi"*) ;; *) fail "unexpected --app output" ;; esac
+case "$out" in *"Installed Unipi"*) ;; *) fail "unexpected --app output" ;; esac
 ok "--app AppImage install + desktop entry"
 
 # ── 3. a tampered archive must fail the checksum ────────────────────────────

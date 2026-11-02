@@ -7,13 +7,13 @@ its own session file you can open later.
 
 Jobs are plain JSON files under `~/.oino/cron/jobs/` (one per job). Manage them with the
 `/cron` command in any session, the `cron_*` tools (ask the agent: "summarize my inbox
-every morning at 9"), or — once the UniPi app ships — its Automations page and the
+every morning at 9"), or — once the Unipi app ships — its Automations page and the
 `unipi-host cron` CLI.
 
 ## The scheduler
 
 Jobs fire only while a scheduler runs — exactly one per machine (a lock file enforces
-it). Under v2 the scheduler is **embedded in the UniPi host** (`unipi-host`, the tray
+it). Under v2 the scheduler is **embedded in the Unipi host** (`unipi-host`, the tray
 app): while it is up, jobs fire; when it is not, due jobs wait and the single latest
 missed fire runs late once it starts again (within the missed window).
 
@@ -80,7 +80,7 @@ opens the store (the original is kept as `jobs.json.imported`).
 /cron pause | /cron resume
 ```
 
-`run`, `stop`, `pause`, `resume` and live `status` need the UniPi host (they talk to its
+`run`, `stop`, `pause`, `resume` and live `status` need the Unipi host (they talk to its
 embedded scheduler); the rest read and write the files directly and work everywhere.
 The `cron_list`, `cron_add`, `cron_update`, `cron_remove` and `cron_run` tools do the
 same from a conversation (the write tools ask for approval first).

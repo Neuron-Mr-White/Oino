@@ -5,15 +5,15 @@ description: Schedule a one-time or repeating unattended Oino run on this PC —
 
 # cron — scheduled, unattended Oino runs
 
-The cron scheduler — embedded in the UniPi host (`unipi-host`, which
-runs whenever the UniPi tray app is up) — fires `oino -p "<prompt>"`
+The cron scheduler — embedded in the Unipi host (`unipi-host`, which
+runs whenever the Unipi tray app is up) — fires `oino -p "<prompt>"`
 on its own: on a cron schedule or once at a given time, with nobody
 there to answer it. You manage jobs with the `cron_*` tools or the
 `/cron` command; jobs live as plain files under `~/.oino/cron/jobs/`,
 one per job. Each job runs in its own session, so you can open what a
 run did afterwards.
 
-Firing needs the UniPi host: under a plain `oino` terminal nothing
+Firing needs the Unipi host: under a plain `oino` terminal nothing
 fires, but jobs can still be listed, added, edited and removed —
 `cron_run` then reports that no scheduler is running.
 
@@ -100,7 +100,7 @@ if you were briefing someone who will never hear back from you:
 
 The same view lives in the app's Automations page; the `cron_*` tools
 do all of this from a conversation. (`run`, `stop`, `pause`,
-`resume` and live `status` need the UniPi host; the rest work
+`resume` and live `status` need the Unipi host; the rest work
 everywhere.)
 
 ## Reading a job's results
@@ -116,7 +116,7 @@ everywhere.)
 
 ## Checks
 
-- The UniPi host must be running for jobs to fire (`/cron status`
+- The Unipi host must be running for jobs to fire (`/cron status`
   says so). Without it, due jobs wait — the host's scheduler catches
   them up on start (the single latest missed fire, within the missed
   window) — and `run`/`stop` report that no scheduler is running.

@@ -9,7 +9,7 @@
 
 ### A Rust coding-agent SDK: agent core, WASM extensions, terminal + ACP clients.
 
-UniPi — the desktop/mobile distribution built on oino — lives in [apps/unipi](apps/unipi).
+Unipi — the desktop/mobile distribution built on oino — lives in [apps/unipi](apps/unipi).
 
 [Install](#install) · [Quick start](#quick-start) · [What's inside](#whats-inside) · [Crates](#crates) · [Docs](#documentation) · [Development](#development)
 
@@ -30,7 +30,7 @@ extension:
   chat completions). No provider code lives in core.
 - **Extensions are WASM components too** — the SDK ships provider components plus example
   extensions; the full unipi 3.0.0 feature set (workflow, memory, subagents, kanboard, …)
-  lives in the [UniPi distribution](#unipi--built-with-oino) below.
+  lives in the [Unipi distribution](#unipi--built-with-oino) below.
 - **Clients**: the terminal UI (`oino`), [ACP](docs/acp.md) for editors such as Zed
   (`oino --mode acp`), and [RPC](docs/rpc.md) on stdio.
 
@@ -40,14 +40,14 @@ macOS / Linux:
 
 ```bash
 curl -fsSL https://oino.dev/install.sh | sh          # the oino TUI
-curl -fsSL https://oino.dev/install.sh | sh -s -- --app   # … + the UniPi desktop app
+curl -fsSL https://oino.dev/install.sh | sh -s -- --app   # … + the Unipi desktop app
 ```
 
 Windows (PowerShell):
 
 ```powershell
 irm https://oino.dev/install.ps1 | iex               # the oino TUI
-# the UniPi desktop app (the pipe cannot carry args — download once):
+# the Unipi desktop app (the pipe cannot carry args — download once):
 irm https://oino.dev/install.ps1 -OutFile install.ps1; .\install.ps1 -App
 ```
 
@@ -64,7 +64,7 @@ The installers download the latest GitHub release, verify it against the
 release's `SHA256SUMS`, and put `oino` into `~/.local/bin` (Windows:
 `%LOCALAPPDATA%\oino\bin`, added to your PATH) together with the extension
 packages under `<prefix>/share/oino/extensions` (Windows: next to the exe).
-`--app` / `-App` installs the UniPi desktop app (Linux AppImage or `.deb`,
+`--app` / `-App` installs the Unipi desktop app (Linux AppImage or `.deb`,
 macOS `UniPi.app`, Windows NSIS installer). Without a matching release binary
 they build from source (`cargo xtask wasm` + `cargo build --release -p
 oino-cli`). Details: [docs/install.md](docs/install.md).
@@ -93,7 +93,7 @@ bundled extensions, `/hotkeys` lists key bindings, `ctrl+d` exits.
 | `oino` CLI: TUI, print, JSON, RPC, ACP | `crates/oino`, `oino-tui`, `oino-rpc`, `oino-acp` | [tui](docs/tui.md), [rpc](docs/rpc.md), [acp](docs/acp.md) |
 | WASM extension host + WIT `oino:extension@2.0.0` | `wit/`, `crates/oino-wasm-host` | [extensions](docs/extensions.md), [extension API](docs/extension-api.md) |
 | Provider components | `extensions/providers/*` | [providers](docs/providers.md), [models](docs/models.md) |
-| UniPi distribution (app + native crates + extensions) | `apps/unipi`, `extensions/unipi/*` | [unipi](docs/unipi.md) |
+| Unipi distribution (app + native crates + extensions) | `apps/unipi`, `extensions/unipi/*` | [unipi](docs/unipi.md) |
 
 ## Crates
 
@@ -133,11 +133,11 @@ User guides live in [docs/](docs/) and on **[oino.dev](https://oino.dev)**:
 - [Settings](docs/settings.md) · [Environment variables](docs/environment-variables.md)
 - [Sessions](docs/sessions.md) · [Skills](docs/skills.md) · [Prompt templates](docs/prompt-templates.md)
 - [Extensions](docs/extensions.md) · [Extension API and WIT](docs/extension-api.md) · [Packages](docs/packages.md)
-- [UniPi's bundled extensions](docs/unipi.md)
+- [Unipi's bundled extensions](docs/unipi.md)
 - [RPC mode](docs/rpc.md) · [ACP mode](docs/acp.md) · [Embedding (SDK)](docs/sdk.md)
 - [Desktop and mobile](docs/desktop.md) · [Migrating from unipi](docs/migrate-from-unipi.md)
 
-## UniPi — built with oino
+## Unipi — built with oino
 
 [apps/unipi](apps/unipi) is the reference application, built **on** oino end to end — read its
 code as the flagship example of the SDK. Its host is `oino-core` embedded in a native daemon

@@ -5,7 +5,7 @@
 # packages under %LOCALAPPDATA%\oino\bin\extensions, and add the dir to the
 # per-user PATH.
 #
-#   -App   install the UniPi desktop app instead: run the NSIS installer
+#   -App   install the Unipi desktop app instead: run the NSIS installer
 #          silently (per-user, no admin).
 #
 # Every download is verified against the release's SHA256SUMS. Without a
@@ -140,10 +140,10 @@ function Install-App {
         if (-not (Fetch-Asset "UniPi_.*_x64-setup\.exe$" $Setup)) {
             throw "no NSIS installer in the release (SHA256SUMS)"
         }
-        Say "Running the UniPi installer silently (per-user, no admin)…"
+        Say "Running the Unipi installer silently (per-user, no admin)…"
         $p = Start-Process -FilePath $Setup -ArgumentList "/S" -Wait -PassThru
         if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
-        Say "Installed UniPi (Start menu → UniPi)."
+        Say "Installed Unipi (Start menu → UniPi Oino)."
     } finally {
         Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
     }

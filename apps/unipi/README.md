@@ -1,19 +1,19 @@
-# UniPi
+# Unipi
 
-UniPi is the oino coding agent as a desktop (and phone) app: sessions across projects, a
+Unipi is the oino coding agent as a desktop (and phone) app: sessions across projects, a
 virtualised chat timeline with markdown and tool rows, approvals, extension panels (including
 a native kanboard board), a side pane with review / files / plan / browser, real terminals,
 a command palette and a full settings screen — the unipi feature set (workflow permissions,
 memory, subagents, fusion second model, cron, notify, watchdog, …) on top of the oino core.
 
-**UniPi is built on [oino](../../README.md) end to end** — treat it as the reference
+**Unipi is built on [oino](../../README.md) end to end** — treat it as the reference
 application for the oino SDK:
 
 - **Host = oino-core embedded.** The daemon `unipi-host` (`crates/unipi-host`) embeds
-  `oino-core` (agent loop, sessions v3, tools, settings) plus the UniPi services (wire
+  `oino-core` (agent loop, sessions v3, tools, settings) plus the Unipi services (wire
   protocol, cron scheduler, kanboard, browser control). The Tauri app talks to it over the
   protocol in `crates/unipi-proto` / `packages/protocol`.
-- **Extensions = oino WASM components.** Every UniPi feature is a `wasm32-wasip2` component
+- **Extensions = oino WASM components.** Every Unipi feature is a `wasm32-wasip2` component
   under [`extensions/unipi/`](../../extensions/unipi) (`unipi.core`, `unipi.workflow`,
   `unipi.memory`, `unipi.subagents`, `unipi.kanboard`, `unipi.browser`, `unipi.notify`, …)
   written against the [`oino-extension`](../../extensions/sdk/oino-extension) guest SDK and

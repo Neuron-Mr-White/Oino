@@ -1,6 +1,6 @@
 # @unipi/protocol
 
-Zod 4 schemas for the UniPi App wire protocol (`unipi/app/1`). See
+Zod 4 schemas for the Unipi App wire protocol (`unipi/app/1`). See
 `unipi-app/DESIGN.md` §5.4–5.5. The Rust mirror is `crates/proto`
 (`unipi-proto`); shared contract fixtures live in `protocol/fixtures/`.
 

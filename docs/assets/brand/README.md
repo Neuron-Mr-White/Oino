@@ -12,4 +12,4 @@
 Where it's used: the repo README header, every published crate README (crates.io), the
 docs.rs logo and favicon (`#![doc(html_logo_url, html_favicon_url)]` in every published crate),
 and the Windows `oino.exe` icon. The crates.io and docs.rs references use the raw GitHub URL
-on `main`. The UniPi app keeps its own branding.
+on `main`. The Unipi app keeps its own branding.

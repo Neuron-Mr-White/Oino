@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# mise unipi:dev — run the UniPi desktop app from source with the DEV identity.
+# mise unipi:dev — run the Unipi desktop app from source with the DEV identity.
 #
 # A dev/test build must never share the installed app's identity or data
 # (apps/unipi/BUILDING.md): the tauri.dev.conf.json merge renames the build to
 #   identifier  dev.unipi.app.dev   (the installed app is dev.unipi.app)
-#   productName UniPi Dev           (own app-data dir, tray, menu entries)
+#   productName UniPi Dev           (own app-data dir; the visible name stays Unipi)
 # and OINO_HOST_DIR points the app-managed host at a scratch dir, so the real
 # ~/.oino/host is never locked or written by a dev run.
 #
@@ -34,6 +34,6 @@ cp "apps/unipi/target/debug/unipi-host$exe" \
 export OINO_HOST_DIR="${OINO_HOST_DIR:-$root/apps/unipi/target/unipi-dev/host}"
 mkdir -p "$OINO_HOST_DIR"
 echo "==> dev host data dir: $OINO_HOST_DIR (the real ~/.oino/host is untouched)"
-echo "==> cargo tauri dev (identifier dev.unipi.app.dev, productName 'UniPi Dev')"
+echo "==> cargo tauri dev (identifier dev.unipi.app.dev, productName 'UniPi Dev', shown as Unipi)"
 cd apps/unipi
 exec cargo tauri dev --config tauri.dev.conf.json

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mise unipi:build — a local RELEASE bundle of the UniPi desktop app for THIS
+# mise unipi:build — a local RELEASE bundle of the Unipi desktop app for THIS
 # OS, using the same steps as the release workflow (.github/workflows/
 # release.yml): sidecar, staged extension dist as a bundle resource, version
 # from tauri.conf.json.
@@ -47,8 +47,8 @@ stage="$root/apps/unipi/target/dist-stage/extensions"
 # keeps the release identity (UniPi Oino / dev.unipi.oino): byte-for-byte the
 # package a user installs. Linux puts the extensions in /usr/share/oino/extensions
 # and the CLI in /usr/bin/oino (deb + AppImage `files`); macOS/Windows use resources.
-if [ "${UNIPI_RELEASE_IDENTITY:-0}" = 1 ]; then identity=''; label="UniPi Oino $version, identifier dev.unipi.oino"
-else identity='"productName": "UniPi Dev", "identifier": "dev.unipi.app.dev",'; label="UniPi Dev $version, identifier dev.unipi.app.dev"; fi
+if [ "${UNIPI_RELEASE_IDENTITY:-0}" = 1 ]; then identity=''; label="Unipi $version (productName UniPi Oino), identifier dev.unipi.oino"
+else identity='"productName": "UniPi Dev", "identifier": "dev.unipi.app.dev",'; label="Unipi $version (dev: productName UniPi Dev), identifier dev.unipi.app.dev"; fi
 if [ "$os" = linux ]; then
   echo "==> oino CLI (release)"
   cargo build --release -p oino-cli --bin oino

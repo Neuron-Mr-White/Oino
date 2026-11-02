@@ -1,11 +1,11 @@
 # Desktop and mobile
 
 Oino itself is a terminal tool, but the same core powers desktop and mobile apps through the
-UniPi distribution.
+Unipi distribution.
 
-## UniPi — the desktop and mobile app
+## Unipi — the desktop and mobile app
 
-UniPi ([apps/unipi](../apps/unipi)) is a Tauri app built **on** oino end to end: its host is
+Unipi ([apps/unipi](../apps/unipi)) is a Tauri app built **on** oino end to end: its host is
 `oino-core` embedded in a native daemon (`apps/unipi/crates/unipi-host`), and its features are
 oino WASM extensions (`extensions/unipi/*`). Installing the app is enough — no separate `oino`
 install is needed. It shares `~/.oino` (settings, credentials, sessions) with the CLI.

@@ -1,13 +1,13 @@
 # Contributing to oino
 
 Thanks for considering a contribution! oino is a Rust coding-agent SDK: the agent core,
-WASM extension runtime, provider components, and the UniPi distribution app on top.
+WASM extension runtime, provider components, and the Unipi distribution app on top.
 
 ## Getting started
 
 - Rust per [`rust-toolchain.toml`](rust-toolchain.toml) (1.99.0), plus
   `rustup target add wasm32-wasip2` for the extension components.
-- Node ≥ 22 + npm for the UniPi frontend (`apps/unipi`).
+- Node ≥ 22 + npm for the Unipi frontend (`apps/unipi`).
 - [mise](https://mise.jdx.dev/) users: `mise tasks` lists the common tasks
   (`mise run dev` runs the TUI, `mise run quality` is the standard gate).
 
@@ -17,7 +17,7 @@ WASM extension runtime, provider components, and the UniPi distribution app on t
 |---|---|
 | `crates/` | The SDK crates (root cargo workspace, plus `xtask`) |
 | `extensions/` | WASM component workspace: `sdk/` (guest SDKs), `providers/`, `unipi/`, `fixtures/` |
-| `apps/unipi/` | The UniPi distribution: host crates, Tauri app, protocol packages (own workspaces) |
+| `apps/unipi/` | The Unipi distribution: host crates, Tauri app, protocol packages (own workspaces) |
 | `wit/` | The `oino:extension@2.0.0` WIT world |
 | `docs/` | User guides (rendered on oino.dev) |
 | `scripts/` | CI / release / install helpers |

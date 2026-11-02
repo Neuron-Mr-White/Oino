@@ -1,7 +1,7 @@
 {
   "name": "@unipi/protocol",
   "version": "1.2.0",
-  "description": "Zod schemas for the UniPi App wire protocol (unipi/app/1)",
+  "description": "Zod schemas for the Unipi App wire protocol (unipi/app/1)",
   "type": "module",
   "license": "MIT",
   "main": "src/index.ts",

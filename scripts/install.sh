@@ -6,7 +6,7 @@
 # extension packages to `<prefix>/share/oino/extensions` (the loader's first
 # exe-relative share dir, dist.md §5).
 #
-#   --app        install the UniPi desktop app instead:
+#   --app        install the Unipi desktop app instead:
 #                  Linux: AppImage into ~/.local/bin + .desktop + icon
 #                         (--deb: the .deb via apt, needs sudo)
 #                  macOS: .dmg → /Applications/UniPi.app, quarantine cleared
@@ -229,7 +229,7 @@ install_app() {
   case "$os" in
     Linux) install_app_linux "$tmp" ;;
     Darwin) install_app_macos "$tmp" ;;
-    *) err "no UniPi desktop installer for $os (see apps/unipi/BUILDING.md)" ;;
+    *) err "no Unipi desktop installer for $os (see apps/unipi/BUILDING.md)" ;;
   esac
   rm -rf "$tmp"
 }
@@ -245,7 +245,7 @@ install_app_linux() {
       have sudo || err "--deb needs sudo (or run as root)"
       run sudo apt-get install -y "$tmp/unipi.deb"
     fi
-    say "Installed UniPi (.deb). Run: unipi-mobile (or launch UniPi from the menu)"
+    say "Installed Unipi (.deb). Run: unipi-mobile (or launch Unipi from the menu)"
     return 0
   fi
   fetch_asset "UniPi_.*_amd64\\.AppImage\$" "$tmp/UniPi.AppImage" || err "no AppImage in the release (SHA256SUMS)"
@@ -286,8 +286,8 @@ install_app_linux() {
   {
     printf '[Desktop Entry]\n'
     printf 'Type=Application\n'
-    printf 'Name=UniPi\n'
-    printf 'Comment=The UniPi agent workspace (oino)\n'
+    printf 'Name=Unipi\n'
+    printf 'Comment=The Unipi agent workspace (oino)\n'
     printf 'Exec=%s%s\n' "$BIN_DIR/UniPi.AppImage" "$exec_args"
     printf 'Icon=%s\n' "${icon_name:-unipi}"
     printf 'Terminal=false\n'
@@ -297,7 +297,7 @@ install_app_linux() {
     say "Wrote $desktop"
   fi
   have update-desktop-database && run update-desktop-database "$HOME/.local/share/applications"
-  say "Installed UniPi: $BIN_DIR/UniPi.AppImage (+ menu entry)"
+  say "Installed Unipi: $BIN_DIR/UniPi.AppImage (+ menu entry)"
   return 0
 }
 
