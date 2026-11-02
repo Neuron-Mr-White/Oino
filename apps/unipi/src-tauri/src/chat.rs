@@ -30,7 +30,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{Manager, State};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::sync::oneshot;
 use unipi_proto::{
     frame::{encode, FrameKind, MAX_FRAME},
@@ -38,6 +38,7 @@ use unipi_proto::{
     SessionSnapshot, SessionTarget, PROTO_VERSION,
 };
 
+use crate::frames::FrameRead;
 use crate::net::NetState;
 
 /// The host may take a moment to open (wake) a session: 30 s, like every other
@@ -62,6 +63,9 @@ pub enum SessionMsg {
     /// A hub event on an `events_open` stream (`session_changed`,
     /// `session_removed`, `host_notice`, `ui`), verbatim.
     HubEvent { event: serde_json::Value },
+    /// fix-frames: the stream skipped a frame it could not use (oversize, unreadable), so
+    /// events may be missing: the UI reopens with a full snapshot. The stream stays open.
+    Resync { reason: String },
     Closed {
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<String>,
@@ -103,24 +107,13 @@ fn control_frame(control: &Control) -> Result<Vec<u8>, AppErrorDto> {
     Ok(encode(FrameKind::Control, &bytes))
 }
 
+/// Reads one frame (fix-frames: an oversize frame is drained and reported as
+/// [`FrameRead::Skipped`] instead of ending the stream).
 async fn read_frame<R: AsyncRead + Unpin>(
     recv: &mut R,
     timeout: Option<Duration>,
-) -> Result<Option<(u8, Vec<u8>)>, AppErrorDto> {
-    let read = async {
-        let kind = match recv.read_u8().await {
-            Ok(kind) => kind,
-            Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-            Err(error) => return Err(transport(error)),
-        };
-        let len = recv.read_u32().await.map_err(transport)? as usize;
-        if len > MAX_FRAME {
-            return Err(schema("oversize frame from host"));
-        }
-        let mut payload = vec![0u8; len];
-        recv.read_exact(&mut payload).await.map_err(transport)?;
-        Ok(Some((kind, payload)))
-    };
+) -> Result<FrameRead, AppErrorDto> {
+    let read = crate::frames::read_lenient(recv);
     match timeout {
         Some(limit) => tokio::time::timeout(limit, read)
             .await
@@ -139,9 +132,11 @@ async fn hello_reply<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     send.write_all(&hello_frame(req)?)
         .await
         .map_err(transport)?;
-    let (kind, payload) = read_frame(recv, Some(limit))
-        .await?
-        .ok_or_else(|| transport("The PC closed the stream without a reply"))?;
+    let (kind, payload) = match read_frame(recv, Some(limit)).await? {
+        FrameRead::Frame(kind, payload) => (kind, payload),
+        FrameRead::Skipped { len, .. } => return Err(crate::frames::oversize_error(len)),
+        FrameRead::End => return Err(transport("The PC closed the stream without a reply")),
+    };
     if kind != 0 {
         return Err(schema("expected a control reply"));
     }
@@ -293,6 +288,24 @@ fn close_stream(streams: &SessionStreams, stream_id: &str) {
     }
 }
 
+fn is_oversize(error: &AppErrorDto) -> bool {
+    error.message.as_str() == crate::frames::OVERSIZE
+}
+
+/// A `session_open` that resumed (`since_seq`), as a plain open (full snapshot).
+fn without_resume(req: Request) -> Option<Request> {
+    match req {
+        Request::SessionOpen {
+            session,
+            since_seq: Some(_),
+        } => Some(Request::SessionOpen {
+            session,
+            since_seq: None,
+        }),
+        _ => None,
+    }
+}
+
 /// Opens one session stream (`session_open` / `session_new` / `session_fork`), sends the
 /// snapshot as the channel's first message and starts the reader.
 async fn open_session(
@@ -313,8 +326,23 @@ async fn open_session(
         let req = req.clone();
         async move {
             let (mut send, mut recv) = open_stream(state, dir, ticket, id, fresh).await?;
-            let snapshot = open_reply(&mut send, &mut recv, req).await?;
-            Ok((send, recv, snapshot))
+            match open_reply(&mut send, &mut recv, req.clone()).await {
+                Ok(snapshot) => Ok((send, recv, snapshot)),
+                // fix-frames: a resume whose replay was too large for one frame (an older
+                // host) — ask again for a full snapshot, which the host bounds.
+                Err(error) if is_oversize(&error) => match without_resume(req) {
+                    Some(req) => {
+                        let _ = send.finish();
+                        log::warn!("session resume reply too large; reopening with a snapshot");
+                        let (mut send, mut recv) =
+                            open_stream(state, dir, ticket, id, false).await?;
+                        let snapshot = open_reply(&mut send, &mut recv, req).await?;
+                        Ok((send, recv, snapshot))
+                    }
+                    None => Err(error),
+                },
+                Err(error) => Err(error),
+            }
         }
     })
     .await?;
@@ -348,6 +376,11 @@ async fn open_session(
 
 /// Pumps one open session stream into `emit`: `events` batches and command replies, until
 /// the stream ends (exactly one final message unless `emit` fails).
+///
+/// fix-frames: a frame this side cannot use — over the frame cap, not JSON, an `events`
+/// batch that does not parse — is logged and skipped, and the UI is told to `resync` (a
+/// fresh snapshot: whatever the frame carried is lost). The stream itself keeps going; it
+/// used to end with "oversize frame from host" and leave the chat dead while the turn ran.
 async fn pump_session<R: AsyncRead + Unpin>(
     recv: &mut R,
     emit: &mut impl FnMut(SessionMsg) -> bool,
@@ -355,16 +388,24 @@ async fn pump_session<R: AsyncRead + Unpin>(
 ) {
     loop {
         match read_frame(recv, None).await {
-            Ok(Some((kind, payload))) => {
+            Ok(FrameRead::Frame(kind, payload)) => {
                 if kind != 0 {
                     continue;
                 }
-                let Ok(value) = serde_json::from_slice::<serde_json::Value>(&payload) else {
-                    emit(SessionMsg::Error {
-                        message: "The PC sent something unreadable".into(),
-                        code: Some(AppErrorCode::E_TRANSPORT),
-                    });
-                    return;
+                let value = match serde_json::from_slice::<serde_json::Value>(&payload) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        log::warn!(
+                            "session stream: unreadable frame ({} bytes): {error}",
+                            payload.len()
+                        );
+                        if !emit(SessionMsg::Resync {
+                            reason: "unreadable frame".into(),
+                        }) {
+                            return;
+                        }
+                        continue;
+                    }
                 };
                 match value.get("type").and_then(|t| t.as_str()) {
                     Some("events") => {
@@ -372,11 +413,13 @@ async fn pump_session<R: AsyncRead + Unpin>(
                             match serde_json::from_value(value["items"].clone()) {
                                 Ok(items) => items,
                                 Err(error) => {
-                                    emit(SessionMsg::Error {
-                                        message: error.to_string(),
-                                        code: Some(AppErrorCode::E_TRANSPORT),
-                                    });
-                                    return;
+                                    log::warn!("session stream: bad events batch: {error}");
+                                    if !emit(SessionMsg::Resync {
+                                        reason: "bad events batch".into(),
+                                    }) {
+                                        return;
+                                    }
+                                    continue;
                                 }
                             };
                         if !emit(SessionMsg::Events { items }) {
@@ -394,7 +437,19 @@ async fn pump_session<R: AsyncRead + Unpin>(
                     Some(_) | None => {}
                 }
             }
-            Ok(None) => {
+            Ok(FrameRead::Skipped { len, .. }) => {
+                // Probably an events batch (a reply would leave its command to time out):
+                // the events in it are gone, so the UI reopens with a full snapshot.
+                log::warn!(
+                    "session stream: skipped an oversize frame ({len} bytes); asking for a resync"
+                );
+                if !emit(SessionMsg::Resync {
+                    reason: "oversize frame".into(),
+                }) {
+                    return;
+                }
+            }
+            Ok(FrameRead::End) => {
                 emit(SessionMsg::Closed { message: None });
                 return;
             }
@@ -452,14 +507,15 @@ fn resolve(
     }
 }
 
-/// Pumps an `events_open` stream into `emit`: hub events verbatim until it ends.
+/// Pumps an `events_open` stream into `emit`: hub events verbatim until it ends. A frame it
+/// cannot use (oversize, not JSON) is logged and skipped; the stream keeps going.
 async fn pump_events<R: AsyncRead + Unpin>(
     recv: &mut R,
     emit: &mut impl FnMut(SessionMsg) -> bool,
 ) {
     loop {
         match read_frame(recv, None).await {
-            Ok(Some((kind, payload))) => {
+            Ok(FrameRead::Frame(kind, payload)) => {
                 if kind != 0 {
                     continue;
                 }
@@ -471,15 +527,14 @@ async fn pump_events<R: AsyncRead + Unpin>(
                     }
                     Ok(_) => {}
                     Err(error) => {
-                        emit(SessionMsg::Error {
-                            message: error.to_string(),
-                            code: Some(AppErrorCode::E_SCHEMA),
-                        });
-                        return;
+                        log::warn!("events stream: unreadable frame skipped: {error}");
                     }
                 }
             }
-            Ok(None) => {
+            Ok(FrameRead::Skipped { len, .. }) => {
+                log::warn!("events stream: skipped an oversize frame ({len} bytes)");
+            }
+            Ok(FrameRead::End) => {
                 emit(SessionMsg::Closed { message: None });
                 return;
             }
@@ -904,6 +959,7 @@ pub async fn events_focus(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::AsyncReadExt;
 
     fn frame(control: &Control) -> Vec<u8> {
         encode(FrameKind::Control, &serde_json::to_vec(control).unwrap())
@@ -978,6 +1034,91 @@ mod tests {
         assert!(!opened.reset);
         assert_eq!(opened.seq, 7);
         assert_eq!(opened.replay.unwrap().len(), 1);
+    }
+
+    /// fix-frames P0: an oversize frame (a live event with a screenshot) used to end the
+    /// stream with "oversize frame from host" and leave the chat dead. Now it is skipped,
+    /// the UI is told to resync, and later events and replies still arrive.
+    #[tokio::test]
+    async fn an_oversize_or_unreadable_frame_resyncs_and_the_stream_keeps_going() {
+        let mut bytes = Vec::new();
+        bytes.extend(frame(&Control::Events {
+            items: vec![SessionEventDto::new(
+                "s1",
+                1,
+                serde_json::json!({"type": "agent_start"}),
+            )],
+        }));
+        // An `events` frame over the cap: header + 2 MiB of payload.
+        bytes.push(0);
+        bytes.extend_from_slice(&((2 * MAX_FRAME) as u32).to_be_bytes());
+        bytes.extend(std::iter::repeat_n(b' ', 2 * MAX_FRAME));
+        // Not JSON.
+        bytes.extend(encode(FrameKind::Control, b"{not json"));
+        bytes.extend(frame(&Control::Events {
+            items: vec![SessionEventDto::new(
+                "s1",
+                9,
+                serde_json::json!({"type": "agent_end"}),
+            )],
+        }));
+        let (waiter, waiting) = oneshot::channel();
+        let waiters: Pending = Arc::new(Mutex::new(HashMap::new()));
+        waiters.lock().unwrap().insert(5, waiter);
+        bytes.extend(encode(
+            FrameKind::Control,
+            br#"{"type":"ok","id":5,"data":{"fine":true}}"#,
+        ));
+        let mut read = bytes.as_slice();
+        let mut messages: Vec<SessionMsg> = Vec::new();
+        pump_session(
+            &mut read,
+            &mut |message| {
+                messages.push(message);
+                true
+            },
+            &waiters,
+        )
+        .await;
+        let kinds: Vec<&str> = messages
+            .iter()
+            .map(|m| match m {
+                SessionMsg::Events { .. } => "events",
+                SessionMsg::Resync { .. } => "resync",
+                SessionMsg::Closed { .. } => "closed",
+                SessionMsg::Error { .. } => "error",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(kinds, ["events", "resync", "resync", "events", "closed"]);
+        assert_eq!(waiting.await.unwrap().unwrap().unwrap()["fine"], true);
+        assert_eq!(
+            serde_json::to_value(SessionMsg::Resync {
+                reason: "oversize frame".into()
+            })
+            .unwrap(),
+            serde_json::json!({"kind": "resync", "reason": "oversize frame"})
+        );
+    }
+
+    #[tokio::test]
+    async fn an_oversize_open_reply_is_retryable_and_falls_back_to_a_snapshot() {
+        let mut bytes = vec![0u8];
+        bytes.extend_from_slice(&((MAX_FRAME + 1) as u32).to_be_bytes());
+        bytes.extend(std::iter::repeat_n(b' ', MAX_FRAME + 1));
+        let (mut w, mut r) = (tokio::io::sink(), bytes.as_slice());
+        let req = Request::SessionOpen {
+            session: "s1".to_string().try_into().unwrap(),
+            since_seq: Some(6),
+        };
+        let error = open_reply(&mut w, &mut r, req.clone()).await.unwrap_err();
+        assert!(error.retryable, "never a dead, non-retryable banner");
+        assert!(is_oversize(&error));
+        match without_resume(req) {
+            Some(Request::SessionOpen { since_seq, .. }) => assert_eq!(since_seq, None),
+            other => panic!("expected a plain open, got {other:?}"),
+        }
+        assert!(without_resume(Request::SessionsList { archived: false }).is_none());
     }
 
     #[test]

@@ -52,6 +52,22 @@ describe('tauri HostClient: session streams over chat.rs (WP-A2)', () => {
     expect(invoke).toHaveBeenLastCalledWith('session_stream_close', { streamId: 'st-1' });
   });
 
+  it('resync (a skipped oversize frame) reaches the sink and keeps the stream open', async () => {
+    invoke.mockImplementation(async (cmd) => (cmd === 'session_open' ? 'st-2' : null));
+    const seen: string[] = [];
+    createTauriHost('h1').openSession({ kind: 'open', session: 's1' }, {
+      snapshot: () => seen.push('snap'),
+      events: (items) => seen.push(`events:${items.length}`),
+      closed: () => seen.push('closed'),
+      resync: (reason) => seen.push(`resync:${reason}`),
+    });
+    const ch = channels[0]!;
+    ch.onmessage!({ kind: 'snapshot', snapshot: { session_id: 's1', reset: true, seq: 1 } });
+    ch.onmessage!({ kind: 'resync', reason: 'oversize frame' });
+    ch.onmessage!({ kind: 'events', items: [{ session: 's1', seq: 2, event: { type: 'agent_start' } }] });
+    expect(seen).toEqual(['snap', 'resync:oversize frame', 'events:1']);
+  });
+
   it('a failed open closes the sink; close before the id arrives hangs up once it does', async () => {
     let resolve!: (id: string) => void;
     invoke.mockImplementationOnce(() => new Promise((r) => (resolve = r as (id: string) => void)));

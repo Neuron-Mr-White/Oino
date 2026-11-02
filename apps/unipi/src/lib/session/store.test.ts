@@ -151,6 +151,26 @@ describe('session store over the mock host', () => {
     expect(s.state.conn).toBe('live');
   });
 
+  it('a skipped oversize frame (fix-frames) reopens with a full snapshot and stays live', async () => {
+    const w = world(sessionSpec({ events: [] }));
+    const c = clock();
+    const { s, dispose } = open(w, c);
+    disposers.push(() => (s.close(), dispose()));
+    await tick();
+    w.push('h1', 's1', [{ session: 's1', seq: 11, event: { type: 'agent_start' } }]);
+    c.frame();
+    // The reader drained a frame over the cap: events are missing, the stream is not dead.
+    w.skipFrame('h1', 's1');
+    await tick();
+    expect(opens(w)).toEqual([0, 0]); // the reopen asks for a full snapshot, not a resume
+    expect(s.state.conn).toBe('live');
+    expect(connBanner(s.state)).toBeUndefined();
+    // Later events keep flowing on the new stream.
+    w.push('h1', 's1', [{ session: 's1', seq: 11, event: { type: 'agent_start' } }]);
+    c.frame();
+    expect(s.state.seq).toBe(11);
+  });
+
   it('taken_over stops reconnecting and keeps the banner until Take back', async () => {
     const w = world(sessionSpec({ events: [] }));
     const c = clock();

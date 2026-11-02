@@ -128,6 +128,7 @@ export type SessionMsg =
   | { kind: 'snapshot'; snapshot: SessionSnapshot }
   | { kind: 'events'; items: SessionEventDto[] }
   | { kind: 'hub_event'; event: HubEvent }
+  | { kind: 'resync'; reason?: string }
   | { kind: 'closed'; message?: string }
   | { kind: 'error'; message: string; code?: string };
 
@@ -176,6 +177,11 @@ function openSessionChannel(hostId: string, req: OpenSessionRequest, sink: Sessi
         return;
       case 'events':
         sink.events(msg.items);
+        return;
+      case 'resync':
+        // fix-frames: the reader skipped a frame it could not use (oversize/unreadable);
+        // the stream stays open, the session reloads from a fresh snapshot.
+        sink.resync?.(msg.reason);
         return;
       case 'closed':
         end(msg.message ? channelError({ message: msg.message }) : undefined);

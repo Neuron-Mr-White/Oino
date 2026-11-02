@@ -61,6 +61,9 @@ export interface SessionSink {
   events(items: SessionEventDto[]): void;
   /** The stream ended (`error` set when it failed; the store reconnects with `sinceSeq`). */
   closed(error?: AppError): void;
+  /** The transport skipped a frame it could not use (oversize/unreadable): events may be
+   *  missing, so the client reopens with a full snapshot. The stream itself is still open. */
+  resync?(reason?: string): void;
 }
 
 export interface SessionStream extends Closable {

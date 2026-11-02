@@ -868,7 +868,7 @@ export class MockHost implements HostClient {
       this.world.streams.get(key)?.delete(handle);
       sink.closed(error as never);
     };
-    const handle = { push: (items: SessionEventDto[]) => open && sink.events(items), drop: (error?: Err) => end(error) };
+    const handle = { push: (items: SessionEventDto[]) => open && sink.events(items), drop: (error?: Err) => end(error), resync: () => open && sink.resync?.('oversize frame') };
     queueMicrotask(() => {
       if (!open) return;
       if (this.conn().state === 'offline') return end(err('E_TRANSPORT', `Can't reach ${this.spec.name}`));
@@ -1104,7 +1104,7 @@ export class MockHost implements HostClient {
   }
 }
 
-type StreamHandle = { push(items: SessionEventDto[]): void; drop(error?: Err): void };
+type StreamHandle = { push(items: SessionEventDto[]): void; drop(error?: Err): void; resync?(): void };
 
 /** `{id, defaultKeys, description, extensionId}` — what the unipi extensions register (G-7). */
 const MOCK_SHORTCUTS = [
@@ -1216,6 +1216,12 @@ export class MockWorld {
   /** Test control: pushes events to every open stream of a session. */
   push(hostId: string, sessionId: string, items: SessionEventDto[]): void {
     for (const s of this.streams.get(`${hostId}/${sessionId}`) ?? []) s.push(items);
+  }
+
+  /** Test control: the transport skipped an oversize frame on every open stream of a session
+   *  (`chat.rs` `SessionMsg::Resync`, fix-frames). */
+  skipFrame(hostId: string, sessionId: string): void {
+    for (const s of [...(this.streams.get(`${hostId}/${sessionId}`) ?? [])]) s.resync?.();
   }
 
   /** Test control: drops every open stream of a session (`E_TRANSPORT` by default). */

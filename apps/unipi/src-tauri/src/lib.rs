@@ -28,6 +28,7 @@ mod commands;
 mod cron;
 mod desktop;
 mod forward;
+mod frames;
 mod fs;
 mod host_settings;
 mod host_store;

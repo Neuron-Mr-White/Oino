@@ -18,7 +18,7 @@ use tauri::ipc::Channel;
 use tauri::{Manager, State};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use unipi_proto::{
-    frame::{encode, FrameKind, MAX_FRAME},
+    frame::{encode, FrameKind},
     AppErrorCode, AppErrorDto, BlobGetData, BlobMime, BlobName, BlobPutData, BlobRange, Control,
     PathSegment, ProtoError, Request, Sha256Hex, PROTO_VERSION,
 };
@@ -76,19 +76,16 @@ async fn read_frame<R: AsyncRead + Unpin>(
     recv: &mut R,
     timeout: Option<Duration>,
 ) -> Result<Option<(u8, Vec<u8>)>, AppErrorDto> {
+    // fix-frames: an oversize reply is drained (the stream stays in sync) and reported as
+    // retryable transport trouble, never a dead non-retryable schema error.
     let read = async {
-        let kind = match recv.read_u8().await {
-            Ok(kind) => kind,
-            Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-            Err(error) => return Err(transport(error)),
-        };
-        let len = recv.read_u32().await.map_err(transport)? as usize;
-        if len > MAX_FRAME {
-            return Err(schema("frame", "oversize frame from host"));
+        match crate::frames::read_lenient(recv).await? {
+            crate::frames::FrameRead::Frame(kind, payload) => Ok(Some((kind, payload))),
+            crate::frames::FrameRead::Skipped { len, .. } => {
+                Err(crate::frames::oversize_error(len))
+            }
+            crate::frames::FrameRead::End => Ok(None),
         }
-        let mut payload = vec![0u8; len];
-        recv.read_exact(&mut payload).await.map_err(transport)?;
-        Ok(Some((kind, payload)))
     };
     match timeout {
         Some(limit) => tokio::time::timeout(limit, read).await.map_err(|_| {

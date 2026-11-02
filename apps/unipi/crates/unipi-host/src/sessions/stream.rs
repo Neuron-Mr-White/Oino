@@ -54,6 +54,7 @@ use unipi_proto::{
     SessionCard, SessionEventDto, SessionReply, SessionSnapshot, SessionsListData,
 };
 
+use super::bound;
 use super::card::{HubState, SessionCard as HostCard};
 use super::hub::{takeover_from, HubError, HubEvent, HubSession, SessionHub};
 use super::open::{self as fast, Live, Page, SessionFile};
@@ -136,6 +137,8 @@ pub struct Feed {
     disposed: AtomicBool,
     /// Deltas dropped for a slow subscriber (metrics/debugging).
     dropped: AtomicU64,
+    /// The host's blob store: big inline images of a live event move there (`mediaRef`).
+    blobs_dir: Mutex<Option<std::path::PathBuf>>,
 }
 
 impl std::fmt::Debug for Feed {
@@ -163,7 +166,13 @@ impl Feed {
             tap_backend: Mutex::new(None),
             disposed: AtomicBool::new(false),
             dropped: AtomicU64::new(0),
+            blobs_dir: Mutex::new(None),
         })
+    }
+
+    /// Where the feed stores the big images of live events (the hub's blob store).
+    pub fn set_blobs_dir(&self, dir: std::path::PathBuf) {
+        *lock(&self.blobs_dir) = Some(dir);
     }
 
     /// The session id events are stamped with (it changes after a fork, §7.3).
@@ -190,7 +199,25 @@ impl Feed {
     /// A *delta* is cumulative-append and may be dropped for a subscriber whose queue is
     /// full (lossy by design, §7.4); any other event waits for room, so it is never lost or
     /// reordered — the client's queue is the backpressure.
-    pub async fn publish(&self, event: Value) -> u64 {
+    pub async fn publish(&self, mut event: Value) -> u64 {
+        // fix-frames: every event is bounded once, here, so the ring (resume replays) and
+        // every subscriber carry the frame-safe form — a screenshot becomes a `mediaRef`, a
+        // multi-megabyte tool output is clipped and flagged `truncated`.
+        let blobs_dir = lock(&self.blobs_dir).clone();
+        if bound::bound_event(&mut event, blobs_dir.as_deref(), bound::EVENT_BUDGET) {
+            let kind = event
+                .get("type")
+                .or_else(|| event.get("kind"))
+                .and_then(Value::as_str)
+                .unwrap_or("?")
+                .to_owned();
+            tracing::info!(
+                session = %self.session_id(),
+                kind = %kind,
+                bytes = bound::json_len(&event),
+                "bounded an oversize live session event"
+            );
+        }
         let seq = self.seq.fetch_add(1, Ordering::AcqRel) + 1;
         let dto = Arc::new(SessionEventDto::new(self.session_id(), seq, event));
         {
@@ -516,6 +543,7 @@ impl SessionService {
             return feed;
         }
         let feed = Feed::new(session_id);
+        feed.set_blobs_dir(self.hub.blobs_dir());
         feeds.insert(session_id.to_owned(), Arc::clone(&feed));
         feed
     }
@@ -792,7 +820,18 @@ where
     W: tokio::io::AsyncWrite + Unpin,
 {
     use tokio::io::AsyncWriteExt;
-    let bytes = serde_json::to_vec(value).map_err(internal)?;
+    let mut bytes = serde_json::to_vec(value).map_err(internal)?;
+    if bytes.len() > unipi_proto::frame::MAX_FRAME {
+        // fix-frames: never put an oversize frame on the wire (the app cannot read it). A
+        // correlated reply becomes its error; anything else is dropped (the app resyncs on
+        // the seq gap).
+        let Some(replacement) = oversize_replacement(&bytes) else {
+            tracing::error!(bytes = bytes.len(), "dropping an oversize control frame");
+            return Ok(());
+        };
+        tracing::error!(bytes = bytes.len(), "oversize reply replaced by an error");
+        bytes = serde_json::to_vec(&replacement).map_err(internal)?;
+    }
     write
         .write_all(&unipi_proto::frame::encode(
             unipi_proto::frame::FrameKind::Control,
@@ -801,6 +840,24 @@ where
         .await
         .map_err(internal)?;
     write.flush().await.map_err(internal)
+}
+
+/// The error that stands in for an oversize `ok` reply: the same `id` (a session command's)
+/// or the bare hello reply's `err`. `None` for anything else (events, hub events).
+fn oversize_replacement(bytes: &[u8]) -> Option<Value> {
+    let value: Value = serde_json::from_slice(bytes).ok()?;
+    if value.get("type").and_then(Value::as_str) != Some("ok") {
+        return None;
+    }
+    let error = AppErrorDto::new(
+        AppErrorCode::E_INTERNAL,
+        "The answer was too large to send",
+        true,
+    );
+    match value.get("id") {
+        Some(id) => serde_json::to_value(SessionReply::failed(Some(id.clone()), error)).ok(),
+        None => serde_json::to_value(Control::Err { error }).ok(),
+    }
 }
 
 async fn write_control<W>(write: &mut W, control: &Control) -> Result<(), AppErrorDto>
@@ -900,7 +957,11 @@ where
     // the previous stream's numbering is not resumable (the other runner wrote in between).
     let taken_over = session.taken_over().map(str::to_owned);
     let data = match since_seq {
-        Some(since) if taken_over.is_none() && feed.can_resume(since) => {
+        Some(since)
+            if taken_over.is_none()
+                && feed.can_resume(since)
+                && replay_fits(&feed.events_after(since)) =>
+        {
             let replay = feed.events_after(since);
             let seq = replay.last().map_or(since, |event| event.seq);
             tracing::debug!(session = %feed.session_id(), since, seq, "session resume");
@@ -1029,7 +1090,8 @@ async fn wake_behind(
                     // §8.2: where the session came from is the first event after the
                     // snapshot, as on the runtime path.
                     if let Some(from) = session.taken_over() {
-                        feed.publish(json!({"kind": "taken_over", "from": from})).await;
+                        feed.publish(json!({"kind": "taken_over", "from": from}))
+                            .await;
                     }
                     let leaf = session
                         .send(RpcCommand::Oino(
@@ -1067,7 +1129,8 @@ async fn wake_behind(
         ),
         Err(error) => {
             tracing::warn!(session = %session_id, %error, "session open: wake failed");
-            feed.publish(json!({"kind": "wake_failed", "error": error})).await;
+            feed.publish(json!({"kind": "wake_failed", "error": error}))
+                .await;
         }
     }
     let _ = tx.send(Some(outcome));
@@ -1384,7 +1447,46 @@ where
     *seen_through = items
         .last()
         .map_or(*seen_through, |event| event.seq.max(*seen_through));
-    write_control(write, &Control::Events { items }).await
+    for items in split_batch(items) {
+        write_control(write, &Control::Events { items }).await?;
+    }
+    Ok(())
+}
+
+/// A resume replay small enough for the open reply's frame; a bigger one reopens with a
+/// (bounded) full snapshot instead.
+fn replay_fits(replay: &[SessionEventDto]) -> bool {
+    replay
+        .iter()
+        .map(|event| bound::json_len(&event.event) + 96)
+        .sum::<usize>()
+        <= bound::BATCH_BUDGET
+}
+
+/// Splits one flush's events into frames of at most [`bound::BATCH_BUDGET`] (order kept,
+/// every event in exactly one frame). An event still too big for a frame on its own (a
+/// coalesced delta that grew) is bounded again — to a stub if need be — never sent oversize.
+fn split_batch(items: Vec<SessionEventDto>) -> Vec<Vec<SessionEventDto>> {
+    let mut frames: Vec<Vec<SessionEventDto>> = Vec::new();
+    let mut current: Vec<SessionEventDto> = Vec::new();
+    let mut size = 0usize;
+    for mut item in items {
+        let mut len = bound::json_len(&item.event) + 96 + item.session.len();
+        if len > bound::BATCH_BUDGET {
+            let _ = bound::bound_event(&mut item.event, None, bound::EVENT_BUDGET);
+            len = bound::json_len(&item.event) + 96 + item.session.len();
+        }
+        if !current.is_empty() && size + len > bound::BATCH_BUDGET {
+            frames.push(std::mem::take(&mut current));
+            size = 0;
+        }
+        size += len;
+        current.push(item);
+    }
+    if !current.is_empty() {
+        frames.push(current);
+    }
+    frames
 }
 
 /// Answers the `media{mediaRef}` session command (`sessionRefChat.media`): the blob
@@ -1557,10 +1659,9 @@ async fn answer_page(
                 }
             }
         }
-        Err(error) => SessionReply::failed(
-            id,
-            AppErrorDto::new(AppErrorCode::E_INTERNAL, error, false),
-        ),
+        Err(error) => {
+            SessionReply::failed(id, AppErrorDto::new(AppErrorCode::E_INTERNAL, error, false))
+        }
     };
     let _ = replies.send(reply).await;
 }

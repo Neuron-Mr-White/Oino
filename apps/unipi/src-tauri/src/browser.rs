@@ -25,7 +25,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{Manager, State};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use unipi_proto::{
     frame::{encode, FrameKind, MAX_FRAME},
     AppErrorCode, AppErrorDto, BrowserCmd, BrowserEvent, BrowserViewport, Control, ProtoError,
@@ -91,19 +91,16 @@ async fn read_frame<R: AsyncRead + Unpin>(
     recv: &mut R,
     timeout: Option<Duration>,
 ) -> Result<Option<(u8, Vec<u8>)>, AppErrorDto> {
+    // fix-frames: an oversize reply is drained (the stream stays in sync) and reported as
+    // retryable transport trouble, never a dead non-retryable schema error.
     let read = async {
-        let kind = match recv.read_u8().await {
-            Ok(kind) => kind,
-            Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-            Err(error) => return Err(transport(error)),
-        };
-        let len = recv.read_u32().await.map_err(transport)? as usize;
-        if len > MAX_FRAME {
-            return Err(schema("oversize frame from host"));
+        match crate::frames::read_lenient(recv).await? {
+            crate::frames::FrameRead::Frame(kind, payload) => Ok(Some((kind, payload))),
+            crate::frames::FrameRead::Skipped { len, .. } => {
+                Err(crate::frames::oversize_error(len))
+            }
+            crate::frames::FrameRead::End => Ok(None),
         }
-        let mut payload = vec![0u8; len];
-        recv.read_exact(&mut payload).await.map_err(transport)?;
-        Ok(Some((kind, payload)))
     };
     match timeout {
         Some(limit) => tokio::time::timeout(limit, read)
@@ -198,6 +195,11 @@ pub(crate) async fn pump<R: AsyncRead + Unpin>(recv: &mut R, mut emit: impl FnMu
                     message: Some("The PC closed the browser view".into()),
                 }));
                 return;
+            }
+            // fix-frames: one oversize frame (a huge JPEG) is drained and dropped; the view
+            // keeps streaming (the next frame replaces it).
+            Err(error) if error.message.as_str() == crate::frames::OVERSIZE => {
+                pending = None;
             }
             Err(error) => {
                 emit(Out::Msg(BrowserStreamMsg::Error {
@@ -469,6 +471,7 @@ pub async fn browser_stop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::AsyncReadExt;
     use unipi_proto::BrowserFrameMeta;
 
     fn control(c: &Control) -> Vec<u8> {

@@ -109,9 +109,9 @@ fn rewrite_all(entries: &mut [Value], text_budget: usize, blobs_dir: &Path) -> u
         }
         // Whatever else is huge (thinking, tool-call arguments, `details`, summaries,
         // custom payloads) is clipped too: no single string may blow the frame.
-        changed |= message
-            .iter_mut()
-            .fold(false, |cut, (_, value)| clip_strings(value, text_budget) | cut);
+        changed |= message.iter_mut().fold(false, |cut, (_, value)| {
+            clip_strings(value, text_budget) | cut
+        });
         if changed {
             // The app's full-output check: `message.truncated === true`
             // (`useFullOutput.snapshotTruncated`), refetched on expand.
@@ -171,8 +171,134 @@ fn clip_strings(value: &mut Value, max: usize) -> bool {
         Value::Object(map) => map
             .iter_mut()
             .filter(|(key, _)| key.as_str() != "data" && key.as_str() != "mediaRef")
-            .fold(false, |changed, (_, item)| clip_strings(item, max) | changed),
+            .fold(false, |changed, (_, item)| {
+                clip_strings(item, max) | changed
+            }),
         _ => false,
+    }
+}
+
+/// One live session event's serialized budget (fix-frames P0: a browser screenshot or a
+/// multi-megabyte tool output in a `message_end` / `tool_execution_*` event went out as one
+/// oversize frame, the app's reader rejected it with "oversize frame from host" and the chat
+/// stopped updating). [`bound_event`] keeps every published event under it.
+pub const EVENT_BUDGET: usize = 256 * 1024;
+/// One `events` frame's budget: a flush splits its batch into frames no larger than this
+/// (a frame always carries at least one event, itself ≤ [`EVENT_BUDGET`]).
+pub const BATCH_BUDGET: usize = 512 * 1024;
+/// The longest string a live event keeps before the shrink loop starts halving.
+const EVENT_TEXT_START: usize = 64 * 1024;
+
+/// Exact serialized size of `value`, without building the bytes.
+#[must_use]
+pub fn json_len(value: &Value) -> usize {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len();
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut count = Count(0);
+    let _ = serde_json::to_writer(&mut count, value);
+    count.0
+}
+
+/// Bounds one live session event (a `ClientEvent` JSON value) to `budget` serialized bytes,
+/// in place. Small events (the common case) are left untouched. A bigger one:
+///
+/// 1. has every inline base64 image over [`INLINE_IMAGE_LIMIT`] — anywhere in the event:
+///    `message.content`, a tool `result` / `partialResult`, `agent_end.messages` — moved into
+///    the blob store as a `mediaRef` (when `blobs_dir` is known);
+/// 2. then has its long strings clipped (64 KiB, halving) until it fits;
+/// 3. and if it still does not fit, is replaced by a stub: its identity scalars (`type`,
+///    `toolCallId`, `message.role`, `message.timestamp`, …) and nothing else.
+///
+/// A changed event carries `truncated: true` on the event, its `message` and its `result`
+/// (the flag the app's full-output path reads, refetching the entry on expand). Returns
+/// whether the event was changed.
+pub fn bound_event(event: &mut Value, blobs_dir: Option<&Path>, budget: usize) -> bool {
+    if json_len(event) <= budget {
+        return false;
+    }
+    let mut changed = false;
+    if let Some(dir) = blobs_dir {
+        changed |= reference_images(event, dir);
+    }
+    let mut max = EVENT_TEXT_START;
+    while json_len(event) > budget && max >= MIN_ENTRY_TEXT {
+        changed |= clip_strings(event, max);
+        max /= 2;
+    }
+    if json_len(event) > budget {
+        *event = stub(event, 0);
+        changed = true;
+    }
+    if changed {
+        mark_truncated(event);
+    }
+    changed
+}
+
+/// Moves every big inline base64 image in `value` into the blob store (`mediaRef`).
+fn reference_images(value: &mut Value, blobs_dir: &Path) -> bool {
+    match value {
+        Value::Array(items) => items.iter_mut().fold(false, |changed, item| {
+            reference_images(item, blobs_dir) | changed
+        }),
+        Value::Object(map) => {
+            if map.get("type").and_then(Value::as_str) == Some("image") {
+                let mut image = Value::Object(std::mem::take(map));
+                let mut unlimited = usize::MAX;
+                let changed = bound_block(&mut image, &mut unlimited, blobs_dir);
+                if let Value::Object(back) = image {
+                    *map = back;
+                }
+                return changed;
+            }
+            map.iter_mut().fold(false, |changed, (_, item)| {
+                reference_images(item, blobs_dir) | changed
+            })
+        }
+        _ => false,
+    }
+}
+
+/// The last-resort form of an event that cannot be bounded: scalars kept (strings clipped),
+/// objects two levels deep, arrays emptied.
+fn stub(value: &Value, depth: usize) -> Value {
+    match value {
+        Value::String(text) => {
+            let mut text = text.clone();
+            let mut remaining = MIN_ENTRY_TEXT;
+            let _ = truncate_string(&mut text, &mut remaining);
+            Value::String(text)
+        }
+        Value::Array(_) => Value::Array(Vec::new()),
+        Value::Object(map) if depth < 2 => Value::Object(
+            map.iter()
+                .filter(|(key, item)| key.as_str() != "data" && (depth == 0 || !item.is_object()))
+                .map(|(key, item)| (key.clone(), stub(item, depth + 1)))
+                .collect(),
+        ),
+        Value::Object(_) => Value::Object(serde_json::Map::new()),
+        other => other.clone(),
+    }
+}
+
+/// Flags a bounded event for the app (`truncated: true` on the event, `message`, `result`).
+fn mark_truncated(event: &mut Value) {
+    let Some(object) = event.as_object_mut() else {
+        return;
+    };
+    object.insert("truncated".into(), Value::Bool(true));
+    for key in ["message", "result", "partialResult"] {
+        if let Some(inner) = object.get_mut(key).and_then(Value::as_object_mut) {
+            inner.insert("truncated".into(), Value::Bool(true));
+        }
     }
 }
 
@@ -325,7 +451,11 @@ mod tests {
             serde_json::json!({"id": "e2", "type": "custom_message", "content": big}),
         ];
         assert_eq!(bound_entries(&mut entries, dir.path()), 2);
-        assert!(serialized_len(&entries) < 64 * 1024, "{}", serialized_len(&entries));
+        assert!(
+            serialized_len(&entries) < 64 * 1024,
+            "{}",
+            serialized_len(&entries)
+        );
         assert_eq!(entries[0]["message"]["truncated"], Value::Bool(true));
         assert_eq!(entries[1]["truncated"], Value::Bool(true));
     }
@@ -375,6 +505,73 @@ mod tests {
                 .len()
                 > INLINE_IMAGE_LIMIT
         );
+    }
+
+    fn screenshot_b64(bytes: usize) -> String {
+        let raw: Vec<u8> = (0..bytes).map(|i| (i * 31 % 251) as u8).collect();
+        base64::engine::general_purpose::STANDARD.encode(raw)
+    }
+
+    #[test]
+    fn small_events_pass_untouched() {
+        let mut event = serde_json::json!({"type": "tool_execution_end", "toolCallId": "t", "result": {"content": [{"type": "text", "text": "ok"}]}});
+        let before = event.clone();
+        assert!(!bound_event(&mut event, None, EVENT_BUDGET));
+        assert_eq!(event, before);
+    }
+
+    #[test]
+    fn a_live_tool_end_with_five_megabytes_is_clipped_and_flagged() {
+        let mut event = serde_json::json!({
+            "type": "tool_execution_end", "toolCallId": "t1", "toolName": "bash", "isError": false,
+            "result": {"content": [{"type": "text", "text": "x".repeat(5 * 1024 * 1024)}], "details": {}}
+        });
+        assert!(bound_event(&mut event, None, EVENT_BUDGET));
+        assert!(json_len(&event) <= EVENT_BUDGET);
+        assert_eq!(event["truncated"], Value::Bool(true));
+        assert_eq!(event["result"]["truncated"], Value::Bool(true));
+        assert_eq!(event["toolCallId"], "t1");
+        assert!(event["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("truncated"));
+    }
+
+    #[test]
+    fn a_live_screenshot_anywhere_becomes_a_media_ref() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = screenshot_b64(3 * 1024 * 1024 / 4 * 3);
+        let mut event = serde_json::json!({
+            "type": "message_end",
+            "message": {"role": "toolResult", "toolCallId": "b1", "content": [
+                {"type": "text", "text": "navigated"},
+                {"type": "image", "data": data, "mimeType": "image/png"}
+            ]}
+        });
+        assert!(bound_event(&mut event, Some(dir.path()), EVENT_BUDGET));
+        assert!(json_len(&event) <= EVENT_BUDGET);
+        let image = &event["message"]["content"][1];
+        assert!(image.get("data").is_none());
+        assert!(dir
+            .path()
+            .join(image["mediaRef"].as_str().unwrap())
+            .is_file());
+        assert_eq!(event["message"]["content"][0]["text"], "navigated");
+    }
+
+    #[test]
+    fn an_unboundable_event_becomes_a_stub() {
+        // No blob store and a 3 MB image: clipping never touches `data`, so it is stubbed.
+        let mut event = serde_json::json!({
+            "type": "tool_execution_update", "toolCallId": "b2",
+            "partialResult": {"content": [{"type": "image", "data": screenshot_b64(2_300_000)}]},
+            "many": (0..20_000).map(Value::from).collect::<Vec<_>>()
+        });
+        assert!(bound_event(&mut event, None, EVENT_BUDGET));
+        assert!(json_len(&event) <= 4096, "{}", json_len(&event));
+        assert_eq!(event["type"], "tool_execution_update");
+        assert_eq!(event["toolCallId"], "b2");
+        assert_eq!(event["truncated"], Value::Bool(true));
     }
 
     #[test]

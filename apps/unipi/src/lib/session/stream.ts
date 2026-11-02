@@ -179,6 +179,12 @@ export class SessionStreamClient {
             this.schedule(() => this.flush(gen));
           }
         },
+        resync: () => {
+          // fix-frames: a skipped oversize/unreadable frame — reload from a full snapshot
+          // instead of sitting on a dead banner while the turn keeps running.
+          if (gen !== this.gen || this.closedByUs || this.stopped) return;
+          this.connect(false);
+        },
         closed: (error) => {
           if (gen !== this.gen) return;
           this.isLive = false;

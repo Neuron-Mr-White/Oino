@@ -105,6 +105,7 @@ impl Client {
         self.read.read_exact(&mut header).await.unwrap();
         let kind = header[0];
         let len = u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
+        assert!(len <= MAX_FRAME, "oversize frame from host: {len} bytes");
         let mut payload = vec![0u8; len];
         self.read.read_exact(&mut payload).await.unwrap();
         (kind, payload)
@@ -279,10 +280,14 @@ async fn a_huge_session_opens_with_a_bounded_snapshot() {
     assert_eq!(decoded, vec![7u8; 300 * 1024], "the blob serves the bytes");
     assert_eq!(media["data"]["mime"], "application/octet-stream");
 
-    // The full entry refetch still answers the complete text (the app's expand
-    // path): bounded snapshot, unbounded source of truth.
+    // Core's whole-history `get_entries` (no `ids`/`before`) is 5 MiB here: one frame
+    // cannot carry it, and the app's reader would reject it. fix-frames: the host never
+    // writes an oversize frame — the reply becomes a retryable error with the same id
+    // (the app's expand path uses the bounded `get_entries{ids}` instead).
     let full = client.cmd(2, json!({"type": "get_entries"})).await;
-    assert_eq!(full["type"], "ok");
+    assert_eq!(full["type"], "err", "{full}");
+    assert_eq!(full["id"], 2);
+    assert_eq!(full["error"]["retryable"], Value::Bool(true));
     client.close().await;
 
     // Reopening works too (the blob is deduped by content).
