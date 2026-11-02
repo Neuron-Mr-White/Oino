@@ -457,14 +457,30 @@ pub async fn run(
     }
 
     match wait {
+        Ok(Ok(status)) if !status.success() => {
+            // G-07: a nonzero exit names its cause — the JSON turn error, else the run
+            // log's last error-looking line (the provider's 401 body lands there).
+            let log_hint = log_error_hint(paths, job_id, run_id);
+            exit_outcome(
+                false,
+                status.code(),
+                turn_error,
+                summary,
+                cost_usd,
+                session_path,
+                &status.to_string(),
+                log_hint,
+            )
+        }
         Ok(Ok(status)) => exit_outcome(
-            status.success(),
+            true,
             status.code(),
             turn_error,
             summary,
             cost_usd,
             session_path,
             &status.to_string(),
+            None,
         ),
         Ok(Err(e)) => Outcome {
             status: RunStatus::Failed,
@@ -488,7 +504,9 @@ pub async fn run(
 /// The wait outcome for a child that was waited on: a nonzero exit is `failed`, zero is
 /// `ok` — unless the JSON stream says the agent turn itself ended in an error
 /// (`stopReason: "error"`, a provider 401 for example), which fails the run with exit 1
-/// and the provider's words in the reason (F-03).
+/// and the provider's words in the reason (F-03). A nonzero exit without a stream error
+/// names the log's last error line as the cause (G-07).
+#[allow(clippy::too_many_arguments, reason = "one linear outcome shape")]
 fn exit_outcome(
     success: bool,
     code: Option<i32>,
@@ -497,6 +515,7 @@ fn exit_outcome(
     cost_usd: f64,
     session_path: Option<String>,
     status_text: &str,
+    log_hint: Option<String>,
 ) -> Outcome {
     if success {
         if let Some(error) = turn_error {
@@ -518,15 +537,56 @@ fn exit_outcome(
             cost_usd: Some(cost_usd),
         }
     } else {
+        let cause = turn_error
+            .map(|error| format!("agent turn failed: {error}"))
+            .or(log_hint);
         Outcome {
             status: RunStatus::Failed,
             exit_code: code,
             summary,
-            reason: Some(format!("oino exited with status {status_text}")),
+            reason: Some(match cause {
+                Some(cause) => format!("{cause} (oino exited with status {status_text})"),
+                None => format!("oino exited with status {status_text}"),
+            }),
             session_path,
             cost_usd: Some(cost_usd),
         }
     }
+}
+
+/// The run log's last error-looking line, flattened and clipped (G-07): a run that died
+/// with a provider 401 keeps that line in its log even when no JSON turn error arrived.
+#[must_use]
+pub fn log_error_hint(paths: &CronPaths, job_id: &str, run_id: &str) -> Option<String> {
+    use crate::store;
+    let log = store::read_log(paths, job_id, run_id)?;
+    let text = String::from_utf8_lossy(&log);
+    let codes = [
+        "400", "401", "403", "404", "429", "500", "502", "503", "504",
+    ];
+    text.lines()
+        .rev()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .find(|line| {
+            let lower = line.to_lowercase();
+            lower.contains("error")
+                || lower.contains("unauthorized")
+                || lower.contains("forbidden")
+                || codes.iter().any(|code| {
+                    lower
+                        .split(|c: char| !c.is_ascii_digit())
+                        .any(|word| word == *code)
+                })
+        })
+        .map(|line| {
+            let flat = line.split_whitespace().collect::<Vec<_>>().join(" ");
+            if flat.chars().count() <= 300 {
+                flat
+            } else {
+                format!("{}…", flat.chars().take(299).collect::<String>())
+            }
+        })
 }
 
 /// Kills a run's process group (UNIX) or process tree (Windows).
@@ -612,6 +672,93 @@ mod tests {
         let found = resolve_oino(None, Some(path.as_os_str()), None).unwrap();
         assert_eq!(found.program, on_path);
         assert!(resolve_oino(None, None, None).is_none());
+    }
+
+    /// G-07: a failed run records the actual cause (the provider's words), not only the
+    /// exit status.
+    #[test]
+    fn a_failed_run_records_the_cause_not_just_the_status() {
+        // The JSON turn error wins when the stream carried one.
+        let outcome = exit_outcome(
+            false,
+            Some(1),
+            Some("401 {\"type\":\"error\"}".into()),
+            None,
+            0.0,
+            None,
+            "exit status: 1",
+            None,
+        );
+        assert_eq!(outcome.status, RunStatus::Failed);
+        assert_eq!(
+            outcome.reason.as_deref(),
+            Some(
+                "agent turn failed: 401 {\"type\":\"error\"} (oino exited with status exit status: 1)"
+            )
+        );
+        // Else the run log's last error line is the cause.
+        let outcome = exit_outcome(
+            false,
+            Some(1),
+            None,
+            None,
+            0.0,
+            None,
+            "exit status: 1",
+            Some("401 {\"message\":\"User not found.\",\"code\":401}".into()),
+        );
+        assert_eq!(
+            outcome.reason.as_deref(),
+            Some(
+                "401 {\"message\":\"User not found.\",\"code\":401} (oino exited with status exit status: 1)"
+            )
+        );
+        // Without either, the old wording stands.
+        let outcome = exit_outcome(
+            false,
+            Some(1),
+            None,
+            None,
+            0.0,
+            None,
+            "exit status: 1",
+            None,
+        );
+        assert_eq!(
+            outcome.reason.as_deref(),
+            Some("oino exited with status exit status: 1")
+        );
+    }
+
+    /// The log hint is the LAST error-looking line of the run log, clipped.
+    #[test]
+    fn the_log_hint_is_the_last_error_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = CronPaths::new(tmp.path());
+        let _ = store::append_log(
+            &paths,
+            "j1",
+            "r1",
+            b"{\"type\":\"system\"}\nsha256 4014d1 is a hash, not a status\n",
+        );
+        let _ = store::append_log(
+            &paths,
+            "j1",
+            "r1",
+            b"Error: 401 {\"message\":\"User not found.\",\"code\":401}\n",
+        );
+        let hint = log_error_hint(&paths, "j1", "r1").unwrap();
+        assert!(
+            hint.contains("User not found"),
+            "the provider's line wins: {hint}"
+        );
+        // A long line is clipped to a readable hint.
+        let long = format!("Error: 401 and {}\n", "x".repeat(600));
+        let _ = store::append_log(&paths, "j1", "r1", long.as_bytes());
+        let hint = log_error_hint(&paths, "j1", "r1").unwrap();
+        assert!(hint.chars().count() <= 300, "{}", hint.chars().count());
+        // No log, no hint.
+        assert_eq!(log_error_hint(&paths, "j1", "r-missing"), None);
     }
 
     /// The `oino` file name `resolve_oino` looks for on this platform.
@@ -711,6 +858,7 @@ mod tests {
             stream.cost_usd,
             Some("/s.jsonl".into()),
             "exit status: 0",
+            None,
         );
         assert_eq!(outcome.status, RunStatus::Failed);
         assert_eq!(outcome.exit_code, Some(1));
@@ -743,6 +891,7 @@ mod tests {
             stream.cost_usd,
             None,
             "exit status: 0",
+            None,
         );
         assert_eq!(outcome.status, RunStatus::Ok);
         assert_eq!(outcome.exit_code, Some(0));
