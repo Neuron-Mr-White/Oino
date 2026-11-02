@@ -4,7 +4,7 @@
  * when settled, open while its segment runs; the member rows (and their
  * thinking neighbours, in order) mount only while open.
  */
-import { For, Show } from 'solid-js';
+import { Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 import { ChevronRight } from 'lucide-solid';
 import { createPresence } from '../../../lib/motion';
@@ -13,6 +13,7 @@ import type { WorkNode } from '../../../lib/session/turns';
 import type { TimelineCtx } from '../context';
 import { GROUP_LABEL, TOOL_ICON } from './toolIcons';
 import { WorkItemView } from './WorkItem';
+import { ByKey } from '../ByKey';
 
 export function ToolGroup(props: { node: Extract<WorkNode, { kind: 'group' }>; ctx: TimelineCtx; live: boolean }) {
   const open = () => expansionOpen(props.ctx.sessionId(), `grp:${props.node.key}`, props.live);
@@ -40,7 +41,7 @@ export function ToolGroup(props: { node: Extract<WorkNode, { kind: 'group' }>; c
       </button>
       <Show when={body.mounted()}>
         <div class="proc-body tl-group-body" data-leaving={body.leaving() ? '' : undefined}>
-          <For each={props.node.items}>{(item) => <WorkItemView item={item} ctx={props.ctx} />}</For>
+          <ByKey each={props.node.items} key={(it) => it.key}>{(item) => <WorkItemView item={item()} ctx={props.ctx} />}</ByKey>
         </div>
       </Show>
     </div>

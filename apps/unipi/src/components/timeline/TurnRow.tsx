@@ -15,7 +15,7 @@
  * per-message row menus (user + prose). The turn is passed its `last` flag so
  * only the final settled turn offers Retry (Z-49).
  */
-import { For, Show } from 'solid-js';
+import { Show } from 'solid-js';
 import { Clock } from 'lucide-solid';
 import { imagesOf, textOf, type Part } from '../../lib/chat/model';
 import type { Segment, Turn } from '../../lib/session/turns';
@@ -25,6 +25,7 @@ import { SegmentFold, WorkNodes } from './SegmentFold';
 import { HarnessRow } from './HarnessRow';
 import { UserBubble } from './UserBubble';
 import { Prose } from './Prose';
+import { ByKey } from './ByKey';
 import { Compaction } from './Compaction';
 import { TurnActions, requestEdit } from './TurnActions';
 import { TurnFooters } from '../../ui/slots/TurnFooters';
@@ -64,10 +65,10 @@ export function TurnRow(props: { turn: Turn; ctx: TimelineCtx; last?: boolean })
         <Show when={t().kind === 'turn'}>
           <TurnHead turn={t()} ctx={props.ctx} userMenu={userMenu} onEdit={onEdit} />
         </Show>
-        <For each={t().segments}>
+        <ByKey each={t().segments} key={(s) => s.id}>
           {(seg) => (
             <SegmentView
-              segment={seg}
+              segment={seg()}
               ctx={props.ctx}
               preamble={t().kind === 'preamble'}
               turn={t()}
@@ -76,7 +77,7 @@ export function TurnRow(props: { turn: Turn; ctx: TimelineCtx; last?: boolean })
               onEdit={onEdit}
             />
           )}
-        </For>
+        </ByKey>
         <TurnActions turn={t()} ctx={props.ctx} last={props.last} />
         {/* U10: `turnFooter` renderer entries render inside the turn's row (§6.7). */}
         <TurnFooters ctx={props.ctx} turn={t()} />

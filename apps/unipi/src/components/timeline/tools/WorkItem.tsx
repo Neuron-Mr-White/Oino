@@ -3,7 +3,7 @@
  * thinking / prose / step / card / compaction / error renderers. Split out
  * of `SegmentFold` so groups nest member rows through the same path.
  */
-import { For, Match, Switch } from 'solid-js';
+import { Match, Switch } from 'solid-js';
 import type { TimelineCtx } from '../context';
 import type { WorkItem, WorkNode } from '../../../lib/session/turns';
 import { Prose } from '../Prose';
@@ -16,6 +16,7 @@ import { ThinkingRow } from './ThinkingRow';
 import { StepRow } from './StepRow';
 import { CardRow } from '../cards/CardRow';
 import { ToolGroup } from './ToolGroup';
+import { ByKey } from '../ByKey';
 
 /** `item` narrowed to one `WorkItem` kind for a `<Match>` `when`. */
 const ofKind = <K extends WorkItem['kind']>(item: WorkItem, kind: K): Extract<WorkItem, { kind: K }> | false =>
@@ -45,14 +46,15 @@ export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
 /** Work nodes (groups render their head; `live` groups default open). */
 export function WorkNodes(props: { nodes: readonly WorkNode[]; ctx: TimelineCtx; live?: boolean }) {
   return (
-    <For each={props.nodes}>
-      {(node) =>
-        node.kind === 'group' ? (
-          <ToolGroup node={node} ctx={props.ctx} live={props.live ?? false} />
+    <ByKey each={props.nodes} key={(n) => `${n.kind === 'group' ? 'g' : 'i'}:${n.key}`}>
+      {(node) => {
+        const n = node();
+        return n.kind === 'group' ? (
+          <ToolGroup node={node() as Extract<WorkNode, { kind: 'group' }>} ctx={props.ctx} live={props.live ?? false} />
         ) : (
-          <WorkItemView item={node} ctx={props.ctx} />
-        )
-      }
-    </For>
+          <WorkItemView item={node() as WorkItem} ctx={props.ctx} />
+        );
+      }}
+    </ByKey>
   );
 }
