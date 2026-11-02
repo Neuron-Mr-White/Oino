@@ -374,6 +374,18 @@ fn hex_digest(bytes: &[u8]) -> String {
 /// otherwise refuse with `E_BINARY` is instead lossily decoded as UTF-8
 /// (invalid sequences become U+FFFD) and returned as those replacement
 /// bytes -- still capped by `FS_READ_CAP` like any other read.
+/// Content sniff (owner5 #23): text = no NUL byte in the first 8 KB and valid
+/// UTF-8 (a head cut mid-character by the size cap still counts as valid).
+fn looks_like_text(raw: &[u8], truncated: bool) -> bool {
+    if raw.iter().take(8192).any(|b| *b == 0) {
+        return false;
+    }
+    match std::str::from_utf8(raw) {
+        Ok(_) => true,
+        Err(e) => truncated && e.error_len().is_none(),
+    }
+}
+
 pub fn read_text(path: &Path, as_text: bool) -> Result<(Vec<u8>, FsReadData), AppErrorDto> {
     let meta = std::fs::metadata(path)
         .map_err(|e| not_found(format!("can't stat {}: {e}", path.display())))?;
@@ -390,7 +402,7 @@ pub fn read_text(path: &Path, as_text: bool) -> Result<(Vec<u8>, FsReadData), Ap
     } else {
         std::fs::read(path).map_err(|e| internal(format!("can't read {}: {e}", path.display())))?
     };
-    let bytes = if std::str::from_utf8(&raw).is_err() {
+    let bytes = if !looks_like_text(&raw, truncated) {
         if as_text {
             String::from_utf8_lossy(&raw).into_owned().into_bytes()
         } else {
@@ -1023,6 +1035,19 @@ mod tests {
         let result = read_text(&path, false);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, AppErrorCode::E_BINARY);
+    }
+
+    #[test]
+    fn read_text_sniffs_content_not_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lock = tmp.path().join("Cargo.lock");
+        fs::write(&lock, "# lock\nname = \"x\"\n").unwrap();
+        assert!(read_text(&lock, false).is_ok());
+        let nul = tmp.path().join("nul.dat");
+        fs::write(&nul, b"valid utf8\0but binary").unwrap();
+        assert_eq!(read_text(&nul, false).unwrap_err().code, AppErrorCode::E_BINARY);
+        assert!(looks_like_text(&[b'a', 0xe2, 0x82], true));
+        assert!(!looks_like_text(&[b'a', 0xe2, 0x82], false));
     }
 
     #[test]

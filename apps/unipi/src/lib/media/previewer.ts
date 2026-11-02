@@ -25,6 +25,13 @@ const OPEN_WITH_EXTS = new Set([
   'bin', 'dat', 'o', 'so', 'dylib', 'class', 'pyc', 'woff', 'woff2', 'ttf', 'otf', 'onnx',
 ]);
 
+/** Media files the viewers render from bytes (the mime decides the viewer; the extension only says "not text"). */
+const MEDIA_EXTS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'ico', 'icns', 'tif', 'tiff', 'heic', 'heif', 'svg',
+  'mp3', 'wav', 'ogg', 'oga', 'opus', 'flac', 'm4a', 'aac', 'weba',
+  'mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'ogv',
+]);
+
 /** Extensions the code highlighter (`src/lib/markdown/highlight.ts`) knows
  * a language for — kept in sync with its `ALIASES`/`LOADERS` tables by
  * hand (small, stable list); anything else with a text mime falls back to
@@ -81,5 +88,12 @@ export function isDirectPreview(path: string): boolean {
   const ext = extOf(path);
   if (!ext) return false;
   const kind = classifyMedia(undefined, path);
-  return kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video' || kind === 'other';
+  if (kind === 'other') return OPEN_WITH_EXTS.has(ext) || MEDIA_EXTS.has(ext);
+  return kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video';
+}
+
+/** A binary extension we know has no in-app viewer (everything else is sniffed by content). */
+export function isKnownBinaryExt(path: string): boolean {
+  const ext = extOf(path);
+  return OPEN_WITH_EXTS.has(ext) || MEDIA_EXTS.has(ext);
 }

@@ -131,14 +131,14 @@ describe('DraftView (Z-19)', () => {
     expect(screen.queryByTestId('connect-provider-card')).toBeNull();
   });
 
-  it('the workspace menu lists recent folders and the roots; a pick shows in the chip', async () => {
+  it('the workspace menu lists recent folders (no system roots); a pick shows in the chip', async () => {
     boot();
     await waitFor(() => expect(screen.getByTestId('workspace-chip')).toBeTruthy());
     await new Promise((r) => setTimeout(r, 30));
     fireEvent.click(screen.getByTestId('workspace-chip'));
     const menu = await waitFor(() => screen.getByTestId('workspace-menu'));
     await waitFor(() => expect(menu.textContent).toContain('~/p/oino'));
-    expect(menu.textContent).toContain('/srv');
+    expect(menu.textContent).not.toMatch(/On this PC|\/srv/i);
     expect(menu.textContent).toContain('Open folder…');
     fireEvent.click([...menu.querySelectorAll('.ws-row')].find((r) => r.textContent?.includes('~/p/oino'))!);
     await waitFor(() => expect(screen.getByTestId('workspace-chip').textContent).toContain('oino'));

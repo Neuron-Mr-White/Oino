@@ -61,3 +61,14 @@ describe('classifyMedia open-with kinds (UNI-169)', () => {
     expect(classifyMedia('text/plain', '/a/notes.md')).toBe('markdown');
   });
 });
+
+describe('isDirectPreview: unknown extensions are sniffed, not routed to no-preview (owner5 #23)', () => {
+  it.each(['/p/Cargo.lock', '/p/.env', '/p/x.foo', '/p/README'])('%s opens in the editor', async (path) => {
+    const { isDirectPreview } = await import('./previewer');
+    expect(isDirectPreview(path)).toBe(false);
+  });
+  it.each(['/p/a.png', '/p/a.zip', '/p/a.pdf', '/p/a.mp4'])('%s stays a direct preview', async (path) => {
+    const { isDirectPreview } = await import('./previewer');
+    expect(isDirectPreview(path)).toBe(true);
+  });
+});

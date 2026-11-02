@@ -19,7 +19,13 @@ import { highlightHtml } from '../../lib/markdown/highlight';
 import { renderBlocks } from '../../lib/chat/markdown';
 import { MdBlock } from '../chat/MdBlock';
 import { closePreviewer, previewerRequest, type PreviewRequest } from '../../lib/media/previewerState';
-import { classifyMedia, languageOf } from '../../lib/media/previewer';
+import { classifyMedia, isKnownBinaryExt, languageOf } from '../../lib/media/previewer';
+import { OpenMenu } from '../files/OpenMenu';
+import { EmptyState } from '../EmptyState';
+import { isOwnPcFile } from '../../lib/openLocal';
+import { openSideTab } from '../panes/SidePane';
+import { currentWorkspace } from '../shell/Workspace';
+import { switchEditorTarget } from '../../lib/editorTarget';
 import { blobTransport } from '../../lib/blob';
 import { fsRead } from '../../lib/fs';
 import { setPaneComponent, type PaneTabProps } from '../../lib/panes/kinds';
@@ -282,12 +288,21 @@ export function GenericPreview(props: { request: Exclude<PreviewRequest, { kind:
           <button type="button" class="ghost-icon-button" aria-label="Edit as text" onClick={editAsText}>
             <FileText size={19} />
           </button>
-          <button type="button" class="ghost-icon-button" aria-label={desktopShell() ? 'Download' : 'Download to phone'} onClick={() => void run('download')}>
-            <Download size={19} />
-          </button>
-          <button type="button" class="ghost-icon-button" aria-label="Open with another app" onClick={() => void run('openWith')}>
-            <Share2 size={19} />
-          </button>
+          <Show
+            when={isOwnPcFile(req.source!.hostId)}
+            fallback={
+              <>
+                <button type="button" class="ghost-icon-button" aria-label={desktopShell() ? 'Download' : 'Download to phone'} onClick={() => void run('download')}>
+                  <Download size={19} />
+                </button>
+                <button type="button" class="ghost-icon-button" aria-label="Open with another app" onClick={() => void run('openWith')}>
+                  <Share2 size={19} />
+                </button>
+              </>
+            }
+          >
+            <OpenMenu path={req.source!.path} variant="icon" onResult={flash} />
+          </Show>
         </Show>
         <Show when={!req.source && req.url}>
           <a class="ghost-icon-button" aria-label="Share or open with…" href={req.url} target="_blank" rel="noreferrer">
@@ -297,27 +312,32 @@ export function GenericPreview(props: { request: Exclude<PreviewRequest, { kind:
       </header>
       <div class="media-page-scroll">
         <Show when={req.kind === 'other'}>
-          <div class="media-nopreview" data-testid="media-nopreview">
-            <Show
-              when={req.reason === 'too-large'}
-              fallback={
-                <>
-                  <p class="media-nopreview-title">No preview for {req.name.split('.').pop()?.toUpperCase() || 'this file'}</p>
-                  <p class="media-nopreview-sub">{desktopShell() ? 'Open it in another app, or download it.' : 'Open it in another app, or download it to your phone.'}</p>
-                </>
-              }
-            >
-              <p class="media-nopreview-title">Too large to preview here</p>
-              <p class="media-nopreview-sub">{desktopShell() ? 'Download it, or open it in another app.' : 'Download it to your phone, or open it in another app.'}</p>
-            </Show>
-            <div class="media-nopreview-actions">
+          <EmptyState
+            icon={<FileText size={24} />}
+            title={req.reason === 'too-large' ? 'Too large to preview here' : 'No preview for this file type'}
+            body={req.reason === 'too-large' ? req.name : `${req.name}${desktopShell() ? '' : ' — open it in another app, or download it to your phone.'}`}
+            testId="media-nopreview"
+            action={
               <Show when={req.source} fallback={<p class="text-text-dim text-sm">Available from the Files tab.</p>}>
-                <button type="button" class="media-btn" onClick={editAsText}>Edit as text</button>
-                <button type="button" class="media-btn" onClick={() => void run('openWith')}>Open with…</button>
-                <button type="button" class="media-btn primary" onClick={() => void run('download')}>Download</button>
+                {(source) => (
+                  <>
+                    <button type="button" class="btn btn-secondary" onClick={editAsText}>Edit as text</button>
+                    <Show
+                      when={isOwnPcFile(source().hostId)}
+                      fallback={
+                        <>
+                          <button type="button" class="btn btn-secondary" onClick={() => void run('openWith')}>Open with…</button>
+                          <button type="button" class="btn btn-secondary" onClick={() => void run('download')}>Download</button>
+                        </>
+                      }
+                    >
+                      <OpenMenu path={source().path} variant="button" onResult={flash} />
+                    </Show>
+                  </>
+                )}
               </Show>
-            </div>
-          </div>
+            }
+          />
         </Show>
         <Show when={req.kind === 'markdown'}>
           <For each={renderBlocks(req.text ?? '', false)}>{(html) => <MdBlock html={html} class="chat-block" />}</For>
@@ -369,13 +389,18 @@ export function PreviewTab(props: PaneTabProps) {
   // effect depends on the path only. The rendered kind prefers the blob's
   // real mime once it lands; `.svg` stays `svg` so the source toggle works.
   const TEXT_KINDS = new Set(['markdown', 'code', 'log', 'text']);
-  const readText = () => TEXT_KINDS.has(classifyMedia(undefined, path()));
+  // Unknown extensions (.lock, dotfiles…) are sniffed by content: try text first.
+  const readText = () => {
+    const k = classifyMedia(undefined, path());
+    return TEXT_KINDS.has(k) || (k === 'other' && !isKnownBinaryExt(path()));
+  };
   const kind = () => {
     if (path().toLowerCase().endsWith('.svg')) return 'svg';
     const mime = bytes()?.mime;
     return mime ? classifyMedia(mime, path()) : classifyMedia(undefined, path());
   };
   const [source, setSource] = createSignal(false);
+  const [sniffedBinary, setSniffedBinary] = createSignal(false);
   const [bytes, setBytes] = createSignal<{ url: string; mime: string } | undefined>();
   const [text, setText] = createSignal<string>();
   const [state, setState] = createSignal<'loading' | 'ready' | 'error'>();
@@ -392,6 +417,7 @@ export function PreviewTab(props: PaneTabProps) {
     setState('loading');
     setBytes((b) => (b ? (URL.revokeObjectURL(b.url), undefined) : undefined));
     setText(undefined);
+    setSniffedBinary(false);
     setSource(false);
     const token = {};
     current = token;
@@ -410,8 +436,12 @@ export function PreviewTab(props: PaneTabProps) {
         } else {
           const got = await fsRead(hostId(), p);
           if (token !== current) return;
-          if (!got.ok) throw new Error(got.error.message);
-          setText(got.value.text);
+          if (!got.ok && got.error.code === 'E_BINARY') {
+            // Sniffed as a true binary: show the no-preview page (bytes not needed).
+            setText(undefined);
+            setSniffedBinary(true);
+          } else if (!got.ok) throw new Error(got.error.message);
+          else setText(got.value.text);
         }
         setState('ready');
       } catch (e) {
@@ -428,9 +458,16 @@ export function PreviewTab(props: PaneTabProps) {
     const result = await downloadToDevice(hostId(), path());
     flash(transferMessage(result, name(), desktopShell()));
   }
+  // "Edit as text": the editor lives in the Files tab, so open (or focus) it
+  // there with the target set, then drop this preview tab.
   function editAsText() {
-    setEditorTarget({ hostId: hostId(), path: path(), asText: true });
+    switchEditorTarget({ hostId: hostId(), path: path(), asText: true });
+    const ws = currentWorkspace();
+    const scope = ws?.scope ?? { hostId: hostId(), projectKey: props.projectKey };
+    openSideTab(scope, ws?.view ?? { sessionId: props.sessionId }, { kind: 'files', params: { hostId: hostId(), root: props.projectKey || '~', path: path() } });
+    props.close();
   }
+  const ownPc = () => isOwnPcFile(hostId());
 
   const toggleSource = () => {
     if (kind() === 'svg' && !source() && text() === undefined) {
@@ -452,9 +489,16 @@ export function PreviewTab(props: PaneTabProps) {
           </button>
         </Show>
         <Show when={state() === 'ready'}>
-          <button type="button" class="ftree-tool" aria-label="Download" onClick={() => void download()}>
-            <Download size={15} />
-          </button>
+          <Show
+            when={ownPc()}
+            fallback={
+              <button type="button" class="ftree-tool" aria-label="Download" onClick={() => void download()}>
+                <Download size={15} />
+              </button>
+            }
+          >
+            <OpenMenu path={path()} variant="icon" onResult={flash} />
+          </Show>
         </Show>
       </div>
       <div class="ptab-body">
@@ -486,14 +530,25 @@ export function PreviewTab(props: PaneTabProps) {
             <Match when={text() !== undefined}>
               <CodeBlock text={text()!} lang={languageOf(path()) ?? 'text'} />
             </Match>
-            <Match when={kind() === 'other'}>
-              <div class="media-nopreview" data-testid="preview-tab-nopreview">
-                <p class="media-nopreview-title">No preview for {name().split('.').pop()?.toUpperCase() || 'this file'}</p>
-                <div class="media-nopreview-actions">
-                  <button type="button" class="media-btn" onClick={editAsText}>Edit as text</button>
-                  <button type="button" class="media-btn primary" onClick={() => void download()}>Download</button>
-                </div>
-              </div>
+            <Match when={kind() === 'other' || sniffedBinary()}>
+              <EmptyState
+                compact
+                icon={<FileText size={22} />}
+                title="No preview for this file type"
+                body={name()}
+                testId="preview-tab-nopreview"
+                action={
+                  <>
+                    <button type="button" class="btn btn-secondary" onClick={editAsText}>Edit as text</button>
+                    <Show
+                      when={ownPc()}
+                      fallback={<button type="button" class="btn btn-secondary" onClick={() => void download()}>Download</button>}
+                    >
+                      <OpenMenu path={path()} variant="button" onResult={flash} />
+                    </Show>
+                  </>
+                }
+              />
             </Match>
           </Switch>
         </Show>

@@ -1,8 +1,8 @@
 /**
  * The draft's workspace row (Z-19): where the new chat runs. A chip — folder
  * icon, name, chevron — opening a menu of this PC's recent session folders,
- * its roots and "Open folder…" (a folder browser over `fs_list`; the app has
- * no native folder dialog). "No workspace" runs the session in the user's
+ * and "Open folder…" (the native dialog on this computer, a folder browser over
+ * `fs_list` on a remote PC / the phone). "No workspace" runs the session in the user's
  * home folder on that PC. A PC chip sits beside it when more than one PC is
  * paired.
  */
@@ -11,6 +11,25 @@ import { ArrowLeft, Check, ChevronDown, Folder, FolderOpen, FolderSearch, House,
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { fsList } from '../../lib/fs';
 import { shortPath, folderName } from '../../lib/session/newSession';
+import { isOwnPcFile, pickFolderNative } from '../../lib/openLocal';
+
+/** Scratch locations are not projects: hidden from Recent unless the user opened them explicitly. */
+const isTempPath = (p: string) => /^\/(var\/)?tmp(\/|$)/.test(p);
+const OPENED_KEY = 'unipi.workspace.opened';
+const explicitlyOpened = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(OPENED_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+const rememberOpened = (path: string) => {
+  try {
+    localStorage.setItem(OPENED_KEY, JSON.stringify([path, ...explicitlyOpened().filter((p) => p !== path)].slice(0, 20)));
+  } catch {
+    // best effort
+  }
+};
 
 type Item = { path: string; label: string; detail: string };
 
@@ -59,15 +78,31 @@ export function WorkspacePicker(props: {
   const label = () => (props.value ? folderName(props.value) : (props.placeholder ?? 'No workspace'));
   const short = (p: string) => shortPath(p, props.home);
 
-  const recentItems = createMemo<Item[]>(() =>
-    props.recent.filter((p) => p !== props.home).slice(0, 6).map((path) => ({ path, label: folderName(path), detail: short(path) })),
-  );
-  const rootItems = createMemo<Item[]>(() =>
-    props.roots
-      .filter((p) => !props.recent.includes(p) || p === props.home)
+  const recentItems = createMemo<Item[]>(() => {
+    const opened = explicitlyOpened();
+    return props.recent
+      .filter((p) => p !== props.home && (!isTempPath(p) || opened.includes(p)))
       .slice(0, 6)
-      .map((path) => ({ path, label: path === props.home ? 'Home' : short(path), detail: path === props.home ? short(path) : '' })),
-  );
+      .map((path) => ({ path, label: folderName(path), detail: short(path) }));
+  });
+
+  /** "Open folder…": the native dialog on this computer, the in-app browser for a remote PC / the phone. */
+  const openFolder = async () => {
+    const start = props.value || props.home || props.roots[0] || '/';
+    if (isOwnPcFile(props.hostId)) {
+      try {
+        const picked = await pickFolderNative(start);
+        if (picked) {
+          rememberOpened(picked);
+          pick(picked);
+        } else close();
+        return;
+      } catch {
+        // fall through to the in-app browser
+      }
+    }
+    openBrowse(start);
+  };
 
   const [listing] = createResource(browse, async (path) => {
     const res = await fsList(props.hostId, path);
@@ -147,16 +182,12 @@ export function WorkspacePicker(props: {
                       <div class="ws-label">Recent</div>
                       <For each={recentItems()}>{row}</For>
                     </Show>
-                    <Show when={rootItems().length}>
-                      <div class="ws-label">On this PC</div>
-                      <For each={rootItems()}>{row}</For>
-                    </Show>
                     <div class="ws-sep" role="separator" />
                     <button
                       type="button"
                       role="menuitem"
                       class="ws-row ws-row-open"
-                      onClick={() => openBrowse(props.value || props.home || props.roots[0] || '/')}
+                      onClick={() => void openFolder()}
                       data-testid="workspace-open"
                     >
                       <FolderSearch size={15} class="ws-row-ic" />
@@ -222,7 +253,7 @@ export function WorkspacePicker(props: {
                       <button type="button" class="ws-btn" onClick={() => (setFilter(''), setBrowse(undefined))}>
                         Back
                       </button>
-                      <button type="button" class="ws-btn ws-btn-primary" disabled={listing.loading || !!listing()?.error} onClick={() => pick(dir())} data-testid="workspace-use">
+                      <button type="button" class="ws-btn ws-btn-primary" disabled={listing.loading || !!listing()?.error} onClick={() => (rememberOpened(dir()), pick(dir()))} data-testid="workspace-use">
                         <FolderOpen size={14} />
                         Use this folder
                       </button>

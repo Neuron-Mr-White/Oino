@@ -40,6 +40,7 @@ mod local_files;
 mod local_host;
 mod lsp;
 mod net;
+mod open_local;
 mod op_stream;
 mod pair_phone;
 mod path_kind;
@@ -181,6 +182,9 @@ pub fn run() {
             push::push_fetch,
             push::fs_download,
             push::open_url,
+            open_local::local_open_targets,
+            open_local::local_open,
+            open_local::pick_folder,
             push::push_done,
             push::push_save_as,
             push::push_open,

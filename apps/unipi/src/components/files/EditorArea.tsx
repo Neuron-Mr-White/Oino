@@ -152,7 +152,12 @@ export function EditorArea(props: { root?: () => string | undefined; onBinary: (
                     store={store}
                     root={props.root}
                     visible={() => store.activeId() === tab.id}
-                    onBinary={props.onBinary}
+                    onBinary={(path) => {
+                      // A real binary: drop the empty editor tab, show the no-preview page instead.
+                      const t = store.tabs().find((x) => x.path === path);
+                      if (t) store.remove(t.id);
+                      props.onBinary(path);
+                    }}
                     onLsp={onLsp}
                     onRequestClose={requestClose}
                   />

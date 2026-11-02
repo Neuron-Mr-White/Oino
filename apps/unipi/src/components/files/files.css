@@ -116,3 +116,4 @@
 .feditor-pane.hidden { display: none; }
 .ftree-diag { flex: none; min-width: 15px; padding: 0 3px; border-radius: 6px; font-size: 10px; font-weight: 650; text-align: center; background: color-mix(in srgb, var(--color-warn, #d9a13b) 22%, transparent); color: var(--color-warn, #d9a13b); }
 .ftree-diag.err { background: color-mix(in srgb, var(--color-danger, #d95757) 22%, transparent); color: var(--color-danger, #d95757); }
+.open-menu-icon { gap: 1px; width: auto; padding: 0 5px; }
