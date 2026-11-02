@@ -31,7 +31,12 @@ const trimStr = (s: string | undefined, cap = DISK_STR_CAP): string | undefined 
 function slimEntry(e: SessionEntry | undefined): SessionEntry | undefined {
   if (!e) return undefined;
   const msg = e.message;
-  if (!msg) return { type: e.type, id: e.id, timestamp: e.timestamp, customType: e.customType } as SessionEntry;
+  if (!msg) {
+    const slim = { type: e.type, id: e.id, timestamp: e.timestamp, customType: e.customType } as SessionEntry;
+    // A workspace move's marker names the folder from its details (small: `{cwd, previousCwd}`).
+    if (e.customType === 'oino.cwd_change' && e.details !== undefined) slim.details = e.details;
+    return slim;
+  }
   const content = Array.isArray(msg.content)
     ? msg.content.map((p) => {
         if (p.type === 'image') {

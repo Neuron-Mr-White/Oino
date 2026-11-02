@@ -6,8 +6,10 @@
  * renderer (`RendererCard`, G-21) with the native light row as fallback.
  */
 import { Show } from 'solid-js';
-import { CornerDownRight, SquareTerminal } from 'lucide-solid';
+import { CornerDownRight, FolderInput, SquareTerminal } from 'lucide-solid';
 import type { SessionEntry } from '../../../lib/session/types';
+import { cwdChangeTarget, isCwdChange } from '../../../lib/session/turns';
+import { shortCwd } from '../../../lib/session/selectors';
 import type { TimelineCtx } from '../context';
 import { agentOfEntry } from '../../panes/tabs/agentEntry';
 import { openSubagentTab } from '../../panes/tabs/sessionTabs';
@@ -27,6 +29,18 @@ export function CardRow(props: { entry: SessionEntry; ctx: TimelineCtx }) {
           <SquareTerminal size={15} />
         </span>
         <span class="tl-card-text truncate">{cmdText()}</span>
+      </div>
+    );
+  }
+  // "Move to a workspace…": a small marker row (the reminder text is for the model only).
+  if (isCwdChange(e())) {
+    const to = () => cwdChangeTarget(e());
+    return (
+      <div class="tl-card" data-kind="cwd-change" data-testid="tl-cwd-change" title={to()}>
+        <span class="tool-icon">
+          <FolderInput size={15} />
+        </span>
+        <span class="tl-card-text truncate">Moved to workspace {to() ? shortCwd(to()!) : ''}</span>
       </div>
     );
   }

@@ -154,8 +154,8 @@ describe('DraftView (Z-19)', () => {
     const [host, req] = start.mock.calls[0]!;
     expect(host).toBe('this-pc');
     expect(req.text).toBe('Triage the failing tests');
-    // No workspace → the user's home folder on that PC.
-    expect(req.cwd).toBe('/home/you');
+    // No workspace → no folder: the host runs the chat in its private scratch folder, never home.
+    expect(req.cwd).toBeUndefined();
     await waitFor(() => expect(location.hash).toBe('#/s/this-pc/s-new-1'));
   });
 

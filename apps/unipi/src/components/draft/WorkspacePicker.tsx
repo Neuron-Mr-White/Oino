@@ -2,16 +2,21 @@
  * The draft's workspace row (Z-19): where the new chat runs. A chip — folder
  * icon, name, chevron — opening a menu of this PC's recent session folders,
  * and "Open folder…" (the native dialog on this computer, a folder browser over
- * `fs_list` on a remote PC / the phone). "No workspace" runs the session in the user's
- * home folder on that PC. A PC chip sits beside it when more than one PC is
- * paired.
+ * `fs_list` on a remote PC / the phone). "No workspace" runs the session in a
+ * private scratch folder the host makes for that chat (never the user's home,
+ * where the agent could touch everything). A PC chip sits beside it when more
+ * than one PC is paired.
  */
 import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
-import { ArrowLeft, Check, ChevronDown, Folder, FolderOpen, FolderSearch, House, Monitor } from 'lucide-solid';
+import { ArrowLeft, Check, ChevronDown, Folder, FolderLock, FolderOpen, FolderSearch, Monitor } from 'lucide-solid';
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { fsList } from '../../lib/fs';
 import { shortPath, folderName } from '../../lib/session/newSession';
 import { isOwnPcFile, pickFolderNative } from '../../lib/openLocal';
+import { isHomeCwd } from '../../lib/session/selectors';
+
+/** What "No workspace" means, in the chip tooltip and the menu row. */
+export const NO_WORKSPACE_DETAIL = 'Runs in a private scratch folder';
 
 /** Scratch locations are not projects: hidden from Recent unless the user opened them explicitly. */
 const isTempPath = (p: string) => /^\/(var\/)?tmp(\/|$)/.test(p);
@@ -81,7 +86,8 @@ export function WorkspacePicker(props: {
   const recentItems = createMemo<Item[]>(() => {
     const opened = explicitlyOpened();
     return props.recent
-      .filter((p) => p !== props.home && (!isTempPath(p) || opened.includes(p)))
+      // Home and the scratch folders are "No workspace", not projects.
+      .filter((p) => p !== props.home && !isHomeCwd(p) && (!isTempPath(p) || opened.includes(p)))
       .slice(0, 6)
       .map((path) => ({ path, label: folderName(path), detail: short(path) }));
   });
@@ -147,12 +153,12 @@ export function WorkspacePicker(props: {
         class="ws-chip"
         aria-haspopup="menu"
         aria-expanded={!!anchor()}
-        title={props.value ? `Workspace: ${props.value}` : `No workspace — runs in ${props.home ? short(props.home) : 'your home folder'}`}
+        title={props.value ? `Workspace: ${props.value}` : `No workspace — ${NO_WORKSPACE_DETAIL.toLowerCase()}`}
         disabled={props.disabled}
         onClick={(e) => (anchor() ? close() : setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()))}
         data-testid="workspace-chip"
       >
-        <Show when={props.value} fallback={<House size={14} class="ws-chip-ic" />}>
+        <Show when={props.value} fallback={<FolderLock size={14} class="ws-chip-ic" />}>
           <Folder size={14} class="ws-chip-ic" />
         </Show>
         <span class="ws-chip-label">{label()}</span>
@@ -168,10 +174,10 @@ export function WorkspacePicker(props: {
                   <>
                     <Show when={props.allowNone !== false}>
                       <button type="button" role="menuitemradio" aria-checked={!props.value} class="ws-row" onClick={() => pick(undefined)} data-testid="workspace-none">
-                        <House size={15} class="ws-row-ic" />
+                        <FolderLock size={15} class="ws-row-ic" />
                         <span class="ws-row-text">
                           <span class="ws-row-label">No workspace</span>
-                          <span class="ws-row-detail">Runs in {props.home ? short(props.home) : 'your home folder'}</span>
+                          <span class="ws-row-detail">{NO_WORKSPACE_DETAIL}</span>
                         </span>
                         <Show when={!props.value}>
                           <Check size={15} class="ws-row-check" />

@@ -11,14 +11,15 @@
  * chat-scoped rows only; this menu owns the row-scoped ones.
  */
 import { createMemo, createSignal, Show } from 'solid-js';
-import { Archive, ArchiveRestore, Copy, FileText, Folder, FolderOpen, GitFork, Pencil, Pin, PinOff, Share, Trash2 } from 'lucide-solid';
+import { Archive, ArchiveRestore, Copy, FileText, Folder, FolderInput, FolderOpen, GitFork, Pencil, Pin, PinOff, Share, Trash2 } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { desktopShell } from '../../lib/layout';
 import { exportSession } from '../../lib/session/exportSession';
 import { openRenameDialog, type RenameTarget } from '../session/RenameDialog';
+import { openMoveWorkspaceDialog } from '../session/MoveWorkspaceDialog';
 import { archiveSession, closeRowMenu, copyFromRow, deleteSession, forkSession, markUnread, revealFolder, setPinned, openRowMenuState } from '../../lib/session/actions';
 import { hubs } from '../../lib/session/hub';
-import { sessionTitle } from '../../lib/session/selectors';
+import { isScratchCwd, sessionTitle } from '../../lib/session/selectors';
 import { sessions } from '../../lib/session/store';
 
 export function SessionMenu() {
@@ -70,7 +71,15 @@ export function SessionMenu() {
             <MenuRow icon={<Copy size={iconSize()} />} label="Copy session id" onSelect={run(() => copyFromRow('id', card))} />
             <MenuRow icon={<Folder size={iconSize()} />} label="Copy path" disabled={!card.cwd} onSelect={run(() => copyFromRow('path', card))} />
             <MenuRow icon={<FileText size={iconSize()} />} label="Copy log path" disabled={!card.file} onSelect={run(() => copyFromRow('log', card))} />
-            <MenuRow icon={<FolderOpen size={iconSize()} />} label="Reveal folder" disabled={!card.cwd} onSelect={run(() => revealFolder(hostId, card.cwd))} />
+            <MenuRow icon={<FolderOpen size={iconSize()} />} label={isScratchCwd(card.cwd) ? 'Reveal scratch folder' : 'Reveal folder'} disabled={!card.cwd} onSelect={run(() => revealFolder(hostId, card.cwd))} />
+            <Show when={isScratchCwd(card.cwd)}>
+              <MenuRow
+                icon={<FolderInput size={iconSize()} />}
+                label="Move to a workspace…"
+                onSelect={run(() => openMoveWorkspaceDialog({ hostId, sessionId: card.session_id, cwd: card.cwd }))}
+                testId="srow-move-workspace"
+              />
+            </Show>
             <MenuRow icon={<Share size={iconSize()} />} label="Export…" onSelect={run(() => { sessions().ensure(hostId, card.session_id); return exportSession(hostId, card.session_id); })} />
             <MenuSeparator />
             <Show

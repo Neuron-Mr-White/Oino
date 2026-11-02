@@ -14,9 +14,22 @@ export const NO_WORKSPACE_LABEL = 'No workspace';
 
 const folderOf = (cwd?: string) => (cwd ? cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd : NO_WORKSPACE_LABEL);
 
-/** True when `cwd` is absent or points to a user's bare home directory ("No workspace" in the draft chip, D-18). */
+/**
+ * True when `cwd` is a "No workspace" chat's private scratch folder — `<data dir>/oino/scratch/<session id>`
+ * (Linux `~/.local/share/oino/scratch/…`, macOS `~/Library/Application Support/oino/scratch/…`,
+ * Windows `%LOCALAPPDATA%\\oino\\scratch\\…`). The host picks it; the app only recognises the shape.
+ */
+export function isScratchCwd(cwd?: string | null): boolean {
+  return !!cwd && /[\\/]oino[\\/]scratch[\\/][^\\/]+[\\/]?$/.test(cwd);
+}
+
+/**
+ * True when `cwd` means "No workspace" (D-18): absent, a user's bare home directory (older chats ran
+ * there) or a UniPi scratch folder ({@link isScratchCwd}).
+ */
 export function isHomeCwd(cwd?: string | null): boolean {
   if (!cwd) return true;
+  if (isScratchCwd(cwd)) return true;
   const clean = cwd.replace(/[\\/]+$/, '');
   return !clean || clean === '~' || /^\/home\/[^/]+$|^\/Users\/[^/]+$|^\/root$|^[A-Za-z]:[\\/]Users[\\/][^\\/]+$/.test(clean);
 }

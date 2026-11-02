@@ -7,7 +7,8 @@
  *
  * The composer talks to a local stand-in session (`./draftSession`); the
  * first prompt creates the real session in the chosen folder — "No
- * workspace" is the user's home folder on that PC — replays the draft's
+ * workspace" sends no folder and the host runs the chat in its own private
+ * scratch folder (never the user's home) — replays the draft's
  * choices on it, sends the prompt (`./startSession`) and routes to the chat.
  */
 import { createEffect, createMemo, createResource, createSignal, on, Show, untrack } from 'solid-js';
@@ -101,12 +102,8 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
       return;
     }
     setBusy(true);
-    // No workspace = the home folder on that PC (asked again if the roots are still on their way).
-    let cwd = folder() ?? home();
-    if (!cwd) {
-      const r = await fsRoots(id);
-      cwd = r.ok ? homeOf(r.value.roots) : undefined;
-    }
+    // No workspace = no cwd: the host makes the chat's private scratch folder (never `$HOME`).
+    const cwd = folder();
     const res = await startSession(id, { cwd, text, images, choices });
     if (!res.ok) {
       setBusy(false);
@@ -160,7 +157,7 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
                 busy={busy()}
                 autofocus={layout().desktop()}
                 phone={!layout().desktop()}
-                cwd={() => folder() ?? home()}
+                cwd={() => folder()}
                 placeholder={busy() ? 'Starting the chat…' : undefined}
                 modelSlot={<DraftModelChip session={session} disabled={busy()} />}
                 header={

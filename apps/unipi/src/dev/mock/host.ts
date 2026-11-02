@@ -511,7 +511,8 @@ const BUILTIN: Record<string, MockOp> = {
     const card: SessionCard = {
       session_id: id,
       name: null,
-      cwd: typeof a.cwd === 'string' && a.cwd ? a.cwd : h.spec.cards?.[0]?.cwd ?? '/home/you/p/oino',
+      // Like the real host: no cwd = "No workspace" = the chat's own scratch folder, never home.
+      cwd: typeof a.cwd === 'string' && a.cwd ? a.cwd : `/home/you/.local/share/oino/scratch/${id}`,
       run_state: 'idle',
       updated_at: Date.now(),
       message_count: 0,
@@ -532,6 +533,17 @@ const BUILTIN: Record<string, MockOp> = {
     (card as Record<string, unknown>).name = a.name.trim();
     if (h.spec.cards?.includes(card)) h.emit({ kind: 'session_changed', card: { ...card } });
     return { ...card };
+  },
+  // "Move to a workspace…": only a scratch chat moves, only to a non-scratch folder (one way).
+  session_move: (a, h) => {
+    const card = h.spec.cards?.find((c) => c.session_id === a.session);
+    if (!card) throw err('E_NOT_FOUND', `No session ${String(a.session)}`);
+    const scratch = (p: unknown) => typeof p === 'string' && /[\\/]oino[\\/]scratch[\\/][^\\/]+[\\/]?$/.test(p);
+    if (!scratch(card.cwd)) throw err('E_INTERNAL', 'Only a chat without a workspace can move to one — this chat already has a workspace');
+    if (typeof a.cwd !== 'string' || !a.cwd.startsWith('/') || /[\\/]oino[\\/]scratch([\\/]|$)/.test(a.cwd)) throw err('E_INTERNAL', 'Pick a workspace folder outside UniPi\'s scratch folders');
+    (card as Record<string, unknown>).cwd = a.cwd;
+    h.emit({ kind: 'session_changed', card: { ...card } });
+    return { card: { ...card }, copied: 0, skipped: 0 };
   },
   // App spec §3.14 (WP-A4): patch the card, tell the hub stream, return the card.
   session_meta_set: (a, h) => {

@@ -476,6 +476,20 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
   return turn;
 }
 
+/** `customType` of the marker a "Move to a workspace…" appends (core `oino.cwd_change`). */
+export const CWD_CHANGE_TYPE = 'oino.cwd_change';
+
+/** The chat moved to a workspace here (shown as a marker row after the answer, never folded away). */
+export function isCwdChange(e: SessionEntry): boolean {
+  return e.type === 'custom_message' && e.customType === CWD_CHANGE_TYPE;
+}
+
+/** The folder a `oino.cwd_change` entry moved the chat to. */
+export function cwdChangeTarget(e: SessionEntry): string | undefined {
+  const details = (e.details ?? (e.message as { details?: unknown } | undefined)?.details) as { cwd?: unknown } | undefined;
+  return typeof details?.cwd === 'string' && details.cwd ? details.cwd : undefined;
+}
+
 function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number; stopped: boolean; error: boolean; steps: number }, live: boolean): void {
   s.live = live;
   // Extract the final answer prose even when trailing metadata cards (e.g. saved
@@ -486,7 +500,9 @@ function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number;
       s.answer = item;
       const tail = s.work.slice(i + 1);
       const afterCards = tail.filter(
-        (t) => t.kind === 'card' && (t.entry.type === 'model_change' || t.entry.type === 'thinking_level_change' || t.entry.type === 'branch_summary'),
+        (t) =>
+          t.kind === 'card' &&
+          (t.entry.type === 'model_change' || t.entry.type === 'thinking_level_change' || t.entry.type === 'branch_summary' || isCwdChange(t.entry)),
       );
       if (afterCards.length) {
         const moved = new Set(afterCards);

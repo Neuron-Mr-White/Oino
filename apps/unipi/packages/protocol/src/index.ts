@@ -409,6 +409,8 @@ export {
   TrashEmptyDataSchema,
   SessionRenameRequestSchema,
   SessionCloseRequestSchema,
+  SessionMoveRequestSchema,
+  SessionMoveDataSchema,
   SessionMetaSetRequestSchema,
   hostEventBanner,
 } from "./session.js";
@@ -428,4 +430,5 @@ export type {
   EventsControl,
   NoticeLevel,
   HubEvent,
+  SessionMoveData,
 } from "./session.js";

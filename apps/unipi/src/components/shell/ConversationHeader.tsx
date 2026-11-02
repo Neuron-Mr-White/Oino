@@ -12,7 +12,7 @@
  *   registerChatAction('rename', { run: (ctx) => openRename(ctx) });
  */
 import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
-import { ArrowLeft, Copy, CopyPlus, Ellipsis, FileText, Folder, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
+import { ArrowLeft, Copy, CopyPlus, Ellipsis, FileText, Folder, FolderInput, FolderLock, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { observeTitleOverflow, syncTitleOverflow } from '../sidebar/SessionRow';
 import { copyText } from '../../lib/board/share';
@@ -24,7 +24,7 @@ import { ShellNeedsYouBell } from '../NeedsYouBell';
 import { setNeedsYouOpen } from '../../lib/needsYouOpen';
 import type { IconComponent } from '../../lib/panes/kinds';
 
-export type ChatActionId = 'rename' | 'fork' | 'duplicate' | 'export' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'info';
+export type ChatActionId = 'rename' | 'fork' | 'duplicate' | 'export' | 'move-workspace' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'info';
 
 export type ChatActionCtx = { hostId: string; sessionId: string; title: string; cwd?: string; file?: string };
 
@@ -36,6 +36,8 @@ export const CHAT_ACTIONS: Array<{ id: ChatActionId; label: string; icon: IconCo
   { id: 'fork', label: 'Fork', icon: GitFork, group: 0 },
   { id: 'duplicate', label: 'Duplicate', icon: CopyPlus, group: 0 },
   { id: 'export', label: 'Export…', icon: Share, group: 0 },
+  // A No-workspace (scratch) chat only: one way to a real folder.
+  { id: 'move-workspace', label: 'Move to a workspace…', icon: FolderInput, group: 0 },
   { id: 'copy-id', label: 'Copy session id', icon: Copy, group: 1 },
   { id: 'copy-path', label: 'Copy path', icon: Folder, group: 1 },
   { id: 'copy-log', label: 'Copy log path', icon: FileText, group: 1 },
@@ -98,6 +100,8 @@ export function ConversationHeader(props: {
   project?: string;
   /** Shown for a paired PC (not This computer). */
   hostName?: string;
+  /** A No-workspace chat (its private scratch folder): the folder line offers "Move to a workspace…". */
+  scratch?: boolean;
   /** The session the ⋯ menu acts on (none in a draft). */
   ctx?: ChatActionCtx;
   /** Mode chip etc. (A14 / A16). */
@@ -110,7 +114,10 @@ export function ConversationHeader(props: {
   desktop: boolean;
 }) {
   const [menu, setMenu] = createSignal<DOMRect | undefined>();
+  const [folderMenu, setFolderMenu] = createSignal<DOMRect | undefined>();
   const rows = () => (props.ctx ? chatActionsFor(props.ctx) : []);
+  /** The folder line's rows on a scratch chat: Move to a workspace… / Reveal scratch folder. */
+  const folderRows = () => (props.scratch ? rows().filter((r) => r.id === 'move-workspace' || r.id === 'reveal') : []);
   const hasExtra = () => !!props.extraMenu;
   const sub = () => [props.project, props.hostName].filter(Boolean).join(' · ');
   let titleEl: HTMLHeadingElement | undefined;
@@ -141,10 +148,30 @@ export function ConversationHeader(props: {
           {props.title}
         </h1>
         <Show when={sub()}>
-          <p class="conv-sub" title={props.cwd}>
-            <Folder size={12} />
-            <span>{sub()}</span>
-          </p>
+          <Show
+            when={folderRows().length > 0}
+            fallback={
+              <p class="conv-sub" title={props.cwd}>
+                <Show when={props.scratch} fallback={<Folder size={12} />}>
+                  <FolderLock size={12} />
+                </Show>
+                <span>{sub()}</span>
+              </p>
+            }
+          >
+            <button
+              type="button"
+              class="conv-sub conv-sub-btn"
+              title={`Runs in a private scratch folder: ${props.cwd ?? ''}`}
+              aria-haspopup="menu"
+              aria-expanded={!!folderMenu()}
+              onClick={(e) => setFolderMenu(e.currentTarget.getBoundingClientRect())}
+              data-testid="conv-folder"
+            >
+              <FolderLock size={12} />
+              <span>{sub()}</span>
+            </button>
+          </Show>
         </Show>
       </div>
       <div class="conv-head-tools">
@@ -179,6 +206,16 @@ export function ConversationHeader(props: {
           </button>
         </Show>
       </div>
+      <Show when={folderMenu()}>
+        <AnchoredMenu anchor={folderMenu()!} width={260} label="Workspace" onDismiss={() => setFolderMenu(undefined)}>
+          <For each={folderRows()}>
+            {(row) => {
+              const Icon = row.id === 'reveal' ? FolderOpen : row.icon;
+              return <MenuRow icon={<Icon size={18} />} label={row.id === 'reveal' ? 'Reveal scratch folder' : row.label} onSelect={() => (setFolderMenu(undefined), row.action.run(props.ctx!))} />;
+            }}
+          </For>
+        </AnchoredMenu>
+      </Show>
       {/* ctx-gated rows hide in a draft; the phone's ⋯ Panes group (A29)
           still opens there (Files/Git don't need a session). */}
       <Show when={menu()}>

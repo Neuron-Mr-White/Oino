@@ -8,6 +8,7 @@
  *   restoreSession / deleteArchived / emptyTrash → §3.14's archive list (Z-13)
  *   forkSession(host, session, entryId?)      → `session_fork`, then the new chat (Z-16/Z-17)
  *   revealFolder(host, cwd)                   → the Files pane rooted at the project (Z-16)
+ *   moveToWorkspace(host, session, cwd)       → `session_move`: a scratch chat moves to a folder (one way)
  *
  * The row menu's open state lives here too (one menu app-wide, anchored to the
  * row that asked) so the sidebar and the phone Chat list share it.
@@ -149,6 +150,26 @@ export function revealFolder(hostId: string, cwd: string | undefined): void {
   }
   setFilesTarget({ hostId, path: cwd });
   appNavigate('/files');
+}
+
+/**
+ * "Move to a workspace…": a No-workspace chat (its private scratch folder) runs in `cwd` from its
+ * next turn on — one way only (the host refuses anything else). The card the host answers with
+ * regroups the chat in the sidebar at once; the hub stream confirms it.
+ */
+export async function moveToWorkspace(
+  hostId: string,
+  sessionId: string,
+  cwd: string,
+  opts: { copyFiles?: boolean } = {},
+): Promise<{ cwd: string; copied: number; skipped: number }> {
+  const reply = (await hostClient(hostId).request('session_move', { session: sessionId, cwd, copyFiles: !!opts.copyFiles })) as
+    | { card?: Partial<SessionCard>; copied?: number; skipped?: number }
+    | null
+    | undefined;
+  const moved = typeof reply?.card?.cwd === 'string' && reply.card.cwd ? reply.card.cwd : cwd;
+  hubOf(hostId).patchCard(sessionId, { cwd: moved });
+  return { cwd: moved, copied: reply?.copied ?? 0, skipped: reply?.skipped ?? 0 };
 }
 
 export { sessionHref };

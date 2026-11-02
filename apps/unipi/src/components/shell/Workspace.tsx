@@ -22,7 +22,7 @@ import { layout, SIDE_DEFAULT, BOTTOM_DEFAULT } from '../../lib/layout';
 import { panes, type PaneScope, type PaneView } from '../../lib/panes';
 import { hubs } from '../../lib/session/hub';
 import { sessions } from '../../lib/session/store';
-import { sessionCwd, sessionTitle, shortCwd } from '../../lib/session/selectors';
+import { isScratchCwd, sessionCwd, sessionTitle, shortCwd } from '../../lib/session/selectors';
 import { Conversation } from '../conversation/Conversation';
 import { ModeChip } from '../conversation/ModeChip';
 import { BottomPanel } from '../panes/BottomPanel';
@@ -124,7 +124,9 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
   });
 
   let frame: HTMLDivElement | undefined;
-  const subline = () => (cwd() ? shortCwd(cwd()) : undefined);
+  // A No-workspace chat runs in its private scratch folder: say so instead of the raw data-dir path.
+  const scratch = () => isScratchCwd(cwd());
+  const subline = () => (scratch() ? 'No workspace · private scratch folder' : cwd() ? shortCwd(cwd()) : undefined);
   const ctx = () => (props.sessionId ? { hostId: props.hostId, sessionId: props.sessionId, title: title(), cwd: cwd() || undefined, file: card()?.file || undefined } : undefined);
 
   return (
@@ -142,6 +144,7 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
           title={title()}
           cwd={cwd() || undefined}
           project={subline()}
+          scratch={scratch()}
           hostName={localHost() ? undefined : host()?.name}
           ctx={ctx()}
           chips={

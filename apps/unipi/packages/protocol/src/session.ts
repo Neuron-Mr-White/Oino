@@ -314,6 +314,28 @@ export const SessionRenameRequestSchema = z.object({
   name: SessionNameSchema,
 });
 
+/**
+ * UniPi Oino "Move to a workspace…": a "No workspace" chat (its private scratch folder)
+ * moves to a real folder from its next turn on — one way only. `copy_files` copies the
+ * scratch files over first, never overwriting.
+ */
+export const SessionMoveRequestSchema = z.object({
+  op: z.literal("session_move"),
+  session: SessionTargetSchema,
+  cwd: FsPathSchema,
+  copy_files: z.boolean().optional(),
+});
+
+/** `session_move` → the moved card (its `cwd` is the workspace) and the copy outcome. */
+export const SessionMoveDataSchema = z
+  .object({
+    card: SessionCardSchema,
+    copied: z.number().int().min(0).default(0),
+    skipped: z.number().int().min(0).default(0),
+  })
+  .passthrough();
+export type SessionMoveData = z.infer<typeof SessionMoveDataSchema>;
+
 export const SessionCloseRequestSchema = z.object({
   op: z.literal("session_close"),
   session: SessionTargetSchema,
