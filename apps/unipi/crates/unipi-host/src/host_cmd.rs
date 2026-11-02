@@ -78,6 +78,15 @@ fn layer_of(raw: Option<&str>) -> Result<SettingsLayer, AppErrorDto> {
 /// credential failures, `E_UNSUPPORTED` for `login` (needs a session frontend).
 pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorDto> {
     tracing::info!(op = "host_cmd", kind = cmd.kind(), "request");
+    // Package installs are file operations on the agent dir: no services needed (and a
+    // broken extension set must not keep the user from removing the culprit).
+    match cmd {
+        HostCmd::InstallExtension { path, replace } => {
+            return install_extension(hub, path, replace.unwrap_or(false)).await;
+        }
+        HostCmd::RemoveExtension { id } => return remove_extension(hub, id).await,
+        _ => {}
+    }
     let services = hub
         .core_services()
         .await
@@ -111,6 +120,58 @@ fn refused_into_repo(cmd: &HostCmd) -> Result<(), AppErrorDto> {
         ));
     }
     Ok(())
+}
+
+fn install_error(error: crate::extension_install::InstallError) -> AppErrorDto {
+    match error {
+        crate::extension_install::InstallError::Invalid(text) => invalid(text),
+        crate::extension_install::InstallError::NotInstalled(text) => {
+            AppErrorDto::new(AppErrorCode::E_NOT_FOUND, text, false)
+        }
+        error @ crate::extension_install::InstallError::Io { .. } => failed(error),
+    }
+}
+
+/// `install_extension{path, replace?}`: validate + copy into `<agent dir>/extensions`.
+async fn install_extension(
+    hub: &Arc<SessionHub>,
+    path: String,
+    replace: bool,
+) -> Result<Value, AppErrorDto> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err(invalid("Pick an extension folder or .zip"));
+    }
+    let source = std::path::PathBuf::from(path);
+    let agent_dir = hub.agent_dir().to_path_buf();
+    let outcome = tokio::task::spawn_blocking(move || {
+        crate::extension_install::install(
+            &source,
+            &agent_dir,
+            &crate::sessions::services::dist_dirs(),
+            replace,
+        )
+    })
+    .await
+    .map_err(failed)?
+    .map_err(install_error)?;
+    serde_json::to_value(outcome).map_err(failed)
+}
+
+/// `remove_extension{id}`: delete a user-installed package (bundled ones are refused).
+async fn remove_extension(hub: &Arc<SessionHub>, id: String) -> Result<Value, AppErrorDto> {
+    let agent_dir = hub.agent_dir().to_path_buf();
+    let outcome = tokio::task::spawn_blocking(move || {
+        crate::extension_install::remove(
+            &id,
+            &agent_dir,
+            &crate::sessions::services::dist_dirs(),
+        )
+    })
+    .await
+    .map_err(failed)?
+    .map_err(install_error)?;
+    serde_json::to_value(outcome).map_err(failed)
 }
 
 async fn dispatch(
@@ -191,7 +252,7 @@ async fn dispatch(
                 .map_err(failed)?;
             Ok(Value::Null)
         }
-        HostCmd::Extensions => Ok(json!({ "extensions": extension_infos(services) })),
+        HostCmd::Extensions => Ok(json!({ "extensions": extension_infos(services, hub.agent_dir()) })),
         HostCmd::SetExtensionEnabled { id, enabled } => {
             let mut settings = lock(&services.settings);
             let mut disabled = settings.settings().disabled_extensions();
@@ -261,12 +322,19 @@ async fn dispatch(
             Ok(Value::Null)
         }
         HostCmd::GetShortcuts => Ok(json!({ "shortcuts": shortcuts(services) })),
+        // Served before the services spin up (`run`).
+        HostCmd::InstallExtension { .. } | HostCmd::RemoveExtension { .. } => Err(unsupported(
+            "package installs are served by `run`",
+        )),
     }
 }
 
 /// `_oino/extensions`: loaded extensions plus the ids in `disabledExtensions`
 /// (the same rows `AgentSession::extension_infos` builds, over the services).
-fn extension_infos(services: &Services) -> Vec<Value> {
+///
+/// Each row also says whether Settings may offer "Remove" (`removable`: the package lives
+/// in the user dir `<agent dir>/extensions/<id>`, not the app's bundled share dir).
+fn extension_infos(services: &Services, agent_dir: &std::path::Path) -> Vec<Value> {
     let disabled = lock(&services.settings).settings().disabled_extensions();
     let mut rows: Vec<Value> = services
         .extensions
@@ -281,9 +349,13 @@ fn extension_infos(services: &Services) -> Vec<Value> {
                 loaded: true,
                 path: Some(path.clone()),
             };
-            with_manifest(
-                serde_json::to_value(&info).unwrap_or(Value::Null),
-                manifest_of(std::path::Path::new(&path)),
+            let removable = user_owned(std::path::Path::new(&path), agent_dir);
+            with_removable(
+                with_manifest(
+                    serde_json::to_value(&info).unwrap_or(Value::Null),
+                    manifest_of(std::path::Path::new(&path)),
+                ),
+                removable,
             )
         })
         .collect();
@@ -300,12 +372,35 @@ fn extension_infos(services: &Services) -> Vec<Value> {
                 loaded: false,
                 path: None,
             };
+            let removable = crate::extension_install::is_user_installed(&info.id, agent_dir);
             if let Ok(value) = serde_json::to_value(&info) {
-                rows.push(with_manifest(value, manifest));
+                rows.push(with_removable(with_manifest(value, manifest), removable));
             }
         }
     }
     rows
+}
+
+/// Is the package at `path` (its folder or a file in it) one of `<agent dir>/extensions/*`?
+fn user_owned(path: &std::path::Path, agent_dir: &std::path::Path) -> bool {
+    let root = crate::extension_install::user_root(agent_dir);
+    let canon = |p: &std::path::Path| dunce::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let root = canon(&root);
+    let path = canon(path);
+    path.strip_prefix(&root).is_ok_and(|rest| {
+        rest.components().next().is_some_and(|first| {
+            root.join(first.as_os_str())
+                .join(oino_extension_api::manifest::MANIFEST_FILE)
+                .is_file()
+        })
+    })
+}
+
+fn with_removable(mut row: Value, removable: bool) -> Value {
+    if let Some(object) = row.as_object_mut() {
+        object.insert("removable".to_owned(), Value::Bool(removable));
+    }
+    row
 }
 
 /// The package's `extension.json` (`path` is the package folder or a file in it).

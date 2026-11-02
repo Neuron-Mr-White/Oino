@@ -434,3 +434,57 @@ async fn default_model_and_provider_readiness_without_a_session() {
         "unvalidated rows carry no `ready`"
     );
 }
+
+#[tokio::test]
+async fn install_and_remove_extension_through_host_cmd() {
+    // ext-install: `install_extension{path}` validates and copies into
+    // `<agent dir>/extensions/<id>`, answers needsRestart, asks before a same-id
+    // replace; `remove_extension{id}` deletes it again. Neither needs services.
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("pkg");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("component.wasm"), b"wasm").unwrap();
+    let tag = oino_extension_api::manifest::sha256_tag(b"wasm");
+    std::fs::write(
+        src.join("extension.json"),
+        format!(
+            r#"{{"apiVersion":"oino.extension/2","id":"acme.hello","name":"Hello","version":"1.0.0","checksums":{{"component.wasm":"{tag}"}}}}"#
+        ),
+    )
+    .unwrap();
+    let hub = hub(&dir);
+    let install = HostCmd::InstallExtension {
+        path: src.to_string_lossy().into_owned(),
+        replace: None,
+    };
+    let done = run_on(&hub, install.clone()).await.unwrap();
+    assert_eq!(done["installed"], true);
+    assert_eq!(done["needsRestart"], true);
+    assert_eq!(done["id"], "acme.hello");
+    let target = dir.path().join("agent/extensions/acme.hello");
+    assert!(target.join("component.wasm").is_file());
+    let again = run_on(&hub, install).await.unwrap();
+    assert_eq!(again["installed"], false);
+    assert_eq!(again["confirm"]["installedVersion"], "1.0.0");
+    // A tampered package is a schema error naming the checksum.
+    std::fs::write(src.join("component.wasm"), b"tampered").unwrap();
+    let error = run_on(
+        &hub,
+        HostCmd::InstallExtension {
+            path: src.to_string_lossy().into_owned(),
+            replace: Some(true),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("checksum"), "{error}");
+    let removed = run_on(&hub, HostCmd::RemoveExtension { id: "acme.hello".into() })
+        .await
+        .unwrap();
+    assert_eq!(removed["needsRestart"], true);
+    assert!(!target.exists());
+    let missing = run_on(&hub, HostCmd::RemoveExtension { id: "acme.hello".into() })
+        .await
+        .unwrap_err();
+    assert!(missing.contains("not installed"), "{missing}");
+}

@@ -216,6 +216,22 @@ pub enum HostCmd {
     /// `_oino/set_extension_enabled`: add to / remove from `disabledExtensions`
     /// (applies to sessions created afterwards). → `null`.
     SetExtensionEnabled { id: String, enabled: bool },
+    /// Settings › Extensions › "Install extension…": install the package at `path` **on
+    /// the host machine** (a folder with `extension.json` + component, or a `.zip` of one —
+    /// the phone uploads it through `blob_put` first) into `<agent dir>/extensions/<id>`,
+    /// validated like core's discovery (manifest + checksums). A same-id user package is
+    /// only replaced with `replace: true`; without it the reply is
+    /// `{installed: false, confirm: {id, name, version, installedVersion}}`. Success →
+    /// `{installed: true, id, name, version, path, replaced?, warnings, settingsNamespaces,
+    /// needsRestart}` (`needsRestart`: the running host loads it after a restart).
+    InstallExtension {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        replace: Option<bool>,
+    },
+    /// Remove a user-installed package (`<agent dir>/extensions/<id>`); bundled packages
+    /// are refused (turn them off instead) → `{id, path, bundledRemains, needsRestart}`.
+    RemoveExtension { id: String },
     /// `_oino/auth_providers`: providers with sign-in support and credential state →
     /// `{providers: […]}`. Rows carry the hub's cached credential validation (D-37):
     /// `state` (`ready` | `invalid_key` | `unreachable` | `unknown` | `not_configured`),
@@ -260,6 +276,8 @@ impl HostCmd {
             Self::UnsetExtensionSetting { .. } => "unset_extension_setting",
             Self::Extensions => "extensions",
             Self::SetExtensionEnabled { .. } => "set_extension_enabled",
+            Self::InstallExtension { .. } => "install_extension",
+            Self::RemoveExtension { .. } => "remove_extension",
             Self::AuthProviders { .. } => "auth_providers",
             Self::DefaultModel => "default_model",
             Self::AvailableModels => "available_models",
@@ -347,7 +365,25 @@ mod tests {
             (HostCmd::Extensions, "extensions"),
             (HostCmd::AuthProviders { validate: None }, "auth_providers"),
             (HostCmd::GetShortcuts, "get_shortcuts"),
+            (
+                HostCmd::RemoveExtension { id: "acme.x".into() },
+                "remove_extension",
+            ),
         ] {
+            assert_eq!(cmd.kind(), name);
+            assert_eq!(serde_json::to_value(&cmd).unwrap()["kind"], name);
+        }
+        let install: HostCmd =
+            serde_json::from_str(r#"{"kind":"install_extension","path":"/tmp/pkg"}"#).unwrap();
+        assert_eq!(
+            install,
+            HostCmd::InstallExtension {
+                path: "/tmp/pkg".into(),
+                replace: None,
+            }
+        );
+        assert_eq!(install.kind(), "install_extension");
+        for (cmd, name) in [(install, "install_extension")] {
             assert_eq!(cmd.kind(), name);
             assert_eq!(serde_json::to_value(&cmd).unwrap()["kind"], name);
         }

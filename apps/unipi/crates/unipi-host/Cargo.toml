@@ -73,6 +73,9 @@ base64 = "0.22"
 ed25519-dalek = "3"
 tar = "0.4"
 flate2 = "1"
+# Settings › Extensions › Install extension…: a .zip of a package folder (`extension_install`).
+zip = { version = "2", default-features = false, features = ["flate2", "deflate-flate2"] }
+semver = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 # UNI-294: Chrome cookie import — a private sqlite copy, Linux v10/v11 decryption.
 rusqlite = { version = "0.31", features = ["bundled"] }
