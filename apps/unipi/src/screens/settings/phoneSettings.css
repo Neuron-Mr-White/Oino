@@ -45,3 +45,11 @@ html[data-shell=phone] .settings-phone .toolbar-key { min-height: 56px; }
 
 /* Flash a row landed on from search. */
 html[data-shell=phone] .settings-phone .settings-flash-target { scroll-margin-top: 80px; }
+
+/* Form sheets (New agent, PH-39): no 41 px text links — Cancel / Save / Delete are 48 px buttons. */
+html[data-shell=phone] .agent-editor-sheet .settings-cmd-foot { gap: var(--ph-2, 8px); flex-wrap: wrap; }
+html[data-shell=phone] .agent-editor-sheet .settings-cmd-foot button { min-height: 48px; padding-inline: 16px; font-size: 16px; border-radius: 999px; }
+html[data-shell=phone] .agent-editor-sheet .settings-cmd-foot .settings-link { background: var(--color-surface-2); color: var(--color-text); text-decoration: none; }
+html[data-shell=phone] .agent-editor-sheet input,
+html[data-shell=phone] .agent-editor-sheet textarea,
+html[data-shell=phone] .agent-editor-sheet select { font-size: 16px; min-height: 48px; }

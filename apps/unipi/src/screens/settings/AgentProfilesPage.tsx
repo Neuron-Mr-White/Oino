@@ -29,6 +29,7 @@ import { ModelPickerField } from '../../ui/settings/ModelPickerField';
 import { EnumSelect } from '../../ui/settings/fields';
 import { SettingsBackButton } from './ExtensionsSection';
 import { settingsHostId } from '../../settings/target';
+import { desktopShell } from '../../lib/layout';
 
 /** The host's oino dir (its data dir is `<oino dir>/host`). */
 async function oinoDir(): Promise<string | undefined> {
@@ -272,7 +273,7 @@ function ProfileEditor(props: {
         </Show>
         <label class="agent-field">
           <span class="agent-label">Name</span>
-          <input class="settings-input agent-input font-mono" value={name()} disabled={ro()} autofocus={isNew()} placeholder="reviewer" spellcheck={false} onInput={(e) => setName(e.currentTarget.value.trim())} data-testid="agent-name" />
+          <input class="settings-input agent-input font-mono" value={name()} disabled={ro()} autofocus={isNew() && desktopShell()} placeholder="reviewer" spellcheck={false} autocapitalize="off" autocorrect="off" onInput={(e) => setName(e.currentTarget.value.trim())} data-testid="agent-name" />
           <Show when={nameError()}>
             <span class="settings-field-error">{nameError()}</span>
           </Show>
