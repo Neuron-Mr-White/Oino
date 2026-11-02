@@ -45,6 +45,11 @@ use crate::settings::{CLEAR_RULES, NAMESPACE};
 const STATUS_KEY: &str = "unipi-workflow";
 const SOURCE: &str = "Plan mode";
 
+/// Custom entry holding `{mode}` for THIS chat's permission mode (G-02): the mode is a
+/// safety choice, so it survives restarts — restored at `session_start`. Same channel as
+/// [`plan::PLAN_STATE_ENTRY`].
+pub const PERMISSION_STATE_ENTRY: &str = "unipi:permission-mode";
+
 /// Tools that plan-mode toggles must leave active (GA-28): `ask_user` (the plan flow tells
 /// the model to clarify with it) and the background-task tools. A read-modify-write
 /// `set-active-tools` by another extension can drop them; every plan toggle re-adds the
@@ -169,6 +174,37 @@ impl Workflow {
         )
     }
 
+    /// THIS chat's real status (its own plan and permission state), the payload of the
+    /// per-session workflow topic.
+    fn session_status(&self, session_id: &str) -> WorkflowStatus {
+        WorkflowStatus {
+            plan_mode: self.plans.with(session_id, |s| s.active),
+            permission_mode: Some(self.resolved(session_id).mode.as_str().into()),
+        }
+    }
+
+    /// Publishes THIS chat's status on `unipi:workflow:status:<session id>` (G-01/G-03).
+    /// The global `unipi:workflow:status` is one shared sticky value — chats overwrite
+    /// each other and a UI that opens late reads whichever chat published last — so the
+    /// chip binds to this chat's own topic instead. Published sticky so a subscriber
+    /// that arrives after the change reads the current value in its snapshot.
+    fn publish_session_status(&self, session_id: &str) {
+        let topic = format!("{}:{session_id}", unipi_kit::topics::WORKFLOW_STATUS);
+        let _ = bus::publish(&topic, &self.session_status(session_id), true);
+    }
+
+    /// Both status publishes: the legacy global sticky topic (the TUI reads it; one
+    /// shared value) and this chat's own `unipi:workflow:status:<session id>` (G-01).
+    fn update_status(
+        &self,
+        session_id: &str,
+        plan_mode: Option<bool>,
+        permission_mode: Option<&str>,
+    ) {
+        update_status(plan_mode, permission_mode);
+        self.publish_session_status(session_id);
+    }
+
     fn debug(&self, session_id: &str, line: &str) {
         if !self.resolved(session_id).debug {
             return;
@@ -202,10 +238,16 @@ impl Workflow {
 
     // ── permission mode ──────────────────────────────────────────────────────
 
-    /// Sets THIS chat's mode (E-18): session state only, nothing on disk.
+    /// Sets THIS chat's mode (E-18): session state, persisted as a `unipi:permission-mode`
+    /// entry so it survives restarts (G-02 — a safety choice must not reset to the
+    /// default when the app restarts; an Ask chat must never come back as auto).
     fn set_mode(&self, mode: Mode, session_id: &str) {
         self.modes.with(session_id, |m| mode.as_str().clone_into(m));
-        update_status(None, Some(mode.as_str()));
+        let _ = session::append_entry(
+            PERMISSION_STATE_ENTRY,
+            Some(&json!({"mode": mode.as_str()})),
+        );
+        self.update_status(session_id, None, Some(mode.as_str()));
         unipi_kit::bus::emit(&PermissionModeChanged {
             mode: mode.as_str().into(),
         });
@@ -454,7 +496,7 @@ impl Workflow {
             Some(&json!({"active": true, "planFile": file})),
         );
         let display = plan::display_plan_path(&cwd, Some(&file));
-        update_status(Some(true), None);
+        self.update_status(&sid, Some(true), None);
         restore_tools();
         unipi_kit::bus::emit(&PlanModeChanged {
             active: true,
@@ -485,7 +527,7 @@ impl Workflow {
             PLAN_STATE_ENTRY,
             Some(&json!({"active": false, "planFile": file})),
         );
-        update_status(Some(false), None);
+        self.update_status(cx.session_id(), Some(false), None);
         restore_tools();
         unipi_kit::bus::emit(&PlanModeChanged {
             active: false,
@@ -625,6 +667,20 @@ impl Workflow {
                     }
                 }
             }
+            // G-10: one readable line — the toggle state and where the plan goes.
+            "status" => {
+                if active {
+                    notify(
+                        &format!(
+                            "Plan mode: on — the plan goes to {} (/plan view · /plan off)",
+                            self.plan_display(cx)
+                        ),
+                        "info",
+                    );
+                } else {
+                    notify("Plan mode: off (/plan to plan before acting)", "info");
+                }
+            }
             "approve" => {
                 if let Approval::Keep(fb) = self.approve_plan(cx).await {
                     notify(fb.as_deref().unwrap_or("Plan not approved"), "warning");
@@ -638,7 +694,9 @@ impl Workflow {
             "off" => notify("Plan mode is already off", "info"),
             "" => self.toggle_plan(cx),
             other => notify(
-                &format!("Unknown plan argument \"{other}\" — use on, off, view or approve"),
+                &format!(
+                    "Unknown plan argument \"{other}\" — use on, off, status, view or approve"
+                ),
                 "warning",
             ),
         }
@@ -652,19 +710,16 @@ impl Workflow {
             }
         };
         if req.is_empty() || req == "status" {
+            // G-10: re-read the settings files first — another chat's "make default"
+            // wrote the global default and this session's in-memory store is stale.
+            self.settings.refresh();
             let r = self.resolved(cx.session_id());
-            let default = self
-                .settings
-                .get(NAMESPACE)
-                .get("defaultMode")
-                .and_then(Value::as_str)
-                .unwrap_or("-")
-                .to_owned();
             notify(
                 &format!(
-                    "Permission mode: {} (this chat: {} · default: {default})",
+                    "Permission mode: {} (this chat: {} · default for new chats: {})",
                     r.mode.as_str(),
-                    r.session_mode.as_deref().unwrap_or("-")
+                    r.session_mode.as_deref().unwrap_or("-"),
+                    r.default_mode.as_str()
                 ),
                 "info",
             );
@@ -754,12 +809,17 @@ impl Workflow {
         let cwd = cx.cwd().display().to_string();
         let entries = session::entries().unwrap_or_default();
         let state = plan::restore(&entries, &cwd, cx.session_id(), timers::now_ms());
+        // G-02: this chat's persisted permission mode comes back exactly as it was left —
+        // an Ask chat must never reopen as auto.
+        if let Some(mode) = restore_mode(&entries) {
+            self.modes.with(cx.session_id(), |m| *m = mode);
+        }
         let display = plan::display_plan_path(&cwd, state.plan_file.as_deref());
         let active = state.active;
         self.plans.with(cx.session_id(), |s| *s = state);
         let mode = self.resolved(cx.session_id()).mode;
         self.register_namespace();
-        update_status(Some(active), Some(mode.as_str()));
+        self.update_status(cx.session_id(), Some(active), Some(mode.as_str()));
         unipi_kit::bus::emit(&PermissionModeChanged {
             mode: mode.as_str().into(),
         });
@@ -796,7 +856,8 @@ impl Workflow {
     }
 }
 
-/// Patches the sticky `WORKFLOW_STATUS` snapshot.
+/// Patches the sticky global `WORKFLOW_STATUS` snapshot (the per-chat topic is published
+/// by [`Workflow::publish_session_status`]).
 fn update_status(plan_mode: Option<bool>, permission_mode: Option<&str>) {
     let mut cur: WorkflowStatus = unipi_kit::bus::get().unwrap_or_default();
     if let Some(p) = plan_mode {
@@ -806,6 +867,21 @@ fn update_status(plan_mode: Option<bool>, permission_mode: Option<&str>) {
         cur.permission_mode = Some(m.to_owned());
     }
     unipi_kit::bus::emit(&cur);
+}
+
+/// The chat's persisted permission mode (last `unipi:permission-mode` entry wins).
+#[must_use]
+pub fn restore_mode(entries: &[Value]) -> Option<String> {
+    entries.iter().rev().find_map(|e| {
+        if e.get("customType").and_then(Value::as_str) != Some(PERMISSION_STATE_ENTRY) {
+            return None;
+        }
+        e.get("data")
+            .and_then(|d| d.get("mode"))
+            .and_then(Value::as_str)
+            .filter(|m| Mode::parse(m).is_some())
+            .map(ToOwned::to_owned)
+    })
 }
 
 fn completions(prefix: &str, items: &[(&str, &str)]) -> Vec<CompletionItem> {
@@ -842,7 +918,7 @@ impl Extension for Workflow {
         cx.on(EventKind::BeforeAgentStart, |ext, _ev, cx| async move {
             Ok(ext.before_agent_start(&cx))
         });
-        cx.on(EventKind::OinoSettingsChanged, |ext, ev, _cx| async move {
+        cx.on(EventKind::OinoSettingsChanged, |ext, ev, cx| async move {
             if ext.settings.on_changed(&ev.payload).as_deref() == Some(NAMESPACE) {
                 let keys: Vec<String> = ev
                     .get("keys")
@@ -855,7 +931,11 @@ impl Extension for Workflow {
                     s.mode = None;
                     settings::save(RuleScope::Project, &s);
                 }
-                update_status(None, Some(ext.resolved("settings-changed").mode.as_str()));
+                ext.update_status(
+                    cx.session_id(),
+                    None,
+                    Some(ext.resolved(cx.session_id()).mode.as_str()),
+                );
             }
             Ok(())
         });
@@ -900,6 +980,10 @@ impl Extension for Workflow {
                             ("on", "Enter plan mode"),
                             ("off", "Leave plan mode"),
                             ("view", "Show the current plan file"),
+                            (
+                                "status",
+                                "Show whether plan mode is on and where the plan goes",
+                            ),
                             ("approve", "Run the plan approval prompt"),
                         ],
                     )
@@ -1020,6 +1104,33 @@ mod tests {
         assert_eq!(describe_tool_call("edit", &json!({"path": "a.ts"})), "a.ts");
         assert_eq!(describe_tool_call("x", &json!({"a": 1})), "{\"a\":1}");
         assert_eq!(describe_tool_call("bash", &json!({})), "");
+    }
+
+    #[test]
+    fn permission_mode_restores_from_entries() {
+        // G-02: the last persisted mode wins; an Ask chat must come back as ask.
+        let entries = [
+            json!({"customType": PERMISSION_STATE_ENTRY, "data": {"mode": "ask"}}),
+            json!({"customType": "unipi:plan-mode", "data": {"active": true}}),
+        ];
+        assert_eq!(restore_mode(&entries).as_deref(), Some("ask"));
+        let entries = [
+            json!({"customType": PERMISSION_STATE_ENTRY, "data": {"mode": "ask"}}),
+            json!({"customType": PERMISSION_STATE_ENTRY, "data": {"mode": "full"}}),
+        ];
+        assert_eq!(restore_mode(&entries).as_deref(), Some("full"));
+        // Unparseable or missing data never restores a mode.
+        assert_eq!(
+            restore_mode(&[
+                json!({"customType": PERMISSION_STATE_ENTRY, "data": {"mode": "bogus"}})
+            ]),
+            None
+        );
+        assert_eq!(
+            restore_mode(&[json!({"customType": PERMISSION_STATE_ENTRY, "data": {}})]),
+            None
+        );
+        assert_eq!(restore_mode(&[]), None);
     }
 
     #[test]

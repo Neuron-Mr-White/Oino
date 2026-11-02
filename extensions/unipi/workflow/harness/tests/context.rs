@@ -941,6 +941,126 @@ async fn kill_and_restart_restores_plan_mode_and_pending_compaction() {
     );
 }
 
+/// G-02/G-01/G-10: the per-chat permission mode is persisted as a `unipi:permission-mode`
+/// entry, restored EXACTLY after a host restart (an Ask chat must never come back as
+/// auto), published on this chat's own `unipi:workflow:status:<session>` topic on every
+/// change (the global topic is shared, so chats overwrite each other), and both status
+/// commands answer with one readable line.
+#[tokio::test(flavor = "multi_thread")]
+async fn permission_mode_survives_restart_and_reports_per_session() {
+    use oino_extension_api::CancellationToken;
+    const PERMISSION_ENTRY: &str = "unipi:permission-mode";
+    let mut env = Env::new();
+    let (wf, _) = env.load("workflow").await;
+    env.event(
+        &wf,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    let topic = |env: &Env, sid: &str| -> Vec<Value> {
+        env.host
+            .calls_named("bus_publish")
+            .into_iter()
+            .map(|c| c.detail)
+            .filter(|d| d["topic"] == format!("unipi:workflow:status:{sid}"))
+            .collect()
+    };
+
+    env.command(&wf, "permission", "ask").await;
+    let persisted = env.appended(PERMISSION_ENTRY);
+    assert_eq!(persisted.len(), 1, "the mode is persisted: {persisted:?}");
+    assert_eq!(persisted[0]["data"]["mode"], "ask");
+    let published = topic(&env, "s1");
+    assert_eq!(published.last().unwrap()["sticky"], json!(true));
+    assert_eq!(
+        published.last().unwrap()["data"]["permissionMode"],
+        "ask",
+        "this chat's topic carries this chat's mode"
+    );
+
+    // G-10: one readable line each, with this chat's mode and the global default.
+    env.command(&wf, "permission", "status").await;
+    assert_eq!(
+        env.notifies().last().map(String::as_str),
+        Some("Permission mode: ask (this chat: ask · default for new chats: auto)"),
+        "{:?}",
+        env.notifies()
+    );
+    env.command(&wf, "plan", "status").await;
+    assert_eq!(
+        env.notifies().last().map(String::as_str),
+        Some("Plan mode: off (/plan to plan before acting)"),
+        "{:?}",
+        env.notifies()
+    );
+
+    // A second chat sets full: its own topic says full, and s1's topic is untouched.
+    let other = {
+        let mut cx = env.cx(oino_extension_api::CallKind::Command);
+        cx.session_id = "s2".into();
+        cx
+    };
+    wf.run_command("permission", "full", CancellationToken::new(), other)
+        .await
+        .unwrap();
+    assert_eq!(
+        topic(&env, "s2").last().unwrap()["data"]["permissionMode"],
+        "full"
+    );
+    assert_eq!(
+        topic(&env, "s1").last().unwrap()["data"]["permissionMode"],
+        "ask",
+        "chat two's change does not leak into chat one's topic"
+    );
+
+    // Restart: the chat's own session file comes back as ask — never auto. (The recording
+    // host pools both chats' entries, so the restarted chat is a fresh Env seeded with
+    // s1's entries only — in production each session's jsonl holds its own.)
+    let mut env2 = Env::new();
+    env2
+        .host
+        .seed_entries(vec![json!({
+            "type": "custom", "customType": PERMISSION_ENTRY,
+            "data": {"mode": "ask"}
+        })]);
+    let (wf2, _) = env2.load("workflow").await;
+    env2.event(
+        &wf2,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    let restored = topic(&env2, "s1").last().unwrap().clone();
+    assert_eq!(
+        restored["data"]["permissionMode"], "ask",
+        "{restored:?}"
+    );
+    // The restored mode is the gate's: an Ask chat still asks after the restart.
+    env2
+        .host
+        .queue_dialog_answer(json!({"value": {"optionId": "deny"}}));
+    let blocked = env2
+        .event(
+            &wf2,
+            EventKind::ToolCall,
+            json!({"type": "tool_call", "toolName": "bash", "toolCallId": "r1", "input": {"command": "rm -rf /tmp/x"}}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked["block"], true, "an Ask chat still asks after a restart");
+
+    // Plan mode also reports a readable on-state (G-10) after the restore.
+    env2.command(&wf2, "plan", "on").await;
+    env2.command(&wf2, "plan", "status").await;
+    let notifies = env2.notifies();
+    let status = notifies.last().map(String::as_str).unwrap_or_default();
+    assert!(
+        status.starts_with("Plan mode: on — the plan goes to "),
+        "{status}"
+    );
+}
+
 /// F-06: child workers get the tools their profile grants. A background child's dialogs
 /// auto-deny, so an `ask` decision would always be a denial — when the tool is in the
 /// child's granted set (`control › active_tools`, the AgentSpec allowlist), the ask is
