@@ -99,10 +99,22 @@ impl SourcesContext {
     /// The scanned directories: agent global, then the trust-gated project dir.
     #[must_use]
     fn scan_dirs(&self) -> Vec<(PathBuf, bool)> {
-        vec![
-            (self.agent_dir.join("extensions"), false),
-            (self.cwd.join(".oino").join("extensions"), true),
-        ]
+        let global = self.agent_dir.join("extensions");
+        let project = self.cwd.join(".oino").join("extensions");
+        // cwd = $HOME makes `<cwd>/.oino/extensions` the agent dir itself: scanning it again
+        // as an untrusted project dir would shadow (and then drop) every user extension.
+        if same_dir(&global, &project) {
+            return vec![(global, false)];
+        }
+        vec![(global, false), (project, true)]
+    }
+}
+
+/// The same directory (canonical paths when both resolve, else the literal paths).
+fn same_dir(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
     }
 }
 
@@ -733,6 +745,25 @@ mod tests {
         );
         let out = resolve(&[], &context);
         assert_eq!(ids(&out), vec!["oino.anthropic".to_owned()]);
+    }
+
+    #[test]
+    fn cwd_at_home_never_scans_the_agent_dir_as_an_untrusted_project_dir() {
+        // The desktop app starts in $HOME: `<cwd>/.oino` is the agent dir itself.
+        let dir = tempfile::tempdir().unwrap();
+        let context = SourcesContext {
+            agent_dir: dir.path().join(".oino"),
+            cwd: dir.path().to_path_buf(),
+            ..ctx(dir.path())
+        };
+        package(
+            &dir.path().join(".oino/extensions/acme.router"),
+            "acme.router",
+            "provider",
+        );
+        let out = resolve(&[], &context);
+        assert_eq!(ids(&out), vec!["acme.router".to_owned()]);
+        assert!(!out.packages[0].project, "a user extension is global, not project");
     }
 
     #[test]
