@@ -26,10 +26,13 @@ export function parseHostLink(raw:string):{ok:true;value:ParsedLink}|{ok:false;e
  const invalid=(field:string,message:string)=>({ok:false as const,error:{code:'E_PAIRING_INVALID' as const,message,path:[field],retryable:false}});
  const trimmed=raw.trim();let ticket:string|undefined,code:string|undefined,name:string|undefined;
  if(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)){
-  let url:URL;try{url=new URL(trimmed);}catch{return invalid('t','Invalid link');}
-  if(url.protocol!=='unipi:'||url.hostname!=='pair'||url.pathname!=='')return invalid('t','Expected unipi://pair');
-  ticket=url.searchParams.get('t')??undefined;code=url.searchParams.get('c')??undefined;name=url.searchParams.get('n')??undefined;
- }else{const fields=trimmed.split(/\s+/);if(fields.length!==2)return invalid(fields.length===1?'c':'t','Paste a ticket and code');[ticket,code]=fields;}
+  // PH-36: a regex on the raw string, never `new URL().hostname` — WebView ≤ 113
+  // leaves the host of a non-special scheme (unipi://) empty.
+  const m=/^unipi:\/\/pair\/?(?:\?([^#]*))?(?:#.*)?$/i.exec(trimmed);
+  if(!m)return invalid('t',"This isn't a Unipi pairing link");
+  let params:URLSearchParams;try{params=new URLSearchParams(m[1]??'');}catch{return invalid('t',"This isn't a Unipi pairing link");}
+  ticket=params.get('t')??undefined;code=params.get('c')??undefined;name=params.get('n')??undefined;
+ }else{const fields=trimmed.split(/\s+/);if(fields.length!==2)return invalid(fields.length===1?'c':'t',"This isn't a Unipi pairing link");[ticket,code]=fields;}
  if(!ticket)return invalid('t','Missing ticket');
  if(!code)return invalid('c','Missing code');
  if(!validTicket(ticket))return invalid('t','Invalid endpoint ticket');
