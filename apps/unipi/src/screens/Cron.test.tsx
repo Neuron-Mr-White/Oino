@@ -371,6 +371,15 @@ describe('G-07 / D-32: readable failed cron run sheet & accessible pickers', () 
     expect(screen.getByLabelText('Model (optional)')).toBeInTheDocument();
     expect(screen.getByTestId('workspace-chip')).toBeInTheDocument();
     expect(screen.getByTestId('cron-model-picker-btn')).toBeInTheDocument();
+    // The ONE model dialog, titled by the field, with "Use default" in its footer.
+    fireEvent.click(screen.getByTestId('cron-model-picker-btn'));
+    const modelDialog = await screen.findByTestId('cron-model-menu');
+    // Desktop: the centred dialog; phone: the full-screen sheet — both titled "Job model".
+    expect(modelDialog.closest('[role="dialog"]')?.textContent).toContain('Job model');
+    expect(screen.getByTestId('model-picker-foot').contains(screen.getByTestId('cron-model-default'))).toBe(true);
+    expect(screen.queryByTestId('model-use-startup')).toBeNull();
+    fireEvent.click(modelDialog.closest('[role="dialog"]')!.querySelector('button[aria-label="Close"]')!);
+    await waitFor(() => expect(screen.queryByTestId('cron-model-menu')).toBeNull());
     fireEvent.click(screen.getByTestId('cron-save'));
     expect(await screen.findByTestId('cron-form-error')).toHaveTextContent('Name, prompt, folder and schedule are all required.');
   });

@@ -12,7 +12,7 @@ import { NamespaceForm } from '../ui/settings/form';
 import { settingsSchema } from '../ui/settings/data';
 import type { Namespace } from '../ui/settings/types';
 import { useNavigate, useSearchParams } from '@solidjs/router';
-import { Bell, ChevronDown, ChevronRight, Clock, Cpu, MessageSquare, Pause, Play, Plus, RefreshCw, RotateCcw, Settings2, Square, Trash2 } from 'lucide-solid';
+import { Bell, ChevronDown, ChevronRight, Clock, Cpu, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, Square, Trash2 } from 'lucide-solid';
 import type { AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
 import {
@@ -47,7 +47,7 @@ import { sessions } from '../lib/session/store';
 import { cachedModels, rememberModels } from '../components/draft/hostCache';
 import { WorkspacePicker, homeOf } from '../components/draft/WorkspacePicker';
 import { modelView } from '../components/model/ModelList';
-import { ModelPickerPanel, ModelPopover, PickerFootRow } from '../components/model/ModelPopover';
+import { ModelDialog, ModelPickerPanel, PickerSecondary } from '../components/model/ModelPopover';
 import { modelKey, modelName, parseModels, type ModelInfo } from '../lib/model/picker';
 import { hostReadiness } from '../lib/model/readiness';
 import '../components/draft/draft.css';
@@ -565,13 +565,17 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
   );
 }
 
-/** D-32: the job's model — the ONE model popover (`ModelPopover`) with a "Default model" footer row. */
+/**
+ * D-32: the job's model — the ONE model dialog (`ModelDialog`) titled
+ * "Job model", with "Use default" (this PC's startup model) in its footer.
+ * The button shows the chosen model's display name + provider.
+ */
 function CronModelPicker(props: { hostId: string; value: string; onChange: (modelKey: string) => void }) {
-  const [anchor, setAnchor] = createSignal<DOMRect | undefined>();
+  const [open, setOpen] = createSignal(false);
   const [query, setQuery] = createSignal('');
   let btn: HTMLButtonElement | undefined;
   const [data] = createResource(
-    () => (anchor() ? props.hostId : undefined),
+    () => (open() ? props.hostId : undefined),
     async (id): Promise<{ models: ModelInfo[]; readiness?: Awaited<ReturnType<typeof hostReadiness>> }> => {
       const reg = sessions();
       const key = reg.keys().find((k) => k.startsWith(`${id}/`));
@@ -601,53 +605,59 @@ function CronModelPicker(props: { hostId: string; value: string; onChange: (mode
     const known = (data.latest?.models ?? cachedModels(props.hostId) ?? []).find((m) => modelKey(m) === v);
     return known ? modelName(known) : v.slice(v.indexOf('/') + 1);
   };
+  const provider = () => {
+    const v = props.value.trim();
+    return v.includes('/') ? v.slice(0, v.indexOf('/')) : '';
+  };
+  const close = () => setOpen(false);
   return (
     <>
       <button
         type="button"
         class="ws-chip"
-        aria-haspopup="menu"
-        aria-expanded={!!anchor()}
+        aria-haspopup="dialog"
+        aria-expanded={open()}
         ref={btn}
-        onClick={(e) => (anchor() ? setAnchor(undefined) : (setQuery(''), setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())))}
+        onClick={() => (open() ? close() : (setQuery(''), setOpen(true)))}
         data-testid="cron-model-picker-btn"
       >
         <Cpu size={14} class="ws-chip-ic" />
         <span class="ws-chip-label">{buttonLabel()}</span>
+        <Show when={provider()}>
+          <span class="mp-field-prov" data-testid="cron-model-provider">{provider()}</span>
+        </Show>
         <ChevronDown size={13} class="ws-chip-chev" />
       </button>
-      <Show when={anchor()}>
-        {(rect) => (
-          <ModelPopover anchor={rect()} label="Job model" testId="cron-model-menu" onClose={() => setAnchor(undefined)} trigger={() => btn}>
-            <ModelPickerPanel
-              view={view()}
-              query={query()}
-              onQuery={setQuery}
-              loading={!!data.loading && !data.latest}
-              header={<p class="mpop-label">Model for this job</p>}
-              showEmpty={(data.latest?.models.length ?? 0) === 0}
-              empty={<p class="mp-hint mpop-note">Open a chat once on this PC to browse every model.</p>}
-              currentKey={props.value.trim() || undefined}
-              onSelect={(m) => {
-                props.onChange(modelKey(m));
-                setAnchor(undefined);
-              }}
-              footer={
-                <PickerFootRow
-                  icon={<RotateCcw size={15} />}
-                  label="Default model"
-                  detail="Uses this PC’s startup model"
-                  checked={!props.value.trim()}
-                  onSelect={() => {
-                    props.onChange('');
-                    setAnchor(undefined);
-                  }}
-                  testId="cron-model-default"
-                />
-              }
-            />
-          </ModelPopover>
-        )}
+      <Show when={open()}>
+        <ModelDialog title="Job model" testId="cron-model-menu" onClose={close} trigger={() => btn}>
+          <ModelPickerPanel
+            view={view()}
+            query={query()}
+            onQuery={setQuery}
+            now={props.value.trim() ? `${buttonLabel()}${provider() ? ` · ${provider()}` : ''}` : 'Default — this PC’s startup model'}
+            loading={!!data.loading && !data.latest}
+            showEmpty={(data.latest?.models.length ?? 0) === 0}
+            empty={<p class="mp-hint mp-empty">Open a chat once on this PC to browse every model.</p>}
+            currentKey={props.value.trim() || undefined}
+            onSelect={(m) => {
+              props.onChange(modelKey(m));
+              close();
+            }}
+            scope="“Use default” runs the job on this PC’s startup model."
+            actions={
+              <PickerSecondary
+                label="Use default"
+                pressed={!props.value.trim()}
+                title="Run the job on this PC’s startup model"
+                onClick={() => {
+                  props.onChange('');
+                  close();
+                }}
+                testId="cron-model-default"
+              />
+            }
+          />
+        </ModelDialog>
       </Show>
     </>
   );

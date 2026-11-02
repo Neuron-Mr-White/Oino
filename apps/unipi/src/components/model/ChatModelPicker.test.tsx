@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The in-chat model picker (WP-A14 acceptance, Z-69/Z-76) — the ONE model
- * popover with this chat's footer rows: the Now line in sentence
+ * dialog (the full "Model" dialog) with this chat's data: the Now line in sentence
  * case, one search filtering the Single list *and* both Fusion columns, the
  * Vision/context badges with the current row checked, and the one explicit
  * action sending `set_model` (MockHost log) or `fusion.set-pair` plus the
@@ -16,8 +16,8 @@ import { resetLayout, setDesktopOverride } from '../../lib/layout';
 import { toasts } from '../../lib/toasts';
 import { createMockHost, type MockWorld } from '../../dev/mock/host';
 import { SCENARIOS } from '../../dev/mock/scenarios';
-import { ChatModelPicker } from './ChatModelPicker';
-import { closeModelPicker } from './target';
+import { ChatModelPicker, ModelPickerLayer } from './ChatModelPicker';
+import { closeModelPicker, modelPickerTarget, openModelPicker } from './target';
 
 const HOST = 'this-pc';
 const SESSION = 's001';
@@ -47,7 +47,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe('the chat model popover (Z-69)', () => {
+describe('the chat model dialog (Z-69)', () => {
   it('shows Now in sentence case and the catalogue with Vision + context badges', async () => {
     await boot('model-picker');
     picker();
@@ -91,13 +91,13 @@ describe('the chat model popover (Z-69)', () => {
 });
 
 describe('Fusion (Z-76)', () => {
-  it('opens on the Fusion view of the running pair and shares the search across columns', async () => {
+  it('opens on the Fusion tab of the running pair and shares the search across columns', async () => {
     await boot('model-fusion');
     picker();
     await waitFor(() => expect(screen.getByTestId('model-picker-now').textContent).toContain('Fusion · Claude Opus 4.1 ◆ GLM-4.6'));
-    expect(screen.getByTestId('model-picker').dataset.view).toBe('fusion');
-    // the way back to the one list is in the same popover
-    expect(screen.getByTestId('model-fusion-back')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('model-tab-fusion').getAttribute('aria-selected')).toBe('true'));
+    // the Single tab is the way back to the one list
+    expect(screen.getByTestId('model-tab-single').getAttribute('aria-selected')).toBe('false');
     const fusion = screen.getByTestId('model-picker-fusion');
     const columns = fusion.querySelectorAll('.mp-col-list');
     expect(columns).toHaveLength(2);
@@ -129,11 +129,12 @@ describe('Fusion (Z-76)', () => {
     await waitFor(() => expect(toasts().list().some((t) => t.message === 'Fusion pair: GPT-5 ◆ GLM-4.6')).toBe(true));
   });
 
-  it('is absent when unipi.fusion is off (no dead row)', async () => {
+  it('is absent when unipi.fusion is off (no dead tab)', async () => {
     await boot('model-picker');
     picker();
     await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
-    expect(screen.queryByTestId('model-open-fusion')).toBeNull();
+    expect(screen.queryByTestId('model-tab-fusion')).toBeNull();
+    expect(screen.queryByTestId('model-tab-single')).toBeNull();
   });
 });
 
@@ -142,8 +143,10 @@ describe('the Cycle set (WP-A25, G-15 /scoped-models)', () => {
     const world = await boot('model-cycle-set');
     render(() => <ChatModelPicker target={{ hostId: HOST, sessionId: SESSION, focus: 'cycle' }} />);
     await waitFor(() => expect(screen.getByTestId('model-picker-cycle-list')).toBeTruthy());
-    expect(screen.getByTestId('model-picker').dataset.view).toBe('cycle');
-    const toggle = screen.getByTestId('model-cycle-back');
+    const toggle = screen.getByTestId('model-picker-cycle-toggle');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    // the list stays above the expanded set
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
     // A custom pattern (a glob) is kept as written, not turned into a checkbox.
     await waitFor(() => expect(screen.getByTestId('model-picker-cycle-custom').textContent).toContain('anthropic/*'));
     expect(toggle.textContent).toContain('Cycle set · 1 of');
@@ -157,15 +160,17 @@ describe('the Cycle set (WP-A25, G-15 /scoped-models)', () => {
     await waitFor(() => expect(screen.getByTestId('cycle-anthropic/claude-sonnet-4-5').getAttribute('aria-pressed')).toBe('false'));
   });
 
-  it('is a footer row of the normal picker that opens the set in the same popover', async () => {
+  it('is a collapsed "Cycle set · …" section of the normal picker that expands in place', async () => {
     await boot('model-picker');
     picker();
-    await waitFor(() => expect(screen.getByTestId('model-picker-cycle-toggle')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    expect(screen.getByTestId('model-picker-cycle-toggle').textContent).toContain('Cycle set ·');
     expect(screen.queryByTestId('model-picker-cycle-list')).toBeNull();
     fireEvent.click(screen.getByTestId('model-picker-cycle-toggle'));
     await waitFor(() => expect(screen.getByTestId('model-picker-cycle-list')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('model-cycle-back'));
-    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    expect(screen.getByTestId('model-picker-list')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('model-picker-cycle-toggle'));
+    await waitFor(() => expect(screen.queryByTestId('model-picker-cycle-list')).toBeNull());
   });
 });
 
@@ -275,8 +280,8 @@ describe('Suggested (P0-10, fusion.status.curated)', () => {
   it('the Fusion columns put their curated lists first and take the curated default pair', async () => {
     await bootCurated({ kind: 'single', model: 'anthropic/claude-sonnet-4-5' });
     picker();
-    await waitFor(() => expect(screen.getByTestId('model-open-fusion')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('model-open-fusion'));
+    await waitFor(() => expect(screen.getByTestId('model-tab-fusion')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('model-tab-fusion'));
     await waitFor(() => expect(screen.getByTestId('model-picker-fusion')).toBeTruthy());
     const [lead, side] = [...screen.getByTestId('model-picker-fusion').querySelectorAll('.mp-col-list')];
     const names = (el: Element) => [...el.querySelectorAll('.mp-row-name')].map((n) => n.textContent);
@@ -287,25 +292,52 @@ describe('Suggested (P0-10, fusion.status.curated)', () => {
   });
 });
 
-describe('one popover, anchored (owner: one model picker)', () => {
-  it('is an anchored menu on the desktop with the shared search, list and footer rows', async () => {
+describe('one dialog (owner: one model picker, the full one)', () => {
+  it('is the centred "Model" dialog: title, close, Now, search, list, Cycle set, scope line and Use at startup', async () => {
     await boot('model-picker');
     picker();
     await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
-    const pop = screen.getByTestId('model-picker-pop');
-    expect(pop.closest('[role="menu"]')).toBeTruthy();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    const overlay = screen.getByTestId('model-picker-overlay');
+    const dialog = screen.getByRole('dialog');
+    expect(overlay.contains(dialog)).toBe(true);
+    expect(dialog.getAttribute('aria-label')).toBe('Model');
+    expect(dialog.querySelector('h2')?.textContent).toBe('Model');
+    expect(dialog.contains(screen.getByTestId('model-picker-close'))).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect((screen.getByTestId('model-search') as HTMLInputElement).placeholder).toMatch(/^Search all \d+ models$/);
     const foot = screen.getByTestId('model-picker-foot');
     expect(foot.contains(screen.getByTestId('model-use-startup'))).toBe(true);
-    expect(foot.contains(screen.getByTestId('model-picker-cycle-toggle'))).toBe(true);
+    expect(screen.getByTestId('model-picker-scope').textContent).toBe('Your pick applies to this chat only. “Use at startup” sets the model new chats start with.');
+    expect(foot.contains(screen.getByTestId('model-picker-cycle-toggle'))).toBe(false);
   });
 
-  it('is a bottom sheet on the phone', async () => {
+  it('closes with ✕, Esc and a backdrop click; nothing is sent', async () => {
+    const world = await boot('model-picker');
+    render(() => <ModelPickerLayer />);
+    for (const close of [
+      () => fireEvent.click(screen.getByTestId('model-picker-close')),
+      () => fireEvent.keyDown(screen.getByTestId('model-search'), { key: 'Escape' }),
+      () => fireEvent.click(screen.getByTestId('model-picker-overlay')),
+    ]) {
+      openModelPicker({ hostId: HOST, sessionId: SESSION });
+      await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+      close();
+      await waitFor(() => expect(screen.queryByTestId('model-picker-overlay')).toBeNull());
+      expect(modelPickerTarget()).toBeUndefined();
+    }
+    expect(cmds(world, 'set_model')).toHaveLength(0);
+  });
+
+  it('is a full-screen sheet with the same content on the phone', async () => {
     setDesktopOverride(false);
     await boot('model-picker');
     picker();
-    await waitFor(() => expect(screen.getByTestId('model-picker-pop-sheet')).toBeTruthy());
-    await waitFor(() => expect(screen.getByTestId('model-picker-pop-sheet').contains(screen.getByTestId('model-picker-list'))).toBe(true));
+    await waitFor(() => expect(screen.getByTestId('model-picker-dialog-sheet')).toBeTruthy());
+    const sheet = screen.getByTestId('model-picker-dialog-sheet');
+    await waitFor(() => expect(sheet.contains(screen.getByTestId('model-picker-list'))).toBe(true));
+    expect(sheet.contains(screen.getByTestId('model-use-startup'))).toBe(true);
+    expect(sheet.contains(screen.getByTestId('model-picker-cycle-toggle'))).toBe(true);
+    expect(screen.queryByTestId('model-picker-overlay')).toBeNull();
   });
 
   it('keyboard: the search has focus, ↓ walks the rows one at a time, Enter in the search picks the first hit', async () => {

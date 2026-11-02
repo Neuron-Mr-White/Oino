@@ -1,9 +1,9 @@
 /**
  * Model chip (WP-A14, Z-69/Z-70): the composer's one model entry point —
- * "the model that runs" with a rolling name, opening the model popover
- * (`ChatModelPicker`, anchored here via `data-session`).
+ * "the model that runs" with a rolling name, opening the one model dialog
+ * (`ChatModelPicker`; `data-session` names the chat it belongs to).
  * The chat title and the (deleted) footer tray are not entry points (Z-70);
- * Ctrl/Cmd+M and `/model` reach the same popover.
+ * Ctrl/Cmd+M and `/model` reach the same dialog.
  */
 import { Show } from 'solid-js';
 import { ChevronUp, Cpu } from 'lucide-solid';
@@ -32,7 +32,7 @@ export function ModelChip(props: { session: SessionHandle; disabled?: boolean })
       type="button"
       class="tb-chip tb-chip-model"
       aria-label={`Model: ${label()}. Change model`}
-      aria-haspopup="menu"
+      aria-haspopup="dialog"
       aria-expanded={(() => {
         const t = modelPickerTarget();
         return !!t && t.hostId === props.session.hostId && t.sessionId === props.session.sessionId();

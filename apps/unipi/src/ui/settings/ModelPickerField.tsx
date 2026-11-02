@@ -1,17 +1,18 @@
 /**
- * The settings model control: the ONE model popover (`ModelPopover`) the
- * composer's model chips open (search, Suggested group, provider rows,
- * readiness — dead-key providers in the collapsed Unavailable group),
- * anchored to the field's button (a bottom sheet on the phone). The button
+ * The settings model control: the ONE model dialog (`ModelDialog` +
+ * `ModelPickerPanel`) the composer's model chips open — titled by the
+ * field's label, with its Now line, full-width search, the shared list
+ * (Suggested group, provider rows, readiness — dead-key providers in the
+ * collapsed Unavailable group) and "Use default" in the footer (no Fusion
+ * tab, Cycle set or "Use at startup": those belong to a chat). The button
  * shows the model's display name + provider; an empty value shows the
- * field's documented fallback ("Session model" / "Inherit") and the footer
- * has a "Use default" row. Typing an id is only an escape for models the
- * catalogue can't list.
+ * field's documented fallback ("Session model" / "Inherit"). Typing an id is
+ * only an escape for models the catalogue can't list.
  */
 import { Show, createMemo, createResource, createSignal } from 'solid-js';
-import { ChevronDown, Cpu, RotateCcw } from 'lucide-solid';
+import { ChevronDown, Cpu } from 'lucide-solid';
 import { modelView } from '../../components/model/ModelList';
-import { ModelPickerPanel, ModelPopover, PickerFootRow } from '../../components/model/ModelPopover';
+import { ModelDialog, ModelPickerPanel, PickerSecondary } from '../../components/model/ModelPopover';
 import { cachedModels, rememberModels } from '../../components/draft/hostCache';
 import { startupKey } from '../../components/model/suggested';
 import { fetchFusion, fusionAvailable, type FusionCurated } from '../../lib/model/fusion';
@@ -53,7 +54,7 @@ export function ModelPickerField(props: {
   testId: string;
   onPick: (key: string | undefined) => void;
 }) {
-  const [anchor, setAnchor] = createSignal<DOMRect | undefined>();
+  const [open, setOpen] = createSignal(false);
   const [query, setQuery] = createSignal('');
   const [typed, setTyped] = createSignal('');
   const [data] = createResource(() => props.hostId, loadModels);
@@ -83,7 +84,7 @@ export function ModelPickerField(props: {
     ),
   );
   const close = () => {
-    setAnchor(undefined);
+    setOpen(false);
     setTyped('');
   };
   let btn: HTMLButtonElement | undefined;
@@ -97,16 +98,16 @@ export function ModelPickerField(props: {
         type="button"
         class="settings-model-btn"
         aria-label={`${props.label}: ${name()}. Change`}
-        aria-haspopup="menu"
-        aria-expanded={!!anchor()}
+        aria-haspopup="dialog"
+        aria-expanded={open()}
         disabled={props.disabled}
         data-empty={props.value.trim() ? undefined : ''}
         data-testid={props.testId}
         ref={btn}
-        onClick={(e) => {
-          if (anchor()) return close();
+        onClick={() => {
+          if (open()) return close();
           setQuery('');
-          setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect());
+          setOpen(true);
         }}
       >
         <Cpu size={14} class="settings-model-ic" aria-hidden="true" />
@@ -116,54 +117,52 @@ export function ModelPickerField(props: {
         </Show>
         <ChevronDown size={14} class="settings-model-chev" aria-hidden="true" />
       </button>
-      <Show when={anchor()}>
-        {(rect) => (
-          <ModelPopover anchor={rect()} label={props.label} testId={`model-pop-${props.testId}`} onClose={close} trigger={() => btn}>
-            <ModelPickerPanel
-              view={view()}
-              query={query()}
-              onQuery={setQuery}
-              loading={!!data.loading && !data.latest}
-              header={<p class="mpop-label">{props.label}</p>}
-              showEmpty={(data.latest?.models.length ?? 0) === 0}
-              empty={
-                <div class="mpop-empty-note">
-                  <p class="mp-hint">The model list shows once a chat is open on this PC. You can enter an id below.</p>
-                  <form
-                    class="settings-model-advanced"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const id = typed().trim();
-                      if (id) pick(id);
-                    }}
-                  >
-                    <input
-                      class="mpop-search"
-                      type="text"
-                      aria-label="Advanced: model id"
-                      placeholder="Advanced: provider/model"
-                      spellcheck={false}
-                      value={typed()}
-                      onInput={(e) => setTyped(e.currentTarget.value)}
-                    />
-                  </form>
-                </div>
-              }
-              currentKey={props.value.trim() || undefined}
-              onSelect={(m) => pick(modelKey(m))}
-              footer={
-                <PickerFootRow
-                  icon={<RotateCcw size={15} />}
-                  label="Use default"
-                  detail={props.fallback}
-                  checked={!props.value.trim()}
-                  onSelect={() => pick(undefined)}
-                  testId="model-use-default"
-                />
-              }
-            />
-          </ModelPopover>
-        )}
+      <Show when={open()}>
+        <ModelDialog title={props.label} testId={`model-pop-${props.testId}`} onClose={close} trigger={() => btn}>
+          <ModelPickerPanel
+            view={view()}
+            query={query()}
+            onQuery={setQuery}
+            now={props.value.trim() ? `${name()}${provider() ? ` · ${provider()}` : ''}` : `Default — ${props.fallback}`}
+            loading={!!data.loading && !data.latest}
+            showEmpty={(data.latest?.models.length ?? 0) === 0}
+            empty={
+              <div class="mp-empty-note">
+                <p class="mp-hint">The model list shows once a chat is open on this PC. You can enter an id below.</p>
+                <form
+                  class="settings-model-advanced"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const id = typed().trim();
+                    if (id) pick(id);
+                  }}
+                >
+                  <input
+                    class="mp-search"
+                    type="text"
+                    aria-label="Advanced: model id"
+                    placeholder="Advanced: provider/model"
+                    spellcheck={false}
+                    value={typed()}
+                    onInput={(e) => setTyped(e.currentTarget.value)}
+                  />
+                </form>
+              </div>
+            }
+            currentKey={props.value.trim() || undefined}
+            onSelect={(m) => pick(modelKey(m))}
+            scope={`“Use default” leaves it unset: ${props.fallback}.`}
+            actions={
+              <PickerSecondary
+                label="Use default"
+                pressed={!props.value.trim()}
+                title={`Leave it unset (${props.fallback})`}
+                onClick={() => pick(undefined)}
+                testId="model-use-default"
+              />
+            }
+          />
+        </ModelDialog>
       </Show>
     </>
   );

@@ -1,5 +1,5 @@
 /**
- * The one model list (F-02 / G-06): every model picker (`ModelPopover` — the
+ * The one model list (F-02 / G-06): every model picker (the one model dialog, `ModelPopover.tsx` — the
  * in-chat chip, the New-chat chip, the settings fields) renders the SAME rows — Suggested group on top, then all usable chat
  * models, then the collapsed "Unavailable" group with the provider's reason.
  * The data comes from `modelView` (availability + readiness + kind filter +

@@ -1,9 +1,9 @@
 /**
  * Model / thinking / working-mode scenarios (WP-A14):
  *
- *   model-picker   the model popover: Now line, shared search, Single rows with
+ *   model-picker   the Model dialog: Now line, shared search, Single rows with
  *                  Vision + context badges, current checked (Z-69)
- *   model-fusion   the popover on its Fusion view: unipi.fusion on, a running
+ *   model-fusion   the dialog on its Fusion tab: unipi.fusion on, a running
  *                  pair, Lead/Sidekick columns filtered by the one search,
  *                  effort pills (Z-76)
  *   thinking-chip  the composer's model / thinking / context controls and the

@@ -24,6 +24,8 @@ export type MenuKeysOptions = {
   trigger?: () => HTMLElement | undefined;
   /** Focus the checked row on open (default true). False: the caller focuses (a search field). */
   autoFocus?: boolean;
+  /** Tab closes the menu (default true). False: a dialog wraps Tab itself (the model picker). */
+  tabCloses?: boolean;
 };
 
 /** The text a row is found by (its `data-label`, else its first line). */
@@ -78,6 +80,7 @@ export function menuKeys(el: HTMLElement, opts: MenuKeysOptions): () => void {
         focusRow(list[list.length - 1]);
         return;
       case 'Tab':
+        if (opts.tabCloses === false) return;
         e.preventDefault();
         opts.close();
         return;

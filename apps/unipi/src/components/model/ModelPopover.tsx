@@ -1,81 +1,138 @@
 /**
- * The ONE model picker (owner: "two different model pickers is weird"): the
- * New-chat draft chip, the in-chat model chip (and Ctrl/Cmd+M, `/model`,
- * `/scoped-models`) and the settings model fields all open this popover —
- * the same look, the same list (`ModelList` over `modelView`: readiness,
- * Suggested / curated ranking, display names, the collapsed Unavailable
- * group with its reasons), the same search and keyboard (search field,
- * ↓ into the rows, ↑ back, Enter picks the first hit, Esc / Tab close).
+ * The ONE model picker (owner: "two different model pickers is weird" — and
+ * "it must be the full one"): the New-chat draft chip, the in-chat model chip
+ * (and Ctrl/Cmd+M, `/model`, `/scoped-models`), the settings model fields and
+ * the Cron job model field all open this dialog — the old in-chat "Model"
+ * dialog layout everywhere:
  *
- * Anchoring: a popover under / above the chip or field on the desktop, a
- * bottom sheet on the phone shell. What differs per context is only the
- * header line and the compact footer rows (`PickerFootRow`): in a chat
- * "Use at startup", "Fusion…" and "Cycle set…"; in the draft "Use at
- * startup"; in settings "Use default". A footer row may swap the panel's
- * body for a sub-view (Fusion columns, the cycle set) inside the same
- * popover — never a second dialog.
+ *   title (+ ✕) · "Now …" · Single / Fusion tabs (when the context has
+ *   Fusion) · full-width search "Search all N models" · the list (Suggested,
+ *   provider rows, the collapsed Unavailable group with its reasons, the
+ *   Startup / Vision / context badges) · the collapsible "Cycle set · …"
+ *   section (chat / draft) · the footer: the explanatory line and the
+ *   context's action ("Use at startup", or a field's "Use default").
+ *
+ * Shell (`ModelDialog`): a centred modal on the desktop (`model-picker-overlay`,
+ * portalled so it sits above sheets and settings), a full-screen sheet with
+ * the same content on the phone. Keyboard: the search has focus, ↓ walks the
+ * rows, ↑ goes back, Enter in the search picks the first hit, Esc closes,
+ * Tab wraps inside; focus returns to the opener on close.
  */
-import { onCleanup, Show, type JSX } from 'solid-js';
-import { AnchoredMenu } from '../board/AnchoredMenu';
+import { createEffect, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
+import { Portal } from 'solid-js/web';
+import { Check, ChevronDown, ChevronRight, X } from 'lucide-solid';
 import { BoardSheet } from '../board/BoardSheet';
 import { menuKeys } from '../composer/menuKeys';
 import { layout } from '../../lib/layout';
+import { pushBack } from '../../lib/back';
+import { wrapTab } from '../../lib/focusTrap';
 import type { SessionHandle } from '../../lib/session/store';
-import { ChevronLeft } from 'lucide-solid';
-import { modelKey, type ModelInfo } from '../../lib/model/picker';
-import { ModelList, type ModelView } from './ModelList';
+import { hits as modelHits, modelKey, modelName, type ModelInfo } from '../../lib/model/picker';
+import { cycleKeyOf, cycleKeysOf, cycleLabel, toggleCycleKey } from '../../lib/model/cycle';
+import { LIST_CAP, ModelList, type ModelView } from './ModelList';
+import '../session/session-modal.css';
 import './model.css';
 
-/** Popover width on the desktop (the list's name + badges fit; Fusion's columns stack). */
-export const PICKER_WIDTH = 380;
-
-/** Where a picker opens when nothing on screen is its chip (a shortcut with no composer shown). */
-export function centredAnchor(): DOMRect {
-  const x = window.innerWidth / 2 + PICKER_WIDTH / 2;
-  const y = Math.max(8, window.innerHeight / 2 - 240);
-  return { left: x, right: x, top: y, bottom: y, width: 0, height: 0, x, y, toJSON: () => ({}) } as DOMRect;
-}
-
 /**
- * The shell: an `AnchoredMenu` anchored to `anchor` (desktop) or a bottom
- * sheet (phone). `children` is the panel (`ModelPickerPanel` or a sub-view).
+ * The dialog shell: centred modal (desktop) or full-screen sheet (phone).
+ * `testId` names the dialog (desktop) / the sheet's content (phone, the sheet
+ * itself is `${testId}-sheet`).
  */
-export function ModelPopover(props: {
-  anchor: DOMRect;
-  label: string;
+export function ModelDialog(props: {
+  title: string;
   testId: string;
   onClose: () => void;
-  /** The chip / field that opened it: focus returns there. */
+  /** The chip / field that opened it: focus returns there (default: whatever had focus at open). */
   trigger?: () => HTMLElement | undefined;
   children: JSX.Element;
 }) {
   const desktop = () => layout().desktop();
-  const keys = (el: HTMLElement) => onCleanup(menuKeys(el, { close: props.onClose, trigger: props.trigger, autoFocus: false }));
+  const openedFrom = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+  const trigger = () => props.trigger?.() ?? (openedFrom && openedFrom !== document.body ? openedFrom : undefined);
+  const keys = (el: HTMLElement) => onCleanup(menuKeys(el, { close: props.onClose, trigger, autoFocus: false, tabCloses: false }));
+  // Back / Esc closes the top overlay — this dialog, not the sheet or page under it.
+  createEffect(() => {
+    if (desktop()) onCleanup(pushBack(() => props.onClose()));
+  });
   return (
     <Show
       when={desktop()}
       fallback={
-        <BoardSheet open onClose={props.onClose} label={props.label} testId={`${props.testId}-sheet`} class="model-picker-sheet">
-          <div class="mpop mpop-sheet" data-testid={props.testId} ref={keys}>
+        <BoardSheet open onClose={props.onClose} label={props.title} title={props.title} testId={`${props.testId}-sheet`} class="model-picker-sheet">
+          <div class="mp-sheet-body" data-testid={props.testId} ref={keys}>
             {props.children}
           </div>
         </BoardSheet>
       }
     >
-      <AnchoredMenu anchor={props.anchor} alignEnd width={PICKER_WIDTH} label={props.label} class="mpop-menu" onDismiss={props.onClose}>
-        <div class="mpop" data-testid={props.testId} ref={keys}>
-          {props.children}
+      <Portal>
+        <div class="sm-overlay model-picker-overlay" onClick={(e) => e.target === e.currentTarget && props.onClose()} data-testid="model-picker-overlay">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={props.title}
+            class="sm-dialog model-picker-dialog"
+            tabindex="-1"
+            data-testid={props.testId}
+            ref={(el) => {
+              keys(el);
+              queueMicrotask(() => el.isConnected && !el.contains(document.activeElement) && el.focus({ preventScroll: true }));
+            }}
+            onKeyDown={(e: KeyboardEvent) => {
+              if (e.key === 'Escape' && !e.defaultPrevented) {
+                e.preventDefault();
+                e.stopPropagation();
+                props.onClose();
+                return;
+              }
+              if (wrapTab(e, e.currentTarget as HTMLElement)) e.stopPropagation();
+            }}
+          >
+            <div class="sm-head">
+              <span class="sm-title">
+                <h2>{props.title}</h2>
+              </span>
+              <button type="button" class="ghost-icon-button" aria-label="Close" onClick={() => props.onClose()} data-testid="model-picker-close">
+                <X size={20} />
+              </button>
+            </div>
+            <div class="sm-body mp-body">{props.children}</div>
+          </div>
         </div>
-      </AnchoredMenu>
+      </Portal>
     </Show>
   );
 }
 
-/** The search field every picker view starts with (desktop: focused at once). */
+/** The "Now …" line under the title. */
+export function NowLine(props: { value: string }) {
+  return (
+    <p class="mp-now" data-testid="model-picker-now">
+      <span class="mp-now-word">Now</span>
+      <span class="mp-now-value">{props.value}</span>
+    </p>
+  );
+}
+
+/** Single / Fusion tabs (shown only where Fusion is on for the context). */
+export function ModeTabs(props: { mode: 'single' | 'fusion'; onMode: (m: 'single' | 'fusion') => void }) {
+  return (
+    <div class="sm-tabs mp-tabs" role="tablist" aria-label="Model mode">
+      <button type="button" role="tab" aria-selected={props.mode === 'single'} class="sm-tab" onClick={() => props.onMode('single')} data-testid="model-tab-single">
+        Single
+      </button>
+      <button type="button" role="tab" aria-selected={props.mode === 'fusion'} class="sm-tab" onClick={() => props.onMode('fusion')} data-testid="model-tab-fusion">
+        Fusion
+      </button>
+    </div>
+  );
+}
+
+/** The full-width search (desktop: focused at once; the phone keeps the keyboard down). */
 export function PickerSearch(props: { value: string; placeholder?: string; onInput: (q: string) => void; onEnter?: () => void }) {
   return (
     <input
-      class="mpop-search"
+      class="mp-search"
       type="search"
       placeholder={props.placeholder ?? 'Search models'}
       aria-label="Search models"
@@ -88,7 +145,6 @@ export function PickerSearch(props: { value: string; placeholder?: string; onInp
         }
       }}
       ref={(el) => {
-        // The phone keeps the keyboard down until the user taps the field.
         if (layout().desktop()) queueMicrotask(() => el.isConnected && el.focus({ preventScroll: true }));
       }}
       data-testid="model-search"
@@ -96,87 +152,71 @@ export function PickerSearch(props: { value: string; placeholder?: string; onInp
   );
 }
 
-/** One compact footer row (icon · label · detail), keyboard-reachable like the list rows. */
-export function PickerFootRow(props: {
-  icon: JSX.Element;
-  label: string;
-  detail?: string;
-  checked?: boolean;
-  expanded?: boolean;
-  disabled?: boolean;
-  title?: string;
-  testId: string;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role={props.checked === undefined ? 'menuitem' : 'menuitemradio'}
-      aria-checked={props.checked === undefined ? undefined : props.checked}
-      aria-expanded={props.expanded}
-      class="mpop-foot-row"
-      disabled={props.disabled}
-      title={props.title}
-      onClick={() => props.onSelect()}
-      data-testid={props.testId}
-    >
-      <span class="mpop-foot-ic" aria-hidden="true">
-        {props.icon}
-      </span>
-      <span class="mpop-foot-label">{props.label}</span>
-      <Show when={props.detail}>
-        <span class="mpop-foot-detail">{props.detail}</span>
-      </Show>
-    </button>
-  );
-}
+/** The loading rows. */
+export const PickerSkeleton = () => (
+  <div class="mp-skeleton" data-testid="model-picker-loading">
+    <span />
+    <span />
+    <span />
+  </div>
+);
 
 /**
- * The list view every context shares: search, a header line, the list (or a
- * loading / empty state), then the context's footer rows.
+ * The dialog's content every context shares, in the old dialog's order:
+ * Now · tabs · search · list (or `content`, e.g. Fusion's columns) · section
+ * (the Cycle set) · notice (an error) · footer (scope line + actions).
  */
 export function ModelPickerPanel(props: {
   view: ModelView;
   query: string;
   onQuery: (q: string) => void;
-  /** The header line under the search ("Now …", "Model for this chat", a field's label). */
-  header: JSX.Element;
+  /** "Now …" — the model this context runs / will start with / is set to. */
+  now: string;
+  tabs?: JSX.Element;
+  searchPlaceholder?: string;
   loading: boolean;
-  /** Shown instead of the list when `showEmpty` (the context has nothing to list: no provider…). */
+  /** Shown instead of the list when `showEmpty` (no provider, no list yet…). */
   empty?: JSX.Element;
   showEmpty?: boolean;
+  /** Replaces the list (Fusion's columns). */
+  content?: JSX.Element;
   currentKey?: string;
   pickedKey?: string;
   startupKey?: string;
   onSelect: (m: ModelInfo, isCurrent: boolean) => void;
-  /** Between the list and the footer (an error, a confirm step). */
+  /** Under the list (the Cycle set). */
+  section?: JSX.Element;
+  /** An error / a confirm step. */
   notice?: JSX.Element;
-  footer?: JSX.Element;
+  /** The footer's explanatory line. */
+  scope?: JSX.Element;
+  /** The footer's buttons, right-aligned. */
+  actions?: JSX.Element;
+  testId?: string;
 }) {
   const first = () => props.view.suggested[0]?.model ?? props.view.rest[0];
   return (
-    <>
+    <div class="mp" data-testid={props.testId ?? 'model-picker'}>
+      <NowLine value={props.now} />
+      {props.tabs}
       <PickerSearch
         value={props.query}
         onInput={props.onQuery}
-        placeholder={props.view.usable.length > 6 ? `Search all ${props.view.usable.length} models` : 'Search models'}
-        onEnter={() => {
-          const m = first();
-          if (m) props.onSelect(m, props.currentKey === modelKey(m));
-        }}
+        placeholder={props.searchPlaceholder ?? (props.view.usable.length > 0 ? `Search all ${props.view.usable.length} models` : 'Search models')}
+        onEnter={
+          props.content
+            ? undefined
+            : () => {
+                const m = first();
+                if (m) props.onSelect(m, props.currentKey === modelKey(m));
+              }
+        }
       />
-      <div class="mpop-head">{props.header}</div>
-      <div class="mpop-scroll">
-        <Show
-          when={!props.loading}
-          fallback={
-            <div class="mp-skeleton" data-testid="model-picker-loading">
-              <span />
-              <span />
-              <span />
-            </div>
-          }
-        >
+      <Show
+        when={!props.content}
+        fallback={props.content}
+      >
+        <Show when={!props.loading} fallback={<PickerSkeleton />}>
           <Show when={!props.showEmpty} fallback={props.empty}>
             <ModelList
               view={props.view}
@@ -188,25 +228,144 @@ export function ModelPickerPanel(props: {
             />
           </Show>
         </Show>
-      </div>
+      </Show>
+      {props.section}
       {props.notice}
-      <Show when={props.footer}>
-        <div class="mpop-foot" data-testid="model-picker-foot">
-          {props.footer}
+      <Show when={props.scope || props.actions}>
+        <div class="mp-foot" data-testid="model-picker-foot">
+          <Show when={props.scope}>
+            <p class="mp-hint mp-scope-note" data-testid="model-picker-scope">
+              {props.scope}
+            </p>
+          </Show>
+          {props.actions}
         </div>
       </Show>
-    </>
+    </div>
   );
 }
 
-/** A sub-view's title row with its way back to the list. */
-export function PickerSubHead(props: { title: string; onBack: () => void; testId: string }) {
+/** The error line between the list and the footer. */
+export function PickerError(props: { error: string | null | undefined }) {
   return (
-    <div class="mpop-subhead">
-      <button type="button" role="menuitem" class="mpop-back" onClick={() => props.onBack()} data-testid={props.testId} aria-label={`Back to the model list (${props.title})`}>
-        <ChevronLeft size={15} aria-hidden="true" />
-        <span>{props.title}</span>
+    <Show when={props.error}>
+      <p class="mp-error" role="alert" data-testid="model-picker-error">
+        {props.error}
+      </p>
+    </Show>
+  );
+}
+
+/** The footer's secondary button ("Use at startup", "Use default"). */
+export function PickerSecondary(props: {
+  label: string;
+  disabled?: boolean;
+  pressed?: boolean;
+  title?: string;
+  testId: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      class="pair-secondary mp-apply mp-secondary-btn"
+      disabled={props.disabled}
+      aria-pressed={props.pressed === undefined ? undefined : props.pressed ? 'true' : 'false'}
+      title={props.title}
+      onClick={() => props.onClick()}
+      data-testid={props.testId}
+    >
+      {props.label}
+    </button>
+  );
+}
+
+/**
+ * The collapsible "Cycle set · …" section (WP-A25, `/scoped-models`): pi's
+ * `enabledModels` — what Ctrl+Alt+P steps through. `stored` is the setting's
+ * value as loaded; ticks write it back (`_oino/set_setting`, global) through
+ * `target` (a live chat or the draft, whose settings go to the host).
+ */
+export function CycleSetSection(props: {
+  target: Pick<SessionHandle, 'cmd'>;
+  /** The loaded `enabledModels` (undefined until loaded). */
+  stored: unknown;
+  loaded: boolean;
+  models: ModelInfo[];
+  suggestedCount: number;
+  query: string;
+  defaultOpen?: boolean;
+  onError: (message: string | null) => void;
+}) {
+  const [open, setOpen] = createSignal(!!props.defaultOpen);
+  const [cycle, setCycle] = createSignal<{ exact: string[]; custom: string[] }>({ exact: [], custom: [] });
+  let seeded = false;
+  createEffect(() => {
+    if (seeded || !props.loaded) return;
+    seeded = true;
+    setCycle(cycleKeysOf(props.stored));
+  });
+  const rows = () => {
+    const q = props.query.trim().toLowerCase();
+    return q ? props.models.filter((m) => modelHits(m, q)) : props.models;
+  };
+  const isOn = (m: ModelInfo) => cycle().exact.includes(cycleKeyOf(m.provider, m.id));
+  const flip = async (key: string, on: boolean) => {
+    const cur = cycle();
+    const nextExact = on ? [...new Set([...cur.exact, key])] : cur.exact.filter((k) => k !== key);
+    const value = toggleCycleKey(cur.exact, cur.custom, key, on);
+    props.onError(null);
+    try {
+      await props.target.cmd({ type: '_oino/set_setting', key: 'enabledModels', value: value ?? null, scope: 'global' });
+      setCycle({ exact: nextExact, custom: cur.custom });
+    } catch (e) {
+      props.onError(String((e as { message?: unknown })?.message ?? e));
+    }
+  };
+  return (
+    <div class="mp-cycle" data-testid="model-picker-cycle">
+      <button type="button" class="mp-cycle-toggle" aria-expanded={open()} onClick={() => setOpen((v) => !v)} data-testid="model-picker-cycle-toggle">
+        <Show when={open()} fallback={<ChevronRight size={14} />}>
+          <ChevronDown size={14} />
+        </Show>
+        <span>{cycleLabel(cycle().exact, cycle().custom, props.models.length, props.suggestedCount)}</span>
       </button>
+      <Show when={open()}>
+        <div class="mp-cycle-body">
+          <p class="mp-hint">Models Ctrl+Alt+P steps through in a chat. Every model stays selectable above.</p>
+          <div class="mp-cycle-list" role="group" aria-label="Cycle set" data-testid="model-picker-cycle-list">
+            <For each={rows().slice(0, LIST_CAP)}>
+              {(m) => {
+                const key = cycleKeyOf(m.provider, m.id);
+                return (
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    class="mp-cycle-row"
+                    aria-checked={isOn(m)}
+                    aria-pressed={isOn(m) ? 'true' : 'false'}
+                    data-testid={`cycle-${key}`}
+                    onClick={() => void flip(key, !isOn(m))}
+                  >
+                    <span class="mp-cycle-box" aria-hidden="true">
+                      <Show when={isOn(m)}>
+                        <Check size={12} />
+                      </Show>
+                    </span>
+                    <span class="mp-cycle-name">{modelName(m)}</span>
+                    <span class="mp-cycle-key">{key}</span>
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+          <Show when={cycle().custom.length > 0}>
+            <p class="mp-hint" data-testid="model-picker-cycle-custom">
+              Custom patterns (kept as written): {cycle().custom.join(', ')}
+            </p>
+          </Show>
+        </div>
+      </Show>
     </div>
   );
 }
