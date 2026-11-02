@@ -17,6 +17,7 @@
  */
 import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
+import { isTauriMobile } from '../lib/platform';
 
 /** Hover delay (ZCode `docs/ui/sidebar-tooltips.md`: 300 ms, per trigger). */
 export const TIP_DELAY_MS = 300;
@@ -96,6 +97,12 @@ export const currentTip = tip;
  * The one bubble. Mounted once (`AppShell`), listens on the document so
  * components need no handler of their own.
  */
+/** Phone shell on a touch screen (the app, or a narrow window on a coarse pointer): tooltips stay off. */
+export function touchPhone(): boolean {
+  if (typeof document === 'undefined' || document.documentElement.dataset.shell !== 'phone') return false;
+  return isTauriMobile() || (typeof matchMedia !== 'undefined' && !!matchMedia('(pointer: coarse)').matches);
+}
+
 export function TooltipHost() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let exit: ReturnType<typeof setTimeout> | undefined;
@@ -155,7 +162,7 @@ export function TooltipHost() {
 
   const onPointerOver = (event: PointerEvent) => {
     // Touch taps act at once (ZCode SBT04): no hover tip, no 300 ms wait.
-    if (event.pointerType === 'touch') return;
+    if (event.pointerType === 'touch' || touchPhone()) return;
     const el = triggerOf(event.target);
     if (!el) return hide();
     const text = tooltipTextFor(el);
@@ -179,6 +186,8 @@ export function TooltipHost() {
   };
 
   const onFocusIn = (event: FocusEvent) => {
+    // Phone spec §3.13 (PH-37): a tap focuses the button — no tooltip for touch on the phone shell.
+    if (touchPhone()) return;
     const el = triggerOf(event.target);
     if (!el) return;
     const text = tooltipTextFor(el);

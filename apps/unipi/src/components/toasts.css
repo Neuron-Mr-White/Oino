@@ -143,3 +143,11 @@
     opacity: 0;
   }
 }
+
+/* Phone spec §2.9: one toast at a time, bottom-centre, full width minus the gutters (max 420), 48 px. */
+html[data-shell='phone'] .app-toasts:not([data-pos='top']) { left: 16px; right: 16px; align-items: center; max-width: none; }
+html[data-shell='phone'] .app-toasts { z-index: var(--z-toast, 70); }
+html[data-shell='phone'] .app-toast { width: 100%; max-width: 420px; min-height: 48px; padding: 4px 4px 4px 14px; border-radius: 12px; font-size: 14px; line-height: 20px; gap: 10px; }
+html[data-shell='phone'] .app-toast:not(:last-child) { display: none; }
+html[data-shell='phone'] .app-toast-action { height: 40px; min-height: 40px; padding: 0 14px; border-radius: 9999px; font-size: 14px; }
+html[data-shell='phone'] .app-toast-close { width: 40px; height: 40px; min-height: 40px; border-radius: 9999px; }

@@ -9,6 +9,8 @@ import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { pushBack } from '../../lib/back';
 import { createExit } from '../../lib/motion';
+import { layout } from '../../lib/layout';
+import { SheetFrame } from '../phone/Sheet';
 import './anchored-menu.css';
 
 /** The menu's enabled items, in order (roving focus for arrow keys). */
@@ -19,7 +21,7 @@ function menuItems(menu: HTMLElement | undefined): HTMLElement[] {
   );
 }
 
-export function AnchoredMenu(props: {
+type AnchoredMenuProps = {
   anchor: DOMRect;
   onDismiss: () => void;
   label: string;
@@ -27,8 +29,40 @@ export function AnchoredMenu(props: {
   class?: string;
   /** Align the menu's right edge with the anchor's (header ⋯ buttons). */
   alignEnd?: boolean;
+  /** Phone (action sheet) title; the accessible label is used when absent. */
+  title?: string;
   children: JSX.Element;
-}) {
+};
+
+/**
+ * Phone spec §2.12: on the phone shell every anchored menu is an action sheet
+ * around the same rows (MenuRow → 52 px row, MenuSeparator → section gap), so
+ * all ~30 menus convert at once; the desktop keeps the popover byte-for-byte.
+ */
+export function AnchoredMenu(props: AnchoredMenuProps) {
+  return (
+    <Show when={phoneShell()} fallback={<AnchoredPopover {...props} />}>
+      <MenuSheet {...props} />
+    </Show>
+  );
+}
+
+/** `html[data-shell=phone]` (set by the app shell): bare component tests keep the popover. */
+function phoneShell(): boolean {
+  return !layout().desktop() && typeof document !== 'undefined' && document.documentElement.dataset.shell === 'phone';
+}
+
+function MenuSheet(props: AnchoredMenuProps) {
+  return (
+    <SheetFrame open onClose={() => props.onDismiss()} label={props.label} title={props.title ?? false} class="ph-menu-sheet" testId="anchored-menu-sheet">
+      <div role="menu" aria-label={props.label} class={`recent-popover board-menu${props.class ? ` ${props.class}` : ''}`} onClick={(event) => event.stopPropagation()}>
+        {props.children}
+      </div>
+    </SheetFrame>
+  );
+}
+
+function AnchoredPopover(props: AnchoredMenuProps) {
   let menu: HTMLDivElement | undefined;
   // Z-91: an outside click / Escape / resize fades the menu out before it leaves.
   const leave = createExit(() => props.onDismiss());

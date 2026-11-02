@@ -2,7 +2,7 @@
 .unicrab { display: block; overflow: visible; image-rendering: pixelated; }
 .unicrab rect { shape-rendering: crispEdges; }
 
-.mascot-float { position: fixed; z-index: 40; width: 56px; height: 56px; touch-action: none; transition: left .22s cubic-bezier(.2, .8, .2, 1), top .22s cubic-bezier(.2, .8, .2, 1), opacity .4s ease; }
+.mascot-float { position: fixed; z-index: var(--z-mascot, 38); width: 56px; height: 56px; touch-action: none; transition: left .22s cubic-bezier(.2, .8, .2, 1), top .22s cubic-bezier(.2, .8, .2, 1), opacity .4s ease; }
 .mascot-float[data-dragging] { transition: none; }
 .mascot-float[data-dim] { opacity: .5; }
 .mascot-button { position: relative; width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; background: rgb(20 18 16 / 72%); backdrop-filter: blur(10px); box-shadow: 0 6px 22px rgb(0 0 0 / 45%), inset 0 0 0 1px rgb(255 255 255 / 6%); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }

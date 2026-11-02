@@ -38,7 +38,8 @@ function bounds(): Bounds {
   const css = getComputedStyle(document.documentElement);
   const inset = (v: string) => parseFloat(css.getPropertyValue(v)) || 0;
   const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect().height ?? 0;
-  return { width: window.innerWidth, height: window.innerHeight, top: 8 + inset('--inset-top'), bottom: 8 + Math.max(nav, inset('--inset-bottom')), margin: 6 };
+  // Phone spec §3.13 (PH-12): only the lower 60 % of the screen, so it never covers a header.
+  return { width: window.innerWidth, height: window.innerHeight, top: Math.max(8 + inset('--inset-top'), Math.round(window.innerHeight * 0.4)), bottom: 8 + Math.max(nav, inset('--inset-bottom')), margin: 6 };
 }
 
 /** Opens the chat an item points at (or the drawer when it has no reachable pi). */

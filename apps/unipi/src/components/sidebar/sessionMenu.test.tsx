@@ -121,7 +121,8 @@ describe('SessionMenu (Z-16)', () => {
     );
   });
 
-  it('Copy id / path / log copy the card fields', async () => {
+  it('Copy id / path / log copy the card fields (desktop shell)', async () => {
+    setDesktopOverride(true);
     boot([card('a')]);
     await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
     await openMenuOn('a');
@@ -132,16 +133,16 @@ describe('SessionMenu (Z-16)', () => {
     await waitFor(() => expect(copyText).toHaveBeenCalledWith('/home/you/.oino/s/a.jsonl'));
   });
 
-  it('Reveal folder opens the Files tab rooted at the project', async () => {
+  it('the phone shell has no copy / reveal / export rows (phone spec §3.3, PH-19)', async () => {
     boot([card('a')]);
     await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
     await openMenuOn('a');
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Reveal folder' }));
-    // jsdom is the phone shell: the Files target names the host + the project root.
-    await waitFor(() => expect(location.hash).toBe('#/files'));
+    for (const name of ['Copy session id', 'Copy path', 'Copy log path', 'Reveal folder', 'Export…']) expect(screen.queryByRole('menuitem', { name })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Fork' })).toBeTruthy();
   });
 
-  it('Export opens the session and asks for the JSONL', async () => {
+  it('Export opens the session and asks for the JSONL (desktop shell)', async () => {
+    setDesktopOverride(true);
     boot([card('a')]);
     await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
     await openMenuOn('a');

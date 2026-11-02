@@ -76,10 +76,13 @@ export function SessionMenu() {
             />
             <MenuSeparator />
             <MenuRow icon={<GitFork size={iconSize()} />} label="Fork" onSelect={run(() => forkSession(hostId, card.session_id))} />
-            <MenuRow icon={<Copy size={iconSize()} />} label="Copy session id" onSelect={run(() => copyFromRow('id', card))} />
-            <MenuRow icon={<Folder size={iconSize()} />} label="Copy path" disabled={!card.cwd} onSelect={run(() => copyFromRow('path', card))} />
-            <MenuRow icon={<FileText size={iconSize()} />} label="Copy log path" disabled={!card.file} onSelect={run(() => copyFromRow('log', card))} />
-            <MenuRow icon={<FolderOpen size={iconSize()} />} label={isScratchCwd(card.cwd) ? 'Reveal scratch folder' : 'Reveal folder'} disabled={!card.cwd} onSelect={run(() => revealFolder(hostId, card.cwd))} />
+            {/* Phone spec §3.3 (PH-19): no copy-path / reveal rows on the phone. */}
+            <Show when={desktopShell()}>
+              <MenuRow icon={<Copy size={iconSize()} />} label="Copy session id" onSelect={run(() => copyFromRow('id', card))} />
+              <MenuRow icon={<Folder size={iconSize()} />} label="Copy path" disabled={!card.cwd} onSelect={run(() => copyFromRow('path', card))} />
+              <MenuRow icon={<FileText size={iconSize()} />} label="Copy log path" disabled={!card.file} onSelect={run(() => copyFromRow('log', card))} />
+              <MenuRow icon={<FolderOpen size={iconSize()} />} label={isScratchCwd(card.cwd) ? 'Reveal scratch folder' : 'Reveal folder'} disabled={!card.cwd} onSelect={run(() => revealFolder(hostId, card.cwd))} />
+            </Show>
             <Show when={isScratchCwd(card.cwd)}>
               <MenuRow
                 icon={<FolderInput size={iconSize()} />}
@@ -88,7 +91,9 @@ export function SessionMenu() {
                 testId="srow-move-workspace"
               />
             </Show>
-            <MenuRow icon={<Share size={iconSize()} />} label="Export…" onSelect={run(() => { sessions().ensure(hostId, card.session_id); return exportSession(hostId, card.session_id); })} />
+            <Show when={desktopShell()}>
+              <MenuRow icon={<Share size={iconSize()} />} label="Export…" onSelect={run(() => { sessions().ensure(hostId, card.session_id); return exportSession(hostId, card.session_id); })} />
+            </Show>
             <MenuSeparator />
             <Show
               when={!confirmDelete()}

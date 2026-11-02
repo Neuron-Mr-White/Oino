@@ -66,8 +66,24 @@ function webHistory(): boolean {
 let unregister: (() => void) | undefined;
 let registering = false;
 
+/**
+ * Phone spec §1.3: what Back does when no overlay is open (the phone shell
+ * sets it: route → hierarchical parent, then Chats, then background). While
+ * it is set the native listener stays registered even with an empty stack.
+ */
+let rootBack: Handler | undefined;
+
 function runTop(): void {
-  stack.at(-1)?.();
+  const top = stack.at(-1);
+  if (top) top();
+  else rootBack?.();
+}
+
+/** Installs (or clears with `undefined`) the route-level Back of the phone shell. */
+export function setRootBack(handler: Handler | undefined): void {
+  rootBack = handler;
+  if (handler) void ensureListener();
+  else if (stack.length === 0) releaseListener();
 }
 
 function onKey(event: KeyboardEvent): void {
@@ -94,11 +110,12 @@ async function ensureListener(): Promise<void> {
     off?.();
   };
   // Everything popped while we were registering: undo right away.
-  if (stack.length === 0) releaseListener();
+  if (stack.length === 0 && !rootBack) releaseListener();
 }
 
 function releaseListener(): void {
   if (registering) return; // ensureListener() releases once done
+  if (rootBack) return; // the phone shell's route Back keeps it
   unregister?.();
   unregister = undefined;
 }

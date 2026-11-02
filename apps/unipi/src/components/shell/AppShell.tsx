@@ -15,7 +15,7 @@
  * frame to `PhoneShell.tsx` (tab bar `TabBar.tsx`, ⋯ "Panes" group
  * `PanesMenu.tsx`).
  */
-import { createEffect, onCleanup, onMount, Show, type ParentProps } from 'solid-js';
+import { createEffect, createSignal, onCleanup, onMount, Show, type ParentProps } from 'solid-js';
 import { useLocation, useNavigate } from '@solidjs/router';
 import { Columns3, Keyboard, PanelBottom, PanelLeft, PanelRight, Maximize2, Settings as SettingsIcon, SquarePen, Clock, History } from 'lucide-solid';
 import { RelaySettings } from '../RelaySettings';
@@ -262,18 +262,41 @@ function DesktopFrame(props: ParentProps) {
   );
 }
 
-/** html[data-shell] for the CSS (desktop rules are all scoped under it). */
+/** Pure (phone spec §2.1): the phone size class for a window (compact < 600 ≤ medium) and short (< 480 tall). */
+export function phoneSize(width: number, height: number): { size: 'compact' | 'medium'; short: boolean } {
+  return { size: width >= 600 ? 'medium' : 'compact', short: height > 0 && height < 480 };
+}
+
+/** html[data-shell] for the CSS (desktop rules are all scoped under it); on the phone also data-size / data-short. */
 function ShellAttr() {
+  const [height, setHeight] = createSignal(typeof window === 'undefined' ? 0 : window.innerHeight);
+  const onResize = () => setHeight(window.innerHeight);
+  window.addEventListener('resize', onResize);
+  onCleanup(() => window.removeEventListener('resize', onResize));
   createEffect(() => {
     const L = layout();
     const root = document.documentElement;
     root.dataset.shell = L.desktop() ? 'desktop' : 'phone';
     // Fixed layers (board task page, git view, toasts) clear the sidebar.
     root.style.setProperty('--sidebar-w', L.desktop() && L.sidebarOpen() ? `${L.sidebarWidth()}px` : '0px');
+    if (L.desktop()) {
+      delete root.dataset.size;
+      delete root.dataset.short;
+      return;
+    }
+    // The keyboard shrinks innerHeight in a browser: judge "short" by the height without it.
+    const kb = parseFloat(root.style.getPropertyValue('--kb')) || 0;
+    const cls = phoneSize(L.viewport(), height() + kb);
+    root.dataset.size = cls.size;
+    if (cls.short) root.dataset.short = '';
+    else delete root.dataset.short;
   });
   onCleanup(() => {
-    delete document.documentElement.dataset.shell;
-    document.documentElement.style.removeProperty('--sidebar-w');
+    const root = document.documentElement;
+    delete root.dataset.shell;
+    delete root.dataset.size;
+    delete root.dataset.short;
+    root.style.removeProperty('--sidebar-w');
   });
   return null;
 }

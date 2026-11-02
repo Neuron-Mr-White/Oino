@@ -56,12 +56,19 @@ function measureToastOffsets(): { right: number; bottom: number; top?: boolean }
     }
   }
 
-  return { right, bottom: phone ? 76 : 20 };
+  if (phone) {
+    // Phone spec §2.9: 12 px above whatever is at the bottom (the tab bar, else the safe area).
+    const nav = document.querySelector<HTMLElement>('.bottom-nav')?.getBoundingClientRect();
+    if (nav && nav.height > 0) return { right, bottom: Math.max(edgePad, Math.round(vh - nav.top + 12)) };
+    return { right, bottom: 24 };
+  }
+  return { right, bottom: 20 };
 }
 
 export function Toasts() {
   const stack = toasts();
   let rootEl: HTMLDivElement | undefined;
+  let swipeFrom: number | undefined;
 
   // Only observe layout while at least one toast is shown (zero cost while idle/streaming).
   createEffect(() => {
@@ -114,6 +121,13 @@ export function Toasts() {
               data-leaving={toast.leaving ? '' : undefined}
               role={toast.kind === 'error' ? 'alert' : 'status'}
               onClick={() => stack.dismiss(toast.id)}
+              // Phone (§2.9): swipe sideways to dismiss.
+              onTouchStart={(e) => (swipeFrom = e.touches[0]?.clientX)}
+              onTouchEnd={(e) => {
+                const x = e.changedTouches[0]?.clientX;
+                if (swipeFrom !== undefined && x !== undefined && Math.abs(x - swipeFrom) > 60) stack.dismiss(toast.id);
+                swipeFrom = undefined;
+              }}
               onPointerEnter={() => stack.pause(toast.id)}
               onPointerLeave={() => stack.resume(toast.id)}
             >

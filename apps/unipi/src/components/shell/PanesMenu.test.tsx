@@ -69,11 +69,13 @@ afterEach(() => {
   delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 });
 
-describe('phone tab bar (§3.9)', () => {
-  it('shows Chat · Board · Settings', async () => {
-    boot(`#/s/pc-coffee/${SESSION}`);
+describe('phone tab bar (phone spec §1.1)', () => {
+  it('shows Chats · Cron · Files · Settings on a tab page, hidden in a chat', async () => {
+    boot('#/chat');
     await waitFor(() => expect(screen.getByTestId('tab-bar')).toBeTruthy());
-    for (const tab of ['tab-chat', 'tab-board', 'tab-settings']) expect(screen.getByTestId(tab)).toBeTruthy();
+    for (const tab of ['tab-chat', 'tab-cron', 'tab-files', 'tab-settings']) expect(screen.getByTestId(tab)).toBeTruthy();
+    location.hash = `#/s/pc-coffee/${SESSION}`;
+    await waitFor(() => expect(screen.queryByTestId('tab-bar')).toBeNull());
   });
 });
 

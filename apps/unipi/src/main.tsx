@@ -9,9 +9,11 @@
  *   /x/:entryId          extension sidebar page (`fullscreen` slot, U10)
  *   /settings/:section?  the one Settings screen
  *   /setup               (gone: a stale link lands on `/`)
- * Phone only (until A20 / A29): /chat (the Chat tab list), /files(/edit), /preview
- * (the forward viewer; on the desktop shell ports live in the side pane `+`
- * launcher, Z-104). On the desktop shell those redirect to `/`.
+ * Phone only (phone spec §1.2): /chat (Chats tab), /chat/archived, /files(/edit),
+ * /cron/job/:id; /preview redirects to /settings/ports (Ports live in Settings on
+ * the phone; on the desktop shell in the side pane `+` launcher, Z-104). On the
+ * desktop shell the phone-only routes redirect to `/` (or their desktop page).
+ *   /settings/:section/:sub   a Settings sub-page (agent profile, extension namespace…)
  */
 import { render } from 'solid-js/web';
 import { HashRouter, Navigate, Route, useLocation, useParams, useSearchParams } from '@solidjs/router';
@@ -19,9 +21,8 @@ import { Show } from 'solid-js';
 import type { Component, JSX } from 'solid-js';
 import { Puzzle } from 'lucide-solid';
 import Board from './screens/Board';
-import Chat from './screens/Chat';
+import Chat, { ArchivedChats } from './screens/Chat';
 import Cron from './screens/Cron';
-import Preview from './screens/Preview';
 import Settings from './screens/Settings';
 import { FilesLayer } from './components/files/FilesTab';
 import { PageHeader } from './components/PageHeader';
@@ -76,8 +77,8 @@ const railPage = (Screen: Component, title?: string) => () => (
   </Show>
 );
 
-/** Phone-only routes; the desktop shell sends them home. */
-const phoneOnly = (Screen: Component) => () => <Show when={!desktop()} fallback={<Navigate href="/" />}><Screen /></Show>;
+/** Phone-only routes; the desktop shell sends them home (or to `desktopHref`). */
+const phoneOnly = (Screen: Component, desktopHref = '/') => () => <Show when={!desktop()} fallback={<Navigate href={desktopHref} />}><Screen /></Show>;
 
 /** `/`: the web build (board only) opens the Board; the phone its Chat tab; the desktop the last session or a draft. */
 function Home() {
@@ -152,14 +153,18 @@ export function Root() {
         <Route path="/" component={Home} />
         <Route path="/s/:host/:session" component={ConversationRoute} />
         <Route path="/new/:host" component={DraftRoute} />
-        <Route path="/chat" component={phoneOnly(gated('chat', Chat, 'Chat'))} />
+        <Route path="/chat" component={phoneOnly(gated('chat', Chat, 'Chats'))} />
+        <Route path="/chat/archived" component={phoneOnly(gated('chat', ArchivedChats, 'Archived chats'))} />
         <Route path="/board" component={railPage(Board)} />
         <Route path="/cron" component={railPage(Cron)} />
+        {/* Phone spec §1.2: a job's detail + runs (Cron reads the :id); the desktop opens the Cron page. */}
+        <Route path="/cron/job/:id" component={phoneOnly(Cron, '/cron')} />
         <Route path="/x/:entryId" component={railPage(ExtPageRoute)} />
-        <Route path={['/settings', '/settings/:section']} component={railPage(Settings, 'Settings')} />
+        <Route path={['/settings', '/settings/:section', '/settings/:section/:sub']} component={railPage(Settings, 'Settings')} />
         <Route path="/setup" component={() => <Navigate href="/" />} />
         <Route path={['/files', '/files/edit']} component={phoneOnly(gated('files', FilesLayer, 'Files'))} />
-        <Route path="/preview" component={phoneOnly(Preview)} />
+        {/* Ports moved into Settings (phone spec §3.12): the legacy route redirects. */}
+        <Route path="/preview" component={phoneOnly(() => <Navigate href="/settings/ports" />)} />
       </HashRouter>
       {/* WP-A10: the phone's session-tab sheets / diff layer (no-ops on the desktop). */}
       <SessionTabLayer />

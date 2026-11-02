@@ -9,7 +9,7 @@
  * the slim `UpdateBanner` above Home content (absorbed from the former
  * DesktopUpdate.tsx — one file, one updater surface).
  */
-import { Match, Show, Switch, createResource, createSignal } from 'solid-js';
+import { Match, Show, Switch, createEffect, createResource, createSignal } from 'solid-js';
 import { Download, ExternalLink, RefreshCw, Server, Sparkles, X } from 'lucide-solid';
 import { BoardSheet } from './board/BoardSheet';
 import {
@@ -29,6 +29,7 @@ import { resolveHostId } from '../lib/host/localId';
 import { refreshThisComputer, thisComputer } from '../lib/thisComputer';
 import { hubs } from '../lib/session/hub';
 import { can, platform } from '../lib/platform';
+import { toasts } from '../lib/toasts';
 
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(n > 100 * 1024 * 1024 ? 0 : 1)} MB`;
 
@@ -322,6 +323,40 @@ export function UpdateBanner(props: { onOpen: () => void }) {
       </div>
     </Show>
   );
+}
+
+const TOASTED_KEY = 'unipi.update.toasted';
+/** Pure: the version an update notice is about (APK feed `x.y.z+build`), or undefined. */
+export function apkUpdateVersion(state: ReturnType<typeof updateState>): { key: string; label: string } | undefined {
+  if (state.kind !== 'available' && state.kind !== 'ready') return undefined;
+  const { release } = state as { release: { version: string; build: number } };
+  return { key: `${release.version}+${release.build}`, label: release.version };
+}
+
+/**
+ * Phone (phone spec §3.13, PH-13): no banner on tab pages — one toast per
+ * version ("Unipi 1.0.1 is ready · Update"), remembered; Settings shows the
+ * "Update available" row.
+ */
+export function PhoneUpdateToast(props: { onOpen: () => void }) {
+  createEffect(() => {
+    const v = apkUpdateVersion(updateState());
+    if (!v) return;
+    let seen: string | null = null;
+    try {
+      seen = localStorage.getItem(TOASTED_KEY);
+    } catch {
+      /* no storage: toast once per run */
+    }
+    if (seen === v.key) return;
+    try {
+      localStorage.setItem(TOASTED_KEY, v.key);
+    } catch {
+      /* ignore */
+    }
+    toasts().push(`Unipi ${v.label} is ready`, 'info', { label: 'Update', run: () => props.onOpen() });
+  });
+  return null;
 }
 
 /** The prompt: opens when a newer desktop version is out; nothing installs until "Update and restart". */

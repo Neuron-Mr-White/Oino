@@ -52,6 +52,7 @@ class MainActivity : TauriActivity() {
           window.unipiImeInset = ${ime.bottom / density};
           window.dispatchEvent(new Event('unipi-ime'));
           window.unipiDeviceModel = ${org.json.JSONObject.quote(Build.MODEL)};
+          window.unipiDeviceName = ${org.json.JSONObject.quote(friendlyDeviceName())};
         })();
       """.trimIndent()
       applyInsets()
@@ -90,6 +91,9 @@ class MainActivity : TauriActivity() {
     webView.addJavascriptInterface(FilesBridge(this), "UniPiFiles")
     // UNI-200: the Unicrab over other apps (MascotOverlayService.kt).
     webView.addJavascriptInterface(OverlayBridge(this), "UniPiOverlay")
+    // Phone spec §1.3: Back on the Chats root sends the app to the background (not finish), and
+    // §3.2: a friendly default name for pairing ("Pixel 8", emulators → "Android phone").
+    webView.addJavascriptInterface(AppBridge(this), "UniPiApp")
     pollPageReady(webView, 0)
     webView.postDelayed({ measureInsets(); applyInsets() }, 1000)
     webView.postDelayed({ applyInsets() }, 2500)
@@ -114,6 +118,16 @@ class MainActivity : TauriActivity() {
       applyInsets()
       page?.postDelayed({ measureInsets() }, 500)
     }, 1500)
+  }
+
+  private class AppBridge(private val activity: MainActivity) {
+    @android.webkit.JavascriptInterface
+    fun background() {
+      activity.runOnUiThread { activity.moveTaskToBack(true) }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun deviceName(): String = friendlyDeviceName()
   }
 
   private class HapticsBridge(private val view: WebView) {
@@ -197,5 +211,16 @@ class MainActivity : TauriActivity() {
 
   private fun applyInsets() {
     if (insetsScript.isNotEmpty()) page?.evaluateJavascript(insetsScript, null)
+  }
+
+  companion object {
+    /** `Build.MANUFACTURER + Build.MODEL`, cleaned: no repeated brand, emulator codes → "Android phone". */
+    fun friendlyDeviceName(): String {
+      val model = (Build.MODEL ?: "").trim()
+      val maker = (Build.MANUFACTURER ?: "").trim()
+      if (model.isEmpty() || model.startsWith("sdk_gphone") || model.startsWith("sdk_") || model.contains("Emulator", ignoreCase = true)) return "Android phone"
+      if (maker.isEmpty() || model.startsWith(maker, ignoreCase = true)) return model
+      return maker.replaceFirstChar { it.uppercase() } + " " + model
+    }
   }
 }
