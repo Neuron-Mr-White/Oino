@@ -18,7 +18,6 @@
 import { For, Show, createResource, createSignal } from 'solid-js';
 import type { AppError } from '@unipi/protocol';
 import { AlertTriangle, ArrowLeft, ChevronRight, Puzzle, RefreshCw, Trash2 } from 'lucide-solid';
-import { LOCAL_HOST } from '../../lib/host/client';
 import { hubs } from '../../lib/session/hub';
 import { listExtensions, setExtensionEnabled, type ExtensionInfo } from '../../settings/hostCmd';
 import { Row, Section } from './rows';
@@ -33,6 +32,7 @@ import { NAMESPACE_HOME, openNamespaceHome } from '../../lib/settings/open';
 import { recalledScroll, rememberScroll, settingsScroller } from '../../lib/settings/memory';
 import { layout } from '../../lib/layout';
 import { ExtensionInstallCard, removeInstalled, type InstallPhase } from './ExtensionInstall';
+import { settingsHostId } from '../../settings/target';
 
 const LIST_SCROLL_KEY = 'extensions:list';
 
@@ -73,7 +73,7 @@ export function SettingsBackButton(props: { onBack: () => void; label?: string }
 }
 
 export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns: string | undefined) => void }) {
-  const hostId = () => LOCAL_HOST;
+  const hostId = () => settingsHostId();
   const hub = () => hubs().ensure(hostId());
   const [error, setError] = createSignal<AppError | undefined>();
   const [toggling, setToggling] = createSignal<string | undefined>();

@@ -6,8 +6,8 @@
 import { Show, createMemo, createResource } from 'solid-js';
 import { WorkspacePicker, homeOf } from '../../components/draft/WorkspacePicker';
 import { fsRoots } from '../../lib/fs';
-import { LOCAL_HOST } from '../../lib/host';
 import type { Field, Json } from './types';
+import { settingsHostId } from '../../settings/target';
 
 export function FolderField(props: {
   field: Field;
@@ -16,7 +16,7 @@ export function FolderField(props: {
   disabled: boolean;
   set: (value: Json | undefined) => void;
 }) {
-  const hostId = () => props.hostId ?? LOCAL_HOST;
+  const hostId = () => props.hostId ?? settingsHostId();
   const [roots] = createResource(hostId, async (id) => {
     const res = await fsRoots(id).catch(() => undefined);
     return res?.ok ? res.value.roots : [];

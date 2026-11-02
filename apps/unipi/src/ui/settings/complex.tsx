@@ -12,7 +12,6 @@ import { ChevronDown, ChevronUp, Minus, Plus, Trash2 } from 'lucide-solid';
 import { useSettings } from '../../settings/context';
 import { setPiSetting, hostCmd } from '../../settings/hostCmd';
 import { z } from 'zod';
-import { LOCAL_HOST } from '../../lib/host';
 import { CommandResult, CommandSheet, createSettingsCommand } from './command';
 import { commandOverride } from '../../lib/settings/run';
 import { ModelPickerField } from './ModelPickerField';
@@ -20,6 +19,7 @@ import { desktopShell } from '../../lib/layout';
 import type { Field, Json } from './types';
 import { jsonEqual, lookup } from './semantics';
 import { FieldRow, NumberControl, type EditContext } from './fields';
+import { settingsHostId } from '../../settings/target';
 
 const asString = (value: Json): string => (typeof value === 'string' ? value : '');
 const asArray = (value: Json): Json[] => (Array.isArray(value) ? value : []);
@@ -200,7 +200,7 @@ function modelFallback(field: Field): string {
 
 /** `model`: the composer's model picker as a popover on a button. */
 function ModelField(props: { field: Field; ctx: EditContext; value: Json; disabled: boolean; set: (value: Json | undefined) => void }) {
-  const hostId = () => props.ctx.hostId ?? LOCAL_HOST;
+  const hostId = () => props.ctx.hostId ?? settingsHostId();
   const paired = () => pairsProvider(props.ctx, props.field);
   const [bump, setBump] = createSignal(0);
   const [provider] = createResource(
@@ -256,7 +256,7 @@ function ModelField(props: { field: Field; ctx: EditContext; value: Json; disabl
 function ActionField(props: { field: Field; ctx: EditContext; disabled: boolean }) {
   const [confirming, setConfirming] = createSignal(false);
   const spec = () => ({ label: props.field.label, command: props.field.command ?? '' });
-  const cmd = createSettingsCommand(spec, () => props.ctx.hostId ?? LOCAL_HOST);
+  const cmd = createSettingsCommand(spec, () => props.ctx.hostId ?? settingsHostId());
   const native = () => commandOverride(props.field.command ?? '');
   const run = () => {
     setConfirming(false);
@@ -287,7 +287,7 @@ function ActionField(props: { field: Field; ctx: EditContext; disabled: boolean 
         </Show>
       </div>
       <Show when={cmd.sheet()}>
-        <CommandSheet cmd={cmd} spec={spec()} hostId={props.ctx.hostId ?? LOCAL_HOST} />
+        <CommandSheet cmd={cmd} spec={spec()} hostId={props.ctx.hostId ?? settingsHostId()} />
       </Show>
     </FieldRow>
   );

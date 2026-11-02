@@ -16,13 +16,13 @@ import { ArrowUpRight, ChevronRight, CircleAlert } from 'lucide-solid';
 import { NamespaceForm } from '../../ui/settings/form';
 import { settingsSchema } from '../../ui/settings/data';
 import type { Namespace } from '../../ui/settings/types';
-import { LOCAL_HOST } from '../../lib/host/client';
 import { manageActionsFor, type ManageAction } from '../../lib/settings/manage';
 import { commandOwner } from '../../lib/settings/run';
 import { CommandResult, CommandSheet, createExtensionStates, createSettingsCommand } from '../../ui/settings/command';
 import { setExtensionEnabled } from '../../settings/hostCmd';
 import { useHostsOptional } from '../../hosts/context';
 import { Row, Section } from './rows';
+import { settingsHostId } from '../../settings/target';
 
 export type CapabilityPageProps = {
   page: ManageAction['page'];
@@ -43,12 +43,12 @@ export type CapabilityPageProps = {
 export function CapabilityPage(props: CapabilityPageProps) {
   const hosts = useHostsOptional();
   const [namespaces] = createResource(async (): Promise<Namespace[]> => {
-    const result = await settingsSchema(LOCAL_HOST);
+    const result = await settingsSchema(settingsHostId());
     return result.ok ? result.value : [];
   });
   const namespace = createMemo(() => (namespaces.latest ?? []).find((ns) => ns.namespace === props.namespace));
   const actions = () => manageActionsFor(props.page);
-  const localHost = () => hosts?.hosts().find((host) => host.transport === 'local')?.id ?? LOCAL_HOST;
+  const localHost = () => hosts?.hosts().find((host) => host.transport === 'local')?.id ?? settingsHostId();
   const extensions = createExtensionStates(localHost);
   // owner5 #10: a row that is "this extension's settings" (Skills hub) opens its form in a sheet.
   const [formSheet, setFormSheet] = createSignal<ManageAction | undefined>();

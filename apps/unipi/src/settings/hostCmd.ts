@@ -6,9 +6,10 @@
  */
 import { z } from 'zod';
 import { HostSettingsSchema, type HostSettings } from '@unipi/protocol';
-import { hostClient, requestParsed, LOCAL_HOST } from '../lib/host';
+import { hostClient, requestParsed } from '../lib/host';
 import { markReservedGatesStale } from '../ui/slots/reserved';
 import type { HostResult } from '../lib/host';
+import { settingsHostId } from './target';
 
 /** One row of the `extensions` answer (`ExtensionInfo`, camelCase like core's). */
 export const ExtensionInfoSchema = z.object({
@@ -66,7 +67,7 @@ export type HostCmdOp =
   | { kind: 'get_shortcuts' };
 
 /** `host_cmd{cmd}` on one host (default This computer), parsed with `schema`. */
-export function hostCmd<T>(cmd: HostCmdOp, schema: z.ZodType<T>, hostId = LOCAL_HOST): Promise<HostResult<T>> {
+export function hostCmd<T>(cmd: HostCmdOp, schema: z.ZodType<T>, hostId = settingsHostId()): Promise<HostResult<T>> {
   return requestParsed(hostClient(hostId), 'host_cmd', { cmd }, schema);
 }
 
@@ -77,7 +78,7 @@ const PiValueSchema = z.object({ value: z.unknown().optional() });
 const ValuesSchema = z.object({ values: z.unknown(), diagnostics: z.array(z.unknown()).optional() });
 
 /** `_oino/extensions`: loaded + disabled extensions of the host. */
-export function listExtensions(hostId = LOCAL_HOST): Promise<HostResult<ExtensionInfo[]>> {
+export function listExtensions(hostId = settingsHostId()): Promise<HostResult<ExtensionInfo[]>> {
   return hostCmd({ kind: 'extensions' }, ExtensionsSchema, hostId).then((r) =>
     r.ok ? { ok: true as const, value: r.value.extensions } : r,
   );
@@ -88,7 +89,7 @@ export function listExtensions(hostId = LOCAL_HOST): Promise<HostResult<Extensio
  * A reserved surface follows its owner live (ui-protocol §8 rule 2, WP-U12):
  * the registry gate refetches, so the nav item/tab appears or disappears at once.
  */
-export function setExtensionEnabled(id: string, enabled: boolean, hostId = LOCAL_HOST): Promise<HostResult<null>> {
+export function setExtensionEnabled(id: string, enabled: boolean, hostId = settingsHostId()): Promise<HostResult<null>> {
   return hostCmd({ kind: 'set_extension_enabled', id, enabled }, z.null(), hostId).then((result) => {
     if (result.ok) markReservedGatesStale();
     return result;
@@ -123,25 +124,25 @@ export const RemoveReplySchema = z.object({
 export type RemoveReply = z.infer<typeof RemoveReplySchema>;
 
 /** `install_extension`: install the package at `path` **on the host** (folder or .zip). */
-export function installExtension(path: string, replace = false, hostId = LOCAL_HOST): Promise<HostResult<InstallReply>> {
+export function installExtension(path: string, replace = false, hostId = settingsHostId()): Promise<HostResult<InstallReply>> {
   const cmd: HostCmdOp = replace ? { kind: 'install_extension', path, replace: true } : { kind: 'install_extension', path };
   return hostCmd(cmd, InstallReplySchema, hostId);
 }
 
 /** `remove_extension`: delete a user-installed package (bundled ones are refused). */
-export function removeExtension(id: string, hostId = LOCAL_HOST): Promise<HostResult<RemoveReply>> {
+export function removeExtension(id: string, hostId = settingsHostId()): Promise<HostResult<RemoveReply>> {
   return hostCmd({ kind: 'remove_extension', id }, RemoveReplySchema, hostId);
 }
 
 /** `_oino/get_settings_schema`: every extension settings namespace. */
-export function settingsSchema(hostId = LOCAL_HOST): Promise<HostResult<Namespace[]>> {
+export function settingsSchema(hostId = settingsHostId()): Promise<HostResult<Namespace[]>> {
   return hostCmd({ kind: 'get_settings_schema' }, NamespacesSchema, hostId).then((r) =>
     r.ok ? { ok: true as const, value: r.value.namespaces } : r,
   );
 }
 
 /** `_oino/get_extension_settings`: one namespace's resolved values. */
-export function extensionSettings(namespace: string, hostId = LOCAL_HOST): Promise<HostResult<unknown>> {
+export function extensionSettings(namespace: string, hostId = settingsHostId()): Promise<HostResult<unknown>> {
   return hostCmd({ kind: 'get_extension_settings', namespace }, ValuesSchema, hostId).then((r) =>
     r.ok ? { ok: true as const, value: r.value.values } : r,
   );
@@ -153,7 +154,7 @@ export function setExtensionSetting(
   key: string,
   value: unknown,
   scope: 'global' | 'project' = 'global',
-  hostId = LOCAL_HOST,
+  hostId = settingsHostId(),
 ): Promise<HostResult<null>> {
   const cmd: HostCmdOp =
     value === undefined
@@ -163,14 +164,14 @@ export function setExtensionSetting(
 }
 
 /** `_oino/get_settings`: the whole merged pi settings object. */
-export function piSettings(hostId = LOCAL_HOST): Promise<HostResult<Record<string, unknown>>> {
+export function piSettings(hostId = settingsHostId()): Promise<HostResult<Record<string, unknown>>> {
   return hostCmd({ kind: 'get_settings' }, PiSettingsSchema, hostId).then((r) =>
     r.ok ? { ok: true as const, value: r.value.settings ?? {} } : r,
   );
 }
 
 /** `_oino/set_setting`: write (or with `undefined`, delete) one pi settings key. */
-export function setPiSetting(key: string, value: unknown, scope: 'global' | 'project' = 'global', hostId = LOCAL_HOST): Promise<HostResult<null>> {
+export function setPiSetting(key: string, value: unknown, scope: 'global' | 'project' = 'global', hostId = settingsHostId()): Promise<HostResult<null>> {
   const cmd: HostCmdOp = value === undefined ? { kind: 'set_setting', key, scope } : { kind: 'set_setting', key, value, scope };
   return hostCmd(cmd, z.null(), hostId);
 }
@@ -178,11 +179,11 @@ export function setPiSetting(key: string, value: unknown, scope: 'global' | 'pro
 // ── host settings (`config.json`, host.md §9.9) ─────────────────────────────
 
 /** `host_settings_get`: the whole object, secrets masked. */
-export function hostSettingsGet(hostId = LOCAL_HOST): Promise<HostResult<HostSettings>> {
+export function hostSettingsGet(hostId = settingsHostId()): Promise<HostResult<HostSettings>> {
   return requestParsed(hostClient(hostId), 'host_settings_get', undefined, HostSettingsSchema);
 }
 
 /** `host_settings_set{key, value}` → the updated object. Local host only. */
-export function hostSettingsSet(key: string, value: unknown, hostId = LOCAL_HOST): Promise<HostResult<HostSettings>> {
+export function hostSettingsSet(key: string, value: unknown, hostId = settingsHostId()): Promise<HostResult<HostSettings>> {
   return requestParsed(hostClient(hostId), 'host_settings_set', { key, value }, HostSettingsSchema);
 }

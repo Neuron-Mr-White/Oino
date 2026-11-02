@@ -19,7 +19,6 @@ import { For, Show, createResource, createSignal } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import { KeyRound, Plug } from 'lucide-solid';
 import { z } from 'zod';
-import { LOCAL_HOST } from '../../lib/host/client';
 import { openExternal } from '../../lib/board/share';
 import { hostCmd } from '../../settings/hostCmd';
 import { sessions } from '../../lib/session/store';
@@ -31,6 +30,7 @@ import type { AppError } from '@unipi/protocol';
 import { ProviderSchema, ProvidersSchema, type Provider } from '../../lib/model/readiness';
 import { cleanHttpStatus } from '../../lib/model/availability';
 import { Row, Section } from './rows';
+import { settingsHostId } from '../../settings/target';
 
 export { ProviderSchema, type Provider };
 
@@ -72,11 +72,11 @@ export function ProvidersPage() {
   // follows and fills in "Not working" — a saved dead key never reads "Ready".
   const [checking, setChecking] = createSignal(false);
   const [providers, { refetch, mutate }] = createResource(async (): Promise<Provider[]> => {
-    const result = await hostCmd({ kind: 'auth_providers' }, ProvidersSchema, LOCAL_HOST);
+    const result = await hostCmd({ kind: 'auth_providers' }, ProvidersSchema, settingsHostId());
     const first = result.ok ? result.value.providers : [];
     if (first.some((p) => p.configured && p.ready === undefined)) {
       setChecking(true);
-      void hostCmd({ kind: 'auth_providers', validate: true }, ProvidersSchema, LOCAL_HOST)
+      void hostCmd({ kind: 'auth_providers', validate: true }, ProvidersSchema, settingsHostId())
         .then((checked) => {
           if (checked.ok) mutate(checked.value.providers);
         })
@@ -127,7 +127,7 @@ export function ProvidersPage() {
   const saveKey = async (p: Provider) => {
     if (!key().trim()) return;
     setBusy(p.id);
-    const result = await hostCmd({ kind: 'set_api_key', provider: p.id, key: key().trim() }, z.null(), LOCAL_HOST);
+    const result = await hostCmd({ kind: 'set_api_key', provider: p.id, key: key().trim() }, z.null(), settingsHostId());
     setBusy(undefined);
     if (!result.ok) {
       setError(result.error);
@@ -141,7 +141,7 @@ export function ProvidersPage() {
 
   const signOut = async (p: Provider) => {
     setBusy(p.id);
-    const result = await hostCmd({ kind: 'logout', provider: p.id }, z.null(), LOCAL_HOST);
+    const result = await hostCmd({ kind: 'logout', provider: p.id }, z.null(), settingsHostId());
     setBusy(undefined);
     if (!result.ok) {
       setError(result.error);
@@ -246,7 +246,7 @@ export function ProvidersPage() {
       <Show when={!hasChat() && (providers.latest ?? []).some((p) => p.oauth)}>
         <div class="settings-manage-empty" data-testid="providers-nochat">
           <p class="text-xs text-text-dim">Signing in needs an open chat (the provider asks its questions there).</p>
-          <button type="button" class="btn-secondary settings-btn" onClick={() => navigate(`/new/${encodeURIComponent(LOCAL_HOST)}`)} data-testid="providers-newchat">
+          <button type="button" class="btn-secondary settings-btn" onClick={() => navigate(`/new/${encodeURIComponent(settingsHostId())}`)} data-testid="providers-newchat">
             New chat here
           </button>
         </div>

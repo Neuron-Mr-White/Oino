@@ -7,11 +7,11 @@
  */
 import { z } from 'zod';
 import type { HostResult } from '../../lib/host';
-import { LOCAL_HOST } from '../../lib/host';
 import { hostCmd, setExtensionSetting } from '../../settings/hostCmd';
 import type { Field, Json, Namespace } from './types';
 import { parseNamespaces } from './types';
 import { lookup, simplifyKey, type Diagnostic, type WriteLayer } from './semantics';
+import { settingsHostId } from '../../settings/target';
 
 /** The stored layers of one namespace, as the app holds them. */
 export type NamespaceLayers = {
@@ -27,7 +27,7 @@ export type NamespaceLayers = {
 const SchemaReply = z.object({ namespaces: z.array(z.unknown()) });
 
 /** Every settings namespace of the host, in registration order (core first). */
-export function settingsSchema(hostId = LOCAL_HOST): Promise<HostResult<Namespace[]>> {
+export function settingsSchema(hostId = settingsHostId()): Promise<HostResult<Namespace[]>> {
   return hostCmd({ kind: 'get_settings_schema' }, SchemaReply, hostId).then((reply) =>
     reply.ok ? { ok: true as const, value: parseNamespaces(reply.value.namespaces) } : reply,
   );
@@ -42,7 +42,7 @@ export type SettingsLayerArg = 'effective' | 'global' | 'project';
 export function readNamespaceValues(
   namespace: string,
   layer: SettingsLayerArg = 'effective',
-  hostId = LOCAL_HOST,
+  hostId = settingsHostId(),
 ): Promise<HostResult<{ values: unknown; diagnostics: Diagnostic[] }>> {
   return hostCmd({ kind: 'get_extension_settings', namespace, layer }, ValuesReply, hostId).then((reply) => {
     if (!reply.ok) return reply;
@@ -60,7 +60,7 @@ const objectOf = (value: unknown): Record<string, Json> =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, Json>) : {};
 
 /** Reads the effective + global + project views of a namespace (three calls). */
-export async function loadNamespaceLayers(namespace: Namespace, hostId = LOCAL_HOST): Promise<HostResult<NamespaceLayers>> {
+export async function loadNamespaceLayers(namespace: Namespace, hostId = settingsHostId()): Promise<HostResult<NamespaceLayers>> {
   const [effective, global, project] = await Promise.all([
     readNamespaceValues(namespace.namespace, 'effective', hostId),
     readNamespaceValues(namespace.namespace, 'global', hostId),
@@ -106,7 +106,7 @@ export function writeFieldValue(
   field: Field,
   stored: Json | undefined,
   layer: WriteLayer,
-  hostId = LOCAL_HOST,
+  hostId = settingsHostId(),
 ): Promise<HostResult<null>> {
   return setExtensionSetting(namespace.namespace, field.key, stored, layer, hostId);
 }

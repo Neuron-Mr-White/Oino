@@ -12,6 +12,7 @@ import { parseHostLink } from "../lib/link";
 import { HostInfoSchema } from "../lib/schemas";
 import { useHosts } from "../hosts/context";
 import { useSettings } from "../settings/context";
+import { syncSettingsHost } from "../settings/target";
 import { ErrorBanner } from "./ErrorBanner";
 import { QrScanner } from "./QrScanner";
 import type { AppError } from "@unipi/protocol";
@@ -51,6 +52,8 @@ async function readClipboard(): Promise<string | undefined> {
 }
 export function Pairing() {
   const hosts = useHosts();
+  // Settings' host-scoped sections follow the selected PC on the phone (PH-04).
+  syncSettingsHost(hosts);
   const [settings] = useSettings();
   const navigate = useNavigate();
   const [link, setLink] = createSignal("");

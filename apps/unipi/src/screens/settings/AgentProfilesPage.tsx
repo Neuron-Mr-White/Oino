@@ -8,7 +8,6 @@
  */
 import { For, Show, createMemo, createResource, createSignal } from 'solid-js';
 import { Bot, ChevronRight, Copy, Lock, Plus, Trash2 } from 'lucide-solid';
-import { LOCAL_HOST } from '../../lib/host/client';
 import { hubs } from '../../lib/session/hub';
 import { refreshThisComputer, thisComputer } from '../../lib/thisComputer';
 import { isHomeCwd } from '../../lib/session/selectors';
@@ -29,6 +28,7 @@ import { BoardSheet } from '../../components/board/BoardSheet';
 import { ModelPickerField } from '../../ui/settings/ModelPickerField';
 import { EnumSelect } from '../../ui/settings/fields';
 import { SettingsBackButton } from './ExtensionsSection';
+import { settingsHostId } from '../../settings/target';
 
 /** The host's oino dir (its data dir is `<oino dir>/host`). */
 async function oinoDir(): Promise<string | undefined> {
@@ -56,7 +56,7 @@ function toolsSummary(p: AgentProfile): string {
 type Editing = { profile?: AgentProfile; draft: AgentDraft; scope: Exclude<ProfileSource, 'builtin'>; readOnly: boolean };
 
 export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }) {
-  const hostId = () => props.hostId ?? LOCAL_HOST;
+  const hostId = () => props.hostId ?? settingsHostId();
   const [dirs] = createResource(async () => profileDirs(await oinoDir(), recentProject(hostId())));
   const [data, { refetch }] = createResource(
     () => dirs(),

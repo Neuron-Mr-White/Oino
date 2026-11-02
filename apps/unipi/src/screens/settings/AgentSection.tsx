@@ -13,11 +13,11 @@ import type { AppError } from '@unipi/protocol';
 import { Waypoints } from 'lucide-solid';
 import { piSettings } from '../../settings/hostCmd';
 import { settingsSchema } from '../../ui/settings/data';
-import { LOCAL_HOST } from '../../lib/host/client';
 import { Row, Section } from './rows';
 import { ErrorBanner } from '../../components/ErrorBanner';
 import { SettingsSections, coreNamespaces } from '../../ui/slots/SettingsSections';
 import type { Namespace } from '../../ui/settings/types';
+import { settingsHostId } from '../../settings/target';
 
 function describe(value: unknown): string {
   if (value === null) return 'null';
@@ -30,7 +30,7 @@ function describe(value: unknown): string {
 }
 
 export function AgentSection() {
-  const hostId = () => LOCAL_HOST;
+  const hostId = () => settingsHostId();
   const [error, setError] = createSignal<AppError | undefined>();
   const [schema] = createResource(async (): Promise<Namespace[]> => {
     const result = await settingsSchema(hostId());

@@ -13,13 +13,13 @@ import { For, Show, createMemo, createResource, createSignal, type JSX } from 's
 import type { AppError } from '@unipi/protocol';
 import { RefreshCw } from 'lucide-solid';
 import { ErrorBanner } from '../../components/ErrorBanner';
-import { LOCAL_HOST } from '../../lib/host';
 import type { Field, Json, Namespace, Section } from './types';
 import { appHidden, fieldScope, storesValue } from './types';
 import { fieldVisible, resolve, setPath, removePath, checkValue, zodMessage, toZod, type WriteLayer } from './semantics';
 import { loadNamespaceLayers, simplifyWrite, writeFieldValue, type NamespaceLayers } from './data';
 import { FieldRow, SettingsField, type EditContext } from './fields';
 import './settings-form.css';
+import { settingsHostId } from '../../settings/target';
 
 const emptyLayers = (namespace: Namespace): NamespaceLayers => ({ defaults: namespace.defaults, global: {}, project: {}, diagnostics: [] });
 
@@ -59,7 +59,7 @@ export function NamespaceForm(props: {
   onChanged?: () => void;
   testId?: string;
 }) {
-  const hostId = () => props.hostId ?? LOCAL_HOST;
+  const hostId = () => props.hostId ?? settingsHostId();
   const [error, setError] = createSignal<AppError | undefined>();
   const [layers, setLayers] = createSignal<NamespaceLayers | undefined>();
   const [scope, setScope] = createSignal<WriteLayer>('global');

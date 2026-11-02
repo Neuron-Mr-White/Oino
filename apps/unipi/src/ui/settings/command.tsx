@@ -11,7 +11,6 @@
  */
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import { ArrowUpRight, Check, CircleAlert, Loader2 } from 'lucide-solid';
-import { LOCAL_HOST } from '../../lib/host/client';
 import { BoardSheet } from '../../components/board/BoardSheet';
 import { Markdown } from '../../components/board/Markdown';
 import { DialogPanel } from '../../components/dock/DialogPanel';
@@ -31,6 +30,7 @@ import {
 import { listExtensions, setExtensionEnabled } from '../../settings/hostCmd';
 import type { SessionHandle } from '../../lib/session/store';
 import { desktopShell } from '../../lib/layout';
+import { settingsHostId } from '../../settings/target';
 
 export type CommandSpec = {
   /** Row / sheet title. */
@@ -60,7 +60,7 @@ function extName(id: string | undefined): string {
 }
 
 /** One Settings command: its run state, the sheet flag and the run entry point. */
-export function createSettingsCommand(spec: () => CommandSpec, hostId: () => string = () => LOCAL_HOST) {
+export function createSettingsCommand(spec: () => CommandSpec, hostId: () => string = () => settingsHostId()) {
   const [state, setState] = createSignal<CommandState>({ status: 'idle' });
   const [sheet, setSheet] = createSignal(false);
   const mode = () => commandMode(spec().command);
@@ -198,7 +198,7 @@ function ReplyBody(props: { text: string }) {
  * nothing navigates. "Open in chat ↗" is the explicit way out.
  */
 export function CommandSheet(props: { cmd: SettingsCommand; spec: CommandSpec; hostId?: string }) {
-  const hostId = () => props.hostId ?? LOCAL_HOST;
+  const hostId = () => props.hostId ?? settingsHostId();
   const [handle, setHandle] = createSignal<SessionHandle | undefined>();
   const [replies, setReplies] = createSignal<Reply[]>([]);
   const [phase, setPhase] = createSignal<'starting' | 'running' | 'no-chat' | 'off'>('starting');
@@ -297,7 +297,7 @@ export function CommandSheet(props: { cmd: SettingsCommand; spec: CommandSpec; h
 }
 
 /** Whether an extension is off on this host (`undefined` while unknown). */
-export function createExtensionStates(hostId: () => string = () => LOCAL_HOST) {
+export function createExtensionStates(hostId: () => string = () => settingsHostId()) {
   const [states, setStates] = createSignal<Record<string, boolean> | undefined>();
   const refresh = async () => {
     const result = await listExtensions(hostId());
