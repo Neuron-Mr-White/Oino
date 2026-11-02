@@ -15,6 +15,14 @@
 //! (owner Q4). A manual `unipi-host serve --mode manual` keeps working and is
 //! adopted like any other running host.
 //!
+//! A host that **connects but never replies** (a wedged `accept()` loop —
+//! EMFILE leaves the kernel queue working while the host is deaf) must not be
+//! adopted forever: after [`PING_FAILURES`] silent pings while `host.lock` is
+//! held, [`recover`] replaces it — verify the lock holder really is this user's
+//! unipi host for this dir (Linux `/proc`), SIGTERM, [`TERM_GRACE`], SIGKILL,
+//! clear the stale socket, and let our own host take over. A host that answers
+//! is never touched.
+//!
 //! Everything that touches the real world (`Command`, a Tauri `AppHandle`) is
 //! behind a small edge so the decision and the timing are unit-tested with fake
 //! host binaries.
@@ -178,6 +186,8 @@ pub async fn run_child(spec: ChildSpec<'_>) -> Result<std::process::ExitStatus, 
             "--exit-with-parent",
             &parent_pid.to_string(),
         ])
+        .env("OINO_HOST_DIR", dir)
+        // The legacy env name goes along for any older sidecar still around.
         .env("UNIPI_HOST_DIR", dir)
         // The host sees the *merged* PATH, so mise/nvm Node, herdr and tmux
         // resolve as they do in the user's shell. Empty until the start-up
@@ -375,6 +385,304 @@ fn serving(dir: &Path) -> bool {
     socket_alive(&crate::local_host::listen_addr(dir)) && !orphaned_app_host(dir)
 }
 
+// ---------------------------------------------------------- wedged recovery
+
+/// How long a ping waits for a reply before the host counts as silent.
+pub const PING_TIMEOUT: Duration = Duration::from_secs(3);
+/// Silent pings in a row before a lock-holding host that cannot be talked to
+/// is replaced by [`recover`] (the launch fix: a wedged `accept()` loop must
+/// not be adopted forever).
+pub const PING_FAILURES: u32 = 3;
+/// Re-probe gap for a healthy adopted host (a failed ping re-probes fast, so
+/// recovery lands within ~10 s of the first silence).
+pub const PING_EVERY: Duration = Duration::from_secs(2);
+/// [`recover`]'s safety re-check: a host that recovered on its own answers in
+/// milliseconds, so a second settles it without stretching the recovery.
+const PING_RECHECK: Duration = Duration::from_secs(1);
+/// How long a SIGTERMed holder has to exit before [`recover`] SIGKILLs it.
+pub const TERM_GRACE: Duration = Duration::from_secs(5);
+
+/// Does the host on `socket` answer a `host_info` ping within [`PING_TIMEOUT`]?
+/// A wedged host still *accepts* connections (the kernel queues them; EMFILE
+/// only breaks `accept()`) — only a reply proves it works.
+pub async fn answers(socket: &Path) -> bool {
+    tokio::time::timeout(PING_TIMEOUT, ping(socket))
+        .await
+        .unwrap_or(false)
+}
+
+/// One connect + `host_info` round trip: `true` when any `Control` frame comes
+/// back (an error reply still means the host is alive and listening).
+async fn ping(socket: &Path) -> bool {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use unipi_proto::{Control, PROTO_VERSION};
+    let local = crate::local_host::LocalHost {
+        id: String::new(),
+        ticket: String::new(),
+        socket: socket.to_path_buf(),
+    };
+    let Ok((mut send, mut recv)) = crate::local_host::connect(&local).await else {
+        return false;
+    };
+    let hello = serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":{"op":"host_info"}});
+    let frame = unipi_proto::frame::encode(
+        unipi_proto::FrameKind::Control,
+        &serde_json::to_vec(&hello).unwrap_or_default(),
+    );
+    if send.write_all(&frame).await.is_err() {
+        return false;
+    }
+    let _ = send.finish();
+    let (Ok(kind), Ok(len)) = (recv.read_u8().await, recv.read_u32().await) else {
+        return false;
+    };
+    if kind != unipi_proto::FrameKind::Control as u8 || len as usize > unipi_proto::MAX_FRAME {
+        return false;
+    }
+    let mut bytes = vec![0; len as usize];
+    if recv.read_exact(&mut bytes).await.is_err() {
+        return false;
+    }
+    serde_json::from_slice::<Control>(&bytes).is_ok()
+}
+
+/// The pid recorded by the process currently holding `dir`'s `host.lock`.
+/// A leftover file nobody holds is `None` (the OS lock dies with the process).
+pub fn lock_holder(dir: &Path) -> Option<u32> {
+    use std::fs::TryLockError;
+    let path = dir.join("host.lock");
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .ok()?;
+    match file.try_lock() {
+        // Free: nobody runs on this dir, whatever the file says.
+        Ok(()) => {
+            let _ = file.unlock();
+            None
+        }
+        Err(TryLockError::WouldBlock) => {
+            let raw = std::fs::read_to_string(&path).ok()?;
+            let value: serde_json::Value = serde_json::from_str(raw.trim()).ok()?;
+            value
+                .get("pid")
+                .and_then(serde_json::Value::as_u64)
+                .map(|pid| pid as u32)
+        }
+        Err(_) => None,
+    }
+}
+
+/// Replaces a host that holds `dir`'s lock but cannot be talked to: verify the
+/// lock holder really is this user's unipi host for this dir (Linux `/proc`),
+/// SIGTERM it, wait [`TERM_GRACE`], SIGKILL if it is still there, and clear the
+/// stale socket so the next spawn binds cleanly. A host that answers is never
+/// touched; off Linux this skips with a clear error. Every step is logged.
+pub async fn recover(dir: &Path) -> Result<(), String> {
+    let socket = crate::local_host::listen_addr(dir);
+    if tokio::time::timeout(PING_RECHECK, ping(&socket))
+        .await
+        .unwrap_or(false)
+    {
+        let message = "the host answers, so it stays (only a silent one is replaced)".to_string();
+        log::info!("host recovery: {message}");
+        return Err(message);
+    }
+    let Some(pid) = lock_holder(dir) else {
+        log::info!(
+            "host recovery: no live lock holder in {}; clearing any stale socket",
+            dir.display()
+        );
+        remove_stale_socket(dir);
+        return Ok(());
+    };
+    log::warn!(
+        "host recovery: host dir {} is held by silent pid {pid}",
+        dir.display()
+    );
+    #[cfg(target_os = "linux")]
+    {
+        verify_holder(dir, pid).map_err(|reason| {
+            log::warn!("host recovery: not touching pid {pid}: {reason}");
+            reason
+        })?;
+        replace_linux(dir, pid).await
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        Err(
+            "replacing a wedged host needs Linux (/proc); kill it by hand or log out and in"
+                .to_string(),
+        )
+    }
+}
+
+/// TERM → [`TERM_GRACE`] → KILL, then clear the stale socket. Linux only (the
+/// verification above already is): elsewhere [`recover`] skips with an error.
+#[cfg(target_os = "linux")]
+async fn replace_linux(dir: &Path, pid: u32) -> Result<(), String> {
+    log::info!("host recovery: sending SIGTERM to pid {pid}");
+    signal(pid, "-TERM");
+    let deadline = std::time::Instant::now() + TERM_GRACE;
+    while !pid_gone(pid) && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    if !pid_gone(pid) {
+        log::warn!(
+            "host recovery: pid {pid} survived SIGTERM for {} s; sending SIGKILL",
+            TERM_GRACE.as_secs()
+        );
+        signal(pid, "-KILL");
+        let deadline = std::time::Instant::now() + TERM_GRACE;
+        while !pid_gone(pid) && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    if !pid_gone(pid) {
+        let message = format!("pid {pid} would not die; leaving it alone");
+        log::error!("host recovery: {message}");
+        return Err(message);
+    }
+    log::info!("host recovery: pid {pid} is gone; clearing any stale socket");
+    remove_stale_socket(dir);
+    Ok(())
+}
+
+/// Best effort: drop `dir`'s stale `app.sock` so the next host binds cleanly.
+fn remove_stale_socket(dir: &Path) {
+    let socket = crate::local_host::listen_addr(dir);
+    match std::fs::remove_file(&socket) {
+        Ok(()) => log::info!(
+            "host recovery: removed the stale socket {}",
+            socket.display()
+        ),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => log::warn!("host recovery: could not remove {}: {e}", socket.display()),
+    }
+}
+
+/// `kill -<sig> <pid>` (a signal needs no file descriptor — it reaches a host
+/// even at EMFILE).
+#[cfg(target_os = "linux")]
+fn signal(pid: u32, sig: &str) -> bool {
+    std::process::Command::new("kill")
+        .args([sig, &pid.to_string()])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+/// Is `pid` really gone — dead, or a zombie its parent has not reaped yet?
+#[cfg(target_os = "linux")]
+fn pid_gone(pid: u32) -> bool {
+    if !pid_alive(pid) {
+        return true;
+    }
+    // `/proc/<pid>/stat`: `pid (comm) state …` — the comm may contain spaces
+    // and parens, so the state is the first field after the last `)`.
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        .and_then(|stat| {
+            let fields = stat.rsplit_once(')')?.1;
+            fields.split_whitespace().next().map(str::to_string)
+        })
+        .is_some_and(|state| state == "Z")
+}
+
+/// Proof that `pid` is a unipi host of this user serving `dir` (Linux only):
+/// its `/proc` owner uid, its binary name (`exe` or `argv[0]`) and its data
+/// dir (`$OINO_HOST_DIR`, legacy `$UNIPI_HOST_DIR`, else the default dir).
+#[cfg(target_os = "linux")]
+fn verify_holder(dir: &Path, pid: u32) -> Result<(), String> {
+    const HOST_BINS: [&str; 2] = ["unipi-oino-host", "unipi-host"];
+    use std::os::unix::fs::MetadataExt;
+    let proc = PathBuf::from(format!("/proc/{pid}"));
+    let uid = std::fs::metadata(&proc)
+        .map_err(|e| format!("pid {pid} is not there anymore ({e})"))?
+        .uid();
+    let mine = effective_uid();
+    if uid != mine {
+        return Err(format!("pid {pid} runs as uid {uid}, not ours ({mine})"));
+    }
+    let is_host = |path: &str| {
+        Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| HOST_BINS.contains(&n))
+    };
+    let exe = std::fs::read_link(proc.join("exe")).ok();
+    let argv0 = std::fs::read(proc.join("cmdline")).ok().and_then(|raw| {
+        raw.split(|b| *b == 0)
+            .next()
+            .and_then(|a| std::str::from_utf8(a).ok())
+            .map(str::to_string)
+    });
+    let exe_name = exe.as_deref().and_then(|e| e.to_str());
+    if !exe_name.is_some_and(is_host) && !argv0.as_deref().is_some_and(is_host) {
+        return Err(format!(
+            "pid {pid} is not a unipi host (exe {}, argv0 {})",
+            exe_name.unwrap_or("?"),
+            argv0.as_deref().unwrap_or("?")
+        ));
+    }
+    let served = environ_value(pid, "OINO_HOST_DIR")
+        .or_else(|| environ_value(pid, "UNIPI_HOST_DIR"))
+        .map_or_else(unipi_proto::paths::default_host_dir, PathBuf::from);
+    if !same_dir(&served, dir) {
+        return Err(format!(
+            "pid {pid} serves {}, not {}",
+            served.display(),
+            dir.display()
+        ));
+    }
+    Ok(())
+}
+
+/// This process's effective uid, from `/proc/self/status` (no libc dep).
+/// Unreadable → `u32::MAX`, which matches nothing: we never kill on doubt.
+#[cfg(target_os = "linux")]
+fn effective_uid() -> u32 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status.lines().find_map(|line| {
+                // `Uid:	<real> <effective> <saved> <fs>`
+                line.strip_prefix("Uid:")?
+                    .split_whitespace()
+                    .nth(1)?
+                    .parse()
+                    .ok()
+            })
+        })
+        .unwrap_or(u32::MAX)
+}
+
+/// One variable out of `/proc/<pid>/environ` (readable for same-user pids).
+#[cfg(target_os = "linux")]
+fn environ_value(pid: u32, key: &str) -> Option<String> {
+    let raw = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
+    std::str::from_utf8(&raw)
+        .ok()?
+        .split('\0')
+        .find_map(|entry| {
+            entry
+                .strip_prefix(key)?
+                .strip_prefix('=')
+                .map(str::to_string)
+        })
+}
+
+/// The same directory once symlinks are resolved (text compare as a fallback).
+#[cfg(target_os = "linux")]
+fn same_dir(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
 /// Applies §5.1's decision to this PC right now and reports what it did.
 /// Desktop only: the phone has no local host to supervise.
 pub fn decide(host_dir: &Path, bin: Option<&Path>) -> (Plan, Option<Arc<Supervisor>>) {
@@ -488,6 +796,8 @@ impl Supervisor {
             let mut failures: u32 = 0;
             // Since when the lock has been held by a host that does not answer.
             let mut held_since: Option<std::time::Instant> = None;
+            // Pings in a row the current holder went silent for.
+            let mut silent: u32 = 0;
             let stopped = || *me.stop.subscribe().borrow_and_update();
             let socket = crate::local_host::listen_addr(&me.dir);
             while !stopped() {
@@ -496,8 +806,38 @@ impl Supervisor {
                 if serving(&me.dir) {
                     me.set_state(SupervisorState::Held).await;
                     held_since = None;
-                    while !stopped() && socket_alive(&socket) {
-                        tokio::time::sleep(WATCH_EVERY).await;
+                    silent = 0;
+                    // Watch it: the moment it goes away (socket refuses) or goes
+                    // silent (connects but never replies — a wedged accept() loop)
+                    // for [`PING_FAILURES`] pings, replace it with ours.
+                    while !stopped() {
+                        if !socket_alive(&socket) {
+                            break;
+                        }
+                        if answers(&socket).await {
+                            silent = 0;
+                            tokio::time::sleep(PING_EVERY).await;
+                            continue;
+                        }
+                        silent += 1;
+                        log::warn!(
+                            "host: no answer to ping {silent}/{PING_FAILURES} from the adopted host"
+                        );
+                        if silent < PING_FAILURES {
+                            tokio::time::sleep(WATCH_EVERY).await;
+                            continue;
+                        }
+                        match recover(&me.dir).await {
+                            Ok(()) => {
+                                log::info!("host: the wedged host was replaced; starting ours");
+                                break;
+                            }
+                            Err(reason) => {
+                                log::warn!("host: keeping the adopted host: {reason}");
+                                silent = 0;
+                                tokio::time::sleep(PING_EVERY).await;
+                            }
+                        }
                     }
                     if stopped() {
                         return;
@@ -532,9 +872,30 @@ impl Supervisor {
                 if status.code() == Some(EXIT_ALREADY_RUNNING) {
                     // The lock is held. A host that answers is adopted (the top of the
                     // loop watches it); one that does not is the previous owner still
-                    // shutting down — try again shortly instead of giving up.
+                    // shutting down — try again shortly instead of giving up. A holder
+                    // that stays silent (wedged, or its socket never comes up) through
+                    // [`PING_FAILURES`] probes while it still holds the lock is replaced.
                     let since = *held_since.get_or_insert_with(std::time::Instant::now);
                     me.set_state(SupervisorState::Held).await;
+                    if answers(&socket).await {
+                        silent = 0;
+                    } else {
+                        silent += 1;
+                        log::warn!(
+                            "host: no answer to ping {silent}/{PING_FAILURES} from the lock holder"
+                        );
+                        if silent >= PING_FAILURES {
+                            match recover(&me.dir).await {
+                                Ok(()) => {
+                                    log::info!(
+                                        "host: the silent lock holder was replaced; trying ours again"
+                                    );
+                                }
+                                Err(reason) => log::warn!("host: not recovering: {reason}"),
+                            }
+                            silent = 0;
+                        }
+                    }
                     tokio::time::sleep(if since.elapsed() < LOCK_FAST_FOR {
                         LOCK_FAST_EVERY
                     } else {
@@ -849,6 +1210,285 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
+    // ------------------------------------------------- wedged-host recovery
+
+    /// Locks `dir`'s host.lock for the test process and records `pid` as its
+    /// owner — the wedged host of the launch incident: it holds the lock and
+    /// wrote its own pid into the file.
+    #[cfg(unix)]
+    fn hold_lock(dir: &Path, pid: u32, mode: &str) -> std::fs::File {
+        use std::io::Write;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(dir.join("host.lock"))
+            .unwrap();
+        file.try_lock().expect("the test takes the free lock");
+        let mut file = file;
+        write!(
+            file,
+            r#"{{"pid":{pid},"version":"9.9.9","mode":"{mode}","started_at":0}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+        file
+    }
+
+    /// A *binary* (not a script) named like the host, so `/proc/<pid>/exe` and
+    /// `argv[0]` verify the way a real sidecar would. The stand-in must ignore
+    /// `argv[0]` (multi-call coreutils refuse a renamed binary) and block until
+    /// killed — hence an interpreter copy running a sleep.
+    #[cfg(unix)]
+    fn named_binary(dir: &Path, name: &str) -> (PathBuf, Vec<&'static str>) {
+        let candidates: [(&str, Vec<&str>); 2] = [
+            (
+                "/usr/bin/python3",
+                vec!["-c", "import time; time.sleep(120)"],
+            ),
+            ("/usr/bin/node", vec!["-e", "setInterval(() => {}, 1e6)"]),
+        ];
+        for (bin, args) in candidates {
+            if !Path::new(bin).exists() {
+                continue;
+            }
+            let path = dir.join(name);
+            std::fs::copy(bin, &path).expect("copy the stand-in binary");
+            return (path, args);
+        }
+        panic!("no stand-in binary (python3/node) found");
+    }
+
+    /// Accepts connections and answers every frame with a `Control::Ok` —
+    /// what a healthy host's listener does.
+    #[cfg(unix)]
+    fn answer_server(listener: std::os::unix::net::UnixListener) {
+        use std::io::{Read, Write};
+        std::thread::spawn(move || {
+            while let Ok((mut stream, _)) = listener.accept() {
+                let mut header = [0u8; unipi_proto::FRAME_HEADER_LEN];
+                if stream.read_exact(&mut header).is_err() {
+                    continue;
+                }
+                let len = u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
+                if len > 0 {
+                    let mut payload = vec![0u8; len];
+                    let _ = stream.read_exact(&mut payload);
+                }
+                let ok = unipi_proto::frame::encode(
+                    unipi_proto::FrameKind::Control,
+                    &serde_json::to_vec(&unipi_proto::Control::Ok { data: None }).unwrap(),
+                );
+                let _ = stream.write_all(&ok);
+            }
+        });
+    }
+
+    #[test]
+    fn lock_holder_reports_only_a_live_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(lock_holder(dir.path()), None, "no file at all");
+        // A leftover file nobody holds means nothing (the OS lock dies with
+        // the process).
+        std::fs::write(dir.path().join("host.lock"), r#"{"pid":42,"mode":"app"}"#).unwrap();
+        assert_eq!(
+            lock_holder(dir.path()),
+            None,
+            "the file lies without a live lock"
+        );
+        let held = hold_lock(dir.path(), 42, "app");
+        assert_eq!(lock_holder(dir.path()), Some(42));
+        drop(held);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_listener_that_never_accepts_does_not_answer() {
+        // The wedged host of the launch incident: EMFILE breaks accept(), the
+        // kernel still completes connects — only a reply proves it works.
+        let dir = tempfile::tempdir().unwrap();
+        let socket = crate::local_host::listen_addr(dir.path());
+        let _deaf = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        assert!(!answers(&socket).await);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn recovery_never_touches_a_host_that_answers() {
+        let dir = tempfile::tempdir().unwrap();
+        let host_dir = tempfile::tempdir().unwrap();
+        let listener =
+            std::os::unix::net::UnixListener::bind(crate::local_host::listen_addr(host_dir.path()))
+                .unwrap();
+        answer_server(listener);
+        // The holder looks exactly like the real thing: right name, right dir.
+        let (holder, args) = named_binary(dir.path(), "unipi-host");
+        let mut healthy = std::process::Command::new(&holder)
+            .args(&args)
+            .env("OINO_HOST_DIR", host_dir.path())
+            .spawn()
+            .unwrap();
+        let _lock = hold_lock(host_dir.path(), healthy.id(), "app");
+        let outcome = recover(host_dir.path()).await;
+        assert!(outcome.is_err(), "an answering host is never replaced");
+        assert!(
+            healthy.try_wait().unwrap().is_none(),
+            "a healthy host must survive recovery"
+        );
+        let _ = healthy.kill();
+        let _ = healthy.wait();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_silent_holder_that_is_not_a_unipi_host_is_left_alone() {
+        let host_dir = tempfile::tempdir().unwrap();
+        // No socket at all: the guard ping fails at once.
+        let mut unrelated = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let _lock = hold_lock(host_dir.path(), unrelated.id(), "manual");
+        let outcome = recover(host_dir.path()).await;
+        let reason = outcome.unwrap_err();
+        assert!(
+            reason.contains("not a unipi host"),
+            "an unrelated silent process must be refused, got {reason}"
+        );
+        assert!(
+            unrelated.try_wait().unwrap().is_none(),
+            "an unrelated process must survive"
+        );
+        let _ = unrelated.kill();
+        let _ = unrelated.wait();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_holder_must_be_this_users_host_for_this_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let host_dir = tempfile::tempdir().unwrap();
+        let bin = named_binary(dir.path(), "unipi-host");
+        // Right name, right dir, right user → verified. (A fresh spawn's exec
+        // may still be in flight — /proc lags a moment, so settle first. The
+        // real recover() only ever verifies a holder that has been silent for
+        // seconds, so the race is a test artifact.)
+        let mut mine = std::process::Command::new(&bin.0)
+            .args(&bin.1)
+            .env("OINO_HOST_DIR", host_dir.path())
+            .spawn()
+            .unwrap();
+        let mut verified = false;
+        for _ in 0..100 {
+            if verify_holder(host_dir.path(), mine.id()).is_ok() {
+                verified = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(verified, "a real holder must verify");
+        // The same binary serving a *different* dir → refused.
+        let other = tempfile::tempdir().unwrap();
+        let mut stray = std::process::Command::new(&bin.0)
+            .args(&bin.1)
+            .env("OINO_HOST_DIR", other.path())
+            .spawn()
+            .unwrap();
+        let reason = verify_holder(host_dir.path(), stray.id()).unwrap_err();
+        assert!(reason.contains("serves"), "{reason}");
+        // A pid that does not exist → refused.
+        assert!(verify_holder(host_dir.path(), 4_000_000).is_err());
+        let _ = mine.kill();
+        let _ = mine.wait();
+        let _ = stray.kill();
+        let _ = stray.wait();
+    }
+
+    /// The launch incident: a host holds the lock, its socket accepts connects
+    /// and never answers. After [`PING_FAILURES`] silent pings the supervisor
+    /// verifies, kills and replaces it — all within 15 s.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_wedged_host_holding_the_lock_is_replaced_within_15_s() {
+        let dir = tempfile::tempdir().unwrap();
+        let host_dir = tempfile::tempdir().unwrap();
+        let wedge = named_binary(dir.path(), "unipi-host");
+        let mut wedged = std::process::Command::new(&wedge.0)
+            .args(&wedge.1)
+            .env("OINO_HOST_DIR", host_dir.path())
+            .spawn()
+            .unwrap();
+        let _lock = hold_lock(host_dir.path(), wedged.id(), "app");
+        let socket = crate::local_host::listen_addr(host_dir.path());
+        let _deaf = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        // Ours: starts and stays up — the mark file says it was spawned.
+        let mark = dir.path().join("runs.txt");
+        let ours = fake_bin(
+            dir.path(),
+            "ours-host",
+            &format!("echo run >> {}; sleep 30", mark.display()),
+        );
+        let (plan, supervisor) = decide(host_dir.path(), Some(&ours));
+        assert_eq!(plan, Plan::Adopt);
+        let supervisor = supervisor.expect("an adopted host is watched");
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while !mark.exists() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(mark.exists(), "our host was not started within 15 s");
+        // The wedged holder died (and was reaped — try_wait, not /proc), and
+        // its stale socket went with it.
+        assert!(
+            wedged.try_wait().unwrap().is_some(),
+            "the wedged host survived recovery"
+        );
+        assert!(!socket.exists(), "the stale socket was left behind");
+        supervisor.stop();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    /// A healthy adopted host answers every ping: nothing is killed and ours
+    /// never starts over it.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_healthy_adopted_host_is_never_killed() {
+        let dir = tempfile::tempdir().unwrap();
+        let host_dir = tempfile::tempdir().unwrap();
+        let listener =
+            std::os::unix::net::UnixListener::bind(crate::local_host::listen_addr(host_dir.path()))
+                .unwrap();
+        answer_server(listener);
+        let bin_dir = tempfile::tempdir().unwrap();
+        let (holder, args) = named_binary(bin_dir.path(), "unipi-host");
+        let mut healthy = std::process::Command::new(&holder)
+            .args(&args)
+            .env("OINO_HOST_DIR", host_dir.path())
+            .spawn()
+            .unwrap();
+        let _lock = hold_lock(host_dir.path(), healthy.id(), "app");
+        let mark = dir.path().join("runs.txt");
+        let ours = fake_bin(
+            dir.path(),
+            "ours-host",
+            &format!("echo run >> {}; sleep 30", mark.display()),
+        );
+        let (plan, supervisor) = decide(host_dir.path(), Some(&ours));
+        assert_eq!(plan, Plan::Adopt);
+        let supervisor = supervisor.expect("an adopted host is watched");
+        // Longer than three failed-ping windows would take: nothing happens.
+        tokio::time::sleep(Duration::from_secs(12)).await;
+        assert!(
+            healthy.try_wait().unwrap().is_none(),
+            "the healthy host was killed"
+        );
+        assert!(!mark.exists(), "our host was started over a healthy one");
+        assert_eq!(supervisor.state().await, SupervisorState::Held);
+        supervisor.stop();
+        let _ = healthy.kill();
+        let _ = healthy.wait();
+    }
+
     #[test]
     fn the_bundled_sidecar_beats_one_on_path() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1054,6 +1694,33 @@ pub async fn host_restart(
         s.stop();
     }
     Ok(plan_name(start(None, &dir, &shared).await).to_string())
+}
+
+/// `restart_host`: the Offline banner's "Restart agent host". The same
+/// recovery the supervisor runs by itself — stop our child, replace a lock
+/// holder that will not answer (never a healthy one), clear the stale socket —
+/// then adopt or spawn afresh. Reports the resulting plan (`adopt`/`spawn`…).
+#[tauri::command]
+pub async fn restart_host(
+    app: tauri::AppHandle,
+    shared: tauri::State<'_, Shared>,
+    host_dir: Option<String>,
+) -> Result<String, AppErrorDto> {
+    let dir = host_dir
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| crate::local_host::host_dir().unwrap_or_default());
+    log::info!("host: restart_host asked for {}", dir.display());
+    if let Some(s) = shared.0.lock().await.take() {
+        s.stop();
+    }
+    let socket = crate::local_host::listen_addr(&dir);
+    if !answers(&socket).await {
+        if let Err(reason) = recover(&dir).await {
+            log::warn!("host: restart_host: {reason}");
+        }
+    }
+    Ok(plan_name(start(Some(&app), &dir, &shared).await).to_string())
 }
 
 /// Against the real `unipi-host` binary and a throwaway host dir: the spawn

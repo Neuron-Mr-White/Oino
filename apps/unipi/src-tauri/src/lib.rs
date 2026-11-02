@@ -170,6 +170,7 @@ pub fn run() {
             host_supervisor::host_runtime,
             host_supervisor::host_log,
             host_supervisor::host_restart,
+            host_supervisor::restart_host,
             lifecycle::close_action_state,
             lifecycle::close_action_set,
             lifecycle::close_answer,
