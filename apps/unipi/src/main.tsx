@@ -51,10 +51,10 @@ import '@xterm/xterm/css/xterm.css';
 import './style.css';
 import './components/shell/shell.css';
 import './components/panes/panes.css';
+// Phone design system (phone spec §2): tokens, z scale, primitives (rules scoped html[data-shell=phone] / ph-*).
+import './components/phone/phone.css';
 // Shared tokens + components (UNI-218): last, so it wins over the per-screen rules it unifies.
 import './ui.css';
-// Phone design system (phone spec §2): tokens, z scale, primitives — after ui.css, scoped to the phone shell.
-import './components/phone/phone.css';
 
 const desktop = () => layout().desktop();
 
