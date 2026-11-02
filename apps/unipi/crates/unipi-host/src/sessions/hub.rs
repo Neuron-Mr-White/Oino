@@ -17,8 +17,10 @@
 //!   stream's `{kind:"taken_over", from}` notice (§8.2). Symmetrically, when another runner
 //!   takes one of this host's sessions, the run supervisor or the stream tap marks the card
 //!   [`HubState::TakenOver`] (§8.4); opening it again takes it back.
-//! - **Cards and project grouping** ([`super::card`]) — the Sessions list is headers only
-//!   (core `list_all`), merged with the host's live state; nothing here loads a runtime.
+//! - **Cards and project grouping** ([`super::card`]) — the Sessions list comes from core's
+//!   card index (`list_all_cards`: bounded reads cached by path + size + mtime, on the
+//!   blocking pool; big files refined in the background), merged with the host's live
+//!   state; lookups by id go by file name, never a listing. Nothing here loads a runtime.
 //! - **Per-session panic isolation** (§4.4) — a supervisor follows a session while it runs
 //!   (it is only subscribed while the session is busy, so core's idle eviction keeps
 //!   working); a `SessionCrashed` / panicking supervisor marks *that* session
@@ -83,9 +85,13 @@ const WARM_INTERVAL: Duration = Duration::from_secs(60);
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum HubError {
-    /// A user-facing failure (unknown session, archive I/O, …).
+    /// A user-facing failure (archive I/O, an ambiguous id, …).
     #[error("{0}")]
     Failed(String),
+    /// No session (or archived session) matches the target: the app forgets it rather
+    /// than retrying (`E_NOT_FOUND`).
+    #[error("{0}")]
+    NotFound(String),
     /// The core hub rejected the call.
     #[error(transparent)]
     Client(#[from] ClientError),
@@ -94,6 +100,32 @@ pub enum HubError {
 impl HubError {
     fn failed(message: impl Into<String>) -> Self {
         Self::Failed(message.into())
+    }
+
+    /// Core's "unknown target" text becomes [`HubError::NotFound`].
+    fn from_find(error: ClientError) -> Self {
+        match error {
+            ClientError::Command(text) if text.starts_with("No session found matching") => {
+                Self::NotFound(text)
+            }
+            other => Self::Client(other),
+        }
+    }
+}
+
+/// Test hook (debug builds only): `UNIPI_DEBUG_SESSIONS_LIST_DELAY_MS` makes every
+/// session listing sleep that long **where the listing runs** (the blocking pool), so a
+/// test can prove a slow listing never stalls `host_info` or other requests.
+async fn debug_list_delay() {
+    #[cfg(debug_assertions)]
+    if let Some(ms) = std::env::var("UNIPI_DEBUG_SESSIONS_LIST_DELAY_MS")
+        .ok()
+        .and_then(|ms| ms.parse::<u64>().ok())
+    {
+        let _ = tokio::task::spawn_blocking(move || {
+            std::thread::sleep(Duration::from_millis(ms));
+        })
+        .await;
     }
 }
 
@@ -585,9 +617,36 @@ impl SessionHub {
     ///
     /// Listing I/O failures.
     pub async fn list(&self) -> Result<Vec<SessionCard>, HubError> {
+        debug_list_delay().await;
         let cards = self.inner.list().await?;
         self.warm_recent_projects(false);
+        self.refine_cards();
         Ok(cards)
+    }
+
+    /// Background pass over the sessions the card index only sampled (big files: head +
+    /// tail): reads them whole once, niced on the blocking pool, and re-announces every
+    /// card whose name, folder or count changed (`SessionChanged`). One pass at a time;
+    /// listings and opens never wait for it.
+    fn refine_cards(&self) {
+        let weak = Arc::downgrade(&self.inner);
+        let root = self.inner.sessions_root.clone();
+        tokio::spawn(async move {
+            let changed = tokio::task::spawn_blocking(move || {
+                let mut ids = Vec::new();
+                oino_session::manager::refine_all_cards(&root, |info| ids.push(info.id));
+                ids
+            })
+            .await
+            .unwrap_or_default();
+            let Some(inner) = weak.upgrade() else { return };
+            if !changed.is_empty() {
+                tracing::info!(count = changed.len(), "session cards refined");
+            }
+            for id in changed {
+                inner.changed(&id).await;
+            }
+        });
     }
 
     /// Pre-warms the session hub's cached services for the most recent projects'
@@ -853,7 +912,14 @@ impl SessionHub {
     ///
     /// Trash directory I/O.
     pub async fn archived(&self) -> Result<Vec<SessionCard>, HubError> {
-        self.inner.archived()
+        debug_list_delay().await;
+        let cards = self.inner.archived().await?;
+        // The trash's big files are refined too (no events: the list reloads on open).
+        let trash = self.inner.agent_dir.join("trash");
+        tokio::task::spawn_blocking(move || {
+            oino_session::manager::refine_dir_cards(&trash, |_| {});
+        });
+        Ok(cards)
     }
 
     /// App spec §3.14 (`session_restore`, WP-A5, Z-13): move an archived session file back
@@ -917,12 +983,18 @@ impl Inner {
         Ok(ProjectGroup::group(self.list().await?))
     }
 
+    /// One card by exact id (file names + card index — no listing).
     async fn card(&self, session_id: &str) -> Result<Option<SessionCard>, HubError> {
-        Ok(self
-            .list()
-            .await?
-            .into_iter()
-            .find(|card| card.session_id == session_id))
+        match self.core.find(session_id).await {
+            Ok(record) if record.info.id == session_id => {
+                Ok(Some(self.card_from(&lock(&self.state), &record)))
+            }
+            Ok(_) => Ok(None),
+            Err(error) => match HubError::from_find(error) {
+                HubError::NotFound(_) => Ok(None),
+                other => Err(other),
+            },
+        }
     }
 
     /// The card of one record, with the host's live state merged in.
@@ -977,10 +1049,9 @@ impl Inner {
     /// until its first message), else a card built from the runtime state.
     async fn card_for(&self, backend: &Arc<dyn SessionBackend>, cwd: &Path) -> SessionCard {
         let id = backend.session_id();
-        if let Ok(records) = self.core.list().await {
-            let state = lock(&self.state);
-            if let Some(record) = records.iter().find(|record| record.info.id == id) {
-                return self.card_from(&state, record);
+        if let Ok(record) = self.core.find(&id).await {
+            if record.info.id == id {
+                return self.card_from(&lock(&self.state), &record);
             }
         }
         let now = epoch_ms(SystemTime::now());
@@ -1383,9 +1454,10 @@ impl Inner {
     /// `sessions_list{archived:true}` (§3.14, WP-A5): the trashed session files, newest
     /// activity first, as idle cards. Each file is read header-only
     /// ([`oino_session::manager::session_info`]); nothing wakes a runtime.
-    fn archived(&self) -> Result<Vec<SessionCard>, HubError> {
+    async fn archived(&self) -> Result<Vec<SessionCard>, HubError> {
         let mut cards: Vec<SessionCard> = self
-            .archived_sessions()?
+            .archived_sessions()
+            .await?
             .iter()
             .map(|info| {
                 let updated_at = info
@@ -1420,7 +1492,7 @@ impl Inner {
     /// `<sessions root>/<encoded cwd>/` (core's own layout) and re-list it. The restored
     /// card is announced on `events_open` like any other change.
     async fn restore(&self, target: &str) -> Result<SessionCard, HubError> {
-        let entry = self.resolve_archived(target)?;
+        let entry = self.resolve_archived(target).await?;
         let cwd = if entry.cwd.is_empty() {
             self.cwd.clone()
         } else {
@@ -1440,13 +1512,10 @@ impl Inner {
             .map_err(|error| {
                 HubError::failed(format!("restoring {}: {error}", entry.path.display()))
             })?;
-        let card = match self.core.list().await {
-            Ok(records) => records
-                .iter()
-                .find(|record| record.info.id == entry.id)
-                .map(|record| self.card_from(&lock(&self.state), record)),
+        let card = match self.core.find(&dest.to_string_lossy()).await {
+            Ok(record) => Some(self.card_from(&lock(&self.state), &record)),
             Err(error) => {
-                tracing::warn!(%error, session_id = %entry.id, "listing after a restore");
+                tracing::warn!(%error, session_id = %entry.id, "reading a restored session");
                 None
             }
         }
@@ -1476,7 +1545,7 @@ impl Inner {
     /// `session_delete{session}` (§3.14, WP-A5): unlink one archived session file. The
     /// op is trash-only: a live session has to be archived first (Z-13/Z-20).
     async fn delete_archived(&self, target: &str) -> Result<(), HubError> {
-        let entry = self.resolve_archived(target)?;
+        let entry = self.resolve_archived(target).await?;
         tokio::fs::remove_file(&entry.path).await.map_err(|error| {
             HubError::failed(format!("deleting {}: {error}", entry.path.display()))
         })?;
@@ -1490,7 +1559,7 @@ impl Inner {
     /// `trash_empty` (§3.14, WP-A5): delete every archived session file (ZCode's
     /// "Delete all archived").
     async fn empty_trash(&self) -> Result<usize, HubError> {
-        let archived = self.archived_sessions()?;
+        let archived = self.archived_sessions().await?;
         let mut deleted = 0;
         for entry in archived {
             match tokio::fs::remove_file(&entry.path).await {
@@ -1511,57 +1580,37 @@ impl Inner {
         Ok(deleted)
     }
 
-    /// Every session file in `trash/` that parses as a session (headers only).
-    fn archived_sessions(&self) -> Result<Vec<oino_session::manager::SessionInfo>, HubError> {
+    /// Every session file in `trash/` that parses as a session, newest first — from the
+    /// trash's card index (bounded reads), on the blocking pool.
+    async fn archived_sessions(&self) -> Result<Vec<oino_session::manager::SessionInfo>, HubError> {
         let trash = self.agent_dir.join("trash");
-        let entries = match std::fs::read_dir(&trash) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => {
-                return Err(HubError::failed(format!(
-                    "reading {}: {error}",
-                    trash.display()
-                )));
-            }
-        };
-        let mut sessions: Vec<oino_session::manager::SessionInfo> = entries
-            .flatten()
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
-            .filter_map(|entry| oino_session::manager::session_info(&entry.path()))
-            .collect();
-        sessions.sort_by_key(|s| std::cmp::Reverse(s.modified));
-        Ok(sessions)
+        tokio::task::spawn_blocking(move || oino_session::manager::list_dir_cards(&trash))
+            .await
+            .map_err(|error| HubError::failed(format!("listing the trash: {error}")))
     }
 
     /// Resolves an archived `session` target — exact id, unique prefix (≥ 4 chars) or the
-    /// archived file's path — against `trash/`.
-    fn resolve_archived(
+    /// archived file's path — against `trash/`, by file name (no listing).
+    async fn resolve_archived(
         &self,
         target: &str,
     ) -> Result<oino_session::manager::SessionInfo, HubError> {
-        let archived = self.archived_sessions()?;
-        let path = Path::new(target);
-        if path.is_absolute() {
-            return archived
-                .into_iter()
-                .find(|entry| entry.path == path)
-                .ok_or_else(|| HubError::failed(format!("no archived session at {target}")));
-        }
-        let exact: Vec<&oino_session::manager::SessionInfo> =
-            archived.iter().filter(|entry| entry.id == target).collect();
-        if let Some(entry) = exact.first() {
-            return Ok((*entry).clone());
-        }
-        let matches: Vec<&oino_session::manager::SessionInfo> = archived
-            .iter()
-            .filter(|entry| entry.id.starts_with(target))
-            .collect();
-        match matches.as_slice() {
-            [entry] if target.chars().count() >= 4 => Ok((*entry).clone()),
-            [] => Err(HubError::failed(format!(
+        let trash = self.agent_dir.join("trash");
+        let owned = target.to_owned();
+        let found = tokio::task::spawn_blocking(move || {
+            oino_session::manager::find_card_in_dir(&trash, &owned)
+        })
+        .await
+        .map_err(|error| HubError::failed(format!("reading the trash: {error}")))?;
+        match found {
+            Ok(Some(entry)) => Ok(entry),
+            Ok(None) if Path::new(target).is_absolute() => Err(HubError::NotFound(format!(
+                "no archived session at {target}"
+            ))),
+            Ok(None) => Err(HubError::NotFound(format!(
                 "no archived session matches {target:?}"
             ))),
-            _ => Err(HubError::failed(format!(
+            Err(_) => Err(HubError::failed(format!(
                 "{target:?} matches more than one archived session"
             ))),
         }
@@ -1570,48 +1619,7 @@ impl Inner {
     /// Resolves a `session` target (exact id, unique prefix ≥ 4 chars, or file path) against
     /// the records — core's own rules, without waking anything.
     async fn resolve(&self, target: &str) -> Result<CoreHubSession, HubError> {
-        let records = self.core.list().await?;
-        let path = Path::new(target);
-        if path.exists() {
-            return records
-                .iter()
-                .find(|record| record.info.path == path)
-                .cloned()
-                .ok_or_else(|| {
-                    HubError::failed(format!("Not an Oino session in the hub: {target}"))
-                });
-        }
-        let exact: Vec<&CoreHubSession> = records
-            .iter()
-            .filter(|record| record.info.id == target)
-            .collect();
-        if exact.len() > 1 {
-            return Err(HubError::failed(format!(
-                "Ambiguous session id {target}: it matches {} sessions",
-                exact.len()
-            )));
-        }
-        if let Some(record) = records.iter().find(|record| record.info.id == target) {
-            return Ok(record.clone());
-        }
-        if target.len() >= 4 {
-            let prefixed: Vec<&CoreHubSession> = records
-                .iter()
-                .filter(|record| record.info.id.starts_with(target))
-                .collect();
-            match prefixed.len() {
-                1 => return Ok(prefixed[0].clone()),
-                0 => {}
-                count => {
-                    return Err(HubError::failed(format!(
-                        "Ambiguous session id {target}: it matches {count} sessions"
-                    )));
-                }
-            }
-        }
-        Err(HubError::failed(format!(
-            "No session found matching '{target}'"
-        )))
+        self.core.find(target).await.map_err(HubError::from_find)
     }
 }
 

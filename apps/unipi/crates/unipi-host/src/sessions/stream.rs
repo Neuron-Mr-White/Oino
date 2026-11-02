@@ -84,6 +84,8 @@ fn hub_error(error: HubError) -> AppErrorDto {
     let message = error.to_string();
     let code = match &error {
         HubError::Client(oino_client::backend::ClientError::Closed) => AppErrorCode::E_TRANSPORT,
+        // An unknown session id: final, so the app forgets it instead of retrying.
+        HubError::NotFound(_) => AppErrorCode::E_NOT_FOUND,
         _ => AppErrorCode::E_INTERNAL,
     };
     AppErrorDto::new(code, message, false)

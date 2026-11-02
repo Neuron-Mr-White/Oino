@@ -3431,6 +3431,7 @@ version = "1.0.2"
 dependencies = [
  "fs4",
  "indexmap",
+ "memchr",
  "nix 0.29.0",
  "oino-ai",
  "serde",
