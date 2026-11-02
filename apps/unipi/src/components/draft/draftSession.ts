@@ -22,7 +22,7 @@ import { sessions, type SendOptions, type SessionHandle } from '../../lib/sessio
 import type { CommandInfo, OutboxImage, OutboxItem, SessionState } from '../../lib/session/types';
 import type { RpcCommand } from '../../lib/host/client';
 import { clampLevel, levelsOfModel, THINKING_ORDER } from '../../lib/model/thinking';
-import { hostReadiness, type Readiness } from '../../lib/model/readiness';
+import { hostReadiness, withModelProviders, type Readiness } from '../../lib/model/readiness';
 import { WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
 import { hostCmd, listExtensions } from '../../settings/hostCmd';
 import { parseModels, type ModelInfo } from '../../lib/model/picker';
@@ -82,7 +82,11 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
     return undefined;
   };
 
-  const [readiness, setReadiness] = createSignal<Readiness | undefined>();
+  const [hostReady, setReadiness] = createSignal<Readiness | undefined>();
+  // Providers seen in the model list: an extension-registered one (absent from the host's
+  // credential rows) counts as usable, so a router-only PC is not "no provider".
+  const [modelProviders, setModelProviders] = createSignal<string[]>((cachedModels(hostId) ?? []).map((m) => m.provider));
+  const readiness = (): Readiness | undefined => withModelProviders(hostReady(), [...modelProviders(), state.model?.provider]);
   const [defaultsIn, setDefaultsIn] = createSignal(false);
   const [commandsIn, setCommandsIn] = createSignal(false);
   /** D-21: the chips paint once, final; a slow host never keeps them hidden past the grace. */
@@ -237,10 +241,13 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
         const models: ModelInfo[] = reply ? parseModels(reply) : [];
         if (models.length) {
           rememberModels(hostId, models);
+          setModelProviders(models.map((m) => m.provider));
           settleThinking();
           return { models } as T;
         }
-        return { models: cachedModels(hostId) ?? [] } as T;
+        const cached = cachedModels(hostId) ?? [];
+        if (cached.length) setModelProviders(cached.map((m) => m.provider));
+        return { models: cached } as T;
       }
       if (cmd.type === 'set_model' && typeof cmd.provider === 'string' && typeof cmd.modelId === 'string') {
         const known = (cachedModels(hostId) ?? []).find((m) => m.provider === cmd.provider && m.id === cmd.modelId);
