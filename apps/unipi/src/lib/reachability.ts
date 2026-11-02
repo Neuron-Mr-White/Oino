@@ -48,8 +48,8 @@ export const SLOT_SURFACES: Array<{ id: string; title: string; evidence: string 
  */
 export const APP_SURFACES: Array<{ id: string; title: string; evidence: string }> = [
   { id: 'session-modal', title: 'Session modal (Context · Running · Info)', evidence: '../components/session/SessionModal.tsx#openSessionModal' },
-  { id: 'model-picker', title: 'Model picker (single + Fusion)', evidence: '../components/model/ModelPicker.tsx#ModelPicker' },
-  { id: 'model-picker-cycle-set', title: 'Model picker, Cycle set', evidence: '../components/model/ModelPicker.tsx#ModelPickerBody' },
+  { id: 'model-picker', title: 'Model picker (single + Fusion)', evidence: '../components/model/ChatModelPicker.tsx#ChatModelPicker' },
+  { id: 'model-picker-cycle-set', title: 'Model picker, Cycle set', evidence: '../components/model/ChatModelPicker.tsx#ChatModelPickerBody' },
   { id: 'status-pane', title: 'Status pane (Git · LH · todos)', evidence: '../components/status/StatusPane.tsx#openStatusSection' },
   { id: 'composer-permission', title: 'Composer permission / plan control', evidence: '../components/composer/PermissionControl.tsx#PermissionControl' },
   { id: 'keyboard-shortcuts', title: 'Ctrl+/ keyboard list', evidence: '../components/shell/ShortcutsDialog.tsx#setShortcutsOpen' },

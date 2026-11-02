@@ -1,16 +1,17 @@
 /**
- * The settings model control: the SAME picker the composer's model chip opens
- * (search, Suggested group, provider rows, readiness — dead-key providers in the
- * collapsed Unavailable group), as a popover anchored to the field's button.
- * The button shows the model's display name + provider; an empty value shows
- * the field's documented fallback ("Session model" / "Inherit") and the menu
+ * The settings model control: the ONE model popover (`ModelPopover`) the
+ * composer's model chips open (search, Suggested group, provider rows,
+ * readiness — dead-key providers in the collapsed Unavailable group),
+ * anchored to the field's button (a bottom sheet on the phone). The button
+ * shows the model's display name + provider; an empty value shows the
+ * field's documented fallback ("Session model" / "Inherit") and the footer
  * has a "Use default" row. Typing an id is only an escape for models the
  * catalogue can't list.
  */
 import { Show, createMemo, createResource, createSignal } from 'solid-js';
-import { Check, ChevronDown, Cpu, RotateCcw } from 'lucide-solid';
-import { AnchoredMenu } from '../../components/board/AnchoredMenu';
-import { ModelList, modelView } from '../../components/model/ModelList';
+import { ChevronDown, Cpu, RotateCcw } from 'lucide-solid';
+import { modelView } from '../../components/model/ModelList';
+import { ModelPickerPanel, ModelPopover, PickerFootRow } from '../../components/model/ModelPopover';
 import { cachedModels, rememberModels } from '../../components/draft/hostCache';
 import { startupKey } from '../../components/model/suggested';
 import { fetchFusion, fusionAvailable, type FusionCurated } from '../../lib/model/fusion';
@@ -18,8 +19,6 @@ import { modelKey, modelName, parseModels, type ModelInfo } from '../../lib/mode
 import { prettyModelId } from '../../lib/model/displayName';
 import { hostReadiness, type Readiness } from '../../lib/model/readiness';
 import { sessions } from '../../lib/session/store';
-import '../../components/model/model.css';
-import '../../components/draft/draft.css';
 
 type Data = { models: ModelInfo[]; readiness?: Readiness; curated?: FusionCurated };
 
@@ -87,6 +86,7 @@ export function ModelPickerField(props: {
     setAnchor(undefined);
     setTyped('');
   };
+  let btn: HTMLButtonElement | undefined;
   const pick = (key: string | undefined) => {
     props.onPick(key);
     close();
@@ -102,6 +102,7 @@ export function ModelPickerField(props: {
         disabled={props.disabled}
         data-empty={props.value.trim() ? undefined : ''}
         data-testid={props.testId}
+        ref={btn}
         onClick={(e) => {
           if (anchor()) return close();
           setQuery('');
@@ -117,78 +118,51 @@ export function ModelPickerField(props: {
       </button>
       <Show when={anchor()}>
         {(rect) => (
-          <AnchoredMenu anchor={rect()} alignEnd width={340} label={props.label} onDismiss={close}>
-            <div class="ws-menu dm-menu" data-testid={`model-pop-${props.testId}`}>
-              <input
-                type="search"
-                class="dm-search"
-                placeholder="Search models"
-                aria-label="Search models"
-                value={query()}
-                onInput={(e) => setQuery(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const first = view().suggested[0]?.model ?? view().rest[0];
-                    if (first) pick(modelKey(first));
-                  }
-                }}
-                ref={(el) => queueMicrotask(() => el.focus())}
-              />
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={!props.value.trim()}
-                class="ws-row"
-                onClick={() => pick(undefined)}
-                data-testid="model-use-default"
-              >
-                <RotateCcw size={15} class="ws-row-ic" />
-                <span class="ws-row-text">
-                  <span class="ws-row-label">Use default</span>
-                  <span class="ws-row-detail">{props.fallback}</span>
-                </span>
-                <Show when={!props.value.trim()}>
-                  <Check size={15} class="ws-row-check" />
-                </Show>
-              </button>
-              <Show when={!data.loading || data.latest} fallback={<div class="ws-browse-note">Loading…</div>}>
-                <Show
-                  when={(data.latest?.models.length ?? 0) > 0}
-                  fallback={
-                    <div class="ws-browse-note">
-                      The model list shows once a chat is open on this PC. You can enter an id below.
-                    </div>
-                  }
-                >
-                  <ModelList
-                    view={view()}
-                    query={query()}
-                    currentKey={props.value.trim() || undefined}
-                    onSelect={(m) => pick(modelKey(m))}
-                  />
-                </Show>
-              </Show>
-              <Show when={(data.latest?.models.length ?? 0) === 0}>
-                <form
-                  class="settings-model-advanced"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const id = typed().trim();
-                    if (id) pick(id);
-                  }}
-                >
-                  <input
-                    class="dm-search"
-                    aria-label="Advanced: model id"
-                    placeholder="Advanced: provider/model"
-                    spellcheck={false}
-                    value={typed()}
-                    onInput={(e) => setTyped(e.currentTarget.value)}
-                  />
-                </form>
-              </Show>
-            </div>
-          </AnchoredMenu>
+          <ModelPopover anchor={rect()} label={props.label} testId={`model-pop-${props.testId}`} onClose={close} trigger={() => btn}>
+            <ModelPickerPanel
+              view={view()}
+              query={query()}
+              onQuery={setQuery}
+              loading={!!data.loading && !data.latest}
+              header={<p class="mpop-label">{props.label}</p>}
+              showEmpty={(data.latest?.models.length ?? 0) === 0}
+              empty={
+                  <div class="mpop-empty-note">
+                    <p class="mp-hint">The model list shows once a chat is open on this PC. You can enter an id below.</p>
+                    <form
+                      class="settings-model-advanced"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const id = typed().trim();
+                        if (id) pick(id);
+                      }}
+                    >
+                      <input
+                        class="mpop-search"
+                        type="text"
+                        aria-label="Advanced: model id"
+                        placeholder="Advanced: provider/model"
+                        spellcheck={false}
+                        value={typed()}
+                        onInput={(e) => setTyped(e.currentTarget.value)}
+                      />
+                    </form>
+                  </div>
+              }
+              currentKey={props.value.trim() || undefined}
+              onSelect={(m) => pick(modelKey(m))}
+              footer={
+                <PickerFootRow
+                  icon={<RotateCcw size={15} />}
+                  label="Use default"
+                  detail={props.fallback}
+                  checked={!props.value.trim()}
+                  onSelect={() => pick(undefined)}
+                  testId="model-use-default"
+                />
+              }
+            />
+          </ModelPopover>
         )}
       </Show>
     </>

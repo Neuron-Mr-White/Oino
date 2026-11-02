@@ -128,7 +128,6 @@
   text-transform: uppercase;
   color: var(--color-text-dim);
 }
-.dm-menu { height: min(380px, 52vh); }
 .dm-search {
   flex: none;
   height: 34px;
@@ -243,10 +242,3 @@
   .draft-center { gap: 16px; }
   .draft .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: 22px; line-height: 28px; }
 }
-
-/* F-02: the shared model list inside the popover scrolls with the menu, not on its own. */
-.dm-menu .mp-list { max-height: none; overflow: visible; background: transparent; padding: 0; }
-.dm-menu .mp-row { min-height: 46px; }
-.dm-connect { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 16px; text-align: center; }
-.dm-connect-ic { color: var(--color-claw); }
-.dm-connect-text { margin: 0; font-size: 13px; line-height: 1.45; color: var(--color-text-muted); }

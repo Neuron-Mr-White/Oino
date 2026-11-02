@@ -63,7 +63,7 @@ import { BuiltinPanes } from './builtins';
 import { DesktopNative } from './DesktopNative';
 import { SessionModalLayer } from '../session/SessionModal';
 import { SessionActions } from '../session/SessionActions';
-import { ModelPickerLayer } from '../model/ModelPicker';
+import { ModelPickerLayer } from '../model/ChatModelPicker';
 import { openModelPicker } from '../model/target';
 import { cycleThinkingLevel } from '../../lib/model/thinking';
 import { composerDraft, setComposerText } from '../../lib/composer/drafts';

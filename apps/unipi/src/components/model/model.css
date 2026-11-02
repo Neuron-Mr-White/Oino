@@ -2,10 +2,10 @@
    The composer chips (model / thinking / context ring), the model picker
    (Z-69/Z-76) and its row badges. Tokens are unipi's (ui.css); the chips sit
    in the 36 px composer toolbar row, so every control is 30 px or smaller.
-   The picker reuses the Session modal's dialog chrome (session-modal.css:
-   `.sm-overlay` / `.sm-dialog` / `.sm-head` / `.sm-tabs`) and adds its width,
-   the Now line, the shared search, the Fusion columns and the compact
-   right-aligned footer. */
+   The ONE model picker (`ModelPopover`: chat chip, New-chat chip, settings
+   and Cron model fields) is an AnchoredMenu on the desktop and a bottom
+   sheet on the phone: search, a header line, the list, compact footer rows
+   (`.mpop-*`); its Fusion / Cycle set sub-views live in the same popover. */
 
 /* ── composer chips ─────────────────────────────────────────────────────── */
 .tb-chip-model .tb-label,
@@ -34,27 +34,10 @@
   .ctx-ring-arc { transition: none; }
 }
 
-/* ── the picker panel ───────────────────────────────────────────────────── */
-.mp { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* ── the model list (ModelList) and its rows ────────────────────────────── */
 .mp-now { display: flex; align-items: baseline; gap: 7px; min-width: 0; margin: 0 2px; font-size: 13.5px; line-height: 19px; color: var(--color-text-muted); }
 .mp-now-word { flex: 0 0 auto; font-weight: 600; color: var(--color-text-dim); }
 .mp-now-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
-
-.mp-search {
-  width: 100%;
-  box-sizing: border-box;
-  height: 38px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 12px;
-  background: var(--color-surface-2);
-  box-shadow: inset 0 0 0 1px var(--color-line);
-  color: var(--color-text);
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-}
-.mp-search:focus-visible { box-shadow: inset 0 0 0 1.5px var(--color-claw); }
 
 .mp-list {
   display: flex;
@@ -122,9 +105,7 @@
 }
 .mp-pill[aria-checked='true'] { background: var(--color-shell); color: var(--color-face); font-weight: 600; }
 
-/* Footer: one explicit action (or the hint), compact and right aligned (QA#3c). */
-.mp-foot { display: flex; flex-direction: row; justify-content: flex-end; align-items: center; gap: 8px; min-height: 36px; }
-.mp-hint { margin: 0 auto 0 0; font-size: 12.5px; color: var(--color-text-dim); }
+.mp-hint { margin: 0; font-size: 12.5px; color: var(--color-text-dim); }
 .mp-apply.pair-primary { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; width: auto; min-height: 36px; padding: 0 18px; font-size: 13.5px; }
 .mp-apply:disabled { opacity: 0.5; }
 .mp-error { margin: 0; padding: 8px 12px; border-radius: 12px; background: rgb(240 48 24 / 12%); color: var(--color-wm-red); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
@@ -141,16 +122,6 @@
   .mp-skeleton > span, .mp-spinner { animation: none; }
 }
 
-/* Desktop dialog: wider than the Session modal so Fusion's two columns and
-   the search fit (Z-69 "wider dialog"). */
-.model-picker-dialog.sm-dialog { width: min(780px, 100%); max-height: min(86vh, 820px); }
-.mp-body { gap: 0; }
-/* D-25: the dialog keeps its height while a search narrows the list (it re-centred on every keystroke). */
-.model-picker-dialog .mp-list:not(.mp-col-list) { min-height: min(40vh, 340px); }
-
-/* Phone sheet: the body is the sheet's scrolling area. */
-.model-picker-sheet .mp { padding-bottom: 4px; }
-
 /* The ring + Send share one toolbar item on the right. */
 .tb-end-group { display: inline-flex; align-items: center; gap: 2px; }
 
@@ -160,16 +131,7 @@ body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 69; }
 .sheet.model-picker-sheet { z-index: 70; }
 
 /* ── Cycle set (WP-A25, /scoped-models) ─────────────────────────────── */
-.mp-cycle { border-top: 1px solid var(--color-line); padding-top: 6px; margin-top: 2px; }
-.mp-cycle-toggle {
-  display: flex; align-items: center; gap: 6px; width: 100%;
-  padding: 6px 4px; background: none; border: 0; cursor: pointer;
-  color: var(--color-text-muted); font-size: 12.5px; text-align: left;
-}
-.mp-cycle-toggle:hover { color: var(--color-text); }
-.mp-cycle-body { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 6px; }
-.mp-cycle-body .mp-hint { margin: 0; }
-.mp-cycle-list { display: flex; flex-direction: column; max-height: 168px; overflow-y: auto; gap: 1px; }
+.mp-cycle-list { display: flex; flex-direction: column; gap: 1px; }
 .mp-cycle-row {
   display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px;
   padding: 5px 6px; border: 0; border-radius: 8px; background: none; cursor: pointer;
@@ -195,15 +157,81 @@ body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 69; }
 .mp-badge.mp-startup { background: transparent; box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-muted); }
 .mp-row-sub { font-family: inherit; font-size: 12px; }
 .mp-row:focus-visible, .mp-pill:focus-visible, .mp-cycle-row:focus-visible, .mp-apply:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
-.mp-apply.pair-secondary { display: inline-flex; align-items: center; flex: 0 0 auto; width: auto; min-height: 36px; padding: 0 16px; font-size: 13.5px; transition: background 140ms ease-out; }
-.mp-apply.pair-secondary:hover:not(:disabled) { background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); }
 .mp-apply.pair-primary:hover:not(:disabled) { background: var(--color-shell-hi); }
 
-/* F-02 / E-19: dead providers set apart; the scope note under the list. */
-.mp-foot { flex-wrap: wrap; }
-.mp-scope-note { flex: 1 0 100%; order: -1; }
+/* F-02 / E-19: dead providers set apart. */
 .mp-unavail-toggle { display: flex; align-items: center; gap: 4px; width: calc(100% - 16px); background: none; border: 0; cursor: pointer; text-align: left; min-height: 32px; }
 .mp-unavail-toggle:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
 .mp-unavail-note { margin: 0 8px 4px; }
 .mp-row:disabled { opacity: 0.55; cursor: not-allowed; }
 .mp-row:disabled:hover { background: transparent; }
+
+/* ── the one model popover (ModelPopover) ─────────────────────────────── */
+/* Fixed height: a search narrowing the list never makes the popover jump (D-25). */
+.mpop-menu.board-menu { padding: 0; overflow: hidden; max-height: none; }
+.mpop { display: flex; flex-direction: column; gap: 4px; height: min(480px, 64vh); min-height: 0; padding: 6px; box-sizing: border-box; }
+.mpop-view { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-height: 0; }
+.mpop-search {
+  flex: none;
+  width: 100%;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  caret-color: var(--color-claw);
+}
+.mpop-search:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--color-claw); }
+.mpop-head { flex: none; padding: 4px 8px 2px; }
+.mpop-head .mp-now { margin: 0; font-size: 12.5px; line-height: 17px; }
+.mpop-label { margin: 0; font-size: 11px; line-height: 15px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-dim); }
+.mpop-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.mpop .mp-list { max-height: none; overflow: visible; background: transparent; padding: 0; }
+.mpop .mp-row { min-height: 46px; }
+.mpop-note { padding: 2px 8px; }
+.mpop-empty-note { display: flex; flex-direction: column; gap: 6px; padding: 10px 6px; }
+.mpop-confirm { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0; }
+.mpop-confirm .mp-hint { min-width: 0; }
+
+/* Footer rows: compact, one line each, under a hairline. */
+.mpop-foot { flex: none; display: flex; flex-direction: column; gap: 1px; padding-top: 4px; border-top: 1px solid var(--color-line); }
+.mpop-foot-actions { flex-direction: row; justify-content: flex-end; padding-top: 6px; }
+.mpop-foot-row {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 34px; padding: 0 8px;
+  border: 0; border-radius: 8px; background: none; cursor: pointer;
+  color: var(--color-text); font-size: 13px; text-align: left;
+}
+.mpop-foot-row:hover:not(:disabled), .mpop-foot-row:focus-visible { background: var(--color-surface-3); outline: none; }
+.mpop-foot-row:disabled { cursor: default; color: var(--color-text-muted); }
+.mpop-foot-row[aria-checked='true'] .mpop-foot-ic { color: var(--color-claw); }
+.mpop-foot-ic { flex: none; display: grid; place-items: center; width: 18px; color: var(--color-text-dim); }
+.mpop-foot-label { flex: none; font-weight: 500; }
+.mpop-foot-detail { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: right; font-size: 12px; color: var(--color-text-dim); }
+
+/* Sub-views (Fusion, Cycle set): a back row on top. */
+.mpop-subhead { flex: none; }
+.mpop-back {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 0 6px;
+  border: 0; border-radius: 8px; background: none; cursor: pointer;
+  color: var(--color-text); font-size: 13px; font-weight: 600; text-align: left;
+}
+.mpop-back:hover, .mpop-back:focus-visible { background: var(--color-surface-3); outline: none; }
+/* Fusion inside a popover: the two columns stack. */
+.mpop .mp-fusion { flex-direction: column; gap: 8px; }
+.mpop .mp-col-list { max-height: 150px; overflow-y: auto; background: var(--color-surface-2); padding: 4px; }
+.mpop-fusion-scroll { display: flex; flex-direction: column; gap: 8px; }
+.mpop .mp-effort .mp-label { min-width: 92px; }
+
+/* No provider yet (the New-chat popover). */
+.mpop-connect { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 16px; text-align: center; }
+.mpop-connect-ic { color: var(--color-claw); }
+.mpop-connect-text { margin: 0; font-size: 13px; line-height: 1.45; color: var(--color-text-muted); }
+
+/* Phone: the same panel in a bottom sheet. */
+.mpop.mpop-sheet { height: min(560px, 72dvh); padding: 0 0 4px; }
+.model-picker-sheet .mpop-foot-row { min-height: 44px; }

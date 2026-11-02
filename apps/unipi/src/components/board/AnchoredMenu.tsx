@@ -94,6 +94,8 @@ export function AnchoredMenu(props: {
         style={{ left: `${pos().left}px`, top: `${pos().top}px`, width: `${width()}px`, 'transform-origin': pos().origin }}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
+          // A menu wired with `menuKeys` already moved the focus (or closed) for this key.
+          if (event.defaultPrevented) return;
           const items = menuItems(menu);
           if (items.length === 0) return;
           const at = items.indexOf(document.activeElement as HTMLElement);

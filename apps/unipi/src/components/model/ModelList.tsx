@@ -1,6 +1,6 @@
 /**
- * The one model list (F-02 / G-06): the in-chat Model dialog and the New-chat
- * popover render the SAME rows — Suggested group on top, then all usable chat
+ * The one model list (F-02 / G-06): every model picker (`ModelPopover` — the
+ * in-chat chip, the New-chat chip, the settings fields) renders the SAME rows — Suggested group on top, then all usable chat
  * models, then the collapsed "Unavailable" group with the provider's reason.
  * The data comes from `modelView` (availability + readiness + kind filter +
  * curated ranking); this is only markup. Styles: `model.css` (`.mp-*`).
@@ -63,10 +63,11 @@ export function ModelRow(props: {
   return (
     <button
       type="button"
+      role="menuitemradio"
       class="mp-row"
       title={rowTitle(name, props.m)}
+      aria-checked={props.current}
       aria-current={props.current ? 'true' : undefined}
-      aria-pressed={props.picked ? 'true' : 'false'}
       data-picked={props.picked ? '' : undefined}
       data-key={key}
       onClick={props.onSelect}
@@ -159,6 +160,7 @@ export function ModelList(props: {
       <Show when={props.view.unavailable.length > 0}>
         <button
           type="button"
+          role="menuitem"
           class="mp-group mp-unavail-toggle"
           aria-expanded={showUnavailable()}
           onClick={() => setShowUnavailable((v) => !v)}

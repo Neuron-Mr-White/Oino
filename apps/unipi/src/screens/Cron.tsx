@@ -12,7 +12,7 @@ import { NamespaceForm } from '../ui/settings/form';
 import { settingsSchema } from '../ui/settings/data';
 import type { Namespace } from '../ui/settings/types';
 import { useNavigate, useSearchParams } from '@solidjs/router';
-import { Bell, Check, ChevronDown, ChevronRight, Clock, Cpu, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, Square, Trash2 } from 'lucide-solid';
+import { Bell, ChevronDown, ChevronRight, Clock, Cpu, MessageSquare, Pause, Play, Plus, RefreshCw, RotateCcw, Settings2, Square, Trash2 } from 'lucide-solid';
 import type { AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
 import {
@@ -46,8 +46,8 @@ import { hubs } from '../lib/session/hub';
 import { sessions } from '../lib/session/store';
 import { cachedModels, rememberModels } from '../components/draft/hostCache';
 import { WorkspacePicker, homeOf } from '../components/draft/WorkspacePicker';
-import { AnchoredMenu } from '../components/board/AnchoredMenu';
-import { ModelList, modelView } from '../components/model/ModelList';
+import { modelView } from '../components/model/ModelList';
+import { ModelPickerPanel, ModelPopover, PickerFootRow } from '../components/model/ModelPopover';
 import { modelKey, modelName, parseModels, type ModelInfo } from '../lib/model/picker';
 import { hostReadiness } from '../lib/model/readiness';
 import '../components/draft/draft.css';
@@ -565,10 +565,11 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
   );
 }
 
-/** D-32: Model picker popover for Cron job form (Default model + shared ModelList). */
+/** D-32: the job's model — the ONE model popover (`ModelPopover`) with a "Default model" footer row. */
 function CronModelPicker(props: { hostId: string; value: string; onChange: (modelKey: string) => void }) {
   const [anchor, setAnchor] = createSignal<DOMRect | undefined>();
   const [query, setQuery] = createSignal('');
+  let btn: HTMLButtonElement | undefined;
   const [data] = createResource(
     () => (anchor() ? props.hostId : undefined),
     async (id): Promise<{ models: ModelInfo[]; readiness?: Awaited<ReturnType<typeof hostReadiness>> }> => {
@@ -607,6 +608,7 @@ function CronModelPicker(props: { hostId: string; value: string; onChange: (mode
         class="ws-chip"
         aria-haspopup="menu"
         aria-expanded={!!anchor()}
+        ref={btn}
         onClick={(e) => (anchor() ? setAnchor(undefined) : (setQuery(''), setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())))}
         data-testid="cron-model-picker-btn"
       >
@@ -616,54 +618,35 @@ function CronModelPicker(props: { hostId: string; value: string; onChange: (mode
       </button>
       <Show when={anchor()}>
         {(rect) => (
-          <AnchoredMenu anchor={rect()} alignEnd width={340} label="Job model" onDismiss={() => setAnchor(undefined)}>
-            <div class="ws-menu dm-menu" data-testid="cron-model-menu">
-              <input
-                type="search"
-                class="dm-search"
-                placeholder="Search models…"
-                aria-label="Search models"
-                value={query()}
-                onInput={(e) => setQuery(e.currentTarget.value)}
-              />
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={!props.value.trim()}
-                class="ws-row"
-                onClick={() => {
-                  props.onChange('');
-                  setAnchor(undefined);
-                }}
-                data-testid="cron-model-default"
-              >
-                <Cpu size={15} class="ws-row-ic" />
-                <span class="ws-row-text">
-                  <span class="ws-row-label">Default model</span>
-                  <span class="ws-row-detail">Uses this PC’s startup model</span>
-                </span>
-                <Show when={!props.value.trim()}>
-                  <Check size={15} class="ws-row-check" />
-                </Show>
-              </button>
-              <Show when={!data.loading || data.latest} fallback={<div class="ws-browse-note">Loading…</div>}>
-                <Show
-                  when={(data.latest?.models.length ?? 0) > 0}
-                  fallback={<div class="ws-browse-note">Open a chat once on this PC to browse every model, or type provider/model directly.</div>}
-                >
-                  <ModelList
-                    view={view()}
-                    query={query()}
-                    currentKey={props.value.trim() || undefined}
-                    onSelect={(m) => {
-                      props.onChange(modelKey(m));
-                      setAnchor(undefined);
-                    }}
-                  />
-                </Show>
-              </Show>
-            </div>
-          </AnchoredMenu>
+          <ModelPopover anchor={rect()} label="Job model" testId="cron-model-menu" onClose={() => setAnchor(undefined)} trigger={() => btn}>
+            <ModelPickerPanel
+              view={view()}
+              query={query()}
+              onQuery={setQuery}
+              loading={!!data.loading && !data.latest}
+              header={<p class="mpop-label">Model for this job</p>}
+              showEmpty={(data.latest?.models.length ?? 0) === 0}
+              empty={<p class="mp-hint mpop-note">Open a chat once on this PC to browse every model.</p>}
+              currentKey={props.value.trim() || undefined}
+              onSelect={(m) => {
+                props.onChange(modelKey(m));
+                setAnchor(undefined);
+              }}
+              footer={
+                <PickerFootRow
+                  icon={<RotateCcw size={15} />}
+                  label="Default model"
+                  detail="Uses this PC’s startup model"
+                  checked={!props.value.trim()}
+                  onSelect={() => {
+                    props.onChange('');
+                    setAnchor(undefined);
+                  }}
+                  testId="cron-model-default"
+                />
+              }
+            />
+          </ModelPopover>
         )}
       </Show>
     </>
