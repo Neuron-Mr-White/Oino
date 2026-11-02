@@ -7,6 +7,7 @@
 import { cleanup, render } from '@solidjs/testing-library';
 import { createSignal } from 'solid-js';
 import { afterEach, expect, it } from 'vitest';
+import { setStreamSmoothing } from '../../lib/timeline/smoothStream';
 import { buildTurns, type TurnsInput } from '../../lib/session/turns';
 import type { SessionEntry } from '../../lib/session/types';
 import type { TimelineCtx } from './context';
@@ -14,6 +15,7 @@ import { TurnRow } from './TurnRow';
 
 afterEach(() => {
   cleanup();
+  setStreamSmoothing(undefined);
 });
 
 const user = {
@@ -44,6 +46,7 @@ const ctx = {
 } as unknown as TimelineCtx;
 
 it('keeps the streaming prose and the work rows mounted across stream flushes', () => {
+  setStreamSmoothing(false);
   const tool = { type: 'toolCall', id: 't1', name: 'read', arguments: { path: 'a.ts' } };
   const [turn, setTurn] = createSignal(buildTurns(input([tool, { type: 'text', text: 'Hello' }])).at(-1)!);
   const r = render(() => <TurnRow turn={turn()} ctx={ctx} />);

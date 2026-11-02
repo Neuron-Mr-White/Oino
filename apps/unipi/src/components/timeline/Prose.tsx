@@ -4,12 +4,13 @@
  * rule — virtual-scroll remounts and fold toggles reuse the HTML, no
  * fade-in); only the truly live part takes `renderBlocks(text, live)`.
  */
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, Index, onCleanup, Show } from 'solid-js';
 import type { RefChat } from '../../lib/chat/pathStat';
 import { renderBlocks } from '../../lib/chat/markdown';
 import { mdBlocks } from '../../lib/timeline/mdCache';
 import { attachMessageMenu, attachQuoteSwipe, type MessageTarget } from '../../lib/timeline/actions';
 import { MdBlock } from '../chat/MdBlock';
+import { createSmoothText } from '../../lib/timeline/smoothStream';
 
 export function Prose(props: {
   text: string;
@@ -25,8 +26,22 @@ export function Prose(props: {
   /** Where Quote puts the chip (the session's composer key). */
   composerKey?: string;
 }) {
+  // ui-stream: the live part reveals through the rAF smoother; a settled
+  // part (and Copy / Quote, which read `props.text`) always has the full text.
+  let renderMs = 0;
+  const shown = createSmoothText(
+    () => props.text,
+    () => !!props.live,
+    // A slow tail render (a long open code fence) commits every few frames instead of every frame.
+    { minFrameMs: () => (renderMs > 4 ? Math.min(100, renderMs * 3) : 0) },
+  );
   const blocks = createMemo(() => {
-    if (props.live) return renderBlocks(props.text, true);
+    if (props.live) {
+      const t0 = performance.now();
+      const out = renderBlocks(shown(), true);
+      renderMs = renderMs * 0.7 + (performance.now() - t0) * 0.3;
+      return out;
+    }
     if (props.entryKey) return mdBlocks(props.entryKey, props.width?.() ?? 720, props.text);
     return renderBlocks(props.text, false);
   });
@@ -43,7 +58,8 @@ export function Prose(props: {
   });
   return (
     <div class="chat-prose md tl-prose" ref={setRootEl} data-live={props.live ? '' : undefined}>
-      <For each={blocks()}>{(html) => <MdBlock html={html} class="chat-block" chat={props.chat} />}</For>
+      {/* Index: a growing tail block updates its element in place (no node churn per frame). */}
+      <Index each={blocks()}>{(html) => <MdBlock html={html()} class="chat-block" chat={props.chat} />}</Index>
       <Show when={props.stopped}>
         <span class="chat-stopped">Stopped</span>
       </Show>
