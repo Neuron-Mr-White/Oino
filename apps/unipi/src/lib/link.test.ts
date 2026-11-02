@@ -12,3 +12,11 @@ it('parses without URL hostname support (old WebViews, PH-36)',()=>{
  try{const r=parseHostLink(good);expect(r.ok).toBe(true);if(r.ok)expect(r.value.name).toBeTruthy();}finally{(globalThis as {URL:typeof URL}).URL=Orig;}
 });
 it('says plainly when a paste is not a pairing link',()=>{const r=parseHostLink('https://example.com');expect(r.ok).toBe(false);if(!r.ok)expect(r.error.message).toBe("This isn't a Unipi pairing link");});
+import { friendlyDeviceName } from './link';
+it('friendly device name (PH-33)',()=>{
+ expect(friendlyDeviceName({model:'sdk_gphone64_x86_64'})).toBe('Android phone');
+ expect(friendlyDeviceName({name:'Google sdk_gphone64_x86_64',model:'sdk_gphone64_x86_64'})).toBe('Android phone');
+ expect(friendlyDeviceName({name:'Google Pixel 8',model:'Pixel 8'})).toBe('Google Pixel 8');
+ expect(friendlyDeviceName({model:'SM_S918B'})).toBe('SM S918B');
+ expect(friendlyDeviceName({},'Phone')).toBe('Phone');
+});

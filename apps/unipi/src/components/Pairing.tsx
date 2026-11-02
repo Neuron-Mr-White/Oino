@@ -8,7 +8,11 @@ import { createSignal, onMount, onCleanup, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { z } from "zod";
 import { call } from "../lib/ipc";
-import { parseHostLink } from "../lib/link";
+import { friendlyDeviceName, parseHostLink } from "../lib/link";
+import { desktopShell } from "../lib/layout";
+import { Button, ListGroup, ListRow, RowIcon, Sheet, haptic } from "./phone";
+import { toasts } from "../lib/toasts";
+import "./pairPhone.css";
 import { HostInfoSchema } from "../lib/schemas";
 import { useHosts } from "../hosts/context";
 import { useSettings } from "../settings/context";
@@ -83,7 +87,9 @@ export function Pairing() {
         return;
       }
       setHostId(preview.value.id);
-      setDevice((window as Window & {unipiDeviceModel?:string}).unipiDeviceModel || defaultDeviceName());
+      const w = window as Window & { unipiDeviceModel?: string; unipiDeviceName?: string };
+      // PH-33: a friendly name ("Google Pixel 8"; emulators → "Android phone"), never a model code.
+      setDevice(w.unipiDeviceModel || w.unipiDeviceName ? friendlyDeviceName({ name: w.unipiDeviceName, model: w.unipiDeviceModel }, defaultDeviceName()) : defaultDeviceName());
       setError(undefined);
       setPaste(false);
       // Close the add-host sheet first, then open the confirm sheet.
@@ -96,6 +102,11 @@ export function Pairing() {
     } else {
       console.warn("[pair] invalid link", p.error);
       setError(p.error);
+      // Phone: a bad deep link / scan lands in the paste sheet with the text and the error under it.
+      if (!desktopShell()) {
+        setAddHostOpen(false);
+        setPaste(true);
+      }
     }
   };
   const stopScan = () => {
@@ -109,6 +120,11 @@ export function Pairing() {
   const cameraOff = () => {
     setCameraDenied(true);
     setError(undefined);
+    // Phone (PH-34): its own "Can't use the camera" sheet, with Paste as the way on.
+    if (!desktopShell()) {
+      setAddHostOpen(false);
+      return;
+    }
     setPaste(true);
     setAddHostOpen(true);
   };
@@ -151,6 +167,11 @@ export function Pairing() {
         cameraOff();
         return;
       }
+      // Phone (PH-34): no usable camera (CameraX "No available camera", a dead preview) → the camera sheet.
+      if (!desktopShell() && /camera/i.test(String(e))) {
+        cameraOff();
+        return;
+      }
       setError({ code: "E_PAIRING_INVALID", message: `Scan failed: ${String(e)}`, retryable: false });
       if (wasScanning) setAddHostOpen(true);
     }
@@ -186,11 +207,167 @@ export function Pairing() {
     if (result.ok) {
       setConfirm(false);
       await hosts.refresh();
+      if (!desktopShell()) {
+        // §3.2: success haptic, "Paired with <PC>", the new PC selected, land on Chats.
+        haptic("success");
+        hosts.selectHost(result.value.id);
+        toasts().push(`Paired with ${result.value.name || pcName()}`, "success");
+        navigate("/chat");
+        return;
+      }
       setToast("Host paired");
       setTimeout(() => setToast(""), 2500);
       navigate("/");
     } else setError(result.error);
   };
+  /** The PC's name from the link (`n=`), else undefined. */
+  const linkName = () => {
+    const p = parsed();
+    return p.ok ? p.value.name : undefined;
+  };
+  const pcName = () => linkName() || "this PC";
+  const linkCode = () => {
+    const p = parsed();
+    return p.ok ? p.value.code : "";
+  };
+  /** Paste sheet's inline error: only the "not a pairing link" kind, under the field. */
+  const pasteError = () => {
+    const e = error();
+    return e && e.code === "E_PAIRING_INVALID" ? "This isn't a Unipi pairing link" : e?.message;
+  };
+  const openPaste = () => {
+    setError(undefined);
+    setCameraDenied(false);
+    setAddHostOpen(false);
+    setPaste(true);
+  };
+
+  if (!desktopShell()) {
+    return (
+      <>
+        <Show when={scanning()}>
+          <QrScanner onClose={() => { stopScan(); setAddHostOpen(true); }} onEnterCode={() => { stopScan(); openPaste(); }} />
+        </Show>
+        {/* §3.2 Add a PC: one intro line, Scan QR (only with a camera) and Paste — no badges, no SSH placeholder (PH-33). */}
+        <Sheet open={addHostOpen()} onClose={() => setAddHostOpen(false)} label="Add a PC" title="Add a PC" testId="add-host-sheet">
+          <p class="pair-ph-intro">On your PC, open Unipi › Settings › Hosts › Pair a phone.</p>
+          <ListGroup inset>
+            <Show when={can("camera")}>
+              <ListRow
+                title="Scan QR code"
+                subtitle="Point the camera at the code on your PC"
+                leading={<RowIcon icon={QrCode} tint="accent" />}
+                chevron
+                onClick={() => void startScan()}
+                testId="add-host-scan"
+              />
+            </Show>
+            <ListRow
+              title="Paste pairing link"
+              subtitle="Or type the ticket and code"
+              leading={<RowIcon icon={Link} />}
+              chevron
+              onClick={openPaste}
+              testId="add-host-paste"
+            />
+          </ListGroup>
+          <Show when={error() && !paste()}>{(e) => <div class="mt-4"><ErrorBanner error={error()!} /></div>}</Show>
+        </Sheet>
+        {/* PH-34: no usable camera / permission refused. */}
+        <Sheet
+          open={cameraDenied()}
+          onClose={() => setCameraDenied(false)}
+          label="Can't use the camera"
+          title="Can't use the camera"
+          testId="camera-off-sheet"
+          footer={
+            <div class="pair-ph-actions">
+              <Button kind="primary" block onClick={openPaste} testId="camera-off-paste">Paste the link instead</Button>
+              <Show when={isTauri()}>
+                <Button kind="ghost" block onClick={() => void scanner?.openAppSettings().catch((e) => console.warn("[scan] settings", e))}>Allow the camera in Settings</Button>
+              </Show>
+            </div>
+          }
+        >
+          <p class="pair-ph-body" role="status" data-testid="camera-off-note">
+            Unipi can't open the camera on this phone. Paste the pairing link from your PC instead — it works the same.
+          </p>
+        </Sheet>
+        {/* §3.2 Paste link: one field, link or "<ticket> <code>", inline error, Continue. */}
+        <Sheet
+          open={paste()}
+          onClose={() => setPaste(false)}
+          label="Paste pairing link"
+          title="Paste pairing link"
+          detents={["full"]}
+          testId="paste-link-sheet"
+          footer={
+            <Button kind="primary" block disabled={link().trim() === ""} onClick={() => void accept(link())} testId="paste-continue">Continue</Button>
+          }
+        >
+          <label class="pair-ph-label" for="pair-link">Pairing link or code</label>
+          <div class="pair-ph-field">
+            <input
+              id="pair-link"
+              ref={(el) => setTimeout(() => el.focus(), 80)}
+              aria-label="Pairing link"
+              aria-invalid={error() ? "true" : undefined}
+              aria-describedby={error() ? "pair-link-error" : undefined}
+              class="pair-ph-input"
+              value={link()}
+              onInput={(e) => { setLink(e.currentTarget.value); setError(undefined); }}
+              onKeyDown={(e) => { if (e.key === "Enter") void accept(link()); }}
+              placeholder="unipi://pair?… or ticket code"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck={false}
+            />
+            <button
+              type="button"
+              aria-label="Paste from clipboard"
+              class="pair-ph-paste"
+              onClick={async () => {
+                const text = await readClipboard();
+                if (text) { setLink(text.trim()); setError(undefined); }
+              }}
+            >
+              <ClipboardPaste size={20} />
+            </button>
+          </div>
+          <Show when={error()}>
+            <p id="pair-link-error" class="pair-ph-error" role="alert" data-testid="paste-error">{pasteError()}</p>
+          </Show>
+        </Sheet>
+        {/* §3.2 Confirm: "Pair with <PC>", PC + code rows, this phone's name, Pair / Cancel (both 48, PH-39). */}
+        <Sheet
+          open={confirm()}
+          onClose={() => setConfirm(false)}
+          label={linkName() ? `Pair with ${linkName()}` : "Pair with this PC"}
+          title={linkName() ? `Pair with ${linkName()}` : "Pair with this PC"}
+          testId="pair-confirm-sheet"
+          footer={
+            <div class="pair-ph-actions">
+              <Button kind="primary" block loading={busy()} disabled={busy() || !z.string().min(1).max(64).safeParse(device()).success} onClick={() => void pair()} testId="pair-confirm">
+                {busy() ? "Pairing…" : "Pair"}
+              </Button>
+              <Button kind="secondary" block onClick={() => setConfirm(false)}>Cancel</Button>
+            </div>
+          }
+        >
+          <p class="pair-ph-body">This {deviceNoun()} will be able to see and run chats, files and terminals on {pcName()}.</p>
+          <ListGroup inset>
+            <ListRow title="PC" trailing={<span class="pair-ph-value">{linkName() || "Unnamed PC"}</span>} />
+            <ListRow title="Code" trailing={<span class="pair-ph-value pair-ph-mono">{linkCode()}</span>} />
+          </ListGroup>
+          <label class="pair-ph-label" for="pair-device">This phone's name</label>
+          <input id="pair-device" class="pair-ph-input" value={device()} maxLength={64} onInput={(e) => setDevice(e.currentTarget.value)} data-testid="pair-device-name" />
+          <p class="pair-ph-hint">Shown on {pcName()} in its list of paired devices.</p>
+          <Show when={error()}>{(e) => <div class="mt-3"><ErrorBanner error={error()!} /></div>}</Show>
+        </Sheet>
+      </>
+    );
+  }
+
   return (
     <>
       <Show when={toast()}>

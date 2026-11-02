@@ -24,3 +24,21 @@ html[data-shell=desktop] .sheet.pair-phone-sheet { width: min(500px, calc(100vw 
 /* The Add a PC dialog's link to it. */
 .pair-phone-link { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 10px; border-radius: 9999px; font-size: 14px; color: var(--color-text-muted); }
 .pair-phone-link:hover { color: var(--color-text); background: var(--color-surface-2); }
+
+/* ── Phone pairing sheets (phone spec §3.2): Add a PC, camera off, paste, confirm. ── */
+html[data-shell=phone] .pair-ph-intro,
+html[data-shell=phone] .pair-ph-body { margin: 0 4px var(--ph-4, 16px); font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+html[data-shell=phone] .pair-ph-label { display: block; margin: var(--ph-4, 16px) 4px var(--ph-2, 8px); font-size: 14px; line-height: 20px; font-weight: 600; color: var(--color-text-muted); }
+html[data-shell=phone] .pair-ph-field { position: relative; }
+html[data-shell=phone] .pair-ph-input {
+  display: block; width: 100%; min-height: 48px; padding: 0 12px; border-radius: 12px;
+  background: var(--color-surface-2); border: 1px solid var(--color-line); color: var(--color-text); font-size: 16px;
+}
+html[data-shell=phone] .pair-ph-field .pair-ph-input { padding-right: 52px; }
+html[data-shell=phone] .pair-ph-input[aria-invalid=true] { border-color: #F6A39D; }
+html[data-shell=phone] .pair-ph-paste { position: absolute; right: 0; top: 0; width: 48px; height: 48px; display: grid; place-items: center; color: var(--color-text-muted); }
+html[data-shell=phone] .pair-ph-error { margin: var(--ph-2, 8px) 4px 0; font-size: 14px; line-height: 20px; color: #F6A39D; }
+html[data-shell=phone] .pair-ph-hint { margin: var(--ph-2, 8px) 4px 0; font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
+html[data-shell=phone] .pair-ph-value { font-size: 14px; color: var(--color-text-muted); }
+html[data-shell=phone] .pair-ph-mono { font-family: var(--font-mono); font-size: 13px; letter-spacing: .06em; color: var(--color-text); }
+html[data-shell=phone] .pair-ph-actions { display: flex; flex-direction: column; gap: var(--ph-2, 8px); }

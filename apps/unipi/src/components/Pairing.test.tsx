@@ -7,6 +7,7 @@ import { SettingsProvider } from '../settings/context';
 import { HostsProvider } from '../hosts/context';
 import { call } from '../lib/ipc';
 import { setPlatformOverride } from '../lib/platform';
+import { setDesktopOverride } from '../lib/layout';
 import { pairPhoneOpen, resetPairPhone, setPairPhoneTransport } from '../lib/pairPhone';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
@@ -29,6 +30,7 @@ afterEach(() => {
   vi.resetAllMocks();
   setAddHostOpen(false);
   setPlatformOverride(undefined);
+  setDesktopOverride(undefined);
 });
 
 function mount() {
@@ -82,12 +84,14 @@ describe('Pairing', () => {
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     fireEvent.input(screen.getByLabelText('Pairing link'), { target: { value: 'unipi://pair?t=nope&c=1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(await screen.findByText('Invalid endpoint ticket')).toBeInTheDocument();
+    // Phone (PH-36): one plain inline error under the field.
+    expect((await screen.findByTestId('paste-error')).textContent).toBe("This isn't a Unipi pairing link");
     expect(vi.mocked(call)).not.toHaveBeenCalledWith('pairing_preview', expect.anything(), expect.anything());
   });
 
   it('desktop app: paste link is the recommended way, QR is for the phone, device defaults to the OS, copy says computer', async () => {
     setPlatformOverride({ mode: 'tauri-desktop', os: 'linux', tauri: true });
+    setDesktopOverride(true);
     mount();
     setAddHostOpen(true);
     const paste = await screen.findByText('Paste pairing link');
@@ -102,18 +106,24 @@ describe('Pairing', () => {
     expect(screen.getByDisplayValue('Linux desktop')).toBeInTheDocument();
   });
 
-  it('phone app: QR stays recommended and the device is a Phone', async () => {
+  it('phone app: Scan QR + Paste, no badges / time captions / SSH placeholder; friendly device name (PH-33)', async () => {
     setPlatformOverride({ mode: 'tauri-mobile', os: 'android', tauri: true });
+    (window as Window & { unipiDeviceModel?: string }).unipiDeviceModel = 'sdk_gphone64_x86_64';
     mount();
     setAddHostOpen(true);
-    const qr = (await screen.findByText('Pair with QR')).closest('button')!;
-    expect(qr).not.toBeDisabled();
-    expect(qr.textContent).toContain('RECOMMENDED');
+    const sheet = await screen.findByTestId('add-host-sheet');
+    expect(await screen.findByText('Scan QR code')).toBeInTheDocument();
+    expect(sheet.textContent).not.toContain('RECOMMENDED');
+    expect(sheet.textContent).not.toContain('~1 min');
+    expect(sheet.textContent).not.toContain('SSH');
     fireEvent.click(screen.getByText('Paste pairing link'));
     fireEvent.input(await screen.findByLabelText('Pairing link'), { target: { value: LINK } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText(/This phone will be able/)).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Phone')).toBeInTheDocument();
+    expect(screen.getAllByText('Pair with oi').length).toBeGreaterThan(0);
+    expect(screen.getByText('G6R2ANK7QA')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Android phone')).toBeInTheDocument();
+    delete (window as Window & { unipiDeviceModel?: string }).unipiDeviceModel;
   });
 
   it('phone-scan: a refused camera shows a calm note and opens code entry, not an error', async () => {
@@ -123,17 +133,17 @@ describe('Pairing', () => {
     scanner.openAppSettings.mockResolvedValue(undefined);
     mount();
     setAddHostOpen(true);
-    fireEvent.click(await screen.findByText('Pair with QR'));
+    fireEvent.click(await screen.findByText('Scan QR code'));
+    // PH-34: its own "Can't use the camera" sheet, calm (status, not an alert).
     const note = await screen.findByTestId('camera-off-note');
     expect(note).toHaveAttribute('role', 'status');
-    expect(note.textContent).toContain('The camera is off for Unipi');
+    expect(screen.getByTestId('camera-off-sheet').textContent).toContain("Can't use the camera");
     expect(screen.queryByRole('alert')).toBeNull();
     expect(scanner.scan).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Allow the camera in Settings' }));
     expect(scanner.openAppSettings).toHaveBeenCalled();
-    // The code fallback is already open and pairs as usual.
-    const input = screen.getByLabelText('Pairing link');
-    expect(input).toHaveAttribute('placeholder', 'Pairing link or code');
+    fireEvent.click(screen.getByTestId('camera-off-paste'));
+    const input = await screen.findByLabelText('Pairing link');
     fireEvent.input(input, { target: { value: LINK } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText(/This phone will be able/)).toBeInTheDocument();
@@ -146,7 +156,7 @@ describe('Pairing', () => {
     scanner.cancel.mockResolvedValue(undefined);
     mount();
     setAddHostOpen(true);
-    fireEvent.click(await screen.findByText('Pair with QR'));
+    fireEvent.click(await screen.findByText('Scan QR code'));
     fireEvent.click(await screen.findByRole('button', { name: 'Enter code instead' }));
     expect(scanner.cancel).toHaveBeenCalled();
     expect(await screen.findByLabelText('Pairing link')).toBeInTheDocument();
@@ -157,6 +167,7 @@ describe('Pairing', () => {
     resetPairPhone();
     setPairPhoneTransport({ start: async () => undefined, cancel: async () => undefined, startHost: async () => undefined });
     setPlatformOverride({ mode: 'tauri-desktop', os: 'linux', tauri: true });
+    setDesktopOverride(true);
     mount();
     setAddHostOpen(true);
     fireEvent.click(await screen.findByTestId('add-host-pair-phone'));
@@ -166,9 +177,10 @@ describe('Pairing', () => {
     cleanup();
     resetPairPhone();
     setPlatformOverride({ mode: 'tauri-mobile', os: 'android', tauri: true });
+    setDesktopOverride(false);
     mount();
     setAddHostOpen(true);
-    await screen.findByText('Pair with QR');
+    await screen.findByText('Scan QR code');
     expect(screen.queryByTestId('add-host-pair-phone')).toBeNull();
     setPairPhoneTransport(undefined);
   });

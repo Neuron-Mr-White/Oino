@@ -40,3 +40,21 @@ export function parseHostLink(raw:string):{ok:true;value:ParsedLink}|{ok:false;e
  return {ok:true,value:{ticket,code,...(name?{name}: {})}};
 }
 export function shortHostId(id:string,len=8):string{return id.slice(0,len);}
+/**
+ * A friendly default for "This phone's name" (PH-33): the native layer's cleaned
+ * MANUFACTURER + MODEL when it has one, else the bare model code tidied up;
+ * emulator codes (`sdk_gphone64_x86_64`, `generic_x86`) become "Android phone".
+ */
+export function friendlyDeviceName(native?: { name?: string; model?: string }, fallback = 'Phone'): string {
+  const emulator = (s: string) => /^(sdk_gphone|sdk_|generic|emulator|google_sdk|android sdk built for)/i.test(s.trim()) || /\bsdk_gphone/i.test(s);
+  const name = native?.name?.trim();
+  if (name && !emulator(name)) return name.slice(0, 64);
+  const model = native?.model?.trim();
+  if (model && emulator(model)) return 'Android phone';
+  if (name || model) {
+    const raw = (name || model)!;
+    if (emulator(raw)) return 'Android phone';
+    return raw.replace(/_/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 64);
+  }
+  return fallback;
+}
