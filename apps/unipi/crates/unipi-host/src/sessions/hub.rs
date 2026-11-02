@@ -1432,10 +1432,46 @@ impl Inner {
         name: Option<&str>,
     ) -> Result<HubSession, HubError> {
         let record = self.resolve(target).await?;
-        let cwd = record_cwd(&record, &self.cwd);
+        let mut cwd = record_cwd(&record, &self.cwd);
+        // A scratch chat's fork gets its own scratch folder, a copy of the original's —
+        // never a shared one (deleting either chat deletes only its own folder).
+        let mut fork_id = None;
+        if self.is_scratch_cwd(&cwd) {
+            let id = uuid::Uuid::now_v7().hyphenated().to_string();
+            let dir = crate::scratch::scratch_dir(&self.scratch_root, &id);
+            let (from, to) = (cwd.clone(), dir.clone());
+            let copied = tokio::task::spawn_blocking(move || {
+                std::fs::create_dir_all(&to)?;
+                crate::scratch::copy_missing(&from, &to)
+            })
+            .await
+            .map_err(|error| HubError::failed(format!("copying the scratch folder: {error}")))?;
+            if let Err(error) = copied {
+                self.remove_scratch(&id, &dir).await;
+                return Err(HubError::failed(format!(
+                    "Copying the scratch folder for the fork failed: {error}"
+                )));
+            }
+            cwd = dir;
+            fork_id = Some(id);
+        }
         // 1. Write the fork's file from the target's file (no runtime touched: the target
         //    keeps its lease, its live state and its events).
-        let path = fork_file(&record.info.path, &cwd, &self.sessions_root, entry_id)?;
+        let path = match fork_file(
+            &record.info.path,
+            &cwd,
+            &self.sessions_root,
+            entry_id,
+            fork_id.clone(),
+        ) {
+            Ok(path) => path,
+            Err(error) => {
+                if let Some(id) = &fork_id {
+                    self.remove_scratch(id, &cwd).await;
+                }
+                return Err(error);
+            }
+        };
         // 2. Wake the fork's fresh record as its own runtime (a new file: no other holder).
         let backend = self.core.open(&path.to_string_lossy()).await?;
         if let Some(name) = name {
@@ -1661,6 +1697,40 @@ impl Inner {
         }
     }
 
+    /// Whether `cwd` is a chat's scratch folder (lexically, or once symlinks resolve).
+    fn is_scratch_cwd(&self, cwd: &Path) -> bool {
+        crate::scratch::is_scratch(&self.scratch_root, cwd)
+            || dunce::canonicalize(cwd).is_ok_and(|cwd| {
+                dunce::canonicalize(&self.scratch_root)
+                    .is_ok_and(|root| crate::scratch::is_scratch(&root, &cwd))
+            })
+    }
+
+    /// Deletes chat `session_id`'s own scratch folder when `cwd` is it
+    /// ([`crate::scratch::remove_own`]: never a workspace, the home or another chat's
+    /// folder); failures are logged, not raised (the session itself is already gone/moved).
+    async fn remove_scratch(&self, session_id: &str, cwd: &Path) {
+        let root = self.scratch_root.clone();
+        let (id, cwd) = (session_id.to_owned(), cwd.to_path_buf());
+        let removed = tokio::task::spawn_blocking(move || {
+            // Compared on canonical roots too (a symlinked data dir).
+            let canon_root = dunce::canonicalize(&root).unwrap_or_else(|_| root.clone());
+            match crate::scratch::remove_own(&root, &id, &cwd) {
+                Ok(false) if canon_root != root => {
+                    crate::scratch::remove_own(&canon_root, &id, &cwd)
+                }
+                other => other,
+            }
+        })
+        .await;
+        match removed {
+            Ok(Ok(true)) => tracing::info!(session_id, "scratch folder deleted"),
+            Ok(Ok(false)) => {}
+            Ok(Err(error)) => tracing::warn!(session_id, %error, "scratch folder not deleted"),
+            Err(error) => tracing::warn!(session_id, %error, "scratch folder cleanup panicked"),
+        }
+    }
+
     /// Resolves a `session` target (exact id, unique prefix ≥ 4 chars, or file path) against
     /// the records — core's own rules, without waking anything.
     async fn resolve(&self, target: &str) -> Result<CoreHubSession, HubError> {
@@ -1725,6 +1795,7 @@ fn fork_file(
     cwd: &Path,
     sessions_root: &Path,
     entry_id: Option<&str>,
+    fork_id: Option<String>,
 ) -> Result<PathBuf, HubError> {
     let mut manager = SessionManager::open(source, sessions_root, Some(cwd))
         .map_err(|error| HubError::failed(format!("reading {}: {error}", source.display())))?;
@@ -1748,7 +1819,7 @@ fn fork_file(
     };
     let branched = match leaf {
         Some(leaf) => manager
-            .branch_into_new_session(&leaf)
+            .branch_into_new_session_with_id(&leaf, fork_id)
             .map_err(|error| HubError::failed(format!("forking {}: {error}", source.display())))?,
         // A fork before the first entry (or of a session without conversation entries)
         // would be an empty session; core refuses the clone with the same idea.

@@ -114,6 +114,42 @@ pub fn check_move(root: &Path, current: &Path, target: &Path) -> Result<(), Stri
     Ok(())
 }
 
+/// Deletes the scratch folder **of `session_id` itself** — `<root>/<session id>` — when
+/// `cwd` (the chat's header cwd) is exactly that folder; anything else (a workspace, the
+/// home, another chat's scratch folder, the root) is left alone. A symlink in its place
+/// is never followed. Answers whether a folder was deleted (`false`: not this chat's
+/// scratch folder, or already gone).
+///
+/// # Errors
+///
+/// Removal failures.
+pub fn remove_own(root: &Path, session_id: &str, cwd: &Path) -> io::Result<bool> {
+    if session_id.is_empty()
+        || session_id.contains(['/', '\\'])
+        || matches!(session_id, "." | "..")
+    {
+        return Ok(false);
+    }
+    let own = scratch_dir(root, session_id);
+    let canon = |path: &Path| dunce::canonicalize(path).ok();
+    let same = normal(cwd) == normal(&own)
+        || canon(cwd).is_some_and(|cwd| Some(cwd) == canon(&own));
+    if !same || !is_scratch(root, &own) {
+        return Ok(false);
+    }
+    match fs::symlink_metadata(&own) {
+        Ok(meta) if meta.file_type().is_dir() => {}
+        Ok(_) => return Ok(false),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    }
+    match fs::remove_dir_all(&own) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 /// What [`copy_missing`] did.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CopyReport {
@@ -241,6 +277,42 @@ mod tests {
         // Relative or missing targets: refused.
         assert!(check_move(&root, &chat, Path::new("work")).is_err());
         assert!(check_move(&root, &chat, &dir.path().join("missing")).is_err());
+    }
+
+    #[test]
+    fn remove_own_deletes_only_the_chats_own_scratch_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let root = home.join("scratch");
+        let own = root.join("s1");
+        let other = root.join("s2");
+        let work = home.join("work");
+        for d in [&own.join("sub"), &other, &work] {
+            fs::create_dir_all(d).unwrap();
+        }
+        fs::write(own.join("sub").join("a.txt"), "x").unwrap();
+        fs::write(work.join("w.txt"), "w").unwrap();
+        // Not this chat's own folder: a workspace, the home, the root, another chat's.
+        assert!(!remove_own(&root, "s1", &work).unwrap());
+        assert!(!remove_own(&root, "s1", home).unwrap());
+        assert!(!remove_own(&root, "s1", &root).unwrap());
+        assert!(!remove_own(&root, "s1", &other).unwrap());
+        assert!(!remove_own(&root, "s2", &own).unwrap());
+        // Ids that would escape the root.
+        assert!(!remove_own(&root, "..", &root.join("..")).unwrap());
+        assert!(!remove_own(&root, "", &root).unwrap());
+        assert!(work.join("w.txt").is_file() && other.is_dir() && own.is_dir());
+        // Its own folder: deleted (recursively), once.
+        assert!(remove_own(&root, "s1", &own).unwrap());
+        assert!(!own.exists() && other.is_dir() && work.join("w.txt").is_file());
+        assert!(!remove_own(&root, "s1", &own).unwrap(), "already gone");
+        #[cfg(unix)]
+        {
+            // A symlink planted in a chat's place is never followed.
+            std::os::unix::fs::symlink(&work, root.join("s3")).unwrap();
+            assert!(!remove_own(&root, "s3", &root.join("s3")).unwrap());
+            assert!(work.join("w.txt").is_file());
+        }
     }
 
     #[test]

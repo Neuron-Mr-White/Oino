@@ -257,3 +257,49 @@ async fn a_scratch_chat_moves_to_a_workspace_one_way_append_only() {
         "the reopened chat's system prompt is unchanged"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_scratch_chats_fork_gets_its_own_copy_of_the_folder() {
+    let fx = fixture(vec![FauxResponse::Text("first".into())]);
+    let root = fx.hub.scratch_root().to_path_buf();
+    let chat = fx.hub.create_scratch_session(None).await.unwrap();
+    select_faux(&chat).await;
+    let scratch = root.join(chat.session_id());
+    std::fs::create_dir_all(scratch.join("sub")).unwrap();
+    std::fs::write(scratch.join("a.txt"), "original").unwrap();
+    std::fs::write(scratch.join("sub").join("b.txt"), "nested").unwrap();
+    ask(&chat, "hello").await;
+
+    let fork = fx.hub.fork(&chat.session_id(), None, None).await.unwrap();
+    assert_ne!(fork.session_id(), chat.session_id());
+    let fork_dir = root.join(fork.session_id());
+    assert_eq!(
+        state_of(&fork).await.cwd.unwrap(),
+        fork_dir.display().to_string(),
+        "the fork runs in its own scratch folder, named after its id"
+    );
+    assert_eq!(fork.card().cwd, fork_dir.display().to_string());
+    assert_eq!(std::fs::read_to_string(fork_dir.join("a.txt")).unwrap(), "original");
+    assert_eq!(
+        std::fs::read_to_string(fork_dir.join("sub").join("b.txt")).unwrap(),
+        "nested"
+    );
+    // A copy, not a share: writes on one side never show on the other.
+    std::fs::write(fork_dir.join("a.txt"), "forked").unwrap();
+    std::fs::write(fork_dir.join("new.txt"), "only in the fork").unwrap();
+    assert_eq!(std::fs::read_to_string(scratch.join("a.txt")).unwrap(), "original");
+    assert!(!scratch.join("new.txt").exists());
+    assert_eq!(state_of(&chat).await.cwd.unwrap(), scratch.display().to_string());
+
+    // A workspace chat's fork stays in the workspace (no copy anywhere).
+    let work = fx.dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let before = std::fs::read_dir(&root).unwrap().count();
+    let plain = fx.hub.create_session(Some(&work), None).await.unwrap();
+    select_faux(&plain).await;
+    fx.provider.push(FauxResponse::Text("ok".into()));
+    ask(&plain, "hi").await;
+    let plain_fork = fx.hub.fork(&plain.session_id(), None, None).await.unwrap();
+    assert_eq!(state_of(&plain_fork).await.cwd.unwrap(), work.display().to_string());
+    assert_eq!(std::fs::read_dir(&root).unwrap().count(), before);
+}

@@ -1103,7 +1103,11 @@ impl SessionManager {
 
     /// Header and entries of a new session holding the path root → `leaf` (labels re-emitted
     /// at the end, compaction `firstKeptEntryId`s that pointed at labels remapped).
-    fn branched(&self, leaf: &EntryId) -> Result<(SessionHeader, Vec<SessionEntry>), SessionError> {
+    fn branched(
+        &self,
+        leaf: &EntryId,
+        id: Option<String>,
+    ) -> Result<(SessionHeader, Vec<SessionEntry>), SessionError> {
         let path = self.branch(Some(leaf));
         if path.is_empty() {
             return Err(SessionError::UnknownEntry(leaf.clone()));
@@ -1134,7 +1138,7 @@ impl SessionManager {
         let header = new_header(
             &self.cwd,
             &CreateOptions {
-                id: None,
+                id,
                 parent_session: self.session_file.clone().filter(|_| self.persist),
             },
         )?;
@@ -1176,7 +1180,7 @@ impl SessionManager {
                 "in-memory sessions have no file to branch into",
             ));
         }
-        let (header, entries) = self.branched(leaf)?;
+        let (header, entries) = self.branched(leaf, None)?;
         let path = cwd_session_dir(&self.session_dir, &self.cwd).join(session_file_name(&header));
         files::write_new(&path, &files::serialize_lines(&header, &entries)?)?;
         Ok(path)
@@ -1193,7 +1197,22 @@ impl SessionManager {
         &mut self,
         leaf: &EntryId,
     ) -> Result<Option<PathBuf>, SessionError> {
-        let (header, entries) = self.branched(leaf)?;
+        self.branch_into_new_session_with_id(leaf, None)
+    }
+
+    /// [`SessionManager::branch_into_new_session`] with an explicit id for the new
+    /// session (validated like [`CreateOptions::id`]; `None` = a fresh `UUIDv7`) — for a
+    /// caller that names something after the fork before it exists (a per-chat folder).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::UnknownEntry`], an invalid id, I/O.
+    pub fn branch_into_new_session_with_id(
+        &mut self,
+        leaf: &EntryId,
+        id: Option<String>,
+    ) -> Result<Option<PathBuf>, SessionError> {
+        let (header, entries) = self.branched(leaf, id)?;
         self.header = header;
         self.load_entries(entries);
         self.flushed = false;
