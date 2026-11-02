@@ -20,6 +20,7 @@ import { modKey, setPaletteOpen } from '../../lib/shell';
 import { SessionList } from '../sidebar/SessionList';
 import '../sidebar/sidebar.css';
 import { Rail } from './Rail';
+import { HostRow } from './HostSwitcher';
 
 /** `/s/:host/:session` → its parts. */
 export function routeSession(pathname: string): { hostId: string; sessionId: string } | undefined {
@@ -35,13 +36,14 @@ export function routeDraftHost(pathname: string): string | undefined {
 
 export const sessionHref = (hostId: string, sessionId: string): string => `/s/${encodeURIComponent(hostId)}/${encodeURIComponent(sessionId)}`;
 
-/** The host a "New chat" starts on: the shown session's / draft's host, else This computer, else the first PC. */
+/** The host a "New chat" starts on: the globally selected PC (sidebar host row — it follows the shown
+ *  chat, see HostSwitcher), else the shown session's / draft's host, else This computer, else the first PC. */
 export function useNewChatHost(): () => string {
   const location = useLocation();
   const hosts = useHostsOptional();
   return () => {
     const all = hosts?.hosts() ?? [];
-    return routeSession(location.pathname)?.hostId ?? routeDraftHost(location.pathname) ?? all.find((h) => h.transport === 'local')?.id ?? all[0]?.id ?? 'local';
+    return all.find((h) => h.id === hosts?.selectedId())?.id ?? routeSession(location.pathname)?.hostId ?? routeDraftHost(location.pathname) ?? all.find((h) => h.transport === 'local')?.id ?? all[0]?.id ?? 'local';
   };
 }
 
@@ -83,6 +85,11 @@ export function Sidebar() {
         <SessionList variant="sidebar" />
       </div>
       <Rail />
+      <Show when={can('hosts')}>
+        <div class="sb-foot">
+          <HostRow />
+        </div>
+      </Show>
     </aside>
   );
 }

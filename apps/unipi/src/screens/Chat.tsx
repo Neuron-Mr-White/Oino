@@ -2,8 +2,8 @@
  * The phone Chat tab (§3.9, WP-A4): the shared sessions list full screen
  * (`components/sidebar/SessionList`, hosts → projects → sessions) — the same
  * component the desktop sidebar shows. Header: New chat, and "More" with Cron
- * and the extension pages (§3.9's phone row). The PcChip is gone here (Z-8:
- * hosts are the list's groups; the chip stays on Board/Cron). Selecting a
+ * and the extension pages (§3.9's phone row). The lead row carries the global
+ * host selector ([ui-shell] #1, `HostChip`; Board/Cron follow it). Selecting a
  * session routes to `/s/:host/:session` (the conversation layer).
  */
 import { createSignal, For, Show } from 'solid-js';
@@ -15,6 +15,7 @@ import { AnchoredMenu, MenuRow } from '../components/board/AnchoredMenu';
 import { SessionList } from '../components/sidebar/SessionList';
 import { useNewChatHost } from '../components/shell/Sidebar';
 import { railItems } from '../components/shell/Rail';
+import { HostChip } from '../components/shell/HostSwitcher';
 import './chat.css';
 
 /** The "More" pages of the Chat header menu (§3.9): Cron, extension pages, and the
@@ -37,6 +38,7 @@ export default function Chat() {
       <PageHeader
         class="chat-tab-head"
         title="Chat"
+        lead={can('hosts') ? <HostChip /> : undefined}
         tools={
           <>
             <button

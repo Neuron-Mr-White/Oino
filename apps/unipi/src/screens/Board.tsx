@@ -100,7 +100,9 @@ export default function Board() {
   const ui = boardUi();
   const avail = pcAvailability();
   const pcs = createMemo(() => boardPcs(hosts.hosts()));
-  const [hostId, setHostId] = createSignal<string | undefined>(store.target()?.hostId);
+  // The PC is the app-wide selection (sidebar host row / phone chip, [ui-shell] #1).
+  const hostId = () => hosts.selectedId();
+  const setHostId = (id: string | undefined) => hosts.selectHost(id);
   const [refreshing, setRefreshing] = createSignal(false);
   const [menu, setMenu] = createSignal<DOMRect | undefined>();
   const [addProjectOpen, setAddProjectOpen] = createSignal(false);
@@ -127,6 +129,8 @@ export default function Board() {
     const list = pcs();
     const current = untrack(hostId);
     if (current && list.some((candidate) => candidate.id === current)) return;
+    // The global selection isn't a board PC (or none yet): This computer / the last board PC.
+    if (!list.length) return;
     const last = readLast().hostId;
     setHostId(list.find((candidate) => candidate.id === last)?.id ?? list[0]?.id);
   });
@@ -432,7 +436,7 @@ export default function Board() {
           class="board-head"
           title="Board"
           lead={
-            <PcChip
+            desktopShell() ? undefined : <PcChip
               name={pc()?.name}
               label={`PC: ${pc()?.name ?? 'none'}${store.conn() === 'live' ? ' · live' : ''}`}
               state={availability()?.state ?? 'checking'}

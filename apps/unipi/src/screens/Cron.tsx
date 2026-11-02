@@ -56,6 +56,7 @@ import { openSessionRoute } from '../lib/notifyInit';
 import { useHosts } from '../hosts/context';
 import { PageHeader } from '../components/PageHeader';
 import { PcChip } from '../components/PcChip';
+import { desktopShell } from '../lib/layout';
 import { within } from '../lib/host/within';
 import { EmptyState, NoHostState, OfflineState, isUnreachable } from '../components/EmptyState';
 import { ErrorBanner } from '../components/ErrorBanner';
@@ -227,10 +228,9 @@ export default function Cron() {
   const hosts = useHosts();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [hostId, setHostId] = createSignal<string | undefined>(hosts.selectedId());
-  createEffect(() => {
-    if (!hostId() && hosts.selectedId()) setHostId(hosts.selectedId());
-  });
+  // The PC is the app-wide selection (sidebar host row / phone chip, [ui-shell] #1).
+  const hostId = () => hosts.selectedId();
+  const setHostId = (id: string) => hosts.selectHost(id);
   const isLocalHost = (id: string | undefined) => hosts.hosts().find((h) => h.id === id)?.transport === 'local';
   const hostName = (id: string | undefined) => hosts.hosts().find((h) => h.id === id)?.name ?? 'this PC';
 
@@ -294,7 +294,7 @@ export default function Cron() {
       <div class="page-screen cron-screen" data-testid="cron-screen">
         <PageHeader
           title="Cron"
-          lead={<PcChip name={hosts.hosts().find((h) => h.id === hostId())?.name} state={view().kind === "error" ? "offline" : view().kind === "loading" ? "checking" : "ok"} onClick={() => setHostSheetOpen(true)} />}
+          lead={desktopShell() ? undefined : <PcChip name={hosts.hosts().find((h) => h.id === hostId())?.name} state={view().kind === "error" ? "offline" : view().kind === "loading" ? "checking" : "ok"} onClick={() => setHostSheetOpen(true)} />}
           tools={
             <>
               <button type="button" class="ghost-icon-button" aria-label="Refresh" onClick={() => void refresh()}>

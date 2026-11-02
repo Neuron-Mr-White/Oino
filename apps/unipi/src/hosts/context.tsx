@@ -26,7 +26,7 @@ export type HostsApi = {
   error: Accessor<AppError | undefined>;
   /** Re-fetches the host list from the core. */
   refresh: () => Promise<void>;
-  /** The id of the currently-selected host (Sessions host switcher), or undefined if none/empty. */
+  /** The globally selected host (sidebar host row; Board, Cron, Preview, New chat follow it), or undefined if none/empty. */
   selectedId: Accessor<string | undefined>;
   selectHost: (id: string | undefined) => void;
   /** Forgets a paired host, then refreshes the list. */
@@ -35,13 +35,35 @@ export type HostsApi = {
 
 const HostsContext = createContext<HostsApi>();
 
+const SELECTED_KEY = 'unipi.selectedHost';
+function readSelectedHost(): string | undefined {
+  try {
+    return localStorage.getItem(SELECTED_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+function writeSelectedHost(id: string | undefined): void {
+  try {
+    if (id) localStorage.setItem(SELECTED_KEY, id);
+    else localStorage.removeItem(SELECTED_KEY);
+  } catch {
+    /* storage unavailable: the selection just isn't remembered */
+  }
+}
+
 export function HostsProvider(props: { children: JSX.Element }): JSX.Element {
   const [settings] = useSettings();
   const [paths,setPaths]=createSignal<Record<string,PathKind>>({});
   const [hosts, setHosts] = createSignal<HostInfo[]>([]);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<AppError | undefined>(undefined);
-  const [selectedId, setSelectedId] = createSignal<string | undefined>(undefined);
+  // The one global host selection (sidebar host row): remembered across launches.
+  const [selectedId, setSelectedIdRaw] = createSignal<string | undefined>(readSelectedHost());
+  const setSelectedId = (id: string | undefined) => {
+    setSelectedIdRaw(id);
+    writeSelectedHost(id);
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -54,7 +76,8 @@ export function HostsProvider(props: { children: JSX.Element }): JSX.Element {
       setError(undefined);
       const current = selectedId();
       if (!current || !result.value.some((h) => h.id === current)) {
-        setSelectedId(result.value[0]?.id);
+        // This computer first, else the most recently paired PC.
+        setSelectedId((result.value.find((h) => h.transport === 'local') ?? result.value[0])?.id);
       }
     } else {
       setError(result.error);

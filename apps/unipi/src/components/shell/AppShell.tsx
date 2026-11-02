@@ -72,6 +72,7 @@ import { setShortcutsOpen, ShortcutsDialog, shortcutsOpen } from './ShortcutsDia
 import { BuiltinActions } from '../command/BuiltinActions';
 import { ResizeHandle } from './ResizeHandle';
 import { Sidebar, useNewChatHost } from './Sidebar';
+import { FollowRouteHost } from './HostSwitcher';
 import { currentWorkspace } from './Workspace';
 import { SIDEBAR_DEFAULT } from '../../lib/layout';
 import { installExtensionPageFeed } from '../../ui/slots/pages';
@@ -328,6 +329,7 @@ export function AppShell(props: ParentProps) {
     <SettingsProvider>
       <HostsProvider>
         <ShellShortcuts />
+        <FollowRouteHost />
         <ReservedRoutingLayer />
         <ShortcutPersistence />
         <RelaySettings />

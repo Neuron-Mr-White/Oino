@@ -382,6 +382,7 @@ function PreviewApp() {
                       class="picker-row"
                       aria-current={hostId() === host.id ? 'true' : undefined}
                       onClick={() => {
+                        hosts.selectHost(host.id);
                         setParams({ host: host.id }, { replace: true });
                         setHostSheet(false);
                       }}
