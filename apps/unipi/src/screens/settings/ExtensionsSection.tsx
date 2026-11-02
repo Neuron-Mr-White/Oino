@@ -25,6 +25,10 @@ import { sortNamespaces, type Namespace } from '../../ui/settings/types';
 import { settingsSchema } from '../../ui/settings/data';
 import { extensionNamespaces } from '../../ui/slots/SettingsSections';
 import { NAMESPACE_HOME, openNamespaceHome } from '../../lib/settings/open';
+import { recalledScroll, rememberScroll, settingsScroller } from '../../lib/settings/memory';
+import { layout } from '../../lib/layout';
+
+const LIST_SCROLL_KEY = 'extensions:list';
 
 /** The hub notices that name suspects (the safe-mode banner names them). */
 export function safeModeNotices(notices: Array<{ level: string; text: string }>): Array<{ level: string; text: string }> {
@@ -103,6 +107,38 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
   const crashes = () => crashNotices(hub().state.notices);
   const openNamespace = () => (props.namespace ? (namespaces.latest ?? []).find((ns) => ns.namespace === props.namespace) : undefined);
 
+  // owner5 #11: the page opens at its top; Back restores the list's scroll position.
+  let anchor: HTMLDivElement | undefined;
+  const open = (namespace: string) => {
+    if (openNamespaceHome(namespace)) return;
+    const scroller = settingsScroller(anchor);
+    if (scroller) rememberScroll(LIST_SCROLL_KEY, scroller.scrollTop);
+    props.onNamespace(namespace);
+    requestAnimationFrame(() => {
+      const page = document.querySelector<HTMLElement>('[data-testid=namespace-page]');
+      const sc = settingsScroller(page ?? anchor);
+      if (!sc || !page) return;
+      if (layout().desktop()) sc.scrollTop = 0;
+      else page.scrollIntoView?.({ block: 'start' });
+    });
+  };
+  const back = () => {
+    props.onNamespace(undefined);
+    const top = recalledScroll(LIST_SCROLL_KEY);
+    if (top === undefined) return;
+    let tries = 0;
+    const land = () => {
+      const sc = settingsScroller(anchor);
+      if (sc && sc.scrollHeight - sc.clientHeight >= top - 1) {
+        sc.scrollTop = top;
+        return;
+      }
+      if (++tries < 20) requestAnimationFrame(land);
+      else if (sc) sc.scrollTop = top;
+    };
+    requestAnimationFrame(land);
+  };
+
   return (
     <Show
       when={!openNamespace()}
@@ -112,10 +148,11 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
           extension={owner(openNamespace()!)}
           toggling={toggling() === owner(openNamespace()!)?.id}
           onToggle={(enabled) => void toggle(openNamespace()!.extensionId, enabled)}
-          onBack={() => props.onNamespace(undefined)}
+          onBack={back}
         />
       }
     >
+      <div ref={anchor} class="contents" />
       <Section title="Extensions" id="sec-extensions" icon={<Puzzle size={14} />}>
         <Show when={safeMode().length > 0}>
           <div class="safe-mode-banner" role="alert" data-testid="safe-mode-banner">
@@ -163,9 +200,7 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
                     type="button"
                     class="rounded-pill bg-surface-2 text-text-muted px-3 py-1.5 text-xs mr-2"
                     data-testid={`ext-settings-${extension.id}`}
-                    onClick={() => {
-                      if (!openNamespaceHome(ns().namespace)) props.onNamespace(ns().namespace);
-                    }}
+                    onClick={() => open(ns().namespace)}
                   >
                     Settings
                   </button>
@@ -190,20 +225,18 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
                 class="settings-namespace-row"
                 id={`ns-${ns.namespace}`}
                 data-testid={`ns-${ns.namespace}`}
-                onClick={() => {
-                  // P2-03: a namespace with its own place opens there (one place per setting).
-                  if (!openNamespaceHome(ns.namespace)) props.onNamespace(ns.namespace);
-                }}
+                // P2-03: a namespace with its own place opens there (one place per setting).
+                onClick={() => open(ns.namespace)}
                 title={NAMESPACE_HOME[ns.namespace] ? `Opens ${NAMESPACE_HOME[ns.namespace]!.label}` : undefined}
               >
                 <span class="settings-namespace-icon"><IconView icon={ns.icon ?? 'gear'} size={16} /></span>
-                <span class="min-w-0">
+                <span class="min-w-0 flex-1">
                   <span class="block text-[15px] text-text truncate">{ns.title}</span>
                   <Show when={ns.description}>
                     <span class="block text-xs text-text-dim truncate">{ns.description}</span>
                   </Show>
                 </span>
-                <Show when={NAMESPACE_HOME[ns.namespace]} fallback={<span class="text-xs text-text-dim font-mono shrink-0">{ns.namespace}</span>}>
+                <Show when={NAMESPACE_HOME[ns.namespace]} fallback={<span class="settings-ns-badge">{ns.namespace}</span>}>
                   {(home) => <span class="text-xs text-text-dim shrink-0">in {home().label}</span>}
                 </Show>
                 <ChevronRight size={15} class="text-text-dim shrink-0" />
@@ -222,8 +255,9 @@ export function ExtensionsSection(props: { namespace?: string; onNamespace: (ns:
 }
 
 /**
- * One extension's settings section (§7): the enable toggle first, then the
- * namespace's form (sections, fields, scope toggle, advanced).
+ * One extension's own page (owner5 #11), one level below the Extensions list:
+ * "← Extensions" aligned with the title, then the extension's name,
+ * description and enable toggle, then its settings form (§7).
  */
 function NamespacePage(props: {
   namespace: Namespace;
@@ -232,38 +266,42 @@ function NamespacePage(props: {
   onToggle: (enabled: boolean) => void;
   onBack: () => void;
 }) {
+  const title = () => props.extension?.name?.trim() || props.namespace.title || props.extension?.id || props.namespace.namespace;
+  const blurb = () => props.extension?.description?.trim() || props.namespace.description;
   return (
-    <section class="mb-7" id="sec-extensions" data-testid="namespace-page">
-      <div class="flex items-center gap-3 mb-3">
-        <SettingsBackButton onBack={props.onBack} />
-        <h2 class="section-label settings-section-label mb-0">{props.namespace.title}</h2>
+    <section class="mb-7 settings-subpage" id="sec-extensions" data-testid="namespace-page">
+      <div class="settings-subpage-head">
+        <SettingsBackButton onBack={props.onBack} label="Extensions" />
       </div>
-      <NamespaceForm
-        namespace={props.namespace}
-        bare
-        header={
+      <div class="settings-subpage-hero">
+        <span class="settings-namespace-icon"><IconView icon={props.namespace.icon ?? 'gear'} size={16} /></span>
+        <div class="min-w-0 flex-1">
+          <h2 class="settings-subpage-title" data-testid="namespace-page-title">{title()}</h2>
+          <Show when={blurb()}>
+            <p class="settings-subpage-desc">{blurb()}</p>
+          </Show>
           <Show when={props.extension}>
             {(extension) => (
-              <Row
-                label={`Enable ${extension().id}`}
-                description={
-                  extension().enabled
-                    ? 'On — loaded with every session that uses it'
-                    : 'Off — stored values are kept, nothing loads'
-                }
-              >
-                <SwitchField
-                  label={`Enable ${extension().id}`}
-                  checked={extension().enabled}
-                  disabled={props.toggling}
-                  onChange={props.onToggle}
-                  testId={`ext-${extension().id}`}
-                />
-              </Row>
+              <p class="settings-subpage-state">
+                {extension().enabled ? 'On — loaded with every session that uses it' : 'Off — stored values are kept, nothing loads'}
+                <Show when={extension().version}> · v{extension().version}</Show>
+              </p>
             )}
           </Show>
-        }
-      />
+        </div>
+        <Show when={props.extension}>
+          {(extension) => (
+            <SwitchField
+              label={`Enable ${extensionTitle(extension())}`}
+              checked={extension().enabled}
+              disabled={props.toggling}
+              onChange={props.onToggle}
+              testId={`ext-${extension().id}`}
+            />
+          )}
+        </Show>
+      </div>
+      <NamespaceForm namespace={props.namespace} bare />
     </section>
   );
 }
