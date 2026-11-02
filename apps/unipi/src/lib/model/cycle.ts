@@ -39,10 +39,13 @@ export function toggleCycleKey(exact: readonly string[], custom: readonly string
   return list.length ? list : undefined;
 }
 
-/** "Cycle set · 4 of 12 models" (or "every model" when nothing is stored). */
-export function cycleLabel(exact: readonly string[], custom: readonly string[], total: number): string {
+/** "Cycle set · 4 of 12 models" (or Suggested / every model when nothing is stored). */
+export function cycleLabel(exact: readonly string[], custom: readonly string[], total: number, suggestedCount?: number): string {
   const n = exact.length;
-  if (n === 0 && custom.length === 0) return `Cycle set · every model (${total})`;
+  if (n === 0 && custom.length === 0) {
+    if (total > 12 && suggestedCount && suggestedCount > 0) return `Cycle set · Suggested (${suggestedCount})`;
+    return `Cycle set · every model (${total})`;
+  }
   const extra = custom.length ? ` + ${custom.length} pattern${custom.length === 1 ? '' : 's'}` : '';
   return `Cycle set · ${n} of ${total} models${extra}`;
 }

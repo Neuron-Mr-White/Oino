@@ -7,11 +7,59 @@
  * first the same way. Pure rules; the picker is markup.
  */
 import type { FusionCurated } from '../../lib/model/fusion';
-import { hits as modelHits, modelKey, type ModelInfo, type Selection } from '../../lib/model/picker';
+import { hits as modelHits, modelKey, modelName, shortModelName, type ModelInfo, type Selection } from '../../lib/model/picker';
 
 export type SuggestedRow = { model: ModelInfo; lead: boolean; sidekick: boolean; effort?: string };
 
 const hits = modelHits;
+
+/** Family patterns for building a clean Suggested group when no `/fusion-preset` is saved yet (D-07 / F-04). */
+const DEFAULT_FAMILIES: readonly RegExp[] = [
+  /\bclaude[\w.-]*sonnet[\w.-]*[45]|\bsonnet[\w.-]*[45]/i,
+  /\bclaude[\w.-]*opus[\w.-]*[45]|\bopus[\w.-]*[45]/i,
+  /\bgpt-5(?!.*(?:mini|nano))|\bcodex|\bgpt-4\.1(?!.*(?:mini|nano))/i,
+  /\bgemini-[23][\w.-]*(?:pro|flash)/i,
+  /\bdeepseek[\w.-]*(?:v[34]|r1)/i,
+  /\bclaude[\w.-]*haiku|\bgpt-5[\w.-]*mini|\bqwen[\w.-]*coder/i,
+];
+
+/**
+ * Picks up to 6 distinct, high-signal chat models from `all` when the user has not
+ * curated a `/fusion-preset` yet (`all.length > 6`). Deduplicates by display name so
+ * two routes of the same model never both appear in Suggested or in the default cycle.
+ */
+export function defaultSuggestedKeys(
+  all: readonly ModelInfo[],
+  _currentKey?: string,
+  startup?: string,
+): string[] {
+  if (all.length <= 6) return [];
+  const byKey = new Map(all.map((m) => [modelKey(m), m]));
+  const picked: string[] = [];
+  const seenKeys = new Set<string>();
+  const seenNames = new Set<string>();
+  const add = (m: ModelInfo | undefined) => {
+    if (!m) return false;
+    const key = modelKey(m);
+    const norm = shortModelName(modelName(m)).trim().toLowerCase();
+    if (seenKeys.has(key) || (norm && seenNames.has(norm))) return false;
+    seenKeys.add(key);
+    if (norm) seenNames.add(norm);
+    picked.push(key);
+    return true;
+  };
+  if (startup) add(byKey.get(startup));
+  for (const family of DEFAULT_FAMILIES) {
+    if (picked.length >= 6) break;
+    const match = all.find((m) => !seenKeys.has(modelKey(m)) && family.test(`${m.id} ${m.name ?? ''}`));
+    add(match);
+  }
+  for (const m of all) {
+    if (picked.length >= 5) break;
+    add(m);
+  }
+  return picked;
+}
 
 /** The curated roles + default effort of one model key. */
 export function curatedRole(curated: FusionCurated | undefined, key: string): { lead: boolean; sidekick: boolean; effort?: string } {
@@ -33,6 +81,7 @@ export function groupedModels(
   curated: FusionCurated | undefined,
   current: Selection | undefined,
   query: string,
+  startup?: string,
 ): { suggested: SuggestedRow[]; rest: ModelInfo[] } {
   const q = query.trim().toLowerCase();
   const byKey = new Map(all.map((m) => [modelKey(m), m]));
@@ -44,6 +93,17 @@ export function groupedModels(
     taken.add(entry.key);
     if (q && !hits(m, q)) continue;
     suggested.push({ model: m, ...curatedRole(curated, entry.key) });
+  }
+  // D-07: when no `/fusion-preset` is saved (or on New chat before a chat ran), surface a clean Suggested group on large catalogues.
+  if (taken.size === 0 && all.length > 6) {
+    const curKey = current?.kind === 'single' ? current.key : undefined;
+    for (const key of defaultSuggestedKeys(all, curKey, startup)) {
+      const m = byKey.get(key);
+      if (!m || taken.has(key)) continue;
+      taken.add(key);
+      if (q && !hits(m, q)) continue;
+      suggested.push({ model: m, ...curatedRole(curated, key) });
+    }
   }
   let rest = all.filter((m) => !taken.has(modelKey(m)) && (!q || hits(m, q)));
   if (!q && current?.kind === 'single') {

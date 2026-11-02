@@ -32,9 +32,10 @@ export function modelView(
   curated: FusionCurated | undefined,
   current: Selection | undefined,
   query: string,
+  startup?: string,
 ): ModelView {
   const split = splitAvailability(all, readiness, current?.kind === 'single' ? current.key : undefined);
-  const grouped = groupedModels(split.usable, curated, current, query);
+  const grouped = groupedModels(split.usable, curated, current, query, startup);
   const q = query.trim().toLowerCase();
   return {
     usable: split.usable,
@@ -178,7 +179,7 @@ export function ModelList(props: {
               <button type="button" class="mp-row" disabled aria-disabled="true" title={`${modelName(u.model)}\n${u.reason}`} data-testid="model-row-unavailable">
                 <span class="mp-row-main">
                   <span class="mp-row-name">{modelName(u.model)}</span>
-                  <span class="mp-row-sub">{u.reason}</span>
+                  <span class="mp-row-sub">{routeLabel(u.model)}</span>
                 </span>
               </button>
             )}

@@ -49,7 +49,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
     const m = props.session.state.model;
     // Before any list is known the default model still shows (never a name the user can't see).
     const rows = all.length || !m?.id ? all : [{ provider: m.provider ?? '', id: m.id, name: m.name ?? m.id } as ModelInfo];
-    return modelView(rows, props.session.readiness(), data.latest?.curated, currentSel(), query());
+    return modelView(rows, props.session.readiness(), data.latest?.curated, currentSel(), query(), data.latest?.startup);
   });
   const noUsable = () => !data.loading && view().usable.length === 0 && !query().trim();
   const pick = (m: ModelInfo) => {

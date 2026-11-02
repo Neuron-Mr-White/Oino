@@ -29,6 +29,7 @@ import { appNavigate } from '../../lib/nav';
 import { ErrorBanner } from '../../components/ErrorBanner';
 import type { AppError } from '@unipi/protocol';
 import { ProviderSchema, ProvidersSchema, type Provider } from '../../lib/model/readiness';
+import { cleanHttpStatus } from '../../lib/model/availability';
 import { Row, Section } from './rows';
 
 export { ProviderSchema, type Provider };
@@ -39,7 +40,7 @@ export { ProviderSchema, type Provider };
  * rejected one says so — never "Ready" for a dead key.
  */
 export function providerState(p: Provider): { label: string; detail?: string; bad?: boolean } {
-  if (p.configured && p.ready === false) return { label: 'Not working', detail: p.reason ?? 'the provider rejected this credential', bad: true };
+  if (p.configured && p.ready === false) return { label: 'Not working', detail: cleanHttpStatus(p.reason ?? 'the provider rejected this credential'), bad: true };
   const how = p.stored === 'oauth' ? 'OAuth' : p.stored === 'api_key' ? 'API key' : p.env.length ? `from ${p.env.join(' / ')}` : 'environment';
   if (p.configured && p.ready === true) return { label: p.stored === 'oauth' ? 'Signed in' : 'Ready', detail: how };
   if (p.stored === 'oauth') return { label: 'Signed in', detail: 'OAuth' };

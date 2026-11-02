@@ -116,8 +116,12 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
   const fusion = () => data.latest?.fusion;
   const byKey = createMemo(() => new Map(allModels().map((m) => [modelKey(m), m])));
   const current = (): Selection | undefined => selectionOf(s().state.model, fusion()?.active);
+
+  // ── mode, search and pending picks ──────────────────────────────────
+  const [mode, setMode] = createSignal<'single' | 'fusion'>('single');
+  const [query, setQuery] = createSignal('');
   /** F-02: one view shared with the New-chat popover (`ModelList.modelView`). */
-  const view = createMemo(() => modelView(allModels(), data.latest?.readiness, fusion()?.curated, current(), query()));
+  const view = createMemo(() => modelView(allModels(), data.latest?.readiness, fusion()?.curated, current(), query(), data.latest?.startup));
   const models = () => view().usable;
   const fusionOn = () => !!fusion();
   const activePair = () => {
@@ -134,10 +138,6 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
     return key;
   };
   const now = () => nowLabel(current(), nameOf);
-
-  // ── mode, search and pending picks ──────────────────────────────────
-  const [mode, setMode] = createSignal<'single' | 'fusion'>('single');
-  const [query, setQuery] = createSignal('');
   const [pick, setPick] = createSignal<string | undefined>();
   const [pendingLead, setPendingLead] = createSignal<string | undefined>();
   const [pendingSidekick, setPendingSidekick] = createSignal<string | undefined>();
@@ -453,11 +453,11 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
           <Show when={cycleOpen()} fallback={<ChevronRight size={14} />}>
             <ChevronDown size={14} />
           </Show>
-          <span>{cycleLabel(cycle().exact, cycle().custom, models().length)}</span>
+          <span>{cycleLabel(cycle().exact, cycle().custom, models().length, view().suggested.length)}</span>
         </button>
         <Show when={cycleOpen()}>
           <div class="mp-cycle-body">
-            <p class="mp-hint">The set Ctrl+P cycles in the terminal (oino’s <code>enabledModels</code>). Every model stays selectable here.</p>
+            <p class="mp-hint">Models Ctrl+Alt+P steps through in a chat. Every model stays selectable above.</p>
             <div class="mp-cycle-list" role="group" aria-label="Cycle set">
               <For each={models().slice(0, LIST_CAP)}>
                 {(m) => {

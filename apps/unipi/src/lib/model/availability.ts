@@ -19,14 +19,16 @@ export function isChatModel(m: ModelInfo): boolean {
 
 export type Unavailable = { reason: string };
 
+export const cleanHttpStatus = (text: string): string => text.replace(/\bHTTP\s+(\d{3})\s+\1\b/gi, 'HTTP $1');
+
 /** `undefined` = usable; otherwise why not (calm, human). */
 export function unavailableReason(m: ModelInfo, readiness: Readiness | undefined): string | undefined {
-  if (m.ready === false) return m.reason || 'Not available';
+  if (m.ready === false) return cleanHttpStatus(m.reason || 'Not available');
   if (m.ready === true || !readiness?.known) return undefined;
   const p = readiness.providers.find((x) => x.id === m.provider);
   if (!p) return undefined;
   if (providerUsable(p)) return undefined;
-  if (p.configured || p.ready === false) return p.reason ? `${p.name || p.id}: ${p.reason}` : `${p.name || p.id}: the key was rejected`;
+  if (p.configured || p.ready === false) return cleanHttpStatus(p.reason ? `${p.name || p.id}: ${p.reason}` : `${p.name || p.id}: the key was rejected`);
   return `${p.name || p.id} isn’t set up`;
 }
 
