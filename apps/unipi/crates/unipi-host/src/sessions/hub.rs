@@ -705,7 +705,32 @@ impl SessionHub {
         Ok(self.inner.card_from(&state, &record))
     }
 
-    /// Whether the session's runtime is live in this hub (an open needs no wake).
+    /// [`Self::resolve`] that never waits for another session's wake (the core hub lock
+    /// is held through a wake's whole-file parse): a busy hub answers from its live-id
+    /// mirror (perf-open's file-first open).
+    ///
+    /// # Errors
+    ///
+    /// Unknown or ambiguous target, listing I/O failures.
+    pub async fn resolve_quick(&self, target: &str) -> Result<SessionCard, HubError> {
+        let record = self
+            .inner
+            .core
+            .find_quick(target)
+            .await
+            .map_err(HubError::from_find)?;
+        let state = lock(&self.inner.state);
+        Ok(self.inner.card_from(&state, &record))
+    }
+
+    /// Is the core hub busy (a wake parsing a session file under its lock)?
+    #[must_use]
+    pub fn core_busy(&self) -> bool {
+        self.inner.core.is_busy()
+    }
+
+    /// Whether the session's runtime is live in this hub (an open needs no wake; never
+    /// waits for the hub lock).
     pub async fn is_live(&self, session_id: &str) -> bool {
         self.inner.core.is_live(session_id).await
     }

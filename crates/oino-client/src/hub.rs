@@ -247,11 +247,40 @@ struct Live {
     gone: AtomicBool,
 }
 
+/// The live runtimes by session id, mirrored into a plain id set that is readable while
+/// a wake holds the hub lock ([`SessionHub::is_live`], [`SessionHub::find_quick`]): a wake
+/// parses the whole session file under the lock, and asking "is it live?" must not wait
+/// for somebody else's wake.
+struct LiveMap {
+    map: HashMap<String, Arc<Live>>,
+    ids: Arc<Mutex<HashSet<String>>>,
+}
+
+impl std::ops::Deref for LiveMap {
+    type Target = HashMap<String, Arc<Live>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
+impl LiveMap {
+    fn insert(&mut self, id: String, live: Arc<Live>) -> Option<Arc<Live>> {
+        lock(&self.ids).insert(id.clone());
+        self.map.insert(id, live)
+    }
+
+    fn remove(&mut self, id: &str) -> Option<Arc<Live>> {
+        lock(&self.ids).remove(id);
+        self.map.remove(id)
+    }
+}
+
 /// Hub state guarded by one async mutex: open/close/evict transitions are serialised, so a
 /// wake never races an eviction of the same session.
 struct State {
     services: Vec<ServicesEntry>,
-    live: HashMap<String, Arc<Live>>,
+    live: LiveMap,
     crashed: HashSet<String>,
     /// Session id → (file, holder text) of a failed takeover (D-TAKEOVER deadline).
     locked: HashMap<String, (PathBuf, String)>,
@@ -273,6 +302,8 @@ struct Inner {
     config: HubConfig,
     /// [`HubLimits::with_shared_services_root`].
     shared_services_root: Option<PathBuf>,
+    /// Ids of the live runtimes ([`LiveMap`]'s lock-free mirror).
+    live_ids: Arc<Mutex<HashSet<String>>>,
     state: tokio::sync::Mutex<State>,
 }
 
@@ -323,7 +354,9 @@ impl SessionHub {
             .docs_root
             .clone()
             .unwrap_or_else(|| opts.agent_dir.join("docs"));
+        let live_ids = Arc::new(Mutex::new(HashSet::new()));
         let inner = Arc::new(Inner {
+            live_ids: Arc::clone(&live_ids),
             cwd: opts.cwd,
             agent_dir: opts.agent_dir,
             docs_root,
@@ -340,7 +373,10 @@ impl SessionHub {
             shared_services_root: limits.shared_services_root,
             state: tokio::sync::Mutex::new(State {
                 services: Vec::new(),
-                live: HashMap::new(),
+                live: LiveMap {
+                    map: HashMap::new(),
+                    ids: live_ids,
+                },
                 crashed: HashSet::new(),
                 locked: HashMap::new(),
             }),
@@ -504,29 +540,36 @@ impl SessionHub {
     pub async fn find(&self, target: &str) -> Result<HubSession, ClientError> {
         let info = find_record(&self.inner.sessions_root, target).await?;
         let state = self.inner.state.lock().await;
-        let session_state = if state.live.contains_key(&info.id) {
-            if state.crashed.contains(&info.id) {
-                HubSessionState::Crashed
-            } else {
-                HubSessionState::Live
-            }
-        } else if state.crashed.contains(&info.id) {
-            HubSessionState::Crashed
-        } else if state
-            .locked
-            .get(&info.id)
-            .is_some_and(|(path, _)| lock_metadata_path(path).exists())
-        {
-            HubSessionState::Locked
-        } else {
-            HubSessionState::Record
-        };
+        let session_state = record_state(&state, &info);
         Ok(HubSession {
             info,
             state: session_state,
         })
     }
+}
 
+/// A record's state under the hub lock.
+fn record_state(state: &State, info: &SessionInfo) -> HubSessionState {
+    if state.live.contains_key(&info.id) {
+        if state.crashed.contains(&info.id) {
+            HubSessionState::Crashed
+        } else {
+            HubSessionState::Live
+        }
+    } else if state.crashed.contains(&info.id) {
+        HubSessionState::Crashed
+    } else if state
+        .locked
+        .get(&info.id)
+        .is_some_and(|(path, _)| lock_metadata_path(path).exists())
+    {
+        HubSessionState::Locked
+    } else {
+        HubSessionState::Record
+    }
+}
+
+impl SessionHub {
     /// Closes `session_id` if it is live (`session_shutdown{reason:"quit"}`, lease
     /// released); idempotent — closing a record or unknown id is `Ok`.
     ///
@@ -555,7 +598,31 @@ impl SessionHub {
     /// that go through [`SessionHub::list`] miss it (E-03).
     #[must_use]
     pub async fn is_live(&self, session_id: &str) -> bool {
-        self.inner.state.lock().await.live.contains_key(session_id)
+        lock(&self.inner.live_ids).contains(session_id)
+    }
+
+    /// Is a wake/close/eviction holding the hub lock right now? (A caller that must not
+    /// wait — the host's file-first open — takes another path.)
+    #[must_use]
+    pub fn is_busy(&self) -> bool {
+        self.inner.state.try_lock().is_err()
+    }
+
+    /// [`Self::find`] without waiting for the hub lock: while another session wakes (its
+    /// whole file is parsed under the lock) the state comes from the live-id mirror —
+    /// `Live` or `Record` (crashed/locked marks need the lock and read as `Record`).
+    ///
+    /// # Errors
+    ///
+    /// Unknown or ambiguous target, listing I/O failures.
+    pub async fn find_quick(&self, target: &str) -> Result<HubSession, ClientError> {
+        let info = find_record(&self.inner.sessions_root, target).await?;
+        let state = match self.inner.state.try_lock() {
+            Ok(state) => record_state(&state, &info),
+            Err(_) if lock(&self.inner.live_ids).contains(&info.id) => HubSessionState::Live,
+            Err(_) => HubSessionState::Record,
+        };
+        Ok(HubSession { info, state })
     }
 
     async fn wake(&self, target: &str) -> Result<Arc<dyn SessionBackend>, ClientError> {

@@ -938,8 +938,11 @@ fn session_file(hub: &SessionHub, card: &HostCard) -> Option<SessionFile> {
 /// the offset index — instead of waking first. `None` = take the runtime path (live
 /// already, unknown target, a pre-v3 or missing file).
 async fn file_open(hub: &Arc<SessionHub>, target: &str) -> Option<(HostCard, SessionFile, Page)> {
-    let card = hub.resolve(target).await.ok()?;
-    if hub.is_live(&card.session_id).await {
+    let card = hub.resolve_quick(target).await.ok()?;
+    // A live runtime answers its own snapshot — unless another session's wake holds the
+    // hub lock (the runtime path would wait for it): then the file serves this one too
+    // (a live idle session's file is current) and the "wake" just reattaches.
+    if hub.is_live(&card.session_id).await && !hub.core_busy() {
         return None;
     }
     let file = session_file(hub, &card)?;
