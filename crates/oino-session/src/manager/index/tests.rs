@@ -581,3 +581,23 @@ fn refine_reads_sampled_files_whole_once() {
     let again = CardIndex::new(dir.path().join(INDEX_FILE_NAME)).cards(&files, true);
     assert_eq!(again[0].name.as_deref(), Some("Middle"));
 }
+
+#[test]
+fn shared_index_lives_beside_the_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let trash = dir.path().join("trash");
+    let path = trash.join(format!("2026-08-04T08-36-35-282Z_{ID}.jsonl"));
+    write_lines(&path, &[header(ID, "/w"), user(1, "x")]);
+    assert_eq!(list_dir_cards(&trash).len(), 1);
+    assert_eq!(
+        card_index_path(&trash),
+        dir.path().join(".trash.oino-cards.json")
+    );
+    assert!(card_index_path(&trash).is_file());
+    let names: Vec<_> = fs::read_dir(&trash)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.file_name())
+        .collect();
+    assert_eq!(names.len(), 1, "only the session file: {names:?}");
+}

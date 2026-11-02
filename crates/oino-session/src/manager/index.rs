@@ -17,7 +17,8 @@
 //!   rename buried in the middle is missed) until [`CardIndex::refine`] — a background
 //!   pass the host runs after a listing — reads the file whole once. Everything appended
 //!   later is read incrementally.
-//! - **An index keyed by path + size + mtime** (`<dir>/.oino-cards.json`, written
+//! - **An index keyed by path + size + mtime** (`<parent>/.<dir>.oino-cards.json`, beside
+//!   the indexed directory — [`card_index_path`] — written
 //!   atomically: temp file + rename, so concurrent writers — other processes — never
 //!   leave a torn file; a corrupt or foreign index is ignored and rebuilt). An unchanged
 //!   file is a map hit; a file that only **grew** (append-only JSONL) is scanned from the
@@ -43,8 +44,22 @@ use crate::entry::IsoTimestamp;
 use crate::error::SessionError;
 use crate::time::ms_to_system_time;
 
-/// File name of the index inside the indexed directory.
+/// Suffix of an index file: `<parent>/.<dir name>.oino-cards.json` beside the indexed
+/// directory (never inside it, so the directory keeps only session files).
 pub const INDEX_FILE_NAME: &str = ".oino-cards.json";
+
+/// The index file of `dir`: `<parent>/.<dir name>.oino-cards.json`
+/// (`~/.oino/.sessions.oino-cards.json`, `~/.oino/.trash.oino-cards.json`); inside `dir`
+/// only when it has no parent.
+#[must_use]
+pub fn card_index_path(dir: &Path) -> PathBuf {
+    match (dir.parent(), dir.file_name()) {
+        (Some(parent), Some(name)) => {
+            parent.join(format!(".{}{INDEX_FILE_NAME}", name.to_string_lossy()))
+        }
+        _ => dir.join(INDEX_FILE_NAME),
+    }
+}
 const INDEX_VERSION: u32 = 1;
 /// Files up to this size are scanned whole (exact counts).
 pub const FULL_SCAN_MAX: u64 = 512 << 10;
@@ -189,11 +204,11 @@ impl CardIndex {
         }
     }
 
-    /// This process's index for `dir` (`<dir>/.oino-cards.json`).
+    /// This process's index for `dir` ([`card_index_path`]).
     #[must_use]
     pub fn shared(dir: &Path) -> Arc<Self> {
         static REGISTRY: OnceLock<Mutex<HashMap<PathBuf, Arc<CardIndex>>>> = OnceLock::new();
-        let file = dir.join(INDEX_FILE_NAME);
+        let file = card_index_path(dir);
         let mut registry = lock(REGISTRY.get_or_init(Mutex::default));
         Arc::clone(
             registry

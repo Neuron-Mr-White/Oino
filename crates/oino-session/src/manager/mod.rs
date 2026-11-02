@@ -24,7 +24,7 @@ pub use files::{
     encode_cwd, migrate_legacy_file, resolve_path, session_file_name, validate_session_id,
 };
 pub use index::{
-    CardIndex, FULL_SCAN_MAX, HEAD_BYTES, INDEX_FILE_NAME, TAIL_BYTES, find_card, find_card_in_dir,
+    CardIndex, FULL_SCAN_MAX, card_index_path, HEAD_BYTES, INDEX_FILE_NAME, TAIL_BYTES, find_card, find_card_in_dir,
     list_all_cards, list_dir_cards, refine_all_cards, refine_dir_cards,
 };
 pub use lease::{

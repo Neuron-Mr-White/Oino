@@ -96,7 +96,7 @@ fn cards_list_and_lookup_budgets() {
         time("generate", || generate(&root));
         root
     };
-    let _ = fs::remove_file(root.join(oino_session::manager::INDEX_FILE_NAME));
+    let _ = fs::remove_file(oino_session::manager::card_index_path(&root));
 
     let (cold, cold_took) = time("cold list_all_cards", || {
         SessionManager::list_all_cards(&root)
@@ -117,9 +117,10 @@ fn cards_list_and_lookup_budgets() {
         SessionManager::find_card(&root, &some.id).unwrap()
     });
     assert_eq!(found.unwrap().path, some.path);
-    let (refined, _) = time("refine (background pass, reads sampled big files whole)", || {
-        oino_session::manager::refine_all_cards(&root, |_| {})
-    });
+    let (refined, _) = time(
+        "refine (background pass, reads sampled big files whole)",
+        || oino_session::manager::refine_all_cards(&root, |_| {}),
+    );
     println!("refined files: {refined}");
     let (warm, _) = time("warm list_all_cards after refine", || {
         SessionManager::list_all_cards(&root)
