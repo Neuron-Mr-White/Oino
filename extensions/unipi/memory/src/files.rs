@@ -499,4 +499,55 @@ mod tests {
         assert!((title_similarity("a b", "c") - 0.0).abs() < f64::EPSILON);
         assert!((title_similarity("redis cache", "redis cache") - 1.0).abs() < f64::EPSILON);
     }
+
+    /// fix-frames P0 sweep: odd inputs a 7,000-file clone may hold are skipped or parsed,
+    /// never a panic (a guest panic traps the whole instance).
+    #[test]
+    fn odd_files_never_panic() {
+        let odd: [&[u8]; 12] = [
+            b"",
+            b"---",
+            b"---\n",
+            b"---\ntitle: x",
+            b"\xef\xbb\xbf---\ntitle: bom\n---\nbody",
+            b"---\r\ntitle: crlf\r\n---\r\nbody",
+            b"---\ntitle: '\n---\n",
+            b"---\ntitle: \"\xc3\xa9\"\ntags: [\xc3\xa9, '', \"\"]\n---\n\xc3\xa9",
+            b"---\ntitle: \xe2\x80\x94\ntags:\n  -\n  - a\n---",
+            b"---\ntitle: ok\n---",
+            b"\xff\xfe\x00binary",
+            b"---\n:\n: :\ntitle:: x\n---\nbody",
+        ];
+        let root = tmp("odd");
+        let dir = root.join("proj/decision");
+        std::fs::create_dir_all(&dir).unwrap();
+        for (i, bytes) in odd.iter().enumerate() {
+            std::fs::write(dir.join(format!("odd{i}.md")), bytes).unwrap();
+            let text = String::from_utf8_lossy(bytes);
+            let _ = parse_memory(&text, Some(Path::new("/m/x.md")));
+        }
+        let parsed = scan_project(&root, "proj");
+        assert!(parsed.iter().any(|r| r.title == "crlf"), "{parsed:?}");
+        let _ = crate::search::local_search(&root, "body ok", 5, None);
+        let _ = crate::search::snippet("", 0);
+    }
+
+    /// Scans a real store copy (`OINO_MEM_REPRO_DIR`, e.g. `~/.cache/oino-mem-repro/memory`)
+    /// end to end: every project listed, scanned and searched without a panic.
+    #[test]
+    #[ignore = "needs OINO_MEM_REPRO_DIR (a copy of a real memory store)"]
+    fn a_real_store_copy_scans_and_searches() {
+        let Ok(dir) = std::env::var("OINO_MEM_REPRO_DIR") else {
+            return;
+        };
+        let root = PathBuf::from(dir);
+        let mut total = 0;
+        for (name, _) in list_project_dirs(&root) {
+            total += scan_project(&root, &name).len();
+            let _ = find_similar(&root, &name, "browser tool test harness", 0.6);
+        }
+        let hits = crate::search::local_search(&root, "tool test harness browser", 10, None);
+        println!("{total} memories parsed, {} hits", hits.len());
+        assert!(total > 0);
+    }
 }

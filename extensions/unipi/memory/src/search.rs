@@ -43,7 +43,13 @@ pub fn snippet(text: &str, max: usize) -> String {
         .unwrap_or(text);
     let clean = body.split_whitespace().collect::<Vec<_>>().join(" ");
     if clean.chars().count() > max {
-        format!("{}…", clean.chars().take(max - 1).collect::<String>())
+        format!(
+            "{}…",
+            clean
+                .chars()
+                .take(max.saturating_sub(1))
+                .collect::<String>()
+        )
     } else {
         clean
     }

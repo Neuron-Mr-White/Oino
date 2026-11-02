@@ -30,7 +30,11 @@ syn = { version = "2", features = ["full"] }
 thiserror = "2"
 unipi-cron-schedule = { path = "../apps/unipi/crates/unipi-cron-schedule" }
 unipi-kit = { path = "sdk/unipi-kit" }
-wit-bindgen = { version = "=0.62.0", features = ["async", "async-spawn", "futures-stream"] }
+# `inter-task-wakeup` (fix-frames P0): concurrent export calls (two tool calls in parallel, a
+# session shutdown during a search) that share an async `Mutex` wake each other across
+# component-model tasks. Without the feature wit-bindgen panics ("Cannot support
+# cross-component-model-task wakeup") and the instance traps on `unreachable`.
+wit-bindgen = { version = "=0.62.0", features = ["async", "async-spawn", "futures-stream", "inter-task-wakeup"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

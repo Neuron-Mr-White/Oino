@@ -144,12 +144,30 @@ async fn watch_cancel<T>(
     }
 }
 
+/// Routes a guest panic to the host log before the instance traps (fix-frames P0: a panic
+/// only reached `logs/ext/<id>.log` through stderr; the host log said "wasm `unreachable`
+/// instruction executed" with an anonymous backtrace). The default hook still runs.
+fn install_panic_hook() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let default = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            crate::host::log(
+                crate::host::LogLevel::Error,
+                &format!("panic (the instance traps and restarts): {info}"),
+            );
+            default(info);
+        }));
+    });
+}
+
 /// The generated `Guest` implementation for extension type `E`.
 #[doc(hidden)]
 pub struct Shim<E>(PhantomData<E>);
 
 impl<E: Extension> wg::Guest for Shim<E> {
     async fn init(input: wg::InitInput, ctx: CallContext) -> Result<wr::Registration, String> {
+        install_panic_hook();
         let ext = instance::<E>();
         let mut init = Init {
             ext,
