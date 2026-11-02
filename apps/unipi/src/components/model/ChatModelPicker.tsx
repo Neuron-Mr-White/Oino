@@ -527,7 +527,8 @@ export function ChatModelPicker(props: { target: ModelPickerTarget }) {
   const chip = chipFor(props.target);
   const anchor = chip?.getBoundingClientRect() ?? centredAnchor();
   return (
-    <ModelPopover anchor={anchor} label="Model" testId="model-picker-pop" onClose={closeModelPicker} trigger={() => chip}>
+    // No `trigger`: focus goes back where it was (the chip when clicked, the composer after Ctrl/Cmd+M).
+    <ModelPopover anchor={anchor} label="Model" testId="model-picker-pop" onClose={closeModelPicker}>
       <ChatModelPickerBody target={props.target} />
     </ModelPopover>
   );
