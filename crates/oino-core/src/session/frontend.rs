@@ -408,7 +408,7 @@ impl AgentSession {
             groups.extend(self.command_completions(line).await);
         }
         if let Some(query) = token.strip_prefix('@') {
-            let cwd = self.inner.cwd.clone();
+            let cwd = self.work_cwd();
             let query = query.to_owned();
             let items = tokio::task::spawn_blocking(move || path_candidates(&cwd, &query))
                 .await

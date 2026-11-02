@@ -220,8 +220,8 @@ impl AgentSession {
         let default_name = format!("session-{}.jsonl", now.as_str().replace([':', '.'], "-"));
         let target = match path {
             Some(path) if path.is_absolute() => path,
-            Some(path) => self.inner.cwd.join(path),
-            None => self.inner.cwd.join(default_name),
+            Some(path) => self.work_cwd().join(path),
+            None => self.work_cwd().join(default_name),
         };
         if let Some(dir) = target.parent() {
             tokio::fs::create_dir_all(dir)
@@ -252,7 +252,7 @@ impl AgentSession {
         let html = crate::export::render_html(&id, self.session_name().as_deref(), &branch);
         let short: String = id.chars().take(8).collect();
         let target =
-            path.unwrap_or_else(|| self.inner.cwd.join(format!("oino-session-{short}.html")));
+            path.unwrap_or_else(|| self.work_cwd().join(format!("oino-session-{short}.html")));
         tokio::fs::write(&target, html)
             .await
             .map_err(|e| SessionOpError::Failed(e.to_string()))?;

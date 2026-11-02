@@ -7,6 +7,7 @@
 
 mod bash;
 mod boundary;
+mod cwd;
 pub mod checkpoints;
 mod compaction_flow;
 mod feeds;
@@ -51,6 +52,7 @@ use crate::hub::{EventHub, EventStream};
 use crate::ui::{RegistrySink, UiBridge, UiOutput, UiRegistry, UiSink, is_dialog};
 
 pub use bash::BashResult;
+pub use cwd::cwd_change_reminder;
 pub use checkpoints::{Checkpoint, CheckpointFile, RewindFailure, RewindResult};
 pub use feeds::{DetachedBash, ExtensionInfo, RunningBash};
 pub use frontend::{
@@ -279,7 +281,12 @@ pub(crate) struct Inner {
     pub(crate) nested: Mutex<nested::NestedState>,
     pub(crate) scoped_models: Mutex<Vec<oino_models::resolver::ScopedModel>>,
     pub(crate) idle: watch::Sender<bool>,
+    /// The cwd the session started in (header cwd): the system prompt and the services'
+    /// project. Never changes, so a workspace move keeps the prompt prefix byte-identical.
     pub(crate) cwd: PathBuf,
+    /// Where tools, `!bash`, `@` completions and extension calls run: [`Inner::cwd`] until
+    /// the session moves ([`AgentSession::change_cwd`], `oino.cwd_change` entries).
+    pub(crate) work_cwd: RwLock<PathBuf>,
     pub(crate) agent_dir: PathBuf,
     pub(crate) docs_root: PathBuf,
     pub(crate) mode: ExtensionMode,
@@ -379,11 +386,17 @@ impl AgentSession {
         let hub = EventHub::new();
         let session_id = config.manager.session_id().to_owned();
         let has_ui = config.has_ui;
+        // A session that moved its working directory (`oino.cwd_change`) keeps running there
+        // after a reopen; the header cwd stays the prompt's.
+        let work_cwd = config
+            .manager
+            .moved_cwd()
+            .unwrap_or_else(|| config.cwd.clone());
         let cx = CallContext {
             session_id: session_id.clone(),
             mode: config.mode,
             has_ui,
-            cwd: config.cwd.clone(),
+            cwd: work_cwd.clone(),
             is_child: config.child.is_some(),
             child_role: config.child.as_ref().and_then(|c| c.link.role.clone()),
             call_kind: CallKind::Event,
@@ -462,6 +475,7 @@ impl AgentSession {
             scoped_models: Mutex::new(config.scoped_models),
             idle,
             cwd: config.cwd,
+            work_cwd: RwLock::new(work_cwd),
             agent_dir: config.agent_dir,
             docs_root: config.docs_root,
             mode: config.mode,
@@ -699,10 +713,23 @@ impl AgentSession {
         &self.inner.models
     }
 
-    /// Session cwd.
+    /// The cwd the session started in (its header cwd): the system prompt's cwd and the
+    /// services' project. It never changes; tools run in [`AgentSession::work_cwd`].
     #[must_use]
     pub fn cwd(&self) -> &Path {
         &self.inner.cwd
+    }
+
+    /// Where the session works now: tools, `!bash`, `@` completions, the git topic and
+    /// extension calls. Equals [`AgentSession::cwd`] until the session moves
+    /// ([`AgentSession::change_cwd`]).
+    #[must_use]
+    pub fn work_cwd(&self) -> PathBuf {
+        self.inner
+            .work_cwd
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Agent dir.

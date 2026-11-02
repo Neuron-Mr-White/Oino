@@ -197,7 +197,7 @@ impl AgentSession {
         let Some(router) = self.inner.agents.router() else {
             return;
         };
-        let cwd = self.inner.cwd.clone();
+        let cwd = self.work_cwd();
         let info = tokio::task::spawn_blocking(move || topics::git_info(&cwd))
             .await
             .unwrap_or(JsonValue::Null);
@@ -453,7 +453,7 @@ impl AgentSession {
         let Some(entry) = self.current_user_entry() else {
             return;
         };
-        let cwd = self.inner.cwd.display().to_string();
+        let cwd = self.work_cwd().display().to_string();
         let Ok(resolved) = oino_tools::path_utils::resolve_to_cwd(path, &cwd) else {
             return;
         };

@@ -992,6 +992,18 @@ impl SessionManager {
         self.index.entries()
     }
 
+    /// The working directory the session moved to last ([`crate::CWD_CHANGE_CUSTOM_TYPE`],
+    /// anywhere in the file — a move is never undone by navigating the tree), or `None`
+    /// when it never moved (the header [`SessionManager::cwd`] applies).
+    #[must_use]
+    pub fn moved_cwd(&self) -> Option<PathBuf> {
+        self.entries()
+            .iter()
+            .rev()
+            .find_map(|entry| entry.kind.cwd_change())
+            .map(PathBuf::from)
+    }
+
     /// Tree of all entries (roots and orphans in file order, children by timestamp).
     #[must_use]
     pub fn tree(&self) -> Vec<SessionTreeNode> {

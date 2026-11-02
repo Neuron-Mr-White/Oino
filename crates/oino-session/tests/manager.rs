@@ -625,3 +625,39 @@ fn first_flush_is_durable_and_reopens() {
         EntryKind::Message { .. }
     ));
 }
+
+#[test]
+fn cwd_change_is_append_only_and_listed_as_moved_cwd() {
+    let root = common::tempdir();
+    let mut sm =
+        SessionManager::create(Path::new(CWD), root.path(), CreateOptions::default()).unwrap();
+    sm.append_message(user("hello")).unwrap();
+    sm.append_message(assistant("hi")).unwrap();
+    let file = sm.session_file().unwrap().to_path_buf();
+    let before = fs::read_to_string(&file).unwrap();
+    assert_eq!(sm.moved_cwd(), None);
+    assert_eq!(
+        SessionManager::list_all(root.path(), None, None).unwrap()[0].moved_cwd,
+        None
+    );
+
+    sm.append_custom_message_entry(
+        oino_session::CWD_CHANGE_CUSTOM_TYPE,
+        UserContentField::Text("The workspace changed".into()),
+        true,
+        Some(serde_json::json!({"cwd": "/work/real", "previousCwd": CWD})),
+    )
+    .unwrap();
+    let after = fs::read_to_string(&file).unwrap();
+    // Append-only: every earlier byte (header + conversation) is untouched.
+    assert!(after.starts_with(&before), "earlier lines were rewritten");
+    assert_eq!(sm.cwd(), Path::new(CWD), "the header cwd stays");
+    assert_eq!(sm.moved_cwd().as_deref(), Some(Path::new("/work/real")));
+    let listed = SessionManager::list_all(root.path(), None, None).unwrap();
+    assert_eq!(listed.len(), 1, "the file stays in the old cwd's dir and is still listed");
+    assert_eq!(listed[0].cwd, CWD);
+    assert_eq!(listed[0].moved_cwd.as_deref(), Some("/work/real"));
+    // Reopened: the move survives.
+    let reopened = SessionManager::open(&file, root.path(), None).unwrap();
+    assert_eq!(reopened.moved_cwd().as_deref(), Some(Path::new("/work/real")));
+}

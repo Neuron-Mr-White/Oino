@@ -40,7 +40,7 @@ impl SessionToolContext {
 
 impl ToolContext for SessionToolContext {
     fn cwd(&self) -> Option<String> {
-        self.session().map(|s| s.cwd().display().to_string())
+        self.session().map(|s| s.work_cwd().display().to_string())
     }
 
     fn model_images(&self) -> Option<ModelImageInfo> {

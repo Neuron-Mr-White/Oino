@@ -757,7 +757,7 @@ impl AgentSession {
             .thinking
             .unwrap_or_else(|| self.thinking_level())
             .clamp(&model.available_thinking_levels());
-        let cwd = spec.cwd.clone().unwrap_or_else(|| self.cwd().to_path_buf());
+        let cwd = spec.cwd.clone().unwrap_or_else(|| self.work_cwd());
         let max = max_concurrent(self);
         if !agents.tree.try_acquire(max) {
             return Err(HostError::Failed(format!(

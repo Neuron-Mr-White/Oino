@@ -23,6 +23,9 @@ pub struct SessionInfo {
     pub id: String,
     /// Header cwd (empty when missing).
     pub cwd: String,
+    /// The working directory the session moved to last (`oino.cwd_change`), when it
+    /// moved; the session's effective folder is `moved_cwd` else `cwd`.
+    pub moved_cwd: Option<String>,
     /// Latest `session_info` name.
     pub name: Option<String>,
     /// Header `parentSession`.
@@ -67,6 +70,7 @@ pub fn session_info(path: &Path) -> Option<SessionInfo> {
     let mtime = file.metadata().and_then(|m| m.modified()).ok();
     let mut header: Option<JsonValue> = None;
     let mut name = None;
+    let mut moved_cwd = None;
     let mut message_count = 0;
     let mut first_message = String::new();
     let mut all_messages = Vec::new();
@@ -91,6 +95,19 @@ pub fn session_info(path: &Path) -> Option<SessionInfo> {
                 .map(str::trim)
                 .filter(|n| !n.is_empty())
                 .map(str::to_owned);
+        }
+        if kind == Some("custom_message")
+            && entry.get("customType").and_then(JsonValue::as_str)
+                == Some(crate::CWD_CHANGE_CUSTOM_TYPE)
+        {
+            if let Some(cwd) = entry
+                .get("details")
+                .and_then(|details| details.get("cwd"))
+                .and_then(JsonValue::as_str)
+                .filter(|cwd| !cwd.is_empty())
+            {
+                moved_cwd = Some(cwd.to_owned());
+            }
         }
         if kind != Some("message") {
             continue;
@@ -145,6 +162,7 @@ pub fn session_info(path: &Path) -> Option<SessionInfo> {
             .and_then(JsonValue::as_str)
             .unwrap_or_default()
             .to_owned(),
+        moved_cwd,
         name,
         parent_session_path: header
             .get("parentSession")

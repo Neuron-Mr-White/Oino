@@ -54,7 +54,7 @@ impl AgentSession {
     ) -> Result<BashResult, SessionOpError> {
         let runner = self.runner();
         if runner.has_handlers("user_bash") {
-            let payload = json!({"type": "user_bash", "command": command, "excludeFromContext": exclude_from_context, "cwd": self.cwd().display().to_string()});
+            let payload = json!({"type": "user_bash", "command": command, "excludeFromContext": exclude_from_context, "cwd": self.work_cwd().display().to_string()});
             match runner.emit_user_bash(payload).await {
                 Ok(Some(result)) => {
                     let result: BashResult = serde_json::from_value(result)
@@ -92,7 +92,7 @@ impl AgentSession {
             });
         };
         let env = oino_tools::LocalEnv::new();
-        let cwd = self.cwd().display().to_string();
+        let cwd = self.work_cwd().display().to_string();
         let outcome =
             oino_tools::run_shell_command(&env, &resolved, &cwd, &options, &mut on_chunk, &cancel)
                 .await;

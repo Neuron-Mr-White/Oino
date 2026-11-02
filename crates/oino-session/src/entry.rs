@@ -282,7 +282,31 @@ pub enum EntryKind {
     },
 }
 
+/// `customType` of the `custom_message` that moves a session's working directory
+/// (append-only: the header `cwd` and every earlier entry stay as they were). The
+/// message's `content` is the reminder the model reads; `details` is
+/// `{"cwd": <new dir>, "previousCwd": <old dir>}`. The latest one in the file is the
+/// session's working directory from then on.
+pub const CWD_CHANGE_CUSTOM_TYPE: &str = "oino.cwd_change";
+
 impl EntryKind {
+    /// The new working directory of a [`CWD_CHANGE_CUSTOM_TYPE`] message (`None` for
+    /// any other entry, or a malformed one).
+    #[must_use]
+    pub fn cwd_change(&self) -> Option<&str> {
+        match self {
+            Self::CustomMessage {
+                custom_type,
+                details: Some(details),
+                ..
+            } if custom_type == CWD_CHANGE_CUSTOM_TYPE => details
+                .get("cwd")
+                .and_then(JsonValue::as_str)
+                .filter(|cwd| !cwd.is_empty()),
+            _ => None,
+        }
+    }
+
     /// `type` string.
     #[must_use]
     pub const fn type_name(&self) -> &'static str {

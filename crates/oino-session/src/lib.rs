@@ -50,7 +50,8 @@ pub use context::{
     entry_to_context_messages, latest_compaction, path_to,
 };
 pub use entry::{
-    BranchSummaryEntry, CURRENT_SESSION_VERSION, CompactionEntry, ContextReplacement,
+    BranchSummaryEntry, CURRENT_SESSION_VERSION, CWD_CHANGE_CUSTOM_TYPE, CompactionEntry,
+    ContextReplacement,
     EditableContent, EntryId, EntryKind, FileLine, IsoTimestamp, SessionEntry, SessionHeader,
 };
 pub use error::SessionError;
