@@ -7,6 +7,7 @@ mod files;
 mod index;
 mod lease;
 mod list;
+mod offsets;
 mod repair;
 mod tree;
 
@@ -32,6 +33,10 @@ pub use lease::{
     lock_metadata_path, read_takeover_request, takeover_path, write_takeover_request,
 };
 pub use list::{ProgressSink, SessionInfo, session_info};
+pub use offsets::{
+    EntryPage, EntryPos, FLAG_COMPACTION, FLAG_USER, OFFSETS_DIR_SUFFIX, OffsetIndex, PERSIST_MIN,
+    PageRequest, forget_offsets, offsets_dir, page_start,
+};
 pub use repair::{INTERRUPTED_TOOL_TEXT, RESUME_REPAIR_TYPE, RepairReport, TOOL_DISPATCH_TYPE};
 pub use tree::SessionTreeNode;
 
