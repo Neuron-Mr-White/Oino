@@ -108,7 +108,7 @@ pub fn bound_with(
     };
     let mut marker = vec![
         String::new(),
-        "--- output bounded by UniPi ---".to_owned(),
+        "--- output bounded by Unipi ---".to_owned(),
         artifact_path.as_ref().map_or_else(
             || warning.clone().unwrap_or_default(),
             |p| format!("Full output: {p}"),
@@ -217,7 +217,7 @@ mod tests {
         assert!(out.text.contains("bytes omitted …"));
         assert!(
             out.text
-                .contains("--- output bounded by UniPi ---\nFull output: /host/tool-results/x.txt")
+                .contains("--- output bounded by Unipi ---\nFull output: /host/tool-results/x.txt")
         );
         assert!(
             out.text.ends_with(

@@ -620,14 +620,14 @@ pub async fn send_test(connection: &NtfyConnection, key: &[u8; KEY_LEN]) -> anyh
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("no ntfy topic configured"))?;
     let payload = serde_json::json!({
-        "title": "UniPi",
+        "title": "Unipi",
         "body": "Test notification from the PC.",
         "kind": "test",
     });
     let message = encrypt_envelope(key, &payload)?;
     let client = reqwest::Client::new();
     let mut req = client.post(server.trim_end_matches('/')).json(
-        &serde_json::json!({ "topic": topic, "title": "UniPi", "message": message, "priority": 3 }),
+        &serde_json::json!({ "topic": topic, "title": "Unipi", "message": message, "priority": 3 }),
     );
     if let Some(token) = &connection.token {
         req = req.bearer_auth(token);
@@ -667,7 +667,7 @@ pub fn publish_body_with_click(
     payload: &serde_json::Value,
     click: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
-    let mut body = serde_json::json!({ "title": "UniPi", "message": encrypt_envelope(key, payload)?, "priority": 4 });
+    let mut body = serde_json::json!({ "title": "Unipi", "message": encrypt_envelope(key, payload)?, "priority": 4 });
     if let Some(topic) = topic {
         body["topic"] = serde_json::Value::String(topic.to_string());
     }
@@ -1306,7 +1306,7 @@ mod tests {
             serde_json::json!({"title":"Incoming from coffee","body":"secret.apk","kind":"push"});
         let body = publish_body(Some("t"), &key, &payload).expect("body");
         assert_eq!(body["topic"], "t");
-        assert_eq!(body["title"], "UniPi");
+        assert_eq!(body["title"], "Unipi");
         assert!(!body.to_string().contains("secret.apk"));
         assert!(publish_body(None, &key, &payload)
             .expect("body")

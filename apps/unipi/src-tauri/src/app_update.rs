@@ -132,7 +132,7 @@ pub async fn app_update_install(
     if current_kind() != InstallKind::InApp {
         return Err(AppErrorDto::new(
             AppErrorCode::E_UNSUPPORTED,
-            "This copy of UniPi can't update itself",
+            "This copy of Unipi can't update itself",
             false,
         )
         .with_hint(format!("Download the new version from {DOWNLOAD_PAGE}")));

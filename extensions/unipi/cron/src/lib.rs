@@ -157,10 +157,10 @@ pub(crate) fn help_text() -> String {
         "  /cron list               every job".to_owned(),
         "  /cron show <id>          one job + its recent runs".to_owned(),
         "  /cron runs <id> [N]      a job's run history".to_owned(),
-        "  /cron run <id>           fire it now (needs the UniPi host)".to_owned(),
-        "  /cron stop <id>          kill a running run (needs the UniPi host)".to_owned(),
+        "  /cron run <id>           fire it now (needs the Unipi host)".to_owned(),
+        "  /cron stop <id>          kill a running run (needs the Unipi host)".to_owned(),
         "  /cron enable|disable <id>".to_owned(),
-        "  /cron pause / resume     pause every job / resume (needs the UniPi host)".to_owned(),
+        "  /cron pause / resume     pause every job / resume (needs the Unipi host)".to_owned(),
         "  /cron status             next fire per job, what's running".to_owned(),
     ];
     lines.extend(

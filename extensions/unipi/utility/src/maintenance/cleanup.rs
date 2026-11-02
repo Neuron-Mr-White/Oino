@@ -73,7 +73,7 @@ pub fn targets() -> Vec<Target> {
         ),
         (
             "temp",
-            "UniPi temp files older than 7 days",
+            "Unipi temp files older than 7 days",
             "/tmp",
             r"^unipi-",
             7,

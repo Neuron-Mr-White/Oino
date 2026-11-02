@@ -256,7 +256,7 @@ pub fn exposure_check(settings: &Value) -> Check {
             "skill_exposure",
             "unipi.skill-registry",
             Status::Warning,
-            "Skill exposure is off: UniPi's bundled skills are hidden from the model in this project",
+            "Skill exposure is off: Unipi's bundled skills are hidden from the model in this project",
             Some("Switch Skills → Exposure → Skill exposure to judged or all in /settings"),
         )
     } else {

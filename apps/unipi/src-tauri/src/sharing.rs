@@ -410,12 +410,12 @@ pub fn argv(change: &SharingChange) -> Result<Vec<String>, AppErrorDto> {
 
 /// The fix for a broken install: the app ships its host, so reinstalling the
 /// app puts it back (there is no separate host installer).
-pub const REINSTALL_HINT: &str = "Reinstall UniPi: the app ships its agent host";
+pub const REINSTALL_HINT: &str = "Reinstall Unipi: the app ships its agent host";
 
 fn not_installed() -> AppErrorDto {
     AppErrorDto::new(
         AppErrorCode::E_NOT_FOUND,
-        "This UniPi install is missing its agent host",
+        "This Unipi install is missing its agent host",
         false,
     )
     .with_hint(REINSTALL_HINT)
@@ -466,7 +466,7 @@ pub async fn run(
             "This PC's agent host is too old for one-click sharing",
             false,
         )
-        .with_hint("Update UniPi (Settings › About)"));
+        .with_hint("Update Unipi (Settings › About)"));
     }
     let message = stderr
         .lines()

@@ -227,7 +227,7 @@ pub fn register(cx: &mut Init<Cron>) {
                  back the prompt you are about to schedule: it runs with nobody there to \
                  answer questions. Plain-language schedules work (\"every day at 9:00\", \
                  \"every 5 minutes\", \"weekdays at 18:30\", \"hourly\", \"in 2 hours\"). \
-                 The job file is written immediately; it fires once the UniPi host runs the \
+                 The job file is written immediately; it fires once the Unipi host runs the \
                  scheduler (under a plain oino TUI nothing fires until then).",
             )
             .args::<AddArgs>()
@@ -344,7 +344,7 @@ pub fn register(cx: &mut Init<Cron>) {
         Tool::<Cron>::new("cron_run")
             .description(
                 "Fire a cron job right now, bypassing its schedule (still subject to overlap \
-                 and concurrency). Needs the live scheduler (the UniPi host). Ask the user \
+                 and concurrency). Needs the live scheduler (the Unipi host). Ask the user \
                  first.",
             )
             .args::<RunArgs>()

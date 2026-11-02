@@ -129,7 +129,7 @@ pub const CLOSE_ASK_EVENT: &str = "unipi-close-ask";
 
 /// The close dialog's copy ("Minimize to tray" is the default button).
 pub const CLOSE_ASK_MESSAGE: &str =
-    "Close UniPi, or keep it running in the tray so phones and cron keep working?";
+    "Close Unipi, or keep it running in the tray so phones and cron keep working?";
 
 // ---------------------------------------------------------------- autostart
 
@@ -172,8 +172,8 @@ pub fn quit_needs_confirm(host_run_by_app: bool, paired: usize) -> bool {
 /// The confirm's copy (§5.5 keeps unipi-app's warning).
 pub fn quit_message(paired: usize) -> String {
     match paired {
-        1 => "One phone is paired with this PC. Quitting UniPi stops the host it runs, so that phone can't reach this PC until you open UniPi again.".to_string(),
-        n => format!("{n} phones are paired with this PC. Quitting UniPi stops the host it runs, so they can't reach this PC until you open UniPi again."),
+        1 => "One phone is paired with this PC. Quitting Unipi stops the host it runs, so that phone can't reach this PC until you open Unipi again.".to_string(),
+        n => format!("{n} phones are paired with this PC. Quitting Unipi stops the host it runs, so they can't reach this PC until you open Unipi again."),
     }
 }
 
@@ -359,7 +359,7 @@ mod tests {
         // An adopted host keeps running: nothing to warn about.
         assert!(!quit_needs_confirm(false, 4));
         assert!(!quit_needs_confirm(true, 0));
-        assert!(quit_message(1).contains("until you open UniPi again"));
+        assert!(quit_message(1).contains("until you open Unipi again"));
         assert!(quit_message(3).contains("3 phones"));
     }
 

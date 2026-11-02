@@ -19,9 +19,9 @@ use unipi_proto::{AppErrorCode, AppErrorDto};
 #[cfg(desktop)]
 pub const TRAY_ID: &str = "main";
 
-/// The tray label: both the old unipi and this app can sit in a tray, so the
-/// title and the tooltip differ from the old app's plain "UniPi" (§5.1, §14 Q1).
-pub const TRAY_TITLE: &str = "UniPi (oino)";
+/// The tray label: the app's visible name "Unipi" (owner decision 2026-11; the
+/// old UniPi 0.5.3 app shows "UniPi"). The tooltip adds the status line.
+pub const TRAY_TITLE: &str = "Unipi";
 
 /// The event the UI listens for to show the "Quit UniPi?" sheet (UNI-237):
 /// `{message, paired}`, sent only when quitting really needs asking.
@@ -87,7 +87,7 @@ fn build_menu<R: tauri::Runtime>(
         mascot_visible(app),
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(app, "quit", "Quit UniPi", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Unipi", true, None::<&str>)?;
     Menu::with_items(app, &[&status_item, &sep, &toggle, &mascot, &quit])
 }
 
@@ -127,9 +127,9 @@ pub fn toggle_shows(visible_now: bool) -> bool {
 /// Pure: the toggle row's label for a window that is (`visible`) or isn't shown.
 pub fn toggle_label(visible: bool) -> &'static str {
     if visible {
-        "Hide UniPi"
+        "Hide Unipi"
     } else {
-        "Show UniPi"
+        "Show Unipi"
     }
 }
 
@@ -611,7 +611,7 @@ mod tests {
         assert_eq!(status_line(1, 0), "1 agent needs you");
         assert_eq!(status_line(2, 0), "2 agents need you");
         assert_eq!(status_line(2, 1), "2 agents need you · 1 working");
-        assert_eq!(tooltip("All quiet"), "UniPi (oino) — All quiet");
+        assert_eq!(tooltip("All quiet"), "Unipi — All quiet");
     }
 
     #[test]
@@ -630,8 +630,8 @@ mod tests {
             "No phones · No sessions running · Nobody needs you"
         );
         // §5.1: the tray label differs from the owner's old unipi one.
-        assert_eq!(TRAY_TITLE, "UniPi (oino)");
-        assert!(tooltip(&tray_line(2, 3, 1)).starts_with("UniPi (oino)"));
+        assert_eq!(TRAY_TITLE, "Unipi");
+        assert!(tooltip(&tray_line(2, 3, 1)).starts_with("Unipi"));
     }
 
     #[test]
@@ -689,9 +689,9 @@ mod tests {
         // Visible → the toggle hides it → the row must now offer "Show".
         let shown = toggle_shows(true);
         assert!(!shown);
-        assert_eq!(toggle_label(shown), "Show UniPi");
+        assert_eq!(toggle_label(shown), "Show Unipi");
         let shown = toggle_shows(false);
         assert!(shown);
-        assert_eq!(toggle_label(shown), "Hide UniPi");
+        assert_eq!(toggle_label(shown), "Hide Unipi");
     }
 }

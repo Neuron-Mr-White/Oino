@@ -599,7 +599,7 @@ pub fn prepare_push(
     if devices.is_empty() {
         return Err(ControlEvent::Error {
             message: "No phone is paired with this PC.".into(),
-            hint: Some("Run `unipi-host pair` and scan the QR code with UniPi.".into()),
+            hint: Some("Run `unipi-host pair` and scan the QR code with Unipi.".into()),
         });
     }
     if allowed.is_empty() {
@@ -673,7 +673,7 @@ pub async fn notify_push(paths: &HostPaths, host_name: &str, item: &PushItem) ->
     };
     let payload = serde_json::json!({
         "title": format!("Incoming from {host_name}"),
-        "body": format!("{} ({}) — tap to open in UniPi", item.name, human_size(item.size)),
+        "body": format!("{} ({}) — tap to open in Unipi", item.name, human_size(item.size)),
         "kind": "push",
         "host": host_name,
     });

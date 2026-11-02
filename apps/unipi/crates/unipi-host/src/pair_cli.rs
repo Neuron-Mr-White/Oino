@@ -99,7 +99,7 @@ pub const NOT_RUNNING: &str =
 /// The hint for "serve isn't running": v2 has no service install, so the
 /// host is either the app's own sidecar or one started by hand.
 pub fn start_hint() -> &'static str {
-    "Start it: open the UniPi app (it starts its host), or run `unipi-host serve` in a terminal"
+    "Start it: open the Unipi app (it starts its host), or run `unipi-host serve` in a terminal"
 }
 
 /// Is a `serve` answering on this data dir's control channel?

@@ -6,7 +6,7 @@ use unipi_host::{
 #[command(
     name = "unipi-host",
     version,
-    about = "UniPi host: one per user — agent sessions, terminal, files, git, browser and cron for the UniPi app (this PC's app over app.sock, paired phones over iroh)"
+    about = "Unipi host: one per user — agent sessions, terminal, files, git, browser and cron for the Unipi app (this PC's app over app.sock, paired phones over iroh)"
 )]
 struct Cli {
     #[arg(long, global = true)]
@@ -1087,7 +1087,7 @@ async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Re
                 println!("{}", serde_json::to_string(&endpoint)?);
             } else {
                 println!(
-                    "Agent address: 127.0.0.1:{} (AGENT_BROWSER_CDP={}) — profile {}\nagent-browser commands drive the browser shown in the UniPi app.",
+                    "Agent address: 127.0.0.1:{} (AGENT_BROWSER_CDP={}) — profile {}\nagent-browser commands drive the browser shown in the Unipi app.",
                     endpoint.port, endpoint.port, endpoint.profile
                 );
             }
@@ -1229,7 +1229,7 @@ async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Re
         Engine::Cloak => {
             let x = match unipi_host::browser::display::detect_backend_here() {
                 Some(b) => format!(
-                    "hidden display ({}) — shown only in the UniPi app",
+                    "hidden display ({}) — shown only in the Unipi app",
                     b.program()
                 ),
                 None => format!("headless — {}", unipi_host::browser::HEADLESS_NOTE),
@@ -2107,7 +2107,7 @@ async fn pair_command(paths: &HostPaths, ttl: &str, json: bool) -> anyhow::Resul
     use std::io::IsTerminal;
     let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
     println!(
-        "{}\n\nScan with the UniPi app (Add a host → Pair with QR), or paste this link:\n{}",
+        "{}\n\nScan with the Unipi app (Add a host → Pair with QR), or paste this link:\n{}",
         qr.to_terminal_string(color),
         started.link
     );
@@ -2522,7 +2522,7 @@ async fn update_command(
         update::UpdateConfig { mode }.save(&paths.config())?;
         match mode {
             update::UpdateMode::Auto => println!("Updates: automatic — `unipi-host serve` installs a newer version by itself and exits; the app (or you) starts the new binary."),
-            update::UpdateMode::Prompt => println!("Updates: ask first — the UniPi app shows when a newer version is out (events_open notice); run `unipi-host update` to install it."),
+            update::UpdateMode::Prompt => println!("Updates: ask first — the Unipi app shows when a newer version is out (events_open notice); run `unipi-host update` to install it."),
         }
         return Ok(());
     }

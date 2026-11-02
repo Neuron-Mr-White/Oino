@@ -76,7 +76,7 @@ async fn run(args: String) -> Result<()> {
         "release" => op(json!({"op": "release", "tab": arg})).await,
         "close-tabs" => op(json!({"op": "close_agent_tabs"})).await,
         "show" | "hide" | "install-cloak" => format!(
-            "/browser {sub}: use Settings → Browser in UniPi (or `unipi-host browser {sub}`)."
+            "/browser {sub}: use Settings → Browser in Unipi (or `unipi-host browser {sub}`)."
         ),
         other => format!(
             "Unknown /browser subcommand {other:?}. Try: status, profile [name], release [tab], close-tabs."

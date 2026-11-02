@@ -127,7 +127,7 @@ async fn connection(paths: &HostPaths, mut client: TcpStream, ours: u16) -> anyh
     if config.explicit_off {
         refuse(
             &mut client,
-            "The browser is off on this PC. Ask the user to turn it on in the UniPi app.",
+            "The browser is off on this PC. Ask the user to turn it on in the Unipi app.",
         )
         .await;
         return Ok(());

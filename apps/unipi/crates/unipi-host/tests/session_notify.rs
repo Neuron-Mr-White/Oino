@@ -308,7 +308,7 @@ async fn dialog_open_flips_needs_you_and_pushes_e2e_with_deep_link() {
     wait_for_request(&seen, 1).await;
     let body = first_json(&seen).unwrap();
     assert_eq!(body["topic"], "oino-test");
-    assert_eq!(body["title"], "UniPi");
+    assert_eq!(body["title"], "Unipi");
     let click = body["click"].as_str().unwrap();
     let host = notify::hostname_for_route();
     assert_eq!(click, notify::session_deep_link(&host, &sid));
@@ -574,7 +574,7 @@ async fn unifiedpush_endpoints_are_fanned_out() {
         endpoint_body.get("topic").is_none(),
         "endpoint URL names the topic"
     );
-    assert_eq!(endpoint_body["title"], "UniPi");
+    assert_eq!(endpoint_body["title"], "Unipi");
     // Same E2E envelope shape — the phone decrypts both identically.
     let payload = decrypt(&fixture.paths(), endpoint_body["message"].as_str().unwrap());
     assert_eq!(payload["kind"], "input_needed");

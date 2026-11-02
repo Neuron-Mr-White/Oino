@@ -613,7 +613,7 @@ pub fn annotation(result: Option<&Value>) -> Option<Node> {
     let first = list.first()?;
     let warn = first.get("severity").and_then(Value::as_str) == Some("warning");
     let label = format!(
-        "{}UniPi · {} · {}",
+        "{}Unipi · {} · {}",
         if warn { "⚠ " } else { "" },
         first
             .get("source")
@@ -866,7 +866,7 @@ mod tests {
         );
         assert!(render(RenderStyle::Regular, &v, false).is_none());
         let r = render(RenderStyle::Simple, &v, false).unwrap();
-        assert!(text(&r).starts_with("⚠ UniPi · Watchdog · Slow"));
+        assert!(text(&r).starts_with("⚠ Unipi · Watchdog · Slow"));
         assert_eq!(
             render(RenderStyle::Simple, &v, true).unwrap()["children"][1]["t"],
             "Layout"

@@ -818,7 +818,7 @@ pub async fn notify_owner(paths: &HostPaths, host_name: &str, item: &FeatureRequ
     };
     let payload = serde_json::json!({
         "title": format!("{host_name}: {}", describe(item)),
-        "body": format!("Allow it in UniPi on the PC, or run `unipi-host requests approve {}`", item.id),
+        "body": format!("Allow it in Unipi on the PC, or run `unipi-host requests approve {}`", item.id),
         "kind": "feature_request",
         "host": host_name,
     });

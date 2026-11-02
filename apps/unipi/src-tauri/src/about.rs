@@ -124,7 +124,7 @@ pub fn find_extensions(candidates: &[PathBuf]) -> Extensions {
 /// The problems a report shows: a missing host or no extensions. A missing
 /// `oino` CLI is not one — the app talks to the host, never to the CLI.
 pub fn problems(host: &Binary, extensions: &Extensions) -> Vec<Problem> {
-    const REINSTALL: &str = "Reinstall UniPi Oino from the latest release.";
+    const REINSTALL: &str = "Reinstall Unipi from the latest release.";
     let mut out = Vec::new();
     if host.path.is_none() {
         out.push(Problem {

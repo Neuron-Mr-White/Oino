@@ -262,7 +262,7 @@ fn not_installed() -> AppErrorDto {
         "The board CLI (unipi-kanboard) was not found in this installation",
         false,
     )
-    .with_hint("Reinstall UniPi: the installer ships the board with the app".to_owned())
+    .with_hint("Reinstall Unipi: the installer ships the board with the app".to_owned())
     .with_detail(serde_json::json!({"reason": "not_installed"}))
 }
 

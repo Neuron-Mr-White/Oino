@@ -171,7 +171,7 @@ pub fn panel(content: &str, meta: &Meta, style: RenderStyle, expanded: bool) -> 
     let rows = content.lines().count();
     let hint = |n: usize| dim(format!("Expand: full message ({n} lines)"));
     let label = format!(
-        "{}UniPi · {} · {}",
+        "{}Unipi · {} · {}",
         if meta.warning { "⚠ " } else { "" },
         meta.source,
         meta.title
@@ -241,7 +241,7 @@ pub fn panel(content: &str, meta: &Meta, style: RenderStyle, expanded: bool) -> 
         .rail(rail.clone())
         .title(vec![
             Title::top(Line::from(Span::from(label).fg(rail))),
-            Title::bottom(format!("UniPi · {}", meta.source)),
+            Title::bottom(format!("Unipi · {}", meta.source)),
         ])
         .child(Layout::default().children(body))
         .into()

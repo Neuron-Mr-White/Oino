@@ -60,7 +60,7 @@ impl PairPhone {
 /// didn't print a final state itself).
 pub fn exit_event(stderr: &str, saw_waiting: bool) -> Value {
     if stderr.contains("unexpected argument") || stderr.contains("unrecognized") {
-        return json!({"state":"error","code":"E_UNSUPPORTED","message":"This PC's agent host is too old to pair from here","hint":"Update UniPi (Settings › About)"});
+        return json!({"state":"error","code":"E_UNSUPPORTED","message":"This PC's agent host is too old to pair from here","hint":"Update Unipi (Settings › About)"});
     }
     let message = stderr
         .lines()

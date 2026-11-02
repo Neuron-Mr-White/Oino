@@ -433,7 +433,7 @@ pub fn prompt_notice(check: &Check) -> Option<Notice> {
             current, latest, ..
         } => Some(Notice {
             kind: NOTICE_UPDATE.into(),
-            message: format!("UniPi host {latest} is available (this is {current})."),
+            message: format!("Unipi host {latest} is available (this is {current})."),
             version: Some(latest.clone()),
         }),
         _ => None,
