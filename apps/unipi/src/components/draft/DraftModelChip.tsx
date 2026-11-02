@@ -119,28 +119,28 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
               header={<p class="mpop-label">Model for this chat</p>}
               showEmpty={noUsable()}
               empty={
-                  <div class="mpop-connect" data-testid="draft-model-connect">
-                    <Plug size={18} class="mpop-connect-ic" aria-hidden="true" />
-                    <p class="mpop-connect-text">
-                      {view().unavailable.length || props.session.readiness()?.providers.some((p) => p.configured)
-                        ? 'The providers on this PC aren’t working right now.'
-                        : (models() ?? []).length || props.session.readiness()?.known
-                          ? 'No model provider is connected yet.'
-                          : 'The models show here once a provider is connected.'}
-                    </p>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="btn btn-secondary"
-                      onClick={() => {
-                        close();
-                        openSettingsAt('providers', 'sec-providers');
-                      }}
-                      data-testid="draft-model-connect-open"
-                    >
-                      Connect a provider
-                    </button>
-                  </div>
+                <div class="mpop-connect" data-testid="draft-model-connect">
+                  <Plug size={18} class="mpop-connect-ic" aria-hidden="true" />
+                  <p class="mpop-connect-text">
+                    {view().unavailable.length || props.session.readiness()?.providers.some((p) => p.configured)
+                      ? 'The providers on this PC aren’t working right now.'
+                      : (models() ?? []).length || props.session.readiness()?.known
+                        ? 'No model provider is connected yet.'
+                        : 'The models show here once a provider is connected.'}
+                  </p>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="btn btn-secondary"
+                    onClick={() => {
+                      close();
+                      openSettingsAt('providers', 'sec-providers');
+                    }}
+                    data-testid="draft-model-connect-open"
+                  >
+                    Connect a provider
+                  </button>
+                </div>
               }
               currentKey={current() !== '/' ? current() : undefined}
               startupKey={data.latest?.startup}

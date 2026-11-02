@@ -52,7 +52,8 @@ export function menuKeys(el: HTMLElement, opts: MenuKeysOptions): () => void {
     const list = rows();
     const active = document.activeElement as HTMLElement | null;
     const at = active ? list.indexOf(active) : -1;
-    const inSearch = !!active && active === search();
+    // Any text field in the menu keeps its own typing and caret keys (search, an id field).
+    const inSearch = !!active && (active === search() || active.matches('input, textarea'));
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();

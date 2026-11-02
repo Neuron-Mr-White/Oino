@@ -208,6 +208,42 @@ describe('draft session (stand-in handle)', () => {
   });
 });
 
+describe('the draft model chip opens the ONE model popover', () => {
+  it('same search / list / footer as the chat; a pick sets the draft; Use at startup writes the host default', async () => {
+    rememberModels('this-pc', [
+      { provider: 'oino', id: 'deepseek-flash', name: 'DeepSeek Flash' },
+      { provider: 'oino', id: 'glm-4.7', name: 'GLM 4.7' },
+    ]);
+    const world = boot();
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('DeepSeek Flash'));
+    fireEvent.click(screen.getByTestId('model-chip'));
+    const menu = await screen.findByTestId('draft-model-menu');
+    expect(menu.closest('[role="menu"]')).toBeTruthy();
+    expect(menu.querySelector('[data-testid="model-search"]')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list').textContent).toContain('GLM 4.7'));
+    // The host default is the running pick: "Startup model", nothing to do.
+    await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Startup model'));
+    expect((screen.getByTestId('model-use-startup') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('model-picker-list').querySelector('[data-key="oino/glm-4.7"]')!);
+    await waitFor(() => expect(screen.queryByTestId('draft-model-menu')).toBeNull());
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('GLM 4.7'));
+    fireEvent.click(screen.getByTestId('model-chip'));
+    await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Use at startup'));
+    fireEvent.click(screen.getByTestId('model-use-startup'));
+    await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Startup model'));
+    const sets = world.log
+      .filter((l) => l.op === 'host_cmd')
+      .map((l) => (l.args as { cmd?: { kind?: string; key?: string; value?: unknown } }).cmd)
+      .filter((c) => c?.kind === 'set_setting');
+    expect(sets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'defaultProvider', value: 'oino' }),
+        expect.objectContaining({ key: 'defaultModel', value: 'glm-4.7' }),
+      ]),
+    );
+  });
+});
+
 describe('P0-09: the draft knows this PC before any chat is open', () => {
   it('offers the / commands and models a chat on this PC last listed', async () => {
     const world = createMockHost({ name: 't', hosts: [{ id: 'h', name: 'h', conn: { state: 'connected' } }] });

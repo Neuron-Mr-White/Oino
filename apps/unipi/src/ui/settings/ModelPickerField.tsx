@@ -127,27 +127,27 @@ export function ModelPickerField(props: {
               header={<p class="mpop-label">{props.label}</p>}
               showEmpty={(data.latest?.models.length ?? 0) === 0}
               empty={
-                  <div class="mpop-empty-note">
-                    <p class="mp-hint">The model list shows once a chat is open on this PC. You can enter an id below.</p>
-                    <form
-                      class="settings-model-advanced"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const id = typed().trim();
-                        if (id) pick(id);
-                      }}
-                    >
-                      <input
-                        class="mpop-search"
-                        type="text"
-                        aria-label="Advanced: model id"
-                        placeholder="Advanced: provider/model"
-                        spellcheck={false}
-                        value={typed()}
-                        onInput={(e) => setTyped(e.currentTarget.value)}
-                      />
-                    </form>
-                  </div>
+                <div class="mpop-empty-note">
+                  <p class="mp-hint">The model list shows once a chat is open on this PC. You can enter an id below.</p>
+                  <form
+                    class="settings-model-advanced"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const id = typed().trim();
+                      if (id) pick(id);
+                    }}
+                  >
+                    <input
+                      class="mpop-search"
+                      type="text"
+                      aria-label="Advanced: model id"
+                      placeholder="Advanced: provider/model"
+                      spellcheck={false}
+                      value={typed()}
+                      onInput={(e) => setTyped(e.currentTarget.value)}
+                    />
+                  </form>
+                </div>
               }
               currentKey={props.value.trim() || undefined}
               onSelect={(m) => pick(modelKey(m))}

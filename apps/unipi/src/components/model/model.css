@@ -200,6 +200,7 @@ body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 69; }
 
 /* Footer rows: compact, one line each, under a hairline. */
 .mpop-foot { flex: none; display: flex; flex-direction: column; gap: 1px; padding-top: 4px; border-top: 1px solid var(--color-line); }
+.mpop-foot:empty { display: none; }
 .mpop-foot-actions { flex-direction: row; justify-content: flex-end; padding-top: 6px; }
 .mpop-foot-row {
   display: flex; align-items: center; gap: 9px; width: 100%; min-height: 34px; padding: 0 8px;

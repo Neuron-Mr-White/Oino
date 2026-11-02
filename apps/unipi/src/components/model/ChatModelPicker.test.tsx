@@ -286,3 +286,46 @@ describe('Suggested (P0-10, fusion.status.curated)', () => {
     expect(side!.querySelector('[aria-current="true"]')?.textContent).toContain('GLM-4.6');
   });
 });
+
+describe('one popover, anchored (owner: one model picker)', () => {
+  it('is an anchored menu on the desktop with the shared search, list and footer rows', async () => {
+    await boot('model-picker');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    const pop = screen.getByTestId('model-picker-pop');
+    expect(pop.closest('[role="menu"]')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const foot = screen.getByTestId('model-picker-foot');
+    expect(foot.contains(screen.getByTestId('model-use-startup'))).toBe(true);
+    expect(foot.contains(screen.getByTestId('model-picker-cycle-toggle'))).toBe(true);
+  });
+
+  it('is a bottom sheet on the phone', async () => {
+    setDesktopOverride(false);
+    await boot('model-picker');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-pop-sheet')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('model-picker-pop-sheet').contains(screen.getByTestId('model-picker-list'))).toBe(true));
+  });
+
+  it('keyboard: the search has focus, ↓ walks the rows one at a time, Enter in the search picks the first hit', async () => {
+    const world = await boot('model-picker');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list').textContent).toContain('GPT-5'));
+    const search = screen.getByTestId('model-search');
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    const rows = [...screen.getByTestId('model-picker-list').querySelectorAll<HTMLElement>('.mp-row:not(:disabled)')];
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(rows[0]);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(rows[1]);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(search);
+    fireEvent.input(search, { target: { value: 'gpt-5' } });
+    await tick();
+    fireEvent.keyDown(search, { key: 'Enter' });
+    await waitFor(() => expect(cmds(world, 'set_model')).toHaveLength(1));
+    expect(cmds(world, 'set_model')[0]!.args).toMatchObject({ provider: 'openai', modelId: 'gpt-5' });
+  });
+});
