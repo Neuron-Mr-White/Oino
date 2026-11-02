@@ -115,7 +115,7 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
     }
     failedDraftCwd.delete(draftKey(id));
     // PH-17: the draft becomes the chat — Back from it goes to Chats, not the stale draft.
-    navigate(sessionHref(id, res.sessionId), { replace: true });
+    navigate(sessionHref(id, res.sessionId), layout().desktop() ? undefined : { replace: true });
   };
 
   // One stand-in per PC, built untracked: it peeks the session registry (a
