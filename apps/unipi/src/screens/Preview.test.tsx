@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor, cleanup, fireEvent } from '@solidjs/testing-library';
+import { render, screen, waitFor, cleanup, fireEvent, within } from '@solidjs/testing-library';
 import { HashRouter, Route } from '@solidjs/router';
 import { vi, it, describe, expect, afterEach, beforeEach } from 'vitest';
 import Preview from './Preview';
@@ -89,9 +89,10 @@ describe('Preview page (UNI-213)', () => {
     mockIpc({ ports_list: () => ({ ok: false, error: disabled }), feature_requests: () => ({ ok: true, value: { requests: [] } }) });
     mount();
     const notice = await screen.findByTestId('preview-disabled');
-    expect(notice.textContent).toContain('Web apps are off on this PC');
-    expect(screen.getByRole('radio', { name: 'Any port' }).getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(screen.getByText('Or run this on the PC'));
+    // Phone (§3.10/§3.12, PH-38): the PC named once; the port scope is a value row + picker sheet.
+    expect(notice.textContent).toContain('Web apps are off on coffee');
+    expect(screen.getByTestId('share-ports-row').textContent).toContain('Any port');
+    fireEvent.click(screen.getByText('Run a command on the PC instead'));
     expect(notice.textContent).toContain('unipi-oino-host forward enable --any');
     expect(notice.textContent).toContain('unipi-oino-host forward disable');
     // Asking for listed ports sends that scope; the PC says yes → the picker reloads.
@@ -103,7 +104,8 @@ describe('Preview page (UNI-213)', () => {
         return { ok: true, value: { id: 'r1', feature: 'forward', scope: { ports: [5173] }, device_name: 'Pixel', status: 'approved', created_at: 1, decided_at: 2 } };
       },
     });
-    fireEvent.click(screen.getByRole('radio', { name: 'Only these ports' }));
+    fireEvent.click(screen.getByTestId('share-ports-row'));
+    fireEvent.click(within(await screen.findByTestId('share-ports-sheet')).getByText('Only these ports'));
     fireEvent.input(screen.getByLabelText('Ports'), { target: { value: '5173' } });
     handlers.ports_list = () => ({ ok: true, value: portsData });
     fireEvent.click(screen.getByTestId('share-ask'));

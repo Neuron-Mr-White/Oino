@@ -34,6 +34,7 @@ import {
   type FeatureScope,
   type SharingChange,
 } from '../lib/sharing';
+import { ActionSheet, ListRow } from './phone';
 import './sharing.css';
 
 type CommandBoxComp = (props: { command: string }) => JSX.Element;
@@ -52,6 +53,14 @@ const WHY: Record<FeatureKind, string> = {
   browser: 'A separate Chrome on the PC with its own profile — never your everyday browser or its logins.',
   push: 'Lets the PC send files (like an APK) to this device.',
   cron: "See and manage the PC's scheduled, unattended agent runs.",
+};
+
+/** Phone (§3.10, PH-38): the PC is named once, in the title. */
+const PHONE_TITLE: Record<FeatureKind, (pc: string) => string> = {
+  forward: (pc) => `Web apps are off on ${pc}`,
+  browser: (pc) => `The remote browser is off on ${pc}`,
+  push: (pc) => `Sending files is off on ${pc}`,
+  cron: (pc) => `Scheduled runs are off on ${pc}`,
 };
 
 /** Options shared by the switch and the ask card. */
@@ -88,9 +97,26 @@ function useOptions(feature: FeatureKind) {
         return { kind: 'cron_enable' };
     }
   };
+  const [portsSheet, setPortsSheet] = createSignal(false);
   const view = (disabled?: boolean) => (
     <div class="share-options">
-      <Show when={feature === 'forward'}>
+      <Show when={feature === 'forward' && !desktopShell()}>
+        {/* Phone (§3.12): the port scope is a value row opening a picker sheet, not a segmented control. */}
+        <div class="share-phone-row">
+          <ListRow title="Which ports" trailing={<span class="share-phone-value">{anyPort() ? 'Any port' : 'Only these ports'}</span>} chevron disabled={disabled} onClick={() => setPortsSheet(true)} testId="share-ports-row" />
+        </div>
+        <ActionSheet
+          open={portsSheet()}
+          onClose={() => setPortsSheet(false)}
+          title="Which ports"
+          testId="share-ports-sheet"
+          sections={[[
+            { id: 'any', label: 'Any port', description: "Every port on the PC's loopback", checked: anyPort(), onSelect: () => setAnyPort(true) },
+            { id: 'only', label: 'Only these ports', description: 'Type the ports below', checked: !anyPort(), onSelect: () => setAnyPort(false) },
+          ]]}
+        />
+      </Show>
+      <Show when={feature === 'forward' && desktopShell()}>
         <div class="seg share-seg" role="radiogroup" aria-label="Which ports">
           <button type="button" role="radio" class="seg-option" aria-checked={anyPort()} disabled={disabled} onClick={() => setAnyPort(true)}>
             Any port
@@ -99,6 +125,8 @@ function useOptions(feature: FeatureKind) {
             Only these ports
           </button>
         </div>
+      </Show>
+      <Show when={feature === 'forward'}>
         <Show when={!anyPort()}>
           <input
             class="preview-input share-ports"
@@ -134,7 +162,7 @@ function CommandFold(props: { feature: FeatureKind; CommandBox: CommandBoxComp; 
   return (
     <div class="share-fold">
       <button type="button" class="share-fold-toggle" aria-expanded={open()} onClick={() => setOpen(!open())}>
-        <ChevronDown size={15} class={open() ? 'share-fold-open' : ''} /> {props.label ?? 'Or run this on the PC'}
+        <ChevronDown size={15} class={open() ? 'share-fold-open' : ''} /> {props.label ?? (desktopShell() ? 'Or run this on the PC' : 'Run a command on the PC instead')}
       </button>
       <Show when={open()}>
         <props.CommandBox command={ENABLE_COMMANDS[props.feature]} />
@@ -277,18 +305,23 @@ function AskCard(props: { feature: FeatureKind; hostId: string; hostName: string
   return (
     <section class="preview-notice share-card" data-tone="warn" data-testid={props.testId ?? `share-ask-${props.feature}`} data-state={s().kind}>
       <div class="preview-notice-icon"><Unplug size={22} /></div>
-      <h2>{TITLE[props.feature]}</h2>
+      <h2>{desktopShell() ? TITLE[props.feature] : PHONE_TITLE[props.feature](props.hostName)}</h2>
       <div class="preview-notice-text">
         <Show when={s().kind === 'idle' || s().kind === 'sending' || s().kind === 'error'}>
-          <p>
-            It's off by default. Ask {props.hostName} to turn it on — whoever is at the PC gets a notification and decides.
-            Nothing changes until they say yes.
-          </p>
-          <p class="preview-muted">{WHY[props.feature]}</p>
+          <Show
+            when={desktopShell()}
+            fallback={<p data-testid="share-ask-body">{WHY[props.feature]} Ask to turn it on: whoever is at the PC gets a notification and decides. Nothing changes until they say yes.</p>}
+          >
+            <p>
+              It's off by default. Ask {props.hostName} to turn it on — whoever is at the PC gets a notification and decides.
+              Nothing changes until they say yes.
+            </p>
+            <p class="preview-muted">{WHY[props.feature]}</p>
+          </Show>
           {options.view(s().kind === 'sending')}
           <input
             class="preview-input share-note"
-            placeholder="Add a note (optional)"
+            placeholder={desktopShell() ? 'Add a note (optional)' : 'Note for whoever is at the PC (optional)'}
             aria-label="Note for the PC"
             maxLength={200}
             value={note()}
@@ -302,7 +335,7 @@ function AskCard(props: { feature: FeatureKind; hostId: string; hostName: string
             <Show when={s().kind === 'sending'} fallback={<Send size={16} />}>
               <RefreshCw size={16} class="refresh-spinning" />
             </Show>
-            {s().kind === 'sending' ? 'Asking…' : `Ask ${desktopShell() ? 'the PC' : props.hostName} to turn this on`}
+            {s().kind === 'sending' ? 'Asking…' : desktopShell() ? 'Ask the PC to turn this on' : 'Ask to turn on'}
           </button>
         </Show>
         <Show when={s().kind === 'pending' && request()}>

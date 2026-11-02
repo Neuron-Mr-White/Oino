@@ -48,3 +48,22 @@
 .share-push-card { padding: 0 12px 12px; }
 .share-push-card .preview-notice { margin-top: 0; }
 .preview-body > div > .share-card, [data-testid=preview-disabled] .share-card { margin-bottom: 16px; }
+
+/* ── Phone FeatureOffCard (phone spec §3.10, PH-38): one card for Cron and Ports —
+   40 icon, title 17, one 14 px paragraph, note with a placeholder, a full-width
+   48 px primary, a 48 px "Run a command on the PC instead" disclosure. ── */
+html[data-shell=phone] .share-card { padding: var(--ph-5, 20px) var(--ph-4, 16px); border-radius: var(--ph-radius-card, 16px); gap: var(--ph-3, 12px); }
+html[data-shell=phone] .share-card > .preview-notice-icon { width: 40px; height: 40px; }
+html[data-shell=phone] .share-card > h2 { font-size: 17px; line-height: 22px; font-weight: 600; }
+html[data-shell=phone] .share-card .preview-notice-text { display: flex; flex-direction: column; gap: var(--ph-3, 12px); }
+html[data-shell=phone] .share-card .preview-notice-text > p,
+html[data-shell=phone] .share-card .preview-muted { font-size: 14px; line-height: 20px; }
+html[data-shell=phone] .share-card .share-note,
+html[data-shell=phone] .share-card .share-ports { min-height: 48px; font-size: 16px; padding: 0 12px; border-radius: 12px; }
+html[data-shell=phone] .share-card .share-note::placeholder { color: var(--color-text-dim); opacity: 1; }
+html[data-shell=phone] .share-card [data-testid=share-ask] { width: 100%; min-height: 48px; justify-content: center; font-size: 16px; }
+html[data-shell=phone] .share-card .preview-btn { min-height: 48px; font-size: 16px; }
+html[data-shell=phone] .share-fold-toggle { align-self: stretch; min-height: 48px; font-size: 14px; }
+html[data-shell=phone] .share-phone-row { margin: 0 calc(-1 * var(--ph-4, 16px)); }
+html[data-shell=phone] .share-phone-value { font-size: 14px; color: var(--color-text-muted); }
+html[data-shell=phone] .share-status-title { font-size: 16px; }

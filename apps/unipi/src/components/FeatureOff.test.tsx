@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** UNI-248: the off card — ask flow on another PC, the switch on this computer. */
-import { render, screen, cleanup, fireEvent, waitFor } from '@solidjs/testing-library';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureOff } from './FeatureOff';
 import { setPlatformOverride } from '../lib/platform';
@@ -55,8 +55,11 @@ describe('ask the PC (phone / other PC)', () => {
     const changed = vi.fn();
     render(() => <FeatureOff feature="browser" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={changed} />);
     const card = await screen.findByTestId('share-ask-browser');
-    expect(card.textContent).toContain('The remote browser is off on this PC');
+    // Phone (PH-38): the PC is named once, in the title; the note has a placeholder.
+    expect(card.textContent).toContain('The remote browser is off on coffee');
+    expect(card.textContent?.match(/coffee/g)?.length).toBe(1);
     expect(card.textContent).toContain('Nothing changes until they say yes');
+    expect((screen.getByLabelText('Note for the PC') as HTMLInputElement).placeholder).toBe('Note for whoever is at the PC (optional)');
     fireEvent.click(screen.getByLabelText(/Show its window on the PC/));
     fireEvent.input(screen.getByLabelText('Note for the PC'), { target: { value: 'quick look' } });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -99,7 +102,8 @@ describe('ask the PC (phone / other PC)', () => {
   it('forward: "Only these ports" validates before asking', async () => {
     render(() => <FeatureOff feature="forward" hostId="h1" hostName="coffee" CommandBox={Cmd} onChanged={() => {}} />);
     await screen.findByTestId('share-ask-forward');
-    fireEvent.click(screen.getByRole('radio', { name: 'Only these ports' }));
+    fireEvent.click(screen.getByTestId('share-ports-row'));
+    fireEvent.click(within(await screen.findByTestId('share-ports-sheet')).getByText('Only these ports'));
     fireEvent.click(screen.getByTestId('share-ask'));
     expect((await screen.findByRole('alert')).textContent).toContain('at least one port');
     expect(t.asks).toHaveLength(0);

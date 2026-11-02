@@ -83,12 +83,12 @@ describe('Preview → Browser mode (UNI-215)', () => {
     fake(status({ enabled: false }));
     mount();
     const notice = await screen.findByTestId('browser-disabled');
-    expect(notice.textContent).toContain('The remote browser is off on this PC');
+    expect(notice.textContent).toContain('The remote browser is off on coffee');
     expect(notice.textContent).toContain('Ask');
     expect(notice.textContent).toContain('separate Chrome on the PC');
     expect(notice.textContent?.toLowerCase()).not.toContain('brave');
     expect(notice.textContent).toContain('Show its window on the PC');
-    fireEvent.click(screen.getByText('Or run this on the PC'));
+    fireEvent.click(screen.getByText('Run a command on the PC instead'));
     expect(notice.textContent).toContain('unipi-oino-host browser enable');
     expect(notice.textContent).toContain('unipi-oino-host browser disable');
     expect(screen.getByRole('tab', { name: /Browser/ }).getAttribute('aria-selected')).toBe('true');
