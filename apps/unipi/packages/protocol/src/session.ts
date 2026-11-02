@@ -37,7 +37,7 @@ export const SESSION_TARGET_MAX = 4096;
 /** Longest session name (written into a `session_info` entry). */
 export const SESSION_NAME_MAX = 256;
 /** Event kinds the host adds to core's `ClientEvent` set (host.md §7.4). */
-export const HOST_EVENT_KINDS = ["crashed", "taken_over", "reloaded"] as const;
+export const HOST_EVENT_KINDS = ["crashed", "taken_over", "reloaded", "woken", "wake_failed"] as const;
 
 const trimmedString = (max: number, what: string) =>
   z
@@ -179,6 +179,16 @@ export const UiPatchEnvelopeSchema = z
   .passthrough();
 export type UiPatchEnvelope = z.infer<typeof UiPatchEnvelopeSchema>;
 
+/** Where a paged `entries` list sits in the branch (snapshot `page`, `get_entries{before}` reply). */
+export const HistoryPageSchema = z
+  .object({
+    total: z.number().int().min(0),
+    has_more: z.boolean(),
+    cursor: z.string().optional(),
+  })
+  .passthrough();
+export type HistoryPage = z.infer<typeof HistoryPageSchema>;
+
 /**
  * The first frame of a session stream (host.md §7.3, §7.4): a full snapshot
  * when `reset`, else a resume patch with `replay` (the snapshot fields absent).
@@ -200,6 +210,10 @@ export const SessionSnapshotSchema = z
     topics: z.array(z.unknown()).optional(),
     /** Resume events after `sinceSeq`. */
     replay: z.array(SessionEventDtoSchema).optional(),
+    /** `entries` is the newest page of the branch; older pages: `get_entries{before: cursor, limit}`. */
+    page: HistoryPageSchema.optional(),
+    /** Read from the session file while the runtime wakes: `commands`/`ui`/`topics` come with `{kind:"woken"}`. */
+    waking: z.boolean().optional(),
   })
   .passthrough()
   .superRefine((value, ctx) => {
@@ -368,6 +382,10 @@ export function hostEventBanner(event: { type?: string; kind?: string; error?: u
         : "Another window took this session over.";
     case "reloaded":
       return "The session was reloaded.";
+    case "wake_failed":
+      return typeof event.error === "string" && event.error
+        ? `This chat could not start: ${event.error}`
+        : "This chat could not start.";
     default:
       return null;
   }

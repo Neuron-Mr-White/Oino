@@ -38,6 +38,13 @@ html:not([data-shell=desktop]) :is(.tl-turn, .tl-tail, .tl-skeleton, .tl-empty) 
 .tl-skeleton > .tl-skel-line { height: 14px; border-radius: 7px; }
 .tl-skeleton > .tl-skel-w90 { width: 88%; }
 .tl-skeleton > .tl-skel-w68 { width: 64%; }
+/* perf-open: "load earlier" above the oldest loaded turn */
+.tl-earlier { display: flex; justify-content: center; max-width: 760px; margin: 0 auto; padding: 12px 20px 4px; width: 100%; box-sizing: border-box; }
+.tl-earlier-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent; color: var(--color-text-dim); font-size: 12px; line-height: 16px; cursor: pointer; }
+.tl-earlier-btn:hover:not(:disabled) { color: var(--color-text); background: var(--color-surface-2); }
+.tl-earlier-btn:disabled { cursor: default; }
+.tl-earlier-spin { color: var(--color-claw); animation: tl-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .tl-earlier-spin { animation: none; } }
 .tl-empty { display: grid; place-items: center; flex: 1; color: var(--color-text-dim); font-size: 14px; text-align: center; }
 
 /* user + steer */

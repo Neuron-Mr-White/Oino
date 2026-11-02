@@ -81,7 +81,7 @@ export type RunInfo = {
 export type QueueState = { steering: string[]; followUp: string[] };
 
 /** Host-only events (`crashed` / `taken_over` / `reloaded`) shown as a banner above the timeline. */
-export type BannerKind = 'crashed' | 'taken_over' | 'reloaded';
+export type BannerKind = 'crashed' | 'taken_over' | 'reloaded' | 'wake_failed';
 export type Banner = { kind: BannerKind; text: string; at: number; from?: string };
 
 /**
@@ -154,4 +154,22 @@ export type SessionState = {
   connError?: AppError;
   outbox: OutboxItem[];
   banner?: Banner;
+  /** perf-open: `entries` is the newest part of the branch; older pages load on scroll. */
+  history?: HistoryState;
+  /** The snapshot came from the session file while the runtime wakes (`woken` clears it). */
+  waking?: boolean;
+};
+
+/** Paged history (snapshot `page`, `get_entries{before}` replies). */
+export type HistoryState = {
+  /** Entries on the whole current branch. */
+  total: number;
+  /** Older entries exist before the loaded ones. */
+  hasMore: boolean;
+  /** `before` for the next older page (the first loaded entry). */
+  cursor?: string;
+  /** A "load earlier" fetch is in flight. */
+  loading?: boolean;
+  /** The last fetch failed (shown with a retry; auto-loading stops). */
+  error?: string;
 };

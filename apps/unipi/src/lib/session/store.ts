@@ -14,7 +14,7 @@ import { createStore, produce, unwrap, type SetStoreFunction } from 'solid-js/st
 import { toAppError, type AppError } from '@unipi/protocol';
 import { hostClient } from '../host/factory';
 import type { HostClient, RpcCommand } from '../host/client';
-import { applyEvents, applySnapshot, initialState, reconcileEntries, reconcileSince, type ApplyResult } from './reducer';
+import { applyEvents, applySnapshot, initialState, prependEntries, reconcileEntries, reconcileSince, type ApplyResult } from './reducer';
 import { enqueue, loadOutbox, markAcked, markLost, markSending, removeItem, saveOutbox, sweep } from './outbox';
 import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
@@ -24,6 +24,8 @@ import type { CommandInfo, OutboxImage, OutboxItem, OutboxMode, SessionEntry, Se
 
 /** Live subscriptions kept open (app spec §3.3). */
 export const SESSION_LRU = 4;
+/** Entries per "load earlier" page (the host caps and turn-aligns it). */
+export const EARLIER_PAGE = 80;
 /** How often in-flight outbox items are time-settled. */
 const SWEEP_MS = 2_000;
 
@@ -57,6 +59,8 @@ export type SessionHandle = {
   subscribeTopics(patterns: readonly string[]): void;
   /** Full entries by id (tool outputs the snapshot truncated, §3.4 step 7). */
   getEntries(ids: readonly string[]): Promise<SessionEntry[]>;
+  /** perf-open: fetches the next older page of the branch (`state.history`); no-op when none is left or one is in flight. */
+  loadEarlier?(): Promise<void>;
   /** The "Lost the connection · Retry" action. */
   retry(): void;
   /** Reopens after `taken_over` (takes the session back from the other runner). */
@@ -183,6 +187,32 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       });
   };
 
+  /** `woken` past our leaf: append what the wake wrote after `since`. */
+  const catchUp = (since: string) => {
+    stream
+      .cmd<{ entries?: SessionEntry[]; leafId?: string | null }>({ type: 'get_entries', since })
+      .then((reply) => {
+        if (reply && Array.isArray(reply.entries) && reply.entries.length) mutate((s) => reconcileEntries(s, since, reply.entries!, reply.leafId));
+      })
+      .catch(() => {});
+  };
+
+  const loadEarlier = async (): Promise<void> => {
+    const h = state.history;
+    if (!h?.hasMore || !h.cursor || h.loading || !stream.live) return;
+    setState('history', { loading: true, error: undefined });
+    try {
+      const reply = await stream.cmd<{ entries?: SessionEntry[]; total?: number; hasMore?: boolean; cursor?: string | null }>({
+        type: 'get_entries',
+        before: h.cursor,
+        limit: EARLIER_PAGE,
+      });
+      batch(() => mutate((s) => prependEntries(s, reply ?? {})));
+    } catch (error) {
+      setState('history', { loading: false, error: toAppError(error).message || 'Could not load earlier messages' });
+    }
+  };
+
   const refreshCommands = () => {
     stream
       .cmd<{ commands?: CommandInfo[] }>({ type: 'get_commands' })
@@ -216,6 +246,10 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     if (r.ui) for (const m of r.ui) uiSink(hostId, id(), m);
     if (r.reconcile) queueMicrotask(reconcile);
     if (r.commandsChanged) queueMicrotask(refreshCommands);
+    if (r.catchUp) {
+      const since = r.catchUp;
+      queueMicrotask(() => catchUp(since));
+    }
   };
 
   const stream: SessionStreamClient = new SessionStreamClient(
@@ -308,6 +342,7 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       const reply = await stream.cmd<{ entries?: SessionEntry[] }>({ type: 'get_entries', ids: [...ids] });
       return Array.isArray(reply?.entries) ? reply.entries : [];
     },
+    loadEarlier,
     retry: () => stream.retryNow(),
     takeBack: () => {
       setState('banner', undefined);

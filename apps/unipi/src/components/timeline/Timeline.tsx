@@ -18,7 +18,7 @@
 import { createEffect, createMemo, createSignal, Index, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { measureElement as defaultMeasure, observeElementOffset, observeElementRect, type Virtualizer } from '@tanstack/virtual-core';
-import { RefreshCw, TriangleAlert } from 'lucide-solid';
+import { LoaderCircle, RefreshCw, TriangleAlert } from 'lucide-solid';
 import { createBottomLock, distanceToBottom } from '../../lib/timeline/bottomLock';
 import { TurnHeightCache, DEFAULT_TURN_HEIGHT } from '../../lib/timeline/heightCache';
 import { readScrollMemory, writeScrollMemory, scrollMemoryKey } from '../../lib/timeline/scrollMemory';
@@ -260,6 +260,27 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     writeScrollMemory(lastMemKey, lock.locked() ? { bottomLocked: true } : { scrollTop: el.scrollTop });
   });
 
+  // ── perf-open: older history pages in near the top ("load earlier") ──
+  const history = () => session().state.history;
+  const canLoadEarlier = () => {
+    const h = history();
+    return !!h?.hasMore && !h.loading && !h.error && session().state.conn === 'live' && !!session().loadEarlier;
+  };
+  /** Within this many px of the top, the next older page loads by itself. */
+  const EARLIER_MARGIN = 800;
+  const maybeLoadEarlier = () => {
+    const el = scrollEl();
+    if (!el || !restore.done || !canLoadEarlier()) return;
+    // A short page (no scrollbar yet) or a reader near the top: fetch the next one.
+    if (el.scrollHeight - el.clientHeight <= 4 || el.scrollTop < EARLIER_MARGIN) void session().loadEarlier?.();
+  };
+  createEffect(() => {
+    history()?.hasMore;
+    history()?.loading;
+    settled().length;
+    queueMicrotask(maybeLoadEarlier);
+  });
+
   const loading = () => session().state.conn === 'connecting' && turns().length === 0;
   const openFailed = () => session().state.conn === 'closed' && !!session().state.connError && turns().length === 0;
   const empty = () => session().state.conn === 'live' && turns().length === 0 && !session().state.outbox.length;
@@ -385,6 +406,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
             lock.onScroll(el);
             syncOverflow();
             updateActive();
+            if (el.scrollTop < EARLIER_MARGIN) maybeLoadEarlier();
           }
         }}
       >
@@ -423,6 +445,13 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
             {props.empty ?? <p>Say hi — the first message starts the session.</p>}
           </div>
         </Show>
+        <Show when={history()?.hasMore && turns().length > 0}>
+          <EarlierRow
+            loading={!!history()?.loading}
+            error={history()?.error}
+            onLoad={() => void session().loadEarlier?.()}
+          />
+        </Show>
         <Show when={scrollEl()} keyed>
           {(el) => <VirtualTurns scroller={el} ctx={props.ctx} settled={settled} live={() => !!liveTurn()} heights={heights} onVirt={setVirt} />}
         </Show>
@@ -444,6 +473,28 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
         </div>
       </div>
       </div>
+    </div>
+  );
+}
+
+/** The "load earlier" row above the oldest loaded turn (auto-fetched near the top). */
+function EarlierRow(props: { loading: boolean; error?: string; onLoad: () => void }) {
+  return (
+    <div class="tl-earlier" data-testid="tl-earlier" aria-live="polite">
+      <Show
+        when={!props.error}
+        fallback={
+          <button type="button" class="tl-earlier-btn" data-testid="tl-earlier-retry" onClick={() => props.onLoad()}>
+            <RefreshCw size={14} /> Couldn't load earlier messages · Retry
+          </button>
+        }
+      >
+        <button type="button" class="tl-earlier-btn" data-testid="tl-earlier-load" disabled={props.loading} onClick={() => props.onLoad()}>
+          <Show when={props.loading} fallback={<>Load earlier messages</>}>
+            <LoaderCircle size={14} class="tl-earlier-spin" /> Loading earlier messages…
+          </Show>
+        </button>
+      </Show>
     </div>
   );
 }

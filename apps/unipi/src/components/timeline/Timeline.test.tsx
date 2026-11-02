@@ -396,3 +396,51 @@ function installFakeResizeObserver() {
     },
   };
 }
+
+/* ── perf-open: paged history ("load earlier") ───────────────────── */
+describe('Timeline: load earlier', () => {
+  /** The newest `shown` turns of a `total`-turn chat, as a paged snapshot; older pages via `get_entries{before}`. */
+  async function openPaged(total: number, shown: number) {
+    const all = snapshot(total).entries as SessionEntry[];
+    const tail = all.slice(-shown * 2);
+    const asked: Array<Record<string, unknown>> = [];
+    const paged = { ...snapshot(total), entries: tail, page: { total: all.length, has_more: true, cursor: tail[0]!.id } } as SessionSnapshot;
+    const opened = await openSession(total, {
+      snapshot: paged,
+      cmd: {
+        get_entries: (cmd) => {
+          asked.push(cmd);
+          const before = all.findIndex((e) => e.id === cmd.before);
+          const from = Math.max(0, before - 2 * shown);
+          return { entries: all.slice(from, before), total: all.length, hasMore: from > 0, cursor: all[from]?.id };
+        },
+      },
+    });
+    return { ...opened, asked };
+  }
+
+  it('shows the row above the oldest loaded turn; a click prepends the older page; the row goes when nothing is left', async () => {
+    const { s, asked } = await openPaged(6, 3);
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    await waitFor(() => expect(r.getByTestId('tl-earlier')).toBeTruthy());
+    expect(s.state.entries[0]!.id).toBe('u3');
+    fireEvent.click(r.getByTestId('tl-earlier-load'));
+    await waitFor(() => expect(s.state.entries[0]!.id).toBe('u0'));
+    expect(asked[0]).toMatchObject({ type: 'get_entries', before: 'u3' });
+    await waitFor(() => expect(r.queryByTestId('tl-earlier')).toBeNull());
+    expect(s.state.history?.hasMore).toBe(false);
+  });
+
+  it('scrolling near the top loads the next older page by itself', async () => {
+    const { s, asked } = await openPaged(40, 10);
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const tl = r.getByTestId('tl');
+    await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThan(0));
+    const before = asked.length;
+    fireEvent.wheel(tl);
+    tl.scrollTop = 50;
+    fireEvent.scroll(tl);
+    await waitFor(() => expect(asked.length).toBeGreaterThan(before));
+    await waitFor(() => expect(s.state.entries.length).toBeGreaterThan(20));
+  });
+});

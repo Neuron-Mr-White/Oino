@@ -49,6 +49,8 @@ export type ApplyResult = {
   nameChanged?: string;
   /** ui-protocol registry traffic for the U9 registry (`extension_ui_request`, `_dismiss`, `oino_ui_patch`). */
   ui?: Array<Record<string, unknown>>;
+  /** `woken` with a leaf past ours (the wake appended): fetch `get_entries{since}` and append. */
+  catchUp?: string;
 };
 
 /** Extension UI methods that wait for the user (needs-you). */
@@ -138,6 +140,11 @@ export function applySnapshot(s: SessionState, snap: SessionSnapshot, now = Date
   s.byId = indexEntries(entries);
   s.leafId = snap.leaf_id ?? entries.at(-1)?.id ?? null;
   s.entriesRev += 1;
+  const page = snap.page;
+  if (page) s.history = { total: page.total, hasMore: page.has_more, ...(page.cursor ? { cursor: page.cursor } : {}) };
+  else delete s.history;
+  if (snap.waking) s.waking = true;
+  else delete s.waking;
   delete s.streaming;
   s.liveTools = {};
   s.queue = { steering: [], followUp: [] };
@@ -167,6 +174,7 @@ function mergeResult(into: ApplyResult, r: ApplyResult): void {
   if (r.nameChanged !== undefined) into.nameChanged = r.nameChanged;
   if (r.gap) into.gap = true;
   if (r.ui) (into.ui ??= []).push(...r.ui);
+  if (r.catchUp) into.catchUp = r.catchUp;
 }
 
 /** Applies a batch in order; stops at the first gap. */
@@ -343,6 +351,12 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       case 'reloaded':
         setBanner(s, 'reloaded', event, now);
         return {};
+      case 'woken':
+        return applyWoken(s, event);
+      case 'wake_failed':
+        delete s.waking;
+        setBanner(s, 'wake_failed', event, now);
+        return {};
       default:
         return {};
     }
@@ -497,6 +511,46 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
     default:
       return {};
   }
+}
+
+/**
+ * perf-open `{kind:"woken"}`: the runtime behind a file-read snapshot is up — its real
+ * state, commands, ui registry and topics replace the provisional ones. A leaf past ours
+ * (the wake appended, e.g. a repair) asks the store to catch up.
+ */
+function applyWoken(s: SessionState, event: Record<string, unknown>): ApplyResult {
+  delete s.waking;
+  if (isObject(event.state)) applyInfo(s, event.state);
+  if (Array.isArray(event.commands)) s.commands = event.commands.filter(isObject) as CommandInfo[];
+  if (Array.isArray(event.topics)) s.topics = { ...s.topics, ...topicsOf(event.topics) };
+  const out: ApplyResult = {};
+  if (isObject(event.ui)) out.ui = [{ type: 'oino_ui_snapshot', ...event.ui }];
+  if (s.name !== undefined) out.nameChanged = s.name;
+  const leaf = str(event.leafId);
+  const last = [...s.entries].reverse().find((e) => !isProvisional(e.id));
+  if (leaf && last && leaf !== s.leafId && s.byId[leaf] === undefined) out.catchUp = last.id;
+  return out;
+}
+
+/**
+ * Prepends an older page (`get_entries{before}` reply) to the loaded history; entries
+ * already present are skipped. The page's `cursor`/`hasMore` become the history's.
+ */
+export function prependEntries(
+  s: SessionState,
+  page: { entries?: readonly SessionEntry[]; total?: number; hasMore?: boolean; cursor?: string | null },
+): void {
+  const older = (page.entries ?? []).filter((e) => isObject(e) && typeof e.id === 'string' && s.byId[e.id] === undefined);
+  const prev = s.history;
+  s.history = {
+    total: typeof page.total === 'number' ? page.total : (prev?.total ?? s.entries.length + older.length),
+    hasMore: page.hasMore === true && older.length > 0,
+    ...(page.cursor ? { cursor: page.cursor } : {}),
+  };
+  if (!older.length) return;
+  s.entries = [...older, ...s.entries];
+  s.byId = indexEntries(s.entries);
+  s.entriesRev += 1;
 }
 
 /** The last host-confirmed entry before the first provisional one (`get_entries{since}`); undefined = from the start. */
