@@ -4,15 +4,26 @@
  * host). Inside: the Pinned group (Z-14) and the project groups (D-9). An
  * offline host keeps its section with an inline Offline row + Retry (Z-90)
  * instead of disappearing.
+ *
+ * [ui-sessions]: the header's sliders button opens the Properties menu (sort,
+ * filter, group, property visibility, compact, subagents, Archive all); the
+ * host's view applies client-side over its indexed cards (`lib/session/listView`).
  */
 import { createEffect, createMemo, createSignal, For, on, Show, type JSX } from 'solid-js';
-import { ChevronDown, ChevronRight, Monitor, RefreshCw } from 'lucide-solid';
+import { ChevronDown, ChevronRight, Monitor, RefreshCw, SlidersHorizontal } from 'lucide-solid';
 import type { HostInfo } from '../../lib/schemas';
+import type { SessionCard } from '../../lib/host/client';
 import { hubs } from '../../lib/session/hub';
-import { sessionGroups } from '../../lib/session/selectors';
-import { SessionRow, type ModeBadge } from './SessionRow';
+import { isInternalSession } from '../../lib/session/internal';
+import { sessions } from '../../lib/session/store';
+import { archiveMany } from '../../lib/session/actions';
+import { cronRunLabel } from '../../lib/cronRunLabels';
+import { activeFilterCount, listView, resetListFilters, viewGroups, wantsArchived, type CardFacts } from '../../lib/session/listView';
+import { liveRowState, SessionRow, type ModeBadge } from './SessionRow';
 import { createPaging, ProjectGroup } from './ProjectGroup';
 import { ArchivedList } from './ArchivedList';
+import { ArchiveAllMenu, ListProperties } from './ListProperties';
+import { knownRuns, SubagentTree, treeHeight, watchRuns } from './SubagentTree';
 import type { RowVariant } from './SessionRow';
 
 const COLLAPSE_KEY = 'unipi.sidebar.hosts';
@@ -57,6 +68,8 @@ export function resetHostCollapse(): void {
 
 /** Project groups shown before "Show more projects" (a host with hundreds of folders). */
 export const PROJECTS_PAGE = 15;
+/** Rows per "Show more" when the list is not grouped (one flat list). */
+export const FLAT_PAGE = 25;
 
 /**
  * The project groups to render: the first `limit`, plus the one holding the shown
@@ -75,24 +88,46 @@ export function HostGroup(props: {
   activeSession?: { hostId: string; sessionId: string };
   modeOf: (card: { hostId: string; session_id: string }) => ModeBadge | undefined;
 }): JSX.Element {
+  const hostId = () => props.host.id;
   const hub = createMemo(() => hubs().ensure(props.host.id));
-  const groups = createMemo(() => sessionGroups(hub().state.cards, hub().state.meta));
-  const total = () => groups().pinned.length + groups().projects.reduce((n, g) => n + g.cards.length, 0);
+  const view = () => listView(props.host.id);
+  const showArchived = () => wantsArchived(view().filters);
+  /** The host's chats (never the app's internal ones), unfiltered. */
+  const liveCards = createMemo(() => Object.values(hub().state.cards).filter((c) => !isInternalSession(c.session_id)));
+  const archivedIds = createMemo(() => (showArchived() ? new Set(hub().state.archived.map((c) => c.session_id)) : new Set<string>()));
+  const allCards = createMemo(() => (showArchived() ? [...liveCards(), ...hub().state.archived.filter((c) => !hub().state.cards[c.session_id])] : liveCards()));
+  // The Archived filter lists the host's trash inline (loaded once, like the Archived footer).
+  createEffect(() => {
+    if (showArchived()) void hub().loadArchived();
+  });
+  const liveModel = (card: SessionCard): string | undefined => {
+    const id = sessions().peek(props.host.id, card.session_id)?.state.model?.id;
+    return id ? String(id) : undefined;
+  };
+  const factsOf = (card: SessionCard): CardFacts => ({
+    state: liveRowState(card, sessions().peek(props.host.id, card.session_id)),
+    ...(card.source === 'cron' ? { cronStatus: cronRunLabel(props.host.id, card.session_id)?.status } : {}),
+    model: liveModel(card),
+    archived: archivedIds().has(card.session_id),
+  });
+  const groups = createMemo(() => viewGroups(allCards(), hub().state.meta, view(), factsOf));
+  const filterCount = () => activeFilterCount(view().filters);
+  const total = () => liveCards().length;
   const isCollapsed = () => hostCollapsed(props.host.id);
   const local = () => props.host.transport === 'local';
   const offline = () => hub().state.error !== undefined && !hub().state.loaded;
   const paging = createPaging();
   const [projectLimit, setProjectLimit] = createSignal(PROJECTS_PAGE);
   const activeId = () => (props.activeSession?.hostId === props.host.id ? props.activeSession.sessionId : undefined);
-  const shownProjects = createMemo(() => visibleProjects(groups().projects, projectLimit(), activeId()));
-  const hiddenProjects = () => Math.max(0, groups().projects.length - projectLimit());
+  const shownGroups = createMemo(() => visibleProjects(groups().groups, projectLimit(), activeId()));
+  const hiddenProjects = () => Math.max(0, groups().groups.length - projectLimit());
   // First load (or a reload after going offline): skeleton rows, not an empty list.
   const loading = () => !hub().state.loaded && !offline();
 
-  // Collapsing the host resets the projects' paging (ZCode WSTP-05).
+  // Collapsing the host (or regrouping) resets the groups' paging (ZCode WSTP-05).
   createEffect(
-    on(isCollapsed, (now, was) => {
-      if (now !== was) {
+    on([isCollapsed, () => view().group], ([now, group], prev) => {
+      if (!prev || now !== prev[0] || group !== prev[1]) {
         paging.reset();
         setProjectLimit(PROJECTS_PAGE);
       }
@@ -100,36 +135,109 @@ export function HostGroup(props: {
   );
 
   const pin = (card: { session_id: string }, pinned: boolean) => void hub().setMeta(card.session_id, { pinned });
+  const activeOf = (card: SessionCard) => props.activeSession?.hostId === props.host.id && props.activeSession?.sessionId === card.session_id;
+  const archivedOf = (card: SessionCard) => archivedIds().has(card.session_id);
+
+  /** What "Archive all" takes: listed, live, not pinned, not running / waiting. */
+  const archivable = (cards: readonly SessionCard[]) =>
+    cards.filter((c) => !archivedIds().has(c.session_id) && !hub().state.meta[c.session_id]?.pinned && !['working', 'needs-you'].includes(factsOf(c).state));
+  const allArchivable = createMemo(() => archivable(groups().groups.flatMap((g) => g.cards)));
+
+  // ── Properties menu + group "Archive all" confirm ──
+  const [propsAt, setPropsAt] = createSignal<DOMRect | undefined>();
+  const [archiveAsk, setArchiveAsk] = createSignal<{ anchor: DOMRect; label: string; cards: SessionCard[] } | undefined>();
+
+  // ── subagents tree (opt-in) ──
+  createEffect(() => {
+    if (!view().subagents) return;
+    for (const c of liveCards()) watchRuns(sessions().peek(props.host.id, c.session_id));
+  });
+  const treeOf = (card: SessionCard) => {
+    const v = view();
+    const explicit = v.subagentRows.includes(card.session_id);
+    if (!explicit && !v.subagents) return undefined;
+    if (archivedIds().has(card.session_id)) return undefined;
+    const runs = knownRuns(props.host.id, card.session_id);
+    if (!explicit && !runs?.length) return undefined;
+    return {
+      height: treeHeight(props.variant, props.host.id, card.session_id, runs),
+      render: () => <SubagentTree hostId={props.host.id} sessionId={card.session_id} cwd={card.cwd} variant={props.variant} explicit={explicit} />,
+    };
+  };
 
   return (
     <section class="sb-host" data-testid={`sb-host-${props.host.id}`} data-collapsed={isCollapsed() ? '' : undefined}>
-      <button type="button" class="sb-host-head" data-testid={`sb-host-head-${props.host.id}`} onClick={() => toggleHost(props.host.id)} aria-expanded={!isCollapsed()}>
-        <Show when={isCollapsed()} fallback={<ChevronDown size={14} class="sb-host-chevron" />}>
-          <ChevronRight size={14} class="sb-host-chevron" />
-        </Show>
-        <Show when={local()} fallback={<Monitor size={14} class="sb-host-pc" />}>
-          <Monitor size={14} class="sb-host-pc sb-host-pc-local" />
-        </Show>
-        <span class="sb-host-name">{local() ? 'This computer' : props.host.name}</span>
-        <Show when={total() > 0}>
-          <span class="sb-host-count" title={`${total()} sessions`}>{total()}</span>
-        </Show>
-        <Show when={offline()}>
-          <span class="sb-host-offline" title={hub().state.error?.message ?? 'Offline'}>Offline</span>
-          <span
-            role="button"
-            tabindex={0}
-            class="sb-host-retry"
-            title="Retry connecting"
-            aria-label="Retry connecting"
-            data-testid={`sb-host-retry-${props.host.id}`}
-            onClick={(e) => (e.stopPropagation(), void hub().reload())}
-            onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), void hub().reload())}
-          >
-            <RefreshCw size={13} />
-          </span>
-        </Show>
-      </button>
+      <div class="sb-host-bar">
+        <button type="button" class="sb-host-head" data-testid={`sb-host-head-${props.host.id}`} onClick={() => toggleHost(props.host.id)} aria-expanded={!isCollapsed()}>
+          <Show when={isCollapsed()} fallback={<ChevronDown size={14} class="sb-host-chevron" />}>
+            <ChevronRight size={14} class="sb-host-chevron" />
+          </Show>
+          <Show when={local()} fallback={<Monitor size={14} class="sb-host-pc" />}>
+            <Monitor size={14} class="sb-host-pc sb-host-pc-local" />
+          </Show>
+          <span class="sb-host-name">{local() ? 'This computer' : props.host.name}</span>
+          <Show when={total() > 0}>
+            <span class="sb-host-count" title={filterCount() ? `${groups().total} of ${total()} sessions shown` : `${total()} sessions`}>
+              {filterCount() ? `${groups().total}/${total()}` : total()}
+            </span>
+          </Show>
+          <Show when={offline()}>
+            <span class="sb-host-offline" title={hub().state.error?.message ?? 'Offline'}>Offline</span>
+            <span
+              role="button"
+              tabindex={0}
+              class="sb-host-retry"
+              title="Retry connecting"
+              aria-label="Retry connecting"
+              data-testid={`sb-host-retry-${props.host.id}`}
+              onClick={(e) => (e.stopPropagation(), void hub().reload())}
+              onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), void hub().reload())}
+            >
+              <RefreshCw size={13} />
+            </span>
+          </Show>
+        </button>
+        <button
+          type="button"
+          class="sb-host-props"
+          data-active={filterCount() ? '' : undefined}
+          aria-label={filterCount() ? `List properties (${filterCount()} filters on)` : 'List properties: sort, filter, group'}
+          title={filterCount() ? `Properties · ${filterCount()} ${filterCount() === 1 ? 'filter' : 'filters'} on` : 'Properties: sort, filter, group, view'}
+          aria-haspopup="menu"
+          aria-expanded={!!propsAt()}
+          data-testid={`sb-props-${props.host.id}`}
+          onClick={(e) => setPropsAt((e.currentTarget as HTMLElement).getBoundingClientRect())}
+        >
+          <SlidersHorizontal size={14} />
+          <Show when={filterCount()}>
+            <span class="sb-host-props-n">{filterCount()}</span>
+          </Show>
+        </button>
+      </div>
+      <Show when={propsAt()}>
+        {(at) => (
+          <ListProperties
+            hostId={hostId()}
+            anchor={at()}
+            cards={liveCards()}
+            modelOf={liveModel}
+            archivable={allArchivable()}
+            onArchive={(ids) => void archiveMany(props.host.id, ids)}
+            onDismiss={() => setPropsAt(undefined)}
+          />
+        )}
+      </Show>
+      <Show when={archiveAsk()}>
+        {(ask) => (
+          <ArchiveAllMenu
+            anchor={ask().anchor}
+            count={ask().cards.length}
+            scope={ask().label}
+            onConfirm={() => void archiveMany(props.host.id, ask().cards.map((c) => c.session_id))}
+            onDismiss={() => setArchiveAsk(undefined)}
+          />
+        )}
+      </Show>
       <Show when={!isCollapsed()}>
         <div class="sb-host-body">
           <Show when={loading()}>
@@ -137,8 +245,16 @@ export function HostGroup(props: {
               <For each={[78, 64, 86, 58, 72]}>{(w) => <span class="sb-skel-row" style={{ width: `${w}%` }} />}</For>
             </div>
           </Show>
-          <Show when={hub().state.loaded && total() === 0 && !offline()}>
+          <Show when={hub().state.loaded && total() === 0 && !offline() && !filterCount()}>
             <p class="sb-empty">{hub().state.loading ? 'Loading…' : 'No sessions yet'}</p>
+          </Show>
+          <Show when={hub().state.loaded && !offline() && filterCount() > 0 && groups().total === 0}>
+            <p class="sb-empty sb-empty-filtered" data-testid={`sb-no-match-${props.host.id}`}>
+              No sessions found
+              <button type="button" class="sb-reset-filters" data-testid={`sb-reset-filters-${props.host.id}`} onClick={() => resetListFilters(props.host.id)}>
+                Reset filters
+              </button>
+            </p>
           </Show>
           <Show when={offline()}>
             <p class="sb-empty sb-empty-error" role="alert">{hub().state.error?.message ?? 'This PC is offline'}</p>
@@ -152,26 +268,32 @@ export function HostGroup(props: {
               <div class="sb-rows">
                 <For each={groups().pinned}>
                   {(card) => (
-                    <SessionRow
-                      hostId={props.host.id}
-                      card={card}
-                      meta={hub().state.meta[card.session_id]}
-                      active={props.activeSession?.hostId === props.host.id && props.activeSession?.sessionId === card.session_id}
-                      variant={props.variant}
-                      mode={props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
-                      showFolder={props.variant === 'page'}
-                      onPin={pin}
-                    />
+                    <div class="sb-row-slot">
+                      <SessionRow
+                        hostId={props.host.id}
+                        card={card}
+                        meta={hub().state.meta[card.session_id]}
+                        active={activeOf(card)}
+                        variant={props.variant}
+                        mode={props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
+                        showFolder={props.variant === 'page' && view().group === 'project'}
+                        show={view().props}
+                        compact={view().compact}
+                        onPin={pin}
+                      />
+                      <Show when={treeOf(card)}>{(t) => t().render()}</Show>
+                    </div>
                   )}
                 </For>
               </div>
             </div>
           </Show>
-          <For each={shownProjects()}>
+          <For each={shownGroups()}>
             {(group) => (
               <ProjectGroup
                 hostId={props.host.id}
                 cwd={group.cwd}
+                groupKey={group.key}
                 label={group.label}
                 cards={group.cards}
                 meta={hub().state.meta}
@@ -179,7 +301,18 @@ export function HostGroup(props: {
                 paging={paging}
                 modeOf={(card) => props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
                 onPin={pin}
-                activeOf={(card) => props.activeSession?.hostId === props.host.id && props.activeSession?.sessionId === card.session_id}
+                activeOf={activeOf}
+                show={view().props}
+                compact={view().compact}
+                archivedOf={archivedOf}
+                headless={view().group === 'none'}
+                page={view().group === 'none' ? FLAT_PAGE : undefined}
+                onArchiveAll={
+                  archivable(group.cards).length
+                    ? (anchor) => setArchiveAsk({ anchor, label: group.label, cards: archivable(group.cards) })
+                    : undefined
+                }
+                treeOf={treeOf}
               />
             )}
           </For>
@@ -188,10 +321,10 @@ export function HostGroup(props: {
               type="button"
               class="sb-more sb-more-projects"
               data-testid={`sb-more-projects-${props.host.id}`}
-              title={`${hiddenProjects()} more project folders`}
+              title={`${hiddenProjects()} more groups`}
               onClick={() => setProjectLimit((n) => n + PROJECTS_PAGE)}
             >
-              Show more projects
+              {view().group === 'project' ? 'Show more projects' : 'Show more groups'}
               <span class="sb-more-count">{hiddenProjects()}</span>
             </button>
           </Show>

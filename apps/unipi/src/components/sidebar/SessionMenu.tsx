@@ -11,7 +11,7 @@
  * chat-scoped rows only; this menu owns the row-scoped ones.
  */
 import { createMemo, createSignal, Show } from 'solid-js';
-import { Archive, ArchiveRestore, Copy, FileText, Folder, FolderInput, FolderOpen, GitFork, Pencil, Pin, PinOff, Share, Trash2 } from 'lucide-solid';
+import { Archive, ArchiveRestore, Copy, FileText, Folder, FolderInput, FolderOpen, GitFork, ListTree, Pencil, Pin, PinOff, Share, Trash2 } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { desktopShell } from '../../lib/layout';
 import { exportSession } from '../../lib/session/exportSession';
@@ -19,6 +19,7 @@ import { openRenameDialog, type RenameTarget } from '../session/RenameDialog';
 import { openMoveWorkspaceDialog } from '../session/MoveWorkspaceDialog';
 import { archiveSession, closeRowMenu, copyFromRow, deleteSession, forkSession, markUnread, revealFolder, setPinned, openRowMenuState } from '../../lib/session/actions';
 import { hubs } from '../../lib/session/hub';
+import { listView, toggleSubagentRow } from '../../lib/session/listView';
 import { isScratchCwd, sessionTitle } from '../../lib/session/selectors';
 import { sessions } from '../../lib/session/store';
 
@@ -66,6 +67,13 @@ export function SessionMenu() {
             />
             <MenuRow icon={<Archive size={iconSize()} />} label={archiveLabel()} onSelect={run(() => archiveSession(hostId, card.session_id))} />
             <MenuRow icon={<ArchiveRestore size={iconSize()} />} label="Mark as unread" onSelect={run(() => markUnread(hostId, card.session_id))} />
+            {/* [ui-sessions] the opt-in subagents tree under this row (Properties turns it on for all). */}
+            <MenuRow
+              icon={<ListTree size={iconSize()} />}
+              label={listView(hostId).subagentRows.includes(card.session_id) ? 'Hide subagents' : 'Show subagents'}
+              testId="srow-subagents"
+              onSelect={run(() => toggleSubagentRow(hostId, card.session_id))}
+            />
             <MenuSeparator />
             <MenuRow icon={<GitFork size={iconSize()} />} label="Fork" onSelect={run(() => forkSession(hostId, card.session_id))} />
             <MenuRow icon={<Copy size={iconSize()} />} label="Copy session id" onSelect={run(() => copyFromRow('id', card))} />
