@@ -270,9 +270,17 @@ export function phoneSize(width: number, height: number): { size: 'compact' | 'm
 /** html[data-shell] for the CSS (desktop rules are all scoped under it); on the phone also data-size / data-short. */
 function ShellAttr() {
   const [height, setHeight] = createSignal(typeof window === 'undefined' ? 0 : window.innerHeight);
-  const onResize = () => setHeight(window.innerHeight);
+  // Rotation reports the new size late on some WebViews: read again after the frame settles.
+  const onResize = () => {
+    setHeight(window.innerHeight);
+    setTimeout(() => setHeight(window.innerHeight), 300);
+  };
   window.addEventListener('resize', onResize);
-  onCleanup(() => window.removeEventListener('resize', onResize));
+  window.addEventListener('orientationchange', onResize);
+  onCleanup(() => {
+    window.removeEventListener('resize', onResize);
+    window.removeEventListener('orientationchange', onResize);
+  });
   createEffect(() => {
     const L = layout();
     const root = document.documentElement;
@@ -284,9 +292,9 @@ function ShellAttr() {
       delete root.dataset.short;
       return;
     }
-    // The keyboard shrinks innerHeight in a browser: judge "short" by the height without it.
-    const kb = parseFloat(root.style.getPropertyValue('--kb')) || 0;
-    const cls = phoneSize(L.viewport(), height() + kb);
+    // innerHeight is the layout viewport: Android (and Chrome's visual-viewport pan) keep it while the
+    // keyboard is up, so it is the height without the keyboard.
+    const cls = phoneSize(L.viewport(), height());
     root.dataset.size = cls.size;
     if (cls.short) root.dataset.short = '';
     else delete root.dataset.short;
