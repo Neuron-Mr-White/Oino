@@ -95,3 +95,5 @@ html[data-shell=phone] .tl-composer .comp-bar .tb-chip .tb-label { font-size: 14
   html[data-shell=phone][data-kb=open] .conv-head.ph-chat-head { display: none; }
   html[data-shell=phone] .cmenu { max-height: 152px; }
 }
+/* A fold's failures read as the group pill, not red sentence text (PH-27). */
+html[data-shell=phone] .conv-tl .tl-fold .proc-detail[data-error] { color: var(--color-text-muted); }
