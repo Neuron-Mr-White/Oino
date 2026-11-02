@@ -303,10 +303,10 @@ function ProfileEditor(props: {
           <div class="agent-field">
             <span class="agent-label">Thinking</span>
             <EnumSelect
-              field={{ key: 'agent.thinking', label: 'Thinking', options: [{ value: '', label: 'Inherit' }, ...THINKING_LEVELS.map((l) => ({ value: l, label: l[0]!.toUpperCase() + l.slice(1) }))] }}
-              value={thinking()}
+              field={{ key: 'agent.thinking', label: 'Thinking', options: [{ value: 'inherit', label: 'Inherit' }, ...THINKING_LEVELS.map((l) => ({ value: l, label: l[0]!.toUpperCase() + l.slice(1) }))] }}
+              value={thinking() || 'inherit'}
               disabled={ro()}
-              onChange={setThinking}
+              onChange={(v) => setThinking(v === 'inherit' ? '' : v)}
             />
           </div>
         </div>
