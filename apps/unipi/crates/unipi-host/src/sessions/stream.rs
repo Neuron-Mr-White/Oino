@@ -1175,8 +1175,7 @@ fn sniff_mime(bytes: &[u8]) -> &'static str {
 ///   ("Use at startup").
 #[must_use]
 fn app_model_semantics(mut cmd: Value) -> Value {
-    if cmd.get("type").and_then(Value::as_str) == Some("set_model")
-        && cmd.get("persist").is_none()
+    if cmd.get("type").and_then(Value::as_str) == Some("set_model") && cmd.get("persist").is_none()
     {
         cmd["persist"] = Value::Bool(false);
     }
@@ -1218,9 +1217,7 @@ fn readiness_reason(
     state: crate::models_readiness::ReadinessState,
     detail: Option<&str>,
 ) -> String {
-    let detail = detail
-        .map(|d| format!(" ({d})"))
-        .unwrap_or_default();
+    let detail = detail.map(|d| format!(" ({d})")).unwrap_or_default();
     match state {
         crate::models_readiness::ReadinessState::InvalidKey => {
             format!("the key was rejected{detail}")
@@ -1251,10 +1248,7 @@ fn dispatch(
     // F-02: snapshot the readiness cache before the send (a mutex read, never a probe).
     let readiness = std::sync::Arc::new(service.hub().readiness().snapshot());
     tokio::spawn(async move {
-        let is_models = matches!(
-            command,
-            RpcCommand::Agent(AgentCommand::GetAvailableModels)
-        );
+        let is_models = matches!(command, RpcCommand::Agent(AgentCommand::GetAvailableModels));
         let reply =
             match tokio::time::timeout(limit, session.send_with_id(request_id, command)).await {
                 Ok(Ok(mut data)) => {
@@ -1408,12 +1402,10 @@ mod app_model_tests {
             rows[1]["reason"]
         );
         assert_eq!(rows[2]["ready"], false);
-        assert!(
-            rows[2]["reason"]
-                .as_str()
-                .unwrap()
-                .starts_with("the provider is unreachable")
-        );
+        assert!(rows[2]["reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("the provider is unreachable"));
         // Unknown / absent providers stay unmarked (usable, nothing says otherwise).
         assert!(rows[3].get("ready").is_none());
         assert!(rows[4].get("ready").is_none());
