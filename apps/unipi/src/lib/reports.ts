@@ -80,6 +80,19 @@ export function humanCommandNotice(raw: string): string {
   return text;
 }
 
+/** A Settings-run command (owner5 #5): its replies show on the Settings row
+ *  or sheet that ran it, never as a toast or the floating report panel. */
+export type ReplyClaim = (text: string, kind: ToastKind) => void;
+const claims = new Map<string, ReplyClaim>();
+
+/** Routes every notify / command reply of `sessionKey` to `fn` until the returned release runs. */
+export function claimReplies(sessionKey: string, fn: ReplyClaim): () => void {
+  claims.set(sessionKey, fn);
+  return () => {
+    if (claims.get(sessionKey) === fn) claims.delete(sessionKey);
+  };
+}
+
 /**
  * Routes one notify message: a report opens the panel (answering a command)
  * or toasts its first line with "Show"; anything else is a plain toast.
@@ -87,6 +100,11 @@ export function humanCommandNotice(raw: string): string {
 export function routeNotify(message: string, kind: ToastKind, sessionKey?: string, now = Date.now()): void {
   const trimmed = message.trim();
   if (!trimmed) return;
+  const claim = sessionKey ? claims.get(sessionKey) : undefined;
+  if (claim) {
+    claim(trimmed, kind);
+    return;
+  }
   const ran = sessionKey ? recent.get(sessionKey) : undefined;
   const answering = !!ran && now - ran.at <= REPORT_COMMAND_WINDOW_MS;
   if (!isReport(trimmed)) {
@@ -133,5 +151,6 @@ export function reportTextOf(event: Record<string, unknown>): string | undefined
 /** Tests: forget everything. */
 export function resetReports(): void {
   recent.clear();
+  claims.clear();
   setCurrent(null);
 }

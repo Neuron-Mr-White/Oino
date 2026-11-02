@@ -38,6 +38,8 @@ export type ManageAction = {
   group: string;
   /** A hidden extension command (not in the chat's command list): run it without the listed-check. */
   hidden?: boolean;
+  /** The extension that owns the command (default: derived from it, `lib/settings/run.ts`). */
+  extension?: string;
 };
 
 /** P1-08: the updater extension's changelog browser (About › What's new → "Browse changelog"). */

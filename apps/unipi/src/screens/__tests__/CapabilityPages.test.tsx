@@ -79,11 +79,9 @@ describe('Settings › MCP (G-8)', () => {
     for (const id of ['mcp.status', 'mcp.servers', 'mcp.catalog', 'mcp.sync', 'mcp.reload']) {
       expect(r.getByTestId(`manage-${id}`), id).toBeTruthy();
     }
-    // R8 / P1-07: no chat ⇒ a hint says where the panel opens; the rows still work.
-    expect(r.getByTestId('cap-mcp-nochat')).toBeTruthy();
   });
 
-  it('P1-07: with no chat open, Manage opens the latest chat on this PC and runs there', async () => {
+  it('owner5 #5: with no chat open, a UI action runs in this PC’s latest chat in the background, in a Settings sheet', async () => {
     const base = capMcpNoChat.hosts[0]!;
     // The hub lists cap001 as this PC's most recent chat.
     const latest = { session_id: 'cap001', run_state: 'idle' as const, last_activity: Date.now() + 60_000 };
@@ -96,21 +94,38 @@ describe('Settings › MCP (G-8)', () => {
       () => expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/mcp-settings')).toBe(true),
       { timeout: 4000 },
     );
+    expect(document.querySelector('[data-testid=settings-cmd-sheet]')).toBeTruthy();
+    expect(location.hash).toBe('#/settings/mcp');
   });
 
-  it('with a chat open, Manage runs the extension command there (the panel opens in that chat)', async () => {
+  it('owner5 #5: with a chat open, a UI action runs there but stays in Settings (its sheet renders the steps)', async () => {
     const world = createMockHost(capMcpNoChat);
     setHostClientFactory(world.client);
     await openChat(world, 'local', 'cap001');
     const r = renderAt('mcp');
     await waitFor(() => expect(r.getByTestId('manage-mcp.servers')).toBeTruthy());
-    expect(r.queryByTestId('cap-mcp-nochat')).toBeNull();
     r.getByTestId('manage-mcp.servers').click();
     await waitFor(() => {
       expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/mcp-settings')).toBe(true);
     });
-    // The click also shows that chat, where U10 renders the extension's panel.
-    await waitFor(() => expect(location.hash).toBe('#/s/local/cap001'));
+    // Never navigates: the sheet is the surface.
+    expect(location.hash).toBe('#/settings/mcp');
+    await waitFor(() => expect(document.querySelector('[data-testid=settings-cmd-sheet]')).toBeTruthy());
+  });
+
+  it('owner5 #5: a background action (Sync the catalog) shows its progress inline on the row', async () => {
+    const world = createMockHost(capMcpNoChat);
+    setHostClientFactory(world.client);
+    await openChat(world, 'local', 'cap001');
+    const r = renderAt('mcp');
+    await waitFor(() => expect(r.getByTestId('manage-mcp.sync')).toBeTruthy());
+    r.getByTestId('manage-mcp.sync').click();
+    await waitFor(() => expect(r.getByTestId('manage-mcp.sync-result').textContent).toMatch(/Running|Started|Done|catalog/i));
+    await waitFor(() => {
+      expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/mcp-sync')).toBe(true);
+    });
+    expect(location.hash).toBe('#/settings/mcp');
+    expect(document.querySelector('[data-testid=settings-cmd-sheet]')).toBeNull();
   });
 });
 

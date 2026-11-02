@@ -13,7 +13,7 @@ import { useSettings } from '../../settings/context';
 import { setPiSetting, hostCmd } from '../../settings/hostCmd';
 import { z } from 'zod';
 import { LOCAL_HOST } from '../../lib/host';
-import { sessions } from '../../lib/session/store';
+import { CommandResult, CommandSheet, createSettingsCommand } from './command';
 import { ModelPickerField } from './ModelPickerField';
 import { desktopShell } from '../../lib/layout';
 import type { Field, Json } from './types';
@@ -40,6 +40,7 @@ export function ComplexField(props: {
   const field = () => props.field;
   const value = () => lookup(props.ctx.values, field().key);
   return (
+    <Show when={field().type !== 'action'} fallback={<ActionField field={field()} ctx={props.ctx} disabled={props.disabled} />}>
     <FieldRow field={field()} ctx={props.ctx} wide={WIDE.includes(field().type)} error={props.error}>
       <Show when={field().type === 'secret'}>
         <SecretField field={field()} value={value()} disabled={props.disabled} set={props.set} onError={props.onError} />
@@ -49,9 +50,6 @@ export function ComplexField(props: {
       </Show>
       <Show when={field().type === 'model'}>
         <ModelField field={field()} ctx={props.ctx} value={value()} disabled={props.disabled} set={props.set} />
-      </Show>
-      <Show when={field().type === 'action'}>
-        <ActionField field={field()} disabled={props.disabled} />
       </Show>
       <Show when={field().type === 'list'}>
         <ListField field={field()} value={value()} disabled={props.disabled} set={props.set} />
@@ -65,6 +63,7 @@ export function ComplexField(props: {
         </Show>
       </Show>
     </FieldRow>
+    </Show>
   );
 }
 
@@ -248,46 +247,45 @@ function ModelField(props: { field: Field; ctx: EditContext; value: Json; disabl
   );
 }
 
-/** `action`: runs the field's command in an open chat (`.btn-secondary`). */
-function ActionField(props: { field: Field; disabled: boolean }) {
+/**
+ * `action`: runs the field's command without leaving Settings (owner5 #5):
+ * background commands answer inline under the row's text, UI commands open
+ * a Settings sheet, chat-bound ones say "Opens in chat ↗".
+ */
+function ActionField(props: { field: Field; ctx: EditContext; disabled: boolean }) {
   const [confirming, setConfirming] = createSignal(false);
-  const [note, setNote] = createSignal<string | undefined>();
+  const spec = () => ({ label: props.field.label, command: props.field.command ?? '' });
+  const cmd = createSettingsCommand(spec, () => props.ctx.hostId ?? LOCAL_HOST);
   const run = () => {
-    const list = sessions().keys();
-    const key = list[list.length - 1];
-    const handle = key ? sessions().peek(key.split('/')[0]!, key.split('/').slice(1).join('/')) : undefined;
     setConfirming(false);
-    if (!handle) {
-      setNote('Open a chat to run this');
-      return;
-    }
-    handle.send(`/${props.field.command ?? ''}`, { mode: 'prompt' });
-    setNote(`Sent /${props.field.command ?? ''}`);
+    void cmd.run();
   };
   return (
-    <div class="settings-action">
-      <Show when={!confirming()} fallback={
-        <div class="settings-action-confirm">
-          <span class="text-xs text-text-muted">{props.field.confirm ?? 'Run this?'}</span>
-          <button type="button" class="btn-secondary settings-btn" onClick={run} data-testid={`run-${props.field.key}`}>Run</button>
-          <button type="button" class="settings-link" onClick={() => setConfirming(false)}>Cancel</button>
-        </div>
-      }>
-        <button
-          type="button"
-          class="btn-secondary settings-btn"
-          aria-label={props.field.label}
-          disabled={props.disabled}
-          data-testid={`run-${props.field.key}`}
-          onClick={() => (props.field.confirm ? setConfirming(true) : run())}
-        >
-          Run
-        </button>
+    <FieldRow field={props.field} ctx={props.ctx} below={<CommandResult cmd={cmd} testId={`note-${props.field.key}`} />}>
+      <div class="settings-action">
+        <Show when={!confirming()} fallback={
+          <div class="settings-action-confirm">
+            <span class="text-xs text-text-muted">{props.field.confirm ?? 'Run this?'}</span>
+            <button type="button" class="btn-secondary settings-btn" onClick={run} data-testid={`run-${props.field.key}`}>Run</button>
+            <button type="button" class="settings-link" onClick={() => setConfirming(false)}>Cancel</button>
+          </div>
+        }>
+          <button
+            type="button"
+            class="btn-secondary settings-btn"
+            aria-label={`${props.field.label}${cmd.mode() === 'chat' ? ' (opens in chat)' : ''}`}
+            disabled={props.disabled || cmd.state().status === 'running'}
+            data-testid={`run-${props.field.key}`}
+            onClick={() => (props.field.confirm ? setConfirming(true) : run())}
+          >
+            {cmd.mode() === 'chat' ? 'Open in chat ↗' : cmd.mode() === 'sheet' ? 'Open…' : 'Run'}
+          </button>
+        </Show>
+      </div>
+      <Show when={cmd.sheet()}>
+        <CommandSheet cmd={cmd} spec={spec()} hostId={props.ctx.hostId ?? LOCAL_HOST} />
       </Show>
-      <Show when={note()}>
-        <p class="settings-field-hint" data-testid={`note-${props.field.key}`}>{note()}</p>
-      </Show>
-    </div>
+    </FieldRow>
   );
 }
 

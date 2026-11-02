@@ -86,6 +86,8 @@ export function FieldRow(props: {
   error?: string;
   /** The control (or use `control`; both spell the same slot). */
   children?: JSX.Element;
+  /** Under the text column (an action's inline result, owner5 #5). */
+  below?: JSX.Element;
 }) {
   const icon = () => FIELD_ICONS[props.field.type] ?? Info;
   const modified = () => storedValue(props.ctx, props.field) !== undefined;
@@ -145,6 +147,7 @@ export function FieldRow(props: {
             <p class="settings-field-error" role="alert" data-testid="field-error">{message}</p>
           )}
         </Show>
+        {props.below}
       </div>
       <div class={props.wide ? 'settings-field-wide' : 'settings-field-control'}>{props.control ?? props.children}</div>
     </div>

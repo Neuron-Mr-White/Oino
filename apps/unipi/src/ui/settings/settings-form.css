@@ -235,3 +235,27 @@ html:not([data-shell=desktop]) .settings-model-btn { min-height: 40px; max-width
 .settings-shape-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .settings-shape-label { font-size: 13px; color: var(--color-text-muted); }
 .settings-json-note { margin: 0 0 6px; }
+
+/* owner5 #5/#7/#12: Settings commands answer in place. The inline result sits
+   under the row's text column (Manage rows pad like the row: 16 px). */
+.settings-manage-row { border-top: 1px solid var(--color-line); }
+.settings-manage-row > .settings-namespace-row { border-top: 0; justify-content: flex-start; }
+.settings-manage-row[data-off] > .settings-namespace-row { opacity: .5; cursor: not-allowed; }
+.settings-manage-row[data-off] > .settings-namespace-row:hover { background: transparent; }
+.settings-manage-row > .settings-cmd-result { padding: 0 16px 10px; margin-top: -4px; }
+.settings-opens-chat { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; font-size: 12px; color: var(--color-text-dim); }
+.settings-cmd-result { margin-top: 4px; font-size: 12.5px; line-height: 18px; color: var(--color-text-muted); }
+.settings-cmd-result[data-bad] { color: var(--color-amber); }
+.settings-cmd-line { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; }
+.settings-cmd-line > svg { flex-shrink: 0; }
+.settings-cmd-line[data-bad] { color: var(--color-amber); }
+.settings-cmd-turnon { margin-left: 4px; }
+.settings-cmd-body { margin: 6px 0 0; max-height: 320px; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--color-surface-2); color: var(--color-text); font-family: var(--font-mono); font-size: 12px; line-height: 17px; white-space: pre-wrap; word-break: break-word; }
+.settings-cmd-body.report-md { font-family: inherit; font-size: 13px; line-height: 19px; }
+.settings-off-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--color-line); font-size: 13px; color: var(--color-amber); }
+.settings-cmd-sheet-body { display: flex; flex-direction: column; gap: 10px; padding: 4px 4px 8px; min-height: 80px; }
+.settings-cmd-sheet-body > .settings-cmd-body { max-height: 50vh; }
+.settings-cmd-wait { color: var(--color-text-muted); font-size: 13px; }
+.settings-cmd-dialogs .dock-dialog { margin: 0; }
+.settings-cmd-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
+.settings-cmd-foot .settings-link { display: inline-flex; align-items: center; gap: 3px; }
