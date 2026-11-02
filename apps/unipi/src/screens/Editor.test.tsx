@@ -8,6 +8,7 @@ import { HostsProvider } from '../hosts/context';
 import { SettingsProvider } from '../settings/context';
 import { call } from '../lib/ipc';
 import { setEditorTarget } from '../lib/editorTarget';
+import { setDesktopOverride } from '../lib/layout';
 
 vi.mock('../lib/ipc', () => ({ call: vi.fn() }));
 
@@ -25,6 +26,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  setDesktopOverride(undefined);
   vi.resetAllMocks();
   location.hash = '#/';
 });
@@ -52,7 +54,7 @@ describe('Editor leave guard', () => {
     const sheet = await screen.findByTestId('editor-leave-sheet');
     expect(location.hash).toBe('#/files/edit');
     [...sheet.querySelectorAll('button')].find((b) => b.textContent === 'Discard')!.click();
-    await waitFor(() => expect(location.hash).toBe('#/files'));
+    await waitFor(() => expect(location.hash).toMatch(/^#\/files(\?path=%2Fhome%2Fu)?$/));
     expect(vi.mocked(call).mock.calls.some(([cmd]) => cmd === 'fs_write')).toBe(false);
   });
 
@@ -62,7 +64,7 @@ describe('Editor leave guard', () => {
     screen.getByLabelText('Back to files').click();
     const sheet = await screen.findByTestId('editor-leave-sheet');
     [...sheet.querySelectorAll('button')].find((b) => b.textContent === 'Save')!.click();
-    await waitFor(() => expect(location.hash).toBe('#/files'));
+    await waitFor(() => expect(location.hash).toMatch(/^#\/files(\?path=%2Fhome%2Fu)?$/));
     expect(vi.mocked(call).mock.calls.some(([cmd, args]) => cmd === 'fs_write' && (args as { text: string }).text === 'hello!')).toBe(true);
   });
 
@@ -70,7 +72,7 @@ describe('Editor leave guard', () => {
     mount();
     await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());
     screen.getByLabelText('Back to files').click();
-    await waitFor(() => expect(location.hash).toBe('#/files'));
+    await waitFor(() => expect(location.hash).toMatch(/^#\/files(\?path=%2Fhome%2Fu)?$/));
   });
 
   it('a very long file name is one truncating line (full name on hover); the unsaved dot stays visible', async () => {
@@ -90,6 +92,7 @@ describe('Editor leave guard', () => {
   });
 
   it('Find and Save sit in the pinned end group, outside the scrolling keys', async () => {
+    setDesktopOverride(true);
     mount();
     await waitFor(() => expect(document.querySelector('.editor-toolbar')).toBeTruthy());
     const end = document.querySelector('.editor-toolbar-end')!;
@@ -107,6 +110,7 @@ describe('UNI-265: Markdown preview', () => {
       return { ok: true, value: null };
     });
     setEditorTarget({ hostId: 'host-1', path: '/home/u/README.md' });
+    setDesktopOverride(true);
     mount();
     const prev = await screen.findByTestId('editor-md-preview');
     await waitFor(() => expect(prev.querySelector('h1')?.textContent).toBe('Title'));
@@ -122,6 +126,20 @@ describe('UNI-265: Markdown preview', () => {
     screen.getByTestId('editor-preview-toggle').click();
     const again = await screen.findByTestId('editor-md-preview');
     await waitFor(() => expect(again.querySelector('h2')?.textContent).toBe('Added'));
+  });
+
+  it('phone: a file opens read-only in a layer; Edit turns on the key bar and Save; Back lands on its folder (§3.11)', async () => {
+    setDesktopOverride(false);
+    mount();
+    await waitFor(() => expect(document.querySelector('.cm-content')).toBeTruthy());
+    expect(document.querySelector('.cm-content')!.getAttribute('contenteditable')).toBe('false');
+    expect(document.querySelector('.editor-toolbar')).toBeNull();
+    screen.getByTestId('editor-edit').click();
+    await waitFor(() => expect(document.querySelector('.editor-toolbar')).toBeTruthy());
+    expect(screen.getByTestId('editor-save')).toBeTruthy();
+    screen.getByTestId('editor-more').click();
+    const menu = await screen.findByTestId('editor-menu');
+    expect(menu.textContent).toContain('Copy path');
   });
 
   it('other text files have no preview toggle', async () => {

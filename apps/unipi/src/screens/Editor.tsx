@@ -6,11 +6,14 @@
  * offers Keep mine / Load theirs / Show diff. Big/truncated files open
  * read-only; images/PDF/binary route to the previewer.
  */
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import {
   ChevronLeft,
+  Copy,
+  Ellipsis,
   Eye,
+  Search as SearchIcon,
   MessageSquarePlus,
   Pencil,
   Redo2,
@@ -41,6 +44,8 @@ import { activeChatTargetFor, clearReturnToChat, openNewChat, resumeChatAfterTer
 import { BoardSheet } from '../components/board/BoardSheet';
 import { renderBlocks } from '../lib/chat/markdown';
 import { MdBlock } from '../components/chat/MdBlock';
+import { ActionSheet, type ActionItem } from '../components/phone';
+import { copyText } from '../lib/board/share';
 import './files.css';
 
 type LoadState =
@@ -91,6 +96,11 @@ export default function Editor() {
   // owner5 #24: only a file the host refused as binary is shown decoded; real text opens editable.
   const [decoded, setDecoded] = createSignal(false);
   const forcedReadOnly = () => decoded() && !editAnywayUnlocked();
+  // Phone (§3.11): a file opens read-only — "Edit" turns editing on, so a tap never pops the keyboard.
+  const phone = () => !desktopShell();
+  const [editing, setEditing] = createSignal(!phone());
+  const [menuOpen, setMenuOpen] = createSignal(false);
+  const lockedFor = (s: { truncated: boolean }) => s.truncated || forcedReadOnly() || !untrack(editing);
 
   let container: HTMLDivElement | undefined;
   let view: EditorView | undefined;
@@ -140,7 +150,9 @@ export default function Editor() {
     // Opened from a chat ("Open in editor" / file:line ref): Back returns to
     // that exact v2 chat route instead of dropping into Files (UNI-172, P0-07).
     if (resumeChatAfterTerminal()) return;
-    navigate('/files');
+    // Phone: Back lands on the folder the file lives in (the route parent, §1.3).
+    if (phone() && target) navigate(`/files?path=${encodeURIComponent(target.path.replace(/\/[^/]*$/, '') || '/')}`);
+    else navigate('/files');
   }
 
   onMount(() => onCleanup(pushBack(close)));
@@ -235,6 +247,8 @@ export default function Editor() {
         if (update.docChanged) setDirty(true);
       }),
       EditorState.readOnly.of(readOnly),
+      // Phone viewer mode: no caret, no keyboard on tap (§3.11).
+      ...(phone() && readOnly ? [EditorView.editable.of(false)] : []),
     ];
     if (vimOn() && !readOnly) {
       ensureVimExCommands();
@@ -294,7 +308,7 @@ export default function Editor() {
     const s = state();
     if (s.kind === 'ready') {
       setDirty(false);
-      void mountEditor(s.text, s.truncated || forcedReadOnly());
+      void mountEditor(s.text, lockedFor(s));
     }
   });
 
@@ -311,7 +325,7 @@ export default function Editor() {
     if (on !== lastVimOn && s.kind === 'ready' && view) {
       lastVimOn = on;
       const text = view.state.doc.toString();
-      void mountEditor(text, s.truncated || forcedReadOnly());
+      void mountEditor(text, lockedFor(s));
     } else {
       lastVimOn = on;
     }
@@ -320,10 +334,23 @@ export default function Editor() {
   function editAnyway() {
     haptic();
     setEditAnywayUnlocked(true);
+    setEditing(true);
     const s = state();
     if (s.kind === 'ready' && view) {
       const text = view.state.doc.toString();
       void mountEditor(text, s.truncated);
+    }
+  }
+
+  /** Phone "Edit": unlock the open file and put the cursor in it. */
+  function startEditing() {
+    haptic();
+    if (isMarkdown() && preview()) setPreview(false);
+    setEditing(true);
+    const s = state();
+    if (s.kind === 'ready' && view) {
+      const text = view.state.doc.toString();
+      void mountEditor(text, lockedFor(s)).then(() => view?.focus());
     }
   }
 
@@ -333,7 +360,7 @@ export default function Editor() {
     const s = state();
     if (s.kind === 'ready' && view) {
       const text = view.state.doc.toString();
-      void mountEditor(text, s.truncated);
+      void mountEditor(text, lockedFor(s));
     }
   }
 
@@ -464,9 +491,22 @@ export default function Editor() {
     if (st.kind === 'ready' && preview() && !previewText()) setPreviewText(view?.state.doc.toString() ?? (st as { text?: string }).text ?? '');
   });
 
+  /** Phone ⋯ (§3.11): Find, Wrap, Markdown preview, Copy path, Open in chat. */
+  const phoneMenu = (): ActionItem[][] => [
+    [
+      { id: 'find', label: 'Find in file', icon: SearchIcon, disabled: state().kind !== 'ready', onSelect: () => view && openSearchPanel(view) },
+      { id: 'wrap', label: 'Wrap lines', icon: WrapText, checked: wrap(), onSelect: toggleWrap },
+      ...(isMarkdown() ? [{ id: 'preview', label: preview() ? 'Show source' : 'Show preview', icon: Eye, onSelect: togglePreview }] : []),
+    ],
+    [
+      { id: 'copy', label: 'Copy path', icon: Copy, onSelect: () => void (target && copyText(target.path).then((ok) => showToast(ok ? 'Path copied' : 'Could not copy'))) },
+      { id: 'chat', label: 'Open in chat', icon: MessageSquarePlus, onSelect: mentionInChat },
+    ],
+  ];
+
   return (
     <div class="editor-screen" data-testid="editor-screen">
-      <header class="editor-head detail-head">
+      <header class="editor-head detail-head" data-phone={phone() ? '' : undefined}>
         <button type="button" class="ghost-icon-button" aria-label="Back to files" onClick={close}>
           <ChevronLeft size={22} />
         </button>
@@ -477,9 +517,24 @@ export default function Editor() {
               <span class="editor-dirty-dot" aria-label="Unsaved changes" />
             </Show>
           </span>
-          <span class="editor-title-path truncate">{target?.path}</span>
+          <span class="editor-title-path truncate">{phone() ? target?.path.replace(/\/[^/]*$/, '') || '/' : target?.path}</span>
         </div>
-        <Show when={isMarkdown() && state().kind === 'ready'}>
+        <Show when={phone()}>
+          <Show when={state().kind === 'ready' && !(state() as { truncated?: boolean }).truncated}>
+            <Show
+              when={editing() && !(isMarkdown() && preview())}
+              fallback={<button type="button" class="editor-phone-action" data-testid="editor-edit" onClick={startEditing}><Pencil size={18} /> Edit</button>}
+            >
+              <button type="button" class="editor-phone-action primary" data-testid="editor-save" disabled={saving() || !dirty()} onClick={() => void save()}>
+                {saving() ? 'Saving…' : 'Save'}
+              </button>
+            </Show>
+          </Show>
+          <button type="button" class="ghost-icon-button" aria-label="More file actions" data-testid="editor-more" onClick={() => setMenuOpen(true)}>
+            <Ellipsis size={22} />
+          </button>
+        </Show>
+        <Show when={!phone() && isMarkdown() && state().kind === 'ready'}>
           <button type="button" class="editor-mode-btn" aria-label={preview() ? 'Edit' : 'Preview'} aria-pressed={preview()} data-testid="editor-preview-toggle" onClick={togglePreview}>
             <Show when={preview()} fallback={<Eye size={16} />}>
               <Pencil size={16} />
@@ -487,13 +542,18 @@ export default function Editor() {
             <span>{preview() ? 'Edit' : 'Preview'}</span>
           </button>
         </Show>
-        <button type="button" class="ghost-icon-button" aria-label="Toggle word wrap" onClick={toggleWrap}>
-          <WrapText size={20} />
-        </button>
-        <button type="button" class="ghost-icon-button" aria-label="Mention in chat" onClick={mentionInChat}>
-          <MessageSquarePlus size={20} />
-        </button>
+        <Show when={!phone()}>
+          <button type="button" class="ghost-icon-button" aria-label="Toggle word wrap" onClick={toggleWrap}>
+            <WrapText size={20} />
+          </button>
+          <button type="button" class="ghost-icon-button" aria-label="Mention in chat" onClick={mentionInChat}>
+            <MessageSquarePlus size={20} />
+          </button>
+        </Show>
       </header>
+      <Show when={phone()}>
+        <ActionSheet open={menuOpen()} onClose={() => setMenuOpen(false)} title={fileName()} subtitle={target?.path} sections={phoneMenu()} testId="editor-menu" />
+      </Show>
 
       <Show when={state().kind === 'ready' && (state() as { truncated?: boolean }).truncated}>
         <p class="editor-readonly-note">This file is big — showing the start only, read-only.</p>
@@ -522,7 +582,7 @@ export default function Editor() {
         </Show>
       </div>
 
-      <Show when={state().kind === 'ready' && !(state() as { truncated?: boolean }).truncated && !(isMarkdown() && preview())}>
+      <Show when={state().kind === 'ready' && !(state() as { truncated?: boolean }).truncated && !(isMarkdown() && preview()) && editing()}>
         <div class="editor-toolbar" role="toolbar" aria-label="Editor tools">
           <div class="editor-toolbar-keys">
           <Show when={vimOn() && vimMode()}>
