@@ -174,3 +174,94 @@ fn exit_with_parent_follows_the_parent() {
     }
     assert_eq!(status_json(dir.path()).0, 3);
 }
+
+fn start_outcomes(dir: &std::path::Path) -> (Vec<String>, bool) {
+    let raw = std::fs::read_to_string(dir.join("start-history.json")).unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+    let outcomes = v["starts"]
+        .as_array()
+        .map(|starts| {
+            starts
+                .iter()
+                .map(|s| s["outcome"].as_str().unwrap_or_default().to_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    (outcomes, v.get("openStart").is_some())
+}
+
+/// fix5-host: two app instances fought over `host.lock`; every lost start (exit 75,
+/// "already running") must leave the start history alone — four of them used to push
+/// the host into safe mode (no extensions → no providers → no chat).
+#[test]
+fn a_lock_collision_never_counts_as_a_failed_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut winner = serve(dir.path(), &["--mode", "app"]);
+    wait_running_for(dir.path(), &mut [&mut winner]);
+    let before = std::fs::read_to_string(dir.path().join("start-history.json")).unwrap();
+    for _ in 0..5 {
+        let mut loser = serve(dir.path(), &["--mode", "app"]);
+        let status = loser.wait().unwrap();
+        assert_eq!(status.code(), Some(75));
+    }
+    let after = std::fs::read_to_string(dir.path().join("start-history.json")).unwrap();
+    assert_eq!(before, after, "a losing start wrote the start history");
+    kill(&mut winner);
+    let (outcomes, open) = start_outcomes(dir.path());
+    assert!(!open, "the winner's clean stop closed its start");
+    assert!(
+        !outcomes.iter().any(|o| o == "fast-fail"),
+        "{outcomes:?}"
+    );
+    // The next start sees no failed starts: no safe mode.
+    let mut next = serve(dir.path(), &["--mode", "app"]);
+    wait_running_for(dir.path(), &mut [&mut next]);
+    kill(&mut next);
+    let (outcomes, _) = start_outcomes(dir.path());
+    assert!(
+        !outcomes.iter().any(|o| o == "fast-fail"),
+        "{outcomes:?}"
+    );
+}
+
+/// fix5-host: the app replacing a host that has only just taken the lock (SIGTERM
+/// while it still starts) is a clean stop, however early it lands — four in a row
+/// must not trip safe mode.
+#[test]
+fn a_host_terminated_while_starting_is_not_a_failed_start() {
+    let dir = tempfile::tempdir().unwrap();
+    for _ in 0..4 {
+        let mut host = serve(dir.path(), &["--mode", "app"]);
+        wait_running_for(dir.path(), &mut [&mut host]);
+        kill(&mut host);
+        let (outcomes, open) = start_outcomes(dir.path());
+        assert!(!open, "SIGTERM left the start open: {outcomes:?}");
+        assert!(
+            !outcomes.iter().any(|o| o == "fast-fail"),
+            "{outcomes:?}"
+        );
+    }
+}
+
+/// fix5-host: `--exit-with-parent` ending the host is a clean stop too.
+#[test]
+fn exit_with_parent_records_a_clean_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut parent = Command::new("sleep").arg("60").spawn().unwrap();
+    let mut host = serve(
+        dir.path(),
+        &[
+            "--mode",
+            "app",
+            "--exit-with-parent",
+            &parent.id().to_string(),
+        ],
+    );
+    wait_running_for(dir.path(), &mut [&mut host]);
+    parent.kill().unwrap();
+    parent.wait().unwrap();
+    let _ = host.wait();
+    let (outcomes, open) = start_outcomes(dir.path());
+    assert!(!open, "{outcomes:?}");
+    assert_eq!(outcomes, vec!["stopped".to_owned()]);
+}

@@ -66,6 +66,9 @@ tauri-plugin-window-state = "=2.5.0"
 # UNI-263: desktop app self-update (signed artifacts from unipi.nrn.one/desktop/latest.json).
 tauri-plugin-updater = "=2.13.3"
 tauri-plugin-autostart = "=2.5.1"
+# fix5-host: one app per user session — a second launch focuses the running
+# window and exits instead of spawning a second host that fights over host.lock.
+tauri-plugin-single-instance = "=2.5.5"
 # UNI-240: the self-install engine downloads Node (nodejs.org, SHASUMS256-verified)
 # and probes the npm registry — desktop only, never the phone build.
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "blocking"] }

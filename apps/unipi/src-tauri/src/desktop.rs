@@ -403,6 +403,21 @@ pub fn mascot_window(
     }
 }
 
+/// A second launch of the app (fix5-host, tauri-plugin-single-instance): the
+/// running instance shows, unminimizes and focuses its main window instead of
+/// a second process starting (and spawning a second host that fights over
+/// `host.lock`).
+#[cfg(desktop)]
+pub fn show_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    refresh_menu_as(app, Some(true));
+}
+
 /// The mascot window was clicked: bring the main window to the front.
 #[tauri::command]
 pub fn mascot_focus_main(app: tauri::AppHandle) -> Result<(), AppErrorDto> {

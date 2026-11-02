@@ -542,9 +542,14 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Err(error) => return Err(error.into()),
             };
+            // fix5-host: from here on this process owns the data dir. A lock collision
+            // (exit 75 above) never touched the start history, and every way this host
+            // ends on purpose — the app gone, SIGTERM while still starting, a clean
+            // shutdown — records `stopped`, never a fast fail (host.md §4.4).
             if let Some(parent) = exit_with_parent {
                 let paths = paths.clone();
                 unipi_host::instance::exit_with_parent(parent, move || {
+                    unipi_host::sessions::crash::HostSafeMode::record_stopped_in(&paths.root);
                     #[cfg(unix)]
                     let _ = std::fs::remove_file(unipi_host::push::socket_path(&paths));
                     #[cfg(not(unix))]
@@ -557,8 +562,39 @@ async fn main() -> anyhow::Result<()> {
             // the suspects from host.log.
             let mut safe_mode = unipi_host::sessions::crash::HostSafeMode::load(&paths.root);
             safe_mode.begin_start();
-            let safe_plan =
-                safe_mode.plan(unipi_host::sessions::crash::suspects_from_log(&paths.root));
+            // fix5-host: a SIGTERM/Ctrl+C while the host is still starting (the app
+            // replacing a host that has not answered yet) is a clean stop: record it and
+            // exit, instead of dying by the default signal action with the start still
+            // open (which the next start counted as a fast fail). Once the host is ready
+            // the signal is handed to the shutdown below.
+            let signal_ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let (signal_tx, signal_rx) = tokio::sync::oneshot::channel::<std::io::Result<()>>();
+            {
+                let ready = std::sync::Arc::clone(&signal_ready);
+                let root = paths.root.clone();
+                tokio::spawn(async move {
+                    let result = shutdown_signal().await;
+                    if result.is_ok() && !ready.load(std::sync::atomic::Ordering::SeqCst) {
+                        tracing::info!("stopped while starting");
+                        unipi_host::sessions::crash::HostSafeMode::record_stopped_in(&root);
+                        std::process::exit(0);
+                    }
+                    let _ = signal_tx.send(result);
+                });
+            }
+            // Suspects come only from what the current failed starts logged
+            // (fix5-host: never a stale line from days ago).
+            let suspects = if safe_mode.trips() {
+                safe_mode
+                    .failure_run_since()
+                    .map(|since| {
+                        unipi_host::sessions::crash::suspects_from_log_since(&paths.root, since)
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let safe_plan = safe_mode.plan(suspects);
             if safe_plan.disable_extensions {
                 tracing::warn!(
                     text = %unipi_host::sessions::crash::banner(&safe_plan),
@@ -821,8 +857,9 @@ async fn main() -> anyhow::Result<()> {
             });
             // A self-update ended the loop early: the binary on disk is the new
             // one, so this process steps aside (the app supervisor respawns it).
+            signal_ready.store(true, std::sync::atomic::Ordering::SeqCst);
             tokio::select! {
-                result = shutdown_signal() => result?,
+                result = signal_rx => result.unwrap_or(Ok(()))?,
                 _ = restart_rx => tracing::info!("binary replaced; exiting for a restart"),
             }
             router.shutdown().await?;

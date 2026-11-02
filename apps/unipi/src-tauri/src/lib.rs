@@ -54,7 +54,19 @@ use commands::app_info;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // fix5-host: single instance, registered before every other plugin (the
+    // plugin's docs): a second launch (`--hidden` login start included) focuses
+    // the running window and exits — two apps meant two hosts fighting over
+    // `host.lock`, and every lost start pushed the host towards safe mode.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        log::info!("second launch ({argv:?}): focusing the running window");
+        if !lifecycle::start_hidden(argv.iter().skip(1).cloned()) {
+            desktop::show_main(app);
+        }
+    }));
+    let builder = builder
         .manage(net::NetState::default())
         .manage(term::TermRegistry::new())
         .manage(lsp::LspRegistry::new())

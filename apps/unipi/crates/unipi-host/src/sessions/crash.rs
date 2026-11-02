@@ -128,6 +128,19 @@ impl HostSafeMode {
         safe
     }
 
+    /// Start time (epoch ms) of the first failed start in the trailing run of
+    /// consecutive failures — the window [`suspects_from_log_since`] reads (only
+    /// errors of *these* failed starts name suspects, never stale log lines).
+    #[must_use]
+    pub fn failure_run_since(&self) -> Option<u64> {
+        let run = usize::try_from(self.consecutive_failures()).unwrap_or(usize::MAX);
+        if run == 0 {
+            return None;
+        }
+        let first = self.history.starts.len().checked_sub(run)?;
+        self.history.starts.get(first).map(|record| record.ts)
+    }
+
     /// The state file.
     #[must_use]
     pub fn path(&self) -> &Path {
@@ -193,6 +206,22 @@ impl HostSafeMode {
         self.save();
     }
 
+    /// [`Self::record_stopped`] for a process that does not own the [`HostSafeMode`]
+    /// (fix5-host): a SIGTERM while the host is still starting, or `--exit-with-parent`
+    /// seeing the app gone. Without this the open marker survived the exit and the next
+    /// start counted it as a fast fail — the app replacing or closing its host pushed it
+    /// into safe mode. No-op when no start is open (a success already closed it).
+    pub fn record_stopped_in(data_dir: &Path) {
+        let path = data_dir.join(START_HISTORY_FILE);
+        let history = read_history(&path);
+        if history.open_start.is_none() {
+            return;
+        }
+        let mut safe = Self { path, history };
+        safe.history.v = 1;
+        safe.record_stopped();
+    }
+
     fn push(&mut self, record: StartRecord) {
         self.history.starts.push(record);
         let excess = self.history.starts.len().saturating_sub(HISTORY_LIMIT);
@@ -256,9 +285,68 @@ pub fn banner(plan: &SafeModePlan) -> String {
 /// prose in the log never turns into a suspect.
 #[must_use]
 pub fn suspects_in_log(text: &str) -> Vec<(String, String)> {
+    suspects_in_lines(text.lines())
+}
+
+/// [`suspects_in_log`] restricted to the lines logged at or after `since_ms` (epoch ms):
+/// the errors of the current failed starts only (fix5-host — a days-old
+/// `auth.json: No file descriptors available` must not be blamed for today's
+/// failures). A line's time is its leading RFC 3339 timestamp (ANSI colour codes
+/// stripped); untimestamped lines (raw stderr) inherit the previous line's time, and
+/// lines before the first timestamp are skipped.
+#[must_use]
+pub fn suspects_in_log_since(text: &str, since_ms: u64) -> Vec<(String, String)> {
+    let mut current: Option<u64> = None;
+    let recent = text.lines().filter(|line| {
+        if let Some(at) = line_time_ms(line) {
+            current = Some(at);
+        }
+        current.is_some_and(|at| at >= since_ms)
+    });
+    suspects_in_lines(recent.collect::<Vec<_>>().into_iter())
+}
+
+/// Epoch ms of a log line's leading RFC 3339 timestamp (`2026-11-02T06:07:57.801Z`,
+/// possibly wrapped in ANSI colour codes).
+fn line_time_ms(line: &str) -> Option<u64> {
+    let plain = strip_ansi(line);
+    let first = plain.split_whitespace().next()?;
+    let at = chrono::DateTime::parse_from_rfc3339(first).ok()?;
+    u64::try_from(at.timestamp_millis()).ok()
+}
+
+/// `line` without ANSI escape sequences (`ESC [ … letter`).
+fn strip_ansi(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            if chars.next() == Some('[') {
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn suspects_in_lines<'a>(lines: impl DoubleEndedIterator<Item = &'a str>) -> Vec<(String, String)> {
+    /// File names (`auth.json`, `host.lock`) look like ids but are never extensions.
+    const FILE_SUFFIXES: [&str; 12] = [
+        "json", "toml", "yaml", "yml", "lock", "log", "md", "txt", "key", "sock", "js", "wasm",
+    ];
     fn valid_id(id: &str) -> bool {
         !id.is_empty()
             && id.contains('.')
+            && !id
+                .rsplit('.')
+                .next()
+                .is_some_and(|last| FILE_SUFFIXES.contains(&last))
             && id.split('.').all(|segment| {
                 let mut chars = segment.chars();
                 chars
@@ -282,7 +370,7 @@ pub fn suspects_in_log(text: &str) -> Vec<(String, String)> {
         None
     }
     let mut suspects: Vec<(String, String)> = Vec::new();
-    for line in text.lines().rev() {
+    for line in lines.rev() {
         let Some((id, error)) = id_before_message(line) else {
             continue;
         };
@@ -301,6 +389,15 @@ pub fn suspects_in_log(text: &str) -> Vec<(String, String)> {
 pub fn suspects_from_log(data_dir: &Path) -> Vec<(String, String)> {
     std::fs::read_to_string(data_dir.join(LOG_FILE))
         .map(|text| suspects_in_log(&text))
+        .unwrap_or_default()
+}
+
+/// [`suspects_from_log`] restricted to lines logged at or after `since_ms` (see
+/// [`suspects_in_log_since`]).
+#[must_use]
+pub fn suspects_from_log_since(data_dir: &Path, since_ms: u64) -> Vec<(String, String)> {
+    std::fs::read_to_string(data_dir.join(LOG_FILE))
+        .map(|text| suspects_in_log_since(&text, since_ms))
         .unwrap_or_default()
 }
 
@@ -464,6 +561,88 @@ not a suspect: just a plain message
         assert!(suspects_from_log(dir.path()).is_empty(), "no host.log");
         std::fs::write(dir.path().join(LOG_FILE), log).unwrap();
         assert_eq!(suspects_from_log(dir.path()).len(), 2);
+    }
+
+    /// fix5-host: the Oct-31 `auth.json` EMFILE line was named as a suspect for
+    /// Nov-2 failures. Only lines of the current failure run count, file names are
+    /// never extension ids, and colour codes do not hide the timestamp.
+    #[test]
+    fn suspects_come_only_from_the_current_failed_starts() {
+        use StartOutcome::{FastFail, Stopped, Success};
+        let log = "\
+2026-10-31T10:00:00Z  WARN oino_core::extensions: Failed to load extension \"unipi.notify\": init failed: stale
+2026-10-31T10:00:01Z ERROR oino_settings: auth.json: No file descriptors available (os error 24)
+\u{1b}[2m2026-11-02T05:49:40.000000Z\u{1b}[0m \u{1b}[33m WARN\u{1b}[0m oino_core::extensions: Failed to load extension \"unipi.cron\": register failed: now
+unipi-host is already running (pid 7, mode app, version 1.0.0)
+2026-11-02T05:49:41Z ERROR oino_settings: host.lock: os error 24
+";
+        // 2026-11-02T05:49:30Z: the first failed start of the current run.
+        let since = u64::try_from(
+            chrono::DateTime::parse_from_rfc3339("2026-11-02T05:49:30Z")
+                .unwrap()
+                .timestamp_millis(),
+        )
+        .unwrap();
+        assert_eq!(
+            suspects_in_log_since(log, since),
+            vec![("unipi.cron".to_owned(), "register failed: now".to_owned())]
+        );
+        // Nothing logged since: no suspects at all (never the stale ones).
+        assert!(suspects_in_log_since(log, since + 3_600_000).is_empty());
+        assert!(
+            !suspects_in_log(log).iter().any(|(id, _)| id == "auth.json"),
+            "a file name is not an extension id"
+        );
+
+        // The run's start is the first record of the trailing fast-fail run.
+        let dir = tempfile::tempdir().unwrap();
+        let records = [(1, Success), (2, FastFail), (3, Stopped), (10, FastFail), (20, FastFail)];
+        let starts = records
+            .iter()
+            .map(|(ts, outcome)| StartRecord {
+                ts: *ts,
+                outcome: *outcome,
+                uptime_s: 1,
+            })
+            .collect();
+        std::fs::write(
+            dir.path().join(START_HISTORY_FILE),
+            serde_json::to_string(&StartHistory {
+                v: 1,
+                starts,
+                open_start: None,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(HostSafeMode::load(dir.path()).failure_run_since(), Some(10));
+        let fresh = tempfile::tempdir().unwrap();
+        assert_eq!(HostSafeMode::load(fresh.path()).failure_run_since(), None);
+        std::fs::write(fresh.path().join(LOG_FILE), log).unwrap();
+        assert_eq!(suspects_from_log_since(fresh.path(), since).len(), 1);
+    }
+
+    /// fix5-host: a start that ends outside the owner of the [`HostSafeMode`]
+    /// (SIGTERM while starting, `--exit-with-parent`) is a clean stop, not a fast fail.
+    #[test]
+    fn a_stop_recorded_from_outside_closes_the_open_start() {
+        let dir = tempfile::tempdir().unwrap();
+        // Nothing open: nothing recorded.
+        HostSafeMode::record_stopped_in(dir.path());
+        assert!(!dir.path().join(START_HISTORY_FILE).exists());
+        for _ in 0..4 {
+            let mut start = HostSafeMode::load(dir.path());
+            start.begin_start();
+            HostSafeMode::record_stopped_in(dir.path());
+        }
+        let next = HostSafeMode::load(dir.path());
+        assert_eq!(next.consecutive_failures(), 0);
+        assert!(!next.trips());
+        assert!(next
+            .history
+            .starts
+            .iter()
+            .all(|record| record.outcome == StartOutcome::Stopped));
     }
 
     #[test]
