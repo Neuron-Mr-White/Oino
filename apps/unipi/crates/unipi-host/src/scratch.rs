@@ -89,29 +89,53 @@ fn in_scratch_area(root: &Path, path: &Path) -> bool {
     normal(path).starts_with(normal(root))
 }
 
-/// The one-way rule of "Move to a workspace…": only a scratch chat moves, and only to a
-/// real folder outside the scratch area. Returns the user-facing refusal.
+/// Where a chat moves from (see [`check_move`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MoveSource {
+    /// Its own scratch folder: optionally copied into the workspace, then deleted.
+    Scratch,
+    /// The user's home folder — an older chat (cloned from UniPi) that ran there before
+    /// scratch folders existed. The home is never copied from and never deleted.
+    Home,
+}
+
+/// The one-way rule of "Move to a workspace…": only a chat without a workspace moves — a
+/// scratch chat, or an older chat that ran in `home` — and only to a real folder outside
+/// the scratch area (never the home itself). Returns the user-facing refusal.
 ///
 /// # Errors
 ///
 /// The chat already has a workspace, or the target is not a usable workspace folder.
-pub fn check_move(root: &Path, current: &Path, target: &Path) -> Result<(), String> {
-    if !is_scratch(root, current) {
+pub fn check_move(
+    root: &Path,
+    home: Option<&Path>,
+    current: &Path,
+    target: &Path,
+) -> Result<MoveSource, String> {
+    let is_home = |path: &Path| home.is_some_and(|home| normal(home) == normal(path));
+    let source = if is_scratch(root, current) {
+        MoveSource::Scratch
+    } else if is_home(current) {
+        MoveSource::Home
+    } else {
         return Err(
             "Only a chat without a workspace can move to one — this chat already has a workspace"
                 .to_owned(),
         );
-    }
+    };
     if !target.is_absolute() {
         return Err(format!("{} is not a full folder path", target.display()));
     }
     if in_scratch_area(root, target) {
         return Err("Pick a workspace folder outside UniPi's scratch folders".to_owned());
     }
+    if is_home(target) {
+        return Err("Pick a workspace folder, not your whole home folder".to_owned());
+    }
     if !target.is_dir() {
         return Err(format!("{} is not a folder", target.display()));
     }
-    Ok(())
+    Ok(source)
 }
 
 /// Deletes the scratch folder **of `session_id` itself** — `<root>/<session id>` — when
@@ -264,19 +288,44 @@ mod tests {
         for d in [&chat, &work, &other] {
             fs::create_dir_all(d).unwrap();
         }
+        let home = Some(dir.path());
         // scratch → workspace: allowed.
-        assert_eq!(check_move(&root, &chat, &work), Ok(()));
+        assert_eq!(check_move(&root, home, &chat, &work), Ok(MoveSource::Scratch));
         // workspace → scratch, workspace → workspace: refused.
-        assert!(check_move(&root, &work, &chat).is_err());
-        assert!(check_move(&root, &work, &other).is_err());
-        // home ("No workspace" before scratch existed) is not a scratch chat either.
-        assert!(check_move(&root, dir.path(), &work).is_err());
+        assert!(check_move(&root, home, &work, &chat).is_err());
+        assert!(check_move(&root, home, &work, &other).is_err());
         // scratch → another scratch folder or the root: refused.
-        assert!(check_move(&root, &chat, &root.join("s2")).is_err());
-        assert!(check_move(&root, &chat, &root).is_err());
+        assert!(check_move(&root, home, &chat, &root.join("s2")).is_err());
+        assert!(check_move(&root, home, &chat, &root).is_err());
         // Relative or missing targets: refused.
-        assert!(check_move(&root, &chat, Path::new("work")).is_err());
-        assert!(check_move(&root, &chat, &dir.path().join("missing")).is_err());
+        assert!(check_move(&root, home, &chat, Path::new("work")).is_err());
+        assert!(check_move(&root, home, &chat, &dir.path().join("missing")).is_err());
+    }
+
+    #[test]
+    fn an_older_chat_in_home_moves_too_but_never_to_home() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let root = home.join(".local/share/oino/scratch");
+        let chat = root.join("s1");
+        let work = home.join("work");
+        for d in [&chat, &work] {
+            fs::create_dir_all(d).unwrap();
+        }
+        // home ("No workspace" before scratch existed, cloned UniPi chats) → workspace.
+        assert_eq!(check_move(&root, Some(home), home, &work), Ok(MoveSource::Home));
+        assert_eq!(
+            check_move(&root, Some(home), &home.join("./"), &work),
+            Ok(MoveSource::Home)
+        );
+        // Without a known home the old chat is just a chat with a folder.
+        assert!(check_move(&root, None, home, &work).is_err());
+        // Never into the home itself, nor into the scratch area.
+        assert!(check_move(&root, Some(home), home, home).is_err());
+        assert!(check_move(&root, Some(home), &chat, home).is_err());
+        assert!(check_move(&root, Some(home), home, &chat).is_err());
+        // A folder inside home is a workspace, not the home: no move from there.
+        assert!(check_move(&root, Some(home), &work, &home.join("x")).is_err());
     }
 
     #[test]

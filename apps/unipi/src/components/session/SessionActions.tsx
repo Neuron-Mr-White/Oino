@@ -8,7 +8,7 @@
 import { onCleanup } from 'solid-js';
 import { registerChatAction } from '../shell/ConversationHeader';
 import { forkSession, revealFolder } from '../../lib/session/actions';
-import { isScratchCwd } from '../../lib/session/selectors';
+import { isMovableCwd, isScratchCwd } from '../../lib/session/selectors';
 import { hubs } from '../../lib/session/hub';
 import { sessions } from '../../lib/session/store';
 import { openRenameDialog, RenameDialog } from './RenameDialog';
@@ -29,11 +29,12 @@ export function SessionActions() {
       run: (ctx) => void forkSession(ctx.hostId, ctx.sessionId),
     }),
   );
-  // UniPi Oino: a No-workspace chat (its private scratch folder) moves to a real folder, one way.
+  // UniPi Oino: a No-workspace chat (its private scratch folder, or an older chat's bare home
+  // folder) moves to a real folder, one way.
   onCleanup(
     registerChatAction('move-workspace', {
       run: (ctx) => openMoveWorkspaceDialog({ hostId: ctx.hostId, sessionId: ctx.sessionId, cwd: ctx.cwd }),
-      when: (ctx) => isScratchCwd(ctx.cwd),
+      when: (ctx) => isMovableCwd(ctx.cwd),
     }),
   );
   onCleanup(

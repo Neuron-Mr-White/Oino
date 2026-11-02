@@ -3,7 +3,9 @@
  * scratch folder; this dialog moves it to a real folder — one way only. The
  * picker is the draft's (recent workspaces + Open folder…); the text says the
  * move cannot be undone; "Copy the scratch files" is off by default and never
- * overwrites. The host appends one reminder to the conversation (the earlier
+ * overwrites; the scratch folder is deleted after a successful move. An older
+ * chat that ran in the bare home folder (cloned from UniPi) moves the same way,
+ * but its files are never copied (the copy option is disabled). The host appends one reminder to the conversation (the earlier
  * messages and the system prompt stay as they were) and the sidebar regroups
  * the chat under the new workspace.
  *
@@ -19,6 +21,7 @@ import { pushBack } from '../../lib/back';
 import { fsRoots } from '../../lib/fs';
 import { hubs } from '../../lib/session/hub';
 import { folderChoices, folderName } from '../../lib/session/newSession';
+import { isBareHomeCwd } from '../../lib/session/selectors';
 import { moveToWorkspace } from '../../lib/session/actions';
 import { showActionNotice } from '../../lib/timeline/actions';
 import '../draft/draft.css';
@@ -48,6 +51,8 @@ export function MoveWorkspaceDialog() {
 function MoveWorkspace(props: { target: MoveTarget }) {
   const [folder, setFolder] = createSignal<string | undefined>();
   const [copy, setCopy] = createSignal(false);
+  /** An older chat in the bare home folder: nothing is copied from (or deleted in) the home. */
+  const fromHome = () => isBareHomeCwd(props.target.cwd);
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | undefined>();
   const close = () => !busy() && closeMoveWorkspaceDialog();
@@ -69,7 +74,7 @@ function MoveWorkspace(props: { target: MoveTarget }) {
     setBusy(true);
     setError(undefined);
     try {
-      const done = await moveToWorkspace(props.target.hostId, props.target.sessionId, cwd, { copyFiles: copy() });
+      const done = await moveToWorkspace(props.target.hostId, props.target.sessionId, cwd, { copyFiles: copy() && !fromHome() });
       setBusy(false);
       closeMoveWorkspaceDialog();
       const copied = done.copied ? ` · ${done.copied} file${done.copied === 1 ? '' : 's'} copied` : '';
@@ -81,8 +86,13 @@ function MoveWorkspace(props: { target: MoveTarget }) {
   };
   const body = () => (
     <div class="move-ws-form" data-testid="move-ws-form">
-      <p class="move-ws-text">
-        This chat has no workspace — it runs in a private scratch folder. Pick a folder to work in from the next message on.
+      <p class="move-ws-text" data-testid="move-ws-text">
+        <Show
+          when={fromHome()}
+          fallback={<>This chat has no workspace — it runs in a private scratch folder. Pick a folder to work in from the next message on.</>}
+        >
+          This older chat has no workspace — it ran in your home folder. Pick a folder to work in from the next message on.
+        </Show>
       </p>
       <div class="move-ws-picker">
         <WorkspacePicker
@@ -101,12 +111,30 @@ function MoveWorkspace(props: { target: MoveTarget }) {
         />
       </div>
       <p class="move-ws-warn" data-testid="move-ws-warning">
-        This is one way: the chat can’t go back to its scratch folder or move again. Earlier messages stay as they are; the agent is
-        told the folder changed.
+        <Show
+          when={fromHome()}
+          fallback={
+            <>
+              This is one way: the chat can’t go back or move again, and its scratch folder is deleted after the move. Earlier messages stay
+              as they are; the agent is told the folder changed.
+            </>
+          }
+        >
+          This is one way: the chat can’t move again. Your home folder is left as it is. Earlier messages stay as they are; the agent is
+          told the folder changed.
+        </Show>
       </p>
-      <label class="move-ws-copy">
-        <input type="checkbox" checked={copy()} disabled={busy()} onChange={(e) => setCopy(e.currentTarget.checked)} data-testid="move-ws-copy" />
-        <span>Copy the scratch folder’s files into the workspace (existing files are kept)</span>
+      <label class="move-ws-copy" data-disabled={fromHome() ? '' : undefined}>
+        <input
+          type="checkbox"
+          checked={copy() && !fromHome()}
+          disabled={busy() || fromHome()}
+          onChange={(e) => setCopy(e.currentTarget.checked)}
+          data-testid="move-ws-copy"
+        />
+        <span>
+          {fromHome() ? 'Copy files (not offered for the home folder)' : 'Copy the scratch folder’s files into the workspace (existing files are kept)'}
+        </span>
       </label>
       <Show when={error()}>
         <p class="move-ws-error" role="alert" data-testid="move-ws-error">

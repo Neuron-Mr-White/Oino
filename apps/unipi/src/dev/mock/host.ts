@@ -539,8 +539,12 @@ const BUILTIN: Record<string, MockOp> = {
     const card = h.spec.cards?.find((c) => c.session_id === a.session);
     if (!card) throw err('E_NOT_FOUND', `No session ${String(a.session)}`);
     const scratch = (p: unknown) => typeof p === 'string' && /[\\/]oino[\\/]scratch[\\/][^\\/]+[\\/]?$/.test(p);
-    if (!scratch(card.cwd)) throw err('E_INTERNAL', 'Only a chat without a workspace can move to one — this chat already has a workspace');
+    // An older chat (cloned from UniPi) that ran in the bare home moves too — never copied from.
+    const home = (p: unknown) => typeof p === 'string' && /^\/home\/[^/]+\/?$|^\/Users\/[^/]+\/?$|^\/root\/?$/.test(p);
+    if (!scratch(card.cwd) && !home(card.cwd)) throw err('E_INTERNAL', 'Only a chat without a workspace can move to one — this chat already has a workspace');
     if (typeof a.cwd !== 'string' || !a.cwd.startsWith('/') || /[\\/]oino[\\/]scratch([\\/]|$)/.test(a.cwd)) throw err('E_INTERNAL', 'Pick a workspace folder outside UniPi\'s scratch folders');
+    if (home(a.cwd)) throw err('E_INTERNAL', 'Pick a workspace folder, not your whole home folder');
+    if (home(card.cwd) && (a.copy_files === true || a.copyFiles === true)) throw err('E_INTERNAL', 'This chat ran in your home folder — its files can\'t be copied; move it without copying');
     (card as Record<string, unknown>).cwd = a.cwd;
     h.emit({ kind: 'session_changed', card: { ...card } });
     return { card: { ...card }, copied: 0, skipped: 0 };

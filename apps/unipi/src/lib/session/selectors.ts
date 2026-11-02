@@ -30,8 +30,23 @@ export function isScratchCwd(cwd?: string | null): boolean {
 export function isHomeCwd(cwd?: string | null): boolean {
   if (!cwd) return true;
   if (isScratchCwd(cwd)) return true;
+  // `/` (an empty path once trimmed) counts as No workspace too.
+  return !cwd.replace(/[\\/]+$/, '') || isBareHomeCwd(cwd);
+}
+
+/** True when `cwd` is a user's bare home directory itself (older chats, cloned from UniPi, ran there). */
+export function isBareHomeCwd(cwd?: string | null): boolean {
+  if (!cwd) return false;
   const clean = cwd.replace(/[\\/]+$/, '');
-  return !clean || clean === '~' || /^\/home\/[^/]+$|^\/Users\/[^/]+$|^\/root$|^[A-Za-z]:[\\/]Users[\\/][^\\/]+$/.test(clean);
+  return !!clean && (clean === '~' || /^\/home\/[^/]+$|^\/Users\/[^/]+$|^\/root$|^[A-Za-z]:[\\/]Users[\\/][^\\/]+$/.test(clean));
+}
+
+/**
+ * True when the chat may "Move to a workspace…" (one way): it runs in its scratch folder, or —
+ * an older chat — in the bare home folder (the host checks again; the home is never copied from).
+ */
+export function isMovableCwd(cwd?: string | null): boolean {
+  return isScratchCwd(cwd) || isBareHomeCwd(cwd);
 }
 
 /** Card / session display title: the session name, else its project folder (or `fallback` when in No workspace). */

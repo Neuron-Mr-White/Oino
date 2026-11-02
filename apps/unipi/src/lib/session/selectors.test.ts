@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionCard } from '../host/client';
 import { initialState } from './reducer';
 import { enqueue, markAcked, PENDING_ACKED_MS, PENDING_LOST_MS, settleByMessage, settleByQueue, sweep } from './outbox';
-import { connBanner, isHomeCwd, isRunning, needsYou, NO_WORKSPACE_LABEL, outboxLabel, projectsOf, sessionCost, sessionCwd, sessionTitle, shortCwd } from './selectors';
+import { connBanner, isBareHomeCwd, isHomeCwd, isMovableCwd, isRunning, needsYou, NO_WORKSPACE_LABEL, outboxLabel, projectsOf, sessionCost, sessionCwd, sessionTitle, shortCwd } from './selectors';
 
 const card = (id: string, over: Partial<SessionCard> = {}): SessionCard => ({ session_id: id, run_state: 'idle', ...over });
 
@@ -14,6 +14,18 @@ describe('selectors', () => {
     expect(sessionTitle(card('a', { name: 'Card' }), { name: 'Live' })).toBe('Live');
     expect(isHomeCwd('/home/oi')).toBe(true);
     expect(isHomeCwd('/home/oi/qa1ws')).toBe(false);
+    expect(isHomeCwd('/')).toBe(true);
+    expect(isBareHomeCwd('/home/oi/')).toBe(true);
+    expect(isBareHomeCwd('C:\\Users\\oi')).toBe(true);
+    expect(isBareHomeCwd('/home/oi/.local/share/oino/scratch/abc')).toBe(false);
+    expect(isBareHomeCwd('/')).toBe(false);
+    // Move to a workspace: a scratch chat, or an older chat that ran in the bare home — nothing else.
+    expect(isMovableCwd('/home/oi/.local/share/oino/scratch/abc')).toBe(true);
+    expect(isMovableCwd('/home/oi')).toBe(true);
+    expect(isMovableCwd('/Users/oi')).toBe(true);
+    expect(isMovableCwd('/home/oi/proj')).toBe(false);
+    expect(isMovableCwd('/')).toBe(false);
+    expect(isMovableCwd(undefined)).toBe(false);
     expect(sessionCwd(card('a', { cwd: '/x/proj/' }))).toBe('/x/proj');
     expect(shortCwd('/home/dev/p')).toBe('~/p');
   });

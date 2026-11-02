@@ -20,7 +20,7 @@ import { openMoveWorkspaceDialog } from '../session/MoveWorkspaceDialog';
 import { archiveSession, closeRowMenu, copyFromRow, deleteSession, forkSession, markUnread, revealFolder, setPinned, openRowMenuState } from '../../lib/session/actions';
 import { hubs } from '../../lib/session/hub';
 import { listView, toggleSubagentRow } from '../../lib/session/listView';
-import { isScratchCwd, sessionTitle } from '../../lib/session/selectors';
+import { isMovableCwd, isScratchCwd, sessionTitle } from '../../lib/session/selectors';
 import { sessions } from '../../lib/session/store';
 
 export function SessionMenu() {
@@ -83,7 +83,7 @@ export function SessionMenu() {
               <MenuRow icon={<FileText size={iconSize()} />} label="Copy log path" disabled={!card.file} onSelect={run(() => copyFromRow('log', card))} />
               <MenuRow icon={<FolderOpen size={iconSize()} />} label={isScratchCwd(card.cwd) ? 'Reveal scratch folder' : 'Reveal folder'} disabled={!card.cwd} onSelect={run(() => revealFolder(hostId, card.cwd))} />
             </Show>
-            <Show when={isScratchCwd(card.cwd)}>
+            <Show when={isMovableCwd(card.cwd)}>
               <MenuRow
                 icon={<FolderInput size={iconSize()} />}
                 label="Move to a workspace…"

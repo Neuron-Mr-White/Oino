@@ -412,6 +412,10 @@ struct Inner {
     /// Where "No workspace" chats run: `<scratch root>/<session id>` (scratch.rs). All of
     /// them share the root's services set.
     scratch_root: PathBuf,
+    /// The user's home — older "No workspace" chats (cloned from UniPi) ran there; they may
+    /// "Move to a workspace…" too, but the home is never copied from or deleted. Hermetic
+    /// hubs (tests) treat their primary cwd as the home.
+    home: Option<PathBuf>,
     started: SystemTime,
 }
 
@@ -483,6 +487,11 @@ impl SessionHub {
             tracing::warn!(root = %scratch_root.display(), "scratch root not created: {error}");
         }
         limits = limits.with_shared_services_root(scratch_root.clone());
+        let home = if options.host_data_dir.is_some() {
+            crate::fs::home_dir_opt()
+        } else {
+            Some(cwd.clone())
+        };
         let core = CoreHub::create_with(core_options, limits)?;
         let host_data = options
             .host_data_dir
@@ -504,6 +513,7 @@ impl SessionHub {
             readiness: crate::models_readiness::ReadinessCache::new(),
             host_data,
             scratch_root,
+            home,
             started: SystemTime::now(),
         });
         Ok(Arc::new(Self { inner }))
@@ -1276,8 +1286,17 @@ impl Inner {
         let canon = |path: &Path| dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         let current = canon(Path::new(&current));
         let target_dir = canon(cwd);
-        crate::scratch::check_move(&canon(&self.scratch_root), &current, &target_dir)
-            .map_err(HubError::failed)?;
+        let home = self.home.as_deref().map(canon);
+        let scratch_root = canon(&self.scratch_root);
+        let source =
+            crate::scratch::check_move(&scratch_root, home.as_deref(), &current, &target_dir)
+                .map_err(HubError::failed)?;
+        // The home is never copied from (it is everything the user has).
+        if copy_files && source == crate::scratch::MoveSource::Home {
+            return Err(HubError::failed(
+                "This chat ran in your home folder — its files can't be copied; move it without copying",
+            ));
+        }
         let copied = if copy_files {
             crate::scratch::copy_missing(&current, &target_dir).map_err(|error| {
                 HubError::failed(format!(
@@ -1302,9 +1321,11 @@ impl Inner {
             "chat moved to a workspace"
         );
         // The scratch folder has served its purpose (its files were copied when asked):
-        // delete it — only this chat's own `<root>/<id>`. A failure here leaves a stray
-        // folder, not a failed move.
-        self.remove_scratch(&id, &current).await;
+        // delete it — only this chat's own `<root>/<id>`, never the home. A failure here
+        // leaves a stray folder, not a failed move.
+        if source == crate::scratch::MoveSource::Scratch {
+            self.remove_scratch(&id, &current).await;
+        }
         let card = match self.card(&id).await? {
             Some(card) => card,
             None => self.card_for(&backend, &target_dir).await,

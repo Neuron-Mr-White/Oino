@@ -132,7 +132,7 @@ describe('Move to a workspace (dialog + host)', () => {
   const boot = () => {
     const world = createMockHost({
       name: 't',
-      hosts: [{ id: 'pc', name: 'pc', transport: 'local', conn: { state: 'connected' }, cards: [card('s1', SCRATCH), card('s2', '/home/you/p/other')], fs: { '/home/you': { kind: 'dir', children: { p: { kind: 'dir', children: { site: { kind: 'dir', children: {} } } } } } } }],
+      hosts: [{ id: 'pc', name: 'pc', transport: 'local', conn: { state: 'connected' }, cards: [card('s1', SCRATCH), card('s2', '/home/you/p/other'), card('s3', '/home/you')], fs: { '/home/you': { kind: 'dir', children: { p: { kind: 'dir', children: { site: { kind: 'dir', children: {} } } } } } } }],
     });
     setHostClientFactory(world.client);
     return world;
@@ -150,6 +150,47 @@ describe('Move to a workspace (dialog + host)', () => {
     await expect(moveToWorkspace('pc', 's2', '/home/you/p/site')).rejects.toBeTruthy();
   });
 
+  it('an older chat in the bare home moves one way too, never copying from the home', async () => {
+    boot();
+    const { moveToWorkspace } = await import('../../lib/session/actions');
+    const hub = hubs().ensure('pc');
+    await waitFor(() => expect(hub.state.loaded).toBe(true));
+    await expect(moveToWorkspace('pc', 's3', '/home/you/p/site', { copyFiles: true })).rejects.toBeTruthy();
+    await expect(moveToWorkspace('pc', 's3', '/home/you')).rejects.toBeTruthy();
+    const done = await moveToWorkspace('pc', 's3', '/home/you/p/site');
+    expect(done.cwd).toBe('/home/you/p/site');
+    await expect(moveToWorkspace('pc', 's3', '/home/you/p/other')).rejects.toBeTruthy();
+  });
+
+  it('the dialog for a home chat disables the copy and never sends copyFiles', async () => {
+    const world = boot();
+    const requests: Array<[string, Record<string, unknown> | undefined]> = [];
+    const client = world.client('pc');
+    const request = client.request.bind(client);
+    client.request = ((op: string, args?: Record<string, unknown>) => {
+      requests.push([op, args]);
+      return request(op, args);
+    }) as typeof client.request;
+    setHostClientFactory(() => client);
+    const { MoveWorkspaceDialog, openMoveWorkspaceDialog, moveWorkspaceDialog } = await import('./MoveWorkspaceDialog');
+    render(() => <MoveWorkspaceDialog />);
+    openMoveWorkspaceDialog({ hostId: 'pc', sessionId: 's3', cwd: '/home/you' });
+    await waitFor(() => screen.getByTestId('move-ws-dialog'));
+    expect(screen.getByTestId('move-ws-text').textContent).toMatch(/home folder/i);
+    expect(screen.getByTestId('move-ws-warning').textContent).toMatch(/home folder is left as it is/i);
+    const box = screen.getByTestId('move-ws-copy') as HTMLInputElement;
+    expect(box.disabled).toBe(true);
+    expect(box.checked).toBe(false);
+    await waitFor(() => expect(hubs().ensure('pc').state.loaded).toBe(true));
+    fireEvent.click(screen.getByTestId('workspace-chip'));
+    const menu = await waitFor(() => screen.getByTestId('workspace-menu'));
+    fireEvent.click([...menu.querySelectorAll('.ws-row')].find((r) => r.textContent?.includes('other'))!);
+    fireEvent.click(screen.getByTestId('move-ws-confirm'));
+    await waitFor(() => expect(moveWorkspaceDialog()).toBeUndefined());
+    const move = requests.find(([op]) => op === 'session_move');
+    expect(move?.[1]).toEqual({ session: 's3', cwd: '/home/you/p/other', copyFiles: false });
+  });
+
   it('the dialog explains it is one way, copy is off by default, Move sends session_move', async () => {
     const world = boot();
     const requests: Array<[string, Record<string, unknown> | undefined]> = [];
@@ -165,7 +206,9 @@ describe('Move to a workspace (dialog + host)', () => {
     openMoveWorkspaceDialog({ hostId: 'pc', sessionId: 's1', cwd: SCRATCH });
     await waitFor(() => screen.getByTestId('move-ws-dialog'));
     expect(screen.getByTestId('move-ws-warning').textContent).toMatch(/one way/i);
+    expect(screen.getByTestId('move-ws-warning').textContent).toMatch(/scratch folder is deleted/i);
     expect((screen.getByTestId('move-ws-copy') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId('move-ws-copy') as HTMLInputElement).disabled).toBe(false);
     expect((screen.getByTestId('move-ws-confirm') as HTMLButtonElement).disabled).toBe(true);
     // Pick a recent workspace from the picker.
     await waitFor(() => expect(hubs().ensure('pc').state.loaded).toBe(true));

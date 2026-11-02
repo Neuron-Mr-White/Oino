@@ -353,6 +353,37 @@ async fn deleting_a_scratch_chat_deletes_only_its_own_scratch_folder() {
     assert!(home.join("home.txt").is_file(), "the home is never deleted");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_older_home_chat_moves_without_copy_and_home_is_untouched() {
+    let fx = fixture(vec![FauxResponse::Text("first".into())]);
+    let home = fx.hub.cwd().to_path_buf();
+    std::fs::write(home.join("home.txt"), "home").unwrap();
+    let work = fx.dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    // A cloned old-UniPi chat: it ran in $HOME before scratch folders existed.
+    let chat = fx.hub.create_session(Some(&home), None).await.unwrap();
+    select_faux(&chat).await;
+    ask(&chat, "hello").await;
+    let id = chat.session_id();
+
+    // Copy-from-home is refused (the home is everything the user has).
+    let copy = fx.hub.move_to_workspace(&id, &work, true).await;
+    assert!(copy.is_err(), "copying from the home must be refused");
+    assert!(!work.join("home.txt").exists());
+    // Never into the home itself.
+    assert!(fx.hub.move_to_workspace(&id, &home, false).await.is_err());
+
+    let moved = fx.hub.move_to_workspace(&id, &work, false).await.unwrap();
+    let work_canon = dunce::canonicalize(&work).unwrap();
+    assert_eq!(moved.card.cwd, work_canon.display().to_string());
+    assert_eq!((moved.copied, moved.skipped), (0, 0));
+    assert_eq!(state_of(&chat).await.cwd.unwrap(), work_canon.display().to_string());
+    assert!(home.join("home.txt").is_file(), "the home is never deleted");
+    assert!(!work.join("home.txt").exists(), "nothing copied from the home");
+    // One way: no second move.
+    assert!(fx.hub.move_to_workspace(&id, &work, false).await.is_err());
+}
+
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_failed_copy_keeps_the_scratch_folder_and_the_chat_unmoved() {
