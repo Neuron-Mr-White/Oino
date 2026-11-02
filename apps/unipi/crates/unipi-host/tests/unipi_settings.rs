@@ -192,7 +192,9 @@ async fn unipi_state_files_move_into_settings() {
     assert!(!permission.exists());
     assert!(!skill_states.exists());
 
-    // A command writes the project file.
+    // A permission-mode change is session state (E-18/F-09): it never lands in the
+    // repo's settings.json (the host refuses project `mode` writes) — the registry
+    // carries no `mode` either; only rules and the global default are settings.
     let session = runtime.session();
     let cx = session.runner().call_context().with_kind(CallKind::Command);
     services
@@ -208,11 +210,11 @@ async fn unipi_state_files_move_into_settings() {
         .await
         .unwrap();
     let project = read_json(&cwd.join(".oino/settings.json"));
-    assert_eq!(project["extensionSettings"]["permission"]["mode"], "ask");
-    assert_eq!(
-        registry.values("permission", SettingsLayer::Effective)["mode"],
-        "ask"
+    assert!(
+        project["extensionSettings"]["permission"].get("mode").is_none(),
+        "the mode is never written into a project: {project}"
     );
+    assert!(registry.values("permission", SettingsLayer::Effective).get("mode").is_none());
 
     // Shared secret: a hub write of the decision-model key lands in secrets.json and is
     // readable by other unipi components, masked for frontends.
