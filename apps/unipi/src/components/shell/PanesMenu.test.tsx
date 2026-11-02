@@ -1,5 +1,5 @@
 /**
- * WP-A29 phone shell pass: the ⋯ "Panes" group launches the pane surfaces
+ * Phone spec §3.4 (PH-18): the chat ⋯ action sheet's Open section launches the pane surfaces
  * (Files layer, status-pane layer, session-tab sheets) — the side pane /
  * bottom panel don't exist on the phone (§3.9). Also covers the tab bar and
  * the draft's reduced group (no session-scoped kinds).
@@ -38,12 +38,13 @@ function boot(hash: string) {
 async function openMenu() {
   await waitFor(() => expect(screen.getByTestId('conv-title').textContent).not.toBe('Session'));
   fireEvent.click(screen.getByTestId('conv-more'));
-  await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+  await waitFor(() => expect(screen.getByTestId('chat-actions-sheet')).toBeTruthy());
 }
 
-const menuLabels = () => [...document.querySelectorAll('[role=menuitem]')].map((el) => el.textContent?.trim());
+const rowLabels = () => [...document.querySelectorAll('.ph-action-row .ph-action-label')].map((el) => el.textContent?.trim());
+const menuLabels = rowLabels;
 const clickRow = async (label: string) => {
-  const row = [...document.querySelectorAll('[role=menuitem]')].find((el) => el.textContent?.trim() === label);
+  const row = [...document.querySelectorAll('.ph-action-row')].find((el) => el.querySelector('.ph-action-label')?.textContent?.trim() === label);
   expect(row, `menu row "${label}"`).toBeTruthy();
   fireEvent.click(row!);
 };
@@ -76,19 +77,21 @@ describe('phone tab bar (§3.9)', () => {
   });
 });
 
-describe('⋯ "Panes" group (§3.9)', () => {
+describe('chat ⋯ sheet (phone spec §3.4)', () => {
   it('lists the launchable pane kinds in a session', async () => {
     boot(`#/s/pc-coffee/${SESSION}`);
     await openMenu();
     const labels = menuLabels();
-    for (const label of ['Files', 'Git', 'Tree', 'Side chat']) expect(labels).toContain(label);
+    for (const label of ['Terminal', 'Files', 'Git changes', 'Conversation tree', 'Side chat', 'Context & info', 'Search in chat', 'Rename', 'Fork', 'Share / export', 'Archive']) expect(labels).toContain(label);
+    // Desktop-only rows are gone from the phone (PH-18).
+    for (const label of ['Duplicate', 'Copy session id', 'Copy path', 'Copy log path', 'Reveal folder', 'Panes']) expect(labels).not.toContain(label);
   });
 
   it('Files opens the /files layer at the chat host', async () => {
     boot('#/new/pc-coffee');
     await waitFor(() => expect(screen.getByTestId('conv-more')).toBeTruthy());
     fireEvent.click(screen.getByTestId('conv-more'));
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('chat-actions-sheet')).toBeTruthy());
     await clickRow('Files');
     await waitFor(() => expect(screen.getByTestId('files-layer')).toBeTruthy());
     expect(location.hash.startsWith('#/files')).toBe(true);
@@ -104,14 +107,14 @@ describe('⋯ "Panes" group (§3.9)', () => {
   it('Git opens the status-pane layer', async () => {
     boot(`#/s/pc-coffee/${SESSION}`);
     await openMenu();
-    await clickRow('Git');
+    await clickRow('Git changes');
     await waitFor(() => expect(screen.getByTestId('git-view')).toBeTruthy());
   });
 
   it('Tree opens the session-tab sheet', async () => {
     boot(`#/s/pc-coffee/${SESSION}`);
     await openMenu();
-    await clickRow('Tree');
+    await clickRow('Conversation tree');
     await waitFor(() => expect(screen.getByTestId('session-tab-sheet')).toBeTruthy());
   });
 
@@ -126,11 +129,11 @@ describe('⋯ "Panes" group (§3.9)', () => {
     boot('#/new/pc-coffee');
     await waitFor(() => expect(screen.getByTestId('conv-more')).toBeTruthy());
     fireEvent.click(screen.getByTestId('conv-more'));
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('chat-actions-sheet')).toBeTruthy());
     const labels = menuLabels();
     expect(labels).toContain('Files');
-    expect(labels).toContain('Git');
-    expect(labels).not.toContain('Tree');
+    expect(labels).toContain('Git changes');
+    expect(labels).not.toContain('Conversation tree');
     expect(labels).not.toContain('Side chat');
   });
 });
@@ -139,7 +142,7 @@ describe('Android Back stack (§3.9)', () => {
   it('Escape (= Back) pops the status layer and leaves nothing on the stack', async () => {
     boot(`#/s/pc-coffee/${SESSION}`);
     await openMenu();
-    await clickRow('Git');
+    await clickRow('Git changes');
     await waitFor(() => expect(screen.getByTestId('git-view')).toBeTruthy());
     expect(backDepth()).toBe(1);
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -150,7 +153,7 @@ describe('Android Back stack (§3.9)', () => {
   it('Escape pops a session-tab sheet and leaves nothing on the stack', async () => {
     boot(`#/s/pc-coffee/${SESSION}`);
     await openMenu();
-    await clickRow('Tree');
+    await clickRow('Conversation tree');
     await waitFor(() => expect(screen.getByTestId('session-tab-sheet')).toBeTruthy());
     await waitFor(() => expect(backDepth()).toBeGreaterThan(0));
     fireEvent.keyDown(window, { key: 'Escape' });

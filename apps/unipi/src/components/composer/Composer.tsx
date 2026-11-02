@@ -1097,7 +1097,7 @@ export function Composer(props: ComposerProps) {
           }
         >
           <ToolbarSlot slot="permission">
-            <PermissionControl session={props.session} onCommand={runCommand} disabled={props.readOnly} />
+            <PermissionControl session={props.session} onCommand={runCommand} disabled={props.readOnly} phone={props.phone} />
           </ToolbarSlot>
           <ToolbarSlot slot="plan">
             <PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} />

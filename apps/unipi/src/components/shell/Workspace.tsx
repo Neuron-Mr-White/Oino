@@ -30,8 +30,7 @@ import { BottomPanel } from '../panes/BottomPanel';
 import { SidePane } from '../panes/SidePane';
 import { Capsule, capsuleVisible } from '../status/Capsule';
 import { ConversationHeader } from './ConversationHeader';
-import { PanesMenu } from './PanesMenu';
-import { sessionUi } from '../../ui/registries';
+import { PhoneChatHeader } from '../conversation/PhoneChatHeader';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusStrip } from './StatusStrip';
 
@@ -73,6 +72,9 @@ export function forgetLastSession(hostId: string, sessionId: string): void {
 export function chatGone(input: { missing: boolean; live: boolean; archived: boolean; listLoaded: boolean; archivedChecked: boolean }): boolean {
   return input.missing && !input.live && !input.archived && input.listLoaded && input.archivedChecked;
 }
+
+/** A project's basename for the phone header's subtitle (never a path). */
+const projectName = (cwd: string): string => cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd;
 
 /** The project key panes are scoped to: the session's folder, `~` when it has none. */
 export const projectKeyOf = (cwd: string | undefined): string => cwd || '~';
@@ -179,52 +181,46 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
       data-testid="workspace"
     >
       <section class="conv" aria-label="Conversation" data-testid="conv">
-        <ConversationHeader
-          title={title()}
-          cwd={cwd() || undefined}
-          project={subline()}
-          scratch={scratch()}
-          hostName={localHost() ? undefined : host()?.name}
-          ctx={ctx()}
-          chips={
-            <Show when={props.sessionId}>
-              {(sessionId) => (
-                <>
-                  <CronChip hostId={props.hostId} sessionId={sessionId()} />
-                  <ModeChip hostId={props.hostId} sessionId={sessionId()} />
-                </>
-              )}
-            </Show>
+        <Show
+          when={desktop()}
+          fallback={
+            <PhoneChatHeader
+              hostId={props.hostId}
+              sessionId={props.sessionId}
+              title={title()}
+              project={scratch() ? 'No workspace' : cwd() ? projectName(cwd()) : undefined}
+              hostName={localHost() ? undefined : host()?.name}
+              cwd={cwd() || undefined}
+              ctx={ctx()}
+              onBack={() => navigate('/chat', { replace: true })}
+            />
           }
-          desktop={desktop()}
-          extraMenu={
-            !desktop()
-              ? (close) => (
-                  <PanesMenu
-                    hostId={props.hostId}
-                    sessionId={props.sessionId}
-                    cwd={cwd() || undefined}
-                    registry={props.sessionId ? sessionUi(props.hostId, props.sessionId) : undefined}
-                    onOpen={close}
-                  />
-                )
-              : undefined
-          }
-          onBack={desktop() ? undefined : () => navigate('/chat')}
-          onNewChat={newChat}
-        />
-        {/* §3.10: desktop floats the collapsed-pane capsule in the top-right margin; on phone/narrow
-            it shares one in-flow subbar with StatusStrip so it never overlaps user bubbles (D-44). */}
+        >
+          <ConversationHeader
+            title={title()}
+            cwd={cwd() || undefined}
+            project={subline()}
+            scratch={scratch()}
+            hostName={localHost() ? undefined : host()?.name}
+            ctx={ctx()}
+            chips={
+              <Show when={props.sessionId}>
+                {(sessionId) => (
+                  <>
+                    <CronChip hostId={props.hostId} sessionId={sessionId()} />
+                    <ModeChip hostId={props.hostId} sessionId={sessionId()} />
+                  </>
+                )}
+              </Show>
+            }
+            desktop={desktop()}
+            onNewChat={newChat}
+          />
+        </Show>
+        {/* §3.10: desktop floats the collapsed-pane capsule in the top-right margin. The phone has no
+            strip under its header (phone spec §3.4, PH-25): status lives in the ⋯ sheet. */}
         <Show when={desktop() && capsuleVisible(desktop(), sideShown(), mode())}>
           <Capsule hostId={props.hostId} sessionId={props.sessionId} cwd={cwd() || undefined} />
-        </Show>
-        <Show when={!desktop()}>
-          <div class="conv-subbar" data-testid="conv-subbar">
-            <StatusStrip scope={`${props.hostId}/${props.sessionId ?? 'draft'}`} />
-            <Show when={capsuleVisible(desktop(), sideShown(), mode())}>
-              <Capsule hostId={props.hostId} sessionId={props.sessionId} cwd={cwd() || undefined} />
-            </Show>
-          </div>
         </Show>
         <div class="conv-body" data-testid="conv-body">
           {props.body ?? <Conversation hostId={props.hostId} sessionId={props.sessionId} cwd={props.cwd} />}
