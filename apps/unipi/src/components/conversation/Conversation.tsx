@@ -45,6 +45,7 @@ import { BottomDock } from '../dock/BottomDock';
 import { Composer } from '../composer/Composer';
 import { ReadOnlyBanner, isTakenOverReadOnly } from './ReadOnlyBanner';
 import '../timeline/timeline.css';
+import './phoneChat.css';
 
 // The session store's ui sink must be wired before any stream opens, or
 // `extension_ui_request`s (the dock's dialogs, Z-46) never reach the registry.

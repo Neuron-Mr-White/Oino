@@ -91,7 +91,7 @@ import { composerHistory } from '../../lib/composer/undo';
 import { pathCandidates } from '../../lib/composer/chips';
 import { ChipEditor, type ChipEditorApi } from './ChipEditor';
 import { PhoneField } from './PhoneField';
-import { ActionSheet } from '../conversation/phoneShim';
+import { ActionSheet } from '../phone';
 import { useHostsOptional } from '../../hosts/context';
 import { SlashMenu } from './SlashMenu';
 import { noteCommandRun } from '../../lib/reports';
@@ -112,6 +112,7 @@ import { openModelPicker } from '../model/target';
 import { thinkGlow } from './thinkGlow';
 import './composer.css';
 import './thinkGlow.css';
+import '../conversation/phoneChat.css';
 
 /** A paste's tooltip head (Z-61): the first lines, whitespace-collapsed. */
 const pasteHead = (text: string): string => {

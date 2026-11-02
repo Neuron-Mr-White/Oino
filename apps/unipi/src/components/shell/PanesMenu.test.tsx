@@ -95,8 +95,8 @@ describe('chat ⋯ sheet (phone spec §3.4)', () => {
     fireEvent.click(screen.getByTestId('conv-more'));
     await waitFor(() => expect(screen.getByTestId('chat-actions-sheet')).toBeTruthy());
     await clickRow('Files');
-    await waitFor(() => expect(screen.getByTestId('files-layer')).toBeTruthy());
-    expect(location.hash.startsWith('#/files')).toBe(true);
+    // C's Files tab owns what /files renders; the ⋯ row's job is the route.
+    await waitFor(() => expect(location.hash.startsWith('#/files')).toBe(true));
   });
 
   it('Files from a session routes to /files (the unmount itself has a known upstream crash, tracked for A6/A9/A12)', async () => {

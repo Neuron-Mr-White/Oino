@@ -49,7 +49,7 @@ import { openSessionModal } from '../session/modalTarget';
 import { statusSegments } from '../shell/StatusStrip';
 import { chatActionsFor, type ChatActionCtx } from '../shell/ConversationHeader';
 import { openModeSheet, permissionModeLabel } from '../composer/PermissionControl';
-import { ActionSheet, IconButton, type ActionItem } from './phoneShim';
+import { ActionSheet, IconButton, type ActionItem } from '../phone';
 import './phoneChat.css';
 
 /** "17 skills ready" from the session's status segments → "17 skills". */

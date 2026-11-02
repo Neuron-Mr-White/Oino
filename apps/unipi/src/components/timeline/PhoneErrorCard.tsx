@@ -18,6 +18,8 @@ import { actionError, retryTurn, showActionNotice } from '../../lib/timeline/act
 import { openSettingsAt } from '../../lib/settings/open';
 import { openModelPicker } from '../model/target';
 import type { TimelineCtx } from './context';
+import { Button } from '../phone';
+import '../conversation/phoneChat.css';
 
 type ErrorItem = Extract<WorkItem, { kind: 'error' }>;
 
@@ -77,18 +79,18 @@ export function PhoneErrorCard(props: { item: ErrorItem; ctx: TimelineCtx }) {
           </Show>
         </Show>
         <div class="ph-error-actions">
-          <button type="button" class="ph-btn ph-btn-secondary" disabled={running() || !found()} onClick={retry} data-testid="tl-error-retry">
+          <Button kind="secondary" disabled={running() || !found()} onClick={retry} testId="tl-error-retry">
             <RotateCcw size={18} /> Retry
-          </button>
+          </Button>
           <Show when={copy().fix === 'model'}>
-            <button type="button" class="ph-btn ph-btn-primary" onClick={() => openModelPicker({ hostId: props.ctx.hostId, sessionId: props.ctx.sessionId() })} data-testid="tl-error-fix">
+            <Button kind="primary" onClick={() => openModelPicker({ hostId: props.ctx.hostId, sessionId: props.ctx.sessionId() })} testId="tl-error-fix">
               Choose a model
-            </button>
+            </Button>
           </Show>
           <Show when={copy().fix === 'provider'}>
-            <button type="button" class="ph-btn ph-btn-primary" onClick={() => openSettingsAt('providers', 'sec-providers')} data-testid="tl-error-fix">
+            <Button kind="primary" onClick={() => openSettingsAt('providers', 'sec-providers')} testId="tl-error-fix">
               Add a provider
-            </button>
+            </Button>
           </Show>
         </div>
       </div>

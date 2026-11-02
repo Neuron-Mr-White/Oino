@@ -18,7 +18,7 @@
 import { createEffect, createSignal, on, onCleanup, Show } from 'solid-js';
 import { Check, Copy, Ellipsis, FileCode, Pencil, Quote, RotateCcw, Share2, SquareStack, TextSelect } from 'lucide-solid';
 import { layout } from '../../lib/layout';
-import { ActionSheet, haptic, type ActionItem } from '../conversation/phoneShim';
+import { ActionSheet, haptic, type ActionItem } from '../phone';
 import { formatDuration } from '../../lib/chat/model';
 import { copyText } from '../../lib/board/share';
 import type { Turn } from '../../lib/session/turns';

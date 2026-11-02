@@ -11,7 +11,8 @@ import { MessageCircleQuestion } from 'lucide-solid';
 import { sessions } from '../../lib/session/store';
 import { messageText } from '../../lib/timeline/actions';
 import { composeAnswers, extractQuestions } from '../../lib/chat/questions';
-import { Sheet } from './phoneShim';
+import { Button, Sheet } from '../phone';
+import './phoneChat.css';
 import type { UiEntry } from '../../ui/types';
 
 /** The extension's hint widget (`setWidget` key `unipi-answer-hint`). */
@@ -60,9 +61,9 @@ export function AnswerQuestions(props: { hostId: string; sessionId: string; entr
         guarded={() => answers().some((a) => !!a?.trim())}
         testId="answer-sheet"
         footer={
-          <button type="button" class="ph-btn ph-btn-primary ph-btn-block" disabled={!message()} onClick={send} data-testid="answer-send">
+          <Button kind="primary" block disabled={!message()} onClick={send} testId="answer-send">
             Send answers
-          </button>
+          </Button>
         }
       >
         <div class="ph-answer-list">

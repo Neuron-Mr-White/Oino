@@ -24,7 +24,7 @@ import { AnchoredMenu } from '../board/AnchoredMenu';
 import { menuKeys } from './menuKeys';
 import { toasts } from '../../lib/toasts';
 import { SwitchField } from '../Switch';
-import { Sheet } from '../conversation/phoneShim';
+import { Sheet } from '../phone';
 
 /** Phone (§3.5): the Mode sheet is open for this session key (the chip, or the chat ⋯ sheet's "Mode" row). */
 const [modeSheetFor, setModeSheetFor] = createSignal<string | undefined>();

@@ -8,7 +8,7 @@
 import { createEffect, Show } from 'solid-js';
 import type { SessionHandle } from '../../lib/session/store';
 import { canThink, ensureThinkingLevels, setThinkingLevel, thinkingLabel, thinkingLevels } from '../../lib/model/thinking';
-import { haptic, Segmented } from '../conversation/phoneShim';
+import { haptic, Segmented } from '../phone';
 
 export function ThinkingFooter(props: { session: SessionHandle }) {
   createEffect(() => {

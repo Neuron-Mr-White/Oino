@@ -12,35 +12,6 @@ html[data-shell=phone][data-short] .ph-chat-sub { display: none; }
 /* Landscape + keyboard: the header steps aside so the transcript keeps ≥ 3 lines (PH-08, PH-31). */
 html[data-shell=phone][data-short][data-kb=open] .conv-head.ph-chat-head { display: none; }
 
-/* Icon buttons (shim; A's IconButton has the same 48 px hit box). */
-.ph-icon-btn { flex: none; display: inline-grid; place-items: center; width: 48px; height: 48px; border: 0; border-radius: 9999px; background: transparent; color: var(--color-text); cursor: pointer; }
-.ph-icon-btn:active { background: var(--color-surface-2); }
-.ph-icon-btn:disabled { opacity: .4; }
-
-/* ── Action sheet (shim) ───────────────────────────────────────────────── */
-.ph-action-sheet .board-sheet-body { padding: 0 8px 12px; }
-.ph-action-sub { margin: 0 12px 8px; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
-.ph-action-section + .ph-action-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgb(46 40 37 / 60%); }
-.ph-action-row { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 52px; padding: 6px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--color-text); text-align: left; font-size: 16px; line-height: 22px; cursor: pointer; }
-.ph-action-row:active { background: var(--color-surface-2); }
-.ph-action-row:disabled { opacity: .45; }
-.ph-action-row[data-tone=danger] { color: #F6A39D; }
-.ph-action-icon { flex: none; display: inline-grid; place-items: center; width: 24px; color: var(--color-text-muted); }
-.ph-action-row[data-tone=danger] .ph-action-icon { color: inherit; }
-.ph-action-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.ph-action-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ph-action-desc { font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
-.ph-action-value { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
-.ph-action-check { flex: none; color: var(--color-shell); }
-
-/* Segmented (shim). */
-.ph-segmented { display: flex; gap: 4px; padding: 2px; border-radius: 9999px; background: var(--color-surface-2); overflow-x: auto; scrollbar-width: none; }
-.ph-seg { flex: 1 0 auto; min-height: 44px; padding: 0 14px; border: 0; border-radius: 9999px; background: transparent; color: var(--color-text-muted); font-size: 14px; font-weight: 600; cursor: pointer; }
-.ph-seg[aria-checked=true] { background: var(--color-surface-3); color: var(--color-text); }
-
-/* Full-height sheet (shim of the `full` detent). */
-.board-sheet.ph-sheet-full { height: calc(var(--vvh, 100dvh) - max(env(safe-area-inset-top), var(--inset-top, 0px)) - 8px); max-height: none; }
-
 /* ── Mode sheet (§3.5, PH-29) ───────────────────────────────────────────── */
 .ph-mode-list { display: flex; flex-direction: column; }
 .ph-mode-row { display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 8px 4px; border: 0; background: transparent; color: var(--color-text); text-align: left; cursor: pointer; border-radius: 12px; }
@@ -52,13 +23,6 @@ html[data-shell=phone][data-short][data-kb=open] .conv-head.ph-chat-head { displ
 .ph-mode-desc { font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
 .ph-mode-switches { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgb(46 40 37 / 60%); }
 .ph-switch-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 4px; cursor: pointer; }
-
-/* Buttons (shim of A's Button: 48 high, pill). */
-.ph-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 20px; border: 0; border-radius: 9999px; font-size: 16px; font-weight: 600; cursor: pointer; }
-.ph-btn:disabled { opacity: .45; }
-.ph-btn-primary { background: var(--color-shell); color: var(--color-face, #fff); }
-.ph-btn-secondary { background: var(--color-surface-3); color: var(--color-text); }
-.ph-btn-block { width: 100%; }
 
 /* ── Turn chrome (§3.4, PH-26): only the last settled turn, 48 px hits ────── */
 html[data-shell=phone] .ph-turn-tail { gap: 4px; min-height: 48px; }

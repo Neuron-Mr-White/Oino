@@ -8,7 +8,7 @@
  */
 import { createSignal, Show } from 'solid-js';
 import { layout } from '../../../lib/layout';
-import { Sheet } from '../../conversation/phoneShim';
+import { Sheet } from '../../phone';
 import { Dynamic } from 'solid-js/web';
 import { ChevronRight, CircleAlert } from 'lucide-solid';
 import { diffStat, formatDuration, toolCategory, toolSubject } from '../../../lib/chat/model';

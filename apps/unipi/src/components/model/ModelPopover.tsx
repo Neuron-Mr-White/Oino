@@ -23,7 +23,7 @@
 import { createEffect, createSignal, onCleanup, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { Repeat, X } from 'lucide-solid';
-import { Sheet } from '../conversation/phoneShim';
+import { Sheet } from '../phone';
 import { menuKeys } from '../composer/menuKeys';
 import { layout } from '../../lib/layout';
 import { pushBack } from '../../lib/back';
