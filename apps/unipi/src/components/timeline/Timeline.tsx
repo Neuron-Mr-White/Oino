@@ -25,6 +25,8 @@ import { readScrollMemory, writeScrollMemory, scrollMemoryKey } from '../../lib/
 import { readTimelineSnapshot, writeTimelineSnapshot } from '../../lib/timeline/snapshotCache';
 import { EmptyState } from '../EmptyState';
 import { LiveTail } from './LiveTail';
+import { CommandReports } from './CommandReports';
+import { showReportsInTimeline } from '../../lib/reports';
 import { JumpButton } from './JumpButton';
 import { ChatSkeleton } from './Skeleton';
 import { TurnRow } from './TurnRow';
@@ -68,6 +70,8 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     const live = liveTurns();
     if (live.length > 0) writeTimelineSnapshot(session().key, live);
   });
+  // owner5 #6: while this chat is on screen, its command reports are rows here.
+  createEffect(() => onCleanup(showReportsInTimeline(session().key)));
   /** The running turn (outside the list); everything before it is virtualized. */
   const liveTurn = () => {
     const t = turns();
@@ -424,6 +428,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
         </Show>
         <div ref={tailEl} class="tl-tail-wrap">
           <LiveTail live={liveTurn()} ctx={props.ctx} />
+          <CommandReports sessionKey={session().key} />
         </div>
       </div>
       <div class="tl-dock" data-testid="tl-dock">

@@ -29,6 +29,51 @@ export function looksMarkdown(body: string): boolean {
 }
 
 const [current, setCurrent] = createSignal<Report | null>(null);
+
+/**
+ * owner5 #6: a command's report shows as a row at the bottom of the chat it
+ * ran in — not a floating card over the timeline — while that chat is on
+ * screen. A shown conversation registers itself here; its rows live in
+ * `sessionReports`. A chat that isn't shown still gets the report panel.
+ */
+const surfaces = new Map<string, number>();
+const [timelineReports, setTimelineReports] = createSignal<ReadonlyMap<string, Report[]>>(new Map());
+
+/** A conversation for `sessionKey` is on screen until the returned release runs. */
+export function showReportsInTimeline(sessionKey: string): () => void {
+  surfaces.set(sessionKey, (surfaces.get(sessionKey) ?? 0) + 1);
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    const n = (surfaces.get(sessionKey) ?? 1) - 1;
+    if (n <= 0) surfaces.delete(sessionKey);
+    else surfaces.set(sessionKey, n);
+  };
+}
+
+/** The command-report rows of one chat (oldest first). */
+export function sessionReports(sessionKey: string): Report[] {
+  return timelineReports().get(sessionKey) ?? [];
+}
+
+export function dismissSessionReport(sessionKey: string, id: number): void {
+  setTimelineReports((all) => {
+    const next = new Map(all);
+    const list = (next.get(sessionKey) ?? []).filter((r) => r.id !== id);
+    if (list.length) next.set(sessionKey, list);
+    else next.delete(sessionKey);
+    return next;
+  });
+}
+
+function pushSessionReport(sessionKey: string, report: Report): void {
+  setTimelineReports((all) => {
+    const next = new Map(all);
+    next.set(sessionKey, [...(next.get(sessionKey) ?? []), report].slice(-8));
+    return next;
+  });
+}
 const recent = new Map<string, { command: string; at: number }>();
 let seq = 0;
 
@@ -97,7 +142,7 @@ export function claimReplies(sessionKey: string, fn: ReplyClaim): () => void {
  * Routes one notify message: a report opens the panel (answering a command)
  * or toasts its first line with "Show"; anything else is a plain toast.
  */
-export function routeNotify(message: string, kind: ToastKind, sessionKey?: string, now = Date.now()): void {
+export function routeNotify(message: string, kind: ToastKind, sessionKey?: string, now = Date.now(), opts: { inTimeline?: boolean } = {}): void {
   const trimmed = message.trim();
   if (!trimmed) return;
   const claim = sessionKey ? claims.get(sessionKey) : undefined;
@@ -107,6 +152,9 @@ export function routeNotify(message: string, kind: ToastKind, sessionKey?: strin
   }
   const ran = sessionKey ? recent.get(sessionKey) : undefined;
   const answering = !!ran && now - ran.at <= REPORT_COMMAND_WINDOW_MS;
+  const shown = !!sessionKey && (surfaces.get(sessionKey) ?? 0) > 0;
+  // A reply that is already a timeline row (`unipi-response`) needs nothing more while its chat is shown.
+  if (opts.inTimeline && shown) return;
   if (!isReport(trimmed)) {
     const oneLine = humanCommandNotice(trimmed);
     if (answering && oneLine.length > 72) {
@@ -127,7 +175,9 @@ export function routeNotify(message: string, kind: ToastKind, sessionKey?: strin
     at: now,
   };
   if (answering) {
-    setCurrent(report);
+    // owner5 #6: in the chat it answers, the report is a timeline row at the bottom.
+    if (shown) pushSessionReport(sessionKey!, report);
+    else setCurrent(report);
     return;
   }
   if (!headline) return;
@@ -152,5 +202,7 @@ export function reportTextOf(event: Record<string, unknown>): string | undefined
 export function resetReports(): void {
   recent.clear();
   claims.clear();
+  surfaces.clear();
+  setTimelineReports(new Map());
   setCurrent(null);
 }

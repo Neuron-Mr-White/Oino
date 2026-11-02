@@ -625,3 +625,10 @@ html[data-shell=phone] .tl-files-undo-all { min-height: 36px; }
 }
 .tool-bg-item + .tool-bg-item { border-top: 1px solid rgb(46 40 37 / 60%); }
 
+
+/* owner5 #6: a command's report is a row at the bottom of the chat. */
+.tl-report-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-radius: 12px; background: var(--color-surface-1); border: 1px solid var(--color-line); }
+.tl-report-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--color-text-muted); }
+.tl-report-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 13px; color: var(--color-text); }
+.tl-report-x { width: 28px; height: 28px; min-height: 28px; }
+.tl-report-body { max-height: 420px; overflow: auto; background: var(--color-bg); }

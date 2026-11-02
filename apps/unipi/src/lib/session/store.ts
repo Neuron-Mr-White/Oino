@@ -238,7 +238,7 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
         for (const it of items) {
           if (it.seq <= before) continue;
           const text = reportTextOf((it.event ?? {}) as Record<string, unknown>);
-          if (text) routeNotify(text, 'info', keyOf(hostId, sessionId));
+          if (text) routeNotify(text, 'info', keyOf(hostId, sessionId), Date.now(), { inTimeline: true });
         }
         follow(r);
         return r;

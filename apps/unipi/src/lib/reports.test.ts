@@ -1,10 +1,46 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isReport, humanCommandNotice, noteCommandRun, openReport, reportHeadline, resetReports, routeNotify } from './reports';
+import { claimReplies, isReport, humanCommandNotice, noteCommandRun, openReport, reportHeadline, resetReports, routeNotify, sessionReports, showReportsInTimeline } from './reports';
 import { toasts } from './toasts';
 
 afterEach(() => {
   resetReports();
   toasts().clear();
+});
+
+describe('owner5 #6 / #5: where a command report goes', () => {
+  it('in the chat on screen, a report is a timeline row (no floating panel, no toast)', () => {
+    const off = showReportsInTimeline('h/s');
+    noteCommandRun('h/s', 'global-memory-list', 1000);
+    routeNotify('Memories\n  a\n  b', 'info', 'h/s', 2000);
+    expect(openReport()).toBeNull();
+    expect(toasts().list()).toHaveLength(0);
+    expect(sessionReports('h/s').map((r) => r.title)).toEqual(['/global-memory-list']);
+    off();
+    // Not on screen any more: the panel again.
+    noteCommandRun('h/s', 'mcp-status', 3000);
+    routeNotify('MCP\n  fs', 'info', 'h/s', 3500);
+    expect(openReport()?.title).toBe('/mcp-status');
+  });
+
+  it('a reply already in the timeline (unipi-response) adds nothing while its chat is shown', () => {
+    const off = showReportsInTimeline('h/s');
+    noteCommandRun('h/s', 'doctor', 1000);
+    routeNotify('Doctor\n ok', 'info', 'h/s', 1500, { inTimeline: true });
+    expect(openReport()).toBeNull();
+    expect(sessionReports('h/s')).toHaveLength(0);
+    off();
+  });
+
+  it('a Settings-claimed session gets its replies, nothing else does', () => {
+    const got: string[] = [];
+    const release = claimReplies('h/s', (text) => got.push(text));
+    routeNotify('Synced 12 servers', 'info', 'h/s');
+    expect(got).toEqual(['Synced 12 servers']);
+    expect(toasts().list()).toHaveLength(0);
+    release();
+    routeNotify('After', 'info', 'h/s');
+    expect(toasts().list().map((t) => t.message)).toEqual(['After']);
+  });
 });
 
 describe('P1-02: command reports', () => {
