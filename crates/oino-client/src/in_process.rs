@@ -73,6 +73,72 @@ fn failed(error: impl std::fmt::Display) -> ClientError {
     ClientError::Command(error.to_string())
 }
 
+/// Default `_oino/entries_page` size.
+const PAGE_LIMIT: usize = 120;
+/// Raw-bytes bound of one page (the host bounds big blocks again for its frame).
+const PAGE_MAX_BYTES: u64 = 24 << 20;
+
+/// `_oino/entries_page`: a page of the current branch (or entries by id), serialized only
+/// for the page — never the whole history (see `oino_session::manager::page_start`).
+fn entries_page(
+    manager: &oino_session::manager::SessionManager,
+    before: Option<String>,
+    limit: Option<usize>,
+    ids: Option<Vec<String>>,
+) -> Result<JsonValue, ClientError> {
+    let leaf = manager.leaf_id().cloned();
+    if let Some(ids) = ids {
+        let entries: Vec<JsonValue> = ids
+            .iter()
+            .filter_map(|id| manager.entry(&EntryId::new(id.as_str())))
+            .filter_map(|entry| serde_json::to_value(entry).ok())
+            .collect();
+        return Ok(json!({ "entries": entries, "leafId": leaf }));
+    }
+    let branch = manager.branch(None);
+    let end = match before.as_deref() {
+        None => branch.len(),
+        Some(before) => branch
+            .iter()
+            .position(|entry| entry.id.as_str() == before)
+            .ok_or_else(|| ClientError::Command(format!("Entry not found: {before}")))?,
+    };
+    let limit = limit.unwrap_or(PAGE_LIMIT).max(1);
+    // Serialize only the candidates (at most `limit` before `end`).
+    let first = end.saturating_sub(limit);
+    let candidates: Vec<(JsonValue, u64)> = branch[first..end]
+        .iter()
+        .map(|entry| {
+            let value = serde_json::to_value(entry).unwrap_or(JsonValue::Null);
+            let size = serde_json::to_vec(&value).map_or(0, |bytes| bytes.len() as u64);
+            (value, size)
+        })
+        .collect();
+    let start = oino_session::manager::page_start(
+        end,
+        limit,
+        PAGE_MAX_BYTES,
+        |at| candidates[at - first].1,
+        |at| {
+            let value = &candidates[at - first].0;
+            value["type"] == "message" && value["message"]["role"] == "user"
+        },
+    );
+    let cursor = (start < end).then(|| branch[start].id.as_str().to_owned());
+    let entries: Vec<JsonValue> = candidates
+        .into_iter()
+        .skip(start - first)
+        .map(|(value, _)| value)
+        .collect();
+    Ok(json!({
+        "entries": entries,
+        "leafId": leaf,
+        "total": branch.len(),
+        "hasMore": start > 0,
+        "cursor": cursor,
+    }))
+}
+
 fn find_agent(
     session: &AgentSession,
     agent_id: &str,
@@ -522,6 +588,10 @@ impl Shared {
                 data(json!({ "path": path.display().to_string() }))
             }
             OinoCommand::GetContextUsage => data(session.context_usage()),
+            OinoCommand::EntriesPage { before, limit, ids } => {
+                let page = session.with_manager(|m| entries_page(m, before, limit, ids))?;
+                data(page)
+            }
             command @ (OinoCommand::Topics { .. }
             | OinoCommand::BusGet { .. }
             | OinoCommand::Agents { .. }
@@ -792,6 +862,7 @@ impl Shared {
             | OinoCommand::UiResync { .. }
             | OinoCommand::NavigateTree { .. }
             | OinoCommand::SetLabel { .. }
+            | OinoCommand::EntriesPage { .. }
             | OinoCommand::ImportJsonl { .. }
             | OinoCommand::ExportJsonl { .. }
             | OinoCommand::GetContextUsage => Err(ClientError::Protocol(format!(
@@ -935,5 +1006,74 @@ impl SessionBackend for InProcessBackend {
             },
             (),
         )
+    }
+}
+
+#[cfg(test)]
+mod entries_page_tests {
+    use super::*;
+    use oino_session::manager::SessionManager;
+
+    fn manager(turns: usize) -> (tempfile::TempDir, SessionManager) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        let mut text = String::from(
+            "{\"type\":\"session\",\"version\":3,\"id\":\"s1\",\"timestamp\":\"2026-01-01T00:00:00.000Z\",\"cwd\":\"/tmp\"}\n",
+        );
+        let mut parent = serde_json::Value::Null;
+        for n in 0..turns {
+            for (id, role) in [(format!("u{n}"), "user"), (format!("a{n}"), "assistant")] {
+                let content = if role == "user" {
+                    json!([{"type": "text", "text": format!("q{n}")}])
+                } else {
+                    json!([{"type": "text", "text": format!("a{n}")}])
+                };
+                let mut message = json!({"role": role, "content": content, "timestamp": 1});
+                if role == "assistant" {
+                    message["api"] = json!("x");
+                    message["provider"] = json!("p");
+                    message["model"] = json!("m");
+                    message["usage"] = json!({"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}});
+                    message["stopReason"] = json!("stop");
+                }
+                let line = json!({"type": "message", "id": id, "parentId": parent,
+                    "timestamp": "2026-01-01T00:00:00.000Z", "message": message});
+                text.push_str(&line.to_string());
+                text.push('\n');
+                parent = json!(id);
+            }
+        }
+        std::fs::write(&path, text).unwrap();
+        let manager = SessionManager::open(&path, dir.path(), None).unwrap();
+        (dir, manager)
+    }
+
+    fn ids(page: &JsonValue) -> Vec<&str> {
+        page["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["id"].as_str().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn pages_the_branch_from_the_tail_on_turn_boundaries() {
+        let (_dir, manager) = manager(10);
+        assert_eq!(manager.entries().len(), 20, "fixture parsed");
+        let page = entries_page(&manager, None, Some(5), None).unwrap();
+        // 5 newest = a7 u8 a8 u9 a9 → aligned at the user message u8.
+        assert_eq!(ids(&page), ["u8", "a8", "u9", "a9"]);
+        assert_eq!(page["total"], 20);
+        assert_eq!(page["hasMore"], true);
+        assert_eq!(page["cursor"], "u8");
+        assert_eq!(page["leafId"], "a9");
+        let older = entries_page(&manager, Some("u8".into()), Some(100), None).unwrap();
+        assert_eq!(ids(&older).len(), 16);
+        assert_eq!(older["hasMore"], false);
+        let by_id =
+            entries_page(&manager, None, None, Some(vec!["a3".into(), "nope".into()])).unwrap();
+        assert_eq!(ids(&by_id), ["a3"]);
+        assert!(entries_page(&manager, Some("nope".into()), None, None).is_err());
     }
 }

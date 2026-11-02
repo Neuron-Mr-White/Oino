@@ -542,6 +542,13 @@ impl SessionHub {
         Ok(())
     }
 
+    /// The sessions root this hub lists and wakes from (its offset/card indexes live
+    /// beside it).
+    #[must_use]
+    pub fn sessions_root(&self) -> &Path {
+        &self.inner.sessions_root
+    }
+
     /// Whether `session_id` is a live runtime of this hub (created or woken here).
     /// A session created by [`SessionHub::create_session`] is live before its first
     /// conversation entry writes the file — it has no record yet, so id-based lookups

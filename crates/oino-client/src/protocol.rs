@@ -313,6 +313,21 @@ pub enum OinoCommand {
         #[serde(flatten)]
         options: NavigateTreeOptions,
     },
+    /// One page of the current branch, newest first-loaded (a viewer opens a big session at
+    /// its tail and pages back): `{entries, leafId, total, hasMore, cursor}`, entries
+    /// root-most first. With `ids`, exactly those entries (any branch) and no paging.
+    #[serde(rename = "_oino/entries_page", rename_all = "camelCase")]
+    EntriesPage {
+        /// Only entries strictly before this branch entry; absent = the tail.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        before: Option<String>,
+        /// At most this many entries (default 120).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        /// Fetch these entries by id instead of a page.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ids: Option<Vec<String>>,
+    },
     /// Set or clear an entry label.
     #[serde(rename = "_oino/set_label", rename_all = "camelCase")]
     SetLabel {
@@ -696,6 +711,7 @@ impl OinoCommand {
             Self::UiResync { .. } => "_oino/ui_resync",
             Self::NavigateTree { .. } => "_oino/navigate_tree",
             Self::SetLabel { .. } => "_oino/set_label",
+            Self::EntriesPage { .. } => "_oino/entries_page",
             Self::ImportJsonl { .. } => "_oino/import_jsonl",
             Self::ExportJsonl { .. } => "_oino/export_jsonl",
             Self::GetContextUsage => "_oino/get_context_usage",
