@@ -31,6 +31,7 @@ import { SidePane } from '../panes/SidePane';
 import { Capsule, capsuleVisible } from '../status/Capsule';
 import { ConversationHeader } from './ConversationHeader';
 import { PhoneChatHeader } from '../conversation/PhoneChatHeader';
+import { OfflineBanner } from '../phone';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusStrip } from './StatusStrip';
 
@@ -221,6 +222,10 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
             strip under its header (phone spec §3.4, PH-25): status lives in the ⋯ sheet. */}
         <Show when={desktop() && capsuleVisible(desktop(), sideShown(), mode())}>
           <Capsule hostId={props.hostId} sessionId={props.sessionId} cwd={cwd() || undefined} />
+        </Show>
+        {/* Phone (§1.4, PH-15): "<PC> is offline · Retry" under the header. */}
+        <Show when={!desktop()}>
+          <OfflineBanner hostId={props.hostId} />
         </Show>
         <div class="conv-body" data-testid="conv-body">
           {props.body ?? <Conversation hostId={props.hostId} sessionId={props.sessionId} cwd={props.cwd} />}

@@ -87,7 +87,8 @@ export function PhoneChatHeader(props: {
   );
   const card = () => (props.sessionId ? hubs().ensure(props.hostId).state.cards[props.sessionId] : undefined);
   const running = () => !!props.sessionId && isRunning(card(), session()?.state);
-  const sub = () => (running() ? 'Working…' : [props.project, props.hostName].filter(Boolean).join(' · '));
+  // A draft says where the chat will run ("on <PC>", §3.6); a chat says its project · PC.
+  const sub = () => (running() ? 'Working…' : !props.sessionId ? (props.hostName ? `on ${props.hostName}` : '') : [props.project, props.hostName].filter(Boolean).join(' · '));
 
   // ── values shown in the sheet ──
   const [gitValue, setGitValue] = createSignal<string | undefined>();

@@ -131,3 +131,10 @@ html:not([data-shell=desktop]) .conv-subbar .status-strip { flex: 1 1 auto; min-
 .ws-layer .conv-head { padding-left: 4px; }
 /* The overview's close / recent rows match its tab rows (desktop density). */
 .overview .board-menu-row { min-height: 36px; height: 36px; font-size: 13.5px; }
+
+/* ── Phone spec §2.10 (PH-06 / PH-08): the chat layer's bottom follows the keyboard
+   (--kb), so the composer sits on it by layout; the dock pads the safe area only while
+   the keyboard is closed — no second IME inset. */
+html[data-shell=phone] .ws-layer { bottom: var(--kb, 0px); padding-bottom: 0; z-index: var(--z-layer, 40); }
+html[data-shell=phone] .ws-layer .tl-dock { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
+html[data-shell=phone][data-kb=open] .ws-layer .tl-dock { padding-bottom: 8px; }

@@ -8,8 +8,10 @@
  * than one PC is paired.
  */
 import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
-import { ArrowLeft, Check, ChevronDown, Folder, FolderLock, FolderOpen, FolderSearch, Monitor } from 'lucide-solid';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Folder, FolderLock, FolderOpen, FolderSearch, Monitor } from 'lucide-solid';
 import { AnchoredMenu } from '../board/AnchoredMenu';
+import { layout } from '../../lib/layout';
+import { Button, Sheet } from '../phone';
 import { fsList } from '../../lib/fs';
 import { shortPath, folderName } from '../../lib/session/newSession';
 import { isOwnPcFile, pickFolderNative } from '../../lib/openLocal';
@@ -122,6 +124,21 @@ export function WorkspacePicker(props: {
         .sort((a, b) => a.localeCompare(b)),
     };
   });
+  const phone = () => !layout().desktop();
+  /** Phone breadcrumb (PH-30): "/" or "~" first, then each folder — tapping one goes up to it. */
+  const crumbs = (dir: string): Array<{ label: string; path: string }> => {
+    const home = props.home;
+    const inHome = !!home && (dir === home || dir.startsWith(`${home}/`));
+    const base = inHome ? home! : '';
+    const rest = (inHome ? dir.slice(home!.length) : dir).split('/').filter(Boolean);
+    const out = [{ label: inHome ? '~' : '/', path: inHome ? home! : '/' }];
+    let at = base;
+    for (const part of rest) {
+      at = `${at}/${part}`;
+      out.push({ label: part, path: at });
+    }
+    return out;
+  };
   const join = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`;
 
   const row = (item: Item) => (
@@ -146,27 +163,7 @@ export function WorkspacePicker(props: {
     </button>
   );
 
-  return (
-    <>
-      <button
-        type="button"
-        class="ws-chip"
-        aria-haspopup="menu"
-        aria-expanded={!!anchor()}
-        title={props.value ? `Workspace: ${props.value}` : `No workspace — ${NO_WORKSPACE_DETAIL.toLowerCase()}`}
-        disabled={props.disabled}
-        onClick={(e) => (anchor() ? close() : setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()))}
-        data-testid="workspace-chip"
-      >
-        <Show when={props.value} fallback={<FolderLock size={14} class="ws-chip-ic" />}>
-          <Folder size={14} class="ws-chip-ic" />
-        </Show>
-        <span class="ws-chip-label">{label()}</span>
-        <ChevronDown size={13} class="ws-chip-chev" />
-      </button>
-      <Show when={anchor()}>
-        {(rect) => (
-          <AnchoredMenu anchor={rect()} width={320} label="Workspace" onDismiss={close}>
+  const menuBody = () => (
             <div class="ws-menu" data-testid="workspace-menu">
               <Show
                 when={browse()}
@@ -212,20 +209,38 @@ export function WorkspacePicker(props: {
                   };
                   return (
                   <div class="ws-browse" data-testid="workspace-browser">
-                    <div class="ws-browse-head">
-                      <button
-                        type="button"
-                        class="ws-browse-up"
-                        aria-label="Up one folder"
-                        disabled={dir() === '/'}
-                        onClick={() => openBrowse(parentOf(dir()))}
-                      >
-                        <ArrowLeft size={15} />
-                      </button>
-                      <span class="ws-browse-path" title={dir()}>
-                        {short(dir())}
-                      </span>
-                    </div>
+                    <Show
+                      when={phone()}
+                      fallback={
+                        <div class="ws-browse-head">
+                          <button
+                            type="button"
+                            class="ws-browse-up"
+                            aria-label="Up one folder"
+                            disabled={dir() === '/'}
+                            onClick={() => openBrowse(parentOf(dir()))}
+                          >
+                            <ArrowLeft size={15} />
+                          </button>
+                          <span class="ws-browse-path" title={dir()}>
+                            {short(dir())}
+                          </span>
+                        </div>
+                      }
+                    >
+                      <nav class="ws-crumbs" aria-label="Folder path" data-testid="workspace-crumbs">
+                        <button type="button" class="ws-crumb ws-crumb-back" onClick={() => (setFilter(''), setBrowse(undefined))}>
+                          <ArrowLeft size={18} /> Places
+                        </button>
+                        <For each={crumbs(dir())}>
+                          {(c, i) => (
+                            <button type="button" class="ws-crumb" aria-current={i() === crumbs(dir()).length - 1 ? 'location' : undefined} onClick={() => openBrowse(c.path)}>
+                              {c.label}
+                            </button>
+                          )}
+                        </For>
+                      </nav>
+                    </Show>
                     <Show when={(listing()?.dirs.length ?? 0) > 6}>
                       <input
                         type="search"
@@ -255,7 +270,7 @@ export function WorkspacePicker(props: {
                         </Show>
                       </Show>
                     </div>
-                    <div class="ws-browse-foot">
+                    <div class="ws-browse-foot" hidden={phone()}>
                       <button type="button" class="ws-btn" onClick={() => (setFilter(''), setBrowse(undefined))}>
                         Back
                       </button>
@@ -269,6 +284,49 @@ export function WorkspacePicker(props: {
                 }}
               </Show>
             </div>
+  );
+
+  return (
+    <>
+      <button
+        type="button"
+        class="ws-chip"
+        aria-haspopup="menu"
+        aria-expanded={!!anchor()}
+        title={props.value ? `Workspace: ${props.value}` : `No workspace — ${NO_WORKSPACE_DETAIL.toLowerCase()}`}
+        disabled={props.disabled}
+        onClick={(e) => (anchor() ? close() : setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()))}
+        data-testid="workspace-chip"
+      >
+        <Show when={props.value} fallback={<FolderLock size={14} class="ws-chip-ic" />}>
+          <Folder size={14} class="ws-chip-ic" />
+        </Show>
+        {/* Phone (§3.6, PH-30): a 56 px "Workspace" row — label, value, chevron. */}
+        <Show when={phone()}>
+          <span class="ws-chip-key">Workspace</span>
+        </Show>
+        <span class="ws-chip-label">{label()}</span>
+        <Show when={phone()} fallback={<ChevronDown size={13} class="ws-chip-chev" />}>
+          <ChevronRight size={18} class="ws-chip-chev" />
+        </Show>
+      </button>
+      <Show when={phone()}>
+        <Sheet open={!!anchor()} onClose={close} label="Workspace" title="Workspace" detents={['full']} initialDetent="full" class="ws-sheet" testId="workspace-sheet"
+          footer={
+            browse() ? (
+              <Button kind="primary" block disabled={listing.loading || !!listing()?.error} onClick={() => (rememberOpened(browse()!), pick(browse()!))} testId="workspace-use">
+                Use this folder
+              </Button>
+            ) : undefined
+          }
+        >
+          {menuBody()}
+        </Sheet>
+      </Show>
+      <Show when={!phone() && anchor()}>
+        {(rect) => (
+          <AnchoredMenu anchor={rect()} width={320} label="Workspace" onDismiss={close}>
+            {menuBody()}
           </AnchoredMenu>
         )}
       </Show>

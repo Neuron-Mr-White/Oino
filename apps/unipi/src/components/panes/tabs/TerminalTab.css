@@ -241,3 +241,14 @@ html:not([data-shell="desktop"]) .term-pane[data-phone] .term-surface { touch-ac
 @media (prefers-reduced-motion: reduce) {
   .term-status, .term-drawer, .term-phone-layer { animation: none; }
 }
+
+/* ── Phone spec §3.7 / §2.10 (PH-06): the terminal layer sits on the keyboard by
+   layout — its bottom follows --kb, the key bar is in flow at its bottom and adds
+   no IME inset of its own; 48 px header targets; above the chat layer. */
+html[data-shell=phone] .term-phone-layer { bottom: var(--kb, 0px); z-index: var(--z-layer-2, 45); }
+html[data-shell=phone] .term-phone-layer .term-toolbar { margin-bottom: calc(4px + var(--safe-bottom, 0px)); }
+html[data-shell=phone][data-kb=open] .term-phone-layer .term-toolbar { margin-bottom: 4px; }
+html[data-shell=phone] .term-phone-head { height: 56px; }
+html[data-shell=phone][data-short] .term-phone-head { height: 48px; }
+html[data-shell=phone] .term-phone-icon-btn { width: 48px; height: 48px; min-height: 48px; }
+html[data-shell=phone] .term-phone-pill-close::after { inset: -10px; }

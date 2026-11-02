@@ -242,3 +242,40 @@
   .draft-center { gap: 16px; }
   .draft .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: 22px; line-height: 28px; }
 }
+
+/* ── Phone (phone spec §3.6, PH-30): greeting at ~22 % with the crab watermark
+   behind it only, a "Workspace" row under it, the composer docked at the bottom
+   like in a chat (the layer sits on the keyboard by --kb). ───────────────── */
+html[data-shell=phone] .draft[data-phone] { justify-content: flex-start; align-items: stretch; height: 100%; min-height: 0; padding: 0; }
+html[data-shell=phone] .draft[data-phone] .draft-mark { inset: auto 0 auto 0; top: calc(22% - 72px); height: 200px; opacity: 0.04; }
+html[data-shell=phone] .draft[data-phone] .draft-mark-crab { width: 200px; transform: none; }
+html[data-shell=phone] .draft[data-phone] .draft-center { flex: 1 1 auto; min-height: 0; width: 100%; gap: 20px; align-items: stretch; padding: 22% var(--ph-gutter, 16px) 0; box-sizing: border-box; overflow-y: auto; }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: 20px; line-height: 26px; }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-hint { font-size: 14px; line-height: 20px; }
+html[data-shell=phone] .draft[data-phone] .draft-composer { margin: auto calc(-1 * var(--ph-gutter, 16px)) 0; width: auto; padding: 8px 8px calc(8px + var(--safe-bottom, 0px)); }
+html[data-shell=phone][data-kb=open] .draft[data-phone] .draft-composer { padding-bottom: 8px; }
+html[data-shell=phone] .draft[data-phone] .draft-composer .tl-composer .tl-composer-field { min-height: 36px; }
+html[data-shell=phone][data-kb=open][data-short] .draft[data-phone] .empty-chat { display: none; }
+html[data-shell=phone][data-kb=open] .draft[data-phone] .draft-center { padding-top: 16px; }
+
+/* The Workspace row (and the PC row with more than one PC): an inset list group of 56 px rows. */
+.ph-draft-pickers { display: flex; flex-direction: column; border-radius: var(--ph-radius-card, 16px); background: var(--color-surface-1); overflow: hidden; }
+.ph-draft-pickers > * + * { border-top: 1px solid rgb(46 40 37 / 60%); }
+.ph-draft-pickers .ws-chip,
+.ph-draft-pickers .host-chip { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; height: auto; padding: 0 12px 0 16px; border: 0; border-radius: 0; background: transparent; color: var(--color-text); font-size: 16px; text-align: left; }
+.ph-draft-pickers .ws-chip-ic { flex: none; width: 22px; height: 22px; color: var(--color-text-muted); }
+.ph-draft-pickers .ws-chip-key { flex: 1 1 auto; font-weight: 500; }
+.ph-draft-pickers .ws-chip-label { flex: 0 1 auto; max-width: 55%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--color-text-muted); }
+.ph-draft-pickers .ws-chip-chev { flex: none; color: var(--color-text-dim); }
+
+/* The workspace sheet (phone): 56 px folder rows, a breadcrumb starting at "/" or "~". */
+.ws-sheet .ws-menu { display: flex; flex-direction: column; }
+.ws-sheet .ws-row { min-height: 56px; padding: 0 8px; gap: 16px; font-size: 16px; border-radius: 12px; }
+.ws-sheet .ws-row-ic { width: 22px; height: 22px; }
+.ws-sheet .ws-row-detail { font-size: 14px; }
+.ws-sheet .ws-label { padding: 12px 8px 4px; font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--color-text-muted); }
+.ws-crumbs { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 0 0 8px; }
+.ws-crumb { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text-muted); font-size: 14px; cursor: pointer; }
+.ws-crumb[aria-current] { color: var(--color-text); font-weight: 600; }
+.ws-crumb-back { background: transparent; color: var(--color-text); }
+.ws-sheet .ws-browse-list { max-height: none; }

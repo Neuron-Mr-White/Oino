@@ -482,7 +482,9 @@ export function TerminalView(props: TerminalViewProps) {
         try {
           // WebGL is the fast path, but WebKitGTK (the Linux desktop webview) leaves stale
           // frames with it (a full-screen program's first paint never shows): DOM renderer there.
-          if (!('__UNIPI_NO_WEBGL__' in window) && platform().os !== 'linux') {
+          // PH-07: the phone gets the DOM renderer too — the WebGL glyph atlas cut glyphs in half
+          // on Android WebViews.
+          if (!('__UNIPI_NO_WEBGL__' in window) && platform().os !== 'linux' && platform().mode !== 'tauri-mobile') {
             const webgl = new WebglAddon();
             webgl.onContextLoss(() => webgl.dispose());
             rt.term.loadAddon(webgl);

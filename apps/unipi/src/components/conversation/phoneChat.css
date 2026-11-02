@@ -72,3 +72,10 @@ html[data-shell=phone] .tl pre { max-width: 100%; overflow-x: auto; }
 .ph-tool-sheet-title { display: flex; flex-direction: column; min-width: 0; }
 .ph-tool-sheet-sub { font-family: var(--font-mono); font-size: 13px; line-height: 20px; font-weight: 400; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ph-tool-sheet .board-sheet-body pre { overflow-x: auto; max-width: 100%; }
+
+/* Jump to latest (§3.4): a 40 px round button (48 px hit) centred 12 px above the composer. */
+html[data-shell=phone] .tl-jump { right: auto; left: calc(50% - 20px); top: -52px; width: 40px; height: 40px; min-height: 40px; z-index: var(--z-sticky, 10); }
+html[data-shell=phone] .tl-jump::after { content: ''; position: absolute; inset: -4px; }
+
+/* Offline (PH-15): the composer waits, dimmed. */
+html[data-shell=phone] .tl-composer[data-readonly] { opacity: .75; }

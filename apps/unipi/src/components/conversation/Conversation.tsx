@@ -44,6 +44,7 @@ import { ConversationBoundary } from '../ErrorBoundaries';
 import { BottomDock } from '../dock/BottomDock';
 import { Composer } from '../composer/Composer';
 import { ReadOnlyBanner, isTakenOverReadOnly } from './ReadOnlyBanner';
+import { hostStatus } from '../shell/HostSwitcher';
 import '../timeline/timeline.css';
 import './phoneChat.css';
 
@@ -54,8 +55,10 @@ installUiSinks();
 installUiEffects();
 
 /** The session's banners: connection loss (Z-50), open error, takeover (Z-51), host crashes/reloads. */
-function Banners(props: { session: SessionHandle }) {
+function Banners(props: { session: SessionHandle; hostOffline?: boolean }) {
   const conn = () => {
+    // Phone (PH-15): the header's OfflineBanner already says the PC is offline.
+    if (props.hostOffline) return undefined;
     const st = props.session.state;
     const base = connBanner(st);
     if (base) return base;
@@ -104,6 +107,8 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
     return h && h.transport !== 'local' ? h.name : undefined;
   };
   const hub = createMemo(() => hubs().ensure(props.hostId));
+  /** Phone (§3.4, PH-15): the PC is offline — the cached transcript reads, the composer waits. */
+  const phoneOffline = () => !layout().desktop() && hostStatus(props.hostId) === 'offline';
   const liveCard = () => (props.sessionId ? hub().state.cards[props.sessionId] : undefined);
   const archivedCard = createMemo(() => {
     const id = props.sessionId;
@@ -293,7 +298,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                   </button>
                 </div>
               </Show>
-              <Banners session={s()} />
+              <Banners session={s()} hostOffline={phoneOffline()} />
               <Show when={ctx()}>
                 {(c) => (
                   <TimelineCtxWidth ctx={c()} onWidth={setColW}>
@@ -319,8 +324,8 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                                 <Composer
                                   session={s()}
                                   cwd={cwd}
-                                  readOnly={isArchived() || isTakenOverReadOnly(s().state)}
-                                  placeholder={isArchived() ? 'Archived chat — restore to reply' : undefined}
+                                  readOnly={isArchived() || isTakenOverReadOnly(s().state) || phoneOffline()}
+                                  placeholder={isArchived() ? 'Archived chat — restore to reply' : phoneOffline() ? `Reconnect to ${hostName() ?? 'your PC'} to send` : undefined}
                                   phone={!layout().desktop()}
                                 />
                               }

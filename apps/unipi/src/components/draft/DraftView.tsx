@@ -138,8 +138,18 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
     return dead ? `${dead.name || dead.id} isn't working — pick another model` : undefined;
   };
 
+  /** The workspace (and PC) pickers: inside the composer on the desktop; on the phone a
+   *  "Workspace" row under the greeting, the composer docked at the bottom (§3.6, PH-30). */
+  const pickers = () => (
+    <>
+      <WorkspacePicker hostId={hostId()} value={folder()} onChange={setFolder} recent={recent()} roots={roots.latest ?? []} home={home()} disabled={busy()} />
+      <Show when={multiHost()}>
+        <HostPicker hostId={hostId()} hosts={hosts?.hosts() ?? []} onPick={pickHost} disabled={busy()} />
+      </Show>
+    </>
+  );
   return (
-    <div class="draft" data-testid="draft-view">
+    <div class="draft" data-testid="draft-view" data-phone={layout().desktop() ? undefined : ''}>
       <div class="draft-mark" aria-hidden="true">
         <Unicrab state="idle" size={560} class="draft-mark-crab" />
       </div>
@@ -147,6 +157,11 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
         <EmptyChat cwd={folder()} hostName={hostName()} variant="start" />
         <Show when={draft()?.readiness()?.known && !draft()?.readiness()?.any}>
           <ConnectProviderCard />
+        </Show>
+        <Show when={!layout().desktop()}>
+          <div class="ph-draft-pickers" data-testid="draft-pickers">
+            {pickers()}
+          </div>
         </Show>
         <div class="draft-composer" data-testid="draft-composer" data-pending={draft()?.ready() ? undefined : ''}>
           <Show when={draft()} keyed>
@@ -161,22 +176,7 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
                 cwd={() => folder()}
                 placeholder={busy() ? 'Starting the chat…' : undefined}
                 modelSlot={<DraftModelChip session={session} disabled={busy()} />}
-                header={
-                  <>
-                    <WorkspacePicker
-                      hostId={hostId()}
-                      value={folder()}
-                      onChange={setFolder}
-                      recent={recent()}
-                      roots={roots.latest ?? []}
-                      home={home()}
-                      disabled={busy()}
-                    />
-                    <Show when={multiHost()}>
-                      <HostPicker hostId={hostId()} hosts={hosts?.hosts() ?? []} onPick={pickHost} disabled={busy()} />
-                    </Show>
-                  </>
-                }
+                header={layout().desktop() ? pickers() : undefined}
               />
             )}
           </Show>
