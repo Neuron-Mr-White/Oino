@@ -67,9 +67,21 @@ export function sortProviders(list: readonly Provider[]): Provider[] {
 
 export function ProvidersPage() {
   const navigate = useNavigate();
-  const [providers, { refetch }] = createResource(async (): Promise<Provider[]> => {
+  // G-05: the list paints from the host's cache at once; the credential check (`validate`)
+  // follows and fills in "Not working" — a saved dead key never reads "Ready".
+  const [checking, setChecking] = createSignal(false);
+  const [providers, { refetch, mutate }] = createResource(async (): Promise<Provider[]> => {
     const result = await hostCmd({ kind: 'auth_providers' }, ProvidersSchema, LOCAL_HOST);
-    return result.ok ? result.value.providers : [];
+    const first = result.ok ? result.value.providers : [];
+    if (first.some((p) => p.configured && p.ready === undefined)) {
+      setChecking(true);
+      void hostCmd({ kind: 'auth_providers', validate: true }, ProvidersSchema, LOCAL_HOST)
+        .then((checked) => {
+          if (checked.ok) mutate(checked.value.providers);
+        })
+        .finally(() => setChecking(false));
+    }
+    return first;
   });
   const [error, setError] = createSignal<AppError | string | undefined>();
   const [busy, setBusy] = createSignal<string | undefined>();
@@ -161,15 +173,16 @@ export function ProvidersPage() {
         <p class="settings-provider-summary" data-testid="providers-summary">
           {(() => {
             const all = providers.latest ?? [];
-            const ready = all.filter((p) => p.configured && p.ready !== false).length;
             const broken = all.filter((p) => p.configured && p.ready === false).length;
-            return `${ready} ready${broken ? ` · ${broken} not working` : ''} · ${all.length - ready - broken} not set up`;
+            const unchecked = checking() ? all.filter((p) => p.configured && p.ready === undefined).length : 0;
+            const ready = all.filter((p) => p.configured && p.ready !== false).length - unchecked;
+            return `${ready} ready${unchecked ? ` · checking ${unchecked}…` : ''}${broken ? ` · ${broken} not working` : ''} · ${all.length - ready - broken - unchecked} not set up`;
           })()}
         </p>
       </Show>
       <For each={sortProviders(providers.latest ?? [])}>
         {(p) => {
-          const state = () => providerState(p);
+          const state = () => (checking() && p.configured && p.ready === undefined ? { label: 'Checking…', detail: 'asking the provider' } : providerState(p));
           return (
             <>
               <div class="settings-provider-row" data-testid={`provider-${p.id}`}>

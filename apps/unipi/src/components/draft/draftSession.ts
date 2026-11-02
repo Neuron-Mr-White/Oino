@@ -123,6 +123,17 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
     })
     .catch(() => undefined)
     .finally(() => setDefaultsIn(true));
+  // G-05: the cached answer paints at once; the host's real credential check follows and
+  // corrects it (a saved dead key is "not working", so the Connect card stays).
+  void hostReadiness(hostId, { validate: true })
+    .then((checked) => {
+      if (!checked.known) return;
+      setReadiness(checked);
+      // The default the host proposed turned out to be on a dead key: don't show a name the chat can't run.
+      const m = state.model;
+      if (m?.provider && !choices().model && checked.providers.some((p) => p.id === m.provider && p.ready === false)) setState('model', undefined);
+    })
+    .catch(() => undefined);
 
   // The `/` menu: a live chat's commands, else the ones a chat on this PC
   // listed last (P0-09), else the workflow controls alone when this PC runs

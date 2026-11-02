@@ -56,14 +56,12 @@ import { setChatModel } from '../../lib/model/chatModel';
 import { hostReadiness, type Readiness } from '../../lib/model/readiness';
 import { calmModelError, splitAvailability } from '../../lib/model/availability';
 import { closeModelPicker, modelPickerTarget, type ModelPickerTarget } from './target';
-import { curatedFirst, groupedModels, routeLabel, rowTitle, startupKey } from './suggested';
+import { curatedFirst, rowTitle, startupKey } from './suggested';
+import { LIST_CAP, ModelList, modelView } from './ModelList';
 import { thinkingLabel } from '../../lib/model/thinking';
 import { cycleKeyOf, cycleKeysOf, cycleLabel, toggleCycleKey } from '../../lib/model/cycle';
 import '../session/session-modal.css';
 import './model.css';
-
-/** Rows rendered per list: the whole catalogue (P0-10 — no 120 cap); a guard only. */
-const LIST_CAP = 2000;
 
 const errText = (e: unknown): string => String((e as { message?: unknown })?.message ?? e);
 
@@ -118,27 +116,9 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
   const fusion = () => data.latest?.fusion;
   const byKey = createMemo(() => new Map(allModels().map((m) => [modelKey(m), m])));
   const current = (): Selection | undefined => selectionOf(s().state.model, fusion()?.active);
-  /** F-02: chat models of working providers (the running model always stays); the rest sit under "Unavailable". */
-  const split = createMemo(() => {
-    const c = current();
-    return splitAvailability(allModels(), data.latest?.readiness, c?.kind === 'single' ? c.key : undefined);
-  });
-  const models = () => split().usable;
-  const [showUnavailable, setShowUnavailable] = createSignal(false);
-  const unavailableRows = () => {
-    const q = query().trim().toLowerCase();
-    return split().unavailable.filter((u) => !q || modelHits(u.model, q));
-  };
-  /** One line per failing provider: "OpenRouter: the key was rejected · 470 models". */
-  const unavailableProviders = () => {
-    const by = new Map<string, { reason: string; count: number }>();
-    for (const u of split().unavailable) {
-      const e = by.get(u.model.provider);
-      if (e) e.count += 1;
-      else by.set(u.model.provider, { reason: u.reason, count: 1 });
-    }
-    return [...by.values()];
-  };
+  /** F-02: one view shared with the New-chat popover (`ModelList.modelView`). */
+  const view = createMemo(() => modelView(allModels(), data.latest?.readiness, fusion()?.curated, current(), query()));
+  const models = () => view().usable;
   const fusionOn = () => !!fusion();
   const activePair = () => {
     const c = current();
@@ -188,7 +168,6 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
   };
 
   const curated = () => fusion()?.curated;
-  const groups = createMemo(() => groupedModels(models(), curated(), current(), query()));
   const colRows = createMemo(() => columnModels(models(), query()));
   const leadRows = createMemo(() => curatedFirst(colRows(), (curated()?.lead ?? []).map((e) => e.key)));
   const sidekickRows = createMemo(() => curatedFirst(colRows(), (curated()?.sidekick ?? []).map((e) => e.key)));
@@ -309,76 +288,6 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
   };
   const cycleOf = (m: ModelInfo) => cycle().exact.includes(cycleKeyOf(m.provider, m.id));
 
-  /** One Single-tab row: display name, route sub-line, badges; provider · id in the tooltip. */
-  const SingleRow = (p: { m: ModelInfo; lead?: boolean; sidekick?: boolean; effort?: string }) => {
-    const key = modelKey(p.m);
-    const name = modelName(p.m);
-    const isCurrent = () => current()?.kind === 'single' && (current() as { key: string }).key === key;
-    const picked = () => pick() === key;
-    return (
-      <button
-        type="button"
-        class="mp-row"
-        title={rowTitle(name, p.m)}
-        aria-current={isCurrent() ? 'true' : undefined}
-        aria-pressed={picked() ? 'true' : 'false'}
-        data-picked={picked() ? '' : undefined}
-        data-key={key}
-        onClick={() => {
-          setError(null);
-          // D-07: one click switches. Only a running Fusion pair keeps the explicit
-          // "Turn Fusion off & switch" step (it ends something the user set up).
-          if (isCurrent()) {
-            setPick(undefined);
-            return;
-          }
-          if (current()?.kind === 'fusion') {
-            setPick(nextSinglePick(current(), pick(), key));
-            return;
-          }
-          setPick(key);
-          applySingle();
-        }}
-      >
-        <span class="mp-row-main">
-          <span class="mp-row-name">{name}</span>
-          <span class="mp-row-sub">{routeLabel(p.m)}</span>
-        </span>
-        <Show when={p.lead}>
-          <span class="mp-badge mp-role" title="Curated Fusion lead">
-            Lead
-          </span>
-        </Show>
-        <Show when={p.sidekick}>
-          <span class="mp-badge mp-role" title="Curated Fusion sidekick">
-            Sidekick
-          </span>
-        </Show>
-        <Show when={p.effort}>
-          {(e) => (
-            <span class="mp-badge mp-effort-badge" title={`Curated thinking: ${thinkingLabel(e())} (applied with the switch)`}>
-              {thinkingLabel(e())}
-            </span>
-          )}
-        </Show>
-        <Show when={startup() === key}>
-          <span class="mp-badge mp-startup" title="New chats start on this model">
-            Startup
-          </span>
-        </Show>
-        <Show when={hasVision(p.m)}>
-          <span class="mp-badge" title="Accepts images">
-            Vision
-          </span>
-        </Show>
-        <Show when={contextBadge(p.m)}>{(badge) => <span class="mp-badge mp-ctx" title="Context window">{badge()}</span>}</Show>
-        <Show when={isCurrent()}>
-          <Check size={16} class="mp-check" aria-label="Current model" />
-        </Show>
-      </button>
-    );
-  };
-
   /** One Fusion column row (`curated` = in the column's curated list). */
   const ColRow = (p: { m: ModelInfo; side: 'lead' | 'sidekick' }) => {
     const key = modelKey(p.m);
@@ -455,58 +364,29 @@ export function ModelPickerBody(props: { target: ModelPickerTarget }) {
             when={!data.loading || data.latest}
             fallback={<div class="mp-skeleton"><span /><span /><span /></div>}
           >
-            <div class="mp-list" data-testid="model-picker-list">
-              <Show when={groups().suggested.length > 0}>
-                <p class="mp-group" data-testid="model-group-suggested">Suggested</p>
-                <For each={groups().suggested}>{(row) => <SingleRow m={row.model} lead={row.lead} sidekick={row.sidekick} effort={row.effort} />}</For>
-                <Show when={groups().rest.length > 0}>
-                  <p class="mp-group" data-testid="model-group-all">All models</p>
-                </Show>
-              </Show>
-              <For
-                each={groups().rest.slice(0, LIST_CAP)}
-                fallback={
-                  <Show when={groups().suggested.length === 0}>
-                    <p class="mp-empty">No model matches “{query().trim()}”.</p>
-                  </Show>
+            <ModelList
+              view={view()}
+              query={query()}
+              currentKey={current()?.kind === 'single' ? (current() as { key: string }).key : undefined}
+              pickedKey={pick()}
+              startupKey={startup()}
+              onSelect={(m, isCurrent) => {
+                const key = modelKey(m);
+                setError(null);
+                // D-07: one click switches. Only a running Fusion pair keeps the explicit
+                // "Turn Fusion off & switch" step (it ends something the user set up).
+                if (isCurrent) {
+                  setPick(undefined);
+                  return;
                 }
-              >
-                {(m) => <SingleRow m={m} />}
-              </For>
-              <Show when={unavailableRows().length > 0}>
-                <button
-                  type="button"
-                  class="mp-group mp-unavail-toggle"
-                  aria-expanded={showUnavailable()}
-                  onClick={() => setShowUnavailable((v) => !v)}
-                  data-testid="model-group-unavailable"
-                >
-                  <Show when={showUnavailable()} fallback={<ChevronRight size={13} />}>
-                    <ChevronDown size={13} />
-                  </Show>
-                  Unavailable ({unavailableRows().length})
-                </button>
-                <Show when={showUnavailable()}>
-                  <For each={unavailableProviders()}>
-                    {(p) => (
-                      <p class="mp-hint mp-unavail-note">
-                        {p.reason} · {p.count} model{p.count === 1 ? '' : 's'}
-                      </p>
-                    )}
-                  </For>
-                  <For each={unavailableRows().slice(0, 200)}>
-                    {(u) => (
-                      <button type="button" class="mp-row" disabled aria-disabled="true" title={`${modelName(u.model)}\n${u.reason}`} data-testid="model-row-unavailable">
-                        <span class="mp-row-main">
-                          <span class="mp-row-name">{modelName(u.model)}</span>
-                          <span class="mp-row-sub">{u.reason}</span>
-                        </span>
-                      </button>
-                    )}
-                  </For>
-                </Show>
-              </Show>
-            </div>
+                if (current()?.kind === 'fusion') {
+                  setPick(nextSinglePick(current(), pick(), key));
+                  return;
+                }
+                setPick(key);
+                applySingle();
+              }}
+            />
           </Show>
         }
       >

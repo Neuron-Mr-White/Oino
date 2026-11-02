@@ -53,7 +53,7 @@ export type HostCmdOp =
   | { kind: 'unset_extension_setting'; namespace: string; key: string; scope: 'global' | 'project' }
   | { kind: 'extensions' }
   | { kind: 'set_extension_enabled'; id: string; enabled: boolean }
-  | { kind: 'auth_providers' }
+  | { kind: 'auth_providers'; validate?: boolean }
   | { kind: 'logout'; provider: string }
   | { kind: 'set_api_key'; provider: string; key: string }
   | { kind: 'get_shortcuts' };

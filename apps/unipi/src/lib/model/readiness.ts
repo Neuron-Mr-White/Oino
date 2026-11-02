@@ -55,7 +55,8 @@ export function readinessOf(providers: Provider[] | undefined): Readiness {
 }
 
 /** Asks the host which providers work (a failed ask is "unknown", never "none"). */
-export async function hostReadiness(hostId: string): Promise<Readiness> {
-  const res = await hostCmd({ kind: 'auth_providers' }, ProvidersSchema, hostId).catch(() => undefined);
+export async function hostReadiness(hostId: string, opts: { validate?: boolean } = {}): Promise<Readiness> {
+  // G-05: `validate` waits for the host's real credential check (bounded) — a saved dead key is never "ready".
+  const res = await hostCmd({ kind: 'auth_providers', ...(opts.validate ? { validate: true } : {}) }, ProvidersSchema, hostId).catch(() => undefined);
   return readinessOf(res?.ok ? res.value.providers : undefined);
 }
