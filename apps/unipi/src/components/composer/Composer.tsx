@@ -829,7 +829,35 @@ export function Composer(props: ComposerProps) {
   };
 
   /* ── keys ─────────────────────────────────────────────────────────── */
+  /** owner5 #25: Backspace at the very start of the field takes the last
+   *  chip above it (attachment, pasted text, then quote) — like a token row. */
+  const removeLastRowChip = (): boolean => {
+    const att = pending().at(-1);
+    if (att) {
+      removeAttachment(key(), att.id);
+      return true;
+    }
+    const chip = draft().chips.at(-1);
+    if (chip) {
+      removeComposerChip(key(), chip.id);
+      return true;
+    }
+    const quote = draft().quotes.at(-1);
+    if (quote) {
+      removeComposerQuote(key(), quote.id);
+      return true;
+    }
+    return false;
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Backspace' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing) {
+      const sel = typeof document !== 'undefined' ? document.getSelection() : null;
+      if ((!sel || sel.isCollapsed) && (editor?.getCaret() ?? caret()) === 0 && removeLastRowChip()) {
+        e.preventDefault();
+        return;
+      }
+    }
     if (e.key === 'Escape') {
       if (slashItems().length || menuItems()?.length || argRows()?.length) {
         e.preventDefault();

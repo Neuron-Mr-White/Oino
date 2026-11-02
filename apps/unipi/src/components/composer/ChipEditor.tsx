@@ -207,7 +207,7 @@ export function ChipEditor(props: {
       spin.setAttribute('aria-hidden', 'true');
       el.append(spin);
     }
-    if (chip.kind === 'file' || chip.kind === 'image') {
+    if (chip.kind === 'file' || chip.kind === 'image' || chip.kind === 'path') {
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'ichip-x';
@@ -345,7 +345,12 @@ export function ChipEditor(props: {
       if (!sel || !sel.isCollapsed) return;
       const at = readCaret();
       if (at === undefined) return;
-      const hit = chipAt(at, type === 'deleteContentBackward');
+      const back = type === 'deleteContentBackward';
+      let hit = chipAt(at, back);
+      // owner5 #25: a chip ends with the space that keeps it a chip (the
+      // editor only chips finished tokens). Backspacing that space would
+      // un-chip it into raw `@path` text — remove the chip with it instead.
+      if (!hit && back && at > 0 && shown[at - 1] === ' ') hit = chipAt(at - 1, true);
       if (!hit) return;
       e.preventDefault();
       const next = removeToken(shown, hit.start, hit.chip.raw);

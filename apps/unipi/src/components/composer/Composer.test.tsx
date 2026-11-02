@@ -15,7 +15,7 @@ import { setHostClientFactory } from '../../lib/host/factory';
 import { createSession, type SessionHandle } from '../../lib/session/store';
 import { resetPanes } from '../../lib/panes';
 import { setDesktopOverride, resetLayout } from '../../lib/layout';
-import { resetComposerDrafts, flushComposerDrafts, composerDraft } from '../../lib/composer/drafts';
+import { resetComposerDrafts, flushComposerDrafts, composerDraft, addComposerChip, addComposerQuote } from '../../lib/composer/drafts';
 import { installEscapeStop } from '../../lib/composer/escapeStop';
 import { Composer } from './Composer';
 import { shortcutsOpen } from '../shell/ShortcutsDialog';
@@ -148,6 +148,22 @@ describe('placeholder by state (Z-57)', () => {
     const empty = await openSession(0);
     const c = mountComposer(empty, { phone: true });
     expect(c.field().getAttribute('data-placeholder')).toBe('Ask anything…');
+  });
+});
+
+describe('owner5 #25: chips above the field', () => {
+  it('Backspace at caret 0 removes the last chip, one per press', async () => {
+    const session = await openSession(1);
+    const k = `${HOST}/${SESSION}`;
+    addComposerQuote(k, 'quoted line');
+    addComposerChip(k, { kind: 'paste', label: 'Pasted text · 3 lines' });
+    const { field, key } = mountComposer(session);
+    field().focus();
+    key({ key: 'Backspace' });
+    expect(composerDraft(k).chips).toHaveLength(0);
+    expect(composerDraft(k).quotes).toHaveLength(1);
+    key({ key: 'Backspace' });
+    expect(composerDraft(k).quotes).toHaveLength(0);
   });
 });
 

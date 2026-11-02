@@ -96,6 +96,22 @@ describe('ChipEditor (UNI-212)', () => {
     expect(removed.length).toBe(1);
   });
 
+  it('owner5 #25: a mentioned path chip has a ✕ and Backspace over its trailing space removes it whole', () => {
+    const opts = { verified: (t: string) => t === '@/repo/LICENSE-MIT', requireTrailingSpace: true };
+    const a = mountEditor('@/repo/LICENSE-MIT ', opts);
+    const x = a.root.querySelector('.ichip[data-kind=path] .ichip-x') as HTMLElement;
+    expect(x.getAttribute('aria-label')).toBe('Remove LICENSE-MIT');
+    fireEvent.click(x);
+    expect(a.value()).toBe('');
+    cleanup();
+    const b = mountEditor('see @/repo/LICENSE-MIT ', opts);
+    b.root.focus();
+    caretAt(b.root.lastChild!, 1); // after the trailing space
+    expect(beforeInput(b.root, 'deleteContentBackward').defaultPrevented).toBe(true);
+    expect(b.value()).toBe('see ');
+    expect(b.root.querySelector('.ichip')).toBeNull();
+  });
+
   it("Chrome's placeholder <br> at the end of the field is not a newline (backspacing the last char empties the draft)", () => {
     // Seen on Android WebView: Backspace on the last character leaves `<br>` (no data-tail) as the
     // only child; it used to read back as "\n" — placeholder gone and no Backspace could clear it.
