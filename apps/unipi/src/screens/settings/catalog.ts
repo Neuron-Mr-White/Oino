@@ -9,7 +9,7 @@
  */
 import type { Component } from 'solid-js';
 import {
-  Blocks, Bell, Bot, Brain, Cpu, FolderKanban, Info, KanbanSquare, Keyboard, MonitorSmartphone,
+  Blocks, Bell, Bot, Brain, Cpu, FolderKanban, Globe, Info, KanbanSquare, Keyboard, MonitorSmartphone,
   Plug, Puzzle, Server, Settings2, Smartphone, Sparkles, TerminalSquare, Type, Unplug, Waypoints,
 } from 'lucide-solid';
 import { can, type Capability } from '../../lib/platform';
@@ -21,7 +21,11 @@ export type SettingsSectionId =
   | 'extensions' | 'agent' | 'mcp' | 'memory' | 'skills' | 'subagents' | 'providers'
   | 'hosts' | 'connection' | 'sharing' | 'notifications' | 'unicrab'
   | 'host'
+  | 'ports'
   | 'about';
+
+/** Phone Settings root groups (phone spec §3.9): this phone, the selected PC, PCs & connection, About. */
+export type PhoneGroupId = 'phone' | 'pc' | 'pcs' | 'about';
 
 export type SettingsRow = { key: string; label: string; description?: string };
 
@@ -36,6 +40,10 @@ export type SettingsSection = {
   desktopOnly?: boolean;
   /** Extra runtime gate (e.g. the Unicrab surfaces exist on phone/desktop only). */
   show?: () => boolean;
+  /** Phone root (§3.9): which group lists it and its row label there; `false` = hidden on the phone (PH-20). */
+  phone?: { group: PhoneGroupId; label?: string } | false;
+  /** Only the phone lists it (Ports live in the desktop side pane, Z-104). */
+  phoneOnly?: boolean;
   keywords: string[];
   rows: SettingsRow[];
 };
@@ -55,6 +63,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'basics',
     icon: Settings2,
     desktopOnly: true,
+    phone: false,
     keywords: ['lifetime', 'close', 'quit', 'tray', 'login', 'startup', 'autostart', 'window'],
     rows: [
       { key: 'closeAction', label: 'Close button', description: 'Ask, minimize to the tray, or quit' },
@@ -66,6 +75,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     title: 'Appearance',
     group: 'basics',
     icon: Type,
+    phone: { group: 'phone' },
     keywords: ['font', 'size', 'text', 'code', 'wrap', 'line numbers', 'theme', 'ui'],
     rows: [
       { key: 'appearance.uiFontSize', label: 'UI font size', description: 'Text size across the app; icons and layout stay the same' },
@@ -80,6 +90,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'basics',
     icon: Keyboard,
     cap: 'terminal',
+    phone: { group: 'phone', label: 'Input & keyboard' },
     keywords: ['keyboard', 'haptics', 'autocorrect', 'toolbar', 'keys', 'modifiers'],
     rows: [
       { key: 'input.haptics', label: 'Haptics' },
@@ -93,6 +104,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     title: 'Keyboard shortcuts',
     group: 'basics',
     icon: Keyboard,
+    phone: false,
     keywords: ['keyboard', 'shortcuts', 'chords', 'rebind', 'hotkeys', 'keys', 'extensions'],
     rows: [
       { key: 'shortcuts.chords', label: 'Shell chords', description: 'Rebind any shell chord; extension chords that collide are rebound automatically' },
@@ -104,6 +116,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'basics',
     icon: TerminalSquare,
     cap: 'terminal',
+    phone: { group: 'phone' },
     keywords: ['terminal', 'font', 'cursor', 'scrollback', 'screen', 'session'],
     rows: [
       { key: 'terminal.fontSize', label: 'Font size' },
@@ -122,6 +135,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'basics',
     icon: MonitorSmartphone,
     cap: 'files',
+    phone: false,
     keywords: ['editor', 'vim', 'keybindings'],
     rows: [{ key: 'editor.vim', label: 'Vim mode', description: 'vim keybindings in the file editor, with a NORMAL/INSERT/VISUAL indicator and :w to save' }],
   },
@@ -130,6 +144,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     title: 'Board',
     group: 'basics',
     icon: FolderKanban,
+    phone: { group: 'pc' },
     keywords: ['board', 'kanban', 'project', 'backlog'],
     rows: [
       { key: 'board.defaultProject', label: 'Default project' },
@@ -142,6 +157,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Puzzle,
     cap: 'hosts',
+    phone: { group: 'pc' },
     keywords: ['extensions', 'plugins', 'enable', 'disable', 'safe mode', 'crash', 'wasm'],
     rows: [
       { key: 'extensions.list', label: 'Installed extensions', description: 'Enable or disable extensions; crash and safe-mode notices' },
@@ -153,6 +169,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Waypoints,
     cap: 'hosts',
+    phone: { group: 'pc' },
     keywords: ['oino', 'agent', 'settings', 'model', 'defaults', 'core'],
     rows: [
       { key: 'agent.settings', label: 'Agent settings', description: "The oino agent's settings.json (this PC)" },
@@ -164,6 +181,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Plug,
     cap: 'hosts',
+    phone: { group: 'pc' },
     keywords: ['mcp', 'model context protocol', 'servers', 'tools', 'catalog', 'json'],
     rows: [
       { key: 'mcp.servers', label: 'Servers', description: 'Every configured server; enable, edit its JSON or remove it' },
@@ -177,6 +195,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Brain,
     cap: 'hosts',
+    phone: { group: 'pc' },
     keywords: ['memory', 'remember', 'recall', 'mempalace', 'browse', 'forget', 'consolidate', 'dream', 'reflection'],
     rows: [
       { key: 'memory.form', label: 'Recall and write', description: 'When the agent reads and writes memories, and the palace paths' },
@@ -191,6 +210,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Sparkles,
     cap: 'hosts',
+    phone: { group: 'pc' },
     keywords: ['skills', 'exposure', 'judged', 'pins', 'vault', 'editor'],
     rows: [
       { key: 'skills.form', label: 'Exposure and pins', description: 'Judged / all / off, pinned skills and the vault' },
@@ -204,6 +224,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Bot,
     cap: 'hosts',
+    phone: { group: 'pc' },
     keywords: ['subagents', 'agents', 'profiles', 'background', 'delegate', 'concurrency'],
     rows: [
       { key: 'subagents.form', label: 'Concurrency and defaults', description: 'How many run at once and which model they use' },
@@ -216,6 +237,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'agent',
     icon: Plug,
     cap: 'hosts',
+    phone: { group: 'pc' },
     keywords: ['providers', 'login', 'logout', 'sign in', 'oauth', 'api key', 'credentials', 'models'],
     rows: [
       { key: 'providers.list', label: 'Model providers', description: 'Sign in, save an API key or sign out' },
@@ -227,6 +249,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'hosts',
     icon: Server,
     cap: 'hosts',
+    phone: { group: 'pcs', label: 'PCs' },
     keywords: ['hosts', 'pair', 'phone', 'pc', 'this computer', 'unpair', 'iroh'],
     rows: [{ key: 'hosts.list', label: 'Paired hosts', description: 'This computer and paired phones/PCs' }],
   },
@@ -236,6 +259,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'hosts',
     icon: Unplug,
     cap: 'hosts',
+    phone: { group: 'pcs' },
     keywords: ['connection', 'relay', 'n0', 'ssh', 'path'],
     rows: [
       { key: 'connection.relay', label: 'Relay', description: 'How this app reaches its hosts when not on the same network' },
@@ -248,6 +272,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'hosts',
     icon: Smartphone,
     cap: 'hosts',
+    phone: { group: 'pcs' },
     keywords: ['sharing', 'features', 'files', 'ports', 'browser', 'screen'],
     rows: [{ key: 'sharing.features', label: 'Shared with phones', description: 'What paired devices may use on this PC' }],
   },
@@ -256,6 +281,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     title: 'Notifications',
     group: 'hosts',
     icon: Bell,
+    phone: { group: 'phone' },
     keywords: ['notifications', 'push', 'ntfy', 'needs you', 'desktop', 'phone', 'background', 'notify', 'gotify', 'telegram', 'events', 'silence', 'renotify'],
     rows: [
       { key: 'notify.desktop', label: 'Desktop notifications', description: 'A system notification when the agent needs you or finishes, while Unipi isn\u2019t in front' },
@@ -270,6 +296,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'hosts',
     icon: KanbanSquare,
     show: () => can('hosts') || can('tray'),
+    phone: { group: 'phone' },
     keywords: ['unicrab', 'crab', 'mascot', 'floating', 'overlay', 'window'],
     rows: [
       { key: 'unicrab.floating', label: 'Floating crab', description: 'A button you can drag to any edge; long-press for quick actions' },
@@ -283,6 +310,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'data',
     icon: Cpu,
     desktopOnly: true,
+    phone: false,
     keywords: ['host', 'config', 'relay', 'forwarding', 'push', 'fs', 'scope', 'term', 'update', 'cron'],
     rows: [
       { key: 'host.relay', label: 'Host relay', description: 'The relay this PC\u2019s host advertises for pairing' },
@@ -295,10 +323,25 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     ],
   },
   {
+    id: 'ports',
+    title: 'Ports & previews',
+    group: 'hosts',
+    icon: Globe,
+    cap: 'hosts',
+    phoneOnly: true,
+    phone: { group: 'pc' },
+    keywords: ['ports', 'preview', 'forward', 'web app', 'localhost', 'browser', 'tabs'],
+    rows: [
+      { key: 'ports.web', label: 'Web apps on your PC', description: 'Open or forward a port the PC is serving' },
+      { key: 'ports.tabs', label: 'Browser tabs', description: 'Pages open in the in-app browser' },
+    ],
+  },
+  {
     id: 'about',
     title: 'About',
     group: 'about',
     icon: Info,
+    phone: { group: 'about' },
     keywords: ['about', 'version', 'update', 'licence', 'changelog', 'components', 'host', 'oino', 'engine', 'extensions', 'installed'],
     rows: [
       { key: 'about.update', label: 'Updates', description: 'One card: the app updater and the host\u2019s release' },

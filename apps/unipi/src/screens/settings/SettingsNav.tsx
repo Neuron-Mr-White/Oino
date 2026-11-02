@@ -86,5 +86,5 @@ export function SettingsNav(props: { sections: SettingsSection[]; active: () => 
 export function visibleSections(): SettingsSection[] {
   // D-45: "desktop-only" means the desktop *app* (tray, local host) — a narrow window keeps General.
   const desktop = desktopShell() || isTauriDesktop();
-  return SETTINGS_SECTIONS.filter((section) => (!section.cap || can(section.cap)) && (!section.desktopOnly || desktop));
+  return SETTINGS_SECTIONS.filter((section) => (!section.cap || can(section.cap)) && (!section.desktopOnly || desktop) && !(section.phoneOnly && desktop));
 }

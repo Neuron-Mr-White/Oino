@@ -22,12 +22,12 @@ import { resetSettingsMemory } from '../../lib/settings/memory';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), Channel: class {} }));
 
-function renderSettings(adapter = createMemoryAdapter(undefined)) {
-  location.hash = '#/settings';
+function renderSettings(adapter = createMemoryAdapter(undefined), hash = '#/settings') {
+  location.hash = hash;
   return render(() => (
     <SettingsProvider adapter={adapter}>
       <HashRouter>
-        <Route path="/settings/:section?" component={() => <HostsProvider><Settings /></HostsProvider>} />
+        <Route path="/settings/:section?/:sub?" component={() => <HostsProvider><Settings /></HostsProvider>} />
       </HashRouter>
     </SettingsProvider>
   ));
@@ -88,32 +88,43 @@ describe('Settings screen', () => {
     setHostClientFactory(undefined);
   });
 
-  it('phone: renders the Basics → About sections as one page', async () => {
+  it('phone: the root is a grouped list of section pages (§3.9, PH-09/PH-20)', async () => {
     const r = renderSettings();
-    await waitFor(() => expect(r.getByText('Appearance')).toBeTruthy());
-    expect(r.getByText('Extensions')).toBeTruthy();
-    expect(r.getByText('Agent')).toBeTruthy();
-    expect(r.getAllByText('About').length).toBeGreaterThan(0);
-    // The same groups as the desktop nav, as one long page (Z-113).
-    expect(r.getByText('Basics')).toBeTruthy();
-    expect(r.getByText('Agent capabilities')).toBeTruthy();
-    expect(r.getByText('Hosts & devices')).toBeTruthy();
-    // The desktop-only pages stay off the phone (no tray, no local host config).
-    expect(r.queryByText('Close button')).toBeNull();
-    expect(r.queryByText('Host config')).toBeNull();
+    await waitFor(() => expect(r.getByTestId('settings-phone-root')).toBeTruthy());
+    expect(r.getByText('This phone')).toBeTruthy();
+    expect(r.getByText('PCs & connection')).toBeTruthy();
+    expect(r.getByTestId('settings-row-appearance')).toBeTruthy();
+    expect(r.getByTestId('settings-row-extensions')).toBeTruthy();
+    expect(r.getByTestId('settings-row-profiles')).toBeTruthy();
+    expect(r.getByTestId('settings-row-ports')).toBeTruthy();
+    expect(r.getByTestId('settings-row-about')).toBeTruthy();
+    // Rows only — no section bodies inline.
+    expect(r.queryByTestId('terminal-cursor-blink')).toBeNull();
+    // Desktop-only pages stay off the phone (no tray, no local host config, no shortcuts).
+    expect(r.queryByTestId('settings-row-shortcuts')).toBeNull();
+    expect(r.queryByTestId('settings-row-general')).toBeNull();
+    expect(r.queryByTestId('settings-row-host')).toBeNull();
+  });
+
+  it('phone: a section is its own page', async () => {
+    const r = renderSettings(undefined, '#/settings/terminal');
+    await waitFor(() => expect(r.getByTestId('terminal-cursor-blink')).toBeTruthy());
+    expect(r.queryByTestId('settings-phone-root')).toBeNull();
+    expect(r.queryByText('Scrollback')).toBeTruthy();
+    expect(r.queryByText('Vim mode')).toBeNull();
   });
 
   it('web: only what works there — no Terminal/Input/Editor/Connection', async () => {
     setPlatformOverride('web');
     const r = renderSettings();
-    await waitFor(() => expect(r.getAllByText('About').length).toBeGreaterThan(0));
-    for (const gone of ['Terminal', 'Input', 'Editor', 'Connection']) expect(r.queryByText(gone)).toBeNull();
+    await waitFor(() => expect(r.getByTestId('settings-row-about')).toBeTruthy());
+    for (const gone of ['terminal', 'input', 'editor', 'connection']) expect(r.queryByTestId(`settings-row-${gone}`)).toBeNull();
   });
 
   it('toggling a Terminal row persists through the adapter', async () => {
     const adapter = createMemoryAdapter(undefined);
-    const r = renderSettings(adapter);
-    await waitFor(() => expect(r.getByText('Terminal')).toBeTruthy());
+    const r = renderSettings(adapter, '#/settings/terminal');
+    await waitFor(() => expect(r.getByTestId('terminal-cursor-blink')).toBeTruthy());
     const blinkSwitch = r.getByTestId('terminal-cursor-blink').querySelector('input[role=switch]') as HTMLInputElement;
     expect(blinkSwitch.checked).toBe(true);
     blinkSwitch.click();
@@ -125,7 +136,7 @@ describe('Settings screen', () => {
 
   it('appearance: the UI font size applies the var app-wide (Z-114)', async () => {
     const adapter = createMemoryAdapter(undefined);
-    const r = renderSettings(adapter);
+    const r = renderSettings(adapter, '#/settings/appearance');
     await waitFor(() => expect(r.getByLabelText('Increase UI font size')).toBeTruthy());
     expect(document.documentElement.style.getPropertyValue('--ui-font-size')).toBe('15px');
     fireEvent.click(r.getByLabelText('Increase UI font size'));
@@ -172,7 +183,7 @@ describe('Settings screen', () => {
 
   it('extensions: toggle round-trips through the mock host (G-19)', async () => {
     setHostClientFactory(createMockHost(settingsSearchScenario).client);
-    const r = renderSettings();
+    const r = renderSettings(undefined, '#/settings/extensions');
     const toggle = (await screen.findByTestId('ext-unipi.cron'))!.querySelector('input[role=switch]') as HTMLInputElement;
     expect(toggle.checked).toBe(false);
     toggle.click();
@@ -181,10 +192,12 @@ describe('Settings screen', () => {
 
   it('a namespace opens a secondary page with the standard Back (Z-113)', async () => {
     setHostClientFactory(createMockHost(settingsSearchScenario).client);
-    const r = renderSettings();
+    const r = renderSettings(undefined, '#/settings/extensions');
     fireEvent.click(await screen.findByTestId('ns-memory'));
     const page = await screen.findByTestId('namespace-page');
     expect(page.textContent).toContain('Memory');
+    // Phone: the namespace is a route of its own (PH-09).
+    expect(location.hash).toBe('#/settings/extensions/memory');
     fireEvent.click(screen.getByTestId('settings-back'));
     await waitFor(() => expect(r.queryByTestId('namespace-page')).toBeNull());
     expect(r.getByTestId('ns-memory')).toBeTruthy();
@@ -192,7 +205,7 @@ describe('Settings screen', () => {
 
   it('a crashed extension shows a notice with the reason (G-19)', async () => {
     setHostClientFactory(createMockHost(settingsExtensionsScenario).client);
-    const r = renderSettings();
+    const r = renderSettings(undefined, '#/settings/extensions');
     const notice = await screen.findByTestId('extension-crash-notice');
     expect(notice.textContent).toContain('unipi.cron');
     expect(notice.textContent).toContain('wasm trap in schedule_tick');
@@ -200,7 +213,7 @@ describe('Settings screen', () => {
 
   it('the safe-mode banner names its suspects (G-19)', async () => {
     setHostClientFactory(createMockHost(settingsSafeMode).client);
-    const r = renderSettings();
+    const r = renderSettings(undefined, '#/settings/extensions');
     const banner = await screen.findByTestId('safe-mode-banner');
     expect(banner.textContent).toContain('Safe mode');
     expect(banner.textContent).toContain('unipi.cron');
@@ -208,7 +221,7 @@ describe('Settings screen', () => {
   });
 
   it('about: exactly one Update card (G-14)', async () => {
-    const r = renderSettings();
+    const r = renderSettings(undefined, '#/settings/about');
     await waitFor(() => expect(r.getByTestId('update-card')).toBeTruthy());
     expect(r.getAllByTestId('update-card').length).toBe(1);
     expect(r.queryByTestId('desktop-update-card')).toBeNull();

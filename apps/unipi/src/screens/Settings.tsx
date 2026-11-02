@@ -6,7 +6,7 @@
  * labels. Secondary pages (an extension's settings namespace) use the
  * standard Back (Z-113).
  */
-import { For, Show, createEffect, createResource, createSignal, onCleanup, onMount } from 'solid-js';
+import { Show, createEffect, createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import { useNavigate, useParams } from '@solidjs/router';
 import { FolderKanban, Keyboard as KeyboardIcon, Server, TerminalSquare, Unplug, MonitorSmartphone } from 'lucide-solid';
 import { HostsSettings } from '../components/HostsSettings';
@@ -26,7 +26,7 @@ import { EnumSelect } from '../ui/settings/fields';
 import { Requires } from '../components/Requires';
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-solid';
 import { SectionNav, Row, Section, Segmented, Stepper } from './settings/rows';
-import { SettingsNav, sectionsByGroup, visibleSections } from './settings/SettingsNav';
+import { SettingsNav, visibleSections } from './settings/SettingsNav';
 import { SettingsSearch, type SearchHit } from './settings/SettingsSearch';
 import { AppearanceSection } from './settings/AppearanceSection';
 import { ExtensionsSection } from './settings/ExtensionsSection';
@@ -46,6 +46,16 @@ import { sectionById } from './settings/catalog';
 import { consumePendingSettingsNamespace } from '../lib/settings/open';
 import { pushBack } from '../lib/back';
 import { recalledPlace, recalledScroll, rememberPlace, rememberScroll, settingsScroller } from '../lib/settings/memory';
+import { PageScaffold } from '../components/phone';
+import { PhoneSettingsRoot, pcScoped, phoneSectionTitle } from './settings/PhoneSettings';
+import { AgentProfilesPage } from './settings/AgentProfilesPage';
+import * as PreviewScreen from './Preview';
+import type { Component } from 'solid-js';
+
+/** Settings › Ports & previews (§3.12): A's `PortsSection`; the full Preview screen until it lands. */
+const PortsSection: Component = (PreviewScreen as unknown as { PortsSection?: Component }).PortsSection ?? PreviewScreen.default;
+import { settingsHostId } from '../settings/target';
+import './settings/phoneSettings.css';
 
 const TOOLBAR_LABELS: Record<ToolbarKey, string> = {
   ctrl: 'Ctrl', shift: 'Shift', opt: 'Opt', history: 'History', esc: 'Esc', tab: 'Tab',
@@ -79,16 +89,16 @@ function ToolbarEditor() {
       <p class="text-sm text-text mb-3">Toolbar</p>
       <ul class="space-y-2 mb-4">
         {toolbar().map((key, index) => (
-          <li class="flex items-center gap-2 bg-surface-2 rounded-input px-3 py-2 min-h-[60px]">
+          <li class="toolbar-key flex items-center gap-2 bg-surface-2 rounded-input px-3 py-2 min-h-[60px]">
             <span class="text-sm flex-1">{TOOLBAR_LABELS[key]}</span>
             <Show when={key !== 'ctrl'}>
-              <button type="button" aria-label={`Move ${TOOLBAR_LABELS[key]} up`} class="text-text-muted" disabled={index <= 1} onClick={() => move(index, -1)}>
+              <button type="button" aria-label={`Move ${TOOLBAR_LABELS[key]} up`} class="toolbar-key-btn text-text-muted" disabled={index <= 1} onClick={() => move(index, -1)}>
                 <ChevronUp size={16} />
               </button>
-              <button type="button" aria-label={`Move ${TOOLBAR_LABELS[key]} down`} class="text-text-muted" disabled={index >= toolbar().length - 1} onClick={() => move(index, 1)}>
+              <button type="button" aria-label={`Move ${TOOLBAR_LABELS[key]} down`} class="toolbar-key-btn text-text-muted" disabled={index >= toolbar().length - 1} onClick={() => move(index, 1)}>
                 <ChevronDown size={16} />
               </button>
-              <button type="button" aria-label={`Remove ${TOOLBAR_LABELS[key]}`} class="text-text-dim" onClick={() => toggle(key)}>
+              <button type="button" aria-label={`Remove ${TOOLBAR_LABELS[key]}`} class="toolbar-key-btn text-text-dim" onClick={() => toggle(key)}>
                 <Minus size={16} />
               </button>
             </Show>
@@ -98,7 +108,7 @@ function ToolbarEditor() {
       <p class="text-xs text-text-dim mb-2">Available keys</p>
       <div class="flex flex-wrap gap-2">
         {TOOLBAR_KEYS.filter((k) => k !== 'ctrl' && !toolbar().includes(k)).map((key) => (
-          <button type="button" class="rounded-pill bg-surface-2 px-3 py-1 text-xs text-text-muted flex items-center gap-1" onClick={() => toggle(key)}>
+          <button type="button" class="toolbar-add-chip rounded-pill bg-surface-2 px-3 py-1 text-xs text-text-muted flex items-center gap-1" onClick={() => toggle(key)}>
             <Plus size={12} />
             {TOOLBAR_LABELS[key]}
           </button>
@@ -109,7 +119,7 @@ function ToolbarEditor() {
 }
 
 export default function Settings() {
-  const params = useParams<{ section?: string }>();
+  const params = useParams<{ section?: string; sub?: string }>();
   const navigate = useNavigate();
   const [settings, update] = useSettings();
   const hostsCtx = useHosts();
@@ -124,10 +134,21 @@ export default function Settings() {
   };
   const activeTitle = () => sections().find((s) => s.id === active())?.title;
 
-  const [namespace, setNamespace] = createSignal<string | undefined>();
+  const [namespace, setNamespaceRaw] = createSignal<string | undefined>();
+  // Phone (§3.9, PH-09): an extension namespace is its own page, `/settings/extensions/<ns>`.
+  const setNamespace = (ns: string | undefined) => {
+    if (desktop() || params.section !== 'extensions') return setNamespaceRaw(ns);
+    navigate(ns ? `/settings/extensions/${encodeURIComponent(ns)}` : '/settings/extensions');
+  };
+  createEffect(() => {
+    if (desktop()) return;
+    setNamespaceRaw(params.section === 'extensions' && params.sub ? decodeURIComponent(params.sub) : undefined);
+  });
   createEffect(() => {
     const ns = consumePendingSettingsNamespace();
-    if (ns) setNamespace(ns);
+    if (!ns) return;
+    if (!desktop() && params.section === 'extensions' && params.sub !== ns) navigate(`/settings/extensions/${encodeURIComponent(ns)}`, { replace: true });
+    else setNamespaceRaw(ns);
   });
 
   // owner5 #16: Settings remembers its section, sub-page and scroll for the
@@ -155,8 +176,9 @@ export default function Settings() {
     requestAnimationFrame(land);
   };
   const remembered = recalledPlace();
-  const restoring = !params.section && !!remembered.section;
-  if (restoring && remembered.namespace) setNamespace(remembered.namespace);
+  // The phone restores its place through the tab's own memory (A's tab bar), not here.
+  const restoring = desktop() && !params.section && !!remembered.section;
+  if (restoring && remembered.namespace) setNamespaceRaw(remembered.namespace);
   onMount(() => {
     if (!restoring) return;
     if (desktop() && sections().some((s) => s.id === remembered.section)) navigate(`/settings/${remembered.section}`, { replace: true });
@@ -205,9 +227,14 @@ export default function Settings() {
    * row appears after its host read, so the landing retries for a moment.
    */
   const onSearchPick = (hit: SearchHit) => {
-    if (hit.namespace) setNamespace(hit.namespace);
-    else setNamespace(undefined);
-    navigate(`/settings/${hit.section}`, { replace: true });
+    if (!desktop()) {
+      // Phone: a hit opens its section page (pushed), then lands on the row.
+      navigate(hit.namespace ? `/settings/${hit.section}/${encodeURIComponent(hit.namespace)}` : `/settings/${hit.section}`);
+    } else {
+      if (hit.namespace) setNamespace(hit.namespace);
+      else setNamespace(undefined);
+      navigate(`/settings/${hit.section}`, { replace: true });
+    }
     let tries = 0;
     const land = () => {
       const anchor = document.getElementById(hit.anchor);
@@ -224,18 +251,24 @@ export default function Settings() {
     queueMicrotask(land);
   };
 
-  // Phone: Android Back leaves a namespace page before leaving Settings.
+  // Desktop: Escape leaves a namespace page before leaving Settings. The phone's
+  // Back walks the route hierarchy instead (`/settings/extensions/<ns>` → its section).
   onMount(() => {
+    if (!desktop()) return;
     const off = pushBack(() => setNamespace(undefined));
     onCleanup(off);
   });
 
-  // Phone deep links (`#/settings/extensions`, a notification's settings target):
-  // the one long page jumps to the section the route names.
+  // Phone: "What this PC sends" lands on the PC's notify form inside Notifications.
   createEffect(() => {
-    const id = params.section;
-    if (!id || desktop()) return;
-    requestAnimationFrame(() => document.getElementById(`sec-${id}`)?.scrollIntoView?.({ block: 'start' }));
+    if (desktop() || params.section !== 'notifications' || params.sub !== 'pc') return;
+    let tries = 0;
+    const land = () => {
+      const el = document.getElementById('sec-notify-pc');
+      if (el) return el.scrollIntoView?.({ block: 'start' });
+      if (++tries < 40) window.setTimeout(land, 60);
+    };
+    requestAnimationFrame(land);
   });
 
   const onRelayUrlChange = (v: string) => {
@@ -267,34 +300,67 @@ export default function Settings() {
       case 'notifications': return <NotificationsSection />;
       case 'unicrab': return <UnicrabSection />;
       case 'host': return <HostSettingsSection />;
+      case 'ports': return <PortsSection />;
       case 'about': return <AboutSection />;
       default: return undefined;
     }
   };
 
+  const hosts = useHosts();
+  const pc = () => hosts.hosts().find((h) => h.id === hosts.selectedId()) ?? hosts.hosts()[0];
+  /** The phone's section page (pushed, §3.9): the section from the route, its sub-page if any. */
+  const phoneSection = () => sectionById(params.section);
+  const phoneBody = () => {
+    const section = phoneSection();
+    if (!section) return undefined;
+    if (section.id === 'subagents' && params.sub === 'profiles') return <AgentProfilesPage hostId={settingsHostId()} onBack={() => navigate('/settings/subagents')} />;
+    return body(section.id);
+  };
+
   return (
-    <SectionNav.Provider value={{ active: desktop() ? activeTitle : () => undefined }}>
+    <Show when={desktop()} fallback={
+      <Show
+        when={phoneSection()}
+        fallback={
+          <PageScaffold title="Settings" testId="settings-page">
+            <div class="settings-page settings-phone" ref={pageEl}>
+              <PhoneSettingsRoot pcName={pc()?.name} pcId={pc()?.id} search={() => <SettingsSearch onPick={onSearchPick} />} />
+            </div>
+          </PageScaffold>
+        }
+        keyed
+      >
+        {(section) => (
+          <PageScaffold
+            title={phoneSectionTitle(section, params.sub)}
+            subtitle={pcScoped(section) && pc() ? <>{pc()!.name}</> : undefined}
+            back={params.sub ? `/settings/${section.id}` : '/settings'}
+            testId="settings-page"
+          >
+            <SectionNav.Provider value={{ active: () => section.title }}>
+              <div class="settings-page settings-phone settings-phone-section" data-section-id={section.id} ref={pageEl}>
+                {/* PC-scoped pages reload when the selected PC changes (PH-04). */}
+                <Show when={settingsHostId()} keyed>
+                  {(_host: string) => <div class="settings-body">{phoneBody()}</div>}
+                </Show>
+              </div>
+            </SectionNav.Provider>
+          </PageScaffold>
+        )}
+      </Show>
+    }>
+    <SectionNav.Provider value={{ active: activeTitle }}>
       <div class="settings-page" data-testid="settings-page" ref={pageEl}>
         <div class="settings-top">
           <SettingsSearch onPick={onSearchPick} />
         </div>
-        <Show when={desktop()}>
-          <SettingsNav sections={sections()} active={active} onPick={pickSection} />
-        </Show>
+        <SettingsNav sections={sections()} active={active} onPick={pickSection} />
         <div class="settings-body">
-          <Show when={desktop()} fallback={<For each={sectionsByGroup(sections())}>{(group) => (
-            <div class="settings-phone-group">
-              <Show when={group.sections.length > 1 || group.sections[0]?.title !== group.title}>
-                <p class="settings-phone-group-title">{group.title}</p>
-              </Show>
-              <For each={group.sections}>{(section) => body(section.id)}</For>
-            </div>
-          )}</For>}>
-            {body(active() ?? 'about')}
-          </Show>
+          {body(active() ?? 'about')}
         </div>
       </div>
     </SectionNav.Provider>
+    </Show>
   );
 }
 

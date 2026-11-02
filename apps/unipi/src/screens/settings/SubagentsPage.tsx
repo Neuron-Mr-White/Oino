@@ -11,6 +11,8 @@ import { CapabilityPage } from './CapabilityPage';
 import { AgentProfilesPage } from './AgentProfilesPage';
 import { registerCommandOverride } from '../../lib/settings/run';
 import { settingsScroller } from '../../lib/settings/memory';
+import { useNavigate } from '@solidjs/router';
+import { desktopShell } from '../../lib/layout';
 
 // The open sub-page survives leaving Settings for the app session (owner5 #16).
 const [view, setView] = createSignal<'main' | 'profiles'>('main');
@@ -22,7 +24,10 @@ export function resetSubagentsView(): void {
 export function SubagentsPage() {
   let anchor: HTMLDivElement | undefined;
   let listTop = 0;
+  const navigate = useNavigate();
   const openProfiles = () => {
+    // Phone (§3.9, PH-09): Agent profiles is its own pushed page.
+    if (!desktopShell()) return navigate('/settings/subagents/profiles');
     listTop = settingsScroller(anchor)?.scrollTop ?? 0;
     setView('profiles');
     requestAnimationFrame(() => {
