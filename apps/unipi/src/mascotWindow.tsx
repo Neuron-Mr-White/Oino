@@ -49,7 +49,7 @@ export function MascotWindow(props: { emit: (event: string, payload?: unknown) =
       <button
         type="button"
         class="mascot-button mascot-crab-only"
-        aria-label="Open UniPi"
+        aria-label="Open Unipi"
         onMouseDown={(e) => {
           downAt = { x: e.clientX, y: e.clientY };
         }}

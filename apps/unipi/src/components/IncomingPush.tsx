@@ -115,7 +115,7 @@ export function IncomingPushSheet(props: { incoming: Incoming }) {
         <Match when={state().kind === 'offer'}>
           <Show
             when={mode !== 'web'}
-            fallback={<p class="push-msg" data-testid="push-web">Receiving files needs the UniPi app — open it on your phone or computer to install or save this.</p>}
+            fallback={<p class="push-msg" data-testid="push-web">Receiving files needs the Unipi app — open it on your phone or computer to install or save this.</p>}
           >
             <p class="push-msg">
               {isApk(item()) && mode === 'android'
@@ -142,8 +142,8 @@ export function IncomingPushSheet(props: { incoming: Incoming }) {
           <div class="push-alert" data-testid="push-permission">
             <ShieldAlert size={18} class="shrink-0" />
             <span>
-              <strong>Allow UniPi to install apps</strong>
-              Android blocks installs from apps until you allow it once: open settings, turn on <em>Allow from this source</em> for UniPi, then come back.
+              <strong>Allow Unipi to install apps</strong>
+              Android blocks installs from apps until you allow it once: open settings, turn on <em>Allow from this source</em> for Unipi, then come back.
             </span>
           </div>
         </Match>

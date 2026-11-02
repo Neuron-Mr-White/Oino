@@ -34,7 +34,7 @@ describe('the one Update card (desktop)', () => {
     setDesktopUpdateTransport({ check: async () => ({ current: '0.4.5', kind: 'in_app', downloadPage: 'https://unipi.nrn.one/' }), install });
     render(() => <UpdateCard />);
     fireEvent.click(screen.getByTestId('desktop-update-check'));
-    await waitFor(() => expect(screen.getByTestId('update-card').textContent).toContain('UniPi is up to date'));
+    await waitFor(() => expect(screen.getByTestId('update-card').textContent).toContain('Unipi is up to date'));
     expect(screen.getByTestId('update-card').textContent).toContain('Installed: 0.4.5');
   });
 
@@ -43,7 +43,7 @@ describe('the one Update card (desktop)', () => {
     render(() => <DesktopUpdatePrompt />);
     await checkDesktopUpdate(true);
     const sheet = await screen.findByTestId('desktop-update-prompt');
-    expect(sheet.textContent).toContain('UniPi 0.4.5 is available');
+    expect(sheet.textContent).toContain('Unipi 0.4.5 is available');
     expect(sheet.textContent).toContain('Faster chats');
     expect(install).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('desktop-update-install'));

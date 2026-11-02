@@ -50,7 +50,7 @@ export function NoHostState(props: { what: string; onAdd: () => void }) {
   return (
     <EmptyState
       title="No PC paired yet"
-      body={`Pair UniPi with your PC to see ${props.what} here.`}
+      body={`Pair Unipi with your PC to see ${props.what} here.`}
       testId="no-host-state"
       action={
         <button type="button" class="empty-add bg-shell text-face rounded-pill" onClick={props.onAdd}>
@@ -91,7 +91,7 @@ export function OfflineState(props: {
       compact={props.compact}
       icon={<CloudOff size={props.compact ? 20 : 24} />}
       title={props.local ? "This computer isn't answering" : `Can't reach ${props.pc ?? 'the PC'}`}
-      body={props.hint ?? props.message ?? 'Is UniPi running on the PC?'}
+      body={props.hint ?? props.message ?? 'Is Unipi running on the PC?'}
       testId="offline-state"
       action={
         props.onRetry || props.secondary || (props.local && canRestartHost()) ? (

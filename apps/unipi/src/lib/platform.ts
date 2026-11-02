@@ -246,10 +246,10 @@ export function unavailable(cap: Capability, p: Platform = platform()): Unavaila
     return {
       kind: 'needs-app',
       title: 'Not available in the web version',
-      body: `${name} — open the UniPi app on your phone or computer to use this. The web version can't reach your PC directly.`,
+      body: `${name} — open the Unipi app on your phone or computer to use this. The web version can't reach your PC directly.`,
     };
   }
-  if (onDesktop && !onMobile) return { kind: 'desktop-only', title: 'Desktop only', body: `${name} works in UniPi on your computer.` };
-  if (onMobile && !onDesktop) return { kind: 'phone-only', title: 'Phone only', body: `${name} works in UniPi on your phone.` };
+  if (onDesktop && !onMobile) return { kind: 'desktop-only', title: 'Desktop only', body: `${name} works in Unipi on your computer.` };
+  if (onMobile && !onDesktop) return { kind: 'phone-only', title: 'Phone only', body: `${name} works in Unipi on your phone.` };
   return { kind: 'not-yet', title: 'Not available yet', body: `${name} isn't available on this platform yet.` };
 }

@@ -142,7 +142,7 @@ export function transferMessage(result: TransferResult, name: string, desktop: b
     case 'cancelled':
       return 'Download cancelled';
     case 'unsupported':
-      return 'Needs the UniPi app';
+      return 'Needs the Unipi app';
     default:
       return result.detail ?? 'That did not work';
   }

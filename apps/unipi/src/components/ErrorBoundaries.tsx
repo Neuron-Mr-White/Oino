@@ -49,7 +49,7 @@ export function RootBoundary(props: { children: JSX.Element; onReload?: () => vo
       fallback={(error, reset) => (
         <div class="crash-root" data-testid="root-crashed">
           <CrashCard
-            title="UniPi hit a problem"
+            title="Unipi hit a problem"
             error={error}
             testId="crash-card"
             actions={

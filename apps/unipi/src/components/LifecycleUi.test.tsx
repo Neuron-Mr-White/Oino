@@ -40,9 +40,9 @@ describe('Quit confirm (UNI-237)', () => {
     render(() => <QuitRunner />);
     await waitFor(() => expect(listen).toHaveBeenCalledWith('unipi-quit-confirm', expect.any(Function)));
     expect(screen.queryByTestId('quit-sheet')).toBeNull();
-    handler!({ payload: { message: 'Phones won’t reach this PC until you open UniPi again', paired: 2 } });
+    handler!({ payload: { message: 'Phones won’t reach this PC until you open Unipi again', paired: 2 } });
     const sheet = await screen.findByTestId('quit-sheet');
-    expect(sheet.textContent).toContain('open UniPi again');
+    expect(sheet.textContent).toContain('open Unipi again');
     fireEvent.click(screen.getByTestId('quit-keep'));
     await waitFor(() => expect(screen.queryByTestId('quit-sheet')).toBeNull());
     handler!({ payload: { message: 'again', paired: 1 } });

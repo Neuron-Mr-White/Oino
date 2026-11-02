@@ -67,7 +67,7 @@ describe('the pair dialog success note', () => {
     expect(keepAvailableNote(alwaysOnValue())).toBeUndefined();
     expect(keepAvailableNote(alwaysOnValue({ installed: true, linger: true }))).toContain('even after a restart');
     const note = keepAvailableNote(alwaysOnValue({ installed: true, linger: false }));
-    expect(note).toContain('close UniPi');
+    expect(note).toContain('close Unipi');
     expect(note).toContain('log out');
   });
 });

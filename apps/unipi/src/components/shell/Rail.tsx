@@ -63,7 +63,7 @@ function RailLink(props: { item: RailItem }) {
       <Icon size={17} strokeWidth={1.7} />
       <span class="rail-label">{props.item.label}</span>
       <Show when={!available()}>
-        <span class="rail-badge" title="Needs the UniPi app">app</span>
+        <span class="rail-badge" title="Needs the Unipi app">app</span>
       </Show>
     </A>
   );

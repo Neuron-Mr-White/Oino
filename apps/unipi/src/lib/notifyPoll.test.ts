@@ -18,10 +18,10 @@ describe('parseNtfyHistory', () => {
   it('parses newline-delimited ntfy message events, skipping non-message lines', () => {
     const raw = [
       JSON.stringify({ id: 'a1', time: 1000, event: 'open' }),
-      JSON.stringify({ id: 'a2', time: 1001, event: 'message', title: 'UniPi', message: 'unipi1:abc' }),
+      JSON.stringify({ id: 'a2', time: 1001, event: 'message', title: 'Unipi', message: 'unipi1:abc' }),
       '',
       'not json',
-      JSON.stringify({ id: 'a3', time: 1002, event: 'message', title: 'UniPi', message: 'unipi1:def' }),
+      JSON.stringify({ id: 'a3', time: 1002, event: 'message', title: 'Unipi', message: 'unipi1:def' }),
     ].join('\n');
     const entries = parseNtfyHistory(raw);
     expect(entries.map((e) => e.id)).toEqual(['a2', 'a3']);
@@ -57,7 +57,7 @@ describe('pollNtfyHistory', () => {
     combined.set(new Uint8Array(ciphertext), iv.length);
     const envelope = `unipi1:${Buffer.from(combined).toString('base64')}`;
 
-    const body = [JSON.stringify({ id: 'n1', time: 1700000000, event: 'message', title: 'UniPi', message: envelope })].join('\n');
+    const body = [JSON.stringify({ id: 'n1', time: 1700000000, event: 'message', title: 'Unipi', message: envelope })].join('\n');
     global.fetch = vi.fn(async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
 
     await pollNtfyHistory('https://ntfy.example', 'my-topic', 'tk_x', keyB64);
@@ -73,7 +73,7 @@ describe('pollNtfyHistory', () => {
 
   it('silently drops an entry that fails to decrypt (wrong key)', async () => {
     const store = freshNeedsYou();
-    const body = [JSON.stringify({ id: 'n1', time: 1700000000, event: 'message', title: 'UniPi', message: 'unipi1:bm90LWEtcmVhbC1lbnZlbG9wZQ==' })].join('\n');
+    const body = [JSON.stringify({ id: 'n1', time: 1700000000, event: 'message', title: 'Unipi', message: 'unipi1:bm90LWEtcmVhbC1lbnZlbG9wZQ==' })].join('\n');
     global.fetch = vi.fn(async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
 
     const wrongKey = Buffer.alloc(32, 1).toString('base64');
@@ -84,7 +84,7 @@ describe('pollNtfyHistory', () => {
 
   it('ignores plaintext (unencrypted) messages — never shown as drawer content', async () => {
     const store = freshNeedsYou();
-    const body = [JSON.stringify({ id: 'n1', time: 1700000000, event: 'message', title: 'UniPi', message: 'a plain legacy message' })].join('\n');
+    const body = [JSON.stringify({ id: 'n1', time: 1700000000, event: 'message', title: 'Unipi', message: 'a plain legacy message' })].join('\n');
     global.fetch = vi.fn(async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
 
     await pollNtfyHistory('https://ntfy.example', 'my-topic', 'tk_x', Buffer.alloc(32, 2).toString('base64'));

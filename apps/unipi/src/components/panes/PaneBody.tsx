@@ -63,7 +63,7 @@ export function PaneBody(props: {
               <PaneTabBoundary title={tabTitle(tab)}>
                 <Show
                   when={kind()?.component}
-                  fallback={<EmptyState compact title={`${tabTitle(tab)} isn't available`} body="This build can't show this tab. Close it, or update UniPi." testId="tab-unavailable" />}
+                  fallback={<EmptyState compact title={`${tabTitle(tab)} isn't available`} body="This build can't show this tab. Close it, or update Unipi." testId="tab-unavailable" />}
                 >
                   {(component) => (
                     <Dynamic

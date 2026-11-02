@@ -98,7 +98,7 @@ const KNOWN_CUSTOM_TITLES: Record<string, string> = {
   'unipi-skills-revealed': 'Skills loaded',
   'unipi-compaction': 'Context compacted',
   'unipi-watchdog': 'Watchdog notice',
-  'unipi-response': 'UniPi notice',
+  'unipi-response': 'Unipi notice',
   'unipi:bg-tasks': 'Background tasks',
   'unipi:plan-mode': 'Plan mode',
   'unipi:plan-mode-message': 'Plan mode',

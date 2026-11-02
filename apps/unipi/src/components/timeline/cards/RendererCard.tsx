@@ -27,7 +27,7 @@ export function nativeCardLabel(entry: SessionEntry): { source: string; title: s
   const data = (entry.data ?? {}) as Record<string, unknown>;
   const rawContent = (entry as { content?: unknown }).content ?? entry.message?.content;
   const contentText = typeof rawContent === 'string' ? rawContent : undefined;
-  const source = str(harness.source) ?? str(data.source) ?? 'UniPi';
+  const source = str(harness.source) ?? str(data.source) ?? 'Unipi';
   const title =
     str(harness.title) ??
     str(harness.synopsis) ??

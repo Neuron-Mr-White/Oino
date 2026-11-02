@@ -107,7 +107,7 @@ export function WorkspacePicker(props: {
   const [listing] = createResource(browse, async (path) => {
     const res = await fsList(props.hostId, path);
     // D-20: a folder the PC doesn't let the app see reads calmly (no raw scope message, no CLI hint).
-    if (!res.ok) return { error: /outside the allowed|allowed folders|E_SCOPE|scope/i.test(String(res.error.message)) ? 'UniPi can’t open this folder on the PC. Go back to a folder it lists.' : String(res.error.message), dirs: [] as string[] };
+    if (!res.ok) return { error: /outside the allowed|allowed folders|E_SCOPE|scope/i.test(String(res.error.message)) ? 'Unipi can’t open this folder on the PC. Go back to a folder it lists.' : String(res.error.message), dirs: [] as string[] };
     return {
       error: undefined,
       dirs: res.value.entries

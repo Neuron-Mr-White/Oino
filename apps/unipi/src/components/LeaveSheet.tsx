@@ -32,7 +32,7 @@ export function LeaveSheet(props: {
     const r = await leaveFeature(props.hostId, props.feature, scope);
     setBusy(undefined);
     if (!r.ok) {
-      setError(isLeaveUnsupported(r.error) ? 'This PC runs an older UniPi that can’t do this yet.' : r.error.message);
+      setError(isLeaveUnsupported(r.error) ? 'This PC runs an older Unipi that can’t do this yet.' : r.error.message);
       return;
     }
     setDone(r.value.left ? `Done. ${r.value.now_enabled ? 'Still on for the other phones.' : 'It is off for everyone now.'}` : 'Nothing to undo — this phone didn’t have it.');

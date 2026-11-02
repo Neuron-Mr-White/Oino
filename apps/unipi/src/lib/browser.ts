@@ -111,7 +111,7 @@ export function statusView(result: Result<BrowserStatusData> | undefined): Statu
     if (result.error.code === 'E_BROWSER_DISABLED') return { kind: 'disabled', error: result.error };
     if (result.error.code === 'E_UNSUPPORTED' || result.error.code === 'E_SCHEMA') {
       // An older unipi-host that doesn't know browser_status.
-      return { kind: 'error', error: { ...result.error, message: 'This PC runs an older agent host without the remote browser.', hint: 'Update UniPi on the PC.' } };
+      return { kind: 'error', error: { ...result.error, message: 'This PC runs an older agent host without the remote browser.', hint: 'Update Unipi on the PC.' } };
     }
     return { kind: 'error', error: result.error };
   }

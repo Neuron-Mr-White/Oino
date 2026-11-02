@@ -39,7 +39,7 @@ const fs = (): Record<string, MockFsNode> => ({
       lib: dir({ 'tree.ts': file('export {};\n') }),
       'math.ts': file('export function add(a: number, b: number) {\n  return a + b;\n}\n', { git: 'M' }),
     }),
-    'README.md': file('# unipi\n\nThe UniPi app.\n', { git: 'A' }),
+    'README.md': file('# unipi\n\nThe Unipi app.\n', { git: 'A' }),
     'logo.svg': file('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'),
     'shot.png': file('png'),
     'notes.md': file('# Notes\n\nSome text about pineapples.\n'),
@@ -299,7 +299,7 @@ describe('EditorArea (the tree editor host)', () => {
     setEditorTarget({ hostId: HOST, path: `${ROOT}/README.md` });
     withRouter(() => <EditorArea onBinary={vi.fn()} />);
     await waitFor(() => expect(screen.getByTestId('files-editor-md')).toBeTruthy());
-    expect(screen.getByTestId('files-editor-md').textContent).toContain('The UniPi app.');
+    expect(screen.getByTestId('files-editor-md').textContent).toContain('The Unipi app.');
     fireEvent.click(screen.getByTestId('files-editor-preview'));
     await waitFor(() => expect(screen.queryByTestId('files-editor-md')).toBeNull());
     // the editor mounts async (its language loads first)
@@ -326,7 +326,7 @@ describe('PreviewTab (Z-103)', () => {
 
   it('renders markdown, toggles to source and back', async () => {
     render(() => <PreviewTab {...tabProps(`${ROOT}/README.md`)} />);
-    await waitFor(() => expect(screen.getByTestId('preview-tab').textContent).toContain('The UniPi app.'));
+    await waitFor(() => expect(screen.getByTestId('preview-tab').textContent).toContain('The Unipi app.'));
     fireEvent.click(screen.getByTestId('preview-tab-source'));
     await waitFor(() => expect(screen.getByTestId('preview-tab').textContent).toContain('# unipi'));
   });

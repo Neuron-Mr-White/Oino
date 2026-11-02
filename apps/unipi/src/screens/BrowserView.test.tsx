@@ -277,7 +277,7 @@ describe('Preview → Browser mode (UNI-215)', () => {
       await waitFor(() => expect(f.opened).toHaveLength(1));
       fireEvent.click(screen.getByTestId('browser-menu-button'));
       fireEvent.click(await screen.findByRole('menuitem', { name: /Show window on coffee/ }));
-      expect((await screen.findByRole('alert')).textContent).toContain('Update UniPi on the PC');
+      expect((await screen.findByRole('alert')).textContent).toContain('Update Unipi on the PC');
     } finally {
       windowResult = undefined;
     }

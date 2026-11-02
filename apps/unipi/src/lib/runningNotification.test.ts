@@ -31,7 +31,7 @@ describe('runningText (UNI-161 §5)', () => {
     expect(runningText({ session: 'auth rewrite', title: 'Running', detail: 'npm test', since: 1_000, now: 186_000 })).toEqual({ title: 'auth rewrite', body: 'Running npm test · 3m 5s' });
   });
   it('works without detail or start time', () => {
-    expect(runningText({ session: '', title: 'Thinking', now: 1 })).toEqual({ title: 'UniPi is working', body: 'Thinking' });
+    expect(runningText({ session: '', title: 'Thinking', now: 1 })).toEqual({ title: 'Unipi is working', body: 'Thinking' });
   });
 });
 

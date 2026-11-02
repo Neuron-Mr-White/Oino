@@ -736,7 +736,7 @@ export function BrowserViewer(props: {
     setSwitching(false);
     if (!r.ok) {
       const old = r.error.code === 'E_SCHEMA' || r.error.code === 'E_UNSUPPORTED';
-      setWindowError(old ? 'Update UniPi on the PC to show the browser there.' : r.error.message);
+      setWindowError(old ? 'Update Unipi on the PC to show the browser there.' : r.error.message);
       return;
     }
     setCanShow(canShowWindow(r.value));

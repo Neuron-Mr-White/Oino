@@ -123,8 +123,8 @@ describe('filesKey', () => {
 
 describe('window title', () => {
   it('window title', () => {
-    expect(windowTitle(['Chat', 'math helpers'])).toBe('Chat — math helpers — UniPi');
-    expect(windowTitle([undefined, ' '])).toBe('UniPi');
+    expect(windowTitle(['Chat', 'math helpers'])).toBe('Chat — math helpers — Unipi');
+    expect(windowTitle([undefined, ' '])).toBe('Unipi');
   });
 });
 

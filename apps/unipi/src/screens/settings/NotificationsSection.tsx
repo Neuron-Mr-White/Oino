@@ -73,7 +73,7 @@ export function NotificationsSection() {
       const res = await fetch(serverUrl.replace(/\/$/, ''), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ topic, title: 'UniPi', message: 'Test notification from the app settings.', priority: 3 }),
+        body: JSON.stringify({ topic, title: 'Unipi', message: 'Test notification from the app settings.', priority: 3 }),
       });
       if (!res.ok) throw new Error(`ntfy error ${res.status}`);
       setTestState('ok');
@@ -129,7 +129,7 @@ export function NotificationsSection() {
       {/* One desktop switch: the notify extension's "Native desktop" below (owner ruling);
           the app's own switch shows only when the PC reports no notify settings. */}
       <Show when={can('nativeNotifications') && !namespaces.loading && !notifyNs()}>
-        <Row label="Desktop notifications" description="A system notification when the agent needs you or finishes, while UniPi isn't in front">
+        <Row label="Desktop notifications" description="A system notification when the agent needs you or finishes, while Unipi isn't in front">
           <SwitchField label="Desktop notifications" checked={desktopOn()} onChange={(v) => (setDesktopNotifyOn(v), setDesktopOn(v))} />
         </Row>
       </Show>
@@ -258,7 +258,7 @@ function PushStatusRow() {
   const text = () => {
     const st = status();
     if (st.state === 'unsupported') return 'Only on the Android app';
-    if (st.state === 'no_distributor') return 'Install the ntfy app to get notifications while UniPi is closed';
+    if (st.state === 'no_distributor') return 'Install the ntfy app to get notifications while Unipi is closed';
     if (st.state === 'registered' && st.endpoint) return `On, through ${st.distributor?.split('.').pop() ?? 'the ntfy app'}`;
     return 'Not set up yet';
   };

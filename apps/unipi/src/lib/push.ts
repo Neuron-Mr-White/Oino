@@ -240,7 +240,7 @@ export async function handOff(inc: Incoming, action: PushAction, localPath: stri
   try {
     if (action === 'install') {
       const n = updateNative();
-      if (!n?.installFile) return fail('This version of UniPi can’t install pushed apps.', 'Update UniPi (Settings → About), then push again.');
+      if (!n?.installFile) return fail('This version of Unipi can’t install pushed apps.', 'Update Unipi (Settings → About), then push again.');
       if (canInstallApps() === false) return s.set(key, { kind: 'permission', localPath });
       const r = n.installFile(localPath);
       if (r === 'permission') return s.set(key, { kind: 'permission', localPath });
@@ -261,7 +261,7 @@ export async function handOff(inc: Incoming, action: PushAction, localPath: stri
     }
     const f = filesNative();
     const op = action === 'save' ? f?.saveFile : f?.openFile;
-    if (!f || !op) return fail('This version of UniPi can’t receive files.', 'Update UniPi (Settings → About), then push again.');
+    if (!f || !op) return fail('This version of Unipi can’t receive files.', 'Update Unipi (Settings → About), then push again.');
     const parsed = JSON.parse(op.call(f, localPath, name, mime)) as { ok: boolean; error?: string; uri?: string };
     if (!parsed.ok) return fail(parsed.error ?? 'It didn’t work.');
     if (action === 'save') {

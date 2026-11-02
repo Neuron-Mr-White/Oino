@@ -96,7 +96,7 @@ function applyEffect(target: UiTarget, req: { method: string; [k: string]: unkno
       const rawTitle = typeof req.title === 'string' ? req.title.trim() : '';
       const body = typeof req.body === 'string' ? req.body : typeof req.message === 'string' ? req.message : '';
       if (!rawTitle && !body) return;
-      const title = rawTitle || 'UniPi';
+      const title = rawTitle || 'Unipi';
       if (can('nativeNotifications')) {
         if (desktopNotifyOn()) void nativeNotify(title, body);
         return;

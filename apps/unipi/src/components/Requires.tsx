@@ -97,7 +97,7 @@ export function UnavailableNotice(props: {
           <Show when={info().kind === 'needs-app' && variant() === 'page'}>
             <div class="platform-notice-action">
               <a class="platform-notice-link" href={APP_SITE} target="_blank" rel="noopener noreferrer" data-testid="get-app-link">
-                Get the UniPi app <ExternalLink size={14} />
+                Get the Unipi app <ExternalLink size={14} />
               </a>
               <a class="platform-notice-alt" href="#/board">
                 Open the board

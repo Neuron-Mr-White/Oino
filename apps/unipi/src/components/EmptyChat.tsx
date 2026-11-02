@@ -28,8 +28,8 @@ export function EmptyChat(props: {
   const where = () => (props.hostName ? `on ${props.hostName}` : 'on this PC');
   const hint = () =>
     props.variant === 'start' && !props.cwd
-      ? `Ask anything — UniPi reads, edits and runs code ${where()}.`
-      : `Ask for a change in ${props.cwd ? shortCwd(props.cwd) : 'your project'} — UniPi reads, edits and runs it ${where()}.`;
+      ? `Ask anything — Unipi reads, edits and runs code ${where()}.`
+      : `Ask for a change in ${props.cwd ? shortCwd(props.cwd) : 'your project'} — Unipi reads, edits and runs it ${where()}.`;
   return (
     <section
       class="empty-chat"

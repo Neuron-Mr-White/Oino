@@ -69,7 +69,7 @@ export function pickerState(result: Result<PortsListData> | undefined): PickerSt
     if (result.error.code === 'E_UNSUPPORTED' || result.error.code === 'E_SCHEMA') {
       // An older unipi-host that doesn't know ports_list (seen on the Redmi: the raw serde
       // "unknown variant `ports_list`, expected one of …" filled the page).
-      return { kind: 'error', error: { ...result.error, message: 'This PC runs an older agent host without port forwarding.', hint: 'Update UniPi on the PC.' } };
+      return { kind: 'error', error: { ...result.error, message: 'This PC runs an older agent host without port forwarding.', hint: 'Update Unipi on the PC.' } };
     }
     return { kind: 'error', error: result.error };
   }

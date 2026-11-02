@@ -49,12 +49,12 @@ describe('ComponentsCard (About → Components)', () => {
         ...healthy,
         host: {},
         extensions: { count: 0 },
-        problems: [{ component: 'host', message: 'The agent host (unipi-oino-host) is missing from this install.', fix: 'Reinstall UniPi Oino from the latest release.' }],
+        problems: [{ component: 'host', message: 'The agent host (unipi-oino-host) is missing from this install.', fix: 'Reinstall Unipi from the latest release.' }],
       },
     });
     render(() => <ComponentsCard />);
     await waitFor(() => expect(screen.getByTestId('components-problem-host')).toBeInTheDocument());
-    expect(screen.getByText(/Reinstall UniPi Oino/)).toBeInTheDocument();
+    expect(screen.getByText(/Reinstall Unipi/)).toBeInTheDocument();
     expect(screen.getByTestId('components-host').textContent).toBe('Not found');
     expect(screen.getByTestId('components-download')).toBeInTheDocument();
   });

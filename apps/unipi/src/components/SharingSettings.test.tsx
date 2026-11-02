@@ -136,7 +136,7 @@ describe('Settings → Sharing with phones (desktop app)', () => {
     expect(screen.queryByTestId('linger-state')).toBeNull();
     expect(screen.queryByTestId('linger-enable')).toBeNull();
     await waitFor(() => expect(screen.getByTestId('always-on-linger').textContent).toContain('Also after you log out: off'));
-    expect(screen.getByTestId('always-on-detail').textContent).toContain('phones reach this PC only while UniPi is open');
+    expect(screen.getByTestId('always-on-detail').textContent).toContain('phones reach this PC only while Unipi is open');
     expect(section.textContent).toContain('/tmp/qa-248');
     // The one path that needs root, behind the button — and through the SAME
     // `sharing_change` the rest of this section uses.
@@ -160,7 +160,7 @@ describe('Settings → Sharing with phones (desktop app)', () => {
     const markers = [
       ['pair a phone', text.indexOf('Pair a phone')],
       ['host status (run by)', text.indexOf('Run by')],
-      ['keep available', text.indexOf('Keep available when UniPi is closed')],
+      ['keep available', text.indexOf('Keep available when Unipi is closed')],
       ['start at login', text.indexOf('Start at login')],
       ['update the host by itself', text.indexOf('Update the host by itself')],
       ['host log', text.indexOf('Host log')],
@@ -185,12 +185,12 @@ describe('Settings → Sharing with phones (desktop app)', () => {
     await waitFor(() => expect(vi.mocked(call).mock.calls.some(([c]) => c === 'host_restart')).toBe(true));
   });
 
-  it('host missing: says to reinstall UniPi (no installer command), Try again re-reads', async () => {
-    const status = vi.fn(async () => ({ ok: false as const, error: { code: 'E_NOT_FOUND' as const, message: 'This UniPi install is missing its agent host', retryable: false } }));
+  it('host missing: says to reinstall Unipi (no installer command), Try again re-reads', async () => {
+    const status = vi.fn(async () => ({ ok: false as const, error: { code: 'E_NOT_FOUND' as const, message: 'This Unipi install is missing its agent host', retryable: false } }));
     transport({ status });
     render(() => <SharingSettings />);
     expect((await screen.findByTestId('share-settings')).textContent).toContain('missing its agent host');
-    expect(screen.getByTestId('share-settings').textContent).toContain('Reinstall or update UniPi');
+    expect(screen.getByTestId('share-settings').textContent).toContain('Reinstall or update Unipi');
     expect(screen.getByTestId('share-settings').textContent).not.toContain('install.sh');
     fireEvent.click(screen.getByText('Try again'));
     await waitFor(() => expect(status).toHaveBeenCalledTimes(2));

@@ -85,7 +85,7 @@ function ApkBody() {
         <Sparkles size={16} class="shrink-0 board-accent" />
         <span class="flex-1 min-w-0">
           <span class="block text-sm">
-            <Switch fallback="UniPi is up to date">
+            <Switch fallback="Unipi is up to date">
               <Match when={!cur}>Updates come with the Android app</Match>
               <Match when={s().kind === 'checking'}>Checking for updates…</Match>
               <Match when={s().kind === 'idle'}>Updates</Match>
@@ -160,7 +160,7 @@ function Progress(props: { s: DesktopUpdateState }) {
         return (
           <div class="update-progress" role="progressbar" aria-valuenow={Math.round(pct())} data-testid="desktop-update-progress">
             <span style={{ width: `${pct()}%` }} />
-            <em>{d().kind === 'installing' ? 'Installing… UniPi restarts by itself' : `${mb(d().done ?? 0)}${d().total ? ` of ${mb(d().total!)}` : ''}`}</em>
+            <em>{d().kind === 'installing' ? 'Installing… Unipi restarts by itself' : `${mb(d().done ?? 0)}${d().total ? ` of ${mb(d().total!)}` : ''}`}</em>
           </div>
         );
       })()}
@@ -200,13 +200,13 @@ function desktopHeadline(s: DesktopUpdateState): string {
     case 'checking':
       return 'Checking for updates…';
     case 'current':
-      return 'UniPi is up to date';
+      return 'Unipi is up to date';
     case 'available':
-      return `UniPi ${s.info.version} is available`;
+      return `Unipi ${s.info.version} is available`;
     case 'downloading':
-      return `Downloading UniPi ${s.info.version}…`;
+      return `Downloading Unipi ${s.info.version}…`;
     case 'installing':
-      return `Installing UniPi ${s.info.version}…`;
+      return `Installing Unipi ${s.info.version}…`;
     case 'error':
       return s.info?.version ? `Updating to ${s.info.version} failed` : 'Update check failed';
     default:
@@ -224,7 +224,7 @@ function DesktopBody() {
         <span class="flex-1 min-w-0">
           <span class="block text-sm">{desktopHeadline(s())}</span>
           <span class="block text-xs text-text-dim">
-            <Show when={infoOf(s())} fallback="UniPi Oino checks oino.dev on start and every few hours, and asks before updating">
+            <Show when={infoOf(s())} fallback="Unipi checks oino.dev on start and every few hours, and asks before updating">
               Installed: {infoOf(s())!.current}
               {infoOf(s())!.kind === 'manual' ? ' · installed from a package: updates are downloaded by hand' : ''}
             </Show>
@@ -252,12 +252,12 @@ function IosBody() {
         <Sparkles size={16} class="shrink-0 board-accent" />
         <span class="flex-1 min-w-0">
           <span class="block text-sm">
-            <Show when={s().release} fallback={s().checking ? 'Checking for updates…' : s().current ? 'UniPi is up to date' : 'Updates'}>
-              UniPi {s().release!.version} is available
+            <Show when={s().release} fallback={s().checking ? 'Checking for updates…' : s().current ? 'Unipi is up to date' : 'Updates'}>
+              Unipi {s().release!.version} is available
             </Show>
           </span>
           <span class="block text-xs text-text-dim">
-            <Show when={s().release} fallback="This iPhone build can't update itself; UniPi tells you when a new one is out">
+            <Show when={s().release} fallback="This iPhone build can't update itself; Unipi tells you when a new one is out">
               Open {s().release!.page.replace('https://', '')} in Safari on this iPhone to install it
             </Show>
           </span>
@@ -290,8 +290,8 @@ export function UpdateBanner(props: { onOpen: () => void }) {
       <button type="button" class="update-banner" onClick={() => props.onOpen()}>
         <Sparkles size={15} class="shrink-0" />
         <span class="flex-1 truncate text-left">
-          <Show when={desktopReady()} fallback={<>UniPi {(s() as { release: { version: string; build: number } }).release.version} ({(s() as { release: { build: number } }).release.build}) is ready</>}>
-            UniPi {(d() as { info: { version: string } }).info.version} is available
+          <Show when={desktopReady()} fallback={<>Unipi {(s() as { release: { version: string; build: number } }).release.version} ({(s() as { release: { build: number } }).release.build}) is ready</>}>
+            Unipi {(d() as { info: { version: string } }).info.version} is available
           </Show>
         </span>
         <span class="update-banner-go">{desktopReady() || s().kind === 'available' ? 'Update' : 'Install'}</span>
@@ -329,7 +329,7 @@ export function DesktopUpdatePrompt() {
           when={infoOf(s())?.kind === 'in_app'}
           fallback={<>This copy was installed from a package, so it can't replace itself. Download the new version from oino.dev/download and install it the same way.</>}
         >
-          You have {infoOf(s())?.current}. UniPi downloads the new version, checks its signature, installs it and restarts. Open chats and terminals reconnect after the restart.
+          You have {infoOf(s())?.current}. Unipi downloads the new version, checks its signature, installs it and restarts. Open chats and terminals reconnect after the restart.
         </Show>
       </p>
       <Show when={infoOf(s())?.notes}>

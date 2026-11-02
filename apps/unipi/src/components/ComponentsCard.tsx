@@ -50,7 +50,7 @@ export function ComponentsCard() {
           </div>
         )}
       </For>
-      <Item id={ABOUT_ANCHORS.components} icon={<Monitor size={18} />} label="UniPi app" testId="about-version" value={version(info()?.app)} />
+      <Item id={ABOUT_ANCHORS.components} icon={<Monitor size={18} />} label="Unipi app" testId="about-version" value={version(info()?.app)} />
       <Item icon={<Server size={18} />} label="Agent host" description={info()?.host.path} testId="components-host" value={version(info()?.host.version)} />
       <Item icon={<Cpu size={18} />} label="oino engine" description={info()?.oino.path} testId="components-oino" value={version(info()?.oino.version)} />
       <Item

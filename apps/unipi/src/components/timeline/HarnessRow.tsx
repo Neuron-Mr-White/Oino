@@ -66,7 +66,7 @@ export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
             class="chat-injected-chip"
             data-testid="tl-harness-tag"
             aria-expanded={open()}
-            title="What UniPi added to this message"
+            title="What Unipi added to this message"
             onClick={() => setOpen(!open())}
           >
             <Sparkles size={12} />

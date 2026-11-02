@@ -437,7 +437,7 @@ function ThisComputer(props: { s: SharingStatus; Section: (p: { title: string; i
           <span class="settings-icon"><QrCode size={18} /></span>
           <div class="min-w-0">
             <p class="text-[15px] text-text">Pair a phone</p>
-            <p class="text-xs text-text-dim mt-0.5">Shows a QR code to scan with UniPi on the phone (Add a PC → Pair with QR)</p>
+            <p class="text-xs text-text-dim mt-0.5">Shows a QR code to scan with Unipi on the phone (Add a PC → Pair with QR)</p>
           </div>
           <div class="shrink-0">
             <button type="button" class="btn btn-primary" data-testid="pair-phone-open" onClick={() => openPairPhone()}>
@@ -572,7 +572,7 @@ export function SharingRequestsRunner() {
     setOpen((list) => list.filter((x) => pending.some((p) => p.id === x.id)));
     if (fresh.length) {
       setOpen((list) => [...list, ...fresh.filter((f) => !list.some((x) => x.id === f.id))]);
-      if (!document.hasFocus()) for (const f of fresh.slice(0, 3)) void nativeNotify('UniPi — a phone is asking', requestTitle(f));
+      if (!document.hasFocus()) for (const f of fresh.slice(0, 3)) void nativeNotify('Unipi — a phone is asking', requestTitle(f));
       void refreshSharing();
     }
   };
@@ -600,7 +600,7 @@ function AutostartRow() {
       <span class="settings-icon"><Power size={18} /></span>
       <div class="min-w-0">
         <p class="text-[15px] text-text">Start at login</p>
-        <p class="text-xs text-text-dim mt-0.5">Opens UniPi hidden in the tray when you log in, so phones can reach this PC right away.</p>
+        <p class="text-xs text-text-dim mt-0.5">Opens Unipi hidden in the tray when you log in, so phones can reach this PC right away.</p>
       </div>
       <div class="shrink-0">
         <SwitchField label="Start at login" checked={auto.on()} onChange={(on) => void auto.set(on)} testId="autostart-toggle" />

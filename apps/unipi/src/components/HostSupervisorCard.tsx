@@ -113,11 +113,11 @@ export function HostSupervisorCard() {
       <div class="settings-row">
         <span class="settings-icon"><Power size={18} /></span>
         <div class="min-w-0">
-          <p class="text-[15px] text-text">Keep available when UniPi is closed</p>
+          <p class="text-[15px] text-text">Keep available when Unipi is closed</p>
           <p class="text-xs text-text-dim mt-0.5" data-testid="always-on-detail">
             {always()?.installed
-              ? `On — a systemd user service runs the host (${always()?.bin ?? '~/.local/bin/unipi-host'}), even with no UniPi window open${always()?.running ? '' : ' (starting…)'}`
-              : 'Off — phones reach this PC only while UniPi is open (it keeps the host running in the tray).'}
+              ? `On — a systemd user service runs the host (${always()?.bin ?? '~/.local/bin/unipi-host'}), even with no Unipi window open${always()?.running ? '' : ' (starting…)'}`
+              : 'Off — phones reach this PC only while Unipi is open (it keeps the host running in the tray).'}
           </p>
           {/* Linger is a sub-line of THIS row, not a row of its own: it is the
               same decision ("can phones reach this PC?"), one step further. */}

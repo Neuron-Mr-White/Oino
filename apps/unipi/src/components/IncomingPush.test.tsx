@@ -205,7 +205,7 @@ describe('Incoming push sheet (UNI-214)', () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Install' }));
     expect(await screen.findByTestId('push-permission')).toBeTruthy();
-    expect(screen.getByText('Allow UniPi to install apps')).toBeTruthy();
+    expect(screen.getByText('Allow Unipi to install apps')).toBeTruthy();
     expect(native.installed, 'never opened the installer without the permission').toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
     expect(native.settings).toBe(1);

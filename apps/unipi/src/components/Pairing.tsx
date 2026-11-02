@@ -106,7 +106,7 @@ export function Pairing() {
     setError(undefined);
     setCameraDenied(false);
     if (!isTauri() || !can("camera")) {
-      setError({ code: "E_PAIRING_INVALID", message: isTauri() ? "QR scanning works in UniPi on your phone. Paste the pairing link instead." : "QR scanning needs the UniPi app", retryable: false });
+      setError({ code: "E_PAIRING_INVALID", message: isTauri() ? "QR scanning works in Unipi on your phone. Paste the pairing link instead." : "QR scanning needs the Unipi app", retryable: false });
       return;
     }
     try {
@@ -190,7 +190,7 @@ export function Pairing() {
         <QrScanner onClose={() => { stopScan(); setAddHostOpen(true); }} />
       </Show>
       <BoardSheet open={addHostOpen()} onClose={() => setAddHostOpen(false)} label="Add a PC" testId="add-host-sheet" class="pair-sheet">
-            <p class="pair-intro">Pair UniPi with your own PC.</p>
+            <p class="pair-intro">Pair Unipi with your own PC.</p>
             <Show
               when={can("camera")}
               fallback={
@@ -201,7 +201,7 @@ export function Pairing() {
                   </button>
                   <Show when={!paste()}>
                     <button disabled class="option-card text-text-dim">
-                      <span class="option-tile"><QrCode size={24}/></span><span><strong class="block">Pair with QR</strong><span class="block text-xs mt-2">Scan the code with UniPi on your phone</span></span>
+                      <span class="option-tile"><QrCode size={24}/></span><span><strong class="block">Pair with QR</strong><span class="block text-xs mt-2">Scan the code with Unipi on your phone</span></span>
                     </button>
                   </Show>
                 </>

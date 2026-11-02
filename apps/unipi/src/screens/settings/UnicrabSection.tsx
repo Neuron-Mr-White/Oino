@@ -62,9 +62,9 @@ export function UnicrabSection() {
             icon={<Layers size={18} />}
             description={
               overlayMsg() === 'pending'
-                ? 'Allow "Display over other apps" for UniPi, then come back'
+                ? 'Allow "Display over other apps" for Unipi, then come back'
                 : overlayMsg() === 'denied'
-                  ? 'Not allowed yet: UniPi needs "Display over other apps"'
+                  ? 'Not allowed yet: Unipi needs "Display over other apps"'
                   : 'Keeps the crab and its replies on screen while you use other apps (a small ongoing notification shows it is on)'
             }
           >

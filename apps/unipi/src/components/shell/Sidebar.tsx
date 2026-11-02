@@ -52,7 +52,7 @@ export function Sidebar() {
     <aside class="sb" aria-label="Sidebar" data-testid="sidebar">
       <div class="sb-top">
         <img src={crab} alt="" class="sb-crab" />
-        <span class="sb-word">UniPi</span>
+        <span class="sb-word">Unipi</span>
         <Show when={isWeb()}>
           <span class="sb-badge" title="Running in a browser: only the board is available">web</span>
         </Show>

@@ -34,7 +34,7 @@ const native = (): Native | undefined => (window as unknown as { UniPiNotify?: N
 export function runningText(input: { session: string; title: string; detail?: string; since?: number; now: number }): { title: string; body: string } {
   const what = input.detail ? `${input.title} ${input.detail}` : input.title;
   const time = input.since ? ` · ${formatDuration(Math.max(0, input.now - input.since))}` : '';
-  return { title: input.session || 'UniPi is working', body: `${what}${time}` };
+  return { title: input.session || 'Unipi is working', body: `${what}${time}` };
 }
 
 /**
@@ -101,7 +101,7 @@ function snapshotFromHandle(handle: SessionHandle, card?: SessionCard): RunningS
   return {
     hostId: handle.hostId,
     sessionId: sid,
-    sessionName: sessionTitle(card, st) || 'UniPi',
+    sessionName: sessionTitle(card, st) || 'Unipi',
     title: act.title,
     detail: act.detail,
     since: st.run.startedAt,
@@ -159,7 +159,7 @@ export function currentRunningSession(): RunningSnapshot | undefined {
       return {
         hostId,
         sessionId: top.session_id,
-        sessionName: sessionTitle(top) || 'UniPi',
+        sessionName: sessionTitle(top) || 'Unipi',
         title: top.needs_you ? 'Waiting for you' : 'Working',
         since: top.updated_at,
       };

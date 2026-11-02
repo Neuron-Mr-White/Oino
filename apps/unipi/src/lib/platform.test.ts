@@ -87,7 +87,7 @@ describe('unavailable', () => {
     const info = unavailable('chat')!;
     expect(info.kind).toBe('needs-app');
     expect(info.title).toBe('Not available in the web version');
-    expect(info.body).toMatch(/open the UniPi app/);
+    expect(info.body).toMatch(/open the Unipi app/);
   });
   it('desktop, phone-only feature → Phone only', () => {
     setPlatformOverride('tauri-desktop');

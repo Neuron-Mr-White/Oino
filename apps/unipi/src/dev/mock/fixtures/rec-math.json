@@ -842,12 +842,12 @@
    },
    {
     "name": "unipi:cleanup",
-    "description": "Remove stale UniPi temp files and leftovers (preview first)",
+    "description": "Remove stale Unipi temp files and leftovers (preview first)",
     "source": "extension"
    },
    {
     "name": "unipi:doctor",
-    "description": "Check UniPi's runtime: folders, config, model cache, Decision Model, skills",
+    "description": "Check Unipi's runtime: folders, config, model cache, Decision Model, skills",
     "source": "extension"
    },
    {

@@ -139,7 +139,7 @@ export const BUILTIN_ROUTES: Record<string, BuiltinPlan> = {
   quit: {
     surface: 'app:quit',
     action: { do: 'quit' },
-    title: 'Quit UniPi',
+    title: 'Quit Unipi',
     keywords: 'quit exit close app',
   },
 };

@@ -247,7 +247,7 @@ export function genFsTree(root = '/home/you/projects/unipi'): Record<string, Moc
       kind: 'dir',
       children: {
         src: { kind: 'dir', children: { 'math.ts': file('export function add(a: number, b: number): number {\n  return a + b;\n}\n'), 'cli.ts': file('export {};\n') } },
-        'README.md': file('# unipi\n\nThe UniPi app.\n'),
+        'README.md': file('# unipi\n\nThe Unipi app.\n'),
         'package.json': file('{ "name": "unipi" }\n'),
       },
     },

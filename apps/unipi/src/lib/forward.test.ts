@@ -11,7 +11,7 @@ describe('pickerState (UNI-213)', () => {
     expect(st.kind).toBe('error');
     if (st.kind !== 'error') return;
     expect(st.error.message).toBe('This PC runs an older agent host without port forwarding.');
-    expect(st.error.hint).toBe('Update UniPi on the PC.');
+    expect(st.error.hint).toBe('Update Unipi on the PC.');
   });
   it('maps E_FORWARD_DISABLED to the disabled state and other errors to error', () => {
     expect(pickerState({ ok: false, error: err('E_FORWARD_DISABLED') }).kind).toBe('disabled');

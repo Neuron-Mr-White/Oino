@@ -364,7 +364,7 @@ describe('collapseCommandRows (UNI-210 / UNI-251)', () => {
   });
 
   it('the real /unipi:kanboard-do shape (UNI-251): bubble = the typed text, chip "Kanboard · task budget", body = the preamble WITHOUT the repeated request', () => {
-    const req = '- You can decide this.\n- Remove the legacy bridge from the app.\n\n- Can I restart UniPi this session rn?';
+    const req = '- You can decide this.\n- Remove the legacy bridge from the app.\n\n- Can I restart Unipi this session rn?';
     const entries: Entry[] = [
       { type: 'custom', id: 'h0', customType: 'unipi-command-echo', data: { text: '/unipi-app-session' } },
       echo('e1', `/unipi:kanboard-do ${req}`),
@@ -378,7 +378,7 @@ describe('collapseCommandRows (UNI-210 / UNI-251)', () => {
     expect(u.command).toMatchObject({ name: 'unipi:kanboard-do', tag: 'Kanboard · task budget', entryId: 'u1' });
     expect(u.command!.body).toMatch(/^\[kanboard\] For this request/);
     expect(u.command!.body).not.toContain('Request:');
-    expect(u.command!.body).not.toContain('restart UniPi');
+    expect(u.command!.body).not.toContain('restart Unipi');
   });
 
   it('the hidden /unipi-app-session never shows — echo entry or a user message', () => {

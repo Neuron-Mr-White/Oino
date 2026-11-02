@@ -67,7 +67,7 @@ export function resetKeepAvailableOffer(): void {
 export function keepAvailableNote(state: AlwaysOn | undefined): string | undefined {
   if (!state?.installed) return undefined;
   if (state.linger === false) {
-    return 'It stays available when you close UniPi — a background service keeps the host running. To keep it running after you log out too, allow it once in Settings → This computer.';
+    return 'It stays available when you close Unipi — a background service keeps the host running. To keep it running after you log out too, allow it once in Settings → This computer.';
   }
-  return 'It stays available when you close UniPi — a background service keeps the host running, even after a restart.';
+  return 'It stays available when you close Unipi — a background service keeps the host running, even after a restart.';
 }

@@ -88,7 +88,7 @@ describe('git helpers (UNI-217)', () => {
   });
 
   it('error wording: an older host says update, others stay plain', () => {
-    expect(gitErrorText({ code: 'E_SCHEMA', message: 'unknown variant `git`, expected one of `list`', retryable: false }).title).toBe('Update UniPi on the PC');
+    expect(gitErrorText({ code: 'E_SCHEMA', message: 'unknown variant `git`, expected one of `list`', retryable: false }).title).toBe('Update Unipi on the PC');
     const auth = gitErrorText({ code: 'E_GIT', message: "fatal: could not read Username for 'https://x'", hint: 'Auth needed: …', retryable: false });
     expect(auth.body).toContain('could not read Username');
     expect(auth.hint).toContain('Auth needed');

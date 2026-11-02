@@ -341,7 +341,7 @@ export function canCommit(message: string, staged: number, amend: boolean, busy:
 /** An older host has no `git` op: say so plainly instead of serde's text. */
 export function gitErrorText(error: AppError): { title: string; body: string; hint?: string } {
   if (error.code === 'E_SCHEMA' && /unknown variant `git`|unknown op/i.test(error.message)) {
-    return { title: 'Update UniPi on the PC', body: 'This PC runs an older agent host without git. Update UniPi on the PC.' };
+    return { title: 'Update Unipi on the PC', body: 'This PC runs an older agent host without git. Update Unipi on the PC.' };
   }
   if (error.code === 'E_SCOPE') return { title: 'Folder not allowed', body: error.message, hint: error.hint };
   if (error.code === 'E_UNSUPPORTED') return { title: 'git not available', body: error.message, hint: error.hint };

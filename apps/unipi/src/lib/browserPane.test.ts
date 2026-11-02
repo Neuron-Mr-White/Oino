@@ -57,7 +57,7 @@ describe('agent strip + take over (UNI-296)', () => {
     s = takeover(s, { kind: 'request', on: true });
     s = takeover(s, { kind: 'failed', error: { code: 'E_SCHEMA', message: 'unknown variant', retryable: false } });
     expect(s.pending).toBeUndefined();
-    expect(s.error).toBe('Update UniPi on the PC to take over from the agent.');
+    expect(s.error).toBe('Update Unipi on the PC to take over from the agent.');
     expect(agentStrip(s.agent).kind).toBe('driving');
     expect(takeoverError({ code: 'E_TRANSPORT', message: 'Could not reach coffee', retryable: true })).toBe('Could not reach coffee');
     // A new request clears the old error.

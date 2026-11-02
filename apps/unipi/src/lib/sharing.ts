@@ -132,7 +132,7 @@ export const ENABLE_COMMANDS: Record<FeatureKind, string> = {
 };
 
 /** A missing / too-old host: the app ships its host, so the fix is the app itself (no separate installer). */
-export const HOST_FIX_HINT = 'Reinstall or update UniPi — the app ships its agent host.';
+export const HOST_FIX_HINT = 'Reinstall or update Unipi — the app ships its agent host.';
 
 // ------------------------------------------------------------- transport
 

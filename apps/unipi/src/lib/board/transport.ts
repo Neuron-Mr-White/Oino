@@ -40,7 +40,7 @@ export function availabilityFromError(error: unknown): BoardAvailability {
   const code = app?.code ?? 'E_INTERNAL';
   const reason = (app as { detail?: { reason?: string } })?.detail?.reason;
   if (code === 'E_BOARD_UNAVAILABLE' && reason === 'not_installed') {
-    return { state: 'not_installed', hint: app.hint ?? 'Install the UniPi distribution on this PC (it ships unipi-kanboard)' };
+    return { state: 'not_installed', hint: app.hint ?? 'Install the Unipi distribution on this PC (it ships unipi-kanboard)' };
   }
   if (code === 'E_TRANSPORT' || code === 'E_TIMEOUT') return { state: 'offline' };
   return { state: 'error', message: app?.message ?? String(error) };

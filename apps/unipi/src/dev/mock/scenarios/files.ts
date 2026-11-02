@@ -122,7 +122,7 @@ const FS: Record<string, MockFsNode> = {
     'target': d({ debug: d({ 'unipi': f('bin', '?') }) }, { ignored: true }),
     '.env.local': f('OINO_HOME=/home/you/.oino\n'),
     '.gitignore': f('target/\nnode_modules/\ndist/\n'),
-    'README.md': f('# unipi\n\nThe UniPi app on the oino host.\n', 'A'),
+    'README.md': f('# unipi\n\nThe Unipi app on the oino host.\n', 'A'),
     'package.json': f('{ "name": "unipi", "private": true }\n'),
     'tsconfig.json': f('{ "strict": true }\n', 'M'),
     'vite.config.ts': f('export default {}\n'),

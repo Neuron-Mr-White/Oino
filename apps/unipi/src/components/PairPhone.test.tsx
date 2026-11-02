@@ -172,28 +172,28 @@ describe('Pair a phone dialog', () => {
     expect(starts).toBe(1);
   });
 
-  it('not installed (the core throws E_NOT_FOUND): reinstall UniPi, never a separate installer', async () => {
+  it('not installed (the core throws E_NOT_FOUND): reinstall Unipi, never a separate installer', async () => {
     startImpl = async () => {
-      throw { code: 'E_NOT_FOUND', message: 'This UniPi install is missing its agent host', hint: 'Reinstall UniPi: the app ships its agent host', retryable: false };
+      throw { code: 'E_NOT_FOUND', message: 'This Unipi install is missing its agent host', hint: 'Reinstall Unipi: the app ships its agent host', retryable: false };
     };
     setPlatformOverride({ mode: 'tauri-desktop', os: 'windows', tauri: true });
     render(() => <PairPhoneDialog />);
     openPairPhone();
-    expect(await screen.findByText('This UniPi install is missing its agent host')).toBeInTheDocument();
-    expect(screen.getByTestId('pair-phone-fix').textContent).toContain('Reinstall UniPi');
+    expect(await screen.findByText('This Unipi install is missing its agent host')).toBeInTheDocument();
+    expect(screen.getByTestId('pair-phone-fix').textContent).toContain('Reinstall Unipi');
     expect(document.body.textContent).not.toMatch(/install\.(sh|ps1)/);
     expect(screen.queryByTestId('pair-phone-start')).toBeNull();
     fireEvent.click(screen.getByTestId('pair-phone-retry'));
     await waitFor(() => expect(starts).toBe(2));
   });
 
-  it('too old a host: update UniPi', async () => {
+  it('too old a host: update Unipi', async () => {
     render(() => <PairPhoneDialog />);
     openPairPhone();
     await waitFor(() => expect(starts).toBe(1));
     emit({ state: 'error', code: 'E_UNSUPPORTED', message: "This PC's agent host is too old to pair from here" });
     expect(await screen.findByText("This PC's agent host is too old")).toBeInTheDocument();
-    expect(screen.getByTestId('pair-phone-fix').textContent).toContain('Update UniPi');
+    expect(screen.getByTestId('pair-phone-fix').textContent).toContain('Update Unipi');
   });
 
   it('closing while waiting cancels the code; late events of that attempt are ignored', async () => {

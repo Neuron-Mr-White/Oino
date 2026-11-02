@@ -160,7 +160,7 @@ export function inTextField(target: EventTarget | null): boolean {
 /** Window title: "<what> — UniPi". */
 export function windowTitle(parts: Array<string | undefined>): string {
   const clean = parts.map((p) => p?.trim()).filter((p): p is string => !!p);
-  return clean.length ? `${clean.join(' — ')} — UniPi` : 'UniPi';
+  return clean.length ? `${clean.join(' — ')} — Unipi` : 'Unipi';
 }
 
 async function invokeDesktop(cmd: string, args: Record<string, unknown>): Promise<boolean> {

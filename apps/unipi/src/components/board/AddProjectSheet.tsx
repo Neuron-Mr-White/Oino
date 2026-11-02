@@ -41,7 +41,7 @@ export function AddProjectSheet(props: { open: boolean; onClose: () => void; hos
       const res = await fsList(hostId, path);
       if (!res.ok) {
         const scope = /outside the allowed|allowed folders|E_SCOPE|scope/i.test(String(res.error.message));
-        return { error: scope ? 'UniPi can’t open this folder on the PC. Go back to a folder it lists.' : String(res.error.message), dirs: [] as string[] };
+        return { error: scope ? 'Unipi can’t open this folder on the PC. Go back to a folder it lists.' : String(res.error.message), dirs: [] as string[] };
       }
       return {
         error: undefined as string | undefined,

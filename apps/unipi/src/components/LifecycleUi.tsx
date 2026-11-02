@@ -31,9 +31,9 @@ export function QuitRunner() {
     onCleanup(() => window.removeEventListener(QUIT_TEST_EVENT, drive));
   });
   return (
-    <BoardSheet open={!!payload()} onClose={() => setPayload(undefined)} label="Quit UniPi?" testId="quit-sheet">
+    <BoardSheet open={!!payload()} onClose={() => setPayload(undefined)} label="Quit Unipi?" testId="quit-sheet">
       <p class="preview-muted" style={{ margin: '0 0 12px' }} data-testid="quit-message">
-        {payload()?.message ?? "Phones won't reach this PC until you open UniPi again."}
+        {payload()?.message ?? "Phones won't reach this PC until you open Unipi again."}
       </p>
       <div class="share-request-actions">
         <button type="button" class="btn btn-danger" data-testid="quit-confirm" onClick={() => void call('quit_now', undefined, z.null())}>
@@ -94,9 +94,9 @@ export function CloseAskRunner() {
     void call('close_answer', { action, remember: remember() }, z.null());
   };
   return (
-    <BoardSheet open={open()} onClose={() => answer('tray')} label="Close UniPi?" testId="close-ask-sheet">
+    <BoardSheet open={open()} onClose={() => answer('tray')} label="Close Unipi?" testId="close-ask-sheet">
       <p class="preview-muted" style={{ margin: '0 0 12px' }} data-testid="close-ask-message">
-        {message() || "Close UniPi, or keep it running in the tray so phones and cron keep working?"}
+        {message() || "Close Unipi, or keep it running in the tray so phones and cron keep working?"}
       </p>
       <label class="flex items-center gap-2 text-sm text-text-muted mb-3" data-testid="close-ask-remember">
         <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} />

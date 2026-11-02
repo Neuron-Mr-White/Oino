@@ -42,7 +42,7 @@ export const PI_BUILTINS: readonly CommandInfo[] = [
   { name: 'login', description: 'Sign in to a provider', source: 'builtin' },
   { name: 'logout', description: 'Sign out of a provider', source: 'builtin' },
   { name: 'bug', description: 'Report a bug', source: 'builtin' },
-  { name: 'quit', description: 'Quit UniPi', source: 'builtin' },
+  { name: 'quit', description: 'Quit Unipi', source: 'builtin' },
 ];
 /**
  * The built-ins that act on the chat itself (`SESSION_BUILTINS` in

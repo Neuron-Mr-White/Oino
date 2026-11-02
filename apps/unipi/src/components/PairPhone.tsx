@@ -98,7 +98,7 @@ function Waiting(props: { s: Extract<PairState, { kind: 'waiting' }> }) {
         <QrSvg value={props.s.link} label={`QR code to pair a phone with ${props.s.host}`} />
       </div>
       <p class="pair-phone-steps">
-        On your phone, open UniPi → <b>Add a PC</b> → <b>Pair with QR</b> and point it at this code.
+        On your phone, open Unipi → <b>Add a PC</b> → <b>Pair with QR</b> and point it at this code.
       </p>
       <div class="pair-phone-meta">
         <span class="pair-phone-timer" data-testid="pair-phone-countdown" aria-live="off">
@@ -135,7 +135,7 @@ function ErrorState(props: { s: Extract<PairState, { kind: 'error' }> }) {
   };
   const title = () =>
     props.s.errorKind === 'not_installed'
-      ? 'This UniPi install is missing its agent host'
+      ? 'This Unipi install is missing its agent host'
       : props.s.errorKind === 'not_running'
         ? "The agent host isn't running"
         : props.s.errorKind === 'too_old'
@@ -148,7 +148,7 @@ function ErrorState(props: { s: Extract<PairState, { kind: 'error' }> }) {
       <Switch fallback={<p class="pair-phone-state-text">{props.s.message}{props.s.hint ? ` — ${props.s.hint}` : ''}</p>}>
         <Match when={props.s.errorKind === 'not_installed' || props.s.errorKind === 'too_old'}>
           <p class="pair-phone-state-text" data-testid="pair-phone-fix">
-            {props.s.errorKind === 'too_old' ? 'Update UniPi (Settings › About), then try again.' : 'Reinstall UniPi — the app ships its agent host — then try again.'}
+            {props.s.errorKind === 'too_old' ? 'Update Unipi (Settings › About), then try again.' : 'Reinstall Unipi — the app ships its agent host — then try again.'}
           </p>
         </Match>
         <Match when={props.s.errorKind === 'not_running'}>

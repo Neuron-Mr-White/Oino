@@ -76,11 +76,11 @@ describe('host supervisor card (UNI-235)', () => {
   });
 });
 
-describe('keep available when UniPi is closed (UNI-238)', () => {
+describe('keep available when Unipi is closed (UNI-238)', () => {
   it('off → the button turns the service on', async () => {
     render(() => <HostSupervisorCard />);
     const detail = await screen.findByTestId('always-on-detail');
-    await waitFor(() => expect(detail.textContent).toContain('phones reach this PC only while UniPi is open'));
+    await waitFor(() => expect(detail.textContent).toContain('phones reach this PC only while Unipi is open'));
     fireEvent.click(screen.getByTestId('always-on-toggle'));
     await waitFor(() => expect(calls().some(([c, a]) => c === 'always_on_set' && (a as { on: boolean }).on === true)).toBe(true));
   });

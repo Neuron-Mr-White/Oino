@@ -24,7 +24,7 @@ describe('MascotWindow (UNI-255)', () => {
     feed({ size: 5 }); // out of range: ignored
     expect(container.querySelector('svg.unicrab')!.getAttribute('width')).toBe('128');
   });
-  it('drag moves the window, a click opens UniPi, the bubble opens its chat', () => {
+  it('drag moves the window, a click opens Unipi, the bubble opens its chat', () => {
     const emit = vi.fn();
     const startDrag = vi.fn();
     const { container, getByTestId } = render(() => <MascotWindow emit={emit} startDrag={startDrag} />);

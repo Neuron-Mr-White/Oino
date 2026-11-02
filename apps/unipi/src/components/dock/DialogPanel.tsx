@@ -64,7 +64,7 @@ export function DialogPanel(props: {
         <div class="dlg-head">
           <span class="dlg-eyebrow">{dialog.method}</span>
         </div>
-        <p class="dlg-message">This dialog kind needs a newer UniPi build — answer it in the terminal for now.</p>
+        <p class="dlg-message">This dialog kind needs a newer Unipi build — answer it in the terminal for now.</p>
       </div>
     );
   };

@@ -122,7 +122,7 @@ export type TakeoverAction =
 
 /** Plain words for a failed take-over request. */
 export function takeoverError(error: AppError): string {
-  if (error.code === 'E_SCHEMA' || error.code === 'E_UNSUPPORTED') return 'Update UniPi on the PC to take over from the agent.';
+  if (error.code === 'E_SCHEMA' || error.code === 'E_UNSUPPORTED') return 'Update Unipi on the PC to take over from the agent.';
   return error.message || "Couldn't reach the PC.";
 }
 

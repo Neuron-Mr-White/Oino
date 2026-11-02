@@ -51,7 +51,7 @@ export function DesktopNative() {
 
   onMount(() => {
     if (!can('windowTitle')) return;
-    onCleanup(() => setWindowTitle('UniPi'));
+    onCleanup(() => setWindowTitle('Unipi'));
   });
   return null;
 }

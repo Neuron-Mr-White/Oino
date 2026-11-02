@@ -119,7 +119,7 @@ export function folderName(path: string): string {
 /** Plain words for a failed start. */
 export function errorWords(error: AppError): { text: string; hint?: string } {
   if (error.code === 'E_SCHEMA' || error.code === 'E_UNSUPPORTED') {
-    return { text: 'This PC runs an older UniPi host.', hint: 'Update UniPi on the PC (re-run the installer), then try again.' };
+    return { text: 'This PC runs an older Unipi host.', hint: 'Update Unipi on the PC (re-run the installer), then try again.' };
   }
   return { text: String(error.message), hint: error.hint };
 }

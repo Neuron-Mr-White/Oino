@@ -31,7 +31,7 @@ const MODE_LABEL = { 'tauri-mobile': 'Phone app', 'tauri-desktop': 'Desktop app'
 
 function modeHint(): string | undefined {
   const mode = platform().mode;
-  if (mode === 'web') return 'Running in a browser: only the board works here. Terminals, chat and files need the UniPi app.';
+  if (mode === 'web') return 'Running in a browser: only the board works here. Terminals, chat and files need the Unipi app.';
   if (mode === 'tauri-desktop') return 'Phone-only features (QR scan, haptics, push notifications) are hidden.';
   return undefined;
 }

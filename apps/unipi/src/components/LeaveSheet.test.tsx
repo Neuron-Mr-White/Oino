@@ -93,7 +93,7 @@ describe('UNI-253: turn a shared feature off', () => {
     sheet();
     fireEvent.click(screen.getByTestId('leave-self'));
     await waitFor(() => expect(screen.getByTestId('leave-error')).toBeTruthy());
-    expect(screen.getByTestId('leave-error').textContent).toContain('older UniPi');
+    expect(screen.getByTestId('leave-error').textContent).toContain('older Unipi');
   });
 });
 
