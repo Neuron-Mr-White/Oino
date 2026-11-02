@@ -67,6 +67,19 @@ function slimEntry(e: SessionEntry | undefined): SessionEntry | undefined {
   } as SessionEntry;
 }
 
+/** Child step rows a cached subagent card keeps (the live card caps at 200 too). */
+const AGENT_STEPS_CACHED = 50;
+
+/** A child step with only what its mini-timeline row shows (no output, clipped argument). */
+function slimStep(e: SessionEntry): SessionEntry {
+  const d = (e.data ?? {}) as Record<string, unknown>;
+  const pick: Record<string, unknown> = {};
+  for (const k of ['kind', 'name', 'isError', 'durationMs', 'agentId', 'id', 'title', 'profile']) if (d[k] !== undefined) pick[k] = d[k];
+  if (typeof d.arg === 'string') pick.arg = d.arg.slice(0, 300);
+  if (typeof d.text === 'string') pick.text = d.text.slice(0, 300);
+  return { type: e.type, id: e.id, timestamp: e.timestamp, customType: e.customType, data: pick } as SessionEntry;
+}
+
 function slimTool(t: ToolRun): ToolRun {
   return {
     ...t,
@@ -80,10 +93,22 @@ function slimItem(w: WorkItem): WorkItem {
   if (w.kind === 'tool') return { ...w, tool: slimTool(w.tool) };
   if (w.kind === 'thinking' || w.kind === 'prose') return { ...w, text: trimStr(w.text) ?? '', live: false };
   if (w.kind === 'step' || w.kind === 'card' || w.kind === 'compaction') return { ...w, entry: slimEntry(w.entry)! };
+  if (w.kind === 'agent') {
+    const { current: _current, ...run } = w.run;
+    return {
+      ...w,
+      ...(w.tool ? { tool: slimTool(w.tool) } : {}),
+      run: { ...run, report: trimStr(run.report), steps: run.steps.slice(-AGENT_STEPS_CACHED).map(slimStep) },
+    };
+  }
   return w;
 }
 
 function slimNode(n: WorkNode): WorkNode {
+  if (n.kind === 'agents') {
+    const items = n.items.map(slimItem);
+    return { ...n, items, runs: items.flatMap((i) => (i.kind === 'agent' ? [i.run] : [])) };
+  }
   if (n.kind === 'group') {
     return {
       ...n,

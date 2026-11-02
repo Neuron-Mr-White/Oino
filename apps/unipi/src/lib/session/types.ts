@@ -57,6 +57,8 @@ export type LiveTool = {
   args: Record<string, unknown>;
   /** Text of the latest `partialResult` (live output tail). */
   partial?: string;
+  /** `details` of the latest `partialResult` (a `run_subagent` card's id / status / live `current` tool). */
+  details?: unknown;
   done?: boolean;
   isError?: boolean;
   result?: unknown;

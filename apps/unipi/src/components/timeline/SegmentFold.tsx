@@ -32,25 +32,37 @@ function useNow(live: () => boolean): () => number {
   return now;
 }
 
+/** A working message's words vs its key hints ("Ctrl+B to run in background"). */
+export function splitWorkingMessage(msg: string | undefined): { head?: string; hint?: string } | undefined {
+  if (!msg) return undefined;
+  const parts = msg.split(' · ').map((p) => p.trim()).filter(Boolean);
+  const isHint = (p: string) => /\b(?:Ctrl|Cmd|Alt|Shift|Esc)\b(?:\+\S+)?/.test(p);
+  const head = parts.filter((p) => !isHint(p)).join(' · ');
+  const hint = parts.filter(isHint).join(' · ');
+  return { ...(head ? { head } : {}), ...(hint ? { hint } : {}) };
+}
+
 export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
   const fold = () => props.segment.fold!;
   const open = () => fold().forcedOpen || expansionOpen(props.ctx.sessionId(), `fold:${props.segment.id}`, false);
   const toggle = () => !fold().forcedOpen && toggleExpansion(props.ctx.sessionId(), `fold:${props.segment.id}`, false);
   const running = () => fold().state === 'running';
   const now = useNow(running);
+  // §3.2 `setWorkingMessage`, split ([ui-subagents]): "Subagent running · Ctrl+B to run in
+  // background" keeps its words in the title and moves the key hint to a quiet tail chip.
+  const working = () => (running() ? splitWorkingMessage(workingMessageOf(props.ctx.session.key)) : undefined);
   const label = () => {
     if (!running()) return fold().label;
-    // §3.2 `setWorkingMessage`: the working line's text (default "Working for").
-    const msg = workingMessageOf(props.ctx.session.key);
+    const head = working()?.head;
     const dur = formatDuration(Math.max(0, now() - (fold().startedAt ?? now())));
-    return msg ? `${msg} · ${dur}` : `Working for ${dur}`;
+    return head ? `${head} · ${dur}` : `Working for ${dur}`;
   };
   const lead = () => {
     const last = [...props.segment.work].reverse().find((w) => w.kind === 'tool');
     return last && last.kind === 'tool' ? toolCategory(last.tool.name) : 'think';
   };
   const anyError = () => props.segment.work.some((w) => (w.kind === 'tool' && w.tool.state === 'error') || w.kind === 'error');
-  const fullTitle = () => (fold().detail ? `${label()} · ${fold().detail}` : label());
+  const fullTitle = () => [label(), fold().detail, working()?.hint].filter(Boolean).join(' · ');
   // F-08: surface tool result images (screenshots, generated images) even while the work fold is closed.
   const foldImages = () =>
     props.segment.work.flatMap((w) => (w.kind === 'tool' && w.tool.state !== 'running' && w.tool.state !== 'preparing' ? toolImages(props.ctx, w.tool) : []));
@@ -70,6 +82,11 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
         <Show when={fold().detail}>
           <span class="proc-detail" data-error={anyError() && !running() ? '' : undefined}>
             {fold().detail}
+          </span>
+        </Show>
+        <Show when={working()?.hint}>
+          <span class="proc-hint" data-testid="tl-fold-hint">
+            {working()!.hint}
           </span>
         </Show>
         <Show when={!fold().forcedOpen}>

@@ -416,6 +416,7 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       const tool = (s.liveTools[id] ??= { id, name: str(event.toolName) ?? '', args: isObject(event.args) ? event.args : {}, startedAt: now });
       const text = resultText(event.partialResult);
       if (text !== undefined) tool.partial = text;
+      if (isObject(event.partialResult) && event.partialResult.details !== undefined) tool.details = event.partialResult.details;
       return {};
     }
     case 'tool_execution_end': {

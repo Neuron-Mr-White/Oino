@@ -26,6 +26,7 @@ import { STEP_TYPES, formatDuration, isHiddenCommandText, textOf, toolCategory, 
 import { humanProviderError } from '../model/humanError';
 import type { AgentMessage, LiveTool, RunInfo, SessionEntry, Streaming } from './types';
 import { branchOf } from './reducer';
+import { agentRunOf, agentsSummary, completionOf, isAgentTool, isStepEntry, stepAgentId, stepDataOf, type AgentRun } from './agentRuns';
 
 /** Joins separate text blocks of a toolResult with `\n` when needed so adjacent blocks never glue (`…pngSaved: /…`, F-08). */
 function toolOutputText(content: string | ModelPart[] | undefined): string {
@@ -62,6 +63,8 @@ export type WorkItem =
   | { kind: 'tool'; key: string; tool: ToolRun }
   | { kind: 'prose'; key: string; text: string; live: boolean }
   | { kind: 'step'; key: string; entry: SessionEntry }
+  /** One subagent run ([ui-subagents]): its `run_subagent` call (absent for orphan child steps) + the child's steps. */
+  | { kind: 'agent'; key: string; run: AgentRun; tool?: ToolRun }
   | { kind: 'card'; key: string; entry: SessionEntry }
   | { kind: 'compaction'; key: string; entry: SessionEntry }
   | { kind: 'error'; key: string; text: string };
@@ -69,7 +72,12 @@ export type WorkItem =
 /** Z-38 tool group classes. */
 export type ToolGroupKind = 'execute' | 'explore' | 'changes';
 /** `work` with consecutive same-class tools merged (≥ 2 tools; thinking between them stays inside, in order). */
-export type WorkNode = Exclude<WorkItem, { kind: 'tool' }> | { kind: 'tool'; key: string; tool: ToolRun } | { kind: 'group'; key: string; group: ToolGroupKind; items: WorkItem[]; tools: ToolRun[] };
+export type WorkNode =
+  | Exclude<WorkItem, { kind: 'tool' }>
+  | { kind: 'tool'; key: string; tool: ToolRun }
+  | { kind: 'group'; key: string; group: ToolGroupKind; items: WorkItem[]; tools: ToolRun[] }
+  /** Parallel subagent runs ([ui-subagents]): ≥ 2 consecutive `agent` items under one "Running 3 subagents" container. */
+  | { kind: 'agents'; key: string; items: WorkItem[]; runs: AgentRun[] };
 
 export type FoldState = 'running' | 'done' | 'stopped' | 'error';
 export type Fold = {
@@ -199,6 +207,33 @@ export function groupWork(work: readonly WorkItem[]): WorkNode[] {
   let i = 0;
   while (i < work.length) {
     const item = work[i]!;
+    if (item.kind === 'agent') {
+      // Consecutive runs (thinking between them stays inside, in order) share one container.
+      const items: WorkItem[] = [item];
+      const runs: AgentRun[] = [item.run];
+      let j = i + 1;
+      let end = i + 1;
+      while (j < work.length) {
+        const next = work[j]!;
+        if (next.kind === 'thinking') {
+          j++;
+          continue;
+        }
+        if (next.kind !== 'agent') break;
+        for (let k = end; k <= j; k++) items.push(work[k]!);
+        runs.push(next.run);
+        j++;
+        end = j;
+      }
+      if (runs.length >= 2) {
+        out.push({ kind: 'agents', key: `a-${item.key}`, items, runs });
+        i = end;
+      } else {
+        out.push(item);
+        i++;
+      }
+      continue;
+    }
     const cls = item.kind === 'tool' ? toolGroupOf(item.tool.name) : undefined;
     if (!cls) {
       out.push(item);
@@ -325,6 +360,47 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
     }
   }
   const running = !!live?.running;
+  // [ui-subagents] child steps by agent id (rendered inside their run's card, never as loose rows).
+  const stepsByAgent = new Map<string, SessionEntry[]>();
+  const completions = new Map<string, Record<string, unknown>>();
+  for (const e of entries) {
+    if (isStepEntry(e)) {
+      const id = stepAgentId(e);
+      if (id) {
+        const list = stepsByAgent.get(id);
+        if (list) list.push(e);
+        else stepsByAgent.set(id, [e]);
+      }
+    } else if (e.type === 'custom_message') {
+      const c = completionOf(e);
+      if (c) completions.set(c.agentId, c.details);
+    }
+  }
+  const claimed = new Set<string>();
+  const agentItem = (key: string, tool: ToolRun | undefined, details: unknown, callAt: number | undefined, agentId?: string): Extract<WorkItem, { kind: 'agent' }> => {
+    const detailsId = (details as { id?: unknown } | undefined)?.id;
+    let id = agentId ?? (typeof detailsId === 'string' ? detailsId : undefined);
+    if (!id && tool) {
+      // No details yet (reopened mid-run): the first unclaimed child whose steps carry this title.
+      const title = typeof tool.args.title === 'string' ? tool.args.title : undefined;
+      for (const [agentId, steps] of stepsByAgent) {
+        if (!claimed.has(agentId) && title && stepDataOf(steps[0]!).title === title) {
+          id = agentId;
+          break;
+        }
+      }
+    }
+    if (id) claimed.add(id);
+    const run = agentRunOf({
+      ...(tool ? { callId: tool.id, args: tool.args, state: tool.state, ...(tool.output !== undefined ? { output: tool.output } : {}) } : {}),
+      details,
+      ...(callAt !== undefined ? { callAt } : {}),
+      steps: (id && stepsByAgent.get(id)) || [],
+      ...(id && completions.get(id) ? { completion: completions.get(id)! } : {}),
+      turnLive: running,
+    });
+    return { kind: 'agent', key, run, ...(tool ? { tool } : {}) };
+  };
   const segments: Segment[] = [];
   let seg: Segment = { id: start.kind === 'compaction' ? `cmp:${first.id}` : first.id, index: 0, work: [], nodes: [], live: false };
   segments.push(seg);
@@ -367,6 +443,11 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         } else if (isLive) tool.state = 'preparing';
         else tool.state = stopped || !running ? 'stopped' : 'running';
         if (lt?.durationMs !== undefined) tool.durationMs = lt.durationMs;
+        if (isAgentTool(tool.name)) {
+          const details = result ? result.message.details : lt?.details;
+          seg.work.push(agentItem(k, tool, details, lt?.startedAt ?? callAt));
+          return;
+        }
         seg.work.push({ kind: 'tool', key: k, tool });
       } else if (part.type === 'text') {
         const text = String((part as { text?: unknown }).text ?? '');
@@ -430,6 +511,13 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       }
       if (INTERNAL_CUSTOM_TYPES.has(ct)) continue;
       if (STEP_TYPES.has(ct)) {
+        const agentId = stepAgentId(e);
+        if (agentId && claimed.has(agentId)) continue; // inside its run's card
+        if (agentId) {
+          // A child whose call is not in this turn (backgrounded earlier, resumed): one card at its first step.
+          seg.work.push(agentItem(`agent-${agentId}`, undefined, undefined, at, agentId));
+          continue;
+        }
         seg.work.push({ kind: 'step', key: e.id, entry: e });
         segMeta[seg.index]!.steps++;
       } else seg.work.push({ kind: 'card', key: e.id, entry: e });
@@ -453,8 +541,13 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
     // Live tools whose call part never streamed (joined late / reconnect).
     const shown = new Set<string>();
     for (const s of segments) for (const w of s.work) if (w.kind === 'tool') shown.add(w.tool.id);
+    else if (w.kind === 'agent' && w.tool) shown.add(w.tool.id);
     for (const t of Object.values(live.liveTools)) {
       if (shown.has(t.id) || t.done || t.parentId) continue;
+      if (isAgentTool(t.name)) {
+        seg.work.push(agentItem(`live-${t.id}`, { id: t.id, name: t.name, args: t.args, state: 'running' }, t.details, t.startedAt));
+        continue;
+      }
       seg.work.push({ kind: 'tool', key: `live-${t.id}`, tool: { id: t.id, name: t.name, args: t.args, state: 'running', ...(t.partial !== undefined ? { live: t.partial } : {}) } });
     }
   }
@@ -523,7 +616,7 @@ function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number;
   s.fold = {
     state,
     label: state === 'running' ? 'Working' : state === 'stopped' ? 'Stopped' : `Worked for ${formatDuration(durationMs ?? 0)}`,
-    detail: foldDetail(tools, meta.steps),
+    detail: [agentsSummary(s.work.flatMap((w) => (w.kind === 'agent' ? [w.run] : []))), foldDetail(tools, meta.steps)].filter(Boolean).join(' · '),
     ...(durationMs !== undefined ? { durationMs } : {}),
     ...(meta.startedAt !== undefined ? { startedAt: meta.startedAt } : {}),
     forcedOpen: state !== 'done',

@@ -16,6 +16,8 @@ import { ThinkingRow } from './ThinkingRow';
 import { StepRow } from './StepRow';
 import { CardRow } from '../cards/CardRow';
 import { ToolGroup } from './ToolGroup';
+import { AgentCard } from './AgentCard';
+import { AgentsGroup } from './AgentsGroup';
 import { ByKey } from '../ByKey';
 
 /** `item` narrowed to one `WorkItem` kind for a `<Match>` `when`. */
@@ -35,6 +37,7 @@ export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
       <Match when={ofKind(item(), 'thinking')}>{(i) => <ThinkingRow item={i()} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'tool')}>{(i) => <ToolRow tool={i().tool} ctx={props.ctx} itemKey={i().key} />}</Match>
       <Match when={ofKind(item(), 'prose')}>{(i) => <Prose text={i().text} live={i().live} entryKey={i().key} chat={props.ctx.refs} width={props.ctx.columnWidth} />}</Match>
+      <Match when={ofKind(item(), 'agent')}>{(i) => <AgentCard run={i().run} ctx={props.ctx} itemKey={i().key} />}</Match>
       <Match when={ofKind(item(), 'step')}>{(i) => <StepRow entry={i().entry} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'card')}>{(i) => <CardRow entry={i().entry} ctx={props.ctx} />}</Match>
       <Match when={ofKind(item(), 'compaction')}>{(i) => <Compaction entry={i().entry} sessionId={props.ctx.sessionId} />}</Match>
@@ -46,11 +49,13 @@ export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
 /** Work nodes (groups render their head; `live` groups default open). */
 export function WorkNodes(props: { nodes: readonly WorkNode[]; ctx: TimelineCtx; live?: boolean }) {
   return (
-    <ByKey each={props.nodes} key={(n) => `${n.kind === 'group' ? 'g' : 'i'}:${n.key}`}>
+    <ByKey each={props.nodes} key={(n) => `${n.kind === 'group' ? 'g' : n.kind === 'agents' ? 'a' : 'i'}:${n.key}`}>
       {(node) => {
         const n = node();
         return n.kind === 'group' ? (
           <ToolGroup node={node() as Extract<WorkNode, { kind: 'group' }>} ctx={props.ctx} live={props.live ?? false} />
+        ) : n.kind === 'agents' ? (
+          <AgentsGroup node={node() as Extract<WorkNode, { kind: 'agents' }>} ctx={props.ctx} />
         ) : (
           <WorkItemView item={node() as WorkItem} ctx={props.ctx} />
         );
