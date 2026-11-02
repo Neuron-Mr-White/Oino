@@ -14,6 +14,7 @@ import { setPiSetting, hostCmd } from '../../settings/hostCmd';
 import { z } from 'zod';
 import { LOCAL_HOST } from '../../lib/host';
 import { CommandResult, CommandSheet, createSettingsCommand } from './command';
+import { commandOverride } from '../../lib/settings/run';
 import { ModelPickerField } from './ModelPickerField';
 import { desktopShell } from '../../lib/layout';
 import type { Field, Json } from './types';
@@ -256,9 +257,12 @@ function ActionField(props: { field: Field; ctx: EditContext; disabled: boolean 
   const [confirming, setConfirming] = createSignal(false);
   const spec = () => ({ label: props.field.label, command: props.field.command ?? '' });
   const cmd = createSettingsCommand(spec, () => props.ctx.hostId ?? LOCAL_HOST);
+  const native = () => commandOverride(props.field.command ?? '');
   const run = () => {
     setConfirming(false);
-    void cmd.run();
+    const open = native();
+    if (open) open();
+    else void cmd.run();
   };
   return (
     <FieldRow field={props.field} ctx={props.ctx} below={<CommandResult cmd={cmd} testId={`note-${props.field.key}`} />}>
@@ -276,9 +280,9 @@ function ActionField(props: { field: Field; ctx: EditContext; disabled: boolean 
             aria-label={`${props.field.label}${cmd.mode() === 'chat' ? ' (opens in chat)' : ''}`}
             disabled={props.disabled || cmd.state().status === 'running'}
             data-testid={`run-${props.field.key}`}
-            onClick={() => (props.field.confirm ? setConfirming(true) : run())}
+            onClick={() => (props.field.confirm && !native() ? setConfirming(true) : run())}
           >
-            {cmd.mode() === 'chat' ? 'Open in chat ↗' : cmd.mode() === 'sheet' ? 'Open…' : 'Run'}
+            {native() ? 'Open…' : cmd.mode() === 'chat' ? 'Open in chat ↗' : cmd.mode() === 'sheet' ? 'Open…' : 'Run'}
           </button>
         </Show>
       </div>

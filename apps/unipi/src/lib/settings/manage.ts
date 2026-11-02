@@ -198,8 +198,8 @@ export const MANAGE_ACTIONS: ManageAction[] = [
   {
     id: 'agents.profiles',
     page: 'subagents',
-    label: 'Manage profiles',
-    description: 'List, create, edit, copy or delete agent profiles',
+    label: 'Agent profiles',
+    description: 'Built-in and custom agents: create, edit, duplicate or delete',
     command: 'agents',
     title: 'Subagents: manage profiles',
     keywords: 'agents subagents profiles create edit delete',

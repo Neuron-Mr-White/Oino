@@ -34,8 +34,10 @@ export type CapabilityPageProps = {
   blurb?: string;
   /** Section anchor id (`sec-<page>`); also what Settings search scrolls to. */
   sectionId: string;
-  /** Extra Manage rows a page renders itself (Subagents › Agent profiles). */
+  /** Extra Manage rows a page renders itself. */
   extraManage?: JSX.Element;
+  /** Manage rows Settings answers natively (action id → opener), e.g. Agent profiles. */
+  openers?: Record<string, () => void>;
 };
 
 export function CapabilityPage(props: CapabilityPageProps) {
@@ -88,7 +90,7 @@ export function CapabilityPage(props: CapabilityPageProps) {
             hostId={localHost()}
             off={extensions.enabled(action.extension ?? commandOwner(action.command)) === false}
             onTurnedOn={() => void extensions.refresh()}
-            onOpen={action.form ? () => setFormSheet(action) : undefined}
+            onOpen={props.openers?.[action.id] ?? (action.form ? () => setFormSheet(action) : undefined)}
           />
         )}
       </For>

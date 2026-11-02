@@ -16,6 +16,7 @@
  * a new empty one. Its replies are claimed (`claimReplies`) so they land on
  * the row or sheet, not as a toast or the floating report panel.
  */
+import { createSignal } from 'solid-js';
 import { sessions, type SessionHandle } from '../session/store';
 import { hubs } from '../session/hub';
 import { newSession } from '../session/newSession';
@@ -26,6 +27,24 @@ import { installUiEffects } from '../../ui/slots/effects';
 import { chatHasCommand, latestChatOn, manageChat } from './manage';
 
 export type CommandMode = 'background' | 'sheet' | 'chat';
+
+/** A command Settings answers natively (owner5 #17: `/agents` → the Agent profiles page). */
+const overrides = new Map<string, () => void>();
+const [overrideRev, setOverrideRev] = createSignal(0);
+
+export function registerCommandOverride(command: string, open: () => void): () => void {
+  overrides.set(command, open);
+  setOverrideRev((n) => n + 1);
+  return () => {
+    if (overrides.get(command) === open) overrides.delete(command);
+    setOverrideRev((n) => n + 1);
+  };
+}
+
+export function commandOverride(command: string): (() => void) | undefined {
+  overrideRev();
+  return overrides.get(command.trim().replace(/^\//, ''));
+}
 
 /** Commands that just do something and answer with one notice or report. */
 const BACKGROUND = new Set([

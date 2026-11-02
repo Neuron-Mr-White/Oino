@@ -23,6 +23,7 @@ import { setHostClientFactory } from '../../lib/host/factory';
 import { createMockHost } from '../../dev/mock/host';
 import { capMcpNoChat, providersNoChat } from '../../dev/mock/scenarios/capabilities';
 import { resetSettingsMemory } from '../../lib/settings/memory';
+import { resetSubagentsView } from '../settings/SubagentsPage';
 import { resetHubs } from '../../lib/session/hub';
 import { sessions, resetSessions } from '../../lib/session/store';
 
@@ -156,6 +157,41 @@ describe('Settings › Skills hub (owner5 #10)', () => {
     expect(location.hash).toBe('#/settings/skills');
     expect(world.log.some((entry) => entry.kind === 'cmd' && (entry.args as { message?: string }).message === '/skills')).toBe(false);
     expect(document.querySelector('.settings-flash-target')).toBeNull();
+  });
+});
+
+describe('Settings › Subagents › Agent profiles (owner5 #17)', () => {
+  beforeEach(() => {
+    setPlatformOverride('tauri-desktop');
+    setDesktopOverride(true);
+  });
+  afterEach(() => {
+    cleanup();
+    resetHubs();
+    resetSessions();
+    resetSettingsMemory();
+    resetSubagentsView();
+    setPlatformOverride(undefined);
+    setDesktopOverride(undefined);
+    setHostClientFactory(undefined);
+  });
+
+  it('Agent profiles is a Settings sub-page: built-ins read-only, Back returns; nothing is sent to a chat', async () => {
+    const world = createMockHost(capMcpNoChat);
+    setHostClientFactory(world.client);
+    const r = renderAt('subagents');
+    await waitFor(() => expect(r.getByTestId('manage-agents.profiles')).toBeTruthy());
+    r.getByTestId('manage-agents.profiles').click();
+    await waitFor(() => expect(r.getByTestId('agent-profiles-page')).toBeTruthy());
+    await waitFor(() => expect(r.getByTestId('agent-subagent_explore')).toBeTruthy());
+    expect(r.getByTestId('agent-subagent_general')).toBeTruthy();
+    r.getByTestId('agent-subagent_explore').click();
+    await waitFor(() => expect(document.querySelector('[data-testid=agent-editor]')).toBeTruthy());
+    expect((document.querySelector('[data-testid=agent-name]') as HTMLInputElement).disabled).toBe(true);
+    expect(document.querySelector('[data-testid=agent-save]')).toBeNull();
+    expect(document.querySelector('[data-testid=agent-duplicate]')).toBeTruthy();
+    expect(location.hash).toBe('#/settings/subagents');
+    expect(world.log.some((entry) => entry.kind === 'cmd' && (entry.args as { message?: string }).message === '/agents')).toBe(false);
   });
 });
 
