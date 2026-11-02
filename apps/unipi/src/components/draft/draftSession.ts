@@ -30,9 +30,14 @@ import { cachedCommands, cachedModels, rememberModels } from './hostCache';
 
 export type DraftModel = { provider: string; modelId: string; name?: string };
 
+/** A Fusion lead + sidekick pair picked on the draft (`unipi.fusion`'s `Active` fusion record). */
+export type DraftFusion = { lead: string; sidekick: string; leadEffort: string; sidekickEffort: string };
+
 /** What the user chose on the draft, replayed on the new session. */
 export type DraftChoices = {
   model?: DraftModel;
+  /** Fusion's pair, set with `fusion.set-pair` right after the chat starts (it switches pi to the lead). */
+  fusion?: DraftFusion;
   thinking?: string;
   permission?: string;
   plan?: boolean;
@@ -43,6 +48,8 @@ export type DraftSession = SessionHandle & {
   /** A live chat on the same PC (borrowed for the model catalogue), if one is open. */
   peer(): SessionHandle | undefined;
   pickModel(model: DraftModel): void;
+  /** The draft's Fusion pair (`undefined` = back to one model); `lead` is the model shown meanwhile. */
+  pickFusion(pair: DraftFusion | undefined, lead?: DraftModel): void;
   /** Whether a provider on this PC can run a model (D-01): `checking` until the host answers. */
   readiness: () => Readiness | undefined;
   /** The toolbar's chips are final (defaults + the PC's commands answered, or a short grace passed) — D-21. */
@@ -310,10 +317,19 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
     readiness,
     ready: () => graceOver() || (defaultsIn() && commandsIn()),
     pickModel(model) {
-      setChoices((c) => ({ ...c, model }));
+      // One model picked: the draft's Fusion pair (if any) is off.
+      setChoices(({ fusion: _fusion, ...c }) => ({ ...c, model }));
       setState('model', { provider: model.provider, id: model.modelId, name: model.name ?? model.modelId });
       // The new model may not offer the level on show (D-02).
       settleThinking();
+    },
+    pickFusion(pair, lead) {
+      if (!pair) {
+        setChoices(({ fusion: _fusion, ...c }) => c);
+        return;
+      }
+      setChoices((c) => ({ ...c, fusion: pair, ...(lead ? { model: lead } : {}) }));
+      if (lead) setState('model', { provider: lead.provider, id: lead.modelId, name: lead.name ?? lead.modelId });
     },
   };
   return handle;

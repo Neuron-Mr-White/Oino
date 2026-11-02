@@ -18,6 +18,7 @@ import { hostClient } from '../../lib/host/factory';
 import type { HostClient, RpcCommand, SessionSnapshot } from '../../lib/host/client';
 import type { OutboxImage } from '../../lib/session/types';
 import type { DraftChoices } from './draftSession';
+import { FUSION_SET_PAIR } from '../../lib/model/fusion';
 
 export type StartRequest = {
   cwd?: string;
@@ -62,14 +63,21 @@ export async function startSession(hostId: string, req: StartRequest, client: Ho
     const snap = await ready;
     clearTimeout(timer);
     const cmd = (c: RpcCommand) => stream.cmd(c);
-    const { model, thinking, permission, plan } = req.choices;
+    const { model, thinking, permission, plan, fusion } = req.choices;
     // A failed preference never blocks the prompt: the chat shows what runs.
     // D-02: only what differs from the new session's own start — a replay of the same
     // model / level would put "Model → … / Thinking → …" rows atop a fresh chat.
     const started = (snap.state ?? {}) as { model?: { provider?: string; id?: string }; thinkingLevel?: string };
     const sameModel = !!model && started.model?.id === model.modelId && (!started.model.provider || started.model.provider === model.provider);
-    if (model && !sameModel) await cmd({ type: 'set_model', provider: model.provider, modelId: model.modelId }).catch(() => undefined);
-    if (thinking && thinking !== started.thinkingLevel) await cmd({ type: 'set_thinking_level', level: thinking }).catch(() => undefined);
+    if (fusion) {
+      // The draft's Fusion pair, through `unipi.fusion`'s own service (the chat picker's
+      // path): it switches pi to the lead and sets both efforts, so no set_model /
+      // thinking replay goes first.
+      await cmd({ type: '_oino/service_call', name: FUSION_SET_PAIR, payload: { active: { kind: 'fusion', ...fusion } } }).catch(() => undefined);
+    } else {
+      if (model && !sameModel) await cmd({ type: 'set_model', provider: model.provider, modelId: model.modelId }).catch(() => undefined);
+      if (thinking && thinking !== started.thinkingLevel) await cmd({ type: 'set_thinking_level', level: thinking }).catch(() => undefined);
+    }
     if (permission) await cmd({ type: 'prompt', message: `/permission ${permission}` }).catch(() => undefined);
     if (plan) await cmd({ type: 'prompt', message: '/plan on' }).catch(() => undefined);
     armed = true;

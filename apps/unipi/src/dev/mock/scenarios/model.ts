@@ -6,6 +6,10 @@
  *   model-fusion   the dialog on its Fusion tab: unipi.fusion on, a running
  *                  pair, Lead/Sidekick columns filtered by the one search,
  *                  effort pills (Z-76)
+ *   model-draft-fusion  the new-chat draft's Model dialog on its Fusion tab
+ *                  (unipi.fusion enabled on the PC, no chat open): Lead /
+ *                  Sidekick columns + effort pills; "Use this pair" keeps the
+ *                  pair for the new chat (chip: "Fusion · A ◆ B")
  *   thinking-chip  the composer's model / thinking / context controls and the
  *                  thinking menu (Z-71, Z-73)
  *   mode-chip      the header mode chip over a running Graph, its switch menu
@@ -15,6 +19,8 @@ import type { MockHostSpec, MockScenario, MockSession } from '../host';
 import { genCards, genSession } from '../gen';
 import { openModelPicker } from '../../../components/model/target';
 import { setComposerText } from '../../../lib/composer/drafts';
+import { rememberModels } from '../../../components/draft/hostCache';
+import { MOCK_MODELS } from '../models';
 
 const HOST = 'this-pc';
 const CWD = '/home/you/projects/unipi';
@@ -140,6 +146,44 @@ export const modelFusion: MockScenario = {
     ),
   ],
   setup: seedPicker,
+};
+
+/** Clicks `testId` once it renders (bounded: the scenario never spins forever). */
+function clickWhenShown(testId: string, then?: () => void, tries = 40): void {
+  const el = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+  if (el) {
+    el.click();
+    then?.();
+    return;
+  }
+  if (tries > 0) setTimeout(() => clickWhenShown(testId, then, tries - 1), 100);
+}
+
+export const modelDraftFusion: MockScenario = {
+  name: 'model-draft-fusion',
+  hosts: [
+    {
+      id: HOST,
+      name: 'workstation',
+      transport: 'local',
+      conn: { state: 'connected' },
+      cards: genCards(3, { seed: 5 }).map((c) => ({ ...c, cwd: CWD })),
+      settings: {
+        pi: { defaultProvider: 'anthropic', defaultModel: 'claude-sonnet-4-5' },
+        extensions: [WORKFLOW_EXTENSION, FUSION_EXTENSION],
+        providers: [
+          { id: 'anthropic', configured: true },
+          { id: 'zai', configured: true },
+        ],
+      },
+    },
+  ],
+  setup: () => {
+    // No chat open: the draft answers from the PC's remembered catalogue.
+    rememberModels(HOST, MOCK_MODELS);
+    location.hash = `#/new/${HOST}`;
+    clickWhenShown('model-chip', () => clickWhenShown('model-tab-fusion'));
+  },
 };
 
 export const thinkingChip: MockScenario = {

@@ -22,15 +22,12 @@
  * Sidekick badges, the curated effort applied with the pick) and puts the
  * Fusion columns' curated lists first.
  */
-import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show } from 'solid-js';
-import { Check } from 'lucide-solid';
+import { createEffect, createMemo, createResource, createSignal, onCleanup, Show } from 'solid-js';
 import { sessions, type SessionHandle } from '../../lib/session/store';
 import { toasts } from '../../lib/toasts';
 import { liveSource } from '../session/modalData';
 import { fetchFusion, fusionAvailable, setFusionActive, type FusionState } from '../../lib/model/fusion';
 import {
-  columnModels,
-  FUSION_EFFORTS,
   modelKey,
   modelName,
   nextSinglePick,
@@ -51,8 +48,9 @@ import { calmModelError } from '../../lib/model/availability';
 import { closeModelPicker, modelPickerTarget, type ModelPickerTarget } from './target';
 import { ThinkingFooter } from './ThinkingFooter';
 import { layout } from '../../lib/layout';
-import { curatedFirst, rowTitle, startupKey } from './suggested';
-import { LIST_CAP, modelView, type RowActions } from './ModelList';
+import { startupKey } from './suggested';
+import { createFusionPair } from './FusionPair';
+import { modelView, type RowActions } from './ModelList';
 import {
   createCycleSet,
   fusionStartup,
@@ -61,7 +59,6 @@ import {
   ModelPickerPanel,
   PickerError,
   PickerSecondary,
-  PickerSkeleton,
   writeStartupModel,
 } from './ModelPopover';
 
@@ -89,16 +86,7 @@ async function loadPicker(s: SessionHandle): Promise<PickerData> {
   return { models: parseModels(modelsReply), ...(readiness ? { readiness } : {}), ...(fusion ? { fusion } : {}), cycle, ...(startup ? { startup } : {}) };
 }
 
-/** Scrolls the chosen row of each Fusion column into view (often below its fold). */
-export function revealPicked(root: HTMLElement): void {
-  for (const list of root.querySelectorAll<HTMLElement>('.mp-col-list')) {
-    const row = list.querySelector<HTMLElement>('[aria-current="true"]');
-    if (!row) continue;
-    const lr = list.getBoundingClientRect();
-    const rr = row.getBoundingClientRect();
-    if (rr.top < lr.top || rr.bottom > lr.bottom) list.scrollTop += rr.top - lr.top - (lr.height - rr.height) / 2;
-  }
-}
+export { revealPicked } from './FusionPair';
 
 /** The chat picker's content (inside the dialog / sheet). */
 export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
@@ -137,10 +125,6 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
   };
   const now = () => nowLabel(current(), nameOf);
   const [pick, setPick] = createSignal<string | undefined>();
-  const [pendingLead, setPendingLead] = createSignal<string | undefined>();
-  const [pendingSidekick, setPendingSidekick] = createSignal<string | undefined>();
-  const [leadEffort, setLeadEffort] = createSignal('medium');
-  const [sidekickEffort, setSidekickEffort] = createSignal('medium');
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -162,31 +146,16 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
   };
 
   const curated = () => fusion()?.curated;
-  const colRows = createMemo(() => columnModels(models(), query()));
-  const leadRows = createMemo(() => curatedFirst(colRows(), (curated()?.lead ?? []).map((e) => e.key)));
-  const sidekickRows = createMemo(() => curatedFirst(colRows(), (curated()?.sidekick ?? []).map((e) => e.key)));
-  /** A key the catalogue knows (a curated default can name a provider this PC lacks). */
-  const known = (key: string | undefined): string | undefined => (key && byKey().has(key) ? key : undefined);
-  const firstKnown = (l: ReadonlyArray<{ key: string }> | undefined) => l?.find((e) => byKey().has(e.key))?.key;
-  const leadKey = () =>
-    pendingLead() ??
-    activePair()?.lead ??
-    fusion()?.status?.leadKey ??
-    known(curated()?.default.lead) ??
-    firstKnown(curated()?.lead) ??
-    (models()[0] ? modelKey(models()[0]!) : undefined);
-  const sidekickKey = () =>
-    pendingSidekick() ??
-    activePair()?.sidekick ??
-    fusion()?.status?.sidekickKey ??
-    known(curated()?.default.sidekick) ??
-    firstKnown(curated()?.sidekick) ??
-    (models()[1] ? modelKey(models()[1]!) : models()[0] ? modelKey(models()[0]!) : undefined);
-  /** A curated effort the Fusion pills can show (they offer low / medium / high). */
-  const pillEffort = (key: string): string | undefined => {
-    const e = curated()?.effort[key];
-    return e && (FUSION_EFFORTS as readonly string[]).includes(e) ? e : undefined;
-  };
+  /** The Fusion columns + effort pills (shared with the draft's picker). */
+  const pair = createFusionPair({
+    models,
+    catalogue: allModels,
+    query,
+    curated,
+    base: () => ({ lead: activePair()?.lead ?? fusion()?.status?.leadKey, sidekick: activePair()?.sidekick ?? fusion()?.status?.sidekickKey }),
+    onPick: () => setError(null),
+  });
+  const { leadKey, sidekickKey, leadEffort, sidekickEffort, setLeadEffort, setSidekickEffort, setPendingLead, setPendingSidekick, pillEffort } = pair;
   const [startup, setStartup] = createSignal<string | undefined>();
   createEffect(() => setStartup(data.latest?.startup));
   /** The model "Use at startup" acts on: the pending pick, else the running single model. */
@@ -313,84 +282,8 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
     startup: { set: (m) => void useAtStartup(modelKey(m)) },
   });
 
-  /** One Fusion column row. */
-  const ColRow = (p: { m: ModelInfo; side: 'lead' | 'sidekick' }) => {
-    const key = modelKey(p.m);
-    const name = shortModelName(modelName(p.m));
-    const chosen = () => (p.side === 'lead' ? leadKey() : sidekickKey()) === key;
-    return (
-      <button
-        type="button"
-        role="menuitemradio"
-        aria-checked={chosen()}
-        class="mp-row"
-        title={rowTitle(modelName(p.m), p.m)}
-        aria-current={chosen() ? 'true' : undefined}
-        onClick={() => {
-          setError(null);
-          const effort = pillEffort(key);
-          if (p.side === 'lead') {
-            setPendingLead(key);
-            if (effort) setLeadEffort(effort);
-          } else {
-            setPendingSidekick(key);
-            if (effort) setSidekickEffort(effort);
-          }
-        }}
-      >
-        <span class="mp-row-name">{name}</span>
-        <Show when={chosen()}>
-          <Check size={16} class="mp-check" />
-        </Show>
-      </button>
-    );
-  };
-  const Column = (p: { side: 'lead' | 'sidekick' }) => {
-    const rows = () => (p.side === 'lead' ? leadRows() : sidekickRows());
-    return (
-      <div class="mp-col">
-        <p class="mp-label">{p.side === 'lead' ? 'Lead' : 'Sidekick'}</p>
-        <div class="mp-list mp-col-list">
-          <Show when={rows().curated.length > 0}>
-            <p class="mp-group">Curated</p>
-            <For each={rows().curated}>{(m) => <ColRow m={m} side={p.side} />}</For>
-            <p class="mp-group">All models</p>
-          </Show>
-          <For each={rows().rest.slice(0, LIST_CAP)} fallback={<Show when={rows().curated.length === 0}><p class="mp-empty">No model matches.</p></Show>}>
-            {(m) => <ColRow m={m} side={p.side} />}
-          </For>
-        </div>
-      </div>
-    );
-  };
-  const Effort = (p: { side: 'lead' | 'sidekick' }) => {
-    const value = () => (p.side === 'lead' ? leadEffort() : sidekickEffort());
-    const set = (level: string) => (p.side === 'lead' ? setLeadEffort(level) : setSidekickEffort(level));
-    return (
-      <div class="mp-effort" role="group" aria-label={p.side === 'lead' ? 'Lead effort' : 'Sidekick effort'}>
-        <span class="mp-label">{p.side === 'lead' ? 'Lead effort' : 'Sidekick effort'}</span>
-        <For each={FUSION_EFFORTS}>
-          {(level) => (
-            <button type="button" role="menuitemradio" aria-checked={value() === level} class="mp-pill" onClick={() => set(level)}>
-              {level}
-            </button>
-          )}
-        </For>
-      </div>
-    );
-  };
-
   const loading = () => !!data.loading && !data.latest;
-  const fusionContent = () => (
-    <Show when={!loading()} fallback={<PickerSkeleton />}>
-      <div class="mp-fusion" ref={(el) => queueMicrotask(() => revealPicked(el))} data-testid="model-picker-fusion">
-        <Column side="lead" />
-        <Column side="sidekick" />
-      </div>
-      <Effort side="lead" />
-      <Effort side="sidekick" />
-    </Show>
-  );
+  const fusionContent = () => pair.content(loading());
 
   return (
     <ModelPickerPanel

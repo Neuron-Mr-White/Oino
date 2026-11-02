@@ -7,27 +7,34 @@
  * (before its first prompt). The rows' ⋯ menu (cycle set — pi's
  * `enabledModels`, written to the host — and "Use at startup", the host's
  * `defaultProvider` / `defaultModel`), the Cycle set filter chip and the
- * footer's "Use at startup" sit where the chat's do. No Fusion tab: a pair needs a
- * running chat (`fusion.set-pair`), so it is set from the chat's picker.
+ * footer's "Use at startup" sit where the chat's do.
+ *
+ * Fusion tab (when `unipi.fusion` is enabled on this PC): the same lead /
+ * sidekick columns and effort pills as the chat's; "Use this pair" keeps the
+ * pair as a draft choice (the chip and "Now" say `Fusion · A ◆ B`), and the
+ * new chat applies it right after it starts through the extension's own
+ * `fusion.set-pair` (startSession). A Single pick turns the draft's pair off.
  */
 import { createEffect, createMemo, createResource, createSignal, Show } from 'solid-js';
+import { listExtensions } from '../../settings/hostCmd';
+import { createFusionPair } from '../model/FusionPair';
 import { Brain, ChevronUp, Cpu, Plug } from 'lucide-solid';
 import { layout } from '../../lib/layout';
 import type { SessionHandle } from '../../lib/session/store';
 import { ThinkingFooter } from '../model/ThinkingFooter';
 import { canThink, ensureThinkingLevels, thinkingLevels } from '../../lib/model/thinking';
-import { modelKey, modelName, parseModels, shortModelName, type ModelInfo, type Selection } from '../../lib/model/picker';
-import { fetchFusion, fusionAvailable, type FusionCurated } from '../../lib/model/fusion';
+import { modelKey, modelName, nowLabel, pairUnchanged, parseModels, shortModelName, type ModelInfo, type Selection } from '../../lib/model/picker';
+import { FUSION_EXTENSION_ID, fetchFusion, fusionAvailable, type FusionCurated } from '../../lib/model/fusion';
 import { openSettingsAt } from '../../lib/settings/open';
 import { toasts } from '../../lib/toasts';
 import { modelView } from '../model/ModelList';
 import { startupKey } from '../model/suggested';
-import { createCycleSet, ModelDialog, ModelPickerPanel, PickerError, PickerSecondary, writeStartupModel } from '../model/ModelPopover';
+import { createCycleSet, ModeTabs, ModelDialog, ModelPickerPanel, PickerError, PickerSecondary, writeStartupModel } from '../model/ModelPopover';
 import { modelChipLabel, modelChipTitle, thinkingOn } from '../model/ModelChip';
 import { RollingLabel } from '../RollingLabel';
 import type { DraftSession } from './draftSession';
 
-type DraftData = { models: ModelInfo[]; curated?: FusionCurated; startup?: string; fusionOn?: boolean; cycle?: unknown };
+type DraftData = { models: ModelInfo[]; curated?: FusionCurated; startup?: string; fusionOn?: boolean; fusionTab?: boolean; cycle?: unknown };
 
 const valueOf = (reply: unknown): unknown => (reply as { value?: unknown } | undefined)?.value;
 
@@ -39,8 +46,14 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
     void props.session.state.conn;
     if (!layout().desktop()) ensureThinkingLevels(props.session as unknown as SessionHandle);
   });
+  /** The draft's Fusion pair, when one is picked (applied right after the chat starts). */
+  const draftPair = () => props.session.choices().fusion;
   // D-01: no usable model on show → say so, never a name the new chat can't run.
-  const label = () => (props.session.state.model?.id ? modelChipLabel(props.session.state.model) : 'Choose a model');
+  const label = () => {
+    const pair = draftPair();
+    if (pair) return nowLabel({ kind: 'fusion', ...pair }, nameOf);
+    return props.session.state.model?.id ? modelChipLabel(props.session.state.model) : 'Choose a model';
+  };
   const current = () => modelKey(props.session.state.model ?? {});
   // F-02 / G-06: the SAME catalogue, readiness and curated ranking as the in-chat picker.
   const [data, { mutate }] = createResource(
@@ -49,6 +62,12 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
     async (): Promise<DraftData> => {
       const peer = props.session.peer();
       const fusionOn = peer ? await fusionAvailable(peer).catch(() => false) : false;
+      // The Fusion tab needs no live chat: the PC's own extension list says whether it runs.
+      const fusionTab =
+        fusionOn ||
+        (await listExtensions(props.session.hostId)
+          .then((res) => res.ok && res.value.some((e) => e.id === FUSION_EXTENSION_ID && e.enabled))
+          .catch(() => false));
       const [reply, fusion, provider, model, cycle] = await Promise.all([
         props.session.cmd<unknown>({ type: 'get_available_models' }).catch(() => undefined),
         peer && fusionOn ? fetchFusion(peer).catch(() => undefined) : Promise.resolve(undefined),
@@ -63,6 +82,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
         ...(fusion?.curated ? { curated: fusion.curated } : {}),
         ...(startup ? { startup } : {}),
         fusionOn,
+        fusionTab,
         cycle: valueOf(cycle),
       };
     },
@@ -73,7 +93,11 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
   const [error, setError] = createSignal<string | null>(null);
   let chip: HTMLButtonElement | undefined;
   const cycle = createCycleSet({ target: () => props.session, stored: () => data.latest?.cycle, loaded: () => !!data.latest, onError: setError });
-  const currentSel = (): Selection | undefined => (props.session.state.model?.id ? { kind: 'single', key: current() } : undefined);
+  const currentSel = (): Selection | undefined => {
+    const pair = draftPair();
+    if (pair) return { kind: 'fusion', ...pair };
+    return props.session.state.model?.id ? { kind: 'single', key: current() } : undefined;
+  };
   const view = createMemo(() => {
     const all = models() ?? [];
     const m = props.session.state.model;
@@ -89,10 +113,48 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
   };
   const nameOf = (key: string) => {
     const m = (models() ?? []).find((x) => modelKey(x) === key);
-    return shortModelName(m ? modelName(m) : props.session.state.model?.name ?? key);
+    if (m) return shortModelName(modelName(m));
+    // Before the list loads, a pair seat still reads as a name, not a `provider/id` path.
+    const cur = props.session.state.model;
+    if (cur?.id && modelKey(cur) === key) return shortModelName(cur.name ?? cur.id);
+    return key.slice(key.indexOf('/') + 1);
   };
-  /** "Now": the model the new chat will start with. */
+  // Fusion tab (unipi.fusion on this PC): the pair is a draft choice, applied after the chat starts.
+  const fusionTab = () => !!data.latest?.fusionTab;
+  const [mode, setMode] = createSignal<'single' | 'fusion'>('single');
+  const pair = createFusionPair({
+    models: () => view().usable,
+    catalogue: () => models() ?? [],
+    query,
+    curated: () => data.latest?.curated,
+    base: () => ({ lead: draftPair()?.lead, sidekick: draftPair()?.sidekick }),
+    onPick: () => setError(null),
+  });
+  const openOn = () => {
+    setMode(draftPair() ? 'fusion' : 'single');
+    const p = draftPair();
+    pair.setPendingLead(undefined);
+    pair.setPendingSidekick(undefined);
+    pair.setLeadEffort(p?.leadEffort ?? 'medium');
+    pair.setSidekickEffort(p?.sidekickEffort ?? 'medium');
+  };
+  const pairSame = () => pairUnchanged(currentSel(), pair.leadKey(), pair.sidekickKey(), pair.leadEffort(), pair.sidekickEffort());
+  const usePair = () => {
+    const lead = pair.leadKey();
+    const sidekick = pair.sidekickKey();
+    if (!lead || !sidekick) return;
+    const row = (models() ?? []).find((x) => modelKey(x) === lead);
+    const slash = lead.indexOf('/');
+    props.session.pickFusion(
+      { lead, sidekick, leadEffort: pair.leadEffort(), sidekickEffort: pair.sidekickEffort() },
+      { provider: lead.slice(0, slash), modelId: lead.slice(slash + 1), ...(row ? { name: modelName(row) } : {}) },
+    );
+    close();
+  };
+  /** "Now": the model (or Fusion pair) the new chat will start with. */
   const nowName = () => {
+    const p = draftPair();
+    if (p) return nowLabel({ kind: 'fusion', ...p }, nameOf);
     const m = props.session.state.model;
     if (!m?.id) return 'No model chosen yet';
     const row = (models() ?? []).find((x) => modelKey(x) === current());
@@ -127,7 +189,10 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
           setQuery('');
           setError(null);
           if (open()) close();
-          else setOpen(true);
+          else {
+            openOn();
+            setOpen(true);
+          }
         }}
         data-testid="model-chip"
       >
@@ -151,6 +216,19 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
             query={query()}
             onQuery={setQuery}
             now={nowName()}
+            tabs={
+              <Show when={fusionTab() && !noUsable()}>
+                <ModeTabs
+                  mode={mode()}
+                  onMode={(m) => {
+                    setMode(m);
+                    setError(null);
+                  }}
+                />
+              </Show>
+            }
+            searchPlaceholder={mode() === 'fusion' && fusionTab() ? `Search both columns (${view().usable.length} models)` : undefined}
+            content={mode() === 'fusion' && fusionTab() ? pair.content(!!data.loading && !data.latest) : undefined}
             loading={!!data.loading && !data.latest}
             showEmpty={noUsable()}
             empty={
@@ -177,7 +255,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                 </button>
               </div>
             }
-            currentKey={current() !== '/' ? current() : undefined}
+            currentKey={current() !== '/' && !draftPair() ? current() : undefined}
             startupKey={data.latest?.startup}
             rowActions={
               data.latest
@@ -189,9 +267,38 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
             }
             onSelect={(m) => pick(m)}
             cycleFilter={data.latest ? { set: cycle } : undefined}
-            notice={<PickerError error={error()} />}
-            scope={noUsable() ? undefined : 'Your pick applies to the chat about to start. “Use at startup” sets the model new chats start with.'}
+            notice={
+              <>
+                <Show when={mode() === 'single' && draftPair()}>
+                  <p class="mp-hint" data-testid="draft-fusion-hint">
+                    Fusion is on for the new chat. Pick a model to use one model instead.
+                  </p>
+                </Show>
+                <PickerError error={error()} />
+              </>
+            }
+            scope={
+              noUsable()
+                ? undefined
+                : mode() === 'fusion' && fusionTab()
+                  ? 'Your pair applies to the chat about to start, right after it starts.'
+                  : 'Your pick applies to the chat about to start. “Use at startup” sets the model new chats start with.'
+            }
             actions={
+              <Show
+                when={!(mode() === 'fusion' && fusionTab())}
+                fallback={
+                  <button
+                    type="button"
+                    class="pair-primary mp-apply"
+                    disabled={!pair.leadKey() || !pair.sidekickKey() || pairSame()}
+                    onClick={usePair}
+                    data-testid="draft-fusion-use"
+                  >
+                    {pairSame() ? 'Current pair' : draftPair() ? 'Update pair' : 'Use this pair'}
+                  </button>
+                }
+              >
               <Show when={props.session.state.model?.id && !noUsable()}>
                 <PickerSecondary
                   label={data.latest?.startup === current() ? 'Startup model' : 'Use at startup'}
@@ -200,6 +307,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                   onClick={() => void useAtStartup(current())}
                   testId="model-use-startup"
                 />
+              </Show>
               </Show>
             }
           />

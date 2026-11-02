@@ -33,7 +33,7 @@ import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, 
 import { turnFiles, turnFilesConflict, turnFilesUndo } from './turn-files';
 import { emptyChat, motionExits } from './empty-chat';
 import { u12Fallback, u12Native, u12Nav, u12OwnerOff, u12Phone, u12PhoneOff } from './reserved';
-import { modeChip, modelCycleSet, modelFusion, modelPicker, thinkingChip } from './model';
+import { modeChip, modelCycleSet, modelDraftFusion, modelFusion, modelPicker, thinkingChip } from './model';
 import {
   capAgents, capAgentsPanel, capImport, capMcp, capMcpNoChat, capMcpPanel, capMemory, capMemoryPanel, capPalette, capSkills, capSkillsPanel,
   providers, providersNoChat,
@@ -139,6 +139,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'model-picker': modelPicker,
   'model-cycle-set': modelCycleSet,
   'model-fusion': modelFusion,
+  'model-draft-fusion': modelDraftFusion,
   'thinking-chip': thinkingChip,
   'mode-chip': modeChip,
   'cap-mcp': capMcp,

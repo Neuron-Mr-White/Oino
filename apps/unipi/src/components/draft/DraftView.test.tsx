@@ -39,7 +39,7 @@ const card = (id: string, cwd: string): SessionCard => ({
   message_count: 2,
 });
 
-const boot = (providers: Array<{ id: string; configured?: boolean }> = [{ id: 'oino', configured: true }]) => {
+const boot = (providers: Array<{ id: string; configured?: boolean }> = [{ id: 'oino', configured: true }], extraExtensions: Array<{ id: string; kind: string; enabled: boolean; loaded: boolean }> = []) => {
   const scenario: MockScenario = {
     name: 't',
     hosts: [
@@ -52,7 +52,7 @@ const boot = (providers: Array<{ id: string; configured?: boolean }> = [{ id: 'o
         fs: { '/home/you': { kind: 'dir', children: { p: { kind: 'dir', children: {} } } }, '/srv': { kind: 'dir', children: {} } },
         settings: {
           pi: { defaultProvider: 'oino', defaultModel: 'deepseek-flash' },
-          extensions: [{ id: 'unipi.workflow', kind: 'extension', enabled: true, loaded: true }],
+          extensions: [{ id: 'unipi.workflow', kind: 'extension', enabled: true, loaded: true }, ...extraExtensions],
           providers,
         },
       },
@@ -229,7 +229,7 @@ describe('the draft model chip opens the ONE model dialog', () => {
     expect(screen.getByTestId('model-filter-cycle').textContent).toContain('Cycle set');
     expect(screen.queryByTestId('model-picker-cycle')).toBeNull();
     expect(screen.getAllByTestId('model-row-more').length).toBeGreaterThan(0);
-    // No Fusion tab: a pair needs a running chat.
+    // No Fusion tab: unipi.fusion is not enabled on this PC.
     expect(screen.queryByTestId('model-tab-fusion')).toBeNull();
     // The host default is the running pick: "Startup model", nothing to do.
     await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Startup model'));
@@ -251,6 +251,78 @@ describe('the draft model chip opens the ONE model dialog', () => {
         expect.objectContaining({ key: 'defaultModel', value: 'glm-4.7' }),
       ]),
     );
+  });
+});
+
+describe('the draft model dialog has a Fusion tab when unipi.fusion runs on this PC', () => {
+  it('picks a lead + sidekick pair for the new chat; the chip and Now show it; the start carries it; a Single pick turns it off', async () => {
+    start.mockResolvedValue({ ok: true, sessionId: 's-new-2' });
+    rememberModels('this-pc', [
+      { provider: 'oino', id: 'deepseek-flash', name: 'DeepSeek Flash' },
+      { provider: 'oino', id: 'glm-4.7', name: 'GLM 4.7' },
+      { provider: 'oino', id: 'kimi-k2', name: 'Kimi K2' },
+    ]);
+    boot(undefined, [{ id: 'unipi.fusion', kind: 'extension', enabled: true, loaded: true }]);
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('DeepSeek Flash'));
+    fireEvent.click(screen.getByTestId('model-chip'));
+    await screen.findByTestId('draft-model-menu');
+    fireEvent.click(await screen.findByTestId('model-tab-fusion'));
+    const lead = await screen.findByTestId('fusion-col-lead');
+    const sidekick = screen.getByTestId('fusion-col-sidekick');
+    expect(screen.getByTestId('model-picker-scope').textContent).toContain('right after it starts');
+    const row = (col: HTMLElement, name: string) => [...col.querySelectorAll<HTMLButtonElement>('.mp-row')].find((r) => r.textContent?.includes(name))!;
+    fireEvent.click(row(lead, 'GLM 4.7'));
+    fireEvent.click(row(sidekick, 'Kimi K2'));
+    fireEvent.click(screen.getByRole('group', { name: 'Lead effort' }).querySelector('button:last-child')!);
+    expect(screen.getByTestId('draft-fusion-use').textContent).toBe('Use this pair');
+    fireEvent.click(screen.getByTestId('draft-fusion-use'));
+    await waitFor(() => expect(screen.queryByTestId('draft-model-menu')).toBeNull());
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toBe('Fusion · GLM 4.7 ◆ Kimi K2'));
+    // Reopened: the Fusion tab, Now = the pair, the pair is the current one.
+    fireEvent.click(screen.getByTestId('model-chip'));
+    await screen.findByTestId('fusion-col-lead');
+    expect(screen.getByTestId('model-picker-now').textContent).toContain('Fusion · GLM 4.7 ◆ Kimi K2');
+    expect(screen.getByTestId('draft-fusion-use').textContent).toBe('Current pair');
+    fireEvent.click(screen.getByTestId('draft-model-menu').querySelector('[aria-label="Close"]') ?? screen.getByTestId('model-chip'));
+    await waitFor(() => expect(screen.queryByTestId('draft-model-menu')).toBeNull());
+    // The first prompt starts the chat with the pair (applied right after it starts).
+    typeInto('Pair up');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    const [, req] = start.mock.calls[0]!;
+    expect(req.choices.fusion).toEqual({ lead: 'oino/glm-4.7', sidekick: 'oino/kimi-k2', leadEffort: 'high', sidekickEffort: 'medium' });
+  });
+
+  it('phone: the full-screen model sheet has the same Fusion tab and chip label', async () => {
+    setDesktopOverride(false);
+    rememberModels('this-pc', [
+      { provider: 'oino', id: 'deepseek-flash', name: 'DeepSeek Flash' },
+      { provider: 'oino', id: 'glm-4.7', name: 'GLM 4.7' },
+    ]);
+    boot(undefined, [{ id: 'unipi.fusion', kind: 'extension', enabled: true, loaded: true }]);
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('DeepSeek Flash'));
+    fireEvent.click(screen.getByTestId('model-chip'));
+    await screen.findByTestId('draft-model-menu');
+    fireEvent.click(await screen.findByTestId('model-tab-fusion'));
+    const sidekick = await screen.findByTestId('fusion-col-sidekick');
+    fireEvent.click([...sidekick.querySelectorAll<HTMLButtonElement>('.mp-row')].find((r) => r.textContent?.includes('GLM 4.7'))!);
+    fireEvent.click(screen.getByTestId('draft-fusion-use'));
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toBe('Fusion · DeepSeek Flash ◆ GLM 4.7'));
+  });
+
+  it('a Single pick on the draft turns its pair off', async () => {
+    const world = createMockHost({ name: 't', hosts: [{ id: 'h', name: 'h', conn: { state: 'connected' } }] });
+    setHostClientFactory(world.client);
+    const s = createRoot(() => createDraftSession('h', () => {}));
+    s.pickFusion({ lead: 'oino/a', sidekick: 'oino/b', leadEffort: 'medium', sidekickEffort: 'low' }, { provider: 'oino', modelId: 'a', name: 'A' });
+    expect(s.choices().fusion?.sidekick).toBe('oino/b');
+    expect(s.state.model?.id).toBe('a');
+    s.pickModel({ provider: 'oino', modelId: 'c' });
+    expect(s.choices().fusion).toBeUndefined();
+    expect(s.choices().model).toEqual({ provider: 'oino', modelId: 'c' });
+    s.pickFusion({ lead: 'oino/a', sidekick: 'oino/b', leadEffort: 'medium', sidekickEffort: 'low' });
+    s.pickFusion(undefined);
+    expect(s.choices().fusion).toBeUndefined();
   });
 });
 

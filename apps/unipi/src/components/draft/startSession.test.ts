@@ -60,6 +60,22 @@ describe('startSession', () => {
     ]);
   });
 
+  it('applies the draft\'s Fusion pair right after the chat starts, through unipi.fusion (no set_model / thinking first)', async () => {
+    const f = fakeClient();
+    const fusion = { lead: 'anthropic/opus', sidekick: 'zai/glm', leadEffort: 'high', sidekickEffort: 'low' };
+    const res = await startSession(
+      'h',
+      { text: 'Go', images: [], choices: { model: { provider: 'anthropic', modelId: 'opus' }, thinking: 'high', fusion, permission: 'ask' } },
+      f.client,
+    );
+    expect(res).toEqual({ ok: true, sessionId: 'new-1' });
+    expect(f.cmds).toEqual([
+      { type: '_oino/service_call', name: 'fusion.set-pair', payload: { active: { kind: 'fusion', ...fusion } } },
+      { type: 'prompt', message: '/permission ask' },
+      { type: 'prompt', message: 'Go' },
+    ]);
+  });
+
   it('a stream that closes before its snapshot is an error', async () => {
     const f = fakeClient({ fail: true });
     const res = await startSession('h', { text: 'x', images: [], choices: {} }, f.client);
