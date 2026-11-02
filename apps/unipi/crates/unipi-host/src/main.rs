@@ -22,9 +22,10 @@ enum Command {
         #[arg(long)]
         relay_only: bool,
         /// Who runs this host (shown by `status` and the desktop app):
-        /// app (started by the app's supervisor) or manual (a terminal).
-        /// v2 has no service install, so there is no `service` mode.
-        #[arg(long, value_parser = ["app", "manual"])]
+        /// app (started by the app's supervisor), manual (a terminal) or
+        /// service (the systemd user unit / LaunchAgent / logon task that
+        /// `install.sh --host` / `install.ps1 -HostInstall` set up).
+        #[arg(long, value_parser = ["app", "manual", "service"])]
         mode: Option<String>,
         /// Exit when this process exits (the desktop app's sidecar).
         #[arg(long, value_name = "PID")]
@@ -92,9 +93,9 @@ enum Command {
         action: SharingAction,
     },
     /// Update unipi-host from the release manifest (sha256-checked, atomic
-    /// replace). v2 has no service install: after the replace the host exits —
-    /// the app restarts the host it spawned itself, a manual `serve` is rerun
-    /// (`specs/host.md` §9.7).
+    /// replace). After the replace the host exits — the app restarts the host
+    /// it spawned itself, a service restarts on the non-zero exit, a manual
+    /// `serve` is rerun (`specs/host.md` §9.7).
     Update {
         /// Only say whether a newer version exists (exit 0 either way).
         #[arg(long, conflicts_with = "mode")]
@@ -858,10 +859,16 @@ async fn main() -> anyhow::Result<()> {
             // A self-update ended the loop early: the binary on disk is the new
             // one, so this process steps aside (the app supervisor respawns it).
             signal_ready.store(true, std::sync::atomic::Ordering::SeqCst);
-            tokio::select! {
-                result = signal_rx => result.unwrap_or(Ok(()))?,
-                _ = restart_rx => tracing::info!("binary replaced; exiting for a restart"),
-            }
+            let replaced = tokio::select! {
+                result = signal_rx => {
+                    result.unwrap_or(Ok(()))?;
+                    false
+                }
+                _ = restart_rx => {
+                    tracing::info!("binary replaced; exiting for a restart");
+                    true
+                }
+            };
             router.shutdown().await?;
             if let Some(local) = local {
                 local.abort();
@@ -898,6 +905,12 @@ async fn main() -> anyhow::Result<()> {
             let _ = std::fs::remove_file(unipi_host::push::socket_path(&paths_for_cleanup));
             #[cfg(not(unix))]
             drop(paths_for_cleanup);
+            // A service host that replaced its own binary exits non-zero on purpose: the
+            // unit / LaunchAgent / logon task restarts on failure only, and must start the
+            // new binary (install.sh --host, install.ps1 -HostInstall).
+            if replaced && mode == unipi_host::instance::Mode::Service {
+                std::process::exit(unipi_host::instance::EXIT_UPDATED);
+            }
         }
         Command::Status { json } => {
             let status = unipi_host::instance::status(&paths)?;
@@ -2458,7 +2471,10 @@ fn sharing_status(paths: &HostPaths, json: bool) -> anyhow::Result<()> {
 /// One background check from `serve` (UNI-263, host.md §9.7). In `prompt` mode
 /// (the default) it only records the check and raises a [`update::Notice`] for
 /// `events_open`; `auto` installs the newer host and answers `true` — the
-/// caller then ends this process (no service to restart any more).
+/// caller then ends this process (a service host with [`EXIT_UPDATED`] so its
+/// service manager restarts it).
+///
+/// [`EXIT_UPDATED`]: unipi_host::instance::EXIT_UPDATED
 async fn background_update(paths: &HostPaths, instance_mode: unipi_host::instance::Mode) -> bool {
     use unipi_host::update;
     let result = update::fetch_feed().await;

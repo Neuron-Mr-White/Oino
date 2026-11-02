@@ -7,6 +7,15 @@
 #
 #   -App   install the Unipi desktop app instead: run the NSIS installer
 #          silently (per-user, no admin).
+#   -HostInstall
+#          install the agent host without the desktop app (GUI-less
+#          machines, sandboxes): unipi-oino-host.exe + oino.exe + the
+#          bundled extensions into <prefix>\bin, plus a per-user logon
+#          scheduled task "UniPi Oino host" that runs it and restarts it when
+#          it fails (no admin). Safe to rerun (upgrades in place).
+#            -NoService  skip the task   -NoStart  register it, don't start
+#            -Uninstall  remove the task + host (data in ~\.oino\host kept)
+#   -Prefix DIR   install root (same as OINO_PREFIX; default %LOCALAPPDATA%\oino)
 #
 # Every download is verified against the release's SHA256SUMS. Without a
 # matching release binary the CLI falls back to a source build.
@@ -16,7 +25,12 @@
 
 param(
     [switch]$App,
-    [switch]$Deb
+    [switch]$Deb,
+    [switch]$HostInstall,
+    [switch]$NoService,
+    [switch]$NoStart,
+    [switch]$Uninstall,
+    [string]$Prefix
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,7 +55,9 @@ $BaseUrl = if ($env:OINO_INSTALL_BASE_URL) {
 
 # CLI layout: %LOCALAPPDATA%\oino\{bin\oino.exe, bin\extensions} — `extensions`
 # next to the exe is one of the loader's share-dir candidates (dist.md §5).
-$InstallRoot = if ($env:OINO_PREFIX) { $env:OINO_PREFIX } else { Join-Path $env:LOCALAPPDATA "oino" }
+$InstallRoot = if ($Prefix) {
+    [System.IO.Path]::GetFullPath($Prefix)
+} elseif ($env:OINO_PREFIX) { $env:OINO_PREFIX } else { Join-Path $env:LOCALAPPDATA "oino" }
 $BinDir = Join-Path $InstallRoot "bin"
 
 function Say([string]$Message) { Write-Host $Message }
@@ -186,6 +202,145 @@ function Install-Source {
                 Copy-Item -Recurse $_.FullName $dst
             }
     }
+}
+
+# ── the host without the GUI (-HostInstall) ────────────────────────────────
+# Release asset unipi-oino-host-<version>-x86_64-pc-windows-msvc.zip =
+#   bin\unipi-oino-host.exe  bin\oino.exe  bin\extensions\<pkg>\
+# (scripts/release/pack-host.sh). The host writes its own rotated
+# <data dir>\host.log on Windows.
+
+$HostExe = Join-Path $BinDir "unipi-oino-host.exe"
+$TaskName = "UniPi Oino host"
+$Wrapper = Join-Path $InstallRoot "host-service.ps1"
+
+function Stop-HostService {
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($task) { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue }
+    # Stopping the task ends the wrapper; the host it started is its own process.
+    Get-Process -Name "unipi-oino-host" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $HostExe } |
+        ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue; $_.WaitForExit(10000) | Out-Null }
+}
+
+function Install-HostTree([string]$Stage) {
+    $From = Join-Path $Stage "bin"
+    foreach ($name in @("unipi-oino-host.exe", "oino.exe")) {
+        if (-not (Test-Path (Join-Path $From $name))) { throw "archive layout changed: no bin\$name in the zip" }
+    }
+    New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+    foreach ($name in @("unipi-oino-host.exe", "oino.exe")) {
+        Copy-Item -Force (Join-Path $From $name) (Join-Path $BinDir $name)
+    }
+    $Ext = Join-Path $BinDir "extensions"
+    if (Test-Path (Join-Path $From "extensions")) {
+        # Swap the whole tree: a package the new release dropped goes away.
+        if (Test-Path $Ext) { Remove-Item -Recurse -Force $Ext }
+        Copy-Item -Recurse (Join-Path $From "extensions") $Ext
+    }
+    Say "Placed $HostExe, oino.exe and the extensions in $BinDir"
+}
+
+function Install-HostRelease {
+    if ($env:OINO_FROM_SOURCE -eq "1") { return $false }
+    $Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("oino-host-" + [guid]::NewGuid())
+    New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
+    try {
+        $Zip = Join-Path $Tmp "host.zip"
+        if (-not (Fetch-Asset "unipi-oino-host-.*-$Target\.zip$" $Zip)) { return $false }
+        Expand-Archive -Path $Zip -DestinationPath (Join-Path $Tmp "x") -Force
+        Stop-HostService
+        Install-HostTree (Join-Path $Tmp "x")
+        return $true
+    } finally {
+        Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-HostSource {
+    Install-Source   # oino.exe + bin\extensions (prepares the checkout)
+    $Src = if ((Test-Path "Cargo.toml") -and (Test-Path "crates\oino-core")) { (Get-Location).Path } else { $SrcDir }
+    Run "cargo" @("build", "--manifest-path", (Join-Path $Src "apps\unipi\Cargo.toml"), "--release", "-p", "unipi-host")
+    Stop-HostService
+    Copy-Item -Force (Join-Path $Src "apps\unipi\target\release\unipi-host.exe") $HostExe
+}
+
+# The logon task runs this wrapper, hidden. Task Scheduler's own "restart on
+# failure" only covers a task that fails to *launch* (a non-zero exit code
+# counts as completed), so the wrapper restarts the host itself: any non-zero
+# exit restarts it (1, 2, 4 … 30 s backoff, reset after a minute up); 0 (a
+# clean stop) and 75 (another host already owns the data dir) end it.
+function Write-HostWrapper {
+    $exe = $HostExe.Replace("'", "''")
+    $body = @"
+# Written by install.ps1 -HostInstall: keeps unipi-oino-host running.
+`$delay = 1
+while (`$true) {
+    `$started = Get-Date
+    & '$exe' serve --mode service
+    `$code = `$LASTEXITCODE
+    if (`$code -eq 0 -or `$code -eq 75) { exit `$code }
+    if (((Get-Date) - `$started).TotalSeconds -gt 60) { `$delay = 1 }
+    Start-Sleep -Seconds `$delay
+    `$delay = [Math]::Min(`$delay * 2, 30)
+}
+"@
+    Set-Content -Path $Wrapper -Value $body -Encoding UTF8
+}
+
+function Install-HostService {
+    if ($NoService) { Say "No service (-NoService). Start the host by hand: `"$HostExe`" serve"; return }
+    Write-HostWrapper
+    $user = "$env:USERDOMAIN\$env:USERNAME"
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+        -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Wrapper`""
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
+    # RestartCount/Interval: launch failures; ExecutionTimeLimit 0: never
+    # killed after the default 3 days; IgnoreNew: one host per user.
+    $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable -MultipleInstances IgnoreNew
+    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
+        -Principal $principal -Description "UniPi Oino host (agent sessions for the Unipi apps); restarts when it fails" -Force | Out-Null
+    Say "Registered the logon task `"$TaskName`" ($Wrapper)."
+    if ($NoStart) { Say "Not started (-NoStart). Start it: Start-ScheduledTask -TaskName '$TaskName'"; return }
+    Start-ScheduledTask -TaskName $TaskName
+    Say "The host runs as the logon task `"$TaskName`" (it starts again at every logon)."
+}
+
+function Uninstall-Host {
+    Stop-HostService
+    if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    }
+    Remove-Item -Force $Wrapper, $HostExe -ErrorAction SilentlyContinue
+    Say "Removed the logon task and $HostExe."
+    Say "Kept: oino.exe, $BinDir\extensions and the host data (~\.oino\host — pairings, key)."
+}
+
+function Install-Host {
+    if ($DryRun) {
+        Say "would install unipi-oino-host + oino ($Target) into $BinDir from $BaseUrl"
+        if (-not $NoService) { Say "  service: logon task `"$TaskName`" running $Wrapper (restarts on failure)" }
+        return
+    }
+    if (Install-HostRelease) {
+        Say "Installed the host into $InstallRoot"
+    } else {
+        Say "No host release for $Target (or download failed); building from source."
+        Install-HostSource
+    }
+    Add-BinDirToPath
+    Install-HostService
+    Say "Done. Pair the desktop or phone app: unipi-oino-host pair"
+}
+
+if ($App -and $HostInstall) { throw "-App and -HostInstall are separate installs; run them one at a time" }
+if ($Uninstall -and -not $HostInstall) { throw "-Uninstall goes with -HostInstall" }
+if ($HostInstall) {
+    if ($Uninstall) { Uninstall-Host } else { Install-Host }
+    exit 0
 }
 
 if ($App) {

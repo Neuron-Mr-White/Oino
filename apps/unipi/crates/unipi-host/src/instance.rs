@@ -21,6 +21,12 @@ use crate::data_dir::HostPaths;
 /// Exit code for "another serve already owns this data dir" (EX_TEMPFAIL).
 pub const EXIT_ALREADY_RUNNING: i32 = 75;
 
+/// Exit code of a `serve --mode service` that replaced its own binary
+/// (self-update): non-zero on purpose, so a restart-on-failure service manager
+/// (systemd `Restart=on-failure`, launchd `KeepAlive.SuccessfulExit=false`,
+/// the Windows logon task's wrapper) starts the new binary.
+pub const EXIT_UPDATED: i32 = 76;
+
 /// Who started this host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -30,6 +36,9 @@ pub enum Mode {
     /// Started by hand in a terminal.
     #[default]
     Manual,
+    /// Run by the user service `install.sh --host` / `install.ps1
+    /// -HostInstall` installs (systemd user unit, LaunchAgent, logon task).
+    Service,
 }
 
 impl Mode {
@@ -37,17 +46,19 @@ impl Mode {
         match self {
             Mode::App => "app",
             Mode::Manual => "manual",
+            Mode::Service => "service",
         }
     }
     pub fn parse(s: &str) -> Option<Mode> {
         match s {
             "app" => Some(Mode::App),
             "manual" => Some(Mode::Manual),
+            "service" => Some(Mode::Service),
             _ => None,
         }
     }
-    /// The mode when `--mode` isn't given. v2 has no service install, so a
-    /// host not started by the app is always a manual one.
+    /// The mode when `--mode` isn't given: the app and the service units
+    /// always pass `--mode`, so anything else is a manual one.
     pub fn detect() -> Mode {
         Mode::Manual
     }
@@ -287,11 +298,15 @@ mod tests {
 
     #[test]
     fn modes_round_trip() {
-        for m in [Mode::App, Mode::Manual] {
+        for m in [Mode::App, Mode::Manual, Mode::Service] {
             assert_eq!(Mode::parse(m.as_str()), Some(m));
         }
         assert_eq!(Mode::parse("x"), None);
-        assert_eq!(Mode::parse("service"), None, "no service install in v2");
+        // The lock file / host_info spell it the way the app's zod schema reads it.
+        assert_eq!(
+            serde_json::to_string(&Mode::Service).unwrap(),
+            "\"service\""
+        );
         assert_eq!(Mode::detect(), Mode::Manual);
     }
 }

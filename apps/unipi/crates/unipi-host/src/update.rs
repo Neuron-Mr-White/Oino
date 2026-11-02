@@ -13,9 +13,10 @@
 //! 4. replace the running executable atomically (rename over it on Unix; on
 //!    Windows the running .exe is renamed aside first, which Windows allows).
 //!
-//! **Restart without services** (v2 has no systemd unit / LaunchAgent / logon
-//! task): after the replace the host **exits**. An app-managed host is
-//! respawned by the desktop app's supervisor within its backoff; a manual
+//! **Restart by exiting**: after the replace the host **exits**. An app-managed
+//! host is respawned by the desktop app's supervisor within its backoff; a
+//! service host (`install.sh --host`) exits with `instance::EXIT_UPDATED` and
+//! its restart-on-failure unit starts the new binary; a manual
 //! `unipi-host serve` prints "restarted binary; rerun unipi-host serve".
 //!
 //! The owner setting `update.mode` in `config.json` ("prompt" | "auto",
@@ -396,13 +397,16 @@ pub fn install_bytes(bytes: &[u8], expect_version: &str, exe: &Path) -> anyhow::
     Ok(())
 }
 
-/// What the host says after it replaced its own binary (host.md §9.7): there
-/// is no service to restart — it exits, and whoever started it starts the new
-/// one (the app's supervisor, or the owner by hand).
+/// What the host says after it replaced its own binary (host.md §9.7): it
+/// exits, and whoever started it starts the new one (the app's supervisor, the
+/// user service, or the owner by hand).
 pub fn restart_hint(mode: Mode) -> String {
     match mode {
         Mode::App => "updated unipi-host; exiting so the app starts the new binary".to_string(),
         Mode::Manual => "restarted binary; rerun unipi-host serve".to_string(),
+        Mode::Service => {
+            "updated unipi-host; exiting so the service starts the new binary".to_string()
+        }
     }
 }
 
@@ -701,6 +705,7 @@ mod tests {
         );
         assert!(restart_hint(Mode::App).contains("the app starts the new binary"));
         assert!(!restart_hint(Mode::App).contains("rerun"));
+        assert!(restart_hint(Mode::Service).contains("the service starts the new binary"));
 
         // A checksum that doesn't match changes nothing.
         let bad = Artifact {

@@ -15,6 +15,10 @@
 #                <prefix>/bin and the bundled extensions into
 #                <prefix>/share/oino/extensions. Safe to rerun (upgrades in
 #                place, also while the host runs).
+#                Also installs a user service that restarts the host when it
+#                fails (Linux: systemd --user unit; macOS: a LaunchAgent):
+#                  --no-service  skip it    --no-start  write it, don't start
+#                  --uninstall   remove the service + host (data is kept)
 #   --prefix DIR install prefix (same as OINO_PREFIX; default ~/.local)
 #   --help       usage
 #
@@ -49,17 +53,20 @@ REPO=${OINO_REPO:-"https://github.com/$REPO_SLUG.git"}
 SRC_DIR=${OINO_DIR:-"$HOME/.cache/oino/source"}
 DRY_RUN=${OINO_DRY_RUN:-0}
 
-app=0 deb=0 host=0
+app=0 deb=0 host=0 service=1 start=1 uninstall=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --app) app=1 ;;
     --deb) deb=1 ;;
     --host) host=1 ;;
+    --no-service) service=0 ;;
+    --no-start) start=0 ;;
+    --uninstall) uninstall=1 ;;
     --prefix)
       [ $# -ge 2 ] && [ -n "$2" ] || err "--prefix needs a directory"
       PREFIX=$2; shift ;;
     --prefix=*) PREFIX=${1#--prefix=}; [ -n "$PREFIX" ] || err "--prefix needs a directory" ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) err "unknown argument: $1 (want --app / --deb / --host / --prefix DIR)" ;;
   esac
   shift
@@ -425,15 +432,214 @@ install_host() {
   fi
 }
 
+# ── the host as a user service (--host) ─────────────────────────────────────
+# Linux: a systemd --user unit, macOS: a LaunchAgent. Both restart the host when
+# it fails (crash, kill, self-update exit 76) and leave it stopped when it exits
+# 75 (another host — the desktop app's — already owns the data dir; the app
+# adopts a running host, so start the service first on a PC that has both).
+# `serve --mode service` shows up as "Run by the background service" in the app.
+
+SERVICE_NAME=unipi-oino-host
+LAUNCHD_LABEL=dev.unipi.oino.host
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+UNIT_FILE="$UNIT_DIR/$SERVICE_NAME.service"
+PLIST_FILE="$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
+
+# The host's agents run tools (bash, git, language servers…) with the
+# service's PATH: take this shell's PATH, prefix the install's bin dir.
+service_path() {
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) printf '%s' "$PATH" ;;
+    *) printf '%s:%s' "$BIN_DIR" "$PATH" ;;
+  esac
+}
+
+# sd_quote <text> — one systemd word: double-quoted, \ and " escaped, % doubled
+# (specifier syntax), $ doubled (environment expansion in ExecStart).
+sd_quote() {
+  printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g' -e 's/\$/$$/g')"
+}
+
+# sd_env <NAME> <value> — an Environment= line (no $ expansion there).
+sd_env() {
+  printf 'Environment=%s\n' "$(printf '%s=%s' "$1" "$2" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g' -e 's/^/"/' -e 's/$/"/')"
+}
+
+systemd_unit() {
+  printf '[Unit]\n'
+  printf 'Description=UniPi Oino host (agent sessions for the Unipi desktop and phone apps)\n'
+  printf 'Documentation=https://github.com/%s#host\n' "$REPO_SLUG"
+  # A host that keeps dying fast stops being restarted after 5 tries in 2 min
+  # (journalctl --user -u %s shows why); `systemctl --user restart` resets it.
+  printf 'StartLimitIntervalSec=120\nStartLimitBurst=5\n\n'
+  printf '[Service]\n'
+  printf 'Type=simple\n'
+  printf 'ExecStart=%s serve --mode service\n' "$(sd_quote "$BIN_DIR/$HOST_BIN")"
+  printf 'Restart=on-failure\n'
+  printf 'RestartSec=3\n'
+  # 75 = another host already owns the data dir: restarting cannot help.
+  printf 'RestartPreventExitStatus=75\n'
+  # SIGTERM: the host closes its sessions and removes its sockets.
+  printf 'TimeoutStopSec=30\n'
+  sd_env PATH "$(service_path)"
+  for var in OINO_HOST_DIR OINO_AGENT_DIR RUST_LOG; do
+    eval "val=\${$var:-}"
+    [ -n "$val" ] && sd_env "$var" "$val"
+  done
+  printf '\n[Install]\nWantedBy=default.target\n'
+}
+
+# xml_escape <text>
+xml_escape() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+launchd_plist() {
+  log="$HOME/Library/Logs/$SERVICE_NAME.log"
+  # /bin/sh wrapper: launchd has no "don't restart on exit 75", so 75 is turned
+  # into a clean exit; the log is rotated at start past 5 MB (bounded, like
+  # the Windows host.log).
+  wrapper='log=$1; bin=$2; if [ -n "$(find "$log" -size +5120k 2>/dev/null)" ]; then mv -f "$log" "$log.1"; fi; "$bin" serve --mode service >>"$log" 2>&1; c=$?; [ "$c" -eq 75 ] && exit 0; exit "$c"'
+  printf '<?xml version="1.0" encoding="UTF-8"?>\n'
+  printf '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+  printf '<plist version="1.0">\n<dict>\n'
+  printf '  <key>Label</key><string>%s</string>\n' "$LAUNCHD_LABEL"
+  printf '  <key>ProgramArguments</key>\n  <array>\n'
+  for a in /bin/sh -c "$wrapper" "$SERVICE_NAME" "$log" "$BIN_DIR/$HOST_BIN"; do
+    printf '    <string>%s</string>\n' "$(xml_escape "$a")"
+  done
+  printf '  </array>\n'
+  printf '  <key>RunAtLoad</key><true/>\n'
+  printf '  <key>KeepAlive</key>\n  <dict><key>SuccessfulExit</key><false/></dict>\n'
+  printf '  <key>ThrottleInterval</key><integer>10</integer>\n'
+  printf '  <key>ProcessType</key><string>Background</string>\n'
+  printf '  <key>EnvironmentVariables</key>\n  <dict>\n'
+  printf '    <key>PATH</key><string>%s</string>\n' "$(xml_escape "$(service_path)")"
+  for var in OINO_HOST_DIR OINO_AGENT_DIR RUST_LOG; do
+    eval "val=\${$var:-}"
+    [ -n "$val" ] && printf '    <key>%s</key><string>%s</string>\n' "$var" "$(xml_escape "$val")"
+  done
+  printf '  </dict>\n</dict>\n</plist>\n'
+}
+
+# Is a systemd user manager reachable from this shell?
+have_user_systemd() {
+  have systemctl && systemctl --user show-environment >/dev/null 2>&1
+}
+
+linger_hint() {
+  have loginctl || return 0
+  user=${USER:-$(id -un)}
+  if [ "$(loginctl show-user "$user" -p Linger --value 2>/dev/null)" != "yes" ]; then
+    say ""
+    say "The host stops when you log out. To keep it running (and start it at boot"
+    say "on a machine nobody logs into), run once:"
+    say "  loginctl enable-linger $user"
+  fi
+}
+
+install_service_linux() {
+  mkdir -p "$UNIT_DIR"
+  systemd_unit > "$UNIT_FILE.tmp" && mv -f "$UNIT_FILE.tmp" "$UNIT_FILE"
+  say "Wrote $UNIT_FILE"
+  if [ "$start" != 1 ]; then
+    say "Not started (--no-start). Start it: systemctl --user daemon-reload && systemctl --user enable --now $SERVICE_NAME"
+    return 0
+  fi
+  if ! have_user_systemd; then
+    say "No systemd user session here (container / no login session): the unit is written but not started."
+    say "Start the host by hand: $BIN_DIR/$HOST_BIN serve"
+    return 0
+  fi
+  run systemctl --user daemon-reload
+  run systemctl --user enable "$SERVICE_NAME.service"
+  # restart = start, or pick up the new binary on a rerun
+  run systemctl --user restart "$SERVICE_NAME.service"
+  sleep 2
+  if systemctl --user is-active --quiet "$SERVICE_NAME.service"; then
+    say "The host runs as the user service $SERVICE_NAME (systemctl --user status $SERVICE_NAME)."
+  else
+    say "warning: $SERVICE_NAME did not stay up. Why: journalctl --user -u $SERVICE_NAME -n 30"
+    say "  (exit 75 = a host already runs on this data dir, e.g. the desktop app's)"
+  fi
+  linger_hint
+}
+
+install_service_macos() {
+  mkdir -p "$(dirname "$PLIST_FILE")" "$HOME/Library/Logs"
+  launchd_plist > "$PLIST_FILE.tmp" && mv -f "$PLIST_FILE.tmp" "$PLIST_FILE"
+  say "Wrote $PLIST_FILE"
+  if [ "$start" != 1 ]; then
+    say "Not started (--no-start). Start it: launchctl bootstrap gui/$(id -u) $PLIST_FILE"
+    return 0
+  fi
+  domain="gui/$(id -u)"
+  launchctl bootout "$domain/$LAUNCHD_LABEL" >/dev/null 2>&1 || true
+  run launchctl bootstrap "$domain" "$PLIST_FILE"
+  say "The host runs as the LaunchAgent $LAUNCHD_LABEL (log: ~/Library/Logs/$SERVICE_NAME.log)."
+}
+
+install_service() {
+  if [ "$service" != 1 ]; then
+    say "No service (--no-service). Start the host by hand: $BIN_DIR/$HOST_BIN serve"
+    return 0
+  fi
+  if [ "$DRY_RUN" = "1" ]; then
+    case "$os" in
+      Linux) say "  service: $UNIT_FILE (systemd --user, Restart=on-failure)" ;;
+      Darwin) say "  service: $PLIST_FILE (launchd, KeepAlive on failure)" ;;
+    esac
+    return 0
+  fi
+  case "$os" in
+    Linux) install_service_linux ;;
+    Darwin) install_service_macos ;;
+    *) say "No user-service support for $os here; start the host by hand: $BIN_DIR/$HOST_BIN serve" ;;
+  esac
+}
+
+# --host --uninstall: stop + remove the service and the host binary. The oino
+# CLI, the extensions and the host's data (~/.oino/host: pairings, key) stay.
+uninstall_host() {
+  case "$os" in
+    Linux)
+      if [ -f "$UNIT_FILE" ]; then
+        if have_user_systemd; then
+          run systemctl --user disable --now "$SERVICE_NAME.service" || true
+        fi
+        run rm -f "$UNIT_FILE"
+        have_user_systemd && run systemctl --user daemon-reload
+      fi
+      ;;
+    Darwin)
+      if [ -f "$PLIST_FILE" ]; then
+        launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" >/dev/null 2>&1 || true
+        run rm -f "$PLIST_FILE"
+      fi
+      ;;
+  esac
+  run rm -f "$BIN_DIR/$HOST_BIN"
+  say "Removed the host service and $BIN_DIR/$HOST_BIN."
+  say "Kept: $BIN_DIR/oino, $EXT_DIR and the host data (~/.oino/host — pairings, key)."
+  say "Remove those too: rm -rf \"$BIN_DIR/oino\" \"$EXT_DIR\" ~/.oino/host"
+}
+
 # ── main ────────────────────────────────────────────────────────────────────
 
 if [ "$host" = "1" ]; then
+  if [ "$uninstall" = "1" ]; then
+    uninstall_host
+    exit 0
+  fi
   install_host
+  install_service
   add_to_path
   path_hint
-  say "Done. Start it: $BIN_DIR/unipi-oino-host serve   (pair a phone: unipi-oino-host pair)"
+  say "Done. Pair the desktop or phone app: $BIN_DIR/$HOST_BIN pair"
   exit 0
 fi
+[ "$uninstall" = "1" ] && err "--uninstall goes with --host"
 
 if [ "$app" = "1" ]; then
   install_app
