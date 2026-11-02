@@ -1,6 +1,8 @@
 /**
  * The desktop sidebar frame (§3.7, WP-A3): brand + collapse (Cmd/Ctrl+B),
- * New chat + search, the sessions area and the rail (Z-1). Width 264 px
+ * one top nav group (New chat, Search, Board, Cron, extension pages —
+ * [ui-shell] #2), the sessions area, and at the bottom the global host row
+ * with the Settings gear beside it ([ui-shell] #1). Width 264 px
  * (220–420) via the resize handle on its right edge (AppShell).
  *
  * WP-A4: the sessions area is `components/sidebar/SessionList` — hosts →
@@ -19,7 +21,7 @@ import { layout } from '../../lib/layout';
 import { modKey, setPaletteOpen } from '../../lib/shell';
 import { SessionList } from '../sidebar/SessionList';
 import '../sidebar/sidebar.css';
-import { Rail } from './Rail';
+import { Rail, SettingsLink } from './Rail';
 import { HostRow } from './HostSwitcher';
 
 /** `/s/:host/:session` → its parts. */
@@ -67,7 +69,7 @@ export function Sidebar() {
           <PanelLeftClose size={17} />
         </button>
       </div>
-      <div class="sb-actions">
+      <nav class="sb-actions" aria-label="Pages">
         <button type="button" class="sb-action" onClick={() => navigate(`/new/${encodeURIComponent(newChatHost())}`)} data-testid="sb-new-chat">
           <SquarePen size={16} />
           <span>New chat</span>
@@ -80,16 +82,17 @@ export function Sidebar() {
             <kbd class="kbd">K</kbd>
           </span>
         </button>
-      </div>
+        <Rail />
+      </nav>
       <div class="sb-scroll">
         <SessionList variant="sidebar" />
       </div>
-      <Rail />
-      <Show when={can('hosts')}>
-        <div class="sb-foot">
+      <div class="sb-foot">
+        <Show when={can('hosts')} fallback={<SettingsLink row />}>
           <HostRow />
-        </div>
-      </Show>
+          <SettingsLink />
+        </Show>
+      </div>
     </aside>
   );
 }

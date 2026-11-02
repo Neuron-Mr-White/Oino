@@ -1,7 +1,9 @@
 /**
  * The sidebar rail (Z-1, WP-A3): the few rail pages — Board, Cron, the
  * extensions' `fullscreen` pages (`/x/:entryId`, registered by U10 in
- * ui-protocol §6.4 order) — and Settings at the bottom. Files / Git /
+ * ui-protocol §6.4 order). They sit in the sidebar's top nav group under New
+ * chat and Search ([ui-shell] #2); Settings is the gear beside the host row at
+ * the bottom (`SettingsLink`). Files / Git /
  * Terminal / Browser are **not** here: they are side-pane tabs (Z-5).
  * Board / Cron hide when their reserved gate is false (WP-U12: the owner's
  * enablement, live — no "disabled" placeholders, §8 rule 2).
@@ -69,16 +71,28 @@ function RailLink(props: { item: RailItem }) {
   );
 }
 
+/** The rail pages (Board, Cron, extension pages) as rows of the sidebar's top nav group. */
 export function Rail() {
+  return <For each={railItems()}>{(item) => <RailLink item={item} />}</For>;
+}
+
+/** Settings: a gear beside the host row (`row` = a full-width row where there's no host row, e.g. the web build). */
+export function SettingsLink(props: { row?: boolean }) {
   const location = useLocation();
-  const settingsActive = () => location.pathname === '/settings' || location.pathname.startsWith('/settings/');
+  const active = () => location.pathname === '/settings' || location.pathname.startsWith('/settings/');
   return (
-    <nav class="rail" aria-label="Pages">
-      <For each={railItems()}>{(item) => <RailLink item={item} />}</For>
-      <A href="/settings" class="rail-item rail-settings" aria-current={settingsActive() ? 'page' : undefined} data-testid="rail-settings">
-        <SettingsIcon size={17} strokeWidth={1.7} />
+    <A
+      href="/settings"
+      class={props.row ? 'rail-item sb-settings-row' : 'shell-icon-btn sb-settings'}
+      aria-label={props.row ? undefined : 'Settings'}
+      title={props.row ? undefined : 'Settings'}
+      aria-current={active() ? 'page' : undefined}
+      data-testid="rail-settings"
+    >
+      <SettingsIcon size={17} strokeWidth={1.7} />
+      <Show when={props.row}>
         <span class="rail-label">Settings</span>
-      </A>
-    </nav>
+      </Show>
+    </A>
   );
 }

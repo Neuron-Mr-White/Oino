@@ -59,6 +59,19 @@ describe('global host selector ([ui-shell] #1)', () => {
     expect(localStorage.getItem('unipi.selectedHost')).toBe('pc-offline');
   });
 
+  it('Board/Cron sit with New chat and Search at the top; Settings is the gear beside the host row ([ui-shell] #2)', async () => {
+    boot('#/');
+    const row = await screen.findByTestId('host-row');
+    const nav = screen.getByRole('navigation', { name: 'Pages' });
+    const order = [...nav.querySelectorAll('[data-testid]')].map((el) => el.getAttribute('data-testid'));
+    expect(order.slice(0, 4)).toEqual(['sb-new-chat', 'sb-search', 'rail-board', 'rail-cron']);
+    const gear = screen.getByTestId('rail-settings');
+    expect(gear.getAttribute('aria-label')).toBe('Settings');
+    expect(gear.parentElement).toBe(row.parentElement);
+    fireEvent.click(gear);
+    await waitFor(() => expect(gear.getAttribute('aria-current')).toBe('page'));
+  });
+
   it('Manage hosts opens Settings › Hosts', async () => {
     boot('#/');
     fireEvent.click(await screen.findByTestId('host-row'));
