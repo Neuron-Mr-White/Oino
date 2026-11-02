@@ -259,7 +259,11 @@ impl AgentSession {
             HostOp::GetActiveTools => to_json(self.active_tool_names()),
             HostOp::GetAllTools => to_json(self.all_tools()),
             HostOp::SetActiveTools(names) => {
-                self.set_active_tools_by_name(&names);
+                self.set_active_tools_from_extension(extension, &names);
+                Ok(JsonValue::Null)
+            }
+            HostOp::UpdateActiveTools { enable, disable } => {
+                self.update_active_tools(&enable, &disable);
                 Ok(JsonValue::Null)
             }
             HostOp::GetCommands => to_json(self.commands()),

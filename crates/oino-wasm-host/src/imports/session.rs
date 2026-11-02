@@ -6,7 +6,7 @@ use std::sync::Arc;
 use oino_extension_api::ops::{
     ControlOp, ControlReply, SessionQuery, SessionWrite, SessionsIndexQuery, SessionsScope,
 };
-use oino_extension_api::{CallContext, HostError, RawJson};
+use oino_extension_api::{CallContext, CallKind, HostError, RawJson};
 use wasmtime::component::{Access, Accessor, Resource};
 
 use super::{out, ready, ready_wit};
@@ -270,6 +270,14 @@ pub(crate) async fn control(
     if op.needs_command_context() && !cx.kind.is_command_context() {
         return Err(HostError::CommandContextRequired);
     }
+    if init_must_not_touch_loadout(&cx, &op) {
+        // `init` registers; the tool loadout belongs to the session (`session_start` and
+        // later events). A guest restarted after a trap replays `init` with the context of
+        // its FIRST init (possibly another, live session), so a loadout write from there
+        // would rewrite an unrelated chat's tools.
+        tracing::warn!(extension = %ext.id, op = op.name(), "tool loadout write during init ignored");
+        return Ok(ControlReply::Unit);
+    }
     match &op {
         ControlOp::ExecuteTool { .. } if cx.tool_call_id.is_none() => {
             return Err(HostError::InvalidArgument(
@@ -282,6 +290,15 @@ pub(crate) async fn control(
         _ => {}
     }
     ext.host.control(&ext.id, &cx, op).await
+}
+
+/// Whether `op` is a tool-loadout write made while serving `init` (ignored, see [`control`]).
+pub(crate) fn init_must_not_touch_loadout(cx: &CallContext, op: &ControlOp) -> bool {
+    cx.kind == CallKind::Init
+        && matches!(
+            op,
+            ControlOp::SetActiveTools(_) | ControlOp::UpdateActiveTools { .. }
+        )
 }
 
 fn as_json(r: Result<ControlReply, HostError>) -> Result<String, HostError> {
@@ -539,6 +556,20 @@ impl<T: Send> wc::HostWithStore<T> for HostState {
             ))
         }
     }
+    fn update_active_tools(
+        mut host: Access<'_, T, Self>,
+        enable: Vec<String>,
+        disable: Vec<String>,
+    ) -> impl Future<Output = HostResult<()>> + Send {
+        let (ext, cx) = current(&mut host);
+        async move {
+            Ok(convert::wit(
+                control(ext, cx, ControlOp::UpdateActiveTools { enable, disable })
+                    .await
+                    .map(|_| ()),
+            ))
+        }
+    }
     fn all_tools(
         mut host: Access<'_, T, Self>,
     ) -> impl Future<Output = wasmtime::Result<String>> + Send {
@@ -614,4 +645,33 @@ impl<T: Send> wc::HostWithStore<T> for HostState {
 #[allow(dead_code, reason = "keeps ready_wit referenced for symmetric helpers")]
 fn _unused() -> impl Future<Output = HostResult<()>> {
     ready_wit(Ok(()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cx(kind: CallKind) -> CallContext {
+        CallContext {
+            session_id: "s1".into(),
+            kind,
+            ..CallContext::default()
+        }
+    }
+
+    /// An init replayed after a trap (or any init) never rewrites a session's tool loadout;
+    /// session events still can.
+    #[test]
+    fn init_never_writes_the_tool_loadout() {
+        let set = ControlOp::SetActiveTools(vec!["view_agent_graph".into()]);
+        let update = ControlOp::UpdateActiveTools {
+            enable: vec!["view_agent_graph".into()],
+            disable: vec![],
+        };
+        assert!(init_must_not_touch_loadout(&cx(CallKind::Init), &set));
+        assert!(init_must_not_touch_loadout(&cx(CallKind::Init), &update));
+        assert!(!init_must_not_touch_loadout(&cx(CallKind::Init), &ControlOp::ActiveTools));
+        assert!(!init_must_not_touch_loadout(&cx(CallKind::Event), &set));
+        assert!(!init_must_not_touch_loadout(&cx(CallKind::Command), &update));
+    }
 }

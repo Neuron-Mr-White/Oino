@@ -55,9 +55,15 @@ pub fn run_state() -> Result<Value> {
 pub fn settings() -> Result<Value> {
     parse(&wc::get_settings())
 }
-/// Sets the active tools.
+/// Sets the active tools (whole list). Active built-in tools missing from `names` are kept
+/// by the host; to toggle a few tools prefer [`update_active_tools`].
 pub fn set_active_tools(names: &[String]) -> Result<()> {
     Ok(wc::set_active_tools(names)?)
+}
+/// Adds `enable` to and removes `disable` from the CURRENT active tools in one host step,
+/// leaving every other tool untouched (no read-modify-write race, no wipe on a failed read).
+pub fn update_active_tools(enable: &[String], disable: &[String]) -> Result<()> {
+    Ok(wc::update_active_tools(enable, disable)?)
 }
 /// Returns every tool.
 pub fn all_tools() -> Result<Vec<Value>> {

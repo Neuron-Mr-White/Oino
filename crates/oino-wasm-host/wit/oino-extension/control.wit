@@ -44,6 +44,10 @@ interface control {
     // Tools and commands
     active-tools: func() -> list<string>;
     set-active-tools: func(names: list<string>) -> result<_, host-error>;
+    /// Add `enable` to and remove `disable` from the current active tools in one step,
+    /// leaving every other tool as it is (sessionControl). Prefer it over a
+    /// read-modify-write of the whole list; an active built-in tool leaves only when named here.
+    update-active-tools: func(enable: list<string>, disable: list<string>) -> result<_, host-error>;
     all-tools: func() -> json;                                // Vec<ToolInfo>
     commands-list: func() -> json;                            // Vec<SlashCommandInfo>
     /// Run any command (cross-extension) with a command context. Replaces the v1 command runners.

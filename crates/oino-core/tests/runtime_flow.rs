@@ -417,3 +417,203 @@ async fn open_restores_builtins_missing_from_the_recorded_loadout() {
         assert!(active.iter().any(|a| a == name), "{name} missing from {active:?}");
     }
 }
+
+fn ext_tool(name: &str) -> oino_core::extensions::api::ToolSpec {
+    oino_core::extensions::api::ToolSpec {
+        name: name.into(),
+        label: name.into(),
+        description: format!("{name} tool"),
+        parameters: json!({"type": "object"}),
+        prompt_snippet: None,
+        prompt_guidelines: Vec::new(),
+        exposure: oino_core::extensions::api::ToolExposure::Direct,
+        default_active: Some(false),
+        execution_mode: None,
+        namespace: None,
+        annotations: None,
+        reaches_tools: None,
+        output_schema: None,
+        prepare_arguments: false,
+    }
+}
+
+/// A runtime (no embedder built-ins, like the desktop hub) with a long-horizon-like extension
+/// owning two inactive mode tools and one always-on tool.
+async fn graph_runtime(dir: &std::path::Path) -> (Arc<Services>, AgentSessionRuntime) {
+    graph_runtime_with(dir, SessionSource::InMemory, None).await
+}
+
+async fn graph_runtime_with(
+    dir: &std::path::Path,
+    source: SessionSource,
+    session_dir: Option<std::path::PathBuf>,
+) -> (Arc<Services>, AgentSessionRuntime) {
+    let lh = Arc::new(FakeExtension::new(
+        "unipi.long-horizon",
+        Registration {
+            tools: vec![
+                ext_tool("view_agent_graph"),
+                ext_tool("update_agent_graph"),
+                oino_core::extensions::api::ToolSpec {
+                    default_active: None,
+                    ..ext_tool("memory_store")
+                },
+            ],
+            ..Registration::default()
+        },
+    ));
+    let provider = FauxProvider::new(vec![FauxResponse::Text("ok".into())]);
+    let services = services(dir, provider, vec![lh as Arc<dyn ExtensionInstance>]).await;
+    let runtime = AgentSessionRuntime::create(
+        Arc::clone(&services),
+        SessionOptions {
+            source,
+            session_dir,
+            ..SessionOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+    (services, runtime)
+}
+
+fn has_core_tools(active: &[String]) {
+    for name in ["read", "bash", "edit", "write"] {
+        assert!(active.iter().any(|a| a == name), "{name} missing from {active:?}");
+    }
+}
+
+/// P0 [fix-tools]: an extension that read the active tools while they came back empty
+/// (failed/stale read during a wake or a trap replay) and wrote back "only my mode tools"
+/// must not wipe the built-ins — the main agent kept `bash`/`read`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn extension_whole_list_write_never_drops_builtin_tools() {
+    use oino_core::extensions::api::CallKind;
+    use oino_core::extensions::host::HostOp;
+    let dir = tempfile::tempdir().unwrap();
+    let (_services, runtime) = graph_runtime(dir.path()).await;
+    let session = runtime.session();
+    has_core_tools(&session.active_tool_names());
+    let cx = session.runner().call_context().with_kind(CallKind::Event);
+    // What long-horizon's `sync_mode_tools(&[], Mode::Graph)` produced on an empty read.
+    session
+        .host_call(
+            "unipi.long-horizon",
+            &cx,
+            HostOp::SetActiveTools(vec!["view_agent_graph".into(), "update_agent_graph".into()]),
+        )
+        .await
+        .unwrap();
+    let active = session.active_tool_names();
+    has_core_tools(&active);
+    assert!(active.iter().any(|a| a == "view_agent_graph"), "{active:?}");
+    // A user/frontend whole-list write still can narrow the set.
+    session.set_active_tools_by_name(&["read".to_owned()]);
+    assert_eq!(session.active_tool_names(), vec!["read"]);
+}
+
+/// The atomic `update-active-tools`: adds/removes only the named tools relative to the
+/// CURRENT registry; built-ins leave only when named; unknown names are ignored; an
+/// unchanged set publishes nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn update_active_tools_toggles_only_named_tools() {
+    use oino_core::extensions::api::CallKind;
+    use oino_core::extensions::host::HostOp;
+    let dir = tempfile::tempdir().unwrap();
+    let (_services, runtime) = graph_runtime(dir.path()).await;
+    let session = runtime.session();
+    let cx = session.runner().call_context().with_kind(CallKind::Event);
+    let update = |enable: &[&str], disable: &[&str]| HostOp::UpdateActiveTools {
+        enable: enable.iter().map(|s| (*s).to_owned()).collect(),
+        disable: disable.iter().map(|s| (*s).to_owned()).collect(),
+    };
+    // Graph mode on.
+    session
+        .host_call(
+            "unipi.long-horizon",
+            &cx,
+            update(&["view_agent_graph", "update_agent_graph", "no_such_tool"], &[]),
+        )
+        .await
+        .unwrap();
+    let active = session.active_tool_names();
+    has_core_tools(&active);
+    assert!(active.iter().any(|a| a == "memory_store"), "{active:?}");
+    assert!(active.iter().any(|a| a == "update_agent_graph"), "{active:?}");
+    assert!(!active.iter().any(|a| a == "no_such_tool"), "{active:?}");
+    // Same request again: no change, no ToolsChanged churn.
+    let mut events = session.subscribe();
+    session
+        .host_call(
+            "unipi.long-horizon",
+            &cx,
+            update(&["view_agent_graph", "update_agent_graph"], &[]),
+        )
+        .await
+        .unwrap();
+    let mut changes = 0;
+    while let Ok(Some(event)) =
+        tokio::time::timeout(Duration::from_millis(100), events.next()).await
+    {
+        if matches!(event, ClientEvent::Oino(OinoEvent::ToolsChanged { .. })) {
+            changes += 1;
+        }
+    }
+    assert_eq!(changes, 0, "an unchanged set publishes nothing");
+    // Graph mode off: only its tools leave.
+    session
+        .host_call(
+            "unipi.long-horizon",
+            &cx,
+            update(&[], &["view_agent_graph", "update_agent_graph"]),
+        )
+        .await
+        .unwrap();
+    let active = session.active_tool_names();
+    has_core_tools(&active);
+    assert!(active.iter().any(|a| a == "memory_store"), "{active:?}");
+    assert!(!active.iter().any(|a| a.contains("agent_graph")), "{active:?}");
+    // A built-in leaves when named explicitly.
+    session
+        .host_call("unipi.long-horizon", &cx, update(&[], &["bash"]))
+        .await
+        .unwrap();
+    assert!(!session.active_tool_names().iter().any(|a| a == "bash"));
+}
+
+/// Services evicted and re-created (hub maxServices / idle disposal) and the session woken
+/// from its file while in graph mode: the built-ins come back with the extension's mode tools.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn graph_mode_session_rewoken_on_fresh_services_keeps_builtins() {
+    use oino_core::extensions::api::CallKind;
+    use oino_core::extensions::host::HostOp;
+    let dir = tempfile::tempdir().unwrap();
+    let sessions = dir.path().join("sessions");
+    let file = {
+        let (_services, runtime) =
+            graph_runtime_with(dir.path(), SessionSource::New, Some(sessions.clone())).await;
+        let session = runtime.session();
+        let cx = session.runner().call_context().with_kind(CallKind::Event);
+        session
+            .host_call(
+                "unipi.long-horizon",
+                &cx,
+                HostOp::SetActiveTools(vec!["view_agent_graph".into()]),
+            )
+            .await
+            .unwrap();
+        has_core_tools(&session.active_tool_names());
+        session
+            .prompt("hi".into(), PromptOptions::default())
+            .await
+            .unwrap();
+        session.wait_for_idle().await;
+        session.session_file().expect("persisted")
+    };
+    // Fresh services (the evicted ones are gone) and the session woken from its file.
+    let (_services, runtime) =
+        graph_runtime_with(dir.path(), SessionSource::Open(file), Some(sessions)).await;
+    let active = runtime.session().active_tool_names();
+    has_core_tools(&active);
+    assert!(active.iter().any(|a| a == "view_agent_graph"), "{active:?}");
+}

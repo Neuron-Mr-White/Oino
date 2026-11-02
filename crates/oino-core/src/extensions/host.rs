@@ -155,8 +155,17 @@ pub enum HostOp {
     GetActiveTools,
     /// Returns every tool.
     GetAllTools,
-    /// Sets the active tools.
+    /// Sets the active tools (whole list). From an extension, an active built-in tool
+    /// missing from the list is kept; use [`HostOp::UpdateActiveTools`] to remove it by name.
     SetActiveTools(Vec<String>),
+    /// Adds `enable` to and removes `disable` from the current active tools in one step,
+    /// leaving every other tool as it is.
+    UpdateActiveTools {
+        /// Tools to activate.
+        enable: Vec<String>,
+        /// Tools to deactivate.
+        disable: Vec<String>,
+    },
     /// Returns the registered commands.
     GetCommands,
     /// Sets the model; returns `true` when auth is configured and the model was set.

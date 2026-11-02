@@ -385,6 +385,10 @@ fn control_op(op: ControlOp, cx: &CallContext) -> Result<(HostOp, ReplyShape), H
             ControlReply::Strings(serde_json::from_value(v).unwrap_or_default())
         }),
         ControlOp::SetActiveTools(names) => (HostOp::SetActiveTools(names), |_| ControlReply::Unit),
+        ControlOp::UpdateActiveTools { enable, disable } => (
+            HostOp::UpdateActiveTools { enable, disable },
+            |_| ControlReply::Unit,
+        ),
         ControlOp::AllTools => (HostOp::GetAllTools, json_reply),
         ControlOp::GetSettings => (HostOp::GetSettings, json_reply),
         ControlOp::ModelsList => (HostOp::GetAvailableModels, json_reply),

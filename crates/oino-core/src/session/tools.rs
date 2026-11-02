@@ -293,6 +293,71 @@ impl AgentSession {
         }
     }
 
+    /// Adds `enable` to and removes `disable` from the CURRENT active tools in one step,
+    /// touching nothing else (`disable` applies first, so a name in both ends up active).
+    /// Unregistered names in `enable` are ignored like in [`Self::set_active_tools_by_name`];
+    /// pending (not yet registered) restored tools stay pending unless named in `disable`.
+    /// No-op when the set does not change.
+    pub fn update_active_tools(&self, enable: &[String], disable: &[String]) {
+        let previous = self.active_tool_names();
+        let mut next: Vec<String> = previous
+            .iter()
+            .filter(|name| !disable.contains(*name) || enable.contains(*name))
+            .cloned()
+            .collect();
+        {
+            let mut state = lock(&self.inner.tools);
+            for name in disable.iter().filter(|n| !enable.contains(n)) {
+                state.pending.shift_remove(name);
+            }
+            for name in enable {
+                let activatable = state
+                    .registry
+                    .get(name)
+                    .is_some_and(|entry| entry.exposure != ToolExposure::Hidden);
+                if activatable && !next.contains(name) {
+                    next.push(name.clone());
+                }
+            }
+        }
+        if next == previous {
+            return;
+        }
+        self.set_active_tools(&next);
+    }
+
+    /// An extension's whole-list `set-active-tools`: like [`Self::set_active_tools_by_name`],
+    /// except that an active built-in tool (read/bash/edit/write/…) missing from `names` is
+    /// kept. Extensions read-modify-write the list to toggle their own tools; a read that
+    /// came back empty or partial must not wipe the core tools for the rest of the session.
+    /// Built-ins leave only when named in [`Self::update_active_tools`]'s `disable` (or by a
+    /// user/frontend whole-list write through [`Self::set_active_tools_by_name`]).
+    pub(crate) fn set_active_tools_from_extension(&self, extension: &str, names: &[String]) {
+        let previous = self.active_tool_names();
+        let kept: Vec<String> = {
+            let state = lock(&self.inner.tools);
+            previous
+                .iter()
+                .filter(|name| {
+                    !names.contains(*name) && state.builtin.iter().any(|e| e.name() == name.as_str())
+                })
+                .cloned()
+                .collect()
+        };
+        if kept.is_empty() {
+            self.set_active_tools_by_name(names);
+            return;
+        }
+        tracing::warn!(
+            extension,
+            kept = ?kept,
+            "set-active-tools would drop built-in tools; keeping them (disable built-ins by name)"
+        );
+        let mut next = kept;
+        next.extend(names.iter().cloned());
+        self.set_active_tools_by_name(&next);
+    }
+
     pub(crate) fn set_active_tools(&self, names: &[String]) {
         let tools = self.apply_tool_loadout(names);
         {

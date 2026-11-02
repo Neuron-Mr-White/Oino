@@ -257,6 +257,13 @@ pub enum ControlOp {
     ActiveTools,
     /// `set-active-tools`.
     SetActiveTools(Vec<String>),
+    /// `update-active-tools`: add `enable`, remove `disable`, leave the rest.
+    UpdateActiveTools {
+        /// Tools to activate.
+        enable: Vec<String>,
+        /// Tools to deactivate.
+        disable: Vec<String>,
+    },
     /// `all-tools` → `Vec<ToolInfo>`.
     AllTools,
     /// `commands-list` → `Vec<SlashCommandInfo>`.
@@ -321,6 +328,7 @@ impl ControlOp {
             Self::Reload => "reload",
             Self::ActiveTools => "active-tools",
             Self::SetActiveTools(_) => "set-active-tools",
+            Self::UpdateActiveTools { .. } => "update-active-tools",
             Self::AllTools => "all-tools",
             Self::CommandsList => "commands-list",
             Self::CommandInvoke { .. } => "command-invoke",
@@ -342,6 +350,7 @@ impl ControlOp {
                 | Self::Compact { .. }
                 | Self::Shutdown
                 | Self::SetActiveTools(_)
+                | Self::UpdateActiveTools { .. }
                 | Self::NewSession { .. }
                 | Self::Fork { .. }
                 | Self::SwitchSession { .. }

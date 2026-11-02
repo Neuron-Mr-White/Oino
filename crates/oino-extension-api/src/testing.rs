@@ -414,6 +414,16 @@ impl HostServices for RecordingHostServices {
             ControlOp::Abort | ControlOp::Shutdown | ControlOp::SetActiveTools(_) => {
                 ControlReply::Unit
             }
+            ControlOp::UpdateActiveTools { enable, disable } => {
+                let mut active = guard(&self.active_tools);
+                active.retain(|t| !disable.contains(t) || enable.contains(t));
+                for name in enable {
+                    if !active.contains(&name) {
+                        active.push(name);
+                    }
+                }
+                ControlReply::Unit
+            }
             _ => ControlReply::Json(RawJson::null()),
         };
         Box::pin(async move { Ok(reply) })
