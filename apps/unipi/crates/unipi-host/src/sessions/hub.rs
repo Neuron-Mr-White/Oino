@@ -1301,6 +1301,10 @@ impl Inner {
             skipped = copied.skipped,
             "chat moved to a workspace"
         );
+        // The scratch folder has served its purpose (its files were copied when asked):
+        // delete it — only this chat's own `<root>/<id>`. A failure here leaves a stray
+        // folder, not a failed move.
+        self.remove_scratch(&id, &current).await;
         let card = match self.card(&id).await? {
             Some(card) => card,
             None => self.card_for(&backend, &target_dir).await,

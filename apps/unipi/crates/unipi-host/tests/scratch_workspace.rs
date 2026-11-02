@@ -210,6 +210,9 @@ async fn a_scratch_chat_moves_to_a_workspace_one_way_append_only() {
     ));
     drop(manager);
 
+    // The scratch folder is deleted once the move (and its copy) succeeded.
+    assert!(!scratch.exists(), "the scratch folder outlived the move");
+
     // One way: never back to scratch, never workspace → another workspace.
     let back = fx.hub.move_to_workspace(&id, &scratch, false).await;
     assert!(back.is_err(), "workspace → scratch must be refused");
@@ -348,4 +351,27 @@ async fn deleting_a_scratch_chat_deletes_only_its_own_scratch_folder() {
     assert!(root.is_dir(), "the scratch root stays");
     assert!(work.join("w.txt").is_file(), "a workspace is never deleted");
     assert!(home.join("home.txt").is_file(), "the home is never deleted");
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_copy_keeps_the_scratch_folder_and_the_chat_unmoved() {
+    use std::os::unix::fs::PermissionsExt;
+    let fx = fixture(Vec::new());
+    let work = fx.dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let chat = fx.hub.create_scratch_session(None).await.unwrap();
+    let scratch = fx.hub.scratch_root().join(chat.session_id());
+    let locked = scratch.join("locked.txt");
+    std::fs::write(&locked, "secret").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::File::open(&locked).is_ok() {
+        // Root reads anything: no way to make the copy fail here.
+        return;
+    }
+    let result = fx.hub.move_to_workspace(&chat.session_id(), &work, true).await;
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(result.is_err(), "the copy must fail");
+    assert!(locked.is_file(), "the scratch folder is kept when the copy fails");
+    assert_eq!(state_of(&chat).await.cwd.unwrap(), scratch.display().to_string());
 }
