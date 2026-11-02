@@ -49,8 +49,9 @@ import { hostReadiness, type Readiness } from '../../lib/model/readiness';
 import { calmModelError } from '../../lib/model/availability';
 import { closeModelPicker, modelPickerTarget, type ModelPickerTarget } from './target';
 import { curatedFirst, rowTitle, startupKey } from './suggested';
-import { LIST_CAP, modelView } from './ModelList';
+import { LIST_CAP, modelView, type RowActions } from './ModelList';
 import {
+  createCycleSet,
   CycleSetSection,
   fusionStartup,
   ModeTabs,
@@ -102,7 +103,7 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
   // ensure() subscribes; acquire() pins the session against the LRU while shown.
   const s = createMemo(() => sessions().ensure(props.target.hostId, props.target.sessionId));
   onCleanup(s().acquire());
-  const [data] = createResource(liveSource(s), async (state) => (state === 'live' ? loadPicker(s()) : undefined));
+  const [data, { refetch }] = createResource(liveSource(s), async (state) => (state === 'live' ? loadPicker(s()) : undefined));
 
   const allModels = () => data.latest?.models ?? [];
   const fusion = () => data.latest?.fusion;
@@ -250,8 +251,7 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
     applySingle();
   };
 
-  const useAtStartup = async () => {
-    const key = startupTarget();
+  const useAtStartup = async (key = startupTarget()) => {
     if (!key || busy()) return;
     setBusy(true);
     setError(null);
@@ -265,6 +265,51 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
       setBusy(false);
     }
   };
+
+  const cycle = createCycleSet({ target: s, stored: () => data.latest?.cycle, loaded: () => !!data.latest, onError: setError });
+  /** The pair's roles as the extension knows them (the running pair, else its configured one). */
+  const roleLead = () => activePair()?.lead ?? fusion()?.status?.leadKey;
+  const roleSidekick = () => activePair()?.sidekick ?? fusion()?.status?.sidekickKey;
+  /** ⋯ → "Set as Fusion lead / sidekick": the Fusion tab's write (`fusion.set-pair`) with the other seat kept. */
+  const setRole = async (side: 'lead' | 'sidekick', key: string) => {
+    if (busy()) return;
+    const lead = side === 'lead' ? key : leadKey();
+    const sidekick = side === 'sidekick' ? key : sidekickKey();
+    if (!lead || !sidekick) return;
+    const effort = pillEffort(key);
+    const le = side === 'lead' && effort ? effort : leadEffort();
+    const se = side === 'sidekick' && effort ? effort : sidekickEffort();
+    const from = now();
+    setBusy(true);
+    setError(null);
+    try {
+      await setFusionActive(s(), { kind: 'fusion', lead, sidekick, leadEffort: le, sidekickEffort: se });
+      setPendingLead(lead);
+      setPendingSidekick(sidekick);
+      setLeadEffort(le);
+      setSidekickEffort(se);
+      toasts().push(pairToast(from, nowLabel({ kind: 'fusion', lead, sidekick }, nameOf)), 'success');
+      void refetch();
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const rowActions = (): RowActions => ({
+    ...(fusionOn()
+      ? {
+          fusion: {
+            lead: roleLead(),
+            sidekick: roleSidekick(),
+            setLead: (m: ModelInfo) => void setRole('lead', modelKey(m)),
+            setSidekick: (m: ModelInfo) => void setRole('sidekick', modelKey(m)),
+          },
+        }
+      : {}),
+    cycle: { has: cycle.has, toggle: (m, on) => void cycle.toggle(modelKey(m), on) },
+    startup: { set: (m) => void useAtStartup(modelKey(m)) },
+  });
 
   /** One Fusion column row. */
   const ColRow = (p: { m: ModelInfo; side: 'lead' | 'sidekick' }) => {
@@ -362,17 +407,15 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
       currentKey={currentKey()}
       pickedKey={pick()}
       startupKey={startup()}
+      rowActions={data.latest ? rowActions() : undefined}
       onSelect={onSelect}
       section={
         <CycleSetSection
-          target={s()}
-          stored={data.latest?.cycle}
-          loaded={!!data.latest}
+          cycle={cycle}
           models={models()}
           suggestedCount={list().suggested.length}
           query={query()}
           defaultOpen={props.target.focus === 'cycle'}
-          onError={setError}
         />
       }
       notice={

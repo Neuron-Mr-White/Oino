@@ -29,7 +29,7 @@ import { wrapTab } from '../../lib/focusTrap';
 import type { SessionHandle } from '../../lib/session/store';
 import { hits as modelHits, modelKey, modelName, type ModelInfo } from '../../lib/model/picker';
 import { cycleKeyOf, cycleKeysOf, cycleLabel, toggleCycleKey } from '../../lib/model/cycle';
-import { LIST_CAP, ModelList, type ModelView } from './ModelList';
+import { LIST_CAP, ModelList, type ModelView, type RowActions } from './ModelList';
 import '../session/session-modal.css';
 import './model.css';
 
@@ -183,6 +183,8 @@ export function ModelPickerPanel(props: {
   currentKey?: string;
   pickedKey?: string;
   startupKey?: string;
+  /** The rows' ⋯ menu (Fusion roles, cycle set, startup); none → no ⋯. */
+  rowActions?: RowActions;
   onSelect: (m: ModelInfo, isCurrent: boolean) => void;
   /** Under the list (the Cycle set). */
   section?: JSX.Element;
@@ -224,6 +226,7 @@ export function ModelPickerPanel(props: {
               currentKey={props.currentKey}
               pickedKey={props.pickedKey}
               startupKey={props.startupKey}
+              actions={props.rowActions}
               onSelect={props.onSelect}
             />
           </Show>
@@ -281,54 +284,77 @@ export function PickerSecondary(props: {
 }
 
 /**
- * The collapsible "Cycle set · …" section (WP-A25, `/scoped-models`): pi's
- * `enabledModels` — what Ctrl+Alt+P steps through. `stored` is the setting's
- * value as loaded; ticks write it back (`_oino/set_setting`, global) through
- * `target` (a live chat or the draft, whose settings go to the host).
+ * The cycle set (WP-A25, `/scoped-models`): pi's `enabledModels` — what
+ * Ctrl+Alt+P steps through. Seeded once from the loaded setting; `toggle`
+ * writes it back (`_oino/set_setting`, global) through `target` (a live chat
+ * or the draft, whose settings go to the host). Exact `provider/model`
+ * entries are the toggles; anything else (a glob, a `:level`) is kept as
+ * written.
  */
+export type CycleSet = {
+  exact: () => string[];
+  custom: () => string[];
+  has: (key: string) => boolean;
+  /** Adds / removes one model; resolves false when the write failed (`onError` got the message). */
+  toggle: (key: string, on: boolean) => Promise<boolean>;
+};
+
+export function createCycleSet(opts: {
+  target: () => Pick<SessionHandle, 'cmd'>;
+  stored: () => unknown;
+  loaded: () => boolean;
+  onError: (message: string | null) => void;
+}): CycleSet {
+  const [cycle, setCycle] = createSignal<{ exact: string[]; custom: string[] }>({ exact: [], custom: [] });
+  let seeded = false;
+  createEffect(() => {
+    if (seeded || !opts.loaded()) return;
+    seeded = true;
+    setCycle(cycleKeysOf(opts.stored()));
+  });
+  return {
+    exact: () => cycle().exact,
+    custom: () => cycle().custom,
+    has: (key) => cycle().exact.includes(key),
+    toggle: async (key, on) => {
+      const cur = cycle();
+      const nextExact = on ? [...new Set([...cur.exact, key])] : cur.exact.filter((k) => k !== key);
+      const value = toggleCycleKey(cur.exact, cur.custom, key, on);
+      opts.onError(null);
+      try {
+        await opts.target().cmd({ type: '_oino/set_setting', key: 'enabledModels', value: value ?? null, scope: 'global' });
+        setCycle({ exact: nextExact, custom: cur.custom });
+        return true;
+      } catch (e) {
+        opts.onError(String((e as { message?: unknown })?.message ?? e));
+        return false;
+      }
+    },
+  };
+}
+
+/** The collapsible "Cycle set · …" section over a `CycleSet`. */
 export function CycleSetSection(props: {
-  target: Pick<SessionHandle, 'cmd'>;
-  /** The loaded `enabledModels` (undefined until loaded). */
-  stored: unknown;
-  loaded: boolean;
+  cycle: CycleSet;
   models: ModelInfo[];
   suggestedCount: number;
   query: string;
   defaultOpen?: boolean;
-  onError: (message: string | null) => void;
 }) {
   const [open, setOpen] = createSignal(!!props.defaultOpen);
-  const [cycle, setCycle] = createSignal<{ exact: string[]; custom: string[] }>({ exact: [], custom: [] });
-  let seeded = false;
-  createEffect(() => {
-    if (seeded || !props.loaded) return;
-    seeded = true;
-    setCycle(cycleKeysOf(props.stored));
-  });
   const rows = () => {
     const q = props.query.trim().toLowerCase();
     return q ? props.models.filter((m) => modelHits(m, q)) : props.models;
   };
-  const isOn = (m: ModelInfo) => cycle().exact.includes(cycleKeyOf(m.provider, m.id));
-  const flip = async (key: string, on: boolean) => {
-    const cur = cycle();
-    const nextExact = on ? [...new Set([...cur.exact, key])] : cur.exact.filter((k) => k !== key);
-    const value = toggleCycleKey(cur.exact, cur.custom, key, on);
-    props.onError(null);
-    try {
-      await props.target.cmd({ type: '_oino/set_setting', key: 'enabledModels', value: value ?? null, scope: 'global' });
-      setCycle({ exact: nextExact, custom: cur.custom });
-    } catch (e) {
-      props.onError(String((e as { message?: unknown })?.message ?? e));
-    }
-  };
+  const isOn = (m: ModelInfo) => props.cycle.has(cycleKeyOf(m.provider, m.id));
+  const flip = (key: string, on: boolean) => void props.cycle.toggle(key, on);
   return (
     <div class="mp-cycle" data-testid="model-picker-cycle">
       <button type="button" class="mp-cycle-toggle" aria-expanded={open()} onClick={() => setOpen((v) => !v)} data-testid="model-picker-cycle-toggle">
         <Show when={open()} fallback={<ChevronRight size={14} />}>
           <ChevronDown size={14} />
         </Show>
-        <span>{cycleLabel(cycle().exact, cycle().custom, props.models.length, props.suggestedCount)}</span>
+        <span>{cycleLabel(props.cycle.exact(), props.cycle.custom(), props.models.length, props.suggestedCount)}</span>
       </button>
       <Show when={open()}>
         <div class="mp-cycle-body">
@@ -345,7 +371,7 @@ export function CycleSetSection(props: {
                     aria-checked={isOn(m)}
                     aria-pressed={isOn(m) ? 'true' : 'false'}
                     data-testid={`cycle-${key}`}
-                    onClick={() => void flip(key, !isOn(m))}
+                    onClick={() => flip(key, !isOn(m))}
                   >
                     <span class="mp-cycle-box" aria-hidden="true">
                       <Show when={isOn(m)}>
@@ -359,9 +385,9 @@ export function CycleSetSection(props: {
               }}
             </For>
           </div>
-          <Show when={cycle().custom.length > 0}>
+          <Show when={props.cycle.custom().length > 0}>
             <p class="mp-hint" data-testid="model-picker-cycle-custom">
-              Custom patterns (kept as written): {cycle().custom.join(', ')}
+              Custom patterns (kept as written): {props.cycle.custom().join(', ')}
             </p>
           </Show>
         </div>

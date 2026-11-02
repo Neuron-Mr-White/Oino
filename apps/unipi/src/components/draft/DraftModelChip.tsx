@@ -17,7 +17,7 @@ import { openSettingsAt } from '../../lib/settings/open';
 import { toasts } from '../../lib/toasts';
 import { modelView } from '../model/ModelList';
 import { startupKey } from '../model/suggested';
-import { CycleSetSection, ModelDialog, ModelPickerPanel, PickerError, PickerSecondary, writeStartupModel } from '../model/ModelPopover';
+import { createCycleSet, CycleSetSection, ModelDialog, ModelPickerPanel, PickerError, PickerSecondary, writeStartupModel } from '../model/ModelPopover';
 import { modelChipLabel, modelChipTitle } from '../model/ModelChip';
 import { RollingLabel } from '../RollingLabel';
 import type { DraftSession } from './draftSession';
@@ -61,6 +61,7 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   let chip: HTMLButtonElement | undefined;
+  const cycle = createCycleSet({ target: () => props.session, stored: () => data.latest?.cycle, loaded: () => !!data.latest, onError: setError });
   const currentSel = (): Selection | undefined => (props.session.state.model?.id ? { kind: 'single', key: current() } : undefined);
   const view = createMemo(() => {
     const all = models() ?? [];
@@ -158,18 +159,18 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
             }
             currentKey={current() !== '/' ? current() : undefined}
             startupKey={data.latest?.startup}
+            rowActions={
+              data.latest
+                ? {
+                    cycle: { has: cycle.has, toggle: (m, on) => void cycle.toggle(modelKey(m), on) },
+                    startup: { set: (m) => void useAtStartup(modelKey(m)) },
+                  }
+                : undefined
+            }
             onSelect={(m) => pick(m)}
             section={
               <Show when={data.latest && !noUsable()}>
-                <CycleSetSection
-                  target={props.session}
-                  stored={data.latest?.cycle}
-                  loaded={!!data.latest}
-                  models={view().usable}
-                  suggestedCount={view().suggested.length}
-                  query={query()}
-                  onError={setError}
-                />
+                <CycleSetSection cycle={cycle} models={view().usable} suggestedCount={view().suggested.length} query={query()} />
               </Show>
             }
             notice={<PickerError error={error()} />}

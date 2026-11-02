@@ -5,8 +5,9 @@
  * The data comes from `modelView` (availability + readiness + kind filter +
  * curated ranking); this is only markup. Styles: `model.css` (`.mp-*`).
  */
-import { createMemo, createSignal, For, Show } from 'solid-js';
-import { Check, ChevronDown, ChevronRight } from 'lucide-solid';
+import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
+import { Check, ChevronDown, ChevronRight, Crown, Ellipsis, Minus, Plus, Rocket, Users } from 'lucide-solid';
+import { AnchoredMenu } from '../board/AnchoredMenu';
 import { contextBadge, hits as modelHits, modelKey, modelName, type ModelInfo, type Selection } from '../../lib/model/picker';
 import type { FusionCurated } from '../../lib/model/fusion';
 import type { Readiness } from '../../lib/model/readiness';
@@ -48,6 +49,112 @@ export function modelView(
   };
 }
 
+/**
+ * The per-row ⋯ menu's actions (owner: "each row gets an ellipsis"): Fusion
+ * roles (only when the extension is available), cycle-set membership and
+ * "Use at startup". A context without actions (Cron, settings fields) shows
+ * no ⋯ at all.
+ */
+export type RowActions = {
+  fusion?: {
+    /** The pair's current lead / sidekick key (checked in the menu). */
+    lead?: string;
+    sidekick?: string;
+    setLead: (m: ModelInfo) => void;
+    setSidekick: (m: ModelInfo) => void;
+  };
+  cycle?: { has: (key: string) => boolean; toggle: (m: ModelInfo, on: boolean) => void };
+  startup?: { set: (m: ModelInfo) => void };
+};
+
+/** Keys that open a row's ⋯ menu from the row itself (→, Shift+F10, the context-menu key). */
+export const opensRowMenu = (e: KeyboardEvent): boolean =>
+  !e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowRight' || e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey));
+
+/** The ⋯ menu of one row (portalled, anchored to the ⋯ button; Esc closes back to the row). */
+function RowMenu(props: { m: ModelInfo; name: string; anchor: DOMRect; startup?: boolean; actions: RowActions; onDismiss: () => void }) {
+  const key = modelKey(props.m);
+  const run = (fn: () => void) => {
+    props.onDismiss();
+    fn();
+  };
+  const Item = (p: { label: string; icon: JSX.Element; checked?: boolean; testId: string; onSelect: () => void }) => (
+    <button
+      type="button"
+      role={p.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+      aria-checked={p.checked === undefined ? undefined : p.checked}
+      class="recent-popover-row board-menu-row mp-menu-row"
+      data-testid={p.testId}
+      onClick={() => run(p.onSelect)}
+    >
+      <span class="board-menu-icon">{p.checked ? <Check size={16} /> : p.icon}</span>
+      <span class="min-w-0 flex-1 truncate text-left">{p.label}</span>
+    </button>
+  );
+  const f = () => props.actions.fusion;
+  const c = () => props.actions.cycle;
+  const inCycle = () => !!c()?.has(key);
+  return (
+    <AnchoredMenu anchor={props.anchor} label={`${props.name} options`} width={236} alignEnd class="mp-row-menu" onDismiss={props.onDismiss}>
+      {/* Esc / Tab close the menu only — the dialog under it (whose key handler the portal's events
+          still reach through Solid's delegation) stays open; focus goes back to the row. */}
+      <div
+        data-testid="model-row-menu"
+        data-key={key}
+        onKeyDown={(e) => {
+          if (e.key !== 'Escape' && e.key !== 'Tab') return;
+          e.preventDefault();
+          e.stopPropagation();
+          props.onDismiss();
+        }}
+      >
+        <Show when={f()}>
+          {(fu) => (
+            <>
+              <Item
+                label="Set as Fusion lead"
+                icon={<Crown size={16} />}
+                checked={fu().lead === key}
+                testId="model-menu-lead"
+                onSelect={() => fu().lead !== key && fu().setLead(props.m)}
+              />
+              <Item
+                label="Set as Fusion sidekick"
+                icon={<Users size={16} />}
+                checked={fu().sidekick === key}
+                testId="model-menu-sidekick"
+                onSelect={() => fu().sidekick !== key && fu().setSidekick(props.m)}
+              />
+              <div class="board-menu-sep" role="separator" />
+            </>
+          )}
+        </Show>
+        <Show when={c()}>
+          {(cy) => (
+            <Item
+              label={inCycle() ? 'Remove from cycle set' : 'Add to cycle set'}
+              icon={inCycle() ? <Minus size={16} /> : <Plus size={16} />}
+              testId="model-menu-cycle"
+              onSelect={() => cy().toggle(props.m, !inCycle())}
+            />
+          )}
+        </Show>
+        <Show when={props.actions.startup}>
+          {(st) => (
+            <Item
+              label="Use at startup"
+              icon={<Rocket size={16} />}
+              checked={!!props.startup}
+              testId="model-menu-startup"
+              onSelect={() => !props.startup && st().set(props.m)}
+            />
+          )}
+        </Show>
+      </div>
+    </AnchoredMenu>
+  );
+}
+
 /** One row: display name, route sub-line, badges; provider · id in the tooltip. */
 export function ModelRow(props: {
   m: ModelInfo;
@@ -57,15 +164,38 @@ export function ModelRow(props: {
   lead?: boolean;
   sidekick?: boolean;
   effort?: string;
+  actions?: RowActions;
   onSelect: () => void;
 }) {
   const key = modelKey(props.m);
   const name = modelName(props.m);
-  return (
+  const [menu, setMenu] = createSignal<DOMRect | undefined>();
+  let rowEl: HTMLButtonElement | undefined;
+  let moreEl: HTMLButtonElement | undefined;
+  /** Opens the ⋯ menu; focus sits on the row first so Esc lands back on it. */
+  const openMenu = () => {
+    if (!props.actions || !moreEl) return;
+    rowEl?.focus({ preventScroll: true });
+    setMenu(moreEl.getBoundingClientRect());
+  };
+  const row = (
     <button
       type="button"
       role="menuitemradio"
       class="mp-row"
+      ref={rowEl}
+      aria-haspopup={props.actions ? 'menu' : undefined}
+      onKeyDown={(e) => {
+        if (!props.actions || !opensRowMenu(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openMenu();
+      }}
+      onContextMenu={(e) => {
+        if (!props.actions) return;
+        e.preventDefault();
+        openMenu();
+      }}
       title={rowTitle(name, props.m)}
       aria-checked={props.current}
       aria-current={props.current ? 'true' : undefined}
@@ -100,6 +230,36 @@ export function ModelRow(props: {
       </Show>
     </button>
   );
+  return (
+    <Show when={props.actions} fallback={row}>
+      {(actions) => (
+        <div class="mp-row-wrap" data-menu-open={menu() ? '' : undefined}>
+          {row}
+          <button
+            type="button"
+            class="mp-more"
+            tabindex="-1"
+            ref={moreEl}
+            aria-label={`More options for ${name}`}
+            aria-haspopup="menu"
+            aria-expanded={!!menu()}
+            title="More options (→)"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (menu()) setMenu(undefined);
+              else openMenu();
+            }}
+            data-testid="model-row-more"
+          >
+            <Ellipsis size={16} />
+          </button>
+          <Show when={menu()}>
+            {(anchor) => <RowMenu m={props.m} name={name} anchor={anchor()} startup={props.startup} actions={actions()} onDismiss={() => setMenu(undefined)} />}
+          </Show>
+        </div>
+      )}
+    </Show>
+  );
 }
 
 /** Suggested / All models / Unavailable, as one list. */
@@ -110,6 +270,8 @@ export function ModelList(props: {
   currentKey?: string;
   pickedKey?: string;
   startupKey?: string;
+  /** The ⋯ menu's actions (none: no ⋯ on the rows). */
+  actions?: RowActions;
   onSelect: (m: ModelInfo, isCurrent: boolean) => void;
 }) {
   const [showUnavailable, setShowUnavailable] = createSignal(false);
@@ -133,6 +295,7 @@ export function ModelList(props: {
         lead={extra?.lead}
         sidekick={extra?.sidekick}
         effort={extra?.effort}
+        actions={props.actions}
         onSelect={() => props.onSelect(m, props.currentKey === key)}
       />
     );

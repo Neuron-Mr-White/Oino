@@ -32,6 +32,18 @@ async function boot(name: keyof typeof SCENARIOS): Promise<MockWorld> {
   return world;
 }
 
+/** The scenarios' host settings as shipped (the mock writes `set_setting` into the scenario's object). */
+const PRISTINE = new Map(Object.entries(SCENARIOS).map(([k, v]) => [k, v!.hosts.map((h) => structuredClone(h.settings))]));
+/** A scenario whose host settings are a fresh copy of the shipped ones. */
+async function bootFresh(name: keyof typeof SCENARIOS): Promise<MockWorld> {
+  const scenario = SCENARIOS[name]!;
+  const settings = PRISTINE.get(name as string)!;
+  const world = createMockHost({ ...scenario, hosts: scenario.hosts.map((h, i) => ({ ...h, settings: structuredClone(settings[i]) })), speed: 0 });
+  setHostClientFactory(world.client);
+  await tick();
+  return world;
+}
+
 const picker = () => render(() => <ChatModelPicker target={{ hostId: HOST, sessionId: SESSION }} />);
 const cmds = (world: MockWorld, op: string) => world.log.filter((l) => l.kind === 'cmd' && l.op === op);
 
@@ -175,6 +187,119 @@ describe('the Cycle set (WP-A25, G-15 /scoped-models)', () => {
     expect(screen.getByTestId('model-picker-list')).toBeTruthy();
     fireEvent.click(screen.getByTestId('model-picker-cycle-toggle'));
     await waitFor(() => expect(screen.queryByTestId('model-picker-cycle-list')).toBeNull());
+  });
+});
+
+// ── the per-row ⋯ menu ──────────────────────────────────────────────────
+const rowOf = (key: string) => screen.getByTestId('model-picker-list').querySelector<HTMLElement>(`.mp-row[data-key="${key}"]`)!;
+const moreOf = (key: string) => rowOf(key).parentElement!.querySelector<HTMLElement>('[data-testid="model-row-more"]')!;
+async function openMenu(key: string) {
+  fireEvent.click(moreOf(key));
+  await waitFor(() => expect(screen.getByTestId('model-row-menu').dataset.key).toBe(key));
+  return screen.getByTestId('model-row-menu');
+}
+const setPairCalls = (world: MockWorld) =>
+  cmds(world, '_oino/service_call').filter((l) => (l.args as { name?: string }).name === 'fusion.set-pair');
+
+describe('the row ⋯ menu', () => {
+  it('sets the Fusion lead / sidekick with the Fusion tab\'s write and checks the current roles', async () => {
+    const world = await boot('model-fusion');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-tab-single')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('model-tab-single'));
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    // the running pair's lead is checked on its row's menu
+    let menu = await openMenu('anthropic/claude-opus-4-1');
+    expect(menu.querySelector('[data-testid="model-menu-lead"]')!.getAttribute('aria-checked')).toBe('true');
+    expect(menu.querySelector('[data-testid="model-menu-sidekick"]')!.getAttribute('aria-checked')).toBe('false');
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('model-row-menu')).toBeNull());
+
+    menu = await openMenu('openai/gpt-5');
+    fireEvent.click(menu.querySelector('[data-testid="model-menu-lead"]')!);
+    await waitFor(() => expect(setPairCalls(world)).toHaveLength(1));
+    expect((setPairCalls(world)[0]!.args as { payload?: unknown }).payload).toMatchObject({
+      active: { kind: 'fusion', lead: 'openai/gpt-5', sidekick: 'zai/glm-4.6' },
+    });
+    await waitFor(() => expect(toasts().list().some((t) => t.message === 'Fusion pair: GPT-5 ◆ GLM-4.6')).toBe(true));
+    // the dialog stays open
+    expect(screen.getByTestId('model-picker-list')).toBeTruthy();
+
+    menu = await openMenu('openai/gpt-5-mini');
+    fireEvent.click(menu.querySelector('[data-testid="model-menu-sidekick"]')!);
+    await waitFor(() => expect(setPairCalls(world)).toHaveLength(2));
+    expect((setPairCalls(world)[1]!.args as { payload?: unknown }).payload).toMatchObject({
+      active: { kind: 'fusion', lead: 'openai/gpt-5', sidekick: 'openai/gpt-5-mini' },
+    });
+  });
+
+  it('has no Fusion items when the extension is off', async () => {
+    await boot('model-picker');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    const menu = await openMenu('openai/gpt-5');
+    expect(menu.querySelector('[data-testid="model-menu-lead"]')).toBeNull();
+    expect(menu.querySelector('[data-testid="model-menu-sidekick"]')).toBeNull();
+    expect(menu.querySelector('[data-testid="model-menu-cycle"]')).toBeTruthy();
+    expect(menu.querySelector('[data-testid="model-menu-startup"]')).toBeTruthy();
+  });
+
+  it('adds to and removes from the cycle set (`enabledModels`, custom patterns kept)', async () => {
+    const world = await bootFresh('model-cycle-set');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    await waitFor(() => expect(rowOf('anthropic/claude-sonnet-4-5')).toBeTruthy());
+    let menu = await openMenu('anthropic/claude-sonnet-4-5');
+    const remove = menu.querySelector<HTMLElement>('[data-testid="model-menu-cycle"]')!;
+    expect(remove.textContent).toContain('Remove from cycle set');
+    fireEvent.click(remove);
+    await waitFor(() => expect(cmds(world, '_oino/set_setting').length).toBe(1));
+    expect(cmds(world, '_oino/set_setting')[0]!.args).toMatchObject({ key: 'enabledModels', value: ['anthropic/*'], scope: 'global' });
+    menu = await openMenu('openai/gpt-5');
+    const add = menu.querySelector<HTMLElement>('[data-testid="model-menu-cycle"]')!;
+    expect(add.textContent).toContain('Add to cycle set');
+    fireEvent.click(add);
+    await waitFor(() => expect(cmds(world, '_oino/set_setting').length).toBe(2));
+    expect(cmds(world, '_oino/set_setting')[1]!.args).toMatchObject({ key: 'enabledModels', value: ['anthropic/*', 'openai/gpt-5'] });
+    // nothing was picked
+    expect(cmds(world, 'set_model')).toHaveLength(0);
+  });
+
+  it('"Use at startup" writes that row\'s model as the default', async () => {
+    const world = await boot('model-picker');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    const menu = await openMenu('openai/gpt-5');
+    expect(menu.querySelector('[data-testid="model-menu-startup"]')!.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(menu.querySelector('[data-testid="model-menu-startup"]')!);
+    await waitFor(() =>
+      expect(cmds(world, '_oino/set_setting').map((l) => l.args)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ key: 'defaultProvider', value: 'openai' }),
+          expect.objectContaining({ key: 'defaultModel', value: 'gpt-5' }),
+        ]),
+      ),
+    );
+    await waitFor(() => expect(rowOf('openai/gpt-5').textContent).toContain('Startup'));
+    expect(cmds(world, 'set_model')).toHaveLength(0);
+  });
+
+  it('keyboard: → / Shift+F10 / the context-menu key open it from the row, Esc closes back to the row', async () => {
+    await boot('model-picker');
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list')).toBeTruthy());
+    const row = rowOf('openai/gpt-5');
+    for (const key of [{ key: 'ArrowRight' }, { key: 'F10', shiftKey: true }, { key: 'ContextMenu' }]) {
+      row.focus();
+      fireEvent.keyDown(row, key);
+      await waitFor(() => expect(screen.getByTestId('model-row-menu')).toBeTruthy());
+      expect(screen.getByTestId('model-row-menu').contains(document.activeElement)).toBe(true);
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByTestId('model-row-menu')).toBeNull());
+      expect(document.activeElement).toBe(row);
+      // the dialog is still open
+      expect(screen.getByTestId('model-picker-list')).toBeTruthy();
+    }
   });
 });
 
