@@ -173,7 +173,7 @@ export function ExtensionInstallCard(props: {
     setPhase({ kind: 'waiting', id });
     const ok = await restartAgentHost();
     if (!ok) {
-      setError({ code: 'E_INTERNAL', message: 'Could not restart the agent host', hint: 'Quit and reopen UniPi to load the change.', retryable: false } as AppError);
+      setError({ code: 'E_INTERNAL', message: 'Could not restart the agent host', hint: 'Quit and reopen Unipi to load the change.', retryable: false } as AppError);
       setPhase(current);
       return;
     }
@@ -282,7 +282,7 @@ export function ExtensionInstallCard(props: {
               >
                 <Show
                   when={canRestartHost()}
-                  fallback={<span class="text-xs text-text-dim" data-testid="ext-install-restart-manual">Restart UniPi on the PC to load it.</span>}
+                  fallback={<span class="text-xs text-text-dim" data-testid="ext-install-restart-manual">Restart Unipi on the PC to load it.</span>}
                 >
                   <button type="button" class={primary} data-testid="ext-install-restart-host" onClick={() => void restart()}>
                     <RotateCw size={13} /> Restart agent host

@@ -214,6 +214,6 @@ describe('Install extension… (phone)', () => {
     await screen.findByTestId('ext-install-restart');
     expect(putBytes).toHaveBeenCalled();
     expect(w.calls).toEqual([{ kind: 'install_extension', path: '/home/me/.oino/host/blobs/abab' }]);
-    expect(screen.getByTestId('ext-install-restart-manual').textContent).toContain('Restart UniPi on the PC');
+    expect(screen.getByTestId('ext-install-restart-manual').textContent).toContain('Restart Unipi on the PC');
   });
 });
