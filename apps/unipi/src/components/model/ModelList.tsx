@@ -7,11 +7,12 @@
  */
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { Check, ChevronDown, ChevronRight } from 'lucide-solid';
-import { contextBadge, hasVision, hits as modelHits, modelKey, modelName, type ModelInfo, type Selection } from '../../lib/model/picker';
+import { contextBadge, hits as modelHits, modelKey, modelName, type ModelInfo, type Selection } from '../../lib/model/picker';
 import type { FusionCurated } from '../../lib/model/fusion';
 import type { Readiness } from '../../lib/model/readiness';
 import { splitAvailability } from '../../lib/model/availability';
 import { thinkingLabel } from '../../lib/model/thinking';
+import { ModalityIcons } from './ModalityIcons';
 import { groupedModels, routeLabel, rowTitle, type SuggestedRow } from './suggested';
 
 /** Rows rendered per list: the whole catalogue (P0-10 — no 120 cap); a guard only. */
@@ -92,9 +93,7 @@ export function ModelRow(props: {
       <Show when={props.startup}>
         <span class="mp-badge mp-startup" title="New chats start on this model">Startup</span>
       </Show>
-      <Show when={hasVision(props.m)}>
-        <span class="mp-badge" title="Accepts images">Vision</span>
-      </Show>
+      <ModalityIcons m={props.m} />
       <Show when={contextBadge(props.m)}>{(badge) => <span class="mp-badge mp-ctx" title="Context window">{badge()}</span>}</Show>
       <Show when={props.current}>
         <Check size={16} class="mp-check" aria-label="Current model" />

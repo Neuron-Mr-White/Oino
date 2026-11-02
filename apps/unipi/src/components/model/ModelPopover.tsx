@@ -8,7 +8,7 @@
  *   title (+ ✕) · "Now …" · Single / Fusion tabs (when the context has
  *   Fusion) · full-width search "Search all N models" · the list (Suggested,
  *   provider rows, the collapsed Unavailable group with its reasons, the
- *   Startup / Vision / context badges) · the collapsible "Cycle set · …"
+ *   Startup badge, modality icons, context chip) · the collapsible "Cycle set · …"
  *   section (chat / draft) · the footer: the explanatory line and the
  *   context's action ("Use at startup", or a field's "Use default").
  *

@@ -96,12 +96,12 @@
 .mp-check { flex: none; color: var(--color-claw); }
 .mp-badge {
   flex: none;
-  padding: 1px 7px;
-  border-radius: 9999px;
+  padding: 0 6px;
+  border-radius: 6px;
   background: var(--color-surface-3);
   color: var(--color-text-muted);
   font-size: 10.5px;
-  line-height: 17px;
+  line-height: 18px;
   font-weight: 600;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -205,9 +205,21 @@ body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 74; }
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-dim);
 }
 .mp-group:first-child { margin-top: 4px; }
-.mp-badge.mp-role { background: rgb(240 48 24 / 12%); color: var(--color-claw); }
-.mp-badge.mp-effort-badge { color: var(--color-text); }
+/* Badges match the modality icons: small, hairline, monochrome (Lead / Sidekick tinted). */
+.mp-badge.mp-role { background: transparent; box-shadow: inset 0 0 0 1px rgb(240 48 24 / 35%); color: var(--color-claw); }
+.mp-badge.mp-effort-badge { background: transparent; box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-muted); }
 .mp-badge.mp-startup { background: transparent; box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-muted); }
+
+/* ── modality icons (OpenRouter's "Input Type" row) ───────────────────── */
+.mp-mods { display: inline-flex; flex: none; align-items: center; gap: 1px; color: var(--color-text-dim); }
+.mp-mod {
+  display: inline-grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 6px;
+}
+.mp-mod svg { display: block; }
+.mp-row:hover .mp-mod, .mp-row:focus-visible .mp-mod { color: var(--color-text-muted); }
+.mp-mod-arrow { display: inline-grid; place-items: center; width: 13px; opacity: 0.7; }
+.mp-mod.mp-mod-out { color: var(--color-text-muted); background: var(--color-surface-3); }
 .mp-row-sub { font-family: inherit; font-size: 12px; }
 .mp-row:focus-visible, .mp-pill:focus-visible, .mp-cycle-row:focus-visible, .mp-apply:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
 .mp-apply.pair-primary:hover:not(:disabled) { background: var(--color-shell-hi); }

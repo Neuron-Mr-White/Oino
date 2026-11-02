@@ -3,7 +3,7 @@
  * The in-chat model picker (WP-A14 acceptance, Z-69/Z-76) — the ONE model
  * dialog (the full "Model" dialog) with this chat's data: the Now line in sentence
  * case, one search filtering the Single list *and* both Fusion columns, the
- * Vision/context badges with the current row checked, and the one explicit
+ * modality icons / context badges with the current row checked, and the one explicit
  * action sending `set_model` (MockHost log) or `fusion.set-pair` plus the
  * "Switched from X to Y" toast (Z-72).
  */
@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe('the chat model dialog (Z-69)', () => {
-  it('shows Now in sentence case and the catalogue with Vision + context badges', async () => {
+  it('shows Now in sentence case and the catalogue with modality icons + context badges', async () => {
     await boot('model-picker');
     picker();
     await waitFor(() => expect(screen.getByTestId('model-picker-now').textContent).toContain('Claude Sonnet 4.5'));
@@ -57,7 +57,11 @@ describe('the chat model dialog (Z-69)', () => {
     expect(now).not.toContain('NOW');
     const list = screen.getByTestId('model-picker-list');
     expect(list.textContent).toContain('Claude Sonnet 4.5');
-    expect(list.textContent).toContain('Vision');
+    // Input modalities are icons now (no "Vision" text badge).
+    expect(list.textContent).not.toContain('Vision');
+    expect(list.querySelector('[data-key="anthropic/claude-sonnet-4-5"] [aria-label="Accepts images"]')).toBeTruthy();
+    expect(list.querySelector('[data-key="openai/o3"] [aria-label="Accepts images"]')).toBeNull();
+    expect(list.querySelector('[data-key="openai/o3"] [aria-label="Accepts text"]')).toBeTruthy();
     expect(list.textContent).toContain('200k');
     expect(list.textContent).toContain('1M');
     // the running model is checked
