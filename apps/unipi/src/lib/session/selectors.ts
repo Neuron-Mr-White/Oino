@@ -5,6 +5,7 @@
  * pinned → running → needs-you → recent inside a project, projects by their
  * latest activity) and the connection banner (Z-50).
  */
+import { isInternalSession } from './internal';
 import type { SessionCard } from '../host/client';
 import type { SessionMeta } from './hub';
 import { isProvisional, type SessionState } from './types';
@@ -125,7 +126,7 @@ export function projectsOf(cards: Readonly<Record<string, SessionCard>> | readon
  * groups with pinned → running → needs-you → recent inside.
  */
 export function sessionGroups(cards: Readonly<Record<string, SessionCard>> | readonly SessionCard[], meta: Readonly<Record<string, SessionMeta>> = {}): SessionGroups {
-  const list = Array.isArray(cards) ? cards : Object.values(cards);
+  const list = (Array.isArray(cards) ? cards : Object.values(cards)).filter((c) => !isInternalSession(c.session_id));
   const pinned = list.filter((c) => meta[c.session_id]?.pinned).sort(comparePinned);
   const pinnedIds = new Set(pinned.map((c) => c.session_id));
   const rest = list.filter((c) => !pinnedIds.has(c.session_id));

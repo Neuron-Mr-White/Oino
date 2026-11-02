@@ -20,6 +20,8 @@ import { createRoot, createSignal } from 'solid-js';
 import { createSession, sessions, type SessionHandle } from '../session/store';
 import { hostClient } from '../host/factory';
 import type { HostClient } from '../host/client';
+import { markInternalSession } from '../session/internal';
+import { listExtensions } from '../../settings/hostCmd';
 import { newSession } from '../session/newSession';
 import { claimReplies, noteCommandRun } from '../reports';
 import type { ToastKind } from '../toasts';
@@ -117,7 +119,20 @@ function scratchSession(hostId: string): SessionHandle {
   hit?.close();
   const real = hostClient(hostId);
   const client: HostClient = Object.create(real, {
-    openSession: { value: (_req: unknown, sink: Parameters<HostClient['openSession']>[1]) => real.openSession({ kind: 'new' }, sink) },
+    openSession: {
+      value: (_req: unknown, sink: Parameters<HostClient['openSession']>[1]) =>
+        real.openSession({ kind: 'new' }, {
+          ...sink,
+          snapshot: (snap) => {
+            // Never listed with the user's chats.
+            const sid = (snap as { session_id?: unknown }).session_id;
+            if (typeof sid === 'string' && sid) markInternalSession(sid);
+            sink.snapshot(snap);
+          },
+          events: (items) => sink.events(items),
+          closed: (error) => sink.closed(error),
+        }),
+    },
   });
   const handle = createRoot(() => createSession(hostId, `settings-${Date.now().toString(36)}-${++scratchSeq}`, { client }));
   scratch.set(hostId, handle);
@@ -160,7 +175,13 @@ export async function startSettingsCommand(
   const handle = await settingsCommandChat(opts.hostId, opts.start);
   if (!handle) return { ok: false, reason: 'no-chat' };
   await commandsReady(handle);
-  if (handle.state.commands.length > 0 && !chatHasCommand(handle, command, opts.hidden)) return { ok: false, reason: 'missing' };
+  if (handle.state.commands.length > 0 && !chatHasCommand(handle, command, opts.hidden)) {
+    // Runner commands are often hidden (not listed): only an extension that is off is "missing".
+    const owner = commandOwner(command);
+    const list = owner ? await listExtensions(opts.hostId).catch(() => undefined) : undefined;
+    const ext = list?.ok ? list.value.find((e) => e.id === owner) : undefined;
+    if (!owner || !ext || !ext.enabled) return { ok: false, reason: 'missing' };
+  }
   const release = claimReplies(handle.key, (text, kind) => opts.onReply({ text, kind }));
   noteCommandRun(handle.key, command);
   handle.send(`/${command}`, { mode: 'prompt' });
