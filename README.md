@@ -56,8 +56,8 @@ Until oino.dev serves the scripts, use the raw GitHub URLs, e.g.
 From a source checkout (needs Rust; `rust-toolchain.toml` pins 1.99.0 + `wasm32-wasip2`):
 
 ```bash
-sh scripts/install.sh            # macOS / Linux (--app: the desktop app)
-scripts/install.ps1             # Windows PowerShell (-App: the desktop app)
+sh scripts/install.sh            # macOS / Linux (--app: the desktop app, --host: the host only)
+scripts/install.ps1             # Windows PowerShell (-App: the desktop app, -HostInstall: the host only)
 ```
 
 The installers download the latest GitHub release, verify it against the
@@ -71,6 +71,61 @@ oino-cli`). Details: [docs/install.md](docs/install.md).
 
 Uninstall: delete `~/.local/bin/oino` (and `~/.local/share/oino`); `~/.oino`
 holds your settings, credentials and sessions.
+
+## Host
+
+The Unipi **host** (`unipi-oino-host`) is what runs the agent sessions, terminals, files, git
+and cron for the Unipi apps. The desktop app starts its own; on a machine without a desktop —
+a server, a VM, one of many LLM sandboxes — install just the host and connect to it from the
+desktop or phone app:
+
+```bash
+curl -fsSL https://oino.dev/install.sh | sh -s -- --host                    # ~/.local
+curl -fsSL https://oino.dev/install.sh | sh -s -- --host --prefix /opt/oino # any prefix
+```
+
+```powershell
+irm https://oino.dev/install.ps1 -OutFile install.ps1; .\install.ps1 -HostInstall
+```
+
+This puts `unipi-oino-host`, `oino` and the bundled extensions into `<prefix>/bin` and
+`<prefix>/share/oino/extensions` (Windows: `%LOCALAPPDATA%\oino\bin`) — no GUI — and
+registers a per-user service that starts the host and restarts it when it fails:
+
+| OS | Service | Manage |
+|---|---|---|
+| Linux | systemd user unit `~/.config/systemd/user/unipi-oino-host.service` (`Restart=on-failure`) | `systemctl --user status\|restart\|stop unipi-oino-host`, logs: `journalctl --user -u unipi-oino-host` |
+| macOS | LaunchAgent `~/Library/LaunchAgents/dev.unipi.oino.host.plist` | `launchctl kickstart -k gui/$(id -u)/dev.unipi.oino.host`, log: `~/Library/Logs/unipi-oino-host.log` |
+| Windows | logon scheduled task `UniPi Oino host` | `Start-ScheduledTask` / `Stop-ScheduledTask -TaskName 'UniPi Oino host'` |
+
+A Linux user service stops when you log out. On a machine nobody logs into, the installer
+prints the one command that keeps it running and starts it at boot — run it yourself:
+`loginctl enable-linger $USER`. Rerunning the installer upgrades in place (also while the
+host runs). `--no-service` skips the service, `--no-start` writes it without starting it.
+The service carries your shell's `PATH` (agents run your tools); rerun the installer after
+changing it.
+
+**Pair** the app with the host:
+
+```bash
+unipi-oino-host pair            # a terminal QR + the same link as text; the code works once, 10 min
+```
+
+Scan the QR in the Unipi phone app, or paste the link into *Add a PC* in the desktop or phone
+app (over ssh, copy the link). `unipi-oino-host status` shows whether it runs and who runs it;
+`unipi-oino-host devices` / `revoke` manage paired apps.
+
+**Uninstall** the host and its service (`oino`, the extensions and the host's data in
+`~/.oino/host` — key and pairings — are kept; the command prints how to remove them too):
+
+```bash
+curl -fsSL https://oino.dev/install.sh | sh -s -- --host --uninstall    # same --prefix as the install
+.\install.ps1 -HostInstall -Uninstall                                   # Windows
+```
+
+A Windows app driving a host inside WSL is planned (see
+[docs/dev/v2/specs/wsl-host-plan.md](docs/dev/v2/specs/wsl-host-plan.md)); today, install the host
+in WSL with `install.sh --host` and pair with it like any other PC.
 
 ## Quick start
 
