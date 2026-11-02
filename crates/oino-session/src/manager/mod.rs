@@ -4,6 +4,7 @@
 //! files go to `<root>/--<cwd>--/<ts>_<id>.jsonl` (session-v3 §6.1).
 
 mod files;
+mod index;
 mod lease;
 mod list;
 mod repair;
@@ -21,6 +22,10 @@ use uuid::Uuid;
 pub use files::{
     LEGACY_DIR_NAME, MigratedSession, cwd_session_dir, default_agent_dir, default_sessions_root,
     encode_cwd, migrate_legacy_file, resolve_path, session_file_name, validate_session_id,
+};
+pub use index::{
+    CardIndex, FULL_SCAN_MAX, HEAD_BYTES, INDEX_FILE_NAME, TAIL_BYTES, find_card, find_card_in_dir,
+    list_all_cards, list_dir_cards, refine_all_cards, refine_dir_cards,
 };
 pub use lease::{
     LeaseInfo, SessionLease, TakeoverRequest, clear_takeover_request, lock_file_path,
@@ -379,6 +384,27 @@ impl SessionManager {
         cancel: Option<&AtomicBool>,
     ) -> Result<Vec<SessionInfo>, SessionError> {
         list::list_all(session_dir, progress, cancel)
+    }
+
+    /// Card summaries of all cwds, newest activity first, from the card index (bounded
+    /// reads, cached by path + size + mtime; `all_messages_text` stays empty) — the
+    /// listing for session lists over big stores ([`list_all_cards`]).
+    #[must_use]
+    pub fn list_all_cards(session_dir: &Path) -> Vec<SessionInfo> {
+        list_all_cards(session_dir)
+    }
+
+    /// Finds one session's card by file path, exact id or unique id prefix (≥ 4 chars)
+    /// from file names and the card index — no content scan ([`find_card`]).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::AmbiguousId`].
+    pub fn find_card(
+        session_dir: &Path,
+        target: &str,
+    ) -> Result<Option<SessionInfo>, SessionError> {
+        find_card(session_dir, target)
     }
 
     /// Newest valid session file of `cwd`.
