@@ -9,6 +9,7 @@
  * pickers open as drill-in pages inside the sheet (Back returns to the
  * form). `recreateFrom` prefills the creation fields (UNI-57 Recreate).
  */
+import { desktopShell } from '../../lib/layout';
 import { batch, createEffect, createMemo, createSignal, For, on, Show } from 'solid-js';
 import { ArrowLeft, Check, Link2, Paperclip, Plus, Search, Tag, X } from 'lucide-solid';
 import { api, describe, displayTitle, laneLabel, PRIORITIES, PRIORITY_LABEL } from '../../lib/board/api';
@@ -129,7 +130,12 @@ export function NewTaskSheet(props: { onHaptic?: () => void }) {
 
   async function submit() {
     const at = store.target();
-    if (!at?.slug || !valid() || busy()) return;
+    if (!at?.slug || busy()) return;
+    // PH-32: "Create task" always looks ready; an empty draft just points at the title.
+    if (!valid()) {
+      titleInput?.focus({ preventScroll: true });
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
@@ -261,7 +267,7 @@ export function NewTaskSheet(props: { onHaptic?: () => void }) {
                 <BoardSwitch label="Create more" checked={more()} onChange={setMore} />
                 <span>Create more</span>
               </div>
-              <button type="button" class="pair-primary new-task-create" disabled={!valid() || busy()} onClick={() => void submit()}>
+              <button type="button" class="pair-primary new-task-create" disabled={busy() || (desktopShell() && !valid())} onClick={() => void submit()}>
                 {busy() ? 'Creating…' : 'Create task'}
               </button>
             </div>
@@ -281,6 +287,7 @@ export function NewTaskSheet(props: { onHaptic?: () => void }) {
           rows={1}
           ref={titleInput}
           class="new-task-title"
+          autocapitalize="sentences"
           placeholder="Title (optional)"
           aria-label="Title (optional)"
           enterkeyhint="done"

@@ -458,7 +458,7 @@ export default function Board() {
                 <ArrowLeft size={20} />
               </button>
             </Show>
-            <Show when={hostId() && can('chat')}>
+            <Show when={hostId() && can('chat') && desktopShell()}>
               <button type="button" class="ghost-icon-button" aria-label="Go to a chat" onClick={() => requestChatPick({ hostId: hostId()! })}>
                 <MessagesSquare size={20} />
               </button>
@@ -667,10 +667,10 @@ export default function Board() {
               >
                 <BoardState
                   title={`No projects on ${pc()?.name ?? 'this PC'}`}
-                  detail="Add a repo's folder to start a board for it."
+                  detail={desktopShell() ? "Add a repo's folder to start a board for it." : 'Add a repo folder to start a board.'}
                   onRetry={() => setAddProjectOpen(true)}
                   retryLabel="Add project"
-                  secondary={{ label: 'Check again', run: () => void refresh() }}
+                  secondary={desktopShell() ? { label: 'Check again', run: () => void refresh() } : undefined}
                 />
               </Show>
             }
@@ -725,6 +725,10 @@ export default function Board() {
         {(anchor) => (
           <AnchoredMenu anchor={anchor()} alignEnd width={256} label="Board menu" onDismiss={() => setMenu(undefined)}>
             <MenuRow icon={<RefreshCw size={18} />} label="Refresh" onSelect={runMenu(() => void refresh())} />
+            {/* Phone (PH-32): a labelled row instead of the ambiguous header chat icon. */}
+            <Show when={!desktopShell() && hostId() && can('chat')}>
+              <MenuRow icon={<MessagesSquare size={18} />} label="Open a chat…" onSelect={runMenu(() => requestChatPick({ hostId: hostId()! }))} />
+            </Show>
             <Show when={availability()?.state === 'ok' && hostId()}>
               <MenuRow icon={<FolderPlus size={18} />} label="Add project…" onSelect={runMenu(() => setAddProjectOpen(true))} />
             </Show>

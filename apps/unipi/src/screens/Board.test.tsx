@@ -189,7 +189,10 @@ describe('Board', () => {
     fireEvent.click(screen.getByLabelText('New task in Todo'));
     const sheet = await screen.findByTestId('new-task-sheet');
     const create = within(sheet).getByRole('button', { name: 'Create task' });
-    expect(create).toBeDisabled(); // title or description required
+    // Phone (PH-32): always looks ready; an empty draft only focuses the title (title or description required).
+    expect(create).not.toBeDisabled();
+    fireEvent.click(create);
+    expect(document.activeElement).toBe(within(sheet).getByLabelText('Title (optional)'));
     fireEvent.input(within(sheet).getByLabelText('Title (optional)'), { target: { value: '  Retry banner copy ' } });
     expect(create).not.toBeDisabled();
     expect(within(sheet).getByRole('radio', { name: /Todo/ })).toHaveAttribute('aria-checked', 'true');

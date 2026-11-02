@@ -623,3 +623,18 @@
 .new-task-title { padding-top: 10px; padding-bottom: 10px; }
 .new-task-body { padding-top: 8px; padding-bottom: 8px; }
 .new-task-title:focus-visible, .new-task-body:focus-visible, .new-task-title:focus, .new-task-body:focus { outline: none; border-color: var(--color-shell); box-shadow: 0 0 0 2px rgb(240 48 24 / 28%); }
+
+/* ── Phone Board (phone spec §3.8, PH-32) ── */
+/* Status chips scroll sideways with an edge fade where pills are hidden. */
+.lane-strip[data-fade-end] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
+.lane-strip[data-fade-start] { -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px); mask-image: linear-gradient(90deg, transparent, #000 32px); }
+.lane-strip[data-fade-start][data-fade-end] { -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+html[data-shell=phone] .lane-pill { min-height: 44px; height: 44px; }
+/* Column description: two lines, then "More" expands it in place. */
+.lane-info-wrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.lane-info-wrap > .lane-info { width: 100%; }
+.lane-info[data-open] { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.lane-info-more { min-height: 44px; padding: 0; font-size: 14px; font-weight: 600; color: var(--color-text-muted); }
+html[data-shell=phone] .lane-info { font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+/* "Create task" always reads as ready (title optional). */
+html[data-shell=phone] .new-task-create:not([data-busy]) { opacity: 1; }

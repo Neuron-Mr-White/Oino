@@ -70,8 +70,30 @@ export function LaneStrip(props: { lanes: LaneDef[]; active: string; onPick: (la
       },
     ),
   );
+  // PH-32: an edge fade wherever more pills are hidden, so the strip reads as scrollable.
+  const [edges, setEdges] = createSignal<{ start: boolean; end: boolean }>({ start: false, end: false });
+  const measure = () => {
+    if (!strip) return;
+    const max = strip.scrollWidth - strip.clientWidth;
+    setEdges({ start: strip.scrollLeft > 2, end: max - strip.scrollLeft > 2 });
+  };
+  onMount(() => {
+    measure();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : undefined;
+    if (strip) ro?.observe(strip);
+    onCleanup(() => ro?.disconnect());
+  });
+  createEffect(on(() => [props.lanes.length, props.loading], () => queueMicrotask(measure)));
   return (
-    <div class="lane-strip" ref={strip} role="tablist" aria-label="Lanes">
+    <div
+      class="lane-strip"
+      ref={strip}
+      role="tablist"
+      aria-label="Lanes"
+      data-fade-start={edges().start ? '' : undefined}
+      data-fade-end={edges().end ? '' : undefined}
+      onScroll={measure}
+    >
       <For each={props.lanes}>
         {(lane) => (
           <button
@@ -246,6 +268,7 @@ function LanePage(props: {
   const tasks = createMemo(() => laneTasks(store.state.tasks, props.lane.id, ui.query(), ui.filters));
   const items = createMemo(() => laneLayout(tasks(), ui.display.chains));
   const total = () => laneCount(store.state.tasks, props.lane.id);
+  const [infoOpen, setInfoOpen] = createSignal(false);
   const info = () => LANE_INFO[props.lane.id]?.(store.state.rules) ?? '';
   const canAdd = () => props.lane.id === 'backlog' || props.lane.id === 'todo';
   const pullRef = usePull(props.onRefresh, props.setPull, props.onArmed);
@@ -294,7 +317,15 @@ function LanePage(props: {
         when={dragOn()}
         fallback={
       <div class="lane-head">
-        <p class="lane-info">{info()}</p>
+        {/* PH-32: two lines, then "More" expands the description in place. */}
+        <div class="lane-info-wrap">
+          <p class="lane-info" data-open={infoOpen() ? '' : undefined}>{info()}</p>
+          <Show when={info().length > 80}>
+            <button type="button" class="lane-info-more" aria-expanded={infoOpen()} onClick={() => setInfoOpen(!infoOpen())}>
+              {infoOpen() ? 'Less' : 'More'}
+            </button>
+          </Show>
+        </div>
         <Show when={props.lane.id === 'in_review' && total() > 0}>
           <button type="button" class="lane-quick" onClick={() => boardActions().laneAction('in_review', 'done-all')}>
             <Check size={15} /> Done all
