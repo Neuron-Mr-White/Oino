@@ -51,6 +51,7 @@ import { hapticTick } from '../../lib/haptics';
 import { useSettings } from '../../settings/context';
 import { BoardSheet } from '../board/BoardSheet';
 import { ChatPickSheet } from '../board/ChatPickSheet';
+import { copyText } from '../../lib/board/share';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { EmptyState } from '../EmptyState';
 import { TreeRowView } from './TreeRow';
@@ -183,10 +184,8 @@ export function FileTree(props: {
       case 'delete':
         return setDeleteTarget({ path: row.path, name: basename(row.path) });
       case 'copy':
-        return void navigator.clipboard?.writeText(row.path).then(
-          () => showToast('Path copied'),
-          () => showToast('Could not copy'),
-        );
+        // The Tauri clipboard first: WebKitGTK's navigator.clipboard refuses outside a user gesture.
+        return void copyText(row.path).then((ok) => showToast(ok ? `Copied ${row.path}` : 'Could not copy'));
       case 'mention':
         return mentionPath(row.path);
       case 'new-file':

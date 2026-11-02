@@ -58,7 +58,10 @@ export function Editor(props: {
   const [vimMode, setVimMode] = createSignal<string | null>(null);
   const [editAnyway, setEditAnyway] = createSignal(false);
   const vimOn = () => settings.editor.vim;
-  const forcedReadOnly = () => !!tab().asText && !editAnyway();
+  // "Edit as text" (UNI-191): a real text file opens editable; only a file the
+  // host refused as binary is shown decoded, read-only (owner5 #24).
+  const [decoded, setDecoded] = createSignal(false);
+  const forcedReadOnly = () => decoded() && !editAnyway();
   const isMarkdown = () => /\.(md|markdown|mdx)$/i.test(tab().path);
   const [preview, setPreview] = createSignal(false);
   const [previewText, setPreviewText] = createSignal('');
@@ -82,7 +85,12 @@ export function Editor(props: {
     setConflict(undefined);
     setEditAnyway(false);
     setState({ kind: 'loading' });
-    const result = await fsRead(t.hostId, t.path, undefined, t.asText);
+    let result = await fsRead(t.hostId, t.path);
+    setDecoded(false);
+    if (!result.ok && result.error.code === 'E_BINARY' && t.asText) {
+      result = await fsRead(t.hostId, t.path, undefined, true);
+      setDecoded(result.ok);
+    }
     if (!result.ok) {
       if (result.error.code === 'E_BINARY') return props.onBinary(t.path);
       setState({

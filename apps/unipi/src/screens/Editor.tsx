@@ -88,7 +88,9 @@ export default function Editor() {
   // UNI-191 "Edit as text": a target opened with asText starts read-only
   // (saving rewrites the file as text) until the user explicitly unlocks it.
   const [editAnywayUnlocked, setEditAnywayUnlocked] = createSignal(false);
-  const forcedReadOnly = () => !!target?.asText && !editAnywayUnlocked();
+  // owner5 #24: only a file the host refused as binary is shown decoded; real text opens editable.
+  const [decoded, setDecoded] = createSignal(false);
+  const forcedReadOnly = () => decoded() && !editAnywayUnlocked();
 
   let container: HTMLDivElement | undefined;
   let view: EditorView | undefined;
@@ -166,7 +168,11 @@ export default function Editor() {
       return;
     }
     setState({ kind: 'loading' });
-    const result = await fsRead(target.hostId, target.path, undefined, target.asText);
+    let result = await fsRead(target.hostId, target.path);
+    if (!result.ok && result.error.code === 'E_BINARY' && target.asText) {
+      result = await fsRead(target.hostId, target.path, undefined, true);
+      setDecoded(result.ok);
+    }
     if (!result.ok) {
       if (result.error.code === 'E_BINARY') {
         setState({ kind: 'binary' });
