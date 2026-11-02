@@ -166,14 +166,18 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
           onBack={desktop() ? undefined : () => navigate('/chat')}
           onNewChat={newChat}
         />
-        {/* §3.10: the collapsed-pane capsule — top-right of the timeline, visible while the
-            pane is closed or overlaying (a pushing pane owns the status). */}
-        <Show when={capsuleVisible(desktop(), sideShown(), mode())}>
+        {/* §3.10: desktop floats the collapsed-pane capsule in the top-right margin; on phone/narrow
+            it shares one in-flow subbar with StatusStrip so it never overlaps user bubbles (D-44). */}
+        <Show when={desktop() && capsuleVisible(desktop(), sideShown(), mode())}>
           <Capsule hostId={props.hostId} sessionId={props.sessionId} cwd={cwd() || undefined} />
         </Show>
-        {/* §3.10: on the phone the strip sits under the header (≤ 4 segments); on the desktop it is the bottom row. */}
         <Show when={!desktop()}>
-          <StatusStrip scope={`${props.hostId}/${props.sessionId ?? 'draft'}`} />
+          <div class="conv-subbar" data-testid="conv-subbar">
+            <StatusStrip scope={`${props.hostId}/${props.sessionId ?? 'draft'}`} />
+            <Show when={capsuleVisible(desktop(), sideShown(), mode())}>
+              <Capsule hostId={props.hostId} sessionId={props.sessionId} cwd={cwd() || undefined} />
+            </Show>
+          </div>
         </Show>
         <div class="conv-body" data-testid="conv-body">
           {props.body ?? <Conversation hostId={props.hostId} sessionId={props.sessionId} cwd={props.cwd} />}

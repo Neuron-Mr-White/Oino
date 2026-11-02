@@ -16,7 +16,7 @@ import type { ToolRun } from '../../../lib/session/turns';
 import type { TimelineCtx } from '../context';
 import { TOOL_ICON } from './toolIcons';
 import { ToolBody } from './ToolBody';
-import { imagePathIn, PathThumb } from '../../chat/ImageChip';
+import { ImageChipRow, imagePathIn, PathThumb } from '../../chat/ImageChip';
 import { toolImages } from './toolData';
 
 function fallbackTarget(args: Record<string, unknown>, cwd?: string): string {
@@ -106,7 +106,10 @@ export function ToolRow(props: { tool: ToolRun; ctx: TimelineCtx; itemKey: strin
         {/* Z-37: the chevron shows on hover (always on phone / when open) */}
         <ChevronRight size={15} class="proc-chev" data-open={open() ? '' : undefined} />
       </button>
-      <Show when={t().state !== 'running' && t().state !== 'preparing' && /browser|screenshot|snap/i.test(t().name) && toolImages(props.ctx, t()).length === 0 ? imagePathIn(t().output) : undefined} keyed>
+      <Show when={!open() && !busy() && toolImages(props.ctx, t()).length > 0}>
+        <ImageChipRow chat={props.ctx.refs} images={toolImages(props.ctx, t())} />
+      </Show>
+      <Show when={!busy() && /browser|screenshot|snap/i.test(t().name) && toolImages(props.ctx, t()).length === 0 ? imagePathIn(t().output) : undefined} keyed>
         {(path) => <PathThumb chat={props.ctx.refs} path={path} />}
       </Show>
       <Show when={body.mounted()}>

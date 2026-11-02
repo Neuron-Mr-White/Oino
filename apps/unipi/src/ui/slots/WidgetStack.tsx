@@ -9,9 +9,10 @@
  * (§6.4 per-slot cap).
  */
 import { createSignal, For, Show } from 'solid-js';
-import { ChevronDown, ChevronUp } from 'lucide-solid';
+import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-solid';
 import { EntryView } from '../NodeView';
-import { liveTrayEntries } from './trayHint';
+import { openSessionModal } from '../../components/session/modalTarget';
+import { liveTrayEntries, trayButtonText } from './trayHint';
 import type { UiEntry } from '../types';
 import type { UiTarget } from '../actions';
 
@@ -26,14 +27,42 @@ export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone
     <Show when={entries().length > 0}>
       <div class="ui-widgets" data-count={entries().length} data-testid="ui-widgets">
         <For each={shown()}>
-          {(entry) => (
-            <div class="ui-widget" data-entry={entry.id}>
-              <Show when={entry.title}>
-                <p class="ui-widget-title">{entry.title}</p>
-              </Show>
-              <EntryView entry={entry} target={props.target} mode="auto" />
-            </div>
-          )}
+          {(entry) => {
+            const trayLabel = () => (props.target.sessionId ? trayButtonText(entry) : undefined);
+            return (
+              <div class="ui-widget" data-entry={entry.id}>
+                <Show
+                  when={typeof trayLabel() === 'string' ? trayLabel() : undefined}
+                  fallback={
+                    <>
+                      <Show when={entry.title}>
+                        <p class="ui-widget-title">{entry.title}</p>
+                      </Show>
+                      <EntryView entry={entry} target={props.target} mode="auto" />
+                    </>
+                  }
+                >
+                  {(label) => (
+                    <button
+                      type="button"
+                      class="ui-tray-btn"
+                      onClick={() =>
+                        props.target.sessionId &&
+                        openSessionModal({ hostId: props.target.hostId, sessionId: props.target.sessionId, tab: 'running' })
+                      }
+                      data-testid="work-tray-button"
+                    >
+                      <span class="ui-tray-dot" aria-hidden="true" />
+                      <span class="ui-tray-btn-label">{label()}</span>
+                      <span class="ui-tray-btn-open">
+                        Open <ChevronRight size={13} />
+                      </span>
+                    </button>
+                  )}
+                </Show>
+              </div>
+            );
+          }}
         </For>
         <Show when={over() > 0}>
           <button type="button" class="ui-widgets-more" aria-expanded={expanded()} onClick={() => setExpanded((v) => !v)} data-testid="ui-widgets-more">

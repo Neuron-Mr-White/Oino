@@ -17,7 +17,9 @@
  */
 import type { PathStatItem } from '../chat/store';
 import type { RefChat } from '../chat/pathStat';
+import { blobTransport } from '../blob';
 import { hostClient } from '../host/factory';
+import { ownedObjectUrl } from '../media/previewerState';
 import { resolvePathToken } from '../media/pathTokens';
 import type { SessionHandle } from '../session/store';
 
@@ -50,9 +52,12 @@ export function sessionRefChat(handle: SessionHandle, cwd: () => string | undefi
       return items.filter((i): i is PathStatItem => !!i);
     },
     async media(mediaRef, mime) {
-      const reply = await handle.cmd<{ mime?: string; dataUrl?: string }>({ type: 'media', mediaRef });
-      if (!reply?.dataUrl) throw new Error('No image data');
-      return { mime: reply.mime ?? mime, dataUrl: reply.dataUrl };
+      const reply = await handle.cmd<{ mime?: string; dataUrl?: string }>({ type: 'media', mediaRef }).catch(() => undefined);
+      if (reply?.dataUrl) return { mime: reply.mime ?? mime, dataUrl: reply.dataUrl };
+      // F-08: screenshots larger than one frame answer null on `media` and are served via `blob_get{sha256}` (sessions/stream.rs).
+      const got = await blobTransport().getBytes(handle.hostId, { sha256: mediaRef });
+      const resolvedMime = got.mime || mime || 'image/png';
+      return { mime: resolvedMime, dataUrl: ownedObjectUrl(new Blob([got.bytes as BlobPart], { type: resolvedMime })) };
     },
     async shareFile(path) {
       await client().request('file_share', { path });

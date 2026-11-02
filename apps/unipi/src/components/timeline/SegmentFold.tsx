@@ -18,7 +18,9 @@ import { createPresence } from '../../lib/motion';
 import { expansionOpen, toggleExpansion } from '../../lib/timeline/expansion';
 import { workingMessageOf } from '../../ui/slots/effects';
 import type { Segment } from '../../lib/session/turns';
+import { ImageChipRow } from '../chat/ImageChip';
 import { TOOL_ICON } from './tools/toolIcons';
+import { toolImages } from './tools/toolData';
 import { WorkNodes } from './tools/WorkItem';
 import type { TimelineCtx } from './context';
 
@@ -49,6 +51,9 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
   };
   const anyError = () => props.segment.work.some((w) => (w.kind === 'tool' && w.tool.state === 'error') || w.kind === 'error');
   const fullTitle = () => (fold().detail ? `${label()} · ${fold().detail}` : label());
+  // F-08: surface tool result images (screenshots, generated images) even while the work fold is closed.
+  const foldImages = () =>
+    props.segment.work.flatMap((w) => (w.kind === 'tool' && w.tool.state !== 'running' && w.tool.state !== 'preparing' ? toolImages(props.ctx, w.tool) : []));
   // Z-91: closing the fold fades the body out (160 ms) instead of dropping it.
   const body = createPresence(open);
   return (
@@ -71,6 +76,9 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
           <ChevronRight size={15} class="proc-chev" />
         </Show>
       </button>
+      <Show when={!open() && foldImages().length > 0}>
+        <ImageChipRow chat={props.ctx.refs} images={foldImages()} />
+      </Show>
       <Show when={body.mounted()}>
         <div class="proc-body tl-fold-body" data-leaving={body.leaving() ? '' : undefined}>
           <WorkNodes nodes={props.segment.nodes} ctx={props.ctx} live={running()} />

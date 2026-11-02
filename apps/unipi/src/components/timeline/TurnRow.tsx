@@ -169,6 +169,9 @@ function SegmentView(props: {
           />
         )}
       </Show>
+      <Show when={seg().after?.length}>
+        <WorkNodes nodes={seg().after!} ctx={props.ctx} live={false} />
+      </Show>
     </div>
   );
 }

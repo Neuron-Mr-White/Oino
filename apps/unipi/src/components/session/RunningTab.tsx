@@ -91,6 +91,28 @@ export function trayAction(s: SessionHandle, tab: TrayTab, actionId: string | un
     .catch(() => refresh());
 }
 
+/**
+ * G-08: strips TUI-only non-actionable keyboard legends inside the modal's work
+ * tray and disables `Stop all` when nothing in the tab is running.
+ */
+export function sanitizeTrayBody(node: unknown, hasRunning: boolean): unknown {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return node;
+  const o = node as Record<string, unknown>;
+  if (o.t === 'KeyHints') {
+    const hints = Array.isArray(o.hints) ? o.hints.filter((h) => h && typeof h === 'object' && !!(h as { action?: unknown }).action) : [];
+    return hints.length ? { ...o, hints } : null;
+  }
+  if (o.t === 'Button' && !hasRunning && (o.onPress === 'stopall' || o.action === 'stopall' || o.label === 'Stop all')) {
+    const { tone: _tone, variant: _variant, ...rest } = o;
+    return { ...rest, disabled: true };
+  }
+  if (Array.isArray(o.children)) {
+    const children = o.children.map((c) => sanitizeTrayBody(c, hasRunning)).filter((c) => c !== null);
+    return { ...o, children };
+  }
+  return o;
+}
+
 /** The entry-actions facade that routes tree actions to the tab's owner. */
 function trayEntryActions(s: SessionHandle, tab: TrayTab, refresh: () => void): EntryActions {
   return {
@@ -224,7 +246,7 @@ export function RunningTab(props: { s: SessionHandle }) {
                 </span>
               </div>
               <EntryContext.Provider value={trayEntryActions(s(), tab, refetch)}>
-                <NodeView node={tab.body as never} path={[tab.id]} mode="auto" />
+                <NodeView node={sanitizeTrayBody(tab.body, tab.counts.running > 0) as never} path={[tab.id]} mode="auto" />
               </EntryContext.Provider>
             </div>
           )}

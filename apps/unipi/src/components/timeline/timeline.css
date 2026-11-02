@@ -10,13 +10,16 @@
   position: relative;
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
 }
-.tl-content { display: flex; flex-direction: column; min-height: 100%; padding: 14px 0 20px; box-sizing: border-box; }
+/* F-12: `flex: 1 0 auto` (never `min-height: 100%`) so `.tl-content + .tl-dock` equals `clientHeight` when a chat is short — zero scroll/cutoff. */
+.tl-content { display: flex; flex-direction: column; flex: 1 0 auto; padding: 14px 0 20px; box-sizing: border-box; }
 .tl-virtual { position: relative; width: 100%; }
 .tl-vrow { will-change: transform; }
 
@@ -91,6 +94,7 @@ html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 40px; }
 
 /* ── bottom dock (Z-66; regions arrive in A9–A12) ─────────────────── */
 .tl-dock {
+  flex: none;
   position: sticky;
   bottom: 0;
   z-index: 6;

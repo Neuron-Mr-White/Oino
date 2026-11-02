@@ -295,7 +295,7 @@ export function McpBody(props: { tool: ToolRun; ctx?: TimelineCtx }) {
   );
 }
 
-/** The generic In/Out fallback, with lazy full output when truncated. */
+/** The generic In/Out fallback, with inline images (F-08) and lazy full output when truncated. */
 export function IoBody(props: { tool: ToolRun; ctx?: TimelineCtx }) {
   const t = () => props.tool;
   const fullOut = props.ctx ? useFullOutput(props.ctx, t) : undefined;
@@ -305,8 +305,12 @@ export function IoBody(props: { tool: ToolRun; ctx?: TimelineCtx }) {
   const needsFullFetch = () => !!fullOut && fullOut.full() === undefined && !!t().resultId && (fullOut.snapshotTruncated() || base().length > OUT_IO);
   const trimmed = () => (!all() && out().length > OUT_IO) || needsFullFetch();
   const hasArgs = () => Object.keys(t().args).length > 0;
+  const images = () => (props.ctx ? toolImages(props.ctx, t()) : []);
   return (
     <div class="tool-io-wrap">
+      <Show when={props.ctx && images().length > 0}>
+        <ImageChipRow chat={props.ctx!.refs} images={images()} />
+      </Show>
       <div class="tool-io">
         <Show when={hasArgs()}>
           <div class="tool-io-sec">

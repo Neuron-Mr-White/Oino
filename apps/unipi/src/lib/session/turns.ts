@@ -23,8 +23,24 @@
  * tree navigation (an `entriesRev` change), reusing unchanged turn objects.
  */
 import { STEP_TYPES, formatDuration, isHiddenCommandText, textOf, toolCategory, type Part as ModelPart, type ToolCategory } from '../chat/model';
+import { humanProviderError } from '../model/humanError';
 import type { AgentMessage, LiveTool, RunInfo, SessionEntry, Streaming } from './types';
 import { branchOf } from './reducer';
+
+/** Joins separate text blocks of a toolResult with `\n` when needed so adjacent blocks never glue (`…pngSaved: /…`, F-08). */
+function toolOutputText(content: string | ModelPart[] | undefined): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  let out = '';
+  for (const p of content) {
+    if (p.type !== 'text' || typeof (p as { text?: unknown }).text !== 'string') continue;
+    const chunk = (p as { text: string }).text;
+    if (!chunk) continue;
+    if (out && !out.endsWith('\n') && !chunk.startsWith('\n')) out += '\n';
+    out += chunk;
+  }
+  return out;
+}
 
 /** A tool call joined with its result or live execution (same shape as `chat/model` `ToolRun`). */
 export type ToolRun = {
@@ -76,6 +92,8 @@ export type Segment = {
   steer?: SessionEntry;
   work: WorkItem[];
   nodes: WorkNode[];
+  /** Cards appended after the assistant's final answer (`model_change`, `thinking_level_change`, P3). */
+  after?: WorkNode[];
   answer?: Extract<WorkItem, { kind: 'prose' }>;
   /** Absent when there is no work to fold. */
   fold?: Fold;
@@ -331,7 +349,7 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         const tool: ToolRun = { id, name: String(call.name ?? ''), args: parseArgs(call.arguments), state: 'running' };
         if (result) {
           tool.state = result.message.isError ? 'error' : 'ok';
-          tool.output = textOf(result.message.content as string | ModelPart[] | undefined);
+          tool.output = toolOutputText(result.message.content as string | ModelPart[] | undefined);
           if (result.message.details !== undefined) tool.details = result.message.details;
           tool.resultId = result.id;
           const det = result.message.details as { durationMs?: unknown; duration_ms?: unknown } | undefined;
@@ -396,7 +414,7 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         if (stopped) segMeta[seg.index]!.stopped = true;
         else if (m.stopReason === 'error') {
           segMeta[seg.index]!.error = true;
-          if (m.errorMessage) seg.work.push({ kind: 'error', key: `${e.id}-err`, text: m.errorMessage });
+          if (m.errorMessage) seg.work.push({ kind: 'error', key: `${e.id}-err`, text: humanProviderError(m.errorMessage, typeof m.provider === 'string' ? m.provider : undefined, { settingsHint: true }) });
         }
       } else if (m.role === 'bashExecution') {
         seg.work.push({ kind: 'card', key: e.id, entry: e });
@@ -449,7 +467,9 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
   if (model) turn.model = model;
   if (lastAssistant) {
     turn.stopped = stoppedOf(lastAssistant);
-    if (!turn.stopped && lastAssistant.stopReason === 'error' && lastAssistant.errorMessage) turn.error = lastAssistant.errorMessage;
+    if (!turn.stopped && lastAssistant.stopReason === 'error' && lastAssistant.errorMessage) {
+      turn.error = humanProviderError(lastAssistant.errorMessage, typeof lastAssistant.provider === 'string' ? lastAssistant.provider : undefined, { settingsHint: true });
+    }
   }
   for (const s of segments) finishSegment(s, segMeta[s.index]!, running && s === seg);
   return turn;
@@ -463,7 +483,17 @@ function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number;
     const item = s.work[i]!;
     if (item.kind === 'prose') {
       s.answer = item;
-      s.work.splice(i, 1);
+      const tail = s.work.slice(i + 1);
+      const afterCards = tail.filter(
+        (t) => t.kind === 'card' && (t.entry.type === 'model_change' || t.entry.type === 'thinking_level_change' || t.entry.type === 'branch_summary'),
+      );
+      if (afterCards.length) {
+        const moved = new Set(afterCards);
+        s.after = groupWork(afterCards);
+        s.work = [...s.work.slice(0, i), ...tail.filter((t) => !moved.has(t))];
+      } else {
+        s.work.splice(i, 1);
+      }
       break;
     }
     if (item.kind !== 'card') break;

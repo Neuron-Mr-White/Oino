@@ -6,7 +6,7 @@
 /* The pane's scroll column: Git section grows, sections stack below. */
 .status-pane-scroll { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .status-pane .status-pane-scroll .git-section,
-.status-pane-layer .status-pane-scroll .git-section { flex: 1 0 340px; min-height: 340px; }
+.status-pane-scroll .git-section { flex: 1 0 340px; min-height: 340px; }
 .status-pane-scroll .status-sections { flex: 0 0 auto; }
 
 .status-sections { display: flex; flex-direction: column; gap: 10px; padding: 10px var(--page-gutter) 18px; }
@@ -96,6 +96,7 @@ button.status-empty { padding: 0; border: 0; background: none; text-align: left;
 .cap-pulse { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-claw); animation: status-pulse 1.4s ease-in-out infinite; }
 
 html[data-shell=phone] .status-capsule { top: 60px; right: 10px; }
+html[data-shell=phone] .status-capsule-btn { min-height: 40px; }
 html[data-shell=phone] .cap-lh-label { display: none; }
 
 /* A banner (conn loss, taken over, host crash) fills the row under the
