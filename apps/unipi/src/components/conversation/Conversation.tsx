@@ -28,7 +28,8 @@ import { HeaderBand } from '../../ui/slots/HeaderBand';
 import { PhonePaneLayer } from '../../ui/slots/paneTabs';
 import { SlotModal } from '../../ui/slots/SlotModal';
 import { WidgetStack } from '../../ui/slots/WidgetStack';
-import { BG_TASKS_TOPIC, SUBAGENTS_LIST_TOPIC, topicRunningTrayLabel } from '../../lib/status/running';
+import { BG_TASKS_TOPIC, liveAgentsOf, runningTrayTabsOf, SUBAGENTS_LIST_TOPIC, topicRunningTrayLabel } from '../../lib/status/running';
+import { fetchRunning } from '../session/RunningTab';
 import { installUiEffects } from '../../ui/slots/effects';
 import { reservedGate } from '../../ui/slots/reserved';
 import { DraftView } from '../draft/DraftView';
@@ -223,14 +224,44 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
   // Suppress the TUI-only ASCII Unicrab startup splash (`unipi.info-screen/setHeader:splash`) —
   // the GUI already renders native Unicrab/EmptyChat and the 14-line ASCII banner causes a 280 px jump on open.
   const headerEntries = () => (registry()?.entriesFor('header')() ?? []).filter((e) => e.id !== 'unipi.info-screen/setHeader:splash');
+  const [verifiedTray, setVerifiedTray] = createSignal<{ key: string; seq: number; label: string | null } | undefined>();
   createEffect(() => {
     const s = session();
     if (s && props.sessionId) s.subscribeTopics([BG_TASKS_TOPIC, SUBAGENTS_LIST_TOPIC]);
   });
   const trayFallback = () => {
     const s = session();
-    return s && props.sessionId ? topicRunningTrayLabel(s.state.topics) : undefined;
+    if (!s || !props.sessionId) return undefined;
+    const raw = topicRunningTrayLabel(s.state.topics);
+    const ver = verifiedTray();
+    if (ver && ver.key === s.key && ver.seq === s.state.seq) return ver.label ?? undefined;
+    return raw;
   };
+  // G-08: while topics report running work, verify against `fetchRunning` every 2 s so the button clears promptly even when a silent task exits without re-publishing the topic.
+  createEffect(() => {
+    const s = session();
+    const active = trayFallback();
+    if (!s || !props.sessionId || !active || s.state.conn !== 'live') return;
+    let cancelled = false;
+    const check = () => {
+      const seqAt = s.state.seq;
+      void fetchRunning(s)
+        .then((res) => {
+          if (cancelled || s.state.seq !== seqAt) return;
+          const parts: string[] = [];
+          for (const tab of runningTrayTabsOf(res.tabs)) parts.push(`${tab.label} ${tab.counts.running} running`);
+          const sa = liveAgentsOf(res.agents).length;
+          if (sa > 0 && !res.tabs.some((t) => /subagent/i.test(t.label) && t.counts.running > 0)) parts.push(`Subagents ${sa} running`);
+          setVerifiedTray({ key: s.key, seq: seqAt, label: parts.length ? parts.join(' · ') : null });
+        })
+        .catch(() => undefined);
+    };
+    const timer = setInterval(check, 2000);
+    onCleanup(() => {
+      cancelled = true;
+      clearInterval(timer);
+    });
+  });
   installConversationSlots({ hostId: props.hostId, sessionId: props.sessionId ?? '', cwd, registry, session });
 
   return (
