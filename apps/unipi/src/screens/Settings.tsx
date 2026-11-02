@@ -164,18 +164,19 @@ export default function Settings() {
   });
   createEffect(() => rememberPlace({ section: active(), namespace: namespace() }));
   // Track the scroll as it happens (at unmount the page may already be detached).
+  // A section switch resets the scroll before the page settles: ignore scroll
+  // events for a moment after the key changes, so the old offset is never written under the new key.
+  let settledAt = 0;
+  createEffect(() => {
+    scrollKey();
+    settledAt = performance.now() + 250;
+  });
   onMount(() => {
-    let lastKey = scrollKey();
     const onScroll = (event: Event) => {
       const sc = settingsScroller(pageEl);
       if (!sc || (event.target !== sc && !(event.target === document && sc === document.scrollingElement))) return;
-      // A section switch resets the scroll before the key changes: never write it under the new key early.
-      const key = scrollKey();
-      if (key !== lastKey) {
-        lastKey = key;
-        return;
-      }
-      rememberScroll(key, sc.scrollTop);
+      if (performance.now() < settledAt) return;
+      rememberScroll(scrollKey(), sc.scrollTop);
     };
     window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     onCleanup(() => window.removeEventListener('scroll', onScroll, { capture: true }));
