@@ -30,7 +30,7 @@ describe('<Requires>', () => {
     setPlatformOverride('web');
     render(() => <Requires cap="terminal"><p>t</p></Requires>);
     const link = screen.getByTestId('get-app-link');
-    expect(link).toHaveAttribute('href', 'https://unipi.nrn.one');
+    expect(link).toHaveAttribute('href', 'https://oino.dev/download');
     expect(link).toHaveAttribute('target', '_blank');
     expect(screen.getByText('Open the board')).toHaveAttribute('href', '#/board');
   });

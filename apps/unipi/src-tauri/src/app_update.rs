@@ -1,6 +1,6 @@
 //! Desktop app self-update (UNI-263), desktop builds only.
 //!
-//! The feed is `https://unipi.nrn.one/desktop/latest.json` in the Tauri v2
+//! The feed is `https://oino.dev/app/desktop/latest.json` in the Tauri v2
 //! updater shape (`{version, notes, pub_date, platforms{"linux-x86_64":
 //! {url, signature}, …}}`, written by `scripts/release.sh`). Artifacts are
 //! signed with the minisign key in `~/Projects/Neuron/credentials/
@@ -23,9 +23,9 @@ use tauri_plugin_updater::UpdaterExt;
 use unipi_proto::{AppErrorCode, AppErrorDto};
 
 #[allow(dead_code)] // the endpoint itself is in tauri.conf.json (asserted by a test)
-pub const FEED_URL: &str = "https://unipi.nrn.one/desktop/latest.json";
+pub const FEED_URL: &str = "https://oino.dev/app/desktop/latest.json";
 pub const FEED_ENV: &str = "UNIPI_DESKTOP_UPDATE_FEED";
-pub const DOWNLOAD_PAGE: &str = "https://unipi.nrn.one/";
+pub const DOWNLOAD_PAGE: &str = "https://oino.dev/download/";
 
 /// How this copy was installed, i.e. whether it can update itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

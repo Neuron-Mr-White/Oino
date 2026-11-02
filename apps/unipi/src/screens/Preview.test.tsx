@@ -72,7 +72,7 @@ describe('Preview page (UNI-213)', () => {
     expect(await screen.findByTestId('preview-needs-app')).toBeTruthy();
     expect(screen.getByText('Not available in the web version')).toBeTruthy();
     // Same actions as every other web notice: get the app, or go to the board.
-    expect(screen.getByTestId('get-app-link').getAttribute('href')).toBe('https://unipi.nrn.one');
+    expect(screen.getByTestId('get-app-link').getAttribute('href')).toBe('https://oino.dev/download');
     expect(screen.getByText('Open the board').getAttribute('href')).toBe('#/board');
     expect(vi.mocked(call).mock.calls.some(([cmd]) => cmd === 'ports_list')).toBe(false);
   });

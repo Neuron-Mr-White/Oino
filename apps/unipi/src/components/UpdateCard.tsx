@@ -96,7 +96,7 @@ function ApkBody() {
             </Switch>
           </span>
           <span class="block text-xs text-text-dim">
-            <Show when={cur} fallback="Get the APK from unipi.nrn.one">
+            <Show when={cur} fallback="Get the APK from oino.dev/download">
               Installed: {cur!.versionName} ({cur!.versionCode})
             </Show>
           </span>
@@ -224,7 +224,7 @@ function DesktopBody() {
         <span class="flex-1 min-w-0">
           <span class="block text-sm">{desktopHeadline(s())}</span>
           <span class="block text-xs text-text-dim">
-            <Show when={infoOf(s())} fallback="UniPi checks unipi.nrn.one on start and every few hours, and asks before updating">
+            <Show when={infoOf(s())} fallback="UniPi Oino checks oino.dev on start and every few hours, and asks before updating">
               Installed: {infoOf(s())!.current}
               {infoOf(s())!.kind === 'manual' ? ' · installed from a package: updates are downloaded by hand' : ''}
             </Show>
@@ -327,7 +327,7 @@ export function DesktopUpdatePrompt() {
       <p class="preview-muted" style={{ margin: '0 0 8px' }}>
         <Show
           when={infoOf(s())?.kind === 'in_app'}
-          fallback={<>This copy was installed from a package, so it can't replace itself. Download the new version from unipi.nrn.one and install it the same way.</>}
+          fallback={<>This copy was installed from a package, so it can't replace itself. Download the new version from oino.dev/download and install it the same way.</>}
         >
           You have {infoOf(s())?.current}. UniPi downloads the new version, checks its signature, installs it and restarts. Open chats and terminals reconnect after the restart.
         </Show>

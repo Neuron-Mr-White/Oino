@@ -132,7 +132,7 @@ pub fn disable_safe_area_content_inset(wkwebview: *mut c_void) {
 
 /// UNI-263: open `url` in Safari (`[UIApplication.sharedApplication
 /// openURL:options:completionHandler:]`). Main thread only. Used for the
-/// "new version — open unipi.nrn.one/ios" notice and other web links.
+/// "new version — open oino.dev/download" notice and other web links.
 pub fn open_in_safari(url: &str) -> bool {
     let Ok(c_url) = std::ffi::CString::new(url) else {
         return false;

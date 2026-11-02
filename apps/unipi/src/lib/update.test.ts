@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { isNewer, newerVersion, parseFeed } from './update';
 
-const good = { app: { version: '0.2.0', build: 2003, url: 'https://unipi.nrn.one/releases/app/unipi-0.2.0-2003.apk', sha256: 'a'.repeat(64), size: 10 } };
+const good = { app: { version: '0.2.0', build: 2003, url: 'https://oino.dev/releases/app/unipi-0.2.0-2003.apk', sha256: 'a'.repeat(64), size: 10 } };
 
 describe('update feed', () => {
-  it('accepts a well-formed feed from unipi.nrn.one only', () => {
+  it('accepts a well-formed feed from oino.dev only', () => {
     expect(parseFeed(good)?.app?.build).toBe(2003);
     expect(parseFeed({ app: { ...good.app, url: 'https://evil.example/x.apk' } })).toBeNull();
     expect(parseFeed({ app: { ...good.app, sha256: 'nothex' } })).toBeNull();
@@ -21,15 +21,15 @@ describe('update feed', () => {
   it('parses the 0.4.4+ feed (desktop, ios, more host platforms) the same way', () => {
     const sha = 'c'.repeat(64);
     const feed = {
-      app: { ...good.app, ios: { version: '0.4.4', url: 'https://unipi.nrn.one/releases/ios/0.4.4/UniPi-0.4.4.ipa', page: 'https://unipi.nrn.one/ios', size: 9 } },
-      host: { version: '0.4.4', files: { 'linux-x64': { url: 'https://unipi.nrn.one/x', sha256: sha }, 'darwin-arm64': { url: 'https://unipi.nrn.one/y', sha256: sha }, 'windows-x64': { url: 'https://unipi.nrn.one/z.exe', sha256: sha } } },
-      desktop: { version: '0.4.4', platforms: { 'linux-x86_64': { url: 'https://unipi.nrn.one/a.AppImage', signature: 'sig' } } },
-      downloads: { android: 'https://unipi.nrn.one/download/android' },
-      install: 'curl -fsSL https://unipi.nrn.one/install.sh | sh',
+      app: { ...good.app, ios: { version: '0.4.4', url: 'https://oino.dev/releases/ios/0.4.4/UniPi-0.4.4.ipa', page: 'https://oino.dev/ios', size: 9 } },
+      host: { version: '0.4.4', files: { 'linux-x64': { url: 'https://oino.dev/x', sha256: sha }, 'darwin-arm64': { url: 'https://oino.dev/y', sha256: sha }, 'windows-x64': { url: 'https://oino.dev/z.exe', sha256: sha } } },
+      desktop: { version: '0.4.4', platforms: { 'linux-x86_64': { url: 'https://oino.dev/a.AppImage', signature: 'sig' } } },
+      downloads: { android: 'https://oino.dev/download/android' },
+      install: 'curl -fsSL https://oino.dev/install.sh | sh',
     };
     const parsed = parseFeed(feed);
     expect(parsed?.app?.build).toBe(2003);
-    expect(parsed?.ios?.page).toBe('https://unipi.nrn.one/ios');
+    expect(parsed?.ios?.page).toBe('https://oino.dev/ios');
     expect(parseFeed({ app: { ...good.app, ios: { ...feed.app.ios, page: 'https://evil.example/ios' } } })?.ios).toBeUndefined();
     expect(parseFeed({ app: { ...good.app, ios: { ...feed.app.ios, version: 'x' } } })?.app).toBeTruthy();
   });

@@ -82,7 +82,7 @@ class MainActivity : TauriActivity() {
     // users expect the keyboard-style tick. Follows the system
     // touch-feedback setting; no VIBRATE permission needed.
     webView.addJavascriptInterface(HapticsBridge(webView), "UniPiHaptics")
-    // In-app updates from unipi.nrn.one (UpdateBridge.kt).
+    // In-app updates from oino.dev (UpdateBridge.kt).
     webView.addJavascriptInterface(UpdateBridge(this, webView), "UniPiUpdate")
     // UNI-161: local notifications + UnifiedPush registration (NotificationBridge.kt).
     webView.addJavascriptInterface(NotificationBridge(this, webView), "UniPiNotify")

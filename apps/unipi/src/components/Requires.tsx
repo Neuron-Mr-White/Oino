@@ -19,7 +19,7 @@ import { OfflineState } from './EmptyState';
 import './Requires.css';
 
 /** Where to get the app (the web notice links here). */
-export const APP_SITE = 'https://unipi.nrn.one';
+export const APP_SITE = 'https://oino.dev/download';
 
 export function Requires(props: {
   cap: Capability | Capability[];

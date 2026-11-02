@@ -1,6 +1,6 @@
 /**
  * Desktop app self-update (UNI-263). The core (src-tauri app_update.rs, the
- * Tauri updater plugin) reads https://unipi.nrn.one/desktop/latest.json and
+ * Tauri updater plugin) reads https://oino.dev/app/desktop/latest.json and
  * verifies the download's signature; this module decides *when* to ask:
  *
  * - checks a few seconds after start and every RECHECK_MS (plus Settings →

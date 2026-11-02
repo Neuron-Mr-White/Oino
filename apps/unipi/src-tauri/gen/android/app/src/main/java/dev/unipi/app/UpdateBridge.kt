@@ -16,13 +16,13 @@ import java.security.MessageDigest
 
 /**
  * In-app updates (window.UniPiUpdate). The page reads the feed
- * (https://unipi.nrn.one/latest.json) and compares builds; this side
+ * (https://oino.dev/app/android/latest.json) and compares builds; this side
  * reports the installed build, downloads the APK (allow-listed host,
  * SHA-256 checked) and hands it to the system installer. Events go back
  * through window.__unipiUpdateEvent({ kind, ... }).
  */
 class UpdateBridge(private val activity: Activity, private val view: WebView) {
-  private val allowedHosts = setOf("unipi.nrn.one")
+  private val allowedHosts = setOf("oino.dev")
   @Volatile private var busy = false
   @Volatile private var ready: File? = null
 

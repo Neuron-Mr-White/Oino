@@ -7,13 +7,13 @@
  *
  * iOS (UNI-263): the ad hoc build can't update itself. The feed's `app.ios`
  * block says which version is out; the app only shows "open
- * unipi.nrn.one/ios on this iPhone" (`iosUpdate`).
+ * oino.dev/download on this iPhone" (`iosUpdate`).
  */
 import { createSignal } from 'solid-js';
 import { invoke } from '@tauri-apps/api/core';
 import { platform } from './platform';
 
-export const FEED_URL = 'https://unipi.nrn.one/latest.json';
+export const FEED_URL = 'https://oino.dev/app/android/latest.json';
 /** Check again after this long (also on app resume). */
 const RECHECK_MS = 6 * 60 * 60 * 1000;
 
@@ -52,7 +52,7 @@ export function installed(): Installed | null {
   }
 }
 
-const OURS = /^https:\/\/unipi\.nrn\.one\//;
+const OURS = /^https:\/\/oino\.dev\//;
 
 /** `app.ios` (UNI-263), or undefined when absent/malformed. */
 export function parseIos(app: Record<string, unknown> | undefined): IosRelease | undefined {
@@ -81,7 +81,7 @@ export function parseFeed(value: unknown): Feed | null {
     typeof app.version === 'string' &&
     Number.isInteger(app.build) &&
     typeof app.url === 'string' &&
-    /^https:\/\/unipi\.nrn\.one\//.test(app.url) &&
+    /^https:\/\/oino\.dev\//.test(app.url) &&
     typeof app.sha256 === 'string' &&
     /^[0-9a-f]{64}$/i.test(app.sha256);
   if (!ok) return ios ? { host: (value as Feed).host, ios } : null;
