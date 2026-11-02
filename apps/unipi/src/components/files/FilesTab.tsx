@@ -7,12 +7,11 @@
  * (phone). Registered as the `files` kind's view below — one line, per
  * `lib/panes/kinds.ts`.
  */
-import { createEffect, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createResource, createSignal, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { ArrowLeft } from 'lucide-solid';
 import { setEditorTarget, switchEditorTarget, getEditorTarget, type EditorTarget } from '../../lib/editorTarget';
 import { desktopShell } from '../../lib/layout';
-import { consumeFilesTarget, peekFilesTarget } from '../../lib/filesTarget';
+import { consumeFilesTarget } from '../../lib/filesTarget';
 import { fsRoots } from '../../lib/fs';
 import { openPreviewer } from '../../lib/media/previewerState';
 import type { PaneScope, PaneView } from '../../lib/panes';
@@ -22,12 +21,10 @@ import { ResizeHandle } from '../shell/ResizeHandle';
 import { NoHostState } from '../EmptyState';
 import { setAddHostOpen } from '../Pairing';
 import { useHostsOptional } from '../../hosts/context';
-import { LOCAL_HOST } from '../../lib/host/client';
 import { EditorArea } from './EditorArea';
 import { FileTree } from './FileTree';
 import { setPaneComponent, type PaneTabProps } from '../../lib/panes/kinds';
-import { resumeChatAfterTerminal } from '../../lib/session/open';
-import { pushBack } from '../../lib/back';
+import { PhoneFiles } from './PhoneFiles';
 import './files.css';
 
 const TREE_W_KEY = 'unipi.files.treeW';
@@ -136,45 +133,10 @@ export function FilesTab(props: PaneTabProps) {
 setPaneComponent('files', FilesTab);
 
 /**
- * The phone `/files` route (§3.9: a side-pane tab is a full-screen layer
- * there): the same tree, full-bleed, on the phone's selected host, in the
- * unipi detail chrome (56 px header with Back, Android Back closes it) so
- * the layer can be left the same way the editor returns to it. Reached from
- * the chat ⋯ "Panes" group (WP-A29) and file refs; the bottom-nav Files item
- * is gone (Z-101: side-pane tab only).
+ * The phone `/files` and `/files/edit` routes (phone spec §3.11): the Files
+ * tab — Places, folders as pushed pages, the viewer as a workspace layer
+ * above (PH-02, PH-24). The desktop keeps the side-pane tab above.
  */
 export function FilesLayer() {
-  const hosts = useHostsOptional();
-  const navigate = useNavigate();
-  // A "Files here"/Panes-menu target names its host (a paired PC's chat):
-  // honour it instead of the sidebar selection. Captured once — FilesTab
-  // consumes the target on mount.
-  const targetHost = peekFilesTarget()?.hostId;
-  const hostId = () => targetHost ?? hosts?.selectedId() ?? LOCAL_HOST;
-  const close = () => {
-    if (resumeChatAfterTerminal()) return;
-    if (window.history.length > 1) navigate(-1);
-    else navigate('/');
-  };
-  // Back closes the layer; the pop rides the cleanup or a stale handler
-  // swallows a Back after `/files` is left.
-  onMount(() => onCleanup(pushBack(close)));
-  return (
-    <div class="files-layer" role="dialog" aria-label="Files" data-testid="files-layer">
-      <header class="files-layer-head">
-        <button type="button" class="ftree-tool" aria-label="Back" data-testid="files-layer-back" onClick={close}>
-          <ArrowLeft size={18} />
-        </button>
-        <h1 class="files-layer-title">Files</h1>
-      </header>
-      <FilesTab
-        tab={{ id: 'files-layer', kind: 'files', params: { hostId: hostId() } }}
-        area="side"
-        hostId={hostId()}
-        projectKey="~"
-        close={close}
-        setTitle={() => undefined}
-      />
-    </div>
-  );
+  return <PhoneFiles />;
 }

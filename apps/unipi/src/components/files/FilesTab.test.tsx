@@ -345,20 +345,48 @@ describe('PreviewTab (Z-103)', () => {
   });
 });
 
-describe('phone /files layer (§3.9)', () => {
-  it('opens full-screen with the detail header and Back, over the tree', async () => {
+describe('phone Files tab (§3.11)', () => {
+  const phone = (hash: string) => {
     setDesktopOverride(false);
-    try {
-      withRouter(() => <FilesLayer />);
-      const layer = await screen.findByTestId('files-layer');
-      expect(layer.getAttribute('role')).toBe('dialog');
-      expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
-      expect(screen.getByText('Files', { selector: '.files-layer-title' })).toBeTruthy();
-      await screen.findByRole('tree');
-      expect(layer.querySelector('[data-shell=phone]')).toBeTruthy();
-    } finally {
-      setDesktopOverride(undefined);
-    }
+    location.hash = hash;
+    return withRouter(() => <FilesLayer />);
+  };
+  afterEach(() => setDesktopOverride(undefined));
+
+  it('the root is Places — Home, then the PC\'s projects (PH-24)', async () => {
+    phone('#/files');
+    await screen.findByTestId('files-places');
+    expect(await screen.findByTestId('files-place-home')).toBeTruthy();
+    expect(screen.queryByRole('tree')).toBeNull();
+  });
+
+  it('a folder is a sans list: folders first, no dotfiles by default, size · date subtitle', async () => {
+    phone(`#/files?path=${encodeURIComponent(ROOT)}&root=${encodeURIComponent(ROOT)}`);
+    const rows = await screen.findAllByTestId('files-row');
+    const names = rows.map((r) => r.querySelector('.phfiles-name')?.textContent);
+    expect(names.slice(0, 2)).toEqual(['src', 'target']);
+    expect(names).toContain('README.md');
+    expect(names).not.toContain('.env');
+    // Every row has its ⋯ (always visible, PH-37).
+    expect(screen.getAllByTestId('files-row-menu').length).toBe(rows.length);
+  });
+
+  it('tapping a text file opens the viewer route above the folder (PH-02)', async () => {
+    phone(`#/files?path=${encodeURIComponent(ROOT)}`);
+    const rows = await screen.findAllByTestId('files-row');
+    fireEvent.click(rows.find((r) => r.textContent?.includes('notes.md'))!);
+    await waitFor(() => expect(location.hash).toContain('#/files/edit'));
+    expect(getEditorTarget()?.path).toBe(`${ROOT}/notes.md`);
+  });
+
+  it('the row ⋯ opens an action sheet (PH-10)', async () => {
+    phone(`#/files?path=${encodeURIComponent(ROOT)}`);
+    const menus = await screen.findAllByTestId('files-row-menu');
+    fireEvent.click(menus[0]!);
+    const sheet = await screen.findByTestId('files-row-sheet');
+    expect(sheet.textContent).toContain('Rename');
+    expect(sheet.textContent).toContain('Copy path');
+    expect(sheet.textContent).toContain('Delete');
   });
 });
 

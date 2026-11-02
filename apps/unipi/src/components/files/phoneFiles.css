@@ -1,0 +1,30 @@
+/* Phone Files (phone spec §3.11). Scoped to the phone shell; desktop Files pane untouched. */
+html[data-shell=phone] .phfiles { display: flex; flex-direction: column; gap: var(--ph-4, 16px); padding-bottom: var(--ph-6, 24px); }
+html[data-shell=phone] .phfiles-name { font-family: var(--font-sans, inherit); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Breadcrumb bar: 44 px chips, scrolls sideways, last segment bold. */
+html[data-shell=phone] .phfiles-crumbs {
+  display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none;
+  margin: 0 calc(-1 * var(--ph-gutter, 16px)); padding: 0 var(--ph-gutter, 16px);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
+html[data-shell=phone] .phfiles-crumbs::-webkit-scrollbar { display: none; }
+html[data-shell=phone] .phfiles-crumb {
+  flex: none; min-height: 44px; padding: 0 12px; border-radius: 999px;
+  font-size: 14px; line-height: 20px; color: var(--color-text-muted); white-space: nowrap;
+}
+html[data-shell=phone] .phfiles-crumb[aria-current=page] { color: var(--color-text); font-weight: 600; background: var(--color-surface-2); }
+html[data-shell=phone] .phfiles-crumb-sep { flex: none; color: var(--color-text-dim); }
+
+html[data-shell=phone] .phfiles-empty { padding: var(--ph-6, 24px) var(--ph-1, 4px); font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+html[data-shell=phone] .phfiles-skeleton { height: 72px; margin: 0; border-bottom: 1px solid rgb(46 40 37 / 60%); background: linear-gradient(90deg, var(--color-surface-1), var(--color-surface-2), var(--color-surface-1)); background-size: 200% 100%; animation: phfiles-shimmer 1.2s linear infinite; }
+@keyframes phfiles-shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { html[data-shell=phone] .phfiles-skeleton { animation: none; } }
+
+html[data-shell=phone] .phfiles-name-input {
+  width: 100%; min-height: 48px; padding: 0 12px; border-radius: 12px;
+  background: var(--color-surface-2); border: 1px solid var(--color-line); color: var(--color-text); font-size: 16px;
+}
+html[data-shell=phone] .phfiles-sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ph-2, 8px); }
+html[data-shell=phone] .files-search { padding: 0; }
