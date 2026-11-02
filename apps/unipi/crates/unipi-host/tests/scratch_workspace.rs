@@ -303,3 +303,49 @@ async fn a_scratch_chats_fork_gets_its_own_copy_of_the_folder() {
     assert_eq!(state_of(&plain_fork).await.cwd.unwrap(), work.display().to_string());
     assert_eq!(std::fs::read_dir(&root).unwrap().count(), before);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn deleting_a_scratch_chat_deletes_only_its_own_scratch_folder() {
+    let fx = fixture(vec![
+        FauxResponse::Text("a".into()),
+        FauxResponse::Text("b".into()),
+        FauxResponse::Text("c".into()),
+        FauxResponse::Text("d".into()),
+    ]);
+    let root = fx.hub.scratch_root().to_path_buf();
+    let home = fx.hub.cwd().to_path_buf();
+    std::fs::write(home.join("home.txt"), "home").unwrap();
+    let work = fx.dir.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(work.join("w.txt"), "w").unwrap();
+
+    let mut ids = Vec::new();
+    for cwd in [None, None, Some(work.as_path()), Some(home.as_path())] {
+        let chat = match cwd {
+            None => fx.hub.create_scratch_session(None).await.unwrap(),
+            Some(cwd) => fx.hub.create_session(Some(cwd), None).await.unwrap(),
+        };
+        select_faux(&chat).await;
+        ask(&chat, "hello").await;
+        ids.push(chat.session_id());
+    }
+    let (one, two) = (root.join(&ids[0]), root.join(&ids[1]));
+    std::fs::write(one.join("x.txt"), "x").unwrap();
+    std::fs::write(two.join("y.txt"), "y").unwrap();
+
+    // Archived only: restorable, the folder stays.
+    for id in &ids {
+        fx.hub.archive(id).await.unwrap();
+    }
+    assert!(one.join("x.txt").is_file());
+    // Deleting one scratch chat deletes its folder, not the other's.
+    fx.hub.delete_archived(&ids[0]).await.unwrap();
+    assert!(!one.exists(), "the deleted chat's scratch folder is gone");
+    assert!(two.join("y.txt").is_file(), "another chat's scratch folder stays");
+    // Emptying the trash: the other scratch folder goes; a workspace and home never.
+    fx.hub.empty_trash().await.unwrap();
+    assert!(!two.exists());
+    assert!(root.is_dir(), "the scratch root stays");
+    assert!(work.join("w.txt").is_file(), "a workspace is never deleted");
+    assert!(home.join("home.txt").is_file(), "the home is never deleted");
+}

@@ -1630,6 +1630,7 @@ impl Inner {
         tokio::fs::remove_file(&entry.path).await.map_err(|error| {
             HubError::failed(format!("deleting {}: {error}", entry.path.display()))
         })?;
+        self.remove_scratch(&entry.id, Path::new(&entry.cwd)).await;
         self.emit(HubEvent::SessionRemoved {
             session_id: entry.id.clone(),
         });
@@ -1646,6 +1647,7 @@ impl Inner {
             match tokio::fs::remove_file(&entry.path).await {
                 Ok(()) => {
                     deleted += 1;
+                    self.remove_scratch(&entry.id, Path::new(&entry.cwd)).await;
                     self.emit(HubEvent::SessionRemoved {
                         session_id: entry.id,
                     });
