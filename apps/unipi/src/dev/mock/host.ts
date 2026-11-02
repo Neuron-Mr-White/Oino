@@ -145,6 +145,8 @@ export type MockHostSpec = {
   /** WP-A5 (Z-13): the host's trash — `sessions_list{archived:true}` rows. */
   archived?: SessionCard[];
   sessions?: Record<string, MockSession>;
+  /** A `session_new` stream with no session id serves this session's script (default: none → E_NOT_FOUND). */
+  newSessionFrom?: string;
   /** Root folders → tree. */
   fs?: Record<string, MockFsNode>;
   git?: MockGit;
@@ -841,8 +843,9 @@ export class MockHost implements HostClient {
     this.world.record({ host: this.hostId, kind: 'open', op: `session_${req.kind}`, args: req });
     const timers: ReturnType<typeof setTimeout>[] = [];
     let open = true;
-    const id = req.session ?? '';
-    const session = req.session ? this.spec.sessions?.[req.session] : undefined;
+    const fromNew = req.kind === 'new' && !req.session ? this.spec.newSessionFrom : undefined;
+    const id = req.session ?? fromNew ?? '';
+    const session = id ? this.spec.sessions?.[id] : undefined;
     const key = `${this.hostId}/${id}`;
     const end = (error?: Err) => {
       if (!open) return;

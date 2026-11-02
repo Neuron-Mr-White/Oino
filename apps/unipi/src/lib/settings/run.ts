@@ -16,15 +16,16 @@
  * a new empty one. Its replies are claimed (`claimReplies`) so they land on
  * the row or sheet, not as a toast or the floating report panel.
  */
-import { createSignal } from 'solid-js';
-import { sessions, type SessionHandle } from '../session/store';
-import { hubs } from '../session/hub';
+import { createRoot, createSignal } from 'solid-js';
+import { createSession, sessions, type SessionHandle } from '../session/store';
+import { hostClient } from '../host/factory';
+import type { HostClient } from '../host/client';
 import { newSession } from '../session/newSession';
 import { claimReplies, noteCommandRun } from '../reports';
 import type { ToastKind } from '../toasts';
 import { installUiSinks } from '../../ui/registries';
 import { installUiEffects } from '../../ui/slots/effects';
-import { chatHasCommand, latestChatOn, manageChat } from './manage';
+import { chatHasCommand } from './manage';
 
 export type CommandMode = 'background' | 'sheet' | 'chat';
 
@@ -101,24 +102,45 @@ export function commandsReady(handle: { state: { commands: ReadonlyArray<unknown
   });
 }
 
-/** The session a Settings command runs in — opened in the background, never shown. */
-export async function settingsCommandChat(hostId: string, start: typeof newSession = newSession): Promise<SessionHandle | undefined> {
+/**
+ * Settings' own command session per host: a fresh `session_new` runtime that
+ * is never shown and never touches the user's chats (a command run there
+ * adds no rows to any conversation). The stream opens as `new` every time
+ * (a session with no message has no file to reopen by id).
+ */
+const scratch = new Map<string, SessionHandle>();
+let scratchSeq = 0;
+
+function scratchSession(hostId: string): SessionHandle {
+  const hit = scratch.get(hostId);
+  if (hit && hit.state.conn !== 'closed') return hit;
+  hit?.close();
+  const real = hostClient(hostId);
+  const client: HostClient = Object.create(real, {
+    openSession: { value: (_req: unknown, sink: Parameters<HostClient['openSession']>[1]) => real.openSession({ kind: 'new' }, sink) },
+  });
+  const handle = createRoot(() => createSession(hostId, `settings-${Date.now().toString(36)}-${++scratchSeq}`, { client }));
+  scratch.set(hostId, handle);
+  return handle;
+}
+
+/** Tests: drop the command sessions. */
+export function resetSettingsCommandSessions(): void {
+  for (const h of scratch.values()) h.close();
+  scratch.clear();
+}
+
+/** The session a Settings command runs in — Settings' own, never a chat of the user's. */
+export async function settingsCommandChat(hostId: string, _start: typeof newSession = newSession): Promise<SessionHandle | undefined> {
   installUiSinks();
   installUiEffects();
-  const chat = manageChat();
-  if (chat) {
-    const handle = sessions().peek(chat.hostId, chat.sessionId);
-    if (handle) return handle;
+  const handle = scratchSession(hostId);
+  const deadline = Date.now() + 20_000;
+  while (handle.state.conn !== 'live' && Date.now() < deadline) {
+    if (handle.state.conn === 'closed') return undefined;
+    await new Promise((r) => setTimeout(r, 80));
   }
-  const hub = hubs().ensure(hostId);
-  if (!hub.state.loaded) await hub.reload().catch(() => undefined);
-  let sessionId = latestChatOn(hostId);
-  if (!sessionId) {
-    const created = await start(hostId);
-    if (!created.ok) return undefined;
-    sessionId = created.value.session;
-  }
-  return sessions().ensure(hostId, sessionId);
+  return handle.state.conn === 'live' ? handle : undefined;
 }
 
 export type Reply = { text: string; kind: ToastKind };

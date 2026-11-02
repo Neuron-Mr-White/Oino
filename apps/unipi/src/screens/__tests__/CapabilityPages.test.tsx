@@ -23,6 +23,7 @@ import { setHostClientFactory } from '../../lib/host/factory';
 import { createMockHost } from '../../dev/mock/host';
 import { capMcpNoChat, providersNoChat } from '../../dev/mock/scenarios/capabilities';
 import { resetSettingsMemory } from '../../lib/settings/memory';
+import { resetSettingsCommandSessions } from '../../lib/settings/run';
 import { resetSubagentsView } from '../settings/SubagentsPage';
 import { resetHubs } from '../../lib/session/hub';
 import { sessions, resetSessions } from '../../lib/session/store';
@@ -67,6 +68,7 @@ describe('Settings › MCP (G-8)', () => {
     resetHubs();
     resetSettingsMemory();
     resetSessions();
+    resetSettingsCommandSessions();
     setPlatformOverride(undefined);
     setDesktopOverride(undefined);
     setHostClientFactory(undefined);
@@ -84,7 +86,7 @@ describe('Settings › MCP (G-8)', () => {
     }
   });
 
-  it('owner5 #5: with no chat open, a UI action runs in this PC’s latest chat in the background, in a Settings sheet', async () => {
+  it('owner5 #5: with no chat open, a UI action runs in Settings’ own session, in a Settings sheet', async () => {
     const base = capMcpNoChat.hosts[0]!;
     // The hub lists cap001 as this PC's most recent chat.
     const latest = { session_id: 'cap001', run_state: 'idle' as const, last_activity: Date.now() + 60_000 };
@@ -101,7 +103,7 @@ describe('Settings › MCP (G-8)', () => {
     expect(location.hash).toBe('#/settings/mcp');
   });
 
-  it('owner5 #5: with a chat open, a UI action runs there but stays in Settings (its sheet renders the steps)', async () => {
+  it('owner5 #5: with a chat open, a UI action still runs in Settings’ own session (never the chat) and stays in Settings', async () => {
     const world = createMockHost(capMcpNoChat);
     setHostClientFactory(world.client);
     await openChat(world, 'local', 'cap001');
@@ -142,6 +144,7 @@ describe('Settings › Skills hub (owner5 #10)', () => {
     resetHubs();
     resetSettingsMemory();
     resetSessions();
+    resetSettingsCommandSessions();
     setPlatformOverride(undefined);
     setDesktopOverride(undefined);
     setHostClientFactory(undefined);
@@ -169,6 +172,7 @@ describe('Settings › Subagents › Agent profiles (owner5 #17)', () => {
     cleanup();
     resetHubs();
     resetSessions();
+    resetSettingsCommandSessions();
     resetSettingsMemory();
     resetSubagentsView();
     setPlatformOverride(undefined);
@@ -205,6 +209,7 @@ describe('Settings › Providers (G-15 /login, /logout)', () => {
     resetHubs();
     resetSettingsMemory();
     resetSessions();
+    resetSettingsCommandSessions();
     setPlatformOverride(undefined);
     setDesktopOverride(undefined);
     setHostClientFactory(undefined);

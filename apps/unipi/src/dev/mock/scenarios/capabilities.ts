@@ -376,6 +376,7 @@ function host(extra: Partial<MockHostSpec> = {}): MockHostSpec {
     conn: { state: 'connected' as const },
     cards: genCards(3, { seed: 4, root: CWD }),
     sessions: { [SESSION]: capSession() },
+    newSessionFrom: SESSION,
     fs: sessionFs(),
     settings: {
       pi: { defaultModel: 'glm-4.7', enabledModels: ['anthropic/claude-opus-5-5', 'openai/gpt-5'] },
