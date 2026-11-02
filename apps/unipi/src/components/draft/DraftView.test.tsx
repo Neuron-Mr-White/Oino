@@ -208,8 +208,8 @@ describe('draft session (stand-in handle)', () => {
   });
 });
 
-describe('the draft model chip opens the ONE model popover', () => {
-  it('same search / list / footer as the chat; a pick sets the draft; Use at startup writes the host default', async () => {
+describe('the draft model chip opens the ONE model dialog', () => {
+  it('same dialog as the chat (Now, search, list, Cycle set, scope line); a pick sets the draft; Use at startup writes the host default', async () => {
     rememberModels('this-pc', [
       { provider: 'oino', id: 'deepseek-flash', name: 'DeepSeek Flash' },
       { provider: 'oino', id: 'glm-4.7', name: 'GLM 4.7' },
@@ -218,9 +218,17 @@ describe('the draft model chip opens the ONE model popover', () => {
     await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('DeepSeek Flash'));
     fireEvent.click(screen.getByTestId('model-chip'));
     const menu = await screen.findByTestId('draft-model-menu');
-    expect(menu.closest('[role="menu"]')).toBeTruthy();
+    expect(menu.getAttribute('role')).toBe('dialog');
+    expect(menu.getAttribute('aria-label')).toBe('Model');
+    expect(screen.getByTestId('model-picker-overlay').contains(menu)).toBe(true);
     expect(menu.querySelector('[data-testid="model-search"]')).toBeTruthy();
     await waitFor(() => expect(screen.getByTestId('model-picker-list').textContent).toContain('GLM 4.7'));
+    // "Now" is the model the new chat will start with.
+    expect(screen.getByTestId('model-picker-now').textContent).toContain('DeepSeek Flash');
+    expect(screen.getByTestId('model-picker-scope').textContent).toContain('the chat about to start');
+    expect(screen.getByTestId('model-picker-cycle-toggle').textContent).toContain('Cycle set');
+    // No Fusion tab: a pair needs a running chat.
+    expect(screen.queryByTestId('model-tab-fusion')).toBeNull();
     // The host default is the running pick: "Startup model", nothing to do.
     await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Startup model'));
     expect((screen.getByTestId('model-use-startup') as HTMLButtonElement).disabled).toBe(true);
