@@ -44,6 +44,7 @@ import { dismissSplashWhenReady } from './lib/splash';
 import { watchForUpdates } from './lib/update';
 import { watchDesktopUpdates } from './lib/desktopUpdate';
 import { announceWebviewRecovery } from './lib/webviewRecovery';
+import { startKeyboardTracking } from './components/phone/services';
 import './components/media/media.css';
 import '@xterm/xterm/css/xterm.css';
 import './style.css';
@@ -51,6 +52,8 @@ import './components/shell/shell.css';
 import './components/panes/panes.css';
 // Shared tokens + components (UNI-218): last, so it wins over the per-screen rules it unifies.
 import './ui.css';
+// Phone design system (phone spec §2): tokens, z scale, primitives — after ui.css, scoped to the phone shell.
+import './components/phone/phone.css';
 
 const desktop = () => layout().desktop();
 
@@ -164,34 +167,8 @@ export function Root() {
   );
 }
 const root = document.getElementById('root');
-/** Visible viewport height (shrinks with the soft keyboard) for sheet caps. */
-function trackVisualViewport(): void {
-  const set = () => {
-    const vv = window.visualViewport;
-    // Android (adjustResize + edge-to-edge) reports the keyboard as a
-    // native inset (MainActivity → window.unipiImeInset); a browser pans
-    // the visual viewport instead. Either way: how far sheets must rise.
-    const ime = (window as unknown as { unipiImeInset?: number }).unipiImeInset ?? 0;
-    const panned = vv ? Math.max(0, window.innerHeight - (vv.offsetTop + vv.height)) : 0;
-    const below = Math.max(panned, ime);
-    const h = Math.min(vv?.height ?? window.innerHeight, window.innerHeight - ime);
-    const root = document.documentElement.style;
-    root.setProperty('--vvh', `${Math.round(h)}px`);
-    root.setProperty('--vv-bottom', `${Math.round(below)}px`);
-    // Keep a focused field inside a (now shorter) sheet in view.
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && active.closest('.sheet')) {
-      requestAnimationFrame(() => active.scrollIntoView({ block: 'center' }));
-    }
-  };
-  set();
-  window.visualViewport?.addEventListener('resize', set);
-  window.visualViewport?.addEventListener('scroll', set);
-  window.addEventListener('resize', set);
-  window.addEventListener('unipi-ime', set);
-}
 if (root) {
-  trackVisualViewport();
+  startKeyboardTracking();
   watchForUpdates();
   watchDesktopUpdates();
   render(() => <Root />, root);
