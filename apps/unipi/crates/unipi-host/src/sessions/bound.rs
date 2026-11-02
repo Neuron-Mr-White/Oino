@@ -46,11 +46,23 @@ const TRUNCATION_NOTE: &str = "\n…[truncated by the host — expand for the fu
 /// its inline `data` (rare; the text shrink loop still bounds the rest).
 #[must_use]
 pub fn bound_entries(entries: &mut [Value], blobs_dir: &Path) -> usize {
-    let mut rewritten = rewrite_all(entries, ENTRY_TEXT_BUDGET, blobs_dir);
+    bound_entries_with(entries, ENTRY_TEXT_BUDGET, ENTRIES_BUDGET, blobs_dir)
+}
+
+/// [`bound_entries`] with explicit budgets: `entry_text` bytes per entry to start with,
+/// halved while the array exceeds `total`.
+#[must_use]
+pub fn bound_entries_with(
+    entries: &mut [Value],
+    entry_text: usize,
+    total: usize,
+    blobs_dir: &Path,
+) -> usize {
+    let mut rewritten = rewrite_all(entries, entry_text, blobs_dir);
     // A huge session still over the total budget: shrink the per-entry text
     // budget (the app expands the entries it cares about) until the array fits.
-    let mut budget = ENTRY_TEXT_BUDGET;
-    while entries.len() > 1 && budget > MIN_ENTRY_TEXT && serialized_len(entries) > ENTRIES_BUDGET {
+    let mut budget = entry_text;
+    while entries.len() > 1 && budget > MIN_ENTRY_TEXT && serialized_len(entries) > total {
         budget = (budget / 2).max(MIN_ENTRY_TEXT);
         rewritten += rewrite_all(entries, budget, blobs_dir);
     }
@@ -74,6 +86,12 @@ fn rewrite_all(entries: &mut [Value], text_budget: usize, blobs_dir: &Path) -> u
         // Entries are `{id, parentId, timestamp, type, message?}`; non-message
         // kinds have nothing to bound.
         let Some(message) = entry.get_mut("message").and_then(Value::as_object_mut) else {
+            if clip_strings(entry, text_budget) {
+                if let Some(object) = entry.as_object_mut() {
+                    object.insert("truncated".into(), Value::Bool(true));
+                }
+                rewritten += 1;
+            }
             continue;
         };
         let mut remaining = text_budget;
@@ -89,6 +107,11 @@ fn rewrite_all(entries: &mut [Value], text_budget: usize, blobs_dir: &Path) -> u
             }
             _ => {}
         }
+        // Whatever else is huge (thinking, tool-call arguments, `details`, summaries,
+        // custom payloads) is clipped too: no single string may blow the frame.
+        changed |= message
+            .iter_mut()
+            .fold(false, |cut, (_, value)| clip_strings(value, text_budget) | cut);
         if changed {
             // The app's full-output check: `message.truncated === true`
             // (`useFullOutput.snapshotTruncated`), refetched on expand.
@@ -132,6 +155,44 @@ fn bound_block(block: &mut Value, remaining: &mut usize, blobs_dir: &Path) -> bo
         }
     }
     changed
+}
+
+/// Clips every string longer than `max` anywhere in `value` (image `data` and
+/// `mediaRef` excepted: cutting base64 breaks the image). Returns whether any was cut.
+fn clip_strings(value: &mut Value, max: usize) -> bool {
+    match value {
+        Value::String(text) if text.len() > max => {
+            let mut remaining = max;
+            truncate_string(text, &mut remaining)
+        }
+        Value::Array(items) => items
+            .iter_mut()
+            .fold(false, |changed, item| clip_strings(item, max) | changed),
+        Value::Object(map) => map
+            .iter_mut()
+            .filter(|(key, _)| key.as_str() != "data" && key.as_str() != "mediaRef")
+            .fold(false, |changed, (_, item)| clip_strings(item, max) | changed),
+        _ => false,
+    }
+}
+
+/// Drops the oldest entries until the array fits `budget` serialized bytes (one entry
+/// always stays). Returns how many were dropped: the caller's page then starts later
+/// (its cursor moves to the new first entry and older history pages in on scroll).
+#[must_use]
+pub fn fit_entries(entries: &mut Vec<Value>, budget: usize) -> usize {
+    let sizes: Vec<usize> = entries
+        .iter()
+        .map(|entry| serde_json::to_vec(entry).map_or(0, |bytes| bytes.len()))
+        .collect();
+    let mut total: usize = sizes.iter().sum();
+    let mut drop = 0;
+    while drop + 1 < entries.len() && total > budget {
+        total -= sizes[drop];
+        drop += 1;
+    }
+    entries.drain(..drop);
+    drop
 }
 
 /// Cuts `text` to `*remaining` budget (char-boundary safe) with the marker, when
@@ -247,6 +308,37 @@ mod tests {
         assert!(entries
             .iter()
             .all(|entry| entry["message"]["truncated"] == Value::Bool(true)));
+    }
+
+    #[test]
+    fn huge_strings_outside_the_text_blocks_are_clipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = "w".repeat(3 * 1024 * 1024);
+        let mut entries = vec![
+            serde_json::json!({
+                "id": "e1", "type": "message",
+                "message": {"role": "assistant", "content": [
+                    {"type": "thinking", "thinking": big},
+                    {"type": "toolCall", "id": "t", "name": "write", "arguments": {"content": big}},
+                ]}
+            }),
+            serde_json::json!({"id": "e2", "type": "custom_message", "content": big}),
+        ];
+        assert_eq!(bound_entries(&mut entries, dir.path()), 2);
+        assert!(serialized_len(&entries) < 64 * 1024, "{}", serialized_len(&entries));
+        assert_eq!(entries[0]["message"]["truncated"], Value::Bool(true));
+        assert_eq!(entries[1]["truncated"], Value::Bool(true));
+    }
+
+    #[test]
+    fn fit_drops_the_oldest_until_the_page_fits() {
+        let mut entries: Vec<Value> = (0..10)
+            .map(|i| serde_json::json!({"id": format!("e{i}"), "pad": "p".repeat(1000)}))
+            .collect();
+        assert_eq!(fit_entries(&mut entries, 3500), 7);
+        assert_eq!(entries[0]["id"], "e7");
+        let mut one = vec![serde_json::json!({"id": "x", "pad": "p".repeat(5000)})];
+        assert_eq!(fit_entries(&mut one, 10), 0, "one entry always stays");
     }
 
     #[test]

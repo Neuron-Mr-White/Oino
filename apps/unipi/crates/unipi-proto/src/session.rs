@@ -30,7 +30,7 @@ pub const SESSION_NAME_MAX: usize = 256;
 /// Longest session id accepted (ids are timestamps with a suffix today).
 pub const SESSION_ID_MAX: usize = 128;
 /// The event kinds core never produces (host-only, §7.4).
-pub const HOST_EVENT_KINDS: [&str; 3] = ["crashed", "taken_over", "reloaded"];
+pub const HOST_EVENT_KINDS: [&str; 5] = ["crashed", "taken_over", "reloaded", "woken", "wake_failed"];
 
 /// A `session` target: an exact id, a unique prefix or a session file path.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -406,6 +406,28 @@ pub struct SessionSnapshot {
     /// Resume events after the client's `since_seq`, resume patches only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replay: Option<Vec<SessionEventDto>>,
+    /// `entries` is the newest page of the branch, not all of it (full snapshots of big
+    /// sessions): older pages load with `get_entries{before: cursor, limit}`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<HistoryPage>,
+    /// The snapshot was read from the session file while the runtime wakes in the
+    /// background: `state` is provisional and `commands`/`ui`/`topics` arrive with the
+    /// `{kind:"woken"}` event (commands sent meanwhile wait for the wake).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub waking: bool,
+}
+
+/// Where a paged `entries` list sits in the branch (`SessionSnapshot::page`, the
+/// `get_entries{before}` reply).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryPage {
+    /// Entries on the whole current branch.
+    pub total: u64,
+    /// Older entries exist before the page.
+    pub has_more: bool,
+    /// Entry id to pass as `before` for the next older page (the page's first entry).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl SessionSnapshot {
@@ -423,6 +445,8 @@ impl SessionSnapshot {
             ui: None,
             topics: None,
             replay: None,
+            page: None,
+            waking: false,
         }
     }
 
@@ -440,6 +464,8 @@ impl SessionSnapshot {
             ui: None,
             topics: None,
             replay: Some(replay),
+            page: None,
+            waking: false,
         }
     }
 
@@ -553,8 +579,16 @@ mod tests {
         assert_eq!(value["seq"], 7);
         assert_eq!(value["leaf_id"], "e1");
         assert!(value.get("replay").is_none(), "{value}");
+        assert!(value.get("page").is_none() && value.get("waking").is_none(), "{value}");
         let parsed: SessionSnapshot = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, snapshot);
+        let mut paged = snapshot.clone();
+        paged.page = Some(HistoryPage { total: 900, has_more: true, cursor: Some("e1".into()) });
+        paged.waking = true;
+        let value = serde_json::to_value(&paged).unwrap();
+        assert_eq!(value["page"], json!({"total": 900, "has_more": true, "cursor": "e1"}));
+        assert_eq!(value["waking"], true);
+        assert_eq!(serde_json::from_value::<SessionSnapshot>(value).unwrap(), paged);
 
         let resume = SessionSnapshot::resume(
             "s1",

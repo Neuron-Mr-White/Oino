@@ -7,6 +7,7 @@ pub mod card;
 pub mod crash;
 pub mod hub;
 pub mod meta;
+pub mod open;
 pub mod services;
 pub mod stream;
 

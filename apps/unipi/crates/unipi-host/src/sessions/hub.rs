@@ -705,6 +705,17 @@ impl SessionHub {
         Ok(self.inner.card_from(&state, &record))
     }
 
+    /// Whether the session's runtime is live in this hub (an open needs no wake).
+    pub async fn is_live(&self, session_id: &str) -> bool {
+        self.inner.core.is_live(session_id).await
+    }
+
+    /// The sessions root (session files live under it; the card and offset indexes beside it).
+    #[must_use]
+    pub fn sessions_root(&self) -> &Path {
+        self.inner.core.sessions_root()
+    }
+
     /// Emits the current card of one session again (a rename, or a state the protocol layer
     /// changed): `SessionChanged` keeps the Sessions list live (§7.4).
     pub async fn refresh(&self, session_id: &str) {

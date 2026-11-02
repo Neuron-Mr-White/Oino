@@ -72,7 +72,7 @@ pub use git::{
 pub use lsp::{LspAttachData, LspLanguage, LspServerInfo, LspServersData, LSP_LANGUAGE_MAX};
 pub use push::{PushId, PushItem, PushListData, PushOutcome, PushWait, PUSH_WAIT_MAX};
 pub use session::{
-    HubEvent, NoticeLevel, RunState, SessionCard, SessionEventDto, SessionEvents, SessionId,
+    HistoryPage, HubEvent, NoticeLevel, RunState, SessionCard, SessionEventDto, SessionEvents, SessionId,
     SessionName, SessionReply, SessionSnapshot, SessionTarget, SessionsListData, TrashEmptyData,
     HOST_EVENT_KINDS, SESSION_ID_MAX, SESSION_NAME_MAX, SESSION_TARGET_MAX,
 };

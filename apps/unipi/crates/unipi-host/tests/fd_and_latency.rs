@@ -588,9 +588,16 @@ async fn session_open_of_a_1000_entry_session_answers_fast() {
         .and_then(Value::as_array)
         .map(Vec::len)
         .unwrap_or_default();
+    // perf-open: the snapshot is the branch's tail page; `page.total` counts the branch.
     assert!(
-        entries >= 1000,
-        "the snapshot carries the branch: {entries}"
+        (1..=1000).contains(&entries),
+        "the snapshot carries the tail page: {entries}"
+    );
+    assert_eq!(
+        reply.pointer("/data/page/total").and_then(Value::as_u64),
+        Some(1000),
+        "{}",
+        reply["data"]["page"]
     );
     assert!(
         open < OPEN_BUDGET,

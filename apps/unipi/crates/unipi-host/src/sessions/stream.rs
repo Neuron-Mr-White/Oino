@@ -56,6 +56,7 @@ use unipi_proto::{
 
 use super::card::{HubState, SessionCard as HostCard};
 use super::hub::{takeover_from, HubError, HubEvent, HubSession, SessionHub};
+use super::open::{self as fast, Live, Page, SessionFile};
 
 /// The coalescing window of §7.4: consecutive deltas merge for at most this long.
 pub const FLUSH_WINDOW: Duration = Duration::from_millis(16);
@@ -647,7 +648,23 @@ where
                 ?since_seq,
                 "request"
             );
+            let started = std::time::Instant::now();
+            if let Some((card, file, page)) = file_open(&hub, session.as_str()).await {
+                tracing::info!(
+                    session = %card.session_id,
+                    entries = page.entries.len(),
+                    total = page.page.total,
+                    took_ms = started.elapsed().as_millis() as u64,
+                    "session open: tail page read from the file"
+                );
+                return open_cold(service, card, file, page, read, write).await;
+            }
             let opened = hub.open(session.as_str()).await.map_err(hub_error)?;
+            tracing::info!(
+                session = %opened.session_id(),
+                took_ms = started.elapsed().as_millis() as u64,
+                "session open: runtime ready"
+            );
             open_stream(service, Arc::new(opened), since_seq, read, write).await
         }
         Request::SessionFork {
@@ -896,9 +913,11 @@ where
         feed.publish(json!({"kind": "taken_over", "from": from}))
             .await;
     }
+    let file = session_file(service.hub(), session.card());
     serve_stream(
         feed,
-        session,
+        Live::Ready(session),
+        file,
         subscription,
         data,
         Arc::downgrade(service),
@@ -906,6 +925,147 @@ where
         write,
     )
     .await
+}
+
+/// The card's session file, when it exists (a fresh chat has none until its first reply).
+fn session_file(hub: &SessionHub, card: &HostCard) -> Option<SessionFile> {
+    card.file
+        .is_file()
+        .then(|| SessionFile::new(&card.file, hub.sessions_root()))
+}
+
+/// perf-open: a session that is not live here opens from its file — the tail page through
+/// the offset index — instead of waking first. `None` = take the runtime path (live
+/// already, unknown target, a pre-v3 or missing file).
+async fn file_open(hub: &Arc<SessionHub>, target: &str) -> Option<(HostCard, SessionFile, Page)> {
+    let card = hub.resolve(target).await.ok()?;
+    if hub.is_live(&card.session_id).await {
+        return None;
+    }
+    let file = session_file(hub, &card)?;
+    let reader = file.clone();
+    let page = tokio::task::spawn_blocking(move || reader.page(None, fast::PAGE_LIMIT))
+        .await
+        .ok()?
+        .map_err(|error| tracing::info!(%error, "session open: no file page, waking first"))
+        .ok()?;
+    Some((card, file, page))
+}
+
+/// Serves an open read from the file (`waking` snapshot) and wakes the runtime behind it.
+async fn open_cold<R, W>(
+    service: &Arc<SessionService>,
+    card: HostCard,
+    file: SessionFile,
+    mut page: Page,
+    read: &mut R,
+    write: &mut W,
+) -> Result<(), AppErrorDto>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let hub = Arc::clone(service.hub());
+    let feed = service.feed(&card.session_id);
+    // Subscribe before the snapshot's seq is read: `woken` and every runtime event after
+    // it are numbered above the snapshot and reach this stream.
+    let subscription = feed.subscribe();
+    let blobs_dir = hub.blobs_dir();
+    page.bound(Some(&blobs_dir));
+    let mut snapshot = SessionSnapshot::full(card.session_id.clone(), feed.seq());
+    snapshot.state = Some(fast::provisional_state(&card, &page.entries));
+    snapshot.leaf_id = page.leaf_id.clone().map(Value::String);
+    snapshot.entries = Some(page.entries);
+    snapshot.page = Some(page.page);
+    snapshot.waking = true;
+    snapshot.validate().map_err(internal)?;
+    let (tx, rx) = tokio::sync::watch::channel(None);
+    tokio::spawn(wake_behind(
+        Arc::downgrade(service),
+        card.session_id.clone(),
+        Arc::clone(&feed),
+        tx,
+    ));
+    serve_stream(
+        feed,
+        Live::Waking(rx),
+        Some(file),
+        subscription,
+        snapshot,
+        Arc::downgrade(service),
+        read,
+        write,
+    )
+    .await
+}
+
+/// The background wake of a file-opened session: the runtime comes up (takeover and
+/// crash disposal included, [`SessionHub::open`]), its tap starts, and `{kind:"woken"}`
+/// carries what the provisional snapshot lacked — or `{kind:"wake_failed", error}`.
+async fn wake_behind(
+    service: Weak<SessionService>,
+    session_id: String,
+    feed: Arc<Feed>,
+    tx: tokio::sync::watch::Sender<Option<Result<Arc<HubSession>, String>>>,
+) {
+    let Some(strong) = service.upgrade() else {
+        let _ = tx.send(Some(Err("the host is shutting down".to_owned())));
+        return;
+    };
+    let hub = Arc::clone(strong.hub());
+    drop(strong);
+    let started = std::time::Instant::now();
+    let outcome = match hub.open(&session_id).await {
+        Ok(session) => {
+            let session = Arc::new(session);
+            feed.ensure_tap(Arc::clone(session.backend()), service.clone());
+            match runtime_parts(&session).await {
+                Ok(parts) => {
+                    // §8.2: where the session came from is the first event after the
+                    // snapshot, as on the runtime path.
+                    if let Some(from) = session.taken_over() {
+                        feed.publish(json!({"kind": "taken_over", "from": from})).await;
+                    }
+                    let leaf = session
+                        .send(RpcCommand::Oino(
+                            oino_client::protocol::OinoCommand::EntriesPage {
+                                before: None,
+                                limit: Some(1),
+                                ids: None,
+                            },
+                        ))
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|reply| reply.get("leafId").cloned());
+                    feed.publish(json!({
+                        "kind": "woken",
+                        "state": parts.state,
+                        "commands": parts.commands,
+                        "ui": parts.ui,
+                        "topics": parts.topics,
+                        "leafId": leaf,
+                    }))
+                    .await;
+                    Ok(session)
+                }
+                Err(error) => Err(error.message.to_string()),
+            }
+        }
+        Err(error) => Err(error.to_string()),
+    };
+    match &outcome {
+        Ok(_) => tracing::info!(
+            session = %session_id,
+            took_ms = started.elapsed().as_millis() as u64,
+            "session open: runtime woke behind the history"
+        ),
+        Err(error) => {
+            tracing::warn!(session = %session_id, %error, "session open: wake failed");
+            feed.publish(json!({"kind": "wake_failed", "error": error})).await;
+        }
+    }
+    let _ = tx.send(Some(outcome));
 }
 
 /// The full snapshot of §7.3: `state`, the current branch's `entries` + `leaf_id`,
@@ -919,6 +1079,80 @@ async fn snapshot(
     feed: &Arc<Feed>,
     service: Weak<SessionService>,
 ) -> Result<SessionSnapshot, AppErrorDto> {
+    let parts = runtime_parts(session).await?;
+    // perf-open: the tail page of the branch, never the whole history (`_oino/entries_page`;
+    // a backend without it answers the whole list, bounded and cut to a page below).
+    let page = match session
+        .send(RpcCommand::Oino(
+            oino_client::protocol::OinoCommand::EntriesPage {
+                before: None,
+                limit: Some(fast::PAGE_LIMIT),
+                ids: None,
+            },
+        ))
+        .await
+    {
+        Ok(Some(reply)) => Page::from_reply(&reply),
+        _ => None,
+    };
+    let mut page = match page {
+        Some(page) => page,
+        None => {
+            let entries = send_data(
+                session,
+                RpcCommand::Agent(AgentCommand::GetEntries { since: None }),
+            )
+            .await?;
+            let leaf_id = entries
+                .as_ref()
+                .and_then(|value| value.get("leafId"))
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let entries = field_array(entries.as_ref(), "entries").unwrap_or_default();
+            Page {
+                page: unipi_proto::session::HistoryPage {
+                    total: entries.len() as u64,
+                    has_more: false,
+                    cursor: entries
+                        .first()
+                        .and_then(|entry| entry.get("id"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                },
+                leaf_id,
+                entries,
+            }
+        }
+    };
+    // v2 QA: a session bigger than the 1 MiB frame must still open — big text is
+    // truncated (flagged for the app's full-output refetch), big inline images
+    // become blob `mediaRef`s the stream's `media` command serves; a page still too big
+    // starts later (its older entries load with the next page).
+    let blobs_dir = service.upgrade().map(|service| service.hub().blobs_dir());
+    page.bound(blobs_dir.as_deref());
+    let mut snapshot = SessionSnapshot::full(session.session_id(), feed.seq());
+    snapshot.state = parts.state;
+    snapshot.leaf_id = page.leaf_id.map(Value::String);
+    snapshot.entries = Some(page.entries);
+    snapshot.page = Some(page.page);
+    snapshot.commands = parts.commands;
+    snapshot.ui = parts.ui;
+    snapshot.topics = parts.topics;
+    snapshot.validate().map_err(internal)?;
+    Ok(snapshot)
+}
+
+/// What a snapshot needs from the runtime besides entries.
+struct RuntimeParts {
+    state: Option<Value>,
+    commands: Option<Vec<Value>>,
+    ui: Option<Value>,
+    topics: Option<Vec<Value>>,
+}
+
+/// `_oino/hello` first (the host sends the app's `UiCapabilities` implicitly), then
+/// `get_state`, `get_commands`, the sticky topics and the ui registry snapshot.
+async fn runtime_parts(session: &Arc<HubSession>) -> Result<RuntimeParts, AppErrorDto> {
     session
         .send(RpcCommand::Oino(
             oino_client::protocol::OinoCommand::Hello {
@@ -933,11 +1167,6 @@ async fn snapshot(
         .await
         .map_err(hub_error)?;
     let state = send_data(session, RpcCommand::Agent(AgentCommand::GetState)).await?;
-    let entries = send_data(
-        session,
-        RpcCommand::Agent(AgentCommand::GetEntries { since: None }),
-    )
-    .await?;
     let commands = send_data(session, RpcCommand::Agent(AgentCommand::GetCommands)).await?;
     let topics = send_data(
         session,
@@ -952,33 +1181,12 @@ async fn snapshot(
         RpcCommand::Oino(oino_client::protocol::OinoCommand::UiSnapshot),
     )
     .await?;
-    let mut snapshot = SessionSnapshot::full(session.session_id(), feed.seq());
-    snapshot.state = state;
-    snapshot.leaf_id = entries
-        .as_ref()
-        .and_then(|value| value.get("leafId"))
-        .cloned();
-    let mut entries = field_array(entries.as_ref(), "entries").unwrap_or_default();
-    // v2 QA: a session bigger than the 1 MiB frame must still open — big text is
-    // truncated (flagged for the app's full-output refetch), big inline images
-    // become blob `mediaRef`s the stream's `media` command serves.
-    let blobs_dir = service.upgrade().map(|service| service.hub().blobs_dir());
-    if let Some(blobs_dir) = blobs_dir.as_deref() {
-        let rewritten = super::bound::bound_entries(&mut entries, blobs_dir);
-        if rewritten > 0 {
-            tracing::info!(
-                session = %session.session_id(),
-                rewritten,
-                "snapshot bounded for the frame"
-            );
-        }
-    }
-    snapshot.entries = Some(entries);
-    snapshot.commands = field_array(commands.as_ref(), "commands");
-    snapshot.ui = ui;
-    snapshot.topics = field_array(topics.as_ref(), "topics");
-    snapshot.validate().map_err(internal)?;
-    Ok(snapshot)
+    Ok(RuntimeParts {
+        state,
+        commands: field_array(commands.as_ref(), "commands"),
+        ui,
+        topics: field_array(topics.as_ref(), "topics"),
+    })
 }
 
 fn field_array(value: Option<&Value>, field: &str) -> Option<Vec<Value>> {
@@ -994,9 +1202,11 @@ async fn send_data(
 
 /// Pumps one open session stream until the client goes away (§7.3): batches events out,
 /// takes commands in, answers them in order (events first, replies after).
+#[allow(clippy::too_many_arguments)]
 async fn serve_stream<R, W>(
     feed: Arc<Feed>,
-    session: Arc<HubSession>,
+    session: Live,
+    file: Option<SessionFile>,
     mut subscription: Subscription,
     data: SessionSnapshot,
     service: Weak<SessionService>,
@@ -1091,10 +1301,21 @@ where
                         if cmd.get("type").and_then(Value::as_str) == Some("extension_ui_response")
                         {
                             let reply = match serde_json::from_value::<UiResponse>(cmd) {
-                                Ok(response) => {
-                                    session.backend().ui_respond(response);
-                                    SessionReply::ok(id, None)
-                                }
+                                Ok(response) => match session.ready() {
+                                    Some(live) => {
+                                        live.backend().ui_respond(response);
+                                        SessionReply::ok(id, None)
+                                    }
+                                    // No runtime yet: nothing can be waiting for an answer.
+                                    None => SessionReply::failed(
+                                        id,
+                                        AppErrorDto::new(
+                                            AppErrorCode::E_UNSUPPORTED,
+                                            "The chat is still starting",
+                                            true,
+                                        ),
+                                    ),
+                                },
                                 Err(error) => SessionReply::failed(
                                     id,
                                     AppErrorDto::new(AppErrorCode::E_SCHEMA, error.to_string(), false),
@@ -1105,15 +1326,24 @@ where
                             write_json(write, &reply).await?;
                             continue;
                         }
+                        // perf-open: "load earlier" (`before`/`limit`) and the full-output
+                        // refetch (`ids`) are pages, served bounded — never core's
+                        // whole-history `get_entries`.
+                        if let Some((before, limit, ids)) = fast::paged_request(&cmd) {
+                            let blobs_dir = service.upgrade().map(|service| service.hub().blobs_dir());
+                            tokio::spawn(answer_page(
+                                session.clone(),
+                                file.clone(),
+                                blobs_dir,
+                                PageAsk { before, limit, ids },
+                                id,
+                                replies.clone(),
+                            ));
+                            continue;
+                        }
                         match RpcRequest::from_value(cmd) {
                             Ok(request) => {
-                                // A command may wake a session whose tap let go while it
-                                // was idle: number what it produces again (§4.2 lazy).
-                                feed.ensure_tap(
-                                    Arc::clone(session.backend()),
-                                    service.clone(),
-                                );
-                                dispatch(&service.upgrade().expect("service gone"), session.clone(), id, request.command, replies.clone());
+                                dispatch(&service.upgrade().expect("service gone"), session.clone(), Arc::clone(&feed), id, request.command, replies.clone());
                             }
                             Err(rejected) => {
                                 let error = AppErrorDto::new(
@@ -1258,13 +1488,87 @@ fn readiness_reason(
     }
 }
 
+/// One `get_entries{before|limit|ids}` ask.
+struct PageAsk {
+    before: Option<String>,
+    limit: usize,
+    ids: Option<Vec<String>>,
+}
+
+/// Answers a paged `get_entries`: from the runtime when it is up (`_oino/entries_page`),
+/// else — or when the runtime cannot — from the session file; bounded for one frame.
+async fn answer_page(
+    session: Live,
+    file: Option<SessionFile>,
+    blobs_dir: Option<std::path::PathBuf>,
+    ask: PageAsk,
+    id: Option<Value>,
+    replies: mpsc::Sender<SessionReply>,
+) {
+    let from_runtime = match session.ready() {
+        Some(live) => live
+            .send(RpcCommand::Oino(
+                oino_client::protocol::OinoCommand::EntriesPage {
+                    before: ask.before.clone(),
+                    limit: Some(ask.limit),
+                    ids: ask.ids.clone(),
+                },
+            ))
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    };
+    let reply = match (from_runtime, file) {
+        (Some(reply), _) => Ok(reply),
+        (None, Some(file)) => {
+            let ask_ids = ask.ids.clone();
+            tokio::task::spawn_blocking(move || match ask_ids {
+                Some(ids) => file
+                    .by_ids(&ids)
+                    .map(|entries| json!({ "entries": entries })),
+                None => file.page(ask.before, ask.limit).map(|page| page.reply()),
+            })
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result)
+        }
+        (None, None) => Err("this chat has no saved history yet".to_owned()),
+    };
+    let reply = match reply {
+        Ok(mut data) => {
+            if ask.ids.is_some() {
+                if let Some(entries) = data.get_mut("entries").and_then(Value::as_array_mut) {
+                    fast::bound_full(entries, blobs_dir.as_deref());
+                }
+                SessionReply::ok(id, Some(data))
+            } else {
+                match Page::from_reply(&data) {
+                    Some(mut page) => {
+                        page.bound(blobs_dir.as_deref());
+                        SessionReply::ok(id, Some(page.reply()))
+                    }
+                    None => SessionReply::ok(id, Some(data)),
+                }
+            }
+        }
+        Err(error) => SessionReply::failed(
+            id,
+            AppErrorDto::new(AppErrorCode::E_INTERNAL, error, false),
+        ),
+    };
+    let _ = replies.send(reply).await;
+}
+
 fn dispatch(
     service: &Arc<SessionService>,
-    session: Arc<HubSession>,
+    session: Live,
+    feed: Arc<Feed>,
     id: Option<Value>,
     command: RpcCommand,
     replies: mpsc::Sender<SessionReply>,
 ) {
+    let tap_service = Arc::downgrade(service);
     let limit = if command.kind() == "_oino/render" {
         RENDER_TIMEOUT
     } else {
@@ -1277,6 +1581,17 @@ fn dispatch(
     // F-02: snapshot the readiness cache before the send (a mutex read, never a probe).
     let readiness = std::sync::Arc::new(service.hub().readiness().snapshot());
     tokio::spawn(async move {
+        // A file-opened session wakes behind its history: the command waits for it.
+        let session = match session.get().await {
+            Ok(session) => session,
+            Err(error) => {
+                let _ = replies.send(SessionReply::failed(id, error)).await;
+                return;
+            }
+        };
+        // A command may wake a session whose tap let go while it was idle: number what it
+        // produces again (§4.2 lazy).
+        feed.ensure_tap(Arc::clone(session.backend()), tap_service);
         let is_models = matches!(command, RpcCommand::Agent(AgentCommand::GetAvailableModels));
         let reply =
             match tokio::time::timeout(limit, session.send_with_id(request_id, command)).await {
