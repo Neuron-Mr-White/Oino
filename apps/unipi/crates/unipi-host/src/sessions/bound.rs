@@ -221,8 +221,19 @@ pub fn json_len(value: &Value) -> usize {
 /// (the flag the app's full-output path reads, refetching the entry on expand). Returns
 /// whether the event was changed.
 pub fn bound_event(event: &mut Value, blobs_dir: Option<&Path>, budget: usize) -> bool {
-    if json_len(event) <= budget {
-        return false;
+    bound_event_sized(event, blobs_dir, budget).0
+}
+
+/// [`bound_event`], also returning the event's serialized size afterwards (measured once for
+/// the common small event, so the feed ring can account bytes without a second pass).
+pub fn bound_event_sized(
+    event: &mut Value,
+    blobs_dir: Option<&Path>,
+    budget: usize,
+) -> (bool, usize) {
+    let len = json_len(event);
+    if len <= budget {
+        return (false, len);
     }
     let mut changed = false;
     if let Some(dir) = blobs_dir {
@@ -240,7 +251,7 @@ pub fn bound_event(event: &mut Value, blobs_dir: Option<&Path>, budget: usize) -
     if changed {
         mark_truncated(event);
     }
-    changed
+    (changed, json_len(event))
 }
 
 /// Moves every big inline base64 image in `value` into the blob store (`mediaRef`).

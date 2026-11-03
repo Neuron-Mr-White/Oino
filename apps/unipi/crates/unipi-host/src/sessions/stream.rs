@@ -63,6 +63,12 @@ use super::open::{self as fast, Live, Page, SessionFile};
 pub const FLUSH_WINDOW: Duration = Duration::from_millis(16);
 /// How many numbered events one session keeps for a resume (§7.4).
 pub const RING_CAPACITY: usize = 4096;
+/// perf-fix: the ring's byte budget per session. A resume replay must fit one frame
+/// ([`bound::BATCH_BUDGET`], see `replay_fits`), so events older than that budget can never be
+/// replayed anyway; keeping them only held ~1.3 MB per session ever opened (perf-baseline #8).
+pub const RING_BYTES: usize = bound::BATCH_BUDGET;
+/// Per-event framing overhead counted against [`RING_BYTES`] (the same figure `replay_fits` uses).
+const RING_EVENT_OVERHEAD: usize = 96;
 /// The per-session tap's queue depth (§7.4 `bounded broadcast channel (256)`).
 pub const TAP_CAPACITY: usize = 256;
 /// Consecutive idle polls after which a subscriber-less tap lets the runtime go.
@@ -126,7 +132,7 @@ impl Drop for Subscription {
 pub struct Feed {
     session_id: Mutex<String>,
     seq: AtomicU64,
-    ring: Mutex<VecDeque<SessionEventDto>>,
+    ring: Mutex<Ring>,
     subscribers: Mutex<Vec<(u64, mpsc::Sender<Arc<SessionEventDto>>)>>,
     next_subscriber: AtomicU64,
     tap: Mutex<Option<JoinHandle<()>>>,
@@ -159,7 +165,7 @@ impl Feed {
         Arc::new(Self {
             session_id: Mutex::new(session_id.into()),
             seq: AtomicU64::new(0),
-            ring: Mutex::new(VecDeque::new()),
+            ring: Mutex::new(Ring::default()),
             subscribers: Mutex::new(Vec::new()),
             next_subscriber: AtomicU64::new(1),
             tap: Mutex::new(None),
@@ -204,7 +210,9 @@ impl Feed {
         // every subscriber carry the frame-safe form — a screenshot becomes a `mediaRef`, a
         // multi-megabyte tool output is clipped and flagged `truncated`.
         let blobs_dir = lock(&self.blobs_dir).clone();
-        if bound::bound_event(&mut event, blobs_dir.as_deref(), bound::EVENT_BUDGET) {
+        let (bounded, bytes) =
+            bound::bound_event_sized(&mut event, blobs_dir.as_deref(), bound::EVENT_BUDGET);
+        if bounded {
             let kind = event
                 .get("type")
                 .or_else(|| event.get("kind"))
@@ -214,20 +222,13 @@ impl Feed {
             tracing::info!(
                 session = %self.session_id(),
                 kind = %kind,
-                bytes = bound::json_len(&event),
+                bytes,
                 "bounded an oversize live session event"
             );
         }
         let seq = self.seq.fetch_add(1, Ordering::AcqRel) + 1;
         let dto = Arc::new(SessionEventDto::new(self.session_id(), seq, event));
-        {
-            let mut ring = lock(&self.ring);
-            ring.push_back((*dto).clone());
-            let excess = ring.len().saturating_sub(RING_CAPACITY);
-            if excess > 0 {
-                ring.drain(..excess);
-            }
-        }
+        lock(&self.ring).push(Arc::clone(&dto), bytes + RING_EVENT_OVERHEAD);
         if is_delta(&dto.event) {
             self.fan_out_lossy(&dto);
         } else {
@@ -291,6 +292,21 @@ impl Feed {
     /// resume cannot be trusted (§7.4).
     pub fn mark_disposed(&self) {
         self.disposed.store(true, Ordering::Release);
+        // A disposed feed never resumes again: its ring is dead weight.
+        self.forget_ring();
+    }
+
+    /// Drops the buffered events (perf-fix #8): the feed keeps only its numbering. A later
+    /// `session_open{since_seq}` with `since == seq` still resumes (nothing to replay), an
+    /// older one resets to a snapshot — exactly what a ring that rolled over would do.
+    pub fn forget_ring(&self) {
+        *lock(&self.ring) = Ring::default();
+    }
+
+    /// Bytes held by the resume ring (tests, diagnostics).
+    #[must_use]
+    pub fn ring_bytes(&self) -> usize {
+        lock(&self.ring).bytes
     }
 
     /// Can `session_open{since_seq}` be answered with the ring instead of a snapshot?
@@ -306,16 +322,19 @@ impl Feed {
         let ring = lock(&self.ring);
         // The ring must still hold the event right after `since` (it holds every event from
         // its front to `seq` — numbering and eviction are contiguous).
-        ring.front().is_some_and(|first| first.seq <= since + 1)
+        ring.events
+            .front()
+            .is_some_and(|(first, _)| first.seq <= since + 1)
     }
 
     /// The buffered events after `since`, in order (the resume `replay`, §7.4).
     #[must_use]
     pub fn events_after(&self, since: u64) -> Vec<SessionEventDto> {
         lock(&self.ring)
+            .events
             .iter()
-            .filter(|event| event.seq > since)
-            .cloned()
+            .filter(|(event, _)| event.seq > since)
+            .map(|(event, _)| (**event).clone())
             .collect()
     }
 
@@ -440,7 +459,9 @@ impl Feed {
                     }
                     idle_polls += 1;
                     if idle_polls >= IDLE_POLLS && !is_busy(&backend).await {
-                        // Idle and unwatched: stop numbering so the hub can evict (§4.2).
+                        // Idle and unwatched: stop numbering so the hub can evict (§4.2),
+                        // and let the buffered events go (perf-fix #8: the soak leak).
+                        self.forget_ring();
                         return;
                     }
                 }
@@ -454,6 +475,28 @@ impl Feed {
         let previous = id.clone();
         id.clone_from(&new_id.to_owned());
         previous
+    }
+}
+
+/// The resume ring of one feed: shared events (no deep copy per event) bounded by count
+/// ([`RING_CAPACITY`]) and bytes ([`RING_BYTES`]).
+#[derive(Default)]
+struct Ring {
+    events: VecDeque<(Arc<SessionEventDto>, usize)>,
+    bytes: usize,
+}
+
+impl Ring {
+    fn push(&mut self, event: Arc<SessionEventDto>, bytes: usize) {
+        self.bytes += bytes;
+        self.events.push_back((event, bytes));
+        while self.events.len() > RING_CAPACITY
+            || (self.bytes > RING_BYTES && self.events.len() > 1)
+        {
+            if let Some((_, size)) = self.events.pop_front() {
+                self.bytes -= size;
+            }
+        }
     }
 }
 
@@ -1859,5 +1902,44 @@ mod app_model_tests {
         // Unknown / absent providers stay unmarked (usable, nothing says otherwise).
         assert!(rows[3].get("ready").is_none());
         assert!(rows[4].get("ready").is_none());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test assertions")]
+mod ring_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn the_ring_is_byte_bounded_and_resume_stays_contiguous() {
+        let feed = Feed::new("s1");
+        let text = "x".repeat(16 * 1024);
+        for _ in 0..200 {
+            feed.publish(json!({"type": "tool_execution_end", "result": text}))
+                .await;
+        }
+        assert_eq!(feed.seq(), 200);
+        assert!(feed.ring_bytes() <= RING_BYTES, "{}", feed.ring_bytes());
+        // The oldest events rolled over: resuming from them resets, the recent ones replay.
+        assert!(!feed.can_resume(1));
+        assert!(feed.can_resume(199));
+        assert_eq!(feed.events_after(199).len(), 1);
+        assert!(replay_fits(&feed.events_after(feed.seq() - 20)));
+    }
+
+    #[tokio::test]
+    async fn a_forgotten_ring_keeps_the_numbering() {
+        let feed = Feed::new("s1");
+        for _ in 0..3 {
+            feed.publish(json!({"type": "turn_start"})).await;
+        }
+        feed.forget_ring();
+        assert_eq!(feed.ring_bytes(), 0);
+        assert!(
+            feed.can_resume(3),
+            "nothing missed: resumes with an empty replay"
+        );
+        assert!(!feed.can_resume(2), "a missed event: snapshot");
+        assert_eq!(feed.publish(json!({"type": "turn_start"})).await, 4);
     }
 }
