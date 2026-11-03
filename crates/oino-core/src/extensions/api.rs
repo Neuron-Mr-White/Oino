@@ -107,6 +107,8 @@ pub struct ExtensionCallError {
     pub message: String,
     /// The guest trapped (instance restarted lazily).
     pub trap: bool,
+    /// The handler missed its deadline (the result was not waited for).
+    pub timed_out: bool,
 }
 
 impl ExtensionCallError {
@@ -116,6 +118,16 @@ impl ExtensionCallError {
         Self {
             message: message.into(),
             trap: false,
+            timed_out: false,
+        }
+    }
+
+    /// A handler that missed its deadline.
+    #[must_use]
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self {
+            timed_out: true,
+            ..Self::new(message)
         }
     }
 }

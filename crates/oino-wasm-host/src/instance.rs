@@ -39,6 +39,10 @@ pub(crate) struct Exports {
 type Job =
     Box<dyn for<'a> FnOnce(&'a Accessor<HostState>, &'a Exports) -> BoxFuture<'a, ()> + Send>;
 
+/// The message prefix of a handler that missed its deadline (the core bridge maps it to
+/// a timed-out call, perf-fix #7).
+pub(crate) const HANDLER_TIMEOUT: &str = "handler timed out after";
+
 const MAX_RESTARTS: usize = 3;
 const RESTART_WINDOW: Duration = Duration::from_secs(600);
 
@@ -432,7 +436,7 @@ impl ExtensionInstance for WasmInstance {
                 .ok_or_else(|| {
                     self.err(
                         &call_name,
-                        format!("handler timed out after {} ms", deadline.as_millis()),
+                        format!("{HANDLER_TIMEOUT} {} ms", deadline.as_millis()),
                     )
                 })??;
             match r {

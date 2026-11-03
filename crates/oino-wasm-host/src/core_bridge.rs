@@ -109,6 +109,7 @@ fn call_error(e: &oino_extension_api::ExtensionError) -> ca::ExtensionCallError 
     ca::ExtensionCallError {
         message: e.message.clone(),
         trap: e.trap,
+        timed_out: !e.trap && e.message.starts_with(crate::instance::HANDLER_TIMEOUT),
     }
 }
 

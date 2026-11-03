@@ -5,7 +5,7 @@
 //! are reported as `extension_error` and skipped (the chain keeps the previous value);
 //! `tool_call` and `user_bash` failures block. Every call has a deadline.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -265,6 +265,20 @@ pub struct ExtensionRunner {
     /// Extensions disabled for this session (X-TRAP); shared by every clone of this
     /// session's runner.
     disabled: Arc<Mutex<IndexSet<ExtensionId>>>,
+    /// perf-fix #7: each extension's last `before_agent_start` prompt contribution
+    /// (`systemPromptOptions` in → out, forced `systemPrompt`). A handler that misses its
+    /// deadline on a later turn with the same input keeps its section instead of dropping
+    /// it — a dropped section broke the provider's prompt cache on ~35 % of graph root
+    /// turns. One entry per extension (bounded by the set).
+    sticky_prompt: Arc<Mutex<HashMap<String, StickyPrompt>>>,
+}
+
+/// One extension's last successful `before_agent_start` prompt result.
+#[derive(Clone, Debug)]
+struct StickyPrompt {
+    input: JsonValue,
+    options: Option<JsonValue>,
+    forced: Option<String>,
 }
 
 impl std::fmt::Debug for ExtensionRunner {
@@ -296,6 +310,7 @@ impl ExtensionRunner {
             stale: Arc::new(Mutex::new(None)),
             dialogs: None,
             disabled: Arc::new(Mutex::new(IndexSet::new())),
+            sticky_prompt: Arc::default(),
         }
     }
 
@@ -438,7 +453,7 @@ impl ExtensionRunner {
                 if let Some(ui) = &self.dialogs {
                     ui.cancel_for(id);
                 }
-                Err(ExtensionCallError::new(format!(
+                Err(ExtensionCallError::timeout(format!(
                     "Extension handler for {kind} timed out after {}ms",
                     deadline.as_millis()
                 )))
@@ -447,6 +462,7 @@ impl ExtensionRunner {
                 let error = ExtensionCallError {
                     message: format!("extension panicked: {}", panic_message(&*panic)),
                     trap: true,
+                    timed_out: false,
                 };
                 self.disable(extension, ExtensionDisabledReason::Panic);
                 Err(error)
@@ -770,25 +786,54 @@ impl ExtensionRunner {
                 json!(forced.clone().unwrap_or_else(|| render(&current))),
             );
             payload.insert("systemPromptOptions".into(), current.clone());
+            let input = current.clone();
+            let id = extension.instance.id().to_owned();
             match self
                 .call(&extension, "before_agent_start", JsonValue::Object(payload))
                 .await
             {
-                Ok(Some(value)) => {
+                Ok(result) => {
+                    let value = result.unwrap_or(JsonValue::Null);
                     if let Some(message) = value.get("message").filter(|m| m.is_object()) {
                         messages.push(message.clone());
                     }
-                    if let Some(options) =
-                        value.get("systemPromptOptions").filter(|o| o.is_object())
-                    {
+                    let options = value
+                        .get("systemPromptOptions")
+                        .filter(|o| o.is_object())
+                        .cloned();
+                    if let Some(options) = &options {
                         current = options.clone();
                     }
-                    if let Some(prompt) = value.get("systemPrompt").and_then(JsonValue::as_str) {
-                        forced = Some(prompt.to_owned());
+                    let prompt = value
+                        .get("systemPrompt")
+                        .and_then(JsonValue::as_str)
+                        .map(str::to_owned);
+                    if let Some(prompt) = &prompt {
+                        forced = Some(prompt.clone());
+                    }
+                    lock(&self.sticky_prompt).insert(
+                        id,
+                        StickyPrompt {
+                            input,
+                            options,
+                            forced: prompt,
+                        },
+                    );
+                }
+                Err(error) => {
+                    self.report(&extension, "before_agent_start", &error);
+                    let sticky = lock(&self.sticky_prompt).get(&id).cloned();
+                    if error.timed_out
+                        && let Some(sticky) = sticky.filter(|s| s.input == input)
+                    {
+                        if let Some(options) = sticky.options {
+                            current = options;
+                        }
+                        if let Some(prompt) = sticky.forced {
+                            forced = Some(prompt);
+                        }
                     }
                 }
-                Ok(None) => {}
-                Err(error) => self.report(&extension, "before_agent_start", &error),
             }
         }
         BeforeAgentStartOutcome {
