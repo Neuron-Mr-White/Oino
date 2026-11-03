@@ -750,6 +750,13 @@ impl AgentSession {
                     .cloned()
                     .collect(),
             )),
+            ExtensionPolicy::Except(ids) => Arc::new(ExtensionSet::new(
+                all.extensions()
+                    .iter()
+                    .filter(|e| !ids.iter().any(|id| id == e.instance.id()))
+                    .cloned()
+                    .collect(),
+            )),
         }
     }
 
@@ -1073,7 +1080,12 @@ async fn hibernate_watcher(child: Weak<ChildAgent>) {
         let Some(session) = child.session_slot() else {
             return; // hibernated (this watcher's job is done) or closing
         };
-        let after = Duration::from_secs(hibernate_after_sec(&session));
+        // The window is the owner's setting: read it from the parent, whose extension set
+        // carries `extensionSettings.subagents` (a child may run without that extension).
+        let after = Duration::from_secs(child.parent.upgrade().map_or_else(
+            || hibernate_after_sec(&session),
+            |parent| hibernate_after_sec(&AgentSession::from_inner(parent)),
+        ));
         poll = hibernate_poll(after);
         if after.is_zero() || !ChildAgent::hibernatable(&session) {
             *lock(&child.idle_since) = None;

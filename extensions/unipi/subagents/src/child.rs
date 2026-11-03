@@ -635,7 +635,11 @@ impl Spec {
         let mut spec = json!({
             "label": self.label,
             "tools": {"builtin": builtin, "extensionTools": extension, "deny": self.deny},
-            "extensions": "inherit",
+            // perf-fix: every parent extension but this one — a child cannot run
+            // subagents, and this extension's hooks for each child ran on its single
+            // actor (missed 5 s deadlines in big graphs, a `<subagents>` section the child
+            // could not use).
+            "extensions": {"except": [crate::EXTENSION_ID]},
             "seed": self.seed_session_file.as_ref().map_or_else(|| json!("none"), |f| json!({"sessionFile": f})),
             "persistence": self.session_dir.as_ref().map_or_else(|| json!("memory"), |d| json!({"file": {"sessionDir": d}})),
             "childRole": self.child_role,

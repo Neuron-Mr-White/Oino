@@ -55,6 +55,10 @@ pub enum ExtensionPolicy {
     Inherit,
     /// Only these extension ids.
     Only(Vec<String>),
+    /// Every extension of the parent except these ids (perf-fix: a child loads only what
+    /// it uses — e.g. the subagents extension, whose tools a child cannot call, kept
+    /// running its hooks for every child on its single actor and missed their deadlines).
+    Except(Vec<String>),
 }
 
 /// Initial transcript of the child.
@@ -172,6 +176,12 @@ mod tests {
             ExtensionPolicy::Only(vec!["acme.memory".into()])
         );
         assert_eq!(minimal.seed, Seed::BranchCopy);
+        let except: ExtensionPolicy =
+            serde_json::from_value(json!({"except": ["unipi.subagents"]})).unwrap();
+        assert_eq!(
+            except,
+            ExtensionPolicy::Except(vec!["unipi.subagents".into()])
+        );
         assert_eq!(minimal.ui, UiPolicy::Forward);
         assert_eq!(minimal.tools.builtin, None);
     }
