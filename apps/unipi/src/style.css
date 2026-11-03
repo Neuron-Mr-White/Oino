@@ -38,6 +38,12 @@ body { margin: 0; overflow: hidden; }
 button, a, input { transition: background-color 180ms ease-out, color 180ms ease-out; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
+/* app-convention: every clickable shows the pointer, set once. In the base layer so a
+   component's own cursor-* utility (or ui.css rule) still wins. */
+@layer base {
+  a[href], [role=button], summary, label[for], select { cursor: pointer; }
+  select:disabled, [role=button][aria-disabled=true], a[aria-disabled=true] { cursor: not-allowed; }
+}
 :focus-visible { outline: 2px solid var(--color-shell); outline-offset: 3px; }
 .app-shell { height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
 .app-content { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px; font-size: var(--ui-font-size, 15px); }
