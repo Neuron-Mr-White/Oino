@@ -354,7 +354,7 @@ export function Editor(props: {
         </Show>
         <div class="feditor-cm" ref={container} classList={{ hidden: state().kind !== 'ready' || (isMarkdown() && preview()) }} />
         <Show when={state().kind === 'ready' && isMarkdown() && preview()}>
-          <div class="feditor-md md" data-testid="files-editor-md">
+          <div class="feditor-md chat-prose md" data-testid="files-editor-md">
             <For each={renderBlocks(previewText(), false)}>{(html) => <MdBlock html={html} class="chat-block" />}</For>
           </div>
         </Show>

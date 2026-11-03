@@ -340,7 +340,9 @@ export function GenericPreview(props: { request: Exclude<PreviewRequest, { kind:
           />
         </Show>
         <Show when={req.kind === 'markdown'}>
-          <For each={renderBlocks(req.text ?? '', false)}>{(html) => <MdBlock html={html} class="chat-block" />}</For>
+          <div class="chat-prose md" data-testid="media-md">
+            <For each={renderBlocks(req.text ?? '', false)}>{(html) => <MdBlock html={html} class="chat-block" />}</For>
+          </div>
         </Show>
         <Show when={req.kind === 'code'}>
           <CodeBlock text={req.text ?? ''} lang={req.mime} />
@@ -516,7 +518,9 @@ export function PreviewTab(props: PaneTabProps) {
               </div>
             </Match>
             <Match when={(kind() === 'markdown' || kind() === 'svg') && !source() && text() !== undefined}>
-              <For each={renderBlocks(text()!, false)}>{(html) => <MdBlock html={html} class="chat-block" />}</For>
+              <div class="ptab-md chat-prose md" data-testid="preview-tab-md">
+                <For each={renderBlocks(text()!, false)}>{(html) => <MdBlock html={html} class="chat-block" />}</For>
+              </div>
             </Match>
             <Match when={kind() === 'pdf' && bytes()}>
               {(b) => <PdfView url={b().url} name={name()} />}

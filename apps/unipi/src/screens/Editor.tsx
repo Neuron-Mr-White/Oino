@@ -576,7 +576,7 @@ export default function Editor() {
         </Show>
         <div class="editor-cm" ref={container} classList={{ hidden: state().kind !== 'ready' || (isMarkdown() && preview()) }} />
         <Show when={state().kind === 'ready' && isMarkdown() && preview()}>
-          <div class="editor-md-preview md" data-testid="editor-md-preview">
+          <div class="editor-md-preview chat-prose md" data-testid="editor-md-preview">
             <For each={renderBlocks(previewText(), false)}>{(html) => <MdBlock html={html} class="chat-block" />}</For>
           </div>
         </Show>
