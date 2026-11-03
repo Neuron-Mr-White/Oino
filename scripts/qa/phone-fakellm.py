@@ -87,7 +87,15 @@ class H(BaseHTTPRequestHandler):
         req = json.loads(self.rfile.read(n) or b"{}")
         msgs = req.get("messages", [])
         tools = [t.get("function", {}).get("name") for t in req.get("tools", []) or []]
-        last_user = next((text_of(m) for m in reversed(msgs) if m.get("role") == "user"), "")
+        # The user turn = every user message after the last assistant one (extensions inject
+        # their own user-role notes, e.g. a memory nudge, right after the typed prompt).
+        tail = []
+        for m in reversed(msgs):
+            if m.get("role") == "assistant":
+                break
+            if m.get("role") == "user":
+                tail.append(text_of(m))
+        last_user = " ".join(reversed(tail))
         after_tool = bool(msgs) and msgs[-1].get("role") == "tool"
         LOG.write(json.dumps({"t": time.time(), "last_user": last_user[:200], "after_tool": after_tool, "tools": tools}) + "\n"); LOG.flush()
         low = last_user.lower()
