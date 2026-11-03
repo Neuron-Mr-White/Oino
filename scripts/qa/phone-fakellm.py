@@ -11,6 +11,10 @@ Prompt keywords pick a script:
   "long"   -> very long markdown answer (scrolling)
   "edit"   -> edit/write tool calls (diff rows)
   "grow"   -> one bash call whose output streams for ~12 s (chat-scroll: output inside a tool row)
+  "subagents" -> run_subagent x4 in the background (2 slow, 1 quick, 1 failing) + bg_run x1
+                 (running-tab QA); the children's tasks use the "slow"/"quick"/"error" scripts
+  "slow"   -> one bash call that sleeps 15 min (a run that stays live)
+  "quick"  -> one bash call, then text (a run that completes)
   anything else -> medium markdown answer with code block + table, streamed slowly
 """
 import json, os, sys, time, re
@@ -103,6 +107,22 @@ class H(BaseHTTPRequestHandler):
                      ("read", {"path": f"{DEMO}/src/main.rs"}),
                      ("bash", {"command": "for i in 1 2 3; do echo step $i; sleep 1; done"})]
             text = "Let me look around the project first."
+        elif "subagents" in low and "run_subagent" in tools:
+            def sub(title, task, profile="subagent_explore"):
+                return ("run_subagent", {"title": title, "task": task, "profile": profile, "is_background": True})
+            calls = [sub("Map the status topics", "slow: map the status topics of the core extension"),
+                     sub("Audit the settings schema", "slow: audit the settings schema", "subagent_general"),
+                     sub("List the tray producers", "quick: list the work-tray producers"),
+                     sub("Probe the flaky endpoint", "error: probe the flaky endpoint")]
+            if "bg_run" in tools:
+                calls.append(("bg_run", {"name": "Watch the test suite", "command": "for i in $(seq 1 900); do echo tick $i; sleep 1; done", "isAgent": False}))
+            text = "Starting four subagents and a background task."
+        elif "slow" in low:
+            calls = [("bash", {"command": "sleep 900"})]
+            text = "Working on it."
+        elif "quick" in low:
+            calls = [("bash", {"command": "echo producers: bg subagents dream workflow"})]
+            text = "Checking."
         elif "grow" in low:
             # chat-scroll QA: one bash call whose output streams for ~12 s (grows inside an expanded tool row)
             calls = [("bash", {"command": "for i in $(seq 1 80); do echo \"output line $i\"; sleep 0.15; done"})]
@@ -134,4 +154,4 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     LOG = open(os.environ.get("FAKELLM_LOG", "/root/qa/fakellm.log"), "a")
-    ThreadingHTTPServer(("127.0.0.1", 11434), H).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("FAKELLM_PORT", "11434"))), H).serve_forever()
