@@ -132,10 +132,13 @@ export function GitSection(props: {
   // The shown session's turns (the "Last turn" source); pinned while open.
   const session = createMemo(() => (props.sessionId ? sessions().ensure(hostId, props.sessionId) : undefined));
   const turns = createMemo<readonly Turn[]>(() => session()?.turns() ?? []);
-  {
+  // Per shown session: the status pane outlives chat switches within a project, and a pin
+  // taken once at mount kept the FIRST chat pinned for good (chat-vanish: stale pins filled
+  // the 3-chat LRU until every newly opened chat was evicted on arrival).
+  createEffect(() => {
     const release = session()?.acquire();
     if (release) onCleanup(release);
-  }
+  });
 
   // ── Data ────────────────────────────────────────────────────────────────
 

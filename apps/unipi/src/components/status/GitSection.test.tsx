@@ -425,3 +425,21 @@ describe('Git auto-refresh over the MockHost (Z-98, acceptance)', () => {
     expect(log.some((e) => (e.args as { on?: boolean }).on === false)).toBe(true);
   });
 });
+
+describe('chat-vanish: the status pane pins the SHOWN chat only', () => {
+  it('a session switch moves the pin (no stale pin on the first chat)', async () => {
+    const { sessions } = await import('../../lib/session/store');
+    setPlatformOverride({ mode: 'tauri-desktop', os: 'linux', tauri: false });
+    const [sid, setSid] = createSignal('s1');
+    render(() => (
+      <HashRouter>
+        <Route path="*" component={() => <GitSection hostId="h1" path="/home/u/proj" sessionId={sid()} onToast={() => {}} />} />
+      </HashRouter>
+    ));
+    const refs = (id: string) => (sessions().peek('h1', id) as unknown as { refs: number } | undefined)?.refs ?? 0;
+    await waitFor(() => expect(refs('s1')).toBe(1));
+    setSid('s2');
+    await waitFor(() => expect(refs('s2')).toBe(1));
+    expect(refs('s1')).toBe(0);
+  });
+});

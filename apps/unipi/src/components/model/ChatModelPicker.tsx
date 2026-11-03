@@ -92,7 +92,9 @@ export { revealPicked } from './FusionPair';
 export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
   // ensure() subscribes; acquire() pins the session against the LRU while shown.
   const s = createMemo(() => sessions().ensure(props.target.hostId, props.target.sessionId));
-  onCleanup(s().acquire());
+  // Per handle: a retargeted picker must release the chat it pinned (a stale pin per
+  // retarget filled the 3-chat LRU — chat-vanish).
+  createEffect(() => onCleanup(s().acquire()));
   const [data, { refetch }] = createResource(liveSource(s), async (state) => (state === 'live' ? loadPicker(s()) : undefined));
 
   const allModels = () => data.latest?.models ?? [];
