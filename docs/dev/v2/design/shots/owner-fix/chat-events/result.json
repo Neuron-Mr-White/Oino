@@ -1,0 +1,545 @@
+{
+ "sid": "60b031df-4f2f-4635-89ef-854f66fd4ee3",
+ "kinds": {
+  "memory-recall": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 326,
+   "body": {
+    "fmt": "markdown",
+    "sh": 293,
+    "ch": 293,
+    "len": 511
+   },
+   "phone_sheet": true
+  },
+  "memory-wake": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 221,
+   "body": {
+    "fmt": "text",
+    "sh": 188,
+    "ch": 188,
+    "len": 338
+   },
+   "phone_sheet": true
+  },
+  "memory-saved": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 105,
+   "body": {
+    "fmt": "markdown",
+    "sh": 72,
+    "ch": 72,
+    "len": 89
+   },
+   "phone_sheet": true
+  },
+  "memory-nudge": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 98,
+   "body": {
+    "fmt": "markdown",
+    "sh": 65,
+    "ch": 65,
+    "len": 190
+   },
+   "phone_sheet": true
+  },
+  "memory-recall-2": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 145,
+   "body": {
+    "fmt": "markdown",
+    "sh": 112,
+    "ch": 112,
+    "len": 124
+   },
+   "phone_sheet": true
+  },
+  "subagent-done": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 150,
+   "body": {
+    "fmt": "markdown",
+    "sh": 117,
+    "ch": 117,
+    "len": 114
+   },
+   "phone_sheet": true
+  },
+  "subagent-notification": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 155,
+   "body": {
+    "fmt": "markdown",
+    "sh": 122,
+    "ch": 122,
+    "len": 129
+   },
+   "phone_sheet": true
+  },
+  "sidekick-done": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 105,
+   "body": {
+    "fmt": "markdown",
+    "sh": 72,
+    "ch": 72,
+    "len": 112
+   },
+   "phone_sheet": true
+  },
+  "background-task": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 102,
+   "body": {
+    "fmt": "text",
+    "sh": 69,
+    "ch": 69,
+    "len": 156
+   },
+   "phone_sheet": true
+  },
+  "background-task-2": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 102,
+   "body": {
+    "fmt": "text",
+    "sh": 69,
+    "ch": 69,
+    "len": 67
+   },
+   "phone_sheet": true
+  },
+  "user-bash": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 85,
+   "body": {
+    "fmt": "text",
+    "sh": 52,
+    "ch": 52,
+    "len": 78
+   },
+   "phone_sheet": true
+  },
+  "user-bash-2": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 68,
+   "body": {
+    "fmt": "text",
+    "sh": 35,
+    "ch": 35,
+    "len": 42
+   },
+   "phone_sheet": true
+  },
+  "compaction-card": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 171,
+   "body": {
+    "fmt": "markdown",
+    "sh": 138,
+    "ch": 138,
+    "len": 108
+   },
+   "phone_sheet": true
+  },
+  "compactor-recall": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 139,
+   "body": {
+    "fmt": "markdown",
+    "sh": 106,
+    "ch": 106,
+    "len": 93
+   },
+   "phone_sheet": true
+  },
+  "compactor-resume": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 153,
+   "body": {
+    "fmt": "text",
+    "sh": 120,
+    "ch": 120,
+    "len": 153
+   },
+   "phone_sheet": true
+  },
+  "mode-switch": {
+   "collapsed_h": 32,
+   "expanded": null,
+   "expanded_h": 32,
+   "body": null
+  },
+  "system": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 85,
+   "body": {
+    "fmt": "text",
+    "sh": 52,
+    "ch": 52,
+    "len": 123
+   },
+   "phone_sheet": true
+  },
+  "goal-progress": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 78,
+   "body": {
+    "fmt": "markdown",
+    "sh": 45,
+    "ch": 45,
+    "len": 53
+   },
+   "phone_sheet": true
+  },
+  "lh-continue": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 78,
+   "body": {
+    "fmt": "markdown",
+    "sh": 45,
+    "ch": 45,
+    "len": 60
+   },
+   "phone_sheet": true
+  },
+  "ralph-iteration": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 132,
+   "body": {
+    "fmt": "markdown",
+    "sh": 99,
+    "ch": 99,
+    "len": 165
+   },
+   "phone_sheet": true
+  },
+  "plan-mode": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 78,
+   "body": {
+    "fmt": "markdown",
+    "sh": 45,
+    "ch": 45,
+    "len": 61
+   },
+   "phone_sheet": true
+  },
+  "watchdog": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 106,
+   "body": {
+    "fmt": "markdown",
+    "sh": 73,
+    "ch": 73,
+    "len": 83
+   },
+   "phone_sheet": true
+  },
+  "skills-revealed": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 78,
+   "body": {
+    "fmt": "markdown",
+    "sh": 45,
+    "ch": 45,
+    "len": 38
+   },
+   "phone_sheet": true
+  },
+  "response": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 116,
+   "body": {
+    "fmt": "markdown",
+    "sh": 83,
+    "ch": 83,
+    "len": 82
+   },
+   "phone_sheet": true
+  },
+  "kanboard-next": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 78,
+   "body": {
+    "fmt": "markdown",
+    "sh": 45,
+    "ch": 45,
+    "len": 39
+   },
+   "phone_sheet": true
+  },
+  "kanboard-badge": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 119,
+   "body": {
+    "fmt": "json",
+    "sh": 86,
+    "ch": 86,
+    "len": 42
+   },
+   "phone_sheet": true
+  },
+  "dream-report": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 68,
+   "body": {
+    "fmt": "text",
+    "sh": 35,
+    "ch": 35,
+    "len": 45
+   },
+   "phone_sheet": true
+  },
+  "btw": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 127,
+   "body": {
+    "fmt": "markdown",
+    "sh": 94,
+    "ch": 94,
+    "len": 65
+   },
+   "phone_sheet": true
+  },
+  "attachments": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 103,
+   "body": {
+    "fmt": "markdown",
+    "sh": 70,
+    "ch": 70,
+    "len": 22
+   },
+   "phone_sheet": true
+  },
+  "browser-shot": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 119,
+   "body": {
+    "fmt": "json",
+    "sh": 86,
+    "ch": 86,
+    "len": 59
+   },
+   "phone_sheet": true
+  },
+  "branch-summary": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 128,
+   "body": {
+    "fmt": "markdown",
+    "sh": 95,
+    "ch": 95,
+    "len": 124
+   },
+   "phone_sheet": true
+  },
+  "custom": {
+   "collapsed_h": 32,
+   "expanded": "true",
+   "expanded_h": 119,
+   "body": {
+    "fmt": "json",
+    "sh": 86,
+    "ch": 86,
+    "len": 29
+   },
+   "phone_sheet": true
+  }
+ },
+ "rows": [
+  {
+   "title": "Memory \u00b7 recalled 5 \u00b7 oino_handoff_20261102_finalize_graph \u00b7 oino",
+   "kind": "memory-recall"
+  },
+  {
+   "title": "Memory \u00b7 wake-up \u00b7 215 memories \u00b7 oino",
+   "kind": "memory-wake"
+  },
+  {
+   "title": "Memory \u00b7 saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 \u00b7 side agent \u00b7 963k tokens",
+   "kind": "memory-saved"
+  },
+  {
+   "title": "Memory \u00b7 save nudge \u00b7 store what this task taught",
+   "kind": "memory-nudge"
+  },
+  {
+   "title": "Memory \u00b7 no memories yet for openmontage",
+   "kind": "memory-recall"
+  },
+  {
+   "title": "Subagent \u00b7 Audit sidebar rows \u00b7 3m 40s \u00b7 $0.42",
+   "kind": "subagent-done"
+  },
+  {
+   "title": "Subagent \u00b7 Trace film sessions \u00b7 done \u00b7 3m 40s \u00b7 489k tokens",
+   "kind": "subagent-notification"
+  },
+  {
+   "title": "Sidekick \u00b7 Result: DONE \u2014 all 7 rework items implemented; 95 tests passed. \u00b7 1m 5s \u00b7 $0.081",
+   "kind": "sidekick-done"
+  },
+  {
+   "title": "Background task \u00b7 Thinking contract validation \u00b7 exit 1 \u00b7 42s",
+   "kind": "background-task"
+  },
+  {
+   "title": "Background task \u00b7 vitest run \u00b7 exit 0",
+   "kind": "background-task"
+  },
+  {
+   "title": "Shell \u00b7 git status --short \u00b7 exit 0",
+   "kind": "user-bash"
+  },
+  {
+   "title": "Shell \u00b7 cargo test -p oino-core \u00b7 exit 101",
+   "kind": "user-bash"
+  },
+  {
+   "title": "Compactor \u00b7 182k \u2192 41k tokens \u00b7 vcc \u00b7 threshold \u00b7 82%",
+   "kind": "compaction-card"
+  },
+  {
+   "title": "Compactor \u00b7 Session recall: \"phone sheet\"",
+   "kind": "compactor-recall"
+  },
+  {
+   "title": "Compactor \u00b7 resumed after compaction \u00b7 1000 events \u00b7 8\u00d7 compacted \u00b7 384 files",
+   "kind": "compactor-resume"
+  },
+  {
+   "title": "Mode \u00b7 Graph",
+   "kind": "mode-switch"
+  },
+  {
+   "title": "System \u00b7 Mode: Graph \u2014 Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d\u2026",
+   "kind": "system"
+  },
+  {
+   "title": "Goal \u00b7 ~40% \u00b7 timeline rows done, QA shots pending",
+   "kind": "goal-progress"
+  },
+  {
+   "title": "Long-horizon \u00b7 continuation \u00b7 Continue the graph: 2 nodes ready (chat-events, rel-build).",
+   "kind": "lh-continue"
+  },
+  {
+   "title": "Ralph \u00b7 iteration 18/30 \u00b7 agent-only-subtraction",
+   "kind": "ralph-iteration"
+  },
+  {
+   "title": "Plan mode \u00b7 Plan mode on",
+   "kind": "plan-mode"
+  },
+  {
+   "title": "Watchdog \u00b7 Tool bash has been running for 12m (limit 10m).",
+   "kind": "watchdog"
+  },
+  {
+   "title": "Skills \u00b7 Skills now available: browser, image.",
+   "kind": "skills-revealed"
+  },
+  {
+   "title": "Long-horizon \u00b7 Mode command: Graph",
+   "kind": "response"
+  },
+  {
+   "title": "Kanboard \u00b7 Next task: OINO-42 Chat events parity.",
+   "kind": "kanboard-next"
+  },
+  {
+   "title": "Kanboard \u00b7 OINO-42 \u00b7 claimed",
+   "kind": "kanboard-badge"
+  },
+  {
+   "title": "Dream \u00b7 report ready \u00b7 3 proposals pending",
+   "kind": "dream-report"
+  },
+  {
+   "title": "Side question \u00b7 What is the overall progress right now? \u00b7 glm-5.3",
+   "kind": "btw"
+  },
+  {
+   "title": "Attachments \u00b7 2 files \u00b7 design.pdf",
+   "kind": "attachments"
+  },
+  {
+   "title": "Browser \u00b7 https://oino.dev/",
+   "kind": "browser-shot"
+  },
+  {
+   "title": "Branch \u00b7 The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit.",
+   "kind": "branch-summary"
+  },
+  {
+   "title": "Acme \u00b7 weekly report",
+   "kind": "custom"
+  }
+ ],
+ "desktop_overflow": false,
+ "phone_shell": "phone",
+ "phone_overflow": false,
+ "phone_rows": [
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40,
+  40
+ ]
+}

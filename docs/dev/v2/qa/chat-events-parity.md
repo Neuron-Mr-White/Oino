@@ -156,3 +156,30 @@ meta, chevron; body in markdown or `pre`; tone ok/warning/error).
   LRU limit of 500.
 - `lib/timeline/snapshotCache.ts`: a cached event keeps its summary fields, each capped at
   2 KB, so the first paint already shows the right rows.
+
+## 4. Verification
+
+- vitest: `src/lib/timeline/eventKinds.test.ts` has golden tests for each kind plus one for
+  where the rows go in a turn, 45 tests in all. `src/components/timeline/cards/EventCard.golden.test.tsx`
+  has DOM goldens for each kind, collapsed and expanded: the renderer body is requested
+  with `expanded:true` only when the row is opened, the open state survives a remount,
+  JSON shows in a `<pre>`, and on the phone the row opens a sheet. That is 40 tests.
+  The full app suite: 3060 pass and 4 fail, all in files this change does not touch
+  (PushAccess, CapabilityPages Providers, the settings form goldens and the
+  [chips] PhoneField test).
+- Real app: a release .deb built at `04021587` on Agent37, run in the QA rig with the fake
+  model. The chat was seeded with `scripts/qa/chat-events-seed.mjs`, and
+  `scripts/qa/chat-events-qa.py` drove the run. It found 32 event rows covering all 31
+  kinds. Each row is 32 px collapsed on desktop and 40 px on the phone. Every expandable
+  row opened its body (inline on desktop, a full sheet on the phone). Neither width
+  overflows horizontally. The .deb and the built frontend contain no private-router
+  strings.
+- Shots: `docs/dev/v2/design/shots/owner-fix/chat-events/`. `d-<kind>-collapsed|expanded.png`
+  are desktop 1440 crops, `p-<kind>-sheet.png` are phone 390 sheets, `p-collapsed-NN-390.png`
+  are phone timeline pages, and `result.json` holds the measured heights.
+  Four desktop crops are missing because the row was outside the viewport when the crop
+  was taken: collapsed goal/lh-continue/ralph and expanded system. The phone pages and
+  sheets show those rows.
+- Known gap: the kanboard badge and the dream report open the app's fallback body (JSON or
+  the report path), because their extension renderer did not answer with a node for the
+  expanded request on the fake-model rig. The row and its expand still work.
