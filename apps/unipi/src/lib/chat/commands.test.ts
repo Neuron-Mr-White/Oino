@@ -122,3 +122,16 @@ describe('UNI-276: argument position', () => {
     expect(wantsArgCompletions('builtin')).toBe(false);
   });
 });
+
+describe('skillQuery / applySkill (owner spec 2026-11-03)', () => {
+  it('opens on $ at the start, after whitespace or a bracket; never on prices or inside words', async () => {
+    const { skillQuery, applySkill } = await import('./commands');
+    expect(skillQuery('$', 1)).toEqual({ start: 0, query: '' });
+    expect(skillQuery('fix with $rev', 13)).toEqual({ start: 9, query: 'rev' });
+    expect(skillQuery('(see $pdf', 9)).toEqual({ start: 5, query: 'pdf' });
+    expect(skillQuery('costs $5', 8)).toBeNull();
+    expect(skillQuery('a$b', 3)).toBeNull();
+    expect(skillQuery('$review done', 12)).toBeNull();
+    expect(applySkill('fix with $rev now', 13, { start: 9 }, 'review')).toEqual({ text: 'fix with $review now', caret: 17 });
+  });
+});
