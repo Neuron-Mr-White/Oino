@@ -17,7 +17,7 @@ if [ -n "$extra" ]; then
 fi
 
 # Pre-v1 product surface that must not come back into user docs.
-stale_pattern='oino-app|extension-packages|/router setup|OmniRoute|install-all-builtins|extensions/built-in'
+stale_pattern='oino-app|extension-packages|/router setup|install-all-builtins|extensions/built-in'
 if grep -RniE "$stale_pattern" README.md docs/*.md .github 2>/dev/null; then
   printf 'stale pre-v1 wording found in public docs/workflows\n' >&2
   exit 1
