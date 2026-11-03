@@ -2,10 +2,11 @@
 //!
 //! The feed is `https://oino.dev/app/desktop/latest.json` in the Tauri v2
 //! updater shape (`{version, notes, pub_date, platforms{"linux-x86_64":
-//! {url, signature}, …}}`, written by `scripts/release.sh`). Artifacts are
-//! signed with the minisign key in `~/Projects/Neuron/credentials/
-//! unipi-updater/`; the public key is `plugins.updater.pubkey` in
-//! tauri.conf.json, so a download that isn't signed by it is refused.
+//! {url, signature}, …}}`, written by `scripts/release/make-feeds.sh`).
+//! Artifacts are signed in CI with the `TAURI_SIGNING_PRIVATE_KEY` secret
+//! (minisign key id 9A572EBF36FD9DA0); the public key is
+//! `plugins.updater.pubkey` in tauri.conf.json, so a download that isn't
+//! signed by it is refused.
 //!
 //! The UI (lib/desktopUpdate.ts) checks on start and every few hours and
 //! shows a prompt; nothing installs until the user says so. Install support:
