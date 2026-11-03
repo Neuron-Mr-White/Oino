@@ -151,7 +151,7 @@
 .sm-run-main { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 0; }
 .sm-run-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sm-run-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; color: var(--color-text); }
-.sm-run-chip { flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px; border-radius: 9999px; background: var(--color-surface-1); border: 1px solid var(--color-line); color: var(--color-text-muted); font-size: 11px; font-weight: 600; }
+.sm-run-chip { flex: 0 100 auto; min-width: 28px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px; border-radius: 9999px; background: var(--color-surface-1); border: 1px solid var(--color-line); color: var(--color-text-muted); font-size: 11px; font-weight: 600; }
 .sm-run-model { flex: 0 10 auto; min-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--color-text-dim); }
 .sm-run-sub { display: flex; align-items: center; min-width: 0; overflow: hidden; font-size: 12px; color: var(--color-text-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sm-run-stat { flex: none; }
@@ -193,6 +193,8 @@ body > div:has(> .sheet.session-sheet) > .sheet-overlay { z-index: 69; }
 /* Run rows keep one fixed-height line on the phone: icon-only actions (40px targets), no model. */
 .sheet.session-sheet .sm-run { gap: 8px; padding: 0 6px 0 10px; }
 .sheet.session-sheet .sm-run-model { display: none; }
+.sheet.session-sheet .sm-chip { min-height: 40px; }
+.sheet.session-sheet .sm-run-chip { max-width: 72px; }
 .sheet.session-sheet .sm-run .sm-btn-label { display: none; }
 .sheet.session-sheet .sm-run-actions { flex-wrap: nowrap; gap: 4px; }
 .sheet.session-sheet .sm-run-actions button { width: 40px; min-height: 40px; padding: 0; justify-content: center; }

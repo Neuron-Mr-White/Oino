@@ -47,6 +47,19 @@ const AGENT_STATUS: Record<AgentInfo['state'], RunRowStatus> = { running: 'runni
 
 export const ROW_STATUS_LABEL: Record<RunRowStatus, string> = { running: 'Running', idle: 'Idle', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
 
+/** A provider error as the record keeps it (`500: {"message":"…"}`) → `… (500)`; other text as is. */
+export function errorLine(error: string): string {
+  const m = /^(\d{3}):\s*(\{[\s\S]*\})\s*$/.exec(error.trim());
+  if (!m) return error;
+  try {
+    const body = JSON.parse(m[2]!) as { message?: unknown; error?: { message?: unknown } };
+    const msg = typeof body.message === 'string' ? body.message : typeof body.error?.message === 'string' ? body.error.message : undefined;
+    return msg ? `${msg} (${m[1]})` : error;
+  } catch {
+    return error;
+  }
+}
+
 /** Live = can be stopped (running or idle). */
 export const isLive = (r: RunRow): boolean => r.status === 'running' || r.status === 'idle';
 
@@ -78,7 +91,7 @@ export function mergeRuns(records: readonly SubagentRun[] | undefined, agents: r
       ...(r.endedAt ? { endedAt: r.endedAt } : {}),
       toolCalls: r.toolCalls,
       ...(r.usage ? { usage: r.usage } : {}),
-      ...(r.error ? { error: r.error } : {}),
+      ...(r.error ? { error: errorLine(r.error) } : {}),
     });
   }
   for (const a of agents) {

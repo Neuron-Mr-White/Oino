@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentInfo, SubagentRun } from '../../components/session/modalData';
 import { parseSubagentRuns, parseTrayTabs } from '../../components/session/modalData';
-import { compactTokens, filterCounts, matchesFilter, mergeRuns, profileChip, rowDurationMs, shortModel, statParts } from './subagentRows';
+import { compactTokens, errorLine, filterCounts, matchesFilter, mergeRuns, profileChip, rowDurationMs, shortModel, statParts } from './subagentRows';
 import { visibleTrayTabsOf } from './running';
 
 const rec = (id: string, status: SubagentRun['status'], over: Partial<SubagentRun> = {}): SubagentRun => ({
@@ -67,6 +67,9 @@ describe('row text', () => {
     expect(shortModel('omniroute/cc/claude-opus-5-5')).not.toContain('/');
     expect(shortModel('')).toBe('');
     expect(profileChip('subagent_explore')).toBe('Explore');
+    expect(errorLine('500: {"message":"fake upstream overloaded","type":"server_error"}')).toBe('fake upstream overloaded (500)');
+    expect(errorLine('429: {"error":{"message":"slow down"}}')).toBe('slow down (429)');
+    expect(errorLine('interrupted — Oino exited')).toBe('interrupted — Oino exited');
     expect(profileChip('reviewer')).toBe('Reviewer');
     expect(compactTokens(238)).toBe('238');
     expect(compactTokens(1234)).toBe('1.2k');
