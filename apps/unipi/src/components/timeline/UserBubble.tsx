@@ -43,7 +43,18 @@ const FOLD_MS = 180;
  * expanded `<skill …>` block, and (UNI-285) an `[image N]` back to that
  * image. Whitespace between two file chips collapses to one space. */
 export function bubbleSegments(text: string, commands: ReadonlySet<string>, verified?: (token: string) => boolean): Seg[] {
-  const segs = tokenize(text, { commands, skillBlocks: true, verified, imageLabels: true });
+  let segs = tokenize(text, { commands, skillBlocks: true, verified, imageLabels: true });
+  // A `$skill` chip sent mid-text became pi's leading invocation too (composer `serializeSkills`):
+  // the bubble shows it once, where the user put it.
+  const lead = segs[0];
+  if (lead && 'chip' in lead && lead.chip.kind === 'skill' && !lead.chip.form) {
+    const name = lead.chip.name;
+    if (segs.some((s, i) => i > 0 && 'chip' in s && s.chip.kind === 'skill' && s.chip.form === 'dollar' && s.chip.name === name)) {
+      segs = segs.slice(1);
+      const first = segs[0];
+      if (first && 'text' in first) segs[0] = { text: first.text.replace(/^\s+/, '') };
+    }
+  }
   return segs.map((seg, i) => {
     if ('chip' in seg || seg.text.trim()) return seg;
     const prev = segs[i - 1];

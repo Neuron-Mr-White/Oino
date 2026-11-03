@@ -106,6 +106,13 @@ describe('bubbleSegments (UNI-212 sent bubbles)', async () => {
     expect(segs[0]).toEqual({ chip: { kind: 'command', raw: '/unipi:goal', name: 'unipi:goal', mode: true } });
     expect(segs[1]).toEqual({ text: ' ship it' });
   });
+  it('a $skill sent mid-text shows once, where the user put it (not also as the leading invocation)', () => {
+    const block = '<skill name="review" location="/s/SKILL.md">\nReferences are relative to /s.\n\nbody\n</skill>\n\n';
+    const segs = bubbleSegments(`${block}fix it with $review now`, new Set(['skill:review']));
+    expect(segs.map((s) => ('chip' in s ? `<${s.chip.kind}:${(s.chip as { name: string }).name}>` : s.text)).join('')).toBe('fix it with <skill:review> now');
+    // A plain /skill: invocation keeps its chip.
+    expect(bubbleSegments(`${block}go`, new Set(['skill:review']))[0]).toHaveProperty('chip.kind', 'skill');
+  });
 });
 
 describe('image chips (UNI-285)', () => {
