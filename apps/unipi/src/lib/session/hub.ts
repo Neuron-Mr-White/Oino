@@ -193,6 +193,18 @@ const frameSchedule = (flush: () => void) => {
 };
 
 /** One host's hub (call inside a reactive root). */
+/**
+ * chat-vanish: "the host answers again" listeners (a list reload succeeded after the hub's
+ * events stream dropped — a host restart, the frozen-host watchdog, a network blip). Session
+ * streams give up after 2 min of trouble and wait for Retry; this is what wakes them.
+ */
+type HostBackListener = (hostId: string) => void;
+const hostBackListeners = new Set<HostBackListener>();
+export function onHostBack(fn: HostBackListener): () => void {
+  hostBackListeners.add(fn);
+  return () => hostBackListeners.delete(fn);
+}
+
 export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandle {
   const client = opts.client ?? hostClient(hostId);
   const setTimer = opts.setTimer ?? ((ms: number, cb: () => void) => setTimeout(cb, ms));
@@ -218,6 +230,8 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
   let inflight: Promise<void> | undefined;
   let archivedInflight: Promise<void> | undefined;
 
+  /** The events stream dropped since the last good list: the next good one is "host back". */
+  let droppedSinceList = false;
   const reload = (): Promise<void> => {
     if (inflight) return inflight;
     setState('loading', true);
@@ -236,6 +250,10 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
           setState('meta', reconcile(meta));
           setState({ loaded: true, loading: false, error: undefined });
         });
+        if (droppedSinceList) {
+          droppedSinceList = false;
+          for (const fn of hostBackListeners) fn(hostId);
+        }
       })
       .catch((error: unknown) => {
         setState({ loading: false, error: toAppError(error) });
@@ -289,6 +307,7 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
         eventsFocus = undefined;
         setState('live', false);
         if (closed) return;
+        droppedSinceList = true;
         if (error) setState('error', toAppError(error));
         const delay = EVENTS_RETRY_MS[Math.min(attempt, EVENTS_RETRY_MS.length - 1)]!;
         attempt += 1;

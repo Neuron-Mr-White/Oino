@@ -18,7 +18,7 @@ import { applyEvents, applySnapshot, initialState, prependEntries, reconcileEntr
 import { enqueue, loadOutbox, markAcked, markLost, markSending, removeItem, saveOutbox, sweep } from './outbox';
 import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
-import { hubs } from './hub';
+import { hubs, onHostBack } from './hub';
 import { routeNotify, reportTextOf } from '../reports';
 import { isUnknownOpError } from '../../components/status/lhProgress';
 import type { CommandInfo, OutboxImage, OutboxItem, OutboxMode, SessionEntry, SessionState } from './types';
@@ -74,6 +74,8 @@ export type SessionHandle = {
   acquire(): () => void;
   /** perf-app: drops loaded history beyond the newest `keep` entries (paged chats; reloads on scroll). */
   trimLoaded?(keep: number): boolean;
+  /** chat-vanish: hung up locally (`close()`: LRU eviction, archive) — a view still showing it must re-ensure. */
+  readonly closed?: boolean;
   close(): void;
 };
 
@@ -123,6 +125,7 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     return untrack(() => index.update(unwrap(state)));
   });
   let refs = 0;
+  let closed = false;
   let sweepTimer: ReturnType<typeof setInterval> | undefined;
   let reconciling = false;
   let reconcileAgain = false;
@@ -380,7 +383,11 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     get refs() {
       return refs;
     },
+    get closed() {
+      return closed;
+    },
     close() {
+      closed = true;
       if (sweepTimer) clearInterval(sweepTimer);
       sweepTimer = undefined;
       stream.close();
@@ -447,14 +454,22 @@ export function createSessionRegistry(limit = SESSION_LRU, factory: (hostId: str
   const open = new Map<string, Entry>();
   const [rev, setRev] = createSignal(0);
 
-  const evict = () => {
+  /**
+   * Least recently used first, never a pinned one — and never `keep`, the entry `ensure` is
+   * about to hand out: with `limit` other chats pinned (status pane, model dialog, the chat
+   * being left) the loop used to reach the new entry and close it before its view could
+   * pin it, so every chat opened from then on was a dead, blank handle (chat-vanish).
+   * The registry may then sit above `limit` by the pins; the next `ensure` trims it again.
+   */
+  const evict = (keep?: string) => {
     if (open.size <= limit) return;
     for (const [key, entry] of open) {
       if (open.size <= limit) break;
-      if (entry.handle.refs > 0) continue;
+      if (key === keep || entry.handle.refs > 0) continue;
       entry.handle.close();
       entry.dispose();
       open.delete(key);
+      setRev((n) => n + 1);
     }
   };
 
@@ -463,16 +478,21 @@ export function createSessionRegistry(limit = SESSION_LRU, factory: (hostId: str
     ensure(hostId: string, sessionId: string): SessionHandle {
       const key = keyOf(hostId, sessionId);
       const hit = open.get(key);
-      if (hit) {
+      if (hit && hit.handle.closed) {
+        // Closed behind the registry's back: never hand a dead handle out again.
+        hit.dispose();
+        open.delete(key);
+      } else if (hit) {
         open.delete(key);
         open.set(key, hit);
+        evict(key);
         // Coming back to a chat that could not open tries again (never a blank chat forever).
         if (hit.handle.state && untrack(() => openFailed(hit.handle.state))) retryLater(hit.handle);
         return hit.handle;
       }
       const entry = createRoot((dispose) => ({ handle: factory(hostId, sessionId) as Entry['handle'], dispose }));
       open.set(key, entry);
-      evict();
+      evict(key);
       setRev((n) => n + 1);
       return entry.handle;
     },
@@ -498,6 +518,18 @@ export function createSessionRegistry(limit = SESSION_LRU, factory: (hostId: str
       open.clear();
       setRev((n) => n + 1);
     },
+    /** chat-vanish: the host answers again — every chat of it that gave up (`lost`, a failed open) reconnects. */
+    retryFailed(hostId: string): number {
+      let n = 0;
+      for (const entry of open.values()) {
+        if (entry.handle.hostId !== hostId || entry.handle.closed || !entry.handle.state) continue;
+        if (untrack(() => openFailed(entry.handle.state))) {
+          n++;
+          retryLater(entry.handle);
+        }
+      }
+      return n;
+    },
     /** Open keys, least recently used first. */
     keys(): string[] {
       rev();
@@ -509,11 +541,13 @@ export function createSessionRegistry(limit = SESSION_LRU, factory: (hostId: str
 export type SessionRegistry = ReturnType<typeof createSessionRegistry>;
 
 let shared: SessionRegistry | undefined;
+let offHostBack: (() => void) | undefined;
 /** The app's session registry. */
 export function sessions(): SessionRegistry {
   if (!shared) {
     shared = createRoot(() => createSessionRegistry());
     installReclickRetry({ peek: (h, id) => shared?.peek(h, id) });
+    offHostBack = onHostBack((hostId) => shared?.retryFailed(hostId));
   }
   return shared;
 }
@@ -521,6 +555,8 @@ export function sessions(): SessionRegistry {
 export function resetSessions(): void {
   shared?.closeAll();
   shared = undefined;
+  offHostBack?.();
+  offHostBack = undefined;
 }
 
 export type { SetStoreFunction };
