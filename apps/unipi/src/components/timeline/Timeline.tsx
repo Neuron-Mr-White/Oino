@@ -761,6 +761,8 @@ function VirtualTurns(props: {
     for (const node of toMeasure) {
       toMeasure.delete(node);
       measureRow(virt, node);
+      const id = node.dataset.turn;
+      if (id && node.isConnected && node.offsetHeight > 0) props.heights.set(id, node.offsetHeight);
       if (++n >= MEASURE_CAP) break;
     }
     if (toMeasure.size) {
@@ -777,6 +779,23 @@ function VirtualTurns(props: {
     }
   };
   onCleanup(() => toMeasure.clear());
+
+  // render-loop: our own size watch over the slot nodes. virtual-core keeps one node per
+  // KEY (elementsCache) and unobserves a key's previous node when that key shows up on
+  // another node — but <Index> slots are positional, so when an older page re-keys slot 0
+  // (the partial first turn is `pre:<first loaded id>`) and the old key moves to slot 1,
+  // virtual-core unobserves slot 0's node, which now holds another turn. Its later growth
+  // (cards rendering, folds) was never reported: the row kept a stale height and the next
+  // turns were drawn on top of it at stale offsets (rig, WebKitGTK: row 449 px measured as
+  // 187). One observer per list, the window's slots only (bounded), changes applied once
+  // per frame through the same batched measure.
+  const slotRO =
+    typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver((entries) => {
+          for (const e of entries) queueMeasure(e.target as HTMLDivElement);
+        })
+      : undefined;
+  onCleanup(() => slotRO?.disconnect());
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__TL_VIRT__ = virt;
 
   return (
@@ -799,7 +818,12 @@ function VirtualTurns(props: {
               class="tl-vrow"
               data-index={item().index}
               data-turn={turn()?.turnId}
-              ref={(el) => ((node = el), virt.measureElement(el))}
+              ref={(el) => {
+                node = el;
+                virt.measureElement(el);
+                slotRO?.observe(el);
+                onCleanup(() => slotRO?.unobserve(el));
+              }}
               style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item().start}px)` }}
             >
               <Show when={turn()}>{(t) => <TurnRow turn={t()} ctx={props.ctx} last={!props.live() && item().index === props.settled().length - 1} />}</Show>

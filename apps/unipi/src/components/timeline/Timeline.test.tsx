@@ -793,6 +793,39 @@ describe('Timeline: no paging / trim / measure feedback loop (render-loop)', () 
     expect(asked.length).toBe(8);
   });
 
+  it('a row re-keyed by an older page keeps reporting its size: later growth moves the next turn (no rows drawn over it)', async () => {
+    const ro = installFakeResizeObserver();
+    const sizes = new Map<string, number>();
+    const heightOf = (el: HTMLElement) => (el.classList?.contains('tl-vrow') ? (sizes.get(el.dataset.turn ?? '') ?? 40) : el.classList?.contains('tl') ? 600 : 40);
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return heightOf(this); } });
+    const rect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const h = heightOf(this);
+      return { x: 0, y: 0, top: 0, left: 0, width: 400, height: h, right: 400, bottom: h, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      const { s, asked } = await openOwner();
+      const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+      const tl = r.getByTestId('tl');
+      // The open-ended last turn alone first; then older pages re-key slot 0 (`pre:<first id>` → …).
+      await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+      await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThanOrEqual(2));
+      await new Promise((res) => setTimeout(res, 50));
+      const rows = () => [...tl.querySelectorAll<HTMLElement>('.tl-vrow')].sort((a, b) => Number(a.dataset.index) - Number(b.dataset.index));
+      const first = rows()[0]!;
+      // Its content grows after the re-key (agent cards render): the browser reports the slot's new size.
+      sizes.set(first.dataset.turn!, 449);
+      ro.fire(first);
+      await new Promise((res) => setTimeout(res, 50));
+      const y = (el: HTMLElement) => Number(/translateY\(([-\d.]+)px\)/.exec(el.style.transform)?.[1] ?? NaN);
+      const [a, b] = rows();
+      expect(y(b!)).toBeGreaterThanOrEqual(y(a!) + 449);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = rect;
+      ro.restore();
+    }
+  });
+
   it('live pushes (subagent steps, topics) update rows in place: settled rows never remount', async () => {
     const { s, w } = await openOwner();
     const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
