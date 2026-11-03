@@ -30,6 +30,7 @@ layout live in [BUILDING.md](BUILDING.md). The short version from the repo root:
 ```bash
 cargo xtask wasm                              # build the extension components into extensions/dist
 mise run unipi:dev                           # = scripts/unipi-dev.sh: dev app against a local host
+mise run start / stop / status               # the same dev app in the background (scripts/unipi-dev-svc.sh)
 mise run unipi:build                         # = scripts/unipi-build.sh: local release bundle
 ```
 

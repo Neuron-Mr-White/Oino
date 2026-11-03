@@ -1,8 +1,25 @@
+[tools]
+# The Node used by apps/unipi (vite, vitest, tsc) and by the release builds.
+# Rust stays on rustup via rust-toolchain.toml (mise's rust builds from source).
+node = "24.22.1"
+
 [env]
 # Build-cache budget for target/ and extensions/target/ combined
 # (app-convention: every build cache has a size limit). Enforced by `mise run gc`.
 OINO_TARGET_BUDGET_GB = "30"
 OINO_TARGET_GC_AGE_HOURS = "1"
+
+[tasks.start]
+description = "Start the dev services in the background (dev desktop app + its isolated dev host); stops a previous run first, so running it twice stays clean"
+run = "scripts/unipi-dev-svc.sh start"
+
+[tasks.stop]
+description = "Stop the dev services started by `mise run start` (never the installed app)"
+run = "scripts/unipi-dev-svc.sh stop"
+
+[tasks.status]
+description = "Show whether the dev services are running"
+run = "scripts/unipi-dev-svc.sh status"
 
 [tasks.dev]
 description = "Run the Oino TUI app"
@@ -21,11 +38,13 @@ description = "Trim build caches back under OINO_TARGET_BUDGET_GB (stale tmp, in
 run = "scripts/target-gc.sh"
 
 [tasks.clean]
-description = "Remove all build caches of the three workspaces"
+description = "Remove all build caches: the cargo workspaces (root, extensions, apps/unipi, src-tauri), vite's dep cache and the frontend build output"
 run = [
   "cargo clean",
   "cd extensions && cargo clean",
   "cd apps/unipi && cargo clean",
+  "cd apps/unipi/src-tauri && cargo clean",
+  "rm -rf apps/unipi/node_modules/.vite apps/unipi/node_modules/.vite-temp apps/unipi/dist",
 ]
 
 [tasks."tui:render-test"]

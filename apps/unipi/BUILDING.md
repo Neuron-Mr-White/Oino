@@ -75,6 +75,13 @@ Builds the debug `unipi-host`, stages it as the sidecar
 builds `extensions/dist` if missing, sets `OINO_HOST_DIR` to the scratch dir
 and runs `cargo tauri dev --config tauri.dev.conf.json`.
 
+`mise run start` runs the same dev loop in the background (log and pid under
+`apps/unipi/target/unipi-dev/`, log capped at 5 MB). It first stops a previous
+run — its process group, the dev host holding `$OINO_HOST_DIR/host.lock`, and a
+process of this checkout still listening on the dev port 1420 — so running it
+twice leaves one clean set. A foreign process on the port is reported, never
+killed. `mise run stop` stops it all; `mise run status` shows what runs.
+
 ## Local release bundle
 
 ```sh
