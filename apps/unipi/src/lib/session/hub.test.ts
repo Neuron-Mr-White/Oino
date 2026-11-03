@@ -11,6 +11,24 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 afterEach(() => setHubUiSink(undefined));
 
 describe('hub store', () => {
+  it('perf-app: hub events of one frame land in one store write', async () => {
+    const scenario: MockScenario = { name: 't', hosts: [{ id: 'h1', name: 'coffee', cards: [card('a')] }] };
+    const w = createMockHost(scenario);
+    const frames: Array<() => void> = [];
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client: w.client('h1'), schedule: (f) => frames.push(f) }), dispose }));
+    await tick();
+    for (let i = 0; i < 200; i++) w.emit({ kind: 'session_changed', card: card(`c${i}`, { run_state: 'working' }) });
+    expect(frames).toHaveLength(1);
+    expect(hub.state.cards.c0).toBeUndefined();
+    frames.shift()!();
+    expect(Object.keys(hub.state.cards)).toHaveLength(201);
+    w.emit({ kind: 'session_removed', session: 'a' });
+    expect(frames).toHaveLength(1);
+    frames.shift()!();
+    expect(hub.state.cards.a).toBeUndefined();
+    dispose();
+  });
+
   it('loads cards from sessions_list and keeps them current from hub events', async () => {
     const scenario: MockScenario = { name: 't', hosts: [{ id: 'h1', name: 'coffee', cards: [card('a', { name: 'Fix', pinned: true }), card('b')] }] };
     const w = createMockHost(scenario);

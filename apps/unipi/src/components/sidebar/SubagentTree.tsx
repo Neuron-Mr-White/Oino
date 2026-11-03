@@ -93,11 +93,16 @@ export function filteredRuns(hostId: string, sessionId: string, runs: readonly S
   return f ? runs.filter((r) => r.status === f) : [...runs];
 }
 
+/** perf-app: rows the tree shows before its runs scroll in a bounded, windowed box (a 200-child graph). */
+export const TREE_ROWS_MAX = 12;
+/** Rows mounted beyond the visible window, each side. */
+const TREE_OVERSCAN = 4;
+
 /** The tree's height for `runs` (`undefined` = not loaded: one placeholder row). */
 export function treeHeight(variant: RowVariant, hostId: string, sessionId: string, runs: readonly SubRun[] | undefined): number {
   const m = treeMetrics(variant);
   if (!runs || runs.length === 0) return m.row + 4;
-  return m.head + Math.max(1, filteredRuns(hostId, sessionId, runs).length) * m.row + 4;
+  return m.head + Math.min(TREE_ROWS_MAX, Math.max(1, filteredRuns(hostId, sessionId, runs).length)) * m.row + 4;
 }
 
 /** "42s", "3m 04s", "1h 02m". */
@@ -222,7 +227,7 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
           </For>
         </div>
         <Show when={shown().length} fallback={<div class="sa-row sa-empty" style={{ height: `${m().row}px` }}>None {statusWord(filter() ?? '').toLowerCase()}</div>}>
-          <For each={shown()}>
+          <TreeRows runs={shown()} row={m().row}>
             {(run) => (
               <button
                 type="button"
@@ -242,9 +247,51 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
                 </Show>
               </button>
             )}
-          </For>
+          </TreeRows>
         </Show>
       </Show>
     </div>
+  );
+}
+
+/**
+ * The run rows: all of them up to `TREE_ROWS_MAX`, else a box of that many
+ * rows that scrolls, mounting only the rows in view (+ overscan). Rows are
+ * keyed by run id, so a topic update does not remount the window.
+ */
+function TreeRows(props: { runs: SubRun[]; row: number; children: (run: SubRun) => JSX.Element }): JSX.Element {
+  const byId = () => new Map(props.runs.map((r) => [r.id, r] as const));
+  const [top, setTop] = createSignal(0);
+  const windowed = () => props.runs.length > TREE_ROWS_MAX;
+  const ids = () => {
+    if (!windowed()) return props.runs.map((r) => r.id);
+    const from = Math.max(0, Math.floor(top() / props.row) - TREE_OVERSCAN);
+    const to = Math.min(props.runs.length, from + TREE_ROWS_MAX + 2 * TREE_OVERSCAN);
+    return props.runs.slice(from, to).map((r) => r.id);
+  };
+  const indexOf = () => new Map(props.runs.map((r, i) => [r.id, i] as const));
+  const rows = (
+    <For each={ids()}>
+      {(id) => (
+        <Show when={byId().get(id)}>
+          {(run) => (
+            <Show when={windowed()} fallback={props.children(run())}>
+              <div class="sa-vrow" style={{ transform: `translateY(${(indexOf().get(id) ?? 0) * props.row}px)` }}>
+                {props.children(run())}
+              </div>
+            </Show>
+          )}
+        </Show>
+      )}
+    </For>
+  );
+  return (
+    <Show when={windowed()} fallback={rows}>
+      <div class="sa-scroll" style={{ height: `${TREE_ROWS_MAX * props.row}px` }} data-testid="sa-scroll" onScroll={(e) => setTop(e.currentTarget.scrollTop)}>
+        <div class="sa-space" style={{ height: `${props.runs.length * props.row}px` }}>
+          {rows}
+        </div>
+      </div>
+    </Show>
   );
 }

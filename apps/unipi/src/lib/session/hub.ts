@@ -126,6 +126,19 @@ export type CreateHubOptions = {
   client?: HostClient;
   setTimer?: (ms: number, cb: () => void) => unknown;
   clearTimer?: (handle: unknown) => void;
+  /**
+   * perf-app: the frame scheduler hub events are applied on — one store
+   * write per animation frame for every card change that arrived (a 200-child
+   * graph flips hundreds of cards a second). `null` applies each event at once
+   * (the unit-test default, so `emit` then `expect` keeps working).
+   */
+  schedule?: ((flush: () => void) => void) | null;
+};
+
+const frameSchedule = (flush: () => void) => {
+  // Hidden documents get no animation frames: a short timer still drains the queue.
+  if (typeof requestAnimationFrame === 'function' && !(typeof document !== 'undefined' && document.hidden)) requestAnimationFrame(() => flush());
+  else setTimeout(flush, 50);
 };
 
 /** One host's hub (call inside a reactive root). */
@@ -182,6 +195,20 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
     return inflight;
   };
 
+  const schedule = opts.schedule === undefined ? (import.meta.env?.MODE === 'test' ? null : frameSchedule) : opts.schedule;
+  /** Hub events since the last frame (bounded by one frame's arrivals). */
+  let pending: HubEvent[] = [];
+  const flushPending = () => {
+    const batchOf = pending;
+    pending = [];
+    if (!batchOf.length || closed) return;
+    setState(
+      produce((s) => {
+        for (const event of batchOf) applyHubEvent(s, event);
+      }),
+    );
+  };
+
   const openEvents = () => {
     if (closed) return;
     events = client.openEvents(
@@ -190,7 +217,12 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
           uiSink(hostId, event);
           return;
         }
-        setState(produce((s) => applyHubEvent(s, event)));
+        if (!schedule) {
+          setState(produce((s) => applyHubEvent(s, event)));
+          return;
+        }
+        pending.push(event);
+        if (pending.length === 1) schedule(flushPending);
       },
       (error) => {
         // The stream dropped: retry with backoff, then resync the list (events may be lost).

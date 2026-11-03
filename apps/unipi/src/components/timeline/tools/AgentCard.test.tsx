@@ -67,6 +67,22 @@ function parallel() {
 }
 
 describe('AgentsGroup + AgentCard', () => {
+  it('perf-app: a 200-child fan-out mounts only the visible cards (virtualized inner scroller)', () => {
+    const cs: Array<[string, string]> = Array.from({ length: 200 }, (_, i) => [`Child ${i}`, `c${i}`]);
+    const live: Record<string, LiveTool> = {};
+    for (const [title, id] of cs) live[id] = liveRun(id, `a${id}`, title);
+    const ctx = fakeCtx([]);
+    // Built once: `entry()` mints fresh ids per call, and ByKey reads `nodes` twice.
+    const nodes = nodesOf([user(), calls(cs)], live);
+    const r = render(() => <WorkNodes nodes={nodes} ctx={ctx} live />);
+    expect(r.getByTestId('tl-agents-title').textContent).toBe('Running 200 subagents');
+    expect(r.getByTestId('tl-agents-virtual')).toBeTruthy();
+    const cards = r.getAllByTestId('tl-agent');
+    expect(cards.length).toBeGreaterThan(0);
+    expect(cards.length).toBeLessThan(30);
+    expect(cards[0]!.querySelector('.tl-agent-title')!.textContent).toBe('Child 0');
+  });
+
   it('parallel runs stack under one container; no child step is a top-level row', () => {
     const { es, live } = parallel();
     const ctx = fakeCtx([]);

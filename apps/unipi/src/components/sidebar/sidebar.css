@@ -792,3 +792,8 @@ button.sa-row:active:not(:disabled) { background: var(--color-surface-3); transf
 .sb-sessions[data-variant='page'] .sa-row { font-size: 14px; }
 .sb-sessions[data-variant='page'] .sa-filter { height: 28px; min-height: 28px; font-size: 12px; padding: 0 10px; }
 .sb-sessions[data-variant='page'] .sa-profile, .sb-sessions[data-variant='page'] .sa-dur { font-size: 12px; }
+/* perf-app: a big subagent tree scrolls in a bounded box, only the rows in view mounted (SubagentTree TreeRows). */
+.sa-scroll { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; contain: strict; }
+.sa-space { position: relative; width: 100%; }
+.sa-vrow { position: absolute; top: 0; left: 0; right: 0; display: flex; }
+.sa-vrow > .sa-row { flex: 1 1 auto; min-width: 0; }
