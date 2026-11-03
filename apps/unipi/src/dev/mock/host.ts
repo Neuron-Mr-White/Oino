@@ -602,6 +602,54 @@ const BUILTIN: Record<string, MockOp> = {
     h.spec.archived = [];
     return { deleted };
   },
+  // [ux-sessions] (owner fix 2026-11-03): batch archive / restore — one op, events in
+  // chunks of 200 (mirrors `SessionHub::archive_many` / `restore_many`).
+  sessions_archive: (a, h) => {
+    const ids = new Set((a?.sessions as string[] | undefined) ?? []);
+    const moving = (h.spec.cards ?? []).filter((c) => ids.has(c.session_id) && c.run_state !== 'working' && !c.needs_you);
+    const done = new Set(moving.map((c) => c.session_id));
+    h.spec.cards = (h.spec.cards ?? []).filter((c) => !done.has(c.session_id));
+    h.spec.archived = [...moving, ...(h.spec.archived ?? [])];
+    const doneIds = [...done];
+    for (let i = 0; i < doneIds.length; i += 200) h.emit({ kind: 'sessions_removed', sessions: doneIds.slice(i, i + 200), archived: true });
+    const failed = [...ids].filter((id) => !done.has(id)).map((session) => ({ session, message: 'the session is running' }));
+    return { done: doneIds, ...(failed.length ? { failed } : {}) };
+  },
+  sessions_restore: (a, h) => {
+    const ids = new Set((a?.sessions as string[] | undefined) ?? []);
+    const back = (h.spec.archived ?? []).filter((c) => ids.has(c.session_id));
+    h.spec.archived = (h.spec.archived ?? []).filter((c) => !ids.has(c.session_id));
+    h.spec.cards = [...(h.spec.cards ?? []), ...back];
+    for (let i = 0; i < back.length; i += 200) h.emit({ kind: 'sessions_changed', cards: back.slice(i, i + 200).map((c) => ({ ...c })) });
+    return { done: back.map((c) => c.session_id) };
+  },
+  // [ux-sessions]: the sidebar search — title (name, else folder) + first user message
+  // (`first_message` on mock cards), live / archived / all, a few host-side filters.
+  sessions_query: (a, h) => {
+    const scope = (a?.scope as string | undefined) ?? 'live';
+    const rows: Array<{ card: SessionCard; archived: boolean }> = [
+      ...(scope !== 'archived' ? (h.spec.cards ?? []).map((card) => ({ card, archived: false })) : []),
+      ...(scope !== 'live' ? (h.spec.archived ?? []).map((card) => ({ card, archived: true })) : []),
+    ];
+    const words = String(a?.query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const f = (a?.filters ?? {}) as { workspaces?: string[]; automation?: string[] };
+    const title = (c: SessionCard) => (c.name?.trim() || (c.cwd ? (c.cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '') : '') || 'New chat').toLowerCase();
+    const first = (c: SessionCard) => String((c as { first_message?: unknown }).first_message ?? '').toLowerCase();
+    const hits = rows
+      .filter(({ card }) => words.every((w) => title(card).includes(w) || first(card).includes(w)))
+      .filter(({ card }) => !f.workspaces?.length || f.workspaces.includes(card.cwd ?? ''))
+      .filter(({ card }) => !f.automation?.length || f.automation.includes(card.source === 'cron' ? 'cron' : 'manual'))
+      .sort((x, y) => (y.card.last_activity ?? y.card.updated_at ?? 0) - (x.card.last_activity ?? x.card.updated_at ?? 0));
+    const limit = Math.min(100, Math.max(1, Number(a?.limit ?? 50)));
+    const start = Number.parseInt(String(a?.cursor ?? '0'), 10) || 0;
+    const page = hits.slice(start, start + limit);
+    const next = start + page.length;
+    return {
+      hits: page.map(({ card, archived }) => ({ card: { ...card }, ...(archived ? { archived } : {}) })),
+      total: hits.length,
+      ...(next < hits.length ? { next_cursor: String(next) } : {}),
+    };
+  },
   // WP-A19 (G-12): `notify_register` on the host seam records the endpoint.
   notify_register: () => ({ registered: true }),
   fs_roots: (_a, h) => ({ roots: Object.keys(h.spec.fs ?? {}) }),

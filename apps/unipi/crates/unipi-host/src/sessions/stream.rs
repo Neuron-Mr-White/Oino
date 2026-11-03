@@ -643,6 +643,16 @@ fn wire_hub_event(event: &HubEvent) -> WireHubEvent {
         HubEvent::SessionRemoved { session_id } => WireHubEvent::SessionRemoved {
             session: session_id.clone(),
         },
+        HubEvent::SessionsRemoved {
+            session_ids,
+            archived,
+        } => WireHubEvent::SessionsRemoved {
+            sessions: session_ids.clone(),
+            archived: *archived,
+        },
+        HubEvent::SessionsChanged { cards } => WireHubEvent::SessionsChanged {
+            cards: cards.iter().map(wire_card).collect(),
+        },
         HubEvent::HostNotice { level, text } => WireHubEvent::HostNotice {
             level: match level {
                 super::NoticeLevel::Info => NoticeLevel::Info,
@@ -810,6 +820,66 @@ where
             .map_err(internal)?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
+        Request::SessionsArchive { sessions } => {
+            unipi_proto::session_bulk::check_batch(&sessions).map_err(|message| {
+                AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false)
+            })?;
+            tracing::info!(op = "sessions_archive", count = sessions.len(), "request");
+            let targets: Vec<String> = sessions.iter().map(|s| s.as_str().to_owned()).collect();
+            let data = hub.archive_many(&targets).await.map_err(hub_error)?;
+            // §7.4: each old runtime is gone, so a later open of the same id resets.
+            for id in &data.done {
+                service.feed(id).mark_disposed();
+            }
+            let data = serde_json::to_value(&data).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
+        Request::SessionsRestore { sessions } => {
+            unipi_proto::session_bulk::check_batch(&sessions).map_err(|message| {
+                AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false)
+            })?;
+            tracing::info!(op = "sessions_restore", count = sessions.len(), "request");
+            let targets: Vec<String> = sessions.iter().map(|s| s.as_str().to_owned()).collect();
+            let data = hub.restore_many(&targets).await.map_err(hub_error)?;
+            let data = serde_json::to_value(&data).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
+        Request::SessionsQuery {
+            query,
+            scope,
+            filters,
+            sort,
+            limit,
+            cursor,
+        } => {
+            tracing::info!(op = "sessions_query", ?scope, "request");
+            let page = hub
+                .query(&super::hub::SessionsQuery {
+                    text: query,
+                    scope,
+                    filters: filters.bounded(),
+                    sort,
+                    limit,
+                    cursor,
+                })
+                .await
+                .map_err(hub_error)?;
+            let data = unipi_proto::session_bulk::SessionsQueryData {
+                hits: page
+                    .hits
+                    .iter()
+                    .map(|hit| unipi_proto::session_bulk::SessionsQueryHit {
+                        card: wire_card(&hit.card),
+                        archived: hit.archived,
+                        snippet: hit.snippet.clone(),
+                    })
+                    .collect(),
+                total: page.total,
+                next_cursor: page.next_cursor,
+            };
+            let data = serde_json::to_value(&data).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
         Request::SessionRename { session, name } => {
             tracing::info!(op = "session_rename", session = session.as_str(), "request");
             let opened = hub.open(session.as_str()).await.map_err(hub_error)?;
@@ -955,9 +1025,12 @@ where
         tokio::select! {
             event = events.recv() => match event {
                 Ok(event) => write_json(write, &wire_hub_event(&event)).await?,
-                // Only host notices/cards ride this channel; a lagging client gets the next
-                // card again (cards are whole values, notices are retained).
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                // This connection fell behind and events were dropped (a burst of card
+                // changes): tell the app to re-list instead of leaving it stale.
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    tracing::warn!(skipped, "events_open lagged: asking the app to resync");
+                    write_json(write, &WireHubEvent::Resync).await?;
+                }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                     hub.release_focus(focus).await;
                     return Ok(());

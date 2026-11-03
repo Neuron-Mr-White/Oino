@@ -27,12 +27,16 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 R = {}
 
 METER = r"""
-if (!window.__pm) {
-  window.__pm = {on:false, t:[], max:12000};
-  const loop = (ts) => { const m = window.__pm; if (m.on && m.t.length < m.max) m.t.push(ts); requestAnimationFrame(loop); };
+// The loop runs only while recording: a meter left looping after its window kept the webview
+// at ~4 % CPU in every later "idle" phase (perf-baseline before perf-app measured that).
+window.__pm = window.__pm || {on:false, t:[], max:12000, looping:false};
+const m0 = window.__pm; m0.t = []; m0.on = true;
+if (!m0.looping) {
+  m0.looping = true;
+  const loop = (ts) => { const m = window.__pm; if (!m.on) { m.looping = false; return; } if (m.t.length < m.max) m.t.push(ts); requestAnimationFrame(loop); };
   requestAnimationFrame(loop);
 }
-window.__pm.t = []; window.__pm.on = true; return true;
+return true;
 """
 READ = r"""
 const m = window.__pm; m.on = false; const t = m.t; const d = [];
@@ -71,6 +75,26 @@ if (window.__UNIPI_IDLE__) out.idle = window.__UNIPI_IDLE__();
 return out;
 """
 
+# --diag: counts timer / frame / IPC callbacks per call site during a phase (WebKitGTK has no
+# profiler over WebDriver). Sites are the scheduling stack's first app frame (bundle file:line:col).
+TIMERS = r"""
+if (!window.__pt) {
+  const pt = window.__pt = {c: {}, on: false};
+  const site = () => { const s = (new Error().stack || '').split('\n'); for (const l of s.slice(2)) { if (!/__pt|TIMERS/.test(l)) return l.trim().replace(/^.*\//, '').slice(0, 90); } return '?'; };
+  const hit = (k) => { if (pt.on) pt.c[k] = (pt.c[k] || 0) + 1; };
+  const st = window.setTimeout, si = window.setInterval, raf = window.requestAnimationFrame;
+  window.setTimeout = function (f, ms, ...a) { const k = 'T' + (ms|0) + ' ' + site(); return st.call(window, typeof f === 'function' ? function () { hit(k); return f.apply(this, arguments); } : f, ms, ...a); };
+  window.setInterval = function (f, ms, ...a) { const k = 'I' + (ms|0) + ' ' + site(); return si.call(window, typeof f === 'function' ? function () { hit(k); return f.apply(this, arguments); } : f, ms, ...a); };
+  window.requestAnimationFrame = function (f) { const k = 'R ' + site(); return raf.call(window, function (t) { hit(k); return f(t); }); };
+  const ti = window.__TAURI_INTERNALS__;
+  if (ti && ti.invoke) { const inv = ti.invoke.bind(ti); ti.invoke = function (cmd, args, o) { let d = ''; try { const r = args && (args.request || args.req || args.frame || args); d = r && (r.op || r.type || (r.cmd && r.cmd.type)) || ''; } catch (e) {} hit('IPC ' + cmd + ' ' + String(d).slice(0, 40)); return inv(cmd, args, o); }; }
+}
+return true;
+"""
+TIMERS_START = "if (window.__pt) { window.__pt.c = {}; window.__pt.on = true; } return !!window.__pt;"
+TIMERS_READ = "const p = window.__pt; if (!p) return null; p.on = false; return Object.entries(p.c).sort((a, b) => b[1] - a[1]).slice(0, 25);"
+DIAG = {"on": False}
+
 
 def rig(env, *a, check=True):
     return subprocess.run(["bash", f"{REPO}/scripts/qa/rig.sh", *a], env=env, check=check,
@@ -108,9 +132,19 @@ def app_sample(secs=10, env=None):
             probe = ev(env, PROBE)
         except Exception as e:  # the probe never fails a phase
             probe = {"err": str(e)[:200]}
+    if env is not None and DIAG["on"]:
+        try:
+            ev(env, TIMERS_START)
+        except Exception:
+            pass
     pids = app_pids()
     a = {p: lib.proc(p) for p in pids}
     time.sleep(secs)
+    if env is not None and DIAG["on"]:
+        try:
+            probe = dict(probe or {}, timers=ev(env, TIMERS_READ))
+        except Exception as e:
+            probe = dict(probe or {}, timers_err=str(e)[:200])
     out = {"procs": {}}
     tot_rss = tot_cpu = 0
     for p in pids:
@@ -181,6 +215,15 @@ def main():
                 break
             time.sleep(0.5)
         R["startup_ui_s"] = round(time.time() - t0, 2)
+        # "Idle" means nothing loads any more: wait for the sidebar's session list (its skeleton
+        # shimmers while sessions_list runs) before the idle sample.
+        for _ in range(120):
+            if ev(env, "return !document.querySelector('.sb-skeleton')"):
+                break
+            time.sleep(0.5)
+        R["sessions_loaded_s"] = round(time.time() - t0, 2)
+        if a.diag:
+            DIAG["on"] = bool(ev(env, TIMERS))
         time.sleep(5)
         R["idle_home"] = app_sample(15, env)
         bench.log("idle home", R["idle_home"]["app_rss_mb"], "MB", R["idle_home"]["app_cpu_pct"], "%")

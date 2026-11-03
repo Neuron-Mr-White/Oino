@@ -83,57 +83,36 @@ export async function archiveSession(hostId: string, sessionId: string): Promise
   showActionNotice('Archived · restore it from Archived');
 }
 
-/** Runs `fn` over `items`, `limit` at a time; resolves the ones that did not throw. */
-async function pool<T>(items: readonly T[], limit: number, fn: (item: T) => Promise<boolean>): Promise<T[]> {
-  const ok: T[] = [];
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const item = items[next++]!;
-      try {
-        if (await fn(item)) ok.push(item);
-      } catch {
-        // counted as not done
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return ok;
-}
-
 /**
  * [ui-sessions] "Archive all" (list header / group header, after a confirm): archives every
- * listed chat, four at a time, then one toast with **Undo** (restores exactly those).
+ * listed chat in ONE host op ([ux-sessions] `sessions_archive` — was one request per chat, four
+ * at a time, which lagged for minutes on 2,000 chats and left the Archived count stale). The rows
+ * leave the list at once; `hub.state.bulk` carries the host's progress; one toast with **Undo**
+ * (`sessions_restore` of exactly those).
  */
 export async function archiveMany(hostId: string, sessionIds: readonly string[], what = 'sessions'): Promise<string[]> {
   if (!sessionIds.length) return [];
-  const client = hostClient(hostId);
-  const done = await pool(sessionIds, 4, async (id) => {
-    sessions().close(hostId, id);
-    await client.request('session_archive', { session: id });
-    return true;
-  });
+  for (const id of sessionIds) sessions().close(hostId, id);
   const hub = hubOf(hostId);
-  // The host announces each removal on the hub stream; a reload settles anything missed.
-  void hub.reload();
+  const result = await hub.archiveMany(sessionIds);
+  const done = result.done;
   const failedCount = sessionIds.length - done.length;
   const n = done.length;
-  const label = `Archived ${n} ${n === 1 ? 'session' : what}${failedCount ? ` · ${failedCount} failed` : ''}`;
+  const label = `Archived ${n} ${n === 1 ? 'session' : what}${failedCount ? ` · ${failedCount} not archived` : ''}`;
   if (n > 0) {
     toasts().push(label, failedCount ? 'warning' : 'success', {
       label: 'Undo',
       run: async () => {
-        const back = await pool(done, 4, async (id) => {
-          await client.request('session_restore', { session: id });
-          return true;
-        });
-        void hub.reload();
-        void hub.loadArchived(true);
-        showActionNotice(back.length === n ? `Restored ${n} ${n === 1 ? 'session' : 'sessions'}` : `Restored ${back.length} of ${n}`);
+        const back = await hub.restoreMany(done);
+        showActionNotice(back.done.length === n ? `Restored ${n} ${n === 1 ? 'session' : 'sessions'}` : `Restored ${back.done.length} of ${n}`);
       },
     });
   } else {
-    showActionNotice(`Could not archive ${sessionIds.length === 1 ? 'the session' : `${sessionIds.length} sessions`}`);
+    showActionNotice(
+      result.error
+        ? `Could not archive: ${result.error.message}`
+        : `Could not archive ${sessionIds.length === 1 ? 'the session' : `${sessionIds.length} sessions`}${result.failed[0] ? ` (${result.failed[0].message})` : ''}`,
+    );
   }
   return done;
 }

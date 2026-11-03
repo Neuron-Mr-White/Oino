@@ -871,6 +871,66 @@ pub async fn trash_empty(
     one_shot(&app, &state, &host_id, Request::TrashEmpty, REPLY_TIMEOUT).await
 }
 
+/// How long one batch op may take (2,000 chats on a slow disk; the host announces
+/// progress on `events_open` meanwhile).
+const BATCH_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// `sessions_archive` (owner fix 2026-11-03, `[ux-sessions]`): archive many sessions
+/// in one host op. → `{done, failed?}`.
+#[tauri::command]
+pub async fn sessions_archive(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    sessions: Vec<SessionTarget>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SessionsArchive { sessions }, BATCH_TIMEOUT).await
+}
+
+/// `sessions_restore` (owner fix 2026-11-03, `[ux-sessions]`): restore many archived
+/// sessions in one host op. → `{done, failed?}`.
+#[tauri::command]
+pub async fn sessions_restore(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    sessions: Vec<SessionTarget>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SessionsRestore { sessions }, BATCH_TIMEOUT).await
+}
+
+/// `sessions_query` (owner fix 2026-11-03, `[ux-sessions]`): one page of the sidebar's
+/// session search (title + first user message, live and/or archived, the list's filters).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn sessions_query(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    query: Option<String>,
+    scope: Option<unipi_proto::session_bulk::SessionsQueryScope>,
+    filters: Option<unipi_proto::session_bulk::SessionsQueryFilters>,
+    sort: Option<unipi_proto::session_bulk::SessionsQuerySort>,
+    limit: Option<u32>,
+    cursor: Option<String>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionsQuery {
+            query: query.unwrap_or_default(),
+            scope: scope.unwrap_or_default(),
+            filters: filters.unwrap_or_default(),
+            sort: sort.unwrap_or_default(),
+            limit,
+            cursor,
+        },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
 /// `session_rename` (host.md §7.2): set the session's display name.
 #[tauri::command]
 pub async fn session_rename(

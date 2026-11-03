@@ -245,8 +245,24 @@ export function HostGroup(props: {
               <For each={[78, 64, 86, 58, 72]}>{(w) => <span class="sb-skel-row" style={{ width: `${w}%` }} />}</For>
             </div>
           </Show>
-          <Show when={hub().state.loaded && total() === 0 && !offline() && !filterCount()}>
-            <p class="sb-empty">{hub().state.loading ? 'Loading…' : 'No sessions yet'}</p>
+          {/* [ux-sessions] a batch archive / restore: the host's progress, never an empty state. */}
+          <Show when={hub().state.bulk}>
+            {(b) => (
+              <div class="sb-bulk" role="status" aria-live="polite" data-testid={`sb-bulk-${props.host.id}`}>
+                <span class="sb-bulk-label">
+                  {b().kind === 'archive' ? 'Archiving' : 'Restoring'} {b().done} of {b().total}…
+                </span>
+                <span class="sb-bulk-bar" aria-hidden="true">
+                  <span class="sb-bulk-fill" style={{ width: `${Math.round((100 * b().done) / Math.max(1, b().total))}%` }} />
+                </span>
+              </div>
+            )}
+          </Show>
+          {/* Only a settled, current list may say it is empty (never while loading or mid-batch). */}
+          <Show when={hub().state.loaded && !hub().state.loading && !hub().state.bulk && total() === 0 && !offline() && !filterCount()}>
+            <p class="sb-empty" data-testid={`sb-empty-${props.host.id}`}>
+              {hub().state.archivedLoaded && hub().state.archived.length > 0 ? 'Every session is archived' : 'No sessions yet'}
+            </p>
           </Show>
           <Show when={hub().state.loaded && !offline() && filterCount() > 0 && groups().total === 0}>
             <p class="sb-empty sb-empty-filtered" data-testid={`sb-no-match-${props.host.id}`}>

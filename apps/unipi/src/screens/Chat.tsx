@@ -16,7 +16,7 @@ import { useHostsOptional } from '../hosts/context';
 import { hubs } from '../lib/session/hub';
 import { isInternalSession } from '../lib/session/internal';
 import { listView, setListView } from '../lib/session/listView';
-import { deleteArchived, restoreSession, sessionHref } from '../lib/session/actions';
+import { archiveMany, deleteArchived, restoreSession, sessionHref } from '../lib/session/actions';
 import { sessionTitle } from '../lib/session/selectors';
 import { needsYou } from '../lib/needsYou';
 import { setNeedsYouOpen } from '../components/FloatingBell';
@@ -83,7 +83,9 @@ export default function Chat() {
     const ok = await confirmSheet({ title: `Archive ${ids.length} chat${ids.length === 1 ? '' : 's'}?`, body: 'You can restore them from Archived chats.', confirm: 'Archive' });
     if (!ok) return;
     setSelecting(undefined);
-    for (const id of ids) await archiveWithUndo(hostId()!, id);
+    // [ux-sessions] one batched host op + one Undo toast (was one request and one toast per chat).
+    if (ids.length === 1) await archiveWithUndo(hostId()!, ids[0]!);
+    else await archiveMany(hostId()!, ids, 'chats');
   };
 
   const menuSections = (): ActionItem[][] => [

@@ -59,6 +59,11 @@ use oino_session::{EntryId, LeaseInfo, SessionManager};
 use oino_settings::SettingsManager;
 
 use super::card::{HubState, ProjectGroup, SessionCard};
+use unipi_proto::session_bulk::{
+    query_words, SessionsBatchData, SessionsBatchFailure, SessionsQueryAutomation,
+    SessionsQueryFilters, SessionsQueryScope, SessionsQuerySort, SessionsQueryStatus,
+    SESSIONS_EVENT_CHUNK, SESSIONS_QUERY_LIMIT_DEFAULT, SESSIONS_QUERY_LIMIT_MAX,
+};
 use super::crash;
 use super::meta::{FocusRegistry, MetaStore};
 use unipi_proto::session::SessionMetaPatch;
@@ -152,6 +157,19 @@ pub enum HubEvent {
     SessionRemoved {
         /// Session id.
         session_id: String,
+    },
+    /// Owner fix 2026-11-03 (`[ux-sessions]`): one chunk of a batch archive — these
+    /// sessions left the list together (`archived`: their files went to `trash/`).
+    SessionsRemoved {
+        /// Session ids (at most `SESSIONS_EVENT_CHUNK`).
+        session_ids: Vec<String>,
+        /// The files moved to the trash.
+        archived: bool,
+    },
+    /// Owner fix 2026-11-03 (`[ux-sessions]`): one chunk of a batch restore.
+    SessionsChanged {
+        /// The cards (at most `SESSIONS_EVENT_CHUNK`).
+        cards: Vec<SessionCard>,
     },
     /// A host-level notice (safe mode, updater, crash).
     HostNotice {
@@ -997,6 +1015,40 @@ impl SessionHub {
     /// Reading the trash directory.
     pub async fn empty_trash(&self) -> Result<usize, HubError> {
         self.inner.empty_trash().await
+    }
+
+    /// Owner fix 2026-11-03 (`sessions_archive`, `[ux-sessions]`): archive many sessions in
+    /// one op — one listing resolves every target, running sessions are skipped, removals
+    /// are announced in [`SESSIONS_EVENT_CHUNK`]-sized `SessionsRemoved` events.
+    ///
+    /// # Errors
+    ///
+    /// Listing I/O or creating the trash directory; per-session failures are reported in
+    /// the answer instead.
+    pub async fn archive_many(&self, targets: &[String]) -> Result<SessionsBatchData, HubError> {
+        self.inner.archive_many(targets).await
+    }
+
+    /// Owner fix 2026-11-03 (`sessions_restore`, `[ux-sessions]`): restore many archived
+    /// sessions in one op (one trash listing), announced as `SessionsChanged` chunks.
+    ///
+    /// # Errors
+    ///
+    /// Listing the trash; per-session failures are reported in the answer.
+    pub async fn restore_many(&self, targets: &[String]) -> Result<SessionsBatchData, HubError> {
+        self.inner.restore_many(targets).await
+    }
+
+    /// Owner fix 2026-11-03 (`sessions_query`, `[ux-sessions]`): one page of the sidebar's
+    /// session search over the card indexes (live and/or trash) — title + first user
+    /// message, the list's filters, newest first by default. Never wakes a runtime.
+    ///
+    /// # Errors
+    ///
+    /// Listing I/O.
+    pub async fn query(&self, query: &SessionsQuery) -> Result<SessionsQueryPage, HubError> {
+        debug_list_delay().await;
+        self.inner.query(query).await
     }
 
     /// `session_close{session}`: dispose the runtime when idle and no other subscriber; the
@@ -2051,5 +2103,472 @@ async fn is_busy(backend: &Arc<dyn SessionBackend>) -> bool {
             .map(|state| state.is_streaming || state.is_compacting)
             .unwrap_or(false),
         _ => false,
+    }
+}
+
+/// A `sessions_query` request as the hub sees it (`[ux-sessions]`).
+#[derive(Clone, Debug, Default)]
+pub struct SessionsQuery {
+    /// Raw query text (cut and split by [`query_words`]).
+    pub text: String,
+    /// Live, archived or both.
+    pub scope: SessionsQueryScope,
+    /// The list's filters.
+    pub filters: SessionsQueryFilters,
+    /// Row order.
+    pub sort: SessionsQuerySort,
+    /// Page size (clamped to `1..=SESSIONS_QUERY_LIMIT_MAX`).
+    pub limit: Option<u32>,
+    /// Offset cursor of the previous page (`next_cursor`); a bad one restarts at 0.
+    pub cursor: Option<String>,
+}
+
+/// One `sessions_query` hit in host terms.
+#[derive(Clone, Debug)]
+pub struct SessionsQueryHostHit {
+    /// The card.
+    pub card: SessionCard,
+    /// In the trash.
+    pub archived: bool,
+    /// First-message excerpt when only the message matched.
+    pub snippet: Option<String>,
+}
+
+/// One `sessions_query` page in host terms.
+#[derive(Clone, Debug, Default)]
+pub struct SessionsQueryPage {
+    /// The page.
+    pub hits: Vec<SessionsQueryHostHit>,
+    /// Every match.
+    pub total: usize,
+    /// Next offset, when there is one.
+    pub next_cursor: Option<String>,
+}
+
+/// A query candidate: the card plus the facts only the index knows.
+struct QueryRow {
+    card: SessionCard,
+    archived: bool,
+    first_message: String,
+    created_ms: i64,
+}
+
+/// Characters of first-message context around a match in a snippet.
+const SNIPPET_CONTEXT: usize = 40;
+
+/// `true` for a folder the list files under "No workspace" (the app's `isHomeCwd`):
+/// empty, `/`, a bare home directory, or a chat's scratch folder.
+fn is_no_workspace(cwd: &str, scratch_root: &Path) -> bool {
+    let clean = cwd.trim_end_matches(['/', '\\']);
+    if clean.is_empty() || clean == "~" || clean == "/root" {
+        return true;
+    }
+    let parts: Vec<&str> = clean.split(['/', '\\']).collect();
+    let bare_home = matches!(parts.as_slice(), ["", "home", user] | ["", "Users", user] if !user.is_empty())
+        || matches!(parts.as_slice(), [drive, "Users", user] if drive.ends_with(':') && !user.is_empty());
+    bare_home || crate::scratch::is_scratch(scratch_root, Path::new(clean))
+}
+
+/// The list's title of a card (name, else the folder, else "New chat") — `sessionTitle`.
+fn query_title(card: &SessionCard, no_workspace: bool) -> String {
+    if let Some(name) = card.name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+        return name.to_owned();
+    }
+    if !no_workspace {
+        if let Some(folder) = Path::new(card.cwd.trim_end_matches(['/', '\\'])).file_name() {
+            return folder.to_string_lossy().into_owned();
+        }
+    }
+    "New chat".to_owned()
+}
+
+/// An excerpt of `text` around the first occurrence of `word` (lowercase), one line.
+fn snippet_around(text: &str, word: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    let at = lower.find(word)?;
+    // Byte offsets of `lower` map onto `text` only for same-length case folding; fall back
+    // to a char walk over the lowercase copy (what is shown is lowercase-safe text).
+    let source = if lower.len() == text.len() { text } else { lower.as_str() };
+    let chars: Vec<(usize, char)> = source.char_indices().collect();
+    let pos = chars.iter().position(|(i, _)| *i >= at).unwrap_or(0);
+    let start = pos.saturating_sub(SNIPPET_CONTEXT);
+    let end = (pos + word.chars().count() + SNIPPET_CONTEXT).min(chars.len());
+    let mut out: String = chars[start..end].iter().map(|(_, c)| *c).collect();
+    out = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    if start > 0 {
+        out.insert(0, '…');
+    }
+    if end < chars.len() {
+        out.push('…');
+    }
+    Some(out)
+}
+
+impl Inner {
+    /// [`SessionHub::archive_many`].
+    async fn archive_many(&self, targets: &[String]) -> Result<SessionsBatchData, HubError> {
+        let started = Instant::now();
+        let records = self.core.list().await?;
+        let by_id: HashMap<&str, &CoreHubSession> =
+            records.iter().map(|r| (r.info.id.as_str(), r)).collect();
+        let trash = self.agent_dir.join("trash");
+        tokio::fs::create_dir_all(&trash)
+            .await
+            .map_err(|error| HubError::failed(format!("creating {}: {error}", trash.display())))?;
+        let mut out = SessionsBatchData::default();
+        let mut chunk: Vec<String> = Vec::with_capacity(SESSIONS_EVENT_CHUNK);
+        let mut seen: HashSet<String> = HashSet::with_capacity(targets.len());
+        for target in targets {
+            let fail = |out: &mut SessionsBatchData, message: String| {
+                out.failed.push(SessionsBatchFailure { session: target.clone(), message });
+            };
+            // Exact ids come from the one listing; anything else resolves like `session_archive`.
+            let resolved;
+            let record = if let Some(record) = by_id.get(target.as_str()) {
+                *record
+            } else {
+                match self.resolve(target).await {
+                    Ok(record) => {
+                        resolved = record;
+                        &resolved
+                    }
+                    Err(error) => {
+                        fail(&mut out, error.to_string());
+                        continue;
+                    }
+                }
+            };
+            let id = record.info.id.clone();
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            let working = {
+                let state = lock(&self.state);
+                matches!(state.states.get(&id), Some(HubState::Working)) || state.needs_you.contains(&id)
+            };
+            if working {
+                fail(&mut out, "the session is running".to_owned());
+                continue;
+            }
+            if let Err(error) = self.core.close(&id).await {
+                fail(&mut out, error.to_string());
+                continue;
+            }
+            lock(&self.state).states.remove(&id);
+            let name = record.info.path.file_name().map_or_else(
+                || format!("{id}.jsonl"),
+                |name| name.to_string_lossy().into_owned(),
+            );
+            let dest = unique_destination(&trash, &name);
+            if let Err(error) = tokio::fs::rename(&record.info.path, &dest).await {
+                fail(&mut out, format!("archiving {}: {error}", record.info.path.display()));
+                continue;
+            }
+            out.done.push(id.clone());
+            chunk.push(id);
+            if chunk.len() >= SESSIONS_EVENT_CHUNK {
+                self.emit(HubEvent::SessionsRemoved {
+                    session_ids: std::mem::take(&mut chunk),
+                    archived: true,
+                });
+                // Let the event pumps and other requests run between chunks.
+                tokio::task::yield_now().await;
+            }
+        }
+        if !chunk.is_empty() {
+            self.emit(HubEvent::SessionsRemoved {
+                session_ids: chunk,
+                archived: true,
+            });
+        }
+        tracing::info!(
+            archived = out.done.len(),
+            failed = out.failed.len(),
+            took_ms = started.elapsed().as_millis() as u64,
+            "sessions archived (batch)"
+        );
+        Ok(out)
+    }
+
+    /// [`SessionHub::restore_many`].
+    async fn restore_many(&self, targets: &[String]) -> Result<SessionsBatchData, HubError> {
+        let started = Instant::now();
+        let archived = self.archived_sessions().await?;
+        let by_id: HashMap<&str, &oino_session::manager::SessionInfo> =
+            archived.iter().map(|info| (info.id.as_str(), info)).collect();
+        let mut out = SessionsBatchData::default();
+        let mut chunk: Vec<SessionCard> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::with_capacity(targets.len());
+        for target in targets {
+            let Some(entry) = by_id.get(target.as_str()) else {
+                // Not an exact id: the single op's resolution (prefix / path) and its event.
+                match self.restore(target).await {
+                    Ok(card) => out.done.push(card.session_id),
+                    Err(error) => out.failed.push(SessionsBatchFailure {
+                        session: target.clone(),
+                        message: error.to_string(),
+                    }),
+                }
+                continue;
+            };
+            if !seen.insert(entry.id.clone()) {
+                continue;
+            }
+            match self.restore_entry(entry).await {
+                Ok(card) => {
+                    out.done.push(card.session_id.clone());
+                    chunk.push(card);
+                    if chunk.len() >= SESSIONS_EVENT_CHUNK {
+                        self.emit(HubEvent::SessionsChanged {
+                            cards: std::mem::take(&mut chunk),
+                        });
+                        tokio::task::yield_now().await;
+                    }
+                }
+                Err(error) => out.failed.push(SessionsBatchFailure {
+                    session: target.clone(),
+                    message: error.to_string(),
+                }),
+            }
+        }
+        if !chunk.is_empty() {
+            self.emit(HubEvent::SessionsChanged { cards: chunk });
+        }
+        tracing::info!(
+            restored = out.done.len(),
+            failed = out.failed.len(),
+            took_ms = started.elapsed().as_millis() as u64,
+            "sessions restored (batch)"
+        );
+        Ok(out)
+    }
+
+    /// Moves one archived file back (the body of `restore`, without its event): a cheap
+    /// card from the archived entry — the listing re-reads it from the index anyway.
+    async fn restore_entry(
+        &self,
+        entry: &oino_session::manager::SessionInfo,
+    ) -> Result<SessionCard, HubError> {
+        let cwd = if entry.cwd.is_empty() {
+            self.cwd.clone()
+        } else {
+            PathBuf::from(&entry.cwd)
+        };
+        let dir = oino_session::manager::cwd_session_dir(&self.sessions_root, &cwd);
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(|error| HubError::failed(format!("creating {}: {error}", dir.display())))?;
+        let name = entry.path.file_name().map_or_else(
+            || format!("{}.jsonl", entry.id),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let dest = unique_destination(&dir, &name);
+        tokio::fs::rename(&entry.path, &dest).await.map_err(|error| {
+            HubError::failed(format!("restoring {}: {error}", entry.path.display()))
+        })?;
+        let modified = epoch_ms(entry.modified);
+        let cron = self.cron.owner_of(&entry.id, &dest);
+        Ok(self.meta.onto(SessionCard {
+            session_id: entry.id.clone(),
+            file: dest,
+            name: entry.name.clone(),
+            cwd: entry.moved_cwd.clone().unwrap_or_else(|| entry.cwd.clone()),
+            updated_at: modified,
+            message_count: entry.message_count,
+            state: HubState::Idle,
+            needs_you: false,
+            model: None,
+            pinned: false,
+            unread: false,
+            title_locked: false,
+            source: cron.as_ref().map(|_| "cron".to_owned()),
+            cron_job_id: cron.as_ref().map(|c| c.job_id.clone()),
+            cron_job_name: cron.and_then(|c| c.job_name),
+            changes: None,
+            last_activity: modified,
+        }))
+    }
+
+    /// [`SessionHub::query`].
+    async fn query(&self, query: &SessionsQuery) -> Result<SessionsQueryPage, HubError> {
+        let started = Instant::now();
+        let mut rows: Vec<QueryRow> = Vec::new();
+        if query.scope != SessionsQueryScope::Archived {
+            let records = self.core.list().await?;
+            let state = lock(&self.state);
+            rows.extend(records.iter().map(|record| QueryRow {
+                card: self.card_from(&state, record),
+                archived: false,
+                first_message: record.info.first_message.clone(),
+                created_ms: record.info.created.to_ms().unwrap_or_else(|| {
+                    i64::try_from(epoch_ms(record.info.modified)).unwrap_or(i64::MAX)
+                }),
+            }));
+        }
+        if query.scope != SessionsQueryScope::Live {
+            for info in self.archived_sessions().await? {
+                let modified = epoch_ms(info.modified);
+                let created_ms = info
+                    .created
+                    .to_ms()
+                    .unwrap_or_else(|| i64::try_from(modified).unwrap_or(i64::MAX));
+                let card = self.meta.onto(SessionCard {
+                    session_id: info.id.clone(),
+                    file: info.path.clone(),
+                    name: info.name.clone(),
+                    cwd: info.moved_cwd.clone().unwrap_or_else(|| info.cwd.clone()),
+                    updated_at: modified,
+                    message_count: info.message_count,
+                    state: HubState::Idle,
+                    needs_you: false,
+                    model: None,
+                    pinned: false,
+                    unread: false,
+                    title_locked: false,
+                    source: None,
+                    cron_job_id: None,
+                    cron_job_name: None,
+                    changes: None,
+                    last_activity: modified,
+                });
+                rows.push(QueryRow {
+                    card,
+                    archived: true,
+                    first_message: info.first_message,
+                    created_ms,
+                });
+            }
+        }
+        let words = query_words(&query.text);
+        let filters = &query.filters;
+        let workspaces: HashSet<&str> = filters.workspaces.iter().map(String::as_str).collect();
+        let mut hits: Vec<(QueryRow, String, Option<String>)> = Vec::new();
+        for row in rows {
+            let no_workspace = is_no_workspace(&row.card.cwd, &self.scratch_root);
+            if !workspaces.is_empty() {
+                let key = if no_workspace { "" } else { row.card.cwd.trim_end_matches(['/', '\\']) };
+                if !workspaces.contains(key) {
+                    continue;
+                }
+            }
+            if !filters.automation.is_empty() {
+                let automation = if row.card.source.as_deref() == Some("cron") {
+                    SessionsQueryAutomation::Cron
+                } else {
+                    SessionsQueryAutomation::Manual
+                };
+                if !filters.automation.contains(&automation) {
+                    continue;
+                }
+            }
+            if !filters.status.is_empty() {
+                let status = if row.card.needs_you {
+                    SessionsQueryStatus::Waiting
+                } else {
+                    match row.card.state {
+                        HubState::Working => SessionsQueryStatus::Running,
+                        HubState::Crashed { .. } => SessionsQueryStatus::Failed,
+                        HubState::Idle | HubState::TakenOver { .. } => SessionsQueryStatus::Ready,
+                    }
+                };
+                if !filters.status.contains(&status) {
+                    continue;
+                }
+            }
+            if !filters.models.is_empty()
+                && !filters.models.iter().any(|m| m == row.card.model.as_deref().unwrap_or(""))
+            {
+                continue;
+            }
+            if filters.created.is_some_and(|range| !range.contains(row.created_ms)) {
+                continue;
+            }
+            let activity = i64::try_from(row.card.last_activity).unwrap_or(i64::MAX);
+            if filters.updated.is_some_and(|range| !range.contains(activity)) {
+                continue;
+            }
+            let title = query_title(&row.card, no_workspace);
+            let mut snippet = None;
+            if !words.is_empty() {
+                let title_lower = title.to_lowercase();
+                // The index's placeholder for an empty chat is not searchable text.
+                let first = if row.first_message == "(no messages)" { "" } else { row.first_message.as_str() };
+                let first_lower = first.to_lowercase();
+                if !words.iter().all(|w| title_lower.contains(w.as_str()) || first_lower.contains(w.as_str())) {
+                    continue;
+                }
+                if let Some(word) = words.iter().find(|w| !title_lower.contains(w.as_str())) {
+                    snippet = snippet_around(first, word);
+                }
+            }
+            hits.push((row, title, snippet));
+        }
+        match query.sort {
+            SessionsQuerySort::Updated => hits.sort_by(|a, b| {
+                b.0.card.last_activity.cmp(&a.0.card.last_activity).then_with(|| a.0.card.session_id.cmp(&b.0.card.session_id))
+            }),
+            SessionsQuerySort::Created => hits.sort_by(|a, b| {
+                b.0.created_ms.cmp(&a.0.created_ms).then_with(|| a.0.card.session_id.cmp(&b.0.card.session_id))
+            }),
+            SessionsQuerySort::Name => hits.sort_by_cached_key(|h| (h.1.to_lowercase(), h.0.card.session_id.clone())),
+        }
+        let limit = query
+            .limit
+            .unwrap_or(SESSIONS_QUERY_LIMIT_DEFAULT)
+            .clamp(1, SESSIONS_QUERY_LIMIT_MAX) as usize;
+        let total = hits.len();
+        let start = query
+            .cursor
+            .as_deref()
+            .and_then(|c| c.parse::<usize>().ok())
+            .unwrap_or(0)
+            .min(total);
+        let page: Vec<SessionsQueryHostHit> = hits
+            .into_iter()
+            .skip(start)
+            .take(limit)
+            .map(|(row, _, snippet)| SessionsQueryHostHit {
+                card: row.card,
+                archived: row.archived,
+                snippet,
+            })
+            .collect();
+        let next = start + page.len();
+        tracing::info!(
+            words = words.len(),
+            total,
+            took_ms = started.elapsed().as_millis() as u64,
+            "sessions query"
+        );
+        Ok(SessionsQueryPage {
+            hits: page,
+            total,
+            next_cursor: (next < total).then(|| next.to_string()),
+        })
+    }
+}
+
+#[cfg(test)]
+mod query_helper_tests {
+    use super::*;
+
+    #[test]
+    fn no_workspace_matches_the_app() {
+        let scratch = Path::new("/home/u/.local/share/oino/scratch");
+        assert!(is_no_workspace("", scratch));
+        assert!(is_no_workspace("/", scratch));
+        assert!(is_no_workspace("/home/u/", scratch));
+        assert!(is_no_workspace("/Users/u", scratch));
+        assert!(is_no_workspace("C:\\Users\\u", scratch));
+        assert!(!is_no_workspace("/home/u/Projects/x", scratch));
+    }
+
+    #[test]
+    fn snippets_are_short_and_one_line() {
+        let text = format!("{}\nfind the Needle here{}", "a ".repeat(100), " b".repeat(100));
+        let s = snippet_around(&text, "needle").unwrap();
+        assert!(s.contains("Needle") && s.starts_with('…') && s.ends_with('…') && !s.contains('\n'));
+        assert!(s.chars().count() < 2 * SNIPPET_CONTEXT + 12);
+        assert!(snippet_around("abc", "zz").is_none());
     }
 }

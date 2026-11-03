@@ -192,4 +192,59 @@ describe('hub helpers', () => {
     hub.close();
     dispose();
   });
+
+  it('[ux-sessions] batch archive: one op, rows leave at once, an open Archived list is exact after; failures come back', async () => {
+    const cards = Array.from({ length: 450 }, (_, i) => card(`s${i}`));
+    cards.push(card('busy', { run_state: 'working' }));
+    const scenario: MockScenario = { name: 't', hosts: [{ id: 'h1', name: 'coffee', cards, archived: [card('old')] }] };
+    const w = createMockHost(scenario);
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client: w.client('h1') }), dispose }));
+    await tick();
+    await hub.loadArchived();
+    const ids = [...cards.map((c) => c.session_id)];
+    const run = hub.archiveMany(ids);
+    // Optimistic: gone from the list and in the Archived list before the host answers.
+    expect(Object.keys(hub.state.cards)).toHaveLength(0);
+    expect(hub.state.archived).toHaveLength(452);
+    expect(hub.state.bulk).toMatchObject({ kind: 'archive', total: 451 });
+    const result = await run;
+    expect(result.done).toHaveLength(450);
+    expect(result.failed.map((f) => f.session)).toEqual(['busy']);
+    expect(hub.state.cards.busy).toBeTruthy();
+    expect(hub.state.bulk).toBeUndefined();
+    await tick();
+    await tick();
+    expect(hub.state.archived.map((c) => c.session_id)).not.toContain('busy');
+    expect(hub.state.archived).toHaveLength(451);
+    expect(w.log.filter((e) => e.kind === 'request' && e.op === 'sessions_archive')).toHaveLength(1);
+    const back = await hub.restoreMany(result.done);
+    expect(back.done).toHaveLength(450);
+    expect(Object.keys(hub.state.cards)).toHaveLength(451);
+    hub.close();
+    dispose();
+  });
+
+  it('[ux-sessions] chunk events and resync', async () => {
+    const s: HubState = { hostId: 'h', cards: { a: card('a'), b: card('b') }, archived: [card('z')], archivedLoaded: true, archivedLoading: false, notices: [], meta: {}, git: {}, loaded: true, loading: false, live: true, bulk: { kind: 'archive', total: 2, done: 0 } };
+    applyHubEvent(s, { kind: 'sessions_removed', sessions: ['a', 'b'], archived: true });
+    expect(s.cards).toEqual({});
+    expect(s.bulk?.done).toBe(2);
+    s.bulk = { kind: 'restore', total: 1, done: 0 };
+    applyHubEvent(s, { kind: 'sessions_changed', cards: [card('z')] });
+    expect(s.cards.z).toBeTruthy();
+    expect(s.archived).toEqual([]);
+    expect(s.bulk.done).toBe(1);
+    // resync re-lists from the host
+    const scenario: MockScenario = { name: 't', hosts: [{ id: 'h1', name: 'coffee', cards: [card('a')] }] };
+    const w = createMockHost(scenario);
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client: w.client('h1') }), dispose }));
+    await tick();
+    const lists = () => w.log.filter((e) => e.kind === 'request' && e.op === 'sessions_list').length;
+    const before = lists();
+    w.emit({ kind: 'resync' });
+    await tick();
+    expect(lists()).toBe(before + 1);
+    hub.close();
+    dispose();
+  });
 });

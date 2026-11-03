@@ -21,6 +21,7 @@ pub mod lsp;
 pub mod paths;
 pub mod push;
 pub mod session;
+pub mod session_bulk;
 pub mod settings;
 pub mod sharing;
 pub mod term;

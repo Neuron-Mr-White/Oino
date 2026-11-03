@@ -583,6 +583,25 @@ pub enum HubEvent {
         /// Session id.
         session: String,
     },
+    /// Owner fix 2026-11-03 (`[ux-sessions]`): many sessions left the list at once (one
+    /// chunk of a `sessions_archive`). `archived`: they went to the trash, so an open
+    /// Archived list is stale.
+    SessionsRemoved {
+        /// Session ids (at most `SESSIONS_EVENT_CHUNK`).
+        sessions: Vec<String>,
+        /// The files moved to the trash.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        archived: bool,
+    },
+    /// Owner fix 2026-11-03 (`[ux-sessions]`): many cards changed at once (one chunk of a
+    /// `sessions_restore`).
+    SessionsChanged {
+        /// The cards (at most `SESSIONS_EVENT_CHUNK`).
+        cards: Vec<SessionCard>,
+    },
+    /// Owner fix 2026-11-03 (`[ux-sessions]`): this connection fell behind and events were
+    /// dropped — re-run `sessions_list` (and the archived list when it is open).
+    Resync,
     /// A host-level notice (safe-mode banner, updater prompt, crash notice).
     HostNotice {
         /// Severity.

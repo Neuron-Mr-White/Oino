@@ -442,3 +442,4 @@ export type {
   HubEvent,
   SessionMoveData,
 } from "./session.js";
+export * from "./sessionBulk.js";

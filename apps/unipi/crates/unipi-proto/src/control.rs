@@ -750,6 +750,46 @@ pub enum Request {
     /// App spec §3.14 (WP-A5, Z-13): delete every archived session file.
     /// → `{ "deleted": N }`.
     TrashEmpty,
+    /// Owner fix 2026-11-03 (`[ux-sessions]`): archive many sessions in ONE op (the
+    /// sidebar's "Archive all"). The host resolves every target from one listing, skips
+    /// running ones, moves the files to the trash and announces the removals as
+    /// `sessions_removed{sessions, archived:true}` chunks (the app's progress).
+    /// → `SessionsBatchData`.
+    SessionsArchive {
+        /// 1..=`SESSIONS_BATCH_MAX` targets (ids, prefixes or file paths).
+        sessions: Vec<crate::session::SessionTarget>,
+    },
+    /// Owner fix 2026-11-03 (`[ux-sessions]`): restore many archived sessions in one op
+    /// (Archive all's Undo); announced as `sessions_changed{cards}` chunks.
+    /// → `SessionsBatchData`.
+    SessionsRestore {
+        /// 1..=`SESSIONS_BATCH_MAX` archived targets.
+        sessions: Vec<crate::session::SessionTarget>,
+    },
+    /// Owner fix 2026-11-03 (`[ux-sessions]`): one page of the sidebar's session search —
+    /// every word of `query` must appear in the title or the first user message
+    /// (case-insensitive), over live and/or archived chats (`scope`), with the list's
+    /// Properties filters applied host-side. → `SessionsQueryData`.
+    SessionsQuery {
+        /// The words to match (empty = every chat the filters keep).
+        #[serde(default)]
+        query: String,
+        /// Live, archived or both (default live).
+        #[serde(default)]
+        scope: crate::session_bulk::SessionsQueryScope,
+        /// The list's filters.
+        #[serde(default)]
+        filters: crate::session_bulk::SessionsQueryFilters,
+        /// Row order (default last activity).
+        #[serde(default)]
+        sort: crate::session_bulk::SessionsQuerySort,
+        /// Page size (default 50, at most `SESSIONS_QUERY_LIMIT_MAX`).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        limit: Option<u32>,
+        /// The previous page's `next_cursor`.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        cursor: Option<String>,
+    },
     /// host.md §7.2 (WP-H4): set the session's display name (wakes the runtime
     /// to write the `session_info` entry, then emits a card update). → `null`.
     SessionRename {

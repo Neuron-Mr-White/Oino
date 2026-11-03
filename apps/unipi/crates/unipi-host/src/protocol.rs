@@ -1107,6 +1107,9 @@ impl Handler {
             | Request::SessionRestore { .. }
             | Request::SessionDelete { .. }
             | Request::TrashEmpty
+            | Request::SessionsArchive { .. }
+            | Request::SessionsRestore { .. }
+            | Request::SessionsQuery { .. }
             | Request::SessionRename { .. }
             | Request::SessionClose { .. }
             | Request::SessionMove { .. }

@@ -155,7 +155,31 @@ describe('Properties menu', () => {
   });
 });
 
+/** The ids of the one `sessions_archive` batch (asserts there was exactly one). */
+const batchArchived = () => {
+  const calls = world.log.filter((e) => e.op === 'sessions_archive');
+  return calls.length === 1 ? [...(calls[0]!.args as { sessions: string[] }).sessions].sort() : calls.length;
+};
+
 describe('Archive all', () => {
+  it('[ux-sessions] 2,000 sessions: one batched host op, the list empties at once, the open Archived list counts all of them without a reload', async () => {
+    const many = Array.from({ length: 2000 }, (_, i) => card(`s${i}`, { cwd: `/home/you/p/proj${i % 40}`, updated_at: Date.now() - i * 60_000 }));
+    boot(many);
+    await waitFor(() => expect(screen.getByTestId('sb-archived-head-this-pc')).toBeTruthy());
+    // The owner's state: an Archived list already opened (here: empty) before Archive all.
+    fireEvent.click(screen.getByTestId('sb-archived-head-this-pc'));
+    await waitFor(() => expect(world.log.some((e) => e.op === 'sessions_list' && (e.args as { archived?: boolean } | undefined)?.archived)).toBe(true));
+    openProps();
+    fireEvent.click(screen.getByTestId('lp-archive-all'));
+    expect(screen.getByTestId('archive-all-confirm').textContent).toContain('2000');
+    fireEvent.click(screen.getByTestId('archive-all-yes'));
+    await waitFor(() => expect(batchArchived()).toHaveLength(2000));
+    expect(world.log.filter((e) => e.op === 'session_archive')).toHaveLength(0);
+    await waitFor(() => expect(screen.getByTestId('sb-archived-head-this-pc').textContent).toContain('2000'));
+    await waitFor(() => expect(screen.queryByTestId('srow-s0')).toBeNull());
+    await waitFor(() => expect(toasts().list().find((t) => t.message.startsWith('Archived 2000'))).toBeTruthy());
+  });
+
   it('group header: confirm with the count (pinned and running kept), then an Undo toast restores them', async () => {
     boot([card('a'), card('b'), card('p', { pinned: true }), card('r', { run_state: 'working' }), card('w', { cwd: '/home/you/p/web' })]);
     await waitFor(() => expect(screen.getByTestId('sb-rows-oino')).toBeTruthy());
@@ -163,13 +187,14 @@ describe('Archive all', () => {
     const confirm = await screen.findByTestId('archive-all-confirm');
     expect(confirm.textContent).toContain('Archive 2 sessions in oino');
     fireEvent.click(screen.getByTestId('archive-all-yes'));
-    await waitFor(() => expect(world.log.filter((e) => e.op === 'session_archive').map((e) => (e.args as { session: string }).session).sort()).toEqual(['a', 'b']));
+    await waitFor(() => expect(batchArchived()).toEqual(['a', 'b']));
+    expect(world.log.filter((e) => e.op === 'session_archive')).toHaveLength(0);
     await waitFor(() => expect(screen.queryByTestId('srow-a')).toBeNull());
     expect(screen.getByTestId('srow-w')).toBeTruthy();
     await waitFor(() => expect(toasts().list().find((t) => t.message.startsWith('Archived 2'))?.action?.label).toBe('Undo'));
     const toast = toasts().list().find((t) => t.message.startsWith('Archived 2'));
     await toast!.action!.run();
-    await waitFor(() => expect(world.log.filter((e) => e.op === 'session_restore')).toHaveLength(2));
+    await waitFor(() => expect(world.log.filter((e) => e.op === 'sessions_restore').map((e) => (e.args as { sessions: string[] }).sessions.sort())).toEqual([['a', 'b']]));
     await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
   });
 
@@ -188,7 +213,7 @@ describe('Archive all', () => {
     fireEvent.click(all);
     expect(screen.getByTestId('archive-all-confirm').textContent).toContain('Archive 2 sessions shown');
     fireEvent.click(screen.getByTestId('archive-all-yes'));
-    await waitFor(() => expect(world.log.filter((e) => e.op === 'session_archive').map((e) => (e.args as { session: string }).session).sort()).toEqual(['c1', 'c2']));
+    await waitFor(() => expect(batchArchived()).toEqual(['c1', 'c2']));
   });
 });
 
