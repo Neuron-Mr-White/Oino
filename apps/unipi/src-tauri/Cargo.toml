@@ -79,6 +79,11 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "b
 gtk = "0.18"
 # E-13: the same WebKitGTK binding wry uses (version pinned to Cargo.lock) — web-process-terminated.
 webkit2gtk = "=2.0.2"
+# Tray on Linux: the KSNI (StatusNotifierItem over D-Bus) backend instead of
+# libappindicator, because only KSNI reports a left click (`Activate`) — so a
+# press on the tray icon opens the window instead of only showing the menu.
+# Same tray-icon Tauri links; with both backends on, tray-icon picks KSNI.
+tray-icon = { version = "=0.25.1", default-features = false, features = ["ksni"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

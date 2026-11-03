@@ -99,10 +99,38 @@ fn main_visible<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
         .unwrap_or(true)
 }
 
+/// The main window, created again from the config when it doesn't exist (it
+/// was destroyed, or never built). `None` only when building it fails.
+#[cfg(desktop)]
+fn ensure_main<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Option<tauri::WebviewWindow<R>> {
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("main") {
+        return Some(window);
+    }
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|w| w.label == "main")?
+        .clone();
+    match tauri::WebviewWindowBuilder::from_config(app, &config).and_then(|b| b.build()) {
+        Ok(window) => {
+            log::info!("main window was gone: created it again");
+            Some(window)
+        }
+        Err(error) => {
+            log::warn!("main window: could not create it again: {error}");
+            None
+        }
+    }
+}
+
 #[cfg(desktop)]
 fn toggle_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    use tauri::Manager;
-    let Some(window) = app.get_webview_window("main") else {
+    let Some(window) = ensure_main(app) else {
         return;
     };
     let known = VISIBLE.lock().ok().and_then(|k| *k);
@@ -237,14 +265,17 @@ pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            // Windows/macOS: a left click shows/hides (Linux trays only open the menu).
+            // A left click opens the window: shows it when it is hidden or
+            // minimized, creates it again when it is gone, and focuses it.
+            // It never hides it (the menu's toggle does). Linux gets the click
+            // through the KSNI backend (Cargo.toml); right click opens the menu.
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
             } = event
             {
-                toggle_main(tray.app_handle());
+                show_main(tray.app_handle());
             }
         });
     if let Some(icon) = app.default_window_icon() {
@@ -252,6 +283,17 @@ pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
     }
     builder.build(app)?;
     Ok(())
+}
+
+/// The crab (mascot window) was clicked: open the main window from Rust.
+/// The main page's own `mascot-open` listener still opens the chat, but a
+/// hidden webview can be too throttled to bring its window back, so showing
+/// it must not depend on the page.
+#[cfg(desktop)]
+pub fn watch_mascot_open<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Listener;
+    let handle = app.clone();
+    app.listen_any("mascot-open", move |_| show_main(&handle));
 }
 
 // ── Mascot window (UNI-200) ────────────────────────────────────────────
@@ -409,8 +451,7 @@ pub fn mascot_window(
 /// `host.lock`).
 #[cfg(desktop)]
 pub fn show_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    use tauri::Manager;
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = ensure_main(app) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
@@ -423,13 +464,7 @@ pub fn show_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 pub fn mascot_focus_main(app: tauri::AppHandle) -> Result<(), AppErrorDto> {
     #[cfg(desktop)]
     {
-        use tauri::Manager;
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-        }
-        refresh_menu_as(&app, Some(true));
+        show_main(&app);
         Ok(())
     }
     #[cfg(not(desktop))]

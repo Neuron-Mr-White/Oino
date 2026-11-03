@@ -272,6 +272,8 @@ pub fn run() {
             if let Err(error) = desktop::setup_tray(app.handle()) {
                 log::warn!("tray unavailable: {error}");
             }
+            #[cfg(desktop)]
+            desktop::watch_mascot_open(app.handle());
             // v2 §5.1: this PC's host — adopt a running one or run our own child.
             #[cfg(desktop)]
             {
