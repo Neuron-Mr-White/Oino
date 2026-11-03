@@ -272,7 +272,9 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
         const items = virt()?.getVirtualItems() ?? [];
         const first = items.find((i) => i.end > el.scrollTop) ?? items[0];
         const anchor = first ? { key: String(first.key), delta: el.scrollTop - first.start } : undefined;
+        if (anchor) anchorPending = true;
         queueMicrotask(() => {
+          anchorPending = false;
           if (!anchor || lock.locked()) return;
           const idx = settled().findIndex((t) => t.turnId === anchor.key);
           if (idx < 0) return;
@@ -292,11 +294,23 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   createEffect(() => {
     lastMemKey = memKey();
   });
+  /** render-loop guards (see maybeLoadEarlier / maybeTrim). */
+  const AUTO_EARLIER_PAGES = 4;
+  let autoBudget = AUTO_EARLIER_PAGES;
+  let intentSinceLoad = false;
+  let anchorPending = false;
+  let earlierQueued = false;
+  let earlierLoads = 0;
+  let earlierTrims = 0;
   const restore: { pos: 'bottom' | number; done: boolean } = { pos: saved && 'scrollTop' in saved ? saved.scrollTop : 'bottom', done: false };
   let userScrolled = false;
   const origIntent = lock.intent;
   lock.intent = () => {
     userScrolled = true;
+    // render-loop: every real reader input gives the automatic "load earlier" a fresh
+    // budget and is what allows a later trim (never our own pin / restore scrolls).
+    autoBudget = AUTO_EARLIER_PAGES;
+    intentSinceLoad = true;
     origIntent();
   };
   if (typeof restore.pos === 'number') lock.detach();
@@ -345,11 +359,31 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   };
   /** Within this many px of the top, the next older page loads by itself. */
   const EARLIER_MARGIN = 800;
+  /**
+   * render-loop: the automatic "load earlier" (short page / near the top) runs at most this
+   * many pages per reader input. A chat whose newest pages draw almost nothing (one giant
+   * turn of collapsed subagent steps) used to page in everything, cross LOADED_MAX, get
+   * trimmed by the next pin-to-bottom scroll and page everything in again — forever
+   * (owner 2026-11-04: flicker, overlapping rows, a frozen app). The row's button and the
+   * reader's own scrolling page in the rest.
+   */
   const maybeLoadEarlier = () => {
-    const el = scrollEl();
-    if (!el || !restore.done || !canLoadEarlier()) return;
-    // A short page (no scrollbar yet) or a reader near the top: fetch the next one.
-    if (el.scrollHeight - el.clientHeight <= 4 || el.scrollTop < EARLIER_MARGIN) void session().loadEarlier?.();
+    // At most one check per frame, whatever fires it (scroll events, store effects).
+    if (earlierQueued) return;
+    earlierQueued = true;
+    requestAnimationFrame(() => {
+      earlierQueued = false;
+      const el = scrollEl();
+      // Never while a page is in flight (canLoadEarlier) or an anchor restore is pending.
+      if (!el || !restore.done || anchorPending || autoBudget <= 0 || !canLoadEarlier()) return;
+      // A short page (no scrollbar yet) or a reader near the top: fetch the next one.
+      if (el.scrollHeight - el.clientHeight <= 4 || el.scrollTop < EARLIER_MARGIN) {
+        autoBudget--;
+        intentSinceLoad = false;
+        earlierLoads++;
+        void session().loadEarlier?.();
+      }
+    });
   };
   createEffect(() => {
     history()?.hasMore;
@@ -359,11 +393,21 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   });
 
   // perf-app: a reader back at the bottom of a chat read far up gives the old pages back
-  // (bounded parsed state per chat; they load again on the way up).
+  // (bounded parsed state per chat; they load again on the way up). render-loop: only after
+  // the reader's own scrolling since the last page load — a pin or restore scroll never
+  // trims — and a trim leaves the automatic loader without budget until the next input,
+  // so trim and load can never feed each other.
   const maybeTrim = () => {
-    if (!restore.done || !lock.locked() || session().state.entries.length <= LOADED_MAX) return;
-    session().trimLoaded?.(LOADED_MAX / 2);
+    if (!restore.done || !intentSinceLoad || anchorPending || !lock.locked() || session().state.entries.length <= LOADED_MAX) return;
+    if (session().trimLoaded?.(LOADED_MAX / 2)) {
+      autoBudget = 0;
+      intentSinceLoad = false;
+      earlierTrims++;
+    }
   };
+  if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
+    (window as unknown as Record<string, unknown>).__TL_PAGING__ = () => ({ loads: earlierLoads, trims: earlierTrims, budget: autoBudget });
+  }
 
   // chat-vanish: with no turns every non-live state draws something — a reconnect is a
   // skeleton (under its banner), a stream that ended or gave up is the error card with
@@ -694,6 +738,36 @@ function VirtualTurns(props: {
   });
   props.onVirt(virt);
   onCleanup(() => props.onVirt(undefined));
+
+  // render-loop: re-measures of slots whose key changed are batched — one flush per
+  // microtask burst, at most MEASURE_CAP rows, the rest in the next frame — so a window
+  // shift that re-keys every slot cannot turn into a measure → resize → re-key storm.
+  // The set holds mounted slot nodes only (bounded by the window).
+  const MEASURE_CAP = 48;
+  const toMeasure = new Set<HTMLDivElement>();
+  let measureQueued = false;
+  const flushMeasures = () => {
+    measureQueued = false;
+    let n = 0;
+    for (const node of toMeasure) {
+      toMeasure.delete(node);
+      measureRow(virt, node);
+      if (++n >= MEASURE_CAP) break;
+    }
+    if (toMeasure.size) {
+      measureQueued = true;
+      requestAnimationFrame(flushMeasures);
+    }
+  };
+  const queueMeasure = (node: HTMLDivElement | undefined) => {
+    if (!node) return;
+    toMeasure.add(node);
+    if (!measureQueued) {
+      measureQueued = true;
+      queueMicrotask(flushMeasures);
+    }
+  };
+  onCleanup(() => toMeasure.clear());
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__TL_VIRT__ = virt;
 
   return (
@@ -708,7 +782,7 @@ function VirtualTurns(props: {
           createEffect(
             on(
               () => item().key,
-              () => queueMicrotask(() => node && measureRow(virt, node)),
+              () => queueMeasure(node),
             ),
           );
           return (

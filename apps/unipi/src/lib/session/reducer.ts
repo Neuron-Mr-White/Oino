@@ -555,8 +555,9 @@ export function prependEntries(
 }
 
 /**
- * perf-app: drops loaded history older than the newest `keep` entries, cut at a
- * user message (turn-aligned), so a chat read back to its start does not hold
+ * perf-app: drops loaded history older than the newest `keep` entries (at least `keep`
+ * stay unless that turn alone is longer than `keep`), cut at the user message that starts
+ * the turn the cut falls in (turn-aligned), so a chat read back to its start does not hold
  * every page forever. Only paged chats (`history` present) trim — the dropped
  * part loads again through `get_entries{before}` (the cut entry becomes the
  * cursor). Returns whether anything was dropped.
@@ -565,9 +566,21 @@ export function trimHistory(s: SessionState, keep: number): boolean {
   const h = s.history;
   if (!h || h.loading || s.entries.length <= keep) return false;
   const isUser = (e: SessionEntry | undefined) => e?.type === 'message' && e.message?.role === 'user';
-  let cut = s.entries.length - keep;
-  while (cut < s.entries.length && !isUser(s.entries[cut])) cut++;
-  // No user message in the kept tail (one giant turn): keep everything.
+  // render-loop: the cut moves BACK to the user message that starts the turn it falls in,
+  // so at least `keep` entries stay. It used to move forward, and a chat whose last user
+  // message is near the end (an open-ended turn after one giant subagent turn) kept just a
+  // few entries — a short page, which the timeline paged straight back in, past
+  // LOADED_MAX, trimmed again… a flicker loop that starved the app.
+  // Bounded: when that turn alone is longer than `keep`, the cut moves forward as before
+  // (the timeline's paging guards keep that from looping).
+  const target = s.entries.length - keep;
+  let cut = target;
+  while (cut > 0 && !isUser(s.entries[cut])) cut--;
+  if (cut <= 0 || target - cut > keep) {
+    cut = target;
+    while (cut < s.entries.length && !isUser(s.entries[cut])) cut++;
+  }
+  // No user message to cut at (one giant turn): keep everything.
   if (cut <= 0 || cut >= s.entries.length) return false;
   const first = s.entries[cut]!;
   s.entries = s.entries.slice(cut);

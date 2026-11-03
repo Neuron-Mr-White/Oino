@@ -610,3 +610,199 @@ describe('Timeline: never a blank chat (chat-vanish)', () => {
     expect(r2.container.textContent).toContain('Question 0');
   }, 10_000);
 });
+
+/* ── render-loop (owner 2026-11-04): a chat that flickered and froze the app ─────────── */
+describe('Timeline: no paging / trim / measure feedback loop (render-loop)', () => {
+  /**
+   * The owner's 'Frontend Whitelabeling Strategy' shape, synthetic: 1527 entries, 11 user
+   * messages, one giant turn (605‥1511) of subagent runs (run_subagent calls + 900
+   * subagent-step entries for 6 agents, 2 of them still running in the background) and a
+   * short, open-ended last turn (15 entries). Paged like the host (`page_start`): the newest
+   * `limit` entries before `before`, moved forward to the first user message in the page.
+   */
+  function ownerChat(): SessionEntry[] {
+    const users = new Set([0, 5, 27, 36, 46, 54, 62, 90, 105, 141, 605, 1512]);
+    const out: SessionEntry[] = [];
+    let parent: string | null = null;
+    let t = Date.parse('2026-11-03T03:00:00Z');
+    const agents = ['67acdafd', '240ed91c', '783a1b39', 'd3874a6b', '04fc7aaf', 'd703771b'];
+    for (let i = 0; i < 1527; i++) {
+      const id = `e${i}`;
+      const ts = new Date((t += 1000)).toISOString();
+      let e: Record<string, unknown>;
+      if (users.has(i)) e = { type: 'message', message: { role: 'user', content: [{ type: 'text', text: `Question ${i}` }], timestamp: t } };
+      else if (i > 605 && i < 612) {
+        const a = agents[i - 606]!;
+        e = { type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', id: `call-${a}`, name: 'run_subagent', arguments: { title: `wl-${a}`, profile: 'subagent_general', task: 'x', ...(i > 609 ? { is_background: true } : {}) } }], timestamp: t } };
+      } else if (i >= 612 && i < 1500) {
+        const a = agents[i % agents.length]!;
+        e = { type: 'custom', customType: 'subagent-step', data: { kind: i % 3 ? 'tool' : 'text', name: 'read', arg: `f${i}.rs`, output: 'ok', text: `step ${i}`, agentId: a, id: a, title: `wl-${a}`, profile: 'subagent_general', group: `subagent:${a}:1`, label: `subagent · wl-${a}` } };
+      } else if (i >= 1500 && i < 1506) {
+        const a = agents[i - 1500]!;
+        e = { type: 'message', message: { role: 'toolResult', toolCallId: `call-${a}`, toolName: 'run_subagent', content: [{ type: 'text', text: i > 1503 ? 'Working in the background' : 'done' }], isError: false, timestamp: t } };
+      } else if (i % 7 === 0) e = { type: 'custom', customType: 'unipi-memory-session-card', data: { memories: 3 } };
+      else e = { type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: `Answer ${i}` }], timestamp: t } };
+      out.push({ id, parentId: parent, timestamp: ts, ...e } as unknown as SessionEntry);
+      parent = id;
+    }
+    return out;
+  }
+  const isUser = (e: SessionEntry) => e.type === 'message' && (e as { message?: { role?: string } }).message?.role === 'user';
+  const pageStart = (all: SessionEntry[], end: number, limit: number) => {
+    let start = Math.max(0, end - limit);
+    if (start > 0) for (let a = start; a < end; a++) if (isUser(all[a]!)) return a;
+    return start;
+  };
+
+  /**
+   * Geometry like the rig trace (764 → 1129 → 1304 → 1355 → 7669 px): the giant turn's
+   * collapsed subagent steps add almost no height, the early turns (before e141) are tall.
+   */
+  function geometry(s: () => SessionHandle | undefined) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() {
+        if (!this.classList?.contains('tl')) return 0;
+        const entries = s()?.state.entries ?? [];
+        const first = Number(entries[0]?.id.slice(1) ?? 0);
+        return Math.round(400 + 0.3 * entries.length + (entries.length && first < 141 ? 6000 : 0));
+      },
+    });
+  }
+
+  async function openOwner() {
+    const all = ownerChat();
+    const tailFrom = pageStart(all, all.length, 120);
+    const asked: Array<Record<string, unknown>> = [];
+    let handle: SessionHandle | undefined;
+    geometry(() => handle);
+    const base = snapshot(1);
+    const paged = { ...base, entries: all.slice(tailFrom), seq: 1, leaf_id: all.at(-1)!.id, page: { total: all.length, has_more: true, cursor: all[tailFrom]!.id } } as SessionSnapshot;
+    const opened = await openSession(1, {
+      snapshot: paged,
+      cmd: {
+        get_entries: (cmd) => {
+          if (typeof cmd.before !== 'string') return { entries: [], leafId: all.at(-1)!.id };
+          asked.push(cmd);
+          const end = all.findIndex((e) => e.id === cmd.before);
+          const from = pageStart(all, end, Number(cmd.limit ?? 80));
+          return { entries: all.slice(from, end), total: all.length, hasMore: from > 0, cursor: all[from]?.id };
+        },
+      },
+    });
+    handle = opened.s;
+    return { ...opened, asked, all };
+  }
+
+  /** What the real browser does while bottom-locked: every pin writes scrollTop and fires `scroll` (no user input). */
+  function pinScrolls(tl: HTMLElement) {
+    tl.scrollTop = Math.max(0, tl.scrollHeight - tl.clientHeight);
+    fireEvent.scroll(tl);
+  }
+
+  it('opening it pages in a bounded number of pages, never trims without the reader, and renders a bounded number of times', async () => {
+    const { s, asked } = await openOwner();
+    expect(s.state.entries.length).toBe(15);
+    const outside = vi.fn();
+    const r = render(() => (
+      <div>
+        <a href="#/s/h1/other" data-testid="sidebar-row" onClick={(e) => (e.preventDefault(), outside())}>
+          Other chat
+        </a>
+        <Timeline ctx={ctx(s)} dock={dock} />
+      </div>
+    ));
+    const tl = r.getByTestId('tl');
+    await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThan(0));
+    let mutations = 0;
+    const mo = new MutationObserver((ms) => (mutations += ms.length));
+    mo.observe(tl, { childList: true, subtree: true });
+    const lens: number[] = [];
+    // ~1.2 s of layout pins (the old build looped: load all → > LOADED_MAX → trim to 15 → short → load all …).
+    let maxLag = 0;
+    for (let i = 0; i < 40; i++) {
+      pinScrolls(tl);
+      const at = performance.now();
+      await new Promise((res) => setTimeout(res, 30));
+      maxLag = Math.max(maxLag, performance.now() - at - 30);
+      lens.push(s.state.entries.length);
+    }
+    mo.disconnect();
+    // At most the automatic budget of earlier pages (4), and entries only ever grow (no trim).
+    expect(asked.length).toBeLessThanOrEqual(4);
+    for (let i = 1; i < lens.length; i++) expect(lens[i]!).toBeGreaterThanOrEqual(lens[i - 1]!);
+    expect(s.state.entries.length).toBeLessThan(1200);
+    // Settles: no rows churn once the pages are in (bounded DOM mutations), the "load earlier" row
+    // stays as a button, and the page stays responsive — a click outside the timeline lands.
+    expect(mutations).toBeLessThan(2000);
+    expect(r.getByTestId('tl-earlier-load')).toBeTruthy();
+    expect(maxLag).toBeLessThan(250);
+    fireEvent.click(r.getByTestId('sidebar-row'));
+    expect(outside).toHaveBeenCalledTimes(1);
+    const settledMutations = mutations;
+    const quiet = new MutationObserver((ms) => (mutations += ms.length));
+    quiet.observe(tl, { childList: true, subtree: true });
+    for (let i = 0; i < 10; i++) {
+      pinScrolls(tl);
+      await new Promise((res) => setTimeout(res, 20));
+    }
+    quiet.disconnect();
+    expect(mutations - settledMutations).toBeLessThan(50);
+    expect(asked.length).toBeLessThanOrEqual(4);
+  });
+
+  it('the reader scrolling up pages the rest in; back at the bottom a trim keeps the giant turn and does not page it back in', async () => {
+    const { s, asked, all } = await openOwner();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const tl = r.getByTestId('tl');
+    await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThan(0));
+    // The reader wheels up to the top again and again until everything is in.
+    for (let i = 0; i < 40 && s.state.history?.hasMore; i++) {
+      fireEvent.wheel(tl);
+      tl.scrollTop = 0;
+      fireEvent.scroll(tl);
+      await new Promise((res) => setTimeout(res, 20));
+    }
+    await waitFor(() => expect(s.state.entries.length).toBe(all.length));
+    const loads = asked.length;
+    // Back at the bottom by the reader's own scroll: one trim (above LOADED_MAX), cut back at the giant turn.
+    fireEvent.wheel(tl);
+    pinScrolls(tl);
+    await waitFor(() => expect(s.state.entries.length).toBeLessThan(all.length));
+    expect(s.state.entries[0]!.id).toBe('e605');
+    // Then only layout pins: nothing pages back in, nothing trims again.
+    const after = s.state.entries.length;
+    for (let i = 0; i < 20; i++) {
+      pinScrolls(tl);
+      await new Promise((res) => setTimeout(res, 20));
+    }
+    expect(s.state.entries.length).toBe(after);
+    expect(asked.length).toBe(loads);
+  });
+
+  it('live pushes (subagent steps, topics) update rows in place: settled rows never remount', async () => {
+    const { s, w } = await openOwner();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const tl = r.getByTestId('tl');
+    await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThan(0));
+    await new Promise((res) => setTimeout(res, 200));
+    const rows = () => [...tl.querySelectorAll('.tl-vrow > *')];
+    const before = rows();
+    let seq = s.state.seq;
+    let parent = s.state.leafId;
+    for (let i = 0; i < 30; i++) {
+      const id = `live${i}`;
+      w.push('h1', 's1', [
+        { session: 's1', seq: ++seq, event: { type: 'topic', topic: 'unipi:subagents:list', data: { tick: i, runs: [{ id: '783a1b39', status: 'running' }] } } },
+        { session: 's1', seq: ++seq, event: { type: 'entry_appended', entry: { type: 'custom', id, parentId: parent, timestamp: new Date().toISOString(), customType: 'subagent-step', data: { kind: 'text', text: `tick ${i}`, agentId: '783a1b39', id: '783a1b39', title: 'wl-783a1b39' } } } },
+      ] as never);
+      parent = id;
+      await new Promise((res) => setTimeout(res, 5));
+    }
+    await new Promise((res) => setTimeout(res, 50));
+    // The settled rows (everything but the open-ended last turn) are the same nodes.
+    const after = rows();
+    const settledBefore = before.slice(0, -1);
+    expect(settledBefore.every((n) => after.includes(n))).toBe(true);
+  });
+});
