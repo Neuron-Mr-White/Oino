@@ -154,10 +154,10 @@ jobs:
           mkdir -p target/out/bin
           cp "target/$TARGET/release/oino$exe" target/out/bin/
           # The kanboard CLI ships inside the unipi.kanboard package (dist.md
-          # §3.4): rebuild it for this archive's target.
-          mkdir -p "target/dist-stage/extensions/unipi.kanboard/bin"
-          cp "apps/unipi/target/$TARGET/release/unipi-kanboard$exe" \
-             "target/dist-stage/extensions/unipi.kanboard/bin/unipi-kanboard$exe"
+          # §3.4): rebuild it for this archive's target. The swap rewrites the
+          # package's recorded sha256 (a stale one makes the loader skip it).
+          bash scripts/release/swap-pkg-bin.sh target/dist-stage/extensions/unipi.kanboard \
+            "unipi-kanboard$exe" "apps/unipi/target/$TARGET/release/unipi-kanboard$exe"
           if [[ "$TARGET" == *windows* ]]; then
             # Windows layout: `extensions` next to the exe
             # (%LOCALAPPDATA%\oino\bin\{oino.exe,extensions}).
