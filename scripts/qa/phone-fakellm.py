@@ -10,6 +10,7 @@ Prompt keywords pick a script:
   "error"  -> HTTP 500
   "long"   -> very long markdown answer (scrolling)
   "edit"   -> edit/write tool calls (diff rows)
+  "grow"   -> one bash call whose output streams for ~12 s (chat-scroll: output inside a tool row)
   anything else -> medium markdown answer with code block + table, streamed slowly
 """
 import json, os, sys, time, re
@@ -102,6 +103,10 @@ class H(BaseHTTPRequestHandler):
                      ("read", {"path": f"{DEMO}/src/main.rs"}),
                      ("bash", {"command": "for i in 1 2 3; do echo step $i; sleep 1; done"})]
             text = "Let me look around the project first."
+        elif "grow" in low:
+            # chat-scroll QA: one bash call whose output streams for ~12 s (grows inside an expanded tool row)
+            calls = [("bash", {"command": "for i in $(seq 1 80); do echo \"output line $i\"; sleep 0.15; done"})]
+            text = "Running a long command."
         elif "image" in low:
             calls = [("read", {"path": f"{DEMO}/shot.png"})]
             text = "Reading the screenshot."
