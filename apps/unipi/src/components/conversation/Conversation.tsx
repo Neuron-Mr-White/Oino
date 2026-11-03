@@ -113,11 +113,17 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
   /** Phone (§3.4, PH-15): the PC is offline — the cached transcript reads, the composer waits. */
   const phoneOffline = () => !layout().desktop() && hostStatus(props.hostId) === 'offline';
   const liveCard = () => (props.sessionId ? hub().state.cards[props.sessionId] : undefined);
-  const archivedCard = createMemo(() => {
-    const id = props.sessionId;
-    if (!id || liveCard()) return undefined;
-    return hub().state.archived.find((c) => c.session_id === id);
-  });
+  // By id, not object identity: an Archived list refresh hands out new card objects, and
+  // each one used to rebuild the read-only handle (re-read, blank meanwhile — chat-vanish).
+  const archivedCard = createMemo(
+    () => {
+      const id = props.sessionId;
+      if (!id || liveCard()) return undefined;
+      return hub().state.archived.find((c) => c.session_id === id);
+    },
+    undefined,
+    { equals: (a, b) => a?.session_id === b?.session_id && a?.file === b?.file },
+  );
   const archivedHandle = createMemo<SessionHandle | undefined>(() => {
     const card = archivedCard();
     if (!card) return undefined;

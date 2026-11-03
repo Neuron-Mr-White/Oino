@@ -84,10 +84,21 @@ export function createArchivedSession(hostId: string, card: SessionCard): Sessio
   });
 
   let disposed = false;
-  if (card.file) {
+  /**
+   * chat-vanish: a read that failed used to leave `conn: 'live'` with no entries — the
+   * "new chat" empty state for a chat that has a transcript, and Retry did nothing. Now it
+   * says so (the timeline's error card) and `retry()` reads again.
+   */
+  const load = () => {
+    if (!card.file) {
+      setState(produce((s) => ((s.conn = 'closed'), (s.connError = { code: 'E_NOT_FOUND', message: 'This archived chat has no file to read.', retryable: false } as never))));
+      return;
+    }
+    setState('conn', 'connecting');
     void fsRead(hostId, card.file, true, true)
       .then((res) => {
-        if (disposed || !res.ok) return;
+        if (disposed) return;
+        if (!res.ok) throw res.error;
         const parsed = parseArchivedJsonl(res.value.text);
         batch(() =>
           setState(
@@ -110,10 +121,18 @@ export function createArchivedSession(hostId: string, card: SessionCard): Sessio
           ),
         );
       })
-      .catch(() => {
-        // Unreadable path: keeps empty read-only view with the Restore banner.
+      .catch((error: unknown) => {
+        if (disposed) return;
+        const e = error as { code?: string; message?: string } | undefined;
+        setState(
+          produce((s) => {
+            s.conn = 'closed';
+            s.connError = { code: e?.code ?? 'E_INTERNAL', message: e?.message || "Couldn't read this archived chat.", retryable: true } as never;
+          }),
+        );
       });
-  }
+  };
+  load();
 
   return {
     key: `archived:${hostId}/${sessionId}`,
@@ -146,7 +165,9 @@ export function createArchivedSession(hostId: string, card: SessionCard): Sessio
       const want = new Set(ids);
       return unwrap(state.entries.filter((e) => want.has(e.id)));
     },
-    retry() {},
+    retry() {
+      if (!disposed) load();
+    },
     takeBack() {},
     acquire: () => () => {},
     close() {
