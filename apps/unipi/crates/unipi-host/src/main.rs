@@ -509,6 +509,8 @@ enum ForwardAction {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    // Every error envelope this host builds carries its version (app-convention).
+    unipi_proto::error::set_origin_version(env!("CARGO_PKG_VERSION"));
     // The UniPi reserved-panel table registers with the neutral SDK before any session or
     // UI registry exists (idempotent; HostLoader::build repeats it for library users).
     unipi_host::ui_panels::register();

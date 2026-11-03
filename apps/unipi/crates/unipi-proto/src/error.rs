@@ -59,17 +59,51 @@ pub enum AppErrorCode {
 impl AppErrorCode {
     /// Default retryability for this code, ignoring any explicit flag
     /// carried on an `AppErrorDto`.
+    ///
+    /// Deliberately an exhaustive `match` (no `_` arm): adding a code
+    /// fails to compile until it is classified here, and
+    /// `packages/protocol/tests/error.test.ts` fails until the TS mirror
+    /// (`APP_ERROR_INFO`) lists it too (app-convention: exhaustive codes).
     pub fn default_retryable(self) -> bool {
-        matches!(
-            self,
-            AppErrorCode::E_TRANSPORT
-                | AppErrorCode::E_TIMEOUT
-                | AppErrorCode::E_MUX_UNAVAILABLE
-                | AppErrorCode::E_BOARD_UNAVAILABLE
-                | AppErrorCode::E_CHAT_UNAVAILABLE
-                | AppErrorCode::E_BLOB_UNAVAILABLE
-        )
+        use AppErrorCode::*;
+        match self {
+            E_TRANSPORT | E_TIMEOUT | E_MUX_UNAVAILABLE | E_BOARD_UNAVAILABLE
+            | E_CHAT_UNAVAILABLE | E_BLOB_UNAVAILABLE => true,
+            E_PROTO_VERSION
+            | E_SCHEMA
+            | E_UNAUTHORIZED
+            | E_NOT_FOUND
+            | E_UNSUPPORTED
+            | E_BOARD_REJECTED
+            | E_BLOB_REJECTED
+            | E_PAIRING_INVALID
+            | E_HOSTKEY_MISMATCH
+            | E_SETTINGS
+            | E_INTERNAL
+            | E_CONFLICT
+            | E_BINARY
+            | E_SCOPE
+            | E_FORWARD_DISABLED
+            | E_BROWSER_DISABLED
+            | E_BROWSER_UNAVAILABLE
+            | E_DESKTOP_DISABLED
+            | E_DESKTOP_UNAVAILABLE
+            | E_GIT
+            | E_LSP_TAKEN => false,
+        }
     }
+}
+
+/// The version of the process that builds `AppErrorDto`s, stamped into
+/// every envelope as `host_version` (app-convention: error responses carry
+/// the backend version). Set once by the host binary at startup; unset
+/// (no field on the wire) in library users, tests and the app itself, so
+/// an envelope relayed from a host keeps that host's version.
+static ORIGIN_VERSION: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// Records this process's version for `AppErrorDto::new`. First call wins.
+pub fn set_origin_version(version: &'static str) {
+    let _ = ORIGIN_VERSION.set(version);
 }
 
 /// A single `path` segment: either a string key or a numeric index.
@@ -145,6 +179,10 @@ pub struct AppErrorDto {
     pub retryable: bool,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub detail: Option<Value>,
+    /// The backend version that produced the error (additive; older hosts
+    /// omit it). See `set_origin_version`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub host_version: Option<String>,
 }
 
 impl AppErrorDto {
@@ -156,7 +194,13 @@ impl AppErrorDto {
             path: None,
             retryable,
             detail: None,
+            host_version: ORIGIN_VERSION.get().map(|v| (*v).to_string()),
         }
+    }
+
+    pub fn with_host_version(mut self, version: impl Into<String>) -> Self {
+        self.host_version = Some(version.into());
+        self
     }
 
     pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
@@ -369,6 +413,24 @@ mod tests {
         assert!(!json.contains("hint"));
         assert!(!json.contains("path"));
         assert!(!json.contains("detail"));
+    }
+
+    #[test]
+    fn host_version_is_additive_on_the_wire() {
+        // Unset by default (no field), round-trips when present, and an
+        // envelope from an older host without it still parses.
+        let dto = AppErrorDto::new(AppErrorCode::E_TIMEOUT, "timed out", true);
+        assert!(!serde_json::to_string(&dto)
+            .unwrap()
+            .contains("host_version"));
+        let dto = dto.with_host_version("1.0.0");
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(json["host_version"], "1.0.0");
+        let back: AppErrorDto = serde_json::from_value(json).unwrap();
+        assert_eq!(back.host_version.as_deref(), Some("1.0.0"));
+        let old: AppErrorDto =
+            serde_json::from_str(r#"{"code":"E_GIT","message":"x","retryable":false}"#).unwrap();
+        assert_eq!(old.host_version, None);
     }
 
     #[test]

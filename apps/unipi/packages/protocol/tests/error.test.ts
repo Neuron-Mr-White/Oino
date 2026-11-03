@@ -126,3 +126,13 @@ describe("defaultRetryableForCode", () => {
     expect(defaultRetryableForCode("E_BOARD_REJECTED")).toBe(false);
   });
 });
+
+describe("AppErrorSchema host_version", () => {
+  it("keeps the backend version a host stamps on the envelope", () => {
+    const parsed = AppErrorSchema.parse({ code: "E_GIT", message: "push rejected", retryable: false, host_version: "1.0.0" });
+    expect(parsed.host_version).toBe("1.0.0");
+  });
+  it("still accepts an envelope from an older host without it", () => {
+    expect(AppErrorSchema.parse({ code: "E_GIT", message: "x", retryable: false }).host_version).toBeUndefined();
+  });
+});

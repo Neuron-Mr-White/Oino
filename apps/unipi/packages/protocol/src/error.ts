@@ -47,6 +47,8 @@ export const AppErrorSchema = z.object({
   path: PathSchema.optional(),
   retryable: z.boolean(),
   detail: z.unknown().optional(),
+  /** The backend (host) version that produced the error; older hosts omit it. */
+  host_version: z.string().optional(),
 });
 
 export type AppError = z.infer<typeof AppErrorSchema>;
