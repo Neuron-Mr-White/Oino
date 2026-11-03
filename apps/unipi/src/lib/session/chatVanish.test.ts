@@ -182,3 +182,28 @@ describe('a chat that gave up during a host outage comes back with the host (roo
     hub.close?.();
   });
 });
+
+describe('window back from the tray', () => {
+  it('retryFailed() without a host retries every chat that gave up', () => {
+    const reg = createRoot(() =>
+      createSessionRegistry(3, (h, id) => {
+        let retried = 0;
+        return {
+          key: `${h}/${id}`,
+          hostId: h,
+          refs: 0,
+          closed: false,
+          state: { conn: id === 'lost' ? 'lost' : 'live' },
+          retry: () => void retried++,
+          get retried() {
+            return retried;
+          },
+          close() {},
+        } as unknown as SessionHandle;
+      }),
+    );
+    reg.ensure('h1', 'lost');
+    reg.ensure('h2', 'fine');
+    expect(reg.retryFailed()).toBe(1);
+  });
+});

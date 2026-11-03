@@ -425,6 +425,19 @@ function retryLater(handle: SessionHandle): void {
   });
 }
 
+let visibleInstalled = false;
+/**
+ * chat-vanish: the window comes back from the tray / a suspend — every chat that gave up
+ * meanwhile (WebKit throttles hidden pages, so its reconnects ran out) tries again at once.
+ */
+function installVisibleRetry(retryAll: () => void): void {
+  if (visibleInstalled || typeof document === 'undefined') return;
+  visibleInstalled = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') retryAll();
+  });
+}
+
 let reclickInstalled = false;
 /**
  * Re-clicking the row of a chat that could not open retries it: the link's
@@ -519,10 +532,10 @@ export function createSessionRegistry(limit = SESSION_LRU, factory: (hostId: str
       setRev((n) => n + 1);
     },
     /** chat-vanish: the host answers again — every chat of it that gave up (`lost`, a failed open) reconnects. */
-    retryFailed(hostId: string): number {
+    retryFailed(hostId?: string): number {
       let n = 0;
       for (const entry of open.values()) {
-        if (entry.handle.hostId !== hostId || entry.handle.closed || !entry.handle.state) continue;
+        if ((hostId !== undefined && entry.handle.hostId !== hostId) || entry.handle.closed || !entry.handle.state) continue;
         if (untrack(() => openFailed(entry.handle.state))) {
           n++;
           retryLater(entry.handle);
@@ -548,6 +561,7 @@ export function sessions(): SessionRegistry {
     shared = createRoot(() => createSessionRegistry());
     installReclickRetry({ peek: (h, id) => shared?.peek(h, id) });
     offHostBack = onHostBack((hostId) => shared?.retryFailed(hostId));
+    installVisibleRetry(() => shared?.retryFailed());
   }
   return shared;
 }
