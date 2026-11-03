@@ -17,6 +17,7 @@ import {
   BrowserEventSchema,
   BrowserOpenDataSchema,
   BrowserStatusDataSchema,
+  appError,
   toAppError,
   type AppError,
   type BrowserAgent,
@@ -69,7 +70,7 @@ export function browserTakeover(hostId: string, on: boolean, profile?: string): 
   return t.takeover ? t.takeover(hostId, on, profile) : Promise.resolve(unsupported());
 }
 function unsupported<T>(): Result<T> {
-  return { ok: false, error: { code: 'E_UNSUPPORTED', message: 'Not supported here', retryable: false } as AppError };
+  return { ok: false, error: appError('E_UNSUPPORTED', 'Not supported here') };
 }
 
 /** Old hosts sent `brave`, `chrome` …: what to call the browser. */

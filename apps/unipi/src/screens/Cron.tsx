@@ -13,7 +13,7 @@ import { settingsSchema } from '../ui/settings/data';
 import type { Namespace } from '../ui/settings/types';
 import { useNavigate, useParams, useSearchParams } from '@solidjs/router';
 import { Bell, CalendarClock, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CirclePause, ClockAlert, Cpu, Hourglass, LoaderCircle, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, SkipForward, Square, Trash2 } from 'lucide-solid';
-import type { AppError } from '@unipi/protocol';
+import { appError, type AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
 import {
   cronAdd,
@@ -273,7 +273,7 @@ export default function Cron() {
     setRefreshing(true);
     const r = await within<Result<{ jobs: CronJob[]; paused: boolean }>>(cronList(id), () => ({
       ok: false,
-      error: { code: 'E_TIMEOUT', message: 'This computer did not answer in time.', retryable: true } as AppError,
+      error: appError('E_TIMEOUT', 'This computer did not answer in time.'),
     }));
     setRefreshing(false);
     if (id === hostId()) setResult(r);

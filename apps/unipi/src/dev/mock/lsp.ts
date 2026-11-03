@@ -6,7 +6,7 @@
  * the take-over (`lsp.taken` → `closed(E_LSP_TAKEN)` after the
  * handshake, the `editor-conflict` scenario).
  */
-import type { AppError } from '@unipi/protocol';
+import { appError, type AppError } from '@unipi/protocol';
 import type { LspSink, LspStream } from '../../lib/host/client';
 
 export type MockLspSpec = {
@@ -80,7 +80,7 @@ export function openMockLsp(
   const takenTimer =
     spec?.taken === true
       ? setTimeout(() => {
-          if (!closed) sink.closed({ code: 'E_LSP_TAKEN', message: 'language features moved to another device — attach again to take them back', retryable: false } as AppError);
+          if (!closed) sink.closed(appError('E_LSP_TAKEN', 'language features moved to another device — attach again to take them back'));
         }, 1200)
       : undefined;
 

@@ -11,7 +11,7 @@
  *   (`uploadPicked` → a path under the host's blobs dir); a folder cannot be uploaded.
  */
 import { For, Show, createSignal, type JSX } from 'solid-js';
-import type { AppError } from '@unipi/protocol';
+import { appError, type AppError } from '@unipi/protocol';
 import { CheckCircle2, FolderOpen, Download, RotateCw, X, AlertTriangle } from 'lucide-solid';
 import { installExtension, removeExtension, listExtensions, type InstallReply } from '../../settings/hostCmd';
 import { isOwnPcFile, pickFolderNative } from '../../lib/openLocal';
@@ -34,7 +34,7 @@ function asError(error: unknown, fallback: string): AppError {
   if (e && typeof e === 'object' && typeof e.code === 'string' && typeof e.message === 'string' && e.message) {
     return { code: e.code, message: e.message, hint: e.hint, retryable: !!e.retryable } as AppError;
   }
-  return { code: 'E_INTERNAL', message: (e?.message as string) || fallback, retryable: false } as AppError;
+  return appError('E_INTERNAL', (e?.message as string) || fallback);
 }
 
 /** The success line of an install reply. */
@@ -173,7 +173,7 @@ export function ExtensionInstallCard(props: {
     setPhase({ kind: 'waiting', id });
     const ok = await restartAgentHost();
     if (!ok) {
-      setError({ code: 'E_INTERNAL', message: 'Could not restart the agent host', hint: 'Quit and reopen Unipi to load the change.', retryable: false } as AppError);
+      setError(appError('E_INTERNAL', 'Could not restart the agent host', { hint: 'Quit and reopen Unipi to load the change.' }));
       setPhase(current);
       return;
     }

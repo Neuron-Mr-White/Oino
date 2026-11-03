@@ -20,7 +20,7 @@ import {
   useContext,
 } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
-import type { AppError } from '@unipi/protocol';
+import { appError, type AppError } from '@unipi/protocol';
 import {
   DEFAULT_SETTINGS,
   SETTINGS_GROUP_SCHEMAS,
@@ -35,7 +35,7 @@ const GROUP_SCHEMAS = SETTINGS_GROUP_SCHEMAS;
 type GroupName = SettingsGroup;
 
 function settingsError(message: string, path: (string | number)[]): AppError {
-  return { code: 'E_SETTINGS', message, path, retryable: false };
+  return appError('E_SETTINGS', message, { path });
 }
 
 /** Splits `"terminal.fontSize"` into `["terminal", "fontSize"]`, validating shape. */

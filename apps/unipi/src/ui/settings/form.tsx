@@ -10,7 +10,7 @@
  * value unsets the key), so a disabled extension keeps its stored values.
  */
 import { For, Show, createMemo, createResource, createSignal, type JSX } from 'solid-js';
-import type { AppError } from '@unipi/protocol';
+import { appError, type AppError } from '@unipi/protocol';
 import { RefreshCw } from 'lucide-solid';
 import { ErrorBanner } from '../../components/ErrorBanner';
 import type { Field, Json, Namespace, Section } from './types';
@@ -102,7 +102,7 @@ export function NamespaceForm(props: {
     if (value !== undefined) {
       const message = checkValue(field, value) ?? zodMessage(toZod(field), value);
       if (message) {
-        setError({ code: 'E_SCHEMA', message: `${field.label}: ${message}`, retryable: false } as AppError);
+        setError(appError('E_SCHEMA', `${field.label}: ${message}`));
         return;
       }
     }

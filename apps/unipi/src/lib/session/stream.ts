@@ -16,7 +16,7 @@
  *   30 s budget, 2 s for `_oino/render`; rejects with `E_TRANSPORT` while
  *   not live.
  */
-import { toAppError, type AppError } from '@unipi/protocol';
+import { appError, toAppError, type AppError } from '@unipi/protocol';
 import type { HostClient, RpcCommand, SessionEventDto, SessionSnapshot, SessionStream } from '../host/client';
 import { Reconnect } from '../reconnect';
 import type { ApplyResult } from './reducer';
@@ -67,7 +67,7 @@ const defaultSchedule = (flush: () => void) => {
   else setTimeout(flush, 16);
 };
 
-const transportError = (message: string): AppError => ({ code: 'E_TRANSPORT', message, retryable: true }) as AppError;
+const transportError = (message: string): AppError => appError('E_TRANSPORT', message);
 
 /** A stream end worth reconnecting after (transport trouble, a clean host-side close). */
 export function shouldReconnect(error: AppError | undefined): boolean {

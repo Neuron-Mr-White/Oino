@@ -14,6 +14,7 @@
  */
 import type { Accessor } from 'solid-js';
 import {
+  appError,
   toAppError,
   type AppError,
   type HubEvent as ProtoHubEvent,
@@ -154,5 +155,5 @@ export function isUnreachableCode(code: string | undefined): boolean {
 
 /** An `AppError` for a stream/op the current host build does not offer yet. */
 export function unavailableError(what: string): AppError {
-  return { code: 'E_UNSUPPORTED', message: `${what} needs a newer host.`, hint: 'Update Unipi on the PC, then try again.', retryable: false } as AppError;
+  return appError('E_UNSUPPORTED', `${what} needs a newer host.`, { hint: 'Update Unipi on the PC, then try again.' });
 }

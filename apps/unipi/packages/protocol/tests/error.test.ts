@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
+  APP_ERROR_INFO,
+  AppErrorCodeSchema,
   AppErrorSchema,
+  appError,
+  describeAppError,
   defaultRetryableForCode,
   isRetryable,
   toAppError,
@@ -134,5 +140,48 @@ describe("AppErrorSchema host_version", () => {
   });
   it("still accepts an envelope from an older host without it", () => {
     expect(AppErrorSchema.parse({ code: "E_GIT", message: "x", retryable: false }).host_version).toBeUndefined();
+  });
+});
+
+describe("exhaustive error codes", () => {
+  // The Rust enum is the source of truth (unipi-proto/src/error.rs); this
+  // mirror, its info map and the retryable defaults must match it exactly.
+  const rust = readFileSync(fileURLToPath(new URL("../../../crates/unipi-proto/src/error.rs", import.meta.url)), "utf8");
+  const enumBody = /pub enum AppErrorCode \{([\s\S]*?)\n\}/.exec(rust)?.[1] ?? "";
+  const rustCodes = [...enumBody.matchAll(/^\s*(E_[A-Z_]+),/gm)].map((m) => m[1]);
+  const retryArm = /match self \{([\s\S]*?)=> true,/.exec(rust)?.[1] ?? "";
+  const rustRetryable = new Set([...retryArm.matchAll(/E_[A-Z_]+/g)].map((m) => m[0]));
+
+  it("mirrors the Rust AppErrorCode enum one-to-one", () => {
+    expect(rustCodes.length).toBeGreaterThan(20);
+    expect([...AppErrorCodeSchema.options]).toEqual(rustCodes);
+    expect(Object.keys(APP_ERROR_INFO).sort()).toEqual([...rustCodes].sort());
+  });
+
+  it("agrees with AppErrorCode::default_retryable", () => {
+    expect(rustRetryable.size).toBeGreaterThan(0);
+    for (const code of AppErrorCodeSchema.options) {
+      expect([code, defaultRetryableForCode(code)]).toEqual([code, rustRetryable.has(code)]);
+    }
+  });
+
+  it("appError defaults retryable from the code and never leaves the message empty", () => {
+    expect(appError("E_TIMEOUT", "slow")).toEqual({ code: "E_TIMEOUT", message: "slow", retryable: true });
+    expect(appError("E_SCHEMA", "", { hint: "h" })).toEqual({ code: "E_SCHEMA", message: APP_ERROR_INFO.E_SCHEMA.title, hint: "h", retryable: false });
+    expect(appError("E_TIMEOUT", "x", { retryable: false }).retryable).toBe(false);
+    expect(AppErrorSchema.safeParse(appError("E_GIT", "")).success).toBe(true);
+  });
+
+  it("describeAppError shows the message with the code and backend version", () => {
+    expect(describeAppError({ code: "E_GIT", message: "push rejected", retryable: false, host_version: "1.0.0" })).toEqual({
+      text: "push rejected",
+      reference: "E_GIT · host 1.0.0",
+    });
+    expect(describeAppError({ code: "E_GIT", message: " ", retryable: false })).toEqual({ text: APP_ERROR_INFO.E_GIT.title, reference: "E_GIT" });
+  });
+
+  it("describeAppError falls back to a generic line plus the code for anything unknown", () => {
+    expect(describeAppError({ code: "backend_unavailable", message: "x" })).toEqual({ text: APP_ERROR_INFO.E_INTERNAL.title, reference: "backend_unavailable" });
+    expect(describeAppError("boom")).toEqual({ text: APP_ERROR_INFO.E_INTERNAL.title, reference: "E_INTERNAL" });
   });
 });

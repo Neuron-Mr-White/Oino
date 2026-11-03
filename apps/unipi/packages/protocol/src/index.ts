@@ -18,8 +18,11 @@ export {
   isRetryable,
   defaultRetryableForCode,
   toAppError,
+  APP_ERROR_INFO,
+  appError,
+  describeAppError,
 } from "./error.js";
-export type { AppErrorCode, AppError } from "./error.js";
+export type { AppErrorCode, AppError, AppErrorInfo, AppErrorDescription } from "./error.js";
 
 export {
   MuxKindSchema,

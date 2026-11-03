@@ -14,7 +14,7 @@
  */
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { createSignal } from 'solid-js';
-import { toAppError, type AppError } from '@unipi/protocol';
+import { appError, toAppError, type AppError } from '@unipi/protocol';
 import { LspFrameParser, encodeMessage } from '../lsp/framing';
 import { localHostId, localIdOf, setLocalHostId } from './localId';
 import {
@@ -435,10 +435,10 @@ function openLspChannel(hostId: string, req: LspRequest, sink: LspSink): LspStre
     if (ended) return;
     switch (event.type) {
       case 'taken':
-        end({ code: 'E_LSP_TAKEN', message: event.message, retryable: false } as AppError);
+        end(appError('E_LSP_TAKEN', event.message));
         return;
       case 'exit':
-        end({ code: 'E_TRANSPORT', message: `The language server exited${event.code === null ? '' : ` (${event.code})`}`, retryable: false } as AppError);
+        end(appError('E_TRANSPORT', `The language server exited${event.code === null ? '' : ` (${event.code})`}`, { retryable: false }));
         return;
       case 'closed':
         end(event.error);
