@@ -93,6 +93,8 @@ export function PhoneField(props: {
   let kind: EditKind = 'other';
   /** The text the field showed before the current input event (the repair's baseline). */
   let before = props.value;
+  /** The text when the current composition started (the repair's baseline at its end). */
+  let composeFrom = props.value;
 
   const opts = () => props.opts?.() ?? {};
   const segs = createMemo(() => tokenize(props.value, opts()));
@@ -279,10 +281,21 @@ export function PhoneField(props: {
           kind = 'other';
           grow();
         }}
-        onCompositionStart={() => (composing = true)}
+        onCompositionStart={() => {
+          composing = true;
+          composeFrom = before;
+        }}
         onCompositionEnd={() => {
           if (!composing) return; // ended by a pick (endComposition): the field already shows the draft
           composing = false;
+          // Gboard re-composes the word next to the caret, so a Backspace into a chip arrives inside a
+          // composition (never rewritten under it): once it ends, take a chip it cut into out whole.
+          const fixed = hasChips() || tokenize(composeFrom, opts()).some((x) => 'chip' in x) ? repairBrokenChips(composeFrom, el.value, opts()) : undefined;
+          if (fixed) {
+            setValue(fixed.text, fixed.caret);
+            props.onChange(fixed.text, fixed.caret, 'delete');
+            return;
+          }
           before = el.value;
           // The final composed text: make sure the draft has exactly what the field shows.
           if (el.value !== props.value) props.onChange(el.value, caret(), 'type');

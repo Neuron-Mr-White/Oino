@@ -138,3 +138,18 @@ describe('PhoneField picks during a composition (Gboard)', () => {
     expect(ta.value).toBe('/graph ');
   });
 });
+
+describe('PhoneField chip repair after a composition', () => {
+  it('a Backspace into a chip that arrived inside a composition is repaired when it ends', () => {
+    const { ta, value } = mount(`compare ${imageToken('i1')} please`);
+    ta.focus();
+    fireEvent.compositionStart(ta); // Gboard re-composing "please"
+    ta.value = `compare ${imageToken('i1')}please`;
+    fireEvent.input(ta);
+    ta.value = `compare ${imageToken('i1').slice(0, -1)}please`;
+    fireEvent.input(ta);
+    fireEvent.compositionEnd(ta);
+    expect(value()).toBe('compare please');
+    expect(ta.value).toBe('compare please');
+  });
+});
