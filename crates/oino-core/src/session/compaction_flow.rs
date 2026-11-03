@@ -193,13 +193,28 @@ impl AgentSession {
         if !runner.has_handlers("session_before_compact") {
             return Ok(None);
         }
+        // Bounded (compactor-fix): a guest parses this in its never-shrinking memory; small
+        // payloads are pi's exactly.
+        let bounded = compaction::bound_branch_entries(branch, &compaction::HOOK_PAYLOAD_LIMITS);
+        let (preparation, prep_slimmed) =
+            compaction::bound_preparation(preparation, &compaction::HOOK_PAYLOAD_LIMITS);
+        if bounded.omitted > 0 || bounded.slimmed || prep_slimmed {
+            tracing::info!(
+                entries = branch.len(),
+                omitted = bounded.omitted,
+                "session_before_compact payload bounded"
+            );
+        }
         let mut payload = json!({
             "type": "session_before_compact",
             "preparation": preparation,
-            "branchEntries": branch,
+            "branchEntries": bounded.entries,
             "reason": reason_str(reason),
             "willRetry": will_retry,
         });
+        if bounded.omitted > 0 {
+            payload["branchEntriesOmitted"] = json!(bounded.omitted);
+        }
         if let Some(instructions) = custom_instructions {
             payload["customInstructions"] = json!(instructions);
         }

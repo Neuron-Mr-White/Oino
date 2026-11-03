@@ -124,12 +124,24 @@ impl Env {
         &self,
         dir: &str,
     ) -> (Arc<dyn ExtensionInstance>, oino_extension_api::Registration) {
+        self.load_with_memory(dir, None).await
+    }
+
+    /// Like [`Self::load`], with the manifest's linear-memory cap replaced.
+    async fn load_with_memory(
+        &self,
+        dir: &str,
+        memory_mib: Option<u32>,
+    ) -> (Arc<dyn ExtensionInstance>, oino_extension_api::Registration) {
         let file = CRATES.iter().find(|(d, _)| *d == dir).unwrap().1;
-        let manifest = Manifest::parse(
+        let mut manifest = Manifest::parse(
             &std::fs::read_to_string(extensions_dir().join(format!("unipi/{dir}/extension.json")))
                 .unwrap(),
         )
         .unwrap();
+        if let Some(mib) = memory_mib {
+            manifest.limits.memory_mib = mib;
+        }
         let package = LoadedPackage {
             manifest,
             component: ComponentSource::Path(wasm_dir().join(format!("{file}.wasm"))),
@@ -1117,9 +1129,66 @@ async fn a_child_worker_runs_its_profile_granted_bash_without_asking() {
     let lead = env.event(&wf, EventKind::ToolCall, bash("c3")).await;
     assert_eq!(lead, None, "the lead approves via dialog");
     assert!(
-        env.host.calls_named("ui_dialog").iter().any(|c| {
-            c.detail["toolName"] == "bash"
-        }),
+        env.host
+            .calls_named("ui_dialog")
+            .iter()
+            .any(|c| { c.detail["toolName"] == "bash" }),
         "the lead was asked"
     );
+}
+
+/// compactor-fix regression: core caps `session_before_compact` at 4 MiB of `branchEntries`
+/// plus 4 MiB of preparation (`oino_core::compaction::HOOK_PAYLOAD_LIMITS`). A payload at
+/// both caps must compact inside a 96 MiB linear memory (the 213 MB chat trapped the
+/// compactor at 455 → 910 MiB), three times in a row (memory does not ratchet per call).
+#[tokio::test(flavor = "multi_thread")]
+async fn compactor_lossless_at_the_hook_payload_cap_fits_96_mib() {
+    const CAP: usize = 4 << 20;
+    let env = Env::new();
+    let (ext, _) = env.load_with_memory("compactor", Some(96)).await;
+    let file_text = "fn route() { navigate('/home') }\n".repeat(60);
+    let mut branch = Vec::new();
+    let mut size = 0;
+    let mut i = 0;
+    while size < CAP - (64 << 10) {
+        let e = match i % 3 {
+            0 => {
+                json!({"id": format!("e{i}"), "type": "message", "message": {"role": "user", "content": format!("turn {i}: fix the router, keep the theme")}})
+            }
+            1 => {
+                json!({"id": format!("e{i}"), "type": "message", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": format!("Editing router.tsx ({i}).")},
+                {"type": "toolCall", "id": format!("c{i}"), "name": "edit", "arguments": {"path": "src/router.tsx", "oldText": file_text}}]}})
+            }
+            _ => {
+                json!({"id": format!("e{i}"), "type": "message", "message": {"role": "toolResult", "toolCallId": format!("c{}", i - 1), "toolName": "edit",
+                "content": [{"type": "text", "text": file_text}], "isError": false}})
+            }
+        };
+        size += e.to_string().len() + 1;
+        branch.push(e);
+        i += 1;
+    }
+    let messages: Vec<Value> = branch
+        .iter()
+        .take(branch.len() - 30)
+        .map(|e| e["message"].clone())
+        .collect();
+    let kept = branch[branch.len() - 30]["id"].clone();
+    let payload = json!({"type": "session_before_compact", "reason": "threshold", "willRetry": false,
+        "branchEntries": branch,
+        "preparation": {"tokensBefore": 180_000, "firstKeptEntryId": kept, "messagesToSummarize": messages,
+            "turnPrefixMessages": [], "isSplitTurn": false, "fileOps": {"read": [], "written": [], "edited": ["src/router.tsx"]},
+            "settings": {"enabled": true, "reserveTokens": 16384, "keepRecentTokens": 20000}}});
+    assert!(payload.to_string().len() > 7 << 20);
+    for _ in 0..3 {
+        let out = env
+            .event(&ext, EventKind::SessionBeforeCompact, payload.clone())
+            .await
+            .expect("compactor answered (no trap)");
+        let c = &out["compaction"];
+        assert_eq!(c["details"]["method"], "vcc", "{out}");
+        assert!(c["summary"].as_str().unwrap().contains("fix the router"));
+        assert!(!c["firstKeptEntryId"].as_str().unwrap().is_empty());
+    }
 }

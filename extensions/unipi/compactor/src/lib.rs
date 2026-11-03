@@ -433,15 +433,16 @@ impl Compactor {
                 }
             };
         }
-        let branch: Vec<Value> = ev
+        // Borrowed, not cloned (compactor-fix): the host bounds `branchEntries`, and a second
+        // copy would double this guest's never-shrinking memory.
+        let branch: &[Value] = ev
             .get("branchEntries")
             .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+            .map_or(&[], Vec::as_slice);
         let active = Self::active_work().await;
         let cwd = cx.cwd().display().to_string();
         let plan = plan_lossless(&PlanInput {
-            branch: &branch,
+            branch,
             tokens_before,
             previous_summary: prep
                 .and_then(|p| p.get("previousSummary"))

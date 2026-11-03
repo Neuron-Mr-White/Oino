@@ -28,6 +28,18 @@ itself (`wit/oino/extension.wit`); validate it after changes with `cargo xtask w
 `export_extension!`, typed event payloads from `oino-ai`). `unipi-kit` adds shared helpers
 used by the unipi ports (settings schema, bus topics, work tray, jev decisions).
 
+## Bounded hook payloads
+
+An extension's linear memory never shrinks, so event payloads that grow with the session
+are bounded. `session_before_compact` carries pi's `preparation` and `branchEntries`
+unchanged up to 4 MiB each. Above that the host drops `details` objects larger than
+16 KiB and image bytes, and clips strings in entries that are still larger than 512 KiB. If
+the payload is still too big, `branchEntries` keeps only the newest entries that fit, so
+the live context goes in before older history, and `branchEntriesOmitted` says how many
+older entries were left out. Likewise the oldest `preparation.messagesToSummarize` are dropped and counted in
+`messagesToSummarizeOmitted`. To read more of the session, page it with `session::query`
+(WIT `session.query-entries`).
+
 ## Known gaps
 
 - `control.shutdown` is recorded but no mode exits on it yet.

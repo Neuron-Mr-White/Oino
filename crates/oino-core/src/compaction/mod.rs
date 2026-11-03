@@ -16,6 +16,7 @@
 //! | [`summarize`] | [`Summarizer`], [`generate_summary`], [`compact()`], [`summarize_default`] |
 //! | [`branch`] | [`collect_entries_for_branch_summary`], [`prepare_branch_entries`], [`generate_branch_summary`] |
 //! | [`utils`] | [`FileOperations`], [`FileLists`], [`format_file_operations`], [`serialize_conversation`] |
+//! | [`hook_payload`] | [`bound_branch_entries`], [`bound_preparation`], [`HOOK_PAYLOAD_LIMITS`] |
 //! | [`prompts`] | [`SUMMARIZATION_SYSTEM_PROMPT`] and the summary prompts |
 //! | [`retry`] | [`RetryPolicy`], [`retry_delay_ms`], [`SummarizationRetryObserver`] |
 //! | [`errors`] | [`is_context_overflow`], [`is_retryable_assistant_error`] |
@@ -27,6 +28,7 @@ pub mod branch;
 pub mod cut_point;
 mod error;
 pub mod errors;
+pub mod hook_payload;
 mod js;
 mod pattern;
 pub mod prepare;
@@ -46,6 +48,9 @@ pub use branch::{
 pub use cut_point::{CutPointResult, find_cut_point, find_turn_start_index};
 pub use error::CompactionError;
 pub use errors::{is_context_overflow, is_recoverable_length, is_retryable_assistant_error};
+pub use hook_payload::{
+    BoundedBranch, HOOK_PAYLOAD_LIMITS, HookPayloadLimits, bound_branch_entries, bound_preparation,
+};
 pub use prepare::{CompactionDetails, CompactionPreparation, CompactionResult, prepare_compaction};
 pub use prompts::SUMMARIZATION_SYSTEM_PROMPT;
 pub use retry::{
