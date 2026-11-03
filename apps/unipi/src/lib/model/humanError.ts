@@ -16,8 +16,6 @@ const PROVIDER_NAMES: Record<string, string> = {
   mistral: 'Mistral',
   together: 'Together AI',
   fireworks: 'Fireworks',
-  oino: 'Oino Router',
-  omniroute: 'OmniRoute',
 };
 
 export function displayProviderName(provider: string | undefined): string | undefined {
