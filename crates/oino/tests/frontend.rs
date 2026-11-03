@@ -21,9 +21,15 @@ fn hello(rpc: &mut support::Rpc) {
 }
 
 /// The next `notify` message.
-fn notified(rpc: &mut support::Rpc) -> String {
-    let (value, _) = rpc.until(|v| v["type"] == "extension_ui_request" && v["method"] == "notify");
-    value["message"].as_str().unwrap().to_owned()
+/// Sends `command`, expects success, and returns the notify it causes. The notify can be
+/// written before or after the reply (replies and events travel separately).
+fn ok_notified(rpc: &mut support::Rpc, command: Value) -> String {
+    let id = rpc.send(command);
+    let (reply, note) = rpc.response_and(&id, |v| {
+        v["type"] == "extension_ui_request" && v["method"] == "notify"
+    });
+    assert_eq!(reply["success"], true, "{reply:#}");
+    note["message"].as_str().unwrap().to_owned()
 }
 
 fn values(group: &Value) -> Vec<String> {
@@ -96,8 +102,13 @@ fn panel_actions_shortcuts_and_editor_events_reach_the_extension() {
     let (_, panel) = rpc.response_and(&id, |v| v["method"] == "openPanel");
     assert_eq!(panel["panelId"], "ui-probe/panel-0");
 
-    rpc.ok(json!({"type": "_oino/ui_action", "panelId": "ui-probe/panel-0", "actionId": "go", "value": "x"}));
-    assert_eq!(notified(&mut rpc), r#"probe:action:go:"x""#);
+    assert_eq!(
+        ok_notified(
+            &mut rpc,
+            json!({"type": "_oino/ui_action", "panelId": "ui-probe/panel-0", "actionId": "go", "value": "x"})
+        ),
+        r#"probe:action:go:"x""#
+    );
     assert_eq!(
         rpc.err(json!({"type": "_oino/ui_action", "panelId": "nope", "actionId": "go"})),
         "Unknown panel: nope"
@@ -108,8 +119,13 @@ fn panel_actions_shortcuts_and_editor_events_reach_the_extension() {
         shortcuts,
         json!({"shortcuts": [{"id": "probe.ping", "defaultKeys": ["ctrl+alt+p"], "description": "Ping the probe", "extensionId": "ui-probe"}]})
     );
-    rpc.ok(json!({"type": "_oino/invoke_shortcut", "shortcutId": "probe.ping"}));
-    assert_eq!(notified(&mut rpc), "probe:shortcut:probe.ping");
+    assert_eq!(
+        ok_notified(
+            &mut rpc,
+            json!({"type": "_oino/invoke_shortcut", "shortcutId": "probe.ping"})
+        ),
+        "probe:shortcut:probe.ping"
+    );
     assert_eq!(
         rpc.err(json!({"type": "_oino/invoke_shortcut", "shortcutId": "nope"})),
         "Unknown shortcut: nope"
@@ -122,10 +138,13 @@ fn panel_actions_shortcuts_and_editor_events_reach_the_extension() {
     let id = rpc.send(json!({"type": "prompt", "message": "/probe editor-text"}));
     let (_, report) = rpc.response_and(&id, |v| v["method"] == "notify");
     assert_eq!(report["message"], r#"probe:editor-text:"draft""#);
-    rpc.ok(
-        json!({"type": "_oino/editor_event", "eventId": "e3", "intent": "submit", "text": "go"}),
+    assert_eq!(
+        ok_notified(
+            &mut rpc,
+            json!({"type": "_oino/editor_event", "eventId": "e3", "intent": "submit", "text": "go"}),
+        ),
+        "probe:editor:submit:go"
     );
-    assert_eq!(notified(&mut rpc), "probe:editor:submit:go");
     assert!(
         rpc.err(
             json!({"type": "_oino/editor_event", "eventId": "e4", "intent": "nope", "text": ""})
