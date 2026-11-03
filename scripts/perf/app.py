@@ -51,6 +51,26 @@ const el = all[0]; if (!el) return null; window.__sc = el;
 return {cls: el.className, sh: el.scrollHeight, ch: el.clientHeight};
 """
 
+# What still animates in a phase (idle CPU attribution): running CSS animations / transitions
+# grouped by name + target class, the DOM size, and the app's own perf-app counters.
+PROBE = r"""
+const out = {dom: document.getElementsByTagName('*').length, hidden: document.hidden, anims: 0, top: []};
+try {
+  const g = {};
+  for (const a of document.getAnimations()) {
+    if (a.playState !== 'running') continue;
+    out.anims++;
+    const t = a.effect && a.effect.target;
+    const cls = t ? ((t.getAttribute && (t.getAttribute('class') || t.getAttribute('data-track'))) || t.tagName) : '?';
+    const k = (a.animationName || a.transitionProperty || 'anim') + ' @ ' + String(cls).slice(0, 60);
+    g[k] = (g[k] || 0) + 1;
+  }
+  out.top = Object.entries(g).sort((a, b) => b[1] - a[1]).slice(0, 12);
+} catch (e) { out.err = String(e); }
+if (window.__UNIPI_IDLE__) out.idle = window.__UNIPI_IDLE__();
+return out;
+"""
+
 
 def rig(env, *a, check=True):
     return subprocess.run(["bash", f"{REPO}/scripts/qa/rig.sh", *a], env=env, check=check,
@@ -81,7 +101,13 @@ def app_pids():
     return out
 
 
-def app_sample(secs=10):
+def app_sample(secs=10, env=None):
+    probe = None
+    if env is not None:
+        try:
+            probe = ev(env, PROBE)
+        except Exception as e:  # the probe never fails a phase
+            probe = {"err": str(e)[:200]}
     pids = app_pids()
     a = {p: lib.proc(p) for p in pids}
     time.sleep(secs)
@@ -99,6 +125,8 @@ def app_sample(secs=10):
     out["app_rss_mb"] = round(tot_rss / 1024, 1)
     out["app_cpu_pct"] = round(tot_cpu, 1)
     out["webview_rss_mb"] = round(sum(v["rss_mb"] for k, v in out["procs"].items() if k.startswith("WebKitWeb")), 1)
+    if probe is not None:
+        out["probe"] = probe
     return out
 
 
@@ -130,6 +158,7 @@ def main():
     ap.add_argument("--agents", type=int, default=50)
     ap.add_argument("--stream-secs", type=int, default=90)
     ap.add_argument("--port", type=int, default=11634)
+    ap.add_argument("--diag", action="store_true", help="also sample idle phases with every CSS animation paused (attribution)")
     a = ap.parse_args()
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
@@ -153,8 +182,16 @@ def main():
             time.sleep(0.5)
         R["startup_ui_s"] = round(time.time() - t0, 2)
         time.sleep(5)
-        R["idle_home"] = app_sample(15)
+        R["idle_home"] = app_sample(15, env)
         bench.log("idle home", R["idle_home"]["app_rss_mb"], "MB", R["idle_home"]["app_cpu_pct"], "%")
+
+        def paused(name, secs=15):
+            ev(env, "const s=document.createElement('style');s.id='__perf_pause';s.textContent='*,*::before,*::after{animation-play-state:paused!important}';document.head.append(s);return true")
+            time.sleep(1)
+            R[name] = app_sample(secs, env)
+            ev(env, "document.getElementById('__perf_pause')?.remove();return true")
+        if a.diag:
+            paused("idle_home_paused")
         cards = lib.op(sock, {"op": "sessions_list"}).get("data") or []
         long_sid = cards[0]["session_id"] if cards else None
         host_id = ev(env, "const a=document.querySelector('a[href*=\"#/s/\"]');return a?a.getAttribute('href'):location.hash")
@@ -174,7 +211,7 @@ def main():
 
         go(small.sid)
         time.sleep(4)
-        R["small_open"] = app_sample(10)
+        R["small_open"] = app_sample(10, env)
         R["small_open"]["dom"] = ev(env, "return document.getElementsByTagName('*').length")
         t1 = time.time()
         go(long_sid)
@@ -185,14 +222,14 @@ def main():
             time.sleep(0.25)
         R["long_open_s"] = round(time.time() - t1, 2)
         time.sleep(5)
-        R["long_open"] = app_sample(10)
+        R["long_open"] = app_sample(10, env)
         R["long_open"]["dom"] = ev(env, "return document.getElementsByTagName('*').length")
         R["scroller"] = ev(env, SCROLLER)
 
         def scroll():
             ev(env, "const e=window.__sc; if(e){e.scrollTop=Math.max(0,e.scrollTop-900);} return e?e.scrollTop:null")
         R["long_scroll"] = meter(env, 15, scroll, "long-scroll")
-        R["long_after_scroll"] = app_sample(5)
+        R["long_after_scroll"] = app_sample(5, env)
         bench.log("long chat", R["long_open"]["app_rss_mb"], "MB; scroll", R["long_scroll"])
         # subagent graph: 50 children all streaming, root chat open, tree visible
         roots = math.ceil(a.agents / 13)
@@ -206,7 +243,7 @@ def main():
         time.sleep(20)
         f0 = sum(s.frames for s, _ in streams)
         i0 = sum(s.items for s, _ in streams)
-        R["graph_busy"] = app_sample(10)
+        R["graph_busy"] = app_sample(10, env)
         R["graph_busy"]["dom"] = ev(env, "return document.getElementsByTagName('*').length")
         R["graph_busy"]["host_ipc_frames_per_s_roots"] = round((sum(s.frames for s, _ in streams) - f0) / 10, 1)
         R["graph_busy"]["host_ipc_items_per_s_roots"] = round((sum(s.items for s, _ in streams) - i0) / 10, 1)
@@ -215,11 +252,13 @@ def main():
         bench.log("graph busy", R["graph_busy"]["app_rss_mb"], "MB", R["graph_busy"]["app_cpu_pct"], "%", R["graph_fps"])
         time.sleep(max(0, a.stream_secs - 40))
         time.sleep(30)
-        R["graph_idle"] = app_sample(15)
+        R["graph_idle"] = app_sample(15, env)
         R["graph_idle"]["dom"] = ev(env, "return document.getElementsByTagName('*').length")
+        if a.diag:
+            paused("graph_idle_paused")
         go(long_sid)
         time.sleep(5)
-        R["long_again"] = app_sample(10)
+        R["long_again"] = app_sample(10, env)
         for st, (stop, _) in streams:
             stop.set()
             st.close()
