@@ -8,7 +8,7 @@
  * flood the DOM.
  */
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { Archive, Plus } from 'lucide-solid';
+import { Archive, Folder, Plus } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import type { SessionMeta } from '../../lib/session/hub';
 import { NO_WORKSPACE_LABEL, shortCwd } from '../../lib/session/selectors';
@@ -26,8 +26,9 @@ type Paging = { get: (key: string) => number; more: (key: string, step?: number)
 
 /** Row slot heights (px) for the windowed list: comfortable / compact × sidebar / page. */
 export function rowSlot(variant: RowVariant, compact: boolean): number {
-  if (variant === 'page') return compact ? 44 : 60;
-  return compact ? 30 : 44;
+  if (variant === 'page') return compact ? 44 : 52;
+  // [ux-sessions] Task list rows are one line (title + age), compact a little denser.
+  return compact ? 28 : 32;
 }
 
 export function ProjectGroup(props: {
@@ -49,6 +50,8 @@ export function ProjectGroup(props: {
   compact?: boolean;
   /** Archived chats (the Archived filter shows the trash inline). */
   archivedOf?: (card: SessionCard) => boolean;
+  /** [ux-sessions] The head is a section label ("Tasks": the chats without a workspace). */
+  section?: boolean;
   /** No head row (Group by: None — one flat list). */
   headless?: boolean;
   /** Rows per "Show more" (default 5, Z-11). */
@@ -119,9 +122,19 @@ export function ProjectGroup(props: {
   return (
     <div class="sb-project" data-testid={`sb-project-${props.label}`} data-headless={props.headless ? '' : undefined}>
       <Show when={!props.headless}>
-        <div class="sb-project-head" title={isProject() ? (props.cwd ? shortCwd(props.cwd) : NO_WORKSPACE_LABEL) : props.label} data-testid="sb-project-head">
+        <div
+          class="sb-project-head"
+          data-folder={isProject() ? '' : undefined}
+          data-section={props.section ? '' : undefined}
+          title={`${isProject() ? (props.cwd ? shortCwd(props.cwd) : NO_WORKSPACE_LABEL) : props.label} · ${props.cards.length} ${props.cards.length === 1 ? 'session' : 'sessions'}`}
+          data-testid="sb-project-head"
+        >
+          {/* [ux-sessions] Task list: a project is a folder icon + its name (the count is the tooltip). */}
+          <Show when={isProject()}>
+            <Folder size={14} class="sb-project-folder" aria-hidden="true" />
+          </Show>
           <span class="sb-project-label">{props.label || NO_WORKSPACE_LABEL}</span>
-          <Show when={props.cards.length > 1}>
+          <Show when={!isProject() && !props.section && props.cards.length > 1}>
             <span class="sb-project-count" title={`${props.cards.length} sessions`}>{props.cards.length}</span>
           </Show>
           <span class="sb-project-tools">
@@ -193,7 +206,6 @@ export function ProjectGroup(props: {
           onClick={() => props.paging.more(key(), step())}
         >
           Show more
-          <span class="sb-more-count">{Math.min(hidden(), step())}</span>
         </button>
       </Show>
     </div>

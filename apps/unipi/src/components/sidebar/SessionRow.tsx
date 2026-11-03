@@ -5,16 +5,14 @@
  * `+N −M` changes, the unread dot (wm-green, "done unseen") and the cron
  * clock badge slot.
  *
- * [ui-sessions] layout: comfortable rows are the title line + ONE meta line of
- * small chips (status word in its colour, cron clock, folder / model when
- * shown, changes) with the time right-aligned — never a wrapped third line; a
- * failed / timed-out cron run is the glyph + a short coloured word with the
- * reason in the tooltip. Compact rows (Properties › Compact view) are one line:
- * title, icon chips, time. The glyph slot is fixed (16 px), so a running row's
- * spinner never moves the layout.
+ * [ux-sessions] layout (owner's zcode-style Task list, 2026-11-03): ONE line — a fixed 16 px
+ * gutter that is empty for a normal chat (no chat bubble) and only shows a KIND or STATE icon
+ * (cron clock; Working spinner, Needs you, failed / timed out), the title (fade mask), the chips
+ * the Properties menu turns on, and the age right-aligned and muted ("63d"; a live state word
+ * like "Working" takes its place). Compact view only tightens the row height.
  */
 import { createEffect, Match, onCleanup, Show, Switch, type JSX } from 'solid-js';
-import { Archive, CircleAlert, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, MessageSquare, Pin, PinOff, TimerOff } from 'lucide-solid';
+import { Archive, CircleAlert, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, Pin, PinOff, TimerOff } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { hostClient } from '../../lib/host/factory';
 import { LONG_PRESS_MS } from '../../lib/gestures';
@@ -23,7 +21,7 @@ import { changesOf, isHomeCwd, sessionTitle } from '../../lib/session/selectors'
 import type { SessionMeta } from '../../lib/session/hub';
 import { sessions, type SessionHandle } from '../../lib/session/store';
 import { openRowMenu } from '../../lib/session/actions';
-import { relativeTimeMs } from '../../lib/time';
+import { shortAge } from '../../lib/time';
 import { cronRunFailed, cronRunLabel } from '../../lib/cronRunLabels';
 import { DEFAULT_PROPS, type PropKey } from '../../lib/session/listView';
 
@@ -106,7 +104,8 @@ export function SessionRow(props: {
   const show = (k: PropKey) => (props.show ?? DEFAULT_PROPS)[k];
   const changes = () => changesOf(props.card);
   const at = () => props.card.last_activity ?? props.card.updated_at;
-  const time = () => relativeTimeMs(at());
+  /** [ux-sessions] "63d": the Task list's compact age (the exact time is the tooltip). */
+  const age = () => shortAge(at());
   /** The exact moment behind the relative time (hover). */
   const stamp = () => {
     const ms = at();
@@ -188,12 +187,12 @@ export function SessionRow(props: {
   /** The meta chips (comfortable: the second line; compact: icons after the title). */
   const chips = () => (
     <>
-      <Show when={show('status') && statusWord() && !props.compact}>
+      <Show when={show('status') && statusWord()}>
         <span class="srow-word" data-state={status()} title={statusTip()}>
           {statusWord()}
         </span>
       </Show>
-      <Show when={show('automation') && cron()}>
+      <Show when={show('automation') && cron() && status() !== 'idle'}>
         <span class="srow-chip srow-cron" data-failed={status() === 'failed' || status() === 'timed-out' ? '' : undefined} title={cronTip()} aria-label={cronTip()}>
           <Clock size={12} />
         </span>
@@ -214,12 +213,12 @@ export function SessionRow(props: {
           </span>
         )}
       </Show>
-      <Show when={props.mode && !props.compact}>
+      <Show when={props.mode}>
         <span class="srow-mode" data-paused={props.mode!.paused ? '' : undefined} title={`Working mode: ${props.mode!.label}`}>
           {props.mode!.label}
         </span>
       </Show>
-      <Show when={changes() && !props.compact}>
+      <Show when={changes()}>
         <span class="srow-changes" aria-label={`${changes()!.add} lines added, ${changes()!.del} removed`}>
           <span class="add">+{changes()!.add}</span>
           <span class="del">−{changes()!.del}</span>
@@ -233,10 +232,16 @@ export function SessionRow(props: {
     </>
   );
   const timeEl = () => (
-    <Show when={show('updated') && time()}>
-      <span class="srow-time" title={stamp()}>{time()}</span>
+    <Show when={show('updated') && age() && !(show('status') && statusWord())}>
+      <span class="srow-time" title={stamp()}>{age()}</span>
     </Show>
   );
+  /**
+   * [ux-sessions] The row icon only tells session KINDS apart (owner 2026-11-03): a normal chat has
+   * none; a cron run shows its clock; a live state (Working spinner, Needs you, failed…) shows its
+   * glyph. The gutter keeps its width, so titles stay aligned either way.
+   */
+  const glyphKind = (): 'state' | 'cron' | undefined => (status() !== 'idle' ? 'state' : cron() ? 'cron' : undefined);
   return (
     <a
       href={`#/s/${encodeURIComponent(props.hostId)}/${encodeURIComponent(props.card.session_id)}`}
@@ -244,7 +249,6 @@ export function SessionRow(props: {
       data-variant={props.variant}
       data-state={state()}
       data-status={status()}
-      data-sub={props.compact ? undefined : ''}
       data-compact={props.compact ? '' : undefined}
       data-unread={props.meta?.unread ? '' : undefined}
       data-cron={cron() ? '' : undefined}
@@ -258,8 +262,8 @@ export function SessionRow(props: {
       onPointerCancel={cancelPress}
       onPointerLeave={cancelPress}
     >
-      <span class="srow-glyph" data-state={status()} aria-hidden={statusTip() ? undefined : 'true'} title={statusTip()} aria-label={statusTip()} role={statusTip() ? 'img' : undefined}>
-        <Switch fallback={<MessageSquare size={14} />}>
+      <span class="srow-glyph" data-state={status()} data-kind={glyphKind()} aria-hidden={statusTip() || cron() ? undefined : 'true'} title={statusTip() ?? (cron() ? cronTip() : undefined)} aria-label={statusTip() ?? (cron() ? cronTip() : undefined)} role={statusTip() || cron() ? 'img' : undefined}>
+        <Switch>
           <Match when={status() === 'working'}>
             <LoaderCircle size={14} class="srow-spin" />
           </Match>
@@ -272,49 +276,40 @@ export function SessionRow(props: {
           <Match when={status() !== 'idle'}>
             <CircleAlert size={14} />
           </Match>
+          <Match when={cron()}>
+            <Clock size={13} />
+          </Match>
         </Switch>
       </span>
-      <span class="srow-main">
-        <span class="srow-title-line">
-          <span
-            ref={(el) => {
-              titleEl = el;
-              observeTitleOverflow(el);
-            }}
-            class="srow-title"
-          >
-            {titleText()}
-          </span>
-          <Show when={props.meta?.unread}>
-            <span class="srow-unread" title="Unread" aria-label="Unread" />
-          </Show>
-          <Show when={props.compact}>
-            <span class="srow-chips">{chips()}</span>
-            {timeEl()}
-          </Show>
-          <Show when={props.onPin && !props.archived}>
-            <button
-              type="button"
-              class="srow-pin"
-              data-pinned={props.meta?.pinned ? '' : undefined}
-              aria-label={props.meta?.pinned ? 'Unpin session' : 'Pin session'}
-              title={pinTitle()}
-              data-testid={`srow-pin-${props.card.session_id}`}
-              onClick={pin()}
-            >
-              <Show when={props.meta?.pinned} fallback={<Pin size={13} />}>
-                <PinOff size={13} />
-              </Show>
-            </button>
-          </Show>
-        </span>
-        <Show when={!props.compact}>
-          <span class="srow-sub">
-            <span class="srow-chips">{chips()}</span>
-            {timeEl()}
-          </span>
-        </Show>
+      <span
+        ref={(el) => {
+          titleEl = el;
+          observeTitleOverflow(el);
+        }}
+        class="srow-title"
+      >
+        {titleText()}
       </span>
+      <Show when={props.meta?.unread}>
+        <span class="srow-unread" title="Unread" aria-label="Unread" />
+      </Show>
+      <span class="srow-chips">{chips()}</span>
+      {timeEl()}
+      <Show when={props.onPin && !props.archived}>
+        <button
+          type="button"
+          class="srow-pin"
+          data-pinned={props.meta?.pinned ? '' : undefined}
+          aria-label={props.meta?.pinned ? 'Unpin session' : 'Pin session'}
+          title={pinTitle()}
+          data-testid={`srow-pin-${props.card.session_id}`}
+          onClick={pin()}
+        >
+          <Show when={props.meta?.pinned} fallback={<Pin size={13} />}>
+            <PinOff size={13} />
+          </Show>
+        </button>
+      </Show>
     </a>
   );
 }

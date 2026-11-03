@@ -16,3 +16,14 @@ export function relativeTimeMs(ms: number | undefined, now = Date.now()): string
   if (hours < 24) return `${hours}h ago`;
   return `${Math.round(hours / 24)}d ago`;
 }
+
+/** [ux-sessions] The Task list's age column: "now", "5m", "3h", "63d" (no "ago"; tabular). */
+export function shortAge(ms: number | undefined, now = Date.now()): string {
+  if (!ms) return '';
+  const minutes = Math.floor(Math.max(0, now - ms) / 60_000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}

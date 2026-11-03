@@ -145,22 +145,23 @@ describe('SessionList', () => {
     const w = screen.getByTestId('srow-w');
     expect(w.getAttribute('data-state')).toBe('working');
     expect(within(w).getByText('Working')).toBeTruthy();
-    expect(within(w).getByText('2m ago')).toBeTruthy();
+    // [ux-sessions] the state word replaces the age on a running row.
+    expect(w.querySelector('.srow-time')).toBeNull();
     const n = screen.getByTestId('srow-n');
     expect(within(n).getByText('Needs you')).toBeTruthy();
     const u = screen.getByTestId('srow-u');
     expect(u.querySelector('.srow-unread')).toBeTruthy();
     expect(within(u).getByText('+12')).toBeTruthy();
     expect(within(u).getByText('−4')).toBeTruthy();
-    expect(u.querySelector('.srow-cron')).toBeTruthy();
+    expect(u.querySelector('.srow-glyph[data-kind="cron"]')).toBeTruthy();
     expect(u.getAttribute('title')).toBe('Nightly build');
-    // Idle rows show no state word — their one meta line holds just the time; never a π glyph.
+    // Idle rows: no state word, just the compact age; no row icon for a normal chat ([ux-sessions]).
     const idleRow = screen.getByTestId('srow-z');
     expect(within(idleRow).queryByText('Idle')).toBeNull();
     expect(idleRow.querySelector('.srow-word')).toBeNull();
-    expect(idleRow.querySelector('.srow-sub')!.textContent).toBe('2m ago');
+    expect(idleRow.querySelector('.srow-time')!.textContent).toBe('1m');
     expect(idleRow.textContent).not.toContain('π');
-    expect(idleRow.querySelector('.srow-glyph svg')).toBeTruthy();
+    expect(idleRow.querySelector('.srow-glyph svg')).toBeNull();
   });
 
   it('links to /s/:host/:session and marks the routed session active', async () => {
@@ -183,13 +184,14 @@ describe('SessionList', () => {
       card('home-chat', { name: undefined, cwd: '/home/oi' }),
       card('pinned-proj', { name: 'Pinned reply', cwd: '/home/oi/qa1ws', pinned: true }),
     ]);
-    await waitFor(() => expect(screen.getByTestId('sb-project-No workspace')).toBeTruthy());
+    // [ux-sessions] chats without a workspace are the "Tasks" group.
+    await waitFor(() => expect(screen.getByTestId('sb-project-Tasks')).toBeTruthy());
     const homeRow = screen.getByTestId('srow-home-chat');
     expect(homeRow.getAttribute('title')).toBe('New chat');
     const pinnedRow = screen.getByTestId('srow-pinned-proj');
     // One meta line, no folder chip (the sidebar's Workspace property is off by default).
     expect(pinnedRow.querySelector('.srow-cwd')).toBeNull();
-    expect(pinnedRow.querySelectorAll('.srow-sub')).toHaveLength(1);
+    expect(pinnedRow.querySelector('.srow-sub')).toBeNull();
     // Host pushes session_changed with the auto-generated title -> row updates live.
     world.emit({
       kind: 'session_changed',

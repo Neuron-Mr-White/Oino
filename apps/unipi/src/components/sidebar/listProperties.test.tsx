@@ -141,12 +141,13 @@ describe('Properties menu', () => {
   it('compact view puts each row on one line; property visibility hides the time; Hide all hides every chip', async () => {
     boot([card('a')]);
     await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
-    expect(screen.getByTestId('srow-a').querySelector('.srow-sub')).toBeTruthy();
+    // [ux-sessions] Task list rows are always one line: title + age.
+    expect(screen.getByTestId('srow-a').querySelector('.srow-sub')).toBeNull();
     openProps();
     fireEvent.click(screen.getByTestId('lp-compact'));
     await waitFor(() => expect(screen.getByTestId('srow-a').hasAttribute('data-compact')).toBe(true));
     expect(screen.getByTestId('srow-a').querySelector('.srow-sub')).toBeNull();
-    expect(screen.getByTestId('srow-a').querySelector('.srow-title-line .srow-time')).toBeTruthy();
+    expect(screen.getByTestId('srow-a').querySelector(':scope > .srow-time')).toBeTruthy();
     fireEvent.click(screen.getByTestId('lp-props'));
     fireEvent.click(screen.getByTestId('lp-prop-updated'));
     await waitFor(() => expect(screen.getByTestId('srow-a').querySelector('.srow-time')).toBeNull());
@@ -218,21 +219,29 @@ describe('Archive all', () => {
 });
 
 describe('rows', () => {
-  it('a cron chat is one title line + one meta line: clock chip and time, no stacked tags', async () => {
-    boot([card('c', { source: 'cron', name: 'Nightly' })]);
+  it('[ux-sessions] a cron chat is one line whose row icon is the clock (the kind), then the age', async () => {
+    boot([card('c', { source: 'cron', name: 'Nightly' }), card('n', { name: 'Normal' })]);
     const row = await screen.findByTestId('srow-c');
-    expect(row.querySelectorAll('.srow-sub')).toHaveLength(1);
-    const chip = row.querySelector('.srow-sub .srow-cron')!;
-    expect(chip.querySelector('svg')).toBeTruthy();
-    expect(chip.textContent).toBe('');
-    expect(row.querySelector('.srow-sub .srow-time')).toBeTruthy();
+    expect(row.querySelector('.srow-sub')).toBeNull();
+    const glyph = row.querySelector('.srow-glyph')!;
+    expect(glyph.getAttribute('data-kind')).toBe('cron');
+    expect(glyph.querySelector('svg')).toBeTruthy();
+    expect(row.querySelector('.srow-chips .srow-cron')).toBeNull();
+    expect(row.querySelector('.srow-time')!.textContent).toBe('1m');
+    // A normal chat has no row icon at all (no chat bubble).
+    const normal = screen.getByTestId('srow-n');
+    expect(normal.querySelector('.srow-glyph svg')).toBeNull();
+    expect(normal.querySelector('.srow-glyph')!.hasAttribute('data-kind')).toBe(false);
   });
 
   it('a running row keeps the fixed glyph slot (spinner, no extra line)', async () => {
     boot([card('r', { run_state: 'working' })]);
     const row = await screen.findByTestId('srow-r');
     expect(row.querySelector('.srow-glyph .srow-spin')).toBeTruthy();
-    expect(row.querySelectorAll('.srow-sub')).toHaveLength(1);
+    expect(row.querySelector('.srow-sub')).toBeNull();
+    // Running keeps its spinner + "Working" (in place of the age).
+    expect(row.querySelector('.srow-word')!.textContent).toBe('Working');
+    expect(row.querySelector('.srow-time')).toBeNull();
   });
 });
 

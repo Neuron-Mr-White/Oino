@@ -82,9 +82,9 @@
 .srow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 5px 8px 5px 10px;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 6px 4px 8px;
   box-sizing: border-box;
   border-radius: 8px;
   color: var(--color-text-muted);
@@ -94,16 +94,8 @@
   cursor: pointer;
   transition: background-color 140ms ease-out, color 140ms ease-out;
 }
-.srow[data-sub] {
-  align-items: flex-start;
-  min-height: 44px;
-  padding: 6px 8px 6px 10px;
-}
-.srow[data-compact] { min-height: 30px; padding-block: 4px; }
+.srow[data-compact] { min-height: 28px; padding-block: 3px; }
 .srow[data-archived] { opacity: 0.78; }
-.srow[data-sub] .srow-glyph {
-  margin-top: 2px;
-}
 .srow:hover { background: var(--color-surface-2); color: var(--color-text); }
 .srow:active { background: var(--color-surface-3); }
 .srow:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
@@ -121,6 +113,7 @@
 .srow[aria-current='page'] .srow-title { color: var(--color-text); font-weight: 560; }
 
 .srow-glyph {
+  /* [ux-sessions] a fixed gutter: empty for a normal chat, the kind / state icon otherwise. */
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -190,7 +183,8 @@
   overflow: hidden;
   white-space: nowrap;
 }
-.srow[data-compact] .srow-chips { flex: 0 1 auto; gap: 5px; }
+.srow .srow-chips { flex: 0 1 auto; gap: 5px; }
+.srow .srow-chips:empty { display: none; }
 .srow-chip {
   flex: none;
   display: inline-flex;
@@ -269,8 +263,8 @@
 
 /* >50 virtualized rows fit their slot height cleanly (44 px comfortable, 30 px compact). */
 .sb-rows-virtual { overflow: hidden; }
-.sb-rows-virtual .srow { height: 44px; min-height: 44px; }
-.sb-rows-virtual .srow[data-compact] { height: 30px; min-height: 30px; }
+.sb-rows-virtual .srow { height: 32px; min-height: 32px; }
+.sb-rows-virtual .srow[data-compact] { height: 28px; min-height: 28px; }
 
 /* "Show more" (+5, Z-11): no "show less" (ZCode). */
 .sb-more {
@@ -920,3 +914,20 @@ button.sa-row:active:not(:disabled) { background: var(--color-surface-3); transf
   line-height: 16px;
   color: var(--color-text-dim);
 }
+
+/* --- [ux-sessions] Task list groups: "Projects" (folder rows) and "Tasks" ------------------- */
+.sb-section,
+.sb-project-head[data-section] {
+  min-height: 24px;
+  padding: 10px 6px 2px 10px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--color-text-dim);
+}
+.sb-project-head[data-folder] { min-height: 28px; padding: 4px 6px 2px 9px; font-weight: 500; color: var(--color-text-muted); }
+.sb-project-folder { flex: none; color: var(--color-text-dim); }
+.sb-project-head[data-folder] .sb-project-label { font-size: 13px; }
+.srow .srow-time { margin-left: 0; line-height: 18px; }
+/* "Show more": muted, aligned with the row titles. */
+.sb-project .sb-more { height: 26px; min-height: 26px; padding-left: 30px; font-weight: 450; color: var(--color-text-dim); }

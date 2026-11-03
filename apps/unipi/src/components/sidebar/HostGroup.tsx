@@ -18,7 +18,7 @@ import { isInternalSession } from '../../lib/session/internal';
 import { sessions } from '../../lib/session/store';
 import { archiveMany } from '../../lib/session/actions';
 import { cronRunLabel } from '../../lib/cronRunLabels';
-import { activeFilterCount, listView, resetListFilters, viewGroups, wantsArchived, type CardFacts } from '../../lib/session/listView';
+import { activeFilterCount, listView, resetListFilters, viewGroups, wantsArchived, type CardFacts, type ViewGroup } from '../../lib/session/listView';
 import { liveRowState, SessionRow, type ModeBadge } from './SessionRow';
 import { createPaging, ProjectGroup } from './ProjectGroup';
 import { ArchivedList } from './ArchivedList';
@@ -124,7 +124,11 @@ export function HostGroup(props: {
   const [projectLimit, setProjectLimit] = createSignal(PROJECTS_PAGE);
   const activeId = () => (props.activeSession?.hostId === props.host.id ? props.activeSession.sessionId : undefined);
   const shownGroups = createMemo(() => visibleProjects(groups().groups, projectLimit(), activeId()));
-  const hiddenProjects = () => Math.max(0, groups().groups.length - projectLimit());
+  /** [ux-sessions] Group by Project: folders under "Projects", the No-workspace chats under "Tasks". */
+  const projectGroups = createMemo(() => groups().groups.filter((g) => g.cwd !== ''));
+  const tasksGroup = createMemo(() => groups().groups.find((g) => g.cwd === ''));
+  const shownProjects = createMemo(() => visibleProjects(projectGroups(), projectLimit(), activeId()));
+  const hiddenProjects = () => Math.max(0, (view().group === 'project' ? projectGroups() : groups().groups).length - projectLimit());
   // First load (or a reload after going offline): skeleton rows, not an empty list.
   const loading = () => !hub().state.loaded && !offline();
 
@@ -138,6 +142,35 @@ export function HostGroup(props: {
     }),
   );
 
+
+  /** One group's section (a project folder, a status / agent group, or the headless Tasks rows). */
+  const renderGroup = (group: ViewGroup, tasks = false) => (
+    <ProjectGroup
+      hostId={props.host.id}
+      cwd={tasks ? undefined : group.cwd}
+      groupKey={group.key}
+      label={tasks ? 'Tasks' : group.label}
+      section={tasks}
+      cards={group.cards}
+      meta={hub().state.meta}
+      variant={props.variant}
+      paging={paging}
+      modeOf={(card) => props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
+      onPin={pin}
+      activeOf={activeOf}
+      show={view().props}
+      compact={view().compact}
+      archivedOf={archivedOf}
+      headless={view().group === 'none'}
+      page={view().group === 'none' ? FLAT_PAGE : undefined}
+      onArchiveAll={
+        archivable(group.cards).length
+          ? (anchor) => setArchiveAsk({ anchor, label: tasks ? 'Tasks' : group.label, cards: archivable(group.cards) })
+          : undefined
+      }
+      treeOf={treeOf}
+    />
+  );
   const pin = (card: { session_id: string }, pinned: boolean) => void hub().setMeta(card.session_id, { pinned });
   const activeOf = (card: SessionCard) => props.activeSession?.hostId === props.host.id && props.activeSession?.sessionId === card.session_id;
   const archivedOf = (card: SessionCard) => archivedIds().has(card.session_id);
@@ -310,34 +343,13 @@ export function HostGroup(props: {
                 </div>
               </div>
             </Show>
-            <For each={shownGroups()}>
-              {(group) => (
-                <ProjectGroup
-                  hostId={props.host.id}
-                  cwd={group.cwd}
-                  groupKey={group.key}
-                  label={group.label}
-                  cards={group.cards}
-                  meta={hub().state.meta}
-                  variant={props.variant}
-                  paging={paging}
-                  modeOf={(card) => props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
-                  onPin={pin}
-                  activeOf={activeOf}
-                  show={view().props}
-                  compact={view().compact}
-                  archivedOf={archivedOf}
-                  headless={view().group === 'none'}
-                  page={view().group === 'none' ? FLAT_PAGE : undefined}
-                  onArchiveAll={
-                    archivable(group.cards).length
-                      ? (anchor) => setArchiveAsk({ anchor, label: group.label, cards: archivable(group.cards) })
-                      : undefined
-                  }
-                  treeOf={treeOf}
-                />
-              )}
-            </For>
+            {/* [ux-sessions] Task list: "Projects" (folder rows) then "Tasks" (chats without a workspace). */}
+            <Show when={view().group === 'project' && shownProjects().length > 0}>
+              <div class="sb-section" data-testid={`sb-section-projects-${props.host.id}`}>
+                Projects
+              </div>
+            </Show>
+            <For each={view().group === 'project' ? shownProjects() : shownGroups()}>{(group) => renderGroup(group)}</For>
             <Show when={hiddenProjects() > 0}>
               <button
                 type="button"
@@ -349,6 +361,9 @@ export function HostGroup(props: {
                 {view().group === 'project' ? 'Show more projects' : 'Show more groups'}
                 <span class="sb-more-count">{hiddenProjects()}</span>
               </button>
+            </Show>
+            <Show when={view().group === 'project' ? tasksGroup() : undefined} keyed>
+              {(g) => renderGroup(g, true)}
             </Show>
             {/* Z-13 (WP-A5): the host's trash — open read-only, restore or delete archived sessions. */}
             <ArchivedList
