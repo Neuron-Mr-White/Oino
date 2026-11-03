@@ -344,3 +344,20 @@ html[data-shell=phone][data-short] .ph-tabbar a svg { padding-block: 2px; }
 html[data-shell=phone][data-short] .ph-fab .ph-fab-label { display: none; }
 html[data-shell=phone][data-short] .ph-fab { padding: 0 16px; }
 html[data-shell=phone] .ph-pc-chip { height: 44px; min-height: 44px; }
+
+/* ── Phone stacking guard (owner 2026-11-03: "modal under its overlay") ─────
+   Per-sheet desktop rules (`body > div:has(> .sheet.X) > .sheet-overlay { z 69/74 }`)
+   out-rank the generic phone scrim rule above, while the phone `.sheet` rule puts
+   the sheet itself at --z-sheet (61): the scrim then sat ON TOP of its own sheet
+   (report sheet and any future sheet with such a rule). One rule for every sheet's
+   scrim, specific enough to win; floating bits that open from inside a sheet
+   (selects, ⋯ popovers, extension modals, browser sheet) go above the sheets. */
+html[data-shell=phone] body > div:has(> .sheet) > .sheet-overlay:not([data-level='2']) { z-index: var(--z-scrim); }
+html[data-shell=phone] body > div:has(> .sheet[data-level='2']) > .sheet-overlay[data-level='2'] { z-index: calc(var(--z-sheet-2) - 1); }
+html[data-shell=phone] .sheet.report-sheet { z-index: var(--z-sheet); }
+html[data-shell=phone] .ui-modal-scrim { z-index: calc(var(--z-sheet-2) + 1); }
+html[data-shell=phone] .browser-sheet-scrim { z-index: calc(var(--z-sheet-2) + 1); }
+html[data-shell=phone] .browser-sheet { z-index: calc(var(--z-sheet-2) + 2); }
+html[data-shell=phone] .recent-popover-backdrop { z-index: calc(var(--z-toast) - 3); }
+html[data-shell=phone] .recent-popover { z-index: calc(var(--z-toast) - 2); }
+html[data-shell=phone] .ui-select-content { z-index: calc(var(--z-toast) - 2); }
