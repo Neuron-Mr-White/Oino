@@ -122,3 +122,19 @@ describe('PhoneField chips', () => {
     expect(ta.selectionStart).toBe(11);
   });
 });
+
+describe('PhoneField picks during a composition (Gboard)', () => {
+  it('a suggestion picked while a word is composing replaces it, and the late compositionend does not write the old word back', () => {
+    const { ta, value, setValue } = mount('');
+    ta.focus();
+    fireEvent.compositionStart(ta);
+    ta.value = '/gra';
+    fireEvent.input(ta);
+    expect(value()).toBe('/gra');
+    setValue('/graph '); // the composer's pickCommand
+    expect(ta.value).toBe('/graph ');
+    fireEvent.compositionEnd(ta);
+    expect(value()).toBe('/graph ');
+    expect(ta.value).toBe('/graph ');
+  });
+});

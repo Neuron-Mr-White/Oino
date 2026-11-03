@@ -118,22 +118,42 @@ export function PhoneField(props: {
     focus: () => el?.focus({ preventScroll: true }),
     setCaret: (offset) => {
       if (!el) return;
+      if (el.value !== props.value) {
+        // A pick lands before its caret move: show the new text first (the effect may not have run yet).
+        if (composing) endComposition();
+        el.value = props.value;
+        before = props.value;
+        grow();
+      }
       const at = Math.max(0, Math.min(offset, el.value.length));
       el.setSelectionRange(at, at);
     },
     getCaret: caret,
     syncFromStore: () => {
-      if (!el || composing || el.value === props.value) return;
+      if (!el || el.value === props.value) return;
+      if (composing) endComposition();
       el.value = props.value;
       before = props.value;
       grow();
     },
   });
 
+  /** A picked suggestion replaced the word Gboard is still composing ("/gra" → "/graph "): the
+   *  composition must end, or its compositionend writes the old word back over the pick. Blur +
+   *  focus makes the keyboard restart its input on the new text. */
+  const endComposition = () => {
+    composing = false;
+    if (el !== document.activeElement) return;
+    el.blur();
+    el.focus({ preventScroll: true });
+  };
+
   // The draft changed outside an edit (a picked command, Send cleared it): show it.
   createEffect(() => {
     const value = props.value;
-    if (!el || composing || el.value === value) return;
+    if (!el || el.value === value) return;
+    const wasComposing = composing;
+    if (wasComposing) endComposition();
     const at = el === document.activeElement ? Math.min(el.selectionStart ?? value.length, value.length) : value.length;
     el.value = value;
     before = value;
@@ -261,6 +281,7 @@ export function PhoneField(props: {
         }}
         onCompositionStart={() => (composing = true)}
         onCompositionEnd={() => {
+          if (!composing) return; // ended by a pick (endComposition): the field already shows the draft
           composing = false;
           before = el.value;
           // The final composed text: make sure the draft has exactly what the field shows.
