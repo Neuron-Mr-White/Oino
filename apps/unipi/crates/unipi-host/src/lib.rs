@@ -21,6 +21,7 @@ pub mod ipc;
 pub mod local;
 pub mod logging;
 pub mod lsp;
+pub mod memory_browse;
 pub mod models_readiness;
 pub mod notify;
 pub mod pair_cli;

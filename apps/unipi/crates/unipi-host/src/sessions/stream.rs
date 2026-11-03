@@ -716,6 +716,37 @@ where
             let data = serde_json::to_value(&page).map_err(internal)?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
+        Request::MemoryBrowse {
+            project,
+            query,
+            limit,
+            cursor,
+        } => {
+            tracing::info!(op = "memory_browse", "request");
+            let root = crate::memory_browse::store_root(hub.agent_dir());
+            let page = tokio::task::spawn_blocking(move || {
+                crate::memory_browse::browse(
+                    &root,
+                    &crate::memory_browse::Browse {
+                        project: project.as_deref(),
+                        query: &query,
+                        limit,
+                        cursor: cursor.as_deref(),
+                    },
+                )
+            })
+            .await
+            .map_err(internal)?
+            .map_err(|_| {
+                AppErrorDto::new(
+                    AppErrorCode::E_SCHEMA,
+                    "memory_browse: `project` must be one folder name",
+                    false,
+                )
+            })?;
+            let data = serde_json::to_value(&page).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
         Request::EventsOpen => {
             tracing::info!(op = "events_open", "request");
             pump_events(&hub, read, write).await

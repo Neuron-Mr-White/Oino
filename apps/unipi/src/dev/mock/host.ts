@@ -137,6 +137,9 @@ export type MockSettings = {
   providers?: Array<{ id: string; name?: string; oauth?: boolean; configured?: boolean; stored?: string; env?: string[] }>;
 };
 
+/** One memory file of the mock store (`memory_browse`). */
+export type MockMemory = { id: string; title: string; kind: string; project: string; updated_at: number; body: string };
+
 export type MockHostSpec = {
   id: string;
   name: string;
@@ -146,6 +149,10 @@ export type MockHostSpec = {
   cards?: SessionCard[];
   /** WP-A5 (Z-13): the host's trash — `sessions_list{archived:true}` rows. */
   archived?: SessionCard[];
+  /** The memory extension's store behind `memory_browse` (owner fix 2026-11-03); a function builds it on first use. */
+  memories?: MockMemory[] | (() => MockMemory[]);
+  /** `memory_browse` waits this long (ms) before answering (loading states in captures). */
+  memoryDelayMs?: number;
   sessions?: Record<string, MockSession>;
   /** A `session_new` stream with no session id serves this session's script (default: none → E_NOT_FOUND). */
   newSessionFrom?: string;
@@ -524,6 +531,26 @@ const BUILTIN: Record<string, MockOp> = {
   // host.md §7.2: a bare array of cards, newest activity first (§3.14's
   // `sessions_list{archived:true}` answers the trash instead, WP-A5).
   sessions_list: (a, h) => (a?.archived === true ? h.spec.archived ?? [] : h.spec.cards ?? []),
+  // Owner fix 2026-11-03: Settings › Memory › Browse memories (mirrors unipi-host memory_browse).
+  memory_browse: async (a, h) => {
+    if (typeof h.spec.memories === 'function') h.spec.memories = h.spec.memories();
+    const all = (h.spec.memories ?? []) as MockMemory[];
+    if (h.spec.memoryDelayMs) await new Promise((r) => setTimeout(r, h.spec.memoryDelayMs));
+    const project = typeof a?.project === 'string' ? a.project : undefined;
+    const words = String(a?.query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const scoped = all
+      .filter((m) => !project || m.project === project)
+      .filter((m) => words.every((w) => `${m.title}\n${m.project}\n${m.body}`.toLowerCase().includes(w)))
+      .sort((x, y) => y.updated_at - x.updated_at);
+    const limit = Math.min(100, Math.max(1, Number(a?.limit ?? 50)));
+    const start = Number.parseInt(String(a?.cursor ?? '0'), 10) || 0;
+    const items = scoped.slice(start, start + limit).map((m) => ({ ...m, body: m.body.slice(0, 4000) }));
+    const counts = new Map<string, number>();
+    for (const m of all) counts.set(m.project, (counts.get(m.project) ?? 0) + 1);
+    const projects = a?.cursor ? [] : [...counts].map(([name, count]) => ({ name, count })).sort((x, y) => y.count - x.count || x.name.localeCompare(y.name));
+    const next = start + items.length;
+    return { items, total: scoped.length, ...(next < scoped.length ? { next_cursor: String(next) } : {}), projects, store: all.length > 0 };
+  },
   // Owner fix 2026-11-03: the host-side paged session search (mirrors unipi_proto::session_search_page).
   session_search: (a, h) => {
     const list = (a?.archived === true ? h.spec.archived ?? [] : h.spec.cards ?? []) as SessionCard[];

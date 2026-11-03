@@ -120,6 +120,7 @@ pub fn run() {
             blob::blob_get_bytes,
             chat::sessions_list,
             chat::session_search,
+            chat::memory_browse,
             chat::session_open,
             chat::session_new,
             chat::session_fork,

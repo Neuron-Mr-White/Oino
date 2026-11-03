@@ -686,6 +686,24 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         archived: bool,
     },
+    /// Owner fix 2026-11-03 (Settings › Memory › Browse memories): one page of the
+    /// memory extension's store on this host, newest first, optionally one project
+    /// and a word search over title / body / project — never the whole store.
+    /// → `ok{data:MemoryBrowseData}`.
+    MemoryBrowse {
+        /// One project folder; absent = every project.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        project: Option<String>,
+        /// Words that must all match (empty = newest first).
+        #[serde(default)]
+        query: String,
+        /// Page size (default [`crate::memory::MEMORY_PAGE_DEFAULT`], capped).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        limit: Option<u32>,
+        /// Opaque cursor from the previous page.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        cursor: Option<String>,
+    },
     /// host.md §7.4 (WP-H4): the one per-connection hub event stream. The host
     /// answers `ok{data:null}`, then pushes `session_changed` / `session_removed`
     /// / `host_notice` / `ui` events (a retained safe-mode notice first) until

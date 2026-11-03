@@ -116,7 +116,7 @@ export const MANAGE_ACTIONS: ManageAction[] = [
     id: 'memory.browse',
     page: 'memory',
     label: 'Browse memories',
-    description: 'List, search and forget what this project remembers',
+    description: 'Search and read what the agent remembers, newest first',
     command: 'memory',
     title: 'Memory: browse memories',
     keywords: 'memory browse list search forget remember',

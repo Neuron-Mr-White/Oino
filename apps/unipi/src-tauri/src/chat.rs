@@ -597,6 +597,34 @@ pub async fn session_search(
     .await
 }
 
+/// `memory_browse` (owner fix 2026-11-03): one page of the memory store on this host
+/// (Settings › Memory › Browse memories), newest first; `project` narrows it to one
+/// folder, `query` searches title / body / project.
+#[tauri::command]
+pub async fn memory_browse(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    project: Option<String>,
+    query: Option<String>,
+    limit: Option<u32>,
+    cursor: Option<String>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::MemoryBrowse {
+            project,
+            query: query.unwrap_or_default(),
+            limit,
+            cursor,
+        },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
 /// `session_open` (host.md §7.3): open or resume a session as a live stream.
 #[tauri::command]
 pub async fn session_open(

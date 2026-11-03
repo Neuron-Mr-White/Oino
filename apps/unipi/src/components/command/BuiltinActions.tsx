@@ -19,6 +19,7 @@ import { exportSession } from '../../lib/session/exportSession';
 import { duplicateSession } from '../../lib/session/duplicate';
 import { setAppNavigate } from '../../lib/nav';
 import { ImportSessionDialog } from './ImportSession';
+import { MemoryBrowserLayer, openMemoryBrowserFor } from '../memory/MemoryBrowser';
 
 export function BuiltinActions() {
   const navigate = useNavigate();
@@ -47,10 +48,20 @@ export function BuiltinActions() {
         keywords: `${action.keywords ?? ''} manage panel`,
         icon: () => <Wrench size={16} />,
         when: () => true,
-        run: () => void runManageActionAnywhere(action, { navigate, hostId: hosts?.hosts().find((h) => h.transport === 'local')?.id ?? LOCAL_HOST }),
+        run: () => {
+          const hostId = hosts?.hosts().find((h) => h.transport === 'local')?.id ?? LOCAL_HOST;
+          // Browse memories / All projects: the app's own modal (no chat, paged on the host).
+          if (action.id === 'memory.browse' || action.id === 'memory.global') return openMemoryBrowserFor(action.id === 'memory.browse' ? 'project' : 'all', hostId);
+          void runManageActionAnywhere(action, { navigate, hostId });
+        },
       })),
     ),
   );
 
-  return <ImportSessionDialog />;
+  return (
+    <>
+      <ImportSessionDialog />
+      <MemoryBrowserLayer />
+    </>
+  );
 }

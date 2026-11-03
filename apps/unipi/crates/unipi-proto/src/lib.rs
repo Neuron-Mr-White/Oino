@@ -18,6 +18,7 @@ pub mod frame;
 pub mod fs;
 pub mod git;
 pub mod lsp;
+pub mod memory;
 pub mod paths;
 pub mod push;
 pub mod session;

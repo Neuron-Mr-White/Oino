@@ -1099,6 +1099,7 @@ impl Handler {
             // path) says so instead of silently succeeding.
             Request::SessionsList { .. }
             | Request::SessionSearch { .. }
+            | Request::MemoryBrowse { .. }
             | Request::EventsOpen
             | Request::SessionNew { .. }
             | Request::SessionOpen { .. }

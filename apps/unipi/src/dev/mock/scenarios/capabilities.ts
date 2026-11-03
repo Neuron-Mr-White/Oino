@@ -15,7 +15,7 @@
  * open so the capture shows the enabled Manage rows, and `cap-mcp-nochat`
  * shows the "Open a chat to manage" state. `setup` lands on the page.
  */
-import type { MockHostSpec, MockNamespace, MockScenario } from '../host';
+import type { MockHostSpec, MockMemory, MockNamespace, MockScenario } from '../host';
 import { genCards, genFsTree, genSession } from '../gen';
 
 const HOST = 'local';
@@ -368,6 +368,22 @@ function capSession(session = SESSION) {
   return base;
 }
 
+/** A memory store the size of the owner's (~7,000), built on the first `memory_browse`. */
+function memoryStore(): MockMemory[] {
+  const projects = ['oino', 'unipi', 'cloud_agent', 'tally', 'heartpick', 'zmstudio_migration'];
+  const kinds = ['decision', 'pattern', 'preference', 'summary'];
+  const topics = ['Session list pages on the host', 'Prefer refresh tokens for auth', 'Remote builds run on Agent37', 'Use mise for every tool', 'Commit after every item', 'Keep the app version at 1.0.0'];
+  const now = Date.now();
+  return Array.from({ length: 7000 }, (_, i) => ({
+    id: `m${i}`,
+    title: `${topics[i % topics.length]} (${i})`,
+    kind: kinds[i % kinds.length]!,
+    project: projects[(i * 7) % projects.length]!,
+    updated_at: now - i * 37 * 60_000,
+    body: `**${topics[i % topics.length]}.** Learned while working on ${projects[(i * 7) % projects.length]}.\n\n- why: it broke before\n- how: see the commit`,
+  }));
+}
+
 function host(extra: Partial<MockHostSpec> = {}): MockHostSpec {
   return {
     id: HOST,
@@ -378,6 +394,7 @@ function host(extra: Partial<MockHostSpec> = {}): MockHostSpec {
     sessions: { [SESSION]: capSession() },
     newSessionFrom: SESSION,
     fs: sessionFs(),
+    memories: memoryStore,
     settings: {
       pi: { defaultModel: 'glm-4.7', enabledModels: ['anthropic/claude-opus-5-5', 'openai/gpt-5'] },
       namespaces: [MCP_NAMESPACE, MEMORY_NAMESPACE, SKILLS_NAMESPACE, SUBAGENTS_NAMESPACE],

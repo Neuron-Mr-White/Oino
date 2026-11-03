@@ -37,6 +37,7 @@ fn parses(schema: &str, value: &Value) -> Result<(), String> {
             Ok(
                 Request::SessionsList { .. }
                 | Request::SessionSearch { .. }
+                | Request::MemoryBrowse { .. }
                 | Request::EventsOpen
                 | Request::SessionNew { .. }
                 | Request::SessionOpen { .. }

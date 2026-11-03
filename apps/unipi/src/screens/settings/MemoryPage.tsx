@@ -1,14 +1,19 @@
 /**
  * Settings › Memory (WP-A25, G-9): the `memory` namespace's form (recall,
- * write pass, palace paths) plus the extension's **browse panel** — list,
- * search, forget and consolidate, global vs project — opened by `/memory` in
- * the active chat (the panel is built by the extension with the oino-ui
- * builder, `extensions/unipi/memory/src/panel.rs`).
+ * write pass, palace paths) plus Browse memories / All projects — the app's
+ * own paged modal over the host's `memory_browse` (components/memory). The
+ * extension's `/memory` panel (forget, consolidate) stays a chat command.
  */
 import { Brain } from 'lucide-solid';
 import { CapabilityPage } from './CapabilityPage';
+import { openMemoryBrowserFor } from '../../components/memory/MemoryBrowser';
+import { useHostsOptional } from '../../hosts/context';
+import { settingsHostId } from '../../settings/target';
 
 export function MemoryPage() {
+  const hosts = useHostsOptional();
+  // The same host the page's form and rows act on (This computer first).
+  const hostId = () => hosts?.hosts().find((h) => h.transport === 'local')?.id ?? settingsHostId();
   return (
     <CapabilityPage
       page="memory"
@@ -17,6 +22,11 @@ export function MemoryPage() {
       namespace="memory"
       sectionId="sec-memory"
       blurb="What the agent remembers between chats, and how it searches it."
+      // Owner fix 2026-11-03: the app's own paged browser, no chat needed.
+      openers={{
+        'memory.browse': () => openMemoryBrowserFor('project', hostId()),
+        'memory.global': () => openMemoryBrowserFor('all', hostId()),
+      }}
     />
   );
 }
