@@ -194,7 +194,7 @@ export function ClipboardImageBody(props: { dialog: UiRequest; onAnswer: (value:
   const read = () => {
     const nav = navigator as Navigator & { clipboard?: { read?: () => Promise<ClipboardItemLike[]> } };
     if (!nav.clipboard?.read) {
-      setError('This build cannot read the clipboard — answer in the terminal.');
+      setError('This build cannot read the clipboard — cancel, then attach the image in the composer.');
       return;
     }
     nav.clipboard
@@ -204,7 +204,7 @@ export function ClipboardImageBody(props: { dialog: UiRequest; onAnswer: (value:
         if (image) props.onAnswer(image);
         else setError('No image on the clipboard.');
       })
-      .catch(() => setError('This build cannot read the clipboard — answer in the terminal.'));
+      .catch(() => setError('This build cannot read the clipboard — cancel, then attach the image in the composer.'));
   };
   return (
     <div class="dlg" data-testid="dlg-clipboard">
