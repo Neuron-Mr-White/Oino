@@ -7,14 +7,14 @@
 # toolchain + profilers, builds HEAD's .deb there (unless --deb is given), runs
 # scripts/perf/run.sh, copies perf-out/ back to target/perf-out/<vm>/ (under the target GC budget) and deletes the VM
 # (always, via trap; --keep leaves it for debugging — delete it with `a37 rm <id>`).
-# Needs AGENT37_API_KEY in ~/.bashrc, npx (for the agent37 tunnel) and ~/.ssh/id_ed25519.
+# Needs the Agent37 key in ~/.config/agent37/api-key (or AGENT37_KEY_FILE), npx (for the agent37 tunnel) and ~/.ssh/id_ed25519.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(cd "$HERE/../.." && pwd)"
 DEB="" KEEP=0
 while [ $# -gt 0 ]; do
   case "$1" in --deb) DEB=$2; shift 2 ;; --keep) KEEP=1; shift ;; --) shift; break ;; *) break ;; esac
 done
-K=$(grep -o 'AGENT37_API_KEY=[^ ]*' ~/.bashrc | head -1 | cut -d= -f2- | tr -d "\"'")
+K=$(cat "${AGENT37_KEY_FILE:-$HOME/.config/agent37/api-key}" 2>/dev/null)
 [ -n "$K" ] || { echo "remote: AGENT37_API_KEY missing" >&2; exit 64; }
 ID=$(curl -s -X POST -H "Authorization: Bearer $K" -H 'Content-Type: application/json' \
   -d '{"template":"agent37-ubuntu","type":"vm","name":"oino-perf-bench","auto_sleep":false,"resources":{"cpu":4,"memory":32,"disk":80}}' \
