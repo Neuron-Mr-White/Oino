@@ -936,3 +936,12 @@ button.sa-row:active:not(:disabled) { background: var(--color-surface-3); transf
 .sb-tasks-filter[data-active] { color: var(--color-wm-cyan); background: rgb(40 190 240 / 12%); }
 .sb-tasks-filter[data-active]:hover { background: rgb(40 190 240 / 18%); }
 .sb-tasks-filter-n { font-size: 10.5px; line-height: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* The box draws the focus ring; the bare input inside never adds its own (base min-height / outline). */
+.sb-search .sb-search-input,
+.sb-search .sb-search-input:focus-visible { min-height: 0; height: 26px; outline: 0; box-shadow: none; }
+.sb-search .sb-search-clear { min-height: 0; }
+/* Project tools (Archive all, New chat here) appear on hover / focus, like the reference's quiet folder rows. */
+.sb-project-head[data-folder] .sb-project-tools { opacity: 0; transition: opacity 120ms ease-out; }
+.sb-project-head[data-folder]:hover .sb-project-tools,
+.sb-project-head[data-folder]:focus-within .sb-project-tools { opacity: 1; }
+@media (hover: none) { .sb-project-head[data-folder] .sb-project-tools { opacity: 1; } }

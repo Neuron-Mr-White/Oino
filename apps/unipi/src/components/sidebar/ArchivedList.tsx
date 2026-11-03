@@ -15,7 +15,7 @@ import type { SessionCard } from '../../lib/host/client';
 import { deleteArchived, emptyTrash, restoreSession, sessionHref } from '../../lib/session/actions';
 import { hubs } from '../../lib/session/hub';
 import { sessionTitle } from '../../lib/session/selectors';
-import { relativeTimeMs } from '../../lib/time';
+import { shortAge } from '../../lib/time';
 import { observeTitleOverflow, type RowVariant } from './SessionRow';
 
 const titleOf = (card: SessionCard): string => sessionTitle(card, undefined, card.session_id);
@@ -103,7 +103,7 @@ export function ArchivedList(props: { hostId: string; variant: RowVariant; activ
                       {title()}
                     </span>
                   </a>
-                  <span class="srow-time sb-archived-time">{relativeTimeMs(card.last_activity ?? card.updated_at)}</span>
+                  <span class="srow-time sb-archived-time">{shortAge(card.last_activity ?? card.updated_at)}</span>
                   <div class="sb-archived-actions">
                     <Show
                       when={!confirming()}
