@@ -476,7 +476,23 @@ struct StreamReport {
     first_seq: u64,
     last_seq: u64,
     assistant_chars: usize,
+    /// The live `message_end` was clipped to the event budget (fix-frames, `bound_event`).
+    assistant_truncated: bool,
     replies: Vec<Value>,
+}
+
+/// Text length of an assistant message's content blocks.
+fn assistant_text_len(message: &Value) -> usize {
+    message["content"]
+        .as_array()
+        .map(|blocks| {
+            blocks
+                .iter()
+                .filter_map(|block| block["text"].as_str())
+                .map(str::len)
+                .sum()
+        })
+        .unwrap_or(0)
 }
 
 /// Reads the run's events until `agent_settled`, asserting strictly increasing seqs.
@@ -494,6 +510,7 @@ async fn read_run(stream: &mut SessionStream, session_id: &str, base: u64) -> St
         first_seq: u64::MAX,
         last_seq: base,
         assistant_chars: 0,
+        assistant_truncated: false,
         replies: Vec::new(),
     };
     loop {
@@ -529,18 +546,12 @@ async fn read_run(stream: &mut SessionStream, session_id: &str, base: u64) -> St
                             last_delta = Instant::now();
                         }
                         Some("message_end") if event["message"]["role"] == "assistant" => {
-                            // The final message carries the whole reply (`content` is an
-                            // array of blocks for assistant messages).
-                            report.assistant_chars = event["message"]["content"]
-                                .as_array()
-                                .map(|blocks| {
-                                    blocks
-                                        .iter()
-                                        .filter_map(|block| block["text"].as_str())
-                                        .map(str::len)
-                                        .sum()
-                                })
-                                .unwrap_or(0);
+                            // The final message carries the reply (`content` is an array
+                            // of blocks), clipped and flagged `truncated` when the event
+                            // is over the live event budget.
+                            report.assistant_chars = assistant_text_len(&event["message"]);
+                            report.assistant_truncated =
+                                event["truncated"] == true || event["message"]["truncated"] == true;
                         }
                         Some("agent_settled") => {
                             report.total = started.elapsed();
@@ -697,10 +708,52 @@ async fn headless_host_client_e2e_and_performance_gates() {
         "no correlated prompt reply: {:?}",
         run.replies
     );
-    assert_eq!(
-        run.assistant_chars, REPLY_CHARS,
-        "the whole 100k-token reply arrived"
-    );
+    if run.assistant_truncated {
+        // A live event is bounded (fix-frames P0: no oversize frame); the app refetches
+        // the whole entry by id on expand, so that path must return all of it.
+        assert!(
+            run.assistant_chars > 0 && run.assistant_chars < REPLY_CHARS,
+            "a truncated message_end carries a clipped head: {}",
+            run.assistant_chars
+        );
+        session
+            .send(json!({
+                "type": "session_cmd", "id": "page",
+                "cmd": {"type": "get_entries", "limit": 4}
+            }))
+            .await;
+        let page = session.wait_reply("page").await;
+        assert_eq!(page["type"], "ok", "{page}");
+        let entry_id = page["data"]["entries"]
+            .as_array()
+            .and_then(|entries| {
+                entries
+                    .iter()
+                    .rev()
+                    .find(|entry| entry["message"]["role"] == "assistant")
+            })
+            .and_then(|entry| entry["id"].as_str())
+            .unwrap_or_else(|| panic!("no assistant entry in the page: {page}"))
+            .to_owned();
+        session
+            .send(json!({
+                "type": "session_cmd", "id": "full",
+                "cmd": {"type": "get_entries", "ids": [entry_id]}
+            }))
+            .await;
+        let full = session.wait_reply("full").await;
+        assert_eq!(full["type"], "ok", "{full}");
+        assert_eq!(
+            assistant_text_len(&full["data"]["entries"][0]["message"]),
+            REPLY_CHARS,
+            "the whole 100k-token reply is served by id"
+        );
+    } else {
+        assert_eq!(
+            run.assistant_chars, REPLY_CHARS,
+            "the whole 100k-token reply arrived"
+        );
+    }
     assert!(
         run.delta_events < CHUNKS,
         "{} deltas must coalesce, got {} message_update events",
