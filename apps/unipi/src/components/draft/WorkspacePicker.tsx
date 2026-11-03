@@ -207,8 +207,20 @@ export function WorkspacePicker(props: {
                     const q = filter().trim().toLowerCase();
                     return q ? all.filter((n) => n.toLowerCase().includes(q)) : all;
                   };
+                  /** Owner 2026-11-03: recent workspaces first (newest first, no scratch), then the browser. */
+                  const recentHits = () => {
+                    const q = filter().trim().toLowerCase();
+                    return q ? recentItems().filter((it) => it.path.toLowerCase().includes(q)) : recentItems();
+                  };
                   return (
                   <div class="ws-browse" data-testid="workspace-browser">
+                    <Show when={recentHits().length}>
+                      <div class="ws-browse-recent" data-testid="workspace-browse-recent">
+                        <div class="ws-label">Recent</div>
+                        <For each={recentHits()}>{row}</For>
+                      </div>
+                      <div class="ws-label ws-label-browse">Browse</div>
+                    </Show>
                     <Show
                       when={phone()}
                       fallback={
@@ -223,7 +235,8 @@ export function WorkspacePicker(props: {
                             <ArrowLeft size={15} />
                           </button>
                           <span class="ws-browse-path" title={dir()}>
-                            {short(dir())}
+                            {/* rtl keeps the folder end visible when cut; the bdi keeps `~/a/b` from reading `a/b/~`. */}
+                            <bdi dir="ltr">{short(dir())}</bdi>
                           </span>
                         </div>
                       }
@@ -241,7 +254,7 @@ export function WorkspacePicker(props: {
                         </For>
                       </nav>
                     </Show>
-                    <Show when={(listing()?.dirs.length ?? 0) > 6}>
+                    <Show when={(listing()?.dirs.length ?? 0) + recentItems().length > 6}>
                       <input
                         type="search"
                         class="dm-search"

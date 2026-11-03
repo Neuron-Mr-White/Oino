@@ -144,6 +144,23 @@ describe('DraftView (Z-19)', () => {
     await waitFor(() => expect(screen.getByTestId('workspace-chip').textContent).toContain('oino'));
   });
 
+  it('the folder browser starts with a Recent group (owner 2026-11-03), then the folders', async () => {
+    boot();
+    await waitFor(() => expect(screen.getByTestId('workspace-chip')).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByTestId('workspace-chip'));
+    const menu = await waitFor(() => screen.getByTestId('workspace-menu'));
+    await waitFor(() => expect(menu.textContent).toContain('~/p/oino'));
+    fireEvent.click(screen.getByTestId('workspace-open'));
+    const browser = await screen.findByTestId('workspace-browser');
+    const recent = await waitFor(() => screen.getByTestId('workspace-browse-recent'));
+    expect(browser.firstElementChild).toBe(recent);
+    expect(recent.textContent).toContain('Recent');
+    expect(recent.textContent).toContain('~/p/oino');
+    fireEvent.click([...recent.querySelectorAll('.ws-row')].find((r) => r.textContent?.includes('~/p/oino'))!);
+    await waitFor(() => expect(screen.getByTestId('workspace-chip').textContent).toContain('oino'));
+  });
+
   it('the first prompt starts the session in the workspace and routes to it', async () => {
     start.mockResolvedValue({ ok: true, sessionId: 's-new-1' });
     boot();
