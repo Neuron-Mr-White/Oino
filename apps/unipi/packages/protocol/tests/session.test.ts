@@ -98,3 +98,14 @@ describe('session host events', () => {
     expect(full.entries).toEqual([]);
   });
 });
+
+describe('session_search', () => {
+  it('parses the request and a page', async () => {
+    const { SessionSearchRequestSchema, SessionSearchDataSchema } = await import('../src/index.js');
+    expect(SessionSearchRequestSchema.parse({ op: 'session_search', query: 'fix parser', limit: 50 }).limit).toBe(50);
+    expect(SessionSearchRequestSchema.safeParse({ op: 'session_search', limit: 500 }).success).toBe(false);
+    const page = SessionSearchDataSchema.parse({ cards: [{ session_id: 'a', cwd: '/p', updated_at: 1, message_count: 0, run_state: 'idle' }], total: 3, next_cursor: '1' });
+    expect(page.next_cursor).toBe('1');
+    expect(SessionSearchDataSchema.parse({ cards: [], total: 0 }).next_cursor).toBeUndefined();
+  });
+});

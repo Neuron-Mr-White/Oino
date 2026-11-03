@@ -687,6 +687,25 @@ where
             let data = serde_json::to_value(&cards).map_err(internal)?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
+        Request::SessionSearch {
+            query,
+            limit,
+            cursor,
+            archived,
+        } => {
+            tracing::info!(op = "session_search", archived, "request");
+            let cards: Vec<SessionCard> = if archived {
+                hub.archived().await.map_err(hub_error)?
+            } else {
+                hub.list().await.map_err(hub_error)?
+            }
+            .iter()
+            .map(wire_card)
+            .collect();
+            let page = unipi_proto::session_search_page(&cards, &query, limit, cursor.as_deref());
+            let data = serde_json::to_value(&page).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
         Request::EventsOpen => {
             tracing::info!(op = "events_open", "request");
             pump_events(&hub, read, write).await

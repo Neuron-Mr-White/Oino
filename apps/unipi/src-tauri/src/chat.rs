@@ -569,6 +569,34 @@ pub async fn sessions_list(
     .await
 }
 
+/// `session_search` (owner fix 2026-11-03): one page of this host's sessions whose
+/// name / folder / id match every word of `query`, newest first (the command center's
+/// Sessions scope; never the whole list).
+#[tauri::command]
+pub async fn session_search(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    query: Option<String>,
+    limit: Option<u32>,
+    cursor: Option<String>,
+    archived: Option<bool>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionSearch {
+            query: query.unwrap_or_default(),
+            limit,
+            cursor,
+            archived: archived.unwrap_or(false),
+        },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
 /// `session_open` (host.md §7.3): open or resume a session as a live stream.
 #[tauri::command]
 pub async fn session_open(

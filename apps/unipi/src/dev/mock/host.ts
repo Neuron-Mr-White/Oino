@@ -524,6 +524,19 @@ const BUILTIN: Record<string, MockOp> = {
   // host.md §7.2: a bare array of cards, newest activity first (§3.14's
   // `sessions_list{archived:true}` answers the trash instead, WP-A5).
   sessions_list: (a, h) => (a?.archived === true ? h.spec.archived ?? [] : h.spec.cards ?? []),
+  // Owner fix 2026-11-03: the host-side paged session search (mirrors unipi_proto::session_search_page).
+  session_search: (a, h) => {
+    const list = (a?.archived === true ? h.spec.archived ?? [] : h.spec.cards ?? []) as SessionCard[];
+    const words = String(a?.query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const hits = list
+      .filter((c) => words.every((w) => `${c.name ?? ''} ${c.cwd ?? ''} ${c.session_id} ${c.model ?? ''}`.toLowerCase().includes(w)))
+      .sort((x, y) => (y.last_activity ?? y.updated_at ?? 0) - (x.last_activity ?? x.updated_at ?? 0));
+    const limit = Math.min(200, Math.max(1, Number(a?.limit ?? 50)));
+    const start = Number.parseInt(String(a?.cursor ?? '0'), 10) || 0;
+    const cards = hits.slice(start, start + limit);
+    const next = start + cards.length;
+    return { cards: cards.map((c) => ({ ...c })), total: hits.length, ...(next < hits.length ? { next_cursor: String(next) } : {}) };
+  },
   // App spec §3.14 (WP-A5): rename sets the card's name and the hub stream
   // carries it (the app locks the title separately via session_meta_set).
   session_rename: (a, h) => {

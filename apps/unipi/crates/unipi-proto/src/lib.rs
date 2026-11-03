@@ -73,8 +73,9 @@ pub use lsp::{LspAttachData, LspLanguage, LspServerInfo, LspServersData, LSP_LAN
 pub use push::{PushId, PushItem, PushListData, PushOutcome, PushWait, PUSH_WAIT_MAX};
 pub use session::{
     HistoryPage, HubEvent, NoticeLevel, RunState, SessionCard, SessionEventDto, SessionEvents, SessionId,
-    SessionName, SessionReply, SessionSnapshot, SessionTarget, SessionsListData, TrashEmptyData,
-    HOST_EVENT_KINDS, SESSION_ID_MAX, SESSION_NAME_MAX, SESSION_TARGET_MAX,
+    SessionName, SessionReply, SessionSearchData, SessionSnapshot, SessionTarget, SessionsListData,
+    TrashEmptyData, session_card_matches, session_search_page, HOST_EVENT_KINDS,
+    SESSION_SEARCH_LIMIT_DEFAULT, SESSION_SEARCH_LIMIT_MAX, SESSION_SEARCH_QUERY_MAX, SESSION_ID_MAX, SESSION_NAME_MAX, SESSION_TARGET_MAX,
 };
 pub use settings::{
     HostSettingsKey, HostSettingsSetRequest, RelaySetting, HOST_SETTINGS_BLOCKS,

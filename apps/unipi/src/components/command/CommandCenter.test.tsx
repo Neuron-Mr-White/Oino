@@ -3,7 +3,7 @@ import { HashRouter, Route } from '@solidjs/router';
 import { HostsProvider } from '../../hosts/context';
 import { SettingsProvider } from '../../settings/context';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CommandCenter, buildRows, parsePrefixQuery, pushHistory, historyFor, scoreRows, openFileFromCenter, HISTORY_MAX, type HistoryEntry, type SessionRow } from './CommandCenter';
+import { CommandCenter, buildRows, remoteView, SESSIONS_PAGE, parsePrefixQuery, pushHistory, historyFor, scoreRows, openFileFromCenter, HISTORY_MAX, type HistoryEntry, type SessionRow } from './CommandCenter';
 import type { SessionCard } from '../../lib/host/client';
 import { createMockHost } from '../../dev/mock/host';
 import { cmdkEmpty } from '../../dev/mock/scenarios/command';
@@ -38,7 +38,7 @@ function boot() {
 beforeEach(() => {
   localStorage.clear();
 });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   setPaletteOpen(false);
   setHostClientFactory(undefined);
@@ -48,6 +48,9 @@ afterEach(() => {
   resetLayout();
   setDesktopOverride(undefined);
   location.hash = '';
+  // jsdom fires the hash change's popstate a tick later: let it land before the
+  // next test opens a dialog (it would close it through the back stack).
+  await new Promise((r) => setTimeout(r, 30));
 });
 
 describe('parsePrefixQuery (Z-77)', () => {
@@ -139,6 +142,36 @@ describe('buildRows (Z-77)', () => {
     expect(withQuery.filter((r) => r.kind === 'slash')).toHaveLength(1);
   });
 
+  it('Sessions scope: loading / error + retry instead of "No sessions yet" (owner 2026-11-03)', () => {
+    const base = { commands: [], slash: [], files: [], expanded: new Set<string>() };
+    const loading = buildRows({ ...base, scope: 'sessions', query: '', sessions: [], sessionsLoading: true });
+    expect(loading).toContainEqual({ kind: 'note', text: 'Loading sessions…' });
+    const failed = buildRows({ ...base, scope: 'sessions', query: '', sessions: [], sessionsError: 'host offline' });
+    expect(failed).toContainEqual({ kind: 'note', text: "Couldn't load sessions: host offline" });
+    expect(failed.some((r) => r.kind === 'fetch' && r.action === 'retry-sessions')).toBe(true);
+    const allLoading = buildRows({ ...base, scope: 'all', query: '', sessions: [], sessionsLoading: true });
+    expect(allLoading.slice(0, 2)).toEqual([{ kind: 'header', label: 'Recent sessions' }, { kind: 'note', text: 'Loading sessions…' }]);
+  });
+
+  it('Sessions scope pages the recent list (50 at a time) and the host search', () => {
+    const many = Array.from({ length: 120 }, (_, i) => session(String(i)));
+    const base = { commands: [], slash: [], files: [], expanded: new Set<string>() };
+    const first = buildRows({ ...base, scope: 'sessions', query: '', sessions: many });
+    expect(first.filter((r) => r.kind === 'session')).toHaveLength(SESSIONS_PAGE);
+    expect(first.at(-1)).toMatchObject({ kind: 'fetch', action: 'more-sessions', label: 'Show more (70)' });
+    const second = buildRows({ ...base, scope: 'sessions', query: '', sessions: many, recentLimit: 100 });
+    expect(second.filter((r) => r.kind === 'session')).toHaveLength(100);
+    // a typed query shows the host's page (not the local ranking) + Load more
+    const remote = remoteView({ query: 'x', rows: [session('900')], cursors: { [HOST]: '50' }, loading: false, unsupported: false });
+    const hits = buildRows({ ...base, scope: 'sessions', query: 'x', sessions: many, remote });
+    expect(hits.filter((r) => r.kind === 'session').map((r) => (r as SessionRow).card.session_id)).toEqual(['900']);
+    expect(hits.at(-1)).toMatchObject({ kind: 'fetch', action: 'more-sessions' });
+    const searching = buildRows({ ...base, scope: 'sessions', query: 'x', sessions: many, remote: { rows: [], loading: true, hasMore: false } });
+    expect(searching).toContainEqual({ kind: 'note', text: 'Searching sessions…' });
+    // an older host without session_search: local ranking
+    expect(remoteView({ query: 'x', rows: [], cursors: {}, loading: false, unsupported: true })).toBeUndefined();
+  });
+
   it('Files scope: needs ≥ 2 characters', () => {
     const rows = buildRows({ scope: 'files', query: 't', commands: [], slash: [], sessions: [], files: [], expanded: new Set() });
     expect(rows[0]).toMatchObject({ kind: 'note', text: 'Type at least 2 characters to search files' });
@@ -170,7 +203,33 @@ describe('CommandCenter dialog', () => {
     fireEvent.input(input, { target: { value: '#failing' } });
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute('aria-selected', 'true'));
     // a query in Sessions ranks matching rows directly (no "Recent sessions" header)
-    await waitFor(() => expect(document.querySelectorAll('.cmdk-row[data-kind="session"]').length).toBeGreaterThan(0));
+    await waitFor(() => expect(document.querySelectorAll('.cmdk-row[data-kind="session"]').length).toBeGreaterThan(0), { timeout: 3000 });
+  });
+
+  it('typed Sessions search asks the host (session_search) and lists its page', async () => {
+    const mock = createMockHost(cmdkEmpty);
+    const seen: string[] = [];
+    setDesktopOverride(true);
+    setHostClientFactory((id) => {
+      const c = mock.client(id);
+      const orig = c.request.bind(c);
+      c.request = ((op: string, args?: Record<string, unknown>) => (seen.push(op), orig(op, args))) as typeof c.request;
+      return c;
+    });
+    setPaletteOpen(true);
+    render(() => (
+      <SettingsProvider>
+        <HostsProvider>
+          <HashRouter>
+            <Route path="*" component={() => <CommandCenter />} />
+          </HashRouter>
+        </HostsProvider>
+      </SettingsProvider>
+    ));
+    await screen.findByTestId('cmdk-list');
+    fireEvent.input(screen.getByLabelText('Search'), { target: { value: '#failing' } });
+    await waitFor(() => expect(seen).toContain('session_search'), { timeout: 3000 });
+    await waitFor(() => expect(document.querySelectorAll('.cmdk-row[data-kind="session"]').length).toBeGreaterThan(0), { timeout: 3000 });
   });
 
   it('arrow keys move, Enter runs a session row (navigates)', async () => {

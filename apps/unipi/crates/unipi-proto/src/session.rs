@@ -281,6 +281,81 @@ fn is_false(value: &bool) -> bool {
 /// §3.14's `sessions_list{archived:true}` is additive).
 pub type SessionsListData = Vec<SessionCard>;
 
+/// `session_search` page size when the request names none.
+pub const SESSION_SEARCH_LIMIT_DEFAULT: u32 = 50;
+/// The most cards one `session_search` page carries (keeps the reply far below a frame).
+pub const SESSION_SEARCH_LIMIT_MAX: u32 = 200;
+/// The longest `session_search` query the host accepts (bytes); longer is cut.
+pub const SESSION_SEARCH_QUERY_MAX: usize = 256;
+
+/// `session_search` → one page of matching cards, newest activity first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSearchData {
+    /// The page.
+    pub cards: Vec<SessionCard>,
+    /// Every match, across pages.
+    pub total: usize,
+    /// The next page's cursor; absent on the last page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+/// Whether `card` matches every lowercase word of `words` (name, folder, id, model).
+#[must_use]
+pub fn session_card_matches(card: &SessionCard, words: &[String]) -> bool {
+    if words.is_empty() {
+        return true;
+    }
+    let hay = format!(
+        "{} {} {} {}",
+        card.name.as_deref().unwrap_or_default(),
+        card.cwd,
+        card.session_id,
+        card.model.as_deref().unwrap_or_default()
+    )
+    .to_lowercase();
+    words.iter().all(|w| hay.contains(w.as_str()))
+}
+
+/// One `session_search` page over `cards` (already newest first): the query split
+/// into lowercase words, the offset cursor decoded (a bad cursor restarts at 0),
+/// the limit clamped to `1..=SESSION_SEARCH_LIMIT_MAX`.
+#[must_use]
+pub fn session_search_page(
+    cards: &[SessionCard],
+    query: &str,
+    limit: Option<u32>,
+    cursor: Option<&str>,
+) -> SessionSearchData {
+    let mut q = query;
+    if q.len() > SESSION_SEARCH_QUERY_MAX {
+        let mut end = SESSION_SEARCH_QUERY_MAX;
+        while !q.is_char_boundary(end) {
+            end -= 1;
+        }
+        q = &q[..end];
+    }
+    let words: Vec<String> = q.split_whitespace().map(str::to_lowercase).collect();
+    let limit = limit
+        .unwrap_or(SESSION_SEARCH_LIMIT_DEFAULT)
+        .clamp(1, SESSION_SEARCH_LIMIT_MAX) as usize;
+    let start = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
+    let mut total = 0usize;
+    let mut page = Vec::new();
+    for card in cards.iter().filter(|c| session_card_matches(c, &words)) {
+        if total >= start && page.len() < limit {
+            page.push(card.clone());
+        }
+        total += 1;
+    }
+    let next = start + page.len();
+    SessionSearchData {
+        cards: page,
+        total,
+        next_cursor: (next < total).then(|| next.to_string()),
+    }
+}
+
 /// `trash_empty` → how many archived sessions were deleted (app spec §3.14, WP-A5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrashEmptyData {
@@ -546,6 +621,34 @@ pub enum HubEvent {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn search_card(id: &str, name: Option<&str>, cwd: &str) -> SessionCard {
+        serde_json::from_value(json!({"session_id": id, "cwd": cwd, "name": name})).unwrap()
+    }
+
+    #[test]
+    fn session_search_pages_and_matches_every_word() {
+        let cards: Vec<SessionCard> = (0..120)
+            .map(|i| search_card(&format!("id{i}"), Some(if i % 2 == 0 { "Fix Parser" } else { "Deploy" }), "/home/u/Projects/oino"))
+            .collect();
+        let first = session_search_page(&cards, "", Some(50), None);
+        assert_eq!((first.cards.len(), first.total), (50, 120));
+        assert_eq!(first.next_cursor.as_deref(), Some("50"));
+        let last = session_search_page(&cards, "", Some(50), Some("100"));
+        assert_eq!(last.cards.len(), 20);
+        assert_eq!(last.next_cursor, None);
+        let hits = session_search_page(&cards, "  parser OINO ", None, None);
+        assert_eq!(hits.total, 60);
+        assert!(hits.cards.iter().all(|c| c.name.as_deref() == Some("Fix Parser")));
+        assert_eq!(session_search_page(&cards, "parser nope", None, None).total, 0);
+        // the limit is clamped, a bad cursor restarts
+        assert_eq!(session_search_page(&cards, "", Some(0), Some("x")).cards.len(), 1);
+        assert_eq!(session_search_page(&cards, "", Some(10_000), None).cards.len(), 120);
+        assert!(session_search_page(&cards, &"é".repeat(400), None, None).total == 0);
+        let data = serde_json::to_value(&hits).unwrap();
+        assert_eq!(data["total"], 60);
+        assert!(serde_json::from_value::<SessionSearchData>(data).is_ok());
+    }
 
     #[test]
     fn session_target_and_name_validate() {

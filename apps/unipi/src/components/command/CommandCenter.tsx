@@ -20,6 +20,8 @@ import { sessionTitle, lastActivity } from '../../lib/session/selectors';
 import type { SessionCard } from '../../lib/host/client';
 import { fsSearch, fsRoots } from '../../lib/fs';
 import { useHostsOptional } from '../../hosts/context';
+import { hostClient } from '../../lib/host/factory';
+import { SessionSearchDataSchema, toAppError } from '@unipi/protocol';
 import { setComposerText, focusComposer } from '../../lib/timeline/actions';
 import { layout } from '../../lib/layout';
 import { currentWorkspace } from '../shell/Workspace';
@@ -121,7 +123,9 @@ export function historyWorkspace(): string {
 export type SessionRow = { kind: 'session'; key: string; hostId: string; hostName: string; card: SessionCard };
 export type FileRow = { kind: 'file'; key: string; hostId: string; path: string; root: string };
 export type SlashRow = { kind: 'slash'; key: string; name: string; description?: string };
-export type Selectable = SessionRow | FileRow | SlashRow | { kind: 'command'; key: string; command: Command };
+/** A row that fetches (next page of sessions / retry after an error). */
+export type FetchRow = { kind: 'fetch'; key: string; label: string; action: 'more-sessions' | 'retry-sessions' };
+export type Selectable = SessionRow | FileRow | SlashRow | FetchRow | { kind: 'command'; key: string; command: Command };
 export type Row = Selectable | { kind: 'header'; label: string } | { kind: 'more'; key: string; group: string; count: number } | { kind: 'note'; text: string };
 
 export function CommandCenter() {
@@ -183,6 +187,66 @@ function CenterDialog() {
     }
     return out.sort((a, b) => lastActivity(b.card) - lastActivity(a.card));
   });
+  /** The hubs' list state: still loading (no card yet) or failed (no card at all). */
+  const hubsLoading = createMemo(() => orderedHosts().some((host) => {
+    const st = hubs().ensure(host.id).state;
+    return !st.loaded && Object.keys(st.cards).length === 0;
+  }));
+  const hubsError = createMemo(() => {
+    if (sessionRows().length) return undefined;
+    for (const host of orderedHosts()) {
+      const err = hubs().ensure(host.id).state.error;
+      if (err) return err.message || err.code;
+    }
+    return undefined;
+  });
+  const [recentLimit, setRecentLimit] = createSignal(SESSIONS_PAGE);
+  // Typed Sessions search runs on the host (`session_search`, paged) instead of
+  // ranking every card in the webview; an older host without the op falls back
+  // to the local ranking.
+  const [remote, setRemote] = createSignal<RemoteSessions | undefined>(undefined);
+  let searchSeq = 0;
+  const searchSessions = async (q: string, more: boolean) => {
+    const seq = ++searchSeq;
+    const prev = more ? remote() : undefined;
+    setRemote({ query: q, rows: prev?.rows ?? [], cursors: prev?.cursors ?? {}, loading: true, error: undefined, unsupported: false });
+    if (!more) {
+      await new Promise((r) => setTimeout(r, 140)); // debounce
+      if (seq !== searchSeq) return;
+    }
+    const hostsNow = orderedHosts();
+    const targets = more ? hostsNow.filter((h) => prev?.cursors[h.id]) : hostsNow;
+    const results = await Promise.allSettled(targets.map((host) =>
+      hostClient(host.id).request<unknown>('session_search', { query: q, limit: SESSIONS_PAGE, ...(more ? { cursor: prev!.cursors[host.id] } : {}) })
+        .then((data) => ({ host, page: SessionSearchDataSchema.parse(data) }))));
+    if (seq !== searchSeq) return;
+    const rows = [...(prev?.rows ?? [])];
+    const cursors: Record<string, string | undefined> = { ...(prev?.cursors ?? {}) };
+    let error: string | undefined;
+    let unsupported = false;
+    for (const [i, res] of results.entries()) {
+      const host = targets[i]!;
+      if (res.status === 'fulfilled') {
+        cursors[host.id] = res.value.page.next_cursor;
+        for (const card of res.value.page.cards) rows.push({ kind: 'session', key: `${host.id}/${card.session_id}`, hostId: host.id, hostName: host.name, card: card as SessionCard });
+      } else {
+        const appErr = toAppError(res.reason);
+        if (appErr.code === 'E_UNSUPPORTED' || appErr.code === 'E_SCHEMA') unsupported = true;
+        else error = appErr.message || appErr.code;
+        cursors[host.id] = undefined;
+      }
+    }
+    setRemote({ query: q, rows, cursors, loading: false, error, unsupported: unsupported && rows.length === 0 && !error });
+  };
+  createEffect(on([bare, activeScope], ([q, sc]) => {
+    setRecentLimit(SESSIONS_PAGE);
+    if (!q || sc === 'actions' || sc === 'files') {
+      searchSeq++;
+      setRemote(undefined);
+      return;
+    }
+    void searchSessions(q, false);
+  }));
   const currentSession = createMemo(() => {
     const m = /^\/s\/([^/]+)\/([^/?#]+)/.exec(location.pathname);
     return m ? { hostId: decodeURIComponent(m[1]!), sessionId: decodeURIComponent(m[2]!) } : undefined;
@@ -247,6 +311,10 @@ function CenterDialog() {
     files: (fileRows() ?? []) as FileRow[],
     expanded: expanded(),
     filesBusy: fileRows.loading,
+    sessionsLoading: hubsLoading(),
+    sessionsError: hubsError(),
+    recentLimit: recentLimit(),
+    remote: remoteView(remote()),
   }));
   const navigable = createMemo(() => rows().filter((r) => r.kind !== 'header' && r.kind !== 'note'));
 
@@ -254,6 +322,14 @@ function CenterDialog() {
     if (!row || row.kind === 'header' || row.kind === 'note') return;
     if (row.kind === 'more') {
       setExpanded((s) => new Set([...s, row.group]));
+      return;
+    }
+    if (row.kind === 'fetch') {
+      if (row.action === 'more-sessions') {
+        if (bare()) void searchSessions(bare(), true);
+        else setRecentLimit((n) => n + SESSIONS_PAGE);
+      } else if (bare()) void searchSessions(bare(), false);
+      else for (const host of orderedHosts()) void hubs().ensure(host.id).reload();
       return;
     }
     const q = bare();
@@ -355,6 +431,7 @@ function runRow(row: Selectable, navigate: (to: string) => void): void {
     openFileFromCenter(row.hostId, row.path);
     return;
   }
+  if (row.kind === 'fetch') return; // handled in the open dialog
   row.command.run();
 }
 
@@ -391,7 +468,28 @@ export type BuildRowsInput = {
   files: FileRow[];
   expanded: ReadonlySet<string>;
   filesBusy?: boolean;
+  /** The hubs have not answered `sessions_list` yet (no card known). */
+  sessionsLoading?: boolean;
+  /** The hubs failed to list sessions (and none is known). */
+  sessionsError?: string;
+  /** Recent sessions shown in the Sessions scope with no query (paged by "Show more"). */
+  recentLimit?: number;
+  /** The host-side search for the typed query (`session_search`); absent = rank locally. */
+  remote?: RemoteView;
 };
+
+/** Sessions per page: the palette's recent list and each `session_search` page. */
+export const SESSIONS_PAGE = 50;
+
+/** What the palette knows about the running host search. */
+export type RemoteSessions = { query: string; rows: SessionRow[]; cursors: Record<string, string | undefined>; loading: boolean; error?: string; unsupported: boolean };
+export type RemoteView = { rows: SessionRow[]; loading: boolean; error?: string; hasMore: boolean };
+
+/** Pure: the remote search as buildRows sees it (`undefined` = fall back to local ranking). */
+export function remoteView(r: RemoteSessions | undefined): RemoteView | undefined {
+  if (!r || r.unsupported) return undefined;
+  return { rows: r.rows, loading: r.loading, error: r.error, hasMore: Object.values(r.cursors).some(Boolean) };
+}
 
 /** ≤ 3 rows per group + "show more" (expanded groups show everything). */
 function group(rows: Row[], label: string, items: Row[], expanded: ReadonlySet<string>): void {
@@ -408,9 +506,28 @@ const commandRow = (c: Command): Row => ({ kind: 'command', key: `cmd:${c.id}`, 
 export function buildRows(input: BuildRowsInput): Row[] {
   const { scope, query, commands, slash, sessions, files, expanded } = input;
   const rankedCommands = query ? rankCommands(commands, query) : commands;
+  const remote = query ? input.remote : undefined;
+  const rankSessions = (list: SessionRow[]) => scoreRows(list, query, (r) => ({ title: sessionTitle(r.card), hay: `${r.card.cwd ?? ''} ${r.hostName} ${r.card.session_id}` })).map((s) => s.row);
+  // The host already matched (every word in name / folder / id); rank its page by
+  // title strength, keeping its recency order for ties.
   const rankedSessions = query
-    ? scoreRows(sessions, query, (r) => ({ title: sessionTitle(r.card), hay: `${r.card.cwd ?? ''} ${r.hostName}` })).map((s) => s.row)
+    ? remote
+      ? [...rankSessions(remote.rows), ...remote.rows.filter((r) => !rankSessions([r]).length)]
+      : rankSessions(sessions)
     : sessions;
+  const sessionsNote = (): Row | undefined => {
+    if (remote?.error) return { kind: 'note', text: `Couldn't search sessions: ${remote.error}` };
+    if (remote?.loading && !remote.rows.length) return { kind: 'note', text: 'Searching sessions…' };
+    if (!query && input.sessionsError) return { kind: 'note', text: `Couldn't load sessions: ${input.sessionsError}` };
+    if (!query && input.sessionsLoading) return { kind: 'note', text: 'Loading sessions…' };
+    return undefined;
+  };
+  const sessionsTail = (): Row[] => {
+    if (remote?.error || (!query && input.sessionsError && !sessions.length)) return [{ kind: 'fetch', key: 'fetch:retry', label: 'Retry', action: 'retry-sessions' }];
+    if (remote?.hasMore && !remote.loading) return [{ kind: 'fetch', key: 'fetch:more', label: 'Load more sessions', action: 'more-sessions' }];
+    if (remote?.loading && remote.rows.length) return [{ kind: 'note', text: 'Loading more…' }];
+    return [];
+  };
   const rankedSlash = query ? scoreRows(slash, query, (r) => ({ title: r.name, hay: r.description ?? '' })).map((s) => s.row) : slash;
   const rankedFiles = query
     ? scoreRows(files, query, (r) => ({ title: r.path.split('/').pop() ?? r.path, hay: r.path })).map((s) => s.row)
@@ -419,8 +536,13 @@ export function buildRows(input: BuildRowsInput): Row[] {
 
   if (scope === 'sessions') {
     if (!query) out.push({ kind: 'header', label: 'Recent sessions' });
-    out.push(...rankedSessions);
-    if (!rankedSessions.length) out.push({ kind: 'note', text: query ? 'No matching sessions' : 'No sessions yet' });
+    const limit = query ? rankedSessions.length : input.recentLimit ?? SESSIONS_PAGE;
+    out.push(...rankedSessions.slice(0, limit));
+    const note = sessionsNote();
+    if (!rankedSessions.length) out.push(note ?? { kind: 'note', text: query ? 'No matching sessions' : 'No sessions yet' });
+    else if (note && remote?.error) out.push(note);
+    if (!query && rankedSessions.length > limit) out.push({ kind: 'fetch', key: 'fetch:more', label: `Show more (${rankedSessions.length - limit})`, action: 'more-sessions' });
+    out.push(...sessionsTail());
     return out;
   }
   if (scope === 'files') {
@@ -449,6 +571,9 @@ export function buildRows(input: BuildRowsInput): Row[] {
   // All
   if (!query) {
     group(out, 'Recent sessions', rankedSessions.slice(0, 3), new Set());
+    if (!rankedSessions.length && (input.sessionsLoading || input.sessionsError)) {
+      out.push({ kind: 'header', label: 'Recent sessions' }, sessionsNote()!, ...sessionsTail());
+    }
     const groups: string[] = [];
     for (const c of commands) if (!groups.includes(c.group)) groups.push(c.group);
     for (const g of groups) group(out, g, commands.filter((c) => c.group === g).map(commandRow), expanded);
@@ -458,8 +583,10 @@ export function buildRows(input: BuildRowsInput): Row[] {
   group(out, 'Commands', rankedCommands.map(commandRow), expanded);
   group(out, 'Chat commands', rankedSlash, expanded);
   group(out, 'Sessions', rankedSessions, expanded);
+  if (remote && !rankedSessions.length && (remote.loading || remote.error)) out.push({ kind: 'header', label: 'Sessions' }, sessionsNote()!, ...sessionsTail());
+  else if (remote?.hasMore && expanded.has('Sessions')) out.push(...sessionsTail());
   group(out, 'Files', rankedFiles, expanded);
-  if (!out.some((r) => r.kind !== 'header')) out.push({ kind: 'note', text: 'Nothing found' });
+  if (!out.some((r) => r.kind !== 'header')) out.push({ kind: 'note', text: remote?.loading ? 'Searching…' : 'Nothing found' });
   return out;
 }
 
@@ -521,6 +648,7 @@ function RowBody(props: { row: Row }) {
       <Match when={row().kind === 'slash'}>{SlashBody(row() as SlashRow)}</Match>
       <Match when={row().kind === 'command'}>{CommandBody(row() as { kind: 'command'; key: string; command: Command })}</Match>
       <Match when={row().kind === 'more'}>{<span class="cmdk-more">Show {(row() as { count: number }).count} more</span>}</Match>
+      <Match when={row().kind === 'fetch'}>{<span class="cmdk-more">{(row() as FetchRow).label}</span>}</Match>
     </Switch>
   );
 }

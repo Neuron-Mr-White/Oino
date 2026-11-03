@@ -254,6 +254,11 @@ export type NoticeLevel = z.infer<typeof NoticeLevelSchema>;
 export const HubEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("session_changed"), card: SessionCardSchema }).passthrough(),
   z.object({ kind: z.literal("session_removed"), session: z.string() }).passthrough(),
+  // [ux-sessions] (owner fix 2026-11-03): one chunk of a batch archive / restore, and
+  // "this connection fell behind — re-list" after the host dropped events.
+  z.object({ kind: z.literal("sessions_removed"), sessions: z.array(z.string()), archived: z.boolean().optional() }).passthrough(),
+  z.object({ kind: z.literal("sessions_changed"), cards: z.array(SessionCardSchema) }).passthrough(),
+  z.object({ kind: z.literal("resync") }).passthrough(),
   z
     .object({
       kind: z.literal("host_notice"),
@@ -280,6 +285,32 @@ export const SessionsListRequestSchema = z.object({
   /** App spec §3.14 (WP-A5, Z-13): the archived (trashed) sessions instead of the live list. */
   archived: z.boolean().optional(),
 });
+
+/** `session_search` page size defaults / caps (mirror `unipi_proto::session`). */
+export const SESSION_SEARCH_LIMIT_DEFAULT = 50;
+export const SESSION_SEARCH_LIMIT_MAX = 200;
+
+/**
+ * Owner fix 2026-11-03: one page of the host's sessions whose name / folder / id
+ * match every word of `query` (empty = most recent), newest first.
+ */
+export const SessionSearchRequestSchema = z.object({
+  op: z.literal("session_search"),
+  query: z.string().max(256).optional(),
+  limit: z.number().int().min(1).max(SESSION_SEARCH_LIMIT_MAX).optional(),
+  cursor: z.string().optional(),
+  archived: z.boolean().optional(),
+});
+
+/** `session_search` → a page of cards, the match count and the next page's cursor. */
+export const SessionSearchDataSchema = z
+  .object({
+    cards: z.array(SessionCardSchema),
+    total: z.number().int().min(0),
+    next_cursor: z.string().optional(),
+  })
+  .passthrough();
+export type SessionSearchData = z.infer<typeof SessionSearchDataSchema>;
 
 export const EventsOpenRequestSchema = z.object({ op: z.literal("events_open") });
 

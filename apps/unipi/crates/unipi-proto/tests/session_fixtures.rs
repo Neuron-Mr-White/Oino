@@ -36,6 +36,7 @@ fn parses(schema: &str, value: &Value) -> Result<(), String> {
         "SessionRequest" => match serde_json::from_value::<Request>(value.clone()) {
             Ok(
                 Request::SessionsList { .. }
+                | Request::SessionSearch { .. }
                 | Request::EventsOpen
                 | Request::SessionNew { .. }
                 | Request::SessionOpen { .. }

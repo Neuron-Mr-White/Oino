@@ -402,6 +402,10 @@ export {
   NoticeLevelSchema,
   HubEventSchema,
   SessionsListRequestSchema,
+  SessionSearchRequestSchema,
+  SessionSearchDataSchema,
+  SESSION_SEARCH_LIMIT_DEFAULT,
+  SESSION_SEARCH_LIMIT_MAX,
   EventsOpenRequestSchema,
   SessionNewRequestSchema,
   SessionOpenRequestSchema,
@@ -421,6 +425,7 @@ export {
 export type {
   RunState,
   SessionCard,
+  SessionSearchData,
   CardChanges,
   SessionMetaPatch,
   SessionsListData,

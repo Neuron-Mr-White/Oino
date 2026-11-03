@@ -666,6 +666,26 @@ pub enum Request {
         #[serde(default)]
         archived: bool,
     },
+    /// Owner fix 2026-11-03 (command center Sessions scope): search the host's
+    /// sessions by name / folder / id without shipping every card — every word
+    /// of `query` must match (case-insensitive), newest activity first, one
+    /// page of at most [`crate::session::SESSION_SEARCH_LIMIT_MAX`] cards.
+    /// An empty query pages the most recent sessions. `cursor` is the previous
+    /// page's `next_cursor`. → `ok{data:SessionSearchData}`.
+    SessionSearch {
+        /// The words to match (empty = most recent first).
+        #[serde(default)]
+        query: String,
+        /// Page size (default [`crate::session::SESSION_SEARCH_LIMIT_DEFAULT`], capped).
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        limit: Option<u32>,
+        /// Opaque cursor from the previous page.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        cursor: Option<String>,
+        /// Search the archived sessions instead.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        archived: bool,
+    },
     /// host.md §7.4 (WP-H4): the one per-connection hub event stream. The host
     /// answers `ok{data:null}`, then pushes `session_changed` / `session_removed`
     /// / `host_notice` / `ui` events (a retained safe-mode notice first) until
