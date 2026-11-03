@@ -37,23 +37,36 @@ use crate::tasks::{TaskInfo, TaskService, TaskSpec};
 /// Custom message type of task completion notifications.
 pub const TASK_NOTIFICATION_TYPE: &str = "background-task-notification";
 
+/// Identity of one services set: the address of the host every extension of one load
+/// pass is wrapped around (core builds one `CoreHost` per `Services`). Held only while a
+/// load of that set is alive, so the address is not reused under a live entry.
+pub(crate) type Group = usize;
+
+/// The [`Group`] of `inner`.
+pub(crate) fn group_of(inner: &Arc<dyn HostServices>) -> Group {
+    Arc::as_ptr(inner).cast::<()>().addr()
+}
+
 /// One load of an extension id: the instance plus the host it was wrapped around.
 #[derive(Clone)]
-struct PastLoad {
+struct Load {
+    group: Group,
     instance: Weak<WasmInstance>,
     inner: Weak<dyn HostServices>,
 }
 
 #[derive(Default)]
 struct ExtEntry {
-    instance: Option<Weak<WasmInstance>>,
-    inner: Option<Weak<dyn HostServices>>,
-    /// Complete `(instance, inner)` pairs of earlier loads of the same extension id
-    /// (a second services set loading the extension replaces the entry, last one wins).
-    /// A task started by an older load must still be able to deliver its completion
-    /// after the newer load died (G-04): the wake route is the starting load's inner,
-    /// and any live registration can render `tasks.notification`.
-    past: Vec<PastLoad>,
+    /// Every live load of this extension id, oldest first (one per services set: several
+    /// cwds load the same extension). Calls, events, bus deliveries and timers route to
+    /// the caller's OWN services set first; only a caller without one (the embedding host)
+    /// or a set that lacks the extension falls back to the newest awake load. The old
+    /// "last load wins" routing sent a session's `subagents.profiles` to another cwd's
+    /// instance — or to a disposed set's hibernated one, which woke with no session state
+    /// ("subagents are not loaded or are disabled"). Dead loads are pruned on every new
+    /// load, so the list is bounded by the live services sets. A task started by an older
+    /// load still finds its own route after a newer load died (G-04).
+    loads: Vec<Load>,
     events: HashSet<EventKind>,
     services: HashSet<String>,
     bus: HashSet<String>,
@@ -88,11 +101,49 @@ pub fn topic_matches(pattern: &str, topic: &str) -> bool {
             .is_some_and(|prefix| topic.starts_with(prefix))
 }
 
-/// Drops past registrations whose instance and host have both gone.
-fn prune_past(entry: &mut ExtEntry) {
+/// Most loads one extension id keeps. A disposed services set can stay reachable (core's
+/// host router and extension set hold each other), so its hibernated loads would never be
+/// pruned as dead: past the cap the oldest hibernated load is forgotten first.
+const MAX_LOADS: usize = 16;
+
+/// Drops loads whose instance and host have both gone, then trims to [`MAX_LOADS`] - 1
+/// (room for the load about to be added), oldest hibernated first.
+fn prune_loads(entry: &mut ExtEntry) {
     entry
-        .past
-        .retain(|r| r.instance.upgrade().is_some() || r.inner.upgrade().is_some());
+        .loads
+        .retain(|r| r.instance.strong_count() > 0 || r.inner.strong_count() > 0);
+    while entry.loads.len() >= MAX_LOADS {
+        let victim = entry
+            .loads
+            .iter()
+            .position(|l| l.instance.upgrade().is_none_or(|i| i.hibernated()))
+            .unwrap_or(0);
+        entry.loads.remove(victim);
+    }
+}
+
+/// The load to route to: `group`'s own, else the newest awake one, else the newest live.
+fn pick<T>(
+    loads: &[Load],
+    group: Option<Group>,
+    get: impl Fn(&Load) -> Option<T>,
+    awake: impl Fn(&Load) -> bool,
+) -> Option<T> {
+    if let Some(group) = group
+        && let Some(found) = loads
+            .iter()
+            .rev()
+            .filter(|l| l.group == group)
+            .find_map(&get)
+    {
+        return Some(found);
+    }
+    loads
+        .iter()
+        .rev()
+        .filter(|l| awake(l))
+        .find_map(&get)
+        .or_else(|| loads.iter().rev().find_map(&get))
 }
 
 impl LocalServices {
@@ -179,15 +230,19 @@ impl LocalServices {
         id: &ExtensionId,
         inner: Arc<dyn HostServices>,
     ) -> Arc<dyn HostServices> {
+        let group = group_of(&inner);
         let mut exts = lock(&self.exts);
         let entry = exts.entry(id.clone()).or_default();
-        if let (Some(instance), Some(inner)) = (entry.instance.take(), entry.inner.take()) {
-            entry.past.push(PastLoad { instance, inner });
-        }
-        entry.inner = Some(Arc::downgrade(&inner));
+        prune_loads(entry);
+        entry.loads.push(Load {
+            group,
+            instance: Weak::new(),
+            inner: Arc::downgrade(&inner),
+        });
         drop(exts);
         Arc::new(Composite {
             inner,
+            group,
             hub: Arc::downgrade(self),
         })
     }
@@ -203,12 +258,24 @@ impl LocalServices {
         self.wrap(id, inner)
     }
 
-    pub(crate) fn register_instance(self: &Arc<Self>, instance: &Arc<WasmInstance>) {
+    pub(crate) fn register_instance(self: &Arc<Self>, instance: &Arc<WasmInstance>, group: Group) {
         let _ = instance.hub.set(Arc::downgrade(self));
-        lock(&self.exts)
-            .entry(instance.id().clone())
-            .or_default()
-            .instance = Some(Arc::downgrade(instance));
+        let mut exts = lock(&self.exts);
+        let entry = exts.entry(instance.id().clone()).or_default();
+        // The newest load of this set still waiting for its instance (`wrap` ran first).
+        match entry
+            .loads
+            .iter_mut()
+            .rev()
+            .find(|l| l.group == group && l.instance.strong_count() == 0)
+        {
+            Some(load) => load.instance = Arc::downgrade(instance),
+            None => entry.loads.push(Load {
+                group,
+                instance: Arc::downgrade(instance),
+                inner: Weak::<Composite>::new(),
+            }),
+        }
     }
 
     /// Records the `init` registration (events and services the hub routes).
@@ -219,39 +286,55 @@ impl LocalServices {
         entry.services.extend(reg.services.iter().cloned());
     }
 
-    /// A live instance of `id`: the last registered one, else any earlier registration
-    /// that is still alive (G-04 — the last loader may have died while an older
-    /// services set still runs the extension).
-    fn instance(&self, id: &ExtensionId) -> Option<Arc<WasmInstance>> {
-        let mut exts = lock(&self.exts);
-        let entry = exts.get_mut(id)?;
-        if let Some(instance) = entry.instance.as_ref().and_then(Weak::upgrade) {
-            return Some(instance);
-        }
-        entry.past.iter().find_map(|r| r.instance.upgrade())
+    /// The instance of `id` serving `group` (the caller's services set), else the newest
+    /// awake load, else any live one (G-04 — the newest loader may have died while an
+    /// older services set still runs the extension).
+    fn instance(&self, id: &ExtensionId, group: Option<Group>) -> Option<Arc<WasmInstance>> {
+        let exts = lock(&self.exts);
+        let entry = exts.get(id)?;
+        pick(
+            &entry.loads,
+            group,
+            |l| l.instance.upgrade(),
+            |l| l.instance.upgrade().is_some_and(|i| !i.hibernated()),
+        )
     }
 
-    /// A live host route of `id`: the last registered one, else any earlier registration
-    /// that is still alive (G-04).
-    fn inner(&self, id: &ExtensionId) -> Option<Arc<dyn HostServices>> {
+    /// A live host route of `id` (`group`'s own first, as [`Self::instance`]; G-04).
+    fn inner(&self, id: &ExtensionId, group: Option<Group>) -> Option<Arc<dyn HostServices>> {
         let mut exts = lock(&self.exts);
         let entry = exts.get_mut(id)?;
-        prune_past(entry);
-        if let Some(inner) = entry.inner.as_ref().and_then(Weak::upgrade) {
-            return Some(inner);
-        }
-        entry.past.iter().find_map(|r| r.inner.upgrade())
+        prune_loads(entry);
+        pick(
+            &entry.loads,
+            group,
+            |l| l.inner.upgrade(),
+            |l| l.instance.upgrade().is_some_and(|i| !i.hibernated()),
+        )
     }
 
-    /// Delivers a host-produced event to `id` when it subscribed to `kind`.
+    /// Delivers a host-produced event to `id` when it subscribed to `kind` (the newest
+    /// awake load; [`Self::deliver_in`] targets one services set).
     pub fn deliver(&self, id: &ExtensionId, session_id: &str, kind: EventKind, payload: RawJson) {
+        self.deliver_in(None, id, session_id, kind, payload);
+    }
+
+    /// [`Self::deliver`] preferring `group`'s own load of `id`.
+    fn deliver_in(
+        &self,
+        group: Option<Group>,
+        id: &ExtensionId,
+        session_id: &str,
+        kind: EventKind,
+        payload: RawJson,
+    ) {
         let subscribed = lock(&self.exts)
             .get(id)
             .is_some_and(|e| e.events.contains(&kind));
         if !subscribed {
             return;
         }
-        let Some(instance) = self.instance(id) else {
+        let Some(instance) = self.instance(id, group) else {
             return;
         };
         let mut cx = lock(&instance.shared.last_cx)
@@ -280,11 +363,12 @@ impl LocalServices {
         data: &RawJson,
         sticky: bool,
     ) {
-        self.publish(publisher, session_id, topic, data, sticky);
+        self.publish(None, publisher, session_id, topic, data, sticky);
     }
 
     fn publish(
         &self,
+        group: Option<Group>,
         publisher: &ExtensionId,
         session_id: &str,
         topic: &str,
@@ -308,12 +392,17 @@ impl LocalServices {
                 .or_default()
                 .events
                 .insert(EventKind::OinoBus);
-            self.deliver(&id, session_id, EventKind::OinoBus, payload.clone());
+            self.deliver_in(group, &id, session_id, EventKind::OinoBus, payload.clone());
         }
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the caller's services set routes the call (ext-restart)"
+    )]
     async fn call_service(
         &self,
+        group: Option<Group>,
         caller: &ExtensionId,
         cx: &CallContext,
         target: Option<&ExtensionId>,
@@ -336,7 +425,7 @@ impl LocalServices {
             return Err(HostError::NotFound(format!("service {target}/{name}")));
         }
         let instance = self
-            .instance(&target)
+            .instance(&target, group)
             .ok_or_else(|| HostError::NotFound(format!("extension {target}")))?;
         let call = instance.handle_service(name, payload, caller, cx.with_kind(CallKind::Service));
         match tokio::time::timeout(timeout, call).await {
@@ -446,7 +535,18 @@ impl LocalServices {
         let payload = RawJson::from(
             json!({"type": "oino_task", "id": info.id, "state": state, "exitCode": info.exit_code}),
         );
-        self.deliver(&owner, &info.session_id, EventKind::OinoTask, payload);
+        // The starting load's own set (G-04 route), else the newest awake load.
+        let group = via
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .map(|inner| group_of(&inner));
+        self.deliver_in(
+            group,
+            &owner,
+            &info.session_id,
+            EventKind::OinoTask,
+            payload,
+        );
         if !info.spec.notify_on_completion {
             return;
         }
@@ -459,7 +559,7 @@ impl LocalServices {
                 kind: CallKind::Service,
                 ..CallContext::default()
             };
-            let rendered = match hub.instance(&owner) {
+            let rendered = match hub.instance(&owner, group) {
                 Some(instance) => {
                     cx = lock(&instance.shared.last_cx)
                         .clone()
@@ -508,7 +608,7 @@ impl LocalServices {
             let route = via
                 .as_ref()
                 .and_then(Weak::upgrade)
-                .or_else(|| hub.inner(&owner));
+                .or_else(|| hub.inner(&owner, group));
             if let Some(inner) = route {
                 if let Err(error) = inner
                     .session_write(&owner, &cx, SessionWrite::SendMessage { message, options })
@@ -546,6 +646,8 @@ fn block_on_runtime<T>(fut: impl Future<Output = T>) -> T {
 /// Per-extension host: local services first, everything else to `inner`.
 struct Composite {
     inner: Arc<dyn HostServices>,
+    /// The services set this load belongs to ([`group_of`] `inner`).
+    group: Group,
     hub: Weak<LocalServices>,
 }
 
@@ -828,7 +930,7 @@ impl HostServices for Composite {
         sticky: bool,
     ) {
         if let Some(hub) = self.hub() {
-            hub.publish(ext, &cx.session_id, topic, &data, sticky);
+            hub.publish(Some(self.group), ext, &cx.session_id, topic, &data, sticky);
         }
         // Core mirrors publishes into the frontend topic feed (`_oino/topics`).
         self.inner.bus_publish(ext, cx, topic, data, sticky);
@@ -866,8 +968,16 @@ impl HostServices for Composite {
         Box::pin(async move {
             match self.hub() {
                 Some(hub) => {
-                    hub.call_service(&ext, &cx, target.as_ref(), &name, payload, timeout)
-                        .await
+                    hub.call_service(
+                        Some(self.group),
+                        &ext,
+                        &cx,
+                        target.as_ref(),
+                        &name,
+                        payload,
+                        timeout,
+                    )
+                    .await
                 }
                 None => {
                     self.inner
@@ -914,7 +1024,8 @@ impl HostServices for Composite {
         payload: RawJson,
     ) {
         match self.hub() {
-            Some(hub) => hub.deliver(ext, session_id, kind, payload),
+            // Timers and self-deliveries stay in this load's own services set.
+            Some(hub) => hub.deliver_in(Some(self.group), ext, session_id, kind, payload),
             None => self.inner.deliver_event(ext, session_id, kind, payload),
         }
     }
@@ -1013,6 +1124,31 @@ mod tests {
             .unwrap();
         let id = adopted.to_value().as_str().unwrap().to_owned();
         assert!(hub.tasks().get(&id).is_some());
+    }
+
+    /// ext-restart: a call routes to the caller's own services set, never "the newest
+    /// load" of another cwd; without a set of its own it prefers an awake load.
+    #[test]
+    fn routing_prefers_the_callers_own_set() {
+        let a: Arc<dyn HostServices> = Arc::new(DetachingCore);
+        let b: Arc<dyn HostServices> = Arc::new(DetachingCore);
+        let load = |inner: &Arc<dyn HostServices>| Load {
+            group: group_of(inner),
+            instance: Weak::new(),
+            inner: Arc::downgrade(inner),
+        };
+        // `a` loaded first, `b` (another cwd) is the newest load.
+        let loads = vec![load(&a), load(&b)];
+        let get = |l: &Load| l.inner.upgrade();
+        let is = |found: Option<Arc<dyn HostServices>>, want: &Arc<dyn HostServices>| {
+            found.is_some_and(|f| Arc::ptr_eq(&f, want))
+        };
+        assert!(is(pick(&loads, Some(group_of(&a)), get, |_| true), &a));
+        assert!(is(pick(&loads, Some(group_of(&b)), get, |_| true), &b));
+        // No own load: the newest awake one (here `a`, `b` hibernated), else the newest.
+        let a_group = group_of(&a);
+        assert!(is(pick(&loads, None, get, |l| l.group == a_group), &a));
+        assert!(is(pick(&loads, None, get, |_| false), &b));
     }
 
     #[test]

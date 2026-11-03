@@ -476,6 +476,7 @@ impl WasmRuntime {
             .create()
             .map_err(|e| fail(format!("state dirs: {e}")))?;
         let preopen_list = paths::preopens(&ext_paths, &package.manifest.permissions, &config.cwd);
+        let group = crate::hub::group_of(&host);
         let host: Arc<dyn HostServices> = match &self.hub {
             Some(hub) => hub.wrap(&id, host),
             None => host,
@@ -502,7 +503,7 @@ impl WasmRuntime {
         });
         let instance = Arc::new(WasmInstance::new(shared, engine, pre, exports_provider));
         if let Some(hub) = &self.hub {
-            hub.register_instance(&instance);
+            hub.register_instance(&instance, group);
         }
         Ok(instance)
     }
