@@ -597,6 +597,20 @@ impl HostServices for CoreHost {
             .map(RawJson::from)
     }
 
+    fn session_query(
+        &self,
+        cx: &CallContext,
+        query: &oino_extension_api::ops::EntryQuery,
+    ) -> Result<RawJson, HostError> {
+        let ext = ExtensionId::new("oino.host").map_err(|e| HostError::Failed(e.to_string()))?;
+        self.call_sync(
+            &ext,
+            cx,
+            HostOp::SessionRead(ch::SessionQuery::Find(query.clone())),
+        )
+        .map(RawJson::from)
+    }
+
     fn session_write(
         &self,
         ext: &ExtensionId,
