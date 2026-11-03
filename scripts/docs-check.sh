@@ -4,7 +4,7 @@ set -eu
 # Docs named by the system prompt docs section (runtime §9.4) plus the other user guides.
 required='acp.md cron.md desktop.md environment-variables.md extension-api.md extensions.md install.md
 keybindings.md migrate-from-unipi.md models.md packages.md prompt-templates.md providers.md rpc.md sdk.md sessions.md
-settings.md skills.md themes.md tui.md unipi.md'
+release-feeds.md settings.md skills.md themes.md tui.md unipi.md'
 for doc in $required; do
   test -f "docs/$doc" || { printf 'missing docs/%s\n' "$doc" >&2; exit 1; }
 done
