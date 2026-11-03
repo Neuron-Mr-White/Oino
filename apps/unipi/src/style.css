@@ -538,13 +538,20 @@ button.chat-injected-chip:active { background: var(--color-surface-2); }
 /* Settings › Editor › Language servers (WP-A21): the host's lsp roster. */
 .lsp-settings { padding: 4px 0 8px; }
 .lsp-list { list-style: none; margin: 0; padding: 0; }
-.lsp-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--color-line); }
+.lsp-row { display: grid; grid-template-columns: minmax(96px, 10rem) minmax(0, 1fr) minmax(0, max-content); align-items: center; column-gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--color-line); }
 .lsp-row:last-child { border-bottom: 0; }
-.lsp-lang { flex: none; min-width: 72px; font-family: var(--font-mono); font-size: 12px; color: var(--color-text); }
-.lsp-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: var(--color-text-muted); }
-.lsp-state { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-text-muted); }
+/* Owner 2026-11-03: "typescriptreact" ran into the server name — each column truncates (full text in the tooltip). */
+.lsp-lang { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 12px; color: var(--color-text); }
+.lsp-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: var(--color-text-muted); }
+.lsp-state { min-width: 0; max-width: 22rem; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; color: var(--color-text-muted); }
+.lsp-state > svg { flex: none; }
 .lsp-state.ok { color: var(--color-ok, #7fb069); }
 .lsp-state.missing { color: var(--color-warn, #d9a13b); }
+/* Narrow window / phone: the state drops under the language + server pair. */
+@media (max-width: 560px) {
+  .lsp-row { grid-template-columns: minmax(72px, 40%) minmax(0, 1fr); row-gap: 2px; }
+  .lsp-state { grid-column: 1 / -1; max-width: none; }
+}
 .lsp-note { margin: 8px 0 0; font-size: 12px; color: var(--color-text-dim); }
 
 /* perf-app: nothing animates while the app is hidden (lib/idle.ts sets the attribute). */

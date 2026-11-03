@@ -34,8 +34,8 @@ export function LanguageServers(props: { hostId?: () => string | undefined }) {
           <For each={data()!.servers}>
             {(server) => (
               <li class="lsp-row" data-testid={`lsp-server-${server.language}`}>
-                <span class="lsp-lang">{server.language}</span>
-                <span class="lsp-name" title={server.command}>
+                <span class="lsp-lang" title={server.language}>{server.language}</span>
+                <span class="lsp-name" title={`${server.name} — ${server.command}`}>
                   {server.name}
                 </span>
                 <Show
