@@ -1177,4 +1177,26 @@ mod tests {
         assert_eq!(resolved.values["events"]["agentEnd"], false);
         assert_eq!(resolved.diagnostics, vec![]);
     }
+
+    #[test]
+    fn surfaces_filter_per_client() {
+        use crate::settings::{Surface, on_surface};
+        let tui = Field::boolean("tuiMode", "TUI mode").only_on(&[Surface::Tui]);
+        assert!(tui.shown_on(Surface::Tui));
+        assert!(!tui.shown_on(Surface::Gui));
+        let both = Field::boolean("x", "X");
+        assert!(both.shown_on(Surface::Gui) && both.shown_on(Surface::Tui));
+        assert!(on_surface(None, Surface::Gui));
+        assert!(!on_surface(Some(&[]), Surface::Gui));
+        let json = serde_json::to_value(&tui).unwrap();
+        assert_eq!(json["surfaces"], serde_json::json!(["tui"]));
+        let back: Field = serde_json::from_value(json).unwrap();
+        assert_eq!(back.surfaces, Some(vec![Surface::Tui]));
+        assert!(
+            serde_json::to_value(&both)
+                .unwrap()
+                .get("surfaces")
+                .is_none()
+        );
+    }
 }

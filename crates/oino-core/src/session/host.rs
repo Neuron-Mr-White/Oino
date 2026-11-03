@@ -872,6 +872,7 @@ impl AgentSession {
             .into_iter()
             .filter(|c| !c.spec.hidden)
             .map(|c| SlashCommandInfo {
+                surfaces: c.extension.instance.command_surfaces(&c.spec.name),
                 name: c.invocation_name,
                 description: c.spec.description,
                 source: "extension".to_owned(),
@@ -888,12 +889,14 @@ impl AgentSession {
             description: Some(t.description.clone()).filter(|d| !d.is_empty()),
             source: "prompt".to_owned(),
             source_info: serde_json::to_value(&t.source_info).unwrap_or(JsonValue::Null),
+            surfaces: None,
         }));
         commands.extend(resources.skills().iter().map(|s| SlashCommandInfo {
             name: format!("skill:{}", s.name),
             description: Some(s.description.clone()),
             source: "skill".to_owned(),
             source_info: serde_json::to_value(&s.source_info).unwrap_or(JsonValue::Null),
+            surfaces: None,
         }));
         commands
     }
@@ -912,6 +915,10 @@ pub struct SlashCommandInfo {
     pub source: String,
     /// Provenance.
     pub source_info: JsonValue,
+    /// The clients that list the command (`None` = every client); from the extension
+    /// manifest's `ui.commands.<name>.surfaces`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<oino_ui::settings::Surface>>,
 }
 
 /// Dialog of a nested agent, routed by its [`UiPolicy`](crate::agents::UiPolicy).

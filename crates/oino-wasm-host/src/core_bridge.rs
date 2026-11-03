@@ -1173,6 +1173,13 @@ impl ca::ExtensionInstance for CoreInstance {
         self.resources.clone()
     }
 
+    fn command_surfaces(
+        &self,
+        command: &str,
+    ) -> Option<Vec<oino_extension_api::manifest::Surface>> {
+        self.inner.manifest().ui.command_surfaces(command)
+    }
+
     fn init(
         &self,
         cx: ca::CallContext,

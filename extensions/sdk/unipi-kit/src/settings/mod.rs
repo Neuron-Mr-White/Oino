@@ -17,5 +17,5 @@ pub mod values;
 pub use oss2::{
     Cond, FieldScope, FieldType, Restart, SettingsNamespace, SettingsSection, StringFormat,
 };
-pub use schema::{Choice, Field, Kind, Namespace, Scope, Section, Unit, choice, plain};
+pub use schema::{Choice, Field, Kind, Namespace, Scope, Section, Surface, Unit, choice, plain};
 pub use values::{Store, Values, WriteScope, deep_merge, get_field, set_field};

@@ -5,6 +5,7 @@
 //! filled from the namespace defaults when not set explicitly, so frontends can show
 //! "default" without a second source.
 
+pub use oino_ui::settings::Surface;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
@@ -249,6 +250,9 @@ pub struct Field {
     /// Options fetched from a service (`{service}`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dynamic: Option<Value>,
+    /// The clients that show the field (`None` = every client; see [`Surface`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<Surface>>,
 }
 
 macro_rules! setters {
@@ -277,6 +281,7 @@ impl Field {
             scope: Scope::Both,
             advanced: false,
             dynamic: None,
+            surfaces: None,
         }
     }
 
@@ -417,6 +422,14 @@ impl Field {
     #[must_use]
     pub fn advanced(mut self) -> Self {
         self.advanced = true;
+        self
+    }
+
+    /// Shows the field only on `surfaces` (e.g. `&[Surface::Tui]` for a knob only the terminal
+    /// UI reads); other clients hide it, the value still resolves everywhere.
+    #[must_use]
+    pub fn only_on(mut self, surfaces: &[Surface]) -> Self {
+        self.surfaces = Some(surfaces.to_vec());
         self
     }
 

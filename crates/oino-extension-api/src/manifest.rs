@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub use oino_ui::settings::Surface;
+
 use crate::types::ExtensionId;
 
 /// Required `apiVersion` (v2, ext-abi §8 D7): a manifest written for the 1.x ABI is rejected.
@@ -150,13 +152,35 @@ pub struct UiManifest {
     pub reserved: Vec<String>,
     /// `oino_protocol::ext::SettingsNamespace` JSON values (one Settings section each).
     pub settings: Vec<serde_json::Value>,
+    /// Per-command client metadata, keyed by the registered command name:
+    /// `{"answer": {"surfaces": ["tui"]}}`. `get_commands` carries the list, so each client
+    /// hides what is not meant for it; the command itself keeps working everywhere.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub commands: BTreeMap<String, CommandMeta>,
+}
+
+/// One command's client metadata (`ui.commands.<name>`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CommandMeta {
+    /// The clients that list the command (`None` = every client).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<Surface>>,
 }
 
 impl UiManifest {
     /// Whether nothing is declared (omitted from the serialized manifest).
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.reserved.is_empty() && self.settings.is_empty()
+        self.reserved.is_empty() && self.settings.is_empty() && self.commands.is_empty()
+    }
+
+    /// The clients `command` is listed on (`None` = every client).
+    #[must_use]
+    pub fn command_surfaces(&self, command: &str) -> Option<Vec<Surface>> {
+        self.commands
+            .get(command)
+            .and_then(|meta| meta.surfaces.clone())
     }
 }
 
@@ -887,6 +911,34 @@ mod tests {
         assert!(
             json.contains(r#""ui":{"reserved":[],"settings":["#),
             "{json}"
+        );
+    }
+
+    #[test]
+    fn command_surfaces() {
+        let m = Manifest::parse(&manifest(
+            r#","ui":{"commands":{"answer":{"surfaces":["tui"]},"doctor":{}}}"#,
+        ))
+        .unwrap();
+        assert!(!m.ui.is_empty());
+        assert_eq!(m.ui.command_surfaces("answer"), Some(vec![Surface::Tui]));
+        assert_eq!(
+            m.ui.command_surfaces("doctor"),
+            None,
+            "no list = every client"
+        );
+        assert_eq!(m.ui.command_surfaces("other"), None);
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(
+            json.contains(r#""commands":{"answer":{"surfaces":["tui"]},"doctor":{}}"#),
+            "{json}"
+        );
+        assert!(
+            !Manifest::parse(&manifest(""))
+                .map(|m| serde_json::to_string(&m).unwrap())
+                .unwrap()
+                .contains("commands"),
+            "omitted when empty"
         );
     }
 

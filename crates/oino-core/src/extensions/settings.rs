@@ -36,8 +36,8 @@ use oino_ai::{JsonObject, JsonValue};
 use oino_settings::json::{deep_merge_objects, get_path};
 use oino_settings::{SecretStore, SettingsError, SettingsManager, SettingsScope};
 use oino_ui::settings::{
-    Field, FieldScope, FieldType, Layers, SettingsNamespace, SettingsSection, resolve_with,
-    simplify_key,
+    Field, FieldScope, FieldType, Layers, SettingsNamespace, SettingsSection, Surface,
+    resolve_with, simplify_key,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -1289,7 +1289,9 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                             field.props.format = Some(oino_ui::settings::StringFormat::Path);
                             field
                         },
-                        core_boolean("quietStartup", "Quiet startup", false),
+                        // Hides the terminal startup banner; the app has none.
+                        core_boolean("quietStartup", "Quiet startup", false)
+                            .only_on(&[Surface::Tui]),
                     ],
                 )],
             ),
@@ -1387,6 +1389,8 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                 vec![core_section(
                     "tui",
                     "TUI",
+                    // Every knob here drives the terminal renderer only (the app has its own
+                    // theme, thinking fold and tree), so the app does not list them.
                     vec![
                         core_choice("theme", "Theme", &["dark", "light"], "dark"),
                         core_boolean("hideThinkingBlock", "Hide thinking", false),
@@ -1408,7 +1412,10 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                             &["fullscreen", "regular"],
                             "fullscreen",
                         ),
-                    ],
+                    ]
+                    .into_iter()
+                    .map(|field| field.only_on(&[Surface::Tui]))
+                    .collect(),
                 )],
             ),
             None,
@@ -2110,5 +2117,40 @@ mod tests {
             reg.set("notify", "level", Some(json!(99)), SettingsScope::Global),
             Err(ExtensionSettingsError::InvalidValue { .. })
         ));
+    }
+
+    #[test]
+    fn terminal_only_core_fields_are_marked_tui() {
+        let all = core_namespaces();
+        let field = |ns: &str, key: &str| {
+            all.iter()
+                .find(|(n, _)| n.namespace == ns)
+                .and_then(|(n, _)| {
+                    n.sections
+                        .iter()
+                        .flat_map(|s| &s.fields)
+                        .find(|f| f.key == key)
+                })
+                .cloned()
+                .unwrap_or_else(|| panic!("{ns}:{key}"))
+        };
+        for key in [
+            "theme",
+            "hideThinkingBlock",
+            "doubleEscapeAction",
+            "treeFilterMode",
+            "tuiMode",
+        ] {
+            let f = field("oino.tui", key);
+            assert!(
+                f.shown_on(Surface::Tui) && !f.shown_on(Surface::Gui),
+                "{key}"
+            );
+        }
+        let quiet = field("oino.agent", "quietStartup");
+        assert!(!quiet.shown_on(Surface::Gui));
+        // Shared knobs stay on every client.
+        assert!(field("oino.agent", "sessionDir").shown_on(Surface::Gui));
+        assert!(field("oino.ui", "density").shown_on(Surface::Gui));
     }
 }

@@ -84,6 +84,25 @@ pub enum FieldScope {
     Project,
 }
 
+/// A client kind. Settings fields and slash commands may list the clients they are meant for
+/// (`surfaces`); absent means every client. `gui` = the Unipi app (desktop and phone), `tui` =
+/// the terminal UI / CLI (`oino`). Each client hides what is not meant for it and keeps the
+/// rest working (a TUI-only setting still resolves and writes the same way).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Surface {
+    /// The Unipi app (desktop and phone).
+    Gui,
+    /// The terminal UI and CLI.
+    Tui,
+}
+
+/// Whether metadata carrying `surfaces` belongs on `client` (`None` = every client).
+#[must_use]
+pub fn on_surface(surfaces: Option<&[Surface]>, client: Surface) -> bool {
+    surfaces.is_none_or(|list| list.contains(&client))
+}
+
 /// Where a dynamic field fetches its options (§7 `dynamic`).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -340,6 +359,9 @@ pub struct Field {
     /// Shows "applies after restart".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restart: Option<Restart>,
+    /// The clients that show this field (`None` = every client, see [`Surface`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<Surface>>,
     /// Type-specific props.
     #[serde(flatten)]
     pub props: FieldProps,
@@ -363,6 +385,7 @@ impl Field {
             visible_if: None,
             disabled_if: None,
             restart: None,
+            surfaces: None,
             props: FieldProps::default(),
         }
     }
@@ -399,6 +422,19 @@ impl Field {
 }
 
 impl Field {
+    /// Shows this field only on `surfaces` (e.g. `&[Surface::Tui]` for a terminal-only knob).
+    #[must_use]
+    pub fn only_on(mut self, surfaces: &[Surface]) -> Self {
+        self.surfaces = Some(surfaces.to_vec());
+        self
+    }
+
+    /// Whether `client` shows this field.
+    #[must_use]
+    pub fn shown_on(&self, client: Surface) -> bool {
+        on_surface(self.surfaces.as_deref(), client)
+    }
+
     /// The value layer this field writes to (`both` when unset).
     #[must_use]
     pub const fn scope(&self) -> FieldScope {

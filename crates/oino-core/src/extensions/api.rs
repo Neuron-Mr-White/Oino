@@ -389,6 +389,12 @@ pub trait ExtensionInstance: Send + Sync {
         PackageResourceDirs::default()
     }
 
+    /// The clients a registered command is listed on (manifest `ui.commands.<name>.surfaces`;
+    /// `None` = every client). `get_commands` carries it so each client filters its own menu.
+    fn command_surfaces(&self, _command: &str) -> Option<Vec<oino_ui::settings::Surface>> {
+        None
+    }
+
     /// Initialises the instance and returns its static registrations.
     fn init(&self, cx: CallContext) -> BoxFuture<'_, Result<Registration, ExtensionCallError>>;
 
