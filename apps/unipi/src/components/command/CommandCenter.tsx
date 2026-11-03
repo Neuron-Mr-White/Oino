@@ -14,6 +14,7 @@ import { useLocation, useNavigate } from '@solidjs/router';
 import { Portal } from 'solid-js/web';
 import { ChevronRight, FileText, MessageSquare, Search, SquareSlash } from 'lucide-solid';
 import { allCommands, paletteOpen, paletteScope, rankCommands, setPaletteOpen, type Command, type PaletteScope } from '../../lib/shell';
+import { shownInMenu } from '../../lib/chat/commands';
 import { hubs } from '../../lib/session/hub';
 import { sessions } from '../../lib/session/store';
 import { sessionTitle, lastActivity } from '../../lib/session/selectors';
@@ -258,7 +259,7 @@ function CenterDialog() {
     const handle = sessions().peek(cur.hostId, cur.sessionId);
     if (!handle) return [];
     return handle.state.commands
-      .filter((c) => c.source !== 'builtin' && c.name.startsWith('/'))
+      .filter((c) => c.source !== 'builtin' && c.name.startsWith('/') && shownInMenu(c))
       .map((c) => ({ kind: 'slash' as const, key: `slash:${c.name}`, name: c.name, description: c.description }));
   });
   /** The files scope's host + root: the workspace's folder, else This computer's first root. */

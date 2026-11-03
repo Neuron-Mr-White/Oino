@@ -278,6 +278,16 @@ describe('U10 widget slot', () => {
     expect(screen.getByText('fusion: 2 jobs')).toBeTruthy();
   });
 
+  it('[gui-cleanup] desktop: the /answer hint line becomes the "Answer N questions" pill (no terminal wording)', async () => {
+    setDesktopOverride(true);
+    await openTracking();
+    render(() => <WidgetStack entries={widgetsOf()} target={TARGET} />);
+    put({ id: 'unipi.utility/widget:unipi-answer-hint', slot: 'widget', view: tree('2 questions in the reply — /answer to reply') });
+    await waitFor(() => expect(screen.getByTestId('answer-pill')).toBeTruthy());
+    expect(screen.getByTestId('answer-pill').textContent).toBe('Answer 2 questions');
+    expect(screen.queryByText(/\/answer/)).toBeNull();
+  });
+
   it('phone: beyond 3 entries the rest fold behind "+N widgets" (§6.4 cap)', async () => {
     setDesktopOverride(false);
     await openTracking();

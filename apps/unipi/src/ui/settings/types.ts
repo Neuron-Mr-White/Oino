@@ -8,6 +8,8 @@
  * The Rust side is the source of truth (`oino_ui::settings`); this module only
  * mirrors its wire types.
  */
+import { parseSurfaces, shownInApp, type Surface } from '../../lib/surfaces';
+
 /** Any JSON value (the dialect keeps stored numbers/objects verbatim). */
 export type Json = unknown;
 
@@ -66,6 +68,8 @@ export type Field = {
   keyLabel?: string;
   addLabel?: string;
   schema?: Json;
+  /** The clients that show the field (absent = every client; `lib/surfaces.ts`). */
+  surfaces?: Surface[];
 };
 
 export type Section = {
@@ -186,6 +190,7 @@ export function parseField(raw: unknown, fallbackKey = ''): Field {
     keyLabel: str(map.keyLabel),
     addLabel: str(map.addLabel),
     schema: 'schema' in map ? (map.schema as Json) : undefined,
+    ...(parseSurfaces(map.surfaces) ? { surfaces: parseSurfaces(map.surfaces) } : {}),
   };
 }
 
@@ -294,10 +299,45 @@ export function pageAnchor(namespace: string, key: string): string {
 /**
  * Fields that exist in the schema for the CLI but do nothing in the app, so the
  * app's settings never show them (`namespace:key`). `quietStartup` only hides the
- * terminal startup banner.
+ * terminal startup banner. Hosts from before `surfaces` existed send it unmarked.
  */
 const CLI_ONLY = new Set(['oino.agent:quietStartup']);
 
-export function appHidden(namespace: string, key: string): boolean {
+/** Whether the app hides a field: marked for other clients (`surfaces`), or a known CLI-only key. */
+export function appHidden(namespace: string, key: string, field?: Pick<Field, 'surfaces'>): boolean {
+  if (field && !shownInApp(field.surfaces)) return true;
   return CLI_ONLY.has(`${namespace}:${key}`) || (key === 'quietStartup' && namespace.startsWith('oino.'));
+}
+
+/** A section list without the fields the app hides (page drill-ins too); sections left empty go. */
+function appSections(namespace: string, sections: Section[]): Section[] {
+  const out: Section[] = [];
+  for (const section of sections) {
+    const fields: Field[] = [];
+    for (const field of section.fields) {
+      if (appHidden(namespace, field.key, field)) continue;
+      if (field.type === 'page' && field.sections.length > 0) {
+        const inner = appSections(namespace, field.sections);
+        if (inner.length === 0) continue;
+        fields.push({ ...field, sections: inner });
+      } else fields.push(field);
+    }
+    if (fields.length > 0 || section.fields.length === 0) out.push({ ...section, fields });
+  }
+  return out;
+}
+
+/**
+ * The namespaces as the app shows them ([gui-cleanup]): terminal-only fields
+ * dropped, and a namespace whose every field is terminal-only (core
+ * `oino.tui`) dropped whole, so no empty "Terminal UI" page is left behind.
+ */
+export function appNamespaces(list: readonly Namespace[]): Namespace[] {
+  const out: Namespace[] = [];
+  for (const ns of list) {
+    const sections = appSections(ns.namespace, ns.sections);
+    if (sections.length === 0 && ns.sections.length > 0) continue;
+    out.push(sections.length === ns.sections.length && sections.every((s, i) => s === ns.sections[i]) ? ns : { ...ns, sections });
+  }
+  return out;
 }

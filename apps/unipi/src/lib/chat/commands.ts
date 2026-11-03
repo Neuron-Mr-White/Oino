@@ -1,5 +1,6 @@
 /** Slash-command suggestions (UNI-113): subsequence ranking, prefix first. */
 import type { CommandInfo } from '../session/types';
+import { shownInApp } from '../surfaces';
 
 /** The command sources the rows label (`SOURCE_LABEL`). */
 export type CommandSource = 'extension' | 'prompt' | 'skill' | 'builtin';
@@ -34,11 +35,13 @@ export const PI_BUILTINS: readonly CommandInfo[] = [
   { name: 'scoped-models', description: 'Choose the models to cycle through', source: 'builtin' },
   { name: 'export', description: 'Export this chat (JSONL)', source: 'builtin' },
   { name: 'import', description: 'Import a session from a JSONL file', source: 'builtin' },
-  { name: 'share', description: 'Share this chat', source: 'builtin' },
+  // Dead in both clients (no share service): typed, it still points at Export; never suggested.
+  { name: 'share', description: 'Share this chat', source: 'builtin', surfaces: [] },
   { name: 'clone', description: 'Duplicate this chat at the current point', source: 'builtin' },
   { name: 'changelog', description: "What's new", source: 'builtin' },
   { name: 'hotkeys', description: 'Show all keyboard shortcuts', source: 'builtin' },
-  { name: 'trust', description: 'Project trust', source: 'builtin' },
+  // The terminal saves the trust decision; the app has no trust list (typed, a notice says so).
+  { name: 'trust', description: 'Project trust', source: 'builtin', surfaces: ['tui'] },
   { name: 'login', description: 'Sign in to a provider', source: 'builtin' },
   { name: 'logout', description: 'Sign out of a provider', source: 'builtin' },
   { name: 'bug', description: 'Report a bug', source: 'builtin' },
@@ -55,11 +58,22 @@ export const APP_HANDLED_BUILTINS = new Set(['model', 'thinking', 'compact', 'ne
 /** pi's built-ins by name (the rows a bare `/` lists after the session's own). */
 const PI_ONLY = new Set(PI_BUILTINS.map((c) => c.name));
 
-/** Everything `/` suggests: the session's list plus pi built-ins it doesn't carry (a same-named extension command wins).
+/** Whether the app lists a command ([gui-cleanup]): rows marked for other clients (`surfaces`, e.g. `/answer` → `["tui"]`) stay out of `/` and the palette. */
+export function shownInMenu(c: CommandInfo): boolean {
+  return shownInApp(c.surfaces);
+}
+
+/** The session's commands plus pi built-ins it doesn't carry (a same-named extension command wins), unfiltered. */
+function everyCommand(session: readonly CommandInfo[]): CommandInfo[] {
+  const have = new Set(session.map((c) => c.name));
+  return [...session, ...PI_BUILTINS.filter((c) => !have.has(c.name))];
+}
+
+/** Everything `/` suggests: the session's list plus pi built-ins it doesn't carry (a same-named extension command wins),
+ *  without the commands meant for the terminal only (`shownInMenu`).
  *  `builtin` filters the built-ins (the new-chat draft lists only those that work without a chat). */
 export function allCommands(session: readonly CommandInfo[], builtin: (name: string) => boolean = () => true): CommandInfo[] {
-  const have = new Set(session.map((c) => c.name));
-  return [...session, ...PI_BUILTINS.filter((c) => !have.has(c.name) && builtin(c.name))];
+  return everyCommand(session).filter((c) => shownInMenu(c) && (!PI_ONLY.has(c.name) || session.some((s) => s.name === c.name) || builtin(c.name)));
 }
 
 /**
@@ -73,7 +87,8 @@ export function allCommands(session: readonly CommandInfo[], builtin: (name: str
  * must say "Unknown command /name" instead.
  */
 export function isKnownCommand(name: string, session: readonly CommandInfo[]): boolean {
-  return allCommands(session).some((c) => c.name === name);
+  // Terminal-only rows are not suggested but still run when typed (`/answer` keeps working).
+  return everyCommand(session).some((c) => c.name === name);
 }
 
 /** A typed `/name` that the session does not run itself (an engine built-in the app handles).

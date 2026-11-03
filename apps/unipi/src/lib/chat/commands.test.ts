@@ -69,8 +69,40 @@ describe('UNI-276: every command is suggested', () => {
     ];
     const all = allCommands(session);
     expect(all.filter((c) => c.name === 'name')).toEqual([{ name: 'name', description: 'mine', source: 'extension' }]);
-    expect(all.length).toBe(session.length + PI_BUILTINS.length - 2);
+    const hidden = PI_BUILTINS.filter((c) => Array.isArray(c.surfaces) && !(c.surfaces as string[]).includes('gui')).length;
+    expect(all.length).toBe(session.length + PI_BUILTINS.length - 2 - hidden);
     expect(all.some((c) => c.name === 'settings')).toBe(true);
+  });
+});
+
+describe('[gui-cleanup] commands meant for the terminal only', () => {
+  const session = [
+    { name: 'answer', description: 'Answer the last reply', source: 'extension', surfaces: ['tui'] },
+    { name: 'doctor', description: 'Check the runtime', source: 'extension' },
+    { name: 'gui-only', source: 'extension', surfaces: ['gui'] },
+  ];
+  it('stay out of the / menu (extension rows by their surfaces; /trust and the dead /share built-ins)', async () => {
+    const { allCommands, rankCommands } = await import('./commands');
+    const names = allCommands(session).map((c) => c.name);
+    expect(names).not.toContain('answer');
+    expect(names).not.toContain('trust');
+    expect(names).not.toContain('share');
+    expect(names).toContain('doctor');
+    expect(names).toContain('gui-only');
+    expect(rankCommands(allCommands(session), 'ans').map((c) => c.name)).not.toContain('answer');
+  });
+  it('still run when typed (known, never sent as a prompt)', async () => {
+    const { isKnownCommand, isAppBuiltin } = await import('./commands');
+    expect(isKnownCommand('answer', session)).toBe(true);
+    expect(isKnownCommand('trust', session)).toBe(true);
+    expect(isAppBuiltin('share', session)).toBe(true);
+  });
+  it('shownInMenu: absent = every client, a list must name gui', async () => {
+    const { shownInMenu } = await import('./commands');
+    expect(shownInMenu({ name: 'a' })).toBe(true);
+    expect(shownInMenu({ name: 'a', surfaces: ['gui', 'tui'] })).toBe(true);
+    expect(shownInMenu({ name: 'a', surfaces: ['tui'] })).toBe(false);
+    expect(shownInMenu({ name: 'a', surfaces: 'tui' })).toBe(true);
   });
 });
 

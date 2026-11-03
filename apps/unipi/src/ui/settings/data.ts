@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type { HostResult } from '../../lib/host';
 import { hostCmd, setExtensionSetting } from '../../settings/hostCmd';
 import type { Field, Json, Namespace } from './types';
-import { parseNamespaces } from './types';
+import { appNamespaces, parseNamespaces } from './types';
 import { lookup, simplifyKey, type Diagnostic, type WriteLayer } from './semantics';
 import { settingsHostId } from '../../settings/target';
 
@@ -26,10 +26,10 @@ export type NamespaceLayers = {
 /** `_oino/get_settings_schema` reply: the namespaces are parsed tolerantly (§7). */
 const SchemaReply = z.object({ namespaces: z.array(z.unknown()) });
 
-/** Every settings namespace of the host, in registration order (core first). */
+/** Every settings namespace of the host the app shows, in registration order (core first); terminal-only fields are left out (`appNamespaces`). */
 export function settingsSchema(hostId = settingsHostId()): Promise<HostResult<Namespace[]>> {
   return hostCmd({ kind: 'get_settings_schema' }, SchemaReply, hostId).then((reply) =>
-    reply.ok ? { ok: true as const, value: parseNamespaces(reply.value.namespaces) } : reply,
+    reply.ok ? { ok: true as const, value: appNamespaces(parseNamespaces(reply.value.namespaces)) } : reply,
   );
 }
 

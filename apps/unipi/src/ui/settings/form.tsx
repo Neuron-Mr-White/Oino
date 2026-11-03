@@ -139,7 +139,7 @@ export function NamespaceForm(props: {
     set: (field, value) => void write(field, value),
   });
 
-  const fieldsOf = (section: Section) => section.fields.filter((field) => !appHidden(props.namespace.namespace, field.key) && fieldVisible(field, values()) && (advanced() || !(field.advanced ?? false)));
+  const fieldsOf = (section: Section) => section.fields.filter((field) => !appHidden(props.namespace.namespace, field.key, field) && fieldVisible(field, values()) && (advanced() || !(field.advanced ?? false)));
 
   return (
     <section

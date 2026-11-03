@@ -1,10 +1,11 @@
 /**
- * "Answer N questions" (phone spec §3.4, PH-21): on the phone the utility
- * extension's `/answer` hint line ("1 question in the reply — /answer …", a
- * TUI command) becomes a 48 px accent pill docked above the composer. It opens
- * a sheet with each question as a card — its choices as 48 px rows, plus a
- * free-text field — and "Send answers" in the footer, sent as one prompt in
- * the extension's own `/answer` format.
+ * "Answer N questions" (phone spec §3.4, PH-21): the utility extension's
+ * `/answer` hint line ("1 question in the reply — /answer …", a terminal
+ * command the app does not list) becomes an accent pill docked above the
+ * composer — 48 px on the phone, compact on the desktop ([gui-cleanup]). It
+ * opens a sheet (a centred dialog on the desktop) with each question as a
+ * card — its choices as rows, plus a free-text field — and "Send answers" in
+ * the footer, sent as one prompt in the extension's own `/answer` format.
  */
 import { createMemo, createSignal, For, Index, Show } from 'solid-js';
 import { MessageCircleQuestion } from 'lucide-solid';

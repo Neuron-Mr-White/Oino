@@ -20,9 +20,10 @@ import type { UiTarget } from '../actions';
 const PHONE_MAX = 3;
 
 export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone?: boolean; fallbackTrayLabel?: string }) {
-  // Phone (§3.4, PH-21): the `/answer` hint line becomes the "Answer N questions" pill.
-  const answerHint = () => (props.phone && props.target.sessionId ? props.entries.find(isAnswerHint) : undefined);
-  const entries = () => liveTrayEntries(props.phone ? props.entries.filter((e) => !isAnswerHint(e)) : props.entries);
+  // The `/answer` hint line ("… — /answer", a terminal command) becomes the "Answer N questions"
+  // pill on the phone (§3.4, PH-21) and on the desktop ([gui-cleanup]: /answer is terminal-only).
+  const answerHint = () => (props.target.sessionId ? props.entries.find(isAnswerHint) : undefined);
+  const entries = () => liveTrayEntries(props.entries.filter((e) => !isAnswerHint(e)));
   const hasEntryTray = () => !!props.target.sessionId && entries().some((e) => typeof trayButtonText(e) === 'string');
   const synthLabel = () => (props.target.sessionId && !hasEntryTray() ? props.fallbackTrayLabel : undefined);
   const over = () => (props.phone ? Math.max(0, entries().length - PHONE_MAX) : 0);
