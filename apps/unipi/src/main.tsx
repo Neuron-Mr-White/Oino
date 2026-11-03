@@ -45,6 +45,7 @@ import { dismissSplashWhenReady } from './lib/splash';
 import { watchForUpdates } from './lib/update';
 import { watchDesktopUpdates } from './lib/desktopUpdate';
 import { announceWebviewRecovery } from './lib/webviewRecovery';
+import { installGlobalErrorLog } from './lib/appLog';
 import { installIdleGuards } from './lib/idle';
 import { startKeyboardTracking } from './components/phone/services';
 import './components/media/media.css';
@@ -174,6 +175,7 @@ export function Root() {
 }
 const root = document.getElementById('root');
 if (root) {
+  installGlobalErrorLog();
   installIdleGuards();
   startKeyboardTracking();
   watchForUpdates();

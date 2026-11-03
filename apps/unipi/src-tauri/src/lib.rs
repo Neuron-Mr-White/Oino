@@ -79,10 +79,19 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(
+            // chat-vanish: the default (40 KB, KeepOne) plus iroh's per-packet `tracing::span`
+            // INFO lines kept only the last ~6 minutes, so a webview crash, a host watchdog
+            // restart or a chat self-heal was gone by the time anyone looked. 4 MB × 3 files
+            // (bounded: ≤ 16 MB on disk) and the span noise at WARN.
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .level_for("iroh", log::LevelFilter::Warn)
+                .level_for("iroh_relay", log::LevelFilter::Warn)
                 .level_for("noq_proto", log::LevelFilter::Warn)
+                .level_for("tracing::span", log::LevelFilter::Warn)
+                .level_for("zbus", log::LevelFilter::Warn)
+                .max_file_size(4_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
                 .build(),
         )
         .plugin(tauri_plugin_os::init())
