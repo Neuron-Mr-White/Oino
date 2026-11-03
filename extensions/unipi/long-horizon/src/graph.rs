@@ -1714,8 +1714,8 @@ impl GraphFile {
             mermaid.push("  classDef running stroke:#28BEF0,stroke-width:2px".into());
             mermaid.push("  classDef done stroke:#5AD25A".into());
             mermaid.push("  classDef failed stroke:#F03C32,stroke-width:2px".into());
-            mermaid.push("  classDef blocked stroke:#F0A818,stroke-dasharray:4 3".into());
-            mermaid.push("  classDef off stroke-dasharray:3 3,opacity:0.55".into());
+            mermaid.push("  classDef blocked stroke:#F0A818,stroke-dasharray:4".into());
+            mermaid.push("  classDef off stroke:#6B635C,color:#8A8178,stroke-dasharray:3".into());
             for (class, ids) in classes {
                 mermaid.push(format!("  class {} {class}", ids.join(",")));
             }

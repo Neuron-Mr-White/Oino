@@ -12,7 +12,7 @@
  *   registerChatAction('rename', { run: (ctx) => openRename(ctx) });
  */
 import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
-import { ArrowLeft, Brain, Copy, Workflow, CopyPlus, Ellipsis, FileText, Folder, FolderInput, FolderLock, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
+import { ArrowLeft, Brain, Copy, Network, CopyPlus, Ellipsis, FileText, Folder, FolderInput, FolderLock, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { observeTitleOverflow, syncTitleOverflow } from '../sidebar/SessionRow';
 import { copyText } from '../../lib/board/share';
@@ -44,7 +44,7 @@ export const CHAT_ACTIONS: Array<{ id: ChatActionId; label: string; icon: IconCo
   { id: 'reveal', label: 'Reveal folder', icon: FolderOpen, group: 1 },
   // Owner 2026-11-03: moved out of Settings › Memory — it writes this chat's memories.
   // [graph-view] while the chat has a graph / swarm run: its DAG and per-node models.
-  { id: 'view-graph', label: 'View graph', icon: Workflow, group: 2 },
+  { id: 'view-graph', label: 'View graph', icon: Network, group: 2 },
   { id: 'memory-consolidate', label: 'Consolidate memories', icon: Brain, group: 2 },
   { id: 'info', label: 'Session info', icon: Info, group: 2 },
 ];

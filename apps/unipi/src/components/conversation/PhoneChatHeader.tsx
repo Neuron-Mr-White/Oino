@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   SquareTerminal,
   Workflow,
+  Network,
 } from 'lucide-solid';
 import { sessions } from '../../lib/session/store';
 import { hubs } from '../../lib/session/hub';
@@ -149,7 +150,7 @@ export function PhoneChatHeader(props: {
     if (sid && hasPermission()) chat.push({ id: 'mode', label: 'Mode', icon: ShieldCheck, value: permissionModeLabel(session()!), onSelect: () => openModeSheet(session()!.key) });
     if (sid && lh() !== undefined) chat.push({ id: 'working-mode', label: 'Working mode', icon: Workflow, value: lh()?.label ?? 'Plain', onSelect: () => setLhMenu(true) });
     // [graph-view] the graph / swarm run's DAG and per-node models, full screen.
-    if (sid && hasGraph(lh())) chat.push({ id: 'view-graph', label: 'View graph', icon: Workflow, value: lh()?.countText, onSelect: () => openGraphView({ hostId: props.hostId, sessionId: sid, path: props.cwd }) });
+    if (sid && hasGraph(lh())) chat.push({ id: 'view-graph', label: 'View graph', icon: Network, value: lh()?.countText, onSelect: () => openGraphView({ hostId: props.hostId, sessionId: sid, path: props.cwd }) });
     if (sid) {
       chat.push(
         { id: 'info', label: 'Context & info', icon: Info, value: skills(), onSelect: () => openSessionModal({ hostId: props.hostId, sessionId: sid, tab: 'context' }) },
