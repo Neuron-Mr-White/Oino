@@ -326,27 +326,22 @@ mod tests {
     }
 
     #[test]
-    fn surfaces_wire() {
+    fn surfaces_wire() -> serde_json::Result<()> {
         let all = tab("bg", "Background tasks", "Bg", 0, 1, 0);
-        assert!(
-            serde_json::to_value(&all)
-                .unwrap()
-                .get("surfaces")
-                .is_none()
-        );
+        assert!(serde_json::to_value(&all)?.get("surfaces").is_none());
         let tui = TrayTab {
             surfaces: Some(vec![Surface::Tui]),
             ..tab("subagents", "Subagents", "Agents", 1, 1, 1)
         };
-        let v = serde_json::to_value(&tui).unwrap();
+        let v = serde_json::to_value(&tui)?;
         assert_eq!(v["surfaces"], json!(["tui"]));
-        let back: TrayTab = serde_json::from_value(v).unwrap();
+        let back: TrayTab = serde_json::from_value(v)?;
         assert_eq!(back.surfaces, Some(vec![Surface::Tui]));
         let old: TrayTab = serde_json::from_value(
             json!({"id": "x", "label": "X", "order": 0, "counts": {"total": 0, "running": 0}}),
-        )
-        .unwrap();
+        )?;
         assert_eq!(old.surfaces, None);
+        Ok(())
     }
 
     #[test]
