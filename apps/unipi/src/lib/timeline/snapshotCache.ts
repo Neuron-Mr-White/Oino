@@ -35,6 +35,14 @@ function slimEntry(e: SessionEntry | undefined): SessionEntry | undefined {
     const slim = { type: e.type, id: e.id, timestamp: e.timestamp, customType: e.customType } as SessionEntry;
     // A workspace move's marker names the folder from its details (small: `{cwd, previousCwd}`).
     if (e.customType === 'oino.cwd_change' && e.details !== undefined) slim.details = e.details;
+    // [chat-events] an event row's summary needs its fields; each one is capped so the cache stays bounded.
+    for (const k of EVENT_FIELDS) {
+      const v = (e as Record<string, unknown>)[k];
+      if (v === undefined || slim[k] !== undefined) continue;
+      if (typeof v === 'string') slim[k] = trimStr(v, EVENT_STR_CAP);
+      else if (typeof v === 'number' || typeof v === 'boolean') slim[k] = v;
+      else if (smallJson(v)) slim[k] = v;
+    }
     return slim;
   }
   const content = Array.isArray(msg.content)
@@ -63,9 +71,25 @@ function slimEntry(e: SessionEntry | undefined): SessionEntry | undefined {
       timestamp: msg.timestamp,
       stopReason: msg.stopReason,
       ...(msg.unipiHarness ? { unipiHarness: msg.unipiHarness } : {}),
+      // [chat-events] a `!cmd` row's command / exit / output head.
+      ...(msg.role === 'bashExecution'
+        ? { command: trimStr(msg.command as string | undefined, EVENT_STR_CAP), output: trimStr(msg.output as string | undefined, EVENT_STR_CAP), exitCode: msg.exitCode, cancelled: msg.cancelled }
+        : {}),
     },
   } as SessionEntry;
 }
+
+/** Top-level fields an event row reads (custom content/details/data, branch summary, model change). */
+const EVENT_FIELDS = ['content', 'display', 'details', 'data', 'summary', 'modelId', 'provider', 'thinkingLevel', 'tokensBefore'] as const;
+const EVENT_STR_CAP = 2_000;
+const EVENT_JSON_CAP = 2_000;
+const smallJson = (v: unknown): boolean => {
+  try {
+    return JSON.stringify(v).length <= EVENT_JSON_CAP;
+  } catch {
+    return false;
+  }
+};
 
 /** Child step rows a cached subagent card keeps (the live card caps at 200 too). */
 const AGENT_STEPS_CACHED = 50;
@@ -125,6 +149,8 @@ function slimSegment(s: Segment): Segment {
     steer: slimEntry(s.steer),
     work: s.work.map(slimItem),
     nodes: s.nodes.map(slimNode),
+    ...(s.before ? { before: s.before.map(slimNode) } : {}),
+    ...(s.after ? { after: s.after.map(slimNode) } : {}),
     answer: s.answer ? { ...s.answer, text: trimStr(s.answer.text, 24_000) ?? '', live: false } : undefined,
     fold: s.fold
       ? {

@@ -23,6 +23,7 @@
  * tree navigation (an `entriesRev` change), reusing unchanged turn objects.
  */
 import { STEP_TYPES, formatDuration, isHiddenCommandText, textOf, toolCategory, type Part as ModelPart, type ToolCategory } from '../chat/model';
+import { eventVisible } from '../timeline/eventKinds';
 import { humanProviderError } from '../model/humanError';
 import type { AgentMessage, LiveTool, RunInfo, SessionEntry, Streaming } from './types';
 import { branchOf } from './reducer';
@@ -100,7 +101,9 @@ export type Segment = {
   steer?: SessionEntry;
   work: WorkItem[];
   nodes: WorkNode[];
-  /** Cards appended after the assistant's final answer (`model_change`, `thinking_level_change`, P3). */
+  /** [chat-events] Event cards before the segment's first work item (memory recall, nudges) — shown above the fold. */
+  before?: WorkNode[];
+  /** Cards appended after the assistant's final answer (model change, saved memories, …) — shown below it, never folded away. */
   after?: WorkNode[];
   answer?: Extract<WorkItem, { kind: 'prose' }>;
   /** Absent when there is no work to fold. */
@@ -498,7 +501,8 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
           segMeta[seg.index]!.error = true;
           if (m.errorMessage) seg.work.push({ kind: 'error', key: `${e.id}-err`, text: humanProviderError(m.errorMessage, typeof m.provider === 'string' ? m.provider : undefined, { settingsHint: true }) });
         }
-      } else if (m.role === 'bashExecution') {
+      } else if (m.role === 'bashExecution' || (m.role === 'system' && eventVisible(e))) {
+        // [chat-events] a user `!cmd` run, or a mid-chat system message (mode switch, agent prompt).
         seg.work.push({ kind: 'card', key: e.id, entry: e });
       }
       // toolResult: joined into its call.
@@ -509,7 +513,7 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         // An echo right before the user message it opened belongs to that turn (its `command`).
         if (cmd?.hidden || (start.at + i + 1 === end && isUser(branch[end]))) continue;
       }
-      if (INTERNAL_CUSTOM_TYPES.has(ct)) continue;
+      if (INTERNAL_CUSTOM_TYPES.has(ct) && !eventVisible(e)) continue;
       if (STEP_TYPES.has(ct)) {
         const agentId = stepAgentId(e);
         if (agentId && claimed.has(agentId)) continue; // inside its run's card
@@ -522,7 +526,8 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         segMeta[seg.index]!.steps++;
       } else seg.work.push({ kind: 'card', key: e.id, entry: e });
     } else if (e.type === 'custom_message') {
-      if ((e as { display?: unknown }).display === false || (e.message as { display?: unknown } | undefined)?.display === false) continue;
+      // [chat-events] `display: false` hides only kinds without an app summary (memory recall, ralph… still show).
+      if (!eventVisible(e)) continue;
       seg.work.push({ kind: 'card', key: e.id, entry: e });
     } else if (e.type === 'model_change' || e.type === 'branch_summary' || e.type === 'thinking_level_change') {
       // D-02: before the first prompt these are the chat's starting settings (the composer
@@ -585,25 +590,24 @@ export function cwdChangeTarget(e: SessionEntry): string | undefined {
 
 function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number; stopped: boolean; error: boolean; steps: number }, live: boolean): void {
   s.live = live;
+  // [chat-events] Event cards that open the segment (recall, nudges, mode switch) sit above the
+  // "Worked" fold, not inside it: the fold is closed once the run is done, which hid them.
+  let lead = 0;
+  while (lead < s.work.length && s.work[lead]!.kind === 'card') lead++;
+  if (lead) {
+    s.before = groupWork(s.work.slice(0, lead));
+    s.work = s.work.slice(lead);
+  }
   // Extract the final answer prose even when trailing metadata cards (e.g. saved
-  // memories or wake-up cards) were appended after the assistant finished speaking.
+  // memories or wake-up cards) were appended after the assistant finished speaking;
+  // those cards render after the answer (never folded away).
   for (let i = s.work.length - 1; i >= 0; i--) {
     const item = s.work[i]!;
     if (item.kind === 'prose') {
       s.answer = item;
       const tail = s.work.slice(i + 1);
-      const afterCards = tail.filter(
-        (t) =>
-          t.kind === 'card' &&
-          (t.entry.type === 'model_change' || t.entry.type === 'thinking_level_change' || t.entry.type === 'branch_summary' || isCwdChange(t.entry)),
-      );
-      if (afterCards.length) {
-        const moved = new Set(afterCards);
-        s.after = groupWork(afterCards);
-        s.work = [...s.work.slice(0, i), ...tail.filter((t) => !moved.has(t))];
-      } else {
-        s.work.splice(i, 1);
-      }
+      if (tail.length) s.after = groupWork(tail);
+      s.work = s.work.slice(0, i);
       break;
     }
     if (item.kind !== 'card') break;

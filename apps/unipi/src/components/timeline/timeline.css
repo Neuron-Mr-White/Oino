@@ -691,3 +691,61 @@ html[data-shell=phone] .proc-hint { display: none; }
 .tl-agents-scroll { max-height: min(60vh, 560px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; contain: strict; height: min(60vh, 560px); }
 .tl-agents-space { position: relative; width: 100%; }
 .tl-agents-vrow { position: absolute; top: 0; left: 0; right: 0; padding-bottom: 6px; }
+
+/* ── [chat-events] event rows: own icon + accent, one-line summary, expandable body ── */
+.tl-event {
+  --ev: var(--color-text-muted);
+  margin: 3px 0;
+  border-radius: 10px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), inset 2px 0 0 0 color-mix(in srgb, var(--ev) 70%, transparent);
+  min-width: 0;
+  overflow: hidden;
+}
+.tl-event[data-family=memory] { --ev: #a78bfa; }
+.tl-event[data-family=agent] { --ev: var(--color-claw); }
+.tl-event[data-family=task] { --ev: var(--color-wm-green); }
+.tl-event[data-family=shell] { --ev: var(--color-text-muted); }
+.tl-event[data-family=compactor] { --ev: var(--color-gold); }
+.tl-event[data-family=board] { --ev: var(--color-amber); }
+.tl-event[data-family=mode] { --ev: var(--color-wm-cyan); }
+.tl-event[data-family=warn] { --ev: var(--color-amber); }
+.tl-event[data-family=dream] { --ev: #c084fc; }
+.tl-event[data-family=harness] { --ev: #8b9cf6; }
+.tl-event[data-family=system] { --ev: var(--color-text-dim); }
+.tl-event[data-tone=ok] { --ev-icon: var(--color-wm-green); }
+.tl-event[data-tone=warning] { --ev: var(--color-amber); box-shadow: inset 0 0 0 1px rgb(240 168 24 / 40%), inset 2px 0 0 0 var(--color-amber); }
+.tl-event[data-tone=error] { --ev: var(--color-wm-red); box-shadow: inset 0 0 0 1px rgb(240 60 50 / 38%), inset 2px 0 0 0 var(--color-wm-red); }
+.tl-event-head {
+  display: flex; align-items: center; gap: 7px; width: 100%; min-height: 32px; padding: 5px 10px 5px 11px;
+  background: transparent; border-radius: 10px; text-align: left; font-size: 13px; line-height: 18px; color: var(--color-text-muted);
+  transition: background-color 140ms ease-out;
+}
+html[data-shell=phone] .tl-event-head { min-height: 40px; }
+.tl-event-head:hover:not([aria-disabled]) { background-color: var(--color-surface-2); }
+.tl-event-head[aria-disabled] { cursor: default; }
+.tl-event-head:focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: -1.5px; }
+.tl-event-icon { flex: 0 0 18px; display: grid; place-items: center; color: var(--ev-icon, var(--ev)); }
+.tl-event-source { flex: 0 0 auto; font-weight: 600; color: var(--color-text); }
+.tl-event-source::after { content: '·'; margin-left: 7px; font-weight: 400; color: var(--color-text-dim); }
+.tl-event-title { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-event-meta { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11.5px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
+.tl-event-chev { flex: 0 0 auto; color: var(--color-text-dim); transition: transform 160ms ease-out; }
+.tl-event-chev[data-open] { transform: rotate(90deg); }
+.tl-event-bodywrap { border-top: 1px solid rgb(46 40 37 / 70%); animation: tl-event-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tl-event-bodywrap[data-leaving] { animation: tl-event-out 110ms ease-out both; }
+@keyframes tl-event-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tl-event-out { from { opacity: 1; } to { opacity: 0; } }
+.tl-event-body { margin: 0; padding: 8px 12px 10px 36px; max-height: min(420px, 55vh); overflow: auto; overscroll-behavior: contain; font-size: 13px; line-height: 19px; color: var(--color-text-muted); white-space: normal; overflow-wrap: anywhere; }
+pre.tl-event-body { white-space: pre-wrap; font-family: var(--font-mono); font-size: 11.5px; line-height: 17px; }
+.tl-event-body[data-format=json] { color: var(--color-text); }
+.tl-event-empty { color: var(--color-text-dim); }
+.tl-event-render { padding-left: 12px; }
+.tl-event-sheetbody .tl-event-body { max-height: none; padding: 4px 0 16px; overflow: visible; font-size: 15px; line-height: 22px; }
+.tl-event-sheetbody pre.tl-event-body { font-size: 12.5px; line-height: 18px; overflow-x: auto; }
+.tl-event-sheetmeta { padding: 0 0 8px; font-size: 13px; color: var(--color-text-dim); }
+html[data-shell=phone] .tl-event-source { font-size: 13px; }
+@media (prefers-reduced-motion: reduce) {
+  .tl-event-bodywrap, .tl-event-bodywrap[data-leaving] { animation: none; }
+  .tl-event-chev { transition: none; }
+}

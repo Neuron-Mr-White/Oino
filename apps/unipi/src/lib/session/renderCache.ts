@@ -32,6 +32,8 @@ export type RenderRowKey = {
   /** Content revision (a UiEntry `rev`, A27's invalidate counter); immutable rows pass 0. */
   rev?: number;
   width: RenderWidthClass;
+  /** The expanded variant ([chat-events]: an event row's body) is its own row. */
+  expanded?: boolean;
 };
 
 /** Everything but the cached key parts — what the request carries. */
@@ -45,7 +47,7 @@ export type RenderRowInput = {
   data: unknown;
 };
 
-const keyOf = (r: RenderRowKey): string => `${r.target}|${r.key}|${r.entryId ?? ''}|${r.rev ?? 0}|${r.width}`;
+const keyOf = (r: RenderRowKey): string => `${r.target}|${r.key}|${r.entryId ?? ''}|${r.rev ?? 0}|${r.width}${r.expanded ? '|x' : ''}`;
 
 export const RENDER_CACHE_MAX = 500;
 /** Live per-session caches (twice the session store LRU: a few slack for handovers; perf-app). */
@@ -129,8 +131,8 @@ export function createRenderCache(session: SessionHandle) {
     /** Drops cached rows (`invalidateTurnFooter` bumps `rev` instead; this is for tests/scope ends). */
     drop(match: (row: RenderRowKey) => boolean): void {
       for (const k of [...slots.keys()]) {
-        const [target, key, entryId, rev, width] = k.split('|');
-        if (match({ target: target as RenderTargetName, key, entryId: entryId || undefined, rev: Number(rev) || 0, width: width as RenderWidthClass })) slots.delete(k);
+        const [target, key, entryId, rev, width, x] = k.split('|');
+        if (match({ target: target as RenderTargetName, key, entryId: entryId || undefined, rev: Number(rev) || 0, width: width as RenderWidthClass, ...(x ? { expanded: true } : {}) })) slots.delete(k);
       }
     },
     /** Test seam: how many rows are cached. */

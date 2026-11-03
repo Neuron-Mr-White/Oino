@@ -153,6 +153,10 @@ function SegmentView(props: {
           composerKey={props.ctx.session.key}
         />
       </Show>
+      <Show when={seg().before?.length}>
+        {/* [chat-events] events that opened the segment (recall, nudges) stay visible above the fold */}
+        <WorkNodes nodes={seg().before!} ctx={props.ctx} live={false} />
+      </Show>
       <Show when={!props.preamble && !!seg().fold}>
         <SegmentFold segment={seg()} ctx={props.ctx} />
       </Show>
