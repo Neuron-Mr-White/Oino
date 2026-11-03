@@ -125,6 +125,27 @@ def app_pids():
     return out
 
 
+def thread_ticks(pids):
+    """{(pid comm, thread comm): ticks} for every thread of `pids` (attribution of idle CPU)."""
+    out = {}
+    for pid in pids:
+        pc = (lib.proc(pid) or {}).get("comm", "?")
+        try:
+            tids = os.listdir(f"/proc/{pid}/task")
+        except OSError:
+            continue
+        for tid in tids:
+            try:
+                raw = open(f"/proc/{pid}/task/{tid}/stat").read()
+            except OSError:
+                continue
+            comm = raw[raw.index("(") + 1:raw.rindex(")")]
+            f = raw.rsplit(")", 1)[1].split()
+            k = f"{pc}/{comm}"
+            out[k] = out.get(k, 0) + int(f[11]) + int(f[12])
+    return out
+
+
 def app_sample(secs=10, env=None):
     probe = None
     if env is not None:
@@ -139,7 +160,12 @@ def app_sample(secs=10, env=None):
             pass
     pids = app_pids()
     a = {p: lib.proc(p) for p in pids}
+    th0 = thread_ticks(pids) if DIAG["on"] else None
     time.sleep(secs)
+    if th0 is not None:
+        th1 = thread_ticks(pids)
+        busy = {k: round(100.0 * (v - th0.get(k, 0)) / lib.CLK / secs, 2) for k, v in th1.items()}
+        probe = dict(probe or {}, threads=sorted(((k, v) for k, v in busy.items() if v > 0), key=lambda kv: -kv[1])[:10])
     if env is not None and DIAG["on"]:
         try:
             probe = dict(probe or {}, timers=ev(env, TIMERS_READ))
@@ -235,6 +261,10 @@ def main():
             ev(env, "document.getElementById('__perf_pause')?.remove();return true")
         if a.diag:
             paused("idle_home_paused")
+            # no focused field either (a blinking caret repaints twice a second)
+            ev(env, "document.activeElement && document.activeElement.blur && document.activeElement.blur(); return true")
+            time.sleep(1)
+            R["idle_home_blurred"] = app_sample(15, env)
         cards = lib.op(sock, {"op": "sessions_list"}).get("data") or []
         long_sid = cards[0]["session_id"] if cards else None
         host_id = ev(env, "const a=document.querySelector('a[href*=\"#/s/\"]');return a?a.getAttribute('href'):location.hash")

@@ -72,8 +72,10 @@ if A:
     P("## (d) desktop app (WebKitGTK webview)\n")
     P("| phase | app RSS MB (all procs) | webview RSS MB | app CPU % | DOM nodes |")
     P("|---|---:|---:|---:|---:|")
-    for ph in ("idle_home", "small_open", "long_open", "long_after_scroll", "graph_busy", "graph_idle", "long_again"):
+    for ph in ("idle_home", "idle_home_paused", "idle_home_blurred", "small_open", "long_open", "long_after_scroll", "graph_busy", "graph_idle", "graph_idle_paused", "long_again"):
         x = A.get(ph) or {}
+        if not x:
+            continue
         P(f"| {ph} | {x.get('app_rss_mb')} | {x.get('webview_rss_mb')} | {x.get('app_cpu_pct')} | {x.get('dom', '—')} |")
     P("\n| frame meter | fps | p50 ms | p95 ms | max ms | frames > 50 ms | > 100 ms |")
     P("|---|---:|---:|---:|---:|---:|---:|")

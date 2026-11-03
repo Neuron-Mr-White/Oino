@@ -221,7 +221,8 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
 
   const trimLoaded = (keep: number): boolean => {
     let dropped = false;
-    if (state.history && !state.history.loading && state.entries.length > keep) mutate((s) => (dropped = trimHistory(s, keep)));
+    // Not while provisional entries wait for their host echo (the reconcile reads `since` by index).
+    if (state.history && !state.history.loading && state.entries.length > keep && !reconciling && !reconcileSince(state).needed) mutate((s) => (dropped = trimHistory(s, keep)));
     return dropped;
   };
 
