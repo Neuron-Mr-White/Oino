@@ -44,14 +44,24 @@ function hash(source: string): string {
 
 export type MermaidResult = { ok: true; svg: string } | { ok: false; error: string };
 
+/** Render cache, LRU-bounded: a live graph re-renders on every count change. */
+const CACHE_MAX = 48;
 const cache = new Map<string, MermaidResult>();
+const remember = (key: string, result: MermaidResult) => {
+  cache.delete(key);
+  cache.set(key, result);
+  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+};
 let seq = 0;
 
 /** Renders mermaid source to a sanitised `<svg>` string, or an error. Cached by source hash. */
 export async function renderMermaid(source: string): Promise<MermaidResult> {
   const key = hash(source);
   const hit = cache.get(key);
-  if (hit) return hit;
+  if (hit) {
+    remember(key, hit);
+    return hit;
+  }
   const id = `mmd-${Date.now().toString(36)}-${seq++}`;
   try {
     const mermaid = await loadMermaid();
@@ -73,7 +83,7 @@ export async function renderMermaid(source: string): Promise<MermaidResult> {
       HTML_INTEGRATION_POINTS: { foreignobject: true },
     });
     const result: MermaidResult = { ok: true, svg: clean };
-    cache.set(key, result);
+    remember(key, result);
     return result;
   } catch (error) {
     // Mermaid renders into a temp element in <body> (`d<id>` wrapper and
@@ -81,7 +91,7 @@ export async function renderMermaid(source: string): Promise<MermaidResult> {
     // the bottom of the page.
     if (typeof document !== 'undefined') for (const el of [document.getElementById(id), document.getElementById(`d${id}`)]) el?.remove();
     const result: MermaidResult = { ok: false, error: error instanceof Error ? error.message : String(error) };
-    cache.set(key, result);
+    remember(key, result);
     return result;
   }
 }
