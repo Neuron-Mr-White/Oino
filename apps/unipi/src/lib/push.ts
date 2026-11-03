@@ -302,6 +302,9 @@ export function canReceivePushes(): boolean {
  * Long-polls every paired PC while the app is visible. `getHosts` is
  * re-read every round. Returns a stop function.
  */
+/** The shortest push poll round (a long-poll normally takes `waitSeconds`). */
+export const PUSH_MIN_ROUND_MS = 1_000;
+
 export function startPushPoll(getHosts: () => readonly { id: string; name: string }[], waitSeconds = 25): () => void {
   if (!canReceivePushes()) return () => {};
   let stopped = false;
@@ -315,11 +318,16 @@ export function startPushPoll(getHosts: () => readonly { id: string; name: strin
         const host = getHosts().find((h) => h.id === hostId);
         if (!host) break;
         try {
+          const started = Date.now();
           const data = await pushTransport().list(hostId, waitSeconds);
           backoff.delete(hostId);
           pushStore().setHost(hostId, data.host_name || host.name, data.enabled ? data.pushes : []);
           // Push off on that PC: nothing will come; check again in a while.
           if (!data.enabled) await sleep(60_000);
+          // chat-vanish: a long-poll that answers at once (an item still pending on the host
+          // that this app already answered, an older host without the wait) must not spin the
+          // webview — that loop re-rendered the push layer every microtask (100% CPU, frozen UI).
+          else if (Date.now() - started < PUSH_MIN_ROUND_MS) await sleep(PUSH_MIN_ROUND_MS - (Date.now() - started));
         } catch {
           const wait = Math.min(60_000, (backoff.get(hostId) ?? 2_000) * 2);
           backoff.set(hostId, wait);

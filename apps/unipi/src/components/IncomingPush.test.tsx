@@ -339,6 +339,17 @@ describe('poller + store', () => {
     expect(currentIncoming()).toBeUndefined();
   });
 
+  it('chat-vanish: a long-poll that answers at once never spins (at most one round a second)', async () => {
+    setPlatformOverride('tauri-mobile');
+    let rounds = 0;
+    setPushTransport(transport({ list: async () => (rounds++, { enabled: true, host_name: 'coffee', pushes: [apk] }) }));
+    const stop = startPushPoll(() => [{ id: 'host-1', name: 'coffee' }], 25);
+    await new Promise((r) => setTimeout(r, 1_500));
+    stop();
+    // Before: thousands of rounds (and push-layer renders) in 1.5 s — the webview froze.
+    expect(rounds).toBeLessThanOrEqual(3);
+  });
+
   it('push off on a PC: nothing shown', () => {
     pushStore().setHost('host-1', 'coffee', []);
     expect(currentIncoming()).toBeUndefined();
