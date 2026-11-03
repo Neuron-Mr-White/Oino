@@ -96,7 +96,7 @@ describe('MdBlock verified file refs (UNI-204)', () => {
     expect(await screen.findByRole('menu', { name: 'File actions' })).toBeTruthy();
     expect(screen.getByText('Copy path')).toBeTruthy();
     expect(screen.getByText('Open in Files')).toBeTruthy();
-    fireEvent.click(screen.getByText('Mention'));
+    fireEvent.click(screen.getByText('Add to chat'));
     expect(queueMention).toHaveBeenCalledWith('h1:7', '@src/a.ts ');
     expect(screen.queryByRole('menu', { name: 'File actions' })).toBeNull();
   });

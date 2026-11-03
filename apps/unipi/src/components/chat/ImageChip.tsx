@@ -18,6 +18,13 @@ import { classifyMedia } from '../../lib/media/previewer';
 import { openPreviewer, ownedObjectUrl } from '../../lib/media/previewerState';
 import { openFilePath, resolvePathToken } from '../../lib/media/pathTokens';
 import { blobTransport } from '../../lib/blob';
+import { chatItemGestures, openChatItemMenu, type ChatItem } from '../../lib/chat/addToChat';
+
+/** Right-click / long-press on `el` opens "Add to chat" for `item` (owner spec 2026-11-03). */
+function addToChatGestures(el: HTMLElement | undefined, chat: () => RefChat, item: () => ChatItem): void {
+  if (!el) return;
+  onCleanup(chatItemGestures(el, () => openChatItemMenu(chat(), item(), el)));
+}
 
 export function ImageChipRow(props: { chat: RefChat; images: ImageRef[] }) {
   return (
@@ -155,6 +162,7 @@ function ImageChip(props: { chat: RefChat; image: ImageRef; images: ImageRef[]; 
 
   // Show the thumbnail without a tap (UNI-273): fetch once the chip is (about
   // to be) on screen, and again when the chat reconnects after a failure.
+  onMount(() => addToChatGestures(el, () => props.chat, () => ({ kind: 'image', image: props.image, name: `image ${props.index + 1}.${props.image.mime.split('/')[1] ?? 'png'}` })));
   onMount(() => {
     if (url() || !props.image.mediaRef) return;
     if (typeof IntersectionObserver === 'undefined' || !el) {
@@ -224,6 +232,10 @@ function AttachmentChip(props: { chat: RefChat; attachment: AttachmentRef }) {
   const [loading, setLoading] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
   const name = () => props.attachment.path.split('/').pop() ?? props.attachment.path;
+  let el: HTMLButtonElement | undefined;
+  onMount(() =>
+    addToChatGestures(el, () => props.chat, () => ({ kind: 'attachment', path: props.attachment.path, mime: props.attachment.mime, mediaRef: props.attachment.mediaRef, name: name() })),
+  );
 
   const open = async () => {
     setLoading(true);
@@ -257,7 +269,7 @@ function AttachmentChip(props: { chat: RefChat; attachment: AttachmentRef }) {
   };
 
   return (
-    <button type="button" class="chat-image-chip chat-attachment-chip" aria-label={`Open ${name()}`} onClick={() => void open()} disabled={loading()}>
+    <button ref={el} type="button" class="chat-image-chip chat-attachment-chip" aria-label={`Open ${name()}`} onClick={() => void open()} disabled={loading()}>
       <Show when={kind() === 'image'} fallback={<FileIcon size={18} class="chat-image-chip-icon" />}>
         <ImageIcon size={18} class="chat-image-chip-icon" />
       </Show>
@@ -286,6 +298,8 @@ export function FileMentionChipRow(props: { chat: RefChat; mentions: FileMention
 
 function FileMentionChip(props: { chat: RefChat; mention: FileMention }) {
   const [loading, setLoading] = createSignal(false);
+  let el: HTMLButtonElement | undefined;
+  onMount(() => addToChatGestures(el, () => props.chat, () => ({ kind: 'file', path: props.mention.path, name: props.mention.name })));
   const [failed, setFailed] = createSignal(false);
   const open = async () => {
     setLoading(true);
@@ -300,7 +314,7 @@ function FileMentionChip(props: { chat: RefChat; mention: FileMention }) {
     }
   };
   return (
-    <button type="button" class="chat-image-chip chat-attachment-chip" aria-label={`Open ${props.mention.name}`} onClick={() => void open()} disabled={loading()}>
+    <button ref={el} type="button" class="chat-image-chip chat-attachment-chip" aria-label={`Open ${props.mention.name}`} onClick={() => void open()} disabled={loading()}>
       <FileIcon size={18} class="chat-image-chip-icon" />
       <span class="chat-attachment-chip-name truncate">{props.mention.name}</span>
       <Show when={failed()}>
@@ -329,6 +343,8 @@ export function PathThumb(props: { chat: RefChat; path: string }) {
   const [url, setUrl] = createSignal<string | undefined>();
   const [gone, setGone] = createSignal(false);
   const name = () => props.path.split('/').pop() ?? props.path;
+  let el: HTMLButtonElement | undefined;
+  onMount(() => addToChatGestures(el, () => props.chat, () => ({ kind: 'image-path', path: props.path, name: name() })));
   onMount(() => {
     void (async () => {
       const release = await slot();
@@ -354,6 +370,7 @@ export function PathThumb(props: { chat: RefChat; path: string }) {
     <Show when={!gone()}>
       <div class="chat-image-row chat-path-thumb-row">
         <button
+          ref={el}
           type="button"
           class="chat-image-chip chat-path-thumb"
           classList={{ 'is-loading': !url() }}

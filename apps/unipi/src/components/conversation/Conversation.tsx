@@ -39,6 +39,7 @@ import { parseExtShortcutSpecs, setExtensionShortcuts } from '../../lib/shortcut
 import { commandNames, type TimelineCtx } from '../timeline/context';
 import { Timeline } from '../timeline/Timeline';
 import { FileRefMenu } from '../chat/FileRefMenu';
+import { ChatItemMenu } from '../chat/ChatItemMenu';
 import { EmptyChat } from '../EmptyChat';
 import { ConversationBoundary } from '../ErrorBoundaries';
 import { BottomDock } from '../dock/BottomDock';
@@ -338,6 +339,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                 )}
               </Show>
               <FileRefMenu />
+              <ChatItemMenu />
               <Show when={!layout().desktop() && registry()}>
                 {(reg) => <PhonePaneLayer registry={reg()} target={target()} />}
               </Show>

@@ -56,7 +56,7 @@ export function FileRefMenu() {
         />
         <MenuRow
           icon={<AtSign size={18} />}
-          label="Mention"
+          label="Add to chat"
           onSelect={() => {
             const { chat, ref } = m();
             close();

@@ -500,7 +500,7 @@ export function FileTree(props: {
             open
             hostId={props.hostId}
             root={props.root}
-            label={`Mention ${basename(path())} in…`}
+            label={`Add ${basename(path())} to…`}
             onPick={mentionPicked}
             onNewChat={mentionNewChat}
             onClose={() => setMentionFor(undefined)}
@@ -529,7 +529,7 @@ function MenuItems(props: { kind: string; path: string; onRun: (id: MenuAction) 
       </Show>
       <MenuRow icon={<FilePenLine size={15} />} label="Rename…" onSelect={() => props.onRun('rename')} />
       <MenuRow icon={<Copy size={15} />} label="Copy path" onSelect={() => props.onRun('copy')} />
-      <MenuRow icon={<MessageSquarePlus size={15} />} label="Mention in chat" testId="files-mention" onSelect={() => props.onRun('mention')} />
+      <MenuRow icon={<MessageSquarePlus size={15} />} label="Add to chat" testId="files-mention" onSelect={() => props.onRun('mention')} />
       <MenuSeparator />
       <MenuRow icon={<Trash2 size={15} />} label="Delete…" tone="danger" onSelect={() => props.onRun('delete')} />
     </>

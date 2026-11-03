@@ -25,7 +25,9 @@ import { openPreviewer } from '../../lib/media/previewerState';
 import { uploadPicked } from '../../lib/blob';
 import { copyText } from '../../lib/board/share';
 import { queueMention } from '../../lib/chat/mention';
-import { openNewChat } from '../../lib/session/open';
+import { openChatHref, openNewChat } from '../../lib/session/open';
+import type { ChatTarget } from '../../lib/session/list';
+import { ChatPickSheet } from '../board/ChatPickSheet';
 import { hubs } from '../../lib/session/hub';
 import { isHomeCwd } from '../../lib/session/selectors';
 import { useHostsOptional } from '../../hosts/context';
@@ -285,12 +287,24 @@ function FolderPage(props: { hostId: string; path: string; root?: string }) {
     openNewChat(props.hostId, e.kind === 'dir' ? path : props.path);
   }
 
+  // "Add to chat" (owner spec 2026-11-03): an `@path` chip in a chat the user picks.
+  const [addFor, setAddFor] = createSignal<FsEntry>();
+  function addPicked(target: ChatTarget) {
+    const e = addFor();
+    setAddFor(undefined);
+    if (!e) return;
+    queueMention(`${target.hostId}:${target.session}`, `@${pathOf(e)} `);
+    toast(`Added @${e.name} to the chat`);
+    navigate(openChatHref(target.hostId, target.session));
+  }
+
   const rowMenu = (e: FsEntry): ActionItem[][] => [
     [
       { id: 'open', label: e.kind === 'dir' ? 'Open' : isDirectPreview(e.name) ? 'Preview' : 'Open', icon: e.kind === 'dir' ? FolderOpen : Eye, onSelect: () => activate(e) },
       ...(e.kind !== 'dir' && isDirectPreview(e.name)
         ? [{ id: 'text', label: 'Open as text', icon: FileText, onSelect: () => { setEditorTarget({ hostId: props.hostId, path: pathOf(e), asText: true }); navigate(`/files/edit?from=${encodeURIComponent(props.path)}`); } }]
         : []),
+      { id: 'add', label: 'Add to chat…', icon: MessageSquarePlus, onSelect: () => setAddFor(e) },
       { id: 'chat', label: 'Open in a new chat', icon: MessageSquarePlus, onSelect: () => mention(e) },
     ],
     [
@@ -437,6 +451,22 @@ function FolderPage(props: { hostId: string; path: string; root?: string }) {
         sections={filesMenu({ dir: props.path, onNew: (kind) => setNameAsk({ kind: kind === 'dir' ? 'new-dir' : 'new-file' }), onUpload: () => uploadInput?.click() })}
         testId="files-tools-sheet"
       />
+      <Show when={addFor()} keyed>
+        {(e) => (
+          <ChatPickSheet
+            open
+            hostId={props.hostId}
+            root={props.root}
+            label={`Add ${e.name} to…`}
+            onPick={addPicked}
+            onNewChat={() => {
+              setAddFor(undefined);
+              mention(e);
+            }}
+            onClose={() => setAddFor(undefined)}
+          />
+        )}
+      </Show>
       <Show when={nameAsk()} keyed>
         {(ask) => (
           <NameSheet
