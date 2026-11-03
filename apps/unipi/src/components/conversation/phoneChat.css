@@ -24,6 +24,11 @@ html[data-shell=phone][data-short][data-kb=open] .conv-head.ph-chat-head { displ
 .ph-mode-switches { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgb(46 40 37 / 60%); }
 .ph-switch-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 4px; cursor: pointer; }
 
+/* ── Chat gutter (owner 2026-11-03): 12 px (medium 16) each side for the transcript, and the
+   composer dock on the same edges so its card lines up with bubbles, code blocks and tables. ── */
+html[data-shell=phone] .tl :is(.tl-turn, .tl-tail, .tl-skeleton, .tl-empty) { padding-left: var(--ph-chat-gutter, 12px); padding-right: var(--ph-chat-gutter, 12px); }
+html[data-shell=phone] .tl-dock { padding-left: var(--ph-chat-gutter, 12px); padding-right: var(--ph-chat-gutter, 12px); }
+
 /* ── Turn chrome (§3.4, PH-26): only the last settled turn, 48 px hits ────── */
 html[data-shell=phone] .ph-turn-tail { gap: 4px; min-height: 48px; }
 html[data-shell=phone] .ph-turn-tail .tl-time { font-size: 12px; margin-right: 4px; }

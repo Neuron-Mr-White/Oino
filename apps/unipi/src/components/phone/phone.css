@@ -10,6 +10,8 @@
   --ph-scale: 1;
   --ph-1: 4px; --ph-2: 8px; --ph-3: 12px; --ph-4: 16px; --ph-5: 20px; --ph-6: 24px; --ph-8: 32px;
   --ph-gutter: 16px;
+  /* The chat column's side padding (conversation + composer): tighter than pages (owner 2026-11-03). */
+  --ph-chat-gutter: 12px;
   --ph-tap: 48px;
   --ph-row-h: 56px;
   --ph-row-h2: 72px;
@@ -38,7 +40,7 @@
 html[data-shell=phone] {
   --color-text-dim: #8A8178;
 }
-html[data-shell=phone][data-size=medium] { --ph-gutter: 24px; }
+html[data-shell=phone][data-size=medium] { --ph-gutter: 24px; --ph-chat-gutter: 16px; }
 html[data-shell=phone][data-short] { --ph-header-h: 48px; --ph-tabbar-h: 48px; }
 /* Workspace pages / keyboard: no tab bar at the bottom. */
 html[data-shell=phone][data-tabbar=hidden] { --ph-bottom-chrome: var(--safe-bottom); }
