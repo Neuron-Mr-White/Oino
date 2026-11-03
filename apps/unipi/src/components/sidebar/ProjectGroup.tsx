@@ -7,7 +7,7 @@
  * windowed (the acceptance's virtualization), so a huge project cannot
  * flood the DOM.
  */
-import { createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from 'solid-js';
 import { Archive, Folder, Plus } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import type { SessionMeta } from '../../lib/session/hub';
@@ -118,6 +118,9 @@ export function ProjectGroup(props: {
     const { from, to } = window_();
     return all.filter(({ i }) => tops[i]! + rowHeight() + (trees[i]?.height ?? 0) >= from && tops[i]! <= to).map((r) => ({ ...r, top: tops[r.i] }));
   });
+  const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const rowIds = createMemo(() => rows().map((r) => r.card.session_id), [], { equals: sameIds });
+  const rowById = createMemo(() => new Map(rows().map((r) => [r.card.session_id, r] as const)));
 
   return (
     <div class="sb-project" data-testid={`sb-project-${props.label}`} data-headless={props.headless ? '' : undefined}>
@@ -177,24 +180,32 @@ export function ProjectGroup(props: {
         style={virtual() ? { height: `${layoutRows().height}px`, position: 'relative' } : undefined}
         data-testid={`sb-rows-${props.label}`}
       >
-        <For each={rows()}>
-          {(row) => (
-            <div class="sb-row-slot" style={row.top !== undefined ? { position: 'absolute', top: `${row.top}px`, left: 0, right: 0 } : undefined}>
-              <SessionRow
-                hostId={props.hostId}
-                card={row.card}
-                meta={props.meta[row.card.session_id]}
-                active={props.activeOf(row.card)}
-                variant={props.variant}
-                mode={props.modeOf(row.card)}
-                show={props.show}
-                compact={props.compact}
-                archived={props.archivedOf?.(row.card)}
-                onPin={props.onPin}
-              />
-              <Show when={row.tree}>{(t) => t().render()}</Show>
-            </div>
-          )}
+        {/* Keyed by session id, not by the row object: `rows()` is rebuilt on every
+            subagent-topic tick (tree heights), and a For over fresh objects remounted
+            every row + its subagent tree each tick — frozen spinners, dead clicks. */}
+        <For each={rowIds()}>
+          {(id) => {
+            const row = () => rowById().get(id)!;
+            return (
+              <Show when={rowById().get(id)}>
+                <div class="sb-row-slot" style={row().top !== undefined ? { position: 'absolute', top: `${row().top}px`, left: 0, right: 0 } : undefined}>
+                  <SessionRow
+                    hostId={props.hostId}
+                    card={row().card}
+                    meta={props.meta[row().card.session_id]}
+                    active={props.activeOf(row().card)}
+                    variant={props.variant}
+                    mode={props.modeOf(row().card)}
+                    show={props.show}
+                    compact={props.compact}
+                    archived={props.archivedOf?.(row().card)}
+                    onPin={props.onPin}
+                  />
+                  <Show when={!!row().tree}>{untrack(() => row().tree!.render())}</Show>
+                </div>
+              </Show>
+            );
+          }}
         </For>
       </div>
       <Show when={hidden() > 0}>
