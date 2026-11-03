@@ -28,7 +28,7 @@ mkdir -p "$ST"
 KEY="${AGENT37_API_KEY:-$(grep -o 'AGENT37_API_KEY=[^ ]*' ~/.bashrc | head -1 | cut -d= -f2- | tr -d "\"'")}"
 export AGENT37_API_KEY="$KEY"
 API=https://api.agent37.com/v1
-PKG=dev.unipi.app.dev
+PKG=${UNIPI_ANDROID_PKG:-dev.unipi.oino.dev}
 CDP_PORT=${CDP_PORT:-9333}
 SHOTS=${PHONE_SHOTS:-$HERE/../../docs/dev/v2/design/shots/phone-audit}
 id() { cat "$ST/id" 2>/dev/null || { echo "no VM: run up" >&2; exit 1; }; }

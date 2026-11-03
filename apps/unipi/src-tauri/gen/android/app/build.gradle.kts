@@ -19,7 +19,7 @@ val tauriProperties = Properties().apply {
 // unsigned and debug builds use the debug key, as before.
 val releaseKeystore: String? = System.getenv("UNIPI_ANDROID_KEYSTORE")
 // QA/dev builds that install next to the released app: UNIPI_ANDROID_ID_SUFFIX=.dev
-// gives package dev.unipi.app.dev and the launcher name "Unipi" (own data, own signature).
+// gives package dev.unipi.oino.dev and the launcher name "Unipi" (own data, own signature).
 val idSuffix: String? = System.getenv("UNIPI_ANDROID_ID_SUFFIX")?.takeIf { it.isNotBlank() }
 
 android {
@@ -37,7 +37,10 @@ android {
     namespace = "dev.unipi.app"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "dev.unipi.app"
+        // Owner 2026-11-03: the installed id is dev.unipi.oino (matches desktop), so this app
+        // installs next to the old UniPi (dev.unipi.app). The Kotlin namespace/package stays
+        // dev.unipi.app (code only; Tauri's generated classes and JNI names live there).
+        applicationId = "dev.unipi.oino"
         if (idSuffix != null) {
             applicationIdSuffix = idSuffix
             manifestPlaceholders["appLabel"] = "Unipi"
