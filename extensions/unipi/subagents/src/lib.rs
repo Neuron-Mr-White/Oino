@@ -1961,7 +1961,13 @@ impl Extension for Subagents {
         cx.service(PROFILES_SERVICE, |ext, _p, _caller, cx| async move {
             let on = ext.config().enabled && !cx.is_child();
             Ok(json!(if on {
+                // A session this instance never saw start (a fresh instance after a wake,
+                // a call routed before its session_start) loads the registry on demand
+                // instead of answering "no profiles".
                 ext.sessions.with(cx.session_id(), |s| {
+                    if s.profiles.is_empty() {
+                        s.profiles = load_profiles().0;
+                    }
                     s.profiles.iter().map(|p| p.id.clone()).collect::<Vec<_>>()
                 })
             } else {

@@ -78,6 +78,9 @@ const REMIND_AFTER: usize = 3;
 /// Second attempt for the `subagents.profiles` lookup after the 2 s probe misses on a
 /// cold start (services not registered yet).
 const PROFILE_LOOKUP_RETRY_TIMEOUT: Duration = Duration::from_secs(10);
+/// Pause before the profile lookup retry (a waking subagents instance replays its
+/// session start first).
+const PROFILE_LOOKUP_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 /// Subagents run-done outcomes that mean the worker crashed / the process went away
 /// without a settle (D6 §9.1 row 1: transient, no retry-after).
@@ -1440,12 +1443,20 @@ impl Lh {
     // ── graph ──────────────────────────────────────────────────────────────
 
     /// The subagents profile list. On a cold host the subagents extension may not have
-    /// registered its services yet (startup race): the first short probe then fails or
-    /// comes back empty, so one retry with a longer timeout runs before giving up. The
-    /// error carries the last failure text ("timed out" ⇒ subagents are still starting).
+    /// registered its services yet (startup race), and a subagents instance that just woke
+    /// from hibernation is still replaying its session start: the first short probe then
+    /// fails or comes back empty, so after a short pause one retry with a longer timeout
+    /// runs before giving up. The error carries the last failure text ("timed out" ⇒
+    /// subagents are still starting).
     async fn profiles() -> Result<Vec<String>, String> {
         let mut last = String::from("no profiles service call was made");
-        for timeout in [Duration::from_secs(2), PROFILE_LOOKUP_RETRY_TIMEOUT] {
+        for (attempt, timeout) in [Duration::from_secs(2), PROFILE_LOOKUP_RETRY_TIMEOUT]
+            .into_iter()
+            .enumerate()
+        {
+            if attempt > 0 {
+                timers::sleep(PROFILE_LOOKUP_RETRY_DELAY).await;
+            }
             match services::call(
                 Some(unipi_kit::suite::pkg::SUBAGENTS.id),
                 "subagents.profiles",
@@ -1456,10 +1467,14 @@ impl Lh {
             {
                 Ok(v) => match serde_json::from_value::<Vec<String>>(v) {
                     Ok(p) if !p.is_empty() => return Ok(p),
-                    Ok(_) => last = "empty profile list".into(),
-                    Err(e) => last = e.to_string(),
+                    Ok(_) => {
+                        last = "subagents answered with no profiles for this session \
+                                (subagents are disabled in /settings → subagents)"
+                            .into();
+                    }
+                    Err(e) => last = format!("subagents.profiles answered garbage: {e}"),
                 },
-                Err(e) => last = e.to_string(),
+                Err(e) => last = format!("subagents.profiles failed: {e}"),
             }
         }
         Err(last)
@@ -1506,10 +1521,10 @@ impl Lh {
                     "Agent graph is unavailable: subagents are still starting — try again.",
                 );
             }
-            Err(_) => {
-                return err(
-                    "Agent graph is unavailable: subagents are not loaded or are disabled in this session (check /settings → subagents).",
-                );
+            Err(e) => {
+                return err(format!(
+                    "Agent graph is unavailable: {e}. Check /settings → subagents, then try again."
+                ));
             }
         };
         let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(ToOwned::to_owned);

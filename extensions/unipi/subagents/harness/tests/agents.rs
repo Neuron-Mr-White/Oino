@@ -131,6 +131,17 @@ impl Env {
     }
 
     async fn load(&self, dir: &str) -> (Arc<dyn ExtensionInstance>, Registration) {
+        let host: Arc<dyn HostServices> = Arc::clone(&self.host) as Arc<dyn HostServices>;
+        self.load_with(dir, host).await
+    }
+
+    /// [`Self::load`] around another host: a second services set (another cwd) loading
+    /// the same extension into the same process-wide hub.
+    async fn load_with(
+        &self,
+        dir: &str,
+        host: Arc<dyn HostServices>,
+    ) -> (Arc<dyn ExtensionInstance>, Registration) {
         let (_, _, file) = CRATES.iter().find(|c| c.1 == dir).unwrap();
         let wasm = built().join(format!("{file}.wasm"));
         let manifest = Manifest::parse(
@@ -149,7 +160,6 @@ impl Env {
             root: None,
             bundled: true,
         };
-        let host: Arc<dyn HostServices> = Arc::clone(&self.host) as Arc<dyn HostServices>;
         let ext = self.runtime.load(package, host).await.unwrap();
         let reg = ext
             .init(InitInput::default(), self.cx(CallKind::Init))
@@ -1146,7 +1156,7 @@ async fn graph_runs_two_dependent_nodes_and_bg_run_survives_the_child_session() 
         .await;
     let t = text_of(&opened);
     assert!(!t.contains("no graph"), "{t}");
-    assert!(!t.contains("subagents are not loaded"), "{t}");
+    assert!(!t.contains("Agent graph is unavailable"), "{t}");
 
     // mk-a runs and settles on its own; the run-done then arrives (through the real hub)
     // with the child session context, and mk-b must STILL start — and run to completion.
@@ -1209,4 +1219,192 @@ fn graph_json(env: &Env) -> Value {
         .path()
         .join("graph.json");
     serde_json::from_slice(&std::fs::read(&path).unwrap_or_default()).unwrap_or(Value::Null)
+}
+
+/// The calls `ext` made of `method` on `host`.
+fn calls_by(host: &RecordingHostServices, method: &str, ext: &str) -> usize {
+    host.calls_named(method)
+        .into_iter()
+        .filter(|c| c.ext.as_deref() == Some(ext))
+        .count()
+}
+
+/// ext-restart (owner report 2026-11-03): the hub disposing an idle services set shuts
+/// its instances down; the next call woke them with `init` only, so the subagents
+/// instance had no per-session state (profiles, records) and `update_agent_graph
+/// add_work` answered "subagents are not loaded or are disabled". Now a wake replays
+/// `session_start` too, never counts toward the trap limit (here: far more wakes than
+/// the 3-in-10-minutes trap budget), and the graph keeps working across wakes.
+#[tokio::test(flavor = "multi_thread")]
+async fn add_work_after_subagents_hibernates_mid_session() {
+    let env = Env::new();
+    let (sa, _) = env.load("subagents").await;
+    let (lh, _) = env.load("long-horizon").await;
+    for ext in [&sa, &lh] {
+        env.event(
+            ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+    }
+    // Mid-session the services set goes idle and is disposed: both instances hibernate.
+    let caller = oino_extension_api::ExtensionId::new("unipi.long-horizon").unwrap();
+    sa.shutdown("idle").await;
+    lh.shutdown("idle").await;
+    // A plain read wakes subagents; the wake replays its session start (whose refresh
+    // reads the active tools — the read itself does not).
+    let refreshes = calls_by(&env.host, "control", "unipi.subagents");
+    sa.handle_service(
+        "subagents.list",
+        RawJson::from(json!({})),
+        &caller,
+        env.cx(CallKind::Service),
+    )
+    .await
+    .unwrap();
+    assert!(
+        calls_by(&env.host, "control", "unipi.subagents") > refreshes,
+        "session_start was not replayed on wake"
+    );
+    sa.shutdown("idle").await;
+    let opened = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({
+                "operation": "add_work",
+                "task": "After a wake",
+                "add_work": [
+                    {"work_id": "w1", "instruction": "map the code", "profile": "subagent_explore"}
+                ]
+            }),
+        )
+        .await;
+    let t = text_of(&opened);
+    assert!(!t.contains("Agent graph is unavailable"), "{t}");
+    assert!(t.starts_with("Opened graph"), "{t}");
+    let graph_id = graph_json(&env)["current"]["graphId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Many more wakes than the trap budget: never "disabled after repeated traps", and the
+    // profile registry is there after every one of them.
+    for round in 0..6 {
+        sa.shutdown("idle").await;
+        let profiles = sa
+            .handle_service(
+                "subagents.profiles",
+                RawJson::from(json!({})),
+                &caller,
+                env.cx(CallKind::Service),
+            )
+            .await
+            .unwrap_or_else(|e| panic!("wake {round}: {e}"))
+            .to_value();
+        let ids: Vec<&str> = profiles
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert!(ids.contains(&"subagent_explore"), "wake {round}: {profiles}");
+    }
+
+    // The long-horizon graph state survives its own wake: the next add_work extends the
+    // SAME graph (reloaded by the replayed session start), it does not open a new one.
+    lh.shutdown("idle").await;
+    sa.shutdown("idle").await;
+    let more = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({
+                "operation": "add_work",
+                "add_work": [
+                    {"work_id": "w2", "instruction": "write it up", "profile": "subagent_general"}
+                ]
+            }),
+        )
+        .await;
+    let t = text_of(&more);
+    assert!(!t.contains("Agent graph is unavailable"), "{t}");
+    assert!(t.contains(&graph_id), "same graph after the wake: {t}");
+}
+
+/// ext-restart, the routing half: the process-wide hub routed a service call to the
+/// NEWEST load of the target extension, whatever services set (cwd) the caller was in.
+/// A session in cwd A therefore asked cwd B's subagents for its profiles — and once B
+/// was disposed, woke B's hibernated instance with no state for A's session. Calls now
+/// stay in the caller's own set; the disposed set is never woken.
+#[tokio::test(flavor = "multi_thread")]
+async fn service_calls_stay_in_the_callers_services_set() {
+    let env = Env::new();
+    let (sa, _) = env.load("subagents").await;
+    let (lh, _) = env.load("long-horizon").await;
+    for ext in [&sa, &lh] {
+        env.event(
+            ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+    }
+    // A second services set (another cwd) loads the same extensions later (newest load),
+    // runs its own session, then goes idle and is disposed.
+    let other = RecordingHostServices::new();
+    let other_host: Arc<dyn HostServices> = Arc::clone(&other) as Arc<dyn HostServices>;
+    let (sa_b, _) = env.load_with("subagents", Arc::clone(&other_host)).await;
+    let (lh_b, _) = env.load_with("long-horizon", other_host).await;
+    let mut cx_b = env.cx(CallKind::Event);
+    cx_b.session_id = "s-other".into();
+    for ext in [&sa_b, &lh_b] {
+        ext.on_event(
+            EventKind::SessionStart,
+            RawJson::from(json!({"type": "session_start", "reason": "startup"})),
+            cx_b.clone(),
+        )
+        .await
+        .unwrap();
+    }
+    sa_b.shutdown("idle").await;
+    lh_b.shutdown("idle").await;
+    let other_calls = other.calls().len();
+
+    let opened = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({
+                "operation": "add_work",
+                "task": "Own set",
+                "add_work": [
+                    {"work_id": "w1", "instruction": "map the code", "profile": "subagent_explore"}
+                ]
+            }),
+        )
+        .await;
+    let t = text_of(&opened);
+    assert!(t.starts_with("Opened graph"), "{t}");
+    // The graph's first worker is spawned by THIS set's subagents (through its own host),
+    // and nothing reached — or woke — the disposed set.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while env.host.calls_named("agent_spawn").is_empty() {
+        assert!(
+            Instant::now() < deadline,
+            "no worker spawned through the caller's own set (other set: {:?})",
+            other.calls_named("agent_spawn")
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        other.calls_named("agent_spawn").is_empty(),
+        "the graph run went to another services set"
+    );
+    assert_eq!(
+        other.calls().len(),
+        other_calls,
+        "the disposed services set was woken by another set's call"
+    );
 }
