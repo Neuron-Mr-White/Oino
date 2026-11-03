@@ -123,6 +123,8 @@ struct State {
     run: RunState,
     /// This session's pinned caps ([`CAPS_ENTRY`] data; `Null` = none pinned).
     caps_pins: Value,
+    /// The status text last shown (a heartbeat only sends a change).
+    status: Option<String>,
 }
 
 /// The extension.
@@ -130,6 +132,9 @@ struct State {
 pub struct Watchdog {
     settings: Store,
     sessions: SessionMap<State>,
+    /// The heartbeat timer is armed (perf-fix #9: it runs only while a tool is tracked, not
+    /// every 15 s for the life of the process).
+    armed: std::cell::Cell<bool>,
 }
 
 fn key_id(key: &str) -> &str {
@@ -181,12 +186,31 @@ impl Watchdog {
         jev::Settings::resolve(&all, Some(NAMESPACE))
     }
 
+    /// Arms the heartbeat when enabled and not armed yet (re-arming would restart the
+    /// period, so a burst of tool starts could starve the checks).
     fn start_timer(&self) {
         let s = self.config();
         if s.enabled {
-            timers::set(HEARTBEAT, Duration::from_millis(s.heartbeat_ms()), true);
+            if !self.armed.replace(true) {
+                timers::set(HEARTBEAT, Duration::from_millis(s.heartbeat_ms()), true);
+            }
         } else {
-            timers::cancel(HEARTBEAT);
+            self.stop_timer();
+        }
+    }
+
+    fn stop_timer(&self) {
+        self.armed.set(false);
+        timers::cancel(HEARTBEAT);
+    }
+
+    /// Shows `status` unless it is already shown for this session.
+    fn show_status(&self, cx: &Ctx, status: Option<String>) {
+        let changed = self.sessions.with(cx.session_id(), |s| {
+            (s.status != status).then(|| s.status.clone_from(&status))
+        });
+        if changed.is_some() {
+            let _ = ui::status("watchdog", status.as_deref());
         }
     }
 
@@ -220,6 +244,7 @@ impl Watchdog {
                 s.other.insert(id.to_owned(), t);
             }
         });
+        self.start_timer();
     }
 
     fn on_tool_update(&self, ev: &Event, cx: &Ctx) {
@@ -415,19 +440,24 @@ impl Watchdog {
     async fn tick_inner(&self, cx: &Ctx) {
         let s = self.config();
         if !s.enabled {
-            timers::cancel(HEARTBEAT);
+            self.stop_timer();
             return;
         }
         let now = timers::now_ms();
         #[allow(clippy::cast_possible_truncation, reason = "ms")]
         let first_ms = (s.first_check_min * 60_000.0) as i64;
-        let items: Vec<Item> = self
-            .gather(&s, cx)
+        let tracked = self.gather(&s, cx);
+        if tracked.is_empty() {
+            // Nothing to watch: no 15 s wake-ups (and no status event that kept an idle
+            // session from ever being evicted) until the next tool starts.
+            self.stop_timer();
+        }
+        let items: Vec<Item> = tracked
             .into_iter()
             .filter(|i| now - i.started_at >= first_ms)
             .collect();
         let status = (!items.is_empty()).then(|| format!("watchdog: {}", items.len()));
-        let _ = ui::status("watchdog", status.as_deref());
+        self.show_status(cx, status);
         if items.is_empty() {
             return;
         }
@@ -915,7 +945,7 @@ impl Extension for Watchdog {
             Ok(())
         });
         cx.on(EventKind::SessionShutdown, |ext, _ev, cx| async move {
-            timers::cancel(HEARTBEAT);
+            ext.stop_timer();
             ext.sessions.remove(cx.session_id());
             Ok(())
         });

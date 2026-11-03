@@ -38,7 +38,7 @@ use oino_settings::SettingsManager;
 
 use crate::backend::{ClientError, SessionBackend};
 use crate::in_process::InProcessBackend;
-use crate::protocol::{RpcCommand, RpcResponseData};
+use crate::protocol::{AgentCommand, RpcCommand, RpcResponseData};
 
 /// `extensionSettings.hub.sessionIdleSec` default (ruling, core spec §7).
 pub const DEFAULT_SESSION_IDLE_SECS: u64 = 900;
@@ -878,6 +878,7 @@ async fn tick(inner: &Inner) {
         for live in victims {
             let id = lock(&live.id).clone();
             state.live.remove(&id);
+            tracing::info!(session_id = %id, "hub evicted an idle session (E-LAZY)");
             live.runtime.evict().await;
             // The record stays (re-listed from disk); a crash marker survives eviction.
         }
@@ -911,7 +912,8 @@ async fn tick(inner: &Inner) {
 
 /// Whether a session must stay live (E-LAZY conditions): a run, compaction, retry/arbiter
 /// wait or open `!` command, a live (non-hibernated) child, or any external subscriber
-/// (the runtime's own forward task is the single allowed one).
+/// (the runtime's own forward task is the single allowed one). An idle child stops pinning
+/// its parent once it hibernates (perf-fix #4 made that happen; perf-baseline #5).
 fn session_busy(runtime: &Arc<AgentSessionRuntime>) -> bool {
     let session = runtime.session();
     session.run_state() != oino_core::events::RunState::Idle
@@ -980,6 +982,18 @@ async fn find_record(sessions_root: &Path, target: &str) -> Result<SessionInfo, 
     }
 }
 
+/// Whether a client event counts as session activity for the idle clock. Fire-and-forget
+/// UI updates (status, widget, title, notify; registry patches) do not: an extension
+/// refreshing its footer on a timer kept an idle session from ever being evicted (perf-fix:
+/// the 200 MB bench chat stayed resident forever on the watchdog's 15 s status).
+fn is_activity(event: &ClientEvent) -> bool {
+    match event {
+        ClientEvent::Ui(request) => oino_core::ui::is_dialog(&request.method),
+        ClientEvent::Oino(OinoEvent::UiPatch { .. }) => false,
+        _ => true,
+    }
+}
+
 /// Follows one live session's client events (on the runtime stream, which survives session
 /// replacements): refreshes its activity clock, re-keys it on replacement, records
 /// contained crashes (X-PANIC), and removes it when the stream ends (dispose/evict/
@@ -987,7 +1001,9 @@ async fn find_record(sessions_root: &Path, target: &str) -> Result<SessionInfo, 
 async fn watch(inner: Weak<Inner>, live: Arc<Live>) {
     let mut stream = live.runtime.subscribe();
     while let Some(event) = stream.next().await {
-        *lock(&live.last_active) = Instant::now();
+        if is_activity(&event) {
+            *lock(&live.last_active) = Instant::now();
+        }
         match &event {
             ClientEvent::Oino(OinoEvent::SessionReplaced { session_id, .. }) => {
                 if let Some(inner) = inner.upgrade() {
@@ -1058,11 +1074,23 @@ impl LazyBackend {
     fn touch(&self) {
         *lock(&self.live.last_active) = Instant::now();
     }
+
+    /// Activity, unless `command` is a read-only status probe (perf-fix: the host's card
+    /// and busy checks ask `get_state` on their own clock, which kept an idle session from
+    /// ever reaching `sessionIdleSec` — a 200 MB chat stayed resident forever).
+    fn touch_for(&self, command: &RpcCommand) {
+        if !matches!(
+            command,
+            RpcCommand::Agent(AgentCommand::GetState | AgentCommand::GetSessionStats)
+        ) {
+            self.touch();
+        }
+    }
 }
 
 impl SessionBackend for LazyBackend {
     fn send(&self, command: RpcCommand) -> BoxFuture<'_, Result<RpcResponseData, ClientError>> {
-        self.touch();
+        self.touch_for(&command);
         if self.live.gone.load(Ordering::Acquire) {
             return Box::pin(futures::future::ready(Err(ClientError::Closed)));
         }
@@ -1074,7 +1102,7 @@ impl SessionBackend for LazyBackend {
         request_id: Option<String>,
         command: RpcCommand,
     ) -> BoxFuture<'_, Result<RpcResponseData, ClientError>> {
-        self.touch();
+        self.touch_for(&command);
         if self.live.gone.load(Ordering::Acquire) {
             return Box::pin(futures::future::ready(Err(ClientError::Closed)));
         }
