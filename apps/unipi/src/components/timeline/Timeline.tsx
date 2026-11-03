@@ -8,7 +8,13 @@
  * - content grows while locked → pin to the bottom in the same frame;
  * - user intent (wheel/touch/key/scrollbar) + > 48 px off the bottom → detach;
  * - back within 48 px or the jump button → re-lock; new arrivals while
- *   detached set the unread dot (Z-24);
+ *   detached set the unread dot (Z-24) — only new content at the end (a new
+ *   turn, the live tail growing, output inside a tail accordion), never row
+ *   re-measures, older pages, image decodes or the reader's own toggles;
+ * - any tail growth follows while locked, including output inside an
+ *   expanded, height-capped accordion (`lib/timeline/innerFollow`);
+ * - a user-expanded OLDER accordion keeps its header where it was (anchor),
+ *   detaching instead of yanking when the block pushes the tail away;
  * - width changes while locked → measure-then-pin synchronously;
  * - the live tail migrates into the list with its height pre-seeded.
  *
@@ -19,7 +25,8 @@ import { createEffect, createMemo, createSignal, Index, on, onCleanup, onMount, 
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { measureElement as defaultMeasure, observeElementOffset, observeElementRect, type Virtualizer } from '@tanstack/virtual-core';
 import { LoaderCircle, RefreshCw, TriangleAlert } from 'lucide-solid';
-import { createBottomLock, distanceToBottom } from '../../lib/timeline/bottomLock';
+import { BOTTOM_PX, createBottomLock, distanceToBottom } from '../../lib/timeline/bottomLock';
+import { createInnerFollow, INNER_SCROLLERS } from '../../lib/timeline/innerFollow';
 import { TurnHeightCache, DEFAULT_TURN_HEIGHT } from '../../lib/timeline/heightCache';
 import { readScrollMemory, writeScrollMemory, scrollMemoryKey } from '../../lib/timeline/scrollMemory';
 import { readTimelineSnapshot, writeTimelineSnapshot } from '../../lib/timeline/snapshotCache';
@@ -97,7 +104,17 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
 
   // ── scroll container wiring ──────────────────────────────────────
   let contentEl: HTMLDivElement | undefined;
-  let accordionToggleUntil = 0;
+  let tailEl: HTMLDivElement | undefined;
+  /**
+   * The reader's own accordion toggle (click on an `aria-expanded` control,
+   * bubble fold, files toggle): its header's viewport top is the anchor for
+   * the resizes that follow, and none of them is "new content".
+   */
+  let toggle: { el: HTMLElement; top: number; until: number; inTail: boolean } | undefined;
+  const TOGGLE_MS = 600;
+  const toggling = () => !!toggle && performance.now() < toggle.until && toggle.el.isConnected;
+  /** An image in the tail just decoded: its growth is layout, not news. */
+  let imageUntil = 0;
   const syncOverflow = () => {
     const el = scrollEl();
     if (el) setOverflowing(el.scrollHeight - el.clientHeight > 4);
@@ -128,28 +145,72 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       el.removeEventListener('keydown', onKey);
     });
 
-    // Store-driven growth (entries, live tail, outbox, new turns): same-
-    // frame signal — pin while locked, unread dot while detached. RO below
-    // covers intrinsic resizes this can't see (image decode, fold toggle).
+    // Store-driven changes (entries, live tail, outbox, new turns): same-
+    // frame pin while locked. Only entries appended at the END (or a new
+    // outbox message) are news for the unread dot: older pages prepend (the
+    // last entry stays), a trim drops the top, branch navigation moves the leaf.
+    let seenLen = -1;
+    let seenLast: string | undefined;
+    let seenOutbox = 0;
     createEffect(() => {
       session().state.entriesRev;
       liveTurn();
-      session().state.outbox.length;
       settled().length;
+      const entries = session().state.entries;
+      const len = entries.length;
+      const last = entries[len - 1]?.id;
+      const outbox = session().state.outbox.length;
       if (!restore.done) return;
-      lock.grew(el);
+      if (seenLen >= 0 && ((len > seenLen && last !== seenLast) || outbox > seenOutbox)) lock.arrived();
+      seenLen = len;
+      seenLast = last;
+      seenOutbox = outbox;
+      // The reader's own older-accordion toggle holds its anchor (the RO below).
+      if (!(toggling() && !toggle!.inTail)) lock.grew(el);
       syncOverflow();
     });
 
+    // Output inside an expanded, height-capped tail accordion: the box
+    // follows its own bottom (the timeline does not grow once it is capped,
+    // so this is the only signal) — and it is news while detached.
+    const inner = createInnerFollow();
+    let sweepQueued = false;
+    const sweepInner = () => {
+      sweepQueued = false;
+      if (!tailEl || !restore.done) return;
+      const grew = inner.sweep(tailEl.querySelectorAll<HTMLElement>(INNER_SCROLLERS));
+      if (grew && !toggling()) lock.arrived();
+    };
+    if (tailEl && typeof MutationObserver !== 'undefined') {
+      const mo = new MutationObserver(() => {
+        if (sweepQueued) return;
+        sweepQueued = true;
+        requestAnimationFrame(sweepInner);
+      });
+      mo.observe(tailEl, { childList: true, subtree: true, characterData: true });
+      const onLoad = (e: Event) => {
+        if ((e.target as HTMLElement | null)?.tagName === 'IMG') imageUntil = performance.now() + 150;
+      };
+      tailEl.addEventListener('load', onLoad, true);
+      onCleanup(() => {
+        mo.disconnect();
+        tailEl?.removeEventListener('load', onLoad, true);
+      });
+    }
+
     if (typeof ResizeObserver !== 'undefined') {
-      // Content growth (stream, folds, measure, dock): pin while locked,
-      // unread dot while detached. User-initiated accordion toggles in a
-      // settled turn re-measure in place without yanking scrollTop or
-      // lighting up the unread dot.
+      // Content height changes (stream, folds, row measures, images, dock):
+      // pin while locked — never the unread dot (geometry is not news). The
+      // reader's own toggle of an OLDER accordion keeps its header where it
+      // was instead (anchor), and detaches when the block pushes the tail
+      // out of reach; a toggle inside the tail follows like any tail growth.
       const grow = new ResizeObserver(() => {
         if (!restore.done) return;
-        if (!liveTurn() && performance.now() < accordionToggleUntil) {
+        if (toggling() && !toggle!.inTail) {
           virt()?.measure();
+          const moved = toggle!.el.getBoundingClientRect().top - toggle!.top;
+          if (Math.abs(moved) >= 1) el.scrollTop += moved;
+          if (lock.locked() && distanceToBottom(el) > BOTTOM_PX) lock.detach();
           lock.reconcile(el);
           syncOverflow();
           return;
@@ -158,6 +219,20 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
         syncOverflow();
       });
       if (contentEl) grow.observe(contentEl);
+      // The live tail growing (stream, new tool rows, a subagent card) is
+      // the "new output" the dot reports; width changes reflow it (layout).
+      let tailH = -1;
+      let tailW = -1;
+      const tail = new ResizeObserver(() => {
+        if (!tailEl) return;
+        const h = tailEl.offsetHeight;
+        const w = tailEl.offsetWidth;
+        const news = restore.done && tailH >= 0 && w === tailW && h > tailH + 0.5 && !toggling() && performance.now() > imageUntil;
+        tailH = h;
+        tailW = w;
+        if (news) lock.arrived();
+      });
+      if (tailEl) tail.observe(tailEl);
       // Viewport changes: synchronous measure-then-pin while locked (the
       // ZCode width-transition batch); re-check overflow either way.
       let lastW = el.clientWidth;
@@ -173,13 +248,13 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       view.observe(el);
       onCleanup(() => {
         grow.disconnect();
+        tail.disconnect();
         view.disconnect();
       });
     }
   });
 
   // ── live tail → list migration: pre-seed its measured height ─────
-  let tailEl: HTMLDivElement | undefined;
   createEffect(
     on(liveTurn, (cur, prev) => {
       if (prev && !cur) heights.set(prev.turnId, tailEl?.offsetHeight || heights.estimate(prev.turnId));
@@ -423,9 +498,10 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
         class="tl-content"
         ref={contentEl}
         onClick={(e) => {
-          if ((e.target as HTMLElement | null)?.closest?.('[aria-expanded], [data-testid="tl-bubble-fold"], [data-testid="turn-files-toggle"]')) {
-            accordionToggleUntil = performance.now() + 350;
-          }
+          const hit = (e.target as HTMLElement | null)?.closest?.('[aria-expanded], [data-testid="tl-bubble-fold"], [data-testid="turn-files-toggle"]') as HTMLElement | null | undefined;
+          // The toggle's own click handler already ran (delegation walks up
+          // from the target); its header has not moved — the content below it did.
+          if (hit) toggle = { el: hit, top: hit.getBoundingClientRect().top, until: performance.now() + TOGGLE_MS, inTail: !!tailEl?.contains(hit) };
         }}
       >
         {props.header}

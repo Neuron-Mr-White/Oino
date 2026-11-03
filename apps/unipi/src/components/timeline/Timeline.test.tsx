@@ -196,6 +196,141 @@ describe('Timeline', () => {
     await waitFor(() => expect(r.queryByTestId('tl-jump')).toBeNull());
   });
 
+  it('unread dot (chat-scroll #2): scrolling up, row re-measures and image/layout resizes never set it; tail growth after the detach does', async () => {
+    let tailH = 40;
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.classList?.contains('tl')) return 600;
+        return this.classList?.contains('tl-tail-wrap') ? tailH : 40;
+      },
+    });
+    const ro = installFakeResizeObserver();
+    try {
+      const { s } = await openSession(60);
+      const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+      const tl = r.getByTestId('tl');
+      await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThan(0));
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const content = tl.querySelector('.tl-content')!;
+      const tail = tl.querySelector('.tl-tail-wrap')!;
+      ro.fire(tail); // the browser's first observation: the baseline
+      // plain scroll up → jump pill, no dot
+      fireEvent.wheel(tl);
+      tl.scrollTop = 100;
+      fireEvent.scroll(tl);
+      await waitFor(() => expect(r.getByTestId('tl-jump')).toBeTruthy());
+      // rows re-measured by the virtualizer / an image decoding above: content resizes, no news
+      ro.fire(content);
+      for (const row of tl.querySelectorAll('.tl-vrow')) ro.fire(row);
+      fireEvent.scroll(tl);
+      await new Promise((res) => setTimeout(res, 0));
+      expect(r.queryByTestId('tl-jump-dot')).toBeNull();
+      expect(tl.scrollTop).toBe(100); // detached: never yanked
+      // the tail grows after the detach (a stream / a new tool row) → the dot
+      tailH = 180;
+      ro.fire(tail);
+      await waitFor(() => expect(r.getByTestId('tl-jump-dot')).toBeTruthy());
+      fireEvent.click(r.getByTestId('tl-jump'));
+      await waitFor(() => expect(r.queryByTestId('tl-jump')).toBeNull());
+    } finally {
+      ro.restore();
+    }
+  });
+
+  it('bottom lock (chat-scroll #1): output growing inside a height-capped tail accordion follows its bottom; a box scrolled up inside stays', async () => {
+    const { s } = await openSession(6);
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const tl = r.getByTestId('tl');
+    await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThan(0));
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const tail = tl.querySelector('.tl-tail-wrap')!;
+    /** A capped body (max-height 240) whose content height the test drives. */
+    const box = (cls: string) => {
+      const el = document.createElement('pre');
+      el.className = cls;
+      let content = 100;
+      Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => Math.min(content, 240) });
+      Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => content });
+      return { el, grow: (h: number) => ((content = h), el.append('x')) };
+    };
+    const term = box('tool-term-out');
+    const read = box('tool-term-out');
+    tail.append(term.el, read.el);
+    const frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    await frame(); // first sight: heights recorded, nothing scrolled
+    expect(term.el.scrollTop).toBe(0);
+    // streaming output past the cap: the box follows its own bottom
+    term.grow(400);
+    await frame();
+    expect(term.el.scrollTop).toBe(400 - 240);
+    term.grow(900);
+    await frame();
+    expect(term.el.scrollTop).toBe(900 - 240);
+    // the reader scrolled up inside the other box: more output keeps their place
+    read.grow(400);
+    await frame();
+    read.el.scrollTop = 20;
+    read.grow(700);
+    await frame();
+    expect(read.el.scrollTop).toBe(20);
+  });
+
+  it('bottom lock (chat-scroll #1): expanding an OLDER accordion keeps its header in place and detaches without the dot', async () => {
+    const ro = installFakeResizeObserver();
+    try {
+      const { s } = await openSession(60);
+      const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+      const tl = r.getByTestId('tl');
+      await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThan(0));
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const bottom = tl.scrollHeight - tl.clientHeight;
+      expect(tl.scrollTop).toBe(bottom);
+      // an accordion header in a settled row: the virtualizer's size compensation moves it up 300 px
+      const row = tl.querySelector('.tl-vrow')!;
+      const header = document.createElement('button');
+      header.setAttribute('aria-expanded', 'false');
+      row.append(header);
+      let top = 200;
+      header.getBoundingClientRect = () => ({ top, bottom: top + 20, left: 0, right: 0, width: 0, height: 20, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+      fireEvent.click(header);
+      top = -100;
+      ro.fire(tl.querySelector('.tl-content')!);
+      expect(tl.scrollTop).toBe(bottom - 300); // the header is back at 200 px (anchor), not pinned to the bottom
+      await waitFor(() => expect(r.getByTestId('tl-jump')).toBeTruthy());
+      expect(r.queryByTestId('tl-jump-dot')).toBeNull();
+    } finally {
+      ro.restore();
+    }
+  });
+
+  it('unread dot (chat-scroll #2): older pages loading while scrolled up are not new content', async () => {
+    const all = snapshot(40).entries as SessionEntry[];
+    const tail = all.slice(-20);
+    const paged = { ...snapshot(40), entries: tail, page: { total: all.length, has_more: true, cursor: tail[0]!.id } } as SessionSnapshot;
+    const { s } = await openSession(40, {
+      snapshot: paged,
+      cmd: {
+        get_entries: (cmd) => {
+          const before = all.findIndex((e) => e.id === cmd.before);
+          const from = Math.max(0, before - 20);
+          return { entries: all.slice(from, before), total: all.length, hasMore: from > 0, cursor: all[from]?.id };
+        },
+      },
+    });
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const tl = r.getByTestId('tl');
+    await waitFor(() => expect(tl.querySelectorAll('.tl-vrow').length).toBeGreaterThan(0));
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+    fireEvent.wheel(tl);
+    tl.scrollTop = 50;
+    fireEvent.scroll(tl);
+    await waitFor(() => expect(s.state.entries.length).toBeGreaterThan(20));
+    await waitFor(() => expect(r.getByTestId('tl-jump')).toBeTruthy());
+    await new Promise((res) => setTimeout(res, 0));
+    expect(r.queryByTestId('tl-jump-dot')).toBeNull();
+  });
+
   it('a lost outbox message renders its own row with Retry', async () => {
     const { s } = await openSession(2, {
       cmd: {

@@ -56,7 +56,7 @@ describe('bottom lock (Z-23/Z-24)', () => {
     el.scrollTop = 800;
     lock.onScroll(el);
     expect(lock.detached()).toBe(true);
-    lock.grew(el); // new content while detached → unread dot
+    lock.arrived(); // new content while detached → unread dot
     expect(lock.unread()).toBe(true);
     lock.intent();
     el.scrollTop = el.scrollHeight - el.clientHeight - 20;
@@ -73,13 +73,22 @@ describe('bottom lock (Z-23/Z-24)', () => {
     expect(el.scrollTop).toBe(el.scrollHeight - el.clientHeight);
   });
 
-  it('grew() while detached keeps position and flags unread', () => {
+  it('grew() while detached keeps position and never flags unread (geometry is not news)', () => {
     const lock = createBottomLock();
     const el = scroller({ height: 2000, client: 400 });
     lock.detach();
     el.scrollTop = 700;
     lock.grew(el);
     expect(el.scrollTop).toBe(700);
+    expect(lock.unread()).toBe(false);
+  });
+
+  it('arrived() flags unread only while detached', () => {
+    const lock = createBottomLock();
+    lock.arrived();
+    expect(lock.unread()).toBe(false);
+    lock.detach();
+    lock.arrived();
     expect(lock.unread()).toBe(true);
   });
 
@@ -87,7 +96,7 @@ describe('bottom lock (Z-23/Z-24)', () => {
     const lock = createBottomLock();
     const el = scroller({ height: 2000, client: 400 });
     lock.detach();
-    lock.grew(el);
+    lock.arrived();
     lock.jump(el);
     expect(lock.locked()).toBe(true);
     expect(lock.unread()).toBe(false);
@@ -106,7 +115,7 @@ describe('bottom lock (Z-23/Z-24)', () => {
     const lock = createBottomLock();
     const el = scroller({ height: 2000, client: 400 });
     lock.detach();
-    lock.grew(el);
+    lock.arrived();
     expect(lock.unread()).toBe(true);
     el.scrollTop = el.scrollHeight - el.clientHeight; // user landed on the bottom
     lock.onScroll(el);

@@ -11,7 +11,10 @@
  *   jump button                                                      → detached AND overflowing only
  *
  * While locked the timeline writes the new bottom `scrollTop` in the same
- * frame the content grew; while detached, growth only sets the unread dot.
+ * frame the content grew. The unread dot is NOT geometry: it is set only by
+ * `arrived()` — new entries or tail growth after the detach moment. Row
+ * re-measures (virtualization), image decodes, older pages loading and
+ * user-expanded accordions change heights without new content.
  */
 import { createSignal } from 'solid-js';
 
@@ -43,8 +46,10 @@ export type BottomLock = {
   intent(): void;
   /** The scroll handler: resolves intent vs layout, updates `locked`/`unread`. */
   onScroll(el: Scroller): void;
-  /** Content grew (stream, fold, measure): pin when locked, flag unread when detached. */
+  /** Content height changed (stream, fold, measure, image): pin when locked; never flags unread. */
   grew(el: Scroller): void;
+  /** New content arrived at the end (entries / tail growth): the unread dot while detached. */
+  arrived(): void;
   /** Content shrank or the viewport grew: re-check geometry (never unlocks by itself). */
   reconcile(el: Scroller): void;
   /** The jump button / send / session-open pin: lock + jump to the bottom instantly. */
@@ -99,7 +104,9 @@ export function createBottomLock(): BottomLock {
     },
     grew(el) {
       if (locked()) pin(el);
-      else setUnread(true);
+    },
+    arrived() {
+      if (!locked()) setUnread(true);
     },
     reconcile(el) {
       // A view that cannot scroll cannot hold a reading position (ZCode rule).
