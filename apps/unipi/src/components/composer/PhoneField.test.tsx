@@ -42,7 +42,8 @@ describe('repairBrokenChips', () => {
   it('a deletion that cut into a chip takes the whole token (and its space)', () => {
     const prev = 'fix $review now';
     expect(repairBrokenChips(prev, 'fix $revie now', opts)).toEqual({ text: 'fix now', caret: 4 });
-    expect(repairBrokenChips(prev, 'fix $reviewnow', opts)).toBeUndefined(); // only the space went: chip still whole
+    // Only the chip's trailing space went (Gboard's non-cancelable backspace): the chip goes whole.
+    expect(repairBrokenChips(prev, 'fix $reviewnow', opts)).toEqual({ text: 'fix now', caret: 4 });
     expect(repairBrokenChips(prev, 'fix  now', opts)).toBeUndefined(); // removed whole
     expect(repairBrokenChips(prev, 'fix $rXeview now', opts)).toEqual({ text: 'fix X now', caret: 5 });
     expect(repairBrokenChips('a b', 'a xb', opts)).toBeUndefined();
@@ -60,14 +61,14 @@ describe('PhoneField chips', () => {
     const { view } = mount(`/graph go $review and ${imageToken('i1')} ${attachmentToken('a.pdf', 'f1')} x`);
     const mirror = view.container.querySelector('[data-testid="phone-field-mirror"]')!;
     expect(view.container.querySelector('.ph-field-box')!.hasAttribute('data-chips')).toBe(true);
-    const chips = [...mirror.querySelectorAll('.ph-chip')] as HTMLElement[];
+    const chips = [...mirror.querySelectorAll('.phf-chip')] as HTMLElement[];
     expect(chips.map((c) => c.dataset.kind)).toEqual(['command', 'skill', 'image', 'file']);
     expect(chips[0]!.hasAttribute('data-mode')).toBe(true);
     // Same characters as the textarea, so the layout lines up.
     expect(mirror.textContent!.startsWith('/graph go $review and [image]@img:i1')).toBe(true);
-    expect(chips[2]!.querySelector('.ph-chip-text')!.textContent).toBe('image 1');
+    expect(chips[2]!.querySelector('.phf-chip-text')!.textContent).toBe('image 1');
     expect(chips[2]!.querySelector('img')!.getAttribute('src')).toBe('data:image/png;base64,QQ');
-    expect(chips[3]!.querySelector('.ph-chip-text')!.textContent).toBe('a.pdf');
+    expect(chips[3]!.querySelector('.phf-chip-text')!.textContent).toBe('a.pdf');
   });
 
   it('Backspace after a chip (or over its trailing space) removes the whole token', () => {
@@ -101,6 +102,16 @@ describe('PhoneField chips', () => {
     fireEvent.input(ta);
     expect(value()).toBe('fix now');
     expect(ta.value).toBe('fix now');
+  });
+
+  it("Gboard's backspace over a chip's trailing space (an input, not a cancelable beforeinput) removes the chip", () => {
+    const { ta, value } = mount('fix it with $review and');
+    ta.focus();
+    ta.value = 'fix it with $reviewand';
+    ta.setSelectionRange(19, 19);
+    fireEvent.input(ta);
+    expect(value()).toBe('fix it with and');
+    expect(ta.selectionStart).toBe(12);
   });
 
   it('a caret landing inside a chip moves to its end', () => {

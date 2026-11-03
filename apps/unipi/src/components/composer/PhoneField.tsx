@@ -48,6 +48,11 @@ export function repairBrokenChips(prev: string, next: string, opts: TokenizeOpts
     const overlaps = delEnd > start && delStart < end;
     // An insertion strictly inside a token splits it too.
     const splits = delStart === delEnd && delStart > start && delStart < end;
+    // Only the space a finished chip keeps after itself went (Gboard's backspace arrives as a
+    // non-cancelable deleteSurroundingText): the chip would un-chip into raw text — take it whole.
+    if (!inserted && delStart === end && delEnd === end + 1 && /\s/.test(prev[end]!)) {
+      return removeToken(prev, start, chip.raw);
+    }
     if (!(overlaps || splits)) continue;
     if (delStart <= start && delEnd >= end) continue; // removed whole: fine
     broke = true;
@@ -183,12 +188,12 @@ export function PhoneField(props: {
                 const chip = seg.chip;
                 const covered = chip.kind === 'image' || chip.kind === 'file';
                 return (
-                  <span class="ph-chip" data-kind={chip.kind} data-mode={chip.kind === 'command' && chip.mode ? '' : undefined} data-covered={covered ? '' : undefined}>
+                  <span class="phf-chip" data-kind={chip.kind} data-mode={chip.kind === 'command' && chip.mode ? '' : undefined} data-covered={covered ? '' : undefined}>
                     {chip.raw}
                     <Show when={covered}>
-                      <span class="ph-chip-label">
-                        <Show when={props.chipThumb?.(chip)}>{(src) => <img class="ph-chip-thumb" src={src()} alt="" />}</Show>
-                        <span class="ph-chip-text">{labelOf(chip)}</span>
+                      <span class="phf-chip-label">
+                        <Show when={props.chipThumb?.(chip)}>{(src) => <img class="phf-chip-thumb" src={src()} alt="" />}</Show>
+                        <span class="phf-chip-text">{labelOf(chip)}</span>
                       </span>
                     </Show>
                   </span>

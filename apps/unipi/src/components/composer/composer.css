@@ -575,15 +575,15 @@ html[data-shell=phone] .tl-composer .comp-bar .send-btn-chevron { width: 28px; h
   font: inherit; font-size: 16px; line-height: 22px; white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word;
 }
 html[data-shell=phone] .tl-composer .ph-field-box[data-chips] .ph-field { position: relative; color: transparent; caret-color: var(--color-claw); }
-.ph-chip { position: relative; border-radius: 6px; background: var(--color-surface-3); box-shadow: 0 0 0 1.5px var(--color-surface-3); }
-.ph-chip[data-kind=skill] { color: var(--color-wm-cyan); background: color-mix(in srgb, var(--color-wm-cyan) 14%, var(--color-surface-3)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-wm-cyan) 14%, var(--color-surface-3)); }
-.ph-chip[data-kind=command] { color: var(--color-claw); }
-.ph-chip[data-kind=command][data-mode] { background: color-mix(in srgb, var(--color-claw) 18%, var(--color-surface-3)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-claw) 18%, var(--color-surface-3)); }
-.ph-chip[data-kind=path] { color: var(--color-wm-green); }
-.ph-chip[data-covered] { color: transparent; }
-.ph-chip-label {
+.phf-chip { position: relative; border-radius: 6px; background: var(--color-surface-3); box-shadow: 0 0 0 1.5px var(--color-surface-3); }
+.phf-chip[data-kind=skill] { color: var(--color-wm-cyan); background: color-mix(in srgb, var(--color-wm-cyan) 14%, var(--color-surface-3)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-wm-cyan) 14%, var(--color-surface-3)); }
+.phf-chip[data-kind=command] { color: var(--color-claw); }
+.phf-chip[data-kind=command][data-mode] { background: color-mix(in srgb, var(--color-claw) 18%, var(--color-surface-3)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-claw) 18%, var(--color-surface-3)); }
+.phf-chip[data-kind=path] { color: var(--color-wm-green); }
+.phf-chip[data-covered] { color: transparent; }
+.phf-chip-label {
   position: absolute; inset: 0; display: flex; align-items: center; gap: 4px; padding: 0 4px; overflow: hidden;
   white-space: nowrap; color: var(--color-text); font-size: 14px;
 }
-.ph-chip-thumb { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: cover; }
-.ph-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.phf-chip-thumb { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: cover; }
+.phf-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
