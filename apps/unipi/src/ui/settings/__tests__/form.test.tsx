@@ -211,6 +211,17 @@ describe('OSS-2 form: every field type', () => {
     await waitFor(() => expect(row('memory', 'autoRecall').querySelector('[data-testid=field-modified]')).toBeNull());
   });
 
+  it('a text field commits the typed text on change, not the stored value', async () => {
+    const { namespace, global } = setup();
+    mount(namespace);
+    await loaded();
+    const input = screen.getByTestId('set-topicPattern') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'notes-2026' } });
+    fireEvent.change(input);
+    await waitFor(() => expect(global.topicPattern).toBe('notes-2026'));
+    expect(input.value).toBe('notes-2026');
+  });
+
   it('the scope toggle switches to the project layer and back', async () => {
     const { namespace } = setup();
     mount(namespace);

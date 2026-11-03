@@ -411,8 +411,11 @@ function StringInput(props: {
         props.onError(undefined);
       }}
       onChange={(e) => {
+        // Read the typed text first: clearing the draft re-renders `value` synchronously
+        // back to the stored one, so reading it afterwards committed the OLD value.
+        const text = e.currentTarget.value;
         setDraft(undefined);
-        props.set(e.currentTarget.value);
+        props.set(text);
       }}
     />
   );
