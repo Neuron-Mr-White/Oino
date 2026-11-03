@@ -383,6 +383,11 @@ def scenario_soak(args, fake):
             except Exception as e:  # keep soaking; count failures
                 r["errors"] = r.get("errors", 0) + 1
                 r["last_error"] = str(e)[:300]
+            if i == 5 and args.profile == "heaptrack-attach":
+                # attach once warm: the record then shows what each further session retains
+                h.attached = subprocess.Popen(["heaptrack", "-o", f"{args.out}/heaptrack-soak", "-p", str(h.pid)],
+                                              stdout=open(f"{args.out}/heaptrack-soak.log", "w"), stderr=subprocess.STDOUT)
+                time.sleep(10)
             if time.time() >= next_point:
                 s = lib.tree(h.pid)
                 s.update({"t_h": round((time.time() - (end - args.soak_hours * 3600)) / 3600, 3),
