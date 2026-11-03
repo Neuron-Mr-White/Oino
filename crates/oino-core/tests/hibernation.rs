@@ -277,19 +277,22 @@ async fn prompt_wakes_and_continues_the_same_session() {
     child.close(Duration::ZERO).await;
 }
 
-/// A live `events()` subscriber keeps the child awake; hibernation resumes once it drops.
+/// perf-fix #4: a live `events()` subscriber does not keep the child awake. The child
+/// hibernates with the subscription open, and the same stream carries the woken run's
+/// events (it rides the relay instead of the disposed session's hub).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn events_subscribers_prevent_hibernation() {
+async fn events_subscribers_ride_hibernation() {
     let dir = tempfile::tempdir().unwrap();
-    let provider = FauxProvider::new(vec![FauxResponse::Text("reply".into())]);
+    let provider = FauxProvider::new(vec![
+        FauxResponse::Text("reply".into()),
+        FauxResponse::Text("second".into()),
+    ]);
     let probe = shutdown_probe();
     let services = services_builder(dir.path(), Arc::clone(&provider), Arc::clone(&probe), 1).await;
     let rt = parent_runtime(&services).await;
     let parent = rt.session();
     let child = spawn_child(&services, &parent, "watched").await;
 
-    // Subscribe while idle, then run: the stream must deliver the run's events and the
-    // live subscription must keep the child awake past several hibernation windows.
     let mut events = child.events();
     assert_eq!(
         child.prompt("task one".into(), None).await.unwrap(),
@@ -304,19 +307,36 @@ async fn events_subscribers_prevent_hibernation() {
         "the stream delivers live events"
     );
     child.wait_idle().await;
-    tokio::time::sleep(Duration::from_millis(2600)).await;
-    assert!(
-        !child.is_hibernated(),
-        "a live events() subscriber prevents hibernation"
-    );
-    assert_eq!(child.state(), "idle");
-
-    drop(events);
-    until("hibernation after the subscriber dropped", || {
+    until("hibernation with a live subscriber", || {
         child.is_hibernated()
     })
     .await;
+
+    // Drain what the first run left queued, then wake the child with a second prompt.
+    while let Ok(Some(_)) = tokio::time::timeout(Duration::from_millis(50), events.next()).await {}
+    assert_eq!(
+        child.prompt("task two".into(), None).await.unwrap(),
+        "started"
+    );
+    let mut kinds = Vec::new();
+    while let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(5), events.next()).await {
+        let kind = event["type"].as_str().unwrap_or_default().to_owned();
+        let done = kind == "agent_settled";
+        kinds.push(kind);
+        if done {
+            break;
+        }
+    }
+    assert!(kinds.iter().any(|k| k == "agent_start"), "{kinds:?}");
+    assert!(kinds.iter().any(|k| k == "agent_settled"), "{kinds:?}");
     child.close(Duration::ZERO).await;
+    assert!(
+        tokio::time::timeout(Duration::from_secs(2), events.next())
+            .await
+            .unwrap()
+            .is_none(),
+        "close ends the stream"
+    );
 }
 
 /// Parent dispose closes hibernated shells cleanly (E-LAZY keeps outranking

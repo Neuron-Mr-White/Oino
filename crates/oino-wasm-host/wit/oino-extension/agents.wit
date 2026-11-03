@@ -16,6 +16,8 @@ interface agents {
         wait-idle: async func() -> result<_, host-error>;
         usage: func() -> json;                                 // SessionStats subset
         /// ClientEvent JSON stream of the child; also delivered as oino_agent events when subscribed.
+        /// `message_update` items omit `message` and `assistantMessageEvent.partial` (the
+        /// growing message; `message_end` carries the final one).
         events: func() -> stream<string>;
         close: async func(grace-ms: u32);
     }

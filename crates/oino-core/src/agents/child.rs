@@ -1,14 +1,12 @@
 //! Spawning and driving one nested agent session.
 
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-use std::task::{Context as PollContext, Poll};
 use std::time::{Duration, Instant};
 
+use futures::StreamExt;
 use futures::stream::{BoxStream, empty, once};
-use futures::{Stream, StreamExt};
 use oino_ai::{AgentMessage, JsonValue, Model, ThinkingLevel};
 use oino_session::{CreateOptions, SessionLease, SessionManager};
 use serde_json::json;
@@ -24,6 +22,7 @@ use crate::events::{AgentSessionEvent, ClientEvent, OinoEvent, RunState};
 use crate::extensions::api::CallContext;
 use crate::extensions::host::HostError;
 use crate::extensions::runner::ExtensionSet;
+use crate::hub::EventHub;
 use crate::runtime::{acquire_lease, process_lease_info};
 use crate::session::{
     AgentSession, Inner, InputSource, IsolatedTask, PromptDisposition, PromptOptions,
@@ -31,8 +30,16 @@ use crate::session::{
 };
 use oino_session::LeaseInfo;
 
-/// How often the hibernation watcher re-examines an idle child (E-HIBERNATE).
-const HIBERNATE_POLL: Duration = Duration::from_millis(500);
+/// How often the hibernation watcher re-examines an idle child (E-HIBERNATE), at most:
+/// a quarter of the window, clamped to this range (perf-fix #9 — a 500 ms poll per child
+/// was a steady idle-CPU cost with hundreds of children; the hibernation lands within
+/// `window + window/4`).
+const HIBERNATE_POLL_MIN: Duration = Duration::from_millis(500);
+const HIBERNATE_POLL_MAX: Duration = Duration::from_secs(15);
+
+fn hibernate_poll(window: Duration) -> Duration {
+    (window / 4).clamp(HIBERNATE_POLL_MIN, HIBERNATE_POLL_MAX)
+}
 
 fn failed(error: impl std::fmt::Display) -> HostError {
     HostError::Failed(error.to_string())
@@ -79,8 +86,11 @@ pub struct ChildAgent {
     /// Last-known usage JSON and assistant text, cached at hibernation.
     last_usage: Mutex<Option<JsonValue>>,
     last_text: Mutex<Option<String>>,
-    /// Live `events()` subscriptions; while any exists the child must not hibernate.
-    events_clients: Arc<AtomicUsize>,
+    /// The child's `events()` fan-out, alive across hibernation (perf-fix #4): the forward
+    /// task of each live session relays into it, so an extension's subscription neither
+    /// keeps the child awake nor ends when it hibernates — it goes quiet and carries the
+    /// woken session's events. Closed with the agent.
+    relay: EventHub,
     /// When the hibernation preconditions first held (watcher bookkeeping).
     idle_since: Mutex<Option<Instant>>,
     /// Weak self reference for spawning per-child tasks (`Arc::new` + immediate set).
@@ -96,30 +106,42 @@ impl std::fmt::Debug for ChildAgent {
     }
 }
 
-/// Decrements the `events()` client count when the stream is dropped (E-HIBERNATE guard).
-struct EventsGuard(Arc<AtomicUsize>);
-
-impl Drop for EventsGuard {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
-}
-
-/// An `events()` stream that keeps the child awake while it lives.
-struct CountedEvents {
-    inner: BoxStream<'static, JsonValue>,
-    _live: EventsGuard,
-}
-
-impl Stream for CountedEvents {
-    type Item = JsonValue;
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut PollContext<'_>) -> Poll<Option<Self::Item>> {
-        self.inner.as_mut().poll_next(cx)
+/// Lets a session's forward task drain into the relay after the session hub closed
+/// (hibernate / close), then gives up on it.
+async fn finish_forward(task: Option<JoinHandle<()>>) {
+    const FORWARD_DRAIN: Duration = Duration::from_secs(1);
+    if let Some(task) = task {
+        let abort = task.abort_handle();
+        if tokio::time::timeout(FORWARD_DRAIN, task).await.is_err() {
+            abort.abort();
+        }
     }
 }
 
 fn event_json(event: impl serde::Serialize) -> JsonValue {
     serde_json::to_value(&event).unwrap_or(JsonValue::Null)
+}
+
+/// A child event as an extension's `agent.events()` stream carries it (perf-fix #6): a
+/// `message_update` keeps its `assistantMessageEvent` (type, block index, `delta`, the final
+/// `content` / tool call) but not the two copies of the growing message (`message` and
+/// `assistantMessageEvent.partial`) — every extension reads the delta, and the copies made
+/// each streamed token cost O(message) to serialize into the guest (O(n²) per reply; 27 % of
+/// the busy CPU in the 50-subagent bench). The full message arrives with `message_end`.
+fn extension_event_json(event: ClientEvent) -> JsonValue {
+    let mut value = event_json(event);
+    if value.get("type").and_then(JsonValue::as_str) == Some("message_update")
+        && let Some(object) = value.as_object_mut()
+    {
+        object.remove("message");
+        if let Some(update) = object
+            .get_mut("assistantMessageEvent")
+            .and_then(JsonValue::as_object_mut)
+        {
+            update.remove("partial");
+        }
+    }
+    value
 }
 
 impl ChildAgent {
@@ -292,6 +314,7 @@ impl ChildAgent {
             IsolatedTask::ChildEvents,
             forward_child_events(
                 session.subscribe(),
+                self.relay.clone(),
                 Arc::downgrade(&parent.inner),
                 session.inner.agents.link.clone(),
                 self.owner.clone(),
@@ -322,7 +345,7 @@ impl ChildAgent {
         let Some(session) = lock(&self.session).take() else {
             return; // already hibernated
         };
-        if !Self::hibernatable(&session, &self.events_clients) {
+        if !Self::hibernatable(&session) {
             *lock(&self.session) = Some(session);
             return;
         }
@@ -346,9 +369,8 @@ impl ChildAgent {
         }
         session.dispose().await;
         session.hub().close();
-        if let Some(task) = lock(&self.forward).take() {
-            task.abort();
-        }
+        let forward = lock(&self.forward).take();
+        finish_forward(forward).await;
         *lock(&self.idle_since) = None;
         tracing::info!(session = %self.id, "subagent hibernated (E-HIBERNATE)");
         if let Some(parent) = self.parent.upgrade() {
@@ -357,9 +379,9 @@ impl ChildAgent {
     }
 
     /// Whether `session` may hibernate now (E-HIBERNATE preconditions): file-persisted,
-    /// no run, compaction, retry, wait or `!` command, no open dialog and no live
-    /// `events()` subscriber.
-    fn hibernatable(session: &AgentSession, events_clients: &AtomicUsize) -> bool {
+    /// no run, compaction, retry, wait or `!` command and no open dialog. An `events()`
+    /// subscriber does not keep the child awake (it rides the relay across hibernation).
+    fn hibernatable(session: &AgentSession) -> bool {
         session.session_file().is_some()
             && session.run_state() == RunState::Idle
             && !session.is_bash_running()
@@ -368,7 +390,6 @@ impl ChildAgent {
                 .snapshot()
                 .iter()
                 .any(|request| crate::ui::is_dialog(&request.method))
-            && events_clients.load(Ordering::SeqCst) == 0
     }
 
     /// Prompts the child; while it runs the text is queued (`steer`, else follow-up).
@@ -387,6 +408,8 @@ impl ChildAgent {
         };
         let _gate = self.gate.lock().await;
         let session = self.session_or_wake_locked().await?;
+        // New activity restarts the hibernation window (the watcher only samples).
+        *lock(&self.idle_since) = None;
         let disposition = session
             .prompt(
                 text,
@@ -485,34 +508,28 @@ impl ChildAgent {
     }
 
     /// Child client events (`AgentSessionEvent` JSON and friends) from now until
-    /// close. A live subscription keeps the child awake (E-HIBERNATE); on a hibernated
-    /// child the first poll wakes it.
+    /// close, across hibernation (E-HIBERNATE): a subscription does not keep the child
+    /// awake — it goes quiet while the child sleeps and carries the woken session's events.
+    /// On a hibernated child the first poll wakes it.
     pub fn events(&self) -> BoxStream<'static, JsonValue> {
         if self.is_closed() {
             return Box::pin(empty());
         }
-        let count = Arc::clone(&self.events_clients);
-        count.fetch_add(1, Ordering::SeqCst);
+        // Subscribe now, so nothing published after this call is missed (a wake below
+        // relays into this very subscription).
+        let stream = self.relay.subscribe().map(extension_event_json);
+        if self.session_slot().is_some() {
+            return stream.boxed();
+        }
         let me = self.watch_self.get().cloned();
-        let inner: BoxStream<'static, JsonValue> = match self.session_slot() {
-            Some(session) => Box::pin(session.subscribe().map(event_json)),
-            None => Box::pin(
-                once(async move {
-                    let Some(me) = me.as_ref().and_then(Weak::upgrade) else {
-                        return empty::<JsonValue>().boxed();
-                    };
-                    match me.session_or_wake().await {
-                        Ok(session) => session.subscribe().map(event_json).boxed(),
-                        Err(_) => empty::<JsonValue>().boxed(),
-                    }
-                })
-                .flatten(),
-            ),
-        };
-        Box::pin(CountedEvents {
-            inner,
-            _live: EventsGuard(count),
+        once(async move {
+            if let Some(me) = me.as_ref().and_then(Weak::upgrade) {
+                let _ = me.session_or_wake().await;
+            }
         })
+        .filter_map(|()| std::future::ready(None))
+        .chain(stream)
+        .boxed()
     }
 
     /// Closes the agent: waits up to `grace` (≤ 5 s) for idle, aborts, emits
@@ -560,9 +577,9 @@ impl ChildAgent {
                 router.detach(&self.id);
             }
         }
-        if let Some(task) = lock(&self.forward).take() {
-            task.abort();
-        }
+        let forward = lock(&self.forward).take();
+        finish_forward(forward).await;
+        self.relay.close();
         self.release_lease();
         if let Some(parent) = self.parent.upgrade() {
             parent.agents.remove_child(&self.id);
@@ -595,8 +612,11 @@ impl ChildAgent {
         }
         match self.session_slot() {
             Some(session) => session.hub().publish(OinoEvent::SessionTakenOver { by }),
-            // Hibernated: the child hub is closed; surface the takeover on the parent.
+            // Hibernated: the child hub is closed; surface the takeover on the parent
+            // (and to the child's `events()` subscribers, which wait on the relay).
             None => {
+                self.relay
+                    .publish(OinoEvent::SessionTakenOver { by: by.clone() });
                 if let Some(parent) = self.parent.upgrade() {
                     parent.hub.publish(OinoEvent::SessionTakenOver { by });
                 }
@@ -786,10 +806,12 @@ impl AgentSession {
             router.attach(&child);
         }
         child.bind_extensions("startup", None).await;
+        let relay = EventHub::new();
         let forward = self.spawn_isolated(
             IsolatedTask::ChildEvents,
             forward_child_events(
                 child.subscribe(),
+                relay.clone(),
                 Arc::downgrade(&self.inner),
                 child.inner.agents.link.clone(),
                 extension.to_owned(),
@@ -823,7 +845,7 @@ impl AgentSession {
             file: child_file.clone(),
             last_usage: Mutex::new(None),
             last_text: Mutex::new(None),
-            events_clients: Arc::new(AtomicUsize::new(0)),
+            relay,
             idle_since: Mutex::new(None),
             watch_self: std::sync::OnceLock::from(watch_self.clone()),
         });
@@ -1039,8 +1061,9 @@ async fn child_lease_watcher(child: Weak<ChildAgent>, epoch: u64, session_file: 
 /// hibernatable for `hibernateAfterSec` (watcher re-armed at every wake), the child
 /// hibernates. Exits when the child closes or hibernates.
 async fn hibernate_watcher(child: Weak<ChildAgent>) {
+    let mut poll = HIBERNATE_POLL_MIN;
     loop {
-        tokio::time::sleep(HIBERNATE_POLL).await;
+        tokio::time::sleep(poll).await;
         let Some(child) = child.upgrade() else {
             return; // child gone
         };
@@ -1051,7 +1074,8 @@ async fn hibernate_watcher(child: Weak<ChildAgent>) {
             return; // hibernated (this watcher's job is done) or closing
         };
         let after = Duration::from_secs(hibernate_after_sec(&session));
-        if after.is_zero() || !ChildAgent::hibernatable(&session, &child.events_clients) {
+        poll = hibernate_poll(after);
+        if after.is_zero() || !ChildAgent::hibernatable(&session) {
             *lock(&child.idle_since) = None;
             continue;
         }
@@ -1071,6 +1095,7 @@ async fn hibernate_watcher(child: Weak<ChildAgent>) {
 /// `oino_agent` events to the owner when it subscribed.
 async fn forward_child_events(
     mut events: crate::hub::EventStream,
+    relay: EventHub,
     parent: Weak<Inner>,
     link: Option<ChildLink>,
     owner: String,
@@ -1080,6 +1105,7 @@ async fn forward_child_events(
     let label = link.map(|l| l.label).unwrap_or_default();
     let kind = format!("child:{label}");
     while let Some(event) = events.next().await {
+        relay.publish_ref(&event);
         let Some(parent) = parent.upgrade().map(AgentSession::from_inner) else {
             return;
         };
