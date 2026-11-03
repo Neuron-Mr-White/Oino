@@ -75,10 +75,10 @@ function renderSection() {
   ));
 }
 
-const OMNI = { id: 'omniroute.bridge', name: 'OmniRoute Bridge', version: '1.2.0' };
+const OMNI = { id: 'gateway.bridge', name: 'Gateway Bridge', version: '1.2.0' };
 
 function installed(extra: Record<string, unknown> = {}) {
-  return { installed: true, ...OMNI, path: '/home/me/.oino/extensions/omniroute.bridge', warnings: [], settingsNamespaces: ['omniroute'], needsRestart: true, ...extra };
+  return { installed: true, ...OMNI, path: '/home/me/.oino/extensions/gateway.bridge', warnings: [], settingsNamespaces: ['gateway'], needsRestart: true, ...extra };
 }
 
 describe('Install extension… (desktop)', () => {
@@ -98,13 +98,13 @@ describe('Install extension… (desktop)', () => {
   it('folder → install → Restart agent host → the extension\'s own settings page opens', async () => {
     const w = world(() => installed());
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'pick_folder') return '/home/me/Downloads/omniroute-bridge';
+      if (cmd === 'pick_folder') return '/home/me/Downloads/gateway-bridge';
       if (cmd === 'restart_host') {
         // The restarted host has loaded the package and its settings namespace.
-        w.extensions.push({ id: OMNI.id, enabled: true, loaded: true, path: '/home/me/.oino/extensions/omniroute.bridge' });
+        w.extensions.push({ id: OMNI.id, enabled: true, loaded: true, path: '/home/me/.oino/extensions/gateway.bridge' });
         w.namespaces.push({
-          namespace: 'omniroute',
-          title: 'OmniRoute Bridge',
+          namespace: 'gateway',
+          title: 'Gateway Bridge',
           extensionId: OMNI.id,
           fields: [
             { key: 'baseUrl', type: 'string', title: 'Base URL' },
@@ -119,18 +119,18 @@ describe('Install extension… (desktop)', () => {
     fireEvent.click(await screen.findByTestId('ext-install-open'));
     fireEvent.click(await screen.findByTestId('ext-install-folder'));
     const notice = await screen.findByTestId('ext-install-restart');
-    expect(w.calls).toEqual([{ kind: 'install_extension', path: '/home/me/Downloads/omniroute-bridge' }]);
-    expect(notice.textContent).toContain('Installed OmniRoute Bridge v1.2.0');
+    expect(w.calls).toEqual([{ kind: 'install_extension', path: '/home/me/Downloads/gateway-bridge' }]);
+    expect(notice.textContent).toContain('Installed Gateway Bridge v1.2.0');
     fireEvent.click(screen.getByTestId('ext-install-restart-host'));
     const page = await screen.findByTestId('namespace-page', {}, { timeout: 3000 });
-    expect(page.textContent).toContain('OmniRoute Bridge');
+    expect(page.textContent).toContain('Gateway Bridge');
     expect(invoke).toHaveBeenCalledWith('restart_host', {});
   });
 
   it('a same-id package asks before replacing, then sends replace: true', async () => {
     const w = world((cmd) =>
       cmd.replace
-        ? installed({ replaced: '1.0.0', warnings: ['OmniRoute Bridge ships with the app (v1.1.0); this v1.2.0 replaces it on this PC until you remove it'] })
+        ? installed({ replaced: '1.0.0', warnings: ['Gateway Bridge ships with the app (v1.1.0); this v1.2.0 replaces it on this PC until you remove it'] })
         : { installed: false, ...OMNI, confirm: { ...OMNI, installedVersion: '1.0.0' }, warnings: [], settingsNamespaces: [], needsRestart: false },
     );
     invoke.mockImplementation(async (cmd: string) => (cmd === 'pick_folder' ? '/tmp/omni' : null));
@@ -138,10 +138,10 @@ describe('Install extension… (desktop)', () => {
     fireEvent.click(await screen.findByTestId('ext-install-open'));
     fireEvent.click(await screen.findByTestId('ext-install-folder'));
     const ask = await screen.findByTestId('ext-install-confirm');
-    expect(ask.textContent).toContain('OmniRoute Bridge v1.0.0 is already installed. Replace it with v1.2.0?');
+    expect(ask.textContent).toContain('Gateway Bridge v1.0.0 is already installed. Replace it with v1.2.0?');
     fireEvent.click(screen.getByTestId('ext-install-replace'));
     const notice = await screen.findByTestId('ext-install-restart');
-    expect(notice.textContent).toContain('Replaced OmniRoute Bridge v1.0.0 with v1.2.0');
+    expect(notice.textContent).toContain('Replaced Gateway Bridge v1.0.0 with v1.2.0');
     expect(screen.getByTestId('ext-install-warning').textContent).toContain('ships with the app');
     expect(w.calls.map((c) => c.replace)).toEqual([undefined, true]);
   });
@@ -208,7 +208,7 @@ describe('Install extension… (phone)', () => {
     fireEvent.click(screen.getByTestId('ext-install-open'));
     expect(click).toHaveBeenCalled();
     expect(screen.queryByTestId('ext-install-folder')).toBeNull();
-    const file = new File([new Uint8Array([0x50, 0x4b, 3, 4])], 'omniroute-bridge.zip', { type: 'application/zip' });
+    const file = new File([new Uint8Array([0x50, 0x4b, 3, 4])], 'gateway-bridge.zip', { type: 'application/zip' });
     Object.defineProperty(input, 'files', { value: [file], configurable: true });
     fireEvent.change(input);
     await screen.findByTestId('ext-install-restart');

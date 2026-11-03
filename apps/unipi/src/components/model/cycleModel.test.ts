@@ -52,7 +52,7 @@ describe('curated payload + grouping (P0-10)', () => {
   });
 
   it('route label keeps routers apart without a raw id; startup key from pi defaults', () => {
-    expect(routeLabel({ provider: 'omniroute', id: 'cc/claude-opus-5-5' })).toBe('omniroute · cc');
+    expect(routeLabel({ provider: 'gateway', id: 'cc/claude-opus-5-5' })).toBe('gateway · cc');
     expect(routeLabel({ provider: 'openai', id: 'gpt-5' })).toBe('openai');
     expect(startupKey('openai', 'gpt-5')).toBe('openai/gpt-5');
     expect(startupKey(undefined, 'a/b')).toBe('a/b');

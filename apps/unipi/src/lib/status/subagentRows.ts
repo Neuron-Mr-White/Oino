@@ -139,7 +139,7 @@ export function filterCounts(rows: readonly RunRow[]): Record<RunFilter, number>
   return c;
 }
 
-/** `provider/id` → a short readable name (`omniroute/cc/claude-opus-5-5` → "Claude Opus 5.5"); the full id is the tooltip. */
+/** `provider/id` → a short readable name (`gateway/cc/claude-opus-5-5` → "Claude Opus 5.5"); the full id is the tooltip. */
 export function shortModel(model: string | undefined): string {
   const m = (model ?? '').trim();
   if (!m) return '';

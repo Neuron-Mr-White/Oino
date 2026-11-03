@@ -111,7 +111,7 @@ describe('Running tab', () => {
     // Profile chip, short model (full id in the tooltip), stats on their own line.
     const done = rows[3]!;
     expect(done.querySelector('.sm-run-chip')!.textContent).toBe('General');
-    expect(done.querySelector('.sm-run-model')!.getAttribute('title')).toBe('omniroute/cc/claude-opus-5-5');
+    expect(done.querySelector('.sm-run-model')!.getAttribute('title')).toBe('gateway/cc/claude-opus-5-5');
     expect(done.querySelector('.sm-run-model')!.textContent).not.toContain('/');
     expect([...done.querySelectorAll('.sm-run-stat')].map((e) => e.textContent)).toEqual(['122 tools', '238 in · 88k out', '$14.23']);
     expect(done.querySelector('.sm-elapsed')!.textContent).toBe('26m 36s');

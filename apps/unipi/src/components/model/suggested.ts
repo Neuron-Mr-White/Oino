@@ -127,7 +127,7 @@ export function curatedFirst(rows: readonly ModelInfo[], keys: readonly string[]
 
 /**
  * Where a row runs, short: the provider plus any route in the id
- * (`omniroute` + `cc/claude-opus-5-5` → "omniroute · cc") — two routes to
+ * (`gateway` + `cc/claude-opus-5-5` → "gateway · cc") — two routes to
  * the same model never read alike, and no raw id is shown on the row.
  */
 export function routeLabel(m: Pick<ModelInfo, 'provider' | 'id'>): string {

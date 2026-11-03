@@ -64,7 +64,7 @@ describe('mergeRuns', () => {
 
 describe('row text', () => {
   it('short model, profile chip, compact tokens, stat parts, duration', () => {
-    expect(shortModel('omniroute/cc/claude-opus-5-5')).not.toContain('/');
+    expect(shortModel('gateway/cc/claude-opus-5-5')).not.toContain('/');
     expect(shortModel('')).toBe('');
     expect(profileChip('subagent_explore')).toBe('Explore');
     expect(errorLine('500: {"message":"fake upstream overloaded","type":"server_error"}')).toBe('fake upstream overloaded (500)');
