@@ -43,6 +43,40 @@ export async function fetchAgentMessages(s: SessionHandle, agentId: string): Pro
   return Array.isArray(reply?.messages) ? reply!.messages!.filter((m) => m && typeof m.role === 'string') : [];
 }
 
+/**
+ * A finished subagent run is gone from the host's agent tree, but its record id still names its
+ * transcript in the subagents extension (`subagents.transcript{id}` → task / text / tool items,
+ * read from the child session file). [running-tab]: the Running tab's "Open transcript" on a
+ * finished run (and the timeline card's) opens by record id.
+ */
+export function messagesFromTranscript(reply: unknown): AgentMessage[] {
+  const items = (reply as { items?: unknown } | null | undefined)?.items;
+  if (!Array.isArray(items)) return [];
+  const out: AgentMessage[] = [];
+  items.forEach((raw, i) => {
+    const it = obj(raw);
+    if (!it) return;
+    if (it.kind === 'task') out.push({ role: 'user', content: str(it.text) ?? '' } as AgentMessage);
+    else if (it.kind === 'text') out.push({ role: 'assistant', content: [{ type: 'text', text: str(it.text) ?? '' }] } as AgentMessage);
+    else if (it.kind === 'tool') {
+      const id = `rec-${i}`;
+      out.push({ role: 'assistant', content: [{ type: 'toolCall', id, name: str(it.name) ?? 'tool', arguments: { command: str(it.arg) ?? '' } }] } as AgentMessage);
+      if (it.running !== true) out.push({ role: 'toolResult', toolCallId: id, content: str(it.output) ?? '', ...(it.isError === true ? { isError: true } : {}) } as AgentMessage);
+    }
+  });
+  const report = str((reply as { report?: unknown }).report);
+  if (report && !out.some((m) => m.role === 'assistant' && Array.isArray(m.content) && (m.content as Part[]).some((p) => p.type === 'text' && (p as { text?: unknown }).text === report))) {
+    out.push({ role: 'assistant', content: [{ type: 'text', text: report }] } as AgentMessage);
+  }
+  return out;
+}
+
+/** A run's transcript by its record id (the subagents extension); empty when it does not know the id. */
+export async function fetchRecordTranscript(s: SessionHandle, id: string): Promise<AgentMessage[]> {
+  const reply = await s.cmd<unknown>({ type: '_oino/service_call', target: 'unipi.subagents', name: 'subagents.transcript', payload: { id } }).catch(() => undefined);
+  return messagesFromTranscript(reply);
+}
+
 /** The text of a message's content (a string, or its text parts joined). */
 const messageText = (m: AgentMessage): string => textOf(m.content as string | Part[] | undefined);
 
@@ -156,7 +190,8 @@ export function SubagentTab(props: PaneTabProps) {
     try {
       const [tree, msgs] = await Promise.all([fetchAgents(s), fetchAgentMessages(s, id)]);
       setAgents(tree);
-      setMessages(msgs);
+      // Not (or no longer) in the host tree: a subagent record id — its transcript from the extension.
+      setMessages(msgs.length === 0 && !tree.some((a) => a.id === id) ? await fetchRecordTranscript(s, id) : msgs);
       setError(undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
