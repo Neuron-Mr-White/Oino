@@ -485,7 +485,16 @@ export function ChipEditor(props: {
   onMount(() => {
     render(props.value);
     props.api?.({
-      focus: () => root.focus(),
+      focus: () => {
+        if (document.activeElement === root) return;
+        // A programmatic focus (an "Add to chat", a quote) keeps the caret where the user left it —
+        // WebKit would put it at the start, and the next chip would land there.
+        const at = Math.min(caret, serialize(root).length);
+        root.focus();
+        placeCaret(at);
+        caret = at;
+        props.onCaret?.(at);
+      },
       setCaret: (offset) => {
         caret = offset;
         root.focus();
