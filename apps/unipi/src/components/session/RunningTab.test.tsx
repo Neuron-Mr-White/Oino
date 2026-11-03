@@ -37,6 +37,12 @@ describe('RunningTab subagents list', () => {
     expect(screen.getByTestId('sm-filter-all').textContent).toBe('All400');
   });
 
+  it('before the first fetch: a skeleton, never a blank tab', () => {
+    render(() => <RunningTab s={handle} running={{ data: () => undefined, refetch: () => {} }} />);
+    expect(screen.getByTestId('sm-running-loading')).toBeTruthy();
+    expect(screen.queryByTestId('sm-nothing')).toBeNull();
+  });
+
   it('nothing at all: one quiet line', () => {
     const data: RunningData = { bash: [], agents: [], tabs: [] };
     render(() => <RunningTab s={handle} running={{ data: () => data, refetch: () => {} }} />);

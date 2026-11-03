@@ -400,6 +400,14 @@ export function RunningTab(props: { s: SessionHandle; running?: { data: Accessor
 
   return (
     <div class="sm-running" data-testid="sm-running">
+      {/* First fetch (it asks every loaded extension; a cold one takes a while): a skeleton, not a blank tab. */}
+      <Show when={!data()}>
+        <div class="sm-skeleton" data-testid="sm-running-loading" aria-busy="true" aria-label="Loading what runs">
+          <span style={{ width: '42%' }} />
+          <span style={{ width: '88%' }} />
+          <span style={{ width: '64%' }} />
+        </div>
+      </Show>
       <Show when={nothing()}>
         <div class="sm-nothing" data-testid="sm-nothing">
           <CircleCheck size={16} />
