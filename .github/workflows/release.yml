@@ -8,13 +8,29 @@ name: release
 #   unipi-oino-host-<version>-<target>.tar.gz|zip  the GUI-less host
 #                                        (`bin/unipi-oino-host` + `bin/oino` +
 #                                        the extension tree; install.sh --host)
-#   UniPi_<version>_amd64.deb / .AppImage  Linux desktop app (sidecar + dist)
-#   UniPi_<version>_x64-setup.exe          Windows NSIS installer
+#   oino-<version>-<target>.bin|.exe     the bare oino binary (`oino update`)
+#   unipi-oino-host-<version>-<target>.bin|.exe  the bare host binary
+#                                        (`unipi-oino-host update`)
+#   UniPi_<version>_amd64.deb / .AppImage(.sig)  Linux desktop app (sidecar + dist)
+#   UniPi_<version>_x64-setup.exe(.sig)    Windows NSIS installer
 #   UniPi_<version>_universal.dmg          macOS (unsigned/ad-hoc, see BUILDING.md)
-#   UniPi_<version>_universal.apk          Android (release keystore via secrets,
-#                                          else a generated debug key)
+#   UniPi_<version>_universal.app.tar.gz(.sig)  macOS updater bundle
+#   UniPi_<version>_universal.apk          Android, release keystore (secrets);
+#                                          a tag build FAILS without them
 #   SHA256SUMS, release-manifest.json      checksums (installers verify SHA256SUMS)
-#                                        and the `oino update` manifest
+#                                        and the `oino update` / host manifest
+#   app-desktop-latest.json, app-android-latest.json  the app update feeds
+#                                        (scripts/release/make-feeds.sh); the
+#                                        site publishes them at
+#                                        https://oino.dev/app/{desktop,android}/latest.json
+#                                        and mirrors the APK at
+#                                        https://oino.dev/download/ (docs/release-feeds.md)
+#
+# Signing: TAURI_SIGNING_PRIVATE_KEY(_PASSWORD) signs the desktop updater
+# artifacts (pubkey in tauri.conf.json); ANDROID_KEYSTORE_B64 /
+# ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD sign the
+# APK. A tag build fails when any of them is missing; a dispatch rehearsal
+# falls back to unsigned updater artifacts and a debug-signed APK.
 #
 # workflow_dispatch builds the same matrix from HEAD and attaches everything to
 # a DRAFT release (tag v<version> at the current commit) — buildability
@@ -153,6 +169,11 @@ jobs:
             cp -R target/dist-stage/extensions target/out/share/oino/extensions
           fi
           ls -laR target/out | head -40
+          # The bare binaries `oino update` and `unipi-oino-host update` swap in
+          # (release-manifest.json points at these, not at the archives).
+          raw=".bin"; [[ "$TARGET" == *windows* ]] && raw=".exe"
+          cp "target/$TARGET/release/oino$exe" "oino-$VERSION-$TARGET$raw"
+          cp "apps/unipi/target/$TARGET/release/unipi-host$exe" "unipi-oino-host-$VERSION-$TARGET$raw"
       - name: Pack oino-$VERSION-$TARGET.tar.gz
         if: matrix.target != 'x86_64-pc-windows-msvc'
         run: tar -czf "oino-$VERSION-$TARGET.tar.gz" -C target/out bin share
@@ -189,8 +210,14 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - name: Updater signing key
+        id: updater
+        shell: bash
+        run: bash .github/scripts/updater-key.sh
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "apps/unipi -> target\napps/unipi/src-tauri -> target"
@@ -220,7 +247,7 @@ jobs:
           cat > apps/unipi/target/tauri-release.conf.json <<EOF
           {
             "version": "$VERSION",
-            "bundle": { "linux": {
+            "bundle": { "createUpdaterArtifacts": ${{ steps.updater.outputs.artifacts }}, "linux": {
               "deb": { "files": { "/usr/share/oino/extensions": "$stage", "/usr/bin/oino": "$oino" } },
               "appimage": { "files": { "/usr/share/oino/extensions": "$stage", "/usr/bin/oino": "$oino" } }
             } }
@@ -233,9 +260,20 @@ jobs:
         working-directory: apps/unipi
       - name: Collect
         run: |
+          # Bundle names follow productName ("UniPi Oino_…", with a space);
+          # the release keeps the stable UniPi_<version>_* names the
+          # installers and make-feeds.sh look for.
           mkdir -p out
           b=apps/unipi/src-tauri/target/release/bundle
-          cp "$b/deb/UniPi_${VERSION}_amd64.deb" "$b/appimage/UniPi_${VERSION}_amd64.AppImage" out/
+          shopt -s nullglob
+          pick() { [ $# -eq 1 ] || { echo "::error::expected one bundle, got $#: $*"; return 1; }; printf '%s' "$1"; }
+          deb=$(pick "$b"/deb/*_"${VERSION}"_amd64.deb)
+          appimage=$(pick "$b"/appimage/*_"${VERSION}"_amd64.AppImage)
+          cp "$deb" "out/UniPi_${VERSION}_amd64.deb"
+          cp "$appimage" "out/UniPi_${VERSION}_amd64.AppImage"
+          if [ "${{ steps.updater.outputs.artifacts }}" = true ]; then
+            cp "$appimage.sig" "out/UniPi_${VERSION}_amd64.AppImage.sig"
+          fi
           ls -la out
       - uses: actions/upload-artifact@v4
         with:
@@ -248,8 +286,14 @@ jobs:
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - name: Updater signing key
+        id: updater
+        shell: bash
+        run: bash .github/scripts/updater-key.sh
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "apps/unipi -> target\napps/unipi/src-tauri -> target"
@@ -272,7 +316,7 @@ jobs:
           cat > apps/unipi/target/tauri-release.conf.json <<EOF
           {
             "version": "$VERSION",
-            "bundle": { "resources": { "$stage": "extensions/" } }
+            "bundle": { "createUpdaterArtifacts": ${{ steps.updater.outputs.artifacts }}, "resources": { "$stage": "extensions/" } }
           }
           EOF
       - run: npm ci
@@ -283,8 +327,15 @@ jobs:
       - name: Collect
         shell: bash
         run: |
+          # productName-based bundle name ("UniPi Oino_…") -> the stable release name.
           mkdir -p out
-          cp "apps/unipi/src-tauri/target/release/bundle/nsis/UniPi_${VERSION}_x64-setup.exe" out/
+          shopt -s nullglob
+          pick() { [ $# -eq 1 ] || { echo "::error::expected one bundle, got $#: $*"; return 1; }; printf '%s' "$1"; }
+          setup=$(pick apps/unipi/src-tauri/target/release/bundle/nsis/*_"${VERSION}"_x64-setup.exe)
+          cp "$setup" "out/UniPi_${VERSION}_x64-setup.exe"
+          if [ "${{ steps.updater.outputs.artifacts }}" = true ]; then
+            cp "$setup.sig" "out/UniPi_${VERSION}_x64-setup.exe.sig"
+          fi
           ls -la out
       - uses: actions/upload-artifact@v4
         with:
@@ -299,8 +350,14 @@ jobs:
     runs-on: macos-14
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - name: Updater signing key
+        id: updater
+        shell: bash
+        run: bash .github/scripts/updater-key.sh
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "apps/unipi -> target\napps/unipi/src-tauri -> target"
@@ -329,18 +386,29 @@ jobs:
           cat > apps/unipi/target/tauri-release.conf.json <<EOF
           {
             "version": "$VERSION",
-            "bundle": { "resources": { "$stage": "extensions/" } }
+            "bundle": { "createUpdaterArtifacts": ${{ steps.updater.outputs.artifacts }}, "resources": { "$stage": "extensions/" } }
           }
           EOF
       - run: npm ci
         working-directory: apps/unipi
-      - name: cargo tauri build (universal dmg)
-        run: cargo tauri build --config target/tauri-release.conf.json --target universal-apple-darwin --bundles dmg
+      - name: cargo tauri build (universal .app + dmg)
+        run: cargo tauri build --config target/tauri-release.conf.json --target universal-apple-darwin --bundles app,dmg
         working-directory: apps/unipi
       - name: Collect
         run: |
+          # productName-based bundle names ("UniPi Oino_…", "UniPi Oino.app")
+          # -> the stable release names. The updater bundle is the .app tarball.
           mkdir -p out
-          cp "apps/unipi/src-tauri/target/universal-apple-darwin/release/bundle/dmg/UniPi_${VERSION}_universal.dmg" out/
+          b=apps/unipi/src-tauri/target/universal-apple-darwin/release/bundle
+          shopt -s nullglob
+          pick() { [ $# -eq 1 ] || { echo "::error::expected one bundle, got $#: $*"; return 1; }; printf '%s' "$1"; }
+          dmg=$(pick "$b"/dmg/*_"${VERSION}"_universal.dmg)
+          cp "$dmg" "out/UniPi_${VERSION}_universal.dmg"
+          if [ "${{ steps.updater.outputs.artifacts }}" = true ]; then
+            app=$(pick "$b"/macos/*.app.tar.gz)
+            cp "$app" "out/UniPi_${VERSION}_universal.app.tar.gz"
+            cp "$app.sig" "out/UniPi_${VERSION}_universal.app.tar.gz.sig"
+          fi
           ls -la out
       - uses: actions/upload-artifact@v4
         with:
@@ -357,6 +425,9 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      # SHA-256 of the permanent release certificate (alias unipi-release),
+      # public; the Collect step refuses an apk signed by anything else.
+      RELEASE_CERT_SHA256: "23:B1:42:E7:9D:A5:47:82:32:00:4A:60:99:BF:A0:1F:41:F7:A8:91:C9:44:14:8B:D7:83:23:88:9C:3E:BB:48"
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
@@ -376,26 +447,42 @@ jobs:
           echo "using $ndk"
       - run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
       - name: Signing material
-        # With ANDROID_KEYSTORE_B64 in the repo secrets the release keystore
-        # signs the apk; without it a generated debug key does, and the artifact
-        # is suffixed -unsigned-debug.
+        # The release keystore (repo secrets) signs the apk. A tag build FAILS
+        # without it: a debug-signed apk can never update an installed app.
+        # Only a workflow_dispatch rehearsal (or a fork) falls back to a
+        # generated debug key, and that artifact is suffixed -unsigned-debug.
         run: |
           mkdir -p sign
           if [ -n "$ANDROID_KEYSTORE_B64" ]; then
+            for v in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+              [ -n "${!v}" ] || { echo "::error::ANDROID_KEYSTORE_B64 is set but the $v secret is missing"; exit 1; }
+            done
             printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > sign/release.keystore
+            # Fail here, not after a 20-minute build, when a secret is wrong.
+            printf '%s' "$ANDROID_KEYSTORE_PASSWORD" > sign/.sp
+            keytool -list -keystore sign/release.keystore -storepass:file sign/.sp \
+              -alias "$ANDROID_KEY_ALIAS" >/dev/null \
+              || { rm -f sign/.sp; echo "::error::the keystore does not open with ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS"; exit 1; }
+            rm -f sign/.sp
             suffix=""
+            echo "UNIPI_ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "UNIPI_ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "UNIPI_ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+          elif [ "${GITHUB_REF_TYPE:-}" = tag ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 secret is missing; a tag release must be signed with the release keystore"
+            exit 1
           else
-            echo "::notice::no ANDROID_KEYSTORE_B64 secret; signing with a generated debug key"
+            echo "::notice::no ANDROID_KEYSTORE_B64 secret; rehearsal apk signed with a generated debug key"
             keytool -genkeypair -keystore sign/release.keystore -storepass android \
               -keypass android -alias unipi-dev -keyalg RSA -keysize 4096 \
               -validity 10000 -dname "CN=UniPi CI, OU=Build, O=UniPi"
             suffix="-unsigned-debug"
+            echo "UNIPI_ANDROID_KEYSTORE_PASSWORD=android" >> "$GITHUB_ENV"
+            echo "UNIPI_ANDROID_KEY_ALIAS=unipi-dev" >> "$GITHUB_ENV"
+            echo "UNIPI_ANDROID_KEY_PASSWORD=android" >> "$GITHUB_ENV"
           fi
           echo "SUFFIX=$suffix" >> "$GITHUB_ENV"
           echo "UNIPI_ANDROID_KEYSTORE=$PWD/sign/release.keystore" >> "$GITHUB_ENV"
-          echo "UNIPI_ANDROID_KEYSTORE_PASSWORD=${ANDROID_KEYSTORE_PASSWORD:-android}" >> "$GITHUB_ENV"
-          echo "UNIPI_ANDROID_KEY_ALIAS=${ANDROID_KEY_ALIAS:-unipi-dev}" >> "$GITHUB_ENV"
-          echo "UNIPI_ANDROID_KEY_PASSWORD=${ANDROID_KEY_PASSWORD:-android}" >> "$GITHUB_ENV"
       - name: Release config (version only — the phone is a remote client)
         run: |
           mkdir -p apps/unipi/target
@@ -410,6 +497,16 @@ jobs:
           mkdir -p out
           apk=apps/unipi/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
           cp "$apk" "out/UniPi_${VERSION}_universal${SUFFIX}.apk"
+          # The release apk must carry the permanent release certificate
+          # (~/.oino-release-keys/README.txt); anything else cannot update the
+          # installed app.
+          apksigner=$(ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs "out/UniPi_${VERSION}_universal${SUFFIX}.apk" | tee sign/certs.txt
+          if [ -z "$SUFFIX" ]; then
+            want=$(printf '%s' "$RELEASE_CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')
+            grep -qi "certificate SHA-256 digest: $want" sign/certs.txt \
+              || { echo "::error::the apk is not signed with the release certificate $RELEASE_CERT_SHA256"; exit 1; }
+          fi
           ls -la out
       - uses: actions/upload-artifact@v4
         with:
@@ -445,23 +542,68 @@ jobs:
         run: |
           cp scripts/install.sh scripts/install.ps1 out/
           cd out
+          if [ "${GITHUB_REF_TYPE:-}" = tag ] && ls UniPi_*-unsigned-debug.apk >/dev/null 2>&1; then
+            echo "::error::a tag release must not carry a debug-signed apk"; exit 1
+          fi
           sha256sum UniPi_* oino-* unipi-oino-host-* install.sh install.ps1 > SHA256SUMS
           cat SHA256SUMS
+          # release-manifest.json: read by `oino update` (crates/oino/src/cli/
+          # self_update.rs: name "oino", target = *-unknown-linux-musl |
+          # *-apple-darwin | *-pc-windows-msvc) and `unipi-oino-host update`
+          # (apps/unipi/crates/unipi-host/src/update.rs: name "unipi-host",
+          # target = *-unknown-linux-gnu | ...). Both write the downloaded
+          # bytes over their own executable, so the URLs are the bare
+          # binaries; the archives are listed as oino-archive /
+          # unipi-host-archive for scripts.
           python3 - <<'PY'
-          import hashlib, json, os
+          import hashlib, json, os, re
           from pathlib import Path
           tag, repo, version = os.environ['TAG'], os.environ['REPO'], os.environ['VERSION']
           base = f"https://github.com/{repo}/releases/download/{tag}"
+          pat = re.compile(rf"^(oino|unipi-oino-host)-{re.escape(version)}-(.+?)(\.bin|\.exe|\.tar\.gz|\.zip)$")
           artifacts = []
-          for p in sorted(Path('.').glob('oino-*')):
-              # oino-<version>-<target>.tar.gz|zip → the target triple
-              target = p.name.removesuffix('.tar.gz').removesuffix('.zip').split('-', 2)[2]
-              artifacts.append({'name': 'oino', 'target': target,
-                                'url': f"{base}/{p.name}", 'size': p.stat().st_size,
-                                'sha256': hashlib.sha256(p.read_bytes()).hexdigest()})
+          for p in sorted(Path('.').iterdir()):
+              m = pat.match(p.name)
+              if not m:
+                  continue
+              kind, target, ext = m.groups()
+              name = {'oino': 'oino', 'unipi-oino-host': 'unipi-host'}[kind]
+              if ext in ('.tar.gz', '.zip'):
+                  name += '-archive'
+              entry = {'url': f"{base}/{p.name}", 'size': p.stat().st_size,
+                       'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
+              targets = [target]
+              # The host build is static musl (runs on any distro); the host's
+              # updater asks for the -gnu triple.
+              if name.startswith('unipi-host') and target.endswith('-unknown-linux-musl'):
+                  targets.append(target.removesuffix('-musl') + '-gnu')
+              for t in targets:
+                  artifacts.append({'name': name, 'target': t, **entry})
+          for need in ('oino', 'unipi-host'):
+              assert any(a['name'] == need for a in artifacts), f"no {need} binary in the release"
           Path('release-manifest.json').write_text(json.dumps(
               {'tag': tag, 'version': version, 'artifacts': artifacts}, indent=2) + '\n')
           PY
+          cat release-manifest.json
+      - name: App update feeds (desktop + android latest.json)
+        env:
+          TAG: v${{ needs.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          pip3 install --quiet cryptography
+          # Tag builds are strict: every platform signed with tauri.conf.json's
+          # key and a release-signed apk, or the release fails here.
+          strict=0; [ "${GITHUB_REF_TYPE:-}" = tag ] && strict=1
+          STRICT=$strict bash scripts/release/make-feeds.sh --dir out --tag "$TAG" --out feeds
+          [ ! -f feeds/app/desktop/latest.json ] || cp feeds/app/desktop/latest.json out/app-desktop-latest.json
+          [ ! -f feeds/app/android/latest.json ] || cp feeds/app/android/latest.json out/app-android-latest.json
+          {
+            echo "### App update feeds"
+            echo "The site publishes these (docs/release-feeds.md):"
+            echo "- \`app-desktop-latest.json\` -> https://oino.dev/app/desktop/latest.json"
+            echo "- \`app-android-latest.json\` -> https://oino.dev/app/android/latest.json"
+            echo "- \`UniPi_${VERSION}_universal.apk\` -> https://oino.dev/download/UniPi_${VERSION}_universal.apk"
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}

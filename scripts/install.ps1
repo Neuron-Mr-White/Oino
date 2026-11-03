@@ -133,7 +133,7 @@ function Install-Release {
     New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
     try {
         $Zip = Join-Path $Tmp "oino.zip"
-        if (-not (Fetch-Asset "oino-.*-$Target\.zip$" $Zip)) { return $false }
+        if (-not (Fetch-Asset "^oino-.*-$Target\.zip$" $Zip)) { return $false }
         Say "Installing oino into $InstallRoot (bin\oino.exe + bin\extensions)"
         Expand-Archive -Path $Zip -DestinationPath $InstallRoot -Force
         if (-not (Test-Path (Join-Path $BinDir "oino.exe"))) {
@@ -153,7 +153,7 @@ function Install-App {
     New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
     try {
         $Setup = Join-Path $Tmp "UniPi-setup.exe"
-        if (-not (Fetch-Asset "UniPi_.*_x64-setup\.exe$" $Setup)) {
+        if (-not (Fetch-Asset "^UniPi_.*_x64-setup\.exe$" $Setup)) {
             throw "no NSIS installer in the release (SHA256SUMS)"
         }
         Say "Running the Unipi installer silently (per-user, no admin)…"
@@ -247,7 +247,7 @@ function Install-HostRelease {
     New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
     try {
         $Zip = Join-Path $Tmp "host.zip"
-        if (-not (Fetch-Asset "unipi-oino-host-.*-$Target\.zip$" $Zip)) { return $false }
+        if (-not (Fetch-Asset "^unipi-oino-host-.*-$Target\.zip$" $Zip)) { return $false }
         Expand-Archive -Path $Zip -DestinationPath (Join-Path $Tmp "x") -Force
         Stop-HostService
         Install-HostTree (Join-Path $Tmp "x")
