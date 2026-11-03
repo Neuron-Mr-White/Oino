@@ -66,7 +66,9 @@ export default function Chat() {
   const hub = () => (hostId() ? hubs().ensure(hostId()!) : undefined);
   const offline = () => !!hostId() && hostStatus(hostId()!) === 'offline';
   const total = () => (hub() ? Object.keys(hub()!.state.cards).filter((id) => !isInternalSession(id)).length : 0);
-  const loading = () => !!hub() && !hub()!.state.loaded && !offline();
+  // [ux-sessions] "No chats yet" only on a settled list: never while the first list, a re-list of
+  // an empty store, or a batch archive is in flight.
+  const loading = () => !!hub() && !offline() && (!hub()!.state.loaded || !!hub()!.state.bulk || (hub()!.state.loading && total() === 0));
   const sort = () => (hostId() ? listView(hostId()!).sort : 'updated');
   const newChat = () => navigate(`/new/${encodeURIComponent(hostId() ?? 'local')}`);
 

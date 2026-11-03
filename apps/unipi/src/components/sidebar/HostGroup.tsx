@@ -5,9 +5,11 @@
  * offline host keeps its section with an inline Offline row + Retry (Z-90)
  * instead of disappearing.
  *
- * [ui-sessions]: the header's sliders button opens the Properties menu (sort,
- * filter, group, property visibility, compact, subagents, Archive all); the
- * host's view applies client-side over its indexed cards (`lib/session/listView`).
+ * [ui-sessions]: the Properties menu (sort, filter, group, property visibility,
+ * compact, subagents, Archive all); the host's view applies client-side over its
+ * indexed cards (`lib/session/listView`). [ux-sessions]: with one host listed the
+ * group has no header at all (`headless`) and the menu opens from the Task list
+ * header's filter icon; a merged view of several hosts keeps the small host bar.
  */
 import { createEffect, createMemo, createSignal, For, on, Show, type JSX } from 'solid-js';
 import { ChevronDown, ChevronRight, Monitor, RefreshCw, SlidersHorizontal } from 'lucide-solid';
@@ -25,6 +27,7 @@ import { ArchivedList } from './ArchivedList';
 import { SearchResults } from './SearchResults';
 import { sidebarSearch } from '../../lib/session/sidebarSearch';
 import { ArchiveAllMenu, ListProperties } from './ListProperties';
+import { clearListPropertiesRequest, listPropsRequest } from '../../lib/session/listPropsOpen';
 import { knownRuns, SubagentTree, treeHeight, watchRuns } from './SubagentTree';
 import type { RowVariant } from './SessionRow';
 
@@ -87,6 +90,12 @@ export function visibleProjects<G extends { cards: readonly { session_id: string
 export function HostGroup(props: {
   host: HostInfo;
   variant: RowVariant;
+  /**
+   * [ux-sessions] No host header (owner 2026-11-03): the list shows ONE host, and the host row at
+   * the bottom-left already names it. Properties open from the Task list header's filter icon.
+   * Only a merged view of several hosts keeps the small host label.
+   */
+  headless?: boolean;
   activeSession?: { hostId: string; sessionId: string };
   modeOf: (card: { hostId: string; session_id: string }) => ModeBadge | undefined;
 }): JSX.Element {
@@ -117,7 +126,7 @@ export function HostGroup(props: {
   const groups = createMemo(() => viewGroups(allCards(), hub().state.meta, view(), factsOf));
   const filterCount = () => activeFilterCount(view().filters);
   const total = () => liveCards().length;
-  const isCollapsed = () => hostCollapsed(props.host.id);
+  const isCollapsed = () => !props.headless && hostCollapsed(props.host.id);
   const local = () => props.host.transport === 'local';
   const offline = () => hub().state.error !== undefined && !hub().state.loaded;
   const paging = createPaging();
@@ -182,6 +191,14 @@ export function HostGroup(props: {
 
   // ── Properties menu + group "Archive all" confirm ──
   const [propsAt, setPropsAt] = createSignal<DOMRect | undefined>();
+  // The Task list header's filter icon asks for this host's menu.
+  createEffect(
+    on(listPropsRequest, (req) => {
+      if (req?.hostId !== props.host.id) return;
+      setPropsAt(req.anchor);
+      clearListPropertiesRequest();
+    }),
+  );
   const [archiveAsk, setArchiveAsk] = createSignal<{ anchor: DOMRect; label: string; cards: SessionCard[] } | undefined>();
 
   // ── subagents tree (opt-in) ──
@@ -203,7 +220,8 @@ export function HostGroup(props: {
   };
 
   return (
-    <section class="sb-host" data-testid={`sb-host-${props.host.id}`} data-collapsed={isCollapsed() ? '' : undefined}>
+    <section class="sb-host" data-testid={`sb-host-${props.host.id}`} data-collapsed={isCollapsed() ? '' : undefined} data-headless={props.headless ? '' : undefined}>
+      <Show when={!props.headless}>
       <div class="sb-host-bar">
         <button type="button" class="sb-host-head" data-testid={`sb-host-head-${props.host.id}`} onClick={() => toggleHost(props.host.id)} aria-expanded={!isCollapsed()}>
           <Show when={isCollapsed()} fallback={<ChevronDown size={14} class="sb-host-chevron" />}>
@@ -251,6 +269,7 @@ export function HostGroup(props: {
           </Show>
         </button>
       </div>
+      </Show>
       <Show when={propsAt()}>
         {(at) => (
           <ListProperties
@@ -312,7 +331,14 @@ export function HostGroup(props: {
               </p>
             </Show>
             <Show when={offline()}>
-              <p class="sb-empty sb-empty-error" role="alert">{hub().state.error?.message ?? 'This PC is offline'}</p>
+              <p class="sb-empty sb-empty-error sb-empty-filtered" role="alert">
+                {hub().state.error?.message ?? 'This PC is offline'}
+                <Show when={props.headless}>
+                  <button type="button" class="sb-reset-filters" data-testid={`sb-host-retry-${props.host.id}`} onClick={() => void hub().reload()}>
+                    Retry
+                  </button>
+                </Show>
+              </p>
             </Show>
             <Show when={groups().pinned.length > 0}>
               <div class="sb-project sb-pinned" data-testid="sb-pinned">

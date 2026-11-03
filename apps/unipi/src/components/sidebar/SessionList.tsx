@@ -13,6 +13,9 @@ import { NoHostState } from '../EmptyState';
 import type { ModeBadge } from './SessionRow';
 import { HostGroup } from './HostGroup';
 import { TaskListHeader } from './TaskListHeader';
+import { SlidersHorizontal } from 'lucide-solid';
+import { activeFilterCount, listView } from '../../lib/session/listView';
+import { openListProperties } from '../../lib/session/listPropsOpen';
 import type { RowVariant } from './SessionRow';
 
 export function SessionList(props: { variant: RowVariant }): JSX.Element {
@@ -24,6 +27,14 @@ export function SessionList(props: { variant: RowVariant }): JSX.Element {
     return [...all].sort((a, b) => Number(b.transport === 'local') - Number(a.transport === 'local'));
   });
   const noHosts = () => !!hosts && !hosts.loading() && hosts.hosts().length === 0;
+  /** [ux-sessions] Several hosts listed at once: only then does each keep its small host label. */
+  const merged = () => list().length > 1;
+  /** The host the header's filter icon edits: the bottom-left host row's PC, else the first listed. */
+  const filterHost = () => {
+    const all = list();
+    const selected = hosts?.selectedId();
+    return (all.find((h) => h.id === selected) ?? all[0])?.id;
+  };
   /** The shown conversation (row highlight; `/s/:host/:session`). */
   const activeSession = createMemo(() => {
     const m = /^\/s\/([^/]+)\/([^/?#]+)/.exec(location.pathname);
@@ -39,9 +50,35 @@ export function SessionList(props: { variant: RowVariant }): JSX.Element {
   return (
     <div class="sb-sessions" data-variant={props.variant} data-testid="sidebar-sessions">
       <Show when={!noHosts()} fallback={<NoHostState what="its sessions" onAdd={() => setAddHostOpen(true)} />}>
-        <TaskListHeader />
-        <For each={list()}>{(host) => <HostGroup host={host} variant={props.variant} activeSession={activeSession()} modeOf={modeOf} />}</For>
+        <TaskListHeader trailing={<FilterButton hostId={filterHost()} />} />
+        <For each={list()}>{(host) => <HostGroup host={host} variant={props.variant} activeSession={activeSession()} modeOf={modeOf} headless={!merged()} />}</For>
       </Show>
     </div>
+  );
+}
+
+/** [ux-sessions] The Task list header's filter icon: the host's Properties (sort, filter, group, view). */
+function FilterButton(props: { hostId: string | undefined }): JSX.Element {
+  const count = () => (props.hostId ? activeFilterCount(listView(props.hostId).filters) : 0);
+  return (
+    <Show when={props.hostId}>
+      {(hostId) => (
+        <button
+          type="button"
+          class="sb-tasks-icon sb-tasks-filter"
+          data-active={count() ? '' : undefined}
+          aria-haspopup="menu"
+          aria-label={count() ? `List properties (${count()} filters on)` : 'List properties: sort, filter, group'}
+          title={count() ? `Properties · ${count()} ${count() === 1 ? 'filter' : 'filters'} on` : 'Properties: sort, filter, group, view'}
+          data-testid={`sb-tasks-props`}
+          onClick={(e) => openListProperties(hostId(), (e.currentTarget as HTMLElement).getBoundingClientRect())}
+        >
+          <SlidersHorizontal size={14} />
+          <Show when={count()}>
+            <span class="sb-tasks-filter-n">{count()}</span>
+          </Show>
+        </button>
+      )}
+    </Show>
   );
 }

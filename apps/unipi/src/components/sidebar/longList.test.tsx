@@ -3,6 +3,7 @@
  * listing loads, project folders paged ("Show more projects", the shown chat's
  * project always kept) and the Archived list paged.
  */
+import { resetListViews, setListView } from '../../lib/session/listView';
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HashRouter, Route } from '@solidjs/router';
@@ -84,6 +85,7 @@ const projectsShown = (container: HTMLElement) => container.querySelectorAll('.s
 beforeEach(() => {
   localStorage.clear();
   resetHostCollapse();
+  resetListViews();
 });
 afterEach(() => {
   cleanup();
@@ -107,7 +109,7 @@ describe('sidebar with a big store', () => {
     expect(screen.getByTestId('sb-rows-proj0')).toBeTruthy();
   });
 
-  it('pages project folders: Show more projects adds a page, collapsing resets', async () => {
+  it('pages project folders: Show more projects adds a page, regrouping resets', async () => {
     setHostClientFactory(createMockHost(scenario(PROJECTS_PAGE * 2 + 3)).client);
     const { container } = mount();
     await waitFor(() => expect(screen.getByTestId('sb-rows-proj0')).toBeTruthy());
@@ -119,9 +121,10 @@ describe('sidebar with a big store', () => {
     fireEvent.click(screen.getByTestId('sb-more-projects-this-pc'));
     await waitFor(() => expect(projectsShown(container)).toBe(PROJECTS_PAGE * 2 + 3));
     expect(screen.queryByTestId('sb-more-projects-this-pc')).toBeNull();
-    // Collapse + expand the host: back to the first page.
-    fireEvent.click(screen.getByTestId('sb-host-head-this-pc'));
-    fireEvent.click(screen.getByTestId('sb-host-head-this-pc'));
+    // [ux-sessions] one host = no host header to collapse; regrouping resets the paging.
+    expect(screen.queryByTestId('sb-host-head-this-pc')).toBeNull();
+    setListView('this-pc', { group: 'none' });
+    setListView('this-pc', { group: 'project' });
     await waitFor(() => expect(projectsShown(container)).toBe(PROJECTS_PAGE));
   });
 
