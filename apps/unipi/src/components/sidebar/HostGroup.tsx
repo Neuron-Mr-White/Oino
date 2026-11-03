@@ -22,6 +22,8 @@ import { activeFilterCount, listView, resetListFilters, viewGroups, wantsArchive
 import { liveRowState, SessionRow, type ModeBadge } from './SessionRow';
 import { createPaging, ProjectGroup } from './ProjectGroup';
 import { ArchivedList } from './ArchivedList';
+import { SearchResults } from './SearchResults';
+import { sidebarSearch } from '../../lib/session/sidebarSearch';
 import { ArchiveAllMenu, ListProperties } from './ListProperties';
 import { knownRuns, SubagentTree, treeHeight, watchRuns } from './SubagentTree';
 import type { RowVariant } from './SessionRow';
@@ -89,6 +91,8 @@ export function HostGroup(props: {
   modeOf: (card: { hostId: string; session_id: string }) => ModeBadge | undefined;
 }): JSX.Element {
   const hostId = () => props.host.id;
+  /** [ux-sessions] a settled sidebar query: the body shows the host's search pages. */
+  const searching = () => !!sidebarSearch.query();
   const hub = createMemo(() => hubs().ensure(props.host.id));
   const view = () => listView(props.host.id);
   const showArchived = () => wantsArchived(view().filters);
@@ -240,116 +244,119 @@ export function HostGroup(props: {
       </Show>
       <Show when={!isCollapsed()}>
         <div class="sb-host-body">
-          <Show when={loading()}>
-            <div class="sb-skeleton" role="status" aria-label="Loading sessions" data-testid={`sb-skeleton-${props.host.id}`}>
-              <For each={[78, 64, 86, 58, 72]}>{(w) => <span class="sb-skel-row" style={{ width: `${w}%` }} />}</For>
-            </div>
-          </Show>
-          {/* [ux-sessions] a batch archive / restore: the host's progress, never an empty state. */}
-          <Show when={hub().state.bulk}>
-            {(b) => (
-              <div class="sb-bulk" role="status" aria-live="polite" data-testid={`sb-bulk-${props.host.id}`}>
-                <span class="sb-bulk-label">
-                  {b().kind === 'archive' ? 'Archiving' : 'Restoring'} {b().done} of {b().total}…
-                </span>
-                <span class="sb-bulk-bar" aria-hidden="true">
-                  <span class="sb-bulk-fill" style={{ width: `${Math.round((100 * b().done) / Math.max(1, b().total))}%` }} />
-                </span>
+          {/* [ux-sessions] a sidebar search replaces the groups with the host's query pages. */}
+          <Show when={!searching()} fallback={<SearchResults hostId={props.host.id} variant={props.variant} activeOf={activeOf} onPin={pin} />}>
+            <Show when={loading()}>
+              <div class="sb-skeleton" role="status" aria-label="Loading sessions" data-testid={`sb-skeleton-${props.host.id}`}>
+                <For each={[78, 64, 86, 58, 72]}>{(w) => <span class="sb-skel-row" style={{ width: `${w}%` }} />}</For>
               </div>
-            )}
-          </Show>
-          {/* Only a settled, current list may say it is empty (never while loading or mid-batch). */}
-          <Show when={hub().state.loaded && !hub().state.loading && !hub().state.bulk && total() === 0 && !offline() && !filterCount()}>
-            <p class="sb-empty" data-testid={`sb-empty-${props.host.id}`}>
-              {hub().state.archivedLoaded && hub().state.archived.length > 0 ? 'Every session is archived' : 'No sessions yet'}
-            </p>
-          </Show>
-          <Show when={hub().state.loaded && !offline() && filterCount() > 0 && groups().total === 0}>
-            <p class="sb-empty sb-empty-filtered" data-testid={`sb-no-match-${props.host.id}`}>
-              No sessions found
-              <button type="button" class="sb-reset-filters" data-testid={`sb-reset-filters-${props.host.id}`} onClick={() => resetListFilters(props.host.id)}>
-                Reset filters
+            </Show>
+            {/* [ux-sessions] a batch archive / restore: the host's progress, never an empty state. */}
+            <Show when={hub().state.bulk}>
+              {(b) => (
+                <div class="sb-bulk" role="status" aria-live="polite" data-testid={`sb-bulk-${props.host.id}`}>
+                  <span class="sb-bulk-label">
+                    {b().kind === 'archive' ? 'Archiving' : 'Restoring'} {b().done} of {b().total}…
+                  </span>
+                  <span class="sb-bulk-bar" aria-hidden="true">
+                    <span class="sb-bulk-fill" style={{ width: `${Math.round((100 * b().done) / Math.max(1, b().total))}%` }} />
+                  </span>
+                </div>
+              )}
+            </Show>
+            {/* Only a settled, current list may say it is empty (never while loading or mid-batch). */}
+            <Show when={hub().state.loaded && !hub().state.loading && !hub().state.bulk && total() === 0 && !offline() && !filterCount()}>
+              <p class="sb-empty" data-testid={`sb-empty-${props.host.id}`}>
+                {hub().state.archivedLoaded && hub().state.archived.length > 0 ? 'Every session is archived' : 'No sessions yet'}
+              </p>
+            </Show>
+            <Show when={hub().state.loaded && !offline() && filterCount() > 0 && groups().total === 0}>
+              <p class="sb-empty sb-empty-filtered" data-testid={`sb-no-match-${props.host.id}`}>
+                No sessions found
+                <button type="button" class="sb-reset-filters" data-testid={`sb-reset-filters-${props.host.id}`} onClick={() => resetListFilters(props.host.id)}>
+                  Reset filters
+                </button>
+              </p>
+            </Show>
+            <Show when={offline()}>
+              <p class="sb-empty sb-empty-error" role="alert">{hub().state.error?.message ?? 'This PC is offline'}</p>
+            </Show>
+            <Show when={groups().pinned.length > 0}>
+              <div class="sb-project sb-pinned" data-testid="sb-pinned">
+                <div class="sb-project-head" title="Pinned sessions">
+                  <span class="sb-project-label">Pinned</span>
+                  <span class="sb-project-count">{groups().pinned.length}</span>
+                </div>
+                <div class="sb-rows">
+                  <For each={groups().pinned}>
+                    {(card) => (
+                      <div class="sb-row-slot">
+                        <SessionRow
+                          hostId={props.host.id}
+                          card={card}
+                          meta={hub().state.meta[card.session_id]}
+                          active={activeOf(card)}
+                          variant={props.variant}
+                          mode={props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
+                          showFolder={props.variant === 'page' && view().group === 'project'}
+                          show={view().props}
+                          compact={view().compact}
+                          onPin={pin}
+                        />
+                        <Show when={treeOf(card)}>{(t) => t().render()}</Show>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
+            <For each={shownGroups()}>
+              {(group) => (
+                <ProjectGroup
+                  hostId={props.host.id}
+                  cwd={group.cwd}
+                  groupKey={group.key}
+                  label={group.label}
+                  cards={group.cards}
+                  meta={hub().state.meta}
+                  variant={props.variant}
+                  paging={paging}
+                  modeOf={(card) => props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
+                  onPin={pin}
+                  activeOf={activeOf}
+                  show={view().props}
+                  compact={view().compact}
+                  archivedOf={archivedOf}
+                  headless={view().group === 'none'}
+                  page={view().group === 'none' ? FLAT_PAGE : undefined}
+                  onArchiveAll={
+                    archivable(group.cards).length
+                      ? (anchor) => setArchiveAsk({ anchor, label: group.label, cards: archivable(group.cards) })
+                      : undefined
+                  }
+                  treeOf={treeOf}
+                />
+              )}
+            </For>
+            <Show when={hiddenProjects() > 0}>
+              <button
+                type="button"
+                class="sb-more sb-more-projects"
+                data-testid={`sb-more-projects-${props.host.id}`}
+                title={`${hiddenProjects()} more groups`}
+                onClick={() => setProjectLimit((n) => n + PROJECTS_PAGE)}
+              >
+                {view().group === 'project' ? 'Show more projects' : 'Show more groups'}
+                <span class="sb-more-count">{hiddenProjects()}</span>
               </button>
-            </p>
+            </Show>
+            {/* Z-13 (WP-A5): the host's trash — open read-only, restore or delete archived sessions. */}
+            <ArchivedList
+              hostId={props.host.id}
+              variant={props.variant}
+              activeSessionId={props.activeSession?.hostId === props.host.id ? props.activeSession.sessionId : undefined}
+            />
           </Show>
-          <Show when={offline()}>
-            <p class="sb-empty sb-empty-error" role="alert">{hub().state.error?.message ?? 'This PC is offline'}</p>
-          </Show>
-          <Show when={groups().pinned.length > 0}>
-            <div class="sb-project sb-pinned" data-testid="sb-pinned">
-              <div class="sb-project-head" title="Pinned sessions">
-                <span class="sb-project-label">Pinned</span>
-                <span class="sb-project-count">{groups().pinned.length}</span>
-              </div>
-              <div class="sb-rows">
-                <For each={groups().pinned}>
-                  {(card) => (
-                    <div class="sb-row-slot">
-                      <SessionRow
-                        hostId={props.host.id}
-                        card={card}
-                        meta={hub().state.meta[card.session_id]}
-                        active={activeOf(card)}
-                        variant={props.variant}
-                        mode={props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
-                        showFolder={props.variant === 'page' && view().group === 'project'}
-                        show={view().props}
-                        compact={view().compact}
-                        onPin={pin}
-                      />
-                      <Show when={treeOf(card)}>{(t) => t().render()}</Show>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </div>
-          </Show>
-          <For each={shownGroups()}>
-            {(group) => (
-              <ProjectGroup
-                hostId={props.host.id}
-                cwd={group.cwd}
-                groupKey={group.key}
-                label={group.label}
-                cards={group.cards}
-                meta={hub().state.meta}
-                variant={props.variant}
-                paging={paging}
-                modeOf={(card) => props.modeOf({ hostId: props.host.id, session_id: card.session_id })}
-                onPin={pin}
-                activeOf={activeOf}
-                show={view().props}
-                compact={view().compact}
-                archivedOf={archivedOf}
-                headless={view().group === 'none'}
-                page={view().group === 'none' ? FLAT_PAGE : undefined}
-                onArchiveAll={
-                  archivable(group.cards).length
-                    ? (anchor) => setArchiveAsk({ anchor, label: group.label, cards: archivable(group.cards) })
-                    : undefined
-                }
-                treeOf={treeOf}
-              />
-            )}
-          </For>
-          <Show when={hiddenProjects() > 0}>
-            <button
-              type="button"
-              class="sb-more sb-more-projects"
-              data-testid={`sb-more-projects-${props.host.id}`}
-              title={`${hiddenProjects()} more groups`}
-              onClick={() => setProjectLimit((n) => n + PROJECTS_PAGE)}
-            >
-              {view().group === 'project' ? 'Show more projects' : 'Show more groups'}
-              <span class="sb-more-count">{hiddenProjects()}</span>
-            </button>
-          </Show>
-          {/* Z-13 (WP-A5): the host's trash — open read-only, restore or delete archived sessions. */}
-          <ArchivedList
-            hostId={props.host.id}
-            variant={props.variant}
-            activeSessionId={props.activeSession?.hostId === props.host.id ? props.activeSession.sessionId : undefined}
-          />
         </div>
       </Show>
     </section>

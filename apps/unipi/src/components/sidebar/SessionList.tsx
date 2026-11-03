@@ -12,6 +12,7 @@ import { setAddHostOpen } from '../Pairing';
 import { NoHostState } from '../EmptyState';
 import type { ModeBadge } from './SessionRow';
 import { HostGroup } from './HostGroup';
+import { TaskListHeader } from './TaskListHeader';
 import type { RowVariant } from './SessionRow';
 
 export function SessionList(props: { variant: RowVariant }): JSX.Element {
@@ -38,6 +39,7 @@ export function SessionList(props: { variant: RowVariant }): JSX.Element {
   return (
     <div class="sb-sessions" data-variant={props.variant} data-testid="sidebar-sessions">
       <Show when={!noHosts()} fallback={<NoHostState what="its sessions" onAdd={() => setAddHostOpen(true)} />}>
+        <TaskListHeader />
         <For each={list()}>{(host) => <HostGroup host={host} variant={props.variant} activeSession={activeSession()} modeOf={modeOf} />}</For>
       </Show>
     </div>
