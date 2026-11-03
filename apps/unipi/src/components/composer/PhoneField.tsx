@@ -5,16 +5,60 @@
  * typed is exactly the text sent — no DOM rebuilds under an open composition.
  *
  * Same contract as `ChipEditor` (`ChipEditorApi`, `onChange(text, caret, kind)`),
- * so the composer's menus, history and drafts work unchanged. Inline references
- * stay plain text in the field; quotes / pasted text / attachments are the chip
- * row above it. The value is written back into the element only when the draft
- * changed from outside (a picked command, a cleared send, a history walk) and
- * never while a composition is open. Enter inserts a newline (Send sends);
- * autogrow 1 line → 6 lines / 40 % of the visible height, then it scrolls.
+ * so the composer's menus, history and drafts work unchanged. Quotes / pasted
+ * text are the chip row above it. The value is written back into the element
+ * only when the draft changed from outside (a picked command, a cleared send, a
+ * history walk) and never while a composition is open. Enter inserts a newline
+ * (Send sends); autogrow 1 line → 6 lines / 40 % of the visible height, then it
+ * scrolls.
+ *
+ * Inline chips (owner spec 2026-11-03): the textarea can't hold elements, so a
+ * draft with chips draws them in a mirror layer under the (then transparent)
+ * text — same font, same wrapping, scrolled with it: each chip token keeps its
+ * own characters' width, painted as a pill (`/command`, `$skill`, `@path` show
+ * their text; an image shows its thumbnail + "image N", a file its name). The
+ * textarea stays the only input, so Gboard composes exactly as before. Chips
+ * stay atomic: Backspace/Delete next to one (or over the space after it)
+ * removes the whole token, a caret landing inside one moves to its end, and an
+ * edit that still cut into one (an IME that ignored the cancel) takes the whole
+ * token out — all only outside a composition.
  */
-import { createEffect, onCleanup, onMount } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { ChipEditorApi } from './ChipEditor';
 import type { EditKind } from '../../lib/composer/undo';
+import { chipSpans, removeToken, tokenize, type Chip, type TokenizeOpts } from '../../lib/composer/chips';
+
+/** Where an edit of `prev` into `next` cut into a chip token without removing all of it, the edit
+ *  widened to take the whole token (with one neighbouring space). `undefined` when nothing broke. */
+export function repairBrokenChips(prev: string, next: string, opts: TokenizeOpts): { text: string; caret: number } | undefined {
+  if (prev === next) return undefined;
+  let p = 0;
+  const max = Math.min(prev.length, next.length);
+  while (p < max && prev[p] === next[p]) p++;
+  let s = 0;
+  while (s < max - p && prev[prev.length - 1 - s] === next[next.length - 1 - s]) s++;
+  const delStart = p;
+  const delEnd = prev.length - s;
+  const inserted = next.slice(p, next.length - s);
+  let from = delStart;
+  let to = delEnd;
+  let broke = false;
+  for (const { chip, start } of chipSpans(tokenize(prev, opts))) {
+    const end = start + chip.raw.length;
+    const overlaps = delEnd > start && delStart < end;
+    // An insertion strictly inside a token splits it too.
+    const splits = delStart === delEnd && delStart > start && delStart < end;
+    if (!(overlaps || splits)) continue;
+    if (delStart <= start && delEnd >= end) continue; // removed whole: fine
+    broke = true;
+    from = Math.min(from, start);
+    to = Math.max(to, end);
+  }
+  if (!broke) return undefined;
+  if (prev[to] === ' ' && !inserted) to++;
+  const text = prev.slice(0, from) + inserted + prev.slice(to);
+  return { text, caret: from + inserted.length };
+}
 
 export function PhoneField(props: {
   value: string;
@@ -24,6 +68,15 @@ export function PhoneField(props: {
   onHistory?: (op: 'undo' | 'redo') => void;
   /** First look at a pasted text — true when it became a chip (a long paste). */
   onPasteText?: (text: string) => boolean;
+  /** Images / files on the clipboard (a keyboard's image paste): attach them as chips. */
+  onPasteFiles?: (files: File[]) => void;
+  /** Which tokens are chips (the composer's `tokenize` options). */
+  opts?: () => TokenizeOpts;
+  /** A chip's label the token can't name ("image N"). */
+  chipLabel?: (chip: Chip) => string | undefined;
+  chipThumb?: (chip: Chip) => string | undefined;
+  /** A chip token removed as a whole. */
+  onChipRemoved?: (chip: Chip) => void;
   disabled?: boolean;
   placeholder?: string;
   class?: string;
@@ -33,14 +86,28 @@ export function PhoneField(props: {
   let el!: HTMLTextAreaElement;
   let composing = false;
   let kind: EditKind = 'other';
+  /** The text the field showed before the current input event (the repair's baseline). */
+  let before = props.value;
+
+  const opts = () => props.opts?.() ?? {};
+  const segs = createMemo(() => tokenize(props.value, opts()));
+  const hasChips = createMemo(() => segs().some((s) => 'chip' in s));
+  const [scroll, setScroll] = createSignal(0);
 
   const grow = () => {
     if (!el) return;
     el.style.height = 'auto';
     // The CSS max-height (6 lines / 40 % of the visible height) caps it; past that it scrolls.
     el.style.height = `${el.scrollHeight}px`;
+    setScroll(el.scrollTop);
   };
   const caret = () => el?.selectionStart ?? props.value.length;
+  const setValue = (text: string, at: number) => {
+    el.value = text;
+    el.setSelectionRange(at, at);
+    before = text;
+    grow();
+  };
 
   props.api?.({
     focus: () => el?.focus({ preventScroll: true }),
@@ -53,6 +120,7 @@ export function PhoneField(props: {
     syncFromStore: () => {
       if (!el || composing || el.value === props.value) return;
       el.value = props.value;
+      before = props.value;
       grow();
     },
   });
@@ -63,61 +131,153 @@ export function PhoneField(props: {
     if (!el || composing || el.value === value) return;
     const at = el === document.activeElement ? Math.min(el.selectionStart ?? value.length, value.length) : value.length;
     el.value = value;
+    before = value;
     if (el === document.activeElement) el.setSelectionRange(at, at);
     grow();
   });
 
+  /** The chip whose token ends (`back`) or starts at `at`. */
+  const chipAt = (text: string, at: number, back: boolean) => {
+    for (const span of chipSpans(tokenize(text, opts()))) {
+      if (back ? span.start + span.chip.raw.length === at : span.start === at) return span;
+    }
+    return undefined;
+  };
+  /** A collapsed caret inside a chip token moves to its end (never while composing). */
+  const snapCaret = () => {
+    if (!el || composing || el.selectionStart !== el.selectionEnd) return;
+    const at = el.selectionStart;
+    for (const { chip, start } of chipSpans(segs())) {
+      const end = start + chip.raw.length;
+      if (at > start && at < end) {
+        el.setSelectionRange(end, end);
+        return;
+      }
+    }
+  };
+
   onMount(() => {
     el.value = props.value;
+    before = props.value;
     grow();
     const onSel = () => {
-      if (document.activeElement === el) props.onCaret?.(caret());
+      if (document.activeElement !== el) return;
+      if (hasChips()) snapCaret();
+      props.onCaret?.(caret());
     };
     document.addEventListener('selectionchange', onSel);
     onCleanup(() => document.removeEventListener('selectionchange', onSel));
   });
 
+  const labelOf = (chip: Chip): string =>
+    props.chipLabel?.(chip) ?? (chip.kind === 'file' ? chip.name : chip.kind === 'path' ? chip.path.replace(/\/$/, '').split('/').pop() || chip.path : chip.raw);
+
   return (
-    <textarea
-      ref={el}
-      class={`ph-field ${props.class ?? ''}`}
-      rows={1}
-      aria-label={props.ariaLabel}
-      placeholder={props.placeholder}
-      disabled={props.disabled}
-      autocapitalize="sentences"
-      autocomplete="off"
-      spellcheck
-      enterkeyhint="enter"
-      data-testid="phone-field"
-      onBeforeInput={(e) => {
-        const t = (e as InputEvent).inputType ?? '';
-        kind = t === 'insertText' || t === 'insertCompositionText' ? 'type' : t.startsWith('delete') ? 'delete' : 'other';
-        if (t === 'historyUndo' || t === 'historyRedo') {
-          if (props.onHistory) {
-            e.preventDefault();
-            props.onHistory(t === 'historyUndo' ? 'undo' : 'redo');
+    <div class="ph-field-box" data-chips={hasChips() ? '' : undefined}>
+      <Show when={hasChips()}>
+        <div class="ph-field-mirror" aria-hidden="true" data-testid="phone-field-mirror">
+          <div class="ph-field-mirror-in" style={{ transform: `translateY(${-scroll()}px)` }}>
+            <For each={segs()}>
+              {(seg) => {
+                if (!('chip' in seg)) return <>{seg.text}</>;
+                const chip = seg.chip;
+                const covered = chip.kind === 'image' || chip.kind === 'file';
+                return (
+                  <span class="ph-chip" data-kind={chip.kind} data-mode={chip.kind === 'command' && chip.mode ? '' : undefined} data-covered={covered ? '' : undefined}>
+                    {chip.raw}
+                    <Show when={covered}>
+                      <span class="ph-chip-label">
+                        <Show when={props.chipThumb?.(chip)}>{(src) => <img class="ph-chip-thumb" src={src()} alt="" />}</Show>
+                        <span class="ph-chip-text">{labelOf(chip)}</span>
+                      </span>
+                    </Show>
+                  </span>
+                );
+              }}
+            </For>
+            {/* A trailing newline needs a character after it to take its line. */}
+            {props.value.endsWith('\n') ? '\u200b' : ''}
+          </div>
+        </div>
+      </Show>
+      <textarea
+        ref={el}
+        class={`ph-field ${props.class ?? ''}`}
+        rows={1}
+        aria-label={props.ariaLabel}
+        placeholder={props.placeholder}
+        disabled={props.disabled}
+        autocapitalize="sentences"
+        autocomplete="off"
+        spellcheck
+        enterkeyhint="enter"
+        data-testid="phone-field"
+        onScroll={() => setScroll(el.scrollTop)}
+        onBeforeInput={(e) => {
+          const t = (e as InputEvent).inputType ?? '';
+          kind = t === 'insertText' || t === 'insertCompositionText' ? 'type' : t.startsWith('delete') ? 'delete' : 'other';
+          if (t === 'historyUndo' || t === 'historyRedo') {
+            if (props.onHistory) {
+              e.preventDefault();
+              props.onHistory(t === 'historyUndo' ? 'undo' : 'redo');
+            }
+            return;
           }
-        }
-      }}
-      onInput={() => {
-        props.onChange(el.value, caret(), kind);
-        kind = 'other';
-        grow();
-      }}
-      onCompositionStart={() => (composing = true)}
-      onCompositionEnd={() => {
-        composing = false;
-        // The final composed text: make sure the draft has exactly what the field shows.
-        if (el.value !== props.value) props.onChange(el.value, caret(), 'type');
-      }}
-      onKeyDown={(e) => props.onKeyDown?.(e)}
-      onKeyUp={() => props.onCaret?.(caret())}
-      onClick={() => props.onCaret?.(caret())}
-      onPaste={(e) => {
-        const text = e.clipboardData?.getData('text/plain') ?? '';
-        if (text && props.onPasteText?.(text)) e.preventDefault();
-      }}
-    />
+          // Atomic chips: Backspace / Delete next to one takes the whole token.
+          if ((t === 'deleteContentBackward' || t === 'deleteContentForward') && !composing && !(e as InputEvent).isComposing && el.selectionStart === el.selectionEnd && hasChips()) {
+            const text = el.value;
+            const at = el.selectionStart;
+            const back = t === 'deleteContentBackward';
+            // The space a chip keeps after itself goes with it (else Gboard would re-compose the raw token).
+            const hit = chipAt(text, at, back) ?? (back && at > 0 && text[at - 1] === ' ' ? chipAt(text, at - 1, true) : undefined);
+            if (!hit) return;
+            e.preventDefault();
+            const next = removeToken(text, hit.start, hit.chip.raw);
+            setValue(next.text, next.caret);
+            props.onChange(next.text, next.caret, 'delete');
+            props.onChipRemoved?.(hit.chip);
+          }
+        }}
+        onInput={() => {
+          // An edit that still cut into a chip (the keyboard ignored the cancel) takes the whole token.
+          if (!composing && hasChips()) {
+            const fixed = repairBrokenChips(before, el.value, opts());
+            if (fixed) {
+              setValue(fixed.text, fixed.caret);
+              props.onChange(fixed.text, fixed.caret, 'delete');
+              kind = 'other';
+              return;
+            }
+          }
+          before = el.value;
+          props.onChange(el.value, caret(), kind);
+          kind = 'other';
+          grow();
+        }}
+        onCompositionStart={() => (composing = true)}
+        onCompositionEnd={() => {
+          composing = false;
+          before = el.value;
+          // The final composed text: make sure the draft has exactly what the field shows.
+          if (el.value !== props.value) props.onChange(el.value, caret(), 'type');
+        }}
+        onKeyDown={(e) => props.onKeyDown?.(e)}
+        onKeyUp={() => props.onCaret?.(caret())}
+        onClick={() => {
+          if (hasChips()) snapCaret();
+          props.onCaret?.(caret());
+        }}
+        onPaste={(e) => {
+          const files = [...(e.clipboardData?.files ?? [])];
+          if (files.length && props.onPasteFiles) {
+            e.preventDefault();
+            props.onPasteFiles(files);
+            return;
+          }
+          const text = e.clipboardData?.getData('text/plain') ?? '';
+          if (text && props.onPasteText?.(text)) e.preventDefault();
+        }}
+      />
+    </div>
   );
 }
