@@ -1,0 +1,417 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`describeEvent (chat event corpus) > attachments ← unipi:attachments 1`] = `
+{
+  "body": "markdown",
+  "icon": "attach",
+  "kind": "attachments",
+  "meta": undefined,
+  "renderer": "customEntry",
+  "source": "Attachments",
+  "title": "2 files · design.pdf",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > background-task ← background-task-notification 1`] = `
+{
+  "body": "text",
+  "icon": "bgFailed",
+  "kind": "background-task",
+  "meta": "exit 1 · 42s",
+  "renderer": undefined,
+  "source": "Background task",
+  "title": "Thinking contract validation",
+  "tone": "error",
+}
+`;
+
+exports[`describeEvent (chat event corpus) > background-task ← background-task-notification 2`] = `
+{
+  "body": "text",
+  "icon": "bgDone",
+  "kind": "background-task",
+  "meta": "exit 0",
+  "renderer": undefined,
+  "source": "Background task",
+  "title": "vitest run",
+  "tone": "ok",
+}
+`;
+
+exports[`describeEvent (chat event corpus) > branch-summary ← branch_summary 1`] = `
+{
+  "body": "markdown",
+  "icon": "branch",
+  "kind": "branch-summary",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Branch",
+  "title": "The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit.",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > browser-shot ← unipi.browser/turn-shot 1`] = `
+{
+  "body": "json",
+  "icon": "browser",
+  "kind": "browser-shot",
+  "meta": undefined,
+  "renderer": "customEntry",
+  "source": "Browser",
+  "title": "https://oino.dev/",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > btw ← btw-thread-entry 1`] = `
+{
+  "body": "markdown",
+  "icon": "btw",
+  "kind": "btw",
+  "meta": "glm-5.3",
+  "renderer": undefined,
+  "source": "Side question",
+  "title": "What is the overall progress right now?",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > compaction-card ← unipi-compaction 1`] = `
+{
+  "body": "markdown",
+  "icon": "compactor",
+  "kind": "compaction-card",
+  "meta": "vcc · threshold · 82%",
+  "renderer": undefined,
+  "source": "Compactor",
+  "title": "182k → 41k tokens",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > compactor-recall ← compactor-recall 1`] = `
+{
+  "body": "markdown",
+  "icon": "compactor",
+  "kind": "compactor-recall",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Compactor",
+  "title": "Session recall: "phone sheet"",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > compactor-resume ← unipi-compactor-resume 1`] = `
+{
+  "body": "text",
+  "icon": "compactor",
+  "kind": "compactor-resume",
+  "meta": "8× compacted · 384 files",
+  "renderer": undefined,
+  "source": "Compactor",
+  "title": "resumed after compaction · 1000 events",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > custom ← acme:weekly-report 1`] = `
+{
+  "body": "json",
+  "icon": "response",
+  "kind": "custom",
+  "meta": undefined,
+  "renderer": "customMessage",
+  "source": "Acme",
+  "title": "weekly report",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > dream-report ← unipi-dream-report-card 1`] = `
+{
+  "body": "text",
+  "icon": "dream",
+  "kind": "dream-report",
+  "meta": undefined,
+  "renderer": "customEntry",
+  "source": "Dream",
+  "title": "report ready · 3 proposals pending",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > goal-progress ← unipi-progress 1`] = `
+{
+  "body": "markdown",
+  "icon": "goal",
+  "kind": "goal-progress",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Goal",
+  "title": "~40% · timeline rows done, QA shots pending",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > kanboard-badge ← unipi:kanboard-badge 1`] = `
+{
+  "body": "json",
+  "icon": "kanboard",
+  "kind": "kanboard-badge",
+  "meta": undefined,
+  "renderer": "customEntry",
+  "source": "Kanboard",
+  "title": "OINO-42 · claimed",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > kanboard-next ← unipi:kanboard-next 1`] = `
+{
+  "body": "markdown",
+  "icon": "kanboard",
+  "kind": "kanboard-next",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Kanboard",
+  "title": "Next task: OINO-42 Chat events parity.",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > lh-continue ← unipi:lh-continue 1`] = `
+{
+  "body": "markdown",
+  "icon": "mode",
+  "kind": "lh-continue",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Long-horizon",
+  "title": "continuation · Continue the graph: 2 nodes ready (chat-events, rel-build).",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > memory-nudge ← unipi-memory-retro-reminder 1`] = `
+{
+  "body": "markdown",
+  "icon": "memory",
+  "kind": "memory-nudge",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Memory",
+  "title": "save nudge · store what this task taught",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > memory-recall ← unipi-memory-recall-reminder 1`] = `
+{
+  "body": "markdown",
+  "icon": "memory",
+  "kind": "memory-recall",
+  "meta": "oino",
+  "renderer": undefined,
+  "source": "Memory",
+  "title": "recalled 5 · oino_handoff_20261102_finalize_graph",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > memory-recall ← unipi-memory-recall-reminder 2`] = `
+{
+  "body": "markdown",
+  "icon": "memory",
+  "kind": "memory-recall",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Memory",
+  "title": "no memories yet for openmontage",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > memory-saved ← unipi-memory-save-card 1`] = `
+{
+  "body": "markdown",
+  "icon": "memorySave",
+  "kind": "memory-saved",
+  "meta": "side agent · 963k tokens",
+  "renderer": undefined,
+  "source": "Memory",
+  "title": "saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1",
+  "tone": "ok",
+}
+`;
+
+exports[`describeEvent (chat event corpus) > memory-wake ← unipi-memory-session-card 1`] = `
+{
+  "body": "text",
+  "icon": "memoryWake",
+  "kind": "memory-wake",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Memory",
+  "title": "wake-up · 215 memories · oino",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > mode-switch ← long-horizon-decision 1`] = `
+{
+  "body": undefined,
+  "icon": "mode",
+  "kind": "mode-switch",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Mode",
+  "title": "Graph",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > plan-mode ← unipi:plan-mode-message 1`] = `
+{
+  "body": "markdown",
+  "icon": "plan",
+  "kind": "plan-mode",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Plan mode",
+  "title": "Plan mode on",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > ralph-iteration ← unipi-ralph-loop-reminder 1`] = `
+{
+  "body": "markdown",
+  "icon": "ralph",
+  "kind": "ralph-iteration",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Ralph",
+  "title": "iteration 18/30 · agent-only-subtraction",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > response ← unipi-response 1`] = `
+{
+  "body": "markdown",
+  "icon": "mode",
+  "kind": "response",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Long-horizon",
+  "title": "Mode command: Graph",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > sidekick-done ← sidekick-completion 1`] = `
+{
+  "body": "markdown",
+  "icon": "sidekick",
+  "kind": "sidekick-done",
+  "meta": "1m 5s · $0.081",
+  "renderer": undefined,
+  "source": "Sidekick",
+  "title": "Result: DONE — all 7 rework items implemented; 95 tests passed.",
+  "tone": "ok",
+}
+`;
+
+exports[`describeEvent (chat event corpus) > skills-revealed ← unipi-skills-revealed 1`] = `
+{
+  "body": "markdown",
+  "icon": "skills",
+  "kind": "skills-revealed",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Skills",
+  "title": "Skills now available: browser, image.",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > subagent-done ← subagent-completion 1`] = `
+{
+  "body": "markdown",
+  "icon": "agent",
+  "kind": "subagent-done",
+  "meta": "3m 40s · $0.42",
+  "renderer": undefined,
+  "source": "Subagent",
+  "title": "Audit sidebar rows",
+  "tone": "ok",
+}
+`;
+
+exports[`describeEvent (chat event corpus) > subagent-notification ← subagent-notification 1`] = `
+{
+  "body": "markdown",
+  "icon": "agent",
+  "kind": "subagent-notification",
+  "meta": "3m 40s · 489k tokens",
+  "renderer": undefined,
+  "source": "Subagent",
+  "title": "Trace film sessions · done",
+  "tone": "ok",
+}
+`;
+
+exports[`describeEvent (chat event corpus) > system ← system 1`] = `
+{
+  "body": "text",
+  "icon": "system",
+  "kind": "system",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "System",
+  "title": "Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > user-bash ← bashExecution 1`] = `
+{
+  "body": "text",
+  "icon": "shell",
+  "kind": "user-bash",
+  "meta": "exit 0",
+  "renderer": undefined,
+  "source": "Shell",
+  "title": "git status --short",
+  "tone": undefined,
+}
+`;
+
+exports[`describeEvent (chat event corpus) > user-bash ← bashExecution 2`] = `
+{
+  "body": "text",
+  "icon": "shell",
+  "kind": "user-bash",
+  "meta": "exit 101",
+  "renderer": undefined,
+  "source": "Shell",
+  "title": "cargo test -p oino-core",
+  "tone": "error",
+}
+`;
+
+exports[`describeEvent (chat event corpus) > watchdog ← unipi-watchdog 1`] = `
+{
+  "body": "markdown",
+  "icon": "watchdog",
+  "kind": "watchdog",
+  "meta": undefined,
+  "renderer": undefined,
+  "source": "Watchdog",
+  "title": "Tool bash has been running for 12m (limit 10m).",
+  "tone": "warning",
+}
+`;

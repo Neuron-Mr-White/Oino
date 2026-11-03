@@ -136,14 +136,17 @@ const kTokens = (n?: number) => (n === undefined ? '?' : n >= 1000 ? `${Math.rou
 export function firstLine(text: string | undefined): string {
   for (const raw of (text ?? '').split('\n')) {
     const l = raw
-      .replace(/^\s*(#+|[-*>]|\d+\.)\s*/, '')
       .replace(/\*\*|__|`/g, '')
+      .replace(/^\s*(#+|[-*>]|\d+\.)\s*/, '')
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?/gu, '')
       .trim();
     if (l && !/^<\/?[a-z_-]+[^>]*>$/i.test(l)) return l.length > 120 ? `${l.slice(0, 119)}…` : l;
   }
   return '';
 }
+
+/** `label · line`, or just `line` when it already starts with the label ("Next task: …"). */
+const prefixed = (label: string, line: string): string => (!line ? label : line.toLowerCase().startsWith(label.toLowerCase()) ? line : `${label} · ${line}`);
 
 const decode = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 
@@ -327,7 +330,7 @@ function kanboard(ct: string, e: SessionEntry): EventView {
     kind: `kanboard-${ct.split('-').pop()}`,
     icon: 'kanboard',
     source: 'Kanboard',
-    title: join(h.title && h.title !== 'Kanboard' ? h.title.toLowerCase() : titles[ct], firstLine(text))!,
+    title: prefixed((h.title && h.title !== 'Kanboard' ? h.title.toLowerCase() : titles[ct]) ?? 'kanboard', firstLine(text)),
     body: md(text),
     ...(ct === 'unipi:kanboard-show' ? { renderer: 'customMessage' as const } : {}),
   };
@@ -411,7 +414,7 @@ function describeCustom(e: SessionEntry): EventView | null | undefined {
     case 'unipi-compaction':
       return compaction(e);
     case 'compactor-recall':
-      return { kind: 'compactor-recall', icon: 'compactor', source: 'Compactor', title: join('session recall', firstLine(text))!, body: md(text) };
+      return { kind: 'compactor-recall', icon: 'compactor', source: 'Compactor', title: prefixed('session recall', firstLine(text)), body: md(text) };
     case 'unipi-compactor-resume': {
       const events = xmlAttr(text, 'session_resume', 'events');
       const n = xmlAttr(text, 'session_resume', 'compact_count');
@@ -439,7 +442,7 @@ function describeCustom(e: SessionEntry): EventView | null | undefined {
       return { kind: 'goal-progress', icon: 'goal', source: 'Goal', title: join(pct !== undefined ? `~${Math.round(pct)}%` : undefined, str(d.summary))!, body: md(str(d.objective) ? `**Objective:** ${str(d.objective)}` : undefined) };
     }
     case 'unipi:lh-continue':
-      return { kind: 'lh-continue', icon: 'mode', source: 'Long-horizon', title: join('continuation', firstLine(text))!, body: md(text) };
+      return { kind: 'lh-continue', icon: 'mode', source: 'Long-horizon', title: prefixed('continuation', firstLine(text)), body: md(text) };
     case 'unipi-ralph-loop-reminder': {
       const m = /\[RALPH LOOP - (.+?) - Iteration (\d+)\/(\d+)\]/.exec(text);
       return { kind: 'ralph-iteration', icon: 'ralph', source: 'Ralph', title: m ? `iteration ${m[2]}/${m[3]} · ${m[1]}` : firstLine(text) || 'loop', body: md(text) };
@@ -490,7 +493,7 @@ function describeCustom(e: SessionEntry): EventView | null | undefined {
     kind: 'custom',
     icon: iconOfSource(h.source),
     source: h.source ?? humanType(ct),
-    title: h.title && h.title !== h.source ? join(h.title, h.synopsis)! : firstLine(text) || h.synopsis || ct,
+    title: h.title && h.title !== h.source ? join(h.title, h.synopsis)! : firstLine(text) || h.synopsis || ct.split(/[:/]/).pop()!.replace(/[-_]+/g, ' '),
     ...(h.warning ? { tone: 'warning' as const } : {}),
     body: notif ? plain(text) : (md(text) ?? json(det)),
     renderer: 'customMessage',

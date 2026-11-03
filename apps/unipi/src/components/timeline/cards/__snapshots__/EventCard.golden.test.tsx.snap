@@ -1,0 +1,6612 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="attachments"
+  data-family="harness"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Attachments · 2 files · design.pdf"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-paperclip lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"
+          key="1miecu"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Attachments
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      2 files · design.pdf
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="attachments"
+  data-family="harness"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Attachments · 2 files · design.pdf"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-paperclip lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"
+          key="1miecu"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Attachments
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      2 files · design.pdf
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <ul>
+          
+
+          <li>
+            design.pdf
+          </li>
+          
+
+          <li>
+            shot.png
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > background-task (ev09): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="background-task"
+  data-family="task"
+  data-testid="tl-event"
+  data-tone="error"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Background task · Thinking contract validation · exit 1 · 42s"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-circle-x lucide-x-circle lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          key="1mglay"
+          r="10"
+        />
+        <path
+          d="m15 9-6 6"
+          key="1uzhvr"
+        />
+        <path
+          d="m9 9 6 6"
+          key="z0biqf"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Background task
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Thinking contract validation
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      exit 1 · 42s
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > background-task (ev09): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="background-task"
+  data-family="task"
+  data-open=""
+  data-testid="tl-event"
+  data-tone="error"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Background task · Thinking contract validation · exit 1 · 42s"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-circle-x lucide-x-circle lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          key="1mglay"
+          r="10"
+        />
+        <path
+          d="m15 9-6 6"
+          key="1uzhvr"
+        />
+        <path
+          d="m9 9 6 6"
+          key="z0biqf"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Background task
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Thinking contract validation
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      exit 1 · 42s
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="text"
+      data-testid="tl-event-body"
+    >
+      $ python -m pytest tests/api/test_thinking_config.py -q
+FAILED tests/api/test_thinking_config.py::test_levels - KeyError: xhigh
+1 failed, 41 passed in 3.12s
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > background-task (ev10): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="background-task"
+  data-family="task"
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Background task · vitest run · exit 0"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-circle-check lucide-check-circle-2 lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          key="1mglay"
+          r="10"
+        />
+        <path
+          d="m16 9-5.5 5.5L8 12"
+          key="xofnsj"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Background task
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      vitest run
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      exit 0
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > background-task (ev10): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="background-task"
+  data-family="task"
+  data-open=""
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Background task · vitest run · exit 0"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-circle-check lucide-check-circle-2 lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          key="1mglay"
+          r="10"
+        />
+        <path
+          d="m16 9-5.5 5.5L8 12"
+          key="xofnsj"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Background task
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      vitest run
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      exit 0
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="text"
+      data-testid="tl-event-body"
+    >
+      $ npx vitest run
+Test Files  37 passed (37)
+Tests  288 passed (288)
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="branch-summary"
+  data-family="system"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-git-branch lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M15 6a9 9 0 0 0-9 9V3"
+          key="1cii5b"
+        />
+        <circle
+          cx="18"
+          cy="6"
+          key="1h7g24"
+          r="3"
+        />
+        <circle
+          cx="6"
+          cy="18"
+          key="fqmcym"
+          r="3"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Branch
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit.
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="branch-summary"
+  data-family="system"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-git-branch lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M15 6a9 9 0 0 0-9 9V3"
+          key="1cii5b"
+        />
+        <circle
+          cx="18"
+          cy="6"
+          key="1h7g24"
+          r="3"
+        />
+        <circle
+          cx="6"
+          cy="18"
+          key="fqmcym"
+          r="3"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Branch
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit.
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit.
+        </p>
+        
+
+      </div>
+      <div>
+        <ul>
+          
+
+          <li>
+            reverted 
+            <code>
+              phone.css
+            </code>
+          </li>
+          
+
+          <li>
+            kept the z-index token
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="browser-shot"
+  data-family="harness"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Browser · https://oino.dev/"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-camera lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"
+          key="18u6gg"
+        />
+        <circle
+          cx="12"
+          cy="13"
+          key="1vg3eu"
+          r="3"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Browser
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      https://oino.dev/
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="browser-shot"
+  data-family="harness"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Browser · https://oino.dev/"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-camera lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"
+          key="18u6gg"
+        />
+        <circle
+          cx="12"
+          cy="13"
+          key="1vg3eu"
+          r="3"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Browser
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      https://oino.dev/
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="json"
+      data-testid="tl-event-body"
+    >
+      {
+  "url": "https://oino.dev/",
+  "path": "/tmp/shot.png"
+}
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="btw"
+  data-family="harness"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Side question · What is the overall progress right now? · glm-5.3"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-message-circle-question-mark lucide-message-circle-question lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"
+          key="1sd12s"
+        />
+        <path
+          d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
+          key="1u773s"
+        />
+        <path
+          d="M12 17h.01"
+          key="p32p05"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Side question
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      What is the overall progress right now?
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      glm-5.3
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="btw"
+  data-family="harness"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Side question · What is the overall progress right now? · glm-5.3"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-message-circle-question-mark lucide-message-circle-question lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"
+          key="1sd12s"
+        />
+        <path
+          d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
+          key="1u773s"
+        />
+        <path
+          d="M12 17h.01"
+          key="p32p05"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Side question
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      What is the overall progress right now?
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      glm-5.3
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          <strong>
+            Core is in place
+          </strong>
+          ; QA shots are pending.
+        </p>
+        
+
+      </div>
+      <div>
+        <ul>
+          
+
+          <li>
+            rows: done
+          </li>
+          
+
+          <li>
+            tests: done
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="compaction-card"
+  data-family="compactor"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Compactor · 182k → 41k tokens · vcc · threshold · 82%"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-layers lucide-layers-3 lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
+          key="zw3jo"
+        />
+        <path
+          d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"
+          key="1wduqc"
+        />
+        <path
+          d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"
+          key="kqbvx6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Compactor
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      182k → 41k tokens
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      vcc · threshold · 82%
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="compaction-card"
+  data-family="compactor"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Compactor · 182k → 41k tokens · vcc · threshold · 82%"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-layers lucide-layers-3 lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
+          key="zw3jo"
+        />
+        <path
+          d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"
+          key="1wduqc"
+        />
+        <path
+          d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"
+          key="kqbvx6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Compactor
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      182k → 41k tokens
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      vcc · threshold · 82%
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <ul>
+          
+
+          <li>
+            Goal and constraints
+          </li>
+          
+
+          <li>
+            Files touched (12)
+          </li>
+          
+
+          <li>
+            Open questions
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+      <div>
+        <p>
+          Kept 6 of 48 turns (23k tokens)
+          <br />
+          Summary ≈ 4k tokens
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="compactor-recall"
+  data-family="compactor"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Compactor · Session recall: "phone sheet""
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-layers lucide-layers-3 lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
+          key="zw3jo"
+        />
+        <path
+          d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"
+          key="1wduqc"
+        />
+        <path
+          d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"
+          key="kqbvx6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Compactor
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Session recall: "phone sheet"
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="compactor-recall"
+  data-family="compactor"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Compactor · Session recall: "phone sheet""
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-layers lucide-layers-3 lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
+          key="zw3jo"
+        />
+        <path
+          d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"
+          key="1wduqc"
+        />
+        <path
+          d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"
+          key="kqbvx6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Compactor
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Session recall: "phone sheet"
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <h2>
+          Session recall: "phone sheet"
+        </h2>
+        
+
+      </div>
+      <div>
+        <ul>
+          
+
+          <li>
+            #412 sheet scrim z-index fix
+          </li>
+          
+
+          <li>
+            #518 detents for the tool sheet
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="compactor-resume"
+  data-family="compactor"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-layers lucide-layers-3 lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
+          key="zw3jo"
+        />
+        <path
+          d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"
+          key="1wduqc"
+        />
+        <path
+          d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"
+          key="kqbvx6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Compactor
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      resumed after compaction · 1000 events
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      8× compacted · 384 files
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="compactor-resume"
+  data-family="compactor"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-layers lucide-layers-3 lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
+          key="zw3jo"
+        />
+        <path
+          d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"
+          key="1wduqc"
+        />
+        <path
+          d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"
+          key="kqbvx6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Compactor
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      resumed after compaction · 1000 events
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      8× compacted · 384 files
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="text"
+      data-testid="tl-event-body"
+    >
+      &lt;session_resume events="1000" compact_count="8"&gt;
+  &lt;files count="384"&gt;
+    stages.py (read×1)
+    ChatContainer.tsx (edit×1)
+  &lt;/files&gt;
+&lt;/session_resume&gt;
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="custom"
+  data-family="harness"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Acme · weekly report"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-sparkles lucide-stars lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"
+          key="1s2grr"
+        />
+        <path
+          d="M20 2v4"
+          key="1rf3ol"
+        />
+        <path
+          d="M22 4h-4"
+          key="gwowj6"
+        />
+        <circle
+          cx="4"
+          cy="20"
+          key="6kqj1y"
+          r="2"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Acme
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      weekly report
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="custom"
+  data-family="harness"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Acme · weekly report"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-sparkles lucide-stars lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"
+          key="1s2grr"
+        />
+        <path
+          d="M20 2v4"
+          key="1rf3ol"
+        />
+        <path
+          d="M22 4h-4"
+          key="gwowj6"
+        />
+        <circle
+          cx="4"
+          cy="20"
+          key="6kqj1y"
+          r="2"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Acme
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      weekly report
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="json"
+      data-testid="tl-event-body"
+    >
+      {
+  "rows": 3,
+  "ok": true
+}
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="dream-report"
+  data-family="dream"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Dream · report ready · 3 proposals pending"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-moon-star lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M18 5h4"
+          key="1lhgn2"
+        />
+        <path
+          d="M20 3v4"
+          key="1olli1"
+        />
+        <path
+          d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"
+          key="kfwtm"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Dream
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      report ready · 3 proposals pending
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="dream-report"
+  data-family="dream"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Dream · report ready · 3 proposals pending"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-moon-star lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M18 5h4"
+          key="1lhgn2"
+        />
+        <path
+          d="M20 3v4"
+          key="1olli1"
+        />
+        <path
+          d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"
+          key="kfwtm"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Dream
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      report ready · 3 proposals pending
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="text"
+      data-testid="tl-event-body"
+    >
+      ~/.oino/dream/runs/2026-11-03/DREAM_REPORT.md
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="goal-progress"
+  data-family="mode"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Goal · ~40% · timeline rows done, QA shots pending"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-target lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          key="1mglay"
+          r="10"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          key="1vlfrh"
+          r="6"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          key="1c9p78"
+          r="2"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Goal
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      ~40% · timeline rows done, QA shots pending
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="goal-progress"
+  data-family="mode"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Goal · ~40% · timeline rows done, QA shots pending"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-target lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          key="1mglay"
+          r="10"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          key="1vlfrh"
+          r="6"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          key="1c9p78"
+          r="2"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Goal
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      ~40% · timeline rows done, QA shots pending
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          <strong>
+            Objective:
+          </strong>
+           Every chat event kind renders and expands
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="kanboard-badge"
+  data-family="board"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Kanboard · OINO-42 · claimed"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-square-kanban lucide-kanban-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect
+          height="18"
+          key="afitv7"
+          rx="2"
+          width="18"
+          x="3"
+          y="3"
+        />
+        <path
+          d="M8 7v7"
+          key="1x2jlm"
+        />
+        <path
+          d="M12 7v4"
+          key="xawao1"
+        />
+        <path
+          d="M16 7v9"
+          key="1hp2iy"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Kanboard
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      OINO-42 · claimed
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="kanboard-badge"
+  data-family="board"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Kanboard · OINO-42 · claimed"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-square-kanban lucide-kanban-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect
+          height="18"
+          key="afitv7"
+          rx="2"
+          width="18"
+          x="3"
+          y="3"
+        />
+        <path
+          d="M8 7v7"
+          key="1x2jlm"
+        />
+        <path
+          d="M12 7v4"
+          key="xawao1"
+        />
+        <path
+          d="M16 7v9"
+          key="1hp2iy"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Kanboard
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      OINO-42 · claimed
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="json"
+      data-testid="tl-event-body"
+    >
+      {
+  "id": "OINO-42",
+  "kind": "claimed"
+}
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="kanboard-next"
+  data-family="board"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Kanboard · Next task: OINO-42 Chat events parity."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-square-kanban lucide-kanban-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect
+          height="18"
+          key="afitv7"
+          rx="2"
+          width="18"
+          x="3"
+          y="3"
+        />
+        <path
+          d="M8 7v7"
+          key="1x2jlm"
+        />
+        <path
+          d="M12 7v4"
+          key="xawao1"
+        />
+        <path
+          d="M16 7v9"
+          key="1hp2iy"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Kanboard
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Next task: OINO-42 Chat events parity.
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="kanboard-next"
+  data-family="board"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Kanboard · Next task: OINO-42 Chat events parity."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-square-kanban lucide-kanban-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect
+          height="18"
+          key="afitv7"
+          rx="2"
+          width="18"
+          x="3"
+          y="3"
+        />
+        <path
+          d="M8 7v7"
+          key="1x2jlm"
+        />
+        <path
+          d="M12 7v4"
+          key="xawao1"
+        />
+        <path
+          d="M16 7v9"
+          key="1hp2iy"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Kanboard
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Next task: OINO-42 Chat events parity.
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          Next task: 
+          <strong>
+            OINO-42
+          </strong>
+           Chat events parity.
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="lh-continue"
+  data-family="mode"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build)."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-hourglass lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M5 22h14"
+          key="ehvnwv"
+        />
+        <path
+          d="M5 2h14"
+          key="pdyrp9"
+        />
+        <path
+          d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"
+          key="1d314k"
+        />
+        <path
+          d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"
+          key="1vvvr6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Long-horizon
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      continuation · Continue the graph: 2 nodes ready (chat-events, rel-build).
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="lh-continue"
+  data-family="mode"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build)."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-hourglass lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M5 22h14"
+          key="ehvnwv"
+        />
+        <path
+          d="M5 2h14"
+          key="pdyrp9"
+        />
+        <path
+          d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"
+          key="1d314k"
+        />
+        <path
+          d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"
+          key="1vvvr6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Long-horizon
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      continuation · Continue the graph: 2 nodes ready (chat-events, rel-build).
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          Continue the graph: 2 nodes ready (chat-events, rel-build).
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-nudge"
+  data-family="memory"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · save nudge · store what this task taught"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-brain-circuit lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+          key="l5xja"
+        />
+        <path
+          d="M9 13a4.5 4.5 0 0 0 3-4"
+          key="10igwf"
+        />
+        <path
+          d="M6.003 5.125A3 3 0 0 0 6.401 6.5"
+          key="105sqy"
+        />
+        <path
+          d="M3.477 10.896a4 4 0 0 1 .585-.396"
+          key="ql3yin"
+        />
+        <path
+          d="M6 18a4 4 0 0 1-1.967-.516"
+          key="2e4loj"
+        />
+        <path
+          d="M12 13h4"
+          key="1ku699"
+        />
+        <path
+          d="M12 18h6a2 2 0 0 1 2 2v1"
+          key="105ag5"
+        />
+        <path
+          d="M12 8h8"
+          key="1lhi5i"
+        />
+        <path
+          d="M16 8V5a2 2 0 0 1 2-2"
+          key="u6izg6"
+        />
+        <circle
+          cx="16"
+          cy="13"
+          key="ry7gng"
+          r=".5"
+        />
+        <circle
+          cx="18"
+          cy="3"
+          key="1aiba7"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="21"
+          key="yhc1fs"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="8"
+          key="1e43v0"
+          r=".5"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      save nudge · store what this task taught
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-nudge"
+  data-family="memory"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · save nudge · store what this task taught"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-brain-circuit lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+          key="l5xja"
+        />
+        <path
+          d="M9 13a4.5 4.5 0 0 0 3-4"
+          key="10igwf"
+        />
+        <path
+          d="M6.003 5.125A3 3 0 0 0 6.401 6.5"
+          key="105sqy"
+        />
+        <path
+          d="M3.477 10.896a4 4 0 0 1 .585-.396"
+          key="ql3yin"
+        />
+        <path
+          d="M6 18a4 4 0 0 1-1.967-.516"
+          key="2e4loj"
+        />
+        <path
+          d="M12 13h4"
+          key="1ku699"
+        />
+        <path
+          d="M12 18h6a2 2 0 0 1 2 2v1"
+          key="105ag5"
+        />
+        <path
+          d="M12 8h8"
+          key="1lhi5i"
+        />
+        <path
+          d="M16 8V5a2 2 0 0 1 2-2"
+          key="u6izg6"
+        />
+        <circle
+          cx="16"
+          cy="13"
+          key="ry7gng"
+          r=".5"
+        />
+        <circle
+          cx="18"
+          cy="3"
+          key="1aiba7"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="21"
+          key="yhc1fs"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="8"
+          key="1e43v0"
+          r=".5"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      save nudge · store what this task taught
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          <strong>
+            🧠 Memory reminder:
+          </strong>
+           If you learned something non-obvious in this task, call 
+          <code>
+            memory_store
+          </code>
+           to save it as a memory for future sessions. Update existing memories instead of creating duplicates.
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-recall"
+  data-family="memory"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-brain-circuit lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+          key="l5xja"
+        />
+        <path
+          d="M9 13a4.5 4.5 0 0 0 3-4"
+          key="10igwf"
+        />
+        <path
+          d="M6.003 5.125A3 3 0 0 0 6.401 6.5"
+          key="105sqy"
+        />
+        <path
+          d="M3.477 10.896a4 4 0 0 1 .585-.396"
+          key="ql3yin"
+        />
+        <path
+          d="M6 18a4 4 0 0 1-1.967-.516"
+          key="2e4loj"
+        />
+        <path
+          d="M12 13h4"
+          key="1ku699"
+        />
+        <path
+          d="M12 18h6a2 2 0 0 1 2 2v1"
+          key="105ag5"
+        />
+        <path
+          d="M12 8h8"
+          key="1lhi5i"
+        />
+        <path
+          d="M16 8V5a2 2 0 0 1 2-2"
+          key="u6izg6"
+        />
+        <circle
+          cx="16"
+          cy="13"
+          key="ry7gng"
+          r=".5"
+        />
+        <circle
+          cx="18"
+          cy="3"
+          key="1aiba7"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="21"
+          key="yhc1fs"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="8"
+          key="1e43v0"
+          r=".5"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      recalled 5 · oino_handoff_20261102_finalize_graph
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      oino
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-recall"
+  data-family="memory"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-brain-circuit lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+          key="l5xja"
+        />
+        <path
+          d="M9 13a4.5 4.5 0 0 0 3-4"
+          key="10igwf"
+        />
+        <path
+          d="M6.003 5.125A3 3 0 0 0 6.401 6.5"
+          key="105sqy"
+        />
+        <path
+          d="M3.477 10.896a4 4 0 0 1 .585-.396"
+          key="ql3yin"
+        />
+        <path
+          d="M6 18a4 4 0 0 1-1.967-.516"
+          key="2e4loj"
+        />
+        <path
+          d="M12 13h4"
+          key="1ku699"
+        />
+        <path
+          d="M12 18h6a2 2 0 0 1 2 2v1"
+          key="105ag5"
+        />
+        <path
+          d="M12 8h8"
+          key="1lhi5i"
+        />
+        <path
+          d="M16 8V5a2 2 0 0 1 2-2"
+          key="u6izg6"
+        />
+        <circle
+          cx="16"
+          cy="13"
+          key="ry7gng"
+          r=".5"
+        />
+        <circle
+          cx="18"
+          cy="3"
+          key="1aiba7"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="21"
+          key="yhc1fs"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="8"
+          key="1e43v0"
+          r=".5"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      recalled 5 · oino_handoff_20261102_finalize_graph
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      oino
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <h2>
+          🧠 Memory System Active
+        </h2>
+        
+
+      </div>
+      <div>
+        <p>
+          You have 5 memories stored for project "oino".
+          <br />
+          <strong>
+            BEFORE starting work
+          </strong>
+          , call 
+          <code>
+            memory_search
+          </code>
+           with relevant keywords to check for existing context.
+        </p>
+        
+
+      </div>
+      <div>
+        <p>
+          Available memories:
+        </p>
+        
+
+        <ul>
+          
+
+          <li>
+            oino_handoff_20261102_finalize_graph
+          </li>
+          
+
+          <li>
+            oino_phone_chat_package_b_findings
+          </li>
+          
+
+          <li>
+            oino_chat_scroll_bottom_lock_unread_inner_follow_findings
+          </li>
+          
+
+          <li>
+            oino_remote_build_agent37_vm_deb_apk_recipe
+          </li>
+          
+
+          <li>
+            oino_design_spec_zcode_unipi_parity
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+      <div>
+        <p>
+          <strong>
+            AFTER completing the task
+          </strong>
+          , if you learned something non-obvious,
+          <br />
+          call 
+          <code>
+            memory_store
+          </code>
+           to save it for future sessions.
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-recall"
+  data-family="memory"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · no memories yet for openmontage"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-brain-circuit lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+          key="l5xja"
+        />
+        <path
+          d="M9 13a4.5 4.5 0 0 0 3-4"
+          key="10igwf"
+        />
+        <path
+          d="M6.003 5.125A3 3 0 0 0 6.401 6.5"
+          key="105sqy"
+        />
+        <path
+          d="M3.477 10.896a4 4 0 0 1 .585-.396"
+          key="ql3yin"
+        />
+        <path
+          d="M6 18a4 4 0 0 1-1.967-.516"
+          key="2e4loj"
+        />
+        <path
+          d="M12 13h4"
+          key="1ku699"
+        />
+        <path
+          d="M12 18h6a2 2 0 0 1 2 2v1"
+          key="105ag5"
+        />
+        <path
+          d="M12 8h8"
+          key="1lhi5i"
+        />
+        <path
+          d="M16 8V5a2 2 0 0 1 2-2"
+          key="u6izg6"
+        />
+        <circle
+          cx="16"
+          cy="13"
+          key="ry7gng"
+          r=".5"
+        />
+        <circle
+          cx="18"
+          cy="3"
+          key="1aiba7"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="21"
+          key="yhc1fs"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="8"
+          key="1e43v0"
+          r=".5"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      no memories yet for openmontage
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-recall"
+  data-family="memory"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · no memories yet for openmontage"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-brain-circuit lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+          key="l5xja"
+        />
+        <path
+          d="M9 13a4.5 4.5 0 0 0 3-4"
+          key="10igwf"
+        />
+        <path
+          d="M6.003 5.125A3 3 0 0 0 6.401 6.5"
+          key="105sqy"
+        />
+        <path
+          d="M3.477 10.896a4 4 0 0 1 .585-.396"
+          key="ql3yin"
+        />
+        <path
+          d="M6 18a4 4 0 0 1-1.967-.516"
+          key="2e4loj"
+        />
+        <path
+          d="M12 13h4"
+          key="1ku699"
+        />
+        <path
+          d="M12 18h6a2 2 0 0 1 2 2v1"
+          key="105ag5"
+        />
+        <path
+          d="M12 8h8"
+          key="1lhi5i"
+        />
+        <path
+          d="M16 8V5a2 2 0 0 1 2-2"
+          key="u6izg6"
+        />
+        <circle
+          cx="16"
+          cy="13"
+          key="ry7gng"
+          r=".5"
+        />
+        <circle
+          cx="18"
+          cy="3"
+          key="1aiba7"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="21"
+          key="yhc1fs"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="8"
+          key="1e43v0"
+          r=".5"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      no memories yet for openmontage
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <h2>
+          🧠 Memory System Active
+        </h2>
+        
+
+      </div>
+      <div>
+        <p>
+          You have 0 memories stored for project "openmontage".
+        </p>
+        
+
+      </div>
+      <div>
+        <p>
+          <strong>
+            AFTER completing the task
+          </strong>
+          , call 
+          <code>
+            memory_store
+          </code>
+          .
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-saved"
+  data-family="memory"
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-database-zap lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <ellipse
+          cx="12"
+          cy="5"
+          key="msslwz"
+          rx="9"
+          ry="3"
+        />
+        <path
+          d="M3 5V19A9 3 0 0 0 15 21.84"
+          key="14ibmq"
+        />
+        <path
+          d="M21 5V8"
+          key="1marbg"
+        />
+        <path
+          d="M21 12L18 17H22L19 22"
+          key="zafso"
+        />
+        <path
+          d="M3 12A9 3 0 0 0 14.59 14.87"
+          key="1y4wr8"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      side agent · 963k tokens
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-saved"
+  data-family="memory"
+  data-open=""
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-database-zap lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <ellipse
+          cx="12"
+          cy="5"
+          key="msslwz"
+          rx="9"
+          ry="3"
+        />
+        <path
+          d="M3 5V19A9 3 0 0 0 15 21.84"
+          key="14ibmq"
+        />
+        <path
+          d="M21 5V8"
+          key="1marbg"
+        />
+        <path
+          d="M21 12L18 17H22L19 22"
+          key="zafso"
+        />
+        <path
+          d="M3 12A9 3 0 0 0 14.59 14.87"
+          key="1y4wr8"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      side agent · 963k tokens
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <ul>
+          
+
+          <li>
+            <code>
+              oino_phone_sheet_scrim_above_sheet_zindex_specificity
+            </code>
+          </li>
+          
+
+          <li>
+            <code>
+              oino_chat_events_parity_findings
+            </code>
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-wake"
+  data-family="memory"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · wake-up · 215 memories · oino"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-brain-circuit lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+          key="l5xja"
+        />
+        <path
+          d="M9 13a4.5 4.5 0 0 0 3-4"
+          key="10igwf"
+        />
+        <path
+          d="M6.003 5.125A3 3 0 0 0 6.401 6.5"
+          key="105sqy"
+        />
+        <path
+          d="M3.477 10.896a4 4 0 0 1 .585-.396"
+          key="ql3yin"
+        />
+        <path
+          d="M6 18a4 4 0 0 1-1.967-.516"
+          key="2e4loj"
+        />
+        <path
+          d="M12 13h4"
+          key="1ku699"
+        />
+        <path
+          d="M12 18h6a2 2 0 0 1 2 2v1"
+          key="105ag5"
+        />
+        <path
+          d="M12 8h8"
+          key="1lhi5i"
+        />
+        <path
+          d="M16 8V5a2 2 0 0 1 2-2"
+          key="u6izg6"
+        />
+        <circle
+          cx="16"
+          cy="13"
+          key="ry7gng"
+          r=".5"
+        />
+        <circle
+          cx="18"
+          cy="3"
+          key="1aiba7"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="21"
+          key="yhc1fs"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="8"
+          key="1e43v0"
+          r=".5"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      wake-up · 215 memories · oino
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="memory-wake"
+  data-family="memory"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Memory · wake-up · 215 memories · oino"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-brain-circuit lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"
+          key="l5xja"
+        />
+        <path
+          d="M9 13a4.5 4.5 0 0 0 3-4"
+          key="10igwf"
+        />
+        <path
+          d="M6.003 5.125A3 3 0 0 0 6.401 6.5"
+          key="105sqy"
+        />
+        <path
+          d="M3.477 10.896a4 4 0 0 1 .585-.396"
+          key="ql3yin"
+        />
+        <path
+          d="M6 18a4 4 0 0 1-1.967-.516"
+          key="2e4loj"
+        />
+        <path
+          d="M12 13h4"
+          key="1ku699"
+        />
+        <path
+          d="M12 18h6a2 2 0 0 1 2 2v1"
+          key="105ag5"
+        />
+        <path
+          d="M12 8h8"
+          key="1lhi5i"
+        />
+        <path
+          d="M16 8V5a2 2 0 0 1 2-2"
+          key="u6izg6"
+        />
+        <circle
+          cx="16"
+          cy="13"
+          key="ry7gng"
+          r=".5"
+        />
+        <circle
+          cx="18"
+          cy="3"
+          key="1aiba7"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="21"
+          key="yhc1fs"
+          r=".5"
+        />
+        <circle
+          cx="20"
+          cy="8"
+          key="1e43v0"
+          r=".5"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Memory
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      wake-up · 215 memories · oino
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="text"
+      data-testid="tl-event-body"
+    >
+      Wake-up text (~790 tokens):
+==================================================
+Unipi app on Oino (v2 branch)
+
+## L1 — ESSENTIAL STORY
+
+[decision]
+  - Builds run on Agent37, never on this PC.  (oino_build_offload_agent37_owner_pref.md)
+  - Release keys live in ~/.oino-release-keys.  (oino_release_keys_update_feeds_android_id_20261103.md)
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > mode-switch (ev14): collapsed one-liner, then the expanded body > marker 1`] = `
+<div
+  class="tl-event"
+  data-event="mode-switch"
+  data-family="mode"
+  data-testid="tl-event"
+>
+  <button
+    aria-disabled="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Mode · Graph"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-hourglass lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M5 22h14"
+          key="ehvnwv"
+        />
+        <path
+          d="M5 2h14"
+          key="pdyrp9"
+        />
+        <path
+          d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"
+          key="1d314k"
+        />
+        <path
+          d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"
+          key="1vvvr6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Mode
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Graph
+    </span>
+    
+    
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="plan-mode"
+  data-family="mode"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Plan mode · Plan mode on"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-clipboard-list lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect
+          height="4"
+          key="tgr4d6"
+          rx="1"
+          ry="1"
+          width="8"
+          x="8"
+          y="2"
+        />
+        <path
+          d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+          key="116196"
+        />
+        <path
+          d="M12 11h4"
+          key="1jrz19"
+        />
+        <path
+          d="M12 16h4"
+          key="n85exb"
+        />
+        <path
+          d="M8 11h.01"
+          key="1dfujw"
+        />
+        <path
+          d="M8 16h.01"
+          key="18s6g9"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Plan mode
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Plan mode on
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="plan-mode"
+  data-family="mode"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Plan mode · Plan mode on"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-clipboard-list lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect
+          height="4"
+          key="tgr4d6"
+          rx="1"
+          ry="1"
+          width="8"
+          x="8"
+          y="2"
+        />
+        <path
+          d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+          key="116196"
+        />
+        <path
+          d="M12 11h4"
+          key="1jrz19"
+        />
+        <path
+          d="M12 16h4"
+          key="n85exb"
+        />
+        <path
+          d="M8 11h.01"
+          key="1dfujw"
+        />
+        <path
+          d="M8 16h.01"
+          key="18s6g9"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Plan mode
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Plan mode on
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          Plan mode is on: read-only tools until the plan is approved.
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="ralph-iteration"
+  data-family="mode"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Ralph · iteration 18/30 · agent-only-subtraction"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-repeat lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m17 2 4 4-4 4"
+          key="nntrym"
+        />
+        <path
+          d="M3 11v-1a4 4 0 0 1 4-4h14"
+          key="84bu3i"
+        />
+        <path
+          d="m7 22-4-4 4-4"
+          key="1wqhfi"
+        />
+        <path
+          d="M21 13v1a4 4 0 0 1-4 4H3"
+          key="1rx37r"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Ralph
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      iteration 18/30 · agent-only-subtraction
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="ralph-iteration"
+  data-family="mode"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Ralph · iteration 18/30 · agent-only-subtraction"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-repeat lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m17 2 4 4-4 4"
+          key="nntrym"
+        />
+        <path
+          d="M3 11v-1a4 4 0 0 1 4-4h14"
+          key="84bu3i"
+        />
+        <path
+          d="m7 22-4-4 4-4"
+          key="1wqhfi"
+        />
+        <path
+          d="M21 13v1a4 4 0 0 1-4 4H3"
+          key="1rx37r"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Ralph
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      iteration 18/30 · agent-only-subtraction
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          [RALPH LOOP - agent-only-subtraction - Iteration 18/30]
+        </p>
+        
+
+      </div>
+      <div>
+        <p>
+          You are in a Ralph loop working on: .unipi/ralph/agent-only-subtraction.md
+        </p>
+        
+
+        <ul>
+          
+
+          <li>
+            Work on ~3 items this iteration
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="response"
+  data-family="mode"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Long-horizon · Mode command: Graph"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-hourglass lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M5 22h14"
+          key="ehvnwv"
+        />
+        <path
+          d="M5 2h14"
+          key="pdyrp9"
+        />
+        <path
+          d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"
+          key="1d314k"
+        />
+        <path
+          d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"
+          key="1vvvr6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Long-horizon
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Mode command: Graph
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="response"
+  data-family="mode"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Long-horizon · Mode command: Graph"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-hourglass lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M5 22h14"
+          key="ehvnwv"
+        />
+        <path
+          d="M5 2h14"
+          key="pdyrp9"
+        />
+        <path
+          d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"
+          key="1d314k"
+        />
+        <path
+          d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"
+          key="1vvvr6"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Long-horizon
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Mode command: Graph
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          Mode command: Graph
+          <br />
+          Last resolved: graph (explicit)
+          <br />
+          Judge: off — default mode: none
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="sidekick-done"
+  data-family="agent"
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-bot-message-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 6V2H8"
+          key="1155em"
+        />
+        <path
+          d="M15 11v2"
+          key="i11awn"
+        />
+        <path
+          d="M2 12h2"
+          key="1t8f8n"
+        />
+        <path
+          d="M20 12h2"
+          key="1q8mjw"
+        />
+        <path
+          d="M20 16a2 2 0 0 1-2 2H8.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 4 20.286V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"
+          key="11gyqh"
+        />
+        <path
+          d="M9 11v2"
+          key="1ueba0"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Sidekick
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Result: DONE — all 7 rework items implemented; 95 tests passed.
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      1m 5s · $0.081
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="sidekick-done"
+  data-family="agent"
+  data-open=""
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-bot-message-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 6V2H8"
+          key="1155em"
+        />
+        <path
+          d="M15 11v2"
+          key="i11awn"
+        />
+        <path
+          d="M2 12h2"
+          key="1t8f8n"
+        />
+        <path
+          d="M20 12h2"
+          key="1q8mjw"
+        />
+        <path
+          d="M20 16a2 2 0 0 1-2 2H8.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 4 20.286V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"
+          key="11gyqh"
+        />
+        <path
+          d="M9 11v2"
+          key="1ueba0"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Sidekick
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Result: DONE — all 7 rework items implemented; 95 tests passed.
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      1m 5s · $0.081
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          <strong>
+            Result
+          </strong>
+          : DONE — all 7 rework items implemented; 95 tests passed.
+        </p>
+        
+
+      </div>
+      <div>
+        <ol>
+          
+
+          <li>
+            Story schema now serialized into the request.
+          </li>
+          
+
+        </ol>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="skills-revealed"
+  data-family="harness"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Skills · Skills now available: browser, image."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-wand lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M15 4V2"
+          key="z1p9b7"
+        />
+        <path
+          d="M15 16v-2"
+          key="px0unx"
+        />
+        <path
+          d="M8 9h2"
+          key="1g203m"
+        />
+        <path
+          d="M20 9h2"
+          key="19tzq7"
+        />
+        <path
+          d="M17.8 11.8 19 13"
+          key="yihg8r"
+        />
+        <path
+          d="M15 9h.01"
+          key="x1ddxp"
+        />
+        <path
+          d="M17.8 6.2 19 5"
+          key="fd4us0"
+        />
+        <path
+          d="m3 21 9-9"
+          key="1jfql5"
+        />
+        <path
+          d="M12.2 6.2 11 5"
+          key="i3da3b"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Skills
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Skills now available: browser, image.
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="skills-revealed"
+  data-family="harness"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Skills · Skills now available: browser, image."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-wand lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M15 4V2"
+          key="z1p9b7"
+        />
+        <path
+          d="M15 16v-2"
+          key="px0unx"
+        />
+        <path
+          d="M8 9h2"
+          key="1g203m"
+        />
+        <path
+          d="M20 9h2"
+          key="19tzq7"
+        />
+        <path
+          d="M17.8 11.8 19 13"
+          key="yihg8r"
+        />
+        <path
+          d="M15 9h.01"
+          key="x1ddxp"
+        />
+        <path
+          d="M17.8 6.2 19 5"
+          key="fd4us0"
+        />
+        <path
+          d="m3 21 9-9"
+          key="1jfql5"
+        />
+        <path
+          d="M12.2 6.2 11 5"
+          key="i3da3b"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Skills
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Skills now available: browser, image.
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          Skills now available: 
+          <strong>
+            browser
+          </strong>
+          , 
+          <strong>
+            image
+          </strong>
+          .
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="subagent-done"
+  data-family="agent"
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Subagent · Audit sidebar rows · 3m 40s · $0.42"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-bot lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 8V4H8"
+          key="hb8ula"
+        />
+        <rect
+          height="12"
+          key="enze0r"
+          rx="2"
+          width="16"
+          x="4"
+          y="8"
+        />
+        <path
+          d="M2 14h2"
+          key="vft8re"
+        />
+        <path
+          d="M20 14h2"
+          key="4cs60a"
+        />
+        <path
+          d="M15 13v2"
+          key="1xurst"
+        />
+        <path
+          d="M9 13v2"
+          key="rq6x2g"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Subagent
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Audit sidebar rows
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      3m 40s · $0.42
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="subagent-done"
+  data-family="agent"
+  data-open=""
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Subagent · Audit sidebar rows · 3m 40s · $0.42"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-bot lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 8V4H8"
+          key="hb8ula"
+        />
+        <rect
+          height="12"
+          key="enze0r"
+          rx="2"
+          width="16"
+          x="4"
+          y="8"
+        />
+        <path
+          d="M2 14h2"
+          key="vft8re"
+        />
+        <path
+          d="M20 14h2"
+          key="4cs60a"
+        />
+        <path
+          d="M15 13v2"
+          key="1xurst"
+        />
+        <path
+          d="M9 13v2"
+          key="rq6x2g"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Subagent
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Audit sidebar rows
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      3m 40s · $0.42
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          <strong>
+            Result
+          </strong>
+          : 3 issues found.
+        </p>
+        
+
+      </div>
+      <div>
+        <ol>
+          
+
+          <li>
+            Row height jumps on hover.
+          </li>
+          
+
+          <li>
+            Unread dot overlaps the time.
+          </li>
+          
+
+          <li>
+            <code>
+              SessionRow.tsx:111
+            </code>
+             pads twice.
+          </li>
+          
+
+        </ol>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="subagent-notification"
+  data-family="agent"
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-bot lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 8V4H8"
+          key="hb8ula"
+        />
+        <rect
+          height="12"
+          key="enze0r"
+          rx="2"
+          width="16"
+          x="4"
+          y="8"
+        />
+        <path
+          d="M2 14h2"
+          key="vft8re"
+        />
+        <path
+          d="M20 14h2"
+          key="4cs60a"
+        />
+        <path
+          d="M15 13v2"
+          key="1xurst"
+        />
+        <path
+          d="M9 13v2"
+          key="rq6x2g"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Subagent
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Trace film sessions · done
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      3m 40s · 489k tokens
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="subagent-notification"
+  data-family="agent"
+  data-open=""
+  data-testid="tl-event"
+  data-tone="ok"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-bot lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 8V4H8"
+          key="hb8ula"
+        />
+        <rect
+          height="12"
+          key="enze0r"
+          rx="2"
+          width="16"
+          x="4"
+          y="8"
+        />
+        <path
+          d="M2 14h2"
+          key="vft8re"
+        />
+        <path
+          d="M20 14h2"
+          key="4cs60a"
+        />
+        <path
+          d="M15 13v2"
+          key="1xurst"
+        />
+        <path
+          d="M9 13v2"
+          key="rq6x2g"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Subagent
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Trace film sessions · done
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      3m 40s · 489k tokens
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          Report: 
+          <strong>
+            <code
+              class="file-ref-code"
+              data-file-kind="file"
+              data-file-ref="/tmp/report/provenance.md"
+              title="/tmp/report/provenance.md"
+            >
+              /tmp/report/provenance.md
+            </code>
+            <button
+              aria-label="Copy path"
+              class="code-copy"
+              data-copy-path="1"
+              title="Copy path"
+              type="button"
+            />
+          </strong>
+        </p>
+        
+
+      </div>
+      <div>
+        <p>
+          Key findings:
+        </p>
+        
+
+      </div>
+      <div>
+        <ul>
+          
+
+          <li>
+            The three exports are deployed-job outputs.
+          </li>
+          
+
+          <li>
+            Audio configuration is unverified.
+          </li>
+          
+
+        </ul>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="system"
+  data-family="system"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-scroll-text lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M15 12h-5"
+          key="r7krc0"
+        />
+        <path
+          d="M15 8h-5"
+          key="1khuty"
+        />
+        <path
+          d="M19 17V5a2 2 0 0 0-2-2H4"
+          key="zz82l3"
+        />
+        <path
+          d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"
+          key="1ph1d7"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      System
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="system"
+  data-family="system"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-scroll-text lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M15 12h-5"
+          key="r7krc0"
+        />
+        <path
+          d="M15 8h-5"
+          key="1khuty"
+        />
+        <path
+          d="M19 17V5a2 2 0 0 0-2-2H4"
+          key="zz82l3"
+        />
+        <path
+          d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"
+          key="1ph1d7"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      System
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="text"
+      data-testid="tl-event-body"
+    >
+      Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_done.
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="user-bash"
+  data-family="shell"
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Shell · git status --short · exit 0"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-square-terminal lucide-terminal-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m7 11 2-2-2-2"
+          key="1lz0vl"
+        />
+        <path
+          d="M11 13h4"
+          key="1p7l4v"
+        />
+        <rect
+          height="18"
+          key="1m3agn"
+          rx="2"
+          ry="2"
+          width="18"
+          x="3"
+          y="3"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Shell
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      git status --short
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      exit 0
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="user-bash"
+  data-family="shell"
+  data-open=""
+  data-testid="tl-event"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Shell · git status --short · exit 0"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-square-terminal lucide-terminal-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m7 11 2-2-2-2"
+          key="1lz0vl"
+        />
+        <path
+          d="M11 13h4"
+          key="1p7l4v"
+        />
+        <rect
+          height="18"
+          key="1m3agn"
+          rx="2"
+          ry="2"
+          width="18"
+          x="3"
+          y="3"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Shell
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      git status --short
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      exit 0
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="text"
+      data-testid="tl-event-body"
+    >
+       M apps/unipi/src/lib/session/turns.ts
+?? docs/dev/v2/qa/chat-events-parity.md
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="user-bash"
+  data-family="shell"
+  data-testid="tl-event"
+  data-tone="error"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Shell · cargo test -p oino-core · exit 101"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-square-terminal lucide-terminal-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m7 11 2-2-2-2"
+          key="1lz0vl"
+        />
+        <path
+          d="M11 13h4"
+          key="1p7l4v"
+        />
+        <rect
+          height="18"
+          key="1m3agn"
+          rx="2"
+          ry="2"
+          width="18"
+          x="3"
+          y="3"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Shell
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      cargo test -p oino-core
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      exit 101
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="user-bash"
+  data-family="shell"
+  data-open=""
+  data-testid="tl-event"
+  data-tone="error"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Shell · cargo test -p oino-core · exit 101"
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-square-terminal lucide-terminal-square lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m7 11 2-2-2-2"
+          key="1lz0vl"
+        />
+        <path
+          d="M11 13h4"
+          key="1p7l4v"
+        />
+        <rect
+          height="18"
+          key="1m3agn"
+          rx="2"
+          ry="2"
+          width="18"
+          x="3"
+          y="3"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Shell
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      cargo test -p oino-core
+    </span>
+    <span
+      class="tl-event-meta"
+    >
+      exit 101
+    </span>
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <pre
+      class="tl-event-body tl-event-pre"
+      data-format="text"
+      data-testid="tl-event-body"
+    >
+      error[E0432]: unresolved import \`crate::x\`
+    </pre>
+  </div>
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-liner, then the expanded body > collapsed 1`] = `
+<div
+  class="tl-event"
+  data-event="watchdog"
+  data-family="warn"
+  data-testid="tl-event"
+  data-tone="warning"
+>
+  <button
+    aria-expanded="false"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Watchdog · Tool bash has been running for 12m (limit 10m)."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-triangle-alert lucide-alert-triangle lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"
+          key="wmoenq"
+        />
+        <path
+          d="M12 9v4"
+          key="juzpu7"
+        />
+        <path
+          d="M12 17h.01"
+          key="p32p05"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Watchdog
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Tool bash has been running for 12m (limit 10m).
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  
+  
+</div>
+`;
+
+exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-liner, then the expanded body > expanded 1`] = `
+<div
+  class="tl-event"
+  data-event="watchdog"
+  data-family="warn"
+  data-open=""
+  data-testid="tl-event"
+  data-tone="warning"
+>
+  <button
+    aria-expanded="true"
+    class="tl-event-head"
+    data-testid="tl-event-head"
+    title="Watchdog · Tool bash has been running for 12m (limit 10m)."
+    type="button"
+  >
+    <span
+      class="tl-event-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-triangle-alert lucide-alert-triangle lucide-icon"
+        fill="none"
+        height="15"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="15"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"
+          key="wmoenq"
+        />
+        <path
+          d="M12 9v4"
+          key="juzpu7"
+        />
+        <path
+          d="M12 17h.01"
+          key="p32p05"
+        />
+      </svg>
+    </span>
+    <span
+      class="tl-event-source"
+    >
+      Watchdog
+    </span>
+    <span
+      class="tl-event-title"
+    >
+      Tool bash has been running for 12m (limit 10m).
+    </span>
+    
+    <svg
+      aria-hidden="true"
+      class="lucide lucide-chevron-right lucide-icon tl-event-chev"
+      data-open=""
+      fill="none"
+      height="15"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      viewBox="0 0 24 24"
+      width="15"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        key="mthhwq"
+      />
+    </svg>
+  </button>
+  <div
+    class="tl-event-bodywrap"
+  >
+    <div
+      class="tl-event-body md"
+      data-format="markdown"
+      data-testid="tl-event-body"
+    >
+      <div>
+        <p>
+          Tool 
+          <code>
+            bash
+          </code>
+           has been running for 12m (limit 10m).
+        </p>
+        
+
+      </div>
+      <div>
+        <p>
+          Consider bg_run for long commands.
+        </p>
+        
+
+      </div>
+    </div>
+  </div>
+  
+</div>
+`;
