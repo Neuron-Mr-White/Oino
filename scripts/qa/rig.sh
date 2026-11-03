@@ -27,7 +27,10 @@ case "$cmd" in
     avail=$(awk '/MemAvailable/ {print int($2/1048576)}' /proc/meminfo)
     [ "$avail" -ge 6 ] || { echo "rig: only ${avail} GB RAM available (need 6); not starting" >&2; exit 75; }
     pkg=${2:-$HOME/oino-qa-release/v2/unipi-oino_1.0.0_amd64.deb}
-    mkdir -p "$QA_HOME"/{agent,run,shots}
+    # A private D-Bus session (dbus-run-session below): the app's single-instance lock is a
+    # session-bus name, so on the shared bus a QA launch only focused the OWNER's running
+    # window and exited. HOME is private too (the app's own state never mixes with the owner's).
+    mkdir -p "$QA_HOME"/{agent,run,shots,home}
     # The .deb's exact file tree (usr/bin/unipi-oino, unipi-oino-host, oino,
     # usr/share/oino/extensions) on the system WebKitGTK, as `apt install` lays it out.
     if [ ! -f "$QA_HOME/app/.from" ] || [ "$(cat "$QA_HOME/app/.from")" != "$(sha256sum "$pkg" | cut -c1-16)" ]; then
@@ -44,7 +47,8 @@ case "$cmd" in
         WEBKIT_DISABLE_COMPOSITING_MODE=1 \
         XDG_DATA_HOME="$QA_HOME/xdg/data" XDG_CONFIG_HOME="$QA_HOME/xdg/config" \
         XDG_CACHE_HOME="$QA_HOME/xdg/cache" XDG_STATE_HOME="$QA_HOME/xdg/state" \
-        setsid nohup tauri-driver --port "$PORT" --native-port "$((PORT + 1))" --native-driver "$HOME/.local/bin/WebKitWebDriver" \
+        HOME="$QA_HOME/home" PATH="$HOME/.cargo/bin:$PATH" \
+        setsid nohup dbus-run-session -- tauri-driver --port "$PORT" --native-port "$((PORT + 1))" --native-driver "$HOME/.local/bin/WebKitWebDriver" \
         >"$QA_HOME/run/driver.log" 2>&1 &
       sleep 1; }
     echo "$QA_HOME/app/usr/bin/unipi-oino" > "$QA_HOME/run/app-path"
