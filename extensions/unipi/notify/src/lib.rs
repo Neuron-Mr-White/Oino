@@ -1172,7 +1172,7 @@ impl Extension for Notify {
 
         cx.command(
             Command::<Self>::new("notify-event")
-                .description("Toggle a notify event without the TUI: <event> <on|off>")
+                .description("Turn one notify event on or off: <event> <on|off>")
                 .argument_hint("<event> <on|off>")
                 .run(|ext, args, _cx| async move {
                     ext.notify_event_command(&args);

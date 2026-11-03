@@ -6,7 +6,7 @@
 
 use serde_json::{Map, Value, json};
 use unipi_kit::jev;
-use unipi_kit::settings::{Field, Kind, Namespace, Section, choice, set_field};
+use unipi_kit::settings::{Field, Kind, Namespace, Section, Surface, choice, set_field};
 
 /// Namespace of the utility settings.
 pub const NAMESPACE: &str = "utility";
@@ -250,7 +250,7 @@ pub fn namespace(extension_id: &str) -> Namespace {
         )
         .section(
             Section::new("answer", "Answer")
-                .description("/answer — answer the last reply's questions without scrolling")
+                .description("Answer the last reply's questions without scrolling")
                 .field(
                     Field::enumeration(
                         "answer.method",
@@ -261,10 +261,12 @@ pub fn namespace(extension_id: &str) -> Namespace {
                             choice("web", "web form", "form in the browser"),
                         ],
                     )
-                    .description("How /answer collects your answers; the reply|questions|web argument overrides it per use."),
+                    .description("How /answer collects your answers; the reply|questions|web argument overrides it per use.")
+                    // `/answer` is a terminal command; the app answers through its own card.
+                    .only_on(&[Surface::Tui]),
                 )
                 .field(Field::boolean("answer.hint", "Questions hint").description(
-                    "After a reply that asks questions, show a hint above the editor.",
+                    "After a reply that asks questions, offer to answer them above the input.",
                 ))
                 .field(
                     Field::number("answer.port", "Web form port")
@@ -275,7 +277,8 @@ pub fn namespace(extension_id: &str) -> Namespace {
                                 *zero_label = Some("any free port (47321 over SSH)".into());
                             }
                         })
-                        .description("Fix it to keep one ssh -L forward working."),
+                        .description("Fix it to keep one ssh -L forward working.")
+                        .only_on(&[Surface::Tui]),
                 ),
         )
         .section(

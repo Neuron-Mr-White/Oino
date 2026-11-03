@@ -846,7 +846,7 @@ impl Dream {
                 let r = self.run_now(&cwd).await;
                 if r.ok {
                     say(
-                        &format!("{}\nWatch it in the work tray (↓ → Dream).", r.message),
+                        &format!("{}\nWatch it in the work tray (Dream tab).", r.message),
                         "info",
                     );
                 } else {

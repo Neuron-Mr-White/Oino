@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use unipi_kit::settings::{Choice, Field, Kind, Namespace, Section, Unit, plain};
+use unipi_kit::settings::{Choice, Field, Kind, Namespace, Section, Surface, Unit, plain};
 
 /// Extension id.
 pub(crate) const EXTENSION_ID: &str = "unipi.notify";
@@ -509,7 +509,9 @@ pub(crate) fn namespace() -> Namespace {
                 )
                 .field(
                     Field::boolean("native.suppressWhenFocused", "Quiet when focused")
-                        .description("Hold native notifications while the terminal has focus."),
+                        .description("Hold native notifications while the terminal has focus.")
+                        // Terminal focus reporting; the app decides its own notifications.
+                        .only_on(&[Surface::Tui]),
                 )
                 .field(
                     Field::boolean("recap.enabled", "Recap")

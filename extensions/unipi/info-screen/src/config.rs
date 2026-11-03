@@ -1,7 +1,7 @@
 //! Namespace `info-screen` (unipi `config.ts`, `types.ts`).
 
 use serde_json::{Map, Value, json};
-use unipi_kit::settings::{Choice, Field, Kind, Namespace, Section, Unit, choice};
+use unipi_kit::settings::{Choice, Field, Kind, Namespace, Section, Surface, Unit, choice};
 
 use crate::registry::GroupInfo;
 
@@ -152,7 +152,9 @@ pub fn namespace(groups: &[GroupInfo]) -> Namespace {
                     )
                     .description(
                         "The Unicrab card shown at startup. /info opens the dashboard any time.",
-                    ),
+                    )
+                    // The terminal's startup header; the app never shows the splash.
+                    .only_on(&[Surface::Tui]),
                 )
                 .field(
                     Field::number("bootTimeoutMs", "Splash time")
@@ -162,7 +164,8 @@ pub fn namespace(groups: &[GroupInfo]) -> Namespace {
                                 *min = Some(500.0);
                                 *unit = Some(Unit::Ms);
                             }
-                        }),
+                        })
+                        .only_on(&[Surface::Tui]),
                 ),
         )
         .section(

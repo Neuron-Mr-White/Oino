@@ -1843,7 +1843,7 @@ impl Extension for Subagents {
         }
         cx.command(
             Command::<Self>::new("subagents")
-                .description("Open the Subagents tab of the work tray (also ↓ from an empty input)")
+                .description("Open the Subagents tab of the work tray")
                 .run(|ext, _args, cx| async move {
                     if ext.sessions.with(cx.session_id(), |s| s.records.is_empty()) {
                         let _ = ui::notify("No subagents in this session yet.", "info");

@@ -1,7 +1,7 @@
 //! Namespace `ask-user` (unipi `config.ts`).
 
 use serde_json::{Value, json};
-use unipi_kit::settings::{Field, Kind, Namespace, Section, choice};
+use unipi_kit::settings::{Field, Kind, Namespace, Section, Surface, choice};
 
 /// Namespace.
 pub const NAMESPACE: &str = "ask-user";
@@ -61,12 +61,16 @@ pub fn namespace() -> Namespace {
                             choice("send", "send", "send what's answered, skip the rest"),
                         ],
                     )
-                    .description("What Esc does in the dialog."),
+                    .description("What Esc does in the dialog.")
+                    // The app's question card has its own buttons; only the terminal dialog reads it.
+                    .only_on(&[Surface::Tui]),
                 )
                 .field(
-                    Field::boolean("digitAdvance", "Number keys move on").description(
-                        "In a single-choice question, picking with 1–9 also advances.",
-                    ),
+                    Field::boolean("digitAdvance", "Number keys move on")
+                        .description(
+                            "In a single-choice question, picking with 1–9 also advances.",
+                        )
+                        .only_on(&[Surface::Tui]),
                 )
                 .field(
                     Field::enumeration(
@@ -81,9 +85,11 @@ pub fn namespace() -> Namespace {
                     .description("The free-text \"Other (type your own)\" row."),
                 )
                 .field(
-                    Field::boolean("helpLine", "\"Not ready\" line").description(
-                        "Show \"? Not ready to answer, help me out!\" under the dialog.",
-                    ),
+                    Field::boolean("helpLine", "\"Not ready\" line")
+                        .description(
+                            "Show \"? Not ready to answer, help me out!\" under the dialog.",
+                        )
+                        .only_on(&[Surface::Tui]),
                 ),
         )
 }

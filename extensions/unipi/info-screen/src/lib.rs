@@ -501,7 +501,7 @@ impl InfoScreen {
             return if loading {
                 Spinner::new("loading…").into()
             } else {
-                kit::empty("No data yet", "press r to refresh")
+                kit::empty("No data yet", "nothing recorded for this page yet")
             };
         }
         let now = timers::now_ms();
