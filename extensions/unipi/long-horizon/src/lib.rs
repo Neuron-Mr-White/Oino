@@ -2286,9 +2286,13 @@ impl Lh {
             let mut st = self.state.borrow_mut();
             st.pending_explicit.insert(cx.session_id().to_owned(), mode);
             st.session_override.insert(cx.session_id().to_owned(), mode);
+            // [graph-mode] the status topic (the app's mode chip) shows the switch at once —
+            // also while the switch waits for a running turn — instead of at the turn's start.
+            st.display = Some(mode);
             apply_mode_tools(mode);
         }
         self.save();
+        self.publish();
         let busy = !control::is_idle();
         let prov = Provenance {
             source: "Long-horizon".into(),
@@ -2923,6 +2927,8 @@ impl Extension for Lh {
                 }
                 apply_mode_tools(Mode::None);
                 ext.save();
+                // [graph-mode] the chip leaves now, not at the next turn's start.
+                ext.publish();
                 ui::notify("Regular mode.", "info")
             }));
         cx.command(
@@ -3126,5 +3132,53 @@ mod tests {
         // D6 §9.2 timer ids.
         assert_eq!(format!("{RETRY_TIMER_PREFIX}scan-api"), "lh-retry-scan-api");
         assert_eq!(WORK_FAILED_TOPIC, "unipi:long-horizon:work-failed");
+    }
+
+    /// [graph-mode] P0: every mode command (`/goal`, `/ralph`, `/swarm`, `/graph`, and
+    /// `/regular` = none) from every other mode enables exactly its own tools, those tools are
+    /// registered by this extension (an unregistered name would be ignored by the host), and the
+    /// graph tools the orchestration prompt names are among them.
+    #[test]
+    fn every_mode_command_switches_to_its_registered_tools() {
+        let registered: Vec<&str> = tools::all().into_iter().map(|(n, ..)| n).collect();
+        let builtins = ["read", "bash", "edit", "write"];
+        let all = [Mode::None, Mode::Goal, Mode::Ralph, Mode::Swarm, Mode::Graph];
+        for name in ["goal", "ralph", "swarm", "graph", "none"] {
+            let mode = Mode::parse(name).unwrap();
+            assert_eq!(mode.as_str(), name);
+            for t in mode.control_tools() {
+                assert!(registered.contains(t), "{name}: {t} not registered");
+            }
+            for from in all {
+                let mut active: Vec<String> = builtins.iter().map(|s| (*s).to_owned()).collect();
+                active.extend(from.control_tools().iter().map(|s| (*s).to_owned()));
+                if let Some((enable, disable)) = modes::mode_tool_update(&active, mode) {
+                    active.retain(|t| !disable.contains(t) || enable.contains(t));
+                    for e in enable {
+                        if !active.contains(&e) {
+                            active.push(e);
+                        }
+                    }
+                }
+                for b in builtins {
+                    assert!(active.iter().any(|a| a == b), "{from:?}->{name}: {b} lost");
+                }
+                for t in modes::all_mode_tools() {
+                    assert_eq!(
+                        active.iter().any(|a| a == t),
+                        mode.control_tools().contains(&t),
+                        "{from:?}->{name}: {t}"
+                    );
+                }
+            }
+        }
+        for t in ["update_agent_graph", "view_agent_graph", "yield_agent_graph", "agent_output", "agent_swarm_status"] {
+            assert!(Mode::Graph.control_tools().contains(&t), "{t}");
+            assert!(
+                modes::mode_fragment(Mode::Graph, None, None).contains(t),
+                "the Graph prompt names {t}"
+            );
+        }
+        assert!(modes::mode_fragment(Mode::Graph, None, None).contains("Mode: Graph"));
     }
 }
