@@ -660,6 +660,11 @@ html[data-shell=phone] .tl-agent-toggle { min-height: 42px; }
 .tl-agent[data-open] > .tl-agent-head .proc-chev { transform: rotate(90deg); }
 .tl-agent-icon { flex: 0 0 18px; display: grid; place-items: center; color: var(--color-claw); }
 .tl-agent-title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-text); font-weight: 550; }
+.tl-agent-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 2px 0; }
+.tl-agent-main > .tl-agent-title { flex: none; max-width: 100%; }
+.tl-agent-sub { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.tl-agent-sub > .tl-agent-meta { margin-left: 0; }
+.tl-agent-sub > .tl-agent-chip { max-width: 55%; }
 .tl-agent-chip { flex: 0 1 auto; min-width: 0; max-width: 34%; display: inline-flex; align-items: center; gap: 5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 7px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-text-dim); font-size: 11.5px; line-height: 18px; }
 .tl-agent-model { overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 10.5px; opacity: 0.85; }
 html[data-shell=phone] .tl-agent-model { display: none; }
@@ -674,7 +679,7 @@ html[data-shell=phone] .tl-agent-model { display: none; }
 @media (prefers-reduced-motion: reduce) { .tl-agent-spin { animation: none; } }
 .tl-agent-open { flex: none; display: grid; place-items: center; width: 28px; height: 28px; min-height: 28px; border-radius: 8px; color: var(--color-text-dim); background: transparent; }
 .tl-agent-open:hover { color: var(--color-text); background: var(--color-surface-2); }
-.tl-agent-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; padding: 0 12px 7px 35px; margin-top: -3px; font-size: 12.5px; line-height: 18px; color: var(--color-text-dim); }
+.tl-agent-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; padding: 0 12px 7px 35px; margin-top: -1px; font-size: 12.5px; line-height: 18px; color: var(--color-text-dim); }
 .tl-agent-line-tool { flex: none; color: var(--color-text-muted); font-weight: 500; }
 .tl-agent-line-text { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tl-agent-line[data-kind=live] .tl-agent-line-text { font-family: var(--font-mono); font-size: 11.5px; }

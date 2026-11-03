@@ -12,7 +12,7 @@
  * The card reads only its `run` accessor: a child progress update reaches the
  * one card through `ByKey`'s per-key memo, not the timeline.
  */
-import { createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
+import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 import { Ban, Bot, Check, ChevronRight, LoaderCircle, Moon, PanelRightOpen, X } from 'lucide-solid';
 import { formatDuration } from '../../../lib/chat/model';
 import { useClock } from '../../../lib/clock';
@@ -140,9 +140,13 @@ export function AgentCard(props: {
           <span class="tl-agent-icon">
             <Bot size={15} />
           </span>
+          {/* Two lines: the title gets the whole first line; profile/model + status/time/counters
+              sit under it (one line truncated the title to a few words). */}
+          <span class="tl-agent-main">
           <span class="tl-agent-title" classList={{ shimmer: running() }}>
             {run().title}
           </span>
+          <span class="tl-agent-sub">
           <Show when={chip()}>
             <span class="tl-agent-chip" title={run().model ? `${chip()} · ${run().model}` : chip()} data-testid="tl-agent-chip">
               {chip()}
@@ -161,6 +165,8 @@ export function AgentCard(props: {
                 {counters()}
               </span>
             </Show>
+          </span>
+          </span>
           </span>
           <Show when={!deep()}>
             <ChevronRight size={15} class="proc-chev" />
@@ -198,10 +204,40 @@ function AgentSteps(props: { run: AgentRun; ctx: TimelineCtx; leaving: boolean; 
   const toolSteps = () => props.run.steps.filter((s) => stepDataOf(s).kind !== 'text').length;
   // Steps older than the loaded page (or written before the card existed) live in the child's transcript.
   const missing = () => hidden() === 0 && props.run.toolCalls > toolSteps();
+  // Opens at the newest step and follows new output while the user is at the bottom
+  // (scrolling up detaches; "Show earlier" keeps the reader's place).
+  let el: HTMLDivElement | undefined;
+  let stuck = true;
+  let restoreFromBottom: number | undefined;
+  const toBottom = () => el && (el.scrollTop = el.scrollHeight);
+  onMount(() => {
+    if (!el) return;
+    toBottom();
+    requestAnimationFrame(toBottom);
+    const mo = new MutationObserver(() => {
+      if (!el) return;
+      if (restoreFromBottom !== undefined) {
+        el.scrollTop = el.scrollHeight - el.clientHeight - restoreFromBottom;
+        restoreFromBottom = undefined;
+      } else if (stuck) toBottom();
+    });
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    const ro = new ResizeObserver(() => stuck && toBottom());
+    ro.observe(el);
+    onCleanup(() => (mo.disconnect(), ro.disconnect()));
+  });
+  const onScroll = () => {
+    if (el) stuck = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
+  const showEarlier = () => {
+    if (el) restoreFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+    stuck = false;
+    setLimit((n) => n + AGENT_STEP_CAP);
+  };
   return (
-    <div class="tl-agent-body" data-leaving={props.leaving ? '' : undefined} data-testid="tl-agent-body">
+    <div class="tl-agent-body" ref={el} onScroll={onScroll} data-leaving={props.leaving ? '' : undefined} data-testid="tl-agent-body">
       <Show when={hidden() > 0}>
-        <button type="button" class="tl-agent-earlier" onClick={() => setLimit((n) => n + AGENT_STEP_CAP)} data-testid="tl-agent-earlier">
+        <button type="button" class="tl-agent-earlier" onClick={showEarlier} data-testid="tl-agent-earlier">
           Show {Math.min(hidden(), AGENT_STEP_CAP)} earlier {hidden() === 1 ? 'step' : 'steps'}
           <Show when={hidden() > AGENT_STEP_CAP}> (of {hidden()})</Show>
         </button>
