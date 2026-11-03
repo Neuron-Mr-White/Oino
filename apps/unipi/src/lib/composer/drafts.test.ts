@@ -21,6 +21,8 @@ import {
   setComposerText,
   setComposerImages,
 } from './drafts';
+import { imageChipIds, imageToken } from './chips';
+import { pendingAttachmentsFor } from './attachments';
 
 const KEY = 'pc1/s1';
 
@@ -92,7 +94,21 @@ describe('text persistence (Z-59)', () => {
   it('restoreComposer (Edit) replaces text and images, keeps chips', () => {
     addComposerChip(KEY, { kind: 'paste', label: 'Pasted text · 2 lines', markdown: 'a\nb' });
     restoreComposer(KEY, { text: 'the old message', images: [{ mimeType: 'image/png', data: 'i' }] });
-    expect(composerDraft(KEY)).toEqual({ text: 'the old message', quotes: [], images: [{ mimeType: 'image/png', data: 'i' }], chips: [{ id: expect.any(String), kind: 'paste', label: 'Pasted text · 2 lines', markdown: 'a\nb' }] });
+    expect(composerDraft(KEY)).toEqual({ text: expect.stringMatching(/^the old message \[image]@img:\S+ $/), quotes: [], images: [{ mimeType: 'image/png', data: 'i' }], chips: [{ id: expect.any(String), kind: 'paste', label: 'Pasted text · 2 lines', markdown: 'a\nb' }] });
+  });
+
+  it('restoreComposer puts each image back as an inline chip where the sent text named it', () => {
+    restoreComposer(KEY, { text: 'compare [image 2] to [image 1]', images: [{ mimeType: 'image/png', data: 'one' }, { mimeType: 'image/png', data: 'two' }] });
+    const ids = imageChipIds(composerDraft(KEY).text);
+    const items = pendingAttachmentsFor(KEY);
+    expect(ids).toEqual([items[1]!.id, items[0]!.id]);
+    expect(items.every((a) => a.placed)).toBe(true);
+  });
+
+  it('a reload drops inline attachment chips from the stored text (their bytes were memory only)', () => {
+    setComposerText(KEY, `see ${imageToken('gone')} and this`);
+    reloadComposerDrafts();
+    expect(composerDraft(KEY).text).toBe('see and this');
   });
 });
 

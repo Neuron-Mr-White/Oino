@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachmentToken, chipSpans, imageChipIds, imageToken, insertToken, pathCandidates, removeToken, resolveAttachmentTokens, resolveImageTokens, restoredImageText, tokenize } from './chips';
+import { attachmentToken, chipSpans, fileChipIds, imageChipIds, imageToken, insertToken, pathCandidates, removeToken, resolveAttachmentTokens, resolveImageTokens, restoredImageText, serializeSkills, skillRefs, stripAttachmentTokens, tokenize } from './chips';
 import { appendFileMentions, fileMentionsOf, formatFileMention } from './attachments';
 
 const cmds = new Set(['skill:review', 'unipi:goal']);
@@ -21,7 +21,7 @@ describe('tokenize (UNI-212)', () => {
 
   it('a leading /skill: or /command chips only when it is in the session list and finished', () => {
     expect(tokenize('/skill:review the diff', { commands: cmds })[0]).toEqual({ chip: { kind: 'skill', raw: '/skill:review', name: 'review' } });
-    expect(tokenize('/unipi:goal ship', { commands: cmds })[0]).toEqual({ chip: { kind: 'command', raw: '/unipi:goal', name: 'unipi:goal' } });
+    expect(tokenize('/unipi:goal ship', { commands: cmds })[0]).toEqual({ chip: { kind: 'command', raw: '/unipi:goal', name: 'unipi:goal', mode: true } });
     expect(tokenize('/skill:nope x', { commands: cmds })).toEqual([{ text: '/skill:nope x' }]);
     expect(tokenize('say /unipi:goal', { commands: cmds })).toEqual([{ text: 'say /unipi:goal' }]);
     // Editor mode: still being typed (no trailing space) → plain.
@@ -103,7 +103,7 @@ describe('bubbleSegments (UNI-212 sent bubbles)', async () => {
   });
   it('chips a leading skill / command and keeps the rest as text', () => {
     const segs = bubbleSegments('/unipi:goal ship it', new Set(['unipi:goal']));
-    expect(segs[0]).toEqual({ chip: { kind: 'command', raw: '/unipi:goal', name: 'unipi:goal' } });
+    expect(segs[0]).toEqual({ chip: { kind: 'command', raw: '/unipi:goal', name: 'unipi:goal', mode: true } });
     expect(segs[1]).toEqual({ text: ' ship it' });
   });
 });
@@ -190,5 +190,53 @@ describe('restoredImageText (UNI-290: a sent message back into the draft)', () =
     const sent = resolveImageTokens(text, [{ id: 'a' }, { id: 'b' }]);
     expect(sent.text).toBe('compare [image 1] with [image 2]');
     expect(sent.ids).toEqual(['b', 'a']);
+  });
+});
+
+describe('composer chips (owner spec 2026-11-03)', () => {
+  const skills = new Set(['skill:review', 'skill:pdf-tools', 'graph', 'unipi:goal', 'regular']);
+
+  it('a $skill chips anywhere, only for a session skill and once finished', () => {
+    const segs = tokenize('fix it with $review now', { commands: skills, requireTrailingSpace: true });
+    expect(segs).toEqual([{ text: 'fix it with ' }, { chip: { kind: 'skill', raw: '$review', name: 'review', form: 'dollar' } }, { text: ' now' }]);
+    expect(tokenize('fix it with $review', { commands: skills, requireTrailingSpace: true })).toEqual([{ text: 'fix it with $review' }]);
+    expect(tokenize('costs $5 and $nope ', { commands: skills, requireTrailingSpace: true })).toEqual([{ text: 'costs $5 and $nope ' }]);
+    expect(tokenize('a$review b', { commands: skills })).toEqual([{ text: 'a$review b' }]);
+    // A bubble chips it before punctuation too.
+    expect(tokenize('use $pdf-tools.', { commands: skills })[1]).toEqual({ chip: { kind: 'skill', raw: '$pdf-tools', name: 'pdf-tools', form: 'dollar' } });
+  });
+
+  it('several skill chips and a leading command chip coexist', () => {
+    const segs = tokenize('/graph ship $review and $pdf-tools ', { commands: skills, requireTrailingSpace: true });
+    expect(segs.filter((s) => 'chip' in s).map((s) => ('chip' in s ? s.chip.raw : ''))).toEqual(['/graph', '$review', '$pdf-tools']);
+  });
+
+  it('mode commands are command chips flagged mode', () => {
+    expect(tokenize('/graph build it', { commands: skills })[0]).toEqual({ chip: { kind: 'command', raw: '/graph', name: 'graph', mode: true } });
+    expect(tokenize('/unipi:goal x', { commands: skills })[0]).toEqual({ chip: { kind: 'command', raw: '/unipi:goal', name: 'unipi:goal', mode: true } });
+    expect(tokenize('/regular', { commands: skills })[0]).toEqual({ chip: { kind: 'command', raw: '/regular', name: 'regular', mode: true } });
+  });
+
+  it('serializeSkills: the first $skill becomes the leading /skill: invocation pi expands', () => {
+    expect(serializeSkills('$review fix the bug', skills)).toBe('/skill:review fix the bug');
+    expect(serializeSkills('$review', skills)).toBe('/skill:review');
+    expect(serializeSkills('$review\nline two', skills)).toBe('/skill:review line two');
+    expect(serializeSkills('fix it with $review please', skills)).toBe('/skill:review fix it with $review please');
+    expect(serializeSkills('$review then $pdf-tools', skills)).toBe('/skill:review then $pdf-tools');
+    // A command keeps its arguments as typed; unknown skills and plain text are untouched.
+    expect(serializeSkills('/graph do it with $review', skills)).toBe('/graph do it with $review');
+    expect(serializeSkills('pay $5 to $nope', skills)).toBe('pay $5 to $nope');
+    expect(skillRefs('a $review, b $pdf-tools', skills).map((r) => r.name)).toEqual(['review', 'pdf-tools']);
+  });
+
+  it('the same image chip twice (copy → paste) sends the image once, both mentions name it', () => {
+    const t = `${imageToken('a')} vs ${imageToken('b')} and again ${imageToken('a')}`;
+    expect(resolveImageTokens(t, [{ id: 'a' }, { id: 'b' }])).toEqual({ text: '[image 1] vs [image 2] and again [image 1]', ids: ['a', 'b'] });
+  });
+
+  it('a reloaded draft drops the tokens of attachments that lived in memory', () => {
+    expect(stripAttachmentTokens(`look ${imageToken('x1')} at ${attachmentToken('a.pdf', 'f1')} this`)).toBe('look at this');
+    expect(stripAttachmentTokens('keep [file: a.pdf]@/host/blobs/1 and [image 2]')).toBe('keep [file: a.pdf]@/host/blobs/1 and [image 2]');
+    expect(fileChipIds(`${attachmentToken('a', 'f1')} [file: b]@/p ${attachmentToken('c', 'f2')}`)).toEqual(['f1', 'f2']);
   });
 });

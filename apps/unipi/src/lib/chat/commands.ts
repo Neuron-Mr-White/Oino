@@ -171,6 +171,29 @@ export function atQuery(text: string, caret: number): { start: number; query: st
   return { start: before.length - m[2]!.length - 1, query: m[2]! };
 }
 
+/** A `$skill` being typed at the caret, anywhere in the text (owner spec 2026-11-03): after the
+ *  start, whitespace or an opening bracket. `$5` or `a$b` never open it. */
+export function skillQuery(text: string, caret: number): { start: number; query: string } | null {
+  const before = text.slice(0, caret);
+  const m = /(^|[\s(\[{])\$([A-Za-z][\w.-]*|)$/.exec(before);
+  if (!m) return null;
+  return { start: before.length - m[2]!.length - 1, query: m[2]! };
+}
+
+/** The session's skills as `$` menu rows (`skill:review` → `review`), ranked like `/` rows. */
+export function rankSkills(commands: readonly CommandInfo[], query: string, limit = 40): CommandInfo[] {
+  const skills = commands.filter((c) => c.name.startsWith('skill:')).map((c) => ({ ...c, name: c.name.slice(6) }));
+  return rankCommands(skills, query, limit);
+}
+
+/** Puts a picked `$` skill in place of `$query`: `$name ` (the trailing space makes it a chip). */
+export function applySkill(text: string, caret: number, at: { start: number }, name: string): { text: string; caret: number } {
+  const after = text.slice(caret).replace(/^[^\s]*/, '');
+  const insert = `$${name} `;
+  const next = `${text.slice(0, at.start)}${insert}${after.replace(/^ /, '')}`;
+  return { text: next, caret: at.start + insert.length };
+}
+
 /** Puts a picked `@` suggestion in place of `@query`; directories keep the menu open (no trailing space). */
 export function applyAt(text: string, caret: number, at: { start: number }, value: string, dir: boolean): { text: string; caret: number } {
   const after = text.slice(caret).replace(/^[^\s]*/, '');

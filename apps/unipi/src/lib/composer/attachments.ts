@@ -67,6 +67,9 @@ export type PendingAttachment = {
   autoRetries: number;
   /** The picked bytes, kept only so a failed image/file can retry (never sent). */
   source?: Blob;
+  /** Its inline chip was put in the draft (owner spec 2026-11-03). From then on only a chip in the
+   *  text sends it: a deleted chip leaves it unsent (kept for Undo, pruned when room is needed). */
+  placed?: boolean;
 };
 
 /** What the composer's send gate says about a chat right now. */
@@ -110,6 +113,24 @@ function update(chatKey: string, id: string, patch: Partial<PendingAttachment>):
       if (item) Object.assign(item, patch);
     }),
   );
+}
+
+/** Marks attachments whose inline chip is now in the draft. */
+export function markPlaced(chatKey: string, ids: readonly string[]): void {
+  if (!ids.length) return;
+  const [, set] = storeFor(chatKey);
+  set(
+    produce((state: ChatStore) => {
+      for (const item of state.items) if (ids.includes(item.id)) item.placed = true;
+    }),
+  );
+}
+
+/** Drops placed attachments no chip names any more (their chip was deleted), making room. */
+export function prunePlaced(chatKey: string, referenced: ReadonlySet<string>): number {
+  const gone = pendingAttachmentsFor(chatKey).filter((a) => a.placed && !referenced.has(a.id));
+  for (const a of gone) removeAttachment(chatKey, a.id);
+  return gone.length;
 }
 
 /** The attachment `id` in a chat. */
@@ -364,9 +385,14 @@ export function addReadyImage(
 }
 
 /** Replaces every pending image with already-encoded ones (Edit / tree jump). */
-export function setImages(chatKey: string, images: readonly { mimeType: string; data: string }[]): void {
+export function setImages(chatKey: string, images: readonly { mimeType: string; data: string }[]): string[] {
   for (const a of pendingAttachmentsFor(chatKey)) if (a.kind === 'image') removeAttachment(chatKey, a.id);
-  for (const image of images) addReadyImage(chatKey, { mime: image.mimeType, data: image.data });
+  const ids: string[] = [];
+  for (const image of images) {
+    const added = addReadyImage(chatKey, { mime: image.mimeType, data: image.data });
+    if (added) ids.push(added.id);
+  }
+  return ids;
 }
 
 /** The chat's ready images, in attach order — what the prompt carries. */
@@ -376,17 +402,18 @@ export function readyImages(chatKey: string): OutboxImage[] {
     .map((a) => ({ mimeType: a.mime, data: a.data! }));
 }
 
-/** True while nothing is blocking a send; a failed attachment blocks it too. */
-export function attachmentsGate(chatKey: string): AttachmentsGate {
-  const list = pendingAttachmentsFor(chatKey);
+/** True while nothing is blocking a send; a failed attachment blocks it too. With `referenced`
+ *  (the ids the draft's chips name), a placed attachment whose chip was deleted no longer counts. */
+export function attachmentsGate(chatKey: string, referenced?: ReadonlySet<string>): AttachmentsGate {
+  const list = pendingAttachmentsFor(chatKey).filter((a) => !referenced || !a.placed || referenced.has(a.id));
   const uploading = list.filter((a) => a.status === 'queued' || a.status === 'uploading').length;
   const failedCount = list.filter((a) => a.status === 'failed').length;
   return { ok: uploading === 0 && failedCount === 0, uploading, failed: failedCount };
 }
 
 /** The composer's send gate (Z-60): everything attached is ready. */
-export function attachmentsReady(chatKey: string): boolean {
-  return attachmentsGate(chatKey).ok;
+export function attachmentsReady(chatKey: string, referenced?: ReadonlySet<string>): boolean {
+  return attachmentsGate(chatKey, referenced).ok;
 }
 
 /** `[file: <name>]@<host path>` — one mention line per uploaded file. Bracketed

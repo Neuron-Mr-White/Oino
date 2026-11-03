@@ -19,6 +19,14 @@
  *   or confirmed through the bridge's file finder);
  * - a leading `/skill:<name>` or `/<command>` that's in the session's
  *   command list (pi only expands those at the very start of a prompt);
+ *   the long-horizon mode commands (`/graph`, `/goal`, `/ralph`, `/swarm`,
+ *   `/regular`) are command chips flagged `mode`;
+ * - `$<skill>` anywhere in the text (owner spec 2026-11-03), for a skill in
+ *   the session's list (`skill:<name>`). At send time `serializeSkills`
+ *   turns the first one into pi's own `/skill:<name> …` invocation at the
+ *   start of the prompt (the only form the engine expands); the others stay
+ *   `$name` references the model resolves through the system prompt's
+ *   `<available_skills>` list;
  * - in sent bubbles, pi's expanded `<skill name="…">…</skill>` block (what
  *   a `/skill:` prompt becomes in the transcript) collapses to its chip.
  *
@@ -30,8 +38,16 @@ export type Chip =
   | { kind: 'file'; raw: string; name: string; attId?: string; path?: string }
   | { kind: 'image'; raw: string; imgId?: string; n?: number }
   | { kind: 'path'; raw: string; path: string }
-  | { kind: 'skill'; raw: string; name: string }
-  | { kind: 'command'; raw: string; name: string };
+  /** `form: 'dollar'`: a `$name` reference anywhere in the text (else the leading `/skill:name` or pi's block). */
+  | { kind: 'skill'; raw: string; name: string; form?: 'dollar' }
+  /** `mode`: a long-horizon mode switch (`MODE_COMMANDS`). */
+  | { kind: 'command'; raw: string; name: string; mode?: true };
+
+/** The long-horizon mode commands (owner spec 2026-11-03): a chip of its own look; sent as the
+ *  command itself, which switches the chat's mode. */
+export const MODE_COMMANDS: ReadonlySet<string> = new Set(
+  ['graph', 'goal', 'ralph', 'swarm', 'regular'].flatMap((m) => [m, `unipi:${m}`]),
+);
 
 export type Seg = { text: string } | { chip: Chip };
 
@@ -65,9 +81,13 @@ const IMAGE_RE = /\[image]@img:(\S+)/g;
  *  message's images). */
 const IMAGE_LABEL_RE = /\[image (\d+)]/g;
 const SKILL_BLOCK_RE = /^<skill name="([^"]+)" location="[^"]*">[\s\S]*?<\/skill>(?:\n\n)?/;
+/** A `$skill` reference: after the start, whitespace or an opening bracket; pi skill names are
+ *  letters, digits, `-`, `_` and inner dots. */
+const SKILL_REF_RE = /(^|[\s(\[{])\$([A-Za-z0-9][\w-]*(?:\.[\w-]+)*)/g;
 
 export type TokenizeOpts = {
-  /** Names of the session's commands (without `/`), e.g. `skill:review`, `unipi:goal`. */
+  /** Names of the session's commands (without `/`), e.g. `skill:review`, `unipi:goal`.
+   *  Its `skill:<name>` entries are also the skills a `$name` reference may name. */
   commands?: ReadonlySet<string>;
   /** Whether an `@path` token (with its `@`) is known to exist on the PC. */
   verified?: (token: string) => boolean;
@@ -82,6 +102,12 @@ export type TokenizeOpts = {
 };
 
 const ends = (text: string, end: number, opts: TokenizeOpts) => (end >= text.length ? !opts.requireTrailingSpace : /\s/.test(text[end]!));
+/** A `$skill` ends at whitespace — in a sent bubble also at closing punctuation ("use $review."). */
+const skillEnds = (text: string, end: number, opts: TokenizeOpts) =>
+  ends(text, end, opts) || (!opts.requireTrailingSpace && end < text.length && /[,.;:!?)\]}'"]/.test(text[end]!));
+
+/** Whether `name` is a skill of the session (`skill:<name>` in its command list). */
+export const isSkill = (name: string, commands: ReadonlySet<string> | undefined): boolean => !!commands?.has(`skill:${name}`);
 
 /** Splits `text` into plain runs and chips (see module doc). Adjacent plain
  * runs are merged; an empty string gives `[]`. */
@@ -121,7 +147,21 @@ export function tokenize(text: string, opts: TokenizeOpts = {}): Seg[] {
     const cmd = /^\/(\S+)/.exec(text);
     if (cmd && opts.commands?.has(cmd[1]!) && ends(text, cmd[0].length, opts) && free(0, cmd[0].length)) {
       const name = cmd[1]!;
-      hits.push({ start: 0, end: cmd[0].length, chip: name.startsWith('skill:') ? { kind: 'skill', raw: cmd[0], name: name.slice(6) } : { kind: 'command', raw: cmd[0], name } });
+      hits.push({
+        start: 0,
+        end: cmd[0].length,
+        chip: name.startsWith('skill:') ? { kind: 'skill', raw: cmd[0], name: name.slice(6) } : { kind: 'command', raw: cmd[0], name, ...(MODE_COMMANDS.has(name) ? { mode: true as const } : {}) },
+      });
+    }
+  }
+
+  // `$skill` references, anywhere (owner spec 2026-11-03).
+  if (opts.commands?.size) {
+    for (const m of text.matchAll(SKILL_REF_RE)) {
+      const start = m.index! + m[1]!.length;
+      const end = start + 1 + m[2]!.length;
+      if (!isSkill(m[2]!, opts.commands) || !free(start, end) || !skillEnds(text, end, opts)) continue;
+      hits.push({ start, end, chip: { kind: 'skill', raw: text.slice(start, end), name: m[2]!, form: 'dollar' } });
     }
   }
 
@@ -238,7 +278,10 @@ export function resolveImageTokens(
     const start = m.index!;
     out += text.slice(at, start);
     at = start + m[0].length;
-    if (images.some((image) => image.id === id)) {
+    const seen = ids.indexOf(id);
+    if (seen >= 0) out += `[image ${seen + 1}]`;
+    // The same image twice (a chip copied and pasted) is sent once; both mentions name it.
+    else if (images.some((image) => image.id === id)) {
       ids.push(id);
       out += `[image ${ids.length}]`;
     } else if (text[at] === ' ' && (out === '' || /\s$/.test(out))) at++;
@@ -280,4 +323,51 @@ export function resolveAttachmentTokens(text: string, files: (id: string) => Att
   }
   out += text.slice(at);
   return { text: out, kept, sentIds };
+}
+
+/** Draft text loaded back from storage (a reload): the pending attachments behind its
+ *  `[image]@img:<id>` / `[file: …]@att:<id>` chips lived in memory and are gone, so their
+ *  tokens go too (with one separating space each) instead of showing dead chips. */
+export function stripAttachmentTokens(text: string): string {
+  return text.replace(/(?:\[image]@img:\S+|\[file: [^\]\n]*\]@att:\S+) ?/g, '');
+}
+
+/** The ids of the draft's `[file: …]@att:<id>` chips, in text order. */
+export function fileChipIds(text: string): string[] {
+  return [...text.matchAll(FILE_RE)].map((m) => m[2]!).filter((p) => p.startsWith(ATT_PREFIX)).map((p) => p.slice(ATT_PREFIX.length));
+}
+
+/** The `$skill` references of `text` (session skills only), in order, with offsets. */
+export function skillRefs(text: string, commands: ReadonlySet<string> | undefined): Array<{ name: string; start: number; end: number }> {
+  const out: Array<{ name: string; start: number; end: number }> = [];
+  if (!commands?.size) return out;
+  for (const m of text.matchAll(SKILL_REF_RE)) {
+    const start = m.index! + m[1]!.length;
+    const end = start + 1 + m[2]!.length;
+    if (isSkill(m[2]!, commands) && skillEnds(text, end, {})) out.push({ name: m[2]!, start, end });
+  }
+  return out;
+}
+
+/**
+ * Send-time serialization of `$skill` chips (pi parity: the engine only expands a
+ * `/skill:<name> <args>` prompt, into its `<skill …>` block followed by the args):
+ *
+ * - a message that already starts with a `/command` (or `/skill:`) is left alone — a command chip
+ *   only sits at the start and its arguments are its own;
+ * - otherwise the first `$name` becomes the leading `/skill:<name>`: a `$name` that opens the
+ *   message is replaced by it, one further in stays where it is as a readable reference
+ *   ("fix it with $review" → "/skill:review fix it with $review");
+ * - later skills stay `$name` (the model reads them from `<available_skills>`).
+ */
+export function serializeSkills(text: string, commands: ReadonlySet<string> | undefined): string {
+  if (/^\s*\//.test(text)) return text;
+  const first = skillRefs(text, commands)[0];
+  if (!first) return text;
+  const lead = `/skill:${first.name}`;
+  if (!text.slice(0, first.start).trim()) {
+    const rest = text.slice(first.end).replace(/^[ \t]+/, '');
+    return rest ? `${lead} ${rest.replace(/^\n+/, '')}` : lead;
+  }
+  return `${lead} ${text}`;
 }

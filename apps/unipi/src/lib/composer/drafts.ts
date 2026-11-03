@@ -19,7 +19,8 @@
  */
 import { createSignal } from 'solid-js';
 import type { OutboxImage } from '../session/types';
-import { clearAttachments, pendingAttachmentsFor, readyImages, removeAttachment, resetAttachments, setImages } from './attachments';
+import { clearAttachments, markPlaced, pendingAttachmentsFor, readyImages, removeAttachment, resetAttachments, setImages } from './attachments';
+import { restoredImageText, stripAttachmentTokens } from './chips';
 
 export type QuoteChip = { id: string; text: string };
 
@@ -75,7 +76,8 @@ let chipSeq = 0;
 
 /** A stored, non-empty text counts as the draft after a reload (Z-59). */
 function load(key: string): ComposerDraft {
-  const text = readStored(key);
+  // The attachments behind inline image/file chips were memory only: a reload drops their tokens.
+  const text = stripAttachmentTokens(readStored(key));
   return text.trim() ? { ...EMPTY, text } : EMPTY;
 }
 
@@ -162,9 +164,12 @@ export function setComposerImages(key: string, images: OutboxImage[]): void {
 
 /** Edit / tree jump (A7): replaces the composer's text and images. */
 export function restoreComposer(key: string, draft: { text: string; images?: OutboxImage[] }): void {
-  setDrafts((all) => ({ ...all, [key]: { text: draft.text, quotes: [], images: [], chips: all[key]?.chips ?? [] } }));
-  setImages(key, draft.images ?? []);
-  persist(key, draft.text);
+  // The images come back as inline chips where the sent text named them (`[image N]`), the rest after it.
+  const ids = setImages(key, draft.images ?? []);
+  const text = ids.length ? restoredImageText(draft.text, ids) : draft.text;
+  markPlaced(key, ids);
+  setDrafts((all) => ({ ...all, [key]: { text, quotes: [], images: [], chips: all[key]?.chips ?? [] } }));
+  persist(key, text);
 }
 
 /** Starts the composer over (a send): text, quotes, chips and attachments. */
