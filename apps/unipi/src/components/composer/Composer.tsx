@@ -26,15 +26,31 @@ import { Camera, FilePlus, FolderOpen, Image as ImageIcon, ListPlus, MessageSqua
 import type { SessionHandle } from '../../lib/session/store';
 import {
   MAX_ATTACHMENTS,
+  attachmentRoom,
   attachmentsReady,
   attach,
+  markPlaced,
   pendingAttachmentsFor,
-  removeAttachment,
+  prunePlaced,
   replaceImage,
   retryAttachment,
-  withAttachmentMentions,
+  type PendingAttachment,
 } from '../../lib/composer/attachments';
-import { allCommands, applyAt, commandNeedsTask, argQuery, atQuery, isAppBuiltin, isKnownCommand, rankCommands, slashQuery, wantsArgCompletions } from '../../lib/chat/commands';
+import {
+  allCommands,
+  applyAt,
+  applySkill,
+  commandNeedsTask,
+  argQuery,
+  atQuery,
+  isAppBuiltin,
+  isKnownCommand,
+  rankCommands,
+  rankSkills,
+  skillQuery,
+  slashQuery,
+  wantsArgCompletions,
+} from '../../lib/chat/commands';
 import {
   builtinPlan,
   builtinWorksWithoutChat,
@@ -88,7 +104,8 @@ import {
 import { isLongPaste, pastedTextLabel } from '../../lib/composer/paste';
 import { promptHistory, walkDown, walkUp } from '../../lib/composer/history';
 import { composerHistory } from '../../lib/composer/undo';
-import { pathCandidates } from '../../lib/composer/chips';
+import { attachmentToken, imageChipIds, imageToken, pathCandidates, type Chip } from '../../lib/composer/chips';
+import { outgoingMessage, referencedIds } from '../../lib/composer/wire';
 import { ChipEditor, type ChipEditorApi } from './ChipEditor';
 import { PhoneField } from './PhoneField';
 import { ActionSheet } from '../phone';
@@ -101,7 +118,6 @@ import { ArgMenu, argItemsOf, type ArgItem } from './ArgMenu';
 import { MentionMenu, type MentionItem } from './MentionMenu';
 import { PlusMenu } from './PlusMenu';
 import { PastedTextChip } from './PastedTextChip';
-import { AttachmentChip } from './AttachmentChip';
 import { ImageEditor } from './ImageEditor';
 import { PermissionControl, PlanToggle } from './PermissionControl';
 import { Toolbar, ToolbarSlot } from './Toolbar';
@@ -173,7 +189,7 @@ export function Composer(props: ComposerProps) {
         : !hasHistory()
           ? props.phone
             ? 'Ask anything…'
-            : 'Ask anything — / for commands, @ for files'
+            : 'Ask anything — / for commands, $ for skills, @ for files'
           : 'Ask for follow-up changes');
 
   /* ── undo/redo (kept from UNI-270; the store is lib/composer/undo) ── */
@@ -225,7 +241,9 @@ export function Composer(props: ComposerProps) {
     const q = slash();
     if (!q || dismissed() === draft().text) return [];
     // The draft lists only the built-ins that work before a chat exists (P0-02: no dead rows).
-    return rankCommands(allCommands(props.session.state.commands, props.draft ? builtinWorksWithoutChat : undefined), q.query, 60);
+    // Skills have their own `$` menu (owner spec 2026-11-03); `/skill:` still lists them (pi's form).
+    const all = allCommands(props.session.state.commands, props.draft ? builtinWorksWithoutChat : undefined);
+    return rankCommands(q.query.startsWith('skill') ? all : all.filter((c) => !c.name.startsWith('skill:')), q.query, 60);
   });
   const pickCommand = (name: string) => {
     const q = slash();
@@ -235,6 +253,24 @@ export function Composer(props: ComposerProps) {
     queueMicrotask(() => {
       editor?.setCaret(q.start + name.length + 2);
       setCaret(q.start + name.length + 2);
+    });
+  };
+
+  /* ── `$` skills, anywhere in the text (owner spec 2026-11-03) ──────── */
+  const skillQ = createMemo(() => (slash() ? null : skillQuery(draft().text, caret())));
+  const skillItems = createMemo(() => {
+    const q = skillQ();
+    if (!q || dismissed() === draft().text) return [];
+    return rankSkills(props.session.state.commands, q.query, 40);
+  });
+  const pickSkill = (name: string) => {
+    const q = skillQ();
+    if (!q) return;
+    const next = applySkill(draft().text, caret(), q, name);
+    commit(next.text, next.caret);
+    queueMicrotask(() => {
+      editor?.setCaret(next.caret);
+      setCaret(next.caret);
     });
   };
 
@@ -374,12 +410,13 @@ export function Composer(props: ComposerProps) {
   );
 
   /* ── menu keyboard selection (one menu open at a time) ────────────── */
-  const menuItems = createMemo<MentionItem[] | undefined>(() => (mentionOpen() && mentionItems().length ? mentionItems() : undefined));
+  const menuItems = createMemo<MentionItem[] | undefined>(() => (mentionOpen() && !skillItems().length && mentionItems().length ? mentionItems() : undefined));
   /** The arg menu yields to an `@` menu typed inside the argument. */
   const argRows = () => (menuItems() ? undefined : argMenu()?.items);
   const [sel, setSel] = createSignal(0);
   createEffect(() => {
     void slashItems().length;
+    void skillItems().length;
     void mentionItems().length;
     void argMenu();
     setSel(0);
@@ -432,9 +469,12 @@ export function Composer(props: ComposerProps) {
   /* ── attachments (Z-60 states, D-6 per-chat store) ───────────────── */
   const attachments = () => pendingAttachmentsFor(key());
   /** Pre-uploads what was picked (images shrink+encode, files over the blob
-   *  channel) and says so when something does not fit. */
+   *  channel) and says so when something does not fit. Each one lands as an
+   *  inline chip at the caret (`placeAttachments`). */
   const attachPicked = (files: readonly File[]) => {
     if (props.readOnly || !files.length) return;
+    // Attachments whose chip was deleted (kept for Undo) make room first.
+    if (attachmentRoom(key()) < files.length) prunePlaced(key(), referencedIds(draft().text));
     const { overLimit, refused } = attach(key(), hostId(), files);
     if (overLimit > 0) showActionNotice(`Up to ${MAX_ATTACHMENTS} attachments per message — ${overLimit} left out`);
     else if (refused.length === 1) showActionNotice(`${refused[0]!.name} is larger than 1 GB`);
@@ -505,6 +545,60 @@ export function Composer(props: ComposerProps) {
     });
     onCleanup(off);
   });
+  /* ── inline attachment chips (owner spec 2026-11-03) ──────────────── */
+  /** Whether the user has put the caret anywhere yet (else new chips go at the end). */
+  let caretTouched = false;
+  /** Every attachment gets its inline chip once — at the caret (a paste, a drop, the + menu),
+   *  or at the end when the field was never focused (an image an extension handed in). */
+  createEffect(() => {
+    const fresh = attachments().filter((a) => !a.placed);
+    if (!fresh.length || props.readOnly) return;
+    untrack(() => {
+      const tokens = fresh.map((a) => (a.kind === 'image' ? imageToken(a.id) : attachmentToken(a.name, a.id)));
+      markPlaced(key(), fresh.map((a) => a.id));
+      const text = draft().text;
+      const at = caretTouched ? Math.max(0, Math.min(editor?.getCaret() ?? caret(), text.length)) : text.length;
+      const before = text.slice(0, at);
+      const after = text.slice(at);
+      const lead = before && !/\s$/.test(before) ? ' ' : '';
+      const trail = /^\s/.test(after) ? '' : ' ';
+      const next = `${before}${lead}${tokens.join(' ')}${trail}${after}`;
+      const pos = (before + lead + tokens.join(' ') + trail).length;
+      commit(next, pos);
+      setCaret(pos);
+      queueMicrotask(() => {
+        editor?.syncFromStore();
+        editor?.setCaret(pos);
+      });
+    });
+  });
+  const attachmentOf = (chip: Chip): PendingAttachment | undefined => {
+    const id = chip.kind === 'image' ? chip.imgId : chip.kind === 'file' ? chip.attId : undefined;
+    return id ? attachments().find((a) => a.id === id) : undefined;
+  };
+  /** "image 1", "image 2"… by first appearance in the text (a chip twice is one image). */
+  const chipLabel = (chip: Chip): string | undefined => {
+    if (chip.kind !== 'image' || !chip.imgId) return undefined;
+    const order = [...new Set(imageChipIds(draft().text))].filter((id) => attachments().some((a) => a.id === id));
+    const n = order.indexOf(chip.imgId);
+    return n >= 0 ? `image ${n + 1}` : 'image (removed)';
+  };
+  const chipState = (chip: Chip) => {
+    const a = attachmentOf(chip);
+    if (!a) return chip.kind === 'image' && chip.imgId ? { status: 'error' as const, error: 'removed' } : undefined;
+    return { status: a.status === 'ready' ? ('done' as const) : a.status === 'failed' ? ('error' as const) : ('uploading' as const), ...(a.error ? { error: a.error } : {}) };
+  };
+  const chipThumb = (chip: Chip) => (chip.kind === 'image' ? attachmentOf(chip)?.preview : undefined);
+  const onChipClick = (chip: Chip) => {
+    const a = attachmentOf(chip);
+    if (!a) return;
+    if (a.status === 'failed') retryAttachment(key(), hostId(), a.id);
+    else if (a.kind === 'image') openEditor(a.id);
+  };
+  /** A paste from another chat: its attachment chips can't resolve here — drop them. */
+  const cleanPaste = (text: string): string =>
+    text.replace(/(\[image]@img:(\S+)|\[file: [^\]\n]*\]@att:(\S+)) ?/g, (all, _t, img?: string, att?: string) => (attachments().some((a) => a.id === (img ?? att)) ? all : ''));
+
   /** The image editor (D-5): annotate a pending image in place. */
   const [editing, setEditing] = createSignal<{ id: string; src: string; mime: string; name: string } | undefined>();
   const openEditor = (id: string) => {
@@ -719,11 +813,10 @@ export function Composer(props: ComposerProps) {
   /* ── send ─────────────────────────────────────────────────────────── */
   const send = (mode?: 'prompt' | 'steer' | 'followUp') => {
     if (props.readOnly || props.busy) return;
-    // Z-60: nothing leaves until every attachment is ready.
-    if (!attachmentsReady(key())) return;
+    // Z-60: nothing leaves until every attachment the draft's chips name is ready.
+    if (!attachmentsReady(key(), referencedIds(draft().text))) return;
     const current = draft();
-    const text = withAttachmentMentions(key(), composerSendText(current));
-    const images = current.images;
+    const { text, images } = outgoingMessage(composerSendText(current), attachments(), commands());
     if (!text.trim() && !images.length) return;
     const cmd = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
     // `/btw` opens the side question instead of sending to the main chat (Z-31).
@@ -826,15 +919,15 @@ export function Composer(props: ComposerProps) {
   };
   /** "Send now (stops run)" (Z-52): stop, then send the text as a prompt. */
   const sendNow = () => {
-    if (props.readOnly || !attachmentsReady(key())) return;
+    if (props.readOnly || !attachmentsReady(key(), referencedIds(draft().text))) return;
     const current = draft();
-    const text = withAttachmentMentions(key(), composerSendText(current));
-    if (!text.trim() && !current.images.length) return;
+    const { text, images } = outgoingMessage(composerSendText(current), attachments(), commands());
+    if (!text.trim() && !images.length) return;
     afterSend(text);
     void props.session
       .abort()
       .then(() => {
-        props.session.send(text, { mode: 'prompt', ...(current.images.length ? { images: current.images } : {}) });
+        props.session.send(text, { mode: 'prompt', ...(images.length ? { images } : {}) });
         promptStore().add(text);
       })
       .catch(() => undefined);
@@ -842,13 +935,9 @@ export function Composer(props: ComposerProps) {
 
   /* ── keys ─────────────────────────────────────────────────────────── */
   /** owner5 #25: Backspace at the very start of the field takes the last
-   *  chip above it (attachment, pasted text, then quote) — like a token row. */
+   *  chip above it (pasted text, then quote) — like a token row. Attachments
+   *  are inline chips now (Backspace next to one removes it). */
   const removeLastRowChip = (): boolean => {
-    const att = pending().at(-1);
-    if (att) {
-      removeAttachment(key(), att.id);
-      return true;
-    }
     const chip = draft().chips.at(-1);
     if (chip) {
       removeComposerChip(key(), chip.id);
@@ -871,7 +960,7 @@ export function Composer(props: ComposerProps) {
       }
     }
     if (e.key === 'Escape') {
-      if (slashItems().length || menuItems()?.length || argRows()?.length) {
+      if (slashItems().length || skillItems().length || menuItems()?.length || argRows()?.length) {
         e.preventDefault();
         setDismissed(draft().text);
         if (!props.phone) e.stopPropagation();
@@ -881,7 +970,7 @@ export function Composer(props: ComposerProps) {
       return;
     }
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      const items = slashItems();
+      const items = slashItems().length ? slashItems() : skillItems();
       const mentions = menuItems();
       const args = argRows();
       if (items.length || mentions?.length || args?.length) {
@@ -893,10 +982,18 @@ export function Composer(props: ComposerProps) {
       if (!e.shiftKey && historyKey(e, draft().text)) e.preventDefault();
       return;
     }
-    if (e.key === 'Tab' && !e.shiftKey && argRows()?.length) {
+    if (e.key === 'Tab' && !e.shiftKey) {
+      // Tab picks the highlighted suggestion of whichever menu is open (owner spec 2026-11-03).
+      const items = slashItems();
+      const skills = skillItems();
+      const mentions = menuItems();
+      const args = argRows();
+      if (items.length) pickCommand(items[Math.min(sel(), items.length - 1)]!.name);
+      else if (skills.length) pickSkill(skills[Math.min(sel(), skills.length - 1)]!.name);
+      else if (mentions?.length) pickMention(mentions[Math.min(sel(), mentions.length - 1)]!);
+      else if (args?.length) pickArg(args[Math.min(sel(), args.length - 1)]!);
+      else return;
       e.preventDefault();
-      const args = argRows()!;
-      pickArg(args[Math.min(sel(), args.length - 1)]!);
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
@@ -912,6 +1009,12 @@ export function Composer(props: ComposerProps) {
         }
         e.preventDefault();
         pickCommand(chosen.name);
+        return;
+      }
+      const skills = skillItems();
+      if (skills.length) {
+        e.preventDefault();
+        pickSkill(skills[Math.min(sel(), skills.length - 1)]!.name);
         return;
       }
       if (mentions?.length) {
@@ -933,11 +1036,10 @@ export function Composer(props: ComposerProps) {
   };
 
   const chips = () => draft().chips;
-  const pending = () => pendingAttachmentsFor(key());
-  const empty = () => !draft().text.trim() && !draft().quotes.length && !pending().length && !draft().chips.length;
-  /** Z-60: Send waits for the attachments; a failed one keeps it closed. */
+  const empty = () => !draft().text.trim() && !draft().quotes.length && !draft().chips.length;
+  /** Z-60: Send waits for the attachments its chips name; a failed one keeps it closed. */
   const held = () => (/^\/\S/.test(draft().text.trim()) ? undefined : props.sendHold?.());
-  const canSend = () => props.readOnly || (attachmentsReady(key()) && !props.busy && !held());
+  const canSend = () => props.readOnly || (attachmentsReady(key(), referencedIds(draft().text)) && !props.busy && !held());
   onMount(() => {
     if (props.autofocus && !props.readOnly) queueMicrotask(() => editor?.focus());
   });
@@ -954,6 +1056,9 @@ export function Composer(props: ComposerProps) {
     >
       <Show when={slashItems().length}>
         <SlashMenu items={slashItems()} selected={Math.min(sel(), slashItems().length - 1)} onPick={pickCommand} onHover={setSel} />
+      </Show>
+      <Show when={skillItems().length}>
+        <SlashMenu items={skillItems()} selected={Math.min(sel(), skillItems().length - 1)} onPick={pickSkill} onHover={setSel} prefix="$" label="Skills" testId="skill-menu" />
       </Show>
       <Show when={argRows()?.length ? argMenu() : undefined}>
         {(menu) => (
@@ -992,7 +1097,7 @@ export function Composer(props: ComposerProps) {
             {props.header}
           </div>
         </Show>
-        <Show when={draft().quotes.length > 0 || pending().length > 0 || chips().length > 0}>
+        <Show when={draft().quotes.length > 0 || chips().length > 0}>
           <div class="tl-composer-chips" data-testid="tl-composer-chips" role="list">
             <For each={draft().quotes}>
               {(quote) => (
@@ -1006,16 +1111,6 @@ export function Composer(props: ComposerProps) {
               )}
             </For>
             <For each={chips()}>{(chip: ComposerChip) => <PastedTextChip chip={chip} onRemove={() => removeComposerChip(key(), chip.id)} />}</For>
-            <For each={pending()}>
-              {(attachment) => (
-                <AttachmentChip
-                  attachment={attachment}
-                  onRemove={() => removeAttachment(key(), attachment.id)}
-                  onRetry={() => retryAttachment(key(), hostId(), attachment.id)}
-                  onEdit={attachment.kind === 'image' ? () => openEditor(attachment.id) : undefined}
-                />
-              )}
-            </For>
           </div>
         </Show>
         <input
@@ -1063,14 +1158,23 @@ export function Composer(props: ComposerProps) {
               placeholder={placeholder()}
               ariaLabel="Message"
               opts={tokenOpts}
+              chipLabel={chipLabel}
+              chipState={chipState}
+              chipThumb={chipThumb}
+              onChipClick={onChipClick}
+              cleanPaste={cleanPaste}
               api={(api) => (editor = api)}
               onHistory={travel}
               onChange={(text, at, kind) => {
+                caretTouched = true;
                 commit(text, at, kind);
                 setCaret(at);
                 setDismissed(null);
               }}
-              onCaret={setCaret}
+              onCaret={(at) => {
+                caretTouched = true;
+                setCaret(at);
+              }}
               onKeyDown={onKeyDown}
               onPasteFiles={props.phone ? undefined : (files) => attachPicked(files)}
               onPasteNative={!props.phone && isTauriDesktop() ? pasteNative : undefined}
@@ -1084,14 +1188,22 @@ export function Composer(props: ComposerProps) {
             disabled={props.readOnly}
             placeholder={placeholder()}
             ariaLabel="Message"
+            opts={tokenOpts}
+            chipLabel={chipLabel}
+            chipThumb={chipThumb}
+            onPasteFiles={(files) => attachPicked(files)}
             api={(api) => (editor = api)}
             onHistory={travel}
             onChange={(text, at, kind) => {
+              caretTouched = true;
               commit(text, at, kind);
               setCaret(at);
               setDismissed(null);
             }}
-            onCaret={setCaret}
+            onCaret={(at) => {
+              caretTouched = true;
+              setCaret(at);
+            }}
             onKeyDown={onKeyDown}
             onPasteText={onPasteText}
           />

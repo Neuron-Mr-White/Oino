@@ -15,7 +15,10 @@
  *
  * Chips are atomic: Backspace/Delete next to one removes the whole token
  * (handled in `beforeinput`, which GBoard also fires), the caret can't land
- * inside one, paste/drop insert plain text only.
+ * inside one, paste/drop insert plain text only. Copy / cut put the draft's
+ * own text (the chips' tokens) on the clipboard, so pasting it back — here or
+ * in another chat — makes the same chips again (`cleanPaste` drops the ones
+ * that can't resolve there).
  */
 import { createEffect, onCleanup, onMount } from 'solid-js';
 import { File as FileIcon, Folder, Image as ImageIcon, Sparkles, SquareSlash } from 'lucide-solid';
@@ -53,8 +56,14 @@ export function ChipEditor(props: {
   /** UNI-285: the label for a chip the token itself can't name — an image
    *  chip's "image N" (its position among the pending images). */
   chipLabel?: (chip: Chip) => string | undefined;
+  /** An image chip's thumbnail (`data:`/blob URL), shown instead of its icon. */
+  chipThumb?: (chip: Chip) => string | undefined;
+  /** A click on a chip's body (not its ✕): an image chip opens the image editor, a failed file retries. */
+  onChipClick?: (chip: Chip) => void;
   /** A file chip's ✕ (the chip's token is already gone from `value` then). */
   onChipRemoved?: (chip: Chip) => void;
+  /** Rewrites pasted text before it is inserted (drops chip tokens that can't resolve here). */
+  cleanPaste?: (text: string) => string;
   onKeyDown?: (e: KeyboardEvent) => void;
   /** Read-only session (taken over): the field takes no edits, no paste. */
   disabled?: boolean;
@@ -96,7 +105,9 @@ export function ChipEditor(props: {
           : `/${chip.name}`);
   const stateKey = (chip: Chip) => {
     const st = props.chipState?.(chip);
-    return st ? `${st.status ?? ''}:${st.error ?? ''}` : '';
+    const thumb = props.chipThumb?.(chip);
+    // A thumbnail changes when the image editor replaces the bytes: length + tail tell them apart cheaply.
+    return `${st ? `${st.status ?? ''}:${st.error ?? ''}` : ''}${thumb ? `|${thumb.length}:${thumb.slice(-12)}` : ''}`;
   };
 
   // ── DOM ⇄ text ─────────────────────────────────────────────────────
@@ -189,17 +200,53 @@ export function ChipEditor(props: {
     el.contentEditable = 'false';
     el.dataset.raw = chip.raw;
     el.dataset.kind = chip.kind;
+    if (chip.kind === 'command' && chip.mode) el.dataset.mode = '';
     const st = props.chipState?.(chip);
     if (st?.status) el.dataset.status = st.status;
     const label = labelOf(chip);
     const icon =
       chip.kind === 'image' ? <ImageIcon size={13} /> : chip.kind === 'file' ? <FileIcon size={13} /> : chip.kind === 'path' ? (chip.path.endsWith('/') ? <Folder size={13} /> : <FileIcon size={13} />) : chip.kind === 'skill' ? <Sparkles size={13} /> : <SquareSlash size={13} />;
-    el.append(icon as Node);
+    const thumb = props.chipThumb?.(chip);
+    if (thumb) {
+      const img = document.createElement('img');
+      img.className = 'ichip-thumb';
+      img.src = thumb;
+      img.alt = '';
+      img.draggable = false;
+      el.append(img);
+    } else el.append(icon as Node);
+    if (props.onChipClick) {
+      el.addEventListener('mousedown', (e) => {
+        if ((e.target as HTMLElement).closest('.ichip-x')) return;
+        e.preventDefault();
+      });
+      el.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.ichip-x')) return;
+        e.preventDefault();
+        props.onChipClick?.(chip);
+      });
+    }
     const text = document.createElement('span');
     text.className = 'ichip-label';
     text.textContent = label;
-    el.title = chip.kind === 'file' ? (st?.status === 'error' ? `${chip.name}: ${st.error ?? 'upload failed'}` : chip.name) : chip.kind === 'path' ? chip.path : chip.raw;
-    el.setAttribute('aria-label', `${chip.kind === 'command' ? 'command' : chip.kind === 'skill' ? 'skill' : chip.kind === 'image' ? 'image' : 'file'} ${text.textContent}${st?.status === 'uploading' ? ', uploading' : st?.status === 'error' ? ', failed' : ''}`);
+    el.title =
+      chip.kind === 'file'
+        ? st?.status === 'error'
+          ? `${chip.name}: ${st.error ?? 'upload failed'}`
+          : chip.name
+        : chip.kind === 'path'
+          ? chip.path
+          : chip.kind === 'image'
+            ? st?.status === 'error'
+              ? `${label}: ${st.error ?? 'failed'}`
+              : label
+            : chip.kind === 'skill'
+              ? `skill ${chip.name}`
+              : chip.kind === 'command' && chip.mode
+                ? `${chip.raw} mode`
+                : chip.raw;
+    const kindWord = chip.kind === 'command' ? (chip.mode ? 'mode' : 'command') : chip.kind === 'skill' ? 'skill' : chip.kind === 'image' ? 'image' : 'file';
+    el.setAttribute('aria-label', `${kindWord} ${text.textContent}${st?.status === 'uploading' ? ', uploading' : st?.status === 'error' ? ', failed' : ''}`);
     el.append(text);
     if (st?.status === 'uploading') {
       const spin = document.createElement('span');
@@ -379,6 +426,24 @@ export function ChipEditor(props: {
     const next = text.slice(0, start) + plain + text.slice(end);
     replaceText(next, start + plain.length, kind);
   };
+  /** The draft text of the current selection (chips as their tokens), if it's inside the field. */
+  const selectedText = (): string | undefined => {
+    const sel = document.getSelection();
+    if (!sel || !sel.rangeCount || sel.isCollapsed || !sel.anchorNode || !root.contains(sel.anchorNode) || !sel.focusNode || !root.contains(sel.focusNode)) return undefined;
+    const a = offsetOf(sel.anchorNode, sel.anchorOffset);
+    const b = offsetOf(sel.focusNode, sel.focusOffset);
+    // A selection edge inside a chip snaps to its end; take the whole chip on the start side too.
+    const startNode = chipOf(a <= b ? sel.anchorNode : sel.focusNode);
+    const lo = startNode ? offsetOf(startNode, 0) - (startNode.dataset.raw?.length ?? 0) : Math.min(a, b);
+    return serialize(root).slice(Math.max(0, lo), Math.max(a, b));
+  };
+  const onCopy = (e: ClipboardEvent, cut: boolean) => {
+    const text = selectedText();
+    if (text === undefined || !e.clipboardData) return;
+    e.preventDefault();
+    e.clipboardData.setData('text/plain', text);
+    if (cut && !props.disabled) insertPlain('', 'delete');
+  };
   const onPaste = (e: ClipboardEvent) => {
     e.preventDefault();
     if (props.disabled) return;
@@ -396,7 +461,7 @@ export function ChipEditor(props: {
     }
     if (paste.kind === 'text') {
       if (props.onPasteText?.(paste.text)) return;
-      insertPlain(paste.text);
+      insertPlain(props.cleanPaste ? props.cleanPaste(paste.text) : paste.text);
     }
     else if (paste.kind === 'native') {
       const fallback = paste.text;
@@ -476,6 +541,8 @@ export function ChipEditor(props: {
         queueMicrotask(sync);
       }}
       onPaste={onPaste}
+      onCopy={(e) => onCopy(e, false)}
+      onCut={(e) => onCopy(e, true)}
       onDrop={(e) => e.preventDefault()}
       onKeyDown={(e) => {
         if (props.disabled && e.key !== 'Escape') {

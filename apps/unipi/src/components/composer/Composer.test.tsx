@@ -129,7 +129,7 @@ describe('placeholder by state (Z-57)', () => {
   it('an empty session shows the capability hint; with history, the follow-up hint', async () => {
     const empty = await openSession(0);
     const a = mountComposer(empty);
-    expect(a.field().getAttribute('data-placeholder')).toBe('Ask anything — / for commands, @ for files');
+    expect(a.field().getAttribute('data-placeholder')).toBe('Ask anything — / for commands, $ for skills, @ for files');
 
     const full = await openSession(2);
     const b = mountComposer(full);
@@ -322,13 +322,28 @@ describe('the / menu (Z-62)', () => {
     expect(labels).toContain('app');
     expect(labels).toContain('command');
     expect(labels).toContain('prompt');
-    expect(labels).toContain('skill');
+    // Skills have the `$` menu (owner spec 2026-11-03); pi's `/skill:` form still lists them.
+    expect(labels).not.toContain('skill');
 
-    c.setText('/rev');
+    c.setText('/skill:rev');
     await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')!.textContent).toContain('/skill:review'));
     c.key({ key: 'Enter' });
     await waitFor(() => expect(composerDraft(s.key).text).toBe('/skill:review '));
     expect(c.view.container.querySelector('[data-testid="slash-menu"]')).toBeNull();
+  });
+
+  it('a picked mode command is a mode chip and is sent as the command with its task', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/unipi:go');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).not.toBeNull());
+    c.key({ key: 'Tab' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('/unipi:goal '));
+    await waitFor(() => expect(c.field().querySelector('.ichip[data-kind=command][data-mode]')).not.toBeNull());
+    c.type('ship it');
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt')).toBe(true));
+    expect((world.log.find((e) => e.kind === 'cmd' && e.op === 'prompt')!.args as { message: string }).message).toBe('/unipi:goal ship it');
   });
 
   it('an unknown /command is never sent as a prompt', async () => {
@@ -350,6 +365,31 @@ describe('the / menu (Z-62)', () => {
     expect(c.view.container.querySelector('[data-testid="slash-menu"]')).toBeNull();
     c.setText('/m');
     await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).not.toBeNull());
+  });
+});
+
+describe('the $ skills menu (owner spec 2026-11-03)', () => {
+  it('$ anywhere lists the skills; Enter or Tab makes a skill chip that is sent as pi\'s /skill: invocation', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('fix the bug with $re');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="skill-menu"]')).not.toBeNull());
+    expect(c.view.container.querySelector('[data-testid="skill-menu"]')!.textContent).toContain('$review');
+    c.key({ key: 'Tab' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('fix the bug with $review '));
+    expect(c.view.container.querySelector('[data-testid="skill-menu"]')).toBeNull();
+    await waitFor(() => expect(c.field().querySelector('.ichip[data-kind=skill]')?.textContent).toContain('review'));
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt')).toBe(true));
+    expect((world.log.find((e) => e.kind === 'cmd' && e.op === 'prompt')!.args as { message: string }).message).toBe('/skill:review fix the bug with $review');
+  });
+
+  it('a price like $5 never opens it', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('costs $5');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(c.view.container.querySelector('[data-testid="skill-menu"]')).toBeNull();
   });
 });
 

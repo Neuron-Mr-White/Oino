@@ -222,7 +222,7 @@ describe('turn tail', () => {
     fireEvent.click(items().find((el) => el.textContent?.includes('Edit message'))!);
     await waitFor(() => expect(undone).toEqual(['u1']));
     await waitFor(() => expect(w.log.some((e) => e.op === '_oino/navigate_tree')).toBe(true));
-    await waitFor(() => expect(composerDraft(s.key).text).toBe('Question one'));
+    await waitFor(() => expect(composerDraft(s.key).text).toMatch(/^Question one \[image]@img:\S+ $/));
   });
 
   it('edits a user message: tree jump + text and images back in the composer (Z-28)', async () => {
@@ -232,7 +232,7 @@ describe('turn tail', () => {
     fireEvent.click(edit);
     await waitFor(() => expect(w.log.some((e) => e.op === '_oino/navigate_tree')).toBe(true));
     expect(w.log.find((e) => e.op === '_oino/navigate_tree')!.args).toMatchObject({ targetId: 'u1' });
-    await waitFor(() => expect(composerDraft(s.key).text).toBe('Question one'));
+    await waitFor(() => expect(composerDraft(s.key).text).toMatch(/^Question one \[image]@img:\S+ $/));
     expect(composerDraft(s.key).images).toEqual([{ mimeType: 'image/png', data: 'AAAA' }]);
   });
 });

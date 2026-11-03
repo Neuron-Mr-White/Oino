@@ -1,8 +1,8 @@
 /**
  * The `/` menu (WP-A12, Z-62): commands, prompt templates and skills of the
  * open session, one row each with its source label (`app`, `command`,
- * `prompt`, `skill` — `lib/chat/commands.ts`), above the composer. No `#`
- * conversations / `$` skills triggers (Z-62 ruling: unipi keeps `/` and `@`).
+ * `prompt`, `skill` — `lib/chat/commands.ts`), above the composer. The same
+ * list is the `$` skills menu (owner spec 2026-11-03, `prefix="$"`).
  *
  * Keyboard: ↑/↓ move, Enter/Tab pick, Esc closes (handled by the composer's
  * key path — the rows are buttons, so a pointer pick works too).
@@ -23,9 +23,13 @@ export function SlashMenu(props: {
   onPick: (name: string) => void;
   onHover: (index: number) => void;
   label?: string;
+  /** The trigger shown before each name: `/` (commands) or `$` (skills). */
+  prefix?: '/' | '$';
+  testId?: string;
 }) {
+  const p = () => props.prefix ?? '/';
   return (
-    <div class="cmenu" role="listbox" aria-label={props.label ?? 'Commands'} data-testid="slash-menu">
+    <div class="cmenu" role="listbox" aria-label={props.label ?? 'Commands'} data-testid={props.testId ?? 'slash-menu'}>
       <For each={props.items}>
         {(c, i) => (
           <button
@@ -39,9 +43,12 @@ export function SlashMenu(props: {
             onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => props.onHover(i())}
             onClick={() => props.onPick(c.name)}
-            title={c.description ? `/${c.name} — ${c.description}` : `/${c.name}`}
+            title={c.description ? `${p()}${c.name} — ${c.description}` : `${p()}${c.name}`}
           >
-            <span class="cmenu-name">/{c.name}</span>
+            <span class="cmenu-name">
+              {p()}
+              {c.name}
+            </span>
             <Show when={c.description}>
               <span class="cmenu-desc">{c.description}</span>
             </Show>

@@ -97,7 +97,7 @@ describe('composer handoff', () => {
   it('edit restores text + images and replaces quotes', () => {
     addComposerQuote('h1/s2', 'old quote');
     restoreComposer('h1/s2', { text: 'the original message', images: [{ mimeType: 'image/png', data: 'BBBB' }] });
-    expect(composerDraft('h1/s2')).toEqual({ text: 'the original message', quotes: [], images: [{ mimeType: 'image/png', data: 'BBBB' }], chips: [] });
+    expect(composerDraft('h1/s2')).toEqual({ text: expect.stringMatching(/^the original message \[image]@img:\S+ $/), quotes: [], images: [{ mimeType: 'image/png', data: 'BBBB' }], chips: [] });
   });
 
   it('clears back to the shared empty draft', () => {

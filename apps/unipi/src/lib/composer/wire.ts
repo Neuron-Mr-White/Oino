@@ -44,7 +44,8 @@ export function outgoingMessage(text: string, attachments: readonly Att[], comma
     files.text,
     attachments.filter((a) => a.kind === 'file' && !a.placed && !files.sentIds.includes(a.id)),
   );
-  out = serializeSkills(out, commands);
+  // The space a trailing chip keeps after itself is not part of the message.
+  out = serializeSkills(out.replace(/[ \t]+$/, ''), commands);
   const byId = new Map(readyImages.map((a) => [a.id, a]));
   return { text: out, images: ids.map((id) => byId.get(id)!).map((a) => ({ mimeType: a.mime, data: a.data! })) };
 }

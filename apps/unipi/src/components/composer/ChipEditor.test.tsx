@@ -284,3 +284,70 @@ describe('ChipEditor (UNI-212)', () => {
     expect(root.querySelector('div')).toBeNull();
   });
 });
+
+describe('ChipEditor chips (owner spec 2026-11-03)', () => {
+  const copyEvent = (type: 'copy' | 'cut') => {
+    const data = new Map<string, string>();
+    const ev = new Event(type, { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(ev, 'clipboardData', { value: { setData: (t: string, v: string) => data.set(t, v), getData: (t: string) => data.get(t) ?? '' } });
+    return { ev, data };
+  };
+
+  it('copy puts the draft text with the chips as their tokens on the clipboard; cut removes them', () => {
+    const text = `a $review b ${attachmentToken('x.pdf', 'f1')} c`;
+    const { root, value } = mountEditor(text, { commands: new Set(['skill:review']) });
+    expect(root.querySelectorAll('.ichip')).toHaveLength(2);
+    root.focus();
+    const range = document.createRange();
+    range.setStart(root.firstChild!, 2);
+    range.setEnd(root.lastChild!, 2);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(range);
+    const copy = copyEvent('copy');
+    root.dispatchEvent(copy.ev);
+    expect(copy.ev.defaultPrevented).toBe(true);
+    expect(copy.data.get('text/plain')).toBe(`$review b ${attachmentToken('x.pdf', 'f1')} c`);
+    expect(value()).toBe(text);
+    const cut = copyEvent('cut');
+    root.dispatchEvent(cut.ev);
+    expect(value()).toBe('a ');
+  });
+
+  it('pasted text goes through cleanPaste (chips from another chat are dropped)', () => {
+    const [value, setValue] = createSignal('');
+    const view = render(() => <ChipEditor value={value()} onChange={(t) => setValue(t)} opts={() => ({})} cleanPaste={(t) => t.replace('[image]@img:other ', '')} />);
+    const root = view.container.querySelector('.chip-field') as HTMLDivElement;
+    root.focus();
+    const ev = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(ev, 'clipboardData', { value: { getData: (t: string) => (t === 'text/plain' ? 'see [image]@img:other here' : ''), types: ['text/plain'], files: [], items: [] } });
+    root.dispatchEvent(ev);
+    expect(value()).toBe('see here');
+  });
+
+  it('an image chip shows its thumbnail and label; a click on it (not its ✕) calls onChipClick', () => {
+    const clicks: string[] = [];
+    const [value] = createSignal('look [image]@img:i1 now');
+    const view = render(() => (
+      <ChipEditor
+        value={value()}
+        onChange={() => undefined}
+        opts={() => ({})}
+        chipLabel={(c) => (c.kind === 'image' ? 'image 1' : undefined)}
+        chipThumb={(c) => (c.kind === 'image' ? 'data:image/png;base64,QQ' : undefined)}
+        onChipClick={(c) => clicks.push(c.kind)}
+      />
+    ));
+    const chip = view.container.querySelector('.ichip[data-kind=image]') as HTMLElement;
+    expect(chip.querySelector('img.ichip-thumb')!.getAttribute('src')).toBe('data:image/png;base64,QQ');
+    expect(chip.querySelector('.ichip-label')!.textContent).toBe('image 1');
+    fireEvent.click(chip.querySelector('.ichip-label')!);
+    expect(clicks).toEqual(['image']);
+  });
+
+  it('a mode command chip is marked data-mode', () => {
+    const { root } = mountEditor('/graph build it', { commands: new Set(['graph']) });
+    const chip = root.querySelector('.ichip[data-kind=command]') as HTMLElement;
+    expect(chip.dataset.mode).toBe('');
+    expect(chip.getAttribute('aria-label')).toBe('mode /graph');
+  });
+});
