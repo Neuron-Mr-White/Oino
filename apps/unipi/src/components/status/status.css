@@ -127,3 +127,24 @@ html[data-shell=phone] .conv:has(.tl-banner) .status-capsule { top: 114px; }
 .lh-node[data-status=running] .lh-node-status { color: var(--color-wm-cyan); }
 .lh-node-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); }
 .lh-node-text[data-open] { white-space: normal; overflow-wrap: anywhere; grid-column: 1 / -1; }
+/* [graph-view] the profile · model · thinking the node's subagent ran on (muted
+   second line), a spinner for running nodes and clear failed / blocked /
+   superseded styles (the word always carries the state too). */
+.lh-node-run { grid-column: 1 / -1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; line-height: 16px; color: var(--color-text-dim); }
+.lh-node-failure { grid-column: 1 / -1; white-space: normal; overflow-wrap: anywhere; font-size: 11.5px; line-height: 16px; color: var(--color-wm-red); }
+.lh-node-spin { flex: none; width: 12px; height: 12px; margin-top: 3px; margin-left: -2px; margin-right: -2px; color: var(--color-wm-cyan); animation: lh-node-spin 0.9s linear infinite; }
+@keyframes lh-node-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lh-node-spin { animation: none; } }
+.lh-dot[data-state=blocked] { background: transparent; box-shadow: inset 0 0 0 2px var(--color-amber); }
+.lh-node[data-state=failed] { background: color-mix(in srgb, var(--color-wm-red) 8%, transparent); }
+.lh-node[data-state=blocked] .lh-node-status { color: var(--color-amber); }
+.lh-node[data-state=off] .lh-node-id, .lh-node[data-state=off] .lh-node-text { text-decoration: line-through; text-decoration-color: var(--color-text-dim); color: var(--color-text-dim); }
+.lh-node[data-state=off] .lh-node-status { font-style: italic; }
+html[data-shell=phone] .lh-node { padding-block: 8px; }
+html[data-shell=phone] .lh-node-main { min-height: 40px; }
+
+/* [graph-view] the phone's full-screen graph sheet (the LH section, roomier). */
+.graph-sheet-body { padding: 4px 4px 24px; }
+.graph-sheet-body .status-section { border: 0; padding-inline: 12px; }
+.graph-sheet-body .lh-graph-svg { max-height: 46vh; }
+.graph-sheet-body .lh-graph-svg svg { max-height: calc(46vh - 16px); }

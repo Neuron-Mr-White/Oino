@@ -11,6 +11,10 @@
  * that command in the composer (`lib/status/modeStarter.ts`) instead of
  * sending anything; Ctrl/Cmd+Shift+M cycles the starters without the menu.
  * Hidden while `unipi.long-horizon` is off (no dead control).
+ *
+ * [graph-view] While graph / swarm mode runs a graph, the chip opens the graph
+ * directly (the status pane's LH section, scrolled to it) and a chevron beside
+ * it keeps the mode menu one click away.
  */
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { sessions } from '../../lib/session/store';
@@ -20,6 +24,8 @@ import { lhSummary, LH_PROGRESS_TOPIC, LH_STATE_TOPIC, parseLhProgress, parseLhS
 import { STARTER_HINT, STARTER_ORDER, withStarter, type ModeStarter } from '../../lib/status/modeStarter';
 import { MODE_DESCRIPTION, type LhModeChoice } from '../status/lhMode';
 import { useLhEnabled } from '../status/LhSection';
+import { chipOpensGraph, openGraphView } from '../status/GraphView';
+import { ChevronDown } from 'lucide-solid';
 import { AnchoredMenu, MenuSeparator } from '../board/AnchoredMenu';
 import { ModeIcon } from '../chat/ModeChip';
 import { RollingLabel } from '../RollingLabel';
@@ -29,7 +35,7 @@ const PHASE_WORD = { active: 'Running', selected: 'On — the next message runs 
 /** What the chip says when the PC's agent host can't report the working mode. */
 export const UNSUPPORTED_TEXT = "This PC's agent host is older than the app and can't report the working mode. Update Unipi on that PC.";
 
-export function ModeChip(props: { hostId: string; sessionId: string }) {
+export function ModeChip(props: { hostId: string; sessionId: string; cwd?: string }) {
   const s = createMemo(() => sessions().ensure(props.hostId, props.sessionId));
   createEffect(
     on(s, (handle) => {
@@ -63,8 +69,15 @@ export function ModeChip(props: { hostId: string; sessionId: string }) {
    *  the chip says so instead of a silent "Plain" that a /graph switch never changes. */
   const unsupported = () => !summary() && s().state.topicsUnsupported === true;
   const label = () => summary()?.label ?? (unsupported() ? 'Mode ?' : 'Plain');
+  const opensGraph = () => chipOpensGraph(summary());
+  const menuAt = (el: HTMLElement) => {
+    setAnchor(el.getBoundingClientRect());
+    setOpen(!open());
+  };
   const aria = () =>
-    unsupported() ? `Working mode unknown: ${UNSUPPORTED_TEXT} Open the mode menu` : `Working mode: ${label()}${summary()?.phase === 'paused' ? ', paused' : ''}. Open the mode menu`;
+    opensGraph()
+      ? `Working mode: ${label()}${summary()?.countText ? ` ${summary()!.countText}` : ''}. Open the graph`
+      : unsupported() ? `Working mode unknown: ${UNSUPPORTED_TEXT} Open the mode menu` : `Working mode: ${label()}${summary()?.phase === 'paused' ? ', paused' : ''}. Open the mode menu`;
 
   return (
     <Show when={enabled()}>
@@ -74,13 +87,18 @@ export function ModeChip(props: { hostId: string; sessionId: string }) {
         data-mode={summary()?.mode ?? 'none'}
         data-phase={summary()?.phase ?? (unsupported() ? 'unsupported' : undefined)}
         aria-label={aria()}
-        aria-haspopup="menu"
-        aria-expanded={open()}
-        title={unsupported() ? UNSUPPORTED_TEXT : 'Working mode — Goal / Ralph / Swarm / Graph (Ctrl Shift M)'}
+        aria-expanded={opensGraph() ? undefined : open()}
+        aria-haspopup={opensGraph() ? undefined : 'menu'}
+        title={unsupported() ? UNSUPPORTED_TEXT : opensGraph() ? 'Open the graph — nodes, their models and progress' : 'Working mode — Goal / Ralph / Swarm / Graph (Ctrl Shift M)'}
         onClick={(e) => {
-          setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect());
-          setOpen(!open());
+          if (opensGraph()) {
+            setOpen(false);
+            openGraphView({ hostId: props.hostId, sessionId: props.sessionId, path: props.cwd });
+            return;
+          }
+          menuAt(e.currentTarget as HTMLElement);
         }}
+        data-opens={opensGraph() ? 'graph' : undefined}
         data-testid="mode-chip"
       >
         <span class="hdr-mode-icon">
@@ -97,6 +115,21 @@ export function ModeChip(props: { hostId: string; sessionId: string }) {
           <span class="hdr-mode-pulse" aria-hidden="true" />
         </Show>
       </button>
+      <Show when={opensGraph()}>
+        <button
+          type="button"
+          class="hdr-mode-more"
+          data-mode={summary()?.mode ?? 'none'}
+          aria-label="Working mode menu"
+          aria-haspopup="menu"
+          aria-expanded={open()}
+          title="Working mode — switch or stop"
+          onClick={(e) => menuAt(((e.currentTarget as HTMLElement).previousElementSibling as HTMLElement | null) ?? (e.currentTarget as HTMLElement))}
+          data-testid="mode-chip-menu"
+        >
+          <ChevronDown size={13} />
+        </button>
+      </Show>
       <Show when={open() && anchor()}>
         <AnchoredMenu anchor={anchor()!} alignEnd width={300} label="Working mode" onDismiss={() => setOpen(false)}>
           <div class="mode-switch-head" data-mode={summary()?.mode ?? 'none'}>

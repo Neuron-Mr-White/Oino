@@ -15,6 +15,8 @@ import { composerDraft, resetComposerDrafts, setComposerText } from '../../lib/c
 import { createMockHost, type MockScenario, type MockWorld } from '../../dev/mock/host';
 import { SCENARIOS } from '../../dev/mock/scenarios';
 import { ModeChip } from './ModeChip';
+import { statusSectionFocus } from '../status/StatusPane';
+import { graphSheetTarget, closeGraphView } from '../status/GraphView';
 
 const HOST = 'this-pc';
 const SESSION = 's001';
@@ -74,7 +76,7 @@ describe('ModeChip (Z-74)', () => {
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
     await waitFor(() => expect(screen.getByTestId('mode-chip')).toBeTruthy());
     setComposerText(KEY, '');
-    fireEvent.click(screen.getByTestId('mode-chip'));
+    fireEvent.click(screen.getByTestId('mode-chip-menu'));
     const menu = await screen.findByRole('menu');
     expect(menu.textContent).toContain('Start');
     fireEvent.click(screen.getByTestId('mode-start-goal'));
@@ -82,7 +84,7 @@ describe('ModeChip (Z-74)', () => {
     expect(composerDraft(KEY).text).toBe('/goal ');
     // and the chip's own starter keeps the words already typed
     setComposerText(KEY, 'ship the picker');
-    fireEvent.click(screen.getByTestId('mode-chip'));
+    fireEvent.click(screen.getByTestId('mode-chip-menu'));
     await screen.findByRole('menu');
     fireEvent.click(screen.getByTestId('mode-start-ralph'));
     await tick();
@@ -95,10 +97,47 @@ describe('ModeChip (Z-74)', () => {
     const world = await boot(SCENARIOS['mode-chip']!);
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
     await waitFor(() => expect(screen.getByTestId('mode-chip')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('mode-chip'));
+    fireEvent.click(screen.getByTestId('mode-chip-menu'));
     await screen.findByRole('menu');
     fireEvent.click(screen.getByTestId('mode-plain'));
     await waitFor(() => expect(promptMessages(world)).toContain('/regular'));
+  });
+
+  // [graph-view] owner 2026-11-03: "where can I see the graph?" — with graph / swarm mode
+  // running a graph, the chip opens it (desktop: the status pane's LH section); the
+  // chevron beside it keeps the mode menu.
+  it('opens the graph directly in graph mode; the chevron opens the menu', async () => {
+    await boot(SCENARIOS['mode-chip']!);
+    render(() => <ModeChip hostId={HOST} sessionId={SESSION} cwd="/home/me/proj" />);
+    await waitFor(() => expect(screen.getByTestId('mode-chip').getAttribute('data-opens')).toBe('graph'));
+    fireEvent.click(screen.getByTestId('mode-chip'));
+    expect(statusSectionFocus()).toBe('lh');
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByTestId('mode-chip').getAttribute('aria-label')).toContain('Open the graph');
+    fireEvent.click(screen.getByTestId('mode-chip-menu'));
+    expect((await screen.findByRole('menu')).textContent).toContain('Start');
+  });
+
+  it('opens the full-screen graph sheet on the phone', async () => {
+    setDesktopOverride(false);
+    await boot(SCENARIOS['mode-chip']!);
+    render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
+    await waitFor(() => expect(screen.getByTestId('mode-chip').getAttribute('data-opens')).toBe('graph'));
+    fireEvent.click(screen.getByTestId('mode-chip'));
+    expect(graphSheetTarget()).toEqual({ hostId: HOST, sessionId: SESSION });
+    closeGraphView();
+  });
+
+  it('keeps the menu on the chip while graph mode has no graph yet', async () => {
+    const world = await boot(SCENARIOS['mode-chip']!);
+    render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
+    await waitFor(() => expect(screen.getByTestId('mode-chip').getAttribute('data-opens')).toBe('graph'));
+    let seq = sessions().peek(HOST, SESSION)!.state.seq;
+    world.push(HOST, SESSION, [{ session: SESSION, seq: ++seq, event: { type: 'topic', topic: 'unipi:long-horizon:progress', data: { mode: 'graph', goal: null, ralph: null, graph: null }, sticky: true, publisher: 'unipi.long-horizon' } }]);
+    await waitFor(() => expect(screen.getByTestId('mode-chip').getAttribute('data-opens')).toBeNull());
+    expect(screen.queryByTestId('mode-chip-menu')).toBeNull();
+    fireEvent.click(screen.getByTestId('mode-chip'));
+    expect(await screen.findByRole('menu')).toBeTruthy();
   });
 
   // [graph-mode] P0: `/graph <task>` mid-chat must light the chip from the extension's mode

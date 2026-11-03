@@ -36,6 +36,7 @@ import { DesktopUpdatePrompt } from '../UpdateCard';
 import { PhoneShell } from './PhoneShell';
 import { LinkAnchorMenu } from '../LinkAnchorMenu';
 import { MermaidViewer } from '../chat/MermaidViewer';
+import { GraphSheetLayer } from '../status/GraphView';
 import { StatusPaneLayer } from '../status/StatusPane';
 import { Previewer } from '../media/Previewer';
 import Editor from '../../screens/Editor';
@@ -391,6 +392,7 @@ export function AppShell(props: ParentProps) {
         </Show>
         <MermaidViewer />
         <StatusPaneLayer />
+        <GraphSheetLayer />
         <Previewer />
         <LinkAnchorMenu />
         <CommandCenter />

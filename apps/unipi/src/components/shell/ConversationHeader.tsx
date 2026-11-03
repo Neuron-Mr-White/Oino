@@ -12,7 +12,7 @@
  *   registerChatAction('rename', { run: (ctx) => openRename(ctx) });
  */
 import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
-import { ArrowLeft, Brain, Copy, CopyPlus, Ellipsis, FileText, Folder, FolderInput, FolderLock, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
+import { ArrowLeft, Brain, Copy, Workflow, CopyPlus, Ellipsis, FileText, Folder, FolderInput, FolderLock, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { observeTitleOverflow, syncTitleOverflow } from '../sidebar/SessionRow';
 import { copyText } from '../../lib/board/share';
@@ -24,7 +24,7 @@ import { ShellNeedsYouBell } from '../NeedsYouBell';
 import { setNeedsYouOpen } from '../../lib/needsYouOpen';
 import type { IconComponent } from '../../lib/panes/kinds';
 
-export type ChatActionId = 'rename' | 'fork' | 'duplicate' | 'export' | 'move-workspace' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'memory-consolidate' | 'info';
+export type ChatActionId = 'rename' | 'fork' | 'duplicate' | 'export' | 'move-workspace' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'memory-consolidate' | 'view-graph' | 'info';
 
 export type ChatActionCtx = { hostId: string; sessionId: string; title: string; cwd?: string; file?: string };
 
@@ -43,6 +43,8 @@ export const CHAT_ACTIONS: Array<{ id: ChatActionId; label: string; icon: IconCo
   { id: 'copy-log', label: 'Copy log path', icon: FileText, group: 1 },
   { id: 'reveal', label: 'Reveal folder', icon: FolderOpen, group: 1 },
   // Owner 2026-11-03: moved out of Settings › Memory — it writes this chat's memories.
+  // [graph-view] while the chat has a graph / swarm run: its DAG and per-node models.
+  { id: 'view-graph', label: 'View graph', icon: Workflow, group: 2 },
   { id: 'memory-consolidate', label: 'Consolidate memories', icon: Brain, group: 2 },
   { id: 'info', label: 'Session info', icon: Info, group: 2 },
 ];

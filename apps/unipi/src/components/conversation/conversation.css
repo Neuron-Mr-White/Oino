@@ -38,6 +38,26 @@
   background: transparent;
   color: color-mix(in srgb, var(--mode-tint) 70%, var(--color-text-dim));
 }
+/* [graph-view] graph / swarm with a graph: the pill opens the graph, its chevron the menu. */
+.hdr-mode[data-opens='graph'] { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 8px; }
+.hdr-mode-more {
+  --mode-tint: var(--color-text-muted);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 30px;
+  min-height: 30px;
+  margin-left: -1px;
+  border-radius: 0 9999px 9999px 0;
+  border: 1px solid color-mix(in srgb, var(--mode-tint) 45%, transparent);
+  background: color-mix(in srgb, var(--mode-tint) 13%, transparent);
+  color: var(--mode-tint);
+}
+.hdr-mode-more[data-mode='swarm'] { --mode-tint: #b496f5; }
+.hdr-mode-more[data-mode='graph'] { --mode-tint: var(--color-wm-cyan); }
+.hdr-mode-more:hover { background: color-mix(in srgb, var(--mode-tint) 20%, transparent); }
+.hdr-mode-more:focus-visible, .hdr-mode:focus-visible { outline: 2px solid var(--mode-tint); outline-offset: 1px; }
 .hdr-mode-icon { flex: 0 0 auto; display: grid; place-items: center; }
 .hdr-mode-label { min-width: 0; max-width: 116px; overflow: hidden; text-overflow: ellipsis; }
 .hdr-mode-count { flex: 0 0 auto; font-size: 11.5px; font-weight: 500; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }

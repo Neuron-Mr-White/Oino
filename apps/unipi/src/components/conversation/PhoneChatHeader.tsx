@@ -43,6 +43,7 @@ import { lhSummary, LH_EXTENSION_ID, LH_PROGRESS_TOPIC, LH_STATE_TOPIC, parseLhP
 import { parseExtensions } from '../session/modalData';
 import { STARTER_HINT, STARTER_ORDER, withStarter } from '../../lib/status/modeStarter';
 import { openStatusSection } from '../status/StatusPane';
+import { hasGraph, openGraphView } from '../status/GraphView';
 import { openBtwTab, openTreeTab } from '../panes/tabs/sessionTabs';
 import { openPhoneTerminal } from '../panes/tabs/terminalPhone';
 import { openSessionModal } from '../session/modalTarget';
@@ -147,6 +148,8 @@ export function PhoneChatHeader(props: {
     const chat: ActionItem[] = [];
     if (sid && hasPermission()) chat.push({ id: 'mode', label: 'Mode', icon: ShieldCheck, value: permissionModeLabel(session()!), onSelect: () => openModeSheet(session()!.key) });
     if (sid && lh() !== undefined) chat.push({ id: 'working-mode', label: 'Working mode', icon: Workflow, value: lh()?.label ?? 'Plain', onSelect: () => setLhMenu(true) });
+    // [graph-view] the graph / swarm run's DAG and per-node models, full screen.
+    if (sid && hasGraph(lh())) chat.push({ id: 'view-graph', label: 'View graph', icon: Workflow, value: lh()?.countText, onSelect: () => openGraphView({ hostId: props.hostId, sessionId: sid, path: props.cwd }) });
     if (sid) {
       chat.push(
         { id: 'info', label: 'Context & info', icon: Info, value: skills(), onSelect: () => openSessionModal({ hostId: props.hostId, sessionId: sid, tab: 'context' }) },
@@ -198,7 +201,12 @@ export function PhoneChatHeader(props: {
     const plain: ActionItem[] = lh()
       ? [{ id: 'mode-plain', label: 'Plain chat', description: 'Stop the mode and run prompts plainly', onSelect: () => void s.send('/regular', { mode: 'prompt' }) }]
       : [];
-    return [starters, plain];
+    const sid = props.sessionId;
+    const graph: ActionItem[] =
+      sid && hasGraph(lh())
+        ? [{ id: 'mode-view-graph', label: 'View graph', description: 'Nodes, the model each one runs on, progress', onSelect: () => openGraphView({ hostId: props.hostId, sessionId: sid, path: props.cwd }) }]
+        : [];
+    return graph.length ? [graph, starters, plain] : [starters, plain];
   };
 
   return (

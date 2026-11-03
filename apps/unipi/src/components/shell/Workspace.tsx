@@ -209,7 +209,7 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
                 {(sessionId) => (
                   <>
                     <CronChip hostId={props.hostId} sessionId={sessionId()} />
-                    <ModeChip hostId={props.hostId} sessionId={sessionId()} />
+                    <ModeChip hostId={props.hostId} sessionId={sessionId()} cwd={cwd() || undefined} />
                   </>
                 )}
               </Show>

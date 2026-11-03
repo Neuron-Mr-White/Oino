@@ -20,6 +20,9 @@ import { duplicateSession } from '../../lib/session/duplicate';
 import { setAppNavigate } from '../../lib/nav';
 import { ImportSessionDialog } from './ImportSession';
 import { MemoryBrowserLayer, openMemoryBrowserFor } from '../memory/MemoryBrowser';
+import { hasGraph, openGraphView } from '../status/GraphView';
+import { sessions } from '../../lib/session/store';
+import { lhSummary, LH_PROGRESS_TOPIC, LH_STATE_TOPIC, parseLhProgress, parseLhState } from '../../lib/status/lh';
 
 export function BuiltinActions() {
   const navigate = useNavigate();
@@ -36,6 +39,17 @@ export function BuiltinActions() {
     registerChatAction('memory-consolidate', {
       run: (ctx) => void runInChat(ctx.hostId, ctx.sessionId, CONSOLIDATE_COMMAND),
       when: (ctx) => chatCanRun(ctx.hostId, ctx.sessionId, CONSOLIDATE_COMMAND),
+    }),
+  );
+  // [graph-view] "View graph" while this chat has a graph / swarm run (the header chip
+  // keeps the LH topics subscribed for the open chat).
+  onCleanup(
+    registerChatAction('view-graph', {
+      run: (ctx) => openGraphView({ hostId: ctx.hostId, sessionId: ctx.sessionId, path: ctx.cwd }),
+      when: (ctx) => {
+        const topics = sessions().ensure(ctx.hostId, ctx.sessionId).state.topics;
+        return hasGraph(lhSummary(parseLhState(topics[LH_STATE_TOPIC]?.data), parseLhProgress(topics[LH_PROGRESS_TOPIC]?.data)));
+      },
     }),
   );
   onCleanup(
