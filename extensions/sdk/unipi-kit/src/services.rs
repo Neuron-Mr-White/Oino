@@ -40,6 +40,8 @@ pub mod point {
     pub const SUBAGENTS_CANCEL: &str = "subagents.cancel";
     /// `unipi.subagents`: foreground `{id}`.
     pub const SUBAGENTS_FOREGROUND: &str = "subagents.foreground";
+    /// `unipi.subagents`: background `{id}` → `{backgrounded}` (one foreground run).
+    pub const SUBAGENTS_BACKGROUND: &str = "subagents.background";
     /// `unipi.subagents`: graph step → `{runId}`.
     pub const SUBAGENTS_GRAPH_RUN: &str = "subagents.graph-run";
     /// `unipi.subagents`: register an external reader (fusion sidekick).

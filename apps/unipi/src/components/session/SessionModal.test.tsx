@@ -90,14 +90,45 @@ describe('Context tab', () => {
 });
 
 describe('Running tab', () => {
-  it('shows bash, subagents, sidekick and the work-tray trees', async () => {
+  it('shows bash, ONE subagents list, sidekick and the other work-tray trees', async () => {
     await boot('modal-running');
     await waitFor(() => expect(screen.getByTestId('sm-running')).toBeTruthy());
     expect(await screen.findByText('cargo test -p unipi-watchdog')).toBeTruthy();
-    expect(await screen.findByText('Subagent · explore the layout code')).toBeTruthy();
+    expect(await screen.findByText('explore the layout code')).toBeTruthy();
     expect(await screen.findByText(/Handoff running/)).toBeTruthy();
     expect((await screen.findByTestId('sm-tray-bg')).textContent).toContain('Background tasks');
     expect(screen.getByTestId('sm-tray-dream').textContent).toContain('Dream');
+    // The subagents producer's TUI pane is never listed: one row per run, no 'RUN ' badge text.
+    expect(screen.queryByTestId('sm-tray-subagents')).toBeNull();
+    const rows = screen.getAllByTestId('sm-run-row');
+    // 5 records + the btw side agent; the records' own host agents (ag-1, ag-2, ag-3) are not extra rows.
+    expect(rows.map((r) => r.getAttribute('data-run'))).toEqual(['agent:btw-1', 'run:b2c3d4e5', 'run:a1b2c3d4', 'run:c3d4e5f6', 'run:d4e5f6a7', 'run:e5f6a7b8']);
+    const body = screen.getByTestId('sm-running').textContent ?? '';
+    expect(body).not.toMatch(/RUN |DONE|FAIL|STOP/);
+    expect(body).not.toContain('Subagent · explore the layout code');
+    // Status from the structured record status, AgentCard icons.
+    expect(rows.map((r) => r.getAttribute('data-status'))).toEqual(['running', 'running', 'running', 'done', 'failed', 'cancelled']);
+    // Profile chip, short model (full id in the tooltip), stats on their own line.
+    const done = rows[3]!;
+    expect(done.querySelector('.sm-run-chip')!.textContent).toBe('General');
+    expect(done.querySelector('.sm-run-model')!.getAttribute('title')).toBe('omniroute/cc/claude-opus-5-5');
+    expect(done.querySelector('.sm-run-model')!.textContent).not.toContain('/');
+    expect([...done.querySelectorAll('.sm-run-stat')].map((e) => e.textContent)).toEqual(['122 tools', '238 in · 88k out', '$14.23']);
+    expect(done.querySelector('.sm-elapsed')!.textContent).toBe('26m 36s');
+  });
+
+  it('status chips filter the list (All / Running / Done / Failed, Cancelled when present)', async () => {
+    await boot('modal-running');
+    await waitFor(() => expect(screen.getAllByTestId('sm-run-row').length).toBe(6));
+    expect(screen.getByTestId('sm-filter-all').textContent).toBe('All6');
+    expect(screen.getByTestId('sm-filter-running').textContent).toBe('Running3');
+    fireEvent.click(screen.getByTestId('sm-filter-failed'));
+    await waitFor(() => expect(screen.getAllByTestId('sm-run-row').map((r) => r.getAttribute('data-run'))).toEqual(['run:d4e5f6a7']));
+    expect(screen.getByTestId('sm-filter-failed').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByTestId('sm-filter-cancelled'));
+    await waitFor(() => expect(screen.getAllByTestId('sm-run-row').map((r) => r.getAttribute('data-run'))).toEqual(['run:e5f6a7b8']));
+    fireEvent.click(screen.getByTestId('sm-filter-all'));
+    await waitFor(() => expect(screen.getAllByTestId('sm-run-row').length).toBe(6));
   });
 
   it('actions send the right commands', async () => {
@@ -108,12 +139,31 @@ describe('Running tab', () => {
     fireEvent.click(await screen.findByText('Stop run'));
     await waitFor(() => expect(world.log.some((l) => l.op === 'abort')).toBe(true));
 
-    // Subagent → `_oino/agent_abort{agentId}`; all to background → the shortcut.
-    const agentRow = await screen.findByText('Subagent · explore the layout code');
-    fireEvent.click(agentRow.closest('.sm-row')!.querySelector('button')!);
+    // A record run → `subagents.cancel{id}`; To background → `subagents.background{id}` (that run only).
+    const row = () => screen.getAllByTestId('sm-run-row').find((r) => r.getAttribute('data-run') === 'run:a1b2c3d4')!;
+    await waitFor(() => expect(row()).toBeTruthy());
+    fireEvent.click(row().querySelector('button[aria-label="Stop"]')!);
+    await waitFor(() => {
+      const cmd = world.log.find((l) => l.op === '_oino/service_call' && (l.args as { name?: string }).name === 'subagents.cancel');
+      expect(cmd?.args).toMatchObject({ target: 'unipi.subagents', payload: { id: 'a1b2c3d4' } });
+    });
+    fireEvent.click(row().querySelector('button[aria-label="To background"]')!);
+    await waitFor(() => {
+      const cmd = world.log.find((l) => l.op === '_oino/service_call' && (l.args as { name?: string }).name === 'subagents.background');
+      expect(cmd?.args).toMatchObject({ target: 'unipi.subagents', payload: { id: 'a1b2c3d4' } });
+    });
+    // A background run has no To background; a finished one has no Stop.
+    const bg = screen.getAllByTestId('sm-run-row').find((r) => r.getAttribute('data-run') === 'run:b2c3d4e5')!;
+    expect(bg.querySelector('button[aria-label="To background"]')).toBeNull();
+    const fin = screen.getAllByTestId('sm-run-row').find((r) => r.getAttribute('data-run') === 'run:c3d4e5f6')!;
+    expect(fin.querySelector('button[aria-label="Stop"]')).toBeNull();
+    expect(fin.querySelector('button[aria-label="Open transcript"]')).toBeTruthy();
+    // A host-only agent → `_oino/agent_abort{agentId}`.
+    const btw = screen.getAllByTestId('sm-run-row').find((r) => r.getAttribute('data-run') === 'agent:btw-1')!;
+    fireEvent.click(btw.querySelector('button[aria-label="Stop"]')!);
     await waitFor(() => {
       const cmd = world.log.find((l) => l.op === '_oino/agent_abort');
-      expect(cmd?.args).toMatchObject({ type: '_oino/agent_abort', agentId: 'ag-1' });
+      expect(cmd?.args).toMatchObject({ type: '_oino/agent_abort', agentId: 'btw-1' });
     });
     // Running bash → Send to background = the watchdog's `/bg-detach` command.
     fireEvent.click(await screen.findByText('Send to background'));
@@ -137,7 +187,7 @@ describe('Running tab', () => {
     });
   });
 
-  it('fetchRunning fans work-tray.tab out to every loaded extension', async () => {
+  it('fetchRunning: records from subagents.list, work-tray.tab from every other loaded extension', async () => {
     const world = createMockHost({ ...SCENARIOS['modal-running']!, speed: 0 });
     setHostClientFactory(world.client);
     const { sessions } = await import('../../lib/session/store');
@@ -145,7 +195,10 @@ describe('Running tab', () => {
     await tick();
     const data = await fetchRunning(s);
     expect(data.tabs.map((t) => t.id).sort()).toEqual(['bg', 'dream']);
-    expect(data.agents).toHaveLength(2);
+    expect(data.runs?.map((r) => r.status)).toEqual(['running', 'running', 'completed', 'failed', 'cancelled']);
+    // The subagents tray pane (TUI text, reads every transcript) is not asked for.
+    expect(world.log.some((l) => l.op === '_oino/service_call' && (l.args as { name?: string; target?: string }).name === 'work-tray.tab' && (l.args as { target?: string }).target === 'unipi.subagents')).toBe(false);
+    expect(data.agents).toHaveLength(4);
     expect(data.bash[0]!.pid).toBe(4242);
     expect(data.sidekick?.detail).toBe('Handoff running');
     resetSessions();
@@ -225,26 +278,27 @@ describe('openSessionModal', () => {
 });
 
 describe('Running tab badge and empty states ([ui-chat-bits])', () => {
-  it('nothing running: no badge, each section says "Nothing running"', async () => {
+  it('nothing running: no badge, one quiet "Nothing running" line instead of empty sections', async () => {
     const world = createMockHost({ ...SCENARIOS['modal-context']!, speed: 0 });
     setHostClientFactory(world.client);
     render(() => <SessionModalLayer />);
     openSessionModal({ hostId: 'this-pc', sessionId: 's001', tab: 'running' });
     await waitFor(() => expect(screen.getByTestId('sm-running')).toBeTruthy());
-    await tick();
+    await waitFor(() => expect(screen.getByTestId('sm-nothing').textContent).toContain('Nothing running'));
     expect(screen.queryByTestId('sm-running-badge')).toBeNull();
-    expect(screen.getByTestId('sm-sec-bash').textContent).toContain('Nothing running');
-    expect(screen.getByTestId('sm-sec-agents').textContent).toContain('Nothing running');
+    expect(screen.queryByTestId('sm-sec-bash')).toBeNull();
+    expect(screen.queryByTestId('sm-sec-agents')).toBeNull();
+    expect(screen.queryByTestId('sm-sec-tray')).toBeNull();
   });
 
-  it('running work: the badge counts it (shell + live agents + sidekick + running tray)', async () => {
+  it('running work: the badge counts it (shell + live runs + sidekick + running tray)', async () => {
     await boot('modal-running');
     const badge = await screen.findByTestId('sm-running-badge');
-    // 1 shell + 2 live agents + the fusion sidekick + the running tray tabs.
-    await waitFor(() => expect(Number(badge.textContent)).toBeGreaterThanOrEqual(4));
+    // 1 shell + 3 live runs (2 records + btw) + the fusion sidekick + 1 running tray tab.
+    await waitFor(() => expect(Number(badge.textContent)).toBe(6));
     expect(badge.getAttribute('aria-label')).toBe(`${badge.textContent} running`);
     expect(screen.getByTestId('sm-sec-bash').textContent).toContain('Started');
-    expect(screen.getAllByTestId('sm-agent-row')[0]!.textContent).toContain('Running');
+    expect(screen.queryByTestId('sm-nothing')).toBeNull();
   });
 
   it('startedText: time today, date + time otherwise', async () => {

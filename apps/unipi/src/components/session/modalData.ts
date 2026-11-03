@@ -9,6 +9,7 @@
  */
 import type { SessionHandle } from '../../lib/session/store';
 import type { CommandInfo } from '../../lib/session/types';
+import { parseSurfaces, type Surface } from '../../lib/surfaces';
 
 export type { CommandInfo };
 
@@ -31,7 +32,30 @@ export type SessionStats = {
 
 export type RunningBash = { toolCallId: string; command: string; startedAt: number; pid?: number };
 
-export type AgentInfo = { id: string; parentId?: string; label: string; owner: string; role?: string; state: 'running' | 'idle' | 'hibernated' | 'closed'; depth: number };
+export type AgentInfo = { id: string; parentId?: string; label: string; owner: string; role?: string; state: 'running' | 'idle' | 'hibernated' | 'closed'; depth: number; sessionFile?: string };
+
+/** A subagent run's structured status (`unipi.subagents` `Status`, wire lowercase) — never the TUI badge text. */
+export type SubagentStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+
+/** Usage totals of one run (`child::Usage`, camelCase). */
+export type RunUsage = { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number };
+
+/** One subagent run record (`unipi.subagents` `Record`: the `unipi:subagents:list` topic / `subagents.list`). */
+export type SubagentRun = {
+  id: string;
+  title: string;
+  profile: string;
+  model: string;
+  status: SubagentStatus;
+  background: boolean;
+  startedAt: number;
+  endedAt?: number;
+  toolCalls: number;
+  usage?: RunUsage;
+  error?: string;
+  sessionFile?: string;
+  depth: number;
+};
 
 export type ExtensionInfo = { id: string; kind?: string; enabled: boolean; loaded: boolean; path?: string };
 
@@ -45,6 +69,8 @@ export type TrayTab = {
   visible?: boolean;
   body?: unknown;
   owner?: string;
+  /** The clients that list the tab (absent = every client; `lib/surfaces`). */
+  surfaces?: Surface[];
 };
 
 const num = (v: unknown, or = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : or);
@@ -121,6 +147,7 @@ export function parseAgents(v: unknown): AgentInfo[] {
       role: typeof o.role === 'string' ? o.role : undefined,
       state: STATES.includes(state) ? state : 'running',
       depth: num(o.depth),
+      ...(typeof o.sessionFile === 'string' && o.sessionFile ? { sessionFile: o.sessionFile } : {}),
     }] : [];
   });
 }
@@ -153,6 +180,43 @@ export function parseTrayTabs(v: unknown): TrayTab[] {
       visible: o.visible !== false,
       body: o.body,
       owner: typeof o.owner === 'string' ? o.owner : undefined,
+      ...(parseSurfaces(o.surfaces) ? { surfaces: parseSurfaces(o.surfaces) } : {}),
+    }];
+  });
+}
+
+const RUN_STATUSES: SubagentStatus[] = ['running', 'completed', 'failed', 'cancelled'];
+
+/**
+ * Subagent run records: the topic value (`{records:[…]}`) or the `subagents.list` reply (a
+ * list). `undefined` when the value is neither (no topic yet / an older extension). The status
+ * comes from the record's structured `status`, never from a TUI label.
+ */
+export function parseSubagentRuns(v: unknown): SubagentRun[] | undefined {
+  const list = Array.isArray(v) ? v : (v as { records?: unknown } | undefined | null)?.records;
+  if (!Array.isArray(list)) return undefined;
+  return list.flatMap((r) => {
+    if (!r || typeof r !== 'object') return [];
+    const o = r as Record<string, unknown>;
+    const id = str(o.id);
+    if (!id) return [];
+    const status = str(o.status).toLowerCase() as SubagentStatus;
+    const u = o.usage && typeof o.usage === 'object' ? (o.usage as Record<string, unknown>) : undefined;
+    const title = str(o.title).trim() || str(o.task).trim().slice(0, 80) || id;
+    return [{
+      id,
+      title,
+      profile: str(o.profile),
+      model: str(o.model),
+      status: RUN_STATUSES.includes(status) ? status : 'running',
+      background: o.background === true,
+      startedAt: num(o.startedAt),
+      ...(typeof o.endedAt === 'number' && Number.isFinite(o.endedAt) ? { endedAt: o.endedAt } : {}),
+      toolCalls: num(o.toolCalls),
+      ...(u ? { usage: { input: num(u.input), output: num(u.output), cacheRead: num(u.cacheRead), cacheWrite: num(u.cacheWrite), cost: num(u.cost) } } : {}),
+      ...(typeof o.error === 'string' && o.error ? { error: o.error } : {}),
+      ...(typeof o.sessionFile === 'string' && o.sessionFile ? { sessionFile: o.sessionFile } : {}),
+      depth: num(o.depth, 1),
     }];
   });
 }

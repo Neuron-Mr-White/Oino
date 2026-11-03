@@ -11,7 +11,7 @@
 //! | prompt section `subagents` | `before_agent_start` `systemPromptOptions.sections.subagents` |
 //! | wait source `subagent working` | `wait-source` |
 //! | `index.json` per lead session | `/ext-workspace/<wsid>/sessions/<sid>/index.json` |
-//! | graph-run port, shared list/manager/transcript | services `subagents.graph-run`, `subagents.profiles`, `subagents.list`, `subagents.transcript`, `subagents.cancel`, `subagents.foreground`; sticky `unipi:subagents:list`; bus `unipi:subagents:run-done` |
+//! | graph-run port, shared list/manager/transcript | services `subagents.graph-run`, `subagents.profiles`, `subagents.list`, `subagents.transcript`, `subagents.cancel`, `subagents.foreground`, `subagents.background`; sticky `unipi:subagents:list`; bus `unipi:subagents:run-done` |
 //! | settings `subagents` | namespace |
 
 #![cfg_attr(
@@ -588,11 +588,11 @@ impl Subagents {
                 break;
             };
             let now = timers::now_ms();
-            let (steps, finishable, calls) = {
+            let (steps, finishable, calls, usage) = {
                 let mut p = run.progress.borrow_mut();
                 let steps = p.apply(&ev, now);
                 had_bg |= p.open_bg_tasks > 0;
-                (steps, p.finishable(), p.tool_calls)
+                (steps, p.finishable(), p.tool_calls, p.usage)
             };
             for step in steps {
                 let mut data = serde_json::to_value(&step).unwrap_or_default();
@@ -608,7 +608,13 @@ impl Subagents {
                 ));
                 let _ = session::append_entry("subagent-step", Some(&data));
             }
-            self.update(&sid, &rec.id, |r| r.tool_calls = calls);
+            // Live usage too: the app's Subagents rows read tokens/cost from the record.
+            self.update(&sid, &rec.id, |r| {
+                r.tool_calls = calls;
+                if usage != Usage::default() {
+                    r.usage = Some(usage);
+                }
+            });
             if now - last_publish >= 250 {
                 last_publish = now;
                 self.publish(&sid);
@@ -880,6 +886,26 @@ impl Subagents {
             self.refresh_watched(sid);
         }
         None
+    }
+
+    /// One foreground run goes to the background (the app's per-row "To background";
+    /// [`Self::background_all`] for a single id).
+    fn background_one(&self, sid: &str, id: &str) -> bool {
+        let (wait, watched) = self
+            .sessions
+            .with(sid, |s| (s.fg_waits.get(id).cloned(), s.watched.remove(id)));
+        if let Some(m) = &wait {
+            m.set(true);
+        }
+        if watched {
+            self.set_background(sid, id, true);
+        }
+        if wait.is_none() && !watched {
+            return false;
+        }
+        self.sync_working(sid);
+        self.refresh_watched(sid);
+        true
     }
 
     /// Ctrl+B: every foreground run goes to the background.
@@ -1916,6 +1942,13 @@ impl Extension for Subagents {
             |ext, p, _caller, cx| async move {
                 let id = p.get("id").and_then(Value::as_str).unwrap_or_default();
                 Ok(json!({"error": ext.foreground(cx.session_id(), id)}))
+            },
+        );
+        cx.service(
+            point::SUBAGENTS_BACKGROUND,
+            |ext, p, _caller, cx| async move {
+                let id = p.get("id").and_then(Value::as_str).unwrap_or_default();
+                Ok(json!({"backgrounded": ext.background_one(cx.session_id(), id)}))
             },
         );
         cx.service(

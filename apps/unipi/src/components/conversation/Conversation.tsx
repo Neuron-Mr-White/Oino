@@ -28,7 +28,7 @@ import { HeaderBand } from '../../ui/slots/HeaderBand';
 import { PhonePaneLayer } from '../../ui/slots/paneTabs';
 import { SlotModal } from '../../ui/slots/SlotModal';
 import { WidgetStack } from '../../ui/slots/WidgetStack';
-import { BG_TASKS_TOPIC, liveAgentsOf, runningTrayTabsOf, SUBAGENTS_LIST_TOPIC, topicRunningTrayLabel } from '../../lib/status/running';
+import { BG_TASKS_TOPIC, liveRunRowsOf, runningTrayTabsOf, SUBAGENTS_LIST_TOPIC, topicRunningTrayLabel } from '../../lib/status/running';
 import { fetchRunning } from '../session/RunningTab';
 import { installUiEffects } from '../../ui/slots/effects';
 import { reservedGate } from '../../ui/slots/reserved';
@@ -308,8 +308,8 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
           if (cancelled || s.state.seq !== seqAt) return;
           const parts: string[] = [];
           for (const tab of runningTrayTabsOf(res.tabs)) parts.push(`${tab.label} ${tab.counts.running} running`);
-          const sa = liveAgentsOf(res.agents).length;
-          if (sa > 0 && !res.tabs.some((t) => /subagent/i.test(t.label) && t.counts.running > 0)) parts.push(`Subagents ${sa} running`);
+          const sa = liveRunRowsOf(res).length;
+          if (sa > 0) parts.push(`Subagents ${sa} running`);
           setVerifiedTray({ key: s.key, seq: seqAt, label: parts.length ? parts.join(' · ') : null });
         })
         .catch(() => undefined);
