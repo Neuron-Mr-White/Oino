@@ -16,6 +16,7 @@
  *   Fork and Edit for this message;
  * - **swipe right = Quote** on the phone (Z-30 keeps it).
  */
+import { expansionOpen, setExpansion } from '../../lib/timeline/expansion';
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { ChevronDown, ChevronUp, FileText, FolderOpen, Image as ImageIcon, Pencil, Sparkles, SquareSlash } from 'lucide-solid';
 import type { RefChat } from '../../lib/chat/pathStat';
@@ -164,8 +165,18 @@ export function UserBubble(props: {
   menu?: () => MessageTarget | undefined;
   /** Where Quote puts the chip (the session's composer key). */
   composerKey?: string;
+  /**
+   * The fold's open state by MESSAGE (session id + entry id), kept in the
+   * expansion store. Without it the state lived in the row component, and the
+   * virtualizer's slots (Index by position) hand a slot another turn whenever
+   * the window shifts — which an expand itself causes — so the click was
+   * undone and it took several clicks to "stick".
+   */
+  foldKey?: { sessionId: string; key: string };
 }) {
-  const [expanded, setExpanded] = createSignal(false);
+  const [localExpanded, setLocalExpanded] = createSignal(false);
+  const expanded = () => (props.foldKey ? expansionOpen(props.foldKey.sessionId, props.foldKey.key, false) : localExpanded());
+  const setExpanded = (open: boolean) => (props.foldKey ? setExpansion(props.foldKey.sessionId, props.foldKey.key, open) : setLocalExpanded(open));
   const [folds, setFolds] = createSignal(false);
   const [fullHeight, setFullHeight] = createSignal(FOLD_PX);
   const [bodyEl, setBodyEl] = createSignal<HTMLSpanElement>();
@@ -215,7 +226,7 @@ export function UserBubble(props: {
     on(
       () => props.text,
       () => {
-        setExpanded(false);
+        if (!props.foldKey) setLocalExpanded(false);
         requestAnimationFrame(measure);
       },
     ),

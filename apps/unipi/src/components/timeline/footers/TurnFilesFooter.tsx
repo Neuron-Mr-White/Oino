@@ -24,6 +24,7 @@
  */
 import { ChevronRight, ExternalLink, Undo2 } from 'lucide-solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { expansionOpen, setExpansion } from '../../../lib/timeline/expansion';
 import {
   TURN_FILES_REFRESH_MS,
   canUndoSummary,
@@ -120,7 +121,11 @@ export function TurnFilesFooter(props: ReservedBodyProps) {
   const totals = createMemo(() => totalsOf(files()));
   const canUndo = createMemo(() => canUndoSummary(summary()));
 
-  const [expanded, setExpanded] = createSignal(false);
+  // By turn (expansion store), not by component: virtualizer slots are reused across turns.
+  const fk = () => `files:${turnId()}`;
+  const expanded = () => expansionOpen(props.target.sessionId ?? '', fk(), false);
+  const setExpanded = (v: boolean | ((open: boolean) => boolean)) =>
+    setExpansion(props.target.sessionId ?? '', fk(), typeof v === 'function' ? v(expanded()) : v);
   const [openPath, setOpenPath] = createSignal<string | undefined>();
   const [diffs, setDiffs] = createSignal<Record<string, InlineDiff | undefined>>({});
   /** The undo-all confirm is open. */

@@ -9,6 +9,7 @@
  * retry surface per turn, not two.
  */
 import { createSignal, Show } from 'solid-js';
+import { expansionOpen, setExpansion } from '../../lib/timeline/expansion';
 import { Check, ChevronRight, CircleAlert, Copy } from 'lucide-solid';
 import { copyText } from '../../lib/board/share';
 
@@ -40,8 +41,12 @@ export function ErrorRow(props: {
   testId?: string;
   /** The model that failed (D-24): "Provider · model-id", shown with the raw error. */
   model?: string;
+  /** Open state by item (session + key) in the expansion store — survives virtualizer slot reuse. */
+  foldKey?: { sessionId: string; key: string };
 }) {
-  const [open, setOpen] = createSignal(false);
+  const [localOpen, setLocalOpen] = createSignal(false);
+  const open = () => (props.foldKey ? expansionOpen(props.foldKey.sessionId, props.foldKey.key, false) : localOpen());
+  const setOpen = (v: boolean) => (props.foldKey ? setExpansion(props.foldKey.sessionId, props.foldKey.key, v) : setLocalOpen(v));
   const [copied, setCopied] = createSignal(false);
   const copy = () => {
     void copyText(props.text).then((ok) => {

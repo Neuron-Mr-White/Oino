@@ -47,7 +47,7 @@ export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
         {(i) => (
           // Phone (§3.4, PH-14/PH-28): one actionable card per failed turn.
           <Show when={layout().desktop()} fallback={<PhoneErrorCard item={i()} ctx={props.ctx} />}>
-            <ErrorRow text={i().text} model={failedModel(props.ctx)} />
+            <ErrorRow text={i().text} model={failedModel(props.ctx)} foldKey={{ sessionId: props.ctx.sessionId(), key: `error:${i().key}` }} />
           </Show>
         )}
       </Match>

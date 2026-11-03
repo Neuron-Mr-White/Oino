@@ -10,6 +10,7 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { dropSessionExpansion } from '../../../lib/timeline/expansion';
 import { createMockHost, type MockScenario, type MockWorld } from '../../../lib/host/mock';
 import { resetSessions, sessions, type SessionHandle } from '../../../lib/session/store';
 import { setHostClientFactory } from '../../../lib/host/factory';
@@ -141,6 +142,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  dropSessionExpansion(SID);
   session = undefined;
   cleanup();
   resetSessions();

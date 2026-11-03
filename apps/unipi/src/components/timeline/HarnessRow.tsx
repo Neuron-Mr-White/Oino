@@ -5,7 +5,8 @@
  * actually sent, minus the user's own words) expands inline. Cron-sent
  * prompts get a "Sent by cron" line instead (handled in TurnRow).
  */
-import { createSignal, For, Show } from 'solid-js';
+import { For, Show } from 'solid-js';
+import { expansionOpen, setExpansion } from '../../lib/timeline/expansion';
 import { ChevronDown, Sparkles, SquareSlash } from 'lucide-solid';
 import { injectedBody, textOf, type Part } from '../../lib/chat/model';
 import { renderBlocks } from '../../lib/chat/markdown';
@@ -28,7 +29,10 @@ function tagOf(source: string | undefined, title: string | undefined): string | 
 }
 
 export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
-  const [open, setOpen] = createSignal(false);
+  // By message, not by component: virtualizer slots are reused across turns.
+  const fk = () => `harness:${props.turn.user?.id ?? props.turn.turnId}`;
+  const open = () => expansionOpen(props.ctx.sessionId(), fk(), false);
+  const setOpen = (v: boolean) => setExpansion(props.ctx.sessionId(), fk(), v);
   const echo = () => echoOf(props.turn);
   const m = () => props.turn.user?.message;
   const harness = () => {

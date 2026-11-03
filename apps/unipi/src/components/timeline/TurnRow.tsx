@@ -121,6 +121,7 @@ function TurnHead(props: {
           menu={props.userMenu(t().user)}
           onEdit={props.onEdit(t().user)}
           composerKey={props.ctx.session.key}
+          foldKey={{ sessionId: props.ctx.sessionId(), key: `bubble:${t().user?.id ?? t().turnId}` }}
         />
       </Show>
     </Show>
@@ -151,6 +152,7 @@ function SegmentView(props: {
           menu={props.userMenu(seg().steer)}
           onEdit={props.onEdit(seg().steer)}
           composerKey={props.ctx.session.key}
+          foldKey={{ sessionId: props.ctx.sessionId(), key: `bubble:${seg().steer?.id ?? seg().id}` }}
         />
       </Show>
       <Show when={seg().before?.length}>
