@@ -1,7 +1,12 @@
 //! [`WasmInstance`]: one component instance per extension, driven by an actor task that owns
 //! the wasmtime `Store` inside `run_concurrent`, so many guest calls are in flight at once
-//! (D6). A trap poisons the actor; the next call restarts it lazily (max 3 per 10 minutes)
-//! and replays `init`.
+//! (D6). A trap poisons the actor; a deliberate [`ExtensionInstance::shutdown`] (the hub
+//! disposing an idle services set, E-LAZY) hibernates it. The next call starts a fresh
+//! store lazily and replays `init` plus the `session_start` of every session the instance
+//! was serving (`reason: "reload"`), so per-session state an extension rebuilds there
+//! (profiles, records, graph state reloaded from disk/kv) is back before the call runs.
+//! Only real traps count toward the disable limit (max 3 per 10 minutes); waking from
+//! hibernation never disables an extension.
 
 use std::collections::VecDeque;
 use std::future::Future;
@@ -45,6 +50,28 @@ pub(crate) const HANDLER_TIMEOUT: &str = "handler timed out after";
 
 const MAX_RESTARTS: usize = 3;
 const RESTART_WINDOW: Duration = Duration::from_secs(600);
+/// Sessions whose `session_start` an instance keeps for the wake replay. A session leaves
+/// on its `session_shutdown`; past the cap the oldest goes (bounded, perf: no unbounded
+/// per-instance list).
+const MAX_REPLAY_SESSIONS: usize = 32;
+
+/// Why an instance has no running actor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Stopped {
+    /// Never started, or running.
+    No,
+    /// Deliberately shut down (services set disposed / evicted): a later call wakes it.
+    Hibernated,
+    /// The guest trapped (or the store failed): a later call restarts it, counted.
+    Trapped,
+}
+
+/// One `session_start` to replay on wake (the original call context).
+#[derive(Clone)]
+struct SessionSeen {
+    payload: RawJson,
+    cx: CallContext,
+}
 
 /// A loaded extension component.
 pub struct WasmInstance {
@@ -55,6 +82,11 @@ pub struct WasmInstance {
     restarts: Mutex<VecDeque<Instant>>,
     started_once: AtomicBool,
     init_replay: Mutex<Option<(InitInput, CallContext)>>,
+    /// Sessions served (their `session_start`), oldest first, at most [`MAX_REPLAY_SESSIONS`].
+    sessions_seen: Mutex<VecDeque<(String, SessionSeen)>>,
+    stopped: Mutex<Stopped>,
+    /// Serialises (re)starts so two concurrent first calls start one store.
+    starting: tokio::sync::Mutex<()>,
     disabled: AtomicBool,
     has_provider: bool,
     pub(crate) hub: std::sync::OnceLock<std::sync::Weak<crate::hub::LocalServices>>,
@@ -98,6 +130,9 @@ impl WasmInstance {
             restarts: Mutex::new(VecDeque::new()),
             started_once: AtomicBool::new(false),
             init_replay: Mutex::new(None),
+            sessions_seen: Mutex::new(VecDeque::new()),
+            stopped: Mutex::new(Stopped::No),
+            starting: tokio::sync::Mutex::new(()),
             disabled: AtomicBool::new(false),
             has_provider,
             hub: std::sync::OnceLock::new(),
@@ -170,54 +205,178 @@ impl WasmInstance {
         Ok(tx)
     }
 
+    /// Whether the instance was deliberately shut down and has not been called since
+    /// (the hub routes cross-set calls to awake loads first).
+    pub(crate) fn hibernated(&self) -> bool {
+        lock(&self.actor).is_none() && *lock(&self.stopped) == Stopped::Hibernated
+    }
+
     /// The live actor, (re)starting it when needed.
     async fn actor(&self) -> Result<mpsc::UnboundedSender<Job>, ExtensionError> {
-        if self.disabled.load(Ordering::SeqCst) {
-            return Err(self.err("call", "extension disabled after repeated traps"));
+        if let Some(tx) = self.live_actor()? {
+            return Ok(tx);
         }
-        if let Some(tx) = lock(&self.actor).as_ref().filter(|tx| !tx.is_closed()) {
-            return Ok(tx.clone());
+        let _starting = self.starting.lock().await;
+        // Another caller may have (re)started it while this one waited.
+        if let Some(tx) = self.live_actor()? {
+            return Ok(tx);
         }
         let restart = self.started_once.swap(true, Ordering::SeqCst);
-        if restart {
+        // A closed channel still in the slot = the store died under us (a trap that ended
+        // `run_concurrent`); an empty slot carries the reason it was emptied.
+        let cause = {
+            let mut actor = lock(&self.actor);
+            let mut stopped = lock(&self.stopped);
+            if actor.take().is_some() {
+                *stopped = Stopped::Trapped;
+            }
+            *stopped
+        };
+        if restart && cause == Stopped::Trapped {
             let mut restarts = lock(&self.restarts);
             let now = Instant::now();
             restarts.retain(|t| now.duration_since(*t) < RESTART_WINDOW);
             if restarts.len() >= MAX_RESTARTS {
                 self.disabled.store(true, Ordering::SeqCst);
+                tracing::warn!(extension = %self.shared.id, "extension disabled after repeated traps");
                 return Err(self.err("call", "extension disabled after repeated traps"));
             }
             restarts.push_back(now);
         }
         let tx = self.start_actor().await?;
         *lock(&self.actor) = Some(tx.clone());
-        let replay_input = if restart {
-            lock(&self.init_replay).clone()
-        } else {
-            None
-        };
-        if let Some((input, cx)) = replay_input {
-            tracing::info!(extension = %self.shared.id, "restarted after trap; replaying init");
-            let replay = self.send(&tx, "init", move |acc, ex| {
-                Box::pin(async move {
-                    let f = ex.guest.func_init();
-                    invoke(
-                        acc,
-                        f,
-                        (init_input(&input), convert::call_context(&cx)),
-                        Some(&cx),
-                    )
-                    .await
-                    .map(|_| ())
-                })
-            });
-            replay.await.ok();
+        *lock(&self.stopped) = Stopped::No;
+        if restart {
+            self.replay(&tx, cause).await;
         }
         Ok(tx)
     }
 
-    fn poison(&self) {
-        lock(&self.actor).take();
+    /// The running actor, if any (`Err` once disabled).
+    fn live_actor(&self) -> Result<Option<mpsc::UnboundedSender<Job>>, ExtensionError> {
+        if self.disabled.load(Ordering::SeqCst) {
+            return Err(self.err("call", "extension disabled after repeated traps"));
+        }
+        Ok(lock(&self.actor)
+            .as_ref()
+            .filter(|tx| !tx.is_closed())
+            .cloned())
+    }
+
+    /// Restores a fresh store to where the old one was: `init`, then the `session_start`
+    /// of every session it served (`reason: "reload"`, pi's re-bind semantics: the
+    /// extension rebuilds per-session state from the session, its kv and its files).
+    async fn replay(&self, tx: &mpsc::UnboundedSender<Job>, cause: Stopped) {
+        let Some((input, cx)) = lock(&self.init_replay).clone() else {
+            return;
+        };
+        let sessions: Vec<(String, SessionSeen)> =
+            lock(&self.sessions_seen).iter().cloned().collect();
+        let what = if cause == Stopped::Trapped {
+            "restarted after trap"
+        } else {
+            "woke from hibernation"
+        };
+        if cause == Stopped::Trapped {
+            tracing::warn!(extension = %self.shared.id, sessions = sessions.len(), "{what}; replaying init and session_start");
+        } else {
+            tracing::info!(extension = %self.shared.id, sessions = sessions.len(), "{what}; replaying init and session_start");
+        }
+        let init = self.send(tx, "init", move |acc, ex| {
+            Box::pin(async move {
+                let f = ex.guest.func_init();
+                invoke(
+                    acc,
+                    f,
+                    (init_input(&input), convert::call_context(&cx)),
+                    Some(&cx),
+                )
+                .await
+                .map(|_| ())
+            })
+        });
+        if let Err(e) = init.await {
+            tracing::warn!(extension = %self.shared.id, error = %e.message, "{what}: init replay failed");
+            return;
+        }
+        let deadline = Duration::from_millis(self.shared.manifest.limits.hook_timeout_ms.max(1));
+        for (session, seen) in sessions {
+            let payload = reload_payload(&seen.payload);
+            let cx = seen.cx.with_kind(CallKind::Event);
+            let call = self.send(tx, "on-event:session_start", move |acc, ex| {
+                Box::pin(async move {
+                    let f = ex.guest.func_on_event();
+                    let params = (
+                        convert::event_to_wit(EventKind::SessionStart),
+                        payload.into_string(),
+                        convert::call_context(&cx),
+                    );
+                    invoke(acc, f, params, Some(&cx)).await.map(|_| ())
+                })
+            });
+            match tokio::time::timeout(deadline, call).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    tracing::warn!(extension = %self.shared.id, session = %session, error = %e.message, "{what}: session_start replay failed");
+                }
+                Err(_) => {
+                    tracing::warn!(extension = %self.shared.id, session = %session, "{what}: session_start replay timed out");
+                }
+            }
+        }
+    }
+
+    /// Keeps (or drops) the session a `session_start` / `session_shutdown` speaks for.
+    fn note_session(&self, kind: EventKind, payload: &RawJson, cx: &CallContext) {
+        if cx.session_id.is_empty() {
+            return;
+        }
+        let mut seen = lock(&self.sessions_seen);
+        match kind {
+            EventKind::SessionStart => {
+                seen.retain(|(id, _)| *id != cx.session_id);
+                if seen.len() >= MAX_REPLAY_SESSIONS {
+                    seen.pop_front();
+                }
+                seen.push_back((
+                    cx.session_id.clone(),
+                    SessionSeen {
+                        payload: payload.clone(),
+                        cx: cx.clone(),
+                    },
+                ));
+            }
+            EventKind::SessionShutdown => seen.retain(|(id, _)| *id != cx.session_id),
+            _ => {}
+        }
+    }
+
+    /// The actor behind `tx` failed (a trap or a dead store): empties the slot when `tx`
+    /// is still the live actor, so the next call restarts (counted). A deliberate shutdown
+    /// that already emptied the slot keeps its hibernation reason.
+    fn poison(&self, tx: &mpsc::UnboundedSender<Job>) -> bool {
+        let mut actor = lock(&self.actor);
+        let live = actor.as_ref().is_some_and(|cur| cur.same_channel(tx));
+        if live {
+            actor.take();
+            *lock(&self.stopped) = Stopped::Trapped;
+        }
+        live
+    }
+
+    /// The error of a call whose actor went away under it: a trap, unless the instance
+    /// was deliberately hibernated meanwhile (a plain error then — core disables an
+    /// extension for the session on a trap, X-TRAP, and a hibernation race is not one).
+    fn stopped_err(&self, tx: &mpsc::UnboundedSender<Job>, call: &str) -> ExtensionError {
+        let trapped = self.poison(tx) || *lock(&self.stopped) == Stopped::Trapped;
+        if trapped {
+            self.trap(call, "component instance stopped")
+        } else {
+            self.err(
+                call,
+                "component instance hibernated while the call was in flight",
+            )
+        }
     }
 
     /// Sends one job to `tx` and awaits its result.
@@ -244,19 +403,15 @@ impl WasmInstance {
             })
         });
         if tx.send(job).is_err() {
-            self.poison();
-            return Err(self.trap(call, "component instance stopped"));
+            return Err(self.stopped_err(tx, call));
         }
         match reply_rx.await {
             Ok(Ok(r)) => Ok(r),
             Ok(Err(e)) => {
-                self.poison();
+                let _ = self.poison(tx);
                 Err(self.trap(call, format!("{e:#}")))
             }
-            Err(_) => {
-                self.poison();
-                Err(self.trap(call, "component instance stopped"))
-            }
+            Err(_) => Err(self.stopped_err(tx, call)),
         }
     }
 
@@ -332,6 +487,18 @@ async fn pausable_timeout<T>(
             }
         }
     }
+}
+
+/// A recorded `session_start` payload re-sent on wake: same fields, `reason: "reload"`
+/// (startup-only effects such as a splash do not repeat), `wake: true`.
+fn reload_payload(original: &RawJson) -> RawJson {
+    let mut value = original.to_value();
+    if !value.is_object() {
+        value = serde_json::json!({"type": "session_start"});
+    }
+    value["reason"] = serde_json::json!("reload");
+    value["wake"] = serde_json::json!(true);
+    RawJson::from(value)
 }
 
 fn init_input(input: &InitInput) -> wg::InitInput {
@@ -418,6 +585,12 @@ impl ExtensionInstance for WasmInstance {
             } else {
                 limits.hook_timeout_ms
             });
+            // Timers are cancelled when an instance hibernates; a fire that raced the
+            // shutdown is stale and must not wake it.
+            if kind == EventKind::OinoTimer && self.hibernated() {
+                return Ok(None);
+            }
+            self.note_session(kind, &payload, &cx);
             let call_name = format!("on-event:{kind}");
             let fut = self.call(&call_name, move |acc, ex| {
                 Box::pin(async move {
@@ -788,8 +961,10 @@ impl ExtensionInstance for WasmInstance {
 
     fn shutdown(&self, reason: &str) -> BoxFut<'_, ()> {
         let reason = reason.to_owned();
+        let reason_note = reason.clone();
         Box::pin(async move {
-            if lock(&self.actor).is_some() {
+            let running = lock(&self.actor).as_ref().is_some_and(|tx| !tx.is_closed());
+            if running {
                 let call = self.call("shutdown", move |acc, ex| {
                     Box::pin(
                         async move { invoke(acc, ex.guest.func_shutdown(), (reason,), None).await },
@@ -799,7 +974,10 @@ impl ExtensionInstance for WasmInstance {
             }
             self.shared.timers.cancel_all();
             self.shared.processes.kill_all();
-            lock(&self.actor).take();
+            if lock(&self.actor).take().is_some() {
+                *lock(&self.stopped) = Stopped::Hibernated;
+                tracing::debug!(extension = %self.shared.id, reason = %reason_note, "instance hibernated");
+            }
         })
     }
 }
