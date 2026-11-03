@@ -5,6 +5,7 @@
  * free text, auto-advance). Whoever answers first (phone or TUI) wins;
  * the card disappears when pi says the dialog closed.
  */
+import { useClock } from '../../lib/clock';
 import { createEffect, createMemo, createSignal, For, Index, Match, onCleanup, Show, Switch } from 'solid-js';
 import { Check, ChevronLeft, ChevronRight, MessageCircleQuestion, Pencil, X } from 'lucide-solid';
 import type { AskQuestion, Dialog } from '../../lib/chat/store';
@@ -25,9 +26,7 @@ function timeLeft(deadline: number | undefined, now: number): string | undefined
 
 /** A dialog's countdown, ticking every second; calls `onExpire` once when the deadline passes. */
 function Countdown(props: { deadline: number | undefined; onExpire: () => void }) {
-  const [now, setNow] = createSignal(Date.now());
-  const timer = setInterval(() => setNow(Date.now()), 1000);
-  onCleanup(() => clearInterval(timer));
+  const now = useClock(() => !!props.deadline && !fired);
   let fired = false;
   createEffect(() => {
     if (!props.deadline || fired) return;

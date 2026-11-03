@@ -976,6 +976,7 @@ export function Composer(props: ComposerProps) {
         data-draft={props.draft ? '' : undefined}
         data-drop={dropOver() ? '' : undefined}
         data-think-glow={thinkGlow(props.session.state.thinkingLevel, props.readOnly)}
+        data-think-live={props.session.state.run.running ? '' : undefined}
         onMouseDown={(e) => {
           // A press on the card's padding lands in the field (the whole card reads as the input).
           if (e.target === e.currentTarget && !props.readOnly) {

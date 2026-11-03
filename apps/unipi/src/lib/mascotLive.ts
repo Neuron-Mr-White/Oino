@@ -9,6 +9,7 @@ import { needsYou } from './needsYou';
 import { chatLists } from './session/list';
 import type { HostInfo } from './schemas';
 import { mascotState, type MascotInputs, type MascotState } from './unicrab';
+import { clockNow } from './clock';
 
 export type MascotLive = { state: Accessor<MascotState>; count: Accessor<number>; inputs: Accessor<MascotInputs>; poke: () => void };
 
@@ -32,16 +33,15 @@ export function offlineHosts(hosts: readonly HostInfo[]): number {
 function create(getHosts: () => readonly HostInfo[], now: () => number = Date.now): MascotLive {
   const store = needsYou();
   const [changedAt, setChangedAt] = createSignal(now());
-  const [tick, setTick] = createSignal(0);
   const unread = createMemo(() => store.list().filter((i) => !store.isRead(i.id)));
   const waiting = createMemo(() => unread().filter((i) => i.group === 'waiting').length);
   const finished = createMemo(() => unread().filter((i) => i.group === 'finished').length);
   const running = createMemo(() => runningAgents(getHosts()));
   // Anything changing wakes the crab up.
   createEffect(on([() => unread().map((i) => i.id).join('|'), running], () => setChangedAt(now()), { defer: true }));
-  if (typeof setInterval !== 'undefined') setInterval(() => setTick((n) => n + 1), 30_000);
   const inputs = createMemo<MascotInputs>(() => {
-    tick();
+    // The shared 30 s clock (paused while the app is hidden) re-evaluates "quiet for a while".
+    clockNow(30_000);
     const hosts = getHosts();
     return { hosts: hosts.length, offlineHosts: offlineHosts(hosts), waiting: waiting(), finished: finished(), running: running(), quietMs: now() - changedAt() };
   });

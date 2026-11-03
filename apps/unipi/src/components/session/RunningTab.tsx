@@ -11,6 +11,7 @@
  *   OUS tree through U9 `NodeView` (G-20), actions routed to the tab's owner
  *   through `work-tray.action` — the tray panel itself is never opened.
  */
+import { useClock as sharedClock } from '../../lib/clock';
 import { For, Show, createEffect, createResource, createSignal, onCleanup, type Accessor, type JSX } from 'solid-js';
 import { Bot, CircleCheck, Layers, RefreshCw, Sparkles, SquareTerminal } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
@@ -21,10 +22,7 @@ import { liveAgentsOf, runningCounts, runningTotal, visibleTrayTabsOf, type Runn
 
 /** Now, ticking once a second while the tab is mounted (durations). */
 export function useClock(): Accessor<number> {
-  const [now, setNow] = createSignal(Date.now());
-  const t = setInterval(() => setNow(Date.now()), 1000);
-  onCleanup(() => clearInterval(t));
-  return now;
+  return sharedClock();
 }
 
 /** Stops a bash tool call: the run's Stop (pi `abort`) — the run is what owns the call. */

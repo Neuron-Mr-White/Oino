@@ -8,7 +8,7 @@
  * re-asks at most every 500 ms (§6.7). Footers never virtualize internally
  * and the row's height change re-measures only that turn (§13.4).
  */
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, Show } from 'solid-js';
 import type { Turn } from '../../lib/session/turns';
 import { sessionRenderCache, widthClassOf } from '../../lib/session/renderCache';
 import { NodeView } from '../NodeView';
@@ -31,11 +31,12 @@ export function TurnFooters(props: { ctx: TimelineCtx; turn: Turn }) {
   const [tick, setTick] = createSignal(0);
 
   // The running turn re-requests at most every 500 ms while it changes (§6.7).
-  let timer: ReturnType<typeof setInterval> | undefined;
-  onMount(() => {
-    timer = setInterval(() => props.turn.live && setTick((t) => t + 1), RUN_REFRESH_MS);
+  // perf-app: the timer exists only while the turn is live (a settled turn's footer never wakes).
+  createEffect(() => {
+    if (!props.turn.live) return;
+    const timer = setInterval(() => setTick((t) => t + 1), RUN_REFRESH_MS);
+    onCleanup(() => clearInterval(timer));
   });
-  onCleanup(() => clearInterval(timer));
 
   const cache = () => sessionRenderCache(props.ctx.session);
   const width = () => widthClassOf(props.ctx.columnWidth());

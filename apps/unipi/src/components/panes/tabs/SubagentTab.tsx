@@ -185,10 +185,10 @@ export function SubagentTab(props: PaneTabProps) {
     if (loaded()) return;
     void read();
   });
-  onMount(() => {
-    const timer = setInterval(() => {
-      if (running()) void read();
-    }, SUBAGENT_POLL_MS);
+  // perf-app: polls only while the run is running (no idle wake-ups once it settled).
+  createEffect(() => {
+    if (!running()) return;
+    const timer = setInterval(() => void read(), SUBAGENT_POLL_MS);
     onCleanup(() => clearInterval(timer));
   });
 

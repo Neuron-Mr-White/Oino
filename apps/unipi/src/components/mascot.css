@@ -46,3 +46,8 @@ html.mascot-page, html.mascot-page body, html.mascot-page #root { background: tr
 .mascot-size-options button[aria-checked=true] { background: var(--color-surface-1); color: var(--color-text); }
 .mascot-settings-hero { display: flex; align-items: center; gap: 14px; padding: 12px 16px 4px; }
 .mascot-settings-hero p { margin: 0; }
+
+/* perf-app: a paused crab (off screen, app hidden, a still watermark, or a resting state
+   after its short play) holds frame 0 — no animation runs, so nothing repaints. */
+.unicrab[data-paused] [data-track],
+.unicrab[data-paused] [data-eyes] { animation: none !important; }

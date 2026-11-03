@@ -16,6 +16,7 @@
 import { createEffect, createSignal, For, on, onCleanup, Show, type JSX } from 'solid-js';
 import { CircleCheck, CircleSlash, CircleX, LoaderCircle, Bot, Moon } from 'lucide-solid';
 import { appNavigate } from '../../lib/nav';
+import { useClock } from '../../lib/clock';
 import { sessions, type SessionHandle } from '../../lib/session/store';
 import { SUBAGENTS_LIST_TOPIC } from '../../lib/status/running';
 import type { RowVariant } from './SessionRow';
@@ -190,12 +191,7 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
   };
   const m = () => treeMetrics(props.variant);
   // A running run's duration ticks (once a second, only while one runs).
-  const [now, setNow] = createSignal(Date.now());
-  createEffect(() => {
-    if (!(runs() ?? []).some((r) => r.status === 'running' && !r.endedAt)) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    onCleanup(() => clearInterval(t));
-  });
+  const now = useClock(() => (runs() ?? []).some((r) => r.status === 'running' && !r.endedAt));
 
   return (
     <div class="sa-tree" data-variant={props.variant} role="group" aria-label="Subagents" data-testid={`sa-tree-${props.sessionId}`}>

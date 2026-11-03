@@ -22,15 +22,11 @@ import { ImageChipRow } from '../chat/ImageChip';
 import { TOOL_ICON } from './tools/toolIcons';
 import { toolImages } from './tools/toolData';
 import { WorkNodes } from './tools/WorkItem';
+import { useClock } from '../../lib/clock';
 import type { TimelineCtx } from './context';
 
-/** 1 s clock for the running fold's "Working for". */
-function useNow(live: () => boolean): () => number {
-  const [now, setNow] = createSignal(Date.now());
-  const t = setInterval(() => live() && setNow(Date.now()), 1000);
-  onCleanup(() => clearInterval(t));
-  return now;
-}
+/** 1 s clock for the running fold's "Working for" (the app's shared clock, ticking only while live). */
+const useNow = (live: () => boolean): (() => number) => useClock(live);
 
 /** A working message's words vs its key hints ("Ctrl+B to run in background"). */
 export function splitWorkingMessage(msg: string | undefined): { head?: string; hint?: string } | undefined {

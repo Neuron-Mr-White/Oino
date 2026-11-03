@@ -5,6 +5,7 @@
  * (Try again) / error (install or start unipi-host, with the exact command).
  * Opened from Settings → This computer, the Add a PC dialog and the palette.
  */
+import { useClock } from '../lib/clock';
 import { createEffect, createMemo, createSignal, Match, onCleanup, Show, Switch } from 'solid-js';
 import { alwaysOn, keepAvailableNote, offerKeepAvailable, type AlwaysOn } from '../lib/keepAvailable';
 import { Check, CircleAlert, Clock, Copy, Play, RefreshCw, Smartphone } from 'lucide-solid';
@@ -79,9 +80,7 @@ function CommandLine(props: { command: string; testId: string }) {
 }
 
 function Waiting(props: { s: Extract<PairState, { kind: 'waiting' }> }) {
-  const [now, setNow] = createSignal(Date.now());
-  const timer = setInterval(() => setNow(Date.now()), 1000);
-  onCleanup(() => clearInterval(timer));
+  const now = useClock();
   createEffect(() => {
     if (now() >= props.s.expiresAt) markExpired();
   });

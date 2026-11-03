@@ -15,6 +15,7 @@
 import { createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
 import { Ban, Bot, Check, ChevronRight, LoaderCircle, Moon, PanelRightOpen, X } from 'lucide-solid';
 import { formatDuration } from '../../../lib/chat/model';
+import { useClock } from '../../../lib/clock';
 import { createPresence } from '../../../lib/motion';
 import { expansionOpen, toggleExpansion } from '../../../lib/timeline/expansion';
 import { groupWork, type ToolRun, type WorkItem, type WorkNode } from '../../../lib/session/turns';
@@ -57,13 +58,6 @@ export function AgentStatusIcon(props: { status: AgentStatus }) {
   );
 }
 
-/** 1 s clock while `live()`. */
-function useClock(live: () => boolean): () => number {
-  const [now, setNow] = createSignal(Date.now());
-  const t = setInterval(() => live() && setNow(Date.now()), 1000);
-  onCleanup(() => clearInterval(t));
-  return now;
-}
 
 /** A step entry as a mini-timeline work item (tool row, nested run, or the child's note). */
 function stepItem(e: SessionEntry, depth: number): WorkItem {
@@ -98,7 +92,7 @@ export function AgentCard(props: {
   const open = () => expansionOpen(props.ctx.sessionId(), key(), false);
   const toggle = () => toggleExpansion(props.ctx.sessionId(), key(), false);
   const running = () => run().status === 'running';
-  const now = useClock(running);
+  const now = useClock(() => run().status === 'running' || run().status === 'background');
   const elapsed = () => {
     const r = run();
     if (r.status === 'running' || r.status === 'background') return r.startedAt !== undefined ? formatDuration(Math.max(0, now() - r.startedAt)) : undefined;

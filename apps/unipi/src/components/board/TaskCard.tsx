@@ -8,6 +8,7 @@
  * Tap → `boardActions().openTask(task)`; long-press (contextmenu, as on
  * the Sessions cards) → `boardActions().openCardMenu(task, rect)`.
  */
+import { clockNow } from '../../lib/clock';
 import { createRoot, createSignal, For, Show } from 'solid-js';
 import { Link2, Lock } from 'lucide-solid';
 import { displayTitle, PRIORITY_LABEL, type Task } from '../../lib/board/api';
@@ -19,17 +20,9 @@ import { PriorityGlyph } from './Glyphs';
 
 const FINAL = new Set(['done', 'cancelled', 'archived']);
 
-let nowSignal: (() => number) | undefined;
-/** Ticks every 15 s so "agent 4m" stays current (one timer for all cards). */
+/** Ticks every 15 s so "agent 4m" stays current (the app's shared clock: one timer, only while a card reads it). */
 export function now(): number {
-  if (!nowSignal) {
-    nowSignal = createRoot(() => {
-      const [value, setValue] = createSignal(Date.now());
-      setInterval(() => setValue(Date.now()), 15_000);
-      return value;
-    });
-  }
-  return nowSignal();
+  return clockNow(15_000);
 }
 
 export function PriorityTag(props: { priority: string }) {

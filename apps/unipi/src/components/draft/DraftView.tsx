@@ -151,7 +151,7 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
   return (
     <div class="draft" data-testid="draft-view" data-phone={layout().desktop() ? undefined : ''}>
       <div class="draft-mark" aria-hidden="true">
-        <Unicrab state="idle" size={560} class="draft-mark-crab" />
+        <Unicrab state="idle" size={560} class="draft-mark-crab" still />
       </div>
       <div class="draft-center">
         <EmptyChat cwd={folder()} hostName={hostName()} variant="start" />

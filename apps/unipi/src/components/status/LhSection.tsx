@@ -6,6 +6,7 @@
  * gone (§3.10: no sheet, no ModeChip popover body); the section renders only
  * while `unipi.long-horizon` is enabled (owner enablement gates it).
  */
+import { useClock as sharedClock } from '../../lib/clock';
 import { createEffect, createMemo, createResource, createSignal, on, onCleanup, Show } from 'solid-js';
 import { History, Pause, Play, Square } from 'lucide-solid';
 import { sessions, type SessionHandle } from '../../lib/session/store';
@@ -43,10 +44,7 @@ export function useLhEnabled(s: () => SessionHandle): () => boolean | undefined 
 
 /** Now, ticking once a second while mounted (the elapsed clock). */
 export function useClock(): () => number {
-  const [now, setNow] = createSignal(Date.now());
-  const t = setInterval(() => setNow(Date.now()), 1000);
-  onCleanup(() => clearInterval(t));
-  return now;
+  return sharedClock();
 }
 
 const PHASE_WORD: Record<LhSummary['phase'], string> = { active: 'Running', selected: 'On', paused: 'Paused' };

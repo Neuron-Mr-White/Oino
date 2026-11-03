@@ -41,6 +41,9 @@
   animation: think-glow-spin 9s linear infinite;
 }
 @keyframes think-glow-spin { to { transform: rotate(1turn); } }
+/* perf-app (idle CPU): the ring turns only while the agent runs or the card is hovered;
+   at rest it holds still (same gradient ring, no per-frame compositing). */
+.tl-composer[data-think-glow]:not([data-think-live]):not(:hover) > .think-glow::before { animation-play-state: paused; will-change: auto; }
 
 /* The halo: a static box-shadow (painted once, never animated). `html` lifts
    it over the draft card's own shadow; focus keeps the claw ring inside. */

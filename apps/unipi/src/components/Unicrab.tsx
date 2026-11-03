@@ -5,8 +5,15 @@
  * `keyframesCss`, `steps()` + whole-cell translations) move per state.
  * Blinks are a JS timer flipping `data-blink`. prefers-reduced-motion
  * holds frame 0 and never blinks. See DESIGN.md §1.5.1 for how the rig works.
+ *
+ * perf-app (idle CPU): the loop only runs while it means something. A crab
+ * that is off screen (IntersectionObserver), in a hidden app, or `still`
+ * (the draft watermark) holds frame 0 (`data-paused`) and does not blink;
+ * a resting state (idle / sleep / offline / done) plays for `REST_PLAY_MS`
+ * after it appears, changes or is hovered, then holds frame 0 and only
+ * blinks. Working / needs-you keep looping while visible.
  */
-import { createEffect, createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import './mascot.css';
 import { anim, nextBlinkDelay, sprite, viewBox, zzzCells, keyframesCss, type Cell, type EyeMask, type MascotState, EYE_MASKS, STATE_LABEL } from '../lib/unicrab';
 
@@ -40,14 +47,65 @@ function Cells(props: { cells: readonly Cell[] }) {
   );
 }
 
+/** States that settle to a still pose (with blinks) after a short play. */
+const REST_STATES: ReadonlySet<MascotState> = new Set(['idle', 'sleep', 'offline', 'done']);
+/** How long a resting state loops after it appears / changes / is hovered. */
+export const REST_PLAY_MS = 6_000;
+
+/** `document.hidden`, as a signal shared by every crab. */
+const [docHidden, setDocHidden] = createSignal(typeof document !== 'undefined' && document.hidden === true);
+let docHook = false;
+function hookDocHidden(): void {
+  if (docHook || typeof document === 'undefined') return;
+  docHook = true;
+  document.addEventListener('visibilitychange', () => setDocHidden(document.hidden === true));
+}
+
 const reducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export function Unicrab(props: { state: MascotState; size?: number; class?: string; title?: string; style?: JSX.CSSProperties }) {
+export function Unicrab(props: {
+  state: MascotState;
+  size?: number;
+  class?: string;
+  title?: string;
+  style?: JSX.CSSProperties;
+  /** Never animates (a watermark / decoration): frame 0, no blinks. */
+  still?: boolean;
+}) {
   injectStyle();
+  hookDocHidden();
   const [blink, setBlink] = createSignal(false);
+  let svg: SVGSVGElement | undefined;
+  // Without IntersectionObserver (jsdom, old webviews) a crab counts as on screen.
+  const [onScreen, setOnScreen] = createSignal(true);
+  onMount(() => {
+    if (!svg || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => {
+      const e = entries[entries.length - 1];
+      if (e) setOnScreen(e.isIntersecting);
+    });
+    io.observe(svg);
+    onCleanup(() => io.disconnect());
+  });
+  /** A resting state is "awake" (looping) for REST_PLAY_MS after it appears, changes or is hovered. */
+  const [awake, setAwake] = createSignal(true);
+  let restTimer: ReturnType<typeof setTimeout> | undefined;
+  const wake = () => {
+    setAwake(true);
+    clearTimeout(restTimer);
+    restTimer = setTimeout(() => setAwake(false), REST_PLAY_MS);
+  };
+  createEffect(() => {
+    props.state;
+    wake();
+  });
+  onCleanup(() => clearTimeout(restTimer));
+  /** May anything move at all (visible, shown, not a decoration)? */
+  const visible = () => !props.still && onScreen() && !docHidden();
+  const looping = () => visible() && (!REST_STATES.has(props.state) || awake());
   createEffect(() => {
     const s = anim.states[props.state];
-    if (!s?.blink || reducedMotion()) return;
+    if (!s?.blink || reducedMotion() || !visible()) return;
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => {
       timer = setTimeout(() => {
@@ -71,6 +129,9 @@ export function Unicrab(props: { state: MascotState; size?: number; class?: stri
       class={`unicrab ${props.class ?? ''}`}
       data-state={props.state}
       data-blink={blink() ? '' : undefined}
+      data-paused={looping() ? undefined : ''}
+      ref={svg}
+      onPointerEnter={() => REST_STATES.has(props.state) && wake()}
       viewBox={viewBox()}
       width={size()}
       height={Math.round((size() * vh) / vw)}
