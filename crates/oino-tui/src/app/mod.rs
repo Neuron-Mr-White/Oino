@@ -1015,6 +1015,17 @@ impl App {
                 let commands: Vec<JsonValue> = parse(data, "commands").unwrap_or_default();
                 let list: Vec<(String, Option<String>, String)> = commands
                     .iter()
+                    // A row marked for other clients only (`surfaces` without `tui`) stays out.
+                    .filter(|c| {
+                        let surfaces = c.get("surfaces").and_then(|v| {
+                            serde_json::from_value::<Vec<oino_ui::settings::Surface>>(v.clone())
+                                .ok()
+                        });
+                        oino_ui::settings::on_surface(
+                            surfaces.as_deref(),
+                            oino_ui::settings::Surface::Tui,
+                        )
+                    })
                     .filter_map(|c| {
                         Some((
                             c.get("name")?.as_str()?.to_owned(),
