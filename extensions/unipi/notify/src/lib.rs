@@ -548,7 +548,7 @@ impl Notify {
         let mut message = messages::lifecycle_message(key, name.as_deref());
         if cfg.recap.enabled {
             let last = messages::last_assistant_in_messages(payload).or_else(|| {
-                session::branch(None)
+                session::query(&session::EntryQuery::messages(&["assistant"]).last(16))
                     .ok()
                     .and_then(|b| messages::last_assistant_in_entries(&b))
             });

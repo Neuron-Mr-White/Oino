@@ -1709,7 +1709,7 @@ impl Fusion {
             .map(ToOwned::to_owned);
         let mut active = p.active.clone();
         let fresh = cx.raw().kind == oino_extension::wit::types::CallKind::Event
-            && session::entries().is_ok_and(|e| e.len() <= 1);
+            && session::query(&session::EntryQuery::default().last(2)).is_ok_and(|e| e.len() <= 1);
         if fresh {
             if let Some(m) = settings_model {
                 active = Some(Active::Single { model: m });
@@ -1724,7 +1724,9 @@ impl Fusion {
         // D-EXTSTATE: the session's own sidekick record outranks the global preset — a
         // restarted host re-attaches the pairing instead of losing it to another session's
         // model switch (the child file is re-found by the sidekick-dir scan in runtime()).
-        if let Some(a) = restore_sidekick(&session::entries().unwrap_or_default()) {
+        if let Some(a) = restore_sidekick(
+            &session::query(&session::EntryQuery::custom(&[SIDEKICK_ENTRY])).unwrap_or_default(),
+        ) {
             active = Some(a);
         }
         self.sessions.with(&sid, |s| {

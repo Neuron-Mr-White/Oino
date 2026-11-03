@@ -45,6 +45,63 @@ pub(crate) fn check_render_override(
     )))
 }
 
+/// `query-entries` over the live session (perf-fix #1): filters on the typed entries and
+/// serializes only the matches, so neither the host nor the guest builds the whole transcript.
+fn find_entries(
+    manager: &oino_session::SessionManager,
+    query: &oino_extension_api::ops::EntryQuery,
+) -> Result<JsonValue, HostError> {
+    use oino_extension_api::ops::QueryScope;
+    use oino_session::EntryKind;
+    let base: Vec<&oino_session::SessionEntry> = match query.scope {
+        QueryScope::All => manager.entries().iter().collect(),
+        QueryScope::Branch => manager.branch(None),
+    };
+    let start = if query.since_compaction {
+        oino_extension_api::ops::compaction_start(
+            base.len(),
+            |i| matches!(base[i].kind, EntryKind::Compaction(_)),
+            |i| match &base[i].kind {
+                EntryKind::Compaction(compaction) => {
+                    Some(compaction.first_kept_entry_id.as_str().to_owned())
+                }
+                _ => None,
+            },
+            |i| Some(base[i].id.as_str().to_owned()),
+        )
+    } else {
+        0
+    };
+    let matched: Vec<&oino_session::SessionEntry> = base[start..]
+        .iter()
+        .copied()
+        .filter(|entry| {
+            let custom_type = match &entry.kind {
+                EntryKind::Custom { custom_type, .. }
+                | EntryKind::CustomMessage { custom_type, .. } => Some(custom_type.as_str()),
+                _ => None,
+            };
+            query.matches(
+                entry.type_name(),
+                custom_type,
+                entry.message().map(oino_ai::AgentMessage::role),
+            )
+        })
+        .collect();
+    let skip = query
+        .last
+        .map_or(0, |last| matched.len().saturating_sub(last));
+    let mut out = Vec::with_capacity(matched.len() - skip);
+    for entry in &matched[skip..] {
+        let mut value = to_json(entry)?;
+        if let Some(max) = query.max_string {
+            oino_extension_api::ops::clip_strings(&mut value, max);
+        }
+        out.push(value);
+    }
+    Ok(JsonValue::Array(out))
+}
+
 impl AgentSession {
     /// Performs one host operation for `extension` (runtime §7.3 context rules apply).
     ///
@@ -790,6 +847,7 @@ impl AgentSession {
             SessionQuery::Leaf => to_json(manager.leaf_id().map(EntryId::as_str)),
             SessionQuery::Id => to_json(manager.session_id()),
             SessionQuery::File => to_json(manager.session_file()),
+            SessionQuery::Find(query) => find_entries(&manager, query),
         }
     }
 

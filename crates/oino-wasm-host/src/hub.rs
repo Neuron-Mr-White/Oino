@@ -656,6 +656,13 @@ impl HostServices for Composite {
     fn session_read(&self, cx: &CallContext, q: SessionQuery) -> Result<RawJson, HostError> {
         self.inner.session_read(cx, q)
     }
+    fn session_query(
+        &self,
+        cx: &CallContext,
+        query: &oino_extension_api::ops::EntryQuery,
+    ) -> Result<RawJson, HostError> {
+        self.inner.session_query(cx, query)
+    }
     fn session_write(
         &self,
         ext: &ExtensionId,

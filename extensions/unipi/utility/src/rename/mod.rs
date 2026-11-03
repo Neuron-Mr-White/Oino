@@ -177,7 +177,10 @@ fn session_model() -> Option<String> {
 impl Renamer {
     /// `session_start`.
     pub fn on_session_start(&self, sid: &str) {
-        let entries = oino_extension::session::entries().unwrap_or_default();
+        let entries = oino_extension::session::query(
+            &oino_extension::session::EntryQuery::custom(&[AUTO_NAME_ENTRY]).last(1),
+        )
+        .unwrap_or_default();
         self.sessions.with(sid, |s| s.reset(&entries));
     }
 

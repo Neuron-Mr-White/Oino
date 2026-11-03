@@ -63,6 +63,29 @@ pub struct PendingCompaction {
 /// Restores the pending compaction from the session's `unipi:compactor-pending` entries:
 /// the last entry wins, a `{"cleared": true}` entry resets it.
 #[must_use]
+/// The branch from the newest compaction's first kept entry (perf-fix #1): everything
+/// [`cut::collect_live`] and the boundary draft read, without the compacted-away history.
+fn live_branch() -> Vec<Value> {
+    session::query(&session::EntryQuery {
+        scope: session::QueryScope::Branch,
+        since_compaction: true,
+        ..session::EntryQuery::default()
+    })
+    .unwrap_or_default()
+}
+
+/// What [`card::session_stats`] reads (perf-fix #1: the info screen asks for it on every
+/// session open): the branch's compaction entries, not the transcript. A compaction without
+/// `details.tokensAfter` then estimates its "after" from the summary alone.
+fn stats_branch() -> Vec<Value> {
+    session::query(&session::EntryQuery {
+        scope: session::QueryScope::Branch,
+        types: vec!["compaction".into()],
+        ..session::EntryQuery::default()
+    })
+    .unwrap_or_default()
+}
+
 pub fn restore_pending(entries: &[Value]) -> Option<PendingCompaction> {
     let mut restored: Option<PendingCompaction> = None;
     for e in entries {
@@ -703,7 +726,7 @@ impl Compactor {
             && !aborted
         {
             if !has_compaction(&entries) {
-                let branch = session::branch(None).unwrap_or_default();
+                let branch = live_branch();
                 #[allow(
                     clippy::cast_possible_truncation,
                     clippy::cast_sign_loss,
@@ -766,7 +789,7 @@ impl Compactor {
             );
             self.sessions.with(&sid, |s| s.auto = d.state);
             if d.trigger {
-                let branch = session::branch(None).unwrap_or_default();
+                let branch = live_branch();
                 #[allow(
                     clippy::cast_possible_truncation,
                     clippy::cast_sign_loss,
@@ -890,7 +913,7 @@ impl Compactor {
 
     fn stats_text() -> String {
         use unipi_kit::fmt::format_tokens;
-        let branch = session::branch(None).unwrap_or_default();
+        let branch = stats_branch();
         let (rec, before, after, saved) = card::session_stats(&branch);
         let (tokens, _, window) = usage();
         #[allow(
@@ -928,7 +951,7 @@ impl Compactor {
     fn info_group(&self) -> Value {
         use unipi_kit::fmt::format_tokens;
         let cfg = self.cfg();
-        let branch = session::branch(None).unwrap_or_default();
+        let branch = stats_branch();
         let (rec, before, after, saved) = card::session_stats(&branch);
         #[allow(
             clippy::cast_possible_truncation,
@@ -998,7 +1021,9 @@ impl Extension for Compactor {
             ext.settings.refresh();
             ext.sessions.remove(cx.session_id());
             // D-EXTSTATE: a pending command compaction survives a restart.
-            if let Some(p) = restore_pending(&session::entries().unwrap_or_default()) {
+            if let Some(p) = restore_pending(
+                &session::query(&session::EntryQuery::custom(&[PENDING_ENTRY])).unwrap_or_default(),
+            ) {
                 ext.sessions.with(cx.session_id(), |s| {
                     s.pending_method = p.method;
                     s.pending_command.clone_from(&p.command);

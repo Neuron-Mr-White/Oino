@@ -662,7 +662,8 @@ impl Lh {
     }
 
     fn tail() -> Vec<(String, String)> {
-        session::branch(None)
+        // perf-fix #1: the newest user/assistant messages only (5 with text are kept).
+        session::query(&session::EntryQuery::messages(&["user", "assistant"]).last(32))
             .unwrap_or_default()
             .iter()
             .rev()

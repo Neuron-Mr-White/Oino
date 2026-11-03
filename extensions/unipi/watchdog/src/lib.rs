@@ -809,7 +809,8 @@ impl Watchdog {
     /// Reloads this session's pinned caps from the last [`CAPS_ENTRY`] entry
     /// (`SessionStart`; the pins survive restarts because they live in the session file).
     fn load_caps_pins(&self, cx: &Ctx) {
-        let pins = session::entries()
+        // perf-fix #1: only this extension's caps entries cross into the guest.
+        let pins = session::query(&session::EntryQuery::custom(&[CAPS_ENTRY]))
             .ok()
             .and_then(|entries| {
                 entries

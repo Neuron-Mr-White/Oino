@@ -730,7 +730,10 @@ impl InfoScreen {
             .and_then(|r| r.get("raw"))
             .cloned()
             .unwrap_or(Value::Null);
-        let branch = session::branch(None).unwrap_or_default();
+        // perf-fix #1: the splash only counts replies, tokens and cost — read the branch's
+        // assistant messages with their text clipped, not the whole transcript.
+        let branch = session::query(&session::EntryQuery::messages(&["assistant"]).max_string(64))
+            .unwrap_or_default();
         let r = stats::collect(&branch, None, now);
         let resumed = (r.replies > 0).then(|| {
             let total = r.input + r.output + r.cache_read + r.cache_write;

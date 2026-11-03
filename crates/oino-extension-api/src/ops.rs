@@ -117,6 +117,161 @@ pub enum SessionQuery {
     SessionName,
 }
 
+/// Which entries an [`EntryQuery`] starts from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum QueryScope {
+    /// Every entry in file order (all branches), like `entries`.
+    #[default]
+    All,
+    /// Root → leaf, like `branch(none)`.
+    Branch,
+}
+
+/// `session.query-entries` (perf-fix #1): a bounded session read. The host filters before it
+/// serializes, so an extension that only needs its own state entries, the last user message
+/// or the tail since the last compaction never copies the whole transcript into its linear
+/// memory (which never shrinks: four extensions reading a 200 MB chat held ≈ 1.9 GB).
+///
+/// An entry is returned when it passes every given filter: `types` (the entry `type`),
+/// `customTypes` (only checked on `custom` / `custom_message` entries), `roles` (only checked
+/// on `message` entries). Then `last` keeps the newest N matches and `maxString` clips every
+/// longer string value (on a char boundary). Results are oldest first.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EntryQuery {
+    /// Starting set.
+    pub scope: QueryScope,
+    /// Start at the live context of the newest `compaction` of the scope: its
+    /// `firstKeptEntryId` when that entry is in scope, else the compaction entry itself
+    /// (no compaction: from the start).
+    pub since_compaction: bool,
+    /// Entry `type`s to keep (empty: all).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub types: Vec<String>,
+    /// `customType`s to keep among `custom` / `custom_message` entries (empty: all).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub custom_types: Vec<String>,
+    /// Message roles to keep among `message` entries (empty: all).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub roles: Vec<String>,
+    /// Keep only the newest N matches.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last: Option<usize>,
+    /// Clip string values longer than this many bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_string: Option<usize>,
+}
+
+impl EntryQuery {
+    /// Whether an entry with these identity fields passes the filters.
+    #[must_use]
+    pub fn matches(&self, entry_type: &str, custom_type: Option<&str>, role: Option<&str>) -> bool {
+        let listed = |list: &[String], value: &str| list.iter().any(|item| item == value);
+        if !self.types.is_empty() && !listed(&self.types, entry_type) {
+            return false;
+        }
+        if !self.custom_types.is_empty()
+            && matches!(entry_type, "custom" | "custom_message")
+            && !custom_type.is_some_and(|t| listed(&self.custom_types, t))
+        {
+            return false;
+        }
+        if !self.roles.is_empty()
+            && entry_type == "message"
+            && !role.is_some_and(|r| listed(&self.roles, r))
+        {
+            return false;
+        }
+        true
+    }
+
+    /// [`Self::matches`] on an entry's JSON.
+    #[must_use]
+    pub fn matches_value(&self, entry: &serde_json::Value) -> bool {
+        let field = |pointer: &str| entry.pointer(pointer).and_then(serde_json::Value::as_str);
+        self.matches(
+            field("/type").unwrap_or_default(),
+            field("/customType"),
+            field("/message/role"),
+        )
+    }
+
+    /// Applies the query to `entries` (the scope's entries, oldest first) — the reference
+    /// implementation hosts without an indexed session use.
+    #[must_use]
+    pub fn apply_values(&self, entries: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+        let start = if self.since_compaction {
+            let str_of = |e: &serde_json::Value, key: &str| {
+                e.get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            };
+            compaction_start(
+                entries.len(),
+                |i| str_of(&entries[i], "type").as_deref() == Some("compaction"),
+                |i| str_of(&entries[i], "firstKeptEntryId"),
+                |i| str_of(&entries[i], "id"),
+            )
+        } else {
+            0
+        };
+        let mut matched: Vec<serde_json::Value> = entries
+            .into_iter()
+            .skip(start)
+            .filter(|e| self.matches_value(e))
+            .collect();
+        if let Some(last) = self.last {
+            let skip = matched.len().saturating_sub(last);
+            matched.drain(..skip);
+        }
+        if let Some(max) = self.max_string {
+            for entry in &mut matched {
+                clip_strings(entry, max);
+            }
+        }
+        matched
+    }
+}
+
+/// Where [`EntryQuery::since_compaction`] starts in a list of `len` entries: the newest
+/// compaction's first kept entry when it precedes the compaction in the list, else the
+/// compaction itself, else 0.
+pub fn compaction_start(
+    len: usize,
+    is_compaction: impl Fn(usize) -> bool,
+    first_kept: impl Fn(usize) -> Option<String>,
+    id: impl Fn(usize) -> Option<String>,
+) -> usize {
+    let Some(compaction) = (0..len).rev().find(|&i| is_compaction(i)) else {
+        return 0;
+    };
+    first_kept(compaction)
+        .filter(|kept| !kept.is_empty())
+        .and_then(|kept| {
+            (0..compaction)
+                .rev()
+                .find(|&i| id(i).as_deref() == Some(&kept))
+        })
+        .unwrap_or(compaction)
+}
+
+/// Clips every string in `value` longer than `max` bytes (on a char boundary).
+pub fn clip_strings(value: &mut serde_json::Value, max: usize) {
+    match value {
+        serde_json::Value::String(text) if text.len() > max => {
+            let mut end = max;
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(|v| clip_strings(v, max)),
+        serde_json::Value::Object(map) => map.values_mut().for_each(|v| clip_strings(v, max)),
+        _ => {}
+    }
+}
+
 /// Session writes.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SessionWrite {
@@ -687,4 +842,96 @@ pub struct HostContextInfo {
     /// Workspace override (`None` = computed by the host from the call cwd).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<WorkspaceInfo>,
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test assertions")]
+mod entry_query_tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    fn entries() -> Vec<Value> {
+        vec![
+            json!({"type": "message", "id": "u1", "message": {"role": "user", "content": "old"}}),
+            json!({"type": "custom", "id": "c1", "customType": "a", "data": {"n": 1}}),
+            json!({"type": "message", "id": "k1", "message": {"role": "assistant", "content": "kept"}}),
+            json!({"type": "compaction", "id": "z1", "firstKeptEntryId": "k1", "summary": "s"}),
+            json!({"type": "custom", "id": "c2", "customType": "b", "data": {"n": 2}}),
+            json!({"type": "message", "id": "u2", "message": {"role": "user", "content": "new text here"}}),
+            json!({"type": "custom", "id": "c3", "customType": "a", "data": {"n": 3}}),
+        ]
+    }
+
+    fn ids(found: &[Value]) -> Vec<&str> {
+        found.iter().map(|e| e["id"].as_str().unwrap()).collect()
+    }
+
+    #[test]
+    fn custom_types_filter_only_custom_entries() {
+        let query = EntryQuery {
+            types: vec!["custom".into()],
+            custom_types: vec!["a".into()],
+            ..EntryQuery::default()
+        };
+        assert_eq!(ids(&query.apply_values(entries())), ["c1", "c3"]);
+        let last = EntryQuery {
+            last: Some(1),
+            ..query
+        };
+        assert_eq!(ids(&last.apply_values(entries())), ["c3"]);
+    }
+
+    #[test]
+    fn roles_filter_only_messages_and_types_combine() {
+        let query = EntryQuery {
+            types: vec!["custom".into(), "message".into()],
+            custom_types: vec!["b".into()],
+            roles: vec!["user".into()],
+            ..EntryQuery::default()
+        };
+        assert_eq!(ids(&query.apply_values(entries())), ["u1", "c2", "u2"]);
+    }
+
+    #[test]
+    fn since_compaction_starts_at_the_first_kept_entry() {
+        let query = EntryQuery {
+            since_compaction: true,
+            ..EntryQuery::default()
+        };
+        assert_eq!(
+            ids(&query.apply_values(entries())),
+            ["k1", "z1", "c2", "u2", "c3"]
+        );
+        // A first kept id outside the list: from the compaction itself.
+        let mut list = entries();
+        list[3]["firstKeptEntryId"] = json!("gone");
+        assert_eq!(ids(&query.apply_values(list))[0], "z1");
+        // No compaction: everything.
+        let list: Vec<Value> = entries().into_iter().filter(|e| e["id"] != "z1").collect();
+        assert_eq!(query.apply_values(list).len(), 6);
+    }
+
+    #[test]
+    fn max_string_clips_on_a_char_boundary() {
+        let query = EntryQuery {
+            max_string: Some(2),
+            ..EntryQuery::default()
+        };
+        let found = query.apply_values(vec![json!({"type": "x", "id": "1", "t": "héllo"})]);
+        assert_eq!(found[0]["t"], "h", "2 bytes end inside `é`");
+        assert_eq!(found[0]["type"], "x");
+    }
+
+    #[test]
+    fn the_sdk_wire_form_parses() {
+        let query: EntryQuery = serde_json::from_str(
+            r#"{"scope":"branch","sinceCompaction":true,"types":["message"],"roles":["user"],"last":1}"#,
+        )
+        .unwrap();
+        assert_eq!(query.scope, QueryScope::Branch);
+        assert!(query.since_compaction);
+        assert_eq!(query.last, Some(1));
+        let empty: EntryQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(empty, EntryQuery::default());
+    }
 }

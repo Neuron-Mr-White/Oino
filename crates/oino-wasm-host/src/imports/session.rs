@@ -86,6 +86,17 @@ impl<T: Send> ws::HostWithStore<T> for HostState {
         let (ext, cx) = current(&mut host);
         ready(read_json(&ext, &cx, SessionQuery::Entries))
     }
+    fn query_entries(
+        mut host: Access<'_, T, Self>,
+        query: String,
+    ) -> impl Future<Output = wasmtime::Result<String>> + Send {
+        let (ext, cx) = current(&mut host);
+        // A malformed query reads nothing (like every other session read failing: `[]`).
+        let result = serde_json::from_str::<oino_extension_api::ops::EntryQuery>(&query)
+            .map_err(|e| HostError::InvalidArgument(e.to_string()))
+            .and_then(|query| ext.host.session_query(&cx, &query));
+        ready(result.map_or_else(|_| "[]".to_owned(), |j| out(&j)))
+    }
     fn branch(
         mut host: Access<'_, T, Self>,
         from: Option<String>,
@@ -670,8 +681,14 @@ mod tests {
         };
         assert!(init_must_not_touch_loadout(&cx(CallKind::Init), &set));
         assert!(init_must_not_touch_loadout(&cx(CallKind::Init), &update));
-        assert!(!init_must_not_touch_loadout(&cx(CallKind::Init), &ControlOp::ActiveTools));
+        assert!(!init_must_not_touch_loadout(
+            &cx(CallKind::Init),
+            &ControlOp::ActiveTools
+        ));
         assert!(!init_must_not_touch_loadout(&cx(CallKind::Event), &set));
-        assert!(!init_must_not_touch_loadout(&cx(CallKind::Command), &update));
+        assert!(!init_must_not_touch_loadout(
+            &cx(CallKind::Command),
+            &update
+        ));
     }
 }

@@ -114,7 +114,10 @@ impl WasmInstance {
             wasi: crate::wasi::build(&self.shared)
                 .map_err(|e| self.err("instantiate", e.to_string()))?,
             table: ResourceTable::new(),
-            limits: EngineShared::limits(&self.shared.manifest),
+            limits: crate::state::GuestLimits::new(
+                EngineShared::limits(&self.shared.manifest),
+                &self.shared.id,
+            ),
             ext: Arc::clone(&self.shared),
             calls: CallTable::default(),
         };

@@ -17,6 +17,10 @@ interface session {
     entry: func(id: entry-id) -> option<json>;                // SessionEntry
     entries: func() -> json;                                  // Vec<SessionEntry>, file order, all branches
     branch: func(%from: option<entry-id>) -> json;             // Vec<SessionEntry> root→from
+    /// Bounded read: the entries matching an `EntryQuery` JSON, oldest first —
+    /// {scope: "all"|"branch", sinceCompaction, types, customTypes, roles, last, maxString}.
+    /// Prefer it over `entries` / `branch` in hooks: those copy the whole transcript.
+    query-entries: func(query: json) -> json;                // Vec<SessionEntry>
     context-entries: func() -> json;                          // build_context_entries
     projection: func() -> json;                               // SessionProjection
     tree: func() -> json;                                     // Vec<SessionTreeNode>

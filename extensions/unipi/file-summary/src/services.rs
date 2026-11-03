@@ -39,11 +39,28 @@ impl Summary {
     }
 }
 
-/// One custom entry of `custom_type` in file order, with its position.
-fn custom_entries<T: serde::de::DeserializeOwned>(custom_type: &str) -> Vec<(usize, T)> {
-    let Ok(entries) = session::entries() else {
-        return Vec::new();
-    };
+/// The entries the turn/undo bookkeeping reads, in file order (perf-fix #1: not the whole
+/// transcript): its own records, plus the user messages a turn id names when
+/// `with_turn_messages` (undo needs their positions; positions index this list).
+fn index_entries(with_turn_messages: bool) -> Vec<Value> {
+    let mut types = vec!["custom".to_owned()];
+    if with_turn_messages {
+        types.push("message".to_owned());
+    }
+    session::query(&session::EntryQuery {
+        types,
+        custom_types: vec![TURN_CUSTOM_TYPE.into(), UNDO_CUSTOM_TYPE.into()],
+        roles: vec!["user".into()],
+        ..session::EntryQuery::default()
+    })
+    .unwrap_or_default()
+}
+
+/// The custom entries of `custom_type` in `entries`, with their positions.
+fn custom_entries_in<T: serde::de::DeserializeOwned>(
+    entries: &[Value],
+    custom_type: &str,
+) -> Vec<(usize, T)> {
     entries
         .iter()
         .enumerate()
@@ -56,6 +73,11 @@ fn custom_entries<T: serde::de::DeserializeOwned>(custom_type: &str) -> Vec<(usi
             serde_json::from_value(data).ok().map(|data| (index, data))
         })
         .collect()
+}
+
+/// One custom entry of `custom_type` in file order, with its position.
+fn custom_entries<T: serde::de::DeserializeOwned>(custom_type: &str) -> Vec<(usize, T)> {
+    custom_entries_in(&index_entries(false), custom_type)
 }
 
 /// Every finished turn, in file order.
@@ -381,11 +403,11 @@ pub fn undo_from(payload: &Value, cx: &Ctx) -> Result<Value> {
         .get("force")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let entries = session::entries().unwrap_or_default();
+    let entries = index_entries(true);
     let position = entries
         .iter()
         .position(|entry| entry.get("id").and_then(Value::as_str) == Some(turn_entry_id.as_str()));
-    let mut later: Vec<(usize, TurnRecord)> = turns()
+    let mut later: Vec<(usize, TurnRecord)> = custom_entries_in(&entries, TURN_CUSTOM_TYPE)
         .into_iter()
         .filter(|(index, _)| position.is_none_or(|position| *index > position))
         .collect();

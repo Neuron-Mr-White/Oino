@@ -845,7 +845,16 @@ impl Memory {
     fn on_session_start(&'static self, cx: &Ctx) {
         self.settings.refresh();
         let sid = cx.session_id().to_owned();
-        let branch = session::branch(None).unwrap_or_default();
+        // perf-fix #1: the reminder check only reads the live context's compaction and
+        // reminder entries.
+        let branch = session::query(&session::EntryQuery {
+            scope: session::QueryScope::Branch,
+            since_compaction: true,
+            types: vec!["compaction".into(), "custom_message".into()],
+            custom_types: vec![RECALL_CUSTOM_TYPE.into()],
+            ..session::EntryQuery::default()
+        })
+        .unwrap_or_default();
         self.sessions.with(&sid, |s| {
             *s = Sess {
                 recall_done: branch_has_recall_reminder(&branch),

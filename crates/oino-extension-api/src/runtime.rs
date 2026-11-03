@@ -14,9 +14,9 @@ use crate::guest::{CompletionItem, InitInput, ToolInvocation};
 use crate::json::RawJson;
 use crate::manifest::Manifest;
 use crate::ops::{
-    ControlOp, ControlReply, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply, PanelOp,
-    ProviderHook, ProviderHookReply, SecretOp, SessionQuery, SessionWrite, SessionsIndexQuery,
-    SettingsLayer, SettingsScope, TaskOp,
+    ControlOp, ControlReply, DeviceOp, EditorOp, EntryQuery, HostContextInfo, ModelsOp,
+    ModelsReply, PanelOp, ProviderHook, ProviderHookReply, QueryScope, SecretOp, SessionQuery,
+    SessionWrite, SessionsIndexQuery, SettingsLayer, SettingsScope, TaskOp,
 };
 use crate::registry::{
     ArbiterRoles, CommandSpec, EventKind, FlagSpec, Registration, RendererSpec, ShortcutSpec,
@@ -379,6 +379,26 @@ pub trait HostServices: Send + Sync {
     /// Stale context, unsupported.
     fn session_read(&self, cx: &CallContext, q: SessionQuery) -> Result<RawJson, HostError> {
         unsupported!("session reads")
+    }
+    /// `session.query-entries` (perf-fix #1): the entries matching `query`. This default
+    /// filters a full `entries` / `branch` read; a runtime with the session at hand
+    /// overrides it to filter before anything is serialized.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::session_read`].
+    fn session_query(&self, cx: &CallContext, query: &EntryQuery) -> Result<RawJson, HostError> {
+        let base = match query.scope {
+            QueryScope::All => SessionQuery::Entries,
+            QueryScope::Branch => SessionQuery::Branch { from: None },
+        };
+        let entries = match self.session_read(cx, base)?.to_value() {
+            serde_json::Value::Array(entries) => entries,
+            _ => Vec::new(),
+        };
+        Ok(RawJson::from(serde_json::Value::Array(
+            query.apply_values(entries),
+        )))
     }
     /// Session writes → entry id for `append-entry`.
     fn session_write(

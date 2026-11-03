@@ -547,7 +547,11 @@ impl Extension for Registry {
             if !cx.is_child() {
                 settings::import_legacy(&ext.settings);
             }
-            let entries = session::entries().unwrap_or_default();
+            let entries = session::query(&session::EntryQuery::custom(&[
+                judge::SKILLS_JUDGED_ENTRY,
+                judge::SKILLS_REVEALED_ENTRY,
+            ]))
+            .unwrap_or_default();
             ext.sessions.with(cx.session_id(), |s| {
                 *s = Session {
                     judge: judge::restore_state(&entries),

@@ -808,7 +808,12 @@ impl Workflow {
             }
         }
         let cwd = cx.cwd().display().to_string();
-        let entries = session::entries().unwrap_or_default();
+        // perf-fix #1: only the two state entry types cross into the guest.
+        let entries = session::query(&session::EntryQuery::custom(&[
+            plan::PLAN_STATE_ENTRY,
+            PERMISSION_STATE_ENTRY,
+        ]))
+        .unwrap_or_default();
         let state = plan::restore(&entries, &cwd, cx.session_id(), timers::now_ms());
         // G-02: this chat's persisted permission mode comes back exactly as it was left —
         // an Ask chat must never reopen as auto.

@@ -212,6 +212,11 @@ async fn imports_allowed() {
     );
     let id = probe(&h, &*ext, "append", json!({"type": "x", "data": {"b": 2}})).await;
     assert!(id["ok"].is_string());
+    // perf-fix #1: `query-entries` reads only the matching entries.
+    let found = probe(&h, &*ext, "query", json!({"type": "x"})).await;
+    assert_eq!(found["ok"][0]["data"], json!({"b": 2}), "{found}");
+    let none = probe(&h, &*ext, "query", json!({"type": "nope"})).await;
+    assert_eq!(none["ok"], json!([]), "{none}");
     assert!(probe(&h, &*ext, "send-message", json!({"text": "m"})).await["ok"].is_null());
     assert!(probe(&h, &*ext, "set-name", json!({"name": "n"})).await["ok"].is_null());
     assert_eq!(

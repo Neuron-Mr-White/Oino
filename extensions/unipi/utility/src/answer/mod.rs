@@ -238,13 +238,18 @@ fn env(name: &str) -> Option<String> {
     host::env(name).ok().flatten()
 }
 
+/// The newest assistant messages of the branch (perf-fix #1: not the whole transcript).
+fn recent_assistant_messages() -> Vec<Value> {
+    session::query(&session::EntryQuery::messages(&["assistant"]).last(16)).unwrap_or_default()
+}
+
 impl Answerer {
     /// `agent_end`: the questions hint.
     pub fn on_agent_end(&self, cx: &Ctx, enabled: bool) {
         if !cx.has_ui() || !enabled {
             return;
         }
-        let reply = last_assistant_text(&session::branch(None).unwrap_or_default());
+        let reply = last_assistant_text(&recent_assistant_messages());
         let n = extract_questions(&reply).len();
         if n == 0 {
             return;
@@ -296,7 +301,7 @@ impl Answerer {
             let _ = ui::notify("/answer needs an interactive frontend", "warning");
             return Ok(());
         }
-        let reply = last_assistant_text(&session::branch(None).unwrap_or_default());
+        let reply = last_assistant_text(&recent_assistant_messages());
         if reply.is_empty() {
             ui::notify("No agent reply to answer yet.", "info")?;
             return Ok(());

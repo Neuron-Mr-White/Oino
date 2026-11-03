@@ -100,7 +100,11 @@ pub fn resolve(cwd: &Path, path: &str) -> Option<Resolved> {
 /// the app's `turnId`, ui-protocol §6.7).
 #[must_use]
 pub fn current_turn() -> Option<String> {
-    let entries = oino_extension::session::branch(None).ok()?;
+    // perf-fix #1 (this runs before every file tool call): the last user message only.
+    let entries = oino_extension::session::query(
+        &oino_extension::session::EntryQuery::messages(&["user"]).last(1),
+    )
+    .ok()?;
     entries
         .iter()
         .rev()

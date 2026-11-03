@@ -172,7 +172,9 @@ impl Bg {
     /// merge itself happens when snapshots are built (ids missing from the host list are
     /// simply never looked up; persist prunes them from the next durable snapshot).
     fn restore_local_state(&self, cx: &Ctx) {
-        let Some(local) = snapshot::restore_local(&session::entries().unwrap_or_default()) else {
+        let entries = session::query(&session::EntryQuery::custom(&[snapshot::BG_TASKS_ENTRY]))
+            .unwrap_or_default();
+        let Some(local) = snapshot::restore_local(&entries) else {
             return;
         };
         self.sessions.with(cx.session_id(), |s| s.local = local);

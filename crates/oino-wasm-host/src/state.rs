@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use oino_extension_api::manifest::Permissions;
 use oino_extension_api::{CallContext, ExtensionId, HostError, HostServices, Manifest};
 use wasmtime::component::{Access, Accessor, GuestTaskId, HasData, ResourceTable};
-use wasmtime::{AsContextMut, StoreLimits};
+use wasmtime::{AsContextMut, ResourceLimiter, StoreLimits};
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::http::HttpService;
@@ -134,11 +134,76 @@ impl CallTable {
     }
 }
 
+/// The store's resource limits plus a linear-memory growth trail (perf-fix #1): a guest's
+/// memory never shrinks, so each doubling past [`MEMORY_LOG_FLOOR`] is logged with the
+/// extension id — the attribution the perf baseline lacked ("4 instances of ≈ 480 MB").
+pub(crate) struct GuestLimits {
+    inner: StoreLimits,
+    extension: String,
+    logged: usize,
+}
+
+/// Linear memory below this is not worth a log line.
+const MEMORY_LOG_FLOOR: usize = 64 << 20;
+
+impl GuestLimits {
+    pub(crate) fn new(inner: StoreLimits, extension: &ExtensionId) -> Self {
+        Self {
+            inner,
+            extension: extension.to_string(),
+            logged: MEMORY_LOG_FLOOR / 2,
+        }
+    }
+}
+
+impl ResourceLimiter for GuestLimits {
+    fn memory_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        let allowed = self.inner.memory_growing(current, desired, maximum)?;
+        if allowed && desired >= self.logged.saturating_mul(2) {
+            self.logged = desired;
+            tracing::info!(
+                extension = %self.extension,
+                mib = desired >> 20,
+                "extension linear memory grew (it never shrinks)"
+            );
+        }
+        Ok(allowed)
+    }
+    fn memory_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.inner.memory_grow_failed(error)
+    }
+    fn table_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        self.inner.table_growing(current, desired, maximum)
+    }
+    fn table_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.inner.table_grow_failed(error)
+    }
+    fn instances(&self) -> usize {
+        self.inner.instances()
+    }
+    fn tables(&self) -> usize {
+        self.inner.tables()
+    }
+    fn memories(&self) -> usize {
+        self.inner.memories()
+    }
+}
+
 /// Store data.
 pub(crate) struct HostState {
     pub(crate) wasi: WasiCtx,
     pub(crate) table: ResourceTable,
-    pub(crate) limits: StoreLimits,
+    pub(crate) limits: GuestLimits,
     pub(crate) ext: Arc<ExtShared>,
     pub(crate) calls: CallTable,
 }

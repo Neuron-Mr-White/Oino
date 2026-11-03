@@ -72,6 +72,8 @@ pub enum SessionQuery {
     Id,
     /// Session file.
     File,
+    /// Bounded read: the entries matching the query (perf-fix #1, `query-entries`).
+    Find(oino_extension_api::ops::EntryQuery),
 }
 
 /// Every host operation an extension can perform.
