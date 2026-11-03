@@ -65,6 +65,10 @@ class Host:
         self.root = root
         shutil.rmtree(root, ignore_errors=True)
         lib.seed_agent_dir(root, port, settings)
+        warm = f"{args.out}/warm-cache"
+        self.warm = os.path.isdir(warm) and not getattr(args, "cold", False)
+        if self.warm:  # compiled-component cache of an earlier run: measures a warm start
+            shutil.copytree(warm, f"{root}/agent/cache", dirs_exist_ok=True)
         if seed:
             seed(root)
         self.env = lib.perf_env(root)
@@ -98,7 +102,18 @@ class Host:
     def op(self, req, timeout=60):
         return lib.op(self.sock, req, timeout)
 
+    attached = None
+
     def stop(self):
+        if self.attached:  # heaptrack -p writes its file when the target exits
+            try:
+                os.killpg(self.p.pid, signal.SIGTERM)
+                self.attached.wait(300)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                pass
+        warm = os.path.dirname(self.root) + "/warm-cache"
+        if not os.path.isdir(warm) and os.path.isdir(f"{self.root}/agent/cache"):
+            shutil.copytree(f"{self.root}/agent/cache", warm)
         try:
             os.killpg(self.p.pid, signal.SIGTERM)
             self.p.wait(30)
@@ -139,7 +154,8 @@ def snap(h, label, secs=10):
     if s:
         s["label"] = label
         log(f"  [{label}] host rss {s['host_rss']/1024:.1f} MB anon {s['host_anon']/1024:.1f} MB "
-            f"cpu {s['cpu_pct']}% thr {s['host_threads']} fds {s['host_fds']} wasm {s['wasm_mem']} procs {s['procs']}")
+            f"(wasm {s.get('wasm_kib', 0)/1024:.1f} MB in {s['wasm_mem']} memories, native {s.get('native_anon_kib', 0)/1024:.1f} MB) "
+            f"cpu {s['cpu_pct']}% thr {s['host_threads']} fds {s['host_fds']} procs {s['procs']}")
     return s
 
 
@@ -164,8 +180,16 @@ def scenario_graph(args, fake, n):
         for i in range(roots):
             st = lib.Stream(h.sock, {"op": "session_new", "cwd": f"{root}/work", "name": f"perf-root-{i}"})
             streams.append(st)
+        r["first_session_new_s"] = round(streams[0].open_s, 2)
+        r["next_session_new_s"] = round(max((x.open_s for x in streams[1:]), default=0), 2)
+        r["warm_cache"] = h.warm
         r["roots"] = roots
         r["after_roots"] = snap(h, "roots", 5)
+        if args.profile == "heaptrack-attach" and n == args.profile_size:
+            # attach after start-up (compiles) so the record covers spawn → busy → idle → close
+            h.attached = subprocess.Popen(["heaptrack", "-o", f"{args.out}/heaptrack-{tag}", "-p", str(h.pid)],
+                                          stdout=open(f"{args.out}/heaptrack-{tag}.log", "w"), stderr=subprocess.STDOUT)
+            time.sleep(10)
         fake.stats(reset=True)
         t_spawn = time.time()
         sampler.label = "spawn"
@@ -205,7 +229,9 @@ def scenario_graph(args, fake, n):
         sampler.label = "hibernated"
         r["hibernated"] = snap(h, "after hibernate window", 20)
         r["hibernated_log_lines"] = host_log_count(root, "subagent hibernated")
-        r["spawned_log_lines"] = host_log_count(root, "run_subagent") or None
+        r["woke_log_lines"] = host_log_count(root, "woke from hibernation")
+        r["handler_timeouts"] = host_log_count(root, "handler timed out")
+        r["child_session_files"] = sum(1 for dp, _, fs in os.walk(f"{root}/agent/state") for f in fs if f.endswith(".jsonl"))
         # close the root streams (app gone) and wait for idle eviction
         for (stop, _), st in zip(pumps, streams):
             stop.set()
@@ -221,7 +247,7 @@ def scenario_graph(args, fake, n):
         }
         r["disk"] = disk(root)
         r["fake"] = fake.stats()
-        r["child_sessions"] = sum(len(fs) for _, _, fs in os.walk(f"{root}/agent/sessions"))
+        r["handler_timeouts_total"] = host_log_count(root, "handler timed out")
     finally:
         sampler.stop()
         h.stop()
@@ -279,8 +305,8 @@ def scenario_long(args, fake, label, src):
             rep = st.request({"type": "get_entries", "before": cursor, "limit": 50}, timeout=120)
             page_times.append(time.time() - t1)
             data = (rep or {}).get("data") or {}
-            pg = data.get("page") or {}
-            cursor = pg.get("cursor") if pg.get("has_more") else None
+            # get_entries{before} reply: {entries, leafId, total, hasMore, cursor}
+            cursor = data.get("cursor") if data.get("hasMore") else None
             pages += 1
         r["scroll_pages"] = pages
         if page_times:
@@ -403,7 +429,7 @@ def main():
     ap.add_argument("--soak-hours", type=float, default=8.0)
     ap.add_argument("--soak-gap-s", type=float, default=20.0)
     ap.add_argument("--soak-point-s", type=float, default=300.0)
-    ap.add_argument("--profile", choices=["heaptrack", "perf"])
+    ap.add_argument("--profile", choices=["heaptrack", "heaptrack-attach", "perf"])
     ap.add_argument("--profile-size", type=int, default=50)
     ap.add_argument("--port", type=int, default=11534)
     ap.add_argument("--tag", default="")

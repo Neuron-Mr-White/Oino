@@ -62,6 +62,19 @@ def conv_key(msgs):
     return "none"
 
 
+DUMP_DIR = None
+DUMPED = set()
+
+
+def dump(sys_h, sys_text, names):
+    """Unique system prompts + tool lists, at most 64 files (diffable break reasons)."""
+    if not DUMP_DIR or sys_h in DUMPED or len(DUMPED) >= 64:
+        return
+    DUMPED.add(sys_h)
+    with open(os.path.join(DUMP_DIR, f"system-{sys_h}.txt"), "w") as f:
+        f.write("TOOLS: " + ",".join(names) + "\n\n" + sys_text)
+
+
 def account(req, body_len):
     msgs = req.get("messages", []) or []
     system = [m for m in msgs if m.get("role") in ("system", "developer")]
@@ -70,7 +83,11 @@ def account(req, body_len):
     names = sorted(t.get("function", {}).get("name", "?") for t in tools)
     sys_h, tools_h = h(system), h(tools)
     hashes = [h(m) for m in rest]
-    key = conv_key(msgs)
+    sys_text = "".join(text_of(m) for m in system)
+    # Side agents (title/judge/sidekick calls) reuse the conversation but carry their own
+    # system prompt: the first 80 chars of it separate them from the main agent's prefix.
+    key = conv_key(msgs) + "|" + h(sys_text[:80])[:6]
+    dump(sys_h, sys_text, names)
     rec = {"conv": key, "n_msgs": len(msgs), "bytes": body_len, "sys": sys_h, "tools": tools_h,
            "n_tools": len(tools)}
     with LOCK:
@@ -144,8 +161,15 @@ class H(BaseHTTPRequestHandler):
         req = json.loads(raw)
         msgs = req.get("messages", []) or []
         tools = [t.get("function", {}).get("name") for t in req.get("tools", []) or []]
-        last_user = next((text_of(m) for m in reversed(msgs) if m.get("role") == "user"), "")
-        after_tool = bool(msgs) and msgs[-1].get("role") == "tool"
+        # The script marker sits in the newest user message that carries one: extensions
+        # (memory, skills …) may append their own user-role context after the prompt.
+        idx = next((i for i in range(len(msgs) - 1, -1, -1)
+                    if msgs[i].get("role") == "user" and "PERF" in text_of(msgs[i])), None)
+        if idx is None:
+            idx = next((i for i in range(len(msgs) - 1, -1, -1) if msgs[i].get("role") == "user"), None)
+        last_user = text_of(msgs[idx]) if idx is not None else ""
+        fresh = idx is not None and all(m.get("role") == "user" for m in msgs[idx + 1:])
+        after_tool = not fresh and bool(msgs) and msgs[-1].get("role") == "tool"
         rec = account(req, len(raw))
         rec.update({"t": round(time.time(), 3), "after_tool": after_tool, "last_user": last_user[:80]})
         if LOG:
@@ -163,10 +187,9 @@ class H(BaseHTTPRequestHandler):
         m_stream = re.search(r"PERF:stream (\d+)", last_user)
         tag = re.search(r"\[conv:([\w.-]+)\]", last_user)
         tag = tag.group(1) if tag else "x"
-        if after_tool:
-            text = "Started. I will wait for the completion notifications."
-        elif m_spawn and "run_subagent" in tools and msgs[-1].get("role") == "user" \
-                and "PERF:spawn" in text_of(msgs[-1]):
+        if not fresh:
+            text = "Started. I will wait for the completion notifications." if after_tool else "Noted."
+        elif m_spawn and "run_subagent" in tools and fresh:
             # Only on the spawn prompt itself: a later completion notification must not respawn.
             k, s, t = int(m_spawn.group(1)), int(m_spawn.group(2)), int(m_spawn.group(3))
             for i in range(k):
@@ -217,6 +240,9 @@ def main():
     ap.add_argument("--log", default=os.environ.get("FAKELLM_LOG", "fakellm.jsonl"))
     a = ap.parse_args()
     LOG = open(a.log, "a")
+    global DUMP_DIR
+    DUMP_DIR = os.path.join(os.path.dirname(os.path.abspath(a.log)), "prompts")
+    os.makedirs(DUMP_DIR, exist_ok=True)
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), H)
     srv.daemon_threads = True
     srv.serve_forever()

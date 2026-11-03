@@ -36,5 +36,6 @@ fi
 (cd apps/unipi && CARGO_PROFILE_RELEASE_DEBUG=line-tables-only CARGO_PROFILE_RELEASE_STRIP=none \
   CARGO_TARGET_DIR=/root/tgt-gnu cargo build --release -p unipi-host) &&
   cp /root/tgt-gnu/release/unipi-host /root/unipi-oino-host-gnu || echo "WARN: no glibc host (heaptrack unavailable)"
+echo 0 > /proc/sys/kernel/yama/ptrace_scope || true  # heaptrack -p (runtime attach)
 git clone -q --depth 1 https://github.com/brendangregg/FlameGraph /root/FlameGraph 2>/dev/null || true
 echo VM-SETUP-DONE

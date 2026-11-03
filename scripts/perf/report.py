@@ -17,22 +17,22 @@ P(f"# perf bench summary\n\nhost `{m.get('host')}` · {m.get('cpus')} cpus · {m
 graphs = sorted((k for k in R if k.startswith("graph_")), key=lambda k: (len(k), k))
 if graphs:
     P("## (b) subagent graph (half the children stream, the rest answer at once)\n")
-    P("| N | roots | phase | host RSS MB | anon MB | CPU % (tree) | threads | fds | wasm mems | procs |")
-    P("|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|")
+    P("| run | roots | phase | host RSS MB | anon MB | wasm linear MB | native anon MB | CPU % (tree) | threads | fds | wasm mems | procs |")
+    P("|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for k in graphs:
         r = R[k]
         for ph in ("idle_empty", "after_roots", "busy", "idle_live", "hibernated", "after_close"):
             s = r.get(ph) or {}
-            P(f"| {r['n']} | {r.get('roots')} | {ph} | {mb(s.get('host_rss'))} | {mb(s.get('host_anon'))} | {s.get('cpu_pct', '—')} | "
+            P(f"| {k} | {r.get('roots')} | {ph} | {mb(s.get('host_rss'))} | {mb(s.get('host_anon'))} | {mb(s.get('wasm_kib'))} | {mb(s.get('native_anon_kib'))} | {s.get('cpu_pct', '—')} | "
               f"{s.get('host_threads', '—')} | {s.get('host_fds', '—')} | {s.get('wasm_mem', '—')} | {s.get('procs', '—')} |")
-    P("\n| N | KiB/subagent busy-mixed | idle-live | after hibernate window | hibernated (log) | IPC frames/s (roots) | items/s | KiB/s | cache hits / misses | breaks |")
+    P("\n| run | KiB/subagent busy-mixed | idle-live | after hibernate window | hibernated (log) | IPC frames/s (roots) | items/s | KiB/s | cache hits / misses | breaks |")
     P("|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
     for k in graphs:
         r = R[k]
         p = r.get("per_subagent_kib", {})
         f = (r.get("fake") or {}).get("stats", {})
         b = r.get("busy") or {}
-        P(f"| {r['n']} | {p.get('busy_mixed')} | {p.get('idle_live')} | {p.get('hibernated')} | {r.get('hibernated_log_lines')} | "
+        P(f"| {k} | {p.get('busy_mixed')} | {p.get('idle_live')} | {p.get('hibernated')} | {r.get('hibernated_log_lines')} | "
           f"{b.get('ipc_frames_per_s_roots')} | {b.get('ipc_items_per_s_roots')} | {b.get('ipc_kib_per_s_roots')} | "
           f"{f.get('hits', 0)} / {f.get('misses', 0)} | {json.dumps({x: y for x, y in (r.get('fake') or {}).get('breaks', {}).items() if not x.startswith('detail')})} |")
     P("")

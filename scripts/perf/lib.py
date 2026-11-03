@@ -224,6 +224,32 @@ def descendants(pid):
     return out
 
 
+def smaps_split(pid):
+    """Splits RSS into wasm linear memories vs the native heap.
+
+    A wasmtime linear memory is an accessible anonymous rw VMA directly followed by the
+    PROT_NONE tail (>= 1 GiB) of its reservation; `wasm_mem` counts them (instances'
+    memories alive), `wasm_kib` is their resident size, `native_anon_kib` the rest of the
+    anonymous rw memory (Rust heap, stacks, JIT data)."""
+    vmas = []
+    for line in _read(f"/proc/{pid}/smaps").splitlines():
+        head = line.split()
+        if head and "-" in head[0] and len(head) >= 5 and len(head[1]) == 4:
+            a, b = head[0].split("-")
+            vmas.append([int(a, 16), int(b, 16), head[1], head[5] if len(head) > 5 else "", 0])
+        elif line.startswith("Rss:") and vmas:
+            vmas[-1][4] = int(line.split()[1])
+    wasm = n = anon = 0
+    for i, v in enumerate(vmas):
+        if v[2].startswith("rw") and not v[3]:
+            anon += v[4]
+            nx = vmas[i + 1] if i + 1 < len(vmas) else None
+            if nx and nx[2].startswith("---") and not nx[3] and nx[1] - nx[0] >= WASM_RESERVATION and nx[0] == v[1]:
+                wasm += v[4]
+                n += 1
+    return {"wasm_mem": n, "wasm_kib": wasm, "native_anon_kib": anon - wasm, "maps": len(vmas)}
+
+
 def proc(pid, deep=False):
     """One process: rss/anon/file KiB, threads, fds, cpu ticks, wasm reservations, comm."""
     st = _read(f"/proc/{pid}/status")
@@ -243,16 +269,7 @@ def proc(pid, deep=False):
     except OSError:
         r["fds"] = -1
     if deep:
-        big = 0
-        maps = _read(f"/proc/{pid}/maps")
-        for line in maps.splitlines():
-            parts = line.split()
-            a, b = parts[0].split("-")
-            # anonymous (no path column) and >= 1 GiB: a wasm linear-memory reservation
-            if len(parts) < 6 and int(b, 16) - int(a, 16) >= WASM_RESERVATION:
-                big += 1
-        r["wasm_mem"] = big
-        r["maps"] = len(maps.splitlines())
+        r.update(smaps_split(pid))
         roll = _read(f"/proc/{pid}/smaps_rollup")
         for line in roll.splitlines():
             if line.startswith("Pss:"):
@@ -268,7 +285,8 @@ def tree(pid, deep=True):
     top = ps[0]
     agg = {"host_rss": top["rss"], "host_anon": top["anon"], "host_hwm": top["hwm"],
            "host_threads": top["threads"], "host_fds": top["fds"], "host_ticks": top["ticks"],
-           "wasm_mem": top.get("wasm_mem"), "maps": top.get("maps"), "pss": top.get("pss"),
+           "wasm_mem": top.get("wasm_mem"), "wasm_kib": top.get("wasm_kib"),
+           "native_anon_kib": top.get("native_anon_kib"), "maps": top.get("maps"), "pss": top.get("pss"),
            "procs": len(ps), "tree_rss": sum(p["rss"] for p in ps),
            "tree_threads": sum(p["threads"] for p in ps), "tree_fds": sum(max(p["fds"], 0) for p in ps),
            "tree_ticks": sum(p["ticks"] for p in ps),
@@ -293,7 +311,8 @@ def cpu_window(pid, secs):
 class Sampler(threading.Thread):
     """Samples `tree(pid)` every `every` s into a CSV (one line per sample; no in-RAM list)."""
 
-    COLS = ["t", "host_rss", "host_anon", "pss", "host_threads", "host_fds", "wasm_mem", "maps",
+    COLS = ["t", "host_rss", "host_anon", "pss", "host_threads", "host_fds", "wasm_mem", "wasm_kib",
+            "native_anon_kib", "maps",
             "procs", "tree_rss", "tree_threads", "tree_fds", "tree_ticks", "label"]
 
     def __init__(self, pid, path, every=1.0, extra_pids=None):
