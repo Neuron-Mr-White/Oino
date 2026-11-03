@@ -15,7 +15,15 @@ export const MD_CACHE_MAX = 600;
 /** Pixels per width class. */
 const WIDTH_CLASS_PX = 64;
 
+/** perf-app: total cached HTML (UTF-16 chars) — a few huge code blocks cannot pin 600 × megabytes. */
+export const MD_CACHE_CHARS_MAX = 4_000_000;
+/** A single render larger than this is never cached (it re-renders on remount). */
+const MD_ENTRY_CHARS_MAX = 400_000;
+
 const cache = new Map<string, string[]>();
+const sizes = new Map<string, number>();
+let chars = 0;
+const sizeOf = (blocks: string[]): number => blocks.reduce((n, b) => n + b.length, 0);
 
 export const widthClassOf = (px: number): number => Math.max(0, Math.floor(px / WIDTH_CLASS_PX));
 
@@ -34,11 +42,17 @@ export function mdBlocks(key: string, widthPx: number, text: string): string[] {
     return hit;
   }
   const blocks = renderBlocks(text, false);
+  const size = sizeOf(blocks);
+  if (size > MD_ENTRY_CHARS_MAX) return blocks;
   cache.set(k, blocks);
-  while (cache.size > MD_CACHE_MAX) {
+  sizes.set(k, size);
+  chars += size;
+  while (cache.size > MD_CACHE_MAX || chars > MD_CACHE_CHARS_MAX) {
     const oldest = cache.keys().next();
     if (oldest.done) break;
     cache.delete(oldest.value);
+    chars -= sizes.get(oldest.value) ?? 0;
+    sizes.delete(oldest.value);
   }
   return blocks;
 }
@@ -46,6 +60,8 @@ export function mdBlocks(key: string, widthPx: number, text: string): string[] {
 /** Tests / width sweeps. */
 export function clearMdCache(): void {
   cache.clear();
+  sizes.clear();
+  chars = 0;
 }
 
 export function mdCacheSize(): number {

@@ -14,9 +14,9 @@ import type { SessionEntry } from '../session/types';
 const STORAGE_INDEX_KEY = 'unipi.tl.snap.index.v1';
 const STORAGE_ITEM_PREFIX = 'unipi.tl.snap.item.v1:';
 /** In-memory ceiling for the whole cache, in (approximate) serialized bytes — not a session count. */
-export const MEM_BYTE_LIMIT = 32 * 1024 * 1024;
+export const MEM_BYTE_LIMIT = 8 * 1024 * 1024;
 /** One session never takes more than this share (an oversized chat is simply not cached in memory). */
-const MEM_ENTRY_MAX = 8 * 1024 * 1024;
+const MEM_ENTRY_MAX = 2 * 1024 * 1024;
 const DISK_LIMIT = 20;
 const DISK_MAX_TURNS = 24;
 const DISK_STR_CAP = 6_200;

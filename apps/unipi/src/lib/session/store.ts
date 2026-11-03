@@ -14,7 +14,7 @@ import { createStore, produce, unwrap, type SetStoreFunction } from 'solid-js/st
 import { toAppError, type AppError } from '@unipi/protocol';
 import { hostClient } from '../host/factory';
 import type { HostClient, RpcCommand } from '../host/client';
-import { applyEvents, applySnapshot, initialState, prependEntries, reconcileEntries, reconcileSince, type ApplyResult } from './reducer';
+import { applyEvents, applySnapshot, initialState, prependEntries, reconcileEntries, reconcileSince, trimHistory, type ApplyResult } from './reducer';
 import { enqueue, loadOutbox, markAcked, markLost, markSending, removeItem, saveOutbox, sweep } from './outbox';
 import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
@@ -22,8 +22,12 @@ import { hubs } from './hub';
 import { routeNotify, reportTextOf } from '../reports';
 import type { CommandInfo, OutboxImage, OutboxItem, OutboxMode, SessionEntry, SessionState } from './types';
 
-/** Live subscriptions kept open (app spec §3.3). */
-export const SESSION_LRU = 4;
+/** Live subscriptions kept open (app spec §3.3; perf-app: 3 — the shown chat and two recent ones). */
+export const SESSION_LRU = 3;
+/** perf-app: loaded entries a chat keeps once no view shows it (older pages load again on scroll). */
+export const RELEASED_KEEP = 2 * 80;
+/** perf-app: loaded entries a shown chat keeps once its reader is back at the bottom. */
+export const LOADED_MAX = 1_200;
 /** Entries per "load earlier" page (the host caps and turn-aligns it). */
 export const EARLIER_PAGE = 80;
 /** How often in-flight outbox items are time-settled. */
@@ -67,6 +71,8 @@ export type SessionHandle = {
   takeBack(): void;
   /** Pins the session against LRU eviction while a view shows it; returns the release. */
   acquire(): () => void;
+  /** perf-app: drops loaded history beyond the newest `keep` entries (paged chats; reloads on scroll). */
+  trimLoaded?(keep: number): boolean;
   close(): void;
 };
 
@@ -213,6 +219,12 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     }
   };
 
+  const trimLoaded = (keep: number): boolean => {
+    let dropped = false;
+    if (state.history && !state.history.loading && state.entries.length > keep) mutate((s) => (dropped = trimHistory(s, keep)));
+    return dropped;
+  };
+
   const refreshCommands = () => {
     stream
       .cmd<{ commands?: CommandInfo[] }>({ type: 'get_commands' })
@@ -355,8 +367,11 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
         if (released) return;
         released = true;
         refs = Math.max(0, refs - 1);
+        // Nobody shows it any more: keep only the tail page's worth of parsed history.
+        if (refs === 0) queueMicrotask(() => refs === 0 && trimLoaded(RELEASED_KEEP));
       };
     },
+    trimLoaded,
     get refs() {
       return refs;
     },

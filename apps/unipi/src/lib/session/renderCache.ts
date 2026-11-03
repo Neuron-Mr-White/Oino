@@ -48,8 +48,8 @@ export type RenderRowInput = {
 const keyOf = (r: RenderRowKey): string => `${r.target}|${r.key}|${r.entryId ?? ''}|${r.rev ?? 0}|${r.width}`;
 
 export const RENDER_CACHE_MAX = 500;
-/** Live per-session caches (the session store is LRU-8; a few slack for handovers). */
-const RENDER_SESSIONS_MAX = 12;
+/** Live per-session caches (twice the session store LRU: a few slack for handovers; perf-app). */
+const RENDER_SESSIONS_MAX = 6;
 const perSession = new Map<string, RenderCache>();
 
 /** The session's render cache (one per open session; `session.key` scoped). */

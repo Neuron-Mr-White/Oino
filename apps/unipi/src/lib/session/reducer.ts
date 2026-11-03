@@ -554,6 +554,29 @@ export function prependEntries(
   s.entriesRev += 1;
 }
 
+/**
+ * perf-app: drops loaded history older than the newest `keep` entries, cut at a
+ * user message (turn-aligned), so a chat read back to its start does not hold
+ * every page forever. Only paged chats (`history` present) trim — the dropped
+ * part loads again through `get_entries{before}` (the cut entry becomes the
+ * cursor). Returns whether anything was dropped.
+ */
+export function trimHistory(s: SessionState, keep: number): boolean {
+  const h = s.history;
+  if (!h || h.loading || s.entries.length <= keep) return false;
+  const isUser = (e: SessionEntry | undefined) => e?.type === 'message' && e.message?.role === 'user';
+  let cut = s.entries.length - keep;
+  while (cut < s.entries.length && !isUser(s.entries[cut])) cut++;
+  // No user message in the kept tail (one giant turn): keep everything.
+  if (cut <= 0 || cut >= s.entries.length) return false;
+  const first = s.entries[cut]!;
+  s.entries = s.entries.slice(cut);
+  s.byId = indexEntries(s.entries);
+  s.history = { total: h.total, hasMore: true, cursor: first.id };
+  s.entriesRev += 1;
+  return true;
+}
+
 /** The last host-confirmed entry before the first provisional one (`get_entries{since}`); undefined = from the start. */
 export function reconcileSince(s: SessionState): { since?: string; needed: boolean } {
   const first = s.entries.findIndex((e) => isProvisional(e.id));

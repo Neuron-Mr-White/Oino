@@ -38,6 +38,7 @@ import { FindBar } from '../command/FindBar';
 import { activateFindMark, applyFindHighlights, clearFindHighlights } from '../../lib/find/highlight';
 import { buildFindIndex, closeFind, findState, locateMatch, setFindAdapter, type FindIndex } from '../../lib/find';
 import type { Turn } from '../../lib/session/turns';
+import { LOADED_MAX } from '../../lib/session/store';
 import type { TimelineCtx } from './context';
 
 /** Perf marks land here for the capture harness (§3.6 budgets). */
@@ -281,6 +282,13 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     queueMicrotask(maybeLoadEarlier);
   });
 
+  // perf-app: a reader back at the bottom of a chat read far up gives the old pages back
+  // (bounded parsed state per chat; they load again on the way up).
+  const maybeTrim = () => {
+    if (!restore.done || !lock.locked() || session().state.entries.length <= LOADED_MAX) return;
+    session().trimLoaded?.(LOADED_MAX / 2);
+  };
+
   const loading = () => session().state.conn === 'connecting' && turns().length === 0;
   const openFailed = () => session().state.conn === 'closed' && !!session().state.connError && turns().length === 0;
   const empty = () => session().state.conn === 'live' && turns().length === 0 && !session().state.outbox.length;
@@ -407,6 +415,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
             syncOverflow();
             updateActive();
             if (el.scrollTop < EARLIER_MARGIN) maybeLoadEarlier();
+            else maybeTrim();
           }
         }}
       >

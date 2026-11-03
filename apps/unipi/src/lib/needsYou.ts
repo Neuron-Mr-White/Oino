@@ -64,6 +64,9 @@ function savePersisted(p: Persisted): void {
   }
 }
 
+/** Read / cleared ids remembered (oldest dropped first). */
+export const NEEDS_YOU_IDS_MAX = 500;
+
 function createNeedsYou() {
   const [items, setItems] = createStore<Record<string, NeedsYouItem>>({});
   const persisted = loadPersisted();
@@ -73,7 +76,17 @@ function createNeedsYou() {
   // readIds is a plain Set: this signal makes isRead/unreadCount reactive (UNI-200: the
   // badge and the crab didn't update on Mark all read / opening an item until the next poll).
   const [readVersion, setReadVersion] = createSignal(0);
+  /** perf-app: the persisted id sets keep only the newest ids (they were append-only forever). */
+  const capIds = (set: Set<string>) => {
+    if (set.size <= NEEDS_YOU_IDS_MAX) return;
+    for (const id of set) {
+      if (set.size <= NEEDS_YOU_IDS_MAX) break;
+      set.delete(id);
+    }
+  };
   const persist = () => {
+    capIds(readIds);
+    capIds(clearedIds);
     savePersisted({ readIds: [...readIds], clearedIds: [...clearedIds] });
     setReadVersion((n) => n + 1);
   };
