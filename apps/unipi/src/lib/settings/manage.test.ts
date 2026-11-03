@@ -7,7 +7,7 @@ import { createMockHost, type MockWorld } from '../../dev/mock/host';
 import { capMcpNoChat } from '../../dev/mock/scenarios/capabilities';
 import { setHostClientFactory } from '../host/factory';
 import { resetSessions, sessions } from '../session/store';
-import { MANAGE_ACTIONS, MISSING_EXTENSION, NEEDS_CHAT, chatHasCommand, manageActionsFor, manageChat, runManageAction } from './manage';
+import { CONSOLIDATE_COMMAND, MANAGE_ACTIONS, MISSING_EXTENSION, NEEDS_CHAT, chatCanRun, chatHasCommand, manageActionsFor, manageChat, runInChat, runManageAction } from './manage';
 
 /**
  * Opens the scenario's chat in the registry (live, so its command list is the
@@ -46,7 +46,9 @@ afterEach(() => {
 describe('the Manage table', () => {
   it('names the extension commands the four pages run', () => {
     expect(manageActionsFor('mcp').map((a) => a.command)).toEqual(['mcp-status', 'mcp-settings', 'mcp-add', 'mcp-sync', 'mcp-reload']);
-    expect(manageActionsFor('memory').map((a) => a.command)).toEqual(['memory', 'memory-consolidate', 'global-memory-list', 'dream status', 'dream report', 'dream run']);
+    // memory-consolidate prompts a chat: it is the chat's (⋯ menu, /memory-consolidate), not a Settings row.
+    expect(manageActionsFor('memory').map((a) => a.command)).toEqual(['memory', 'global-memory-list', 'dream status', 'dream report', 'dream run']);
+    expect(manageActionsFor('chat').map((a) => a.command)).toEqual(['memory-consolidate']);
     expect(manageActionsFor('skills').map((a) => a.command)).toEqual(['skills', 'skills-editor']);
     expect(manageActionsFor('subagents').map((a) => a.command)).toEqual(['agents']);
   });
@@ -54,7 +56,7 @@ describe('the Manage table', () => {
   it('every action belongs to one of the four pages and has a unique id', () => {
     const ids = MANAGE_ACTIONS.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(MANAGE_ACTIONS.every((a) => ['mcp', 'memory', 'skills', 'subagents'].includes(a.page))).toBe(true);
+    expect(MANAGE_ACTIONS.every((a) => ['mcp', 'memory', 'skills', 'subagents', 'chat'].includes(a.page))).toBe(true);
   });
 
   it('chatHasCommand tolerates a leading slash (fixtures carry one)', () => {
@@ -89,5 +91,18 @@ describe('runManageAction', () => {
 
   it('the R8 wording is the one the pages render', () => {
     expect(NEEDS_CHAT).toBe('Open a chat to manage');
+  });
+});
+
+describe('the chat ⋯ Consolidate memories row (owner 2026-11-03)', () => {
+  it('sends /memory-consolidate into that chat, only where the chat lists it', async () => {
+    const world = await openChat(['memory', 'memory-consolidate']);
+    expect(chatCanRun('local', 'cap001', CONSOLIDATE_COMMAND)).toBe(true);
+    expect(runInChat('local', 'cap001', CONSOLIDATE_COMMAND)).toBe(true);
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/memory-consolidate')).toBe(true);
+    resetSessions();
+    await openChat(['model']);
+    expect(chatCanRun('local', 'cap001', CONSOLIDATE_COMMAND)).toBe(false);
+    expect(runInChat('local', 'cap001', CONSOLIDATE_COMMAND)).toBe(false);
   });
 });

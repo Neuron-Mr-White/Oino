@@ -12,7 +12,7 @@ import { useNavigate } from '@solidjs/router';
 import { Wrench } from 'lucide-solid';
 import { registerChatAction } from '../shell/ConversationHeader';
 import { registerCommands } from '../../lib/shell';
-import { MANAGE_ACTIONS, runManageActionAnywhere } from '../../lib/settings/manage';
+import { CONSOLIDATE_COMMAND, MANAGE_ACTIONS, chatCanRun, runInChat, runManageActionAnywhere } from '../../lib/settings/manage';
 import { LOCAL_HOST } from '../../lib/host/client';
 import { useHostsOptional } from '../../hosts/context';
 import { exportSession } from '../../lib/session/exportSession';
@@ -29,6 +29,13 @@ export function BuiltinActions() {
   onCleanup(
     registerChatAction('export', {
       run: (ctx) => void exportSession(ctx.hostId, ctx.sessionId),
+    }),
+  );
+  // The memory extension's save pass for this chat (only where the chat lists the command).
+  onCleanup(
+    registerChatAction('memory-consolidate', {
+      run: (ctx) => void runInChat(ctx.hostId, ctx.sessionId, CONSOLIDATE_COMMAND),
+      when: (ctx) => chatCanRun(ctx.hostId, ctx.sessionId, CONSOLIDATE_COMMAND),
     }),
   );
   onCleanup(

@@ -24,7 +24,8 @@ import { openSettingsAt } from './open';
 export type ManageAction = {
   id: string;
   /** Settings page that lists it (`settings/<page>`). */
-  page: 'mcp' | 'memory' | 'skills' | 'subagents' | 'about';
+  /** `chat`: a command about one chat — no Settings page lists it (palette + the chat ⋯ menu do). */
+  page: 'mcp' | 'memory' | 'skills' | 'subagents' | 'about' | 'chat';
   /** Button label on the page. */
   label: string;
   /** Description under the button (what panel opens). */
@@ -124,7 +125,9 @@ export const MANAGE_ACTIONS: ManageAction[] = [
   },
   {
     id: 'memory.consolidate',
-    page: 'memory',
+    // Owner 2026-11-03: it sends a prompt into a chat, so it lives with the chat
+    // (`/memory-consolidate`, the chat ⋯ menu, the palette), not in Settings.
+    page: 'chat',
     label: 'Consolidate this session',
     description: 'Let the agent write what this chat is worth remembering',
     command: 'memory-consolidate',
@@ -235,6 +238,20 @@ export type ManageOutcome = 'sent' | 'no-chat' | 'missing';
 function sendAction(handle: { key: string; send: (text: string, opts: { mode: 'prompt' }) => unknown }, action: ManageAction): void {
   noteCommandRun(handle.key, action.command);
   handle.send(`/${action.command}`, { mode: 'prompt' });
+}
+
+/** The chat ⋯ "Consolidate memories" row: `/memory-consolidate` in that chat, when it lists it. */
+export const CONSOLIDATE_COMMAND = 'memory-consolidate';
+export function chatCanRun(hostId: string, sessionId: string, command: string): boolean {
+  const handle = sessions().peek(hostId, sessionId);
+  return !!handle && chatHasCommand(handle, command);
+}
+export function runInChat(hostId: string, sessionId: string, command: string): boolean {
+  const handle = sessions().peek(hostId, sessionId);
+  if (!handle || !chatHasCommand(handle, command)) return false;
+  noteCommandRun(handle.key, command);
+  handle.send(`/${command}`, { mode: 'prompt' });
+  return true;
 }
 
 /** The chat's own command list carries `name` (a leading slash is tolerated: fixtures use it). */
