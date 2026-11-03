@@ -71,29 +71,40 @@ export function RootBoundary(props: { children: JSX.Element; onReload?: () => vo
   );
 }
 
-/** One conversation (timeline + dock) failed to render; the rest of the app keeps working. */
-export function ConversationBoundary(props: { children: JSX.Element }) {
+/**
+ * One conversation (timeline + dock) failed to render; the rest of the app keeps working.
+ * chat-vanish: never an empty pane — "Something went wrong in this chat · Reload chat"
+ * (`onReload` reopens the chat's stream with a fresh handle, then the region re-renders),
+ * and `onError` puts the crash in the app log.
+ */
+export function ConversationBoundary(props: { children: JSX.Element; onReload?: () => void; onError?: (error: unknown) => void }) {
   return (
     <ErrorBoundary
-      fallback={(error, reset) => (
-        <div class="crash-conv" data-testid="conv-crashed">
-          <CrashCard
-            title="This conversation stopped working"
-            error={error}
-            testId="crash-card"
-            actions={
-              <>
-                <button type="button" class="btn btn-secondary" onClick={() => reset()}>
-                  <RefreshCw size={16} /> Retry
+      fallback={(error, reset) => {
+        props.onError?.(error);
+        return (
+          <div class="crash-conv" data-testid="conv-crashed">
+            <CrashCard
+              title="Something went wrong in this chat"
+              error={error}
+              testId="crash-card"
+              actions={
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  data-testid="conv-reload-chat"
+                  onClick={() => {
+                    props.onReload?.();
+                    reset();
+                  }}
+                >
+                  <RefreshCw size={16} /> Reload chat
                 </button>
-                <button type="button" class="btn btn-ghost" onClick={() => reloadApp()}>
-                  <RotateCcw size={16} /> Reload app
-                </button>
-              </>
-            }
-          />
-        </div>
-      )}
+              }
+            />
+          </div>
+        );
+      }}
     >
       {props.children}
     </ErrorBoundary>

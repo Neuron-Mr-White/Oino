@@ -46,6 +46,7 @@ import { activateFindMark, applyFindHighlights, clearFindHighlights } from '../.
 import { buildFindIndex, closeFind, findState, locateMatch, setFindAdapter, type FindIndex } from '../../lib/find';
 import type { Turn } from '../../lib/session/turns';
 import { LOADED_MAX } from '../../lib/session/store';
+import { blankReason, healBudget, HEAL_AFTER_MS } from '../../lib/timeline/chatHealth';
 import type { TimelineCtx } from './context';
 
 /** Perf marks land here for the capture harness (§3.6 budgets). */
@@ -364,9 +365,54 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     session().trimLoaded?.(LOADED_MAX / 2);
   };
 
-  const loading = () => session().state.conn === 'connecting' && turns().length === 0;
-  const openFailed = () => session().state.conn === 'closed' && !!session().state.connError && turns().length === 0;
+  // chat-vanish: with no turns every non-live state draws something — a reconnect is a
+  // skeleton (under its banner), a stream that ended or gave up is the error card with
+  // Retry. `closed` without an error (an evicted handle) and `lost` used to draw nothing.
+  const loading = () => (session().state.conn === 'connecting' || session().state.conn === 'reconnecting') && turns().length === 0;
+  const openFailed = () => {
+    const st = session().state;
+    if (turns().length > 0 || st.banner?.kind === 'taken_over') return false;
+    return st.conn === 'lost' || st.conn === 'closed';
+  };
   const empty = () => session().state.conn === 'live' && turns().length === 0 && !session().state.outbox.length;
+  const retryOpen = () => (props.ctx.heal ? props.ctx.heal('manual') : session().retry());
+
+  // ── self-heal (chat-vanish): blank while the host is live → reopen / remount, logged ──
+  const verdict = createMemo(() => {
+    const s = session();
+    const st = s.state;
+    return blankReason({
+      hostOnline: props.ctx.hostOnline?.() ?? true,
+      handleClosed: !!s.closed && st.conn === 'closed',
+      conn: st.conn,
+      connErrorCode: st.connError?.code,
+      takenOver: st.banner?.kind === 'taken_over',
+      archived: s.key.startsWith('archived:'),
+      settled: settled().length,
+      rows: virt()?.getVirtualItems().length ?? (scrollEl() ? 0 : 1),
+    });
+  });
+  const budget = healBudget();
+  createEffect(
+    on(verdict, (reason) => {
+      if (!reason || !props.ctx.heal) return;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const check = () => {
+        timer = undefined;
+        if (verdict() !== reason) return;
+        if (!budget.allow()) return; // the error card's Retry from here on
+        if (reason === 'no_rows') {
+          // A 0-height window (hidden pane, a resize mid-layout): measure again first.
+          virt()?.measure();
+          scrollEl()?.dispatchEvent(new Event('scroll'));
+        }
+        props.ctx.heal!(reason);
+        timer = setTimeout(check, HEAL_AFTER_MS);
+      };
+      timer = setTimeout(check, HEAL_AFTER_MS);
+      onCleanup(() => timer && clearTimeout(timer));
+    }),
+  );
 
   // ── navigator (Z-25): the query at the top of the viewport is active ─
   const [activeTurn, setActiveTurn] = createSignal<string>();
@@ -515,10 +561,10 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
               tone="error"
               icon={<TriangleAlert size={20} />}
               title="Couldn't open this session"
-              body={session().state.connError?.message || 'The host could not load this conversation.'}
+              body={session().state.connError?.message || (session().state.conn === 'lost' ? 'Lost the connection to this chat.' : 'The connection to this chat closed.')}
               testId="tl-open-failed-card"
               action={
-                <button type="button" class="btn btn-secondary btn-sm" onClick={() => session().retry()}>
+                <button type="button" class="btn btn-secondary btn-sm" data-testid="tl-open-retry" onClick={retryOpen}>
                   <RefreshCw size={14} /> Retry
                 </button>
               }

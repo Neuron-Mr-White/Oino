@@ -87,3 +87,26 @@ describe('dialog dock (acceptance)', () => {
     expect(screen.getByTestId('dialog-panel')).toBeInTheDocument();
   });
 });
+
+describe('chat-vanish: the shown chat heals itself', () => {
+  it('a handle closed under the shown chat (LRU eviction) is replaced within ~2 s: the composer sends again', async () => {
+    const world = boot();
+    const { sessions } = await import('../../lib/session/store');
+    await waitFor(() => expect(sessions().peek(HOST, SESSION)?.state.conn).toBe('live'));
+    sessions().peek(HOST, SESSION)!.close(); // what the eviction did to the chat on screen
+    await new Promise((r) => setTimeout(r, 2_600));
+    const field = screen.getByTestId('tl-composer').querySelector('.chip-field') as HTMLDivElement;
+    field.focus();
+    field.textContent = 'are you still there';
+    const range = document.createRange();
+    range.selectNodeContents(field);
+    range.collapse(false);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    fireEvent.input(field);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    // Before the fix the view kept the dead handle: the message sat "Waiting for connection…" forever.
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && (e.args as { message?: string }).message === 'are you still there')).toBe(true), { timeout: 3_000 });
+    expect(screen.queryByTestId('tl-open-failed')).toBeNull();
+  }, 12_000);
+});

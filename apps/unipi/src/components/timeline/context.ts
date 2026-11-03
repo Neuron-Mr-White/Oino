@@ -7,6 +7,7 @@
 import type { RefChat } from '../../lib/chat/pathStat';
 import type { CommandInfo } from '../../lib/session/types';
 import type { SessionHandle } from '../../lib/session/store';
+import type { HealCause } from '../../lib/timeline/chatHealth';
 
 export type TimelineCtx = {
   /** The open session (cmds, outbox actions, lazy `get_entries`). */
@@ -32,6 +33,10 @@ export type TimelineCtx = {
   /** The cron scheduler started this chat (card `source: "cron"`): its first user
    * message is the job's prompt, marked "Scheduled run". Absent ⇒ a user chat. */
   cronRun?: () => boolean;
+  /** chat-vanish: the host answers (the self-heal only acts then). Absent ⇒ assumed online. */
+  hostOnline?: () => boolean;
+  /** chat-vanish: re-open the stream / re-mount the list for `cause`, and log why. */
+  heal?: (cause: HealCause) => void;
 };
 
 /** The file-summary capability the edit menu needs (WP-A27 fills it). */

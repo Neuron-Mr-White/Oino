@@ -18,7 +18,7 @@ import { resetUiRegistries } from '../ui/registries';
 import { createMockHost, type MockScenario } from '../dev/mock/host';
 import { genCards, genFsTree, genSession } from '../dev/mock/gen';
 import { Root } from '../main';
-import { reloadApp, RootBoundary, SlotBoundary } from './ErrorBoundaries';
+import { ConversationBoundary, reloadApp, RootBoundary, SlotBoundary } from './ErrorBoundaries';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
@@ -41,6 +41,23 @@ describe('RootBoundary / SlotBoundary', () => {
   const Boom = () => {
     throw new Error('kaboom');
   };
+
+  it('chat-vanish: a crashing chat says so and "Reload chat" reopens + re-renders it (never an empty pane)', () => {
+    const [broken, setBroken] = createSignal(true);
+    const onReload = vi.fn(() => setBroken(false));
+    const onError = vi.fn();
+    render(() => (
+      <ConversationBoundary onReload={onReload} onError={onError}>
+        {broken() ? <Boom /> : <p>the chat is back</p>}
+      </ConversationBoundary>
+    ));
+    expect(screen.getByTestId('conv-crashed')).toHaveTextContent('Something went wrong in this chat');
+    expect(screen.getByText('kaboom')).toBeInTheDocument();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'kaboom' }));
+    fireEvent.click(screen.getByTestId('conv-reload-chat'));
+    expect(onReload).toHaveBeenCalledOnce();
+    expect(screen.getByText('the chat is back')).toBeInTheDocument();
+  });
 
   it('the root boundary catches, and Retry re-renders the app', () => {
     const [broken, setBroken] = createSignal(true);

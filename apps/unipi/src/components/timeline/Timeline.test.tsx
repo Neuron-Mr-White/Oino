@@ -579,3 +579,34 @@ describe('Timeline: load earlier', () => {
     await waitFor(() => expect(s.state.entries.length).toBeGreaterThan(20));
   });
 });
+
+describe('Timeline: never a blank chat (chat-vanish)', () => {
+  it('a handle closed under the view (LRU eviction) with no turns draws the error card with Retry, not an empty pane', async () => {
+    const { s } = await openSession(0);
+    const heal = vi.fn();
+    const r = render(() => <Timeline ctx={{ ...ctx(s), heal, hostOnline: () => true }} dock={dock} />);
+    await waitFor(() => expect(r.getByTestId('tl-empty')).toBeTruthy());
+    s.close(); // conn 'closed', no error — used to render nothing at all
+    await waitFor(() => expect(r.getByTestId('tl-open-failed')).toBeTruthy());
+    expect(r.queryByTestId('tl-empty')).toBeNull();
+    fireEvent.click(r.getByTestId('tl-open-retry'));
+    expect(heal).toHaveBeenCalledWith('manual');
+  });
+
+  it('self-heal: blank for 2 s while the host is live → ctx.heal(reason), bounded; offline hosts are left alone', async () => {
+    const { s } = await openSession(3);
+    const heal = vi.fn();
+    const [online, setOnline] = [{ v: false }, (v: boolean) => (online.v = v)];
+    const r = render(() => <Timeline ctx={{ ...ctx(s), heal, hostOnline: () => online.v }} dock={dock} />);
+    await waitFor(() => expect(r.container.textContent).toContain('Question 0'));
+    s.close();
+    await new Promise((res) => setTimeout(res, 2_300));
+    expect(heal).not.toHaveBeenCalled(); // host offline (verdict memo read it as offline)
+    setOnline(true);
+    r.unmount();
+    const r2 = render(() => <Timeline ctx={{ ...ctx(s), heal, hostOnline: () => online.v }} dock={dock} />);
+    await waitFor(() => expect(heal).toHaveBeenCalledWith('handle_closed'), { timeout: 3_500 });
+    // The stale content stays on screen meanwhile (cached turns are never wiped by the heal).
+    expect(r2.container.textContent).toContain('Question 0');
+  }, 10_000);
+});

@@ -46,6 +46,8 @@ import { BottomDock } from '../dock/BottomDock';
 import { Composer } from '../composer/Composer';
 import { ReadOnlyBanner, isTakenOverReadOnly } from './ReadOnlyBanner';
 import { hostStatus } from '../shell/HostSwitcher';
+import { appLog, describeError } from '../../lib/appLog';
+import type { HealCause } from '../../lib/timeline/chatHealth';
 import '../timeline/timeline.css';
 import './phoneChat.css';
 
@@ -124,12 +126,52 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
     return h;
   });
   const isArchived = () => !!archivedCard();
+  /** chat-vanish: bumped by the self-heal to re-ensure the handle / re-mount the timeline. */
+  const [handleGen, setHandleGen] = createSignal(0);
+  const [timelineGen, setTimelineGen] = createSignal(0);
   const session = createMemo<SessionHandle | undefined>(() => {
+    handleGen();
     if (!props.sessionId) return undefined;
     const arch = archivedHandle();
     if (arch) return arch;
     return sessions().ensure(props.hostId, props.sessionId);
   });
+  /** The host answers (the hub's events stream is up and its list loaded). */
+  const hostOnline = () => {
+    const st = hub().state;
+    return st.live && st.loaded;
+  };
+  /**
+   * chat-vanish self-heal: the shown chat rendered nothing while the host was live (or the
+   * reader pressed Retry / Reload chat). A closed handle is replaced, a stream that gave up
+   * reopens, a list with no rows re-mounts — and the app log says which and why.
+   */
+  const heal = (cause: HealCause) => {
+    const s = session();
+    const id = props.sessionId;
+    if (!s || !id) return;
+    const st = s.state;
+    const action =
+      cause === 'no_rows' ? 'remount' : s.closed || cause === 'handle_closed' || cause === 'stream_closed' || cause === 'crash' ? 'reopen' : 'retry';
+    appLog(cause === 'manual' ? 'info' : 'warn', 'chat-heal', `${id}: ${cause} → ${action} (conn=${st.conn}${st.connError ? ` ${st.connError.code}` : ''}, entries=${st.entries.length}, closed=${!!s.closed})`);
+    if (isArchived()) {
+      s.retry();
+      setTimelineGen((n) => n + 1);
+      return;
+    }
+    if (action === 'remount') {
+      setTimelineGen((n) => n + 1);
+      return;
+    }
+    if (action === 'retry') {
+      s.retry();
+      return;
+    }
+    // Closed behind the view (evicted, ended without an error) or a render crash: a fresh handle.
+    sessions().close(props.hostId, id);
+    setHandleGen((n) => n + 1);
+    setTimelineGen((n) => n + 1);
+  };
   // Pin the session against LRU eviction while shown; release on change/unmount.
   createMemo(() => {
     const s = session();
@@ -158,6 +200,8 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
       columnWidth: () => colW() || 720,
       // A7 Fork: the host streams the fork's new id; route the workspace there.
       cronRun: () => hubs().ensure(props.hostId).state.cards[s.sessionId()]?.source === 'cron',
+      hostOnline,
+      heal,
       openSession: (id: string) => navigate(`/s/${encodeURIComponent(props.hostId)}/${encodeURIComponent(id)}`),
       // Z-28 "Also undo file changes": A27's file-summary capability. The gate is
       // read in the handler (not tracked), so disabling the owner hides the option
@@ -284,7 +328,10 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
       >
         <Show when={session()}>
           {(s) => (
-            <ConversationBoundary>
+            <ConversationBoundary
+              onError={(error) => appLog('error', 'chat-crash', `${props.sessionId}: ${describeError(error)}`)}
+              onReload={() => heal('crash')}
+            >
               <Show when={isArchived()}>
                 <div class="chat-banner tl-banner tl-readonly" data-kind="archived" data-testid="tl-archived-banner" role="status">
                   <ArchiveRestore size={18} class="shrink-0" />
@@ -304,7 +351,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                 {(c) => (
                   <TimelineCtxWidth ctx={c()} onWidth={setColW}>
                     {/* remount per session file: fresh scroll memory + height cache */}
-                    <Show when={s().sessionId()} keyed>
+                    <Show when={`${s().sessionId()}#${timelineGen()}`} keyed>
                       {(_sid) => (
                         <Timeline
                           ctx={c()}
