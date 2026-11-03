@@ -780,6 +780,19 @@ describe('Timeline: no paging / trim / measure feedback loop (render-loop)', () 
     expect(asked.length).toBe(loads);
   });
 
+  it('a wheel over a page that cannot scroll (no scroll event) still pages in the next ones, within the budget', async () => {
+    const { s, asked } = await openOwner();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const tl = r.getByTestId('tl');
+    await waitFor(() => expect(asked.length).toBe(4));
+    await new Promise((res) => setTimeout(res, 100));
+    expect(asked.length).toBe(4); // budget spent, nothing more by itself
+    fireEvent.wheel(tl);
+    await waitFor(() => expect(asked.length).toBe(8));
+    await new Promise((res) => setTimeout(res, 100));
+    expect(asked.length).toBe(8);
+  });
+
   it('live pushes (subagent steps, topics) update rows in place: settled rows never remount', async () => {
     const { s, w } = await openOwner();
     const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);

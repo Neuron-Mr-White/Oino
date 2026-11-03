@@ -302,6 +302,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   let earlierQueued = false;
   let earlierLoads = 0;
   let earlierTrims = 0;
+  let trimOff = false;
   const restore: { pos: 'bottom' | number; done: boolean } = { pos: saved && 'scrollTop' in saved ? saved.scrollTop : 'bottom', done: false };
   let userScrolled = false;
   const origIntent = lock.intent;
@@ -312,6 +313,8 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     autoBudget = AUTO_EARLIER_PAGES;
     intentSinceLoad = true;
     origIntent();
+    // A wheel over a page that cannot scroll fires no scroll event: check here too (per frame).
+    maybeLoadEarlier();
   };
   if (typeof restore.pos === 'number') lock.detach();
   const applyRestore = () => {
@@ -398,15 +401,21 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   // trims — and a trim leaves the automatic loader without budget until the next input,
   // so trim and load can never feed each other.
   const maybeTrim = () => {
-    if (!restore.done || !intentSinceLoad || anchorPending || !lock.locked() || session().state.entries.length <= LOADED_MAX) return;
+    if (trimOff || !restore.done || !intentSinceLoad || anchorPending || !lock.locked() || session().state.entries.length <= LOADED_MAX) return;
     if (session().trimLoaded?.(LOADED_MAX / 2)) {
       autoBudget = 0;
       intentSinceLoad = false;
       earlierTrims++;
+      // Latch: a trim that leaves a page the reader is still near the top of would only be
+      // paged back in — no more trims in this view (the chat is short when drawn anyway).
+      requestAnimationFrame(() => {
+        const el = scrollEl();
+        if (el && el.scrollHeight - el.clientHeight < 2 * EARLIER_MARGIN) trimOff = true;
+      });
     }
   };
   if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
-    (window as unknown as Record<string, unknown>).__TL_PAGING__ = () => ({ loads: earlierLoads, trims: earlierTrims, budget: autoBudget });
+    (window as unknown as Record<string, unknown>).__TL_PAGING__ = () => ({ loads: earlierLoads, trims: earlierTrims, budget: autoBudget, trimOff });
   }
 
   // chat-vanish: with no turns every non-live state draws something — a reconnect is a
