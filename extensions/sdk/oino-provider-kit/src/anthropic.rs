@@ -126,8 +126,30 @@ pub fn compat(model: &Model) -> AnthropicCompat {
         allow_empty_signature: flag("allowEmptySignature", false),
         strict_tools: flag("supportsStrictTools", false),
         mid_convo_system_messages: flag("supportsMidConvoSystemMessages", false),
-        mid_convo_tool_changes: flag("supportsMidConvoToolChanges", false),
+        // Native inline tool changes (`tool_addition` / `tool_removal` blocks, the inline-tools
+        // beta) only on Anthropic's own API. A gateway that forwards the Messages API keeps a
+        // mid-conversation system message's text but silently drops the blocks it does not
+        // know, so a tool added mid-chat (the long-horizon tools after `/graph`) never reached
+        // the model while the prompt said it was there. Elsewhere the current tool set is
+        // declared at request level.
+        mid_convo_tool_changes: flag("supportsMidConvoToolChanges", false)
+            && is_first_party_endpoint(&model.base_url),
     }
+}
+
+/// Whether `base_url` is Anthropic's own Messages API (`api.anthropic.com`; empty = the
+/// default endpoint).
+#[must_use]
+pub fn is_first_party_endpoint(base_url: &str) -> bool {
+    let rest = base_url.trim();
+    if rest.is_empty() {
+        return true;
+    }
+    let rest = rest.split_once("://").map_or(rest, |(_, r)| r);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let host = host.split(':').next().unwrap_or_default();
+    host.eq_ignore_ascii_case("api.anthropic.com")
 }
 
 /// pi `isOAuthToken`.
