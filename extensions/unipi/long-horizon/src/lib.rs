@@ -1722,10 +1722,13 @@ impl Lh {
                 .await
             {
                 Ok(v) if v.get("runId").and_then(Value::as_str).is_some() => {
-                    self.state.borrow_mut().graph.started(
+                    let mut st = self.state.borrow_mut();
+                    st.graph.started(
                         &work_id,
                         Ok(v["runId"].as_str().unwrap_or_default().to_owned()),
                     );
+                    st.graph.set_ran(&work_id, graph::RanOn::from_reply(&v));
+                    drop(st);
                     started.push(work_id);
                 }
                 Ok(v) if v.get("retryable").and_then(Value::as_bool) == Some(true) => {
@@ -1835,7 +1838,10 @@ impl Lh {
                 match self.graph_run(&title, &task, profile, None).await {
                     Ok(v) if v.get("runId").and_then(Value::as_str).is_some() => {
                         let op = v["runId"].as_str().unwrap_or_default().to_owned();
-                        self.state.borrow_mut().graph.started(work_id, Ok(op));
+                        let mut st = self.state.borrow_mut();
+                        st.graph.started(work_id, Ok(op));
+                        st.graph.set_ran(work_id, graph::RanOn::from_reply(&v));
+                        drop(st);
                         self.save();
                         return Some(work_id.to_owned());
                     }
@@ -2427,33 +2433,29 @@ impl Lh {
         }
     }
 
-    /// `/visualize-progress` (mermaid source + text fallback; no PNG in v1).
+    /// `/visualize-progress` (mermaid source + text fallback; no PNG in v1). The open
+    /// graph, else the last one (history[0]); each node carries its profile and, once it
+    /// ran, the model + thinking from the subagents run record. The structured nodes go
+    /// in the reserved entry's `params` (`{graph, nodes}`); the fallback tree keeps the
+    /// `- <work> [<status>] <instruction>` lines (plus an indented `ran on` line).
     fn visualize(&self) {
         let st = self.state.borrow();
         let mut mermaid = vec!["flowchart TD".to_owned()];
         let mut textv = Vec::new();
-        if let Some(g) = &st.graph.current {
-            for w in &g.work {
-                mermaid.push(format!(
-                    "  {}[\"{} · {}\"]",
-                    w.work_id.replace('-', "_"),
-                    w.work_id,
-                    w.status
-                ));
-                for i in &w.input_ids {
-                    mermaid.push(format!(
-                        "  {} --> {}",
-                        i.trim_start_matches("r-").replace('-', "_"),
-                        w.work_id.replace('-', "_")
-                    ));
-                }
-                textv.push(format!(
-                    "- {} [{}] {}",
-                    w.work_id,
-                    w.status,
-                    w.instruction.chars().take(80).collect::<String>()
-                ));
-            }
+        let mut params = json!({"v": 1});
+        if let Some(g) = st.graph.current.as_ref().or_else(|| st.graph.history.first()) {
+            let v = st.graph.visual(g);
+            mermaid.extend(v.mermaid);
+            textv.extend(v.lines);
+            let state = if g.finish.is_some() {
+                "finished"
+            } else if g.abandoned.is_some() {
+                "stopped"
+            } else {
+                "open"
+            };
+            params["graph"] = json!({"id": g.graph_id, "mode": g.mode, "task": g.task, "state": state, "revision": g.revision});
+            params["nodes"] = json!(v.nodes);
         }
         if let Some(gl) = &st.machine.goal {
             mermaid.push(format!(
@@ -2501,6 +2503,7 @@ impl Lh {
             .icon(ui::Icon::Chart)
             .focus(true)
             .close_on_escape(true)
+            .params(params)
             .open()
         else {
             return;

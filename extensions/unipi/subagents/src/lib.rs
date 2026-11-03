@@ -1735,7 +1735,10 @@ impl Subagents {
             )
             .await
         {
-            Ok((rec, _)) => json!({"runId": rec.id}),
+            // What the run actually runs on (long-horizon shows it per graph node).
+            Ok((rec, _)) => {
+                json!({"runId": rec.id, "profile": rec.profile, "model": rec.model, "thinking": rec.thinking})
+            }
             Err(e) => {
                 json!({"retryable": e.starts_with("Maximum") || e.contains("still running"), "error": e})
             }

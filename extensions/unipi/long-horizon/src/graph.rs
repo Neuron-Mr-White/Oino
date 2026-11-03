@@ -30,6 +30,8 @@ pub const HANDOFF_MAX_CONCLUSION_BYTES: usize = 16 * 1024;
 pub const HANDOFF_MAX_TOTAL_BYTES: usize = 48 * 1024;
 /// Default profile.
 pub const DEFAULT_PROFILE: &str = "subagent_general";
+/// `/visualize-progress` shows at most this many (latest) work items.
+pub const VISUAL_MAX_NODES: usize = 80;
 /// Max transient retries per work item (D6: 3 retries).
 pub const MAX_RETRIES: u32 = 3;
 /// Backoff between budget-consuming retries (D6: 30 s / 2 min / 10 min), indexed by
@@ -297,6 +299,69 @@ pub struct Work {
     /// Tool calls.
     #[serde(default)]
     pub tool_calls: u32,
+    /// What the latest run actually ran on (the subagents run record), once started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ran: Option<RanOn>,
+}
+
+/// The profile + resolved model a work item's subagent ran on — copied from the
+/// subagents run record (`subagents.graph-run` reply), never guessed from the profile.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RanOn {
+    /// Profile id (`subagent_general`, `subagent_explore`, custom agent id).
+    pub profile: String,
+    /// `provider/model` (empty when the record had none).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+    /// Thinking level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+}
+
+impl RanOn {
+    /// From a `subagents.graph-run` reply (`{runId, profile, model, thinking}`); `None`
+    /// for an older subagents that answers `{runId}` only.
+    #[must_use]
+    pub fn from_reply(v: &Value) -> Option<Self> {
+        let s = |k: &str| {
+            v.get(k)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| clip_chars(s, 120).0)
+        };
+        let profile = s("profile")?;
+        Some(Self {
+            profile,
+            model: s("model").unwrap_or_default(),
+            thinking: s("thinking"),
+        })
+    }
+}
+
+/// The short model label (`zai/glm-5.3` → `glm-5.3`). Pure.
+#[must_use]
+pub fn short_model(model: &str) -> &str {
+    model.rsplit('/').next().unwrap_or(model)
+}
+
+/// The short profile label (`subagent_explore` → `explore`). Pure.
+#[must_use]
+pub fn short_profile(profile: &str) -> &str {
+    profile.strip_prefix("subagent_").unwrap_or(profile)
+}
+
+/// `/visualize-progress` data for one graph (pure; see [`Ledger::visual`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Visual {
+    /// Mermaid flowchart lines (without the `flowchart TD` header).
+    pub mermaid: Vec<String>,
+    /// Fallback text lines: `- <work> [<status>] <instruction>`, then an indented
+    /// `  - ran on <profile> · <provider/model> · thinking <level>` line when known.
+    pub lines: Vec<String>,
+    /// Structured nodes (reserved-entry params).
+    pub nodes: Vec<Value>,
 }
 
 /// Finish record.
@@ -1008,6 +1073,7 @@ impl GraphFile {
                 superseded_by: None,
                 stop_reason: None,
                 tool_calls: 0,
+                ran: None,
             });
         }
         for (t, reason) in &u.stop {
@@ -1119,6 +1185,19 @@ impl GraphFile {
                 (w.work_id.clone(), profile, w.resume_operator_id.clone())
             })
             .collect()
+    }
+
+    /// Records what a started work item's run actually runs on (subagents reply).
+    pub fn set_ran(&mut self, work_id: &str, ran: Option<RanOn>) {
+        if let Some(w) = self
+            .open_mut()
+            .and_then(|g| g.work.iter_mut().find(|w| w.work_id == work_id))
+        {
+            // An older subagents answers `{runId}` only: keep what an earlier run recorded.
+            if ran.is_some() {
+                w.ran = ran;
+            }
+        }
     }
 
     /// Marks work started or failed to start.
@@ -1473,6 +1552,9 @@ impl GraphFile {
             if let Target::NewPreset { subagent_id } = &w.target {
                 v["profile"] = json!(subagent_id);
             }
+            if let Some(r) = w.ran.as_ref().filter(|r| !r.model.is_empty()) {
+                v["model"] = json!(r.model);
+            }
             v["input_ids"] = json!(w.input_ids);
             if !w.selected_result_inputs.is_empty() {
                 v["selected_result_inputs"] = json!(w.selected_result_inputs.iter().map(|s| json!({"source_graph_id": s.source_graph_id, "result_id": s.result_id})).collect::<Vec<_>>());
@@ -1511,6 +1593,137 @@ impl GraphFile {
             out["history"] = self.history_json();
         }
         out
+    }
+
+    /// The profile a work item runs as: the run record's when it ran, else the
+    /// declared preset (a follow-up inherits its operator's).
+    #[must_use]
+    pub fn profile_of(g: &Graph, w: &Work) -> String {
+        if let Some(r) = &w.ran {
+            return r.profile.clone();
+        }
+        match &w.target {
+            Target::NewPreset { subagent_id } => subagent_id.clone(),
+            Target::ExistingOperator { operator_id } => g
+                .work
+                .iter()
+                .find(|o| o.operator_id.as_ref() == Some(operator_id))
+                .and_then(|o| o.ran.as_ref().map(|r| r.profile.clone()).or(match &o.target {
+                    Target::NewPreset { subagent_id } => Some(subagent_id.clone()),
+                    Target::ExistingOperator { .. } => None,
+                }))
+                .unwrap_or_else(|| DEFAULT_PROFILE.into()),
+        }
+    }
+
+    /// `/visualize-progress` for `g`: mermaid nodes labelled `<work> · <status>` plus a
+    /// second `<profile> · <model>` line once the work ran, status classes
+    /// (running / failed / blocked / superseded …), one fallback line per node with an
+    /// indented `ran on` line, and the structured node list. Bounded: the last
+    /// [`VISUAL_MAX_NODES`] work items.
+    #[must_use]
+    pub fn visual(&self, g: &Graph) -> Visual {
+        let id = |s: &str| {
+            let t: String = s
+                .trim_start_matches("r-")
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+                .collect();
+            format!("n_{t}")
+        };
+        let esc = |s: &str| s.replace('"', "'").replace(['[', ']', '<', '>'], " ");
+        let start = g.work.len().saturating_sub(VISUAL_MAX_NODES);
+        let shown = &g.work[start..];
+        let mut mermaid = Vec::new();
+        let mut lines = Vec::new();
+        let mut nodes = Vec::new();
+        let mut classes: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
+        for w in shown {
+            let status = self.view_status(g, w);
+            let profile = Self::profile_of(g, w);
+            let ran = w.ran.as_ref();
+            let mut label = format!("{} · {status}", esc(&w.work_id));
+            if let Some(r) = ran {
+                label.push_str("<br/>");
+                label.push_str(&esc(short_profile(&r.profile)));
+                if !r.model.is_empty() {
+                    label.push_str(" · ");
+                    label.push_str(&esc(&Self::clip(short_model(&r.model), 28)));
+                }
+            }
+            mermaid.push(format!("  {}[\"{label}\"]", id(&w.work_id)));
+            for i in &w.input_ids {
+                if Self::resolve(g, i).is_some() {
+                    mermaid.push(format!("  {} --> {}", id(i), id(&w.work_id)));
+                }
+            }
+            if let Some(by) = &w.superseded_by {
+                mermaid.push(format!("  {} -.-> {}", id(&w.work_id), id(by)));
+            }
+            if let Some(class) = match status.as_str() {
+                "running" => Some("running"),
+                "completed" => Some("done"),
+                "failed" => Some("failed"),
+                "blocked" => Some("blocked"),
+                "superseded" | "stopped" | "cancelled" => Some("off"),
+                _ => None,
+            } {
+                classes.entry(class).or_default().push(id(&w.work_id));
+            }
+            lines.push(format!(
+                "- {} [{status}] {}",
+                w.work_id,
+                Self::clip(&w.instruction.replace('\n', " "), 80)
+            ));
+            if let Some(r) = ran {
+                let mut parts = vec![r.profile.clone()];
+                if !r.model.is_empty() {
+                    parts.push(r.model.clone());
+                }
+                if let Some(t) = &r.thinking {
+                    parts.push(format!("thinking {t}"));
+                }
+                lines.push(format!("  - ran on {}", parts.join(" · ")));
+            }
+            let mut n = json!({
+                "id": w.work_id, "status": status, "instruction": Self::clip(&w.instruction, 160),
+                "profile": profile, "inputs": w.input_ids,
+            });
+            if let Some(r) = ran {
+                if !r.model.is_empty() {
+                    n["model"] = json!(r.model);
+                }
+                if let Some(t) = &r.thinking {
+                    n["thinking"] = json!(t);
+                }
+            }
+            for (k, val) in [("operatorId", w.operator_id.as_ref()), ("supersededBy", w.superseded_by.as_ref()), ("replaces", w.replaces.as_ref())] {
+                if let Some(x) = val {
+                    n[k] = json!(x);
+                }
+            }
+            if let Some(f) = &w.failure {
+                n["failure"] = json!(Self::clip(f, 200));
+            }
+            if w.tool_calls > 0 {
+                n["toolCalls"] = json!(w.tool_calls);
+            }
+            nodes.push(n);
+        }
+        if !classes.is_empty() {
+            mermaid.push("  classDef running stroke:#28BEF0,stroke-width:2px".into());
+            mermaid.push("  classDef done stroke:#5AD25A".into());
+            mermaid.push("  classDef failed stroke:#F03C32,stroke-width:2px".into());
+            mermaid.push("  classDef blocked stroke:#F0A818,stroke-dasharray:4 3".into());
+            mermaid.push("  classDef off stroke-dasharray:3 3,opacity:0.55".into());
+            for (class, ids) in classes {
+                mermaid.push(format!("  class {} {class}", ids.join(",")));
+            }
+        }
+        if start > 0 {
+            lines.insert(0, format!("({start} earlier work items not shown)"));
+        }
+        Visual { mermaid, lines, nodes }
     }
 
     /// History list JSON.
@@ -2113,6 +2326,73 @@ mod tests {
         assert_eq!(v["work"][0]["retry_count"], 1);
         assert_eq!(v["work"][0]["next_retry_at"], 30_000);
         assert_eq!(v["work"][0]["failure_class"], "transient");
+    }
+
+    #[test]
+    fn visual_carries_profile_and_run_model() {
+        let mut f = GraphFile::default();
+        let mut b = add("b-2", &["r-a"]);
+        b.profile = Some("subagent_explore".into());
+        f.update(&upd(vec![add("a", &[]), b]), "g", 0).unwrap();
+        f.started("a", Ok("op1".into()));
+        // An older subagents (`{runId}` only) records nothing.
+        f.set_ran("a", RanOn::from_reply(&json!({"runId": "op1"})));
+        assert!(f.open().unwrap().work[0].ran.is_none());
+        f.set_ran(
+            "a",
+            RanOn::from_reply(&json!({"runId": "op1", "profile": "rel-qa", "model": "zai/glm-5.3", "thinking": "high"})),
+        );
+        // A later `{runId}`-only reply keeps the recorded run.
+        f.set_ran("a", None);
+        let g = f.open().unwrap().clone();
+        let v = f.visual(&g);
+        // Node lines stay parseable by older apps; the ran-on line is indented.
+        assert_eq!(v.lines[0], "- a [running] do a");
+        assert_eq!(v.lines[1], "  - ran on rel-qa · zai/glm-5.3 · thinking high");
+        assert_eq!(v.lines[2], "- b-2 [queued] do b-2");
+        assert!(v.mermaid.contains(&"  n_a[\"a · running<br/>rel-qa · glm-5.3\"]".to_owned()));
+        assert!(v.mermaid.contains(&"  n_b_2[\"b-2 · queued\"]".to_owned()));
+        assert!(v.mermaid.contains(&"  n_a --> n_b_2".to_owned()));
+        assert!(v.mermaid.contains(&"  class n_a running".to_owned()));
+        assert_eq!(v.nodes[0]["profile"], "rel-qa");
+        assert_eq!(v.nodes[0]["model"], "zai/glm-5.3");
+        assert_eq!(v.nodes[0]["thinking"], "high");
+        assert_eq!(v.nodes[0]["operatorId"], "op1");
+        // Not run yet: the declared profile, no model guessed from it.
+        assert_eq!(v.nodes[1]["profile"], "subagent_explore");
+        assert!(v.nodes[1].get("model").is_none());
+        assert_eq!(f.view(&g, false)["work"][0]["model"], "zai/glm-5.3");
+        // graph.json round-trips the run record; old files without it still load.
+        let back: GraphFile = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert_eq!(back.open().unwrap().work[0].ran.as_ref().unwrap().model, "zai/glm-5.3");
+        let mut old = serde_json::to_value(&f).unwrap();
+        old["current"]["work"][0].as_object_mut().unwrap().remove("ran");
+        let old: GraphFile = serde_json::from_value(old).unwrap();
+        assert!(old.open().unwrap().work[0].ran.is_none());
+    }
+
+    #[test]
+    fn visual_marks_failed_blocked_superseded() {
+        let mut f = GraphFile::default();
+        f.update(&upd(vec![add("a", &[]), add("b", &["r-a"])]), "g", 0).unwrap();
+        f.started("a", Ok("op1".into()));
+        f.settle("op1", "failed", "", Some("boom"), 0, 0, false);
+        let g = f.open().unwrap().clone();
+        let v = f.visual(&g);
+        assert!(v.mermaid.contains(&"  class n_a failed".to_owned()));
+        assert!(v.mermaid.contains(&"  class n_b blocked".to_owned()));
+        assert_eq!(v.nodes[0]["failure"].as_str().map(|s| s.contains("boom")), Some(true));
+        assert!(v.nodes[0].get("toolCalls").is_none());
+        let mut r = add("a2", &[]);
+        r.replaces = Some("a".into());
+        f.update(&upd(vec![r]), "g", 1).unwrap();
+        let g = f.open().unwrap().clone();
+        let v = f.visual(&g);
+        let a = v.nodes.iter().find(|n| n["id"] == "a").unwrap();
+        assert_eq!(a["status"], "superseded");
+        assert_eq!(a["supersededBy"], "a2");
+        assert!(v.mermaid.contains(&"  n_a -.-> n_a2".to_owned()));
+        assert!(v.mermaid.iter().any(|l| l.starts_with("  class ") && l.ends_with(" off") && l.contains("n_a")));
     }
 
     #[test]
