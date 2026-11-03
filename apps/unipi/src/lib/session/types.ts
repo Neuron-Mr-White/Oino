@@ -142,6 +142,9 @@ export type SessionState = {
   run: RunInfo;
   queue: QueueState;
   topics: Record<string, TopicValue>;
+  /** [graph-mode] The host answered `_oino/topics` with "unknown command" (an agent host older
+   *  than the app): nothing that rides on topics (the mode chip, the LH status) can update. */
+  topicsUnsupported?: boolean;
   commands: CommandInfo[];
   /** `RpcSessionState` (`get_state`) as the snapshot carried it. */
   info: Record<string, unknown>;

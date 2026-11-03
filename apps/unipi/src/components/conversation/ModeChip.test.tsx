@@ -101,6 +101,67 @@ describe('ModeChip (Z-74)', () => {
     await waitFor(() => expect(promptMessages(world)).toContain('/regular'));
   });
 
+  // [graph-mode] P0: `/graph <task>` mid-chat must light the chip from the extension's mode
+  // event (the sticky `unipi:long-horizon:state` topic), and `/regular` must clear it.
+  it('follows the mode event: Plain → Graph → Plain', async () => {
+    const world = await boot(SCENARIOS['mode-chip']!);
+    render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
+    await waitFor(() => expect(screen.getByTestId('mode-chip-label').textContent).toBe('Graph'));
+    let seq = sessions().peek(HOST, SESSION)!.state.seq;
+    const topic = (name: string, data: unknown) => ({ session: SESSION, seq: ++seq, event: { type: 'topic', topic: name, data, sticky: true, publisher: 'unipi.long-horizon' } });
+    const plain = { mode: 'none', goal: null, ralph: null, graph: null, todos: 'no plan' };
+    world.push(HOST, SESSION, [topic('unipi:long-horizon:state', { mode: 'none' }), topic('unipi:long-horizon:progress', plain)]);
+    await waitFor(() => expect(screen.getByTestId('mode-chip-label').textContent).toBe('Plain'));
+    expect(screen.getByTestId('mode-chip').getAttribute('data-mode')).toBe('none');
+    // `/graph <task>`: long-horizon publishes the switch right away (before the turn starts).
+    world.push(HOST, SESSION, [topic('unipi:long-horizon:state', { mode: 'graph' }), topic('unipi:long-horizon:progress', { ...plain, mode: 'graph' })]);
+    await waitFor(() => expect(screen.getByTestId('mode-chip-label').textContent).toBe('Graph'));
+    const chip = screen.getByTestId('mode-chip');
+    expect(chip.getAttribute('data-mode')).toBe('graph');
+    expect(chip.getAttribute('data-phase')).toBe('selected');
+    // `/regular`
+    world.push(HOST, SESSION, [topic('unipi:long-horizon:state', { mode: 'none' })]);
+    await waitFor(() => expect(screen.getByTestId('mode-chip-label').textContent).toBe('Plain'));
+  });
+
+  // [graph-mode] version skew: an agent host older than the app has no `_oino/topics`; the chip
+  // says the mode can't be shown instead of a silent "Plain" that a /graph never changes.
+  it('says so when the agent host is too old to report the mode', async () => {
+    const base = SCENARIOS['mode-chip']!;
+    const old: MockScenario = {
+      ...base,
+      hosts: base.hosts.map((h) => ({
+        ...h,
+        sessions: h.sessions
+          ? Object.fromEntries(
+              Object.entries(h.sessions).map(([id, s]) => [
+                id,
+                {
+                  ...s,
+                  ...(s.snapshot ? { snapshot: { ...s.snapshot, topics: [] } } : {}),
+                  cmd: {
+                    ...s.cmd,
+                    '_oino/topics': () => {
+                      throw { code: 'E_INTERNAL', message: 'Unknown command: _oino/topics', retryable: false };
+                    },
+                  },
+                },
+              ]),
+            )
+          : undefined,
+      })),
+    };
+    await boot(old);
+    render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
+    await waitFor(() => expect(screen.getByTestId('mode-chip-label').textContent).toBe('Mode ?'));
+    const chip = screen.getByTestId('mode-chip');
+    expect(chip.getAttribute('data-phase')).toBe('unsupported');
+    expect(chip.getAttribute('title')).toContain('older than the app');
+    fireEvent.click(chip);
+    await screen.findByRole('menu');
+    expect(screen.getByTestId('mode-switch-desc').textContent).toContain('Update Unipi on that PC');
+  });
+
   it('is hidden when unipi.long-horizon is off (no dead control)', async () => {
     const world = await boot(withoutLh(SCENARIOS['mode-chip']!));
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);

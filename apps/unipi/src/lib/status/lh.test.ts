@@ -57,6 +57,8 @@ describe('lhSummary', () => {
   it('plain mode with a progress topic of another mode keeps the state view; without topics → undefined', () => {
     expect(lhSummary(state({ mode: 'none' }), progress({ mode: 'none' }))).toBeUndefined();
     expect(lhSummary(undefined, undefined)).toBeUndefined();
+    // [graph-mode] /regular: an explicit none state wins over a stale progress of the last mode.
+    expect(lhSummary(state({ mode: 'none' }), progress({ mode: 'graph' }))).toBeUndefined();
     expect(lhSummary(undefined, progress({ mode: 'goal', goal: { objective: 'o', status: 'active', turn: 2, maxTurns: 10 } }))!.phase).toBe('active');
     // a stale topic of the previous mode does not paint numbers onto the new one
     const m = lhSummary(state({ mode: 'goal' }), progress({ mode: 'ralph', ralph: { name: 'x', iteration: 2, checked: 1, total: 3 } }));

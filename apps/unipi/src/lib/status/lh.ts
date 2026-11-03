@@ -109,7 +109,9 @@ export function lhSummary(state: LhState | undefined, progress: LhProgressTopic 
   const mode = state && state.mode !== 'none' ? state.mode : undefined;
   const paused = state?.paused && state.paused !== 'none' ? state.paused : undefined;
   const current = mode ?? paused;
-  if (!current) return progress && progress.mode !== 'none' ? { mode: progress.mode, label: modeLabel(progress.mode), phase: 'active', ...progressParts(progress) } : undefined;
+  // [graph-mode] an explicit `none` state (/regular) is Plain even while a stale progress value
+  // of the last mode is still sticky; progress stands in only when no state was published.
+  if (!current) return !state && progress && progress.mode !== 'none' ? { mode: progress.mode, label: modeLabel(progress.mode), phase: 'active', ...progressParts(progress) } : undefined;
   const active = state?.owner?.status === 'active';
   const phase: LhPhase = mode ? (active ? 'active' : 'selected') : 'paused';
   // The topics are published together; a stale progress of another mode paints nothing.

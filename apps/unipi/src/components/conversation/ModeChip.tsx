@@ -26,6 +26,8 @@ import { RollingLabel } from '../RollingLabel';
 import './conversation.css';
 
 const PHASE_WORD = { active: 'Running', selected: 'On — the next message runs in it', paused: 'Paused' } as const;
+/** What the chip says when the PC's agent host can't report the working mode. */
+export const UNSUPPORTED_TEXT = "This PC's agent host is older than the app and can't report the working mode. Update Unipi on that PC.";
 
 export function ModeChip(props: { hostId: string; sessionId: string }) {
   const s = createMemo(() => sessions().ensure(props.hostId, props.sessionId));
@@ -57,8 +59,12 @@ export function ModeChip(props: { hostId: string; sessionId: string }) {
     void s().send('/regular', { mode: 'prompt' });
   };
 
-  const label = () => summary()?.label ?? 'Plain';
-  const aria = () => `Working mode: ${label()}${summary()?.phase === 'paused' ? ', paused' : ''}. Open the mode menu`;
+  /** [graph-mode] an agent host older than the app can't report the mode (no `_oino/topics`):
+   *  the chip says so instead of a silent "Plain" that a /graph switch never changes. */
+  const unsupported = () => !summary() && s().state.topicsUnsupported === true;
+  const label = () => summary()?.label ?? (unsupported() ? 'Mode ?' : 'Plain');
+  const aria = () =>
+    unsupported() ? `Working mode unknown: ${UNSUPPORTED_TEXT} Open the mode menu` : `Working mode: ${label()}${summary()?.phase === 'paused' ? ', paused' : ''}. Open the mode menu`;
 
   return (
     <Show when={enabled()}>
@@ -66,11 +72,11 @@ export function ModeChip(props: { hostId: string; sessionId: string }) {
         type="button"
         class="hdr-mode"
         data-mode={summary()?.mode ?? 'none'}
-        data-phase={summary()?.phase}
+        data-phase={summary()?.phase ?? (unsupported() ? 'unsupported' : undefined)}
         aria-label={aria()}
         aria-haspopup="menu"
         aria-expanded={open()}
-        title="Working mode — Goal / Ralph / Swarm / Graph (Ctrl Shift M)"
+        title={unsupported() ? UNSUPPORTED_TEXT : 'Working mode — Goal / Ralph / Swarm / Graph (Ctrl Shift M)'}
         onClick={(e) => {
           setAnchor((e.currentTarget as HTMLElement).getBoundingClientRect());
           setOpen(!open());
@@ -100,11 +106,11 @@ export function ModeChip(props: { hostId: string; sessionId: string }) {
             <span class="min-w-0 flex-1">
               <span class="mode-switch-title">{summary() ? `${summary()!.label} mode` : 'Plain chat'}</span>
               <span class="mode-switch-phase" data-phase={summary()?.phase}>
-                {summary() ? PHASE_WORD[summary()!.phase] : 'No long-horizon mode'}
+                {summary() ? PHASE_WORD[summary()!.phase] : unsupported() ? 'Unknown — the agent host is too old to report it' : 'No long-horizon mode'}
               </span>
             </span>
           </div>
-          <p class="mode-switch-desc">{MODE_DESCRIPTION[(summary()?.mode as LhModeChoice) ?? 'none'] ?? ''}</p>
+          <p class="mode-switch-desc" data-testid="mode-switch-desc">{unsupported() ? UNSUPPORTED_TEXT : (MODE_DESCRIPTION[(summary()?.mode as LhModeChoice) ?? 'none'] ?? '')}</p>
           <MenuSeparator />
           <div class="board-menu-label">Start</div>
           <For each={STARTER_ORDER}>

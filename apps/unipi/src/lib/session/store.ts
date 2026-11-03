@@ -20,6 +20,7 @@ import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
 import { hubs } from './hub';
 import { routeNotify, reportTextOf } from '../reports';
+import { isUnknownOpError } from '../../components/status/lhProgress';
 import type { CommandInfo, OutboxImage, OutboxItem, OutboxMode, SessionEntry, SessionState } from './types';
 
 /** Live subscriptions kept open (app spec §3.3; perf-app: 3 — the shown chat and two recent ones). */
@@ -251,7 +252,10 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
           }
         });
       })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        // [graph-mode] an older agent host lacks `_oino/topics`: say so instead of a silent "Plain".
+        if (isUnknownOpError(toAppError(e).message)) mutate((s) => void (s.topicsUnsupported = true));
+      });
   };
 
   const follow = (r: ApplyResult) => {
