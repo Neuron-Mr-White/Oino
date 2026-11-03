@@ -29,7 +29,7 @@ import { openSettingsAt } from '../../lib/settings/open';
 import { toasts } from '../../lib/toasts';
 import { modelView } from '../model/ModelList';
 import { startupKey } from '../model/suggested';
-import { createCycleSet, ModeTabs, ModelDialog, ModelPickerPanel, PickerError, PickerSecondary, writeStartupModel } from '../model/ModelPopover';
+import { createCycleSet, ModeTabs, ModelDialog, ModelPickerPanel, PickerError, StartupButton, writeStartupModel } from '../model/ModelPopover';
 import { modelChipLabel, modelChipTitle, thinkingOn } from '../model/ModelChip';
 import { RollingLabel } from '../RollingLabel';
 import type { DraftSession } from './draftSession';
@@ -151,6 +151,35 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
     );
     close();
   };
+  /**
+   * ⋯ → "Set as Fusion lead / sidekick" in the draft (same menu as a chat's): the
+   * draft's pair with the other seat kept. With no other seat yet, the Fusion tab
+   * opens with this seat filled so the user picks the second one.
+   */
+  const setRole = (side: 'lead' | 'sidekick', key: string) => {
+    const lead = side === 'lead' ? key : pair.leadKey();
+    const sidekick = side === 'sidekick' ? key : pair.sidekickKey();
+    const effort = pair.pillEffort(key);
+    if (side === 'lead') {
+      pair.setPendingLead(key);
+      if (effort) pair.setLeadEffort(effort);
+    } else {
+      pair.setPendingSidekick(key);
+      if (effort) pair.setSidekickEffort(effort);
+    }
+    setError(null);
+    if (!lead || !sidekick || lead === sidekick) {
+      setMode('fusion');
+      return;
+    }
+    const row = (models() ?? []).find((x) => modelKey(x) === lead);
+    const slash = lead.indexOf('/');
+    props.session.pickFusion(
+      { lead, sidekick, leadEffort: pair.leadEffort(), sidekickEffort: pair.sidekickEffort() },
+      { provider: lead.slice(0, slash), modelId: lead.slice(slash + 1), ...(row ? { name: modelName(row) } : {}) },
+    );
+    toasts().push(`The new chat starts with ${nowLabel({ kind: 'fusion', lead, sidekick }, nameOf)}`, 'success');
+  };
   /** "Now": the model (or Fusion pair) the new chat will start with. */
   const nowName = () => {
     const p = draftPair();
@@ -260,6 +289,18 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
             rowActions={
               data.latest
                 ? {
+                    // The same ⋯ menu as a chat's: the Fusion seats set the draft's pair.
+                    ...(fusionTab()
+                      ? {
+                          fusion: {
+                            // Checked only for the draft's chosen pair (not the tab's suggested seats).
+                            lead: draftPair()?.lead,
+                            sidekick: draftPair()?.sidekick,
+                            setLead: (m: ModelInfo) => setRole('lead', modelKey(m)),
+                            setSidekick: (m: ModelInfo) => setRole('sidekick', modelKey(m)),
+                          },
+                        }
+                      : {}),
                     cycle: { has: cycle.has, toggle: (m, on) => void cycle.toggle(modelKey(m), on) },
                     startup: { set: (m) => void useAtStartup(modelKey(m)) },
                   }
@@ -300,12 +341,13 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
                 }
               >
               <Show when={props.session.state.model?.id && !noUsable()}>
-                <PickerSecondary
-                  label={data.latest?.startup === current() ? 'Startup model' : 'Use at startup'}
-                  disabled={busy() || !data.latest || data.latest.startup === current()}
-                  title={data.latest?.startup === current() ? `New chats already start on ${nameOf(current())}` : `Start new chats on ${nameOf(current())} (${current()})`}
-                  onClick={() => void useAtStartup(current())}
-                  testId="model-use-startup"
+                <StartupButton
+                  key={current()}
+                  startup={data.latest?.startup}
+                  busy={busy() || !data.latest}
+                  name={nameOf(current())}
+                  onSet={() => void useAtStartup(current())}
+                  onAlready={() => toasts().push(`New chats already start on ${nameOf(current())}`, 'info')}
                 />
               </Show>
               </Show>

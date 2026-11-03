@@ -22,7 +22,7 @@
  */
 import { createEffect, createSignal, onCleanup, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import { Repeat, X } from 'lucide-solid';
+import { Check, Repeat, X } from 'lucide-solid';
 import { Sheet } from '../phone';
 import { menuKeys } from '../composer/menuKeys';
 import { layout } from '../../lib/layout';
@@ -331,6 +331,32 @@ export function PickerError(props: { error: string | null | undefined }) {
         {props.error}
       </p>
     </Show>
+  );
+}
+
+/**
+ * The footer's "Use at startup" (owner 2026-11-03: the same button in a chat and
+ * in the new-chat draft). Always labelled and enabled the same way; when `key`
+ * already is the startup model it shows a check and `aria-pressed`, and a click
+ * just says so (`onAlready`) instead of looking disabled.
+ */
+export function StartupButton(props: { key: string; startup?: string; busy?: boolean; name: string; onSet: () => void; onAlready: () => void }) {
+  const already = () => props.startup === props.key;
+  return (
+    <button
+      type="button"
+      class="pair-secondary mp-apply mp-secondary-btn"
+      disabled={props.busy}
+      aria-pressed={already() ? 'true' : 'false'}
+      title={already() ? `New chats already start on ${props.name}` : `Start new chats on ${props.name} (${props.key})`}
+      onClick={() => (already() ? props.onAlready() : props.onSet())}
+      data-testid="model-use-startup"
+    >
+      <Show when={already()}>
+        <Check size={14} aria-hidden="true" class="mp-secondary-check" />
+      </Show>
+      Use at startup
+    </button>
   );
 }
 

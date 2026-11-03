@@ -136,6 +136,7 @@
 .mp-apply.pair-secondary { display: inline-flex; align-items: center; flex: 0 0 auto; width: auto; min-height: 36px; padding: 0 16px; font-size: 13.5px; transition: background 140ms ease-out; }
 .mp-apply.pair-secondary:hover:not(:disabled) { background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); }
 .mp-apply.pair-secondary[aria-pressed='true'] { box-shadow: inset 0 0 0 1px var(--color-claw); }
+.mp-apply.pair-secondary .mp-secondary-check { margin-right: 6px; color: var(--color-claw); }
 .mp-apply.pair-primary { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; width: auto; min-height: 36px; padding: 0 18px; font-size: 13.5px; }
 .mp-apply:disabled { opacity: 0.5; }
 .mp-error { margin: 0; padding: 8px 12px; border-radius: 12px; background: rgb(240 48 24 / 12%); color: var(--color-wm-red); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }

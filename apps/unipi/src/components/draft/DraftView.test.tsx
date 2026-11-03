@@ -231,16 +231,24 @@ describe('the draft model chip opens the ONE model dialog', () => {
     expect(screen.getAllByTestId('model-row-more').length).toBeGreaterThan(0);
     // No Fusion tab: unipi.fusion is not enabled on this PC.
     expect(screen.queryByTestId('model-tab-fusion')).toBeNull();
-    // The host default is the running pick: "Startup model", nothing to do.
-    await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Startup model'));
-    expect((screen.getByTestId('model-use-startup') as HTMLButtonElement).disabled).toBe(true);
+    // The host default is the running pick: the same enabled "Use at startup" as a chat's, checked.
+    await waitFor(() => expect(screen.getByTestId('model-use-startup').getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.getByTestId('model-use-startup').textContent).toBe('Use at startup');
+    expect((screen.getByTestId('model-use-startup') as HTMLButtonElement).disabled).toBe(false);
+    // The ⋯ menu: no Fusion here (unipi.fusion off), cycle set + startup.
+    fireEvent.click(screen.getAllByTestId('model-row-more')[0]!);
+    expect(await screen.findByTestId('model-menu-cycle')).toBeTruthy();
+    expect(screen.getByTestId('model-menu-startup')).toBeTruthy();
+    expect(screen.queryByTestId('model-menu-lead')).toBeNull();
+    fireEvent.keyDown(screen.getByTestId('model-row-menu'), { key: 'Escape' });
     fireEvent.click(screen.getByTestId('model-picker-list').querySelector('[data-key="oino/glm-4.7"]')!);
     await waitFor(() => expect(screen.queryByTestId('draft-model-menu')).toBeNull());
     await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('GLM 4.7'));
     fireEvent.click(screen.getByTestId('model-chip'));
     await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Use at startup'));
+    expect(screen.getByTestId('model-use-startup').getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(screen.getByTestId('model-use-startup'));
-    await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Startup model'));
+    await waitFor(() => expect(screen.getByTestId('model-use-startup').getAttribute('aria-pressed')).toBe('true'));
     const sets = world.log
       .filter((l) => l.op === 'host_cmd')
       .map((l) => (l.args as { cmd?: { kind?: string; key?: string; value?: unknown } }).cmd)
@@ -291,6 +299,25 @@ describe('the draft model dialog has a Fusion tab when unipi.fusion runs on this
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
     const [, req] = start.mock.calls[0]!;
     expect(req.choices.fusion).toEqual({ lead: 'oino/glm-4.7', sidekick: 'oino/kimi-k2', leadEffort: 'high', sidekickEffort: 'medium' });
+  });
+
+  it('the row ⋯ menu matches a chat\'s: Set as Fusion lead / sidekick set the draft\'s pair (owner 2026-11-03)', async () => {
+    rememberModels('this-pc', [
+      { provider: 'oino', id: 'deepseek-flash', name: 'DeepSeek Flash' },
+      { provider: 'oino', id: 'glm-4.7', name: 'GLM 4.7' },
+      { provider: 'oino', id: 'kimi-k2', name: 'Kimi K2' },
+    ]);
+    boot(undefined, [{ id: 'unipi.fusion', kind: 'extension', enabled: true, loaded: true }]);
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toContain('DeepSeek Flash'));
+    fireEvent.click(screen.getByTestId('model-chip'));
+    await screen.findByTestId('draft-model-menu');
+    await waitFor(() => expect(screen.getByTestId('model-picker-list').querySelector('[data-key="oino/kimi-k2"]')).toBeTruthy());
+    const more = (key: string) => screen.getByTestId('model-picker-list').querySelector<HTMLElement>(`[data-key="${key}"]`)!.closest('.mp-row-wrap, li, div')!.querySelector<HTMLElement>('[data-testid="model-row-more"]')!;
+    fireEvent.click(more('oino/kimi-k2'));
+    const menu = await screen.findByTestId('model-row-menu');
+    expect([...menu.querySelectorAll('[role^="menuitem"]')].map((b) => b.textContent)).toEqual(['Set as Fusion lead', 'Set as Fusion sidekick', 'Add to cycle set', 'Use at startup']);
+    fireEvent.click(screen.getByTestId('model-menu-sidekick'));
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toBe('Fusion · DeepSeek Flash ◆ Kimi K2'));
   });
 
   it('phone: the full-screen model sheet has the same Fusion tab and chip label', async () => {

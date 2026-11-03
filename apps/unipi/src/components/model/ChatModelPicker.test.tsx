@@ -397,7 +397,8 @@ describe('Suggested (P0-10, fusion.status.curated)', () => {
     await waitFor(() => expect(screen.getByTestId('model-group-suggested')).toBeTruthy());
     // D-07: a click on another row switches at once, so "Use at startup" acts on the running model.
     fireEvent.click(screen.getByTestId('model-use-startup'));
-    await waitFor(() => expect(screen.getByTestId('model-use-startup').textContent).toContain('Startup model'));
+    await waitFor(() => expect(screen.getByTestId('model-use-startup').getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.getByTestId('model-use-startup').textContent).toBe('Use at startup');
     const sets = cmds(world, '_oino/set_setting').map((l) => l.args as { key: string; value: unknown });
     expect(sets).toEqual(
       expect.arrayContaining([

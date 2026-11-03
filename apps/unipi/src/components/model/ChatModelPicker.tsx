@@ -58,7 +58,7 @@ import {
   ModelDialog,
   ModelPickerPanel,
   PickerError,
-  PickerSecondary,
+  StartupButton,
   writeStartupModel,
 } from './ModelPopover';
 
@@ -332,16 +332,13 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
         >
           <Show when={startupTarget()}>
             {(target) => (
-              <PickerSecondary
-                label={startup() === target() ? 'Startup model' : 'Use at startup'}
-                disabled={busy() || startup() === target()}
-                title={
-                  startup() === target()
-                    ? `New chats already start on ${shortModelName(nameOf(target()))}`
-                    : `Start new chats on ${shortModelName(nameOf(target()))} (${target()})`
-                }
-                onClick={() => void useAtStartup()}
-                testId="model-use-startup"
+              <StartupButton
+                key={target()}
+                startup={startup()}
+                busy={busy()}
+                name={shortModelName(nameOf(target()))}
+                onSet={() => void useAtStartup()}
+                onAlready={() => toasts().push(`New chats already start on ${shortModelName(nameOf(target()))}`, 'info')}
               />
             )}
           </Show>
