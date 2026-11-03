@@ -680,6 +680,7 @@ impl Dream {
             visible: !runs.is_empty() || cfg.enabled,
             body,
             owner: None,
+            surfaces: None,
         })
     }
 

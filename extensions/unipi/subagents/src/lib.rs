@@ -1222,6 +1222,9 @@ impl Subagents {
             visible: true,
             body: req.open.then(|| self.body_node(sid, &records)),
             owner: None,
+            // The app lists the runs natively (Session modal › Running › Subagents, from
+            // `unipi:subagents:list`); this TUI pane is the terminal's.
+            surfaces: Some(vec![unipi_kit::tray::Surface::Tui]),
         }
     }
 

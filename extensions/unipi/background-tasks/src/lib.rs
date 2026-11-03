@@ -535,6 +535,7 @@ impl Bg {
             visible: true,
             body,
             owner: None,
+            surfaces: None,
         }
     }
 

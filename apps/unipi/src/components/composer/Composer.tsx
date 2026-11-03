@@ -825,8 +825,9 @@ export function Composer(props: ComposerProps) {
       afterRoute(text);
       return;
     }
-    // E-05: `/bg-tasks` opens the TUI's work tray, which the app doesn't have — its Running tab is the same list.
-    if (!props.draft && cmd && (cmd[1] === 'bg-tasks' || cmd[1] === 'unipi:bg-tasks') && !cmd[2]?.trim()) {
+    // E-05: `/bg-tasks` and `/subagents` open the TUI's work tray, which the app doesn't have — its
+    // Running tab is the same list ([running-tab]: the TUI pane's 'RUN '/'DONE' text never shows here).
+    if (!props.draft && cmd && ['bg-tasks', 'unipi:bg-tasks', 'subagents', 'unipi:subagents'].includes(cmd[1]!) && !cmd[2]?.trim()) {
       openSessionModal({ hostId: props.session.hostId, sessionId: props.session.sessionId(), tab: 'running' });
       afterRoute(text);
       return;

@@ -111,6 +111,7 @@ mod tests {
                     .into(),
             ),
             owner: Some("unipi.background-tasks".into()),
+            surfaces: None,
         }
     }
 

@@ -9,6 +9,7 @@
 //! [`crate::topics::WORK_TRAY_CHANGED`] when their counts change.
 
 use oino_ui::Node;
+pub use oino_ui::settings::Surface;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -64,6 +65,10 @@ pub struct TrayTab {
     /// Owning extension (filled by the tray).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// The clients that list the tab (`None` = every client; see [`Surface`]). The
+    /// Subagents tab is `tui` only: the app shows the runs in its own Subagents section.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<Surface>>,
 }
 
 fn yes() -> bool {
@@ -316,7 +321,32 @@ mod tests {
             visible: true,
             body: None,
             owner: None,
+            surfaces: None,
         }
+    }
+
+    #[test]
+    fn surfaces_wire() {
+        let all = tab("bg", "Background tasks", "Bg", 0, 1, 0);
+        assert!(
+            serde_json::to_value(&all)
+                .unwrap()
+                .get("surfaces")
+                .is_none()
+        );
+        let tui = TrayTab {
+            surfaces: Some(vec![Surface::Tui]),
+            ..tab("subagents", "Subagents", "Agents", 1, 1, 1)
+        };
+        let v = serde_json::to_value(&tui).unwrap();
+        assert_eq!(v["surfaces"], json!(["tui"]));
+        let back: TrayTab = serde_json::from_value(v).unwrap();
+        assert_eq!(back.surfaces, Some(vec![Surface::Tui]));
+        let old: TrayTab = serde_json::from_value(
+            json!({"id": "x", "label": "X", "order": 0, "counts": {"total": 0, "running": 0}}),
+        )
+        .unwrap();
+        assert_eq!(old.surfaces, None);
     }
 
     #[test]
