@@ -210,3 +210,28 @@ describe('BottomDock · WP-A11 (queue, steering, stop)', () => {
     expect(screen.getByText('Keep it small')).toBeTruthy();
   });
 });
+
+describe('[working-line] the one line above the composer', () => {
+  it('shows Working while a run streams, above the composer; nothing when idle; no Subagents pill', async () => {
+    const w = world();
+    const s = await open(w);
+    render(() => <BottomDock session={s} />);
+    expect(screen.queryByTestId('working-line')).toBeNull();
+    startRun(w);
+    const line = await screen.findByTestId('working-line');
+    expect(line.getAttribute('data-kind')).toBe('working');
+    expect(screen.getByTestId('working-line-text').textContent).toBe('Working…');
+    expect(screen.getByTestId('working-line-text').classList.contains('shimmer')).toBe(true);
+    const composer = screen.getByTestId('tl-composer');
+    expect(line.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  it('a running-work summary is a quiet line with Open when the agent is idle', async () => {
+    const w = world();
+    const s = await open(w);
+    render(() => <BottomDock session={s} trayLabel="Subagents 1 running" />);
+    const line = await screen.findByTestId('working-line');
+    expect(line.getAttribute('data-kind')).toBe('background');
+    expect(screen.getByTestId('work-tray-button')).toBeTruthy();
+    expect(screen.getByTestId('working-line-text').classList.contains('shimmer')).toBe(false);
+  });
+});

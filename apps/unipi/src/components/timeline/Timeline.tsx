@@ -96,6 +96,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   let contentEl: HTMLDivElement | undefined;
   let listEl: HTMLDivElement | undefined;
   let tailEl: HTMLDivElement | undefined;
+  let dockEl: HTMLDivElement | undefined;
 
   // owner5 #6: while this chat is on screen, its command reports are rows here.
   createEffect(() => onCleanup(showReportsInTimeline(session().key)));
@@ -539,6 +540,8 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       // row): settle in the same frame — pin while locked, else keep the anchor.
       const grow = new ResizeObserver(() => settle());
       if (contentEl) grow.observe(contentEl);
+      // [working-line] the dock growing (the working line easing in, a widget) re-settles too: a pinned chat stays pinned.
+      if (dockEl) grow.observe(dockEl);
       // The live tail growing (stream, new tool rows, a subagent card) is the "new output"
       // the dot reports; width changes reflow it (layout).
       let tailH = -1;
@@ -826,7 +829,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
             <CommandReports sessionKey={session().key} />
           </div>
         </div>
-        <div class="tl-dock" data-testid="tl-dock">
+        <div ref={dockEl} class="tl-dock" data-testid="tl-dock">
           <Show when={actionNotice()}>
             <div class="tl-notice" role="status" data-testid="tl-notice">
               {actionNotice()}

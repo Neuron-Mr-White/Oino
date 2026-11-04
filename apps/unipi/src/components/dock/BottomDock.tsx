@@ -6,10 +6,10 @@
  * Top to bottom (ordered regions, each present only when it has content):
  *
  *   widgets      `widget` slot entries                    (U10)
- *   ask chip     "question waiting" → scrolls to the inline card ([ask-user])
  *   dialogs      pending pi/Oino dialogs, "1 of N"        (A9 frame, U10 bodies)
  *   queue        steering / follow-up queue               (A11)
  *   tray         `editorReplace` entries                  (U10)
+ *   working line one line: working / waiting / needs you (ask) / background
  *   composer     the send box                             (A12 replaces it)
  *   widgetBelow  `widgetBelow` slot entries               (U10)
  *
@@ -24,7 +24,8 @@ import type { UiRequest } from '../../ui/types';
 import { sendModeForEnter, followUpMode } from '../../lib/composer/sendMode';
 import { installEscapeStop } from '../../lib/composer/escapeStop';
 import { DialogPanel } from './DialogPanel';
-import { AskPendingChip, inlineAskCalls } from './AskPendingChip';
+import { inlineAskCalls } from './AskPendingChip';
+import { WorkingLine } from './WorkingLine';
 import { dialogShownInApp } from '../../lib/surfaces';
 import { QueuePanel } from './QueuePanel';
 import { SendButton } from '../composer/SendButton';
@@ -48,6 +49,8 @@ export function BottomDock(props: {
   /** A12's composer; the built-in one keeps the surface usable until then. */
   composer?: JSX.Element;
   widgetBelow?: JSX.Element;
+  /** The Running tab's live summary ("Subagents 1 running"); feeds the working line. */
+  trayLabel?: string;
 }) {
   // Esc stops the run from any focus in the conversation (Z-55): the dock
   // itself is inside `.conv-tl`, so keydowns from anywhere above it bubble
@@ -80,11 +83,6 @@ export function BottomDock(props: {
           {props.widgets}
         </div>
       </Show>
-      <Show when={askCalls().length}>
-        <div class="dock-region" data-region="ask">
-          <AskPendingChip calls={askCalls()} />
-        </div>
-      </Show>
       <Show when={docked().length}>
         <div class="dock-region dock-region-dialog" data-region="dialog">
           <DialogPanel
@@ -96,6 +94,9 @@ export function BottomDock(props: {
       </Show>
       <div class="dock-region" data-region="queue">
         {props.queue ?? <QueuePanel session={props.session} phone={props.phone} />}
+      </div>
+      <div class="dock-region dock-region-working" data-region="working">
+        <WorkingLine session={props.session} askCalls={askCalls()} tray={props.trayLabel} />
       </div>
       <div class="dock-region dock-region-composer" data-region="composer">
         {/* §3.11 / §6.2: an `editorReplace` entry takes the composer's place

@@ -27,7 +27,7 @@ import { ComposerTray } from '../../ui/slots/ComposerTray';
 import { HeaderBand } from '../../ui/slots/HeaderBand';
 import { PhonePaneLayer } from '../../ui/slots/paneTabs';
 import { SlotModal } from '../../ui/slots/SlotModal';
-import { WidgetStack } from '../../ui/slots/WidgetStack';
+import { WidgetStack, trayLabelOf } from '../../ui/slots/WidgetStack';
 import { BG_TASKS_TOPIC, liveRunRowsOf, runningTrayTabsOf, SUBAGENTS_LIST_TOPIC, topicRunningTrayLabel } from '../../lib/status/running';
 import { fetchRunning } from '../session/RunningTab';
 import { installUiEffects } from '../../ui/slots/effects';
@@ -371,8 +371,9 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                               onAnswer={answer}
                               readOnly={isArchived() || isTakenOverReadOnly(s().state)}
                               phone={!layout().desktop()}
-                              widgets={<WidgetStack entries={widgets()} target={target()} phone={!layout().desktop()} fallbackTrayLabel={!layout().desktop() ? trayFallback() : undefined} />}
-                              widgetBelow={<WidgetStack entries={widgetBelow()} target={target()} fallbackTrayLabel={layout().desktop() ? trayFallback() : undefined} />}
+                              widgets={<WidgetStack entries={widgets()} target={target()} phone={!layout().desktop()} />}
+                              trayLabel={trayFallback() ?? trayLabelOf([...(registry()?.entriesFor('widget')() ?? []), ...(registry()?.entriesFor('widgetBelow')() ?? [])])}
+                              widgetBelow={<WidgetStack entries={widgetBelow()} target={target()} />}
                               composerTray={trayStack().length ? <ComposerTray stack={trayStack()} target={target()} /> : undefined}
                               composer={
                                 <Composer

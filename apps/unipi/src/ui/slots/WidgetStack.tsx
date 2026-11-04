@@ -9,86 +9,47 @@
  * (§6.4 per-slot cap).
  */
 import { createSignal, For, Show } from 'solid-js';
-import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-solid';
+import { ChevronDown, ChevronUp } from 'lucide-solid';
 import { EntryView } from '../NodeView';
-import { openSessionModal } from '../../components/session/modalTarget';
 import { liveTrayEntries, trayButtonText } from './trayHint';
 import type { UiEntry } from '../types';
 import type { UiTarget } from '../actions';
 
 const PHONE_MAX = 3;
 
-export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone?: boolean; fallbackTrayLabel?: string }) {
+/**
+ * The extension's own work-tray strip ("Subagents 1 running ↓ open") is not drawn: the working
+ * line above the composer (`dock/WorkingLine`) says it and opens the Running tab ([working-line]).
+ * `trayLabelOf` still reads its text for that line.
+ */
+export function trayLabelOf(entries: readonly UiEntry[]): string | undefined {
+  for (const e of liveTrayEntries([...entries])) {
+    const t = trayButtonText(e);
+    if (typeof t === 'string') return t;
+  }
+  return undefined;
+}
+
+export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone?: boolean }) {
   // [ask-user] terminal-only widgets (the `/answer` hint, …) never get here: the registry drops
   // entries whose `surfaces` leave the app out (`lib/surfaces` `entryShownInApp`). The app has no
   // "Answer N questions" pill or page; ask_user questions are inline timeline cards.
-  const entries = () => liveTrayEntries(props.entries);
-  const hasEntryTray = () => !!props.target.sessionId && entries().some((e) => typeof trayButtonText(e) === 'string');
-  const synthLabel = () => (props.target.sessionId && !hasEntryTray() ? props.fallbackTrayLabel : undefined);
+  const entries = () => liveTrayEntries(props.entries).filter((e) => typeof trayButtonText(e) !== 'string');
   const over = () => (props.phone ? Math.max(0, entries().length - PHONE_MAX) : 0);
   const [expanded, setExpanded] = createSignal(false);
   const shown = () => (over() && !expanded() ? entries().slice(0, PHONE_MAX) : entries());
   return (
-    <Show when={entries().length > 0 || !!synthLabel()}>
-      <div class="ui-widgets" data-count={entries().length + (synthLabel() ? 1 : 0)} data-testid="ui-widgets">
-        <Show when={synthLabel()}>
-          {(label) => (
-            <div class="ui-widget" data-entry="work-tray-strip">
-              <button
-                type="button"
-                class="ui-tray-btn"
-                onClick={() =>
-                  props.target.sessionId &&
-                  openSessionModal({ hostId: props.target.hostId, sessionId: props.target.sessionId, tab: 'running' })
-                }
-                data-testid="work-tray-button"
-              >
-                <span class="ui-tray-dot" aria-hidden="true" />
-                <span class="ui-tray-btn-label">{label()}</span>
-                <span class="ui-tray-btn-open">
-                  Open <ChevronRight size={13} />
-                </span>
-              </button>
+    <Show when={entries().length > 0}>
+      <div class="ui-widgets" data-count={entries().length} data-testid="ui-widgets">
+        <For each={shown()}>
+          {(entry) => (
+            <div class="ui-widget" data-entry={entry.id}>
+              <Show when={entry.title}>
+                <p class="ui-widget-title">{entry.title}</p>
+              </Show>
+              <EntryView entry={entry} target={props.target} mode="auto" />
             </div>
           )}
-        </Show>
-        <For each={shown()}>
-          {(entry) => {
-            const trayLabel = () => (props.target.sessionId ? trayButtonText(entry) : undefined);
-            return (
-              <div class="ui-widget" data-entry={entry.id}>
-                <Show
-                  when={typeof trayLabel() === 'string' ? trayLabel() : undefined}
-                  fallback={
-                    <>
-                      <Show when={entry.title}>
-                        <p class="ui-widget-title">{entry.title}</p>
-                      </Show>
-                      <EntryView entry={entry} target={props.target} mode="auto" />
-                    </>
-                  }
-                >
-                  {(label) => (
-                    <button
-                      type="button"
-                      class="ui-tray-btn"
-                      onClick={() =>
-                        props.target.sessionId &&
-                        openSessionModal({ hostId: props.target.hostId, sessionId: props.target.sessionId, tab: 'running' })
-                      }
-                      data-testid="work-tray-button"
-                    >
-                      <span class="ui-tray-dot" aria-hidden="true" />
-                      <span class="ui-tray-btn-label">{label()}</span>
-                      <span class="ui-tray-btn-open">
-                        Open <ChevronRight size={13} />
-                      </span>
-                    </button>
-                  )}
-                </Show>
-              </div>
-            );
-          }}
         </For>
         <Show when={over() > 0}>
           <button type="button" class="ui-widgets-more" aria-expanded={expanded()} onClick={() => setExpanded((v) => !v)} data-testid="ui-widgets-more">
