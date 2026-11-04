@@ -468,8 +468,15 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
     },
     async deleteArchived(sessionId) {
       try {
+        // An archived fetch that raced this delete (fired before it finished — the
+        // archive-then-delete flow does exactly that) answered from a snapshot that still
+        // holds the row: its reconcile must not resurrect it. Re-remove after it lands.
+        const racing = archivedInflight;
         await client.request('session_delete', { session: sessionId });
         setState('archived', (list) => list.filter((row) => row.session_id !== sessionId));
+        if (racing) void racing.then(() => {
+          if (!closed) setState('archived', (list) => list.filter((row) => row.session_id !== sessionId));
+        });
       } catch (error) {
         setState('error', toAppError(error));
       }

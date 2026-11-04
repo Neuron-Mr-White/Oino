@@ -43,7 +43,7 @@ function countingFactory() {
       },
     }) as HostClient;
   };
-  return { factory, opens };
+  return { factory, opens, world };
 }
 
 function boot(hash: string) {
@@ -94,6 +94,23 @@ describe('a vanished last session', () => {
     await waitFor(() => expect(location.hash).toBe(`#/new/${HOST}`));
     // The effect remembers the shown chat before it fails; forgetting only drops that one.
     expect(readLastSession()?.sessionId).not.toBe(GONE);
+  });
+
+  it('an open chat that merely lacks its card does not load the trash (owner-fix-5)', async () => {
+    // The owner's slow start: a restored chat whose card is missing from the live list
+    // (a cron-run chat, say) loaded the WHOLE trash just to tell whether it is archived.
+    const chatId = streamBasic.hosts[0]!.cards![0]!.session_id;
+    localStorage.setItem(LAST_KEY, JSON.stringify({ hostId: HOST, sessionId: chatId }));
+    const { world } = boot('#/');
+    await waitFor(() => expect(location.hash).toBe(`#/s/${HOST}/${chatId}`));
+    // The list is loaded, then the chat's card disappears (still open — no E_NOT_FOUND).
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'request' && e.op === 'sessions_list')).toBe(true));
+    world.emit({ kind: 'session_removed', session: chatId });
+    await new Promise((r) => setTimeout(r, 400));
+    const trash = world.log.filter((e) => e.kind === 'request' && e.op === 'sessions_list' && (e.args as { archived?: boolean } | undefined)?.archived === true);
+    expect(trash).toHaveLength(0);
+    // The chat stays open (an archived check would have landed it on New chat).
+    expect(location.hash).toBe(`#/s/${HOST}/${chatId}`);
   });
 });
 

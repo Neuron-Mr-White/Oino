@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot } from 'solid-js';
 import { createMockHost, type MockScenario } from '../host/mock';
-import type { SessionCard } from '../host/client';
+import type { HostClient, SessionCard } from '../host/client';
 import { applyHubEvent, cardsOf, createHub, MAX_NOTICES, setHubUiSink, type HubState } from './hub';
 
 const card = (id: string, over: Partial<SessionCard> = {}): SessionCard => ({ session_id: id, run_state: 'idle', cwd: '/home/u/p', updated_at: 1, ...over });
@@ -189,6 +189,39 @@ describe('hub helpers', () => {
     const deleted = await hub.emptyTrash();
     expect(deleted).toBe(2);
     expect(hub.state.archived).toEqual([]);
+    hub.close();
+    dispose();
+  });
+
+  it('an archived fetch that raced the delete cannot resurrect the row (owner-fix-5)', async () => {
+    // The archive-then-delete flow fires sessions_list{archived:true} (from archive) and
+    // session_delete right after; the host answered the list from a snapshot that still
+    // held the row. The row must end up gone, not back.
+    const pending = new Map<string, (value: unknown) => void>();
+    const client = {
+      hostId: 'h1',
+      conn: () => ({ state: 'connected' as const }),
+      retry: async () => {},
+      request: (op: string) =>
+        new Promise((resolve) => {
+          pending.set(op, resolve);
+        }),
+      openEvents: () => ({ close() {} }),
+    };
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client: client as unknown as HostClient }), dispose }));
+    await tick();
+    pending.get("sessions_list")!([]);
+    await tick();
+    // The Archived list fetch is in flight when the delete goes out.
+    void hub.loadArchived();
+    const deleting = hub.deleteArchived('gone');
+    // The delete finishes first; the raced list answer (pre-delete snapshot) lands after.
+    pending.get('session_delete')!(undefined);
+    await tick();
+    pending.get("sessions_list")!([card("gone")]);
+    await deleting;
+    await tick();
+    expect(hub.state.archived.map((c) => c.session_id)).toEqual([]);
     hub.close();
     dispose();
   });

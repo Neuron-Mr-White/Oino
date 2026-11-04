@@ -692,6 +692,9 @@ where
     let hub = Arc::clone(service.hub());
     match req {
         Request::SessionsList { archived } => {
+            // `took_ms`: a slow first list (a big sessions folder) is visible in the log
+            // instead of "the sidebar took 10 s at startup" (owner-fix-5).
+            let started = std::time::Instant::now();
             tracing::info!(op = "sessions_list", archived, "request");
             let cards: SessionsListData = if archived {
                 hub.archived().await.map_err(hub_error)?
@@ -702,6 +705,13 @@ where
             .map(wire_card)
             .collect();
             let data = serde_json::to_value(&cards).map_err(internal)?;
+            tracing::info!(
+                op = "sessions_list",
+                archived,
+                took_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                cards = cards.len(),
+                "done"
+            );
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
         Request::SessionSearch {

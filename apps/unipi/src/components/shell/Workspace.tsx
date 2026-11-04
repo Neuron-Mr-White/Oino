@@ -122,7 +122,13 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
   });
   createEffect(() => {
     if (props.sessionId && hub().state.loaded && !liveCard() && !hub().state.archivedLoaded && !hub().state.archivedLoading) {
-      void hub().loadArchived();
+      // Only a chat the host could not open (E_NOT_FOUND) sends us to the trash: loading
+      // the whole Archived list just to tell whether the shown chat is archived made the
+      // first sidebar paint wait on a multi-second trash scan (owner-fix-5). An archived
+      // chat restored at startup opens read-only via this path; a gone chat lands on New
+      // chat (chatGone below). A live chat that merely lacks its card yet does NOT load it.
+      const state = openSession()?.state;
+      if (state && sessionMissing(state)) void hub().loadArchived();
     }
   });
   // A vanished session (deleted, parked, the app's remembered last chat after a cleanup):
