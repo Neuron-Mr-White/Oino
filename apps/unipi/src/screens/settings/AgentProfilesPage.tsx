@@ -13,7 +13,7 @@
  * when it has one); the last enabled profile can't be switched off.
  */
 import { For, Show, createMemo, createResource, createSignal } from 'solid-js';
-import { Bot, ChevronRight, Copy, Lock, Plus, Trash2 } from 'lucide-solid';
+import { Bot, ChevronRight, Copy, Info, Lock, Plus, Trash2 } from 'lucide-solid';
 import { hubs } from '../../lib/session/hub';
 import { refreshThisComputer, thisComputer } from '../../lib/thisComputer';
 import { isHomeCwd } from '../../lib/session/selectors';
@@ -157,11 +157,6 @@ export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }
           <button type="button" class="settings-link" onClick={() => void useGlobalList()}>Use the global list</button>
         </div>
       </Show>
-      <Show when={profiles().length > 0 && defaultId() && defaultId() !== DEFAULT_PROFILE}>
-        <div class="settings-off-row" role="status" data-testid="agent-default-note">
-          <span class="min-w-0">{DEFAULT_PROFILE} is disabled: work that names no profile runs <span class="font-mono">{defaultId()}</span>.</span>
-        </div>
-      </Show>
       <Show when={toggleError()}>
         <p class="settings-field-error px-1 mb-3" role="alert" data-testid="agent-toggle-error">{toggleError()}</p>
       </Show>
@@ -214,6 +209,12 @@ export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }
                     )}
                   </For>
                 </Show>
+              </Show>
+              <Show when={source === 'builtin' && profiles().length > 0 && defaultId() && defaultId() !== DEFAULT_PROFILE}>
+                <p class="settings-note" role="status" data-testid="agent-default-note">
+                  <Info size={13} aria-hidden="true" />
+                  <span class="min-w-0">Work that names no profile now goes to <span class="font-mono">{defaultId()}</span>.</span>
+                </p>
               </Show>
             </div>
           </Show>

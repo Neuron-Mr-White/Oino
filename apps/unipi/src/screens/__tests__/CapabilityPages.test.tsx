@@ -217,7 +217,7 @@ describe('Settings › Subagents › Agent profiles (owner5 #17)', () => {
     fireEvent.click(sw('subagent_general'));
     await waitFor(() => expect(r.getByTestId('agent-off-subagent_general').textContent).toBe('Disabled'));
     expect(r.getByTestId('agent-row-subagent_general').hasAttribute('data-off')).toBe(true);
-    expect(r.getByTestId('agent-default-note').textContent).toContain('runs subagent_explore');
+    expect(r.getByTestId('agent-default-note').textContent).toContain('goes to subagent_explore');
     await waitFor(() => expect(writes().at(-1)).toMatchObject({ kind: 'set_extension_setting', key: 'disabled', value: ['subagent_general'], scope: 'global' }));
     // The last enabled profile can't be switched off (row and detail sheet).
     await waitFor(() => expect(sw('subagent_explore').disabled).toBe(true));
