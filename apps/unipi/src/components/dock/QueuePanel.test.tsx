@@ -99,10 +99,25 @@ describe('QueuePanel', () => {
     const s = await open(w, true);
     render(() => <QueuePanel session={s} />);
     fireEvent.click(screen.getAllByTestId('queue-remove')[1]!);
-    fireEvent.click(screen.getAllByTestId('queue-send-now')[0]!);
+    fireEvent.click(screen.getAllByTestId('queue-send-now')[2]!);
     await waitFor(() => expect(edits(w)).toHaveLength(2));
     expect(edits(w)[0]).toMatchObject({ type: '_oino/queue_edit', op: 'remove', queue: 'followUp', index: 0 });
-    expect(edits(w)[1]).toMatchObject({ type: '_oino/queue_edit', op: 'sendNow', queue: 'steering', index: 0 });
+    expect(edits(w)[1]).toMatchObject({ type: '_oino/queue_edit', op: 'sendNow', queue: 'followUp', index: 1 });
+  });
+
+  it('send escalates: queued → steer, steer → abort + prompt', async () => {
+    const w = world();
+    const s = await open(w, true);
+    render(() => <QueuePanel session={s} />);
+    const btn = () => screen.getAllByTestId('queue-send-now');
+    expect(btn()[1]!.getAttribute('aria-label')).toMatch(/^Steer now/);
+    expect(btn()[0]!.getAttribute('aria-label')).toMatch(/^Send now \(interrupts\)/);
+    fireEvent.click(btn()[1]!);
+    await waitFor(() => expect(edits(w)[0]).toMatchObject({ op: 'sendNow', queue: 'followUp', index: 0 }));
+    fireEvent.click(btn()[0]!);
+    await waitFor(() => expect(cmds(w, 'abort')).toHaveLength(1));
+    expect(edits(w)[1]).toMatchObject({ op: 'remove', queue: 'steering', index: 0 });
+    await waitFor(() => expect(cmds(w, 'prompt')).toHaveLength(1));
   });
 
   it('Clear sends clear_queue', async () => {

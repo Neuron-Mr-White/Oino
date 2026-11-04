@@ -16,10 +16,11 @@
  *     (auto-drain).
  */
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
-import { ChevronDown, ChevronUp, GripVertical, Pencil, Play, SendHorizonal, X } from 'lucide-solid';
+import { ChevronDown, ChevronUp, GripVertical, Pencil, Play, SendHorizonal, X, Zap } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import type { QueueState } from '../../lib/session/types';
 import { composerDraft, focusComposer, setComposerText } from '../../lib/composer/drafts';
+import { escalationView } from '../../lib/composer/queueEscalate';
 import '../dock/dock.css';
 
 /** One drawn row: which queue, its index there, its text. */
@@ -66,6 +67,23 @@ export function QueuePanel(props: { session: SessionHandle; phone?: boolean }) {
     const first = items()[0];
     if (!first) return;
     void edit({ op: 'sendNow', queue: first.queue, index: first.index }).catch(() => undefined);
+  };
+
+  /**
+   * One press of an item's send button (owner-fix-3): QUEUE → STEER
+   * (`sendNow` while running makes it the first steering message), STEER →
+   * interrupt: drop it from the queue, abort the run, send it as a prompt.
+   */
+  const escalate = (item: QueueItem) => {
+    const step = escalationView(item.queue, running()).step;
+    if (step !== 'interrupt') {
+      void edit({ op: 'sendNow', queue: item.queue, index: item.index }).catch(() => undefined);
+      return;
+    }
+    void edit({ op: 'remove', queue: item.queue, index: item.index })
+      .then(() => props.session.abort())
+      .then(() => void props.session.send(item.text, { mode: 'prompt' }))
+      .catch(() => undefined);
   };
 
   // ── Edit = recall into the composer (Z-53 draft guard) ───────────────
@@ -160,7 +178,7 @@ export function QueuePanel(props: { session: SessionHandle; phone?: boolean }) {
                   </span>
                 </Show>
                 <span class="dock-queue-kind" title={item.queue === 'steering' ? 'Delivered at the next tool boundary' : 'Sent after this run ends'}>
-                  {item.queue === 'steering' ? 'Steer' : 'After'}
+                  {item.queue === 'steering' ? 'Steer' : 'Queue'}
                 </span>
                 <span class="dock-queue-text">{item.text}</span>
                 <Show when={props.phone}>
@@ -187,16 +205,17 @@ export function QueuePanel(props: { session: SessionHandle; phone?: boolean }) {
                 >
                   <Pencil size={14} />
                 </button>
-                <button
-                  type="button"
-                  class="dock-queue-icon"
-                  aria-label={`Send ${item.text} now`}
-                  title="Deliver now"
-                  onClick={() => void edit({ op: 'sendNow', queue: item.queue, index: item.index }).catch(() => undefined)}
-                  data-testid="queue-send-now"
-                >
-                  <SendHorizonal size={14} />
-                </button>
+                  <button
+                    type="button"
+                    class="dock-queue-icon"
+                    title={escalationView(item.queue, running()).tooltip}
+                    data-step={escalationView(item.queue, running()).step}
+                    aria-label={`${escalationView(item.queue, running()).label}: ${item.text}`}
+                    onClick={() => escalate(item)}
+                    data-testid="queue-send-now"
+                  >
+                    {escalationView(item.queue, running()).step === 'interrupt' ? <Zap size={14} /> : <SendHorizonal size={14} />}
+                  </button>
                 <button
                   type="button"
                   class="dock-queue-icon"

@@ -22,6 +22,7 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
   const base = genSession(id, { seed: 6, turns: 2, toolsPerTurn: 1, cwd: '/home/you/projects/unipi' });
   const q: Queues = { steering: [...opts.queues.steering], followUp: [...opts.queues.followUp] };
   let seq = 0;
+  let live = opts.running;
   const ev = (event: Record<string, unknown>, at = 0): Step => ({ at, dto: { session: id, seq: ++seq, event: event as never } });
   const push = (host: MockHost, events: Array<Record<string, unknown>>) =>
     host.world.push(host.hostId, id, events.map((event) => ({ session: id, seq: ++seq, event: event as never })));
@@ -47,6 +48,7 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
         return {};
       },
       abort: (cmd, host) => {
+        live = false;
         push(host, [{ type: 'agent_end', messages: [] }, { type: 'run_state', state: 'idle' }]);
         return {};
       },
@@ -72,6 +74,11 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
           }
           case 'sendNow': {
             const [taken] = queue.splice(Number(cmd.index), 1);
+            // Like the host: while a run is going the item becomes the first steering message.
+            if (live && taken !== undefined) {
+              q.steering.unshift(taken);
+              break;
+            }
             push(host, [
               { type: 'agent_start' },
               { type: 'message_start', message: { role: 'user', content: taken ?? '' } },
