@@ -98,18 +98,13 @@ pub async fn pair_phone_start(
     }
     state.stop();
     let bin = crate::sharing::resolve_bin()?;
-    let mut command = tokio::process::Command::new(&bin);
+    let mut command = crate::no_window::tokio_command(&bin);
     command
         .args(ARGS)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
     let mut child = command.spawn().map_err(|e| {
         AppErrorDto::new(
             AppErrorCode::E_INTERNAL,
@@ -210,13 +205,8 @@ pub async fn local_host_start() -> Result<(), AppErrorDto> {
         )
     })?;
     let started = std::time::SystemTime::now() - Duration::from_secs(1);
-    let mut command = tokio::process::Command::new(&argv[0]);
+    let mut command = crate::no_window::tokio_command(&argv[0]);
     command.args(&argv[1..]).stdin(Stdio::null());
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
     let out = tokio::time::timeout(Duration::from_secs(20), command.output())
         .await
         .map_err(|_| {

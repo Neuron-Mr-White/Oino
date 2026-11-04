@@ -146,7 +146,7 @@ pub fn problems(host: &Binary, extensions: &Extensions) -> Vec<Problem> {
 async fn version_of(bin: &Path) -> Option<String> {
     let out = tokio::time::timeout(
         VERSION_TIMEOUT,
-        tokio::process::Command::new(bin)
+        crate::no_window::tokio_command(bin)
             .arg("--version")
             .stdin(std::process::Stdio::null())
             .output(),

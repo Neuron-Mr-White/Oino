@@ -423,15 +423,7 @@ fn not_installed() -> AppErrorDto {
 
 /// `unipi-host` without a console window popping up on Windows.
 fn command(bin: &Path) -> std::process::Command {
-    #[allow(unused_mut)]
-    let mut c = std::process::Command::new(bin);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        c.creation_flags(CREATE_NO_WINDOW);
-    }
-    c
+    crate::no_window::command(bin)
 }
 
 /// Runs `unipi-host <args>` with the app's environment (so `UNIPI_HOST_DIR`

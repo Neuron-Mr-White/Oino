@@ -41,6 +41,7 @@ mod local_files;
 mod local_host;
 mod lsp;
 mod net;
+mod no_window;
 mod open_local;
 mod op_stream;
 mod pair_phone;

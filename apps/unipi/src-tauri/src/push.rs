@@ -570,7 +570,7 @@ pub async fn open_url(app: tauri::AppHandle, url: String) -> Result<(), AppError
         let mut command = std::process::Command::new("open");
         #[cfg(windows)]
         let mut command = {
-            let mut c = std::process::Command::new("rundll32");
+            let mut c = crate::no_window::command("rundll32");
             c.arg("url.dll,FileProtocolHandler");
             c
         };
@@ -609,7 +609,7 @@ pub async fn push_open(app: tauri::AppHandle, path: String) -> Result<(), AppErr
         let mut command = std::process::Command::new("open");
         #[cfg(windows)]
         let mut command = {
-            let mut c = std::process::Command::new("cmd");
+            let mut c = crate::no_window::command("cmd");
             c.args(["/C", "start", ""]);
             c
         };

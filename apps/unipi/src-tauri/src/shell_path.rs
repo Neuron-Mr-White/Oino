@@ -176,7 +176,7 @@ async fn compute_merged_path(home: &Path) -> String {
 
 /// `$SHELL -lic 'printf %s "$PATH"'`, cleaned; `None` on any failure.
 pub async fn probe_shell_path(shell: &Path) -> Option<Vec<PathBuf>> {
-    let out = tokio::process::Command::new(shell)
+    let out = crate::no_window::tokio_command(shell)
         .args(["-lic", "printf %s \"$PATH\""])
         .stdin(std::process::Stdio::null())
         .output();

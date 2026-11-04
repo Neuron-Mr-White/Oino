@@ -177,7 +177,10 @@ pub async fn run_child(spec: ChildSpec<'_>) -> Result<std::process::ExitStatus, 
         .open(dir.join(LOG_NAME))
         .await
         .map_err(|e| io_err("open host.log", e))?;
-    let mut command = tokio::process::Command::new(bin);
+    // No console window on Windows: the host is a console binary and this app
+    // has none, so without the flag Windows opens a visible one (and every
+    // git/shell the host runs would flash its own).
+    let mut command = crate::no_window::tokio_command(bin);
     command
         .args([
             "serve",
