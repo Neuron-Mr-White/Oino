@@ -125,6 +125,13 @@ export function setFindAdapter(a: TimelineFindAdapter | undefined): void {
   adapter = a;
 }
 
+/** [ask-user] Scrolls the open timeline to `turnId` (mounting it); false without a timeline. */
+export function jumpTimelineToTurn(turnId: string): boolean {
+  if (!adapter) return false;
+  adapter.jumpToTurn(turnId);
+  return true;
+}
+
 export function openFind(query?: string): void {
   batch(() => setState((s) => ({ open: true, query: query ?? s.query, active: 0, navVersion: s.navVersion + 1 })));
 }

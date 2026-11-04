@@ -230,9 +230,11 @@ impl AskUser {
         if s.notify_on_ask {
             Self::announce(&questions);
         }
-        let response = ui::dialog(&form_request(&questions, &s))
-            .await
-            .unwrap_or(Value::Null);
+        // The app answers the form in the call's inline timeline card ([ask-user]): the call id
+        // links the two (older apps ignore the field).
+        let mut request = form_request(&questions, &s);
+        request["toolCallId"] = json!(cx.tool_call_id);
+        let response = ui::dialog(&request).await.unwrap_or(Value::Null);
         let single = (questions.len() == 1).then(|| questions[0].question.clone());
         let details = |answers: Option<Vec<questions::Answer>>, outcome: Outcome| Details {
             questions: questions.clone(),

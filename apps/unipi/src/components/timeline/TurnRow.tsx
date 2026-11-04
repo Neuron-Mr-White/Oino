@@ -5,7 +5,7 @@
  *   preamble     → work nodes only (cards before the first user message)
  *   compaction   → the Z-35 divider
  *   turn         → [cron label] user bubble | command/harness row
- *                  per segment: [steer bubble] fold + answer prose
+ *                  per segment: [steer bubble] fold + answer prose [+ ask_user card]
  *                  tail: turn actions + "Done in 1m 34s · $0.003" + time
  *
  * `/compact` (and other hidden command echoes) show no bubble (Z-35); a
@@ -27,6 +27,7 @@ import { UserBubble } from './UserBubble';
 import { Prose } from './Prose';
 import { ByKey } from './ByKey';
 import { Compaction } from './Compaction';
+import { AskUserCard } from './cards/AskUserCard';
 import { TurnActions, requestEdit } from './TurnActions';
 import { TurnFooters } from '../../ui/slots/TurnFooters';
 import type { TimelineCtx } from './context';
@@ -178,6 +179,10 @@ function SegmentView(props: {
             composerKey={props.ctx.session.key}
           />
         )}
+      </Show>
+      <Show when={seg().ask}>
+        {/* [ask-user] the question card, where it was asked — never inside the fold */}
+        {(ask) => <AskUserCard tool={ask()} ctx={props.ctx} />}
       </Show>
       <Show when={seg().after?.length}>
         <WorkNodes nodes={seg().after!} ctx={props.ctx} live={false} />

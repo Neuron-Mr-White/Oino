@@ -6,6 +6,7 @@
  * Top to bottom (ordered regions, each present only when it has content):
  *
  *   widgets      `widget` slot entries                    (U10)
+ *   ask chip     "question waiting" → scrolls to the inline card ([ask-user])
  *   dialogs      pending pi/Oino dialogs, "1 of N"        (A9 frame, U10 bodies)
  *   queue        steering / follow-up queue               (A11)
  *   tray         `editorReplace` entries                  (U10)
@@ -17,12 +18,13 @@
  * elsewhere is read-only here — the composer is disabled and the
  * `ReadOnlyBanner` offers Take back.
  */
-import { Show, createEffect, createSignal, onCleanup, type JSX } from 'solid-js';
+import { Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from 'solid-js';
 import type { SessionHandle } from '../../lib/session/store';
 import type { UiRequest } from '../../ui/types';
 import { sendModeForEnter, followUpMode } from '../../lib/composer/sendMode';
 import { installEscapeStop } from '../../lib/composer/escapeStop';
 import { DialogPanel } from './DialogPanel';
+import { AskPendingChip, inlineAskCalls } from './AskPendingChip';
 import { QueuePanel } from './QueuePanel';
 import { SendButton } from '../composer/SendButton';
 import './dock.css';
@@ -61,6 +63,13 @@ export function BottomDock(props: {
     });
     onCleanup(off);
   });
+  // [ask-user] questions answered in their inline timeline card: a chip here, not the form.
+  const askCalls = createMemo(() => (props.dialogs?.length ? inlineAskCalls(props.dialogs, props.session.turns()) : []));
+  const docked = () => {
+    const inline = askCalls();
+    const all = props.dialogs ?? [];
+    return inline.length ? all.filter((d) => !inline.some((c) => c.dialog.id === d.id)) : all;
+  };
   return (
     <div class="dock" data-testid="bottom-dock" ref={dockEl}>
       <Show when={props.widgets}>
@@ -68,10 +77,15 @@ export function BottomDock(props: {
           {props.widgets}
         </div>
       </Show>
-      <Show when={props.dialogs?.length}>
+      <Show when={askCalls().length}>
+        <div class="dock-region" data-region="ask">
+          <AskPendingChip calls={askCalls()} />
+        </div>
+      </Show>
+      <Show when={docked().length}>
         <div class="dock-region dock-region-dialog" data-region="dialog">
           <DialogPanel
-            dialogs={props.dialogs ?? []}
+            dialogs={docked()}
             onAnswer={(id, value) => props.onAnswer?.(id, value)}
             phone={props.phone}
           />

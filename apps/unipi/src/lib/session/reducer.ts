@@ -51,6 +51,8 @@ export type ApplyResult = {
   ui?: Array<Record<string, unknown>>;
   /** `woken` with a leaf past ours (the wake appended): fetch `get_entries{since}` and append. */
   catchUp?: string;
+  /** [chat-tree] `session_tree` (a tree jump, any client): the leaf the branch moved to; reload its tail page unless it is ours already. */
+  branchMoved?: string | null;
 };
 
 /** Extension UI methods that wait for the user (needs-you). */
@@ -175,6 +177,7 @@ function mergeResult(into: ApplyResult, r: ApplyResult): void {
   if (r.gap) into.gap = true;
   if (r.ui) (into.ui ??= []).push(...r.ui);
   if (r.catchUp) into.catchUp = r.catchUp;
+  if (r.branchMoved !== undefined) into.branchMoved = r.branchMoved;
 }
 
 /** Applies a batch in order; stops at the first gap. */
@@ -484,6 +487,9 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       return { commandsChanged: true };
     case 'lagged':
       return { resync: true };
+    case 'session_tree':
+      // [chat-tree] The host's notice that `_oino/navigate_tree` moved the leaf.
+      return { branchMoved: str(event.leafId) ?? null };
     case 'session_replaced': {
       const id = str(event.sessionId);
       return id ? { replacedBy: id } : {};
@@ -552,6 +558,33 @@ export function prependEntries(
   s.entries = [...older, ...s.entries];
   s.byId = indexEntries(s.entries);
   s.entriesRev += 1;
+}
+
+/**
+ * [chat-tree] The branch moved (a tree jump: "Return here", Edit, Retry, the tree view):
+ * the loaded entries become the new branch's tail page (`get_entries{limit}`), its paging
+ * state follows. Entries both branches share keep their object, so the turns index keeps
+ * those turns' identity. Bumps `branchRev` (the tree view reloads on it).
+ */
+export function replaceBranch(
+  s: SessionState,
+  page: { entries?: readonly SessionEntry[]; leafId?: string | null; total?: number; hasMore?: boolean; cursor?: string | null },
+): void {
+  const prev = new Map<string, SessionEntry>();
+  for (const e of s.entries) if (!isProvisional(e.id)) prev.set(e.id, e);
+  const entries = (page.entries ?? [])
+    .filter((e) => isObject(e) && typeof e.id === 'string')
+    .map((e) => {
+      const old = prev.get(e.id);
+      return old && old.type === e.type && old.timestamp === e.timestamp && old.parentId === e.parentId ? old : e;
+    });
+  s.entries = entries;
+  s.byId = indexEntries(entries);
+  s.leafId = page.leafId === undefined ? (entries.at(-1)?.id ?? null) : page.leafId;
+  s.entriesRev += 1;
+  s.branchRev = (s.branchRev ?? 0) + 1;
+  const hasMore = page.hasMore === true && entries.length > 0;
+  s.history = { total: typeof page.total === 'number' ? page.total : entries.length, hasMore, ...(hasMore && page.cursor ? { cursor: page.cursor } : {}) };
 }
 
 /**

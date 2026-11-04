@@ -151,6 +151,8 @@ function slimSegment(s: Segment): Segment {
     nodes: s.nodes.map(slimNode),
     ...(s.before ? { before: s.before.map(slimNode) } : {}),
     ...(s.after ? { after: s.after.map(slimNode) } : {}),
+    // [ask-user] the inline question card keeps its state (a waiting question stays answerable).
+    ...(s.ask ? { ask: { ...s.ask, output: trimStr(s.ask.output), live: undefined } } : {}),
     answer: s.answer ? { ...s.answer, text: trimStr(s.answer.text, 24_000) ?? '', live: false } : undefined,
     fold: s.fold
       ? {

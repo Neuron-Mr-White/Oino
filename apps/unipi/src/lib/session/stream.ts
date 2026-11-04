@@ -41,6 +41,8 @@ const FINAL_OPEN_CODES = new Set(['E_SCHEMA', 'E_UNSUPPORTED', 'E_UNAUTHORIZED',
 /** app spec §3.2 command budgets. */
 export const CMD_TIMEOUT_MS = 30_000;
 export const RENDER_TIMEOUT_MS = 2_000;
+/** [chat-tree] A tree jump with a branch summary waits for a model call (host `NAVIGATE_TIMEOUT`). */
+export const NAVIGATE_TIMEOUT_MS = 300_000;
 
 export type StreamHandlers = {
   /** The last applied seq (the resume point). */
@@ -251,7 +253,7 @@ export class SessionStreamClient {
   cmd<T = unknown>(cmd: RpcCommand): Promise<T> {
     const stream = this.stream;
     if (!stream || !this.isLive) return Promise.reject(transportError('The session is not connected'));
-    const limit = cmd.type === '_oino/render' ? RENDER_TIMEOUT_MS : CMD_TIMEOUT_MS;
+    const limit = cmd.type === '_oino/render' ? RENDER_TIMEOUT_MS : cmd.type === '_oino/navigate_tree' ? NAVIGATE_TIMEOUT_MS : CMD_TIMEOUT_MS;
     const setTimer = this.opts.setTimer ?? ((ms: number, cb: () => void) => setTimeout(cb, ms));
     const clearTimer = this.opts.clearTimer ?? ((h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>));
     return new Promise<T>((resolve, reject) => {

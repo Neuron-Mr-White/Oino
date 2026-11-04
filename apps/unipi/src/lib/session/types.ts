@@ -163,6 +163,8 @@ export type SessionState = {
   history?: HistoryState;
   /** The snapshot came from the session file while the runtime wakes (`woken` clears it). */
   waking?: boolean;
+  /** [chat-tree] Bumped when a tree jump replaced the branch (`replaceBranch`). */
+  branchRev?: number;
 };
 
 /** Paged history (snapshot `page`, `get_entries{before}` replies). */

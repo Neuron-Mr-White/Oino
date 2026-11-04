@@ -108,7 +108,7 @@ function AskUser(props: { dialog: Dialog; onAnswer: (value: unknown) => void; on
         </span>
         <Countdown deadline={props.dialog.deadline} onExpire={() => props.onAnswer(null)} />
         <span class="flex-1" />
-        <button type="button" class="dlg-x" aria-label="Cancel" onClick={() => props.onAnswer({ type: 'cancel' })}>
+        <button type="button" class="dlg-x" aria-label="Cancel" onClick={() => props.onAnswer(null)}>
           <X size={18} />
         </button>
       </div>

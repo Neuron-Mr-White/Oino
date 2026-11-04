@@ -106,6 +106,12 @@ export type Segment = {
   /** Cards appended after the assistant's final answer (model change, saved memories, …) — shown below it, never folded away. */
   after?: WorkNode[];
   answer?: Extract<WorkItem, { kind: 'prose' }>;
+  /**
+   * [ask-user] The `ask_user` call that ends this segment: rendered as a first-class card
+   * after the segment's answer prose, never inside the fold. Work after it opens the next
+   * segment (`ask:<toolCallId>`), so the card sits where the question was asked.
+   */
+  ask?: ToolRun;
   /** Absent when there is no work to fold. */
   fold?: Fold;
   live: boolean;
@@ -408,6 +414,29 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
   let seg: Segment = { id: start.kind === 'compaction' ? `cmp:${first.id}` : first.id, index: 0, work: [], nodes: [], live: false };
   segments.push(seg);
   const segMeta: Array<{ startedAt?: number; endedAt?: number; stopped: boolean; error: boolean; steps: number }> = [{ startedAt: tsOf(first), stopped: false, error: false, steps: 0 }];
+  // [ask-user] after an `ask_user` call the next work item opens a new segment (lazily, so a
+  // question that is still waiting has no empty "Working" fold under it).
+  let afterAsk: { at?: number } | undefined;
+  /** The segment new work goes to. */
+  const cur = (): Segment => {
+    if (afterAsk) {
+      const at = afterAsk.at;
+      afterAsk = undefined;
+      seg = { id: `ask:${seg.ask!.id}`, index: segments.length, work: [], nodes: [], live: false };
+      segments.push(seg);
+      segMeta.push({ startedAt: at, endedAt: at, stopped: false, error: false, steps: 0 });
+    }
+    return seg;
+  };
+  const pushTool = (key: string, tool: ToolRun, at: number | undefined) => {
+    if (tool.name === ASK_TOOL) {
+      const s = cur();
+      s.ask = tool;
+      afterAsk = { at };
+      return;
+    }
+    cur().work.push({ kind: 'tool', key, tool });
+  };
   let cost = 0;
   let model: string | undefined;
   let lastAssistant: AgentMessage | undefined;
@@ -420,7 +449,7 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       if (part.type === 'thinking') {
         const text = String((part as { thinking?: unknown }).thinking ?? '');
         if (!text.trim() && !isLive) return;
-        seg.work.push({ kind: 'thinking', key: k, text, live: isLive && i === parts.length - 1 });
+        cur().work.push({ kind: 'thinking', key: k, text, live: isLive && i === parts.length - 1 });
       } else if (part.type === 'toolCall') {
         const call = part as { id?: unknown; name?: unknown; arguments?: unknown };
         const id = String(call.id ?? '');
@@ -448,14 +477,14 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         if (lt?.durationMs !== undefined) tool.durationMs = lt.durationMs;
         if (isAgentTool(tool.name)) {
           const details = result ? result.message.details : lt?.details;
-          seg.work.push(agentItem(k, tool, details, lt?.startedAt ?? callAt));
+          cur().work.push(agentItem(k, tool, details, lt?.startedAt ?? callAt));
           return;
         }
-        seg.work.push({ kind: 'tool', key: k, tool });
+        pushTool(k, tool, result?.at ?? callAt);
       } else if (part.type === 'text') {
         const text = String((part as { text?: unknown }).text ?? '');
         if (!text.trim()) return;
-        seg.work.push({ kind: 'prose', key: k, text, live: isLive });
+        cur().work.push({ kind: 'prose', key: k, text, live: isLive });
       }
     });
   };
@@ -468,7 +497,8 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       (e.type === 'custom' && STEP_TYPES.has(String(e.customType ?? '')));
     if (at !== undefined && countsForDuration) {
       endedAt = at;
-      segMeta[seg.index]!.endedAt = at;
+      // [ask-user] the time the user takes to answer is not the segment's work.
+      if (!seg.ask) segMeta[seg.index]!.endedAt = at;
     }
     if (i === 0 && start.kind === 'turn') {
       turn.user = e;
@@ -487,6 +517,7 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
     if (e.type === 'message' && e.message) {
       const m = e.message;
       if (m.role === 'user') {
+        afterAsk = undefined;
         seg = { id: e.id, index: segments.length, steer: e, work: [], nodes: [], live: false };
         segments.push(seg);
         segMeta.push({ startedAt: at, endedAt: at, stopped: false, error: false, steps: 0 });
@@ -499,11 +530,11 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         if (stopped) segMeta[seg.index]!.stopped = true;
         else if (m.stopReason === 'error') {
           segMeta[seg.index]!.error = true;
-          if (m.errorMessage) seg.work.push({ kind: 'error', key: `${e.id}-err`, text: humanProviderError(m.errorMessage, typeof m.provider === 'string' ? m.provider : undefined, { settingsHint: true }) });
+          if (m.errorMessage) cur().work.push({ kind: 'error', key: `${e.id}-err`, text: humanProviderError(m.errorMessage, typeof m.provider === 'string' ? m.provider : undefined, { settingsHint: true }) });
         }
       } else if (m.role === 'bashExecution' || (m.role === 'system' && eventVisible(e))) {
         // [chat-events] a user `!cmd` run, or a mid-chat system message (mode switch, agent prompt).
-        seg.work.push({ kind: 'card', key: e.id, entry: e });
+        cur().work.push({ kind: 'card', key: e.id, entry: e });
       }
       // toolResult: joined into its call.
     } else if (e.type === 'custom') {
@@ -519,23 +550,23 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         if (agentId && claimed.has(agentId)) continue; // inside its run's card
         if (agentId) {
           // A child whose call is not in this turn (backgrounded earlier, resumed): one card at its first step.
-          seg.work.push(agentItem(`agent-${agentId}`, undefined, undefined, at, agentId));
+          cur().work.push(agentItem(`agent-${agentId}`, undefined, undefined, at, agentId));
           continue;
         }
-        seg.work.push({ kind: 'step', key: e.id, entry: e });
+        cur().work.push({ kind: 'step', key: e.id, entry: e });
         segMeta[seg.index]!.steps++;
-      } else seg.work.push({ kind: 'card', key: e.id, entry: e });
+      } else cur().work.push({ kind: 'card', key: e.id, entry: e });
     } else if (e.type === 'custom_message') {
       // [chat-events] `display: false` hides only kinds without an app summary (memory recall, ralph… still show).
       if (!eventVisible(e)) continue;
-      seg.work.push({ kind: 'card', key: e.id, entry: e });
+      cur().work.push({ kind: 'card', key: e.id, entry: e });
     } else if (e.type === 'model_change' || e.type === 'branch_summary' || e.type === 'thinking_level_change') {
       // D-02: before the first prompt these are the chat's starting settings (the composer
       // chips show them), not changes — no "Model → … / Thinking → …" rows atop a new chat.
       if (start.kind === 'preamble' && e.type !== 'branch_summary') continue;
-      seg.work.push({ kind: 'card', key: e.id, entry: e });
+      cur().work.push({ kind: 'card', key: e.id, entry: e });
     } else if (e.type === 'compaction') {
-      seg.work.push({ kind: 'compaction', key: e.id, entry: e });
+      cur().work.push({ kind: 'compaction', key: e.id, entry: e });
     }
   }
   if (live) {
@@ -545,15 +576,18 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
     }
     // Live tools whose call part never streamed (joined late / reconnect).
     const shown = new Set<string>();
-    for (const s of segments) for (const w of s.work) if (w.kind === 'tool') shown.add(w.tool.id);
-    else if (w.kind === 'agent' && w.tool) shown.add(w.tool.id);
+    for (const s of segments) {
+      if (s.ask) shown.add(s.ask.id);
+      for (const w of s.work) if (w.kind === 'tool') shown.add(w.tool.id);
+      else if (w.kind === 'agent' && w.tool) shown.add(w.tool.id);
+    }
     for (const t of Object.values(live.liveTools)) {
       if (shown.has(t.id) || t.done || t.parentId) continue;
       if (isAgentTool(t.name)) {
-        seg.work.push(agentItem(`live-${t.id}`, { id: t.id, name: t.name, args: t.args, state: 'running' }, t.details, t.startedAt));
+        cur().work.push(agentItem(`live-${t.id}`, { id: t.id, name: t.name, args: t.args, state: 'running' }, t.details, t.startedAt));
         continue;
       }
-      seg.work.push({ kind: 'tool', key: `live-${t.id}`, tool: { id: t.id, name: t.name, args: t.args, state: 'running', ...(t.partial !== undefined ? { live: t.partial } : {}) } });
+      pushTool(`live-${t.id}`, { id: t.id, name: t.name, args: t.args, state: 'running', ...(t.partial !== undefined ? { live: t.partial } : {}) }, t.startedAt);
     }
   }
   turn.live = running;
@@ -570,8 +604,17 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       turn.error = humanProviderError(lastAssistant.errorMessage, typeof lastAssistant.provider === 'string' ? lastAssistant.provider : undefined, { settingsHint: true });
     }
   }
-  for (const s of segments) finishSegment(s, segMeta[s.index]!, running && s === seg);
+  // [ask-user] a segment whose question is waiting is not "Working": the card is what's live.
+  for (const s of segments) finishSegment(s, segMeta[s.index]!, running && s === seg && !askWaiting(s));
   return turn;
+}
+
+/** The `unipi.ask-user` tool: its calls render as inline question cards (never folded). */
+export const ASK_TOOL = 'ask_user';
+
+/** The segment ends on a question the user has not answered yet. */
+function askWaiting(s: Segment): boolean {
+  return !!s.ask && (s.ask.state === 'running' || s.ask.state === 'preparing');
 }
 
 /** `customType` of the marker a "Move to a workspace…" appends (core `oino.cwd_change`). */

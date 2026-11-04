@@ -219,6 +219,8 @@ async fn ask_user_asks_and_answers() {
     let form = &env.calls("ui_dialog")[0];
     assert_eq!(form["method"], "form");
     assert_eq!(form["title"], "DB · Name");
+    // [ask-user] the app links the form to the call's inline timeline card.
+    assert_eq!(form["toolCallId"], "c1");
     // `unipi:ask-user:prompt` goes to the wasm host's in-process hub (not the recording host).
 
     // Esc ⇒ cancelled + terminate.

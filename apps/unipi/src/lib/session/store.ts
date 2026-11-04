@@ -14,7 +14,7 @@ import { createStore, produce, unwrap, type SetStoreFunction } from 'solid-js/st
 import { toAppError, type AppError } from '@unipi/protocol';
 import { hostClient } from '../host/factory';
 import type { HostClient, RpcCommand } from '../host/client';
-import { applyEvents, applySnapshot, initialState, prependEntries, reconcileEntries, reconcileSince, trimHistory, type ApplyResult } from './reducer';
+import { applyEvents, applySnapshot, initialState, prependEntries, reconcileEntries, reconcileSince, replaceBranch, trimHistory, type ApplyResult } from './reducer';
 import { enqueue, loadOutbox, markAcked, markLost, markSending, removeItem, saveOutbox, sweep } from './outbox';
 import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
@@ -74,12 +74,28 @@ export type SessionHandle = {
   acquire(): () => void;
   /** perf-app: drops loaded history beyond the newest `keep` entries (paged chats; reloads on scroll). */
   trimLoaded?(keep: number): boolean;
+  /**
+   * [chat-tree] pi `navigateTree` (`_oino/navigate_tree`): moves the leaf to `targetId` (a
+   * user message ⇒ its parent, its text comes back as `editorText`), then reloads the new
+   * branch's tail page. Rejects while a run streams (core's own text).
+   */
+  navigate?(targetId: string, opts?: NavigateOptions): Promise<NavigateReply>;
+  /** [chat-tree] Reloads the current branch's tail page (`get_entries{limit}`); joins one in flight. */
+  reloadBranch?(): Promise<void>;
   /** chat-vanish: hung up locally (`close()`: LRU eviction, archive) — a view still showing it must re-ensure. */
   readonly closed?: boolean;
   close(): void;
 };
 
 const keyOf = (hostId: string, sessionId: string) => `${hostId}/${sessionId}`;
+
+/** `_oino/navigate_tree` options (core `NavigateTreeOptions`). */
+export type NavigateOptions = { summarize?: boolean; customInstructions?: string; label?: string };
+/** `_oino/navigate_tree` reply (core `NavigateTreeResult`). */
+export type NavigateReply = { cancelled?: boolean; editorText?: string; aborted?: boolean; summaryEntry?: SessionEntry };
+type BranchPage = { entries?: SessionEntry[]; leafId?: string | null; total?: number; hasMore?: boolean; cursor?: string | null };
+/** [chat-tree] The tail page a tree jump reloads (the snapshot's page size, host `PAGE_LIMIT`). */
+export const BRANCH_PAGE = 80;
 
 function sendCommand(mode: OutboxMode, item: OutboxItem): RpcCommand {
   const images = item.images?.map((img) => ({ type: 'image', data: img.data, mimeType: img.mimeType }));
@@ -223,6 +239,35 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     }
   };
 
+  // [chat-tree] One branch reload at a time; a `session_tree` notice joins the one in flight.
+  let branchLoad: Promise<void> | undefined;
+  const reloadBranch = (): Promise<void> => {
+    if (branchLoad) return branchLoad;
+    const load = stream
+      .cmd<BranchPage>({ type: 'get_entries', limit: BRANCH_PAGE })
+      .then((reply) => {
+        if (reply && Array.isArray(reply.entries)) batch(() => mutate((s) => replaceBranch(s, reply)));
+      })
+      .finally(() => {
+        if (branchLoad === load) branchLoad = undefined;
+      });
+    branchLoad = load;
+    return load;
+  };
+  /** `session_tree{leafId}`: reload unless this view already shows that leaf (our own jump did). */
+  const syncBranch = (leaf: string | null) => {
+    const check = () => {
+      if (unwrap(state).leafId !== leaf) void reloadBranch().catch(() => {});
+    };
+    if (branchLoad) void branchLoad.then(check, check);
+    else check();
+  };
+  const navigate = async (targetId: string, opts: NavigateOptions = {}): Promise<NavigateReply> => {
+    const reply = await stream.cmd<NavigateReply | undefined>({ type: '_oino/navigate_tree', targetId, ...opts });
+    if (!reply?.cancelled) await reloadBranch();
+    return reply ?? {};
+  };
+
   const trimLoaded = (keep: number): boolean => {
     let dropped = false;
     // Not while provisional entries wait for their host echo (the reconcile reads `since` by index).
@@ -269,6 +314,10 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     if (r.catchUp) {
       const since = r.catchUp;
       queueMicrotask(() => catchUp(since));
+    }
+    if (r.branchMoved !== undefined) {
+      const leaf = r.branchMoved;
+      queueMicrotask(() => syncBranch(leaf));
     }
   };
 
@@ -380,6 +429,8 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       };
     },
     trimLoaded,
+    navigate,
+    reloadBranch,
     get refs() {
       return refs;
     },
