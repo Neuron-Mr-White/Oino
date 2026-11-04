@@ -2,21 +2,27 @@
  * Turn tail (app spec WP-A7, Z-17/Z-26/Z-27/Z-49/Z-93): one line at the
  * bottom-left of a settled turn —
  *
- *   [Copy] [Quote] [Fork] [Retry] [More]   Done in 1m 3s · $0.003 · 09:41
+ *   Done in 1m 3s · $0.003 · 09:41   [Copy] [Quote] [Fork] [Return here] [Retry] [More]
  *
- * The action buttons are hover-revealed on the desktop and always visible on
- * the phone (§3.9); the done/cost/time line is always visible. Copy copies the
- * whole turn (query + steers + answers) and flips its glyph to a check for
- * 1.2 s (Z-93). Retry appears on the last turn only and re-runs it from its
- * user message (`_oino/navigate_tree` + `prompt`, Z-49). Fork uses pi's fork
- * (before the turn's user message) and routes to the fork (Z-17).
+ * [chat-tree] Every message has its actions, on every turn (pi parity: return to any
+ * point of the chat): the turn tail above for the answers, `UserMessageActions` under each
+ * user message (Copy · Quote · Edit · Fork from here · Retry). Hover-revealed on the
+ * desktop; on the phone the last turn's tail stays visible and any other message shows its
+ * row when tapped (long-press opens the full sheet). Copy copies the whole turn (query +
+ * steers + answers) and flips its glyph to a check for 1.2 s (Z-93). Retry re-runs a turn
+ * from its user message (`_oino/navigate_tree` + `prompt`, Z-49). "Return here" moves the
+ * leaf to the turn's last entry (pi `/tree` on an answer; Undo in the toast). Fork on an
+ * answer keeps the turn (fork before the next message, else a clone); on a user message it
+ * forks before it with the text back in the fork's composer (pi `fork`).
  *
- * Per-message actions live in the right-click / long-press menu (`TurnMenus`);
- * Edit on a user message tree-jumps into the composer, with A27's "Also undo
- * file changes" once that capability exists (Z-28).
+ * The right-click / long-press menu (`TurnMenus`) carries the same per-message actions;
+ * Edit on a user message tree-jumps into the composer, with A27's "Also undo file
+ * changes" once that capability exists (Z-28).
  */
-import { createEffect, createSignal, on, onCleanup, Show } from 'solid-js';
-import { Check, Copy, Ellipsis, FileCode, Pencil, Quote, RotateCcw, Share2, SquareStack, TextSelect } from 'lucide-solid';
+import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
+import { Check, Copy, CornerDownRight, Ellipsis, FileCode, ListTree, Pencil, Quote, RotateCcw, Share2, SquareStack, TextSelect } from 'lucide-solid';
+import { openTreeTab } from '../panes/tabs/sessionTabs';
 import { layout } from '../../lib/layout';
 import { ActionSheet, haptic, type ActionItem } from '../phone';
 import { formatDuration } from '../../lib/chat/model';
@@ -33,19 +39,24 @@ import {
   editMessage,
   entryImages,
   focusComposer,
-  forkFrom,
+  forkHere,
+  isActiveMessage,
   messageText,
   openEditRequest,
   openMessageMenu,
   quoteIntoComposer,
   restoreComposer,
+  retryFrom,
   retryTurn,
+  returnHere,
   shareTurn,
   showActionNotice,
   treeJump,
   turnQuoteText,
+  turnReturnEntry,
   turnText,
   turnTime,
+  type MessageTarget,
 } from '../../lib/timeline/actions';
 import { AnchoredMenu, MenuLabel, MenuRow } from '../board/AnchoredMenu';
 import type { TimelineCtx } from './context';
@@ -106,13 +117,27 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
     const value = turn().costUsd;
     return value !== undefined && value >= 0.0005 ? `$${value.toFixed(value < 0.1 ? 3 : 2)}` : undefined;
   };
+  /** [chat-tree] Fork after this turn's answer (the next turn's message, else the whole branch). */
   const fork = async () => {
-    const user = turn().user;
     try {
-      await forkFrom(props.ctx.hostId, props.ctx.session.sessionId(), user?.id, props.ctx.openSession);
+      await forkHere(props.ctx, { role: 'assistant', turnId: turn().turnId });
       showActionNotice('Forked into a new chat.');
     } catch (error) {
       showActionNotice(`Couldn't fork: ${actionError(error)}`);
+    }
+  };
+  /** [chat-tree] The entry "Return here" continues after; absent when it already is the leaf. */
+  const returnEntry = () => {
+    const id = turnReturnEntry(turn());
+    return id && id !== props.ctx.session.state.leafId ? id : undefined;
+  };
+  const back = async () => {
+    const id = returnEntry();
+    if (!id) return;
+    try {
+      await returnHere(props.ctx.session, id);
+    } catch (error) {
+      showActionNotice(`Couldn't return here: ${actionError(error)}`);
     }
   };
   const retry = async () => {
@@ -135,9 +160,9 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
     <Show
       when={!phone()}
       fallback={
-        // Phone (§3.4, PH-26): no per-turn footer — only the last settled turn shows
-        // time · Copy · Retry · ⋯; every other action is a long-press on the message.
-        <Show when={props.last && turn().kind === 'turn' && !turn().live}>
+        // Phone (§3.4, PH-26): the last settled turn always shows its tail; any other turn
+        // shows it once its reply is tapped ([chat-tree]); long-press opens the full sheet.
+        <Show when={(props.last || isActiveMessage(turn().turnId, 'assistant')) && turn().kind === 'turn' && !turn().live}>
           <div class="tl-tail-line ph-turn-tail" data-testid="tl-turn-tail">
             <Show when={turnTime(turn()) !== undefined}>
               <TimeLabel at={turnTime(turn())} />
@@ -148,6 +173,14 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
                   <Check size={20} class="tl-act-check" />
                 </Show>
               </button>
+              <button type="button" class="tl-act" data-testid="tl-fork" aria-label="Fork from here" onClick={() => void fork()}>
+                <SquareStack size={20} />
+              </button>
+              <Show when={returnEntry()}>
+                <button type="button" class="tl-act" data-testid="tl-return" aria-label="Return here" disabled={running()} onClick={() => void back()}>
+                  <CornerDownRight size={20} />
+                </button>
+              </Show>
               <button type="button" class="tl-act" data-testid="tl-retry" aria-label="Retry this turn" disabled={running()} onClick={() => void retry()}>
                 <RotateCcw size={20} />
               </button>
@@ -158,7 +191,13 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
                 aria-label="More turn actions"
                 onClick={(event) => {
                   const answer = turnText(turn());
-                  openMessageMenu(event.currentTarget.getBoundingClientRect(), { text: answer, role: 'assistant', userEntryId: turn().user?.id, turnId: turn().turnId });
+                  openMessageMenu(event.currentTarget.getBoundingClientRect(), {
+                    text: answer,
+                    role: 'assistant',
+                    entryId: turnReturnEntry(turn()),
+                    userEntryId: turn().user?.id,
+                    turnId: turn().turnId,
+                  });
                 }}
               >
                 <Ellipsis size={20} />
@@ -202,22 +241,33 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
           <button type="button" class="tl-act" data-testid="tl-quote" aria-label="Quote this turn" data-tip="Quote" onClick={quote}>
             <Quote size={14} />
           </button>
-          <button type="button" class="tl-act" data-testid="tl-fork" aria-label="Fork from this turn" data-tip="Fork from here" onClick={() => void fork()}>
+          <button type="button" class="tl-act" data-testid="tl-fork" aria-label="Fork from here" data-tip="Fork from here" onClick={() => void fork()}>
             <SquareStack size={14} />
           </button>
-          <Show when={props.last}>
+          <Show when={returnEntry()}>
             <button
               type="button"
               class="tl-act"
-              data-testid="tl-retry"
-              aria-label="Retry this turn"
-              data-tip="Retry"
+              data-testid="tl-return"
+              aria-label="Return here"
+              data-tip="Return here"
               disabled={running()}
-              onClick={() => void retry()}
+              onClick={() => void back()}
             >
-              <RotateCcw size={14} />
+              <CornerDownRight size={14} />
             </button>
           </Show>
+          <button
+            type="button"
+            class="tl-act"
+            data-testid="tl-retry"
+            aria-label="Retry this turn"
+            data-tip="Retry"
+            disabled={running()}
+            onClick={() => void retry()}
+          >
+            <RotateCcw size={14} />
+          </button>
           <button
             type="button"
             class="tl-act"
@@ -242,12 +292,90 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
                   if (user) void requestEdit(props.ctx, turn(), user, anchor);
                 }}
               />
+              <MenuRow icon={<ListTree size={18} />} label="Show in tree" onSelect={() => (setMore(undefined), openTree(props.ctx))} />
               <MenuRow icon={<Share2 size={18} />} label="Share turn" onSelect={() => (setMore(undefined), void share())} />
             </AnchoredMenu>
           )}
         </Show>
       </div>
     </Show>
+    </Show>
+  );
+}
+
+/** [chat-tree] The conversation tree of this chat (desktop side pane tab, phone sheet). */
+function openTree(ctx: TimelineCtx): void {
+  openTreeTab({ hostId: ctx.hostId, sessionId: ctx.session.sessionId(), cwd: ctx.cwd() });
+}
+
+/**
+ * [chat-tree] The action row under a user message (a query or a steer): Copy · Quote · Edit
+ * · Fork from here · Retry. Hover-revealed on the desktop (`.tl-user:hover`), shown on the
+ * phone once the message is tapped (one message at a time). Edit / Retry move the leaf, so
+ * they wait for a running turn (core refuses a tree jump while streaming).
+ */
+export function UserMessageActions(props: { ctx: TimelineCtx; turn: Turn; entry: SessionEntry }) {
+  const text = () => messageText(props.entry);
+  const copy = copyFeedback(text, 'the message');
+  const running = () => props.ctx.session.state.run.running;
+  const settled = () => !props.entry.id.startsWith('live:');
+  const visible = () => layout().desktop() || isActiveMessage(props.turn.turnId, 'user', props.entry.id);
+  const size = () => (layout().desktop() ? 14 : 20);
+  const edit = (anchor: DOMRect) => void requestEdit(props.ctx, props.turn, props.entry, anchor);
+  const fork = async () => {
+    try {
+      await forkHere(props.ctx, { role: 'user', turnId: props.turn.turnId, entryId: props.entry.id });
+      showActionNotice('Forked into a new chat.');
+    } catch (error) {
+      showActionNotice(`Couldn't fork: ${actionError(error)}`);
+    }
+  };
+  const retry = async () => {
+    try {
+      await retryFrom(props.ctx.session, props.entry);
+    } catch (error) {
+      showActionNotice(`Couldn't retry: ${actionError(error)}`);
+    }
+  };
+  return (
+    <Show when={visible()}>
+      <div class="tl-user-actions" role="toolbar" aria-label="Message actions" data-testid="tl-user-actions">
+        <button
+          type="button"
+          class="tl-act"
+          data-testid="tl-user-copy"
+          data-copied={copy.copied() ? '' : undefined}
+          aria-label={copy.copied() ? 'Copied' : 'Copy message'}
+          data-tip={copy.copied() ? 'Copied' : 'Copy'}
+          onClick={() => void copy.copy()}
+        >
+          <Show when={copy.copied()} fallback={<Copy size={size()} />}>
+            <Check size={size()} class="tl-act-check" />
+          </Show>
+        </button>
+        <button type="button" class="tl-act" data-testid="tl-user-quote" aria-label="Quote message" data-tip="Quote" onClick={() => quoteIntoComposer(props.ctx.session.key, text())}>
+          <Quote size={size()} />
+        </button>
+        <Show when={settled()}>
+          <button
+            type="button"
+            class="tl-act"
+            data-testid="tl-user-edit"
+            aria-label="Edit message"
+            data-tip="Edit"
+            disabled={running()}
+            onClick={(event) => edit(event.currentTarget.getBoundingClientRect())}
+          >
+            <Pencil size={size()} />
+          </button>
+          <button type="button" class="tl-act" data-testid="tl-user-fork" aria-label="Fork from here" data-tip="Fork from here" onClick={() => void fork()}>
+            <SquareStack size={size()} />
+          </button>
+          <button type="button" class="tl-act" data-testid="tl-user-retry" aria-label="Retry from this message" data-tip="Retry" disabled={running()} onClick={() => void retry()}>
+            <RotateCcw size={size()} />
+          </button>
+        </Show>
+      </div>
     </Show>
   );
 }
@@ -268,10 +396,53 @@ export function plainOfMarkdown(md: string): string {
 }
 
 /**
+ * [chat-tree] The tree actions of one message (phone sheet and desktop row menu): Edit (a
+ * user message), Fork from here, Return here (an answer that is not the leaf), Retry and
+ * Show in tree. Edit / Return / Retry wait while a turn runs.
+ */
+export function treeItems(ctx: TimelineCtx, target: MessageTarget, anchor: DOMRect): ActionItem[] {
+  const s = ctx.session;
+  const running = !!s.state.run.running;
+  const turn = s.turns().find((t) => t.turnId === target.turnId);
+  const settledUser = target.role === 'user' && !!target.entryId && !target.entryId.startsWith('live:');
+  const entry = settledUser ? s.state.entries.find((e) => e.id === target.entryId) : undefined;
+  const items: ActionItem[] = [];
+  const fail = (what: string) => (error: unknown) => showActionNotice(`Couldn't ${what}: ${actionError(error)}`);
+  if (entry && turn) {
+    items.push({ id: 'edit', label: layout().desktop() ? 'Edit message' : 'Edit & resend', icon: Pencil, disabled: running, onSelect: () => void requestEdit(ctx, turn, entry, anchor) });
+  }
+  if (turn && turn.kind === 'turn' && (target.role === 'assistant' || entry)) {
+    items.push({
+      id: 'fork',
+      label: 'Fork from here',
+      icon: SquareStack,
+      onSelect: () =>
+        void forkHere(ctx, { role: target.role, turnId: target.turnId, ...(entry ? { entryId: entry.id } : {}) }).then(() => showActionNotice('Forked into a new chat.'), fail('fork')),
+    });
+  }
+  const back = target.role === 'assistant' ? (target.entryId ?? (turn ? turnReturnEntry(turn) : undefined)) : undefined;
+  if (back && !back.startsWith('live:') && back !== s.state.leafId) {
+    items.push({ id: 'return', label: 'Return here', icon: CornerDownRight, disabled: running, onSelect: () => void returnHere(s, back).catch(fail('return here')) });
+  }
+  if (turn && turn.kind === 'turn' && !turn.live && (entry || turn.user)) {
+    items.push({
+      id: 'retry',
+      label: 'Retry',
+      icon: RotateCcw,
+      disabled: running,
+      onSelect: () => void (entry ? retryFrom(s, entry) : retryTurn(s, turn)).catch(fail('retry')),
+    });
+  }
+  items.push({ id: 'tree', label: 'Show in tree', icon: ListTree, onSelect: () => openTree(ctx) });
+  return items;
+}
+
+/**
  * Phone (§3.4, PH-26): the long-press sheet of a message. Assistant: Copy · Copy as
- * Markdown · Quote in reply · Fork from here · Retry · Select text, with the turn's
- * info ("Done in 3s · 11:47") as the subtitle. User: Copy · Edit & resend · Quote ·
- * Select text. "Select text" turns native selection on for that message (long-press
+ * Markdown · Quote in reply · Fork from here · Return here · Retry · Show in tree · Share ·
+ * Select text, with the turn's info ("Done in 3s · 11:47") as the subtitle. User: Copy ·
+ * Edit & resend · Quote · Fork from here · Retry · Show in tree · Select text ([chat-tree]
+ * `treeItems`). "Select text" turns native selection on for that message (long-press
  * itself opens this sheet, so it can't also start a selection).
  */
 function PhoneMessageSheet(props: { ctx: TimelineCtx; state: NonNullable<ReturnType<typeof currentMessageMenu>> }) {
@@ -299,23 +470,9 @@ function PhoneMessageSheet(props: { ctx: TimelineCtx; state: NonNullable<ReturnT
       return [
         [
           { id: 'copy', label: 'Copy', icon: Copy, onSelect: () => copy(t.text) },
-          ...(t.entryId
-            ? [
-                {
-                  id: 'edit',
-                  label: 'Edit & resend',
-                  icon: Pencil,
-                  onSelect: () => {
-                    const entry = s.state.entries.find((e) => e.id === t.entryId);
-                    const tr = turn();
-                    if (entry && tr) void requestEdit(props.ctx, tr, entry, props.state.anchor);
-                  },
-                },
-              ]
-            : []),
           { id: 'quote', label: 'Quote', icon: Quote, onSelect: () => quoteIntoComposer(s.key, t.text) },
         ],
-        [{ id: 'select', label: 'Select text', icon: TextSelect, onSelect: selectText }],
+        [...treeItems(props.ctx, t, props.state.anchor), { id: 'select', label: 'Select text', icon: TextSelect, onSelect: selectText }],
       ];
     }
     const tr = turn();
@@ -326,27 +483,7 @@ function PhoneMessageSheet(props: { ctx: TimelineCtx; state: NonNullable<ReturnT
         { id: 'quote', label: 'Quote in reply', icon: Quote, onSelect: () => quoteIntoComposer(s.key, t.text) },
       ],
       [
-        ...(t.userEntryId
-          ? [
-              {
-                id: 'fork',
-                label: 'Fork from here',
-                icon: SquareStack,
-                onSelect: () => void forkFrom(props.ctx.hostId, s.sessionId(), t.userEntryId, props.ctx.openSession).catch((error) => showActionNotice(`Couldn't fork: ${actionError(error)}`)),
-              },
-            ]
-          : []),
-        ...(tr && tr.kind === 'turn' && !tr.live
-          ? [
-              {
-                id: 'retry',
-                label: 'Retry',
-                icon: RotateCcw,
-                disabled: !!s.state.run.running,
-                onSelect: () => void retryTurn(s, tr).catch((error) => showActionNotice(`Couldn't retry: ${actionError(error)}`)),
-              },
-            ]
-          : []),
+        ...treeItems(props.ctx, t, props.state.anchor),
         { id: 'share', label: 'Share', icon: Share2, onSelect: () => tr && void shareTurn(tr).catch((error) => showActionNotice(`Couldn't share: ${actionError(error)}`)) },
         { id: 'select', label: 'Select text', icon: TextSelect, onSelect: selectText },
       ],
@@ -450,34 +587,20 @@ export function TurnMenus(props: { ctx: TimelineCtx }) {
                 quoteIntoComposer(props.ctx.session.key, state.target.text);
               }}
             />
-            <Show when={state.target.userEntryId}>
-              {(entryId) => (
+            <For each={treeItems(props.ctx, state.target, state.anchor)}>
+              {(item) => (
                 <MenuRow
-                  icon={<SquareStack size={18} />}
-                  label="Fork from here"
+                  icon={item.icon ? <Dynamic component={item.icon} size={18} /> : undefined}
+                  label={item.label}
+                  disabled={item.disabled}
+                  testId={`tl-menu-${item.id}`}
                   onSelect={() => {
                     closeMessageMenu();
-                    void forkFrom(props.ctx.hostId, props.ctx.session.sessionId(), entryId(), props.ctx.openSession).catch((error) =>
-                      showActionNotice(`Couldn't fork: ${actionError(error)}`),
-                    );
+                    item.onSelect?.();
                   }}
                 />
               )}
-            </Show>
-            <Show when={state.target.role === 'user' && state.target.entryId}>
-              {(entryId) => (
-                <MenuRow
-                  icon={<Pencil size={18} />}
-                  label="Edit message"
-                  onSelect={() => {
-                    const entry = props.ctx.session.state.entries.find((e) => e.id === entryId());
-                    const turn = props.ctx.session.turns().find((t) => t.turnId === state.target.turnId);
-                    closeMessageMenu();
-                    if (entry && turn) void requestEdit(props.ctx, turn, entry, state.anchor);
-                  }}
-                />
-              )}
-            </Show>
+            </For>
           </AnchoredMenu>
         )}
       </Show>

@@ -12,11 +12,13 @@
  *   when the virtualizer reuses the row for another message;
  * - **Edit** (Z-28): a pencil on the user bubble (hover-revealed on the
  *   desktop, always visible on the phone) tree-jumps into the composer;
+ *   [chat-tree] a timeline bubble gets the whole action row instead (`actions`);
  * - **row menu** (Z-17/Z-27): right-click / long-press gives Copy, Quote,
  *   Fork and Edit for this message;
  * - **swipe right = Quote** on the phone (Z-30 keeps it).
  */
 import { expansionOpen, setExpansion } from '../../lib/timeline/expansion';
+import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { ChevronDown, ChevronUp, FileText, FolderOpen, Image as ImageIcon, Pencil, Sparkles, SquareSlash } from 'lucide-solid';
 import type { RefChat } from '../../lib/chat/pathStat';
@@ -161,6 +163,8 @@ export function UserBubble(props: {
   commands: () => ReadonlySet<string>;
   /** Edit this message (Z-28): receives the pencil's anchor rect. */
   onEdit?: (anchor: DOMRect) => void;
+  /** [chat-tree] The message's action row (Copy · Quote · Edit · Fork · Retry); replaces the lone Edit pencil. */
+  actions?: JSX.Element;
   /** The row menu's payload for this message (Copy/Quote/Fork/Edit). */
   menu?: () => MessageTarget | undefined;
   /** Where Quote puts the chip (the session's composer key). */
@@ -285,7 +289,8 @@ export function UserBubble(props: {
         </Show>
       </div>
       <ImageChipRow chat={props.chat} images={props.images ?? []} />
-      <Show when={props.onEdit}>
+      {props.actions}
+      <Show when={!props.actions && props.onEdit}>
         <div class="tl-user-actions">
           <button
             type="button"

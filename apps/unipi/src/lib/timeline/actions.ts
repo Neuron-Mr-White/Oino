@@ -22,7 +22,7 @@ import { copyText } from '../board/share';
 import { desktopShell, menuAnchor } from '../layout';
 import { imagesOf, textOf, type Part } from '../chat/model';
 import type { SessionEntry, SessionState, OutboxImage } from '../session/types';
-import { sessions, type SessionHandle } from '../session/store';
+import { sessions, type NavigateOptions, type NavigateReply, type SessionHandle } from '../session/store';
 import { hubs } from '../session/hub';
 import { sessionTitle } from '../session/selectors';
 import type { Turn } from '../session/turns';
@@ -144,12 +144,18 @@ const describe = (error: unknown): string =>
 
 /* ── host actions ────────────────────────────────────────────────── */
 
-type TreeReply = { cancelled?: boolean; editorText?: string };
+type TreeReply = NavigateReply;
 
-/** pi `navigateTree`: move the leaf to `entryId` (a user entry ⇒ leaf = its parent). */
-export async function treeJump(session: SessionHandle, entryId: string): Promise<void> {
-  const reply = await session.cmd<TreeReply>({ type: '_oino/navigate_tree', targetId: entryId });
+/**
+ * pi `navigateTree`: move the leaf to `entryId` (a user entry ⇒ leaf = its parent) and
+ * reload the new branch (`SessionHandle.navigate`; the raw command for a bare handle).
+ */
+export async function treeJump(session: SessionHandle, entryId: string, opts?: NavigateOptions): Promise<TreeReply> {
+  const reply = session.navigate
+    ? await session.navigate(entryId, opts)
+    : await session.cmd<TreeReply>({ type: '_oino/navigate_tree', targetId: entryId, ...(opts ?? {}) });
   if (reply?.cancelled) throw new Error('The jump was cancelled.');
+  return reply ?? {};
 }
 
 /** Edit: tree-jump to the user message, then put its text + images back in the composer. */
@@ -159,15 +165,105 @@ export async function editMessage(session: SessionHandle, entry: SessionEntry): 
   focusComposer(session.key);
 }
 
-/** Retry (Z-49): re-run a turn from its user message, on a fresh branch. */
-export async function retryTurn(session: SessionHandle, turn: Turn): Promise<void> {
-  const user = turn.user;
+/** Retry from one user message (a query or a steer): a fresh branch from its parent, the same text resent. */
+export async function retryFrom(session: SessionHandle, user: SessionEntry | undefined): Promise<void> {
   if (!user) throw new Error('This turn has no message to retry from.');
   const text = entryText(user);
   const images = entryImages(user);
   if (!text.trim() && !images.length) throw new Error('This turn has no message to retry from.');
   await treeJump(session, user.id);
   session.send(text, images.length ? { images, mode: 'prompt' } : { mode: 'prompt' });
+}
+
+/** Retry (Z-49): re-run a turn from its user message, on a fresh branch — any turn, not only the last. */
+export async function retryTurn(session: SessionHandle, turn: Turn): Promise<void> {
+  await retryFrom(session, turn.user);
+}
+
+/**
+ * [chat-tree] "Return here" (pi `/tree` on an answer): the chat continues after this entry;
+ * the later messages stay in the tree (Undo / the tree view bring them back). The toast's
+ * Undo jumps back to the leaf we left.
+ */
+export async function returnHere(session: SessionHandle, entryId: string): Promise<void> {
+  const from = session.state.leafId;
+  if (from === entryId) return;
+  await treeJump(session, entryId);
+  const undo = from
+    ? {
+        label: 'Undo',
+        run: () =>
+          treeJump(session, from).then(
+            () => undefined,
+            (error: unknown) => showActionNotice(`Couldn't undo: ${describe(error)}`),
+          ),
+      }
+    : undefined;
+  toasts().push('Back at this point. Later messages stay in the tree.', 'info', undo);
+}
+
+/** The settled entry "Return here" on a turn continues after (its last persisted entry). */
+export function turnReturnEntry(turn: Turn): string | undefined {
+  for (let i = turn.entries.length - 1; i >= 0; i--) {
+    const id = turn.entries[i]!.id;
+    if (!id.startsWith('live:')) return id;
+  }
+  return undefined;
+}
+
+/**
+ * [chat-tree] Where "Fork from here" forks. On a user message: before it (pi `fork`), its
+ * text goes into the fork's composer. On an answer: after the turn — before the next turn's
+ * user message, or the whole branch (pi `clone`) when it is the last turn.
+ */
+export function forkPoint(
+  turns: readonly Turn[],
+  at: { role: 'user' | 'assistant'; turnId: string; entryId?: string },
+): { entryId?: string; restore?: SessionEntry } {
+  if (at.role === 'user') return at.entryId ? { entryId: at.entryId, restore: findEntry(turns, at.turnId, at.entryId) } : {};
+  const index = turns.findIndex((t) => t.turnId === at.turnId);
+  for (let i = index + 1; index >= 0 && i < turns.length; i++) {
+    const user = turns[i]!.user;
+    if (turns[i]!.kind === 'turn' && user?.message?.role === 'user' && !user.id.startsWith('live:')) return { entryId: user.id };
+  }
+  return {};
+}
+
+function findEntry(turns: readonly Turn[], turnId: string, entryId: string): SessionEntry | undefined {
+  return turns.find((t) => t.turnId === turnId)?.entries.find((e) => e.id === entryId);
+}
+
+/** Fork from a message (`forkPoint`), route to the fork and refill its composer for a user message. */
+export async function forkHere(
+  ctx: { hostId: string; session: SessionHandle; openSession?: (sessionId: string) => void },
+  at: { role: 'user' | 'assistant'; turnId: string; entryId?: string },
+): Promise<void> {
+  const point = forkPoint(ctx.session.turns(), at);
+  await forkFrom(ctx.hostId, ctx.session.sessionId(), point.entryId, (id) => {
+    if (point.restore) restoreComposer(`${ctx.hostId}/${id}`, { text: entryText(point.restore), images: entryImages(point.restore) });
+    ctx.openSession?.(id);
+  });
+}
+
+/* ── phone: the tapped message shows its actions (one at a time) ───── */
+
+export type ActiveMessage = { turnId: string; role: 'user' | 'assistant'; entryId?: string };
+const [activeMessage, setActiveMessage] = createSignal<ActiveMessage | undefined>();
+
+/** The message whose action row the phone shows (a tap toggles it). */
+export function currentActiveMessage(): ActiveMessage | undefined {
+  return activeMessage();
+}
+
+export function isActiveMessage(turnId: string, role: 'user' | 'assistant', entryId?: string): boolean {
+  const a = activeMessage();
+  return !!a && a.turnId === turnId && a.role === role && (role === 'assistant' || a.entryId === entryId);
+}
+
+export function toggleActiveMessage(target: ActiveMessage | undefined): void {
+  const a = activeMessage();
+  if (!target || (a && a.turnId === target.turnId && a.role === target.role && a.entryId === target.entryId)) setActiveMessage(undefined);
+  else setActiveMessage(target);
 }
 
 /** Builds a distinct title for a forked/cloned chat ("Title (fork)", "Title (fork 2)", D-10). */
@@ -272,7 +368,8 @@ export function closeMessageMenu(): void {
 }
 
 /**
- * Wires a message element's context menu (desktop) and long-press (phone).
+ * Wires a message element's context menu (desktop), long-press (phone) and — [chat-tree] —
+ * the phone tap that shows the message's action row (`toggleActiveMessage`).
  * A text selection keeps the native menu so Copy still works.
  */
 export function attachMessageMenu(element: HTMLElement, target: () => MessageTarget | undefined): () => void {
@@ -284,6 +381,8 @@ export function attachMessageMenu(element: HTMLElement, target: () => MessageTar
     from = undefined;
   };
   const selectionActive = () => !(window.getSelection()?.isCollapsed ?? true);
+  /** The long-press opened the sheet: the click that follows the release is not a tap. */
+  let longPressed = false;
 
   const onContext = (event: MouseEvent) => {
     const t = target();
@@ -293,13 +392,27 @@ export function attachMessageMenu(element: HTMLElement, target: () => MessageTar
   };
   const onDown = (event: PointerEvent) => {
     if (event.pointerType === 'mouse' || desktopShell()) return;
+    longPressed = false;
     from = { x: event.clientX, y: event.clientY };
     clearTimeout(timer);
     timer = setTimeout(() => {
       const t = target();
       timer = undefined;
+      longPressed = true;
       if (t && !selectionActive()) openMessageMenu(element.getBoundingClientRect(), t);
     }, 500);
+  };
+  const onClick = (event: MouseEvent) => {
+    if (desktopShell()) return;
+    if (longPressed) {
+      longPressed = false;
+      return;
+    }
+    const hit = event.target as Element | null;
+    if (hit?.closest?.('a, button, input, textarea, select, summary, [role=button], [data-chip], .tl-act')) return;
+    const t = target();
+    if (!t || selectionActive()) return;
+    toggleActiveMessage({ turnId: t.turnId, role: t.role, ...(t.role === 'user' && t.entryId ? { entryId: t.entryId } : {}) });
   };
   const onMove = (event: PointerEvent) => {
     if (!from) return;
@@ -308,6 +421,7 @@ export function attachMessageMenu(element: HTMLElement, target: () => MessageTar
   const onUp = () => clear();
 
   element.addEventListener('contextmenu', onContext);
+  element.addEventListener('click', onClick);
   element.addEventListener('pointerdown', onDown);
   element.addEventListener('pointermove', onMove);
   element.addEventListener('pointerup', onUp);
@@ -316,6 +430,7 @@ export function attachMessageMenu(element: HTMLElement, target: () => MessageTar
   return () => {
     clear();
     element.removeEventListener('contextmenu', onContext);
+    element.removeEventListener('click', onClick);
     element.removeEventListener('pointerdown', onDown);
     element.removeEventListener('pointermove', onMove);
     element.removeEventListener('pointerup', onUp);

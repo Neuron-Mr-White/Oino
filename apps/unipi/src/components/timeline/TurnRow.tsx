@@ -12,8 +12,9 @@
  * non-hidden command turn is a light boundary row (Z-36).
  *
  * WP-A7 adds the turn tail (`TurnActions`), Edit on the user bubble and the
- * per-message row menus (user + prose). The turn is passed its `last` flag so
- * only the final settled turn offers Retry (Z-49).
+ * per-message row menus (user + prose). [chat-tree] Every user message gets its action row
+ * (`UserMessageActions`) and every settled turn its full tail (Retry / Return here on any
+ * turn); `last` only keeps the phone's last tail always visible.
  */
 import { Show } from 'solid-js';
 import { Clock } from 'lucide-solid';
@@ -28,7 +29,7 @@ import { Prose } from './Prose';
 import { ByKey } from './ByKey';
 import { Compaction } from './Compaction';
 import { AskUserCard } from './cards/AskUserCard';
-import { TurnActions, requestEdit } from './TurnActions';
+import { TurnActions, UserMessageActions, requestEdit } from './TurnActions';
 import { TurnFooters } from '../../ui/slots/TurnFooters';
 import type { TimelineCtx } from './context';
 
@@ -121,6 +122,7 @@ function TurnHead(props: {
           commands={props.ctx.commands}
           menu={props.userMenu(t().user)}
           onEdit={props.onEdit(t().user)}
+          actions={t().user ? <UserMessageActions ctx={props.ctx} turn={t()} entry={t().user!} /> : undefined}
           composerKey={props.ctx.session.key}
           foldKey={{ sessionId: props.ctx.sessionId(), key: `bubble:${t().user?.id ?? t().turnId}` }}
         />
@@ -152,6 +154,7 @@ function SegmentView(props: {
           commands={props.ctx.commands}
           menu={props.userMenu(seg().steer)}
           onEdit={props.onEdit(seg().steer)}
+          actions={seg().steer ? <UserMessageActions ctx={props.ctx} turn={props.turn} entry={seg().steer!} /> : undefined}
           composerKey={props.ctx.session.key}
           foldKey={{ sessionId: props.ctx.sessionId(), key: `bubble:${seg().steer?.id ?? seg().id}` }}
         />

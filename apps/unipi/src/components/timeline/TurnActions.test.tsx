@@ -181,20 +181,43 @@ describe('turn tail', () => {
     expect(composerDraft(s.key).quotes.map((q) => q.text)).toEqual(['Answer one']);
   });
 
-  it('forks the session with session_fork from the turn query (Z-17)', async () => {
+  it('Fork on an answer keeps the turn: before the next message, a clone on the last turn (chat-tree)', async () => {
     const { s, w } = await open();
     const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
-    const fork = await waitFor(() => r.getAllByTestId('tl-fork')[1]!);
-    fireEvent.click(fork);
-    await waitFor(() => expect(w.log.some((e) => e.op === 'session_fork')).toBe(true));
-    const call = w.log.find((e) => e.op === 'session_fork')!;
-    expect(call.args).toMatchObject({ kind: 'fork', session: 's1', fromEntry: 'u2' });
+    const forks = await waitFor(() => {
+      const all = r.getAllByTestId('tl-fork');
+      expect(all).toHaveLength(2);
+      return all;
+    });
+    fireEvent.click(forks[0]!);
+    await waitFor(() => expect(w.log.filter((e) => e.op === 'session_fork')).toHaveLength(1));
+    expect(w.log.find((e) => e.op === 'session_fork')!.args).toMatchObject({ kind: 'fork', session: 's1', fromEntry: 'u2' });
+    fireEvent.click(forks[1]!);
+    await waitFor(() => expect(w.log.filter((e) => e.op === 'session_fork')).toHaveLength(2));
+    const clone = w.log.filter((e) => e.op === 'session_fork')[1]!.args as Record<string, unknown>;
+    expect(clone).toMatchObject({ kind: 'fork', session: 's1' });
+    expect(clone.fromEntry).toBeUndefined();
+  });
+
+  it('retries ANY turn through navigate_tree + prompt, not only the last (Z-49, chat-tree)', async () => {
+    const { s, w } = await open();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const retries = await waitFor(() => {
+      const all = r.getAllByTestId('tl-retry');
+      expect(all).toHaveLength(2);
+      return all;
+    });
+    fireEvent.click(retries[0]!);
+    await waitFor(() => expect(w.log.some((e) => e.op === '_oino/navigate_tree')).toBe(true));
+    expect(w.log.find((e) => e.op === '_oino/navigate_tree')!.args).toMatchObject({ type: '_oino/navigate_tree', targetId: 'u1' });
+    await waitFor(() => expect(w.log.some((e) => e.op === 'prompt')).toBe(true));
+    expect(w.log.find((e) => e.op === 'prompt')!.args).toMatchObject({ type: 'prompt', message: 'Question one' });
   });
 
   it('retries the last turn through navigate_tree + prompt (Z-49)', async () => {
     const { s, w } = await open();
     const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
-    const retry = await waitFor(() => r.getAllByTestId('tl-retry')[0]!);
+    const retry = await waitFor(() => r.getAllByTestId('tl-retry')[1]!);
     fireEvent.click(retry);
     await waitFor(() => expect(w.log.some((e) => e.op === '_oino/navigate_tree')).toBe(true));
     expect(w.log.find((e) => e.op === '_oino/navigate_tree')!.args).toMatchObject({ type: '_oino/navigate_tree', targetId: 'u2' });
@@ -203,6 +226,21 @@ describe('turn tail', () => {
     await waitFor(() => expect(s.state.outbox.some((o) => o.text === 'Question two')).toBe(true));
   });
 
+  it('Return here on an earlier turn moves the leaf to its answer; the last turn has none (chat-tree)', async () => {
+    const { s, w } = await open();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const back = await waitFor(() => {
+      const all = r.getAllByTestId('tl-return');
+      // The last turn already is the leaf: only the first turn offers it.
+      expect(all).toHaveLength(1);
+      return all[0]!;
+    });
+    fireEvent.click(back);
+    await waitFor(() => expect(w.log.some((e) => e.op === '_oino/navigate_tree')).toBe(true));
+    expect(w.log.find((e) => e.op === '_oino/navigate_tree')!.args).toEqual({ type: '_oino/navigate_tree', targetId: 'a1' });
+    // The new branch is reloaded as one tail page.
+    await waitFor(() => expect(w.log.some((e) => e.op === 'get_entries' && (e.args as { limit?: number }).limit === 80)).toBe(true));
+  });
   it('Edit offers "Also undo file changes" when the file summary can undo the turn (Z-28)', async () => {
     const { s, w } = await open();
     const undone: string[] = [];
@@ -269,5 +307,110 @@ describe('per-message row menu', () => {
     fireEvent.click(fork);
     await waitFor(() => expect(w.log.some((e) => e.op === 'session_fork')).toBe(true));
     expect(w.log.find((e) => e.op === 'session_fork')!.args).toMatchObject({ fromEntry: 'u1' });
+  });
+
+  it('right-click on an answer of an earlier turn offers Return here and Retry (chat-tree)', async () => {
+    const { s, w } = await open();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const prose = await waitFor(() => r.container.querySelector('.tl-prose')!);
+    fireEvent.contextMenu(prose, { clientX: 20, clientY: 20 });
+    const menu = await waitFor(() => {
+      const el = document.querySelector('[role=menu][aria-label="Message actions"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    const labels = [...menu.querySelectorAll('[role=menuitem]')].map((el) => el.textContent ?? '');
+    expect(labels).toEqual(expect.arrayContaining(['Copy', 'Quote', 'Fork from here', 'Return here', 'Retry', 'Show in tree']));
+    fireEvent.click([...menu.querySelectorAll('[role=menuitem]')].find((el) => el.textContent === 'Return here')!);
+    await waitFor(() => expect(w.log.some((e) => e.op === '_oino/navigate_tree')).toBe(true));
+    expect(w.log.find((e) => e.op === '_oino/navigate_tree')!.args).toMatchObject({ targetId: 'a1' });
+  });
+});
+
+describe('user message actions (chat-tree)', () => {
+  it('every user message has Copy / Quote / Edit / Fork / Retry under it', async () => {
+    const { s } = await open();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    const rows = await waitFor(() => {
+      const all = r.getAllByTestId('tl-user-actions');
+      expect(all).toHaveLength(2);
+      return all;
+    });
+    for (const row of rows) {
+      const ids = [...row.querySelectorAll('button')].map((b) => b.getAttribute('data-testid'));
+      expect(ids).toEqual(['tl-user-copy', 'tl-user-quote', 'tl-user-edit', 'tl-user-fork', 'tl-user-retry']);
+    }
+    fireEvent.click(rows[1]!.querySelector('[data-testid=tl-user-copy]')!);
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Question two'));
+    fireEvent.click(rows[1]!.querySelector('[data-testid=tl-user-quote]')!);
+    expect(composerDraft(s.key).quotes.map((q) => q.text)).toEqual(['Question two']);
+  });
+
+  it('Fork from a user message forks before it and refills the fork\'s composer (pi fork)', async () => {
+    const { s, w } = await open();
+    const openSession = vi.fn();
+    // The host streams the fork under its new id (the mock would echo the source's).
+    const base = w.client('h1');
+    clientOf = () =>
+      Object.assign(Object.create(base) as HostClient, {
+        openSession: (req: Parameters<HostClient['openSession']>[0], sink: Parameters<HostClient['openSession']>[1]) => {
+          base.openSession(req, { ...sink, snapshot: () => {}, events: () => {}, closed: () => {} }).close();
+          queueMicrotask(() => sink.snapshot({ ...snapshot(), session_id: 's9' }));
+          return { cmd: async () => undefined, close: () => {} } as never;
+        },
+      });
+    const r = render(() => <Timeline ctx={ctx(s, openSession)} dock={dock} />);
+    const fork = await waitFor(() => r.getAllByTestId('tl-user-fork')[1]!);
+    fireEvent.click(fork);
+    await waitFor(() => expect(w.log.some((e) => e.op === 'session_fork')).toBe(true));
+    expect(w.log.find((e) => e.op === 'session_fork')!.args).toMatchObject({ kind: 'fork', session: 's1', fromEntry: 'u2' });
+    await waitFor(() => expect(openSession).toHaveBeenCalled());
+    expect(openSession).toHaveBeenCalledWith('s9');
+    expect(composerDraft('h1/s9').text).toBe('Question two');
+  });
+
+  it('Retry from a user message re-sends it on a fresh branch', async () => {
+    const { s, w } = await open();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    fireEvent.click(await waitFor(() => r.getAllByTestId('tl-user-retry')[0]!));
+    await waitFor(() => expect(w.log.some((e) => e.op === 'prompt')).toBe(true));
+    expect(w.log.find((e) => e.op === '_oino/navigate_tree')!.args).toMatchObject({ targetId: 'u1' });
+    expect(w.log.find((e) => e.op === 'prompt')!.args).toMatchObject({ message: 'Question one' });
+  });
+});
+
+describe('phone: tap a message for its actions (chat-tree)', () => {
+  beforeEach(() => setDesktopOverride(false));
+
+  it('only the last turn shows its tail until another reply or message is tapped', async () => {
+    const { s } = await open();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    await waitFor(() => expect(r.getAllByTestId('tl-turn-tail')).toHaveLength(1));
+    expect(r.queryAllByTestId('tl-user-actions')).toHaveLength(0);
+    // Tap the first answer: its tail (with Return here) shows too.
+    fireEvent.click(r.container.querySelector('.tl-prose')!);
+    await waitFor(() => expect(r.getAllByTestId('tl-turn-tail')).toHaveLength(2));
+    expect(r.getAllByTestId('tl-return')).toHaveLength(1);
+    // Tap the first user message: its row shows instead (one message at a time).
+    fireEvent.click(r.container.querySelector('.tl-user .chat-bubble')!);
+    await waitFor(() => expect(r.getAllByTestId('tl-user-actions')).toHaveLength(1));
+    expect(r.getAllByTestId('tl-turn-tail')).toHaveLength(1);
+    // Tap it again: hidden.
+    fireEvent.click(r.container.querySelector('.tl-user .chat-bubble')!);
+    await waitFor(() => expect(r.queryAllByTestId('tl-user-actions')).toHaveLength(0));
+  });
+
+  it('the sheet of an earlier reply offers Fork / Return here / Retry / Show in tree', async () => {
+    const { s } = await open();
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    fireEvent.click(await waitFor(() => r.container.querySelector('.tl-prose')!));
+    const more = await waitFor(() => r.getAllByTestId('tl-more')[0]!);
+    fireEvent.click(more);
+    const sheet = await waitFor(() => {
+      const el = document.querySelector('[data-testid=message-sheet]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    for (const label of ['Fork from here', 'Return here', 'Retry', 'Show in tree']) expect(sheet.textContent).toContain(label);
   });
 });
