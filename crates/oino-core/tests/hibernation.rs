@@ -213,6 +213,56 @@ async fn idle_file_child_hibernates_within_the_window() {
     child.close(Duration::ZERO).await;
 }
 
+/// A child whose wait sources still report work (a running wake-up `bg_run`) does not
+/// hibernate: hibernation disposes the session, which killed the task ("Killed during
+/// Oino session shutdown/reload") while the child's run was parked on its completion
+/// notification; the worker then hung `running` forever (owner graph wl-fix-2,
+/// 2026-11-04). Once the work ends the child hibernates as usual.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_child_waiting_on_a_background_task_does_not_hibernate() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = FauxProvider::new(vec![FauxResponse::Text("waiting for the test run".into())]);
+    let busy = Arc::new(std::sync::Mutex::new(Some("bg: mise run test".to_owned())));
+    let probe = {
+        let busy = Arc::clone(&busy);
+        Arc::new(
+            FakeExtension::new(
+                "probe",
+                oino_core::extensions::api::Registration {
+                    events: vec!["session_shutdown".into()],
+                    ..Default::default()
+                },
+            )
+            .on_wait(move |_| busy.lock().unwrap().clone()),
+        )
+    };
+    let services = services_builder(dir.path(), Arc::clone(&provider), Arc::clone(&probe), 1).await;
+    let rt = parent_runtime(&services).await;
+    let parent = rt.session();
+    let child = spawn_child(&services, &parent, "tester").await;
+    assert_eq!(
+        child.prompt("run the tests".into(), None).await.unwrap(),
+        "started"
+    );
+    child.wait_idle().await;
+    // Several windows (1 s each) pass: the child stays live and its extension never saw
+    // the hibernate shutdown (which is what kills the background task).
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    assert!(!child.is_hibernated(), "hibernated while a bg task ran");
+    assert!(child.session().is_some());
+    assert!(
+        !probe
+            .received()
+            .iter()
+            .any(|(kind, _)| kind == "session_shutdown"),
+        "session_shutdown reached the child while its task ran"
+    );
+    // The task ends: the next due window hibernates.
+    *busy.lock().unwrap() = None;
+    until("hibernation after the task ended", || child.is_hibernated()).await;
+    child.close(Duration::ZERO).await;
+}
+
 /// `prompt` wakes a hibernated child and continues the same child session id: the
 /// provider request carries the full history and the visible state returns to idle.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

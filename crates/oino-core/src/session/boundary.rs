@@ -390,7 +390,12 @@ impl AgentSession {
     pub(crate) async fn refresh_wait_sources(&self) {
         let skip = |session: &Self| {
             let state = lock(&session.inner.arbiter);
-            !session.is_idle() || state.polling || !state.waiting_on.is_empty()
+            // A child has no arbiter (`run_arbiter`); its wait sources only keep it from
+            // hibernating (E-HIBERNATE).
+            session.is_child()
+                || !session.is_idle()
+                || state.polling
+                || !state.waiting_on.is_empty()
         };
         if skip(self) {
             return;

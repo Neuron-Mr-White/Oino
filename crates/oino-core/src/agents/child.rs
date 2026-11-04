@@ -1097,6 +1097,16 @@ async fn hibernate_watcher(child: Weak<ChildAgent>) {
             start.elapsed() >= after
         };
         if due {
+            // Work the child is waiting on (a wake-up `bg_run`, a background subagent of
+            // its own) dies with the live session: hibernation used to kill a child's
+            // running `bg_run` ("Killed during Oino session shutdown/reload") while its
+            // run was parked on the task's completion notification, which then never came
+            // — the worker hung `running` forever (owner graph wl-fix-2, 2026-11-04).
+            // Asked only once the window is due, so an idle child costs no wasm calls.
+            if !session.runner().arbiter_wait_reasons().await.is_empty() {
+                *lock(&child.idle_since) = Some(Instant::now());
+                continue;
+            }
             child.hibernate().await;
             return;
         }
