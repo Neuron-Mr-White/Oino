@@ -414,3 +414,10 @@ describe('phone: tap a message for its actions (chat-tree)', () => {
     for (const label of ['Fork from here', 'Return here', 'Retry', 'Show in tree']) expect(sheet.textContent).toContain(label);
   });
 });
+
+describe('phone CSS keeps the tapped row visible (chat-tree, found on the real app)', () => {
+  it('no phone rule hides .tl-user-actions', async () => {
+    const css = (await import('../conversation/phoneChat.css?raw')).default as string;
+    expect(css).not.toMatch(/\.tl-user-actions\s*\{[^}]*display:\s*none/);
+  });
+});

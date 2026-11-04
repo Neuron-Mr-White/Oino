@@ -33,7 +33,10 @@ html[data-shell=phone] .tl-dock { padding-left: var(--ph-chat-gutter, 12px); pad
 html[data-shell=phone] .ph-turn-tail { gap: 4px; min-height: 48px; }
 html[data-shell=phone] .ph-turn-tail .tl-time { font-size: 12px; margin-right: 4px; }
 html[data-shell=phone] .ph-turn-tail .tl-act { width: 48px; height: 48px; min-height: 48px; color: var(--color-text-muted); }
-html[data-shell=phone] .tl-user-actions { display: none; }
+/* [chat-tree] A user message's row (Copy · Quote · Edit · Fork · Retry) renders only once the
+   message is tapped (UserMessageActions); 44 px hits, right-aligned under the bubble. */
+html[data-shell=phone] .tl-user-actions { gap: 2px; margin-top: 4px; }
+html[data-shell=phone] .tl-user-actions .tl-act { width: 44px; height: 44px; min-height: 44px; color: var(--color-text-muted); }
 /* Long-press opens the message sheet; "Select text" turns selection on for one message. */
 html[data-shell=phone] .tl-turn:not([data-select-text]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 /* Prose 16/24, user bubble max 85 % with radius 20. */
