@@ -90,11 +90,14 @@ export function reconcilePaneTabs(opts: { hostId: string; sessionId: string; cwd
       batch(() => {
         for (const e of entries) {
           if (userClosed.has(`${e.id}:${e.seq}`)) continue;
+          // [ask-user] entries restored with the chat's snapshot become tabs quietly: opening a
+          // chat never opens a pane, a page or a phone layer by itself.
+          const quiet = !!registry?.restored(e.id);
           // §8 (U12): a reserved pane row opens *its native tab* (Files, the Git
           // pane, …) instead of an `ext` tab — one surface, no fallback duplicate.
           if (isReservedPaneEntry(e)) {
             const ctx = { hostId: opts.hostId, sessionId: opts.sessionId, cwd: opts.cwd(), navigate: hashNavigate, openLayer: openPhonePane };
-            if (focusReservedEntry(e, ctx)) opened = true;
+            if (!quiet && focusReservedEntry(e, ctx)) opened = true;
             continue;
           }
           const title = e.title ?? e.extensionId;
@@ -102,11 +105,11 @@ export function reconcilePaneTabs(opts: { hostId: string; sessionId: string; cwd
           const tab = byEntry.get(e.id);
           if (!tab) {
             store.open(scope, area, view, { kind: 'ext', params: { entryId: e.id, hostId: opts.hostId, sessionId: opts.sessionId }, title });
-            opened = true;
+            if (!quiet) opened = true;
           } else {
             if (tab.title !== title) store.retitle(scope, area, tab.id, title);
             if ((tab.badge ?? undefined) !== badge) store.badge(scope, area, tab.id, badge);
-            if (e.focus && store.active(scope, area, view)?.id !== tab.id) store.activate(scope, area, view, tab.id);
+            if (e.focus && !quiet && store.active(scope, area, view)?.id !== tab.id) store.activate(scope, area, view, tab.id);
           }
         }
         for (const [id, tab] of byEntry) {
@@ -115,7 +118,7 @@ export function reconcilePaneTabs(opts: { hostId: string; sessionId: string; cwd
       });
       // Show the pane once for a new tab or a newly focused entry — never on
       // every effect run (the layout writes re-trigger this effect).
-      const focus = entries.find((e) => e.focus && !userClosed.has(`${e.id}:${e.seq}`));
+      const focus = entries.find((e) => e.focus && !userClosed.has(`${e.id}:${e.seq}`) && !registry?.restored(e.id));
       const focusKey = focus ? `${focus.id}:${focus.seq}` : '';
       if (opened || (focus && focusKey !== lastFocus)) {
         lastFocus = focusKey;

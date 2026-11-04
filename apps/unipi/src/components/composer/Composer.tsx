@@ -831,6 +831,12 @@ export function Composer(props: ComposerProps) {
       afterRoute(text);
       return;
     }
+    // [ask-user] `/answer` is the terminal's (its dialogs never show in the app): here questions in a
+    // reply are answered in a message, and ask_user questions in their own card.
+    if (!props.draft && cmd && (cmd[1] === 'answer' || cmd[1] === 'unipi:answer')) {
+      showActionNotice('/answer is a terminal command. Answer in your message; agent questions have their own card in the chat.');
+      return;
+    }
     // G-10: on the New-chat draft (no live workflow runner yet), `/plan status` answers locally.
     if (props.draft && cmd && cmd[1] === 'plan' && cmd[2]?.trim().toLowerCase() === 'status' && props.session.state.commands.some((c) => c.name === 'plan')) {
       const topicPlan = readSessionWorkflowStatus(props.session.state.topics, props.session.sessionId())?.planMode;

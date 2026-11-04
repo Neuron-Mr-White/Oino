@@ -57,6 +57,22 @@ const cmds = (w: MockWorld, op: string): RpcCommand[] => w.log.filter((e) => e.k
 const select: UiRequest = { id: 'd1', method: 'select', title: 'Which file first?', options: ['math.ts', 'cli.ts'] };
 
 describe('BottomDock', () => {
+  it('[ask-user] a terminal-only dialog (/answer\'s editor) never opens in the dock; an ask_user form without its card stays docked', async () => {
+    const w = world();
+    const s = await open(w);
+    const answerEditor: UiRequest = { id: 'd9', method: 'editor', extensionId: 'unipi.utility', title: 'Answer 1 question — Tab next answer · external editor available', prefill: '' };
+    const tagged: UiRequest = { id: 'd8', method: 'editor', title: 'x', surfaces: ['tui'] };
+    const ask: UiRequest = { id: 'd7', method: 'form', extensionId: 'unipi.ask-user', questions: [{ id: 'q0', question: 'Which DB?', options: [] }] };
+    render(() => <BottomDock session={s} dialogs={[answerEditor, tagged]} onAnswer={() => {}} />);
+    expect(screen.queryByTestId('dialog-panel')).toBeNull();
+    expect(screen.queryByText(/Answer 1 question/)).toBeNull();
+    cleanup();
+    render(() => <BottomDock session={s} dialogs={[answerEditor, ask]} onAnswer={() => {}} />);
+    // No timeline card for this call: the form still docks (never lost), the chip is not shown.
+    expect(screen.getByTestId('dialog-panel')).toBeTruthy();
+    expect(screen.queryByTestId('ask-pending')).toBeNull();
+  });
+
   it('keeps the composer usable while a dialog waits: typing + Enter steers', async () => {
     const w = world();
     const s = await open(w);

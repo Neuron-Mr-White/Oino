@@ -63,6 +63,10 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
     const [state, setState] = createStore<RegistryState>({ rev: 0, sessionId: null, entries: {}, dialogs: [], meta: {}, resyncing: false });
     const slotMemos = new Map<Slot, Accessor<UiEntry[]>>();
     const stackMemos = new Map<Slot, Accessor<UiEntry[]>>();
+    // [ask-user] Entries a snapshot brought (already there when the chat opened, or missed while
+    // a resync ran) are state, not requests: their `focus` must not open a page, pane or sheet.
+    // Only an entry put by a live patch focuses. Bounded by the entries themselves.
+    const restoredIds = new Set<string>();
     // Slot memos must belong to this root, never to the first caller's
     // computation (a memo parented by a caller is disposed when that caller
     // re-runs — the Map would keep a frozen memo forever). U10 hit this with
@@ -81,7 +85,10 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
       if (snap.scope !== scope) return { ok: false, error: `scope ${snap.scope} ≠ ${scope}` };
       const byId: Record<string, UiEntry> = {};
       for (const e of snap.entries) byId[e.id] = e;
-      const removed = Object.keys(unwrap(state.entries)).filter((id) => !(id in byId));
+      const prior = unwrap(state.entries);
+      const removed = Object.keys(prior).filter((id) => !(id in byId));
+      restoredIds.clear();
+      for (const id of Object.keys(byId)) if (!(id in prior)) restoredIds.add(id);
       batch(() => {
         setState('entries', reconcile(byId, { key: 'key', merge: true }));
         setState('dialogs', reconcile(snap.dialogs, { key: 'id' }));
@@ -107,6 +114,8 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
       const effects: UiRequest[] = [];
       const invalidations: Invalidation[] = [];
       const deleted: string[] = [];
+      // A live put is a request again (before the ops run: their effects read it synchronously).
+      if (restoredIds.size) for (const op of patch.ops) if (op.op === 'put') restoredIds.delete(op.entry.id);
       let error: string | undefined;
       batch(() => {
         setState(
@@ -127,6 +136,7 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
         return { ok: false, error, resync: true };
       }
       for (const id of deleted) if (!(id in state.entries)) dropLocal(id);
+      for (const id of deleted) restoredIds.delete(id);
       for (const e of effects) hooks.onEffect?.(e);
       for (const inv of invalidations) hooks.onInvalidate?.(inv);
       return { ok: true, effects, invalidations };
@@ -215,6 +225,8 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
         return s[s.length - 1];
       },
       entry: (id: string): UiEntry | undefined => state.entries[id],
+      /** The entry came with a snapshot (no live `put` since): its `focus` opens nothing. */
+      restored: (id: string): boolean => restoredIds.has(id),
       dialogs: (): UiRequest[] => state.dialogs,
       /** A resync request failed: the next patch may ask again. */
       endResync: () => setState('resyncing', false),

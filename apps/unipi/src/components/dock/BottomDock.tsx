@@ -25,6 +25,7 @@ import { sendModeForEnter, followUpMode } from '../../lib/composer/sendMode';
 import { installEscapeStop } from '../../lib/composer/escapeStop';
 import { DialogPanel } from './DialogPanel';
 import { AskPendingChip, inlineAskCalls } from './AskPendingChip';
+import { dialogShownInApp } from '../../lib/surfaces';
 import { QueuePanel } from './QueuePanel';
 import { SendButton } from '../composer/SendButton';
 import './dock.css';
@@ -67,7 +68,9 @@ export function BottomDock(props: {
   const askCalls = createMemo(() => (props.dialogs?.length ? inlineAskCalls(props.dialogs, props.session.turns()) : []));
   const docked = () => {
     const inline = askCalls();
-    const all = props.dialogs ?? [];
+    // A dialog meant for the terminal only (`surfaces: ["tui"]`, e.g. /answer's editor) is the
+    // terminal's to answer: it never opens here when a chat is opened.
+    const all = (props.dialogs ?? []).filter(dialogShownInApp);
     return inline.length ? all.filter((d) => !inline.some((c) => c.dialog.id === d.id)) : all;
   };
   return (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSurfaces, shownInApp } from './surfaces';
+import { dialogShownInApp, entryShownInApp, parseSurfaces, shownInApp } from './surfaces';
 import { appHidden, appNamespaces, parseNamespaces } from '../ui/settings/types';
 
 describe('[gui-cleanup] client surfaces', () => {
@@ -48,5 +48,24 @@ describe('[gui-cleanup] client surfaces', () => {
     expect(appHidden('ask-user', 'escape', { surfaces: ['tui'] })).toBe(true);
     expect(appHidden('oino.agent', 'quietStartup')).toBe(true);
     expect(appHidden('ask-user', 'enabled', {})).toBe(false);
+  });
+});
+
+describe('[ask-user] entries, effects and dialogs per client', () => {
+  it('registry entries: surfaces decide; older terminal-only builds are known by id', () => {
+    expect(entryShownInApp({ id: 'ext/widget:a' })).toBe(true);
+    expect(entryShownInApp({ id: 'ext/widget:a', surfaces: ['tui'] })).toBe(false);
+    expect(entryShownInApp({ id: 'ext/widget:a', surfaces: ['gui', 'tui'] })).toBe(true);
+    expect(entryShownInApp({ id: 'unipi.utility/widget:unipi-answer-hint' })).toBe(false);
+    expect(entryShownInApp({ id: 'unipi.core/tray' })).toBe(false);
+    expect(entryShownInApp({ id: 'unipi.core/widget:work-tray-strip' })).toBe(true);
+  });
+
+  it('dialogs: /answer\'s editor never opens in the app (surfaces, or its old titles)', () => {
+    expect(dialogShownInApp({ method: 'editor', title: 'x', surfaces: ['tui'] })).toBe(false);
+    expect(dialogShownInApp({ method: 'editor', extensionId: 'unipi.utility', title: 'Answer 1 question — Tab next answer · external editor available' })).toBe(false);
+    expect(dialogShownInApp({ method: 'custom', extensionId: 'unipi.utility', title: '/answer · reply' })).toBe(false);
+    expect(dialogShownInApp({ method: 'editor', extensionId: 'other', title: 'Answer 1 question — Tab next answer' })).toBe(true);
+    expect(dialogShownInApp({ method: 'form', extensionId: 'unipi.ask-user', title: 'DB' })).toBe(true);
   });
 });

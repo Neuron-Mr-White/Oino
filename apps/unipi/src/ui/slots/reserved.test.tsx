@@ -326,6 +326,25 @@ describe('U12 openPanel focuses the native view', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(nav).toEqual(['/board']); // already there / same instance: no second jump
   });
+
+  it('[ask-user] opening a chat never navigates: a focused page row its snapshot restored stays put; a live openPanel still jumps', async () => {
+    allOwnersOn();
+    await open();
+    const nav: string[] = [];
+    render(() => {
+      installReservedRouting({ navigate: (h) => nav.push(h), pathname: () => '/s/h1/s1' });
+      return <p>shell</p>;
+    });
+    const reg = sessionUi(HOST, 's1');
+    reg.applySnapshot({ scope: 'session', sessionId: 's1', rev: reg.state.rev, entries: [{ ...reserved('unipi.kanboard/board', 'board', 'sidePane'), focus: true, seq: 41 }], dialogs: [] });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reg.restored('unipi.kanboard/board')).toBe(true);
+    expect(nav).toEqual([]);
+    rev = reg.state.rev;
+    put({ ...reserved('unipi.kanboard/board', 'board', 'sidePane'), focus: true });
+    await waitFor(() => expect(nav).toEqual(['/board']));
+    expect(reg.restored('unipi.kanboard/board')).toBe(false);
+  });
 });
 
 // ── §8 rule 3: fallback trees everywhere else ───────────────────────────

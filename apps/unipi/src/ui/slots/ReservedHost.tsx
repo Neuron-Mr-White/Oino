@@ -267,6 +267,8 @@ export function installReservedRouting(opts: ReservedRoutingOptions): void {
         const token = `${entry.id}:${entry.seq}`;
         if (focused.has(token)) continue;
         focused.add(token);
+        // [ask-user] opening a chat never navigates: an entry its snapshot restored stays put.
+        if (registry.restored(entry.id)) continue;
         if (row.route && opts.pathname() !== row.route) opts.navigate(row.route);
       }
     }

@@ -119,6 +119,8 @@ pub fn reply_dialog(reply: &str, questions: usize) -> Value {
     json!({
         "method": "custom",
         "title": "/answer · reply",
+        // /answer is the terminal's ([ask-user]): the app never shows its dialogs.
+        "surfaces": ["tui"],
         "size": "full",
         "spec": serde_json::to_value(spec).unwrap_or(Value::Null),
     })
@@ -174,8 +176,7 @@ pub fn questions_dialog(questions: &[String]) -> Value {
         "Reply to the last message (no questions found)".to_owned()
     };
     let template = build_template(questions);
-    let mut d =
-        json!({"method": "editor", "title": title, "prefill": template, "language": "markdown"});
+    let mut d = json!({"method": "editor", "title": title, "prefill": template, "language": "markdown", "surfaces": ["tui"]});
     if let Some(line) = extract::first_answer_line(&template) {
         d["cursorLine"] = json!(line);
     }
@@ -216,6 +217,7 @@ pub fn web_spec(lines: &[String]) -> Node {
 pub fn web_panel(lines: &[String]) -> ui::Panel {
     ui::Panel::new(WEB_PANEL)
         .placement(ui::Placement::Overlay)
+        .only_on(&[ui::Surface::Tui])
         .title("answer — web form")
         .spec(web_spec(lines))
         .keys([KeyBinding {

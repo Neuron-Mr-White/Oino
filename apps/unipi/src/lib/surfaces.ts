@@ -53,3 +53,12 @@ const LEGACY_TUI_ENTRIES = new Set([
 export function entryShownInApp(entry: { id: string; surfaces?: unknown }): boolean {
   return shownInApp(entry.surfaces) && !LEGACY_TUI_ENTRIES.has(entry.id);
 }
+
+/** utility's `/answer` dialogs from extension builds without `surfaces` (by their titles). */
+const LEGACY_TUI_DIALOG = /^(?:Answer \d+ questions? — Tab next answer|Reply to the last message \(no questions found\)|\/answer · reply)/;
+
+/** Whether a pending dialog is the app's to show (a terminal-only one never opens here). */
+export function dialogShownInApp(d: { method: string; title?: unknown; extensionId?: unknown; surfaces?: unknown }): boolean {
+  if (!shownInApp(d.surfaces)) return false;
+  return !(d.extensionId === 'unipi.utility' && typeof d.title === 'string' && LEGACY_TUI_DIALOG.test(d.title));
+}
