@@ -1779,10 +1779,10 @@ impl GraphFile {
     /// Marks work started (`running`) or, when the start was refused, `errored` (the
     /// lead or the user can continue it; a continue without an operator starts fresh).
     pub fn started(&mut self, work_id: &str, outcome: Result<String, String>, now: i64) {
-        if let Some(w) = self
-            .open_mut()
-            .and_then(|g| g.work.iter_mut().find(|w| w.work_id == work_id))
-        {
+        if let Some(w) = self.open_mut().and_then(|g| {
+            g.updated_at = g.updated_at.max(now);
+            g.work.iter_mut().find(|w| w.work_id == work_id)
+        }) {
             match outcome {
                 Ok(op) => {
                     let resumed = w.resume_operator_id.as_deref() == Some(op.as_str());
@@ -2016,6 +2016,7 @@ impl GraphFile {
         else {
             return SettleOutcome::Unknown;
         };
+        g.updated_at = g.updated_at.max(now);
         let w = &mut g.work[at];
         let work_id = w.work_id.clone();
         w.tool_calls = tool_calls;

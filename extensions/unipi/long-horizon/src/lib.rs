@@ -2634,6 +2634,8 @@ impl Lh {
     /// - `snapshot {graphId?}` → `{ok, graph}` (the current graph, else the newest earlier
     ///   one; `graph: null` when none) — see `GraphFile::snapshot`.
     /// - `history {}` → `{ok, graphs}` summary rows, current first.
+    /// - `output {workId, graphId?}` → `{ok, output}`: the stored result / partial output
+    ///   (≤ 64 KB; earlier graphs ≤ 16 KB) and the error.
     /// - `retry {workId, graphId?, note?}` → `{ok, workId}`: the user's Retry on errored
     ///   graph work (same as the lead's `continue`, `by: user`).
     /// - `retry {target: "goal", note?}` → `{ok}`: the user's Retry on an errored goal /
@@ -2670,6 +2672,23 @@ impl Lh {
                 json!({"ok": true, "graph": g.map(|g| st.graph.snapshot(g))})
             }
             "history" => json!({"ok": true, "graphs": self.state.borrow().graph.history_list()}),
+            "output" => match s("workId") {
+                None => LhError {
+                    code: LhCode::RequestInvalid,
+                    message: "workId is required".into(),
+                }
+                .to_json(),
+                Some(id) => match self.state.borrow().graph.read_result(id, s("graphId")) {
+                    None => LhError {
+                        code: LhCode::WorkNotFound,
+                        message: format!("no graph work or result {id}"),
+                    }
+                    .to_json(),
+                    Some((gid, w)) => {
+                        json!({"ok": true, "output": {"graphId": gid, "workId": w.work_id, "status": w.status, "resultId": w.result_id, "operatorId": w.operator_id, "instruction": w.instruction, "text": w.result, "error": w.failure, "truncated": w.result_truncated}})
+                    }
+                },
+            },
             "retry" if s("target") == Some("goal") => match self.goal_retry(s("note")).await {
                 Ok(()) => json!({"ok": true}),
                 Err(e) => e.to_json(),
@@ -2687,7 +2706,7 @@ impl Lh {
             },
             op => LhError {
                 code: LhCode::RequestInvalid,
-                message: format!("unknown op \"{op}\" (snapshot, history, retry)"),
+                message: format!("unknown op \"{op}\" (snapshot, history, output, retry)"),
             }
             .to_json(),
         }

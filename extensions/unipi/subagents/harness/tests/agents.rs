@@ -1564,6 +1564,10 @@ async fn long_horizon_errored_node_user_retry_runs_the_graph_on() {
         "{ev:?}"
     );
     assert_eq!(ev.last().unwrap().0, "completed", "{ev:?}");
+    let out = lh_service(&env, &lh, json!({"op": "output", "workId": "w1"})).await;
+    assert_eq!(out["ok"], true, "{out}");
+    assert_eq!(out["output"]["status"], "completed");
+    assert_eq!(out["output"]["resultId"], "r-w1");
     // Continue / fail of settled work is refused by the tool.
     let c = env
         .tool(&lh, "update_agent_graph", json!({"operation": "continue", "continue": [{"target_id": "w1"}]}))
