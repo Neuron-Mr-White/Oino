@@ -28,7 +28,7 @@ import { EntryContext, type EntryActions, type UiTarget } from '../../ui/actions
 import { NodeView } from '../../ui/NodeView';
 import { useVirtual, VirtualWindow } from '../../ui/virtual';
 import { formatDurationMs, liveSource, parseAgents, parseExtensions, parseRunningBash, parseSubagentRuns, parseTrayTabs, serviceCall, type AgentInfo, type SubagentRun, type TrayTab } from './modalData';
-import { BG_TASKS_TOPIC, runningCounts, runningTotal, runRowsOf, SUBAGENTS_LIST_TOPIC, visibleTrayTabsOf, type RunningData } from '../../lib/status/running';
+import { bgTasksTopics, bgTopicData, runningCounts, runningTotal, runRowsOf, SUBAGENTS_LIST_TOPIC, visibleTrayTabsOf, type RunningData } from '../../lib/status/running';
 import { filterCounts, isLive, matchesFilter, profileChip, ROW_STATUS_LABEL, RUN_FILTERS, rowDurationMs, shortModel, statParts, SUBAGENTS_EXT, type RunFilter, type RunRow, type RunRowStatus } from '../../lib/status/subagentRows';
 import { openBgTaskTab, openSubagentTab } from '../panes/tabs/sessionTabs';
 import { FilterChips, RunStatusIcon, WorkRow, type RowStat } from './RunRows';
@@ -167,12 +167,12 @@ export function useRunningData(s: () => SessionHandle): { data: Accessor<Running
   });
   // Subscribe the records topic once per (re)connection (the Capsule does too; idempotent).
   createEffect(() => {
-    if (s().state.conn === 'live') s().subscribeTopics([SUBAGENTS_LIST_TOPIC, BG_TASKS_TOPIC]);
+    if (s().state.conn === 'live') s().subscribeTopics([SUBAGENTS_LIST_TOPIC, ...bgTasksTopics(s().sessionId())]);
   });
   const merged = createMemo(() => {
     const d = data.latest;
     const topic = parseSubagentRuns(s().state.topics[SUBAGENTS_LIST_TOPIC]?.data);
-    const bg = parseBgTasks(s().state.topics[BG_TASKS_TOPIC]?.data);
+    const bg = parseBgTasks(bgTopicData(s().state.topics, s().sessionId()));
     return d ? { ...d, ...(topic ? { runs: topic } : {}), ...(bg ? { bg } : {}) } : d;
   });
   return { data: merged, refetch: () => void refetch() };

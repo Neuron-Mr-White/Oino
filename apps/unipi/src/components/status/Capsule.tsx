@@ -14,7 +14,7 @@ import { openStatusSection, type StatusSectionId } from './StatusPane';
 import { ModeIcon } from '../chat/ModeChip';
 import { compactCount } from '../../lib/git';
 import { lhSummary, LH_PROGRESS_TOPIC, LH_STATE_TOPIC, parseLhProgress, parseLhState } from '../../lib/status/lh';
-import { BG_TASKS_TOPIC, SUBAGENTS_LIST_TOPIC, topicRunningCount } from '../../lib/status/running';
+import { bgTasksTopics, SUBAGENTS_LIST_TOPIC, topicRunningCount } from '../../lib/status/running';
 import './status.css';
 
 type Branch = { name: string; add?: number; del?: number };
@@ -69,7 +69,7 @@ export function Capsule(props: { hostId: string; sessionId?: string; cwd?: strin
   createEffect(
     on(session, (s) => {
       if (!s) return;
-      s.subscribeTopics([LH_STATE_TOPIC, LH_PROGRESS_TOPIC, BG_TASKS_TOPIC, SUBAGENTS_LIST_TOPIC]);
+      s.subscribeTopics([LH_STATE_TOPIC, LH_PROGRESS_TOPIC, ...bgTasksTopics(props.sessionId), SUBAGENTS_LIST_TOPIC]);
     }),
   );
   const lh = createMemo(() => {
@@ -79,7 +79,7 @@ export function Capsule(props: { hostId: string; sessionId?: string; cwd?: strin
   });
   const running = createMemo(() => {
     const s = session();
-    const n = s ? topicRunningCount(s.state.topics) : 0;
+    const n = s ? topicRunningCount(s.state.topics, props.sessionId) : 0;
     return n > 0 ? n : undefined;
   });
   const open = (section?: StatusSectionId) => openStatusSection({ hostId: props.hostId, sessionId: props.sessionId, path: props.cwd || '~' }, section);

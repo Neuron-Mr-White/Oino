@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bgExitText, formatBytes, parseBgTasks, toTermText } from './bgTasks';
 import { filterCounts } from './subagentRows';
+import { BG_TASKS_TOPIC, bgTasksTopic, bgTasksTopics, bgTopicData, topicRunningCount } from './running';
 
 describe('bgTasks', () => {
   const rows = parseBgTasks({
@@ -23,5 +24,17 @@ describe('bgTasks', () => {
     expect(formatBytes(1_258_000)).toBe('1.2 MB');
     expect(toTermText('a\nb\r\nc')).toBe('a\r\nb\r\nc');
     expect(parseBgTasks({})).toBeUndefined();
+  });
+  it("a chat reads its own task topic, not the global one another session overwrote", () => {
+    const mine = { tasks: [{ id: 't1', command: 'sleep 9', status: 'running' }] };
+    const topics = {
+      [BG_TASKS_TOPIC]: { data: { tasks: [] } },
+      [bgTasksTopic('s1')]: { data: mine },
+    } as never;
+    expect(bgTasksTopics('s1')).toEqual(['unipi:bg:tasks:s1', 'unipi:bg:tasks']);
+    expect(parseBgTasks(bgTopicData(topics, 's1'))?.map((r) => r.id)).toEqual(['t1']);
+    expect(topicRunningCount(topics, 's1')).toBe(1);
+    // an older extension publishes only the global topic
+    expect(bgTopicData({ [BG_TASKS_TOPIC]: { data: mine } } as never, 's1')).toBe(mine);
   });
 });

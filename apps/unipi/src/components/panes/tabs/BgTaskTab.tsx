@@ -18,7 +18,7 @@ import { setPaneComponent, type PaneTabProps } from '../../../lib/panes/kinds';
 import { appTermTheme } from '../../../lib/termTheme';
 import { TERM_FONT_FAMILY, termFontsReady } from '../../../lib/termFonts';
 import { BG_EXT, bgExitText, formatBytes, parseBgTasks, toTermText, type BgRow } from '../../../lib/status/bgTasks';
-import { BG_TASKS_TOPIC } from '../../../lib/status/running';
+import { bgTasksTopics, bgTopicData } from '../../../lib/status/running';
 import { ROW_STATUS_LABEL } from '../../../lib/status/subagentRows';
 import { formatDurationMs, serviceCall } from '../../session/modalData';
 import { tabBaseOf } from './sessionTabs';
@@ -52,8 +52,12 @@ export function BgTaskTab(props: PaneTabProps) {
     else pending.push(text);
   };
 
+  createEffect(() => {
+    const h = handle();
+    if (h && h.state.conn === 'live') h.subscribeTopics(bgTasksTopics(base().sessionId));
+  });
   // The topic's snapshot — live while the stream is live, the fallback for the output service.
-  const topicRow = createMemo(() => parseBgTasks(handle()?.state.topics[BG_TASKS_TOPIC]?.data)?.find((r) => r.id === taskId()));
+  const topicRow = createMemo(() => parseBgTasks(handle() ? bgTopicData(handle()!.state.topics, base().sessionId) : undefined)?.find((r) => r.id === taskId()));
   const shown = () => row() ?? topicRow();
   const running = () => shown()?.status === 'running';
 

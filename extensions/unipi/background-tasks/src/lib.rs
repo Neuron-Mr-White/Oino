@@ -183,7 +183,13 @@ impl Bg {
     /// Publishes `unipi:bg:tasks` and the tray change signal.
     fn publish(&self, cx: &Ctx) {
         let snaps = self.snapshots(cx);
-        unipi_kit::bus::emit_raw(topics::BG_TASKS, &json!({"tasks": snaps}));
+        let list = json!({"tasks": snaps});
+        // This chat's own list, sticky: the global topic is one shared value every session
+        // (graph workers, other chats) overwrites, so a UI reading it showed another
+        // session's (often empty) list instead of this chat's tasks.
+        let own = format!("{}:{}", topics::BG_TASKS, cx.session_id());
+        let _ = oino_extension::bus::publish(&own, &list, true);
+        unipi_kit::bus::emit_raw(topics::BG_TASKS, &list);
         unipi_kit::bus::emit_raw(topics::WORK_TRAY_CHANGED, &json!({"tab": pane::TAB}));
         let (open, ticking) = self
             .sessions
@@ -1088,9 +1094,14 @@ fn register_ui(cx: &mut Init<Bg>) {
     });
     // Structured live output for the app's task tab: bytes from `since` on (a poll cursor).
     cx.service("bg.output", |ext, payload, _caller, cx| async move {
-        let id = payload.get("id").and_then(Value::as_str).unwrap_or_default();
+        let id = payload
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let since = payload.get("since").and_then(Value::as_u64);
-        let host = ext.resolve(&cx, id).map_err(|e| Error::msg(e.to_string()))?;
+        let host = ext
+            .resolve(&cx, id)
+            .map_err(|e| Error::msg(e.to_string()))?;
         let cwd = cx.cwd().to_string_lossy().into_owned();
         let task = ext.snapshot(cx.session_id(), &host, &cwd);
         let mut out = output_since(&ext.output(&host.id), since);
@@ -1138,9 +1149,7 @@ impl Extension for Bg {
         );
         // Children too: a child has no arbiter, but its running tasks keep it from
         // hibernating (core E-HIBERNATE asks its wait sources), which would kill them.
-        cx.wait_source(|ext, cx| async move {
-            text::wait_reason(&ext.snapshots(&cx))
-        });
+        cx.wait_source(|ext, cx| async move { text::wait_reason(&ext.snapshots(&cx)) });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             // A nested session starting neither restores owner state nor clears the
             // owner lifecycle flag (E-02: the flag must survive worker churn).
@@ -1195,7 +1204,9 @@ fn output_since(full: &str, since: Option<u64>) -> Value {
     let size = bytes.len() as u64;
     match since {
         Some(at) if at <= size => {
-            let text = String::from_utf8_lossy(&bytes[at as usize..]).into_owned();
+            let text =
+                String::from_utf8_lossy(&bytes[usize::try_from(at).unwrap_or(bytes.len())..])
+                    .into_owned();
             json!({"text": text, "size": size, "reset": false})
         }
         _ => json!({"text": full, "size": size, "reset": true}),
@@ -1208,10 +1219,22 @@ mod tests {
 
     #[test]
     fn output_since_returns_only_new_bytes() {
-        assert_eq!(output_since("abc\ndef\n", None), json!({"text": "abc\ndef\n", "size": 8, "reset": true}));
-        assert_eq!(output_since("abc\ndef\n", Some(4)), json!({"text": "def\n", "size": 8, "reset": false}));
-        assert_eq!(output_since("abc", Some(3)), json!({"text": "", "size": 3, "reset": false}));
-        assert_eq!(output_since("abc", Some(9)), json!({"text": "abc", "size": 3, "reset": true}));
+        assert_eq!(
+            output_since("abc\ndef\n", None),
+            json!({"text": "abc\ndef\n", "size": 8, "reset": true})
+        );
+        assert_eq!(
+            output_since("abc\ndef\n", Some(4)),
+            json!({"text": "def\n", "size": 8, "reset": false})
+        );
+        assert_eq!(
+            output_since("abc", Some(3)),
+            json!({"text": "", "size": 3, "reset": false})
+        );
+        assert_eq!(
+            output_since("abc", Some(9)),
+            json!({"text": "abc", "size": 3, "reset": true})
+        );
     }
 
     #[test]

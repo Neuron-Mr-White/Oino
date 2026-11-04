@@ -86,6 +86,18 @@ export function runningRows(data: RunningData | undefined, limit = 3): RunningRo
 // ── The capsule's cheap count (sticky topics, no round trips) ────────────
 
 export const BG_TASKS_TOPIC = 'unipi:bg:tasks';
+/** This chat's own task list (`unipi:bg:tasks:<session id>`). The global `unipi:bg:tasks` is ONE
+ * shared sticky value every session's background-tasks instance overwrites — a graph worker or any
+ * other chat publishing its (often empty) list wiped the lead's tasks from the Running tab
+ * (real-app rig, [owner-fix-3/integrate]). The global topic stays the fallback for older hosts. */
+export const bgTasksTopic = (sessionId: string | undefined): string => (sessionId ? `${BG_TASKS_TOPIC}:${sessionId}` : BG_TASKS_TOPIC);
+/** The topics to subscribe for a chat's background tasks. */
+export const bgTasksTopics = (sessionId: string | undefined): string[] => (sessionId ? [bgTasksTopic(sessionId), BG_TASKS_TOPIC] : [BG_TASKS_TOPIC]);
+/** A chat's bg task topic value: its own topic when the extension publishes one, else the global. */
+export function bgTopicData(topics: Record<string, TopicValue>, sessionId: string | undefined): unknown {
+  const own = sessionId ? topics[bgTasksTopic(sessionId)] : undefined;
+  return own ? own.data : topics[BG_TASKS_TOPIC]?.data;
+}
 export const SUBAGENTS_LIST_TOPIC = 'unipi:subagents:list';
 
 const runningCountIn = (v: unknown): number => {
@@ -95,13 +107,13 @@ const runningCountIn = (v: unknown): number => {
 };
 
 /** Running bg tasks + running subagents from the session's sticky topics. */
-export function topicRunningCount(topics: Record<string, TopicValue>): number {
-  return (runningCountIn(topics[BG_TASKS_TOPIC]?.data) > 0 ? 1 : 0) + (runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data) > 0 ? 1 : 0);
+export function topicRunningCount(topics: Record<string, TopicValue>, sessionId?: string): number {
+  return (runningCountIn(bgTopicData(topics, sessionId)) > 0 ? 1 : 0) + (runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data) > 0 ? 1 : 0);
 }
 
 /** G-08: live running-only label from the session's sticky topics (survives app restarts even when `unipi.core`'s strip doesn't fire). */
-export function topicRunningTrayLabel(topics: Record<string, TopicValue>): string | undefined {
-  const bg = runningCountIn(topics[BG_TASKS_TOPIC]?.data);
+export function topicRunningTrayLabel(topics: Record<string, TopicValue>, sessionId?: string): string | undefined {
+  const bg = runningCountIn(bgTopicData(topics, sessionId));
   const sa = runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data);
   const parts: string[] = [];
   if (bg > 0) parts.push(`Background tasks ${bg} running`);

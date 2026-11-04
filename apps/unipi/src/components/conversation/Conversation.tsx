@@ -28,7 +28,7 @@ import { HeaderBand } from '../../ui/slots/HeaderBand';
 import { PhonePaneLayer } from '../../ui/slots/paneTabs';
 import { SlotModal } from '../../ui/slots/SlotModal';
 import { WidgetStack, trayLabelOf } from '../../ui/slots/WidgetStack';
-import { BG_TASKS_TOPIC, liveRunRowsOf, runningTrayTabsOf, SUBAGENTS_LIST_TOPIC, topicRunningTrayLabel } from '../../lib/status/running';
+import { bgTasksTopics, liveRunRowsOf, runningTrayTabsOf, SUBAGENTS_LIST_TOPIC, topicRunningTrayLabel } from '../../lib/status/running';
 import { fetchRunning } from '../session/RunningTab';
 import { installUiEffects } from '../../ui/slots/effects';
 import { reservedGate } from '../../ui/slots/reserved';
@@ -285,12 +285,12 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
   const [verifiedTray, setVerifiedTray] = createSignal<{ key: string; seq: number; label: string | null } | undefined>();
   createEffect(() => {
     const s = session();
-    if (s && props.sessionId) s.subscribeTopics([BG_TASKS_TOPIC, SUBAGENTS_LIST_TOPIC]);
+    if (s && props.sessionId) s.subscribeTopics([...bgTasksTopics(props.sessionId), SUBAGENTS_LIST_TOPIC]);
   });
   const trayFallback = () => {
     const s = session();
     if (!s || !props.sessionId) return undefined;
-    const raw = topicRunningTrayLabel(s.state.topics);
+    const raw = topicRunningTrayLabel(s.state.topics, props.sessionId);
     const ver = verifiedTray();
     if (ver && ver.key === s.key && ver.seq === s.state.seq) return ver.label ?? undefined;
     return raw;
