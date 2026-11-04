@@ -40,6 +40,265 @@ pub const RETRY_BACKOFF_MS: [u64; 3] = [30_000, 120_000, 600_000];
 /// Cumulative cap on honored Retry-After waiting per work item (D6 ruling: 1 h; a
 /// Retry-After that would cross it consumes retry budget instead).
 pub const RETRY_AFTER_CAP_MS: u64 = 3_600_000;
+/// Default auto-continues of a transient error before the work stops as `errored`
+/// (setting `graph.autoContinue`, clamped to [`MAX_RETRIES`]).
+pub const AUTO_CONTINUE_DEFAULT: u32 = 1;
+/// Restart resumes per work item before an interrupted run stays `errored`.
+pub const MAX_RESTART_RESUMES: u32 = 3;
+/// Delay before a restart-interrupted run resumes (subagents binds first).
+pub const RESTART_RESUME_DELAY_MS: u64 = 3_000;
+/// Max `continue` / `fail` targets per update.
+pub const MAX_CONTINUE: usize = 20;
+/// Continue note cap (chars).
+pub const MAX_NOTE_CHARS: usize = 2_000;
+/// Explicit continues (lead + user) per work item.
+pub const MAX_CONTINUES: u32 = 50;
+/// Per-work event log length (oldest dropped first, counted in `eventsDropped`).
+pub const MAX_WORK_EVENTS: usize = 24;
+/// Per-graph event log length.
+pub const MAX_GRAPH_EVENTS: usize = 48;
+/// Event detail cap (chars).
+pub const EVENT_DETAIL_CHARS: usize = 300;
+/// Transport-level start errors (subagents not bound yet) tolerated per work item
+/// before the work is `errored`.
+pub const MAX_START_ERRORS: u32 = 5;
+/// Work events per node in the `/visualize-progress` params.
+pub const VISUAL_NODE_EVENTS: usize = 8;
+/// Work events per item in `view_agent_graph`.
+pub const VIEW_WORK_EVENTS: usize = 6;
+/// Graph events in `view_agent_graph`.
+pub const VIEW_GRAPH_EVENTS: usize = 10;
+/// Work items in an app snapshot (all live ones plus the newest settled ones).
+pub const SNAPSHOT_MAX_WORK: usize = 120;
+
+/// Every work status, in display order. `errored` = the run was cut off (provider,
+/// network, upstream, interrupt) and can be continued; `failed` = the lead gave up.
+pub const STATUS_ORDER: [&str; 9] = [
+    "queued",
+    "running",
+    "blocked",
+    "errored",
+    "completed",
+    "failed",
+    "stopped",
+    "cancelled",
+    "superseded",
+];
+
+/// Who caused a transition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum By {
+    /// The supervising agent (tool call).
+    Lead,
+    /// The user (app Retry button, `/graph retry`, `/graph stop`).
+    User,
+    /// The bounded auto-continue policy.
+    Auto,
+    /// The host/scheduler (starts, settles, restarts).
+    Host,
+}
+
+impl By {
+    /// Wire name.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lead => "lead",
+            Self::User => "user",
+            Self::Auto => "auto",
+            Self::Host => "host",
+        }
+    }
+}
+
+/// One work-item transition (`{ts, status, by, detail}`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Event {
+    /// Epoch ms.
+    pub ts: i64,
+    /// `queued|running|errored|continued|completed|failed|stopped|superseded`.
+    pub status: String,
+    /// Who.
+    pub by: By,
+    /// Short detail (error text, note, reason; ≤ [`EVENT_DETAIL_CHARS`]).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+}
+
+/// One graph-level event (`{ts, kind, by, detail}`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GraphEvent {
+    /// Epoch ms.
+    pub ts: i64,
+    /// `opened|checkpoint|finished|stopped`.
+    pub kind: String,
+    /// Who.
+    pub by: By,
+    /// Short detail.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+}
+
+/// A pending resume of the work's own operator session.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Resume {
+    /// Who continued it.
+    pub by: By,
+    /// What cut the previous run off.
+    pub cause: String,
+    /// Note for the operator (lead/user).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// Central long-horizon error codes (`<domain>.<entity>.<reason>`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LhCode {
+    /// No such graph (current or history).
+    GraphNotFound,
+    /// The graph is finished or stopped.
+    GraphClosed,
+    /// No such work item.
+    WorkNotFound,
+    /// The work is not errored (or failed) — nothing to continue.
+    WorkNotContinuable,
+    /// The work already settled — it cannot be marked failed.
+    WorkNotFailable,
+    /// [`MAX_CONTINUES`] reached.
+    ContinueLimit,
+    /// Malformed request.
+    RequestInvalid,
+    /// No goal / ralph loop in this session.
+    GoalNotFound,
+    /// The goal / ralph loop is not errored.
+    GoalNotErrored,
+}
+
+impl LhCode {
+    /// Every code (the exhaustive table the app maps).
+    pub const ALL: [Self; 9] = [
+        Self::GraphNotFound,
+        Self::GraphClosed,
+        Self::WorkNotFound,
+        Self::WorkNotContinuable,
+        Self::WorkNotFailable,
+        Self::ContinueLimit,
+        Self::RequestInvalid,
+        Self::GoalNotFound,
+        Self::GoalNotErrored,
+    ];
+
+    /// The namespaced code.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GraphNotFound => "lh.graph.not_found",
+            Self::GraphClosed => "lh.graph.closed",
+            Self::WorkNotFound => "lh.work.not_found",
+            Self::WorkNotContinuable => "lh.work.not_continuable",
+            Self::WorkNotFailable => "lh.work.not_failable",
+            Self::ContinueLimit => "lh.work.continue_limit",
+            Self::RequestInvalid => "lh.request.invalid",
+            Self::GoalNotFound => "lh.goal.not_found",
+            Self::GoalNotErrored => "lh.goal.not_errored",
+        }
+    }
+}
+
+/// A refused long-horizon operation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LhError {
+    /// Code.
+    pub code: LhCode,
+    /// Human text.
+    pub message: String,
+}
+
+impl LhError {
+    fn new(code: LhCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// `{ok:false, code, reason}` for service replies.
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        json!({"ok": false, "code": self.code.as_str(), "reason": self.message})
+    }
+}
+
+impl std::fmt::Display for LhError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+/// Runtime policy (from settings; never persisted).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Policy {
+    /// Auto-continues of a transient error (0..=[`MAX_RETRIES`]).
+    pub auto_continue: u32,
+}
+
+impl Default for Policy {
+    fn default() -> Self {
+        Self {
+            auto_continue: AUTO_CONTINUE_DEFAULT,
+        }
+    }
+}
+
+fn push_event<T>(log: &mut Vec<T>, dropped: &mut u32, max: usize, e: T) {
+    if log.len() >= max {
+        log.remove(0);
+        *dropped = dropped.saturating_add(1);
+    }
+    log.push(e);
+}
+
+fn detail(text: &str) -> String {
+    clip_chars(&text.replace('\n', " "), EVENT_DETAIL_CHARS).0
+}
+
+impl Work {
+    /// Appends a transition to the bounded log.
+    pub fn log(&mut self, ts: i64, status: &str, by: By, text: &str) {
+        let e = Event {
+            ts,
+            status: status.to_owned(),
+            by,
+            detail: detail(text),
+        };
+        push_event(
+            &mut self.events,
+            &mut self.events_dropped,
+            MAX_WORK_EVENTS,
+            e,
+        );
+    }
+}
+
+impl Graph {
+    /// Appends a graph-level event to the bounded log.
+    pub fn log(&mut self, ts: i64, kind: &str, by: By, text: &str) {
+        let e = GraphEvent {
+            ts,
+            kind: kind.to_owned(),
+            by,
+            detail: detail(text),
+        };
+        push_event(
+            &mut self.events,
+            &mut self.events_dropped,
+            MAX_GRAPH_EVENTS,
+            e,
+        );
+    }
+}
 /// Classified failure of a graph work item (D6 §9.1).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FailureClass {
@@ -265,7 +524,7 @@ pub struct Work {
     /// Replaced work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replaces: Option<String>,
-    /// `queued|running|completed|failed|stopped|cancelled|superseded`.
+    /// `queued|running|errored|completed|failed|stopped|cancelled|superseded`.
     pub status: String,
     /// Operator (subagent id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -318,6 +577,21 @@ pub struct Work {
     /// What the latest run actually ran on (the subagents run record), once started.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ran: Option<RanOn>,
+    /// Pending resume of the own operator session (continue / auto / restart).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume: Option<Resume>,
+    /// Explicit continues (lead + user).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub continues: u32,
+    /// Transport-level start errors since the last start.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub start_errors: u32,
+    /// Transition log (bounded, oldest first).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<Event>,
+    /// Events dropped from the front of `events`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub events_dropped: u32,
 }
 
 /// The profile + resolved model a work item's subagent ran on — copied from the
@@ -418,6 +692,12 @@ pub struct Graph {
     /// Abandoned `(reason)`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub abandoned: Option<String>,
+    /// Graph-level log (bounded, oldest first).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<GraphEvent>,
+    /// Events dropped from the front of `events`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub events_dropped: u32,
 }
 
 /// `graph.json`.
@@ -432,6 +712,9 @@ pub struct GraphFile {
     /// Past graphs (newest first).
     #[serde(default)]
     pub history: Vec<Graph>,
+    /// Runtime policy (settings; not persisted).
+    #[serde(skip)]
+    pub policy: Policy,
 }
 
 /// An `add_work` entry.
@@ -466,6 +749,26 @@ pub struct Update {
     pub stop: Vec<(String, String)>,
     /// Finish `(result ids, reason)`.
     pub finish: Option<(Vec<String>, String)>,
+    /// Continue `(target, note)`: resume errored work on its own operator session.
+    pub resume: Vec<(String, Option<String>)>,
+    /// Fail `(target, reason)`: the lead gives up on the work.
+    pub fail: Vec<(String, String)>,
+}
+
+impl Update {
+    /// An empty update of `mode` (fill one operation).
+    #[must_use]
+    pub fn new(mode: GraphMode) -> Self {
+        Self {
+            mode,
+            task: None,
+            add: Vec::new(),
+            stop: Vec::new(),
+            finish: None,
+            resume: Vec::new(),
+            fail: Vec::new(),
+        }
+    }
 }
 
 /// Update outcome.
@@ -477,6 +780,8 @@ pub struct Updated {
     pub closed: bool,
     /// Operators to stop.
     pub stop_operators: Vec<String>,
+    /// Work ids continued (queued for a resume).
+    pub continued: Vec<String>,
 }
 
 /// The finish arguments of an `update_agent_graph` call (G-11): the schema's nested
@@ -536,71 +841,103 @@ pub enum SettleOutcome {
     },
 }
 
-/// Applies the D6 §9.2 retry policy to a failed settle: transient failures requeue the
-/// work for resume from its own session (backoff 30 s / 2 min / 10 min, budget 3);
-/// an honored Retry-After wait replaces the backoff and does not consume budget
-/// (cumulative honored waiting capped at [`RETRY_AFTER_CAP_MS`]); permanent failures
-/// and exhausted budgets fail terminally with a class-prefixed failure text.
-fn retry_failure(w: &mut Work, crashed: bool, error: &str, now: i64) -> SettleOutcome {
+/// The errored policy for a run that ended on an error (owner 2026-11-04: only a node the
+/// lead marks failed counts as failed). A transient error (429/Retry-After, 5xx, cut
+/// stream, network, crashed worker) auto-continues the work on its OWN operator session,
+/// at most `policy.auto_continue` times (backoff 30 s / 2 min / 10 min, a Retry-After
+/// hint replaces the backoff while the cumulative wait stays under
+/// [`RETRY_AFTER_CAP_MS`]). Everything else, and an exhausted budget, leaves the work
+/// `errored`: it keeps its operator and partial output, blocks its dependents (they
+/// wait) and wakes the lead, who continues it or fails it explicitly.
+fn on_run_error(
+    w: &mut Work,
+    crashed: bool,
+    error: &str,
+    partial: &str,
+    now: i64,
+    policy: Policy,
+) -> SettleOutcome {
     let class = classify_failure(crashed, error);
     let sig = failure_signal(crashed, error).unwrap_or("permanent");
+    if !partial.is_empty() {
+        w.result = Some(clip_chars(partial, RESULT_STORE_MAX_CHARS).0);
+    }
     match class {
         FailureClass::Transient { retry_after_ms } => {
-            let honored = retry_after_ms
-                .filter(|ms| w.retry_after_total_ms.saturating_add(*ms) <= RETRY_AFTER_CAP_MS);
-            if let Some(ms) = honored {
-                w.retry_after_total_ms += ms;
-                w.failure_class = Some("transient".into());
-                w.failure = Some(format!(
-                    "transient ({sig}), retry-after {}s: {error}",
-                    ms / 1000
-                ));
-                w.status = "queued".into();
-                w.resume_operator_id = w.operator_id.clone();
-                w.next_retry_at = Some(now + i64::try_from(ms).unwrap_or(i64::MAX));
-                SettleOutcome::Retried {
-                    work_id: w.work_id.clone(),
-                    delay_ms: ms,
+            w.failure_class = Some("transient".into());
+            let budget = policy.auto_continue.min(MAX_RETRIES);
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "retry_count < budget <= MAX_RETRIES"
+            )]
+            let delay = match retry_after_ms {
+                Some(ms) if w.retry_after_total_ms.saturating_add(ms) <= RETRY_AFTER_CAP_MS => {
+                    Some(ms)
                 }
-            } else if w.retry_count < MAX_RETRIES {
-                w.retry_count += 1;
-                #[allow(clippy::indexing_slicing, reason = "retry_count <= MAX_RETRIES")]
-                let delay = RETRY_BACKOFF_MS[(w.retry_count - 1) as usize];
-                w.failure_class = Some("transient".into());
-                w.failure = Some(format!(
-                    "transient ({sig}), retry {}/{} in {}s: {error}",
-                    w.retry_count,
-                    MAX_RETRIES,
-                    delay / 1000
-                ));
-                w.status = "queued".into();
-                w.resume_operator_id = w.operator_id.clone();
-                w.next_retry_at = Some(now + i64::try_from(delay).unwrap_or(i64::MAX));
-                SettleOutcome::Retried {
-                    work_id: w.work_id.clone(),
-                    delay_ms: delay,
+                None if w.retry_count < budget => Some(RETRY_BACKOFF_MS[w.retry_count as usize]),
+                Some(_) | None => None,
+            };
+            match delay.filter(|_| w.retry_count < budget) {
+                Some(delay) => {
+                    w.retry_count += 1;
+                    if retry_after_ms.is_some() {
+                        w.retry_after_total_ms += delay;
+                    }
+                    let cause = format!("transient ({sig}): {error}");
+                    w.failure = Some(cause.clone());
+                    w.status = "queued".into();
+                    w.resume_operator_id = w.operator_id.clone();
+                    w.next_retry_at = Some(now + i64::try_from(delay).unwrap_or(i64::MAX));
+                    w.resume = Some(Resume {
+                        by: By::Auto,
+                        cause: cause.clone(),
+                        note: None,
+                    });
+                    w.log(
+                        now,
+                        "continued",
+                        By::Auto,
+                        &format!(
+                            "auto-continue {}/{budget} in {}s after {cause}",
+                            w.retry_count,
+                            delay / 1000
+                        ),
+                    );
+                    SettleOutcome::Retried {
+                        work_id: w.work_id.clone(),
+                        delay_ms: delay,
+                    }
                 }
-            } else {
-                w.status = "failed".into();
-                w.failure_class = Some("transient".into());
-                w.failure = Some(format!("transient ({sig}), retries exhausted: {error}"));
-                w.next_retry_at = None;
-                SettleOutcome::Settled {
-                    work_id: w.work_id.clone(),
-                    status: "failed".into(),
+                None => {
+                    let why = if retry_after_ms.is_some() && w.retry_count < budget {
+                        "retry-after exceeds the auto-continue cap"
+                    } else if budget == 0 {
+                        "auto-continue off"
+                    } else {
+                        "auto-continue used"
+                    };
+                    mark_errored(w, now, format!("transient ({sig}), {why}: {error}"))
                 }
             }
         }
         FailureClass::Permanent => {
-            w.status = "failed".into();
             w.failure_class = Some("permanent".into());
-            w.failure = Some(format!("permanent: {error}"));
-            w.next_retry_at = None;
-            SettleOutcome::Settled {
-                work_id: w.work_id.clone(),
-                status: "failed".into(),
-            }
+            mark_errored(w, now, format!("permanent: {error}"))
         }
+    }
+}
+
+/// `errored`: the run stopped on an error; operator and partial output kept.
+fn mark_errored(w: &mut Work, now: i64, failure: String) -> SettleOutcome {
+    w.status = "errored".into();
+    w.next_retry_at = None;
+    w.resume = None;
+    w.resume_operator_id = None;
+    w.log(now, "errored", By::Host, &failure);
+    w.failure = Some(failure);
+    SettleOutcome::Settled {
+        work_id: w.work_id.clone(),
+        status: "errored".into(),
     }
 }
 
@@ -749,6 +1086,8 @@ impl GraphFile {
             };
             match input.status.as_str() {
                 "completed" => {}
+                // An errored input is continuable: its dependents wait (never blocked).
+                "errored" => waiting = true,
                 "queued" | "running" => {
                     if input.status == "queued"
                         && matches!(self.input_state(graph, input), InputState::Blocked(_))
@@ -790,19 +1129,8 @@ impl GraphFile {
     /// unipi `countStatuses`.
     #[must_use]
     pub fn counts(&self, graph: &Graph) -> BTreeMap<&'static str, usize> {
-        let mut c: BTreeMap<&'static str, usize> = [
-            "queued",
-            "running",
-            "blocked",
-            "completed",
-            "failed",
-            "stopped",
-            "cancelled",
-            "superseded",
-        ]
-        .into_iter()
-        .map(|k| (k, 0))
-        .collect();
+        let mut c: BTreeMap<&'static str, usize> =
+            STATUS_ORDER.into_iter().map(|k| (k, 0)).collect();
         for w in &graph.work {
             let s = self.view_status(graph, w);
             if let Some(n) = c.iter_mut().find(|(k, _)| **k == s).map(|(_, v)| v) {
@@ -816,20 +1144,11 @@ impl GraphFile {
     #[must_use]
     pub fn counts_line(&self, graph: &Graph) -> String {
         let c = self.counts(graph);
-        [
-            "queued",
-            "running",
-            "blocked",
-            "completed",
-            "failed",
-            "stopped",
-            "cancelled",
-            "superseded",
-        ]
-        .iter()
-        .filter_map(|k| c.get(k).filter(|n| **n > 0).map(|n| format!("{n} {k}")))
-        .collect::<Vec<_>>()
-        .join(", ")
+        STATUS_ORDER
+            .iter()
+            .filter_map(|k| c.get(k).filter(|n| **n > 0).map(|n| format!("{n} {k}")))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn validate_add(&self, graph: &Graph, add: &[AddWork]) -> Result<(), String> {
@@ -964,14 +1283,24 @@ impl GraphFile {
         if u.finish.is_some() && !u.add.is_empty() {
             return Err("finish cannot be combined with add_work — schedule first, finish in a later update".into());
         }
-        if u.finish.is_none() && u.add.is_empty() && u.stop.is_empty() {
-            return Err("nothing to do — set add_work, stop or finish".into());
+        if u.finish.is_none()
+            && u.add.is_empty()
+            && u.stop.is_empty()
+            && u.resume.is_empty()
+            && u.fail.is_empty()
+        {
+            return Err("nothing to do — set add_work, stop, continue, fail or finish".into());
         }
         if u.add.len() > MAX_ADD_WORK {
             return Err(format!("at most {MAX_ADD_WORK} work items per update"));
         }
         if u.stop.len() > MAX_STOP {
             return Err(format!("at most {MAX_STOP} stop targets per update"));
+        }
+        if u.resume.len() > MAX_CONTINUE || u.fail.len() > MAX_CONTINUE {
+            return Err(format!(
+                "at most {MAX_CONTINUE} continue / fail targets per update"
+            ));
         }
         let mut opened = false;
         if self.open().is_none() {
@@ -986,7 +1315,7 @@ impl GraphFile {
                 .clone()
                 .filter(|t| !t.trim().is_empty())
                 .unwrap_or_else(|| u.add[0].instruction.chars().take(80).collect());
-            self.current = Some(Graph {
+            let mut g = Graph {
                 v: 1,
                 graph_id: new_id.to_owned(),
                 mode: u.mode,
@@ -997,7 +1326,11 @@ impl GraphFile {
                 work: Vec::new(),
                 finish: None,
                 abandoned: None,
-            });
+                events: Vec::new(),
+                events_dropped: 0,
+            };
+            g.log(now, "opened", By::Lead, &g.task.clone());
+            self.current = Some(g);
             opened = true;
         }
         let graph = self.open().cloned().ok_or("no open graph")?;
@@ -1017,6 +1350,21 @@ impl GraphFile {
                 return Err(format!("stop {t}: reason is empty"));
             }
         }
+        for (t, note) in &u.resume {
+            Self::continuable(&graph, t).map_err(|e| format!("continue: {e}"))?;
+            if note
+                .as_ref()
+                .is_some_and(|n| n.chars().count() > MAX_NOTE_CHARS)
+            {
+                return Err(format!("continue {t}: note exceeds {MAX_NOTE_CHARS} chars"));
+            }
+        }
+        for (t, reason) in &u.fail {
+            Self::failable(&graph, t).map_err(|e| format!("fail: {e}"))?;
+            if reason.trim().is_empty() {
+                return Err(format!("fail {t}: reason is empty"));
+            }
+        }
         if let Some((ids, _)) = &u.finish {
             if ids.len() > MAX_RESULT_IDS {
                 return Err(format!("finish: at most {MAX_RESULT_IDS} result ids"));
@@ -1030,6 +1378,7 @@ impl GraphFile {
             }
         }
         let mut stop_ops = Vec::new();
+        let mut continued = Vec::new();
         let g = self.open_mut().ok_or("no open graph")?;
         g.revision += 1;
         g.updated_at = now;
@@ -1057,8 +1406,10 @@ impl GraphFile {
                 }
                 t.status = "superseded".into();
                 t.superseded_by = Some(id.clone());
+                t.next_retry_at = None;
+                t.log(now, "superseded", By::Lead, &format!("replaced by {id}"));
             }
-            g.work.push(Work {
+            let mut work = Work {
                 work_id: id,
                 instruction: w.instruction.trim().to_owned(),
                 target: match &w.operator_id {
@@ -1090,7 +1441,19 @@ impl GraphFile {
                 stop_reason: None,
                 tool_calls: 0,
                 ran: None,
-            });
+                resume: None,
+                continues: 0,
+                start_errors: 0,
+                events: Vec::new(),
+                events_dropped: 0,
+            };
+            let why = w
+                .replaces
+                .as_ref()
+                .map(|r| format!("replaces {r}"))
+                .unwrap_or_default();
+            work.log(now, "queued", By::Lead, &why);
+            g.work.push(work);
         }
         for (t, reason) in &u.stop {
             for w in g.work.iter_mut().filter(|w| {
@@ -1105,7 +1468,19 @@ impl GraphFile {
                     stop_ops.extend(w.operator_id.clone());
                 }
                 w.status = "stopped".into();
+                w.next_retry_at = None;
                 w.stop_reason = Some(reason.trim().to_owned());
+                w.log(now, "stopped", By::Lead, reason.trim());
+            }
+        }
+        for (t, note) in &u.resume {
+            if let Ok(at) = Self::continuable(g, t) {
+                continued.push(Self::resume_at(g, at, By::Lead, note.as_deref(), now));
+            }
+        }
+        for (t, reason) in &u.fail {
+            if let Ok(at) = Self::failable(g, t) {
+                stop_ops.extend(Self::fail_at(g, at, By::Lead, reason, now));
             }
         }
         let mut closed = false;
@@ -1113,26 +1488,176 @@ impl GraphFile {
             for w in g
                 .work
                 .iter_mut()
-                .filter(|w| matches!(w.status.as_str(), "queued" | "running"))
+                .filter(|w| matches!(w.status.as_str(), "queued" | "running" | "errored"))
             {
                 if w.status == "running" {
                     stop_ops.extend(w.operator_id.clone());
                 }
                 w.status = "stopped".into();
+                w.next_retry_at = None;
                 w.stop_reason = Some("graph finished".into());
+                w.log(now, "stopped", By::Lead, "graph finished");
             }
             g.finish = Some(Finish {
                 result_ids: ids.clone(),
                 reason: reason.trim().to_owned(),
                 at: now,
             });
+            g.log(now, "finished", By::Lead, reason.trim());
             closed = true;
         }
         Ok(Updated {
             opened,
             closed,
             stop_operators: stop_ops,
+            continued,
         })
+    }
+
+    /// Index of the work a `continue` names (work id, result id, or operator id → the
+    /// newest errored/failed item of that operator).
+    fn continuable(g: &Graph, target: &str) -> Result<usize, LhError> {
+        let at = g
+            .work
+            .iter()
+            .position(|w| w.work_id == target || w.result_id.as_deref() == Some(target))
+            .or_else(|| {
+                g.work.iter().rposition(|w| {
+                    w.operator_id.as_deref() == Some(target)
+                        && matches!(w.status.as_str(), "errored" | "failed")
+                })
+            })
+            .ok_or_else(|| LhError::new(LhCode::WorkNotFound, format!("unknown work {target}")))?;
+        let w = &g.work[at];
+        if !matches!(w.status.as_str(), "errored" | "failed") {
+            let hint = match w.status.as_str() {
+                "queued" if w.resume.is_some() => " (a continue is already scheduled)",
+                "running" => " (it is still running)",
+                "superseded" => " (it was replaced; continue the replacement)",
+                _ => "",
+            };
+            return Err(LhError::new(
+                LhCode::WorkNotContinuable,
+                format!(
+                    "{} is {}{hint} — only errored or failed work can be continued",
+                    w.work_id, w.status
+                ),
+            ));
+        }
+        if w.continues >= MAX_CONTINUES {
+            return Err(LhError::new(
+                LhCode::ContinueLimit,
+                format!(
+                    "{} was continued {MAX_CONTINUES} times — replace it (replaces={}) or fail it",
+                    w.work_id, w.work_id
+                ),
+            ));
+        }
+        Ok(at)
+    }
+
+    /// Index of the work a `fail` names (any live or errored item).
+    fn failable(g: &Graph, target: &str) -> Result<usize, LhError> {
+        let at = g
+            .work
+            .iter()
+            .position(|w| {
+                w.work_id == target
+                    || w.result_id.as_deref() == Some(target)
+                    || w.operator_id.as_deref() == Some(target)
+                        && !TERMINAL.contains(&w.status.as_str())
+            })
+            .ok_or_else(|| LhError::new(LhCode::WorkNotFound, format!("unknown work {target}")))?;
+        let w = &g.work[at];
+        if TERMINAL.contains(&w.status.as_str()) {
+            return Err(LhError::new(
+                LhCode::WorkNotFailable,
+                format!("{} is already {}", w.work_id, w.status),
+            ));
+        }
+        Ok(at)
+    }
+
+    /// Queues work `at` to resume its own operator session (no new work id, no
+    /// supersede chain); the auto-continue budget starts over.
+    fn resume_at(g: &mut Graph, at: usize, by: By, note: Option<&str>, now: i64) -> String {
+        g.revision += u64::from(by == By::User);
+        g.updated_at = now;
+        let w = &mut g.work[at];
+        let note = note
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(|n| clip_chars(n, MAX_NOTE_CHARS).0);
+        let cause = w.failure.clone().unwrap_or_else(|| "an error".into());
+        w.status = "queued".into();
+        w.resume_operator_id = w.operator_id.clone();
+        w.next_retry_at = None;
+        w.continues += 1;
+        w.retry_count = 0;
+        w.retry_after_total_ms = 0;
+        w.start_errors = 0;
+        w.resume = Some(Resume {
+            by,
+            cause,
+            note: note.clone(),
+        });
+        let text = note.unwrap_or_else(|| format!("continued by {}", by.as_str()));
+        w.log(now, "continued", by, &text);
+        w.work_id.clone()
+    }
+
+    /// Marks work `at` failed (the supervisor gave up); the running operator to stop.
+    fn fail_at(g: &mut Graph, at: usize, by: By, reason: &str, now: i64) -> Option<String> {
+        let w = &mut g.work[at];
+        let op = w.operator_id.clone().filter(|_| w.status == "running");
+        w.status = "failed".into();
+        w.failure_class = Some("lead".into());
+        w.failure = Some(format!("failed by the {}: {}", by.as_str(), reason.trim()));
+        w.next_retry_at = None;
+        w.resume = None;
+        w.resume_operator_id = None;
+        w.log(now, "failed", by, reason.trim());
+        op
+    }
+
+    /// The user's Retry (app button / `/graph retry`): same semantics as the lead's
+    /// `continue`, recorded as `by: user`. Returns the work id.
+    ///
+    /// # Errors
+    ///
+    /// [`LhCode::GraphClosed`] / [`LhCode::GraphNotFound`] / the [`Self::continuable`]
+    /// refusals.
+    pub fn continue_work(
+        &mut self,
+        graph_id: Option<&str>,
+        target: &str,
+        note: Option<&str>,
+        by: By,
+        now: i64,
+    ) -> Result<String, LhError> {
+        if target.trim().is_empty() {
+            return Err(LhError::new(LhCode::RequestInvalid, "workId is required"));
+        }
+        if note.is_some_and(|n| n.chars().count() > MAX_NOTE_CHARS) {
+            return Err(LhError::new(
+                LhCode::RequestInvalid,
+                format!("note exceeds {MAX_NOTE_CHARS} chars"),
+            ));
+        }
+        if let Some(id) = graph_id
+            && self.open().is_none_or(|g| g.graph_id != id)
+        {
+            return Err(if self.graph(id).is_some() {
+                LhError::new(LhCode::GraphClosed, format!("graph {id} is closed"))
+            } else {
+                LhError::new(LhCode::GraphNotFound, format!("no graph {id}"))
+            });
+        }
+        let g = self
+            .open_mut()
+            .ok_or_else(|| LhError::new(LhCode::GraphClosed, "no open agent graph"))?;
+        let at = Self::continuable(g, target.trim())?;
+        Ok(Self::resume_at(g, at, by, note, now))
     }
 
     fn archive(&mut self, mut g: Graph) {
@@ -1149,7 +1674,7 @@ impl GraphFile {
     }
 
     /// Abandons the open graph (stop/regular).
-    pub fn abandon(&mut self, reason: &str) -> Vec<String> {
+    pub fn abandon(&mut self, reason: &str, by: By, now: i64) -> Vec<String> {
         let Some(g) = self.open_mut() else {
             return Vec::new();
         };
@@ -1157,13 +1682,17 @@ impl GraphFile {
         for w in g
             .work
             .iter_mut()
-            .filter(|w| matches!(w.status.as_str(), "queued" | "running"))
+            .filter(|w| matches!(w.status.as_str(), "queued" | "running" | "errored"))
         {
             ops.extend(w.operator_id.clone().filter(|_| w.status == "running"));
             w.status = "stopped".into();
+            w.next_retry_at = None;
             w.stop_reason = Some(reason.to_owned());
+            w.log(now, "stopped", by, reason);
         }
         g.abandoned = Some(reason.to_owned());
+        g.updated_at = now;
+        g.log(now, "stopped", by, reason);
         ops
     }
 
@@ -1203,6 +1732,37 @@ impl GraphFile {
             .collect()
     }
 
+    /// Whether anything can still move without a decision: running work, or queued work
+    /// whose inputs are ready (a scheduled auto-continue counts).
+    #[must_use]
+    pub fn can_progress(&self) -> bool {
+        self.open().is_some_and(|g| {
+            g.work.iter().any(|w| {
+                w.status == "running"
+                    || (w.status == "queued" && self.input_state(g, w) == InputState::Ready)
+            })
+        })
+    }
+
+    /// Errored work of the open graph `(work id, failure)`.
+    #[must_use]
+    pub fn errored(&self) -> Vec<(String, String)> {
+        self.open()
+            .map(|g| {
+                g.work
+                    .iter()
+                    .filter(|w| w.status == "errored")
+                    .map(|w| {
+                        (
+                            w.work_id.clone(),
+                            w.failure.clone().unwrap_or_else(|| "error".into()),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Records what a started work item's run actually runs on (subagents reply).
     pub fn set_ran(&mut self, work_id: &str, ran: Option<RanOn>) {
         if let Some(w) = self
@@ -1216,26 +1776,103 @@ impl GraphFile {
         }
     }
 
-    /// Marks work started or failed to start.
-    pub fn started(&mut self, work_id: &str, outcome: Result<String, String>) {
+    /// Marks work started (`running`) or, when the start was refused, `errored` (the
+    /// lead or the user can continue it; a continue without an operator starts fresh).
+    pub fn started(&mut self, work_id: &str, outcome: Result<String, String>, now: i64) {
         if let Some(w) = self
             .open_mut()
             .and_then(|g| g.work.iter_mut().find(|w| w.work_id == work_id))
         {
             match outcome {
                 Ok(op) => {
+                    let resumed = w.resume_operator_id.as_deref() == Some(op.as_str());
                     w.status = "running".into();
-                    w.operator_id = Some(op);
+                    w.operator_id = Some(op.clone());
                     w.attempts += 1;
                     w.resume_operator_id = None;
                     w.next_retry_at = None;
+                    w.start_errors = 0;
+                    let by = w.resume.take().map_or(By::Host, |r| r.by);
+                    w.log(
+                        now,
+                        "running",
+                        by,
+                        &if resumed {
+                            format!("resumed operator {op}")
+                        } else {
+                            format!("operator {op}")
+                        },
+                    );
                 }
                 Err(e) => {
-                    w.status = "failed".into();
-                    w.failure = Some(e);
+                    w.failure_class = Some("start".into());
+                    mark_errored(w, now, format!("could not start: {e}"));
                 }
             }
         }
+    }
+
+    /// A transport-level start error (the subagents service is not bound yet): the work
+    /// stays queued for the next reconcile pass, at most [`MAX_START_ERRORS`] times,
+    /// then it is `errored`. Returns whether it stays queued.
+    pub fn start_error(&mut self, work_id: &str, error: &str, now: i64) -> bool {
+        let Some(w) = self
+            .open_mut()
+            .and_then(|g| g.work.iter_mut().find(|w| w.work_id == work_id))
+        else {
+            return false;
+        };
+        w.start_errors += 1;
+        if w.start_errors < MAX_START_ERRORS {
+            return true;
+        }
+        w.failure_class = Some("start".into());
+        mark_errored(w, now, format!("could not start: {error}"));
+        false
+    }
+
+    /// Host restart: running work was interrupted. Each resumes its own operator after
+    /// [`RESTART_RESUME_DELAY_MS`] (by `host`, at most [`MAX_RESTART_RESUMES`] times per
+    /// item), else it is `errored`. Returns the scheduled `(work id, delay ms)`.
+    pub fn interrupted(&mut self, now: i64) -> Vec<(String, u64)> {
+        let Some(g) = self.open_mut() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for w in g.work.iter_mut().filter(|w| w.status == "running") {
+            if w.restart_resumes < MAX_RESTART_RESUMES {
+                w.restart_resumes += 1;
+                w.status = "queued".into();
+                w.resume_operator_id = w.operator_id.clone();
+                w.next_retry_at = Some(now + i64::try_from(RESTART_RESUME_DELAY_MS).unwrap_or(0));
+                w.resume = Some(Resume {
+                    by: By::Host,
+                    cause: "a host restart".into(),
+                    note: None,
+                });
+                w.log(
+                    now,
+                    "continued",
+                    By::Host,
+                    &format!(
+                        "interrupted by a restart; resuming ({}/{MAX_RESTART_RESUMES})",
+                        w.restart_resumes
+                    ),
+                );
+                out.push((w.work_id.clone(), RESTART_RESUME_DELAY_MS));
+            } else {
+                w.failure_class = Some("transient".into());
+                mark_errored(
+                    w,
+                    now,
+                    format!(
+                        "transient (interrupted): interrupted by a restart {} times",
+                        w.restart_resumes + 1
+                    ),
+                );
+            }
+        }
+        out
     }
 
     /// unipi `renderTask`.
@@ -1247,7 +1884,37 @@ impl GraphFile {
         let Some(work) = g.work.iter().find(|w| w.work_id == work_id) else {
             return String::new();
         };
+        // A continue (lead / user / auto / restart) resumes the SAME operator session:
+        // its history already holds the instruction and the handoffs, so the message is
+        // only what cut the run off, the note and the handoff protocol.
+        if let (Some(r), Some(_)) = (&work.resume, &work.resume_operator_id) {
+            let cause = clip_chars(&r.cause.replace('\n', " "), 400).0;
+            let cause = if cause.starts_with("a ") || cause.starts_with("an ") {
+                cause
+            } else {
+                format!("an error ({cause})")
+            };
+            let mut parts = vec![format!(
+                "Your previous run was cut off by {cause}; continue from where you stopped (your session history is intact) and finish with the final handoff."
+            )];
+            if let Some(n) = &r.note {
+                parts.push(format!(
+                    "Note from the {}: {n}",
+                    if r.by == By::User {
+                        "user"
+                    } else {
+                        "supervisor"
+                    }
+                ));
+            }
+            parts.push(OPERATOR_HANDOFF_PROTOCOL.into());
+            return parts.join("\n\n");
+        }
         let mut parts = Vec::new();
+        if let Some(n) = work.resume.as_ref().and_then(|r| r.note.as_ref()) {
+            // A continue whose operator never started (start refused): a fresh run.
+            parts.push(format!("Note: {n}"));
+        }
         if work.restart_resumes > 0 && work.resume_operator_id.is_some() {
             parts.push("Your previous run of this work was interrupted by a restart. Continue from where you stopped (your session history is intact) and finish with the final handoff.".to_owned());
         }
@@ -1331,6 +1998,7 @@ impl GraphFile {
         now: i64,
         crashed: bool,
     ) -> SettleOutcome {
+        let policy = self.policy;
         let Some(g) = self.current.as_mut() else {
             return SettleOutcome::Unknown;
         };
@@ -1351,6 +2019,17 @@ impl GraphFile {
         let w = &mut g.work[at];
         let work_id = w.work_id.clone();
         w.tool_calls = tool_calls;
+        // A run that finished after all while its item waited on a continue (a restart
+        // requeued it, the worker survived) completes the item: no re-run.
+        let late_completion = w.status == "queued"
+            && status == "completed"
+            && w.resume_operator_id.as_deref() == Some(operator)
+            && w.resume.is_some();
+        if late_completion {
+            w.status = "running".into();
+            w.resume = None;
+            w.resume_operator_id = None;
+        }
         if w.status == "running" {
             match status {
                 "completed" => {
@@ -1360,6 +2039,7 @@ impl GraphFile {
                     w.result_truncated = cut;
                     w.result_id = Some(result_id_of(&w.work_id));
                     w.next_retry_at = None;
+                    w.log(now, "completed", By::Host, "");
                     SettleOutcome::Settled {
                         work_id,
                         status: "completed".into(),
@@ -1372,6 +2052,7 @@ impl GraphFile {
                     if !text.is_empty() {
                         w.result = Some(clip_chars(text, RESULT_STORE_MAX_CHARS).0);
                     }
+                    w.log(now, "stopped", By::User, "cancelled");
                     SettleOutcome::Settled {
                         work_id,
                         status: "stopped".into(),
@@ -1379,11 +2060,14 @@ impl GraphFile {
                 }
                 _ => {
                     let err: String = error
+                        .filter(|e| !e.trim().is_empty())
                         .unwrap_or(if text.is_empty() { "failed" } else { text })
                         .chars()
                         .take(4000)
                         .collect();
-                    retry_failure(w, crashed, &err, now)
+                    // The partial output is kept only when it is not the error itself.
+                    let partial = if error.is_some() { text } else { "" };
+                    on_run_error(w, crashed, &err, partial, now, policy)
                 }
             }
         } else if !text.is_empty()
@@ -1430,7 +2114,7 @@ impl GraphFile {
     /// mapping so the next start spawns a **fresh** operator with the original
     /// instruction — granted at most once per work item (`retry_fresh_spawns`).
     /// `note` is kept as the failure text for the supervisor view.
-    pub fn fresh_spawn_once(&mut self, work_id: &str, note: &str) -> bool {
+    pub fn fresh_spawn_once(&mut self, work_id: &str, note: &str, now: i64) -> bool {
         let Some(w) = self
             .open_mut()
             .and_then(|g| g.work.iter_mut().find(|w| w.work_id == work_id))
@@ -1443,22 +2127,35 @@ impl GraphFile {
         w.retry_fresh_spawns = 1;
         w.resume_operator_id = None;
         w.failure = Some(note.to_owned());
+        w.log(now, "continued", By::Host, note);
         true
     }
 
-    /// unipi `checkpoint` → `(kind, text)`; `reported` tracks the attention set already reported.
-    pub fn checkpoint(&self, reported: &mut Vec<String>) -> Option<(String, String)> {
+    /// unipi `checkpoint` → `(kind, text)`; `reported` tracks the attention set already
+    /// reported. Errored work wakes the lead like a failure (with its error text) and
+    /// keeps the graph live: it is waiting on a continue or an explicit fail. A fired
+    /// checkpoint is logged on the graph.
+    pub fn checkpoint(&mut self, reported: &mut Vec<String>, now: i64) -> Option<(String, String)> {
+        let out = self.checkpoint_text(reported)?;
+        let first = out.1.lines().next().unwrap_or_default().to_owned();
+        if let Some(g) = self.open_mut() {
+            g.log(now, "checkpoint", By::Host, &format!("{}: {first}", out.0));
+        }
+        Some(out)
+    }
+
+    fn checkpoint_text(&self, reported: &mut Vec<String>) -> Option<(String, String)> {
         let g = self.open()?;
         let statuses: Vec<(&Work, String)> =
             g.work.iter().map(|w| (w, self.view_status(g, w))).collect();
         let live = statuses
             .iter()
-            .filter(|(_, s)| matches!(s.as_str(), "queued" | "running" | "blocked"))
+            .filter(|(_, s)| matches!(s.as_str(), "queued" | "running" | "blocked" | "errored"))
             .count();
         let attention_set: &[&str] = if g.mode == GraphMode::Swarm {
-            &["failed", "blocked", "cancelled"]
+            &["errored", "failed", "blocked", "cancelled"]
         } else {
-            &["failed", "blocked"]
+            &["errored", "failed", "blocked"]
         };
         let attention: Vec<String> = statuses
             .iter()
@@ -1500,7 +2197,12 @@ impl GraphFile {
         for id in attention.iter().take(10) {
             if let Some(w) = g.work.iter().find(|w| &w.work_id == id) {
                 let s = self.view_status(g, w);
-                if s == "failed" {
+                if s == "errored" {
+                    let why = Self::clip(w.failure.as_deref().unwrap_or("error"), 600);
+                    lines.push(format!(
+                        "- {id} errored (not failed; its session and partial output are kept): {why} — continue it (update_agent_graph operation=continue continue=[{{target_id:\"{id}\"}}]), or fail it (operation=fail) only if you give up"
+                    ));
+                } else if s == "failed" {
                     // D6 §9.3: work id, class, last error and the replace/skip/re-plan lever.
                     let why = w.failure.clone().unwrap_or_default();
                     lines.push(
@@ -1533,9 +2235,9 @@ impl GraphFile {
             lines.push(format!("Committed results: {}.", done.join(", ")));
         }
         lines.push(if g.mode == GraphMode::Swarm {
-            "Check agent_swarm_status; read final results with agent_output. Replace failed work (replaces=<work id>), or finish with update_agent_graph operation=finish result_ids=[…], then deduplicate, verify, and synthesize for the user.".into()
+            "Check agent_swarm_status; read final results with agent_output. Continue errored work (operation=continue), replace failed work (replaces=<work id>), or finish with update_agent_graph operation=finish result_ids=[…], then deduplicate, verify, and synthesize for the user.".into()
         } else {
-            "Inspect with view_agent_graph; read results with agent_output. Add or replace work, stop obsolete work, or finish with update_agent_graph operation=finish result_ids=[…], then synthesize for the user.".into()
+            "Inspect with view_agent_graph; read results with agent_output. Continue errored work (operation=continue), add or replace work, stop obsolete work, or finish with update_agent_graph operation=finish result_ids=[…], then synthesize for the user.".into()
         });
         Some((kind.to_owned(), lines.join("\n")))
     }
@@ -1554,12 +2256,12 @@ impl GraphFile {
         let terminal: Vec<&Work> = g
             .work
             .iter()
-            .filter(|w| !matches!(w.status.as_str(), "queued" | "running"))
+            .filter(|w| !matches!(w.status.as_str(), "queued" | "running" | "errored"))
             .collect();
         let shown: Vec<&Work> = g
             .work
             .iter()
-            .filter(|w| matches!(w.status.as_str(), "queued" | "running"))
+            .filter(|w| matches!(w.status.as_str(), "queued" | "running" | "errored"))
             .chain(
                 terminal[terminal.len().saturating_sub(64)..]
                     .iter()
@@ -1592,13 +2294,22 @@ impl GraphFile {
                 v["attempts"] = json!(w.attempts);
             }
             if w.retry_count > 0 {
-                v["retry_count"] = json!(w.retry_count);
+                v["auto_continues"] = json!(w.retry_count);
+            }
+            if w.continues > 0 {
+                v["continues"] = json!(w.continues);
             }
             if let Some(at) = w.next_retry_at {
                 v["next_retry_at"] = json!(at);
             }
             if let Some(c) = &w.failure_class {
                 v["failure_class"] = json!(c);
+            }
+            if w.status == "errored" && w.result.is_some() {
+                v["partial_output"] = json!(true);
+            }
+            if !w.events.is_empty() {
+                v["events"] = Self::events_json(&w.events, VIEW_WORK_EVENTS);
             }
             v
         }).collect();
@@ -1613,10 +2324,23 @@ impl GraphFile {
         if let Some(f) = &g.finish {
             out["finish"] = json!({"result_ids": f.result_ids, "reason": f.reason});
         }
+        if !g.events.is_empty() {
+            let from = g.events.len().saturating_sub(VIEW_GRAPH_EVENTS);
+            out["events"] = json!(g.events[from..].iter().map(|e| json!({"ts": e.ts, "kind": e.kind, "by": e.by, "detail": Self::clip(&e.detail, 160)})).collect::<Vec<_>>());
+        }
         if history {
             out["history"] = self.history_json();
         }
         out
+    }
+
+    /// The newest `n` work events, details clipped for the model.
+    fn events_json(events: &[Event], n: usize) -> Value {
+        let from = events.len().saturating_sub(n);
+        json!(events[from..]
+            .iter()
+            .map(|e| json!({"ts": e.ts, "status": e.status, "by": e.by, "detail": Self::clip(&e.detail, 160)}))
+            .collect::<Vec<_>>())
     }
 
     /// The profile a work item runs as: the run record's when it ran, else the
@@ -1632,10 +2356,15 @@ impl GraphFile {
                 .work
                 .iter()
                 .find(|o| o.operator_id.as_ref() == Some(operator_id))
-                .and_then(|o| o.ran.as_ref().map(|r| r.profile.clone()).or(match &o.target {
-                    Target::NewPreset { subagent_id } => Some(subagent_id.clone()),
-                    Target::ExistingOperator { .. } => None,
-                }))
+                .and_then(|o| {
+                    o.ran
+                        .as_ref()
+                        .map(|r| r.profile.clone())
+                        .or(match &o.target {
+                            Target::NewPreset { subagent_id } => Some(subagent_id.clone()),
+                            Target::ExistingOperator { .. } => None,
+                        })
+                })
                 .unwrap_or_else(|| DEFAULT_PROFILE.into()),
         }
     }
@@ -1651,7 +2380,13 @@ impl GraphFile {
             let t: String = s
                 .trim_start_matches("r-")
                 .chars()
-                .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
                 .collect();
             format!("n_{t}")
         };
@@ -1688,6 +2423,7 @@ impl GraphFile {
                 "running" => Some("running"),
                 "completed" => Some("done"),
                 "failed" => Some("failed"),
+                "errored" => Some("errored"),
                 "blocked" => Some("blocked"),
                 "superseded" | "stopped" | "cancelled" => Some("off"),
                 _ => None,
@@ -1721,7 +2457,11 @@ impl GraphFile {
                     n["thinking"] = json!(t);
                 }
             }
-            for (k, val) in [("operatorId", w.operator_id.as_ref()), ("supersededBy", w.superseded_by.as_ref()), ("replaces", w.replaces.as_ref())] {
+            for (k, val) in [
+                ("operatorId", w.operator_id.as_ref()),
+                ("supersededBy", w.superseded_by.as_ref()),
+                ("replaces", w.replaces.as_ref()),
+            ] {
                 if let Some(x) = val {
                     n[k] = json!(x);
                 }
@@ -1732,12 +2472,25 @@ impl GraphFile {
             if w.tool_calls > 0 {
                 n["toolCalls"] = json!(w.tool_calls);
             }
+            if w.status == "errored" {
+                n["canRetry"] = json!(true);
+            }
+            if w.continues > 0 {
+                n["continues"] = json!(w.continues);
+            }
+            if !w.events.is_empty() {
+                let from = w.events.len().saturating_sub(VISUAL_NODE_EVENTS);
+                n["events"] = json!(w.events[from..]);
+            }
             nodes.push(n);
         }
         if !classes.is_empty() {
             mermaid.push("  classDef running stroke:#28BEF0,stroke-width:2px".into());
             mermaid.push("  classDef done stroke:#5AD25A".into());
             mermaid.push("  classDef failed stroke:#F03C32,stroke-width:2px".into());
+            mermaid.push(
+                "  classDef errored stroke:#E07B39,stroke-width:2px,stroke-dasharray:6 3".into(),
+            );
             mermaid.push("  classDef blocked stroke:#F0A818,stroke-dasharray:4".into());
             mermaid.push("  classDef off stroke:#6B635C,color:#8A8178,stroke-dasharray:3".into());
             for (class, ids) in classes {
@@ -1747,13 +2500,139 @@ impl GraphFile {
         if start > 0 {
             lines.insert(0, format!("({start} earlier work items not shown)"));
         }
-        Visual { mermaid, lines, nodes }
+        Visual {
+            mermaid,
+            lines,
+            nodes,
+        }
     }
 
     /// History list JSON.
     #[must_use]
     pub fn history_json(&self) -> Value {
-        json!(self.history.iter().take(10).map(|p| json!({"graph_id": p.graph_id, "task": p.task, "state": if p.finish.is_some() { "finished" } else { "stopped" }, "selected_result_ids": p.finish.as_ref().map(|f| f.result_ids.clone()).unwrap_or_default()})).collect::<Vec<_>>())
+        json!(self.history.iter().take(10).map(|p| json!({"graph_id": p.graph_id, "task": p.task, "state": if p.finish.is_some() { "finished" } else { "stopped" }, "selected_result_ids": p.finish.as_ref().map(|f| f.result_ids.clone()).unwrap_or_default(), "counts": self.counts_line(p)})).collect::<Vec<_>>())
+    }
+
+    fn state_of(g: &Graph) -> &'static str {
+        if g.finish.is_some() {
+            "finished"
+        } else if g.abandoned.is_some() {
+            "stopped"
+        } else {
+            "open"
+        }
+    }
+
+    /// One graph's summary row for the app's history list (camelCase).
+    #[must_use]
+    pub fn summary(&self, g: &Graph) -> Value {
+        let mut v = json!({
+            "graphId": g.graph_id, "mode": g.mode, "task": g.task, "state": Self::state_of(g),
+            "revision": g.revision, "createdAt": g.created_at, "updatedAt": g.updated_at,
+            "workCount": g.work.len(), "counts": self.counts(g),
+        });
+        if let Some(f) = &g.finish {
+            v["finish"] = json!({"resultIds": f.result_ids, "reason": f.reason, "at": f.at});
+        }
+        if let Some(r) = &g.abandoned {
+            v["abandoned"] = json!(r);
+        }
+        v
+    }
+
+    /// `long-horizon.graph` `history`: the current graph (when any) then every earlier
+    /// one, newest first, as summary rows (bounded by [`HISTORY_LIMIT`] + 1).
+    #[must_use]
+    pub fn history_list(&self) -> Value {
+        json!(
+            self.current
+                .iter()
+                .chain(&self.history)
+                .map(|g| self.summary(g))
+                .collect::<Vec<_>>()
+        )
+    }
+
+    /// `long-horizon.graph` `snapshot`: one graph as data for the app (camelCase): the
+    /// summary plus the graph event log and every work item with its event log. All live
+    /// work plus the newest settled items, at most [`SNAPSHOT_MAX_WORK`].
+    #[must_use]
+    pub fn snapshot(&self, g: &Graph) -> Value {
+        let live = |w: &Work| matches!(w.status.as_str(), "queued" | "running" | "errored");
+        let settled = g.work.iter().filter(|w| !live(w)).count();
+        let keep_settled =
+            SNAPSHOT_MAX_WORK.saturating_sub(g.work.iter().filter(|w| live(w)).count());
+        let skip = settled.saturating_sub(keep_settled);
+        let mut seen = 0usize;
+        let work: Vec<Value> = g
+            .work
+            .iter()
+            .filter(|w| {
+                if live(w) {
+                    return true;
+                }
+                seen += 1;
+                seen > skip
+            })
+            .take(SNAPSHOT_MAX_WORK)
+            .map(|w| {
+                let status = self.view_status(g, w);
+                let mut v = json!({
+                    "workId": w.work_id, "status": status,
+                    "instruction": Self::clip(&w.instruction, 600),
+                    "profile": Self::profile_of(g, w), "inputIds": w.input_ids,
+                    "attempts": w.attempts, "autoContinues": w.retry_count,
+                    "continues": w.continues, "restartResumes": w.restart_resumes,
+                    "toolCalls": w.tool_calls, "canRetry": w.status == "errored",
+                    "hasOutput": w.result.is_some(),
+                    "events": w.events, "eventsDropped": w.events_dropped,
+                });
+                if let InputState::Blocked(r) = self.input_state(g, w)
+                    && status == "blocked"
+                {
+                    v["blockedBy"] = json!(r);
+                }
+                if let Some(r) = &w.ran {
+                    if !r.model.is_empty() {
+                        v["model"] = json!(r.model);
+                    }
+                    if let Some(t) = &r.thinking {
+                        v["thinking"] = json!(t);
+                    }
+                }
+                for (k, val) in [
+                    ("operatorId", w.operator_id.as_ref()),
+                    (
+                        "resultId",
+                        w.result_id.as_ref().filter(|_| w.status == "completed"),
+                    ),
+                    ("failureClass", w.failure_class.as_ref()),
+                    ("stopReason", w.stop_reason.as_ref()),
+                    ("replaces", w.replaces.as_ref()),
+                    ("supersededBy", w.superseded_by.as_ref()),
+                ] {
+                    if let Some(x) = val {
+                        v[k] = json!(x);
+                    }
+                }
+                if let Some(f) = &w.failure {
+                    v["error"] = json!(Self::clip(f, 600));
+                }
+                if let Some(at) = w.next_retry_at {
+                    v["nextRetryAt"] = json!(at);
+                }
+                v
+            })
+            .collect();
+        let mut out = self.summary(g);
+        out["v"] = json!(1);
+        out["events"] = json!(g.events);
+        out["eventsDropped"] = json!(g.events_dropped);
+        out["work"] = json!(work);
+        if skip > 0 {
+            out["omittedWork"] = json!(skip);
+        }
+        out
     }
 
     /// `agent_swarm_status` JSON (unipi `swarmStatus`).
@@ -1768,7 +2647,7 @@ impl GraphFile {
                 if let Some(r) = &w.result_id {
                     v["result_id"] = json!(r);
                 }
-                if s == "failed" {
+                if s == "failed" || s == "errored" {
                     v["failure"] = json!(Self::clip(w.failure.as_deref().unwrap_or("failed"), 300));
                 }
                 if s == "blocked" {
@@ -1780,12 +2659,15 @@ impl GraphFile {
                 v
             })
             .collect();
-        let live = items
-            .iter()
-            .any(|i| matches!(i["status"].as_str(), Some("queued" | "running" | "blocked")));
+        let live = items.iter().any(|i| {
+            matches!(
+                i["status"].as_str(),
+                Some("queued" | "running" | "blocked" | "errored")
+            )
+        });
         let attention = items
             .iter()
-            .any(|i| matches!(i["status"].as_str(), Some("blocked" | "failed")));
+            .any(|i| matches!(i["status"].as_str(), Some("blocked" | "failed" | "errored")));
         json!({"kind": "agent_swarm_status", "swarm_id": g.graph_id, "status": if !live { "settled" } else if attention { "needs_attention" } else { "running" }, "closed": g.finish.is_some() || g.abandoned.is_some(), "counts": self.counts(g), "items": items})
     }
 
@@ -1843,6 +2725,8 @@ mod tests {
             add,
             stop: vec![],
             finish: None,
+            resume: vec![],
+            fail: vec![],
         }
     }
 
@@ -1851,7 +2735,7 @@ mod tests {
         let mut f = GraphFile::default();
         assert_eq!(
             f.update(&upd(vec![]), "g", 0).unwrap_err(),
-            "nothing to do — set add_work, stop or finish"
+            "nothing to do — set add_work, stop, continue, fail or finish"
         );
         let r = f
             .update(&upd(vec![add("a", &[]), add("b", &["r-a"])]), "g1", 1)
@@ -1864,7 +2748,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["a"]
         );
-        f.started("a", Ok("op1".into()));
+        f.started("a", Ok("op1".into()), 0);
         assert_eq!(
             f.settle("op1", "completed", "found X", None, 3, 0, false),
             SettleOutcome::Settled {
@@ -1876,16 +2760,36 @@ mod tests {
         let task = f.render_task("b");
         assert!(task.contains("### Input r-a (work a)\nfound X"));
         assert!(task.ends_with("</agent_graph_handoff_protocol>"));
-        f.started("b", Ok("op2".into()));
+        f.started("b", Ok("op2".into()), 0);
         f.settle("op2", "failed", "", Some("boom"), 0, 0, false);
+        // A run error is `errored`, never `failed`: the graph stays live and the lead
+        // is woken with the error and the continue lever.
         let mut reported = Vec::new();
-        let (kind, text) = f.checkpoint(&mut reported).unwrap();
+        let (kind, text) = f.checkpoint(&mut reported, 0).unwrap();
+        assert_eq!(kind, "needs_attention");
+        assert!(text.contains("(1 errored, 1 completed)"), "{text}");
+        assert!(text.contains("- b errored (not failed; its session and partial output are kept): permanent: boom — continue it (update_agent_graph operation=continue continue=[{target_id:\"b\"}]), or fail it (operation=fail) only if you give up"), "{text}");
+        // Only the lead's explicit fail makes it failed.
+        f.update(
+            &Update {
+                fail: vec![("b".into(), "boom is not recoverable".into())],
+                ..upd(vec![])
+            },
+            "g",
+            1,
+        )
+        .unwrap();
+        assert_eq!(
+            f.open().unwrap().work[1].failure.as_deref(),
+            Some("failed by the lead: boom is not recoverable")
+        );
+        let (kind, text) = f.checkpoint(&mut reported, 0).unwrap();
         assert_eq!(kind, "settled");
         assert!(text.starts_with(
             "Agent graph \"T\" checkpoint: all work settled (1 completed, 1 failed)."
         ));
         assert!(text.contains(
-            "- b failed: permanent: boom — replace it (replaces=b), skip it, or re-plan"
+            "- b failed: failed by the lead: boom is not recoverable — replace it (replaces=b), skip it, or re-plan"
         ));
         assert!(text.contains("Committed results: r-a."));
         let err = f
@@ -2107,13 +3011,26 @@ mod tests {
         f.settle(op, "failed", "", Some(error), 0, now, crashed)
     }
 
+    /// A policy with `n` auto-continues.
+    fn with_auto(n: u32) -> GraphFile {
+        GraphFile {
+            policy: Policy { auto_continue: n },
+            ..GraphFile::default()
+        }
+    }
+
+    fn statuses(w: &Work) -> Vec<(&str, By)> {
+        w.events.iter().map(|e| (e.status.as_str(), e.by)).collect()
+    }
+
     #[test]
-    fn transient_retries_with_backoff_then_exhausts() {
+    fn transient_auto_continues_once_then_errored() {
+        // Default policy: one auto-continue (30 s backoff) on the same operator, then
+        // errored — never failed.
         let mut f = GraphFile::default();
         f.update(&upd(vec![add("a", &[]), add("b", &["a"])]), "g", 0)
             .unwrap();
-        f.started("a", Ok("op".into()));
-        // Attempt 1: transient network error → requeue with 30 s backoff.
+        f.started("a", Ok("op".into()), 0);
         assert_eq!(
             fail_settle(&mut f, "op", "connection error: refused", 1_000, false),
             SettleOutcome::Retried {
@@ -2125,214 +3042,685 @@ mod tests {
         assert_eq!(w.status, "queued");
         assert_eq!(w.retry_count, 1);
         assert_eq!(w.next_retry_at, Some(31_000));
-        assert_eq!(w.failure_class.as_deref(), Some("transient"));
         assert_eq!(w.resume_operator_id.as_deref(), Some("op"));
-        assert_eq!(
-            w.operator_id.as_deref(),
-            Some("op"),
-            "operator kept for the resume mapping"
-        );
-        assert_eq!(w.attempts, 1, "retry does not count as a start");
-        // Not runnable before the fire time; due after.
+        assert_eq!(w.resume.as_ref().map(|r| r.by), Some(By::Auto));
         assert_eq!(f.runnable(30_999), []);
-        assert_eq!(f.runnable(31_000)[0].0, "a");
-        // Attempt 2 → 2 min, attempt 3 → 10 min.
-        f.started("a", Ok("op".into()));
         assert_eq!(
-            fail_settle(&mut f, "op", "503 Service Unavailable", 100_000, false),
-            SettleOutcome::Retried {
-                work_id: "a".into(),
-                delay_ms: 120_000
-            }
+            f.runnable(31_000)[0],
+            ("a".into(), DEFAULT_PROFILE.into(), Some("op".into()))
         );
-        f.started("a", Ok("op".into()));
+        // Second transient error: the budget is used → errored, operator + mapping kept.
+        f.started("a", Ok("op".into()), 31_000);
         assert_eq!(
-            fail_settle(&mut f, "op", "request timed out", 200_000, false),
-            SettleOutcome::Retried {
-                work_id: "a".into(),
-                delay_ms: 600_000
-            }
-        );
-        // Budget exhausted → terminal failure with the class prefix; downstream blocked.
-        f.started("a", Ok("op".into()));
-        assert_eq!(
-            fail_settle(&mut f, "op", "connection error again", 300_000, false),
+            fail_settle(&mut f, "op", "503 Service Unavailable", 40_000, false),
             SettleOutcome::Settled {
                 work_id: "a".into(),
-                status: "failed".into()
+                status: "errored".into()
             }
         );
-        let w = &f.open().unwrap().work[0];
-        assert_eq!(w.retry_count, 3);
-        assert!(
-            w.failure
-                .as_deref()
-                .unwrap()
-                .starts_with("transient (network), retries exhausted: connection error again")
-        );
-        assert!(w.next_retry_at.is_none());
+        let g = f.open().unwrap();
+        let w = &g.work[0];
+        assert_eq!(w.status, "errored");
+        assert_eq!(w.operator_id.as_deref(), Some("op"));
         assert_eq!(
-            f.view_status(f.open().unwrap(), &f.open().unwrap().work[1]),
-            "blocked"
+            w.failure.as_deref(),
+            Some("transient (5xx), auto-continue used: 503 Service Unavailable")
         );
-        // The supervisor wake names the failure and the replace lever.
+        assert_eq!(
+            statuses(w),
+            [
+                ("queued", By::Lead),
+                ("running", By::Host),
+                ("continued", By::Auto),
+                ("running", By::Auto),
+                ("errored", By::Host)
+            ]
+        );
+        assert_eq!(w.events[3].detail, "resumed operator op");
+        // Dependents wait, nothing progresses, the lead is woken.
+        assert_eq!(f.view_status(g, &g.work[1]), "queued");
+        assert!(!f.can_progress());
         let mut reported = Vec::new();
-        let (_, text) = f.checkpoint(&mut reported).unwrap();
-        assert!(text.contains("replace it (replaces=a), skip it, or re-plan"));
-        assert!(text.contains("transient (network), retries exhausted"));
-    }
-
-    #[test]
-    fn permanent_failure_is_immediate() {
-        let mut f = GraphFile::default();
-        f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
-        f.started("a", Ok("op".into()));
-        assert_eq!(
-            fail_settle(&mut f, "op", "401 unauthorized", 5_000, false),
-            SettleOutcome::Settled {
-                work_id: "a".into(),
-                status: "failed".into()
-            }
-        );
-        let w = &f.open().unwrap().work[0];
-        assert_eq!(w.status, "failed");
-        assert_eq!(w.retry_count, 0);
-        assert_eq!(w.failure.as_deref(), Some("permanent: 401 unauthorized"));
-        assert_eq!(w.failure_class.as_deref(), Some("permanent"));
-    }
-
-    #[test]
-    fn crashed_worker_retries_without_error_text() {
-        let mut f = GraphFile::default();
-        f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
-        f.started("a", Ok("op".into()));
-        // A nonsense error from a crashed worker is still transient (row 1 wins).
-        assert_eq!(
-            fail_settle(&mut f, "op", "weird lacerations", 0, true),
-            SettleOutcome::Retried {
-                work_id: "a".into(),
-                delay_ms: 30_000
-            }
-        );
+        let (kind, text) = f.checkpoint(&mut reported, 41_000).unwrap();
+        assert_eq!(kind, "needs_attention");
+        assert!(text.contains("- a errored (not failed"));
+        assert!(text.contains("503 Service Unavailable"));
+        assert_eq!(f.open().unwrap().events.last().unwrap().kind, "checkpoint");
+        // The same attention set is not re-reported.
         assert!(
-            f.open().unwrap().work[0]
-                .failure
-                .as_deref()
-                .unwrap()
-                .starts_with("transient (crashed), retry 1/3")
+            f.checkpoint(&mut reported, 42_000)
+                .is_none_or(|(k, _)| k == "quiescent")
         );
     }
 
     #[test]
-    fn retry_after_honored_without_consuming_budget() {
-        let mut f = GraphFile::default();
-        f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
-        f.started("a", Ok("op".into()));
-        // Even at an exhausted budget, an honored Retry-After requeues without consuming.
-        // Five 700 s waits: 3500 s cumulative, still under the 1 h cap.
-        let mut total = 0u64;
-        for i in 0..5i64 {
-            let at = i * 1_000;
-            let err = "429; retry-after: 700s";
-            let out = fail_settle(&mut f, "op", err, at, false);
-            assert_eq!(
-                out,
-                SettleOutcome::Retried {
-                    work_id: "a".into(),
-                    delay_ms: 700_000
-                },
-                "honored waits stay free"
-            );
-            total += 700_000;
-            f.started("a", Ok("op".into()));
-        }
-        let w = &f.open().unwrap().work[0];
-        assert_eq!(w.retry_count, 0, "Retry-After never consumed budget");
-        assert_eq!(w.retry_after_total_ms, total);
-        // The 1 h cumulative cap: a wait that would cross it consumes budget instead.
-        assert_eq!(
-            fail_settle(&mut f, "op", "429; retry-after: 600s", 9_000, false),
-            SettleOutcome::Retried {
-                work_id: "a".into(),
-                delay_ms: 30_000
-            },
-            "cap crossed → backoff retry instead"
-        );
-        let w = &f.open().unwrap().work[0];
-        assert_eq!(w.retry_count, 1);
-        assert_eq!(
-            w.retry_after_total_ms, total,
-            "the crossing wait was not honored"
-        );
-        // After the cap, a Retry-After that still does not fit consumes budget each time;
-        // 3 budget-consuming retries exhaust it.
-        for i in 1..3 {
-            f.started("a", Ok("op".into()));
-            assert!(matches!(
-                fail_settle(&mut f, "op", "429; retry-after: 600s", 10_000 + i, false),
-                SettleOutcome::Retried { .. }
-            ));
-        }
-        f.started("a", Ok("op".into()));
-        assert_eq!(
-            fail_settle(&mut f, "op", "429; retry-after: 600s", 20_000, false),
-            SettleOutcome::Settled {
-                work_id: "a".into(),
-                status: "failed".into()
+    fn auto_continue_is_configurable_and_bounded() {
+        for (n, retried) in [(0u32, 0usize), (2, 2), (3, 3), (9, 3)] {
+            let mut f = with_auto(n);
+            f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
+            let mut count = 0;
+            let mut delays = Vec::new();
+            for i in 0..6 {
+                f.started("a", Ok("op".into()), i);
+                match fail_settle(&mut f, "op", "request timed out", i, false) {
+                    SettleOutcome::Retried { delay_ms, .. } => {
+                        count += 1;
+                        delays.push(delay_ms);
+                    }
+                    SettleOutcome::Settled { status, .. } => {
+                        assert_eq!(status, "errored");
+                        break;
+                    }
+                    SettleOutcome::Unknown => unreachable!(),
+                }
             }
-        );
+            assert_eq!(count, retried, "auto_continue {n}");
+            assert_eq!(delays, RETRY_BACKOFF_MS[..retried].to_vec());
+            assert_eq!(f.open().unwrap().work[0].status, "errored");
+        }
         assert!(
-            f.open().unwrap().work[0]
-                .failure
-                .as_deref()
-                .unwrap()
-                .starts_with("transient (429), retries exhausted")
+            with_auto(0).policy.auto_continue == 0,
+            "0 = errored at once"
         );
     }
 
     #[test]
-    fn single_huge_retry_after_is_not_honored() {
-        let mut f = GraphFile::default();
+    fn retry_after_replaces_backoff_within_the_cap() {
+        let mut f = with_auto(2);
         f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
-        f.started("a", Ok("op".into()));
-        // A single wait larger than the 1 h cap consumes budget immediately.
+        f.started("a", Ok("op".into()), 0);
+        // The router de-dup reply: `"retry_after":1` → a 1 s continue (uses budget).
+        let dedup = r#"{"error":{"message":"An identical request is already in progress (reset after 1s)","retry_after":1}}"#;
         assert_eq!(
-            fail_settle(&mut f, "op", "429; retry-after: 7200s", 0, false),
+            fail_settle(&mut f, "op", dedup, 0, false),
             SettleOutcome::Retried {
                 work_id: "a".into(),
-                delay_ms: 30_000
+                delay_ms: 1_000
             }
         );
         assert_eq!(f.open().unwrap().work[0].retry_count, 1);
-        assert_eq!(f.open().unwrap().work[0].retry_after_total_ms, 0);
+        assert_eq!(f.open().unwrap().work[0].retry_after_total_ms, 1_000);
+        // A Retry-After beyond the 1 h cap is not waited out: errored now.
+        f.started("a", Ok("op".into()), 1);
+        assert_eq!(
+            fail_settle(&mut f, "op", "429; retry-after: 7200s", 2, false),
+            SettleOutcome::Settled {
+                work_id: "a".into(),
+                status: "errored".into()
+            }
+        );
+        assert!(
+            f.open().unwrap().work[0]
+                .failure
+                .as_deref()
+                .unwrap()
+                .starts_with("transient (429), retry-after exceeds the auto-continue cap")
+        );
     }
 
     #[test]
-    fn retry_resumes_own_session_and_render_names_failure() {
+    fn permanent_error_is_errored_at_once_with_partial_output() {
         let mut f = GraphFile::default();
         f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
-        f.started("a", Ok("op".into()));
-        fail_settle(&mut f, "op", "502 bad gateway", 0, false);
-        // The retry run keeps the same operator mapping (graph-run resumes it).
-        let (id, _profile, resume) = f.runnable(30_000).pop().unwrap();
-        assert_eq!(id, "a");
-        assert_eq!(resume.as_deref(), Some("op"));
-        let task = f.render_task("a");
-        assert!(task.starts_with(
-            "Your previous run of this work failed with a transient error (transient (5xx), retry 1/3 in 30s: 502 bad gateway)."
+        f.started("a", Ok("op".into()), 0);
+        assert_eq!(
+            f.settle(
+                "op",
+                "failed",
+                "half the scan: x, y",
+                Some("401 unauthorized"),
+                7,
+                5,
+                false
+            ),
+            SettleOutcome::Settled {
+                work_id: "a".into(),
+                status: "errored".into()
+            }
+        );
+        let w = &f.open().unwrap().work[0];
+        assert_eq!(w.retry_count, 0);
+        assert_eq!(w.failure.as_deref(), Some("permanent: 401 unauthorized"));
+        assert_eq!(w.failure_class.as_deref(), Some("permanent"));
+        assert_eq!(
+            w.result.as_deref(),
+            Some("half the scan: x, y"),
+            "partial output kept"
+        );
+        assert!(w.result_id.is_none(), "no committed result");
+        assert_eq!(w.tool_calls, 7);
+        // The error text alone is not stored as output.
+        let mut f = GraphFile::default();
+        f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
+        f.started("a", Ok("op".into()), 0);
+        f.settle("op", "failed", "boom", None, 0, 0, false);
+        assert!(f.open().unwrap().work[0].result.is_none());
+        // A crashed worker is transient even with nonsense text.
+        let mut f = GraphFile::default();
+        f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
+        f.started("a", Ok("op".into()), 0);
+        assert!(matches!(
+            fail_settle(&mut f, "op", "weird lacerations", 0, true),
+            SettleOutcome::Retried {
+                delay_ms: 30_000,
+                ..
+            }
         ));
-        assert!(task.contains("Continue from where you stopped"));
-        // A plain follow-up (no retry) gets no retry fragment.
+    }
+
+    #[test]
+    fn lead_continue_resumes_the_same_operator() {
+        let mut f = with_auto(0);
+        f.update(&upd(vec![add("a", &[]), add("b", &["r-a"])]), "g", 0)
+            .unwrap();
+        f.started("a", Ok("op".into()), 0);
+        fail_settle(
+            &mut f,
+            "op",
+            "Error reading response: malformed server-sent event JSON.",
+            10,
+            false,
+        );
+        assert_eq!(f.open().unwrap().work[0].status, "errored");
+        let rev = f.open().unwrap().revision;
+        let mut c = upd(vec![]);
+        c.resume = vec![("a".into(), Some("skip the flaky module".into()))];
+        let r = f.update(&c, "g", 20).unwrap();
+        assert_eq!(r.continued, ["a"]);
+        let g = f.open().unwrap();
+        assert_eq!(g.revision, rev + 1);
+        assert_eq!(g.work.len(), 2, "no new work id");
+        let w = &g.work[0];
+        assert_eq!(w.status, "queued");
+        assert!(
+            w.superseded_by.is_none() && w.replaces.is_none(),
+            "no supersede chain"
+        );
+        assert_eq!(w.continues, 1);
+        assert_eq!(
+            w.events
+                .last()
+                .map(|e| (e.status.as_str(), e.by, e.detail.as_str())),
+            Some(("continued", By::Lead, "skip the flaky module"))
+        );
+        // Same operator, short continue message (the session already has the task).
+        assert_eq!(f.runnable(20)[0].2.as_deref(), Some("op"));
+        let task = f.render_task("a");
+        assert!(task.starts_with("Your previous run was cut off by an error (transient (stream), auto-continue off: Error reading response: malformed server-sent event JSON.); continue from where you stopped"), "{task}");
+        assert!(task.contains("Note from the supervisor: skip the flaky module"));
+        assert!(!task.contains("do a"), "instruction is not re-sent");
+        assert!(task.ends_with("</agent_graph_handoff_protocol>"));
+        f.started("a", Ok("op".into()), 21);
+        assert_eq!(
+            f.open().unwrap().work[0].events.last().unwrap().by,
+            By::Lead,
+            "running by the continuer"
+        );
+        assert!(f.open().unwrap().work[0].resume.is_none());
+        f.settle("op", "completed", "done", None, 1, 30, false);
+        assert_eq!(f.open().unwrap().work[0].status, "completed");
+        assert_eq!(
+            f.runnable(30)[0].0,
+            "b",
+            "dependent runs after the continue"
+        );
+        // Continue refuses non-errored work, with a code.
+        let mut c = upd(vec![]);
+        c.resume = vec![("a".into(), None)];
+        assert!(
+            f.update(&c, "g", 31)
+                .unwrap_err()
+                .contains("a is completed — only errored or failed work can be continued")
+        );
+        c.resume = vec![("zz".into(), None)];
+        assert!(
+            f.update(&c, "g", 31)
+                .unwrap_err()
+                .contains("unknown work zz")
+        );
+        assert_eq!(
+            GraphFile::continuable(f.open().unwrap(), "a")
+                .unwrap_err()
+                .code,
+            LhCode::WorkNotContinuable
+        );
+    }
+
+    #[test]
+    fn continue_by_operator_id_and_fresh_start_when_never_started() {
+        let mut f = with_auto(0);
+        f.update(&upd(vec![add("a", &[]), add("b", &[])]), "g", 0)
+            .unwrap();
+        f.started("a", Ok("op1".into()), 0);
+        fail_settle(&mut f, "op1", "connection error", 0, false);
+        // A refused start: errored without an operator.
+        f.started("b", Err("unknown subagent profile".into()), 0);
+        let b = &f.open().unwrap().work[1];
+        assert_eq!(
+            (b.status.as_str(), b.failure_class.as_deref()),
+            ("errored", Some("start"))
+        );
+        assert_eq!(
+            b.failure.as_deref(),
+            Some("could not start: unknown subagent profile")
+        );
+        let mut c = upd(vec![]);
+        c.resume = vec![
+            ("op1".into(), None),
+            ("b".into(), Some("use explore".into())),
+        ];
+        assert_eq!(f.update(&c, "g", 1).unwrap().continued, ["a", "b"]);
+        let run = f.runnable(1);
+        assert_eq!(run[0].2.as_deref(), Some("op1"));
+        assert_eq!(run[1].2, None, "fresh start");
+        let task = f.render_task("b");
+        assert!(task.starts_with("Note: use explore\n\ndo b"), "{task}");
+    }
+
+    #[test]
+    fn explicit_fail_and_stop_semantics() {
+        let mut f = GraphFile::default();
         f.update(
-            &upd(vec![AddWork {
-                operator_id: Some("op".into()),
-                ..add("c", &[])
-            }]),
+            &upd(vec![add("a", &[]), add("b", &["a"]), add("c", &[])]),
             "g",
-            1,
+            0,
         )
         .unwrap();
-        assert!(!f.render_task("c").contains("transient error"));
+        f.started("a", Ok("op1".into()), 0);
+        f.started("c", Ok("op3".into()), 0);
+        // fail a running item: its operator is stopped, dependents block.
+        let mut u = upd(vec![]);
+        u.fail = vec![("a".into(), "wrong approach".into())];
+        let r = f.update(&u, "g", 5).unwrap();
+        assert_eq!(r.stop_operators, ["op1"]);
+        let g = f.open().unwrap();
+        assert_eq!(g.work[0].status, "failed");
+        assert_eq!(g.work[0].failure_class.as_deref(), Some("lead"));
+        assert_eq!(f.view_status(g, &g.work[1]), "blocked");
+        assert_eq!(statuses(&g.work[0]).last(), Some(&("failed", By::Lead)));
+        // A late run-done of the failed item changes nothing.
+        f.settle("op1", "completed", "late", None, 0, 6, false);
+        assert_eq!(f.open().unwrap().work[0].status, "failed");
+        // fail needs a reason and a live target.
+        u.fail = vec![("a".into(), "again".into())];
+        assert!(
+            f.update(&u, "g", 7)
+                .unwrap_err()
+                .contains("a is already failed")
+        );
+        u.fail = vec![("c".into(), " ".into())];
+        assert!(
+            f.update(&u, "g", 7)
+                .unwrap_err()
+                .contains("reason is empty")
+        );
+        // stop keeps its obsolete-work meaning: stopped, logged by the lead.
+        let mut s = upd(vec![]);
+        s.stop = vec![("c".into(), "obsolete".into())];
+        assert_eq!(f.update(&s, "g", 8).unwrap().stop_operators, ["op3"]);
+        let c = &f.open().unwrap().work[2];
+        assert_eq!(c.status, "stopped");
+        assert_eq!(
+            c.events
+                .last()
+                .map(|e| (e.status.as_str(), e.detail.as_str())),
+            Some(("stopped", "obsolete"))
+        );
+        // A failed item can still be revived by an explicit continue.
+        let mut c = upd(vec![]);
+        c.resume = vec![("a".into(), None)];
+        assert_eq!(f.update(&c, "g", 9).unwrap().continued, ["a"]);
+    }
+
+    #[test]
+    fn user_retry_same_semantics_recorded_as_user() {
+        let mut f = with_auto(0);
+        f.update(&upd(vec![add("a", &[])]), "g1", 0).unwrap();
+        f.started("a", Ok("op".into()), 0);
+        fail_settle(&mut f, "op", "request timed out", 0, false);
+        assert_eq!(
+            f.continue_work(Some("nope"), "a", None, By::User, 1)
+                .unwrap_err()
+                .code,
+            LhCode::GraphNotFound
+        );
+        assert_eq!(
+            f.continue_work(None, "", None, By::User, 1)
+                .unwrap_err()
+                .code,
+            LhCode::RequestInvalid
+        );
+        assert_eq!(
+            f.continue_work(None, "zz", None, By::User, 1)
+                .unwrap_err()
+                .code,
+            LhCode::WorkNotFound
+        );
+        assert_eq!(
+            f.continue_work(Some("g1"), "a", None, By::User, 2).unwrap(),
+            "a"
+        );
+        let w = &f.open().unwrap().work[0];
+        assert_eq!(
+            w.events
+                .last()
+                .map(|e| (e.status.as_str(), e.by, e.detail.as_str())),
+            Some(("continued", By::User, "continued by user"))
+        );
+        assert_eq!(f.runnable(2)[0].2.as_deref(), Some("op"));
+        // Twice is refused (already scheduled).
+        let e = f.continue_work(None, "a", None, By::User, 3).unwrap_err();
+        assert_eq!(e.code, LhCode::WorkNotContinuable);
+        assert!(e.message.contains("a continue is already scheduled"));
+        assert_eq!(e.to_json()["code"], "lh.work.not_continuable");
+        f.started("a", Ok("op".into()), 4);
+        assert_eq!(
+            f.open().unwrap().work[0].events.last().unwrap().by,
+            By::User
+        );
+        // A closed graph refuses.
+        f.abandon("stopped(user_requested)", By::User, 5);
+        assert_eq!(
+            f.continue_work(Some("g1"), "a", None, By::User, 6)
+                .unwrap_err()
+                .code,
+            LhCode::GraphClosed
+        );
+        // The continue bound.
+        let mut f = with_auto(0);
+        f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
+        for i in 0..MAX_CONTINUES {
+            f.started("a", Ok("op".into()), i64::from(i));
+            fail_settle(&mut f, "op", "boom", 0, false);
+            f.continue_work(None, "a", None, By::User, 0).unwrap();
+        }
+        f.started("a", Ok("op".into()), 0);
+        fail_settle(&mut f, "op", "boom", 0, false);
+        assert_eq!(
+            f.continue_work(None, "a", None, By::User, 0)
+                .unwrap_err()
+                .code,
+            LhCode::ContinueLimit
+        );
+        assert!(f.open().unwrap().work[0].events.len() <= MAX_WORK_EVENTS);
+        assert!(f.open().unwrap().work[0].events_dropped > 0);
+        // Every code is namespaced and unique.
+        let codes: Vec<&str> = LhCode::ALL.iter().map(|c| c.as_str()).collect();
+        assert!(
+            codes
+                .iter()
+                .all(|c| c.starts_with("lh.") && c.split('.').count() == 3)
+        );
+        assert_eq!(
+            codes
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            codes.len()
+        );
+    }
+
+    #[test]
+    fn restart_resumes_interrupted_work_on_its_operator() {
+        let mut f = GraphFile::default();
+        f.update(&upd(vec![add("a", &[]), add("b", &["a"])]), "g", 0)
+            .unwrap();
+        f.started("a", Ok("op".into()), 0);
+        // Host restart: `a` was running.
+        assert_eq!(
+            f.interrupted(100),
+            [("a".to_owned(), RESTART_RESUME_DELAY_MS)]
+        );
+        let w = &f.open().unwrap().work[0];
+        assert_eq!(w.status, "queued");
+        assert_eq!(w.restart_resumes, 1);
+        assert_eq!(
+            w.events.last().map(|e| (e.status.as_str(), e.by)),
+            Some(("continued", By::Host))
+        );
+        // The schedule is the file: re-armed on bind, due after the grace.
+        assert_eq!(
+            f.retry_schedule(100).1,
+            [("a".to_owned(), RESTART_RESUME_DELAY_MS)]
+        );
+        assert_eq!(f.runnable(100), []);
+        assert_eq!(f.runnable(3_100)[0].2.as_deref(), Some("op"));
+        assert!(
+            f.render_task("a")
+                .starts_with("Your previous run was cut off by a host restart; continue")
+        );
+        // The worker survived after all: its completion lands, no re-run.
+        assert_eq!(
+            f.settle("op", "completed", "ok", None, 0, 200, false),
+            SettleOutcome::Settled {
+                work_id: "a".into(),
+                status: "completed".into()
+            }
+        );
+        assert_eq!(f.runnable(3_100)[0].0, "b");
+        // Bounded: the 4th restart of the same run leaves it errored (lead woken).
+        f.started("b", Ok("op2".into()), 300);
+        for i in 0..MAX_RESTART_RESUMES {
+            assert_eq!(f.interrupted(400 + i64::from(i)).len(), 1);
+            f.started("b", Ok("op2".into()), 500);
+        }
+        assert_eq!(f.interrupted(900), []);
+        let b = &f.open().unwrap().work[1];
+        assert_eq!(b.status, "errored");
+        assert!(
+            b.failure
+                .as_deref()
+                .unwrap()
+                .contains("interrupted by a restart 4 times")
+        );
+        let mut reported = Vec::new();
+        assert_eq!(
+            f.checkpoint(&mut reported, 901).unwrap().0,
+            "needs_attention"
+        );
+        // A queued start lost to the restart is runnable (the bind arms a start).
+        let mut f = GraphFile::default();
+        f.update(&upd(vec![add("x", &[])]), "g", 0).unwrap();
+        assert_eq!(f.interrupted(1), []);
+        assert_eq!(f.runnable(1)[0].0, "x");
+    }
+
+    #[test]
+    fn start_errors_are_bounded() {
+        let mut f = GraphFile::default();
+        f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
+        for _ in 1..MAX_START_ERRORS {
+            assert!(f.start_error("a", "Unknown service: subagents.graph-run", 0));
+        }
+        assert!(!f.start_error("a", "Unknown service: subagents.graph-run", 0));
+        assert_eq!(f.open().unwrap().work[0].status, "errored");
+    }
+
+    #[test]
+    fn event_log_covers_every_transition_and_graph_events() {
+        let mut f = with_auto(1);
+        f.update(
+            &upd(vec![add("a", &[]), add("b", &[]), add("c", &[])]),
+            "g",
+            0,
+        )
+        .unwrap();
+        f.started("a", Ok("op1".into()), 1);
+        fail_settle(&mut f, "op1", "timeout", 2, false); // continued (auto)
+        f.started("a", Ok("op1".into()), 3);
+        fail_settle(&mut f, "op1", "timeout", 4, false); // errored
+        f.continue_work(None, "a", None, By::User, 5).unwrap(); // continued (user)
+        f.started("a", Ok("op1".into()), 6);
+        f.settle("op1", "completed", "A", None, 0, 7, false); // completed
+        f.started("b", Ok("op2".into()), 8);
+        f.settle("op2", "cancelled", "", None, 0, 9, false); // stopped (user cancel)
+        let mut r = upd(vec![add("c2", &[])]);
+        r.add[0].replaces = Some("c".into());
+        f.update(&r, "g", 10).unwrap(); // superseded
+        let mut fail = upd(vec![]);
+        fail.fail = vec![("c2".into(), "no".into())];
+        f.update(&fail, "g", 11).unwrap(); // failed
+        let g = f.open().unwrap();
+        let a: Vec<&str> = g.work[0].events.iter().map(|e| e.status.as_str()).collect();
+        assert_eq!(
+            a,
+            [
+                "queued",
+                "running",
+                "continued",
+                "running",
+                "errored",
+                "continued",
+                "running",
+                "completed"
+            ]
+        );
+        assert_eq!(
+            g.work[0].events.iter().map(|e| e.ts).collect::<Vec<_>>(),
+            [0, 1, 2, 3, 4, 5, 6, 7]
+        );
+        assert_eq!(statuses(&g.work[1]).last(), Some(&("stopped", By::User)));
+        assert_eq!(statuses(&g.work[2]).last(), Some(&("superseded", By::Lead)));
+        assert_eq!(
+            statuses(&g.work[3]),
+            [("queued", By::Lead), ("failed", By::Lead)]
+        );
+        // Graph log: opened … finished; abandon logs stopped.
+        let mut done = upd(vec![]);
+        done.finish = Some((vec!["r-a".into()], "ok".into()));
+        f.update(&done, "g", 12).unwrap();
+        let g = f.current.as_ref().unwrap();
+        assert_eq!(
+            g.events.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(),
+            ["opened", "finished"]
+        );
+        // Serialized shape: {ts, status, by, detail}; old files without events load.
+        let v = serde_json::to_value(&g.work[0].events[2]).unwrap();
+        assert_eq!(v["by"], "auto");
+        assert!(
+            v["detail"]
+                .as_str()
+                .unwrap()
+                .starts_with("auto-continue 1/1 in 30s after transient (network): timeout")
+        );
+        let mut old = serde_json::to_value(&f).unwrap();
+        old["current"]["work"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("events");
+        old["current"].as_object_mut().unwrap().remove("events");
+        let back: GraphFile = serde_json::from_value(old).unwrap();
+        assert_eq!(back.current.unwrap().work[0].events, []);
+        // Bounded graph log.
+        let mut g = f.current.clone().unwrap();
+        for i in 0..(MAX_GRAPH_EVENTS + 5) {
+            g.log(
+                i64::try_from(i).unwrap(),
+                "checkpoint",
+                By::Host,
+                &"x".repeat(1_000),
+            );
+        }
+        assert_eq!(g.events.len(), MAX_GRAPH_EVENTS);
+        assert_eq!(g.events_dropped, 7);
+        assert!(g.events[0].detail.chars().count() <= EVENT_DETAIL_CHARS + 1);
+    }
+
+    #[test]
+    fn snapshot_and_history_are_data() {
+        let mut f = with_auto(0);
+        f.update(&upd(vec![add("a", &[])]), "g1", 0).unwrap();
+        f.started("a", Ok("op".into()), 1);
+        f.settle("op", "completed", "A", None, 0, 2, false);
+        let mut done = upd(vec![]);
+        done.finish = Some((vec!["r-a".into()], "ok".into()));
+        f.update(&done, "g1", 3).unwrap();
+        f.update(&upd(vec![add("x", &[]), add("y", &["x"])]), "g2", 4)
+            .unwrap();
+        f.started("x", Ok("opx".into()), 5);
+        f.settle(
+            "opx",
+            "failed",
+            "partial",
+            Some("connection error"),
+            2,
+            6,
+            false,
+        );
+        // History: current first, then earlier graphs, newest first.
+        let h = f.history_list();
+        assert_eq!(h.as_array().map(Vec::len), Some(2));
+        assert_eq!(h[0]["graphId"], "g2");
+        assert_eq!(h[0]["state"], "open");
+        assert_eq!(h[0]["counts"]["errored"], 1);
+        assert_eq!(h[1]["graphId"], "g1");
+        assert_eq!(h[1]["state"], "finished");
+        assert_eq!(h[1]["finish"]["resultIds"], json!(["r-a"]));
+        // Snapshot of the open graph.
+        let s = f.snapshot(f.open().unwrap());
+        assert_eq!(s["v"], 1);
+        assert_eq!(s["events"][0]["kind"], "opened");
+        let x = &s["work"][0];
+        assert_eq!(x["workId"], "x");
+        assert_eq!(x["status"], "errored");
+        assert_eq!(x["canRetry"], true);
+        assert_eq!(x["hasOutput"], true);
+        assert_eq!(x["operatorId"], "opx");
+        assert_eq!(x["failureClass"], "transient");
+        assert!(x["error"].as_str().unwrap().contains("connection error"));
+        assert_eq!(
+            x["events"].as_array().unwrap().last().unwrap()["status"],
+            "errored"
+        );
+        assert_eq!(s["work"][1]["status"], "queued");
+        assert_eq!(s["work"][1]["canRetry"], false);
+        assert!(s["work"][1].get("resultId").is_none());
+        // Snapshot of an earlier graph (by id).
+        let old = f.snapshot(f.graph("g1").unwrap());
+        assert_eq!(old["state"], "finished");
+        assert_eq!(old["work"][0]["resultId"], "r-a");
+        assert_eq!(
+            old["events"].as_array().unwrap().last().unwrap()["kind"],
+            "finished"
+        );
+        // Bounded: all live work + the newest settled, at most SNAPSHOT_MAX_WORK.
+        let mut big = GraphFile::default();
+        let items: Vec<AddWork> = (0..30).map(|i| add(&format!("w{i}"), &[])).collect();
+        big.update(&upd(items), "g", 0).unwrap();
+        for k in 0..5 {
+            let more: Vec<AddWork> = (0..30).map(|i| add(&format!("w{k}-{i}"), &[])).collect();
+            big.update(&upd(more), "g", 1).unwrap();
+        }
+        for w in &mut big.current.as_mut().unwrap().work[..170] {
+            w.status = "completed".into();
+        }
+        let s = big.snapshot(big.open().unwrap());
+        assert_eq!(s["work"].as_array().map(Vec::len), Some(SNAPSHOT_MAX_WORK));
+        assert_eq!(s["omittedWork"], 60);
+        assert_eq!(s["work"][0]["workId"], "w1-0", "the newest settled kept");
+    }
+
+    #[test]
+    fn swarm_attention_includes_errored() {
+        let mut f = with_auto(0);
+        let mut u = upd(vec![add("a", &[]), add("b", &[])]);
+        u.mode = GraphMode::Swarm;
+        f.update(&u, "s", 0).unwrap();
+        f.started("a", Ok("op".into()), 0);
+        fail_settle(&mut f, "op", "boom", 0, false);
+        let st = f.swarm_status(f.open().unwrap());
+        assert_eq!(st["status"], "needs_attention");
+        assert_eq!(st["items"][0]["failure"], "permanent: boom");
+        assert_eq!(st["counts"]["errored"], 1);
+        assert_eq!(f.counts_line(f.open().unwrap()), "1 queued, 1 errored");
+        // finish stops errored work too.
+        f.started("b", Ok("op2".into()), 0);
+        f.settle("op2", "completed", "B", None, 0, 0, false);
+        let mut done = upd(vec![]);
+        done.mode = GraphMode::Swarm;
+        done.finish = Some((vec!["r-b".into()], "ok".into()));
+        f.update(&done, "s", 1).unwrap();
+        assert_eq!(f.current.as_ref().unwrap().work[0].status, "stopped");
     }
 
     #[test]
@@ -2343,7 +3731,7 @@ mod tests {
         let mut f = GraphFile::default();
         f.update(&upd(vec![add("a", &[]), add("b", &["r-a"])]), "g", 0)
             .unwrap();
-        f.started("a", Ok("op".into()));
+        f.started("a", Ok("op".into()), 0);
         fail_settle(&mut f, "op", "boom", 0, false);
         f.update(
             &upd(vec![AddWork {
@@ -2357,7 +3745,7 @@ mod tests {
         .unwrap();
         let (id, _, _) = f.runnable(0).pop().unwrap();
         assert_eq!(id, "a2");
-        f.started("a2", Ok("op".into()));
+        f.started("a2", Ok("op".into()), 0);
         assert_eq!(
             f.settle("op", "completed", "plan done", None, 5, 2, false),
             SettleOutcome::Settled {
@@ -2378,7 +3766,14 @@ mod tests {
         // newest item, never on the superseded one.
         f.settle("op", "completed", "late", None, 0, 3, false);
         let g = f.open().unwrap();
-        assert!(g.work.iter().find(|w| w.work_id == "a").unwrap().result.is_none());
+        assert!(
+            g.work
+                .iter()
+                .find(|w| w.work_id == "a")
+                .unwrap()
+                .result
+                .is_none()
+        );
     }
 
     #[test]
@@ -2386,9 +3781,9 @@ mod tests {
         let mut f = GraphFile::default();
         f.update(&upd(vec![add("a", &[]), add("b", &[])]), "g", 0)
             .unwrap();
-        f.started("a", Ok("op1".into()));
+        f.started("a", Ok("op1".into()), 0);
         fail_settle(&mut f, "op1", "connection error", 0, false);
-        f.started("b", Ok("op2".into()));
+        f.started("b", Ok("op2".into()), 0);
         fail_settle(&mut f, "op2", "timed out", 0, false);
         f.open_mut().unwrap().work[1].next_retry_at = Some(500_000);
         // Before the fire times: nothing due, two future timers (a at 30 s, b at 500 s).
@@ -2403,7 +3798,7 @@ mod tests {
         assert_eq!(due, ["a".to_owned()]);
         assert_eq!(future, vec![("b".to_owned(), 469_000)]);
         // A closed graph never re-arms.
-        let ops = f.abandon("stopped(user_requested)");
+        let ops = f.abandon("stopped(user_requested)", By::User, 0);
         assert_eq!(ops, [] as [String; 0]);
         assert_eq!(f.retry_schedule(600_000), (Vec::new(), Vec::new()));
     }
@@ -2412,12 +3807,22 @@ mod tests {
     fn view_exposes_retry_fields() {
         let mut f = GraphFile::default();
         f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
-        f.started("a", Ok("op".into()));
+        f.started("a", Ok("op".into()), 0);
         fail_settle(&mut f, "op", "connection error", 0, false);
         let v = f.view(f.open().unwrap(), false);
-        assert_eq!(v["work"][0]["retry_count"], 1);
+        assert_eq!(v["work"][0]["auto_continues"], 1);
         assert_eq!(v["work"][0]["next_retry_at"], 30_000);
         assert_eq!(v["work"][0]["failure_class"], "transient");
+        // The lead sees the bounded event log, newest last.
+        let ev = v["work"][0]["events"].as_array().unwrap();
+        assert_eq!(
+            ev.iter()
+                .map(|e| e["status"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["queued", "running", "continued"]
+        );
+        assert_eq!(ev[2]["by"], "auto");
+        assert_eq!(v["events"][0]["kind"], "opened");
     }
 
     #[test]
@@ -2426,7 +3831,7 @@ mod tests {
         let mut b = add("b-2", &["r-a"]);
         b.profile = Some("subagent_explore".into());
         f.update(&upd(vec![add("a", &[]), b]), "g", 0).unwrap();
-        f.started("a", Ok("op1".into()));
+        f.started("a", Ok("op1".into()), 0);
         // An older subagents (`{runId}` only) records nothing.
         f.set_ran("a", RanOn::from_reply(&json!({"runId": "op1"})));
         assert!(f.open().unwrap().work[0].ran.is_none());
@@ -2440,9 +3845,15 @@ mod tests {
         let v = f.visual(&g);
         // Node lines stay parseable by older apps; the ran-on line is indented.
         assert_eq!(v.lines[0], "- a [running] do a");
-        assert_eq!(v.lines[1], "  - ran on rel-qa · zai/glm-5.3 · thinking high");
+        assert_eq!(
+            v.lines[1],
+            "  - ran on rel-qa · zai/glm-5.3 · thinking high"
+        );
         assert_eq!(v.lines[2], "- b-2 [queued] do b-2");
-        assert!(v.mermaid.contains(&"  n_a[\"a · running<br/>rel-qa · glm-5.3\"]".to_owned()));
+        assert!(
+            v.mermaid
+                .contains(&"  n_a[\"a · running<br/>rel-qa · glm-5.3\"]".to_owned())
+        );
         assert!(v.mermaid.contains(&"  n_b_2[\"b-2 · queued\"]".to_owned()));
         assert!(v.mermaid.contains(&"  n_a --> n_b_2".to_owned()));
         assert!(v.mermaid.contains(&"  class n_a running".to_owned()));
@@ -2456,9 +3867,15 @@ mod tests {
         assert_eq!(f.view(&g, false)["work"][0]["model"], "zai/glm-5.3");
         // graph.json round-trips the run record; old files without it still load.
         let back: GraphFile = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
-        assert_eq!(back.open().unwrap().work[0].ran.as_ref().unwrap().model, "zai/glm-5.3");
+        assert_eq!(
+            back.open().unwrap().work[0].ran.as_ref().unwrap().model,
+            "zai/glm-5.3"
+        );
         let mut old = serde_json::to_value(&f).unwrap();
-        old["current"]["work"][0].as_object_mut().unwrap().remove("ran");
+        old["current"]["work"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("ran");
         let old: GraphFile = serde_json::from_value(old).unwrap();
         assert!(old.open().unwrap().work[0].ran.is_none());
     }
@@ -2466,14 +3883,36 @@ mod tests {
     #[test]
     fn visual_marks_failed_blocked_superseded() {
         let mut f = GraphFile::default();
-        f.update(&upd(vec![add("a", &[]), add("b", &["r-a"])]), "g", 0).unwrap();
-        f.started("a", Ok("op1".into()));
+        f.update(&upd(vec![add("a", &[]), add("b", &["r-a"])]), "g", 0)
+            .unwrap();
+        f.started("a", Ok("op1".into()), 0);
         f.settle("op1", "failed", "", Some("boom"), 0, 0, false);
+        // Errored looks different from failed, offers Retry, and its dependent waits.
         let g = f.open().unwrap().clone();
         let v = f.visual(&g);
+        assert!(v.mermaid.contains(&"  class n_a errored".to_owned()));
+        assert!(
+            v.mermaid
+                .iter()
+                .any(|l| l.starts_with("  classDef errored "))
+        );
+        assert_eq!(v.nodes[0]["canRetry"], true);
+        assert_eq!(v.nodes[1]["status"], "queued");
+        assert_eq!(v.nodes[0]["events"].as_array().map(Vec::len), Some(3));
+        let mut fail = upd(vec![]);
+        fail.fail = vec![("a".into(), "give up".into())];
+        f.update(&fail, "g", 1).unwrap();
+        let g = f.open().unwrap().clone();
+        let v = f.visual(&g);
+        assert!(v.nodes[0].get("canRetry").is_none());
         assert!(v.mermaid.contains(&"  class n_a failed".to_owned()));
         assert!(v.mermaid.contains(&"  class n_b blocked".to_owned()));
-        assert_eq!(v.nodes[0]["failure"].as_str().map(|s| s.contains("boom")), Some(true));
+        assert_eq!(
+            v.nodes[0]["failure"]
+                .as_str()
+                .map(|s| s.contains("give up")),
+            Some(true)
+        );
         assert!(v.nodes[0].get("toolCalls").is_none());
         let mut r = add("a2", &[]);
         r.replaces = Some("a".into());
@@ -2484,7 +3923,11 @@ mod tests {
         assert_eq!(a["status"], "superseded");
         assert_eq!(a["supersededBy"], "a2");
         assert!(v.mermaid.contains(&"  n_a -.-> n_a2".to_owned()));
-        assert!(v.mermaid.iter().any(|l| l.starts_with("  class ") && l.ends_with(" off") && l.contains("n_a")));
+        assert!(
+            v.mermaid
+                .iter()
+                .any(|l| l.starts_with("  class ") && l.ends_with(" off") && l.contains("n_a"))
+        );
     }
 
     #[test]
@@ -2512,12 +3955,16 @@ mod tests {
         );
         f.update(&upd(vec![add("a", &[]), add("b", &["a"])]), "g", 0)
             .unwrap();
-        f.started("a", Ok("op".into()));
+        f.started("a", Ok("op".into()), 0);
         f.settle("op", "failed", "", Some("x"), 0, 0, false);
+        // Errored input: the dependent waits (queued, not blocked).
         assert_eq!(
             f.view_status(f.open().unwrap(), &f.open().unwrap().work[1]),
-            "blocked"
+            "queued"
         );
+        assert_eq!(f.runnable(0), []);
+        assert!(!f.can_progress());
+        assert_eq!(f.errored()[0].0, "a");
         let r = f
             .update(
                 &upd(vec![AddWork {
@@ -2534,7 +3981,7 @@ mod tests {
         assert_eq!(view["state"], "open");
         assert_eq!(f.swarm_status(f.open().unwrap())["status"], "running");
         assert!(f.read_result("a", None).is_some());
-        let ops = f.abandon("stopped(user_requested)");
+        let ops = f.abandon("stopped(user_requested)", By::User, 0);
         assert_eq!(ops, Vec::<String>::new());
         assert!(
             f.status_line()

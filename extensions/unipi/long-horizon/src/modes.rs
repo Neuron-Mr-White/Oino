@@ -459,6 +459,8 @@ pub struct Settings {
     pub goal_progress: String,
     /// Estimate model.
     pub progress_model: String,
+    /// Auto-continues of a transient error before work stops as `errored` (0–3).
+    pub auto_continue: u32,
 }
 
 impl Settings {
@@ -480,6 +482,19 @@ impl Settings {
                 _ => "loop".to_owned(),
             },
             progress_model: v.str("progressModel", "").to_owned(),
+            auto_continue: v
+                .get("graph.autoContinue")
+                .and_then(Value::as_f64)
+                .filter(|n| n.is_finite() && *n >= 0.0)
+                .map_or(crate::graph::AUTO_CONTINUE_DEFAULT, |n| {
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        clippy::cast_sign_loss,
+                        reason = "clamped to 0..=3"
+                    )]
+                    let n = n.min(f64::from(crate::graph::MAX_RETRIES)) as u32;
+                    n
+                }),
         }
     }
 }
@@ -490,6 +505,7 @@ pub fn defaults() -> Value {
     json!({
         "judge": {"enabled": false, "threshold": 0.8},
         "defaultMode": "none", "verifierModel": "", "goalProgress": "loop", "progressModel": "",
+        "graph": {"autoContinue": crate::graph::AUTO_CONTINUE_DEFAULT},
         "decisionModel": jev::consumer_defaults(),
     })
 }
@@ -546,6 +562,16 @@ pub fn namespace() -> Namespace {
                     choice("off", "off", "never estimate"),
                 ]).description("A one-off side call estimates % done and summarizes the work so far."))
                 .field(model("progressModel", "Estimate model", "Model for the progress estimate; runs once per goal turn, cheaper is fine.", "inherit (verifier → session model)")),
+        )
+        .section(
+            Section::new("errors", "Errors")
+                .description("A provider, network or upstream error stops work as errored (not failed); it keeps its session and can be continued")
+                .field(Field::number("graph.autoContinue", "Auto-continue").description("How many times errored work (graph, swarm, goal, ralph) continues by itself after a transient error, with backoff (0–3).").with_kind(|k| {
+                    if let Kind::Number { min, max, .. } = k {
+                        *min = Some(0.0);
+                        *max = Some(f64::from(crate::graph::MAX_RETRIES));
+                    }
+                })),
         )
 }
 
@@ -652,8 +678,16 @@ mod tests {
         }
         // Back to regular: only mode tools leave.
         let (enable, disable) = mode_tool_update(&active, Mode::None).unwrap();
-        assert!(enable.iter().all(|e| Mode::None.control_tools().contains(&e.as_str())));
-        assert!(disable.iter().all(|d| all_mode_tools().contains(&d.as_str())));
+        assert!(
+            enable
+                .iter()
+                .all(|e| Mode::None.control_tools().contains(&e.as_str()))
+        );
+        assert!(
+            disable
+                .iter()
+                .all(|d| all_mode_tools().contains(&d.as_str()))
+        );
         // Already in sync: nothing to send.
         let synced = sync_mode_tools(&registry, Mode::None).unwrap_or(registry);
         assert!(mode_tool_update(&synced, Mode::None).is_none());
@@ -713,7 +747,17 @@ mod tests {
         assert!(g.contains("an active graph owner is driving this session\n<orchestration_mode>"));
         assert_eq!(
             namespace().to_json()["sections"].as_array().map(Vec::len),
-            Some(4)
+            Some(5)
+        );
+        assert_eq!(Settings::load(&Values(defaults())).auto_continue, 1);
+        assert_eq!(
+            Settings::load(&Values(json!({"graph": {"autoContinue": 9}}))).auto_continue,
+            3,
+            "clamped to the retry table"
+        );
+        assert_eq!(
+            Settings::load(&Values(json!({"graph": {"autoContinue": 0}}))).auto_continue,
+            0
         );
         assert_eq!(judge_questions()["mode"]["type"], "choice");
     }

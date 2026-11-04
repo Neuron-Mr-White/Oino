@@ -6,6 +6,8 @@ use std::fmt::Write as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::graph::{By, EVENT_DETAIL_CHARS, Event, LhCode, LhError, MAX_RETRIES, RETRY_BACKOFF_MS};
+
 /// Default turn cap.
 pub const DEFAULT_MAX_TURNS: u32 = 50;
 /// Default stall cap.
@@ -176,6 +178,61 @@ pub struct Goal {
     /// Durable continuation outbox.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_continuation: Option<Pending>,
+    /// The last turn was cut off by an error and the auto-continue budget is used: the
+    /// goal (or ralph loop) waits for a continue (`/goal continue`, the app's Retry).
+    /// Never counts as a failed, stalled or blocked goal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub errored: Option<String>,
+    /// Auto-continues since the last turn that did not error.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub auto_continues: u32,
+    /// The error a scheduled auto-continue resumes from (taken when the timer fires).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continue_cause: Option<String>,
+    /// Error / continue transitions (bounded, oldest first).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<Event>,
+    /// Events dropped from the front of `events`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub events_dropped: u32,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if signature"
+)]
+fn is_zero(v: &u32) -> bool {
+    *v == 0
+}
+
+/// Goal event log length.
+pub const MAX_GOAL_EVENTS: usize = 24;
+
+/// What a turn that ended on an error does to the goal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ErrorStep {
+    /// Auto-continue after `delay_ms`.
+    AutoContinue {
+        /// Backoff (or Retry-After).
+        delay_ms: u64,
+    },
+    /// Budget used: the goal is errored until continued.
+    Errored,
+    /// No active goal.
+    Ignored,
+}
+
+/// The message that resumes a goal / ralph turn that was cut off.
+#[must_use]
+pub fn continue_prompt(error: &str, note: Option<&str>) -> String {
+    let cause: String = error.replace('\n', " ").chars().take(400).collect();
+    let mut t = format!(
+        "Your previous turn was cut off by an error ({cause}); continue from where you stopped. Re-check the last tool results before acting."
+    );
+    if let Some(n) = note.map(str::trim).filter(|n| !n.is_empty()) {
+        let _ = write!(t, "\n\nNote from the user: {n}");
+    }
+    t
 }
 
 /// unipi `GoalSettlement`.
@@ -276,6 +333,11 @@ impl Machine {
             kickoff_delivered: false,
             wrap_up_delivered_revision: None,
             pending_continuation: None,
+            errored: None,
+            auto_continues: 0,
+            continue_cause: None,
+            events: Vec::new(),
+            events_dropped: 0,
         };
         self.goal = Some(g.clone());
         Ok(g)
@@ -356,6 +418,119 @@ impl Machine {
             });
         }
     }
+    fn log(g: &mut Goal, ts: i64, status: &str, by: By, detail: &str) {
+        if g.events.len() >= MAX_GOAL_EVENTS {
+            g.events.remove(0);
+            g.events_dropped = g.events_dropped.saturating_add(1);
+        }
+        g.events.push(Event {
+            ts,
+            status: status.to_owned(),
+            by,
+            detail: detail
+                .replace('\n', " ")
+                .chars()
+                .take(EVENT_DETAIL_CHARS)
+                .collect(),
+        });
+    }
+
+    /// A turn of the active goal ended on an error (provider, network, upstream): the
+    /// turn does not count (no turn, stall or not-met step). Within `budget`
+    /// (clamped to [`MAX_RETRIES`]) it auto-continues after the backoff or the
+    /// Retry-After hint (`retry_after_ms`), else the goal is `errored`.
+    pub fn turn_error(
+        &mut self,
+        error: &str,
+        transient: bool,
+        retry_after_ms: Option<u64>,
+        budget: u32,
+        ts: i64,
+    ) -> ErrorStep {
+        let Some(g) = self
+            .goal
+            .as_mut()
+            .filter(|g| matches!(g.status, Status::Active | Status::Waiting))
+        else {
+            return ErrorStep::Ignored;
+        };
+        let budget = budget.min(MAX_RETRIES);
+        if transient && g.errored.is_none() && g.auto_continues < budget {
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "auto_continues < budget <= MAX_RETRIES"
+            )]
+            let delay = retry_after_ms
+                .filter(|ms| *ms <= RETRY_BACKOFF_MS[2])
+                .unwrap_or(RETRY_BACKOFF_MS[g.auto_continues as usize]);
+            g.auto_continues += 1;
+            g.continue_cause = Some(error.chars().take(1_000).collect());
+            let d = format!(
+                "auto-continue {}/{budget} in {}s after: {error}",
+                g.auto_continues,
+                delay / 1000
+            );
+            Self::log(g, ts, "continued", By::Auto, &d);
+            return ErrorStep::AutoContinue { delay_ms: delay };
+        }
+        g.errored = Some(error.chars().take(1_000).collect());
+        Self::log(g, ts, "errored", By::Host, error);
+        ErrorStep::Errored
+    }
+
+    /// Continues an errored goal (user `/goal continue`, the app's Retry, or a user turn).
+    ///
+    /// # Errors
+    ///
+    /// [`LhCode::GoalNotFound`] / [`LhCode::GoalNotErrored`].
+    pub fn continue_errored(
+        &mut self,
+        by: By,
+        note: Option<&str>,
+        ts: i64,
+    ) -> Result<String, LhError> {
+        let g = self
+            .goal
+            .as_mut()
+            .filter(|g| !g.status.terminal())
+            .ok_or_else(|| LhError {
+                code: LhCode::GoalNotFound,
+                message: "no active goal or ralph loop".into(),
+            })?;
+        let Some(error) = g.errored.take() else {
+            return Err(LhError {
+                code: LhCode::GoalNotErrored,
+                message: "the goal is not stopped on an error".into(),
+            });
+        };
+        g.auto_continues = 0;
+        let d = note.map_or_else(
+            || format!("continued by {}", by.as_str()),
+            ToOwned::to_owned,
+        );
+        Self::log(g, ts, "continued", by, &d);
+        Ok(error)
+    }
+
+    /// The scheduled auto-continue fired: its cause, when still pending.
+    pub fn take_continue_cause(&mut self) -> Option<String> {
+        self.goal
+            .as_mut()
+            .filter(|g| {
+                matches!(g.status, Status::Active | Status::Waiting) && g.errored.is_none()
+            })?
+            .continue_cause
+            .take()
+    }
+
+    /// A turn ended without an error: the auto-continue budget starts over.
+    pub fn turn_ok(&mut self) {
+        if let Some(g) = self.goal.as_mut() {
+            g.auto_continues = 0;
+            g.continue_cause = None;
+        }
+    }
+
     /// Clears the outbox.
     pub fn clear_pending(&mut self) {
         if let Some(g) = self.goal.as_mut() {
@@ -760,6 +935,9 @@ pub fn get_goal_json(g: &Goal, pending: Option<&str>) -> String {
     if let Some(r) = &g.reason {
         v["reason"] = json!(r);
     }
+    if let Some(e) = &g.errored {
+        v["errored"] = json!(e);
+    }
     for (k, val) in [
         ("turn", json!(g.turn)),
         ("max_turns", json!(g.max_turns)),
@@ -797,6 +975,92 @@ mod tests {
         m.create("g1".into(), "make tests pass", None, None, "t0")
             .unwrap();
         m
+    }
+
+    #[test]
+    fn turn_errors_auto_continue_then_errored_then_continue() {
+        let mut m = machine();
+        // Transient: one auto-continue (30 s), the turn does not count.
+        assert_eq!(
+            m.turn_error("connection error", true, None, 1, 10),
+            ErrorStep::AutoContinue { delay_ms: 30_000 }
+        );
+        let g = m.goal.clone().unwrap();
+        assert_eq!(
+            (g.turn, g.no_progress_streak, g.status),
+            (0, 0, Status::Active)
+        );
+        assert_eq!(m.take_continue_cause().as_deref(), Some("connection error"));
+        assert_eq!(m.take_continue_cause(), None, "taken once");
+        // A Retry-After hint replaces the backoff (bounded by the 10 min step).
+        let mut m2 = machine();
+        assert_eq!(
+            m2.turn_error("429", true, Some(2_000), 1, 0),
+            ErrorStep::AutoContinue { delay_ms: 2_000 }
+        );
+        // Budget used → errored (not paused, not blocked, not terminal).
+        assert_eq!(m.turn_error("503", true, None, 1, 20), ErrorStep::Errored);
+        let g = m.goal.clone().unwrap();
+        assert_eq!(g.errored.as_deref(), Some("503"));
+        assert_eq!(g.status, Status::Active);
+        assert!(m.active().is_some());
+        assert!(get_goal_json(&g, None).contains("\"errored\": \"503\""));
+        // Permanent: errored at once.
+        let mut m3 = machine();
+        assert_eq!(m3.turn_error("401", false, None, 3, 0), ErrorStep::Errored);
+        // Continue (user) clears the error and the budget; refused when not errored.
+        assert_eq!(
+            m.continue_errored(By::User, Some("try again"), 30).unwrap(),
+            "503"
+        );
+        let g = m.goal.clone().unwrap();
+        assert!(g.errored.is_none());
+        assert_eq!(g.auto_continues, 0);
+        assert_eq!(
+            g.events
+                .iter()
+                .map(|e| (e.status.as_str(), e.by))
+                .collect::<Vec<_>>(),
+            [
+                ("continued", By::Auto),
+                ("errored", By::Host),
+                ("continued", By::User)
+            ]
+        );
+        assert_eq!(
+            m.continue_errored(By::User, None, 31).unwrap_err().code,
+            LhCode::GoalNotErrored
+        );
+        assert_eq!(
+            Machine::default()
+                .continue_errored(By::User, None, 0)
+                .unwrap_err()
+                .code,
+            LhCode::GoalNotFound
+        );
+        // 0 = errored at once; a good turn restarts the budget.
+        let mut m4 = machine();
+        assert_eq!(
+            m4.turn_error("timeout", true, None, 0, 0),
+            ErrorStep::Errored
+        );
+        let mut m5 = machine();
+        m5.turn_error("timeout", true, None, 1, 0);
+        m5.turn_ok();
+        assert_eq!(m5.take_continue_cause(), None);
+        assert!(matches!(
+            m5.turn_error("timeout", true, None, 1, 1),
+            ErrorStep::AutoContinue { .. }
+        ));
+        let p = continue_prompt("boom\nline", Some(" note "));
+        assert!(p.starts_with("Your previous turn was cut off by an error (boom line); continue"));
+        assert!(p.ends_with("Note from the user: note"));
+        // Old goal.json without the new fields loads.
+        let mut v = serde_json::to_value(&g).unwrap();
+        for k in ["errored", "autoContinues", "events", "continueCause"] {
+            v.as_object_mut().unwrap().remove(k);
+        }
+        assert!(serde_json::from_value::<Goal>(v).is_ok());
     }
 
     #[test]

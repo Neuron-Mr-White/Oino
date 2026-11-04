@@ -62,7 +62,9 @@ use unipi_kit::topics;
 use unipi_kit::{fanout, jev};
 
 use crate::goal::{Evidence, Hint, Machine, Settlement};
-use crate::graph::{AddWork, GraphFile, GraphMode, Selected, Update, finish_args};
+use crate::graph::{
+    AddWork, By, GraphFile, GraphMode, LhCode, LhError, Selected, Update, finish_args,
+};
 use crate::modes::{EXTENSION_ID, Mode, NAMESPACE, OwnerKind, Owners, Settings};
 use crate::ralph::{LoopState, RALPH_DIR, RALPH_GUEST_DIR};
 
@@ -73,6 +75,16 @@ const GRAPH_RETRY_TIMER: &str = "lh-graph-retry";
 const RETRY_TIMER_PREFIX: &str = "lh-retry-";
 /// D6 §9.3: sticky terminal-failure topic (published directly — not a unipi-kit topic).
 const WORK_FAILED_TOPIC: &str = "unipi:long-horizon:work-failed";
+/// Sticky topic: a graph work item stopped on an error (`errored`, continuable).
+const WORK_ERRORED_TOPIC: &str = "unipi:long-horizon:work-errored";
+/// The app's graph data + Retry service (`_oino/service_call`).
+pub const GRAPH_SERVICE: &str = "long-horizon.graph";
+/// Auto-continue timer of a goal / ralph turn that ended on an error.
+const GOAL_CONTINUE_TIMER: &str = "lh-goal-continue";
+/// Graph events in the `/visualize-progress` params.
+const VISUAL_GRAPH_EVENTS: usize = 16;
+/// Errored work ids listed in the `LH_PROGRESS` graph snapshot.
+const PROGRESS_ERRORED_MAX: usize = 5;
 const VERIFIER_TIMEOUT_MS: u64 = 30_000;
 const REMIND_AFTER: usize = 3;
 /// Second attempt for the `subagents.profiles` lookup after the 2 s probe misses on a
@@ -258,6 +270,9 @@ impl Lh {
         st.machine.goal = unipi_kit::paths::read_json::<Value>(&ws("goal.json"))
             .and_then(|v| serde_json::from_value(v.get("goal")?.clone()).ok());
         st.graph = unipi_kit::paths::read_json(&ws("graph.json")).unwrap_or_default();
+        st.graph.policy = graph::Policy {
+            auto_continue: self.settings().auto_continue,
+        };
         let ralph_owner = st
             .owners
             .active
@@ -322,9 +337,22 @@ impl Lh {
             topics::LH_PROGRESS,
             &json!({
                 "mode": mode.as_str(),
-                "goal": st.machine.goal.as_ref().map(|g| json!({"objective": g.objective, "status": g.status.as_str(), "turn": g.turn, "maxTurns": g.max_turns})),
+                "goal": st.machine.goal.as_ref().map(|g| {
+                    let mut v = json!({"objective": g.objective, "status": if g.errored.is_some() && !g.status.terminal() { "errored" } else { g.status.as_str() }, "turn": g.turn, "maxTurns": g.max_turns});
+                    if let Some(e) = &g.errored {
+                        v["error"] = json!(e.chars().take(200).collect::<String>());
+                    }
+                    v
+                }),
                 "ralph": ralph_progress,
-                "graph": st.graph.current.as_ref().map(|g| json!({"graphId": g.graph_id, "mode": g.mode, "task": g.task, "counts": st.graph.counts(g)})),
+                "graph": st.graph.current.as_ref().map(|g| {
+                    let mut v = json!({"graphId": g.graph_id, "mode": g.mode, "task": g.task, "counts": st.graph.counts(g)});
+                    let errored: Vec<Value> = g.work.iter().filter(|w| w.status == "errored").take(PROGRESS_ERRORED_MAX).map(|w| json!({"workId": w.work_id, "error": w.failure.as_deref().map(|f| f.chars().take(200).collect::<String>())})).collect();
+                    if !errored.is_empty() {
+                        v["errored"] = json!(errored);
+                    }
+                    v
+                }),
                 "todos": ralph::todo_line(&st.todos),
             }),
         );
@@ -1032,7 +1060,21 @@ impl Lh {
                             .iter()
                             .filter(|w| st.graph.view_status(g, w) == "queued")
                             .count();
-                        if running == 0 && queued == 0 {
+                        let errored = st.graph.errored();
+                        if !st.graph.can_progress() && !errored.is_empty() {
+                            // Errored work never moves by itself: yielding would stall.
+                            err(format!(
+                                "Nothing can progress: {} errored (not failed; sessions kept). Continue it with update_agent_graph operation=continue continue=[{{target_id}}], fail it with operation=fail if you give up, or stop it.",
+                                errored
+                                    .iter()
+                                    .map(|(id, e)| format!(
+                                        "{id} ({})",
+                                        e.chars().take(160).collect::<String>()
+                                    ))
+                                    .collect::<Vec<_>>()
+                                    .join("; ")
+                            ))
+                        } else if running == 0 && queued == 0 {
                             err(
                                 "Agent graph has no in-flight or pending work that can produce a future checkpoint; inspect results and finish or update the graph instead.",
                             )
@@ -1082,17 +1124,30 @@ impl Lh {
                             } else {
                                 t
                             };
+                            let partial = if w.status == "errored" {
+                                format!(
+                                    "\nError (continuable): {}\nPartial output so far:",
+                                    w.failure.clone().unwrap_or_else(|| "unknown".into())
+                                )
+                            } else {
+                                String::new()
+                            };
                             text(format!(
-                                "{head}{}\n\n{body}",
+                                "{head}{}{partial}\n\n{body}",
                                 if w.result_truncated {
                                     " · stored text truncated"
                                 } else {
                                     ""
                                 }
                             ))
-                        } else if w.status == "failed" {
+                        } else if matches!(w.status.as_str(), "failed" | "errored") {
                             text(format!(
-                                "{head}\nFailure: {}",
+                                "{head}\n{}: {}",
+                                if w.status == "errored" {
+                                    "Error (continuable)"
+                                } else {
+                                    "Failure"
+                                },
                                 w.failure.unwrap_or_else(|| "unknown".into())
                             ))
                         } else {
@@ -1500,6 +1555,18 @@ impl Lh {
                     .is_some_and(|a| !a.is_empty()),
             ),
             ("finish", args.get("finish").is_some_and(|f| !f.is_null())),
+            (
+                "continue",
+                args.get("continue")
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| !a.is_empty()),
+            ),
+            (
+                "fail",
+                args.get("fail")
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| !a.is_empty()),
+            ),
         ]
         .into_iter()
         .filter(|g| g.1)
@@ -1510,7 +1577,9 @@ impl Lh {
             .and_then(Value::as_str)
             .or_else(|| (given.len() == 1).then(|| given[0]));
         let Some(op) = op else {
-            return err("Set operation (add_work, stop or finish) and the matching field.");
+            return err(
+                "Set operation (add_work, stop, continue, fail or finish) and the matching field.",
+            );
         };
         let available = match Self::profiles().await {
             Ok(p) => p,
@@ -1585,20 +1654,54 @@ impl Lh {
             Some(Mode::Swarm) => GraphMode::Swarm,
             _ => GraphMode::Graph,
         };
+        let targets = |key: &str, note: &str| -> Vec<(String, Option<String>, bool)> {
+            args.get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|x| {
+                    Some((
+                        s(x, "target_id")?.trim().to_owned(),
+                        s(x, note),
+                        x.get("fail").and_then(Value::as_bool) == Some(true),
+                    ))
+                })
+                .collect()
+        };
+        // `stop` with `fail:true` is the explicit give-up too (same as operation=fail).
+        let (stop_fail, stop): (Vec<_>, Vec<_>) = if op == "stop" {
+            targets("stop", "reason").into_iter().partition(|t| t.2)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let mut fail: Vec<(String, String)> = stop_fail
+            .into_iter()
+            .map(|(t, r, _)| (t, r.unwrap_or_default()))
+            .collect();
+        if op == "fail" {
+            fail.extend(
+                targets("fail", "reason")
+                    .into_iter()
+                    .map(|(t, r, _)| (t, r.unwrap_or_default())),
+            );
+        }
         let u = Update {
             mode,
             task: s(args, "task"),
             add,
-            stop: if op == "stop" {
-                args.get("stop")
-                    .and_then(Value::as_array)
+            stop: stop
+                .into_iter()
+                .map(|(t, r, _)| (t, r.unwrap_or_default()))
+                .collect(),
+            resume: if op == "continue" {
+                targets("continue", "note")
                     .into_iter()
-                    .flatten()
-                    .filter_map(|x| Some((s(x, "target_id")?, s(x, "reason").unwrap_or_default())))
+                    .map(|(t, n, _)| (t, n))
                     .collect()
             } else {
                 Vec::new()
             },
+            fail,
             finish: if op == "finish" {
                 // G-11: the schema's nested `finish:{result_ids, reason}` and the flat
                 // top-level `{operation:"finish", result_ids, reason}` both parse — the
@@ -1706,8 +1809,25 @@ impl Lh {
             g.revision,
             st.graph.counts_line(g)
         )];
+        if !r.continued.is_empty() {
+            lines.push(format!(
+                "Continued on the same operator session: {}.",
+                r.continued.join(", ")
+            ));
+        }
         if !started.is_empty() {
             lines.push(format!("Started now: {}.", started.join(", ")));
+        }
+        let errored = st.graph.errored();
+        if !errored.is_empty() {
+            lines.push(format!(
+                "Errored (continue or fail them): {}.",
+                errored
+                    .iter()
+                    .map(|(id, _)| id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
         let waiting: Vec<&str> = g
             .work
@@ -1726,7 +1846,9 @@ impl Lh {
     }
 
     /// Starts every runnable work item through `subagents.graph-run` (work waiting on a
-    /// scheduled transient retry runs only once its fire time is due, D6 §9.2).
+    /// scheduled continue runs only once its fire time is due). A transport error (the
+    /// subagents service not bound yet, right after a restart) keeps the work queued and
+    /// re-arms the reconcile timer, bounded per item; a refused start is `errored`.
     async fn reconcile(&self, _cx: &Ctx) -> Vec<String> {
         let runnable = self.state.borrow().graph.runnable(timers::now_ms());
         let mut started = Vec::new();
@@ -1741,6 +1863,7 @@ impl Lh {
                     st.graph.started(
                         &work_id,
                         Ok(v["runId"].as_str().unwrap_or_default().to_owned()),
+                        timers::now_ms(),
                     );
                     st.graph.set_ran(&work_id, graph::RanOn::from_reply(&v));
                     drop(st);
@@ -1764,12 +1887,18 @@ impl Lh {
                     }
                 }
                 Err(e) => {
-                    if let Some(id) = self
-                        .start_after_unrecoverable(&work_id, &profile, &e.to_string())
-                        .await
-                    {
-                        started.push(id);
+                    let e = e.to_string();
+                    let queued =
+                        self.state
+                            .borrow_mut()
+                            .graph
+                            .start_error(&work_id, &e, timers::now_ms());
+                    if queued {
+                        timers::set(GRAPH_RETRY_TIMER, Duration::from_secs(5), false);
+                        break;
                     }
+                    self.save();
+                    self.notify_work(&work_id);
                 }
             }
         }
@@ -1794,7 +1923,6 @@ impl Lh {
         )
     }
 
-    /// One `subagents.graph-run` call.
     /// One `subagents.graph-run` call. The owner session (the lead) is declared in the
     /// payload so the run records under the lead even when the delivery context is a
     /// stale nested session (E-02); `None` lets subagents use the ambient session.
@@ -1821,9 +1949,9 @@ impl Lh {
         .await
     }
 
-    /// A graph-run start failed (D6 §9.2). During a retry, an unrecoverable operator
+    /// A graph-run start failed (D6 §9.2). During a continue, an unrecoverable operator
     /// session spawns a **fresh** operator with the original instruction — once; a second
-    /// unrecoverable loss is a permanent failure. Returns the work id when the fresh
+    /// unrecoverable loss leaves the work errored. Returns the work id when the fresh
     /// operator started, so `reconcile` can report it.
     async fn start_after_unrecoverable(
         &self,
@@ -1836,25 +1964,25 @@ impl Lh {
             st.graph
                 .open()
                 .and_then(|g| g.work.iter().find(|w| w.work_id == work_id))
-                .filter(|w| w.retry_count > 0 && w.resume_operator_id.is_some())
+                .filter(|w| w.resume.is_some() && w.resume_operator_id.is_some())
                 .is_some_and(|_| resume_unrecoverable(error))
         };
         if retry_context {
             let note = format!(
-                "transient (crashed), operator session unrecoverable — retrying with a fresh operator: {error}"
+                "transient (crashed), operator session unrecoverable — continuing with a fresh operator: {error}"
             );
             if self
                 .state
                 .borrow_mut()
                 .graph
-                .fresh_spawn_once(work_id, &note)
+                .fresh_spawn_once(work_id, &note, timers::now_ms())
             {
                 let (title, task) = self.run_payload(work_id);
                 match self.graph_run(&title, &task, profile, None).await {
                     Ok(v) if v.get("runId").and_then(Value::as_str).is_some() => {
                         let op = v["runId"].as_str().unwrap_or_default().to_owned();
                         let mut st = self.state.borrow_mut();
-                        st.graph.started(work_id, Ok(op));
+                        st.graph.started(work_id, Ok(op), timers::now_ms());
                         st.graph.set_ran(work_id, graph::RanOn::from_reply(&v));
                         drop(st);
                         self.save();
@@ -1881,7 +2009,7 @@ impl Lh {
                     }
                 }
             }
-            // Second unrecoverable loss: permanent.
+            // Second unrecoverable loss.
             self.fail_start(
                 work_id,
                 &format!("transient (crashed), operator session lost twice: {error}"),
@@ -1892,40 +2020,56 @@ impl Lh {
         None
     }
 
-    /// Marks a start failure terminal (existing path) and notifies (D6 §9.3).
+    /// A refused start leaves the work `errored` and notifies (D6 §9.3).
     fn fail_start(&self, work_id: &str, error: &str) {
         self.state
             .borrow_mut()
             .graph
-            .started(work_id, Err(error.to_owned()));
+            .started(work_id, Err(error.to_owned()), timers::now_ms());
         self.save();
-        self.notify_work_failed(work_id);
+        self.notify_work(work_id);
     }
 
-    /// D6 §9.3: user notification once per terminal work failure — `ui.fire(notify)` +
+    /// User notification once per errored (or failed) work item — `ui.fire(notify)` +
     /// `ui.os-notify` (both land only when a frontend is attached; errors ignored) and a
-    /// sticky bus publish for `unipi.notify` / the app.
-    fn notify_work_failed(&self, work_id: &str) {
-        let Some((graph_id, error)) = (|| {
+    /// sticky bus publish for `unipi.notify` / the app. Errored work says it is not
+    /// failed and can be retried.
+    fn notify_work(&self, work_id: &str) {
+        let Some((graph_id, status, error)) = (|| {
             let st = self.state.borrow();
             let g = st.graph.current.as_ref()?;
             let w = g.work.iter().find(|w| w.work_id == work_id)?;
             Some((
                 g.graph_id.clone(),
-                w.failure.clone().unwrap_or_else(|| "failed".into()),
+                w.status.clone(),
+                w.failure.clone().unwrap_or_else(|| "error".into()),
             ))
         })() else {
             return;
         };
-        let message = format!(
-            "Agent graph work {work_id} failed: {error}. Downstream work is blocked; the operator was nudged to replace, skip or re-plan."
-        );
+        let (title, message, topic) = if status == "errored" {
+            (
+                "Agent graph work stopped on an error",
+                format!(
+                    "Agent graph work {work_id} stopped on an error: {error}. It is not failed — its session is kept; the lead was woken to continue it, or press Retry."
+                ),
+                WORK_ERRORED_TOPIC,
+            )
+        } else {
+            (
+                "Agent graph work failed",
+                format!(
+                    "Agent graph work {work_id} failed: {error}. Downstream work is blocked; the operator was nudged to replace, skip or re-plan."
+                ),
+                WORK_FAILED_TOPIC,
+            )
+        };
         let _ = ui::notify(&message, "warning");
-        let _ = ui::os_notify("Agent graph work failed", &message, "normal", None);
+        let _ = ui::os_notify(title, &message, "normal", None);
         // Sticky by name (unipi-kit's sticky table covers its own topics only).
         let _ = oino_extension::bus::publish(
-            WORK_FAILED_TOPIC,
-            &json!({"graphId": graph_id, "workId": work_id, "error": error}),
+            topic,
+            &json!({"graphId": graph_id, "workId": work_id, "status": status, "error": error}),
             true,
         );
     }
@@ -1947,9 +2091,15 @@ impl Lh {
         let r = data.get("result").cloned().unwrap_or_default();
         let error = r.get("error").and_then(Value::as_str);
         let crashed = worker_crashed(error);
+        let mut status = r.get("status").and_then(Value::as_str).unwrap_or("failed");
+        // A run cancelled because its session went away (host shutdown / restart) was
+        // interrupted, not stopped by anyone: it errors (and auto-continues).
+        if status == "cancelled" && crashed {
+            status = "failed";
+        }
         let outcome = self.state.borrow_mut().graph.settle(
             run,
-            r.get("status").and_then(Value::as_str).unwrap_or("failed"),
+            status,
             r.get("text").and_then(Value::as_str).unwrap_or_default(),
             error,
             u32::try_from(r.get("toolCalls").and_then(Value::as_u64).unwrap_or(0)).unwrap_or(0),
@@ -1958,18 +2108,18 @@ impl Lh {
         );
         match &outcome {
             graph::SettleOutcome::Unknown => return,
-            // D6 §9.2: arm the durable retry timer (the schedule also persists in
+            // Auto-continue: arm the durable retry timer (the schedule also persists in
             // graph.json, so a dead timer is re-armed on the next bind).
             graph::SettleOutcome::Retried { work_id, delay_ms } => timers::set(
                 &format!("{RETRY_TIMER_PREFIX}{work_id}"),
                 Duration::from_millis(*delay_ms),
                 false,
             ),
-            // D6 §9.3: notify once per terminal failure; downstream stays blocked and
-            // the checkpoint (below) nudges the supervisor.
-            graph::SettleOutcome::Settled { work_id, status } if status == "failed" => {
+            // Errored: notify once; dependents wait and the checkpoint (below) wakes
+            // the supervisor with the error text.
+            graph::SettleOutcome::Settled { work_id, status } if status == "errored" => {
                 self.save();
-                self.notify_work_failed(work_id);
+                self.notify_work(work_id);
             }
             graph::SettleOutcome::Settled { .. } => {}
         }
@@ -1982,13 +2132,115 @@ impl Lh {
         let cp = {
             let mut st = self.state.borrow_mut();
             let mut reported = std::mem::take(&mut st.reported_attention);
-            let cp = st.graph.checkpoint(&mut reported);
+            let cp = st.graph.checkpoint(&mut reported, timers::now_ms());
             st.reported_attention = reported;
             cp
         };
         if let Some((_, t)) = cp {
+            self.save();
             self.send(&t, "Graph checkpoint").await;
         }
+    }
+
+    /// The user's Retry on errored graph work (app button through [`GRAPH_SERVICE`],
+    /// `/graph retry <work id>`): the same resume as the lead's `continue`, recorded as
+    /// `by: user`; starts it now.
+    async fn user_retry(
+        &self,
+        graph_id: Option<&str>,
+        work_id: &str,
+        note: Option<&str>,
+        cx: &Ctx,
+    ) -> std::result::Result<String, LhError> {
+        let id = self.state.borrow_mut().graph.continue_work(
+            graph_id,
+            work_id,
+            note,
+            By::User,
+            timers::now_ms(),
+        )?;
+        // The lead is not re-woken for an attention set it already saw.
+        self.state
+            .borrow_mut()
+            .reported_attention
+            .retain(|a| a != &id);
+        self.save();
+        self.reconcile(cx).await;
+        Ok(id)
+    }
+
+    /// The user's Retry on an errored goal / ralph loop: clears the error and sends the
+    /// continue prompt.
+    async fn goal_retry(&self, note: Option<&str>) -> std::result::Result<(), LhError> {
+        let error =
+            self.state
+                .borrow_mut()
+                .machine
+                .continue_errored(By::User, note, timers::now_ms())?;
+        self.save();
+        let prompt = goal::continue_prompt(&error, note);
+        self.state.borrow_mut().machine.record_pending(&prompt, 0);
+        self.send(&prompt, "Continue").await;
+        Ok(())
+    }
+
+    /// The last assistant message's error text (a turn that ended on an error).
+    fn last_error() -> Option<String> {
+        session::query(&session::EntryQuery::messages(&["assistant"]).last(1))
+            .ok()?
+            .last()?
+            .get("message")?
+            .get("errorMessage")?
+            .as_str()
+            .map(|e| e.chars().take(4_000).collect())
+    }
+
+    /// A goal / ralph turn ended on an error (`agent_before_settle` outcome `error`): the
+    /// turn does not count; a transient error auto-continues (bounded, backoff), else
+    /// the goal waits as errored for a continue. Returns whether it was handled.
+    fn lead_turn_error(&self) -> bool {
+        let driving = {
+            let st = self.state.borrow();
+            st.machine.active().is_some()
+                && st
+                    .owners
+                    .active
+                    .as_ref()
+                    .is_some_and(|o| matches!(o.kind, OwnerKind::Goal | OwnerKind::RalphLoop))
+        };
+        if !driving {
+            return false;
+        }
+        let error = Self::last_error().unwrap_or_else(|| "the turn ended with an error".into());
+        let class = graph::classify_failure(false, &error);
+        let (transient, retry_after) = match class {
+            graph::FailureClass::Transient { retry_after_ms } => (true, retry_after_ms),
+            graph::FailureClass::Permanent => (false, None),
+        };
+        let budget = self.settings().auto_continue;
+        let step = {
+            let mut st = self.state.borrow_mut();
+            st.proposal = None;
+            st.stash = None;
+            st.machine
+                .turn_error(&error, transient, retry_after, budget, timers::now_ms())
+        };
+        match step {
+            goal::ErrorStep::Ignored => return false,
+            goal::ErrorStep::AutoContinue { delay_ms } => {
+                timers::set(GOAL_CONTINUE_TIMER, Duration::from_millis(delay_ms), false);
+            }
+            goal::ErrorStep::Errored => {
+                let msg = format!(
+                    "The goal stopped on an error: {}. It is not failed — /goal continue (or Retry in the app) resumes it.",
+                    error.chars().take(300).collect::<String>()
+                );
+                let _ = ui::notify(&msg, "warning");
+                let _ = ui::os_notify("Goal stopped on an error", &msg, "normal", None);
+            }
+        }
+        self.save();
+        true
     }
 
     // ── commands ───────────────────────────────────────────────────────────
@@ -2005,7 +2257,7 @@ impl Lh {
             st.proposal = None;
         }
         if matches!(active.kind, OwnerKind::Graph | OwnerKind::Swarm) {
-            st.graph.abandon(reason);
+            st.graph.abandon(reason, By::User, timers::now_ms());
         }
         if active.kind == OwnerKind::RalphLoop
             && let Some(l) = st.ralph.as_mut()
@@ -2155,6 +2407,39 @@ impl Lh {
             } else {
                 format!("No active {}.", def.label().to_lowercase())
             });
+            return;
+        }
+        // The user's Retry: `/graph retry <work id> [note]` (errored graph / swarm work)
+        // and `/goal continue [note]` / `/ralph continue [note]` (an errored loop).
+        if matches!(mode, Mode::Graph | Mode::Swarm) && sub == "retry" {
+            let Some(id) = parts.get(1).copied() else {
+                notify(&format!("Usage: /{} retry <work id> [note]", mode.as_str()));
+                return;
+            };
+            let note = args
+                .trim_start()
+                .strip_prefix("retry")
+                .unwrap_or_default()
+                .trim_start()
+                .strip_prefix(id)
+                .map(str::trim)
+                .filter(|n| !n.is_empty());
+            match self.user_retry(None, id, note, &cx.cx).await {
+                Ok(id) => notify(&format!("Retrying {id} on its own session.")),
+                Err(e) => notify(&format!("Not retried: {e} ({}).", e.code.as_str())),
+            }
+            return;
+        }
+        if matches!(mode, Mode::Goal | Mode::Ralph) && sub == "continue" {
+            let note = args
+                .trim_start()
+                .strip_prefix("continue")
+                .map(str::trim)
+                .filter(|n| !n.is_empty());
+            match self.goal_retry(note).await {
+                Ok(()) => notify("Continuing from where it stopped."),
+                Err(e) => notify(&format!("Not continued: {e} ({}).", e.code.as_str())),
+            }
             return;
         }
         if matches!(mode, Mode::Graph | Mode::Swarm) && sub == "history" && parts.len() == 1 {
@@ -2345,6 +2630,69 @@ impl Lh {
         let _ = cx;
     }
 
+    /// [`GRAPH_SERVICE`] — the app's graph data and Retry. Payload `{op, …}`:
+    /// - `snapshot {graphId?}` → `{ok, graph}` (the current graph, else the newest earlier
+    ///   one; `graph: null` when none) — see `GraphFile::snapshot`.
+    /// - `history {}` → `{ok, graphs}` summary rows, current first.
+    /// - `retry {workId, graphId?, note?}` → `{ok, workId}`: the user's Retry on errored
+    ///   graph work (same as the lead's `continue`, `by: user`).
+    /// - `retry {target: "goal", note?}` → `{ok}`: the user's Retry on an errored goal /
+    ///   ralph loop.
+    ///
+    /// Refusals are `{ok:false, code, reason}` with a [`LhCode`].
+    async fn graph_service(&self, p: &Value, cx: &Ctx) -> Value {
+        let s = |k: &str| {
+            p.get(k)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+        };
+        match s("op").unwrap_or_default() {
+            "snapshot" => {
+                let st = self.state.borrow();
+                let g = match s("graphId") {
+                    Some(id) => match st.graph.graph(id) {
+                        Some(g) => Some(g),
+                        None => {
+                            return LhError {
+                                code: LhCode::GraphNotFound,
+                                message: format!("no graph {id}"),
+                            }
+                            .to_json();
+                        }
+                    },
+                    None => st
+                        .graph
+                        .current
+                        .as_ref()
+                        .or_else(|| st.graph.history.first()),
+                };
+                json!({"ok": true, "graph": g.map(|g| st.graph.snapshot(g))})
+            }
+            "history" => json!({"ok": true, "graphs": self.state.borrow().graph.history_list()}),
+            "retry" if s("target") == Some("goal") => match self.goal_retry(s("note")).await {
+                Ok(()) => json!({"ok": true}),
+                Err(e) => e.to_json(),
+            },
+            "retry" => match s("workId") {
+                None => LhError {
+                    code: LhCode::RequestInvalid,
+                    message: "workId (or target:\"goal\") is required".into(),
+                }
+                .to_json(),
+                Some(id) => match self.user_retry(s("graphId"), id, s("note"), cx).await {
+                    Ok(id) => json!({"ok": true, "workId": id}),
+                    Err(e) => e.to_json(),
+                },
+            },
+            op => LhError {
+                code: LhCode::RequestInvalid,
+                message: format!("unknown op \"{op}\" (snapshot, history, retry)"),
+            }
+            .to_json(),
+        }
+    }
+
     fn graph_history(&self) -> String {
         let st = self.state.borrow();
         let all: Vec<&graph::Graph> = st.graph.current.iter().chain(&st.graph.history).collect();
@@ -2458,7 +2806,12 @@ impl Lh {
         let mut mermaid = vec!["flowchart TD".to_owned()];
         let mut textv = Vec::new();
         let mut params = json!({"v": 1});
-        if let Some(g) = st.graph.current.as_ref().or_else(|| st.graph.history.first()) {
+        if let Some(g) = st
+            .graph
+            .current
+            .as_ref()
+            .or_else(|| st.graph.history.first())
+        {
             let v = st.graph.visual(g);
             mermaid.extend(v.mermaid);
             textv.extend(v.lines);
@@ -2470,7 +2823,12 @@ impl Lh {
                 "open"
             };
             params["graph"] = json!({"id": g.graph_id, "mode": g.mode, "task": g.task, "state": state, "revision": g.revision});
+            let from = g.events.len().saturating_sub(VISUAL_GRAPH_EVENTS);
+            params["graph"]["events"] = json!(g.events[from..]);
             params["nodes"] = json!(v.nodes);
+            // Earlier graphs as data (summary rows; a row's full snapshot comes from
+            // `long-horizon.graph` `{op:"snapshot", graphId}`).
+            params["history"] = st.graph.history_list();
         }
         if let Some(gl) = &st.machine.goal {
             mermaid.push(format!(
@@ -2526,7 +2884,8 @@ impl Lh {
         let _ = ui::Panel::update(&id).fallback(spec).send();
     }
 
-    async fn runner(&'static self, name: &str, args: &str, session: &str) -> Option<Value> {
+    async fn runner(&'static self, name: &str, args: &str, cx: &CommandCtx) -> Option<Value> {
+        let session = cx.session_id();
         self.load();
         let a: Value = serde_json::from_str(args).unwrap_or_else(|_| json!({}));
         let s = |k: &str| {
@@ -2695,17 +3054,26 @@ impl Lh {
                                 OwnerKind::Graph
                             };
                             if self.stop_owner(Some(kind), session).is_none() {
-                                self.state
-                                    .borrow_mut()
-                                    .graph
-                                    .abandon("stopped(user_requested)");
+                                self.state.borrow_mut().graph.abandon(
+                                    "stopped(user_requested)",
+                                    By::User,
+                                    timers::now_ms(),
+                                );
                                 self.save();
                             }
                             json!({"ok": true})
                         }
                     }
                 }
-                "history" => json!({"ok": true, "runs": self.state.borrow().graph.history_json()}),
+                "history" => {
+                    json!({"ok": true, "runs": self.state.borrow().graph.history_json(), "graphs": self.state.borrow().graph.history_list()})
+                }
+                // Same path as the app's `long-horizon.graph` service.
+                "snapshot" | "retry" => {
+                    let mut p = a.clone();
+                    p["op"] = json!(s("op"));
+                    self.graph_service(&p, &cx.cx).await
+                }
                 op => json!({"ok": false, "reason": format!("unknown op \"{op}\"")}),
             },
             _ => return None,
@@ -2813,32 +3181,28 @@ impl Lh {
                 _ => None,
             }
         };
-        // Interrupted graph steps resume once.
-        {
+        // Restart: work that was running is interrupted. It resumes its own operator
+        // shortly (by `host`, bounded; else errored) — the same continue path as an
+        // auto-continue, so an interrupted graph never stalls (D6-03: work in flight at
+        // quit used to stay queued forever).
+        let errored_now = {
             let mut st = self.state.borrow_mut();
-            if let Some(g) = st
-                .graph
-                .current
-                .as_mut()
-                .filter(|g| g.finish.is_none() && g.abandoned.is_none())
-            {
-                for w in g.work.iter_mut().filter(|w| w.status == "running") {
-                    if w.restart_resumes < 1 {
-                        w.status = "queued".into();
-                        w.resume_operator_id = w.operator_id.clone();
-                        w.restart_resumes += 1;
-                    } else {
-                        w.status = "failed".into();
-                        w.failure = Some("interrupted by a restart".into());
-                    }
-                }
-            }
-        }
-        // D6 §9.2: the retry schedule is the file — on bind, overdue retries fire
-        // immediately and future ones re-arm their timers.
-        let retries_due = {
+            let before: Vec<String> = st.graph.errored().into_iter().map(|e| e.0).collect();
+            st.graph.interrupted(timers::now_ms());
+            st.graph
+                .errored()
+                .into_iter()
+                .map(|e| e.0)
+                .filter(|id| !before.contains(id))
+                .collect::<Vec<_>>()
+        };
+        // The retry schedule is the file — on bind, overdue continues fire after a short
+        // grace (subagents binds its services first) and future ones re-arm their timers.
+        // Queued work that is ready (a start lost to the restart) gets the same grace.
+        let start_soon = {
             let st = self.state.borrow();
-            let (due, future) = st.graph.retry_schedule(timers::now_ms());
+            let now = timers::now_ms();
+            let (due, future) = st.graph.retry_schedule(now);
             for (work_id, delay_ms) in future {
                 timers::set(
                     &format!("{RETRY_TIMER_PREFIX}{work_id}"),
@@ -2846,12 +3210,23 @@ impl Lh {
                     false,
                 );
             }
-            !due.is_empty()
+            !due.is_empty() || !st.graph.runnable(now).is_empty()
         };
         self.save();
-        if retries_due {
-            self.reconcile(cx).await;
+        for id in &errored_now {
+            self.notify_work(id);
         }
+        if start_soon {
+            timers::set(
+                GRAPH_RETRY_TIMER,
+                Duration::from_millis(graph::RESTART_RESUME_DELAY_MS),
+                false,
+            );
+        }
+        if !errored_now.is_empty() {
+            timers::set(GRAPH_WAKE_TIMER, Duration::from_millis(400), false);
+        }
+        let _ = cx;
         if let Some(t) = redeliver {
             self.send(&t, "Recovery").await;
         }
@@ -2963,9 +3338,9 @@ impl Extension for Lh {
                 Command::<Self>::new(*r)
                     .description("long-horizon runner")
                     .hidden()
-                    .run_value(move |ext, args, cx| async move {
-                        Ok(ext.runner(r, &args, cx.session_id()).await)
-                    }),
+                    .run_value(
+                        move |ext, args, cx| async move { Ok(ext.runner(r, &args, &cx).await) },
+                    ),
             );
         }
         cx.nudge_provider(|ext, cx| async move {
@@ -3007,10 +3382,32 @@ impl Extension for Lh {
             if cx.is_child() {
                 return Ok(());
             }
-            let aborted = ev
-                .get("outcome")
-                .and_then(Value::as_str)
-                .is_some_and(|o| o != "completed");
+            let outcome = ev.get("outcome").and_then(Value::as_str);
+            let aborted = outcome.is_some_and(|o| o != "completed");
+            // A goal / ralph turn cut off by an error is `errored`, never a stall: it
+            // auto-continues (bounded) or waits for /goal continue / the app's Retry.
+            if outcome == Some("error") && ext.lead_turn_error() {
+                return Ok(());
+            }
+            if outcome != Some("error") {
+                // A turn that ran (the user typed on, or a continue landed) clears the
+                // error and starts the auto-continue budget over.
+                let continued = {
+                    let mut st = ext.state.borrow_mut();
+                    st.machine.turn_ok();
+                    st.machine
+                        .goal
+                        .as_ref()
+                        .is_some_and(|g| g.errored.is_some())
+                        && st
+                            .machine
+                            .continue_errored(By::User, Some("the next turn ran"), timers::now_ms())
+                            .is_ok()
+                };
+                if continued {
+                    ext.save();
+                }
+            }
             ext.goal_turn_end(aborted, &session).await;
             if ext.settings().goal_progress == "loop"
                 && ext.state.borrow().machine.active().is_some()
@@ -3039,6 +3436,15 @@ impl Extension for Lh {
                     }
                 }
                 Some(GRAPH_WAKE_TIMER) => ext.graph_wake().await,
+                Some(GOAL_CONTINUE_TIMER) => {
+                    let pending = ext.state.borrow_mut().machine.take_continue_cause();
+                    if let Some(cause) = pending {
+                        let prompt = goal::continue_prompt(&cause, None);
+                        ext.state.borrow_mut().machine.record_pending(&prompt, 0);
+                        ext.save();
+                        Lh::send_now(&prompt, "Continue").await;
+                    }
+                }
                 Some(GRAPH_RETRY_TIMER) => {
                     ext.reconcile(&cx).await;
                 }
@@ -3099,7 +3505,14 @@ impl Extension for Lh {
         });
         cx.on(EventKind::OinoSettingsChanged, |ext, ev, _cx| async move {
             ext.settings.on_changed(&ev.payload);
+            let auto_continue = ext.settings().auto_continue;
+            ext.state.borrow_mut().graph.policy = graph::Policy { auto_continue };
             Ok(())
+        });
+        // The app's graph data + Retry (`_oino/service_call` → `long-horizon.graph`).
+        cx.service(GRAPH_SERVICE, |ext, p, _caller, cx| async move {
+            ext.load();
+            Ok(ext.graph_service(&p, &cx).await)
         });
         Ok(())
     }
@@ -3160,7 +3573,13 @@ mod tests {
     fn every_mode_command_switches_to_its_registered_tools() {
         let registered: Vec<&str> = tools::all().into_iter().map(|(n, ..)| n).collect();
         let builtins = ["read", "bash", "edit", "write"];
-        let all = [Mode::None, Mode::Goal, Mode::Ralph, Mode::Swarm, Mode::Graph];
+        let all = [
+            Mode::None,
+            Mode::Goal,
+            Mode::Ralph,
+            Mode::Swarm,
+            Mode::Graph,
+        ];
         for name in ["goal", "ralph", "swarm", "graph", "none"] {
             let mode = Mode::parse(name).unwrap();
             assert_eq!(mode.as_str(), name);
@@ -3190,7 +3609,13 @@ mod tests {
                 }
             }
         }
-        for t in ["update_agent_graph", "view_agent_graph", "yield_agent_graph", "agent_output", "agent_swarm_status"] {
+        for t in [
+            "update_agent_graph",
+            "view_agent_graph",
+            "yield_agent_graph",
+            "agent_output",
+            "agent_swarm_status",
+        ] {
             assert!(Mode::Graph.control_tools().contains(&t), "{t}");
             assert!(
                 modes::mode_fragment(Mode::Graph, None, None).contains(t),
