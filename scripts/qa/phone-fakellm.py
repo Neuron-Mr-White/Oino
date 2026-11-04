@@ -13,7 +13,7 @@ Prompt keywords pick a script:
   "marathon" -> one text stream of ~330 s (FAKELLM_MARATHON_S), a chunk every 5 s (stream-timeout QA)
   "edit"   -> edit/write tool calls (diff rows)
   "grow"   -> one bash call whose output streams for ~12 s (chat-scroll: output inside a tool row)
-  "graphwork" -> update_agent_graph add_work (2 slow scans, 1 quick probe, 1 dependent summary)
+  "graphwork" -> update_agent_graph add_work (2 slow scans, 1 quick probe, 1 erroring probe, 1 dependent summary)
   "subagents" -> run_subagent x4 in the background (2 slow, 1 quick, 1 failing) + bg_run x1
                  (running-tab QA); the children's tasks use the "slow"/"quick"/"error" scripts
   "quietbg" -> bg_run without notify/wake (the quiet background marker, [status])
@@ -103,7 +103,7 @@ class H(BaseHTTPRequestHandler):
         after_tool = bool(msgs) and msgs[-1].get("role") == "tool"
         LOG.write(json.dumps({"t": time.time(), "last_user": last_user[:200], "after_tool": after_tool, "tools": tools}) + "\n"); LOG.flush()
         low = last_user.lower()
-        if "error" in low and not after_tool:
+        if "error" in low and not after_tool and "checkpoint" not in low:  # a graph checkpoint note quotes child errors
             body = b'{"error":{"message":"fake upstream overloaded (QA error case)","type":"server_error"}}'
             self.send_response(500); self.send_header("content-type", "application/json")
             self.send_header("content-length", str(len(body))); self.end_headers(); self.wfile.write(body); return
@@ -114,14 +114,20 @@ class H(BaseHTTPRequestHandler):
         slow = 0.05
         if after_tool:
             text = "Done. The tool calls above finished; `cargo test` reported **12 passed, 0 failed**. Anything else?"
+        elif "checkpoint" in low and "yield_agent_graph" in tools:
+            # a graph checkpoint: let the scheduled work continue
+            calls = [("yield_agent_graph", {"reason": "waiting on the scans"})]
+            text = "Waiting on the running work."
         elif "graphwork" in low and "update_agent_graph" in tools:
             # [owner-fix-3] a long-horizon graph whose workers stay running (Working row, Graph/Running tabs)
+            sfx = f"-{int(time.time()) % 100000}"  # graphs are per project: fresh ids each run
             def w(wid, ins, deps=()):
-                return {"work_id": wid, "instruction": ins, "profile": "subagent_explore", "input_ids": list(deps)}
+                return {"work_id": wid + sfx, "instruction": ins, "profile": "subagent_general", "input_ids": [d + sfx for d in deps]}
             calls = [("update_agent_graph", {"operation": "add_work", "task": "Map the sidebar data path",
                        "add_work": [w("scan-host", "slow: scan the host session list"),
                                     w("scan-app", "slow: scan the app sidebar store"),
                                     w("probe-cache", "quick: probe the list cache"),
+                                    w("probe-flaky", "error: probe the flaky endpoint"),
                                     w("synth", "quick: write the summary", ("r-scan-host", "r-scan-app"))]})]
             text = "Planning the graph: two scans, a probe, then a summary."
         elif "tools" in low:

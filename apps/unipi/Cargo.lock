@@ -3387,6 +3387,7 @@ version = "1.1.0"
 dependencies = [
  "futures",
  "oino-ai",
+ "oino-ui",
  "semver",
  "serde",
  "serde_json",

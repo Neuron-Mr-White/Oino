@@ -27,7 +27,9 @@ pub fn take_webview_recovery() -> Option<String> {
 pub fn watch<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
     use webkit2gtk::{WebProcessTerminationReason, WebViewExt};
-    let Some(window) = app.get_webview_window("main") else { return };
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
     if let Err(error) = window.with_webview(|platform| {
         let view = platform.inner();
         view.connect_web_process_terminated(|view, reason| {

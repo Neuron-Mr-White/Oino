@@ -43,6 +43,7 @@ export function TreeTab(props: PaneTabProps) {
   // and the last one's failure is shown with a Retry.
   const LOAD_TIMEOUT_MS = 45_000;
   const STEP_TIMEOUT_MS = 10_000;
+  const TREE_HEAD_START_MS = 2_500;
   const PAGE = 500;
   const within = <T,>(work: Promise<T>, ms: number): Promise<T> =>
     new Promise<T>((resolve, reject) => {
@@ -60,14 +61,19 @@ export function TreeTab(props: PaneTabProps) {
    * (parent links rebuild the tree), else the current branch page by page.
    */
   const load = async (s: SessionHandle): Promise<TreeNode[]> => {
+    // The flat entries are asked at once, beside get_tree: on a long real chat get_tree never
+    // answers, and waiting out its whole deadline first kept the tab on Loading for 10 s per
+    // open (real-app rig, 2559-entry chat). get_tree only gets a short head start.
+    const flatReq = s.cmd<{ entries?: SessionEntry[]; leafId?: string | null }>({ type: 'get_entries' });
+    flatReq.catch(() => undefined);
     try {
-      const reply = await within(s.cmd<TreeReply>({ type: 'get_tree' }), STEP_TIMEOUT_MS);
+      const reply = await within(s.cmd<TreeReply>({ type: 'get_tree' }), TREE_HEAD_START_MS);
       return buildTreeNodes(Array.isArray(reply?.tree) ? reply.tree : [], reply?.leafId ?? null);
     } catch {
       // fall through to the flat entries
     }
     try {
-      const flat = await within(s.cmd<{ entries?: SessionEntry[]; leafId?: string | null }>({ type: 'get_entries' }), STEP_TIMEOUT_MS * 2);
+      const flat = await within(flatReq, STEP_TIMEOUT_MS * 2);
       if (Array.isArray(flat?.entries)) return buildTreeNodesFromEntries(flat.entries, flat.leafId ?? null);
     } catch {
       // fall through to the paged branch

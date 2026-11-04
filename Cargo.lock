@@ -2569,6 +2569,7 @@ dependencies = [
  "futures",
  "oino-ai",
  "oino-extension-api",
+ "oino-ui",
  "semver",
  "serde",
  "serde_json",
