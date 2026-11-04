@@ -9,7 +9,6 @@
  * (§6.4 per-slot cap).
  */
 import { createSignal, For, Show } from 'solid-js';
-import { AnswerQuestions, isAnswerHint } from '../../components/conversation/AnswerQuestions';
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-solid';
 import { EntryView } from '../NodeView';
 import { openSessionModal } from '../../components/session/modalTarget';
@@ -20,20 +19,16 @@ import type { UiTarget } from '../actions';
 const PHONE_MAX = 3;
 
 export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone?: boolean; fallbackTrayLabel?: string }) {
-  // The `/answer` hint line ("… — /answer", a terminal command) becomes the "Answer N questions"
-  // pill on the phone (§3.4, PH-21) and on the desktop ([gui-cleanup]: /answer is terminal-only).
-  const answerHint = () => (props.target.sessionId ? props.entries.find(isAnswerHint) : undefined);
-  const entries = () => liveTrayEntries(props.entries.filter((e) => !isAnswerHint(e)));
+  // [ask-user] terminal-only widgets (the `/answer` hint, …) never get here: the registry drops
+  // entries whose `surfaces` leave the app out (`lib/surfaces` `entryShownInApp`). The app has no
+  // "Answer N questions" pill or page; ask_user questions are inline timeline cards.
+  const entries = () => liveTrayEntries(props.entries);
   const hasEntryTray = () => !!props.target.sessionId && entries().some((e) => typeof trayButtonText(e) === 'string');
   const synthLabel = () => (props.target.sessionId && !hasEntryTray() ? props.fallbackTrayLabel : undefined);
   const over = () => (props.phone ? Math.max(0, entries().length - PHONE_MAX) : 0);
   const [expanded, setExpanded] = createSignal(false);
   const shown = () => (over() && !expanded() ? entries().slice(0, PHONE_MAX) : entries());
   return (
-    <>
-    <Show when={answerHint()} keyed>
-      {(hint) => <AnswerQuestions hostId={props.target.hostId} sessionId={props.target.sessionId!} entry={hint} />}
-    </Show>
     <Show when={entries().length > 0 || !!synthLabel()}>
       <div class="ui-widgets" data-count={entries().length + (synthLabel() ? 1 : 0)} data-testid="ui-widgets">
         <Show when={synthLabel()}>
@@ -103,6 +98,5 @@ export function WidgetStack(props: { entries: UiEntry[]; target: UiTarget; phone
         </Show>
       </div>
     </Show>
-    </>
   );
 }

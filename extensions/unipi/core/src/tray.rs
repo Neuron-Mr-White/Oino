@@ -57,6 +57,9 @@ pub fn spec(tabs: &[TrayTab], active: usize) -> Node {
 pub fn open(tabs: &[TrayTab], active: usize) -> Result<String> {
     ui::Panel::new(PANEL)
         .placement(ui::Placement::EditorReplace)
+        // The app has the session's Running tab for this; the editor-replacing tray (opened
+        // by the terminal's ↓ / `/tray`) never takes the app's composer.
+        .only_on(&[ui::Surface::Tui])
         .title(TRAY_HINT)
         .spec(spec(tabs, active))
         .focus(true)

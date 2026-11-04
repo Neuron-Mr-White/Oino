@@ -278,14 +278,21 @@ describe('U10 widget slot', () => {
     expect(screen.getByText('fusion: 2 jobs')).toBeTruthy();
   });
 
-  it('[gui-cleanup] desktop: the /answer hint line becomes the "Answer N questions" pill (no terminal wording)', async () => {
-    setDesktopOverride(true);
-    await openTracking();
-    render(() => <WidgetStack entries={widgetsOf()} target={TARGET} />);
-    put({ id: 'unipi.utility/widget:unipi-answer-hint', slot: 'widget', view: tree('2 questions in the reply — /answer to reply') });
-    await waitFor(() => expect(screen.getByTestId('answer-pill')).toBeTruthy());
-    expect(screen.getByTestId('answer-pill').textContent).toBe('Answer 2 questions');
-    expect(screen.queryByText(/\/answer/)).toBeNull();
+  it('[ask-user] terminal-only widgets never render in the app: surfaces ["tui"], and the old /answer hint by id; no Answer pill', async () => {
+    for (const desktop of [true, false]) {
+      setDesktopOverride(desktop);
+      await openTracking();
+      const { unmount } = render(() => <WidgetStack entries={widgetsOf()} target={TARGET} phone={!desktop} />);
+      put({ id: 'unipi.utility/widget:unipi-answer-hint', slot: 'widget', view: tree('2 questions in the reply — /answer to reply') });
+      put({ id: 'ext/widget:term', slot: 'widget', surfaces: ['tui'], view: tree('press f to watch') });
+      put({ id: 'ext/widget:both', slot: 'widget', surfaces: ['gui', 'tui'], view: tree('CPU 12 %') });
+      await waitFor(() => expect(screen.getByText('CPU 12 %')).toBeTruthy());
+      expect(screen.queryByText(/\/answer/)).toBeNull();
+      expect(screen.queryByText('press f to watch')).toBeNull();
+      expect(screen.queryByTestId('answer-pill')).toBeNull();
+      expect(screen.queryByText(/Answer \d+ question/)).toBeNull();
+      unmount();
+    }
   });
 
   it('phone: beyond 3 entries the rest fold behind "+N widgets" (§6.4 cap)', async () => {

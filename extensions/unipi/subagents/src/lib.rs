@@ -868,7 +868,8 @@ impl Subagents {
         }
         let spec = serde_json::to_value(Layout::default().children(cards)).unwrap_or(Value::Null);
         let _ = ui::fire(
-            &json!({"method": "setWidget", "widgetKey": FG_KEY, "widgetLines": lines, "widgetPlacement": "aboveEditor", "widgetSpec": spec}),
+            // The tray's `f` (terminal) watch; the app shows live runs in their timeline card.
+            &json!({"method": "setWidget", "widgetKey": FG_KEY, "widgetLines": lines, "widgetPlacement": "aboveEditor", "widgetSpec": spec, "surfaces": ["tui"]}),
         );
     }
 

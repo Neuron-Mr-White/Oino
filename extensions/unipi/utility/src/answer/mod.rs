@@ -262,6 +262,9 @@ impl Answerer {
             "widgetLines": [text],
             "widgetPlacement": "aboveEditor",
             "widgetSpec": serde_json::to_value(spec).unwrap_or(Value::Null),
+            // "/answer" is a terminal command: the app hides this hint (questions in a reply are
+            // answered in the composer there; ask_user questions have their own card).
+            "surfaces": ["tui"],
         }));
         self.hinted.with(cx.session_id(), |h| *h = true);
     }

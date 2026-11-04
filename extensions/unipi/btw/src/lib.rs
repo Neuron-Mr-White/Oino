@@ -461,6 +461,9 @@ impl Btw {
         ];
         match ui::Panel::new(PANEL)
             .placement(ui::Placement::EditorReplace)
+            // The app answers /btw in its Side chat tab; this editor-replacing panel (with its
+            // ctrl+c / ↑↓ keys) is the terminal's and never takes the app's composer.
+            .only_on(&[ui::Surface::Tui])
             .title("/btw")
             .spec(spec)
             .keys(keys)

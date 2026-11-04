@@ -39,6 +39,7 @@ fn entry() -> UiEntry {
         focus: None,
         close_on_escape: None,
         size: None,
+        surfaces: None,
         rev: 1,
     }
 }

@@ -19,6 +19,7 @@ import { sessions } from '../../lib/session/store';
 import { openSettingsFor } from '../../lib/settings/open';
 import { toasts } from '../../lib/toasts';
 import { routeNotify } from '../../lib/reports';
+import { shownInApp } from '../../lib/surfaces';
 import { onUiEffect, onUiInvalidate } from '../registries';
 import type { UiTarget } from '../actions';
 import type { Invalidation } from '../registry';
@@ -36,6 +37,8 @@ function sessionKeyFor(target: UiTarget): string | undefined {
 }
 
 function applyEffect(target: UiTarget, req: { method: string; [k: string]: unknown }): void {
+  // [ask-user] a notice meant for the terminal only (`surfaces: ["tui"]`) is not the app's.
+  if (!shownInApp(req.surfaces)) return;
   switch (req.method) {
     case 'notify': {
       const raw = typeof req.message === 'string' ? req.message : typeof req.text === 'string' ? req.text : '';

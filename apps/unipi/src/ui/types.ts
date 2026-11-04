@@ -240,6 +240,8 @@ export type UiEntry = {
   focus?: boolean;
   closeOnEscape?: boolean;
   size?: 'small' | 'medium' | 'large' | 'full';
+  /** The clients it is meant for (`["tui"]`); absent = every client (`lib/surfaces`). */
+  surfaces?: string[];
   rev: number;
 };
 

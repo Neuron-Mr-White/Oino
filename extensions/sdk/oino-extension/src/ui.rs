@@ -58,7 +58,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 pub use oino_ui::extras::icon::Icon;
-pub use oino_ui::settings::SettingsNamespace;
+pub use oino_ui::settings::{SettingsNamespace, Surface};
 pub use oino_ui::slot::{
     EntrySize, KeyBinding, PanelOpen, PanelUpdate, Placement, ReservedComponent, Slot, UiAction,
     UiCapabilities, UiEntry, UiPatch, UiSnapshot, UiView,
@@ -277,6 +277,7 @@ pub struct Panel {
     size: Option<EntrySize>,
     params: Option<Value>,
     fallback: Option<Node>,
+    surfaces: Option<Vec<Surface>>,
 }
 
 impl Panel {
@@ -388,6 +389,14 @@ impl Panel {
         self
     }
 
+    /// Shows the entry only on these clients (`&[Surface::Tui]` for a terminal panel the app
+    /// has its own screen for); unset = every client.
+    #[must_use]
+    pub fn only_on(mut self, surfaces: &[Surface]) -> Self {
+        self.surfaces = Some(surfaces.to_vec());
+        self
+    }
+
     /// Tree rendered when a reserved component is unavailable (TUI / gated owners, §8 rule 3).
     #[must_use]
     pub fn fallback(mut self, fallback: impl Into<Node>) -> Self {
@@ -414,6 +423,7 @@ impl Panel {
         insert(&mut request, "closeOnEscape", self.close_on_escape.as_ref())?;
         insert(&mut request, "size", self.size.as_ref())?;
         insert(&mut request, "params", self.params.as_ref())?;
+        insert(&mut request, "surfaces", self.surfaces.as_ref())?;
         Ok(Value::Object(request))
     }
 
@@ -528,6 +538,11 @@ mod tests {
         assert_eq!(request["order"], 5);
         assert_eq!(request["size"], "large");
         assert_eq!(request["params"]["task"], "T-12");
+        assert!(request.get("surfaces").is_none(), "every client unless only_on");
+        assert_eq!(
+            Panel::new("ext/t").only_on(&[Surface::Tui]).open_request().unwrap_or_default()["surfaces"],
+            json!(["tui"])
+        );
         assert_eq!(
             Panel::new("ext/x").open_request().unwrap_or_default()["placement"],
             "overlay",

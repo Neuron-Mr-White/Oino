@@ -700,6 +700,15 @@ impl UiState {
             }
             return None;
         }
+        // [ask-user] a producer or notice meant for other clients only (`surfaces` without `tui`) is not
+        // the terminal's to show (the gui-cleanup per-client rule; absent = every client).
+        if let Some(list) = p
+            .get("surfaces")
+            .and_then(|v| serde_json::from_value::<Vec<oino_ui::settings::Surface>>(v.clone()).ok())
+            && !oino_ui::settings::on_surface(Some(&list), oino_ui::settings::Surface::Tui)
+        {
+            return None;
+        }
         if let Some(effect) = one_shot(request) {
             return Some(effect);
         }
@@ -1484,6 +1493,18 @@ mod tests {
         assert_eq!(ui.widgets_at(Placement::BelowEditor).len(), 1);
         ui.apply(&request("setWidget", json!({"widgetKey":"w"})));
         assert!(ui.widgets.is_empty());
+        // [ask-user] widgets for other clients only never reach the terminal; tui ones do.
+        ui.apply(&request(
+            "setWidget",
+            json!({"widgetKey":"g","widgetLines":["app only"],"surfaces":["gui"]}),
+        ));
+        assert!(ui.widgets.is_empty());
+        ui.apply(&request(
+            "setWidget",
+            json!({"widgetKey":"t","widgetLines":["/answer"],"surfaces":["tui"]}),
+        ));
+        assert_eq!(ui.widgets.len(), 1);
+        ui.apply(&request("setWidget", json!({"widgetKey":"t"})));
         assert_eq!(
             ui.apply(&request(
                 "notify",
@@ -1578,6 +1599,7 @@ mod tests {
             focus: None,
             close_on_escape: None,
             size: None,
+            surfaces: None,
             rev: 1,
         }
     }

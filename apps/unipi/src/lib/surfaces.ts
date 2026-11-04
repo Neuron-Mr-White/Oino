@@ -27,3 +27,27 @@ export function shownInApp(surfaces: unknown): boolean {
   const list = parseSurfaces(surfaces);
   return !list || list.includes(THIS_CLIENT);
 }
+
+/**
+ * [ask-user] Registry entries and one-shot effects carry the same `surfaces` (core copies the
+ * producer's `surfaces` onto the entry: `setWidget`, `setStatus`, `setHeader`, `setFooter`,
+ * `openPanel`). Builds of the extensions from before that sent these terminal-only entries
+ * without it; they are hidden by id.
+ */
+const LEGACY_TUI_ENTRIES = new Set([
+  // utility: "N questions in the reply — /answer …"
+  'unipi.utility/widget:unipi-answer-hint',
+  // info-screen: the ASCII Unicrab splash header
+  'unipi.info-screen/setHeader:splash',
+  // subagents: the tray's `f` foreground watch cards
+  'unipi.subagents/widget:subagents-foreground',
+  // core / btw: the terminal's editor-replacing work tray and /btw panel (the app has the
+  // Running tab and the Side chat tab)
+  'unipi.core/tray',
+  'unipi.btw/panel',
+]);
+
+/** Whether a registry entry shows in the app. */
+export function entryShownInApp(entry: { id: string; surfaces?: unknown }): boolean {
+  return shownInApp(entry.surfaces) && !LEGACY_TUI_ENTRIES.has(entry.id);
+}

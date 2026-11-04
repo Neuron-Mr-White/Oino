@@ -19,6 +19,7 @@ import { batch, createMemo, createRoot, getOwner, runWithOwner, type Accessor } 
 import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
 import { isEnvelopeError, parsePatch, parseSnapshot } from './envelope';
 import { dropLocal } from './localState';
+import { entryShownInApp } from '../lib/surfaces';
 import { Tx, applyNodeOps } from './tree';
 import type { RegistryOp, Scope, Slot, UiEntry, UiMeta, UiPatch, UiRequest, UiSnapshot } from './types';
 
@@ -170,7 +171,8 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
               void e.seq;
               void e.focus;
             }
-            return all.filter((e) => e.slot === slot).sort(compareEntries);
+            // [ask-user] entries meant for the terminal only never reach a slot host here.
+            return all.filter((e) => e.slot === slot && entryShownInApp(e)).sort(compareEntries);
           }),
         )!;
         slotMemos.set(slot, memo);
@@ -191,7 +193,7 @@ export function createUiRegistry(scope: Scope, hooks: RegistryHooks = {}) {
               void e.focus;
             }
             return all
-              .filter((e) => e.slot === slot)
+              .filter((e) => e.slot === slot && entryShownInApp(e))
               .sort((a, b) => Number(!!a.focus) - Number(!!b.focus) || (a.seq ?? 0) - (b.seq ?? 0));
           }),
         )!;

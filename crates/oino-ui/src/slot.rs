@@ -225,6 +225,11 @@ pub struct UiEntry {
     /// Overlay width (`custom` dialogs / `overlay` panels, §6.1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<EntrySize>,
+    /// The clients the entry is meant for (`["tui"]`: a terminal hint the app hides); absent =
+    /// every client. Producers pass it as `surfaces` on `setWidget` / `setStatus` / `setHeader` /
+    /// `setFooter` / `openPanel` ([ask-user], the gui-cleanup per-client rule).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<crate::settings::Surface>>,
     /// Last change of this entry (cache key for frontends).
     pub rev: u64,
 }
@@ -682,6 +687,7 @@ mod tests {
                 focus: Some(true),
                 close_on_escape: None,
                 size: None,
+                surfaces: None,
                 rev: 3,
             }],
             dialogs: vec![UiRequest {

@@ -13,6 +13,7 @@ use indexmap::IndexMap;
 use oino_ai::{JsonObject, JsonValue};
 use oino_ui::extras::icon::Icon;
 use oino_ui::node::Node;
+use oino_ui::settings::Surface;
 use oino_ui::patch::{NodeOp, apply, diff};
 use oino_ui::slot::{
     DismissReason, EntryMetaPatch, EntrySize, KeyBinding, RegistryOp, ReservedComponent, Scope,
@@ -256,6 +257,8 @@ pub struct EntryRequest {
     pub fallback: Option<Node>,
     /// Reserved-component parameters.
     pub params: Option<JsonValue>,
+    /// The clients it is meant for (`None` = every client; [`UiEntry::surfaces`]).
+    pub surfaces: Option<Vec<Surface>>,
 }
 
 /// A partial update of an existing entry (`updatePanel`, §9.1).
@@ -517,6 +520,7 @@ impl UiRegistry {
             focus: request.focus,
             close_on_escape: request.close_on_escape,
             size: request.size,
+            surfaces: request.surfaces,
             rev,
         };
         let created = existing.is_none();
@@ -721,6 +725,7 @@ impl UiRegistry {
             size: None,
             fallback: None,
             params: None,
+            surfaces: None,
         })?;
         Ok(id)
     }
@@ -787,6 +792,7 @@ impl UiRegistry {
             size: None,
             fallback: None,
             params: None,
+            surfaces: None,
         })?;
         self.settings.insert(namespace_key, id.clone());
         Ok(id)
@@ -986,6 +992,7 @@ fn only_tree_changed(old: &UiEntry, new: &UiEntry) -> bool {
         && old.focus == new.focus
         && old.close_on_escape == new.close_on_escape
         && old.size == new.size
+        && old.surfaces == new.surfaces
         && old.extension_id == new.extension_id
 }
 
@@ -1251,6 +1258,7 @@ impl UiRegistry {
             size: None,
             fallback: None,
             params: None,
+            surfaces: surfaces(params),
         })?;
         Ok(ProduceOutcome::Entry {
             id: out.id,
@@ -1288,6 +1296,7 @@ impl UiRegistry {
             size: None,
             fallback: None,
             params: None,
+            surfaces: surfaces(params),
         })?;
         Ok(ProduceOutcome::Entry {
             id: out.id,
@@ -1350,6 +1359,7 @@ impl UiRegistry {
                 size: None,
                 fallback: None,
                 params: None,
+                surfaces: None,
             })?;
             last = Some(out.id);
         }
@@ -1392,6 +1402,7 @@ impl UiRegistry {
                 size: None,
                 fallback: None,
                 params: None,
+                surfaces: surfaces(params),
             })?;
             return Ok(ProduceOutcome::Entry {
                 id: out.id,
@@ -1477,6 +1488,11 @@ impl UiRegistry {
     }
 }
 
+/// The producer's `surfaces` (`["tui"]` …); absent or malformed = every client.
+fn surfaces(params: &JsonObject) -> Option<Vec<Surface>> {
+    serde_json::from_value(params.get("surfaces")?.clone()).ok()
+}
+
 fn icon_value(value: &JsonValue) -> Option<Icon> {
     serde_json::from_value(value.clone()).ok()
 }
@@ -1527,6 +1543,7 @@ fn panel_request(
             .and_then(|value| serde_json::from_value(value.clone()).ok()),
         fallback: None,
         params: params.get("params").cloned(),
+        surfaces: surfaces(params),
     })
 }
 
@@ -1562,6 +1579,7 @@ mod tests {
             size: None,
             fallback: None,
             params: None,
+            surfaces: None,
         }
     }
 
@@ -2015,6 +2033,21 @@ mod tests {
             UiView::Lines {
                 lines: vec!["a".to_owned(), "b".to_owned()]
             }
+        );
+        assert_eq!(entry.surfaces, None);
+
+        // [ask-user] a terminal-only hint carries its surfaces to every client's mirror.
+        let hint = params(serde_json::json!({
+            "widgetKey": "hint",
+            "widgetLines": ["2 questions in the reply — /answer"],
+            "surfaces": ["tui"]
+        }));
+        registry.produce("a", "setWidget", &hint).unwrap();
+        let entry = registry.get("a/widget:hint").unwrap();
+        assert_eq!(entry.surfaces, Some(vec![Surface::Tui]));
+        assert_eq!(
+            serde_json::to_value(entry).unwrap()["surfaces"],
+            serde_json::json!(["tui"])
         );
 
         let open = params(serde_json::json!({

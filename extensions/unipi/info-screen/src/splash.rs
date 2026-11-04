@@ -290,7 +290,8 @@ pub fn spec(
 /// `setHeader` request.
 #[must_use]
 pub fn header_request(spec: Node) -> Value {
-    let mut r = json!({"method": "setHeader", "key": HEADER_KEY});
+    // The ASCII splash is the terminal's welcome; the app draws its own empty chat.
+    let mut r = json!({"method": "setHeader", "key": HEADER_KEY, "surfaces": ["tui"]});
     r["spec"] = serde_json::to_value(spec).unwrap_or(Value::Null);
     r
 }
