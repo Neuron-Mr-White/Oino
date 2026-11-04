@@ -55,13 +55,11 @@ impl HttpService {
         if let Some(client) = lock(&self.clients).get(&key) {
             return Ok(client.clone());
         }
-        let mut builder = reqwest::Client::builder()
-            .redirect(if follow {
-                reqwest::redirect::Policy::limited(10)
-            } else {
-                reqwest::redirect::Policy::none()
-            })
-            .read_timeout(self.idle_timeout);
+        let mut builder = reqwest::Client::builder().redirect(if follow {
+            reqwest::redirect::Policy::limited(10)
+        } else {
+            reqwest::redirect::Policy::none()
+        });
         if let Some(proxy) = &proxy {
             builder = builder.proxy(
                 reqwest::Proxy::all(proxy)
@@ -76,28 +74,35 @@ impl HttpService {
     }
 
     /// Sends `req`, returning the head and the streaming body.
+    ///
+    /// The request timeout (default: the service idle timeout) works like pi's undici
+    /// `headersTimeout` + `bodyTimeout`: it bounds the wait for the response headers, then the
+    /// wait for every body chunk. An active stream is never cut for its total length (owner
+    /// lerp graph 2026-11-03: two nodes died exactly 300 s into a live stream).
     pub(crate) async fn fetch(
         &self,
         req: Request,
     ) -> Result<(Head, BoxStream<'static, Vec<u8>>), HostError> {
         let client = self.client(req.follow_redirects, req.proxy.clone())?;
+        let idle = req.timeout.unwrap_or(self.idle_timeout);
         let mut builder = client.request(req.method, req.url);
+        let mut cut_marker = false;
         for (k, v) in &req.headers {
+            if k.eq_ignore_ascii_case(BODY_ERRORS_HEADER) {
+                cut_marker = true;
+                continue;
+            }
             builder = builder.header(k, v);
         }
         if let Some(body) = req.body {
             builder = builder.body(body);
         }
-        if let Some(t) = req.timeout {
-            builder = builder.timeout(t);
-        }
-        let resp = builder.send().await.map_err(|e| {
-            if e.is_timeout() {
-                HostError::Timeout
-            } else {
-                HostError::Failed(e.to_string())
-            }
-        })?;
+        let resp = match tokio::time::timeout(idle, builder.send()).await {
+            Err(_) => return Err(HostError::Timeout),
+            Ok(Err(e)) if e.is_timeout() => return Err(HostError::Timeout),
+            Ok(Err(e)) => return Err(HostError::Failed(e.to_string())),
+            Ok(Ok(resp)) => resp,
+        };
         let head = Head {
             status: resp.status().as_u16(),
             headers: resp
@@ -112,32 +117,85 @@ impl HttpService {
                 .collect(),
             final_url: resp.url().to_string(),
         };
-        // The WIT body is a plain byte stream, so a read error (idle read timeout, total
-        // timeout, reset) still ends it like EOF and the guest sees a cut-off last event
-        // ("malformed server-sent event JSON"). Log the real cause so host.log names it
-        // (owner lerp graph 2026-11-03: two nodes died exactly 300 s after their last
-        // tool result).
         let origin = head
             .final_url
             .split('?')
             .next()
             .unwrap_or_default()
             .to_owned();
-        let body = resp.bytes_stream().scan((), move |(), r| {
-            futures::future::ready(match r {
-                Ok(b) => Some(b.to_vec()),
-                Err(e) => {
+        Ok((
+            head,
+            idle_body(resp.bytes_stream(), idle, cut_marker, origin),
+        ))
+    }
+}
+
+/// Request header (stripped before sending) by which a guest asks for a [`cut_marker`] at the
+/// end of a body that failed. The WIT body is a plain byte stream that ends like EOF on an
+/// error, so without it the guest parses the cut-off tail as data (`malformed server-sent
+/// event JSON`). The provider kit (`oino-provider-kit` `body.rs`) sends it and decodes the
+/// marker; other guests keep the plain stream.
+pub(crate) const BODY_ERRORS_HEADER: &str = "x-oino-body-errors";
+/// Leading bytes of the cut marker (mirrors `oino-provider-kit` `body::CUT_MAGIC`).
+const CUT_MAGIC: &[u8; 12] = b"\0\xffOINO-CUT\xff\0";
+
+/// Why a response body ended early.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Cut {
+    /// No chunk within the idle timeout.
+    Idle(Duration),
+    /// The connection failed (reset, protocol error).
+    Reset,
+}
+
+/// Fixed-size marker: [`CUT_MAGIC`], kind (`i` idle / `r` reset), idle milliseconds (u32 LE).
+fn cut_marker(cut: Cut) -> Vec<u8> {
+    let (kind, ms) = match cut {
+        Cut::Idle(idle) => (b'i', u32::try_from(idle.as_millis()).unwrap_or(u32::MAX)),
+        Cut::Reset => (b'r', 0),
+    };
+    let mut marker = CUT_MAGIC.to_vec();
+    marker.push(kind);
+    marker.extend_from_slice(&ms.to_le_bytes());
+    marker
+}
+
+/// Body chunks with a per-chunk idle timeout. A read error or an idle timeout ends the stream
+/// (with a [`cut_marker`] when `marked`) and is logged with its cause.
+fn idle_body<S, E>(
+    inner: S,
+    idle: Duration,
+    marked: bool,
+    origin: String,
+) -> BoxStream<'static, Vec<u8>>
+where
+    S: futures::Stream<Item = Result<bytes::Bytes, E>> + Send + 'static,
+    E: std::fmt::Display + Send + 'static,
+{
+    let inner = Box::pin(inner);
+    Box::pin(futures::stream::unfold(Some(inner), move |state| {
+        let origin = origin.clone();
+        async move {
+            let mut inner = state?;
+            let cut = match tokio::time::timeout(idle, inner.next()).await {
+                Ok(Some(Ok(chunk))) => return Some((chunk.to_vec(), Some(inner))),
+                Ok(None) => return None,
+                Ok(Some(Err(e))) => {
+                    tracing::warn!(url = %origin, "http response body ended early: {e}");
+                    Cut::Reset
+                }
+                Err(_) => {
                     tracing::warn!(
                         url = %origin,
-                        timeout = e.is_timeout(),
-                        "http response body ended early: {e}"
+                        idle_s = idle.as_secs(),
+                        "http response body idle, closing it"
                     );
-                    None
+                    Cut::Idle(idle)
                 }
-            })
-        });
-        Ok((head, Box::pin(body)))
-    }
+            };
+            marked.then(|| (cut_marker(cut), None))
+        }
+    }))
 }
 
 /// One accepted loopback request (WIT `incoming`).
@@ -324,5 +382,128 @@ mod tests {
         assert!(head.headers.iter().any(|(k, v)| k == "x-a" && v == "1"));
         assert_eq!(body.concat().await, b"done");
         server.await.unwrap();
+    }
+
+    /// Serves one request with `respond`, returning the request head it read.
+    async fn serve_once<F, Fut>(respond: F) -> (u16, tokio::task::JoinHandle<String>)
+    where
+        F: FnOnce(TcpStream) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send,
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut head = String::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).await.unwrap();
+                if line.trim_end().is_empty() {
+                    break;
+                }
+                head.push_str(&line);
+            }
+            respond(reader.into_inner()).await;
+            head
+        });
+        (port, task)
+    }
+
+    async fn get(port: u16, timeout: Duration, marked: bool) -> Vec<u8> {
+        let http = HttpService::new(None, Duration::from_secs(30));
+        let headers = if marked {
+            vec![(BODY_ERRORS_HEADER.to_owned(), "1".to_owned())]
+        } else {
+            vec![]
+        };
+        let (head, body) = http
+            .fetch(Request {
+                method: reqwest::Method::GET,
+                url: format!("http://127.0.0.1:{port}/s").parse().unwrap(),
+                headers,
+                body: None,
+                timeout: Some(timeout),
+                follow_redirects: true,
+                proxy: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(head.status, 200);
+        body.concat().await
+    }
+
+    const CHUNKED: &[u8] = b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n";
+
+    async fn chunk(stream: &mut TcpStream, data: &[u8]) {
+        let frame = format!("{:x}\r\n", data.len());
+        stream.write_all(frame.as_bytes()).await.unwrap();
+        stream.write_all(data).await.unwrap();
+        stream.write_all(b"\r\n").await.unwrap();
+        stream.flush().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_active_stream_outlives_the_timeout() {
+        let (port, server) = serve_once(|mut s| async move {
+            s.write_all(CHUNKED).await.unwrap();
+            for _ in 0..12 {
+                chunk(&mut s, b"data: x\n\n").await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            s.write_all(b"0\r\n\r\n").await.unwrap();
+        })
+        .await;
+        // 12 chunks over ~600 ms with a 250 ms timeout: only the gaps count.
+        let body = get(port, Duration::from_millis(250), true).await;
+        assert_eq!(body, b"data: x\n\n".repeat(12));
+        let head = server.await.unwrap().to_ascii_lowercase();
+        assert!(
+            !head.contains(BODY_ERRORS_HEADER),
+            "marker header leaked: {head}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stalled_stream_ends_with_an_idle_marker() {
+        let (port, server) = serve_once(|mut s| async move {
+            s.write_all(CHUNKED).await.unwrap();
+            chunk(&mut s, b"data: {\"a\"").await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        })
+        .await;
+        let body = get(port, Duration::from_millis(200), true).await;
+        let mut expected = b"data: {\"a\"".to_vec();
+        expected.extend(cut_marker(Cut::Idle(Duration::from_millis(200))));
+        assert_eq!(body, expected);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_cut_body_ends_with_a_reset_marker_only_when_asked() {
+        for marked in [true, false] {
+            let (port, server) = serve_once(|mut s| async move {
+                s.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 100\r\n\r\ndata: {\"a\"")
+                    .await
+                    .unwrap();
+                s.shutdown().await.unwrap();
+            })
+            .await;
+            let body = get(port, Duration::from_secs(5), marked).await;
+            let mut expected = b"data: {\"a\"".to_vec();
+            if marked {
+                expected.extend(cut_marker(Cut::Reset));
+            }
+            assert_eq!(body, expected);
+            server.await.unwrap();
+        }
+    }
+
+    #[test]
+    fn cut_marker_layout_matches_the_provider_kit() {
+        let mut idle = b"\0\xffOINO-CUT\xff\0i".to_vec();
+        idle.extend_from_slice(&300_000u32.to_le_bytes());
+        assert_eq!(cut_marker(Cut::Idle(Duration::from_secs(300))), idle);
+        assert_eq!(cut_marker(Cut::Reset).len(), 17);
     }
 }

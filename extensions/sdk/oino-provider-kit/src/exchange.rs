@@ -306,6 +306,19 @@ impl Exchange {
         self.fail(connection_error_message(detail), false)
     }
 
+    /// The body was cut (idle timeout or connection failure): a transient connection error.
+    /// The undecoded tail is dropped, never parsed as a last event.
+    pub fn body_cut(&mut self, cut: crate::body::BodyCut) -> Vec<ProviderEvent> {
+        if self.finished {
+            return self.out.drain();
+        }
+        self.parser
+            .failure_diagnostics(&StreamFailure::Other, &mut self.out);
+        let mut out = self.out.drain();
+        out.extend(self.fail(cut.message(), false));
+        out
+    }
+
     /// The caller aborted.
     pub fn abort(&mut self) -> Vec<ProviderEvent> {
         self.fail("Request was aborted".to_owned(), true)

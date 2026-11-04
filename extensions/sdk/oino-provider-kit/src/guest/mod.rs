@@ -16,7 +16,7 @@ use crate::catalog::{Catalog, CatalogProvider, personalize_open_router};
 use crate::emit::Emitter;
 use crate::request::{Headers, ProviderRequest};
 use crate::retry::{is_retryable, retry_delay_ms};
-use crate::{PrepareOptions, Wire, anthropic, finalize, prepare, sigv4};
+use crate::{PrepareOptions, Wire, anthropic, body, finalize, prepare, sigv4};
 
 /// Provider environment the components read when the host grants it (`permissions.env`) and
 /// the request's `options.env` does not set it (pi `getProviderEnvValue`).
@@ -199,7 +199,8 @@ async fn run(wire: Wire, request: ProviderRequest, options: StreamOptions, sink:
         let response: Response = loop {
             let mut builder = http::request(Method::Post, &prepared.http.url)
                 .body(body.clone())
-                .timeout_ms(u32::try_from(timeout).unwrap_or(u32::MAX));
+                .timeout_ms(u32::try_from(timeout).unwrap_or(u32::MAX))
+                .header(body::BODY_ERRORS_HEADER, "1");
             for (name, value) in headers.pairs() {
                 builder = builder.header(name, value);
             }
@@ -286,8 +287,12 @@ async fn run(wire: Wire, request: ProviderRequest, options: StreamOptions, sink:
         sink.send(prepared.exchange.start_with(&response.head.headers))
             .await;
         let mut body = response.body();
+        // The host marks a body it cut (idle timeout, reset); the held-back tail keeps the
+        // marker away from the decoder.
+        let mut tail = body::BodyTail::new();
         while sink.open && !prepared.exchange.is_finished() {
             let (status, chunk) = body.read(Vec::with_capacity(READ_CHUNK)).await;
+            let chunk = tail.push(&chunk);
             if !chunk.is_empty() {
                 let events = prepared.exchange.feed(&chunk);
                 if request.want_stream_events {
@@ -304,7 +309,18 @@ async fn run(wire: Wire, request: ProviderRequest, options: StreamOptions, sink:
             }
         }
         if sink.open {
-            let events = prepared.exchange.finish();
+            let (rest, cut) = tail.end();
+            let mut events = prepared.exchange.feed(&rest);
+            events.extend(match cut {
+                Some(cut) => {
+                    host::log(
+                        host::LogLevel::Warn,
+                        &format!("{} stream cut: {}", request.model.provider, cut.message()),
+                    );
+                    prepared.exchange.body_cut(cut)
+                }
+                None => prepared.exchange.finish(),
+            });
             if request.want_stream_events {
                 for raw in prepared.exchange.take_raw() {
                     provider::stream_event(&request.request_id, &raw);

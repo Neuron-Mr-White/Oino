@@ -17,6 +17,7 @@
 //! | [`providers`] | `providers/{github-copilot,cloudflare-*,azure}.js` | per-provider request adaptations |
 //! | [`eventstream`], [`sigv4`] | AWS SDK | event stream framing, Signature V4 |
 //! | [`oauth`] | `auth/oauth/*.js` | PKCE, form encoding, device-code polling, JWT claims |
+//! | [`body`] | Oino host | end-of-body cut marker (idle / reset), [`body::BodyTail`] |
 //! | [`exchange`] | `stream()` bodies | [`Exchange`]: response bytes → [`oino_ai::ProviderEvent`]s |
 //! | [`retry`] | `utils/provider-retry.js` | retryable statuses and delays |
 //! | [`catalog`] | `providers/*.js`, `models.generated.js` | bundled catalogs, registrations, `/models` parsing |
@@ -40,6 +41,7 @@
 pub mod anthropic;
 pub mod azure;
 pub mod bedrock;
+pub mod body;
 pub mod catalog;
 pub mod codex;
 pub mod completions;
