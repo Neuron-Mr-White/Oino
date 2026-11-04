@@ -8,7 +8,11 @@
  * flood the DOM.
  */
 import { createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from 'solid-js';
-import { Archive, Folder, Plus } from 'lucide-solid';
+import { Archive, Folder, MoonStar, Plus, Settings2, Ellipsis } from 'lucide-solid';
+import { AnchoredMenu, MenuRow } from '../board/AnchoredMenu';
+import { menuAnchor, desktopShell } from '../../lib/layout';
+import { openProjectSettings } from '../../lib/settings/open';
+import { runDream } from '../../lib/settings/dream';
 import type { SessionCard } from '../../lib/host/client';
 import type { SessionMeta } from '../../lib/session/hub';
 import { NO_WORKSPACE_LABEL, shortCwd } from '../../lib/session/selectors';
@@ -27,8 +31,8 @@ type Paging = { get: (key: string) => number; more: (key: string, step?: number)
 /** Row slot heights (px) for the windowed list: comfortable / compact × sidebar / page. */
 export function rowSlot(variant: RowVariant, compact: boolean): number {
   if (variant === 'page') return compact ? 44 : 52;
-  // [ux-sessions] Task list rows are one line (title + age), compact a little denser.
-  return compact ? 28 : 32;
+  // [sidebar-ui] Normal Task rows are two lines (title + meta), compact is one.
+  return compact ? 28 : 44;
 }
 
 export function ProjectGroup(props: {
@@ -70,6 +74,12 @@ export function ProjectGroup(props: {
   const hidden = () => props.cards.length - visible().length;
   const rowHeight = () => rowSlot(props.variant, !!props.compact);
   const isProject = () => props.cwd !== undefined;
+  // [sidebar-ui] The head's menu (right-click or the hover …): Project settings, Archive, Dream.
+  const [menuAt, setMenuAt] = createSignal<DOMRect | undefined>();
+  const realProject = () => !!props.cwd;
+  const hasMenu = () => realProject() || !!props.onArchiveAll;
+  const iconSize = () => (desktopShell() ? 15 : 17);
+  const groupName = () => props.label || NO_WORKSPACE_LABEL;
 
   // >50 sessions: a positioned window over one shared scroll parent. Rows with an open
   // subagent tree are taller, so the window walks prefix offsets, not i × height.
@@ -131,6 +141,11 @@ export function ProjectGroup(props: {
           data-section={props.section ? '' : undefined}
           title={`${isProject() ? (props.cwd ? shortCwd(props.cwd) : NO_WORKSPACE_LABEL) : props.label} · ${props.cards.length} ${props.cards.length === 1 ? 'session' : 'sessions'}`}
           data-testid="sb-project-head"
+          onContextMenu={(e) => {
+            if (!hasMenu()) return;
+            e.preventDefault();
+            setMenuAt(menuAnchor(e, e.currentTarget));
+          }}
         >
           {/* [ux-sessions] Task list: a project is a folder icon + its name (the count is the tooltip). */}
           <Show when={isProject()}>
@@ -141,19 +156,22 @@ export function ProjectGroup(props: {
             <span class="sb-project-count" title={`${props.cards.length} sessions`}>{props.cards.length}</span>
           </Show>
           <span class="sb-project-tools">
-            <Show when={props.onArchiveAll}>
+            <Show when={hasMenu()}>
               <button
                 type="button"
                 class="sb-project-tool"
-                title={`Archive all in ${props.label || NO_WORKSPACE_LABEL}`}
-                aria-label={`Archive all in ${props.label || NO_WORKSPACE_LABEL}`}
-                data-testid={`sb-project-archive-${props.label}`}
+                title={`${groupName()} actions`}
+                aria-label={`${groupName()} actions`}
+                aria-haspopup="menu"
+                aria-expanded={menuAt() ? 'true' : 'false'}
+                data-open={menuAt() ? '' : undefined}
+                data-testid={`sb-project-menu-${props.label}`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  props.onArchiveAll!((e.currentTarget as HTMLElement).getBoundingClientRect());
+                  setMenuAt((e.currentTarget as HTMLElement).getBoundingClientRect());
                 }}
               >
-                <Archive size={13} />
+                <Ellipsis size={14} />
               </button>
             </Show>
             {/* Z-19 (WP-A5): a per-project draft in this folder (`/new/:host?cwd=`); a
@@ -172,6 +190,40 @@ export function ProjectGroup(props: {
             </Show>
           </span>
         </div>
+      </Show>
+      <Show when={menuAt()}>
+        {(anchor) => (
+          <AnchoredMenu anchor={anchor()} width={desktopShell() ? 200 : 248} class="srow-menu" label={`${groupName()} actions`} onDismiss={() => setMenuAt(undefined)}>
+            <Show when={realProject()}>
+              <MenuRow
+                icon={<Settings2 size={iconSize()} />}
+                label="Project settings"
+                testId="sb-project-settings"
+                onSelect={() => (setMenuAt(undefined), openProjectSettings(props.hostId, props.cwd!))}
+              />
+            </Show>
+            <Show when={props.onArchiveAll}>
+              <MenuRow
+                icon={<Archive size={iconSize()} />}
+                label="Archive"
+                testId={`sb-project-archive-${props.label}`}
+                onSelect={() => {
+                  const at = menuAt()!;
+                  setMenuAt(undefined);
+                  props.onArchiveAll!(at);
+                }}
+              />
+            </Show>
+            <Show when={realProject()}>
+              <MenuRow
+                icon={<MoonStar size={iconSize()} />}
+                label="Dream"
+                testId="sb-project-dream"
+                onSelect={() => (setMenuAt(undefined), void runDream(props.hostId, props.cwd, groupName()))}
+              />
+            </Show>
+          </AnchoredMenu>
+        )}
       </Show>
       <div
         ref={container}

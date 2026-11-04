@@ -9,7 +9,7 @@ import { HostSettingsSchema, type HostSettings } from '@unipi/protocol';
 import { hostClient, requestParsed } from '../lib/host';
 import { markReservedGatesStale } from '../ui/slots/reserved';
 import type { HostResult } from '../lib/host';
-import { settingsHostId } from './target';
+import { settingsHostId, settingsProjectCwd } from './target';
 
 /** One row of the `extensions` answer (`ExtensionInfo`, camelCase like core's). */
 export const ExtensionInfoSchema = z.object({
@@ -158,10 +158,12 @@ export function setExtensionSetting(
   scope: 'global' | 'project' = 'global',
   hostId = settingsHostId(),
 ): Promise<HostResult<null>> {
+  const cwd = scope === 'project' ? settingsProjectCwd(hostId) : undefined;
+  const at = cwd ? { cwd } : {};
   const cmd: HostCmdOp =
     value === undefined
-      ? { kind: 'unset_extension_setting', namespace, key, scope }
-      : { kind: 'set_extension_setting', namespace, key, value, scope };
+      ? { kind: 'unset_extension_setting', namespace, key, scope, ...at }
+      : { kind: 'set_extension_setting', namespace, key, value, scope, ...at };
   return hostCmd(cmd, z.null(), hostId);
 }
 

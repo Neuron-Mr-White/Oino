@@ -381,3 +381,13 @@ html[data-shell=phone] [class*='sb-project-new'] { width: 40px; height: 40px; }
 html[data-shell=phone] button.rounded-input.w-8.h-8 { width: 40px; height: 40px; }
 html[data-shell=phone] .settings-iconbtn { width: 40px; }
 html[data-shell=phone] .settings-page button.rounded-pill { min-height: 40px; }
+
+/* [sidebar-ui] Settings scoped to one project: a quiet bar above the forms. */
+.settings-project-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 10px; border-radius: 8px; background: rgb(40 190 240 / 8%); color: var(--color-text-muted); font-size: 12.5px; line-height: 18px; }
+.settings-project-bar svg { flex: none; color: var(--color-wm-cyan); }
+.settings-project-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-project-name strong { color: var(--color-text); font-weight: 600; }
+.settings-project-back { flex: none; min-height: 0; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--color-wm-cyan); font-size: 12px; font-weight: 550; }
+.settings-project-back:hover { background: rgb(40 190 240 / 14%); }
+.settings-project-back:active:not(:disabled) { transform: none; }
+.settings-project-back:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }

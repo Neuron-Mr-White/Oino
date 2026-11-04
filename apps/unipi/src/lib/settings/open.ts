@@ -6,6 +6,7 @@
 import { createSignal } from 'solid-js';
 import { appNavigate } from '../nav';
 import { layout } from '../layout';
+import { setProjectScope } from '../../settings/target';
 
 const FLASH_MS = 1400;
 
@@ -104,4 +105,14 @@ export function openSettingsFor(opts: { namespace?: string; section?: string; qu
   }
   setPendingNamespace(undefined);
   appNavigate('/settings');
+}
+
+/**
+ * [sidebar-ui] Settings scoped to one project: the extension forms open on their project layer
+ * (`<cwd>/.oino/settings.json`) until Settings' banner says "Back to global".
+ */
+export function openProjectSettings(hostId: string, cwd: string): void {
+  setProjectScope({ hostId, cwd });
+  setPendingNamespace(undefined);
+  openSettingsAt('extensions');
 }

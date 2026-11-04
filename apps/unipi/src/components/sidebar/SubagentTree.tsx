@@ -88,8 +88,13 @@ export function treeMetrics(variant: RowVariant): { head: number; row: number } 
   return variant === 'page' ? { head: 34, row: 40 } : { head: 26, row: 26 };
 }
 
+/** [sidebar-ui] A tree of this many runs or fewer needs no status filter. */
+export const FILTER_MIN = 3;
+/** Whether the tree shows its filter row (more than {@link FILTER_MIN} runs). */
+export const hasFilter = (runs: readonly unknown[] | undefined) => (runs?.length ?? 0) > FILTER_MIN;
+
 export function filteredRuns(hostId: string, sessionId: string, runs: readonly SubRun[]): SubRun[] {
-  const f = filters()[key(hostId, sessionId)];
+  const f = hasFilter(runs) ? filters()[key(hostId, sessionId)] : undefined;
   return f ? runs.filter((r) => r.status === f) : [...runs];
 }
 
@@ -102,7 +107,7 @@ const TREE_OVERSCAN = 4;
 export function treeHeight(variant: RowVariant, hostId: string, sessionId: string, runs: readonly SubRun[] | undefined): number {
   const m = treeMetrics(variant);
   if (!runs || runs.length === 0) return m.row + 4;
-  return m.head + Math.min(TREE_ROWS_MAX, Math.max(1, filteredRuns(hostId, sessionId, runs).length)) * m.row + 4;
+  return (hasFilter(runs) ? m.head : 0) + Math.min(TREE_ROWS_MAX, Math.max(1, filteredRuns(hostId, sessionId, runs).length)) * m.row + 4;
 }
 
 /** "42s", "3m 04s", "1h 02m". */
@@ -214,6 +219,7 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
           </div>
         }
       >
+        <Show when={runs()!.length > FILTER_MIN}>
         <div class="sa-head" style={{ height: `${m().head}px` }} role="toolbar" aria-label="Filter subagents by status">
           <button type="button" class="sa-filter" data-on={!filter() ? '' : undefined} onClick={() => setFilter(undefined)}>
             All <span class="sa-n">{runs()!.length}</span>
@@ -226,6 +232,7 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
             )}
           </For>
         </div>
+        </Show>
         <Show when={shown().length} fallback={<div class="sa-row sa-empty" style={{ height: `${m().row}px` }}>None {statusWord(filter() ?? '').toLowerCase()}</div>}>
           <TreeRows runs={shown()} row={m().row}>
             {(run) => (

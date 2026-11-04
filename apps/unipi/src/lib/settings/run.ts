@@ -113,15 +113,16 @@ export function commandsReady(handle: { state: { commands: ReadonlyArray<unknown
 const scratch = new Map<string, SessionHandle>();
 let scratchSeq = 0;
 
-function scratchSession(hostId: string): SessionHandle {
-  const hit = scratch.get(hostId);
+function scratchSession(hostId: string, cwd?: string): SessionHandle {
+  const slot = cwd ? `${hostId}\u0000${cwd}` : hostId;
+  const hit = scratch.get(slot);
   if (hit && hit.state.conn !== 'closed') return hit;
   hit?.close();
   const real = hostClient(hostId);
   const client: HostClient = Object.create(real, {
     openSession: {
       value: (_req: unknown, sink: Parameters<HostClient['openSession']>[1]) =>
-        real.openSession({ kind: 'new' }, {
+        real.openSession({ kind: 'new', ...(cwd ? { cwd } : {}) }, {
           ...sink,
           snapshot: (snap) => {
             // Never listed with the user's chats.
@@ -135,7 +136,7 @@ function scratchSession(hostId: string): SessionHandle {
     },
   });
   const handle = createRoot(() => createSession(hostId, `settings-${Date.now().toString(36)}-${++scratchSeq}`, { client }));
-  scratch.set(hostId, handle);
+  scratch.set(slot, handle);
   return handle;
 }
 
@@ -146,10 +147,10 @@ export function resetSettingsCommandSessions(): void {
 }
 
 /** The session a Settings command runs in — Settings' own, never a chat of the user's. */
-export async function settingsCommandChat(hostId: string, _start: typeof newSession = newSession): Promise<SessionHandle | undefined> {
+export async function settingsCommandChat(hostId: string, _start: typeof newSession = newSession, cwd?: string): Promise<SessionHandle | undefined> {
   installUiSinks();
   installUiEffects();
-  const handle = scratchSession(hostId);
+  const handle = scratchSession(hostId, cwd);
   const deadline = Date.now() + 20_000;
   while (handle.state.conn !== 'live' && Date.now() < deadline) {
     if (handle.state.conn === 'closed') return undefined;
@@ -170,9 +171,9 @@ export type StartedCommand =
  */
 export async function startSettingsCommand(
   command: string,
-  opts: { hostId: string; hidden?: boolean; onReply: (reply: Reply) => void; start?: typeof newSession },
+  opts: { hostId: string; hidden?: boolean; /** Run in a command chat rooted at this project folder. */ cwd?: string; onReply: (reply: Reply) => void; start?: typeof newSession },
 ): Promise<StartedCommand> {
-  const handle = await settingsCommandChat(opts.hostId, opts.start);
+  const handle = await settingsCommandChat(opts.hostId, opts.start, opts.cwd);
   if (!handle) return { ok: false, reason: 'no-chat' };
   await commandsReady(handle);
   if (handle.state.commands.length > 0 && !chatHasCommand(handle, command, opts.hidden)) {
@@ -200,7 +201,7 @@ export type BackgroundOutcome =
  */
 export async function runInBackground(
   command: string,
-  opts: { hostId: string; hidden?: boolean; waitMs?: number; settleMs?: number; start?: typeof newSession; onProgress?: (replies: Reply[]) => void },
+  opts: { hostId: string; hidden?: boolean; cwd?: string; waitMs?: number; settleMs?: number; start?: typeof newSession; onProgress?: (replies: Reply[]) => void },
 ): Promise<BackgroundOutcome> {
   const replies: Reply[] = [];
   let wake: (() => void) | undefined;

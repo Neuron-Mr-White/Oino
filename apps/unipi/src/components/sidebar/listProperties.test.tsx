@@ -141,13 +141,14 @@ describe('Properties menu', () => {
   it('compact view puts each row on one line; property visibility hides the time; Hide all hides every chip', async () => {
     boot([card('a')]);
     await waitFor(() => expect(screen.getByTestId('srow-a')).toBeTruthy());
-    // [ux-sessions] Task list rows are always one line: title + age.
-    expect(screen.getByTestId('srow-a').querySelector('.srow-sub')).toBeNull();
+    // [sidebar-ui] Normal rows: the title line + a second meta line (the age lives there).
+    expect(screen.getByTestId('srow-a').querySelector('.srow-meta .srow-time')).toBeTruthy();
     openProps();
     fireEvent.click(screen.getByTestId('lp-compact'));
     await waitFor(() => expect(screen.getByTestId('srow-a').hasAttribute('data-compact')).toBe(true));
-    expect(screen.getByTestId('srow-a').querySelector('.srow-sub')).toBeNull();
-    expect(screen.getByTestId('srow-a').querySelector(':scope > .srow-time')).toBeTruthy();
+    // Compact: ONE line — title + age, no meta line.
+    expect(screen.getByTestId('srow-a').querySelector('.srow-meta')).toBeNull();
+    expect(screen.getByTestId('srow-a').querySelector('.srow-line > .srow-time')).toBeTruthy();
     fireEvent.click(screen.getByTestId('lp-props'));
     fireEvent.click(screen.getByTestId('lp-prop-updated'));
     await waitFor(() => expect(screen.getByTestId('srow-a').querySelector('.srow-time')).toBeNull());
@@ -181,10 +182,20 @@ describe('Archive all', () => {
     await waitFor(() => expect(toasts().list().find((t) => t.message.startsWith('Archived 2000'))).toBeTruthy());
   });
 
+  it('project head menu: Project settings, Archive and Dream (right-click opens it too)', async () => {
+    boot([card('a')]);
+    await waitFor(() => expect(screen.getByTestId('sb-rows-oino')).toBeTruthy());
+    fireEvent.contextMenu(screen.getAllByTestId('sb-project-head')[0]!);
+    expect(await screen.findByTestId('sb-project-settings')).toBeTruthy();
+    expect(screen.getByTestId('sb-project-archive-oino')).toBeTruthy();
+    expect(screen.getByTestId('sb-project-dream')).toBeTruthy();
+  });
+
   it('group header: confirm with the count (pinned and running kept), then an Undo toast restores them', async () => {
     boot([card('a'), card('b'), card('p', { pinned: true }), card('r', { run_state: 'working' }), card('w', { cwd: '/home/you/p/web' })]);
     await waitFor(() => expect(screen.getByTestId('sb-rows-oino')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('sb-project-archive-oino'));
+    fireEvent.click(screen.getByTestId('sb-project-menu-oino'));
+    fireEvent.click(await screen.findByTestId('sb-project-archive-oino'));
     const confirm = await screen.findByTestId('archive-all-confirm');
     expect(confirm.textContent).toContain('Archive 2 sessions in oino');
     fireEvent.click(screen.getByTestId('archive-all-yes'));
@@ -239,9 +250,9 @@ describe('rows', () => {
     const row = await screen.findByTestId('srow-r');
     expect(row.querySelector('.srow-glyph .srow-spin')).toBeTruthy();
     expect(row.querySelector('.srow-sub')).toBeNull();
-    // Running keeps its spinner + "Working" (in place of the age).
-    expect(row.querySelector('.srow-word')!.textContent).toBe('Working');
-    expect(row.querySelector('.srow-time')).toBeNull();
+    // Running keeps its spinner + "Working" on the title line (the age stays on the meta line).
+    expect(row.querySelector('.srow-line .srow-word')!.textContent).toBe('Working');
+    expect(row.querySelector('.srow-line .srow-time')).toBeNull();
   });
 });
 

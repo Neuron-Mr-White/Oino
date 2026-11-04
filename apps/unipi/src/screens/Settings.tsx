@@ -24,7 +24,7 @@ import { api as boardApi } from '../lib/board/api';
 import { boardStore } from '../lib/board/store';
 import { EnumSelect } from '../ui/settings/fields';
 import { Requires } from '../components/Requires';
-import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-solid';
+import { ChevronDown, Folder, ChevronUp, Minus, Plus } from 'lucide-solid';
 import { SectionNav, Row, Section, Segmented, Stepper } from './settings/rows';
 import { SettingsNav, visibleSections } from './settings/SettingsNav';
 import { SettingsSearch, type SearchHit } from './settings/SettingsSearch';
@@ -37,6 +37,7 @@ import { HostSettingsSection } from './settings/HostSettingsSection';
 import { AgentSection } from './settings/AgentSection';
 import { McpPage } from './settings/McpPage';
 import { MemoryPage } from './settings/MemoryPage';
+import { UsagePage } from './settings/UsagePage';
 import { SkillsPage } from './settings/SkillsPage';
 import { SubagentsPage } from './settings/SubagentsPage';
 import { ProvidersPage } from './settings/ProvidersPage';
@@ -50,7 +51,7 @@ import { PageScaffold } from '../components/phone';
 import { PhoneSettingsRoot, pcScoped, phoneSectionTitle } from './settings/PhoneSettings';
 import { AgentProfilesPage } from './settings/AgentProfilesPage';
 import { PortsSection } from './Preview';
-import { settingsHostId } from '../settings/target';
+import { projectScope, setProjectScope, settingsHostId } from '../settings/target';
 import './settings/phoneSettings.css';
 
 const TOOLBAR_LABELS: Record<ToolbarKey, string> = {
@@ -295,6 +296,7 @@ export default function Settings() {
       case 'sharing': return <SharingSection />;
       case 'notifications': return <NotificationsSection />;
       case 'unicrab': return <UnicrabSection />;
+      case 'usage': return <UsagePage />;
       case 'host': return <HostSettingsSection />;
       case 'ports': return <PortsSection />;
       case 'about': return <AboutSection />;
@@ -312,6 +314,22 @@ export default function Settings() {
     if (section.id === 'subagents' && params.sub === 'profiles') return <AgentProfilesPage hostId={settingsHostId()} onBack={() => navigate('/settings/subagents')} />;
     return body(section.id);
   };
+  /** [sidebar-ui] The project the forms are scoped to ("Project settings" in the sidebar). */
+  const scopeBar = () => (
+    <Show when={projectScope()}>
+      {(scope) => (
+        <div class="settings-project-bar" data-testid="settings-project-bar" role="status">
+          <Folder size={13} aria-hidden="true" />
+          <span class="settings-project-name" title={scope().cwd}>
+            Project settings · <strong>{scope().cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || scope().cwd}</strong>
+          </span>
+          <button type="button" class="settings-project-back" onClick={() => setProjectScope(undefined)}>
+            Back to global
+          </button>
+        </div>
+      )}
+    </Show>
+  );
 
   return (
     <Show when={desktop()} fallback={
@@ -336,7 +354,8 @@ export default function Settings() {
             <SectionNav.Provider value={{ active: () => section.title }}>
               <div class="settings-page settings-phone settings-phone-section" data-section-id={section.id} ref={pageEl}>
                 {/* PC-scoped pages reload when the selected PC changes (PH-04). */}
-                <Show when={settingsHostId()} keyed>
+                {scopeBar()}
+                <Show when={`${settingsHostId()}|${projectScope()?.cwd ?? ''}`} keyed>
                   {(_host: string) => <div class="settings-body">{phoneBody()}</div>}
                 </Show>
               </div>
@@ -349,10 +368,11 @@ export default function Settings() {
       <div class="settings-page" data-testid="settings-page" ref={pageEl}>
         <div class="settings-top">
           <SettingsSearch onPick={onSearchPick} />
+          {scopeBar()}
         </div>
         <SettingsNav sections={sections()} active={active} onPick={pickSection} />
         <div class="settings-body">
-          {body(active() ?? 'about')}
+          <Show when={`scope:${projectScope()?.cwd ?? ''}`} keyed>{(_scope: string) => <>{body(active() ?? 'about')}</>}</Show>
         </div>
       </div>
     </SectionNav.Provider>

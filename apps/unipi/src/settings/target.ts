@@ -38,3 +38,17 @@ export function syncSettingsHost(hosts: Pick<HostsApi, 'hosts' | 'selectedId'>):
 export function setSettingsHostForTest(id: string): void {
   setTarget(id);
 }
+
+/**
+ * [sidebar-ui] A project the Settings forms are scoped to (the sidebar's "Project settings"): the
+ * extension forms open on the project layer and read/write `<cwd>/.oino/settings.json`.
+ * Cleared by Settings' "Back to global" or by opening Settings the normal way.
+ */
+const [projectScope, setProjectScope] = createSignal<{ hostId: string; cwd: string } | undefined>();
+export { projectScope, setProjectScope };
+
+/** The project cwd extension-settings calls address (`undefined` = the host's primary cwd). */
+export function settingsProjectCwd(hostId = target()): string | undefined {
+  const scope = projectScope();
+  return scope && scope.hostId === hostId ? scope.cwd : undefined;
+}

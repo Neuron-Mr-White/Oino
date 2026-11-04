@@ -19,7 +19,7 @@ import { fieldVisible, resolve, setPath, removePath, checkValue, zodMessage, toZ
 import { loadNamespaceLayers, simplifyWrite, writeFieldValue, type NamespaceLayers } from './data';
 import { FieldRow, SettingsField, type EditContext } from './fields';
 import './settings-form.css';
-import { settingsHostId } from '../../settings/target';
+import { settingsHostId, settingsProjectCwd } from '../../settings/target';
 
 const emptyLayers = (namespace: Namespace): NamespaceLayers => ({ defaults: namespace.defaults, global: {}, project: {}, diagnostics: [] });
 
@@ -62,7 +62,7 @@ export function NamespaceForm(props: {
   const hostId = () => props.hostId ?? settingsHostId();
   const [error, setError] = createSignal<AppError | undefined>();
   const [layers, setLayers] = createSignal<NamespaceLayers | undefined>();
-  const [scope, setScope] = createSignal<WriteLayer>('global');
+  const [scope, setScope] = createSignal<WriteLayer>(settingsProjectCwd(hostId()) ? 'project' : 'global');
   const [advanced, setAdvanced] = createSignal(false);
   const [busy, setBusy] = createSignal<string | undefined>();
 
@@ -75,7 +75,7 @@ export function NamespaceForm(props: {
         return emptyLayers(namespace);
       }
       setError(undefined);
-      setScope('global');
+      setScope(settingsProjectCwd(hostId()) ? 'project' : 'global');
       setLayers(reply.value);
       return reply.value;
     },

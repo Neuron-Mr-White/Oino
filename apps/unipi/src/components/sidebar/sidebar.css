@@ -151,18 +151,22 @@
   min-height: 20px;
 }
 /* Fade mask only when the title genuinely overflows its flex slot (last 24 px). */
+.srow-body { flex: 1 1 0%; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.srow-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.srow-meta { display: flex; align-items: center; gap: 6px; min-width: 0; height: 14px; overflow: hidden; }
+.srow-meta .srow-chips { flex: 1 1 0%; }
+.srow-meta .srow-time { margin-left: auto; }
+.srow:not([data-compact]) { min-height: 44px; }
 .srow-title {
   flex: 1 1 0%;
   min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
   line-height: 18px;
 }
-.srow-title[data-overflow] {
-  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
-  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
-}
+
 
 .srow-sub {
   display: flex;
@@ -185,7 +189,7 @@
   overflow: hidden;
   white-space: nowrap;
 }
-.srow .srow-chips { flex: 0 1 auto; gap: 5px; }
+.srow .srow-chips { flex: 0 1 auto; gap: 5px; min-width: 0; }
 .srow .srow-chips:empty { display: none; }
 .srow-chip {
   flex: none;
@@ -272,9 +276,9 @@
 .srow-pin:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
 .srow-pin[data-pinned] { color: var(--color-claw); }
 
-/* >50 virtualized rows fit their slot height cleanly (44 px comfortable, 30 px compact). */
+/* >50 virtualized rows fit their slot height cleanly (44 px two-line, 28 px compact). */
 .sb-rows-virtual { overflow: hidden; }
-.sb-rows-virtual .srow { height: 32px; min-height: 32px; }
+.sb-rows-virtual .srow { height: 44px; min-height: 44px; }
 .sb-rows-virtual .srow[data-compact] { height: 28px; min-height: 28px; }
 
 /* "Show more" (+5, Z-11): no "show less" (ZCode). */
@@ -631,7 +635,7 @@ html:not([data-shell='desktop']) .srow-confirm-yes { min-height: 40px; padding: 
   background: transparent;
   color: var(--color-text-dim);
 }
-.sb-project-head:hover .sb-project-tool, .sb-project-tool:focus-visible { display: inline-flex; }
+.sb-project-head:hover .sb-project-tool, .sb-project-tool:focus-visible, .sb-project-tool[data-open] { display: inline-flex; }
 @media (hover: none) { .sb-project-tool { display: inline-flex; } }
 .sb-project-tool:hover { color: var(--color-text); background: var(--color-surface-2); }
 .sb-project-tool:active:not(:disabled) { background: var(--color-surface-3); transform: none; }
@@ -741,27 +745,28 @@ html:not([data-shell='desktop']) .lp-search input { font-size: 15px; }
 
 /* --- [ui-sessions] the subagents tree under a row ------------------------- */
 .sa-tree { position: relative; display: flex; flex-direction: column; margin: 0 0 4px 17px; padding-left: 9px; border-left: 1px solid var(--color-line); }
-.sa-head { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+/* [sidebar-ui] a quiet segmented filter: one muted track, aligned with the run rows' text. */
+.sa-head { display: flex; align-items: center; align-self: flex-start; max-width: 100%; gap: 0; margin: 1px 0 3px 6px; padding: 2px; box-sizing: border-box; border-radius: 7px; background: var(--color-surface-2); overflow-x: auto; scrollbar-width: none; }
 .sa-head::-webkit-scrollbar { display: none; }
 .sa-filter {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 20px;
-  min-height: 20px;
+  gap: 3px;
+  height: 18px;
+  min-height: 18px;
   padding: 0 7px;
   border: 0;
-  border-radius: 9999px;
+  border-radius: 5px;
   background: transparent;
   color: var(--color-text-dim);
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 550;
   white-space: nowrap;
 }
-.sa-filter:hover { background: var(--color-surface-2); color: var(--color-text-muted); }
+.sa-filter:hover { color: var(--color-text-muted); }
 .sa-filter:active:not(:disabled) { transform: none; }
-.sa-filter[data-on] { background: rgb(40 190 240 / 14%); color: var(--color-wm-cyan); }
+.sa-filter[data-on] { background: var(--color-surface-3); color: var(--color-text); }
 .sa-filter:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
 .sa-n { font-variant-numeric: tabular-nums; opacity: 0.8; }
 .sa-row {
@@ -940,6 +945,7 @@ button.sa-row:active:not(:disabled) { background: var(--color-surface-3); transf
 .sb-project-folder { flex: none; color: var(--color-text-dim); }
 .sb-project-head[data-folder] .sb-project-label { font-size: 13px; }
 .srow .srow-time { margin-left: 0; line-height: 18px; }
+.srow .srow-meta .srow-time { margin-left: auto; line-height: 14px; }
 /* "Show more": muted, aligned with the row titles. */
 .sb-project .sb-more { height: 26px; min-height: 26px; padding-left: 30px; font-weight: 450; color: var(--color-text-dim); }
 /* [ux-sessions] the Properties icon (moved from the removed host header): active filters in the Devin blue. */

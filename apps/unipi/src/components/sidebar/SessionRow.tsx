@@ -5,7 +5,9 @@
  * `+N −M` changes, the unread dot (wm-green, "done unseen") and the cron
  * clock badge slot.
  *
- * [ux-sessions] layout (owner's zcode-style Task list, 2026-11-03): ONE line — a fixed 16 px
+ * [sidebar-ui] Normal rows are two lines — the title (always visible, ellipsis, wins the space) with
+ * the live state word, then a quiet meta line (chips the Properties menu turns on + the age). Compact
+ * rows are ONE line: title + the state word or age only. Older note: ONE line — a fixed 16 px
  * gutter that is empty for a normal chat (no chat bubble) and only shows a KIND or STATE icon
  * (cron clock; Working spinner, Needs you, failed / timed out), the title (fade mask), the chips
  * the Properties menu turns on, and the age right-aligned and muted ("63d"; a live state word
@@ -200,19 +202,21 @@ export function SessionRow(props: {
     if (titleEl && typeof ResizeObserver !== 'undefined') queueMicrotask(() => titleEl && syncTitleOverflow(titleEl));
   });
   /** The meta chips (comfortable: the second line; compact: icons after the title). */
+  const word = () => (
+    <Show when={show('status') && statusWord()}>
+      <span class="srow-word" data-state={status()} title={statusTip()}>
+        {statusWord()}
+      </span>
+    </Show>
+  );
   const chips = () => (
     <>
-      <Show when={show('status') && statusWord()}>
-        <span class="srow-word" data-state={status()} title={statusTip()}>
-          {statusWord()}
-        </span>
-      </Show>
       <Show when={show('automation') && cron() && status() !== 'idle' && status() !== 'background'}>
         <span class="srow-chip srow-cron" data-failed={status() === 'failed' || status() === 'timed-out' ? '' : undefined} title={cronTip()} aria-label={cronTip()}>
           <Clock size={12} />
         </span>
       </Show>
-      <Show when={folderChip()}>
+      <Show when={!props.compact && folderChip()}>
         {(f) => (
           <span class="srow-chip srow-cwd" title={props.card.cwd}>
             <Folder size={11} />
@@ -220,7 +224,7 @@ export function SessionRow(props: {
           </span>
         )}
       </Show>
-      <Show when={model()}>
+      <Show when={!props.compact && model()}>
         {(m) => (
           <span class="srow-chip srow-model" title={`Model: ${m()}`}>
             <Cpu size={11} />
@@ -228,12 +232,12 @@ export function SessionRow(props: {
           </span>
         )}
       </Show>
-      <Show when={props.mode}>
+      <Show when={!props.compact && props.mode}>
         <span class="srow-mode" data-paused={props.mode!.paused ? '' : undefined} title={`Working mode: ${props.mode!.label}`}>
           {props.mode!.label}
         </span>
       </Show>
-      <Show when={changes()}>
+      <Show when={!props.compact && changes()}>
         <span class="srow-changes" aria-label={`${changes()!.add} lines added, ${changes()!.del} removed`}>
           <span class="add">+{changes()!.add}</span>
           <span class="del">−{changes()!.del}</span>
@@ -246,8 +250,9 @@ export function SessionRow(props: {
       </Show>
     </>
   );
+  /** Normal rows keep the age on the meta line; compact rows show it only when no state word takes the slot. */
   const timeEl = () => (
-    <Show when={show('updated') && age() && !(show('status') && statusWord())}>
+    <Show when={show('updated') && age() && (!props.compact || !(show('status') && statusWord()))}>
       <span class="srow-time" title={stamp()}>{age()}</span>
     </Show>
   );
@@ -299,20 +304,33 @@ export function SessionRow(props: {
           </Match>
         </Switch>
       </span>
-      <span
-        ref={(el) => {
-          titleEl = el;
-          observeTitleOverflow(el);
-        }}
-        class="srow-title"
-      >
-        {titleText()}
+      <span class="srow-body">
+        <span class="srow-line">
+          <span
+            ref={(el) => {
+              titleEl = el;
+              observeTitleOverflow(el);
+            }}
+            class="srow-title"
+          >
+            {titleText()}
+          </span>
+          <Show when={props.meta?.unread}>
+            <span class="srow-unread" title="Unread" aria-label="Unread" />
+          </Show>
+          {word()}
+          <Show when={props.compact}>
+            <span class="srow-chips">{chips()}</span>
+            {timeEl()}
+          </Show>
+        </span>
+        <Show when={!props.compact}>
+          <span class="srow-meta">
+            <span class="srow-chips">{chips()}</span>
+            {timeEl()}
+          </span>
+        </Show>
       </span>
-      <Show when={props.meta?.unread}>
-        <span class="srow-unread" title="Unread" aria-label="Unread" />
-      </Show>
-      <span class="srow-chips">{chips()}</span>
-      {timeEl()}
       <Show when={props.onPin && !props.archived}>
         <button
           type="button"

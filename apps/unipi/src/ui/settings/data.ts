@@ -11,7 +11,7 @@ import { hostCmd, setExtensionSetting } from '../../settings/hostCmd';
 import type { Field, Json, Namespace } from './types';
 import { appNamespaces, parseNamespaces } from './types';
 import { lookup, simplifyKey, type Diagnostic, type WriteLayer } from './semantics';
-import { settingsHostId } from '../../settings/target';
+import { settingsHostId, settingsProjectCwd } from '../../settings/target';
 
 /** The stored layers of one namespace, as the app holds them. */
 export type NamespaceLayers = {
@@ -44,7 +44,8 @@ export function readNamespaceValues(
   layer: SettingsLayerArg = 'effective',
   hostId = settingsHostId(),
 ): Promise<HostResult<{ values: unknown; diagnostics: Diagnostic[] }>> {
-  return hostCmd({ kind: 'get_extension_settings', namespace, layer }, ValuesReply, hostId).then((reply) => {
+  const cwd = settingsProjectCwd(hostId);
+  return hostCmd({ kind: 'get_extension_settings', namespace, layer, ...(cwd ? { cwd } : {}) }, ValuesReply, hostId).then((reply) => {
     if (!reply.ok) return reply;
     const diagnostics = (reply.value.diagnostics ?? []).flatMap((entry) => {
       const map = typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : {};

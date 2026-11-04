@@ -11,7 +11,7 @@
  * chat-scoped rows only; this menu owns the row-scoped ones.
  */
 import { createMemo, createSignal, Show } from 'solid-js';
-import { Archive, ArchiveRestore, Copy, FileText, Folder, FolderInput, FolderOpen, GitFork, ListTree, Pencil, Pin, PinOff, Share, Trash2 } from 'lucide-solid';
+import { Archive, ArchiveRestore, Copy, FileText, Folder, FolderInput, FolderOpen, GitFork, ListTree, MoonStar, Pencil, Pin, PinOff, Share, Trash2 } from 'lucide-solid';
 import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { desktopShell } from '../../lib/layout';
 import { exportSession } from '../../lib/session/exportSession';
@@ -22,6 +22,7 @@ import { hubs } from '../../lib/session/hub';
 import { listView, toggleSubagentRow } from '../../lib/session/listView';
 import { isMovableCwd, isScratchCwd, sessionTitle } from '../../lib/session/selectors';
 import { sessions } from '../../lib/session/store';
+import { runDream } from '../../lib/settings/dream';
 
 export function SessionMenu() {
   const state = openRowMenuState;
@@ -73,6 +74,13 @@ export function SessionMenu() {
               label={listView(hostId).subagentRows.includes(card.session_id) ? 'Hide subagents' : 'Show subagents'}
               testId="srow-subagents"
               onSelect={run(() => toggleSubagentRow(hostId, card.session_id))}
+            />
+            <MenuRow
+              icon={<MoonStar size={iconSize()} />}
+              label="Dream"
+              testId="srow-dream"
+              disabled={!card.cwd}
+              onSelect={run(() => runDream(hostId, card.cwd ?? undefined))}
             />
             <MenuSeparator />
             <MenuRow icon={<GitFork size={iconSize()} />} label="Fork" onSelect={run(() => forkSession(hostId, card.session_id))} />

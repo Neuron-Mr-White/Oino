@@ -145,8 +145,9 @@ describe('SessionList', () => {
     const w = screen.getByTestId('srow-w');
     expect(w.getAttribute('data-state')).toBe('working');
     expect(within(w).getByText('Working')).toBeTruthy();
-    // [ux-sessions] the state word replaces the age on a running row.
-    expect(w.querySelector('.srow-time')).toBeNull();
+    // [sidebar-ui] the state word sits on the title line; the age stays on the meta line.
+    expect(w.querySelector('.srow-line .srow-word')).toBeTruthy();
+    expect(w.querySelector('.srow-line .srow-time')).toBeNull();
     const n = screen.getByTestId('srow-n');
     expect(within(n).getByText('Needs you')).toBeTruthy();
     const u = screen.getByTestId('srow-u');
