@@ -193,3 +193,23 @@ export const tabDiffSplit = scenario('tab-diff-split', 'diff', false, DIFF_SPLIT
 export const tabTreePhone = scenario('tab-tree-phone', 'tree', true, {});
 export const tabBtwPhone = scenario('tab-btw-phone', 'btw', true, {});
 export const tabSubagentPhone = scenario('tab-subagent-phone', 'subagent', true, SUB);
+
+/** `tab-tree-long`: a 3000-entry chat on the Tree tab's "All" filter (windowed list, virtualizer regression). */
+const LONG = Array.from({ length: 3000 }, (_, i) => ({
+  entry: {
+    type: 'message',
+    id: `n${i}`,
+    parentId: i === 0 ? null : `n${i - 1}`,
+    timestamp: new Date(BASE_TIME + i * 1000).toISOString(),
+    message: i % 2 === 0 ? { role: 'user', content: text(`Row ${i}: user question`) } : { role: 'assistant', content: text(`Row ${i}: assistant answer`) },
+  },
+}));
+const longBase = scenario('tab-tree-long', 'tree', false, {});
+export const tabTreeLong: MockScenario = {
+  ...longBase,
+  hosts: longBase.hosts.map((h) => ({ ...h, sessions: { [S]: host(base(), { get_tree: () => ({ tree: LONG, leafId: 'n2999' }) }) } })),
+  setup: () => {
+    localStorage.setItem('unipi.chat.treeFilter', 'all');
+    longBase.setup?.();
+  },
+};

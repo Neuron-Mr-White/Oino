@@ -31,7 +31,7 @@ import { settingsExtensions, settingsForm, settingsFormAdvanced, settingsFormAge
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
-import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreePhone } from './tabs';
+import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreeLong, tabTreePhone } from './tabs';
 import { turnFiles, turnFilesConflict, turnFilesUndo } from './turn-files';
 import { emptyChat, motionExits } from './empty-chat';
 import { u12Fallback, u12Native, u12Nav, u12OwnerOff, u12Phone, u12PhoneOff } from './reserved';
@@ -99,6 +99,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'tab-diff': tabDiff,
   'tab-diff-split': tabDiffSplit,
   'tab-tree': tabTree,
+  'tab-tree-long': tabTreeLong,
   'tab-btw': tabBtw,
   'tab-subagent': tabSubagent,
   'tab-diff-phone': tabDiffPhone,

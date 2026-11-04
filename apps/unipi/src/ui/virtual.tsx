@@ -4,8 +4,8 @@
  * absolutely positioned inside a spacer of the total height and measured
  * (`measureElement`) when their height varies.
  */
-import { For, type Accessor, type JSX } from 'solid-js';
-import { createVirtualizer, type Virtualizer } from '@tanstack/solid-virtual';
+import { For, createEffect, on, type Accessor, type JSX } from 'solid-js';
+import { createVirtualizer, observeElementRect, type Virtualizer } from '@tanstack/solid-virtual';
 
 /** Rows above which List / Table / Tree virtualize (§13.4). */
 export const VIRTUAL_THRESHOLD = 100;
@@ -21,7 +21,7 @@ export type VirtualOptions = {
 };
 
 export function useVirtual(opts: VirtualOptions): Virtualizer<HTMLElement, Element> {
-  return createVirtualizer<HTMLElement, Element>({
+  const virt = createVirtualizer<HTMLElement, Element>({
     get count() {
       return opts.count();
     },
@@ -29,12 +29,33 @@ export function useVirtual(opts: VirtualOptions): Virtualizer<HTMLElement, Eleme
       const el = opts.scroller();
       return () => el ?? null;
     },
+    // An unlaid-out scroller (0 height: jsdom, display:none) keeps the initial window.
+    observeElementRect: (inst, cb) => observeElementRect(inst, (rect) => (rect.height > 0 ? cb(rect) : undefined)),
     estimateSize: opts.estimate,
     getItemKey: opts.key,
     overscan: opts.overscan ?? 8,
     // Render a first window before the scroller is measured (first paint, jsdom).
     initialRect: { width: 0, height: 480 },
   });
+  // A late-mounted scroller (ref set on a node not yet inserted, e.g. inside a
+  // conditional) is detached when the options computed first sees it, so
+  // virtual-core records it without observers (no defaultView). Re-attach once
+  // effects run, when the element is connected.
+  createEffect(
+    on(opts.scroller, (el) => {
+      if (!el) return;
+      const attach = () => {
+        // virtual-core already recorded the detached element (no observers); drop it so
+        // _willUpdate sees a new scroll element and observes rect + offset for real.
+        (virt as unknown as { cleanup: () => void }).cleanup();
+        virt._willUpdate();
+        virt.measure();
+      };
+      if (el.isConnected) attach();
+      else queueMicrotask(attach);
+    }),
+  );
+  return virt;
 }
 
 /** Renders the virtual window: a full-height spacer with the visible rows translated into place. */
