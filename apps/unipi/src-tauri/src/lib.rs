@@ -131,6 +131,7 @@ pub fn run() {
             chat::sessions_list,
             chat::session_search,
             chat::memory_browse,
+            chat::usage_stats,
             chat::session_open,
             chat::session_new,
             chat::session_fork,

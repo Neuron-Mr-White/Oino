@@ -1,0 +1,75 @@
+/* Settings › Usage (owner fix 2026-11-04): Unipi tokens, one surface, no nested cards. */
+.usage { padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 18px; font-variant-numeric: tabular-nums; }
+.usage-dim { color: var(--color-text-dim); }
+.usage-bar-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.usage-range { display: inline-flex; padding: 3px; gap: 2px; border-radius: 12px; background: var(--color-surface-2); }
+.usage-range-btn { min-height: 30px; padding: 0 12px; border-radius: 9px; border: 0; background: transparent; color: var(--color-text-muted); font-size: 13px; font-weight: 560; }
+.usage-range-btn:hover { color: var(--color-text); }
+.usage-range-btn[aria-checked=true] { background: var(--color-surface-3); color: var(--color-text); }
+.usage-refresh { display: grid; place-items: center; width: 34px; min-height: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--color-line); background: transparent; color: var(--color-text-muted); }
+.usage-refresh:hover:not(:disabled) { color: var(--color-text); border-color: var(--color-text-dim); }
+.usage-refresh:disabled { opacity: 0.6; cursor: progress; }
+.usage-spin { animation: usage-spin 900ms linear infinite; }
+@keyframes usage-spin { to { transform: rotate(360deg); } }
+.usage-body { display: flex; flex-direction: column; gap: 20px; }
+.usage-stale { opacity: 0.6; transition: opacity 160ms ease-out; }
+
+/* Summary: one strip, divided cells (not four cards). */
+.usage-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-radius: 14px; background: var(--color-surface-2); overflow: hidden; }
+.usage-stat { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; min-width: 0; }
+.usage-stat + .usage-stat { border-left: 1px solid var(--color-line); }
+.usage-stat-label { font-size: 12px; color: var(--color-text-muted); }
+.usage-stat-value { font-size: 22px; line-height: 28px; font-weight: 680; letter-spacing: -0.02em; }
+.usage-stat-sub { font-size: 11.5px; line-height: 15px; color: var(--color-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) {
+  .usage-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .usage-stat:nth-child(3) { border-left: 0; }
+  .usage-stat:nth-child(n+3) { border-top: 1px solid var(--color-line); }
+}
+
+/* Daily chart. */
+.usage-chart { display: flex; flex-direction: column; gap: 8px; }
+.usage-chart-read { display: flex; align-items: baseline; gap: 10px; min-height: 22px; font-size: 13px; }
+.usage-chart-day { font-weight: 620; }
+.usage-chart-tokens { color: var(--color-text); }
+.usage-chip { padding: 1px 8px; border-radius: 9999px; background: color-mix(in srgb, var(--color-claw) 16%, transparent); color: var(--color-claw); font-size: 11px; font-weight: 640; }
+.usage-bars { display: flex; justify-content: space-between; align-items: stretch; height: 128px; border-bottom: 1px solid var(--color-line); }
+.usage-bar-cell { flex: 1 1 0; max-width: 44px; min-width: 0; display: flex; align-items: flex-end; border-radius: 3px 3px 0 0; outline-offset: 1px; }
+.usage-bar-cell:hover, .usage-bar-cell[data-active] { background: color-mix(in srgb, var(--color-surface-3) 70%, transparent); }
+.usage-bar { display: block; width: 100%; border-radius: 3px 3px 0 0; background: var(--color-claw); transform-origin: bottom; animation: usage-grow 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.usage-bar[data-empty] { background: transparent; }
+.usage-bar-cell[data-active] .usage-bar { background: var(--color-amber); }
+@keyframes usage-grow { from { transform: scaleY(0.04); } }
+.usage-axis { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--color-text-dim); }
+
+/* Breakdowns. */
+.usage-breaks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+@media (max-width: 900px) { .usage-breaks { grid-template-columns: minmax(0, 1fr); } }
+.usage-h { margin: 0 0 6px; font-size: 13px; font-weight: 640; color: var(--color-text); }
+.usage-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.usage-item { padding: 9px 0; display: flex; flex-direction: column; gap: 5px; }
+.usage-item + .usage-item { border-top: 1px solid rgb(46 40 37 / 60%); }
+.usage-item-top { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.usage-item-name { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; font-size: 13.5px; font-weight: 560; overflow: hidden; white-space: nowrap; }
+.usage-item-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; font-weight: 400; color: var(--color-text-dim); direction: rtl; text-align: left; }
+.usage-item-tokens { flex: none; font-size: 13px; color: var(--color-text); }
+.usage-item-cost { flex: none; min-width: 52px; text-align: right; font-size: 13px; color: var(--color-text-muted); }
+.usage-share { height: 4px; border-radius: 9999px; background: var(--color-surface-3); overflow: hidden; }
+.usage-share > span { display: block; height: 100%; border-radius: 9999px; background: var(--color-claw); }
+.usage-item-meta { font-size: 11.5px; color: var(--color-text-dim); }
+.usage-more { align-self: flex-start; margin-top: 6px; min-height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--color-line); background: transparent; color: var(--color-text-muted); font-size: 12px; }
+.usage-more:hover { color: var(--color-text); border-color: var(--color-text-dim); }
+.usage-empty-note { margin: 4px 0; font-size: 13px; }
+
+/* States. */
+.usage-state { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 4px; font-size: 14px; }
+.usage-state p { margin: 0; }
+.usage-skeleton { display: flex; flex-direction: column; gap: 18px; }
+.usage-sk-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; border-radius: 14px; overflow: hidden; }
+.usage-sk-stats > span, .usage-sk-chart { display: block; background: var(--color-surface-2); animation: usage-pulse 1.4s ease-in-out infinite; }
+.usage-sk-stats > span { height: 74px; }
+.usage-sk-chart { height: 150px; border-radius: 12px; }
+@keyframes usage-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .usage-bar, .usage-sk-stats > span, .usage-sk-chart, .usage-spin { animation: none; }
+}

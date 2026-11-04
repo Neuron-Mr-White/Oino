@@ -38,6 +38,7 @@ fn parses(schema: &str, value: &Value) -> Result<(), String> {
                 Request::SessionsList { .. }
                 | Request::SessionSearch { .. }
                 | Request::MemoryBrowse { .. }
+                | Request::UsageStats { .. }
                 | Request::EventsOpen
                 | Request::SessionNew { .. }
                 | Request::SessionOpen { .. }

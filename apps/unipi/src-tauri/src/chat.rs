@@ -625,6 +625,26 @@ pub async fn memory_browse(
     .await
 }
 
+/// `usage_stats` (owner fix 2026-11-04): token / cost statistics over the last `days`
+/// local days of this host's sessions (Settings › Usage).
+#[tauri::command]
+pub async fn usage_stats(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    days: u32,
+    tz_offset_min: Option<i32>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::UsageStats { days, tz_offset_min: tz_offset_min.unwrap_or(0) },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
 /// `session_open` (host.md §7.3): open or resume a session as a live stream.
 #[tauri::command]
 pub async fn session_open(

@@ -754,6 +754,17 @@ where
             let data = serde_json::to_value(&page).map_err(internal)?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
+        Request::UsageStats { days, tz_offset_min } => {
+            tracing::info!(op = "usage_stats", days, "request");
+            let root = hub.sessions_root().to_path_buf();
+            let data = tokio::task::spawn_blocking(move || {
+                crate::usage_stats::usage_stats(&root, days, tz_offset_min)
+            })
+            .await
+            .map_err(internal)?;
+            let data = serde_json::to_value(&data).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
         Request::EventsOpen => {
             tracing::info!(op = "events_open", "request");
             pump_events(&hub, read, write).await

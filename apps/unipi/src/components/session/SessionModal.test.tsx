@@ -208,9 +208,11 @@ describe('Running tab', () => {
 describe('reserved entry (/info)', () => {
   it('the snapshot overlay entry opens the modal on its page; closing sends $close', async () => {
     const { world } = await boot('modal-info');
-    // The entry params say page usage.
+    // The entry params say page usage: cross-session usage lives in Settings now, the Session page shows this session's.
     await waitFor(() => expect(screen.getByTestId('sm-info')).toBeTruthy());
-    expect(screen.getByTestId('sm-page-usage').getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByTestId('sm-page-usage')).toBeNull();
+    expect(screen.getByTestId('sm-page-session').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('sm-info-all-usage')).toBeTruthy();
     expect(sessionModal()?.entryId).toBe('unipi.info-screen/dashboard');
 
     fireEvent.click(screen.getByTestId('sm-close'));

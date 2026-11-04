@@ -704,6 +704,16 @@ pub enum Request {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         cursor: Option<String>,
     },
+    /// Owner fix 2026-11-04 (Settings › Usage): token / cost statistics over the
+    /// session files of this host for the last `days` days, in the client's local
+    /// days (`tz_offset_min` = minutes east of UTC). → `ok{data:UsageData}`.
+    UsageStats {
+        /// Range length (clamped to `1..=`[`crate::usage::USAGE_DAYS_MAX`]).
+        days: u32,
+        /// Minutes east of UTC of the client's clock.
+        #[serde(default)]
+        tz_offset_min: i32,
+    },
     /// host.md §7.4 (WP-H4): the one per-connection hub event stream. The host
     /// answers `ok{data:null}`, then pushes `session_changed` / `session_removed`
     /// / `host_notice` / `ui` events (a retained safe-mode notice first) until

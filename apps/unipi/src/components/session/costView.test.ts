@@ -34,3 +34,17 @@ describe('[status] session cost (owner: "session cost is 0")', () => {
     expect(parseSessionStats({ sessionId: 's', cost: 1 })!.unpricedTokens).toBe(0);
   });
 });
+
+import { sessionModelUsage, sessionSpanMs } from './modalData';
+
+describe('this session usage (Info › Session)', () => {
+  const msg = (model: string, input: number, output: number, cost: number, ts?: string) => ({ type: 'message', timestamp: ts, message: { role: 'assistant', model, usage: { input, output, cacheRead: 5, cacheWrite: 0, cost: { total: cost } } } });
+  it('groups assistant replies per model; an unpriced model keeps cost 0', () => {
+    const rows = sessionModelUsage([msg('zai/glm-5', 100, 20, 0), msg('zai/glm-5', 50, 10, 0), msg('claude', 10, 5, 0.3), { type: 'message', message: { role: 'user' } }]);
+    expect(rows.map((r) => [r.model, r.turns, r.tokens, r.cost])).toEqual([['glm-5', 2, 190, 0], ['claude', 1, 20, 0.3]]);
+  });
+  it('spans first to last stamp', () => {
+    expect(sessionSpanMs([{ timestamp: '2026-09-21T10:00:00.000Z' }, { timestamp: '2026-09-21T10:05:30.000Z' }, {}])).toBe(330_000);
+    expect(sessionSpanMs([{ timestamp: '2026-09-21T10:00:00.000Z' }])).toBeUndefined();
+  });
+});

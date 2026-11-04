@@ -1,6 +1,6 @@
 /**
  * Info tab (WP-A17, G-13): the `/info` pages natively — Session (identity +
- * `get_session_stats`), Usage, Tools, Skills (commands with source `skill`,
+ * `get_session_stats` + this session's usage; cross-session history is Settings › Usage), Tools, Skills (commands with source `skill`,
  * grouped like the extension groups them) and Modules (`_oino/extensions`
  * plus every extension's `info-screen.groups` status card) — plus the
  * watchdog Limits section (G-16).
@@ -12,20 +12,21 @@
  * entry (the Tabs pane of that id), live as it repaints; this PC's hub totals
  * and the slash-command inventory stay as the quick native part.
  */
-import { createEffect, createMemo, createResource, createSignal, For, on, Show } from 'solid-js';
+import { createEffect, createMemo, useContext, createResource, createSignal, For, on, Show } from 'solid-js';
 import { NodeView } from '../../ui/NodeView';
 import { EntryContext, createEntryActions, type UiTarget } from '../../ui/actions';
 import { sessionUi } from '../../ui/registries';
 import type { UiEntry, UiNode } from '../../ui/types';
 import type { SessionHandle } from '../../lib/session/store';
 import { hubs } from '../../lib/session/hub';
-import { formatCount, liveSource, sessionCostView, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
+import { RouterContext, useNavigate } from '@solidjs/router';
+import { ChevronRight } from 'lucide-solid';
+import { formatCount, formatDurationMs, formatUsd, liveSource, sessionCostView, sessionModelUsage, sessionSpanMs, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
 import { LimitsSection } from './LimitsSection';
-import type { InfoPage } from './SessionModal';
+import { closeSessionModal, type InfoPage } from './SessionModal';
 
 const PAGES: Array<{ id: InfoPage; label: string }> = [
   { id: 'session', label: 'Session' },
-  { id: 'usage', label: 'Usage' },
   { id: 'tools', label: 'Tools' },
   { id: 'skills', label: 'Skills' },
   { id: 'modules', label: 'Modules' },
@@ -75,24 +76,64 @@ function Kv(props: { rows: Array<[string, string, boolean?]> }) {
   );
 }
 
+/** This session's usage, compact: stat strip, token mix, per-model rows. Cross-session history lives in Settings › Usage. */
 function SessionPage(props: { s: SessionHandle; stats: SessionStats | undefined }) {
   const s = () => props.s;
+  // The modal also mounts without a router (tests, the gallery): fall back to the hash route.
+  const navigate = useContext(RouterContext) ? useNavigate() : (to: string) => void (location.hash = `#${to}`);
   const card = () => hubs().ensure(s().hostId).state.cards[s().sessionId()];
   const state = () => s().state;
   const model = () => state().model;
   const stats = () => props.stats;
+  const models = createMemo(() => sessionModelUsage(state().entries));
+  const span = createMemo(() => sessionSpanMs(state().entries));
+  const mix = () => {
+    const t = stats()?.tokens;
+    return t ? ([['In', t.input, 'var(--color-wm-cyan)'], ['Out', t.output, 'var(--color-claw)'], ['Cache read', t.cacheRead, 'var(--color-wm-green)'], ['Cache write', t.cacheWrite, 'var(--color-amber)']] as const) : [];
+  };
+  const total = () => stats()?.tokens.total || 1;
   return (
     <>
-      <div class="sm-grid">
+      <div class="sm-grid sm-grid-4">
         <div class="sm-stat" title={sessionCostView(stats()).title} data-testid="sm-info-cost">
           <span class="sm-stat-label">Cost</span>
           <span class="sm-stat-value">{sessionCostView(stats()).text}</span>
           <Show when={sessionCostView(stats()).sub}>{(sub) => <span class="sm-stat-sub">{sub()}</span>}</Show>
         </div>
-        <div class="sm-stat"><span class="sm-stat-label">Tokens</span><span class="sm-stat-value">{formatCount(stats()?.tokens.total ?? 0)}</span></div>
-        <div class="sm-stat"><span class="sm-stat-label">User / assistant</span><span class="sm-stat-value">{stats()?.userMessages ?? 0} / {stats()?.assistantMessages ?? 0}</span></div>
-        <div class="sm-stat"><span class="sm-stat-label">Tool calls</span><span class="sm-stat-value">{stats()?.toolCalls ?? 0}</span></div>
+        <div class="sm-stat" data-testid="sm-info-tokens"><span class="sm-stat-label">Tokens</span><span class="sm-stat-value">{formatCount(stats()?.tokens.total ?? 0)}</span></div>
+        <div class="sm-stat" data-testid="sm-info-turns"><span class="sm-stat-label">Turns</span><span class="sm-stat-value">{stats()?.userMessages ?? 0}</span><span class="sm-stat-sub">{stats()?.assistantMessages ?? 0} replies · {stats()?.toolCalls ?? 0} tool calls</span></div>
+        <div class="sm-stat" data-testid="sm-info-duration"><span class="sm-stat-label">Duration</span><span class="sm-stat-value">{span() === undefined ? '—' : formatDurationMs(span()!)}</span></div>
       </div>
+      <Show when={(stats()?.tokens.total ?? 0) > 0}>
+        <div class="sm-mix" data-testid="sm-info-mix">
+          <div class="sm-ctx-stack" aria-hidden="true">
+            <For each={mix()}>{([, n, color]) => <span style={{ width: `${(n / total()) * 100}%`, background: color }} />}</For>
+          </div>
+          <div class="sm-mix-legend">
+            <For each={mix()}>
+              {([label, n, color]) => (
+                <span class="sm-mix-item"><i style={{ background: color }} />{label} <b>{formatCount(n)}</b></span>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+      <Show when={models().length > 0}>
+        <div class="sm-section-title">Models</div>
+        <div class="sm-rows" data-testid="sm-info-models">
+          <For each={models()}>
+            {(m) => (
+              <div class="sm-row">
+                <span class="sm-row-main">
+                  <span class="sm-row-title" style={{ 'font-family': 'inherit' }}>{m.model}</span>
+                  <span class="sm-row-sub">{m.turns} {m.turns === 1 ? 'reply' : 'replies'} · {formatCount(m.input)} in · {formatCount(m.output)} out · {formatCount(m.cacheRead)} cached</span>
+                </span>
+                <span class="sm-elapsed" title={m.cost > 0 ? undefined : 'This model reports no price'}>{m.cost > 0 ? formatUsd(m.cost) : '—'}</span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
       <Kv
         rows={[
           ['Session', state().sessionId || s().sessionId()],
@@ -104,31 +145,17 @@ function SessionPage(props: { s: SessionHandle; stats: SessionStats | undefined 
           ['Session file', stats()?.sessionFile ?? card()?.file ?? '—'],
         ]}
       />
-    </>
-  );
-}
-
-function UsagePage(props: { s: SessionHandle }) {
-  const cards = () => Object.values(hubs().ensure(props.s.hostId).state.cards);
-  const today = () => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return start.getTime();
-  };
-  const sessionsToday = () => cards().filter((c) => (c.updated_at ?? 0) >= today()).length;
-  const running = () => cards().filter((c) => c.run_state === 'working').length;
-  const needsYou = () => cards().filter((c) => c.needs_you).length;
-  const messages = () => cards().reduce((n, c) => n + (c.message_count ?? 0), 0);
-  return (
-    <>
-      <div class="sm-grid">
-        <div class="sm-stat"><span class="sm-stat-label">Sessions</span><span class="sm-stat-value">{cards().length}</span></div>
-        <div class="sm-stat"><span class="sm-stat-label">Today</span><span class="sm-stat-value">{sessionsToday()}</span></div>
-        <div class="sm-stat"><span class="sm-stat-label">Running</span><span class="sm-stat-value">{running()}</span></div>
-        <div class="sm-stat"><span class="sm-stat-label">Needs you</span><span class="sm-stat-value">{needsYou()}</span></div>
-        <div class="sm-stat"><span class="sm-stat-label">Messages</span><span class="sm-stat-value">{formatCount(messages())}</span></div>
-      </div>
-      <ExtPane s={props.s} page="usage" label="Token and cost history" />
+      <button
+        type="button"
+        class="sm-link"
+        data-testid="sm-info-all-usage"
+        onClick={() => {
+          closeSessionModal();
+          navigate('/settings/usage');
+        }}
+      >
+        Usage across all sessions <ChevronRight size={14} />
+      </button>
     </>
   );
 }
@@ -335,7 +362,7 @@ function ModulesPage(props: { s: SessionHandle; extensions: ExtensionInfo[] }) {
 }
 
 export function InfoTab(props: { s: SessionHandle; initialPage?: InfoPage }) {
-  const [page, setPage] = createSignal<InfoPage>(props.initialPage ?? 'session');
+  const [page, setPage] = createSignal<InfoPage>(props.initialPage === 'usage' || !props.initialPage ? 'session' : props.initialPage);
   const [data, { refetch }] = createResource(liveSource(() => props.s), async (state) => {
     if (state !== 'live') return undefined;
     const s = props.s;
@@ -364,9 +391,6 @@ export function InfoTab(props: { s: SessionHandle; initialPage?: InfoPage }) {
       </div>
       <Show when={page() === 'session'}>
         <SessionPage s={props.s} stats={data.latest?.stats} />
-      </Show>
-      <Show when={page() === 'usage'}>
-        <UsagePage s={props.s} />
       </Show>
       <Show when={page() === 'tools'}>
         <ToolsPage s={props.s} commands={data.latest?.commands ?? []} />

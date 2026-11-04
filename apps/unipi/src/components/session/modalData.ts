@@ -276,3 +276,45 @@ export function formatDurationMs(ms: number): string {
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
 }
+
+/** One model's share of this session (assistant replies on the loaded branch). */
+export type SessionModelUse = { model: string; turns: number; input: number; output: number; cacheRead: number; cacheWrite: number; tokens: number; cost: number };
+
+/**
+ * This session's usage per model, from its own assistant messages: a reply whose model reports no
+ * price (cost 0, tokens spent) keeps its tokens and `cost` 0 — the view shows `—`, never `$0`.
+ * Largest first. Pure.
+ */
+export function sessionModelUsage(entries: ReadonlyArray<{ type: string; message?: { role?: string; model?: string; usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } } } }>): SessionModelUse[] {
+  const by = new Map<string, SessionModelUse>();
+  for (const e of entries) {
+    const m = e.type === 'message' ? e.message : undefined;
+    if (m?.role !== 'assistant' || !m.usage) continue;
+    const key = (m.model ?? 'unknown').replace(/^.*\//, '');
+    const row = by.get(key) ?? { model: key, turns: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, tokens: 0, cost: 0 };
+    const u = m.usage;
+    row.turns += 1;
+    row.input += u.input ?? 0;
+    row.output += u.output ?? 0;
+    row.cacheRead += u.cacheRead ?? 0;
+    row.cacheWrite += u.cacheWrite ?? 0;
+    row.tokens = row.input + row.output + row.cacheRead + row.cacheWrite;
+    row.cost += u.cost?.total ?? 0;
+    by.set(key, row);
+  }
+  return [...by.values()].sort((a, b) => b.tokens - a.tokens);
+}
+
+/** Wall-clock span of the session: first to last entry timestamp (ms), or undefined with < 2 stamps. Pure. */
+export function sessionSpanMs(entries: ReadonlyArray<{ timestamp?: string }>): number | undefined {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const e of entries) {
+    const t = e.timestamp ? Date.parse(e.timestamp) : NaN;
+    if (Number.isFinite(t)) {
+      lo = Math.min(lo, t);
+      hi = Math.max(hi, t);
+    }
+  }
+  return hi > lo ? hi - lo : undefined;
+}

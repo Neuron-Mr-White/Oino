@@ -9,7 +9,7 @@
  */
 import type { Component } from 'solid-js';
 import {
-  Blocks, Bell, Bot, Brain, Cpu, FolderKanban, Globe, Info, KanbanSquare, Keyboard, MonitorSmartphone,
+  BarChart3, Blocks, Bell, Bot, Brain, Cpu, FolderKanban, Globe, Info, KanbanSquare, Keyboard, MonitorSmartphone,
   Plug, Puzzle, Server, Settings2, Smartphone, Sparkles, TerminalSquare, Type, Unplug, Waypoints,
 } from 'lucide-solid';
 import { can, type Capability } from '../../lib/platform';
@@ -22,6 +22,7 @@ export type SettingsSectionId =
   | 'hosts' | 'connection' | 'sharing' | 'notifications' | 'unicrab'
   | 'host'
   | 'ports'
+  | 'usage'
   | 'about';
 
 /** Phone Settings root groups (phone spec §3.9): this phone, the selected PC, PCs & connection, About. */
@@ -302,6 +303,19 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
       { key: 'unicrab.floating', label: 'Floating crab', description: 'A button you can drag to any edge; long-press for quick actions' },
       { key: 'unicrab.overlay', label: 'Over other apps' },
       { key: 'unicrab.window', label: 'Mascot window' },
+    ],
+  },
+  {
+    id: 'usage',
+    title: 'Usage',
+    group: 'data',
+    icon: BarChart3,
+    cap: 'hosts',
+    phone: { group: 'pc' },
+    keywords: ['usage', 'tokens', 'cost', 'spend', 'statistics', 'stats', 'models', 'projects', 'days', 'activity', 'cache'],
+    rows: [
+      { key: 'usage.range', label: 'Last 7, 30 or 90 days', description: 'Tokens, cost, sessions and active days across every session' },
+      { key: 'usage.models', label: 'By model and project', description: 'Where the tokens went' },
     ],
   },
   {

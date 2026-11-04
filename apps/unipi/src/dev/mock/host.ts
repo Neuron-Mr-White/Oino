@@ -151,6 +151,10 @@ export type MockHostSpec = {
   archived?: SessionCard[];
   /** The memory extension's store behind `memory_browse` (owner fix 2026-11-03); a function builds it on first use. */
   memories?: MockMemory[] | (() => MockMemory[]);
+  /** `usage_stats` answers (owner fix 2026-11-04): a builder over the requested range; `null` = the op is unsupported (old host). */
+  usage?: ((days: number) => unknown) | null;
+  /** `usage_stats` waits this long (ms) before answering. */
+  usageDelayMs?: number;
   /** `memory_browse` waits this long (ms) before answering (loading states in captures). */
   memoryDelayMs?: number;
   sessions?: Record<string, MockSession>;
@@ -550,6 +554,12 @@ const BUILTIN: Record<string, MockOp> = {
     const projects = a?.cursor ? [] : [...counts].map(([name, count]) => ({ name, count })).sort((x, y) => y.count - x.count || x.name.localeCompare(y.name));
     const next = start + items.length;
     return { items, total: scoped.length, ...(next < scoped.length ? { next_cursor: String(next) } : {}), projects, store: all.length > 0 };
+  },
+  // Owner fix 2026-11-04: Settings › Usage (mirrors unipi-host usage_stats).
+  usage_stats: async (a, h) => {
+    if (h.spec.usageDelayMs) await new Promise((r) => setTimeout(r, h.spec.usageDelayMs));
+    if (h.spec.usage === null || !h.spec.usage) throw err('E_UNSUPPORTED', 'usage_stats needs a newer host.');
+    return h.spec.usage(Math.min(366, Math.max(1, Number(a?.days ?? 30))));
   },
   // Owner fix 2026-11-03: the host-side paged session search (mirrors unipi_proto::session_search_page).
   session_search: (a, h) => {
