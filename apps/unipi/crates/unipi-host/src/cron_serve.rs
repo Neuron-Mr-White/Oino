@@ -70,6 +70,10 @@ pub struct CronOwner {
     pub job_id: String,
     /// The job's name, when the job still exists.
     pub job_name: Option<String>,
+    /// The run is still in flight (`status: running`): the `oino` subprocess holds the
+    /// session — its card reads `Working` and an open follows the file instead of taking
+    /// the session over (owner-fix-6).
+    pub running: bool,
 }
 
 impl CronSessions {
@@ -138,6 +142,7 @@ impl CronCache {
         for run in runs {
             let owner = CronOwner {
                 job_name: names.get(&run.job_id).cloned(),
+                running: run.status == RunStatus::Running,
                 job_id: run.job_id,
             };
             if let Some(file) = run.session_path {
@@ -903,6 +908,7 @@ mod tests {
             Some(CronOwner {
                 job_id: "digest".to_owned(),
                 job_name: Some("digest".to_owned()),
+                running: false,
             })
         );
         // A run whose job file is gone still names the job id.
@@ -913,6 +919,7 @@ mod tests {
             Some(CronOwner {
                 job_id: "gone".to_owned(),
                 job_name: None,
+                running: false,
             })
         );
     }
@@ -950,6 +957,7 @@ mod tests {
             Some(CronOwner {
                 job_id: "digest".to_owned(),
                 job_name: Some("digest".to_owned()),
+                running: false,
             })
         );
     }

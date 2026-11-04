@@ -1233,7 +1233,17 @@ where
     let blobs_dir = hub.blobs_dir();
     page.bound(Some(&blobs_dir));
     let mut snapshot = SessionSnapshot::full(card.session_id.clone(), feed.seq());
-    snapshot.state = Some(fast::provisional_state(&card, &page.entries));
+    // owner-fix-6 P1-2: a cron run still in flight owns this chat (its `oino -p`
+    // subprocess holds the lease): the open joins it — streaming, followed from the file —
+    // and wakes only once the run is over, never taking the session over mid-run.
+    let follow = hub
+        .cron_run_in_flight(&card)
+        .then(|| (card.clone(), file.clone()));
+    let mut provisional = fast::provisional_state(&card, &page.entries);
+    if follow.is_some() {
+        provisional["isStreaming"] = json!(true);
+    }
+    snapshot.state = Some(provisional);
     snapshot.leaf_id = page.leaf_id.clone().map(Value::String);
     snapshot.entries = Some(page.entries);
     snapshot.page = Some(page.page);
@@ -1245,6 +1255,7 @@ where
         card.session_id.clone(),
         Arc::clone(&feed),
         tx,
+        follow,
     ));
     serve_stream(
         feed,
@@ -1267,6 +1278,7 @@ async fn wake_behind(
     session_id: String,
     feed: Arc<Feed>,
     tx: tokio::sync::watch::Sender<Option<Result<Arc<HubSession>, String>>>,
+    follow: Option<(HostCard, SessionFile)>,
 ) {
     let Some(strong) = service.upgrade() else {
         let _ = tx.send(Some(Err("the host is shutting down".to_owned())));
@@ -1274,6 +1286,12 @@ async fn wake_behind(
     };
     let hub = Arc::clone(strong.hub());
     drop(strong);
+    if let Some((card, file)) = follow {
+        if !follow_cron_run(&hub, &card, &file, &feed).await {
+            let _ = tx.send(Some(Err("the chat was closed".to_owned())));
+            return;
+        }
+    }
     let started = std::time::Instant::now();
     let outcome = match hub.open(&session_id).await {
         Ok(session) => {
@@ -1328,6 +1346,66 @@ async fn wake_behind(
         }
     }
     let _ = tx.send(Some(outcome));
+}
+
+/// How often an open follows a running cron run's file.
+const FOLLOW_POLL: std::time::Duration = std::time::Duration::from_millis(400);
+/// How long a run record may still say `running` with nobody holding the session before
+/// the open wakes it anyway (a run whose process died without a final record).
+const FOLLOW_STALE: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// owner-fix-6 P1-2: follows the file of a chat a cron run is writing (its `oino -p`
+/// subprocess holds the lease) until the run is over and the session free — each new leaf
+/// goes out as `session_tree` (the app reloads its tail page from the file) — so the wake
+/// after it never takes the session over mid-run. `false` = every stream on the chat went
+/// away (nothing to wake for).
+async fn follow_cron_run(
+    hub: &Arc<SessionHub>,
+    card: &HostCard,
+    file: &SessionFile,
+    feed: &Arc<Feed>,
+) -> bool {
+    let leaf_of = |file: &SessionFile| {
+        let reader = file.clone();
+        async move {
+            tokio::task::spawn_blocking(move || reader.page(None, 1).ok().and_then(|p| p.leaf_id))
+                .await
+                .ok()
+                .flatten()
+        }
+    };
+    tracing::info!(
+        session = %card.session_id,
+        "session open: a cron run is writing this chat; following its file until it ends"
+    );
+    let mut leaf = leaf_of(file).await;
+    let mut free_since: Option<std::time::Instant> = None;
+    loop {
+        tokio::time::sleep(FOLLOW_POLL).await;
+        if feed.subscriber_count() == 0 {
+            return false;
+        }
+        let now = leaf_of(file).await;
+        if now.is_some() && now != leaf {
+            feed.publish(json!({"type": "session_tree", "leafId": now}))
+                .await;
+            leaf = now;
+        }
+        if SessionHub::lease_held_elsewhere(&card.file) {
+            free_since = None;
+            continue;
+        }
+        if !hub.cron_run_in_flight(card) {
+            return true;
+        }
+        if free_since
+            .get_or_insert_with(std::time::Instant::now)
+            .elapsed()
+            >= FOLLOW_STALE
+        {
+            return true;
+        }
+    }
 }
 
 /// The full snapshot of §7.3: `state`, the current branch's `entries` + `leaf_id`,

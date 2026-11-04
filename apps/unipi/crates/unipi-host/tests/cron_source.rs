@@ -291,3 +291,43 @@ async fn announce_emits_the_run_session_on_a_warm_hub() {
     assert_eq!(card.source.as_deref(), Some("cron"), "cron-sourced card");
     assert_eq!(card.cron_job_id.as_deref(), Some("digest"));
 }
+
+/// owner-fix-6 P2-1: a cron run in flight read `idle` in the sidebar (no Working badge)
+/// while the Cron page said Running — the `oino -p` subprocess runs the turn, so the host
+/// had no live state for it. A run with `status: running` makes its card `Working`; once
+/// it ends the card reads idle again.
+#[tokio::test]
+async fn a_running_cron_run_card_reads_working() {
+    let fixture = hub();
+    let (session, file) = session_with_file(&fixture.hub).await;
+    let id = session.session_id();
+    drop(session);
+    store::save_job(&fixture.cron, &job("digest")).unwrap();
+    let mut running = run(&id, "digest", Some(&file));
+    running.status = RunStatus::Running;
+    running.ended_at = None;
+    store::save_run(&fixture.cron, &running).unwrap();
+    let hub = fixture.fresh_hub();
+    let card = hub
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|card| card.session_id == id)
+        .unwrap();
+    assert_eq!(
+        card.state,
+        unipi_host::sessions::card::HubState::Working,
+        "a running cron run is Working"
+    );
+    store::save_run(&fixture.cron, &run(&id, "digest", Some(&file))).unwrap();
+    assert!(hub.announce_cron_run(&id).await);
+    let card = hub
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|card| card.session_id == id)
+        .unwrap();
+    assert_eq!(card.state, unipi_host::sessions::card::HubState::Idle);
+}

@@ -934,6 +934,24 @@ impl SessionHub {
         self.inner.mark_taken_over(session_id, from).await;
     }
 
+    /// Whether `card`'s chat belongs to a cron run still in flight (`status: running`):
+    /// its `oino -p` subprocess owns the session, so an open must follow the file rather
+    /// than take it over (owner-fix-6 P1-2).
+    #[must_use]
+    pub fn cron_run_in_flight(&self, card: &SessionCard) -> bool {
+        self.inner
+            .cron
+            .owner_of(&card.session_id, &card.file)
+            .is_some_and(|owner| owner.running)
+    }
+
+    /// Whether another live runner holds `session_file`'s single-writer lease (D-LOCK's
+    /// advisory metadata; a certainly-dead holder does not count).
+    #[must_use]
+    pub fn lease_held_elsewhere(session_file: &Path) -> bool {
+        lease_holder(session_file).is_some()
+    }
+
     /// A cron run just started (or finished): the run's session file is written by the
     /// `oino` subprocess directly, so nothing else emits a `SessionChanged` for it and the
     /// sidebar would only show the chat after a restart. Drops the cron cache (a just
@@ -1171,7 +1189,12 @@ impl Inner {
             cwd: info.moved_cwd.clone().unwrap_or_else(|| info.cwd.clone()),
             updated_at: epoch_ms(info.modified),
             message_count: info.message_count,
-            state: Self::state_of(state, &info.id, record.state),
+            // owner-fix-6 P2-1: a cron run in flight is run by its `oino -p` subprocess,
+            // not here — the run record is what says the chat is Working.
+            state: match Self::state_of(state, &info.id, record.state) {
+                HubState::Idle if cron.as_ref().is_some_and(|c| c.running) => HubState::Working,
+                other => other,
+            },
             // Extension dialogs (needs-you) ride H4's `UiRequest` stream; the card's field is
             // filled from there.
             needs_you: state.needs_you.contains(&info.id),
