@@ -112,10 +112,30 @@ impl HttpService {
                 .collect(),
             final_url: resp.url().to_string(),
         };
-        let body = resp
-            .bytes_stream()
-            .take_while(|r| futures::future::ready(r.is_ok()))
-            .filter_map(|r| futures::future::ready(r.ok().map(|b| b.to_vec())));
+        // The WIT body is a plain byte stream, so a read error (idle read timeout, total
+        // timeout, reset) still ends it like EOF and the guest sees a cut-off last event
+        // ("malformed server-sent event JSON"). Log the real cause so host.log names it
+        // (owner lerp graph 2026-11-03: two nodes died exactly 300 s after their last
+        // tool result).
+        let origin = head
+            .final_url
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_owned();
+        let body = resp.bytes_stream().scan((), move |(), r| {
+            futures::future::ready(match r {
+                Ok(b) => Some(b.to_vec()),
+                Err(e) => {
+                    tracing::warn!(
+                        url = %origin,
+                        timeout = e.is_timeout(),
+                        "http response body ended early: {e}"
+                    );
+                    None
+                }
+            })
+        });
         Ok((head, Box::pin(body)))
     }
 }
