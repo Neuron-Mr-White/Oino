@@ -272,6 +272,12 @@ hide Retry and fall back to the slash command below.
 - A notification + OS notification: *"Agent graph work scan stopped on an error: … It is not
   failed — its session is kept; the lead was woken to continue it, or press Retry."*
 
+**App TODO (UI node):** `lib/status/lh.ts` `graphSettled` / `graphCountLine` do not know
+`errored` yet: today an errored item drops out of the total (`3/6 settled` for 7 items). Count
+`errored` as live (not settled, not failed) and show it as its own part (`1 errored`, the
+errored colour), never inside `failed`. `components/status/LhGraph.tsx` status colours /
+`graphMermaid` need an `errored` class (§5) and a Retry button on `canRetry` nodes (§3.3).
+
 ## 5. `/visualize-progress` reserved entry (`unipi.long-horizon/visualize`) params
 
 `params.nodes[]` (existing shape) gains `canRetry: true` (errored only), `continues` (> 0) and
