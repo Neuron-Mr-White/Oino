@@ -162,3 +162,19 @@ None. The owner-fix-3 P0-1 Tree crash is fixed (A1).
   - The FolderBrowser "System dialog…" footer (P2-3).
   - The pane's `.git` pill is drawn under the side pane while it's open (P1-1).
 - **Not seen live:** the AgentCard inline-status fallback (B5) only appears in its unit test.
+
+## owner-fix-6 re-check (deb 694f1324)
+
+I re-checked this on the same isolated rig (`QA_HOME=~/oino-qa-release/owner-fix-5/qa`, Xvfb `:185`, WebDriver `:4485`, fake model). I reset `start-history.json` first. The deb is `~/oino-qa-release/owner-fix-6/unipi-oino_amd64-694f1324.deb`, sha256 `cf5cf699…40e8f`, and the rig's `app/.from` reads `cf5cf6997cd4a65a`. All clicks were real X clicks (`xin.py`). Screenshots are in `docs/dev/v2/design/shots/owner-fix-6/rig-*.png`.
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Folder browser works with the mouse | **PASS** | Chip → Browse folders… closes the menu, and the dialog sits on top (portal). Clicking rows, then the `qa-projects` crumb, then `beta` moved the footer path each time. **System dialog…** shows in the footer. Choosing gamma-nogit and clicking **Use this folder** set the chip, and the first prompt started the chat in `…/qa-projects/gamma-nogit`. Shots: `rig-folder-browser-open`, `-row-crumb`, `rig-folder-started-chat`. |
+| 2 | Opening a chat while its cron run is going | **PASS** | I ran "marathon" (90 s) and clicked the sidebar row about 20 s in. The row read **Working**, and the chat showed "Working… 24s" with no Taken-over or backend-closed message. Run `c1a1a75aa9320000` ended `status: ok`, `exit_code: 0`, with the full stream ("Done in 1m 33s"). Shots: `rig-cron-running-working`, `rig-cron-open-while-running`, `rig-cron-done-ok`. |
+| 3 | No "backend closed" after waking chats across 4+ workspaces | **PASS** | I opened 8 chats across 5 workspaces (gamma, alpha, cloud-agent, openmontage, droid-harness, and back). The hub retired *other* idle sets and never the one it had just woken. The host log has 0 `wake failed` / `backend closed` lines. Shot: `rig-wake-4-workspaces`. |
+| 4 | Tree › All on the whitelabel copy scrolls past row 20 | **FAIL** | `.ttab-list-scroll` is now bounded: clientHeight 662, scrollHeight 92412, and it scrolls to 91750. The rows stay at data-index 0–19 at every offset, so the pane is blank past the top (`rig-tree-all-end-blank`). **Likely cause:** `ui/virtual.tsx` gives the scroller to `@tanstack/virtual-core` from the `ref`, before the element is in the document. `_willUpdate` then sets `targetWindow = null` (I saw `targetWindow` falsy and `scrollRect` stuck at the 0×480 initialRect), so neither the scroll nor the resize observer works. **Suggested fix:** pass the scroller through a `createEffect` signal, so it is bound after insertion. This is not committed; it needs a real-app check. Default (146 rows, not windowed) still works (`rig-tree-default`). |
+| 5 | Session Info model rows sum to Cost | **PASS** | Cost $133.42. Rows: claude-opus-5-5 $125.42 ("95 replies + 1159 child", tooltip "$110.27 of it in child runs"), claude-sonnet-5-5 $8.01 (107 child), and glm-5.3-flash, glm-5.3 and fake-1 at — (unpriced). $125.42 + $8.01 = $133.43, which matches Cost to rounding. Shot: `rig-info-models`. |
+| 6 | LH diagram: last row reachable | **PASS** | The diagram opens with the controls above it. Dragging up pans to the last row (synth-85591), and the pan stops there. Shots: `rig-lh-open`, `rig-lh-last-row`. |
+| 7 | Phone sheet at 760 px | **PASS** | The sheet is at x 100–660 (centred, w 560). After Browse, the crumbs, rows and **Use this folder** are all on screen. Shot: `rig-phone-sheet-760`. |
+
+**Verdict:** 6 of 7 pass. Tree › All (P1-4) is still open: the scroll box is fixed, but the virtualizer never sees it scroll.
