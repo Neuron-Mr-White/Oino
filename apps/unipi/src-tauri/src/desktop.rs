@@ -4,7 +4,7 @@
 //! handler list is the same everywhere) and answer `E_UNSUPPORTED` / no-op.
 //!
 //! - Tray: the app icon labelled **UniPi (oino)** (host.md §5.1: the owner's old
-//!   unipi has a tray icon too), with "Show UniPi" / "Hide UniPi" and "Quit",
+//!   unipi has a tray icon too), with "Open Unipi" (first row), "Hide Unipi" and "Quit",
 //!   and a status line + tooltip — "2 phones · 3 sessions running · 1 needs
 //!   you" (§5.3) — fed by `desktop_status` (needs-you/running counts) and
 //!   `host_runtime` (paired phones).
@@ -76,9 +76,16 @@ fn build_menu<R: tauri::Runtime>(
     visible: bool,
 ) -> tauri::Result<tauri::menu::Menu<R>> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    // "Open Unipi" is the first row on purpose: Ubuntu's AppIndicator
+    // extension (and libappindicator) turn a single left click into "show
+    // the menu" — only a double click reaches `Activate` — so the first row
+    // must be the one-click way in. It always shows + unminimizes + focuses
+    // (creating the window again when it is gone); it never hides.
+    let open = MenuItem::with_id(app, MENU_OPEN, "Open Unipi", true, None::<&str>)?;
+    let hide = MenuItem::with_id(app, MENU_HIDE, "Hide Unipi", visible, None::<&str>)?;
     let status_item = MenuItem::with_id(app, "status", current_line(), false, None::<&str>)?;
-    let toggle = MenuItem::with_id(app, "toggle", toggle_label(visible), true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
     let mascot = tauri::menu::CheckMenuItem::with_id(
         app,
         "mascot",
@@ -88,8 +95,15 @@ fn build_menu<R: tauri::Runtime>(
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "quit", "Quit Unipi", true, None::<&str>)?;
-    Menu::with_items(app, &[&status_item, &sep, &toggle, &mascot, &quit])
+    Menu::with_items(
+        app,
+        &[&open, &hide, &sep, &status_item, &mascot, &sep2, &quit],
+    )
 }
+
+/// Tray menu row ids (the first row is always "Open Unipi").
+pub const MENU_OPEN: &str = "open";
+pub const MENU_HIDE: &str = "hide";
 
 #[cfg(desktop)]
 fn main_visible<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
@@ -128,39 +142,6 @@ fn ensure_main<R: tauri::Runtime>(
     }
 }
 
-#[cfg(desktop)]
-fn toggle_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    let Some(window) = ensure_main(app) else {
-        return;
-    };
-    let known = VISIBLE.lock().ok().and_then(|k| *k);
-    let show = toggle_shows(known.unwrap_or_else(|| window.is_visible().unwrap_or(true)));
-    if show {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    } else {
-        let _ = window.hide();
-    }
-    // The new state, not `is_visible()`: GTK applies hide/show asynchronously,
-    // so asking right away still said "visible" and the menu kept "Hide UniPi".
-    refresh_menu_as(app, Some(show));
-}
-
-/// Pure: does a tray toggle show the window (it is hidden now) or hide it?
-pub fn toggle_shows(visible_now: bool) -> bool {
-    !visible_now
-}
-
-/// Pure: the toggle row's label for a window that is (`visible`) or isn't shown.
-pub fn toggle_label(visible: bool) -> &'static str {
-    if visible {
-        "Hide Unipi"
-    } else {
-        "Show Unipi"
-    }
-}
-
 // The three numbers behind the tray's status line (atomics: the tray menu is
 // rebuilt from any thread and a poisoned lock must never break the tray).
 #[cfg(desktop)]
@@ -189,7 +170,7 @@ pub fn set_phone_count<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paired: usi
 }
 
 /// Shows (`true`) or hides the main window — the close dialog's "Minimize to
-/// tray" and the tray toggle share it (§5.4).
+/// tray" and the tray's "Hide Unipi" share it (§5.4).
 #[cfg(desktop)]
 pub fn hide_main<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     use tauri::Manager;
@@ -205,7 +186,7 @@ fn refresh_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     refresh_menu_as(app, None);
 }
 
-/// Last known window visibility set by the tray toggle (GTK's own answer lags).
+/// Last known window visibility set by the tray rows (GTK's own answer lags).
 #[cfg(desktop)]
 static VISIBLE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
 
@@ -241,7 +222,7 @@ fn refresh_menu_as<R: tauri::Runtime>(app: &tauri::AppHandle<R>, visible: Option
 /// status-notifier host on this desktop) is logged, never fatal.
 #[cfg(desktop)]
 pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
-    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    use tauri::tray::TrayIconBuilder;
     let menu = build_menu(app, true)?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
@@ -249,7 +230,8 @@ pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
         .tooltip(tooltip(&current_line()))
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "toggle" => toggle_main(app),
+            MENU_OPEN => show_main(app),
+            MENU_HIDE => hide_main(app),
             "mascot" => {
                 let show = !mascot_visible(app);
                 let _ = set_mascot_window(
@@ -265,16 +247,16 @@ pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            // A left click opens the window: shows it when it is hidden or
-            // minimized, creates it again when it is gone, and focuses it.
-            // It never hides it (the menu's toggle does). Linux gets the click
-            // through the KSNI backend (Cargo.toml); right click opens the menu.
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
+            // A left click (or double click) opens the window: shows it when
+            // it is hidden or minimized, creates it again when it is gone,
+            // and focuses it. It never hides it (the menu's "Hide" does).
+            // Windows/macOS deliver the click directly
+            // (`show_menu_on_left_click(false)`, right click = menu). Linux
+            // uses the KSNI backend (Cargo.toml): GNOME's AppIndicator
+            // extension sends `Activate` on a double click (a single click
+            // opens the menu, whose first row is "Open Unipi"); KDE and most
+            // other SNI hosts send it on a single click.
+            if opens_main(&event) {
                 show_main(tray.app_handle());
             }
         });
@@ -283,6 +265,23 @@ pub fn setup_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result
     }
     builder.build(app)?;
     Ok(())
+}
+
+/// Pure: does this tray icon event open the main window?
+#[cfg(desktop)]
+fn opens_main(event: &tauri::tray::TrayIconEvent) -> bool {
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+    matches!(
+        event,
+        TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        } | TrayIconEvent::DoubleClick {
+            button: MouseButton::Left,
+            ..
+        }
+    )
 }
 
 /// The crab (mascot window) was clicked: open the main window from Rust.
@@ -720,13 +719,8 @@ mod tests {
     }
 
     #[test]
-    fn tray_toggle_label_follows_the_new_state() {
-        // Visible → the toggle hides it → the row must now offer "Show".
-        let shown = toggle_shows(true);
-        assert!(!shown);
-        assert_eq!(toggle_label(shown), "Show Unipi");
-        let shown = toggle_shows(false);
-        assert!(shown);
-        assert_eq!(toggle_label(shown), "Hide Unipi");
+    fn tray_menu_opens_first() {
+        assert_eq!(MENU_OPEN, "open");
+        assert_ne!(MENU_OPEN, MENU_HIDE);
     }
 }
