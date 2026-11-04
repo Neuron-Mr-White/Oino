@@ -64,6 +64,21 @@ const FAILURE_TABLE: &[(&str, &[&str])] = &[
             "ratelimit",
             "quota",
             "overloaded",
+            // Router de-duplication: `An identical request is already in progress
+            // (reset after 1s)` with `"retry_after":1` (owner lerp graph 2026-11-04).
+            "already in progress",
+        ],
+    ),
+    (
+        // A provider stream cut mid-event (owner lerp graph 2026-11-03: `malformed
+        // server-sent event JSON`, `Could not parse Anthropic SSE event
+        // content_block_delta: EOF while parsing`). The request itself was valid.
+        "stream",
+        &[
+            "server-sent event",
+            "sse event",
+            "error reading response",
+            "eof while parsing",
         ],
     ),
     (
@@ -131,7 +146,8 @@ fn retry_after_hint(lower: &str) -> Option<u64> {
         let Some(at) = lower.find(needle) else {
             continue;
         };
-        let tail = &lower[at + needle.len()..];
+        // `"retry_after":1` (JSON error bodies) keeps its closing quote.
+        let tail = lower[at + needle.len()..].trim_start_matches('"');
         let digits: String = tail
             .trim_start_matches([':', '=', ' ', '\t', '_'])
             .chars()
@@ -1318,13 +1334,21 @@ impl GraphFile {
         let Some(g) = self.current.as_mut() else {
             return SettleOutcome::Unknown;
         };
-        let Some(w) = g
+        // A replacement that resumes the same operator (`replaces` + `operator_id`)
+        // shares the id with the superseded item it replaced: settle the RUNNING one,
+        // else the newest. Matching the first item filed the result on the superseded
+        // node and left the replacement running forever, so no checkpoint woke the lead
+        // (owner's lerp graph, 2026-11-04, p0-plan / p0-plan-r1).
+        let mine = |w: &Work| w.operator_id.as_deref() == Some(operator);
+        let Some(at) = g
             .work
-            .iter_mut()
-            .find(|w| w.operator_id.as_deref() == Some(operator))
+            .iter()
+            .position(|w| mine(w) && w.status == "running")
+            .or_else(|| g.work.iter().rposition(mine))
         else {
             return SettleOutcome::Unknown;
         };
+        let w = &mut g.work[at];
         let work_id = w.work_id.clone();
         w.tool_calls = tool_calls;
         if w.status == "running" {
@@ -1990,6 +2014,28 @@ mod tests {
                 retry_after_ms: Some(2_500)
             }
         );
+        // Owner lerp graph failures (2026-11-03/04), all classified permanent before.
+        assert_eq!(
+            classify_failure(
+                false,
+                r#"{"error":{"message":"[claude/claude-opus-5-5] An identical request is already in progress (reset after 1s)","retry_after":1,"reset_at":"2026-11-04T01:04:13.811Z"}}"#
+            ),
+            Transient {
+                retry_after_ms: Some(1_000)
+            }
+        );
+        for e in [
+            "Error reading response: malformed server-sent event JSON.",
+            "Could not parse Anthropic SSE event content_block_delta: EOF while parsing a string at line 1 column 90",
+        ] {
+            assert_eq!(
+                classify_failure(false, e),
+                Transient {
+                    retry_after_ms: None
+                },
+                "{e}"
+            );
+        }
         // 5xx family.
         for e in [
             "503 Service Unavailable",
@@ -2287,6 +2333,52 @@ mod tests {
         )
         .unwrap();
         assert!(!f.render_task("c").contains("transient error"));
+    }
+
+    #[test]
+    fn replacement_on_same_operator_settles_the_running_item() {
+        // Owner lerp graph 2026-11-04: p0-plan failed (permanent), the lead replaced it
+        // with p0-plan-r1 on the SAME operator. The settle must complete p0-plan-r1
+        // (and so reach a checkpoint), not file the result on superseded p0-plan.
+        let mut f = GraphFile::default();
+        f.update(&upd(vec![add("a", &[]), add("b", &["r-a"])]), "g", 0)
+            .unwrap();
+        f.started("a", Ok("op".into()));
+        fail_settle(&mut f, "op", "boom", 0, false);
+        f.update(
+            &upd(vec![AddWork {
+                operator_id: Some("op".into()),
+                replaces: Some("a".into()),
+                ..add("a2", &[])
+            }]),
+            "g",
+            1,
+        )
+        .unwrap();
+        let (id, _, _) = f.runnable(0).pop().unwrap();
+        assert_eq!(id, "a2");
+        f.started("a2", Ok("op".into()));
+        assert_eq!(
+            f.settle("op", "completed", "plan done", None, 5, 2, false),
+            SettleOutcome::Settled {
+                work_id: "a2".into(),
+                status: "completed".into()
+            }
+        );
+        let g = f.open().unwrap();
+        let a = g.work.iter().find(|w| w.work_id == "a").unwrap();
+        let a2 = g.work.iter().find(|w| w.work_id == "a2").unwrap();
+        assert_eq!(a.status, "superseded");
+        assert!(a.result.is_none());
+        assert_eq!(a2.status, "completed");
+        assert_eq!(a2.result.as_deref(), Some("plan done"));
+        // The dependent now runs on the replacement's result.
+        assert_eq!(f.runnable(0)[0].0, "b");
+        // A late settle for the same operator after everything settled lands on the
+        // newest item, never on the superseded one.
+        f.settle("op", "completed", "late", None, 0, 3, false);
+        let g = f.open().unwrap();
+        assert!(g.work.iter().find(|w| w.work_id == "a").unwrap().result.is_none());
     }
 
     #[test]
