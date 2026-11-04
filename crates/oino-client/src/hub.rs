@@ -504,7 +504,27 @@ impl SessionHub {
         let records = tokio::task::spawn_blocking(move || SessionManager::list_all_cards(&root))
             .await
             .map_err(|error| ClientError::Command(format!("listing sessions: {error}")))?;
-        let mut state = self.inner.state.lock().await;
+        // Never wait for the hub lock: a wake holds it through services creation (cold
+        // extension loading, model probes) and the whole-file parse - seconds - and the
+        // app's first `sessions_list` races the restored chat's open at every start
+        // (sidebar-data: the Task list showed rows ~12 s late behind a 13.8 s wake).
+        // While the lock is busy the live-id mirror answers `Live`/`Record` (crashed and
+        // locked marks read as `Record` until the next listing; the embedding host keeps
+        // its own crash/takeover marks).
+        let Ok(mut state) = self.inner.state.try_lock() else {
+            let live = lock(&self.inner.live_ids).clone();
+            return Ok(records
+                .into_iter()
+                .map(|info| HubSession {
+                    state: if live.contains(&info.id) {
+                        HubSessionState::Live
+                    } else {
+                        HubSessionState::Record
+                    },
+                    info,
+                })
+                .collect());
+        };
         // A locked marker only stands while the holder's lease metadata does.
         state
             .locked

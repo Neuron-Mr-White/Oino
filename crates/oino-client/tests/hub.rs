@@ -36,6 +36,8 @@ use serde_json::{Value, json};
 struct CountingLoader {
     inner: StaticLoader,
     loads: Arc<AtomicUsize>,
+    /// Extension loading time (a cold wasm load in the real app takes seconds).
+    delay: Duration,
 }
 
 impl ExtensionLoader for CountingLoader {
@@ -45,7 +47,11 @@ impl ExtensionLoader for CountingLoader {
         project_trusted: bool,
     ) -> BoxFuture<'_, Vec<Arc<dyn ExtensionInstance>>> {
         self.loads.fetch_add(1, Ordering::SeqCst);
-        self.inner.load(host, project_trusted)
+        let delay = self.delay;
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            self.inner.load(host, project_trusted).await
+        })
     }
 }
 
@@ -80,6 +86,21 @@ fn hub_with(
     Arc<AtomicUsize>,
     Arc<FauxProvider>,
 ) {
+    hub_with_load_delay(settings, responses, extra, tools, Duration::ZERO)
+}
+
+fn hub_with_load_delay(
+    settings: Option<&str>,
+    responses: Vec<FauxResponse>,
+    extra: Vec<Arc<dyn ExtensionInstance>>,
+    tools: ToolSelection,
+    delay: Duration,
+) -> (
+    tempfile::TempDir,
+    Arc<SessionHub>,
+    Arc<AtomicUsize>,
+    Arc<FauxProvider>,
+) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("sessions")).unwrap();
     std::fs::create_dir_all(dir.path().join("agent")).unwrap();
@@ -94,6 +115,7 @@ fn hub_with(
     let loader = CountingLoader {
         inner: StaticLoader(instances),
         loads: Arc::clone(&loads),
+        delay,
     };
     let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
     models.set_runtime_api_key("faux", "k");
@@ -285,6 +307,44 @@ async fn hub_limits_override_and_default_keeps_the_max_services_setting() {
     );
     let plain = SessionHub::create(options(None)).unwrap();
     assert_eq!(plain.max_services(), 8, "default keeps the setting");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn list_never_waits_for_a_wake() {
+    // sidebar-data: at every app start the first `sessions_list` raced the restored
+    // chat's open, whose wake holds the hub lock through services creation (cold
+    // extension loading: seconds) - the Task list showed its rows ~12 s late.
+    let (dir, hub, _loads, _provider) = hub_with_load_delay(
+        None,
+        Vec::new(),
+        Vec::new(),
+        ToolSelection::Default,
+        Duration::from_secs(3),
+    );
+    let (_one, one_id) = conversation_file(dir.path());
+    let (_two, _two_id) = conversation_file(dir.path());
+    let waking = {
+        let hub = Arc::clone(&hub);
+        let id = one_id.clone();
+        tokio::spawn(async move { hub.open(&id).await.map(|_| ()) })
+    };
+    // The wake has taken the lock and is loading extensions.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(hub.is_busy(), "the wake holds the hub lock");
+    let started = std::time::Instant::now();
+    let listed = hub.list().await.unwrap();
+    assert!(
+        started.elapsed() < Duration::from_millis(1000),
+        "list waited {:?} for the wake",
+        started.elapsed()
+    );
+    assert_eq!(listed.len(), 2, "{listed:?}");
+    assert!(listed.iter().all(|s| s.state == HubSessionState::Record));
+    waking.await.unwrap().unwrap();
+    // Once the wake is done the listing has the lock again: the woken session is live.
+    let listed = hub.list().await.unwrap();
+    let live = listed.iter().find(|s| s.info.id == one_id).unwrap();
+    assert_eq!(live.state, HubSessionState::Live);
 }
 
 #[tokio::test]
