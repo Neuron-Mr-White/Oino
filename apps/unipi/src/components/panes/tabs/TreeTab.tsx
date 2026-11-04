@@ -8,7 +8,7 @@
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import { Check, CornerDownRight, GitBranch, ListTree } from 'lucide-solid';
 import { AnchoredMenu, MenuRow } from '../../board/AnchoredMenu';
-import { sessions, type SessionHandle } from '../../../lib/session/store';
+import { sessions, type NavigateReply, type SessionHandle } from '../../../lib/session/store';
 import type { SessionEntry } from '../../../lib/session/types';
 import { focusComposer, restoreComposer } from '../../../lib/composer/drafts';
 import { setPaneComponent, type PaneTabProps } from '../../../lib/panes/kinds';
@@ -18,11 +18,14 @@ import './tabs.css';
 
 type WireNode = { entry: SessionEntry; children?: WireNode[]; label?: unknown };
 type TreeReply = { tree?: WireNode[]; leafId?: string | null };
-type NavigateReply = { cancelled?: boolean; editorText?: string };
 
-/** `navigate_tree`: moves the leaf; `summarize` writes the branch summary. */
+/**
+ * `navigate_tree`: moves the leaf; `summarize` writes the branch summary. [chat-tree] Through
+ * `SessionHandle.navigate`, so the open chat reloads the branch it lands on.
+ */
 async function navigate(session: SessionHandle, targetId: string, summarize: boolean): Promise<NavigateReply> {
-  return session.cmd<NavigateReply>({ type: '_oino/navigate_tree', targetId, ...(summarize ? { summarize: true } : {}) });
+  const opts = summarize ? { summarize: true } : {};
+  return session.navigate ? session.navigate(targetId, opts) : session.cmd<NavigateReply>({ type: '_oino/navigate_tree', targetId, ...opts });
 }
 
 export function TreeTab(props: PaneTabProps) {
@@ -51,9 +54,12 @@ export function TreeTab(props: PaneTabProps) {
   };
   // Reload when the stream comes live (a tab can open while the session is
   // still connecting; `cmd` rejects before that) and on a reopen.
+  // [chat-tree] …and whenever the branch moved (a "Return here" in the chat, another window,
+  // the phone): `branchRev` bumps once per jump, never per streamed message.
   createEffect(() => {
     const s = handle();
     if (s?.state.conn !== 'live') return;
+    void s.state.branchRev;
     void refresh();
   });
 
@@ -77,8 +83,8 @@ export function TreeTab(props: PaneTabProps) {
         restoreComposer(s.key, { text: reply.editorText });
         focusComposer(s.key);
       }
-      setLoading(true);
-      await refresh();
+      // The branch reload bumps `branchRev`, which refreshes the tree (a bare handle: here).
+      if (!s.navigate) await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

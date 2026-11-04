@@ -16,7 +16,7 @@ import { HashRouter, Route } from '@solidjs/router';
 import type { JSX } from 'solid-js';
 import { createMockHost, type MockScenario, type MockSession } from '../../../dev/mock/host';
 import { setHostClientFactory } from '../../../lib/host/factory';
-import { createSession, resetSessions, type SessionHandle } from '../../../lib/session/store';
+import { createSession, resetSessions, sessions, type SessionHandle } from '../../../lib/session/store';
 import { panes, resetPanes } from '../../../lib/panes';
 import { resetLayout, setDesktopOverride } from '../../../lib/layout';
 import { resetComposerDrafts, composerDraft } from '../../../lib/composer/drafts';
@@ -77,6 +77,8 @@ let messages = [{ role: 'user', content: [part('Map the status topics')] }, { ro
 function session(): MockSession {
   const cmd: NonNullable<MockSession['cmd']> = {
     get_tree: () => ({ tree: tree(), leafId: 'u2' }),
+    // [chat-tree] The branch page a tree jump reloads.
+    get_entries: () => ({ entries: ENTRIES, leafId: 'r1', total: ENTRIES.length, hasMore: false }),
     '_oino/navigate_tree': (c) => ({ editorText: `> Fix the failing test\n> go to ${String((c as { targetId?: string }).targetId)}` }),
     '_oino/service_call': (c) => {
       const name = String((c as { name?: string }).name ?? '');
@@ -279,6 +281,25 @@ describe('tree tab (Z-18)', () => {
     // On the current branch but not the leaf: the row asks which jump (Z-18).
     (await screen.findByText('Go to this point')).click();
     await waitFor(() => expect(composerDraft(handle.key).text).toContain('Fix the failing test'));
+  });
+
+  it('a jump reloads the chat\'s branch and the tree follows a jump made elsewhere (chat-tree)', async () => {
+    await openHandle();
+    withRouter(() => <TreeTab {...tab('tree', {})} />);
+    await waitFor(() => expect(screen.getByText('Tried the other branch')).toBeTruthy());
+    // The registry's handle: the one the tab and the chat share.
+    const handle = sessions().ensure(HOST, S);
+    const trees = () => world.log.filter((l) => l.kind === 'cmd' && l.op === 'get_tree').length;
+    const pages = () => world.log.filter((l) => l.kind === 'cmd' && l.op === 'get_entries' && (l.args as { limit?: number }).limit === 80).length;
+    const before = trees();
+    // Off the current branch: one click navigates (pi /tree), the chat reloads its branch page.
+    screen.getByText('Tried the other branch').closest('button')!.click();
+    await waitFor(() => expect(world.log.some((l) => l.op === '_oino/navigate_tree' && (l.args as { targetId?: string }).targetId === 'b1')).toBe(true));
+    await waitFor(() => expect(pages()).toBe(1));
+    await waitFor(() => expect(trees()).toBe(before + 1));
+    // "Return here" in the chat (or another window) moves the branch: the tree reloads once.
+    await handle.navigate!('a1');
+    await waitFor(() => expect(trees()).toBe(before + 2));
   });
 });
 
