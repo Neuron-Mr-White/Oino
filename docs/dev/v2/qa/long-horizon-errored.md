@@ -233,6 +233,19 @@ current, then history). Reply:
 
 `text` ≤ 64 KB (earlier graphs ≤ 16 KB, `truncated: true` when clipped); `null` when none.
 
+### 3.4b Orphaned steps and `stop_operator` ([lh-orphan], owner 2026-11-04)
+
+A step the graph moved on from (stopped, replaced, failed, settled) whose worker (its
+`operatorId`, a `subagents.list` record with `status: "running"`) has not ended is sent by
+`snapshot` as `status: "running"` with `orphaned: true`, `canStop: true` and `stoppedAs`
+(the graph's own status, e.g. `superseded`); `counts` move it to `running` and the graph
+carries `orphaned: <n>`. The app keeps it with the running work and offers Stop:
+`{"op": "stop_operator", "workId": "wl-fix-2"}` → `{"ok": true, "workId", "operatorId",
+"cancelled": <bool>}` (`subagents.cancel`; `false` = the worker already ended). Refused with
+`lh.request.invalid` for a step the graph itself runs (the lead stops those) or one without a
+worker, `lh.work.not_found` for an unknown id. Once the worker ends the step shows as what the
+graph made it.
+
 ### 3.5 Errors
 
 Every refusal is `{"ok": false, "code": "<code>", "reason": "<human text>"}`. The central

@@ -3,7 +3,7 @@
 //! Pure state transitions; the extension starts work through `unipi.subagents`'
 //! `subagents.graph-run` service and settles it from `unipi:subagents:run-done`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -2611,7 +2611,42 @@ impl GraphFile {
     /// work plus the newest settled items, at most [`SNAPSHOT_MAX_WORK`].
     #[must_use]
     pub fn snapshot(&self, g: &Graph) -> Value {
-        let live = |w: &Work| matches!(w.status.as_str(), "queued" | "running" | "errored");
+        self.snapshot_with(g, &HashSet::new())
+    }
+
+    /// Work that is no longer `running` (stopped, replaced, failed, completed) while its
+    /// operator is still in `live_operators` (the subagents runs still running): a worker
+    /// the graph moved on from keeps running unseen otherwise (owner 2026-11-04, graph
+    /// wl-fix-2: stopped + replaced, its worker ran on for 1.5 h in the Running list but
+    /// the graph showed it among the hidden replaced steps).
+    #[must_use]
+    pub fn orphaned<'a>(g: &'a Graph, live_operators: &HashSet<String>) -> Vec<&'a Work> {
+        g.work
+            .iter()
+            .filter(|w| {
+                w.status != "running"
+                    && w.operator_id
+                        .as_ref()
+                        .is_some_and(|op| live_operators.contains(op))
+            })
+            .collect()
+    }
+
+    /// [`Self::snapshot`] with the live subagents runs: an orphaned item (see
+    /// [`Self::orphaned`]) shows as `running` with `orphaned: true` (and its `stoppedAs`,
+    /// the status the graph gave it) and is counted as running, so the app lists it with
+    /// the running work until its operator really ends; the graph service's
+    /// `stop_operator` op stops it.
+    #[must_use]
+    pub fn snapshot_with(&self, g: &Graph, live_operators: &HashSet<String>) -> Value {
+        let orphan_ids: HashSet<&str> = Self::orphaned(g, live_operators)
+            .into_iter()
+            .map(|w| w.work_id.as_str())
+            .collect();
+        let live = |w: &Work| {
+            matches!(w.status.as_str(), "queued" | "running" | "errored")
+                || orphan_ids.contains(w.work_id.as_str())
+        };
         let settled = g.work.iter().filter(|w| !live(w)).count();
         let keep_settled =
             SNAPSHOT_MAX_WORK.saturating_sub(g.work.iter().filter(|w| live(w)).count());
@@ -2674,10 +2709,31 @@ impl GraphFile {
                 if let Some(at) = w.next_retry_at {
                     v["nextRetryAt"] = json!(at);
                 }
+                if orphan_ids.contains(w.work_id.as_str()) {
+                    v["stoppedAs"] = json!(status);
+                    v["status"] = json!("running");
+                    v["orphaned"] = json!(true);
+                    v["canStop"] = json!(true);
+                }
                 v
             })
             .collect();
         let mut out = self.summary(g);
+        for w in g
+            .work
+            .iter()
+            .filter(|w| orphan_ids.contains(w.work_id.as_str()))
+        {
+            let was = self.view_status(g, w);
+            if let Some(n) = out["counts"].get(was.as_str()).and_then(Value::as_u64) {
+                out["counts"][was.as_str()] = json!(n.saturating_sub(1));
+            }
+            let running = out["counts"]["running"].as_u64().unwrap_or(0);
+            out["counts"]["running"] = json!(running + 1);
+        }
+        if !orphan_ids.is_empty() {
+            out["orphaned"] = json!(orphan_ids.len());
+        }
         out["v"] = json!(1);
         out["events"] = json!(g.events);
         out["eventsDropped"] = json!(g.events_dropped);
@@ -3736,6 +3792,50 @@ mod tests {
         assert_eq!(g.events.len(), MAX_GRAPH_EVENTS);
         assert_eq!(g.events_dropped, 7);
         assert!(g.events[0].detail.chars().count() <= EVENT_DETAIL_CHARS + 1);
+    }
+
+    /// Owner 2026-11-04 (graph wl-fix-2): the lead stopped + replaced an item whose worker
+    /// kept running; the snapshot showed it among the hidden replaced steps. While its
+    /// operator still runs it is listed (and counted) as running, `orphaned`, stoppable.
+    #[test]
+    fn a_stopped_item_whose_operator_still_runs_shows_as_orphaned_running() {
+        let mut f = GraphFile::default();
+        f.update(&upd(vec![add("fix", &[])]), "g", 0).unwrap();
+        f.started("fix", Ok("op-fix".into()), 1);
+        let mut s = upd(vec![]);
+        s.stop = vec![("fix".into(), "idle 86 min".into())];
+        assert_eq!(f.update(&s, "g", 2).unwrap().stop_operators, ["op-fix"]);
+        let mut verify = add("fix-verify", &[]);
+        verify.replaces = Some("fix".into());
+        f.update(&upd(vec![verify]), "g", 3).unwrap();
+        f.started("fix-verify", Ok("op-verify".into()), 4);
+        let g = f.open().unwrap();
+        assert_eq!(g.work[0].status, "superseded");
+        // The stop did not end the worker: its run is still live.
+        let live: HashSet<String> = ["op-fix".to_owned(), "op-verify".to_owned()].into();
+        let orphans: Vec<&str> = GraphFile::orphaned(g, &live)
+            .iter()
+            .map(|w| w.work_id.as_str())
+            .collect();
+        assert_eq!(orphans, ["fix"]);
+        let snap = f.snapshot_with(g, &live);
+        let fix = &snap["work"][0];
+        assert_eq!(fix["workId"], "fix");
+        assert_eq!(fix["status"], "running");
+        assert_eq!(fix["stoppedAs"], "superseded");
+        assert_eq!(fix["orphaned"], true);
+        assert_eq!(fix["canStop"], true);
+        assert_eq!(snap["counts"]["running"], 2);
+        assert_eq!(snap["counts"]["superseded"], 0);
+        assert_eq!(snap["orphaned"], 1);
+        // Once the operator really ended, the item is the replaced step it is.
+        let live: HashSet<String> = ["op-verify".to_owned()].into();
+        let snap = f.snapshot_with(g, &live);
+        assert_eq!(snap["work"][0]["status"], "superseded");
+        assert!(snap["work"][0].get("orphaned").is_none());
+        assert_eq!(snap["counts"]["running"], 1);
+        assert!(snap.get("orphaned").is_none());
+        assert_eq!(f.snapshot(g)["work"][0]["status"], "superseded");
     }
 
     #[test]

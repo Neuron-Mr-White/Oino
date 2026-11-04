@@ -1629,3 +1629,140 @@ async fn long_horizon_restart_resumes_interrupted_work() {
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
+
+async fn sa_list(env: &Env, sa: &Arc<dyn ExtensionInstance>) -> Vec<Value> {
+    sa.handle_service(
+        "subagents.list",
+        RawJson::from(json!({})),
+        &oino_extension_api::ExtensionId::new("oino.frontend").unwrap(),
+        env.cx(CallKind::Service),
+    )
+    .await
+    .unwrap()
+    .to_value()
+    .as_array()
+    .cloned()
+    .unwrap_or_default()
+}
+
+/// [lh-orphan] owner 2026-11-04 (graph wl-fix-2): a worker parked on a wake-up `bg_run`
+/// whose task died under it (killed by a hibernation) never sends another event. The lead
+/// stopped + replaced it, but the cancel only flagged the record and waited for an event
+/// that never came: the run stayed `running` for 1.5 h in the Running list while the graph
+/// hid it among the replaced steps. Now (1) while the worker runs on, the app snapshot
+/// lists the replaced item as `running` + `orphaned` + `canStop`; (2) the cancel settles
+/// the silent run after its grace (record `cancelled`, ended), after which the item is
+/// the replaced step it is; (3) the app's `stop_operator` op cancels an orphan.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stopped_worker_that_hangs_is_cancelled_and_surfaces_until_it_ends() {
+    let env = Env::new();
+    env.host.stage_hung_agents(1);
+    env.host
+        .stage_agent_reports(vec!["fixed".to_owned(), "r-fix-verify: verified".to_owned()]);
+    let (sa, _) = env.load("subagents").await;
+    let (lh, _) = env.load("long-horizon").await;
+    for ext in [&sa, &lh] {
+        env.event(
+            ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
+    }
+    let opened = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({"operation": "add_work", "task": "Fix + verify",
+                   "add_work": [{"work_id": "fix", "instruction": "fix the findings", "profile": "subagent_general"}]}),
+        )
+        .await;
+    assert!(!text_of(&opened).contains("refused"), "{opened}");
+    // The worker runs and parks on its bg_run (the fake hangs after agent_end).
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let op = loop {
+        let g = graph_json(&env);
+        let w = work_of(&g, "fix");
+        if w["status"] == "running"
+            && let Some(op) = w["operatorId"].as_str()
+        {
+            break op.to_owned();
+        }
+        assert!(Instant::now() < deadline, "fix never started: {g}");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let rec = sa_list(&env, &sa).await;
+    let rec = rec.iter().find(|r| r["id"] == json!(op)).unwrap();
+    assert_eq!(rec["status"], "running", "{rec}");
+
+    // The lead stops it and replaces it.
+    let stop = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({"operation": "stop", "stop": [{"target_id": "fix", "reason": "idle 86 min"}]}),
+        )
+        .await;
+    assert!(!text_of(&stop).contains("refused"), "{stop}");
+    let add = env
+        .tool(
+            &lh,
+            "update_agent_graph",
+            json!({"operation": "add_work", "add_work": [{"work_id": "fix-verify", "instruction": "verify", "profile": "subagent_general", "replaces": "fix"}]}),
+        )
+        .await;
+    assert!(!text_of(&add).contains("refused"), "{add}");
+    // Right after the stop the silent worker still runs: the graph shows it.
+    let snap = lh_service(&env, &lh, json!({"op": "snapshot"})).await;
+    let fix = snap["graph"]["work"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["workId"] == "fix")
+        .unwrap()
+        .clone();
+    assert_eq!(fix["status"], "running", "{snap}");
+    assert_eq!(fix["orphaned"], true, "{snap}");
+    assert_eq!(fix["canStop"], true);
+    assert_eq!(fix["stoppedAs"], "superseded");
+
+    // The cancel settles the silent run after its grace (5 s).
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let list = sa_list(&env, &sa).await;
+        let rec = list.iter().find(|r| r["id"] == json!(op)).unwrap();
+        if rec["status"] == "cancelled" {
+            assert!(rec["endedAt"].as_i64().is_some(), "{rec}");
+            assert_eq!(rec["cancelledBy"], "user");
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the stopped worker never ended: {rec}"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    let snap = lh_service(&env, &lh, json!({"op": "snapshot"})).await;
+    let fix = snap["graph"]["work"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["workId"] == "fix")
+        .unwrap()
+        .clone();
+    assert_eq!(fix["status"], "superseded", "{snap}");
+    assert!(fix.get("orphaned").is_none(), "{snap}");
+    // The replacement ran to completion; stop_operator refuses work the graph runs and
+    // answers for a settled orphan.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while work_of(&graph_json(&env), "fix-verify")["status"] != "completed" {
+        assert!(Instant::now() < deadline, "fix-verify never completed");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let r = lh_service(&env, &lh, json!({"op": "stop_operator", "workId": "fix"})).await;
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(r["cancelled"], false, "already ended: {r}");
+    let r = lh_service(&env, &lh, json!({"op": "stop_operator", "workId": "nope"})).await;
+    assert_eq!(r["code"], "lh.work.not_found", "{r}");
+}

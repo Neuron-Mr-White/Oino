@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use futures::StreamExt;
 use futures::channel::oneshot;
 use futures::stream::{self, BoxStream};
 use serde_json::{Value, json};
@@ -59,6 +60,8 @@ pub struct RecordingHostServices {
     ext_settings: Mutex<BTreeMap<(String, String), Value>>,
     /// Report texts of spawned fake agents, oldest first (default: `done`).
     agent_reports: Mutex<VecDeque<String>>,
+    /// How many of the next spawned fake agents hang (see [`Self::stage_hung_agents`]).
+    hung_agents: Mutex<u32>,
     /// The session's active tool list (`control › active_tools`); empty = none granted.
     active_tools: Mutex<Vec<String>>,
 }
@@ -212,6 +215,13 @@ impl RecordingHostServices {
     /// Stages the report texts of the next spawned fake agents (`done` by default).
     pub fn stage_agent_reports(&self, reports: Vec<String>) {
         *guard(&self.agent_reports) = reports.into_iter().collect();
+    }
+
+    /// The next `n` spawned fake agents hang like a worker whose wake-up `bg_run` was
+    /// killed under it: `agent_start`, a `bg_run` call, `agent_end`, then their event
+    /// stream stays open and silent forever, and `abort` does nothing (an idle child).
+    pub fn stage_hung_agents(&self, n: u32) {
+        *guard(&self.hung_agents) = n;
     }
 }
 
@@ -623,7 +633,15 @@ impl HostServices for RecordingHostServices {
         let text = guard(&self.agent_reports)
             .pop_front()
             .unwrap_or_else(|| "done".to_owned());
-        Box::pin(async move { Ok(Arc::new(FakeAgent::new(text)) as Arc<dyn AgentHandle>) })
+        let hung = {
+            let mut n = guard(&self.hung_agents);
+            let hung = *n > 0;
+            *n = n.saturating_sub(1);
+            hung
+        };
+        let mut agent = FakeAgent::new(text);
+        agent.hung = hung;
+        Box::pin(async move { Ok(Arc::new(agent) as Arc<dyn AgentHandle>) })
     }
 }
 
@@ -632,6 +650,8 @@ impl HostServices for RecordingHostServices {
 struct FakeAgent {
     id: String,
     text: String,
+    /// [`RecordingHostServices::stage_hung_agents`].
+    hung: bool,
 }
 
 impl FakeAgent {
@@ -639,6 +659,7 @@ impl FakeAgent {
         Self {
             id: format!("fake-{}", uuid_like()),
             text,
+            hung: false,
         }
     }
 }
@@ -695,6 +716,17 @@ impl AgentHandle for FakeAgent {
 
     fn events(&self) -> BoxStream<'static, String> {
         let id = self.id.clone();
+        if self.hung {
+            return Box::pin(
+                stream::iter(vec![
+                    json!({"type": "agent_start", "id": id}).to_string(),
+                    json!({"type": "tool_execution_start", "toolCallId": "bg-1", "toolName": "bg_run", "args": {"name": "mise run test", "command": "mise run test"}}).to_string(),
+                    json!({"type": "tool_execution_end", "toolCallId": "bg-1", "toolName": "bg_run", "result": {"content": [{"type": "text", "text": "Started background task"}]}, "isError": false}).to_string(),
+                    json!({"type": "agent_end", "id": id}).to_string(),
+                ])
+                .chain(stream::pending()),
+            );
+        }
         Box::pin(stream::iter(vec![
             json!({"type": "agent_start", "id": id}).to_string(),
             json!({"type": "agent_end", "id": id}).to_string(),

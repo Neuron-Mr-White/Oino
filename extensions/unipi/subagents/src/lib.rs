@@ -78,6 +78,11 @@ struct Run {
     done: Rc<Done<Report>>,
     aborted: Cell<bool>,
     graph: bool,
+    /// Set by a cancel whose grace ran out: `drive` stops waiting for child events and
+    /// settles the run (a hung child — e.g. parked on a background task that was killed
+    /// under it — never sends another event, so a cancel used to leave the record
+    /// `running` forever while the graph had already moved on).
+    stop: Rc<Done<()>>,
 }
 
 #[derive(Default)]
@@ -607,6 +612,7 @@ impl Subagents {
             done: Done::new(),
             aborted: Cell::new(false),
             graph,
+            stop: Done::new(),
         });
         self.sessions.with(&sid, |s| {
             s.runs.insert(id.clone(), Rc::clone(&run));
@@ -627,7 +633,18 @@ impl Subagents {
         let mut had_bg = false;
         let mut last_publish = 0;
         while error.is_none() {
-            let Some(ev) = events.next().await else {
+            let next = {
+                let stop = Rc::clone(&run.stop);
+                let stopped = std::pin::pin!(async move { stop.wait().await });
+                match futures::future::select(events.next(), stopped).await {
+                    futures::future::Either::Left((ev, _)) => Some(ev),
+                    futures::future::Either::Right(((), _)) => None,
+                }
+            };
+            let Some(next) = next else {
+                break; // cancelled and the child stayed silent through the grace
+            };
+            let Some(ev) = next else {
                 error = Some("Subagent session ended".into());
                 break;
             };
@@ -774,7 +791,23 @@ impl Subagents {
 
     fn cancel(&'static self, sid: &str, id: &str, by: CancelledBy) -> bool {
         let Some(run) = self.run(sid, id) else {
-            return false;
+            // No live run behind a record still marked running (its driver is gone): the
+            // cancel settles the record, or it would show as running forever.
+            let orphan = self
+                .record(sid, id)
+                .is_some_and(|r| r.status == Status::Running);
+            if orphan {
+                let now = timers::now_ms();
+                self.update(sid, id, |r| {
+                    r.status = Status::Cancelled;
+                    r.cancelled_by = Some(by);
+                    r.ended_at = Some(now);
+                });
+                self.persist(sid);
+                self.publish(sid);
+                self.refresh_watched(sid);
+            }
+            return orphan;
         };
         self.update(sid, id, |r| r.cancelled_by = Some(by));
         run.aborted.set(true);
@@ -784,8 +817,14 @@ impl Subagents {
         spawn(async move {
             timers::sleep(Duration::from_millis(u64::from(record::CANCEL_GRACE_MS))).await;
             if run2.done.get().is_none() {
-                run2.progress.borrow_mut().settled = true;
+                {
+                    let mut p = run2.progress.borrow_mut();
+                    p.settled = true;
+                    // A wake-up task the child waits on will not finish it now.
+                    p.open_bg_tasks = 0;
+                }
                 run2.agent.abort();
+                run2.stop.set(());
             }
         });
         true

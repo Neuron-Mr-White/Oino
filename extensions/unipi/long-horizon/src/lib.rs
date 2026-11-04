@@ -49,6 +49,7 @@ pub mod ralph;
 pub mod tools;
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -1541,6 +1542,28 @@ impl Lh {
         Err(last)
     }
 
+    /// Ids of the subagents runs still running in this session (empty when subagents
+    /// do not answer): the graph snapshot surfaces work whose worker outlived its item.
+    async fn live_operators() -> HashSet<String> {
+        let Ok(records) = services::call(
+            Some(unipi_kit::suite::pkg::SUBAGENTS.id),
+            point::SUBAGENTS_LIST,
+            &json!({}),
+            Some(Duration::from_secs(2)),
+        )
+        .await
+        else {
+            return HashSet::new();
+        };
+        records
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|r| r.get("status").and_then(Value::as_str) == Some("running"))
+            .filter_map(|r| r.get("id").and_then(Value::as_str).map(ToOwned::to_owned))
+            .collect()
+    }
+
     async fn update_graph(&'static self, args: &Value, cx: &ToolCtx) -> ToolResult {
         // The calling session owns whatever graph changes follow (tools are not
         // registered for child sessions; the check keeps a stray delivery honest).
@@ -2727,6 +2750,7 @@ impl Lh {
         };
         match s("op").unwrap_or_default() {
             "snapshot" => {
+                let live = Self::live_operators().await;
                 let st = self.state.borrow();
                 let g = match s("graphId") {
                     Some(id) => match st.graph.graph(id) {
@@ -2745,8 +2769,61 @@ impl Lh {
                         .as_ref()
                         .or_else(|| st.graph.history.first()),
                 };
-                json!({"ok": true, "graph": g.map(|g| st.graph.snapshot(g))})
+                json!({"ok": true, "graph": g.map(|g| st.graph.snapshot_with(g, &live))})
             }
+            // The app's Stop on an orphaned item: work the graph moved on from (stopped,
+            // replaced, settled) whose worker still runs.
+            "stop_operator" => match s("workId") {
+                None => LhError {
+                    code: LhCode::RequestInvalid,
+                    message: "workId is required".into(),
+                }
+                .to_json(),
+                Some(id) => {
+                    let op = {
+                        let st = self.state.borrow();
+                        st.graph.current.as_ref().and_then(|g| {
+                            g.work
+                                .iter()
+                                .find(|w| w.work_id == id)
+                                .map(|w| (w.status.clone(), w.operator_id.clone()))
+                        })
+                    };
+                    match op {
+                        None => LhError {
+                            code: LhCode::WorkNotFound,
+                            message: format!("no graph work {id}"),
+                        }
+                        .to_json(),
+                        Some((_, None)) => LhError {
+                            code: LhCode::RequestInvalid,
+                            message: format!("{id} has no worker"),
+                        }
+                        .to_json(),
+                        Some((status, Some(_))) if status == "running" => LhError {
+                            code: LhCode::RequestInvalid,
+                            message: format!(
+                                "{id} is running in the graph: the lead stops it (update_agent_graph stop)"
+                            ),
+                        }
+                        .to_json(),
+                        Some((_, Some(op))) => {
+                            let r = services::call(
+                                Some(unipi_kit::suite::pkg::SUBAGENTS.id),
+                                point::SUBAGENTS_CANCEL,
+                                &json!({"id": op}),
+                                None,
+                            )
+                            .await;
+                            let cancelled = r
+                                .ok()
+                                .and_then(|v| v.get("cancelled").and_then(Value::as_bool))
+                                .unwrap_or(false);
+                            json!({"ok": true, "workId": id, "operatorId": op, "cancelled": cancelled})
+                        }
+                    }
+                }
+            },
             "history" => json!({"ok": true, "graphs": self.state.borrow().graph.history_list()}),
             "output" => match s("workId") {
                 None => LhError {
@@ -2782,7 +2859,9 @@ impl Lh {
             },
             op => LhError {
                 code: LhCode::RequestInvalid,
-                message: format!("unknown op \"{op}\" (snapshot, history, output, retry)"),
+                message: format!(
+                    "unknown op \"{op}\" (snapshot, history, output, retry, stop_operator)"
+                ),
             }
             .to_json(),
         }
