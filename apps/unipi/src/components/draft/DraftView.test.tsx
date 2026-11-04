@@ -139,12 +139,12 @@ describe('DraftView (Z-19)', () => {
     const menu = await waitFor(() => screen.getByTestId('workspace-menu'));
     await waitFor(() => expect(menu.textContent).toContain('~/p/oino'));
     expect(menu.textContent).not.toMatch(/On this PC|\/srv/i);
-    expect(menu.textContent).toContain('Open folder…');
+    expect(menu.textContent).toContain('Browse folders…');
     fireEvent.click([...menu.querySelectorAll('.ws-row')].find((r) => r.textContent?.includes('~/p/oino'))!);
     await waitFor(() => expect(screen.getByTestId('workspace-chip').textContent).toContain('oino'));
   });
 
-  it('the folder browser starts with a Recent group (owner 2026-11-03), then the folders', async () => {
+  it('Browse folders… opens the browser pane; the rail Recent picks the folder (owner-fix-5)', async () => {
     boot();
     await waitFor(() => expect(screen.getByTestId('workspace-chip')).toBeTruthy());
     await new Promise((r) => setTimeout(r, 30));
@@ -153,11 +153,14 @@ describe('DraftView (Z-19)', () => {
     await waitFor(() => expect(menu.textContent).toContain('~/p/oino'));
     fireEvent.click(screen.getByTestId('workspace-open'));
     const browser = await screen.findByTestId('workspace-browser');
-    const recent = await waitFor(() => screen.getByTestId('workspace-browse-recent'));
-    expect(browser.firstElementChild).toBe(recent);
-    expect(recent.textContent).toContain('Recent');
-    expect(recent.textContent).toContain('~/p/oino');
-    fireEvent.click([...recent.querySelectorAll('.ws-row')].find((r) => r.textContent?.includes('~/p/oino'))!);
+    // The pane starts at home; the Places rail carries the recent workspaces.
+    await waitFor(() => expect(screen.getByTestId('workspace-place-recent')).toBeTruthy());
+    expect(browser.textContent).toContain('Recent');
+    fireEvent.click(screen.getByTestId('workspace-place-recent'));
+    // The recent folder is selected as the deepest column; the footer offers it.
+    await waitFor(() => expect(screen.getByTestId('workspace-use').textContent).toContain('Use this folder'));
+    await waitFor(() => expect(document.querySelector('.fb-foot-path')?.textContent).toBe('~/p/oino'));
+    fireEvent.click(screen.getByTestId('workspace-use'));
     await waitFor(() => expect(screen.getByTestId('workspace-chip').textContent).toContain('oino'));
   });
 

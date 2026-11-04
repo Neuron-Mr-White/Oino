@@ -1,0 +1,55 @@
+/* Folder browser pane (owner-fix-5 redesign) — desktop modal over the app.
+   Reuses the session modal's chrome (.sm-overlay / .sm-dialog) and the draft
+   picker's buttons (.ws-btn / .ws-btn-primary). */
+
+.fb-overlay { z-index: 70; }
+
+.fb-dialog { width: min(880px, 92vw); height: min(560px, 84vh); border-radius: var(--radius-card); }
+
+.fb-head { min-height: 48px; padding: 6px 8px 6px 18px; }
+
+/* ── path bar: breadcrumbs ⇄ text input, filter on the right ───────────── */
+.fb-pathbar { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 16px; border-bottom: 1px solid var(--color-line); }
+.fb-crumbs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; padding: 4px 8px; border-radius: 9px; background: var(--color-surface-2); overflow: hidden; cursor: text; }
+.fb-crumbs:hover { background: var(--color-surface-3); }
+.fb-crumb-sep { flex: none; color: var(--color-text-dim); }
+.fb-crumb { flex: none; min-height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-muted); font-size: 12.5px; cursor: pointer; }
+.fb-crumb:hover { color: var(--color-text); background: var(--color-surface-3); }
+.fb-crumb[aria-current='location'] { color: var(--color-text); font-weight: 600; }
+.fb-pathedit { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.fb-path-input { flex: 1 1 auto; min-width: 0; height: 30px; min-height: 30px; padding: 0 10px; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-surface-2); color: var(--color-text); font-family: var(--font-mono); font-size: 12.5px; }
+.fb-path-input:focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: -1px; }
+.fb-path-error { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--color-amber); }
+.fb-filter { flex: 0 0 170px; height: 30px; min-height: 30px; padding: 0 10px; border: 1px solid var(--color-line); border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text); font-size: 12.5px; }
+.fb-filter:focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: -1px; }
+
+/* ── body: Places rail + Miller columns ────────────────────────────────── */
+.fb-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.fb-places { flex: 0 0 200px; min-height: 0; overflow-y: auto; padding: 10px 8px; border-right: 1px solid var(--color-line); display: flex; flex-direction: column; gap: 2px; }
+.fb-places-label { padding: 2px 8px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-dim); }
+.fb-place { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--color-text-muted); font-size: 13px; cursor: pointer; text-align: left; }
+.fb-place:hover { background: var(--color-surface-2); color: var(--color-text); }
+.fb-place svg { flex: none; color: var(--color-claw); }
+.fb-place-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.fb-columns { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; scrollbar-gutter: stable; }
+.fb-col { flex: 0 0 220px; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; padding: 6px 4px; border-right: 1px solid var(--color-line); }
+.fb-col:last-child { border-right: 0; }
+
+.fb-row { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 30px; padding: 0 8px 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--color-text-muted); font-size: 13px; cursor: pointer; text-align: left; }
+.fb-row:hover { background: var(--color-surface-2); color: var(--color-text); }
+.fb-row[data-sel] { background: var(--color-surface-3); color: var(--color-text); }
+.fb-row-ic { flex: none; color: var(--color-claw); }
+.fb-row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fb-row-chev { flex: none; color: var(--color-text-dim); opacity: 0.6; }
+.fb-git { flex: none; padding: 0 6px; border-radius: 9999px; background: rgb(90 210 90 / 12%); color: var(--color-wm-green); font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; line-height: 16px; }
+
+.fb-note { padding: 12px 10px; font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); }
+.fb-col-skel { display: flex; flex-direction: column; gap: 6px; padding: 4px 8px; }
+.fb-skel-row { height: 22px; border-radius: 7px; background: var(--color-surface-2); animation: fb-pulse 0.9s ease-in-out infinite alternate; }
+@keyframes fb-pulse { from { opacity: 0.55; } to { opacity: 1; } }
+
+/* ── footer ────────────────────────────────────────────────────────────── */
+.fb-foot { display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 8px 16px; border-top: 1px solid var(--color-line); }
+.fb-foot-path { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; font-family: var(--font-mono); font-size: 12px; color: var(--color-text-muted); }
+.fb-foot-grow { flex: 1 1 auto; }
