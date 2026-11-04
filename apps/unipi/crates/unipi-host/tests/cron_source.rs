@@ -252,3 +252,42 @@ async fn sessions_list_over_the_wire_keeps_the_source() {
         .unwrap();
     assert_eq!(card["source"], serde_json::json!("cron"));
 }
+
+/// A fired run's chat is written by the `oino` subprocess (exec.rs) — nothing else emits a
+/// `SessionChanged` for it, so the sidebar only showed it after a restart. `announce_cron_run`
+/// answers a warm hub: it drops the cron cache, finds the just-landed record and emits the
+/// cron-sourced card; an unknown run (the file is not written yet) says so.
+#[tokio::test]
+async fn announce_emits_the_run_session_on_a_warm_hub() {
+    let fixture = hub();
+    let (session, file) = session_with_file(&fixture.hub).await;
+    let id = session.session_id();
+    let mut events = fixture.hub.subscribe();
+
+    // A run whose session file does not exist yet: no card, so `false` (poll again).
+    assert!(!fixture.hub.announce_cron_run("not-written-yet").await);
+
+    // The scheduler writes its record (what start_run does right after the start sink).
+    store::save_job(&fixture.cron, &job("digest")).unwrap();
+    store::save_run(&fixture.cron, &run(&id, "digest", Some(&file))).unwrap();
+
+    // No restart, no fresh hub: the warm hub announces the run's session.
+    assert!(fixture.hub.announce_cron_run(&id).await);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let card = loop {
+        match events.try_recv() {
+            Ok(unipi_host::sessions::hub::HubEvent::SessionChanged { card })
+                if card.session_id == id =>
+            {
+                break card;
+            }
+            Ok(_) | Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {
+                assert!(Instant::now() < deadline, "no SessionChanged for the run");
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Err(other) => panic!("event stream: {other}"),
+        }
+    };
+    assert_eq!(card.source.as_deref(), Some("cron"), "cron-sourced card");
+    assert_eq!(card.cron_job_id.as_deref(), Some("digest"));
+}

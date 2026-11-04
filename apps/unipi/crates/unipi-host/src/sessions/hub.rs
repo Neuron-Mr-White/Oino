@@ -934,6 +934,22 @@ impl SessionHub {
         self.inner.mark_taken_over(session_id, from).await;
     }
 
+    /// A cron run just started (or finished): the run's session file is written by the
+    /// `oino` subprocess directly, so nothing else emits a `SessionChanged` for it and the
+    /// sidebar would only show the chat after a restart. Drops the cron cache (a just
+    /// started run must not wait out the 5 s read window), then emits the card when one
+    /// exists; `false` = no card yet (the subprocess has not written the file — poll).
+    pub async fn announce_cron_run(&self, run_id: &str) -> bool {
+        self.inner.cron.invalidate();
+        match self.inner.card(run_id).await {
+            Ok(Some(card)) => {
+                self.inner.emit(HubEvent::SessionChanged { card });
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// `session_new{cwd, name?}` (§4.2): a new runtime over a fresh session file (core
     /// writes the header when the first message arrives).
     ///

@@ -24,6 +24,11 @@ use crate::store;
 /// A sink notified after every finished run (used to publish a bus event).
 pub type RunEventSink = Arc<dyn Fn(&Job, &Run) + Send + Sync>;
 
+/// A sink notified right after a run's Running record is saved (before its
+/// `oino` subprocess has written a session file; unipi-host polls the hub with
+/// it so the run's chat appears in the sidebar while the run is still starting).
+pub type RunStartSink = Arc<dyn Fn(&Job, &Run) + Send + Sync>;
+
 /// A boxed notification future (the sink type below; no `futures` dependency here).
 pub type NotifyFuture<'a> = Pin<Box<dyn Future<Output = Vec<String>> + Send + 'a>>;
 
@@ -221,6 +226,8 @@ pub struct Scheduler {
     run_seq: Arc<AtomicU32>,
     /// Notified after every finished run (bus publish), if installed.
     event_sink: Option<RunEventSink>,
+    /// Notified right after a run's Running record is saved, if installed.
+    start_sink: Option<RunStartSink>,
     /// Sends the run-finished notifications, if installed (else the crate's own channels).
     notify_sink: Option<NotifySink>,
     /// How often [`Scheduler::tick`] is called by the owner ([`crate::embedded`]); used as
@@ -263,6 +270,7 @@ impl Scheduler {
             })),
             run_seq: Arc::new(AtomicU32::new(0)),
             event_sink: None,
+            start_sink: None,
             notify_sink: None,
             tick_interval: Duration::from_secs(1),
         }
@@ -278,6 +286,13 @@ impl Scheduler {
     #[must_use]
     pub fn with_event_sink(mut self, sink: RunEventSink) -> Self {
         self.event_sink = Some(sink);
+        self
+    }
+
+    /// Installs the run-started sink (unipi-host announces the run's session).
+    #[must_use]
+    pub fn with_start_sink(mut self, sink: RunStartSink) -> Self {
+        self.start_sink = Some(sink);
         self
     }
 
@@ -447,6 +462,11 @@ impl Scheduler {
         };
         if store::save_run(&self.paths, &run).is_err() {
             return; // nowhere to record: don't run blind
+        }
+        // The run record exists: tell the embedder now — the session file only
+        // appears once the subprocess below has written it, moments from now.
+        if let Some(sink) = &self.start_sink {
+            sink(&job, &run);
         }
 
         let this = self.clone();

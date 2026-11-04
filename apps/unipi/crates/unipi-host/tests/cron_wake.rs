@@ -44,6 +44,7 @@ fn hub_fixture() -> Fixture {
     let provider = FauxProvider::new(vec![
         FauxResponse::Text("seed answer".into()),
         FauxResponse::Text("wake answer".into()),
+        FauxResponse::Text("seed answer".into()),
     ]);
     let loader = StaticLoader(vec![Arc::new(FauxComponent(Arc::clone(&provider)))
         as Arc<dyn oino_core::extensions::api::ExtensionInstance>]);
@@ -203,4 +204,123 @@ async fn a_finished_run_wakes_its_linked_session_through_the_hub() {
     // The prompt the hub carried names the job and the run.
     let card = hub.card(&session_id).await.unwrap().expect("the card");
     assert!(card.message_count >= 4, "messages: {}", card.message_count);
+}
+
+/// A fired run's chat is written by the `oino` subprocess (exec.rs) directly — nothing else
+/// emits a `SessionChanged` for it, so the sidebar only showed the chat after a restart.
+/// The start sink `install` adds announces the run until its card exists (and the finish
+/// sink announces the final state); both land on the hub's event stream, cron-sourced.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_run_announces_its_session_on_the_hub() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let fixture = hub_fixture();
+    let hub = &fixture.hub;
+    let mut events = hub.subscribe();
+
+    // The hub's sessions root, as the hub pins it: a probe session's file lives there, and
+    // the faux `oino` below must write the run's session into the same root.
+    let probe = hub.create_session(None, None).await.unwrap();
+    probe
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
+            provider: "faux".into(),
+            model_id: "faux-1".into(),
+            persist: None,
+        }))
+        .await
+        .unwrap();
+    probe
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
+            message: "seed".into(),
+            images: Vec::new(),
+            streaming_behavior: None,
+        }))
+        .await
+        .unwrap();
+    let probe_id = probe.session_id();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let probe_file = loop {
+        if let Some(card) = hub
+            .list()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|card| card.session_id == probe_id)
+        {
+            break card.file;
+        }
+        assert!(Instant::now() < deadline, "the probe never became a record");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    let sessions_root = probe_file
+        .parent()
+        .expect("the probe file has a parent")
+        .to_path_buf();
+
+    let cron_paths = CronPaths::new(&fixture.agent_dir);
+    let scheduler = unipi_host::cron_wake::install(
+        Scheduler::with_paths(cron_paths.clone()),
+        Arc::clone(hub),
+        cron_paths.clone(),
+        None,
+    );
+    let cwd = fixture._dir.path().to_string_lossy().into_owned();
+    let job = unipi_cron::model::Job {
+        id: "announcer".into(),
+        name: "Nightly digest".into(),
+        prompt: "do the thing".into(),
+        schedule: "at:2000-01-01T00:00:00Z".into(),
+        tz: "UTC".into(),
+        cwd,
+        model: None,
+        thinking: None,
+        enabled: true,
+        time_limit_s: 10,
+        cost_cap_usd: None,
+        overlap: unipi_cron::model::OverlapPolicy::default(),
+        missed: unipi_cron::model::MissedPolicy::default(),
+        notify: None,
+        session_link: None,
+        created: 0,
+        updated: 0,
+    };
+    store::save_jobs(&cron_paths, std::slice::from_ref(&job)).unwrap();
+    // The faux `oino` writes the session file the real one would: the header's id is the
+    // `--session-id` value (the run id), under the hub's sessions root.
+    let bin_dir = tempfile::tempdir().unwrap();
+    let script = "#!/bin/sh\nprev=\nfor a in \"$@\"; do\n  if [ \"$prev\" = --session-id ]; then id=\"$a\"; fi\n  prev=\"$a\"\ndone\nprintf '{\"type\":\"session\",\"id\":\"%s\",\"cwd\":\"/tmp\"}\\n' \"$id\" > \"@DIR@/$id.jsonl\"\necho done\nexit 0\n"
+        .replace("@DIR@", sessions_root.to_str().unwrap());
+    let previous = fake_oino(bin_dir.path(), &script);
+
+    let run_id = scheduler.run_now(&job).await.unwrap();
+
+    // The subprocess writes the session a moment after the start: the hub announces the
+    // run's card (cron-sourced) on its event stream while — or right after — it runs.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        match events.try_recv() {
+            Ok(unipi_host::sessions::hub::HubEvent::SessionChanged { card })
+                if card.session_id == run_id =>
+            {
+                assert_eq!(
+                    card.source.as_deref(),
+                    Some("cron"),
+                    "the run's card says who runs it"
+                );
+                break;
+            }
+            Ok(_) | Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {
+                assert!(
+                    Instant::now() < deadline,
+                    "no SessionChanged for the run session {run_id}"
+                );
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+            Err(other) => panic!("event stream: {other}"),
+        }
+    }
+    restore_oino(previous);
+    // The card is listable too (the sidebar's next `sessions_list` agrees).
+    let card = hub.card(&run_id).await.unwrap().expect("the run's card");
+    assert_eq!(card.source.as_deref(), Some("cron"));
 }

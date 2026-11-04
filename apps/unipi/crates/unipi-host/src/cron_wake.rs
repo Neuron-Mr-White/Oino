@@ -12,6 +12,7 @@
 //! topic see it).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::json;
 
@@ -44,11 +45,27 @@ pub fn install(
     paths: CronPaths,
     local: Option<Arc<LocalServices>>,
 ) -> Scheduler {
-    // `Handle::current()` outside a runtime would panic; the sink is installed in `serve`
-    // (and in tests) inside one. Captured here so the sync sink can spawn the async wake.
+    // `Handle::current()` outside a runtime would panic; the sinks are installed in `serve`
+    // (and in tests) inside one. Captured here so the sync sinks can spawn the async wake.
     let handle = tokio::runtime::Handle::current();
+    // A run just started: its chat is written by the `oino` subprocess (moments from now),
+    // and nothing else would announce it — the sidebar only shows it after a restart.
+    // Poll the hub until the run's card exists (at most 30 s; a run that never writes a
+    // session is announced by the finish sink below with its final state).
+    let start_handle = handle.clone();
+    let start_hub = Arc::clone(&hub);
+    let scheduler = scheduler.with_start_sink(Arc::new(move |_job: &Job, run: &Run| {
+        start_handle.spawn(announce_until_found(Arc::clone(&start_hub), run.id.clone()));
+    }));
     scheduler.with_event_sink(Arc::new(move |job: &Job, run: &Run| {
         publish(local.as_deref(), job, run);
+        // Always announce the finished run: the final name/state lands even when the job
+        // has no wake link (the early returns below).
+        let finished_hub = Arc::clone(&hub);
+        let finished_run = run.id.clone();
+        handle.spawn(async move {
+            finished_hub.announce_cron_run(&finished_run).await;
+        });
         let Some(link) = job.session_link.clone() else {
             return;
         };
@@ -60,6 +77,18 @@ pub fn install(
         let (job, run) = (job.clone(), run.clone());
         handle.spawn(async move { wake(hub, paths, job, run).await });
     }))
+}
+
+/// Polls [`SessionHub::announce_cron_run`] every second for up to 30 s: the subprocess
+/// writes the session file a moment after the run started, and the hub answers once the
+/// file (and its card) exists.
+async fn announce_until_found(hub: Arc<SessionHub>, run_id: String) {
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        if hub.announce_cron_run(&run_id).await {
+            return;
+        }
+    }
 }
 
 /// Opens the job's linked session in the hub and prompts the wake message; records the

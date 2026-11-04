@@ -92,6 +92,16 @@ impl CronSessions {
         self.owner_of(session_id, file).map(|_| "cron")
     }
 
+    /// Forgets the cached run set: the next [`CronSessions::owner_of`] re-reads
+    /// the store (a run that just started must not wait out [`CronSessions::REFRESH`]).
+    pub fn invalidate(&self) {
+        let mut cache = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        cache.at = None;
+    }
+
     /// The job whose run owns the session (by id or file), `None` when no run does.
     #[must_use]
     pub fn owner_of(&self, session_id: &str, file: &Path) -> Option<CronOwner> {
@@ -903,6 +913,43 @@ mod tests {
             Some(CronOwner {
                 job_id: "gone".to_owned(),
                 job_name: None,
+            })
+        );
+    }
+
+    #[test]
+    fn invalidate_rereads_a_run_written_after_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CronPaths::new(dir.path().join("agent"));
+        store::save_job(&paths, &job("digest")).unwrap();
+        let sessions = CronSessions::new(&dir.path().join("agent"));
+        // Warm the cache before the run exists (the first read, like `sessions_list`).
+        assert_eq!(
+            sessions.owner_of("digest-0182", Path::new("/unrelated.jsonl")),
+            None
+        );
+        // The scheduler writes the run record now (within the 5 s fresh window).
+        store::save_run(
+            &paths,
+            &run(
+                "digest-0182",
+                "digest",
+                Some("/agent/sessions/--tmp--/digest-0182.jsonl"),
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            sessions.owner_of("digest-0182", Path::new("/unrelated.jsonl")),
+            None,
+            "the warm cache hides the new run"
+        );
+        // `announce_cron_run` invalidates: the next read sees the run without a restart.
+        sessions.invalidate();
+        assert_eq!(
+            sessions.owner_of("digest-0182", Path::new("/unrelated.jsonl")),
+            Some(CronOwner {
+                job_id: "digest".to_owned(),
+                job_name: Some("digest".to_owned()),
             })
         );
     }
