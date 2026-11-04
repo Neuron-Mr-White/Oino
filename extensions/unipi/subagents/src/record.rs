@@ -415,8 +415,15 @@ pub fn prompt_section(profiles: &[crate::profiles::Profile], fusion_active: bool
             .iter()
             .map(|p| format!("- {}: {}", p.id, p.description)),
     );
+    // The built-in hint names only offered built-ins (byte-identical while both are on).
+    let has = |id: &str| profiles.iter().any(|p| p.id == id);
+    match (has("subagent_explore"), has("subagent_general")) {
+        (true, true) => out.push("subagent_explore is read-only and runs on a cheaper model; subagent_general can make changes and runs on your own model, so it costs like a full extra session.".to_owned()),
+        (true, false) => out.push("subagent_explore is read-only and runs on a cheaper model.".to_owned()),
+        (false, true) => out.push("subagent_general can make changes and runs on your own model, so it costs like a full extra session.".to_owned()),
+        (false, false) => {}
+    }
     out.extend([
-        "subagent_explore is read-only and runs on a cheaper model; subagent_general can make changes and runs on your own model, so it costs like a full extra session.".to_owned(),
         String::new(),
         "- Use subagents for broad or parallelizable work: independent searches, investigations across several areas, or implementation slices that don't touch the same files. Skip them when a direct read or search answers the question.".to_owned(),
         "- Launch independent subagents in the same response so they run in parallel, and keep their work disjoint.".to_owned(),
@@ -585,6 +592,13 @@ mod tests {
             prompt_section(&crate::profiles::builtins(), true)
                 .ends_with("unless the user explicitly asks you to.")
         );
+        let both = prompt_section(&crate::profiles::builtins(), false);
+        assert!(both.contains("- subagent_explore: Read-only codebase exploration and research.\n- subagent_general: General-purpose tasks including code changes.\nsubagent_explore is read-only and runs on a cheaper model; subagent_general can make changes"));
+        let explore_only = prompt_section(&crate::profiles::builtins()[..1], false);
+        assert!(!explore_only.contains("subagent_general"));
+        assert!(explore_only.contains("- subagent_explore: Read-only codebase exploration and research.\nsubagent_explore is read-only and runs on a cheaper model.\n"));
+        let general_only = prompt_section(&crate::profiles::builtins()[1..], false);
+        assert!(!general_only.contains("subagent_explore"));
         assert_eq!(clip_task(&"a".repeat(20_001)).chars().count(), 20_001);
     }
 }

@@ -249,6 +249,129 @@ pub fn merge(global: &[AgentFile], project: &[AgentFile]) -> (Vec<Profile>, Vec<
     (all, warnings)
 }
 
+/// The profile a call without one runs (long-horizon's graph default too).
+pub const DEFAULT_PROFILE: &str = "subagent_general";
+
+/// Settings key of the disabled profile names (`subagents.disabled: [names]`, global with a
+/// project override like every namespace key).
+pub const DISABLED_KEY: &str = "disabled";
+
+/// The profiles offered to the model: `all` minus the `disabled` names, in `all` order.
+/// Never empty while `all` is not: a list that disables everything keeps the first profile
+/// (at least one profile stays enabled).
+#[must_use]
+pub fn offered(all: &[Profile], disabled: &[String]) -> Vec<Profile> {
+    let on: Vec<Profile> = all
+        .iter()
+        .filter(|p| !disabled.iter().any(|d| d == &p.id))
+        .cloned()
+        .collect();
+    if on.is_empty() {
+        return all.first().cloned().into_iter().collect();
+    }
+    on
+}
+
+/// The default profile among the offered ones: [`DEFAULT_PROFILE`] while it is offered, else
+/// the first offered profile.
+#[must_use]
+pub fn default_profile(offered: &[Profile]) -> Option<&Profile> {
+    offered
+        .iter()
+        .find(|p| p.id == DEFAULT_PROFILE)
+        .or_else(|| offered.first())
+}
+
+/// Why a profile name was refused. Codes are `subagents.profile.<reason>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PickError {
+    /// No profile has this name.
+    Unknown {
+        /// Requested name.
+        name: String,
+        /// Enabled profile ids.
+        enabled: Vec<String>,
+    },
+    /// The profile exists but is disabled in settings.
+    Disabled {
+        /// Requested name.
+        name: String,
+        /// Enabled profile ids.
+        enabled: Vec<String>,
+    },
+    /// Every profile is gone (no built-ins: only in tests).
+    NoneEnabled,
+}
+
+impl PickError {
+    /// Namespaced error code.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Unknown { .. } => "subagents.profile.unknown",
+            Self::Disabled { .. } => "subagents.profile.disabled",
+            Self::NoneEnabled => "subagents.profile.none_enabled",
+        }
+    }
+
+    /// The message the model (or the graph) sees.
+    #[must_use]
+    pub fn message(&self) -> String {
+        match self {
+            Self::Unknown { name, enabled } => {
+                format!(
+                    "Unknown profile \"{name}\". Available: {}",
+                    enabled.join(", ")
+                )
+            }
+            Self::Disabled { name, enabled } => format!(
+                "Profile \"{name}\" is disabled in Settings › Subagents › Agent profiles. Enabled profiles: {}",
+                enabled.join(", ")
+            ),
+            Self::NoneEnabled => "No subagent profile is enabled.".into(),
+        }
+    }
+}
+
+/// Resolves a requested profile name against every profile and the offered ones: an empty
+/// name runs the [`default_profile`]; a disabled or unknown name is refused naming the
+/// enabled profiles. `default_fallback`: a disabled [`DEFAULT_PROFILE`] falls back to the
+/// default too (the graph fills the default name in for work that named none).
+///
+/// # Errors
+///
+/// [`PickError`] for unknown or disabled names.
+pub fn pick(
+    all: &[Profile],
+    offered: &[Profile],
+    name: &str,
+    default_fallback: bool,
+) -> Result<Profile, PickError> {
+    let name = name.trim();
+    let enabled = || offered.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
+    if name.is_empty() || (default_fallback && name == DEFAULT_PROFILE) {
+        if let Some(p) = offered.iter().find(|p| p.id == name) {
+            return Ok(p.clone());
+        }
+        return default_profile(offered)
+            .cloned()
+            .ok_or(PickError::NoneEnabled);
+    }
+    if let Some(p) = offered.iter().find(|p| p.id == name) {
+        return Ok(p.clone());
+    }
+    if all.iter().any(|p| p.id == name) {
+        return Err(PickError::Disabled {
+            name: name.to_owned(),
+            enabled: enabled(),
+        });
+    }
+    Err(PickError::Unknown {
+        name: name.to_owned(),
+        enabled: enabled(),
+    })
+}
+
 /// unipi `NAME_RE` + duplicates.
 #[must_use]
 pub fn validate_name(name: &str, existing: &[String]) -> Option<String> {
@@ -387,6 +510,56 @@ mod tests {
         assert_eq!(
             warnings,
             ["subagent_explore: custom agent shadows a built-in name — skipped"]
+        );
+    }
+
+    #[test]
+    fn disabled_profiles_are_not_offered_and_refused() {
+        let (all, _) = merge(&[file("rev", "---\ndescription: r\n---\n")], &[]);
+        let ids = |ps: &[Profile]| ps.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            ids(&offered(&all, &[])),
+            ["subagent_explore", "subagent_general", "rev"]
+        );
+        let off = offered(&all, &["subagent_general".into(), "ghost".into()]);
+        assert_eq!(ids(&off), ["subagent_explore", "rev"]);
+        // At least one stays enabled.
+        let every: Vec<String> = ids(&all);
+        assert_eq!(ids(&offered(&all, &every)), ["subagent_explore"]);
+        // Default: subagent_general while on, else the first enabled.
+        assert_eq!(
+            default_profile(&offered(&all, &[])).unwrap().id,
+            DEFAULT_PROFILE
+        );
+        assert_eq!(default_profile(&off).unwrap().id, "subagent_explore");
+        assert_eq!(pick(&all, &off, "", false).unwrap().id, "subagent_explore");
+        assert_eq!(pick(&all, &off, "rev", false).unwrap().id, "rev");
+        let e = pick(&all, &off, "subagent_general", false).unwrap_err();
+        assert_eq!(e.code(), "subagents.profile.disabled");
+        assert_eq!(
+            e.message(),
+            "Profile \"subagent_general\" is disabled in Settings › Subagents › Agent profiles. Enabled profiles: subagent_explore, rev"
+        );
+        // The graph's filled-in default falls back instead.
+        assert_eq!(
+            pick(&all, &off, DEFAULT_PROFILE, true).unwrap().id,
+            "subagent_explore"
+        );
+        assert_eq!(
+            pick(&all, &offered(&all, &[]), DEFAULT_PROFILE, true)
+                .unwrap()
+                .id,
+            DEFAULT_PROFILE
+        );
+        let e = pick(&all, &off, "nope", true).unwrap_err();
+        assert_eq!(e.code(), "subagents.profile.unknown");
+        assert_eq!(
+            e.message(),
+            "Unknown profile \"nope\". Available: subagent_explore, rev"
+        );
+        assert_eq!(
+            pick(&[], &[], "", false).unwrap_err(),
+            PickError::NoneEnabled
         );
     }
 

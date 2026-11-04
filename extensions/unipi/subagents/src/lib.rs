@@ -45,7 +45,7 @@ use oino_extension::sync::SessionMap;
 use oino_extension::ui::widgets::prelude::*;
 use oino_extension::wit::registry::RendererTarget;
 use unipi_kit::services::{OpenTray, fanout as fan, point};
-use unipi_kit::settings::{Field, Kind, Namespace, Section, Store, choice, plain};
+use unipi_kit::settings::{Field, Kind, Namespace, Section, Store, WriteScope, choice, plain};
 use unipi_kit::tray::{Action, ActionReply, TabRequest, TrayTab};
 use unipi_kit::{suite, topics};
 
@@ -106,6 +106,8 @@ pub struct Subagents {
     settings: Store,
     sessions: SessionMap<SessionState>,
     delivery: Delivery,
+    /// Profile ids the registered `run_subagent` schema lists (re-registered on change).
+    schema_ids: RefCell<Vec<String>>,
 }
 
 /// Resolved `subagents` settings (unipi `loadConfig`).
@@ -119,6 +121,8 @@ pub struct Config {
     pub default_thinking: Option<String>,
     /// Concurrency cap (1..=16).
     pub max_concurrent: usize,
+    /// Profile names not offered to the model (`subagents.disabled`).
+    pub disabled: Vec<String>,
 }
 
 impl Config {
@@ -151,6 +155,7 @@ impl Config {
             default_model: text("defaultModel"),
             default_thinking: text("defaultThinking").filter(|t| t != "inherit"),
             max_concurrent: max,
+            disabled: v.strings(profiles::DISABLED_KEY),
         }
     }
 }
@@ -437,6 +442,44 @@ impl Subagents {
         if !enable.is_empty() || !disable.is_empty() {
             let _ = control::update_active_tools(&enable, &disable);
         }
+    }
+
+    /// The profiles offered in `sid` (settings `disabled` applied; never empty).
+    fn offered(&self, sid: &str) -> (Vec<Profile>, Vec<Profile>) {
+        let all = self.sessions.with(sid, |s| {
+            if s.profiles.is_empty() {
+                s.profiles = load_profiles().0;
+            }
+            s.profiles.clone()
+        });
+        let offered = profiles::offered(&all, &self.config().disabled);
+        (all, offered)
+    }
+
+    /// Re-registers `run_subagent` when the offered profile set changed, so its `profile`
+    /// description lists only enabled profiles. The schema (part of the prompt prefix)
+    /// stays byte-identical while the set does not change.
+    fn sync_schema(&'static self, cx: &Ctx) {
+        if cx.is_child() {
+            return;
+        }
+        let (_, offered) = self.offered(cx.session_id());
+        let ids: Vec<String> = offered.iter().map(|p| p.id.clone()).collect();
+        if *self.schema_ids.borrow() == ids {
+            return;
+        }
+        if Self::run_tool(&offered).register(self).is_ok() {
+            *self.schema_ids.borrow_mut() = ids;
+        }
+    }
+
+    fn run_tool(offered: &[Profile]) -> Tool<Self> {
+        Tool::<Self>::new("run_subagent")
+            .label("Run Subagent")
+            .description(record::RUN_DESCRIPTION)
+            .parameters(&run_schema(offered))
+            .kind(ToolKind::Other)
+            .run(|ext, args: Value, cx| async move { ext.run_subagent(&args, &cx).await })
     }
 
     fn restore(&self, sid: &str) {
@@ -953,20 +996,29 @@ impl Subagents {
             .as_deref()
             .and_then(|r| self.record(&sid, r))
             .map_or(profile_arg.clone(), |r| r.profile);
-        let profiles = self.sessions.with(&sid, |st| st.profiles.clone());
-        let Some(profile) = profiles.iter().find(|p| p.id == profile_name).cloned() else {
-            return Ok(text_result(
-                format!(
-                    "Unknown profile \"{profile_arg}\". Available: {}",
-                    profiles
-                        .iter()
-                        .map(|p| p.id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-                json!({"owner": "subagents", "status": "failed", "title": title}),
-                true,
-            ));
+        let (all, offered) = self.offered(&sid);
+        // A resume continues an existing run whatever its profile's state; a new run must
+        // name an enabled profile (or none: the default).
+        let picked = if resume.is_some() && profile_name != profile_arg {
+            all.iter()
+                .find(|p| p.id == profile_name)
+                .cloned()
+                .ok_or_else(|| profiles::PickError::Unknown {
+                    name: profile_name.clone(),
+                    enabled: offered.iter().map(|p| p.id.clone()).collect(),
+                })
+        } else {
+            profiles::pick(&all, &offered, &profile_name, false)
+        };
+        let profile = match picked {
+            Ok(p) => p,
+            Err(e) => {
+                return Ok(text_result(
+                    e.message(),
+                    json!({"owner": "subagents", "status": "failed", "title": title, "errorCode": e.code()}),
+                    true,
+                ));
+            }
         };
         let background =
             resume.is_none() && args.get("is_background").and_then(Value::as_bool) == Some(true);
@@ -1524,10 +1576,49 @@ impl Subagents {
             .find(|f| f.exists())
     }
 
-    async fn manage_custom(p: &Profile) {
+    /// Writes `subagents.disabled` with `id` added or removed: in the project file when the
+    /// project overrides the list, else globally. Refuses to disable the last enabled one.
+    fn set_disabled(
+        &self,
+        all: &[Profile],
+        id: &str,
+        disable: bool,
+    ) -> std::result::Result<(), String> {
+        let mut list = self.config().disabled;
+        list.retain(|d| d != id);
+        if disable {
+            list.push(id.to_owned());
+            if all.iter().all(|p| list.contains(&p.id)) {
+                return Err("At least one profile must stay enabled.".into());
+            }
+        }
+        // Names of profiles that no longer exist are dropped on the next write.
+        list.retain(|d| all.iter().any(|p| &p.id == d));
+        let project = self
+            .settings
+            .layer(NAMESPACE, WriteScope::Project)
+            .is_some_and(|l| l.get(profiles::DISABLED_KEY).is_some());
+        let scope = if project {
+            WriteScope::Project
+        } else {
+            WriteScope::Global
+        };
+        let r = if list.is_empty() && !project {
+            self.settings
+                .unset(NAMESPACE, profiles::DISABLED_KEY, scope)
+        } else {
+            self.settings
+                .write(NAMESPACE, profiles::DISABLED_KEY, &json!(list), scope)
+        };
+        r.map_err(|e| e.to_string())
+    }
+
+    /// The manager's actions for one custom agent; returns `true` when the user picked
+    /// `toggle` (enable / disable), handled by the caller.
+    async fn manage_custom(p: &Profile, toggle: &str) -> bool {
         let Some(file) = Self::agent_file(p) else {
             let _ = ui::notify(&format!("Can't find the file for {}.", p.id), "error");
-            return;
+            return false;
         };
         let shown = unipi_kit::paths::host_path(&file)
             .unwrap_or_else(|| file.clone())
@@ -1548,19 +1639,22 @@ impl Subagents {
         );
         let Ok(Some(choice)) = ui::select(
             &format!("{} ({}) — {shown}", p.id, p.source.as_str()),
-            &["Edit file", copy.as_str(), "Delete"],
+            &[toggle, "Edit file", copy.as_str(), "Delete"],
         )
         .await
         else {
-            return;
+            return false;
         };
+        if choice == toggle {
+            return true;
+        }
         if choice == "Edit file" {
             let before = std::fs::read_to_string(&file).unwrap_or_default();
             let Some(after) = Self::editor(&format!("Edit {shown}"), &before).await else {
-                return;
+                return false;
             };
             if after == before {
-                return;
+                return false;
             }
             let _ = match std::fs::write(&file, &after) {
                 Ok(()) => ui::notify(&format!("Saved {shown}."), "info"),
@@ -1577,7 +1671,7 @@ impl Subagents {
                     .await
                     .unwrap_or(false)
             {
-                return;
+                return false;
             }
             let ok = unipi_kit::paths::ensure_parent(&target)
                 .and_then(|()| std::fs::copy(&file, &target).map(|_| ()));
@@ -1593,6 +1687,7 @@ impl Subagents {
             let _ = std::fs::remove_file(&file);
             let _ = ui::notify(&format!("Deleted {shown}."), "info");
         }
+        false
     }
 
     async fn agents_manager(&self, cx: &CommandCtx) {
@@ -1604,7 +1699,20 @@ impl Subagents {
             for w in warnings {
                 let _ = ui::notify(&format!("subagents: {w}"), "warning");
             }
-            let mut labels: Vec<String> = profiles.iter().map(profiles::describe).collect();
+            let disabled = self.config().disabled;
+            let offered = profiles::offered(&profiles, &disabled);
+            let is_on = |p: &Profile| offered.iter().any(|o| o.id == p.id);
+            let mut labels: Vec<String> = profiles
+                .iter()
+                .map(|p| {
+                    let row = profiles::describe(p);
+                    if is_on(p) {
+                        row
+                    } else {
+                        format!("{row} · disabled")
+                    }
+                })
+                .collect();
             labels.push(NEW_LABEL.into());
             let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
             let Ok(Some(choice)) = ui::select(
@@ -1627,17 +1735,36 @@ impl Subagents {
             else {
                 break;
             };
-            if p.source == Source::Builtin {
-                let _ = ui::notify(
-                    &format!(
-                        "{} is built in and can't be edited. Create a custom agent to change the model, tools or prompt.",
-                        p.id
+            let on = is_on(p);
+            let toggle = if on {
+                "Disable (hide from the agent)"
+            } else {
+                "Enable"
+            };
+            let picked_toggle = if p.source == Source::Builtin {
+                matches!(
+                    ui::select(
+                        &format!(
+                            "{} is built in: its model, tools and prompt can't be edited (create a custom agent for that)",
+                            p.id
+                        ),
+                        &[toggle],
+                    )
+                    .await,
+                    Ok(Some(_))
+                )
+            } else {
+                Self::manage_custom(p, toggle).await
+            };
+            if picked_toggle {
+                let _ = match self.set_disabled(&profiles, &p.id, on) {
+                    Ok(()) => ui::notify(
+                        &format!("{} {}.", p.id, if on { "disabled" } else { "enabled" }),
+                        "info",
                     ),
-                    "info",
-                );
-                continue;
+                    Err(e) => ui::notify(&e, "error"),
+                };
             }
-            Self::manage_custom(p).await;
         }
         self.refresh(&cx.cx);
     }
@@ -1702,7 +1829,7 @@ impl Subagents {
         }
         let sections = opts.get_mut("sections").and_then(Value::as_object_mut)?;
         if self.config().enabled {
-            let profiles = self.sessions.with(cx.session_id(), |s| s.profiles.clone());
+            let (_, profiles) = self.offered(cx.session_id());
             let fusion =
                 unipi_kit::bus::get_raw(topics::FUSION_STATUS).is_some_and(|v| !v.is_null());
             sections.insert(
@@ -1744,13 +1871,25 @@ impl Subagents {
             .get("resume")
             .and_then(Value::as_str)
             .map(ToOwned::to_owned);
-        let profiles = self.sessions.with(&sid, |st| st.profiles.clone());
-        let want = resume
+        let (all, offered) = self.offered(&sid);
+        let resumed = resume
             .as_deref()
             .and_then(|r| self.record(&sid, r))
-            .map_or_else(|| s("profile"), |r| r.profile);
-        let Some(profile) = profiles.iter().find(|p| p.id == want).cloned() else {
-            return json!({"error": format!("unknown subagent profile \"{}\" (available: {})", s("profile"), profiles.iter().map(|p| p.id.as_str()).collect::<Vec<_>>().join(", "))});
+            .map(|r| r.profile);
+        // A resumed operator keeps its profile; new work needs an enabled one, and the
+        // graph's filled-in default falls back to the first enabled profile.
+        let picked = match &resumed {
+            Some(name) => all.iter().find(|p| &p.id == name).cloned().ok_or_else(|| {
+                profiles::PickError::Unknown {
+                    name: name.clone(),
+                    enabled: offered.iter().map(|p| p.id.clone()).collect(),
+                }
+            }),
+            None => profiles::pick(&all, &offered, &s("profile"), true),
+        };
+        let profile = match picked {
+            Ok(p) => p,
+            Err(e) => return json!({"error": e.message(), "code": e.code()}),
         };
         match self
             .start(
@@ -1844,16 +1983,10 @@ impl Extension for Subagents {
         self.settings.declare(NAMESPACE, ns.defaults.clone());
         self.settings.load(cx.settings());
         cx.settings_namespace(&ns.to_json());
-        let (profiles_now, _) = load_profiles();
+        let offered_now = profiles::offered(&load_profiles().0, &self.config().disabled);
         if !cx.ctx().is_child() {
-            cx.tool(
-                Tool::<Self>::new("run_subagent")
-                    .label("Run Subagent")
-                    .description(record::RUN_DESCRIPTION)
-                    .parameters(&run_schema(&profiles_now))
-                    .kind(ToolKind::Other)
-                    .run(|ext, args: Value, cx| async move { ext.run_subagent(&args, &cx).await }),
-            );
+            *self.schema_ids.borrow_mut() = offered_now.iter().map(|p| p.id.clone()).collect();
+            cx.tool(Self::run_tool(&offered_now));
         }
         cx.tool(
             Tool::<Self>::new("read_subagent")
@@ -1965,12 +2098,11 @@ impl Extension for Subagents {
                 // A session this instance never saw start (a fresh instance after a wake,
                 // a call routed before its session_start) loads the registry on demand
                 // instead of answering "no profiles".
-                ext.sessions.with(cx.session_id(), |s| {
-                    if s.profiles.is_empty() {
-                        s.profiles = load_profiles().0;
-                    }
-                    s.profiles.iter().map(|p| p.id.clone()).collect::<Vec<_>>()
-                })
+                ext.offered(cx.session_id())
+                    .1
+                    .iter()
+                    .map(|p| p.id.clone())
+                    .collect::<Vec<_>>()
             } else {
                 Vec::new()
             }))
@@ -2000,11 +2132,14 @@ impl Extension for Subagents {
             )
         });
         cx.on(EventKind::BeforeAgentStart, |ext, ev, cx| async move {
-            Ok(ext.before_agent_start(&ev, &cx))
+            let out = ext.before_agent_start(&ev, &cx);
+            ext.sync_schema(&cx);
+            Ok(out)
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.restore(cx.session_id());
             ext.refresh(&cx);
+            ext.sync_schema(&cx);
             Ok(())
         });
         cx.on(EventKind::SessionShutdown, |ext, _ev, cx| async move {
@@ -2014,6 +2149,7 @@ impl Extension for Subagents {
         cx.on(EventKind::OinoSettingsChanged, |ext, ev, cx| async move {
             if ext.settings.on_changed(&ev.payload).is_some() {
                 ext.refresh(&cx);
+                ext.sync_schema(&cx);
             }
             Ok(())
         });
@@ -2049,6 +2185,7 @@ mod tests {
             default_model: None,
             default_thinking: Some("low".into()),
             max_concurrent: 8,
+            disabled: Vec::new(),
         };
         assert_eq!(resolve_model(&b[0], "p/m", &cfg, Some("s/k")), "s/k");
         assert_eq!(resolve_model(&b[1], "p/m", &cfg, Some("s/k")), "p/m");
@@ -2082,5 +2219,14 @@ mod tests {
         assert_eq!(read_schema()["properties"]["timeout"]["type"], "number");
         let v = namespace().to_json();
         assert_eq!(v["sections"][1]["fields"][0]["command"], AGENTS_COMMAND);
+        // subagents.disabled: dropped from the schema list (built from the offered set).
+        let c = Config::from(&Values(json!({"disabled": ["subagent_general", 3]})));
+        assert_eq!(c.disabled, ["subagent_general"]);
+        let s = run_schema(&profiles::offered(&b, &c.disabled));
+        let desc = s["properties"]["profile"]["description"].as_str().unwrap();
+        assert!(
+            desc.contains("subagent_explore — Read-only") && !desc.contains("subagent_general")
+        );
+        assert_eq!(run_schema(&b), run_schema(&profiles::offered(&b, &[])));
     }
 }
