@@ -83,6 +83,8 @@ pub const GRAPH_SERVICE: &str = "long-horizon.graph";
 const GOAL_CONTINUE_TIMER: &str = "lh-goal-continue";
 /// Graph events in the `/visualize-progress` params.
 const VISUAL_GRAPH_EVENTS: usize = 16;
+/// Early run-done payloads kept for a start that has not been recorded yet.
+const EARLY_DONE_MAX: usize = 8;
 /// Errored work ids listed in the `LH_PROGRESS` graph snapshot.
 const PROGRESS_ERRORED_MAX: usize = 5;
 const VERIFIER_TIMEOUT_MS: u64 = 30_000;
@@ -160,6 +162,10 @@ struct State {
     /// names this session explicitly in the `subagents.graph-run` payload. In-memory
     /// only: a fresh bind learns it from the parent's `session_start`.
     graph_session: Option<String>,
+    /// Run-done payloads that arrived before their start was recorded (a worker can
+    /// finish while `subagents.graph-run` is still answering): replayed once the start
+    /// lands, at most [`EARLY_DONE_MAX`] (oldest dropped).
+    early_done: Vec<Value>,
 }
 
 /// The extension.
@@ -1912,6 +1918,7 @@ impl Lh {
             }
         }
         self.save();
+        self.replay_early_done();
         started
     }
 
@@ -2084,9 +2091,9 @@ impl Lh {
     }
 
     async fn run_done(&self, data: &Value, cx: &Ctx) {
-        let Some(run) = data.get("runId").and_then(Value::as_str) else {
+        if data.get("runId").and_then(Value::as_str).is_none() {
             return;
-        };
+        }
         // The run-done payload names the owner session the run was recorded under;
         // deliveries can carry a stale nested-session context (E-02), so prefer the
         // declared owner for the graph runs this settle is about to start.
@@ -2097,6 +2104,29 @@ impl Lh {
         {
             self.state.borrow_mut().graph_session = Some(owner.to_owned());
         }
+        if self.apply_run_done(data) == graph::SettleOutcome::Unknown {
+            // A worker that finished before its start was recorded (the run-done raced
+            // the `subagents.graph-run` reply): replay it once the start lands.
+            let mut st = self.state.borrow_mut();
+            if st.graph.open().is_some() {
+                if st.early_done.len() >= EARLY_DONE_MAX {
+                    st.early_done.remove(0);
+                }
+                st.early_done.push(data.clone());
+            }
+            return;
+        }
+        self.save();
+        self.reconcile(cx).await;
+        timers::set(GRAPH_WAKE_TIMER, Duration::from_millis(400), false);
+    }
+
+    /// Settles one run-done payload: arms the auto-continue timer or notifies an
+    /// errored item. No reconcile (the caller starts what became runnable).
+    fn apply_run_done(&self, data: &Value) -> graph::SettleOutcome {
+        let Some(run) = data.get("runId").and_then(Value::as_str) else {
+            return graph::SettleOutcome::Unknown;
+        };
         let r = data.get("result").cloned().unwrap_or_default();
         let error = r.get("error").and_then(Value::as_str);
         let crashed = worker_crashed(error);
@@ -2116,7 +2146,6 @@ impl Lh {
             crashed,
         );
         match &outcome {
-            graph::SettleOutcome::Unknown => return,
             // Auto-continue: arm the durable retry timer (the schedule also persists in
             // graph.json, so a dead timer is re-armed on the next bind).
             graph::SettleOutcome::Retried { work_id, delay_ms } => timers::set(
@@ -2124,16 +2153,54 @@ impl Lh {
                 Duration::from_millis(*delay_ms),
                 false,
             ),
-            // Errored: notify once; dependents wait and the checkpoint (below) wakes
-            // the supervisor with the error text.
+            // Errored: notify once; dependents wait and the checkpoint wakes the
+            // supervisor with the error text.
             graph::SettleOutcome::Settled { work_id, status } if status == "errored" => {
                 self.save();
                 self.notify_work(work_id);
             }
-            graph::SettleOutcome::Settled { .. } => {}
+            graph::SettleOutcome::Settled { .. } | graph::SettleOutcome::Unknown => {}
+        }
+        outcome
+    }
+
+    /// Replays early run-dones whose start is now recorded (see `State::early_done`).
+    fn replay_early_done(&self) {
+        let ready: Vec<Value> = {
+            let mut st = self.state.borrow_mut();
+            if st.early_done.is_empty() {
+                return;
+            }
+            let running: Vec<String> = st
+                .graph
+                .open()
+                .map(|g| {
+                    g.work
+                        .iter()
+                        .filter(|w| w.status == "running")
+                        .filter_map(|w| w.operator_id.clone())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let (ready, keep): (Vec<Value>, Vec<Value>) = std::mem::take(&mut st.early_done)
+                .into_iter()
+                .partition(|d| {
+                    d.get("runId")
+                        .and_then(Value::as_str)
+                        .is_some_and(|r| running.iter().any(|o| o == r))
+                });
+            st.early_done = keep;
+            ready
+        };
+        if ready.is_empty() {
+            return;
+        }
+        for d in &ready {
+            self.apply_run_done(d);
         }
         self.save();
-        self.reconcile(cx).await;
+        // Start what became runnable and wake the supervisor (timers: no re-entry).
+        timers::set(GRAPH_RETRY_TIMER, Duration::from_millis(50), false);
         timers::set(GRAPH_WAKE_TIMER, Duration::from_millis(400), false);
     }
 

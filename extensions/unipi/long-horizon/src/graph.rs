@@ -2051,6 +2051,13 @@ impl GraphFile {
             w.status = "running".into();
             w.resume = None;
             w.resume_operator_id = None;
+        } else if w.status == "queued"
+            && w.resume.is_some()
+            && w.resume_operator_id.as_deref() == Some(operator)
+        {
+            // The resumed run ended before its start was recorded (it raced the
+            // graph-run reply): the caller keeps it and replays it once `started` lands.
+            return SettleOutcome::Unknown;
         }
         if w.status == "running" {
             match status {
@@ -3553,6 +3560,34 @@ mod tests {
         f.update(&upd(vec![add("x", &[])]), "g", 0).unwrap();
         assert_eq!(f.interrupted(1), []);
         assert_eq!(f.runnable(1)[0].0, "x");
+    }
+
+    #[test]
+    fn a_resume_that_ends_before_its_start_is_recorded_is_left_for_replay() {
+        let mut f = with_auto(1);
+        f.update(&upd(vec![add("a", &[])]), "g", 0).unwrap();
+        f.started("a", Ok("op".into()), 0);
+        fail_settle(&mut f, "op", "timeout", 1, false); // auto-continue queued
+        // The resumed run errors before `started` is recorded: not applied (Unknown).
+        assert_eq!(
+            fail_settle(&mut f, "op", "timeout", 2, false),
+            SettleOutcome::Unknown
+        );
+        assert_eq!(f.open().unwrap().work[0].status, "queued");
+        // Replayed after the start lands: applied to the running item.
+        f.started("a", Ok("op".into()), 3);
+        assert_eq!(
+            fail_settle(&mut f, "op", "timeout", 4, false),
+            SettleOutcome::Settled {
+                work_id: "a".into(),
+                status: "errored".into()
+            }
+        );
+        // A fresh operator's early run-done is unknown (no item has that operator yet).
+        assert_eq!(
+            f.settle("fresh", "completed", "x", None, 0, 5, false),
+            SettleOutcome::Unknown
+        );
     }
 
     #[test]
