@@ -52,7 +52,14 @@ fn plural(n: u64, w: &str) -> String {
 pub fn session_data(r: &SessionRaw) -> Map<String, Value> {
     group_data(
         &[
-            ("cost", money(r.cost)),
+            (
+                "cost",
+                if r.cost <= 0.0 && r.unpriced_tokens > 0.0 {
+                    "—".to_owned()
+                } else {
+                    money(r.cost)
+                },
+            ),
             (
                 "tokens",
                 compact(r.input + r.output + r.cache_read + r.cache_write),
@@ -96,16 +103,29 @@ pub fn render_session(data: &Map<String, Value>, now: i64) -> Node {
     out.push(section(&title, model, None));
     let total = r.input + r.output + r.cache_read + r.cache_write;
     #[allow(clippy::cast_precision_loss, reason = "display")]
-    let per = if r.replies > 0 {
+    // A provider without a price reports cost 0: say so (`—` + its tokens), never `$0`.
+    let unpriced_only = r.cost <= 0.0 && r.unpriced_tokens > 0.0;
+    let per = if unpriced_only {
+        format!("{} tokens, no price", compact(r.unpriced_tokens))
+    } else if r.unpriced_tokens > 0.0 {
+        format!("+ {} tokens unpriced", compact(r.unpriced_tokens))
+    } else if r.child_cost > 0.0 {
+        format!("{} in subagents", money(r.child_cost))
+    } else if r.replies > 0 {
         format!("{} / reply", money(r.cost / r.replies as f64))
     } else {
         "nothing spent".into()
+    };
+    let cost_value = if unpriced_only {
+        "—".to_owned()
+    } else {
+        money(r.cost)
     };
     out.push(tiles(&[
         Tile {
             scope: Some(Scope::Session),
             label: "cost".into(),
-            value: money(r.cost),
+            value: cost_value,
             sub: per,
             tone: "c3",
         },

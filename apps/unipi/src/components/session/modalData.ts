@@ -27,6 +27,8 @@ export type SessionStats = {
   totalMessages: number;
   tokens: TokenTotals;
   cost: number;
+  /** Tokens (child runs included) spent on models whose provider reports no price: `cost` leaves them out. */
+  unpricedTokens: number;
   contextUsage?: ContextUsage | null;
 };
 
@@ -114,6 +116,7 @@ export function parseSessionStats(v: unknown): SessionStats | undefined {
     totalMessages: num(o.totalMessages),
     tokens: { input: num(t.input), output: num(t.output), cacheRead: num(t.cacheRead), cacheWrite: num(t.cacheWrite), total: num(t.total) },
     cost: num(o.cost),
+    unpricedTokens: num(o.unpricedTokens),
     contextUsage: parseContextUsage(o.contextUsage),
   };
 }
@@ -233,10 +236,35 @@ export function formatCount(n: number): string {
   return String(n);
 }
 
-/** `$1.23` / `$0.004` — small costs keep decimals so they don't read as $0.00. */
+/** `$1.23` / `$0.0042` — small costs keep decimals so they don't read as $0.00; `—` when unknown
+ *  (stats not loaded yet — never a made-up `$0.00`). */
 export function formatUsd(n: number | undefined): string {
+  if (n === undefined || !Number.isFinite(n)) return '—';
   if (!n) return '$0.00';
   return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+}
+
+/**
+ * The session cost as the Info / Context tabs show it ([status], owner 2026-11-04 "session cost
+ * is 0"): child / subagent runs are in `cost` already (core rolls their usage into the lead
+ * session). A provider that reports no price (cost 0 with tokens spent) reads `—` plus its token
+ * count instead of `$0.00`; a partly priced session reads the priced sum with the unpriced
+ * tokens beside it.
+ */
+export function sessionCostView(stats: Pick<SessionStats, 'cost' | 'tokens' | 'unpricedTokens'> | undefined): { text: string; sub?: string; title: string } {
+  if (!stats) return { text: '—', title: 'Loading the session cost' };
+  const unpriced = stats.unpricedTokens > 0 ? stats.unpricedTokens : stats.cost > 0 ? 0 : stats.tokens.total;
+  if (stats.cost > 0) {
+    const text = formatUsd(stats.cost);
+    if (unpriced <= 0) return { text, title: `${text}, subagent runs included` };
+    const sub = `+ ${formatCount(unpriced)} tokens unpriced`;
+    return { text, sub, title: `${text} on priced models, subagent runs included; ${formatCount(unpriced)} more tokens ran on models without a price` };
+  }
+  if (unpriced > 0) {
+    const sub = `${formatCount(unpriced)} tokens, no price`;
+    return { text: '—', sub, title: `The provider reports no price for this session's models (${formatCount(unpriced)} tokens)` };
+  }
+  return { text: '$0.00', title: 'Nothing spent yet' };
 }
 
 /** `1m 3s` / `2h 5m` — compact durations for running rows. */

@@ -9,7 +9,7 @@
 import { createEffect, createResource, Show } from 'solid-js';
 import { Trash2 } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
-import { formatCount, formatUsd, parseContextUsage, parseSessionStats, liveSource, transcriptToolCalls, type ContextUsage, type SessionStats } from './modalData';
+import { formatCount, parseContextUsage, sessionCostView, parseSessionStats, liveSource, transcriptToolCalls, type ContextUsage, type SessionStats } from './modalData';
 
 /** Cache-read share of everything read: ≥ 78 % counts as a healthy hit rate (Z-73). */
 export const CACHE_HIT_GOOD = 0.78;
@@ -103,9 +103,10 @@ export function ContextTab(props: { s: SessionHandle }) {
               {hit() == null ? '—' : `${Math.round(hit()! * 100)}%`}
             </span>
           </div>
-          <div class="sm-stat">
+          <div class="sm-stat" title={sessionCostView(stats()).title} data-testid="sm-session-cost">
             <span class="sm-stat-label">Session cost</span>
-            <span class="sm-stat-value">{formatUsd(stats()!.cost)}</span>
+            <span class="sm-stat-value">{sessionCostView(stats()).text}</span>
+            <Show when={sessionCostView(stats()).sub}>{(sub) => <span class="sm-stat-sub">{sub()}</span>}</Show>
           </div>
           <div class="sm-stat">
             <span class="sm-stat-label">Replies</span>

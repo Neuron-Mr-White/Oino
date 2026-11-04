@@ -19,7 +19,7 @@ import { sessionUi } from '../../ui/registries';
 import type { UiEntry, UiNode } from '../../ui/types';
 import type { SessionHandle } from '../../lib/session/store';
 import { hubs } from '../../lib/session/hub';
-import { formatCount, formatUsd, liveSource, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
+import { formatCount, liveSource, sessionCostView, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
 import { LimitsSection } from './LimitsSection';
 import type { InfoPage } from './SessionModal';
 
@@ -84,7 +84,11 @@ function SessionPage(props: { s: SessionHandle; stats: SessionStats | undefined 
   return (
     <>
       <div class="sm-grid">
-        <div class="sm-stat"><span class="sm-stat-label">Cost</span><span class="sm-stat-value">{formatUsd(stats()?.cost)}</span></div>
+        <div class="sm-stat" title={sessionCostView(stats()).title} data-testid="sm-info-cost">
+          <span class="sm-stat-label">Cost</span>
+          <span class="sm-stat-value">{sessionCostView(stats()).text}</span>
+          <Show when={sessionCostView(stats()).sub}>{(sub) => <span class="sm-stat-sub">{sub()}</span>}</Show>
+        </div>
         <div class="sm-stat"><span class="sm-stat-label">Tokens</span><span class="sm-stat-value">{formatCount(stats()?.tokens.total ?? 0)}</span></div>
         <div class="sm-stat"><span class="sm-stat-label">User / assistant</span><span class="sm-stat-value">{stats()?.userMessages ?? 0} / {stats()?.assistantMessages ?? 0}</span></div>
         <div class="sm-stat"><span class="sm-stat-label">Tool calls</span><span class="sm-stat-value">{stats()?.toolCalls ?? 0}</span></div>

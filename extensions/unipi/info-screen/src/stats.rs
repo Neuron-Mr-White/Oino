@@ -156,8 +156,14 @@ pub struct SessionRaw {
     pub cache_read: f64,
     /// Cache write.
     pub cache_write: f64,
-    /// Cost.
+    /// Cost (child / subagent runs included: their `usage` entries ride the lead branch).
     pub cost: f64,
+    /// Child / subagent run cost inside [`SessionRaw::cost`].
+    #[serde(default)]
+    pub child_cost: f64,
+    /// Tokens of replies (child runs included) whose provider reported no price.
+    #[serde(default)]
+    pub unpriced_tokens: f64,
     /// User prompts.
     pub prompts: u64,
     /// Replies.
@@ -209,6 +215,24 @@ pub fn collect(branch: &[Value], header_ts: Option<i64>, now: i64) -> SessionRaw
         if e.get("type").and_then(Value::as_str) == Some("compaction") {
             r.compactions += 1;
         }
+        // Child-agent spend (subagents, graph nodes, memory/session-name helpers) recorded
+        // into this lead session: Oino `usage` entries.
+        if e.get("type").and_then(Value::as_str) == Some("usage") {
+            let u = e.get("usage");
+            let g = |k: &str| num(u.and_then(|u| u.get(k)));
+            let cost = num(u.and_then(|u| u.pointer("/cost/total")));
+            let tokens = g("input") + g("output") + g("cacheRead") + g("cacheWrite");
+            r.input += g("input");
+            r.output += g("output");
+            r.cache_read += g("cacheRead");
+            r.cache_write += g("cacheWrite");
+            r.cost += cost;
+            r.child_cost += cost;
+            if tokens > 0.0 && cost <= 0.0 {
+                r.unpriced_tokens += tokens;
+            }
+            continue;
+        }
         if e.get("type").and_then(Value::as_str) != Some("message") {
             continue;
         }
@@ -229,7 +253,12 @@ pub fn collect(branch: &[Value], header_ts: Option<i64>, now: i64) -> SessionRaw
                 r.output += g("output");
                 r.cache_read += g("cacheRead");
                 r.cache_write += g("cacheWrite");
-                r.cost += num(u.and_then(|u| u.pointer("/cost/total")));
+                let cost = num(u.and_then(|u| u.pointer("/cost/total")));
+                r.cost += cost;
+                let tokens = g("input") + g("output") + g("cacheWrite") + g("cacheRead");
+                if tokens > 0.0 && cost <= 0.0 {
+                    r.unpriced_tokens += tokens;
+                }
                 r.per_reply
                     .push(g("input") + g("output") + g("cacheWrite") + g("cacheRead"));
                 for c in m
@@ -302,6 +331,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn child_usage_counts_and_unpriced_tokens_are_kept_apart() {
+        let b = vec![
+            json!({"type": "message", "message": {"role": "assistant", "content": [],
+                "usage": {"input": 100, "output": 10, "cost": {"total": 0}}}}),
+            json!({"type": "usage", "kind": "child:Subagent \"Graph · a\"",
+                "usage": {"input": 5, "output": 5, "cacheRead": 90, "cost": {"total": 1.5}}}),
+            json!({"type": "usage", "kind": "child:memory save", "usage": {"input": 7, "cost": {"total": 0}}}),
+        ];
+        let r = collect(&b, None, 5);
+        assert_eq!(r.replies, 1);
+        assert!((r.cost - 1.5).abs() < 1e-9);
+        assert!((r.child_cost - 1.5).abs() < 1e-9);
+        assert!((r.unpriced_tokens - 117.0).abs() < 1e-9);
+        assert!((r.input - 112.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn counts_replies_tools_errors_files_compactions() {
         let b = vec![
             json!({"type": "message", "timestamp": "2026-01-01T10:00:00.000Z", "message": {"role": "user", "content": "go"}}),
@@ -328,6 +374,7 @@ mod tests {
         );
         assert!((r.input - 2000.0).abs() < 1e-9);
         assert!((r.cost - 0.32).abs() < 1e-9);
+        assert!(r.unpriced_tokens.abs() < 1e-9);
         assert!(r.tools.contains(&("bash".to_owned(), 1, 1)));
         assert_eq!(r.started_at, 1_767_261_600_000);
         assert_eq!(collect(&[], Some(7), 5).started_at, 7);

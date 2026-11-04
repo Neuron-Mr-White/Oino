@@ -61,17 +61,34 @@ pub struct SessionStats {
     pub tokens: TokenTotals,
     /// Total cost (USD).
     pub cost: f64,
+    /// Tokens of replies (child runs included) whose provider reported no price (cost 0
+    /// with tokens spent): `cost` leaves them out, so a frontend shows `—` rather than `$0`
+    /// when nothing at all was priced.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub unpriced_tokens: u64,
     /// Context usage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_usage: Option<ContextUsage>,
 }
 
-fn add(totals: &mut TokenTotals, cost: &mut f64, usage: &Usage) {
-    totals.input += usage.input;
-    totals.output += usage.output;
-    totals.cache_read += usage.cache_read;
-    totals.cache_write += usage.cache_write;
-    *cost += usage.cost.total;
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if signature"
+)]
+const fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+fn add(stats: &mut SessionStats, usage: &Usage) {
+    let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
+    stats.tokens.input += usage.input;
+    stats.tokens.output += usage.output;
+    stats.tokens.cache_read += usage.cache_read;
+    stats.tokens.cache_write += usage.cache_write;
+    stats.cost += usage.cost.total;
+    if tokens > 0 && usage.cost.total <= 0.0 {
+        stats.unpriced_tokens += tokens;
+    }
 }
 
 impl AgentSession {
@@ -88,20 +105,21 @@ impl AgentSession {
             total_messages: 0,
             tokens: TokenTotals::default(),
             cost: 0.0,
+            unpriced_tokens: 0,
             context_usage: None,
         };
         let entries = self.entries();
         for entry in &entries {
             match &entry.kind {
-                EntryKind::Usage { usage, .. } => add(&mut stats.tokens, &mut stats.cost, usage),
+                EntryKind::Usage { usage, .. } => add(&mut stats, usage),
                 EntryKind::BranchSummary(summary) => {
                     if let Some(usage) = &summary.usage {
-                        add(&mut stats.tokens, &mut stats.cost, usage);
+                        add(&mut stats, usage);
                     }
                 }
                 EntryKind::Compaction(compaction) => {
                     if let Some(usage) = &compaction.usage {
-                        add(&mut stats.tokens, &mut stats.cost, usage);
+                        add(&mut stats, usage);
                     }
                 }
                 EntryKind::Message { message } => {
@@ -111,7 +129,7 @@ impl AgentSession {
                         AgentMessage::ToolResult(result) => {
                             stats.tool_results += 1;
                             if let Some(usage) = &result.usage {
-                                add(&mut stats.tokens, &mut stats.cost, usage);
+                                add(&mut stats, usage);
                             }
                         }
                         AgentMessage::Assistant(assistant) => {
@@ -121,7 +139,7 @@ impl AgentSession {
                                 .iter()
                                 .filter(|b| matches!(b, AssistantContent::ToolCall(_)))
                                 .count() as u64;
-                            add(&mut stats.tokens, &mut stats.cost, &assistant.usage);
+                            add(&mut stats, &assistant.usage);
                         }
                         _ => {}
                     }
@@ -257,5 +275,54 @@ impl AgentSession {
             .await
             .map_err(|e| SessionOpError::Failed(e.to_string()))?;
         Ok(target)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn usage(input: u64, output: u64, total: f64) -> Usage {
+        let mut usage = Usage {
+            input,
+            output,
+            ..Usage::default()
+        };
+        usage.cost.total = total;
+        usage
+    }
+
+    /// [status] a provider without a price (cost 0, tokens spent) is counted apart, so the
+    /// app reads `—` + tokens instead of `$0`; priced usage (child runs too) sums up.
+    #[test]
+    fn unpriced_tokens_are_kept_apart_from_the_cost() {
+        let mut stats = SessionStats {
+            session_file: None,
+            session_id: "s".into(),
+            user_messages: 0,
+            assistant_messages: 0,
+            tool_calls: 0,
+            tool_results: 0,
+            total_messages: 0,
+            tokens: TokenTotals::default(),
+            cost: 0.0,
+            unpriced_tokens: 0,
+            context_usage: None,
+        };
+        add(&mut stats, &usage(100, 20, 0.0));
+        add(&mut stats, &usage(5, 5, 1.25));
+        add(&mut stats, &usage(0, 0, 0.0));
+        assert_eq!(stats.unpriced_tokens, 120);
+        assert!((stats.cost - 1.25).abs() < 1e-9);
+        assert_eq!(stats.tokens.input, 105);
+        let value = serde_json::to_value(&stats).unwrap();
+        assert_eq!(value["unpricedTokens"], 120);
+        stats.unpriced_tokens = 0;
+        assert!(
+            serde_json::to_value(&stats)
+                .unwrap()
+                .get("unpricedTokens")
+                .is_none()
+        );
     }
 }
