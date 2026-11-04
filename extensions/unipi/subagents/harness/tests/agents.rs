@@ -1408,3 +1408,220 @@ async fn service_calls_stay_in_the_callers_services_set() {
         "the disposed services set was woken by another set's call"
     );
 }
+
+/// The graph file path of the (single) long-horizon workspace, created by a first save.
+fn graph_path(env: &Env) -> PathBuf {
+    let ws_dir = env._agent.path().join("state/unipi.long-horizon/workspace");
+    std::fs::read_dir(&ws_dir)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join("graph.json")
+}
+
+/// A graph the way a host left it when it died: `w1` was running on operator `op`
+/// (restart resumes used: `resumes`), `w2` waits on it.
+fn crashed_graph(op: &str, resumes: u32) -> Value {
+    json!({"v": 1, "history": [], "current": {
+        "v": 1, "graphId": "graph-crash", "mode": "graph", "task": "Crashed graph",
+        "createdAt": 1, "revision": 1, "updatedAt": 1,
+        "events": [{"ts": 1, "kind": "opened", "by": "lead", "detail": "Crashed graph"}],
+        "work": [
+            {"workId": "w1", "instruction": "map the code", "target": {"kind": "new_preset", "subagentId": "subagent_general"},
+             "inputIds": [], "status": "running", "operatorId": op, "restartResumes": resumes, "attempts": 1},
+            {"workId": "w2", "instruction": "write it up", "target": {"kind": "new_preset", "subagentId": "subagent_general"},
+             "inputIds": ["r-w1"], "status": "queued"}
+        ]
+    }})
+}
+
+async fn lh_service(env: &Env, lh: &Arc<dyn ExtensionInstance>, payload: Value) -> Value {
+    lh.handle_service(
+        "long-horizon.graph",
+        RawJson::from(payload),
+        &oino_extension_api::ExtensionId::new("oino.frontend").unwrap(),
+        env.cx(CallKind::Service),
+    )
+    .await
+    .unwrap()
+    .to_value()
+}
+
+fn work_of<'a>(graph: &'a Value, id: &str) -> &'a Value {
+    graph["current"]["work"]
+        .as_array()
+        .and_then(|w| w.iter().find(|w| w["workId"] == json!(id)))
+        .unwrap_or_else(|| panic!("{id} missing: {graph}"))
+}
+
+fn event_pairs(work: &Value) -> Vec<(String, String)> {
+    work["events"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|e| {
+            (
+                e["status"].as_str().unwrap_or_default().to_owned(),
+                e["by"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// [lh-errored] owner 2026-11-04: an interrupted / upstream-errored node is `errored`, not
+/// failed — it blocks its dependents (they wait), wakes the lead, refuses a stalling
+/// yield, shows `canRetry` in the app snapshot, and the user's Retry (the app's
+/// `long-horizon.graph` `retry`) continues it on its own session (here the operator
+/// session is gone, so the one-time fresh operator runs) — after which the dependent
+/// runs and the graph completes. Only the lead fails work.
+#[tokio::test(flavor = "multi_thread")]
+async fn long_horizon_errored_node_user_retry_runs_the_graph_on() {
+    let env = Env::new();
+    env.host
+        .stage_agent_reports(vec!["r-w1: mapped".to_owned(), "r-w2: written".to_owned()]);
+    let (sa, _) = env.load("subagents").await;
+    let (lh, reg) = env.load("long-horizon").await;
+    assert!(reg.services.iter().any(|s| s == "long-horizon.graph"));
+    env.event(
+        &sa,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    // First save creates the workspace dir; then the crashed graph is "left on disk":
+    // w1 already used all its restart resumes.
+    env.tool(&lh, "view_agent_graph", json!({})).await;
+    std::fs::write(graph_path(&env), crashed_graph("op-dead", 3).to_string()).unwrap();
+    env.event(
+        &lh,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    let g = graph_json(&env);
+    let w1 = work_of(&g, "w1");
+    assert_eq!(w1["status"], "errored", "{g}");
+    assert!(
+        w1["failure"]
+            .as_str()
+            .unwrap()
+            .contains("interrupted by a restart 4 times")
+    );
+    assert_eq!(w1["operatorId"], "op-dead", "operator kept");
+    assert_eq!(work_of(&g, "w2")["status"], "queued", "dependent waits");
+    assert!(
+        env.notifications()
+            .iter()
+            .any(|n| n.contains("w1 stopped on an error") && n.contains("not failed")),
+        "{:?}",
+        env.notifications()
+    );
+    // A stalling yield is refused with the levers.
+    let y = env.tool(&lh, "yield_agent_graph", json!({})).await;
+    assert!(
+        text_of(&y).starts_with("Nothing can progress: w1 (") && text_of(&y).contains("operation=continue"),
+        "{y}"
+    );
+    // The app snapshot: errored + canRetry + the event log; history as data.
+    let snap = lh_service(&env, &lh, json!({"op": "snapshot"})).await;
+    assert_eq!(snap["ok"], true, "{snap}");
+    assert_eq!(snap["graph"]["work"][0]["status"], "errored");
+    assert_eq!(snap["graph"]["work"][0]["canRetry"], true);
+    assert_eq!(snap["graph"]["work"][0]["events"][0]["status"], "errored");
+    assert_eq!(snap["graph"]["counts"]["errored"], 1);
+    let hist = lh_service(&env, &lh, json!({"op": "history"})).await;
+    assert_eq!(hist["graphs"][0]["graphId"], "graph-crash");
+    // Refusals carry central codes.
+    let bad = lh_service(&env, &lh, json!({"op": "retry", "workId": "w2"})).await;
+    assert_eq!(bad["code"], "lh.work.not_continuable", "{bad}");
+    let bad = lh_service(&env, &lh, json!({"op": "retry", "workId": "zz"})).await;
+    assert_eq!(bad["code"], "lh.work.not_found", "{bad}");
+    let bad = lh_service(&env, &lh, json!({"op": "nope"})).await;
+    assert_eq!(bad["code"], "lh.request.invalid", "{bad}");
+    // The user's Retry.
+    let r = lh_service(&env, &lh, json!({"op": "retry", "workId": "w1", "note": "go on"})).await;
+    assert_eq!(r, json!({"ok": true, "workId": "w1"}));
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let g = graph_json(&env);
+        if work_of(&g, "w2")["status"] == json!("completed") {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the retried graph never ran on: {g}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let g = graph_json(&env);
+    let w1 = work_of(&g, "w1");
+    assert_eq!(w1["status"], "completed", "{g}");
+    let ev = event_pairs(w1);
+    assert!(
+        ev.contains(&("continued".to_owned(), "user".to_owned())),
+        "{ev:?}"
+    );
+    assert_eq!(ev.last().unwrap().0, "completed", "{ev:?}");
+    // Continue / fail of settled work is refused by the tool.
+    let c = env
+        .tool(&lh, "update_agent_graph", json!({"operation": "continue", "continue": [{"target_id": "w1"}]}))
+        .await;
+    assert!(
+        text_of(&c).contains("only errored or failed work can be continued"),
+        "{c}"
+    );
+    let f = env
+        .tool(&lh, "update_agent_graph", json!({"operation": "fail", "fail": [{"target_id": "w2", "reason": "x"}]}))
+        .await;
+    assert!(text_of(&f).contains("w2 is already completed"), "{f}");
+    let v = env.tool(&lh, "view_agent_graph", json!({})).await;
+    assert!(text_of(&v).contains("\"events\""), "{v}");
+}
+
+/// [lh-errored] restart: work that was running when the host died resumes its own
+/// operator after a short grace (by `host`), instead of staying queued forever (D6-03).
+#[tokio::test(flavor = "multi_thread")]
+async fn long_horizon_restart_resumes_interrupted_work() {
+    let env = Env::new();
+    let (sa, _) = env.load("subagents").await;
+    let (lh, _) = env.load("long-horizon").await;
+    env.event(
+        &sa,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    env.tool(&lh, "view_agent_graph", json!({})).await;
+    std::fs::write(graph_path(&env), crashed_graph("op-gone", 0).to_string()).unwrap();
+    env.event(
+        &lh,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    let g = graph_json(&env);
+    let w1 = work_of(&g, "w1");
+    assert_eq!(w1["status"], "queued", "{g}");
+    assert_eq!(w1["restartResumes"], 1);
+    assert_eq!(w1["resumeOperatorId"], "op-gone");
+    assert!(w1["nextRetryAt"].as_i64().is_some());
+    assert_eq!(
+        event_pairs(w1).last().unwrap(),
+        &("continued".to_owned(), "host".to_owned())
+    );
+    // The resume fires by itself (no lead turn, no user action) and the graph runs on.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let g = graph_json(&env);
+        if work_of(&g, "w2")["status"] == json!("completed") {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the interrupted graph stalled: {g}"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
