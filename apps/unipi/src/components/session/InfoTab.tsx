@@ -21,7 +21,7 @@ import type { SessionHandle } from '../../lib/session/store';
 import { hubs } from '../../lib/session/hub';
 import { RouterContext, useNavigate } from '@solidjs/router';
 import { ChevronRight } from 'lucide-solid';
-import { formatCount, formatDurationMs, formatUsd, liveSource, sessionCostView, sessionModelUsage, sessionSpanMs, statsSpanMs, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
+import { formatCount, formatDurationMs, formatUsd, liveSource, sessionCostView, sessionModelUsage, sessionSpanMs, modelRowReplies, statsSpanMs, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
 import { LimitsSection } from './LimitsSection';
 import { closeSessionModal, type InfoPage } from './SessionModal';
 
@@ -127,9 +127,9 @@ function SessionPage(props: { s: SessionHandle; stats: SessionStats | undefined 
               <div class="sm-row">
                 <span class="sm-row-main">
                   <span class="sm-row-title" style={{ 'font-family': 'inherit' }}>{m.model}</span>
-                  <span class="sm-row-sub">{m.turns} {m.turns === 1 ? 'reply' : 'replies'} · {formatCount(m.input)} in · {formatCount(m.output)} out · {formatCount(m.cacheRead)} cached</span>
+                  <span class="sm-row-sub">{modelRowReplies(m)} · {formatCount(m.input)} in · {formatCount(m.output)} out · {formatCount(m.cacheRead)} cached</span>
                 </span>
-                <span class="sm-elapsed" title={m.cost > 0 ? undefined : 'This model reports no price'}>{m.cost > 0 ? formatUsd(m.cost) : '—'}</span>
+                <span class="sm-elapsed" title={m.cost > 0 ? ((m.childCost ?? 0) > 0 ? `${formatUsd(m.childCost!)} of it in child runs (subagents, workers, memory, naming)` : undefined) : 'This model reports no price'}>{m.cost > 0 ? formatUsd(m.cost) : '—'}</span>
               </div>
             )}
           </For>

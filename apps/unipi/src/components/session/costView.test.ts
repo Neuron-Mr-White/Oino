@@ -48,3 +48,19 @@ describe('this session usage (Info › Session)', () => {
     expect(sessionSpanMs([{ timestamp: '2026-09-21T10:00:00.000Z' }])).toBeUndefined();
   });
 });
+
+import { modelRowReplies } from './modalData';
+
+describe('model rows with child usage (owner-fix-6)', () => {
+  it('parses childTurns/childCost; rows (cost incl. child) sum to the session cost', () => {
+    const s = parseSessionStats({ cost: 151, tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, total: 2 }, models: [
+      { model: 'a/sonnet', turns: 0, input: 1, output: 0, cacheRead: 0, cacheWrite: 0, cost: 100, childTurns: 1, childCost: 100 },
+      { model: 'a/opus', turns: 1, input: 0, output: 1, cacheRead: 0, cacheWrite: 0, cost: 51, childTurns: 1, childCost: 18 },
+    ] })!;
+    const rows = s.models!;
+    expect(rows.reduce((t, m) => t + m.cost, 0)).toBe(s.cost);
+    expect([rows[0].childTurns, rows[1].childCost]).toEqual([1, 18]);
+    expect(rows.map(modelRowReplies)).toEqual(['1 child reply', '1 reply + 1 child']);
+    expect(modelRowReplies({ turns: 2 })).toBe('2 replies');
+  });
+});

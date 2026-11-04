@@ -128,7 +128,7 @@ export function parseSessionStats(v: unknown): SessionStats | undefined {
           if (!m || typeof m !== 'object') return [];
           const r = m as Record<string, unknown>;
           const input = num(r.input), output = num(r.output), cacheRead = num(r.cacheRead), cacheWrite = num(r.cacheWrite);
-          return [{ model: str(r.model).replace(/^.*\//, '') || 'unknown', turns: num(r.turns), input, output, cacheRead, cacheWrite, tokens: input + output + cacheRead + cacheWrite, cost: num(r.cost) }];
+          return [{ model: str(r.model).replace(/^.*\//, '') || 'unknown', turns: num(r.turns), input, output, cacheRead, cacheWrite, tokens: input + output + cacheRead + cacheWrite, cost: num(r.cost), childTurns: num(r.childTurns), childCost: num(r.childCost) }];
         })
       : undefined,
     firstAt: typeof o.firstAt === 'number' ? o.firstAt : undefined,
@@ -293,7 +293,16 @@ export function formatDurationMs(ms: number): string {
 }
 
 /** One model's share of this session (assistant replies on the loaded branch). */
-export type SessionModelUse = { model: string; turns: number; input: number; output: number; cacheRead: number; cacheWrite: number; tokens: number; cost: number };
+/** `cost` covers every source; `childTurns`/`childCost` are the child runs' (subagents, workers, memory, naming) part of it. */
+export type SessionModelUse = { model: string; turns: number; input: number; output: number; cacheRead: number; cacheWrite: number; tokens: number; cost: number; childTurns?: number; childCost?: number };
+
+/** A model row's reply count: main replies, then child-run replies (`2 replies · 3 child`). Pure. */
+export function modelRowReplies(m: Pick<SessionModelUse, 'turns' | 'childTurns'>): string {
+  const main = `${m.turns} ${m.turns === 1 ? 'reply' : 'replies'}`;
+  const child = m.childTurns ?? 0;
+  if (child === 0) return main;
+  return m.turns === 0 ? `${child} child ${child === 1 ? 'reply' : 'replies'}` : `${main} + ${child} child`;
+}
 
 /**
  * This session's usage per model, from its own assistant messages: a reply whose model reports no
