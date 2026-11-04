@@ -13,6 +13,7 @@ Prompt keywords pick a script:
   "grow"   -> one bash call whose output streams for ~12 s (chat-scroll: output inside a tool row)
   "subagents" -> run_subagent x4 in the background (2 slow, 1 quick, 1 failing) + bg_run x1
                  (running-tab QA); the children's tasks use the "slow"/"quick"/"error" scripts
+  "quietbg" -> bg_run without notify/wake (the quiet background marker, [status])
   "slow"   -> one bash call that sleeps 15 min (a run that stays live)
   "quick"  -> one bash call, then text (a run that completes)
   anything else -> medium markdown answer with code block + table, streamed slowly
@@ -125,6 +126,11 @@ class H(BaseHTTPRequestHandler):
             if "bg_run" in tools:
                 calls.append(("bg_run", {"name": "Watch the test suite", "command": "for i in $(seq 1 900); do echo tick $i; sleep 1; done", "isAgent": False}))
             text = "Starting four subagents and a background task."
+        elif "quietbg" in low and "bg_run" in tools:
+            # [status] a bg task WITHOUT wake: the session reads the quiet background marker, not Working
+            calls = [("bg_run", {"name": "Dev server", "command": "for i in $(seq 1 900); do echo serve $i; sleep 1; done", "isAgent": False,
+                                 "notifyOnCompletion": False, "triggerOnCompletion": False})]
+            text = "Starting the dev server in the background."
         elif "slow" in low:
             calls = [("bash", {"command": "sleep 900"})]
             text = "Working on it."
