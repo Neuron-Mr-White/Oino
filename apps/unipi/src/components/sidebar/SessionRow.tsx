@@ -12,7 +12,7 @@
  * like "Working" takes its place). Compact view only tightens the row height.
  */
 import { createEffect, Match, onCleanup, Show, Switch, type JSX } from 'solid-js';
-import { Archive, CircleAlert, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, Pin, PinOff, TimerOff } from 'lucide-solid';
+import { Archive, CircleAlert, CircleDashed, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, Pin, PinOff, TimerOff } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { hostClient } from '../../lib/host/factory';
 import { LONG_PRESS_MS } from '../../lib/gestures';
@@ -24,33 +24,46 @@ import { openRowMenu } from '../../lib/session/actions';
 import { shortAge } from '../../lib/time';
 import { cronRunFailed, cronRunLabel } from '../../lib/cronRunLabels';
 import { DEFAULT_PROPS, type PropKey } from '../../lib/session/listView';
+import { activityTitle, cardActivity, liveActivity, type ActivityFacts } from '../../lib/session/activity';
 
 export type RowVariant = 'sidebar' | 'page';
 
-/** The row's state (DESIGN §1.3): needs-you beats working beats crashed/taken-over. */
-export function rowState(card: SessionCard): 'needs-you' | 'working' | 'crashed' | 'taken-over' | 'idle' {
-  if (card.needs_you) return 'needs-you';
-  if (card.run_state === 'working') return 'working';
+/** A row's state (DESIGN §1.3, [status] activity states): needs-you beats working (a run, or
+ *  work that will wake the session) beats crashed/taken-over beats the quiet background marker. */
+export type RowState = 'needs-you' | 'working' | 'crashed' | 'taken-over' | 'background' | 'idle';
+
+function withCardFailure(card: SessionCard, facts: ActivityFacts): RowState {
+  if (facts.activity === 'needs-you' || facts.activity === 'working') return facts.activity;
   if (card.run_state === 'crashed') return 'crashed';
   if (card.run_state === 'taken_over') return 'taken-over';
-  return 'idle';
+  return facts.activity;
 }
 
-/** Reconciles the card's polled `run_state` with a live open session stream so opening an idle session never flashes "Working". */
-export function liveRowState(card: SessionCard, open: SessionHandle | undefined): ReturnType<typeof rowState> {
-  if (card.needs_you) return 'needs-you';
-  if (open?.state.conn === 'live') {
-    if (open.state.run.running) return 'working';
-    if (card.run_state === 'working') return 'idle';
-  }
-  return rowState(card);
+/** The row's state from the host card alone. */
+export function rowState(card: SessionCard): RowState {
+  return withCardFailure(card, cardActivity(card));
 }
 
-export const STATE_WORD: Record<ReturnType<typeof rowState>, string> = {
+/** The card reconciled with a live open session stream (`lib/session/activity.ts`): opening an
+ *  idle session never flashes "Working", and a parent waiting on subagents / graph nodes stays "Working". */
+export function liveRowState(card: SessionCard, open: SessionHandle | undefined): RowState {
+  return withCardFailure(card, liveActivity(card, open?.state));
+}
+
+/** {@link liveRowState} plus the tooltip of the state (what it waits on / runs). */
+export function liveRowFacts(card: SessionCard, open: SessionHandle | undefined): { state: RowState; title?: string } {
+  const facts = liveActivity(card, open?.state);
+  const state = withCardFailure(card, facts);
+  return { state, ...(state === facts.activity && activityTitle(facts) ? { title: activityTitle(facts) } : {}) };
+}
+
+export const STATE_WORD: Record<RowState, string> = {
   'needs-you': 'Needs you',
   working: 'Working',
   crashed: 'Crashed',
   'taken-over': 'Taken over',
+  // The quiet marker: a glyph and a tooltip, never a word (the age stays).
+  background: '',
   idle: '',
 };
 
@@ -76,7 +89,7 @@ export type ModeBadge = { mode: string; label: string; paused?: boolean };
 export type RowProps = Record<PropKey, boolean>;
 
 /** The status a row's glyph + chip show: the live state, refined by a cron run's outcome. */
-export type RowStatus = ReturnType<typeof rowState> | 'failed' | 'timed-out';
+export type RowStatus = RowState | 'failed' | 'timed-out';
 
 const STATUS_WORD: Record<RowStatus, string> = { ...STATE_WORD, failed: 'Failed', 'timed-out': 'Timed out' };
 
@@ -100,7 +113,8 @@ export function SessionRow(props: {
   onPin?: (card: SessionCard, pinned: boolean) => void;
 }): JSX.Element {
   const open = () => sessions().peek(props.hostId, props.card.session_id);
-  const state = () => liveRowState(props.card, open());
+  const facts = () => liveRowFacts(props.card, open());
+  const state = () => facts().state;
   const show = (k: PropKey) => (props.show ?? DEFAULT_PROPS)[k];
   const changes = () => changesOf(props.card);
   const at = () => props.card.last_activity ?? props.card.updated_at;
@@ -145,14 +159,15 @@ export function SessionRow(props: {
   /** needs-you / working win; an idle cron run that failed or timed out says so. */
   const status = (): RowStatus => {
     const s = state();
-    if (s !== 'idle') return s;
+    if (s !== 'idle' && s !== 'background') return s;
     const run = cronRun();
     if (run?.status === 'timeout') return 'timed-out';
     if (cronRunFailed(run)) return 'failed';
-    return 'idle';
+    return s;
   };
   const statusWord = () => STATUS_WORD[status()];
   const statusTip = () => {
+    if (status() === 'background' || status() === 'working') return facts().title ?? (statusWord() || undefined);
     const word = statusWord();
     if (!word) return undefined;
     if ((status() === 'failed' || status() === 'timed-out') && cronRun()?.reason) return `${word}: ${cronRun()!.reason}`;
@@ -192,7 +207,7 @@ export function SessionRow(props: {
           {statusWord()}
         </span>
       </Show>
-      <Show when={show('automation') && cron() && status() !== 'idle'}>
+      <Show when={show('automation') && cron() && status() !== 'idle' && status() !== 'background'}>
         <span class="srow-chip srow-cron" data-failed={status() === 'failed' || status() === 'timed-out' ? '' : undefined} title={cronTip()} aria-label={cronTip()}>
           <Clock size={12} />
         </span>
@@ -241,7 +256,7 @@ export function SessionRow(props: {
    * none; a cron run shows its clock; a live state (Working spinner, Needs you, failed…) shows its
    * glyph. The gutter keeps its width, so titles stay aligned either way.
    */
-  const glyphKind = (): 'state' | 'cron' | undefined => (status() !== 'idle' ? 'state' : cron() ? 'cron' : undefined);
+  const glyphKind = (): 'state' | 'cron' | undefined => (status() !== 'idle' && !(status() === 'background' && cron()) ? 'state' : cron() ? 'cron' : undefined);
   return (
     <a
       href={`#/s/${encodeURIComponent(props.hostId)}/${encodeURIComponent(props.card.session_id)}`}
@@ -273,7 +288,10 @@ export function SessionRow(props: {
           <Match when={status() === 'timed-out'}>
             <TimerOff size={14} />
           </Match>
-          <Match when={status() !== 'idle'}>
+          <Match when={status() === 'background' && !cron()}>
+            <CircleDashed size={13} class="srow-bg" />
+          </Match>
+          <Match when={status() !== 'idle' && status() !== 'background'}>
             <CircleAlert size={14} />
           </Match>
           <Match when={cron()}>

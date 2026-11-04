@@ -102,7 +102,18 @@ function applyInfo(s: SessionState, info: Record<string, unknown>): void {
   s.info = info;
   const streaming = info.isStreaming === true || info.running === true;
   const compacting = info.isCompacting === true;
-  s.run = { phase: compacting ? 'compacting' : streaming ? 'running' : 'idle', running: streaming, ...(streaming ? { startedAt: s.run.startedAt } : {}) };
+  // Oino's `get_state` also says what an idle session waits on (`waitingOn`) or still runs
+  // quietly (`backgroundOn`), so a chat opened mid-wait reads "Working" from the first frame.
+  const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((w): w is string => typeof w === 'string' && !!w) : []);
+  const waitingOn = streaming || compacting ? [] : strings(info.waitingOn);
+  const backgroundOn = streaming || compacting || waitingOn.length ? [] : strings(info.backgroundOn);
+  s.run = {
+    phase: compacting ? 'compacting' : streaming ? 'running' : waitingOn.length ? 'waiting' : 'idle',
+    running: streaming,
+    ...(streaming ? { startedAt: s.run.startedAt } : {}),
+    ...(waitingOn.length ? { waitingOn } : {}),
+    ...(backgroundOn.length ? { backgroundOn } : {}),
+  };
   if (!streaming) delete s.run.startedAt;
   const name = str(info.sessionName);
   if (name !== undefined) s.name = name;
@@ -481,6 +492,8 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       s.run = { ...s.run, phase };
       if (Array.isArray(event.waitingOn)) s.run.waitingOn = event.waitingOn.filter((w): w is string => typeof w === 'string');
       else delete s.run.waitingOn;
+      if (Array.isArray(event.backgroundOn)) s.run.backgroundOn = event.backgroundOn.filter((w): w is string => typeof w === 'string');
+      else delete s.run.backgroundOn;
       return {};
     }
     case 'commands_changed':

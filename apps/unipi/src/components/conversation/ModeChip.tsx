@@ -29,6 +29,8 @@ import { ChevronDown } from 'lucide-solid';
 import { AnchoredMenu, MenuSeparator } from '../board/AnchoredMenu';
 import { ModeIcon } from '../chat/ModeChip';
 import { RollingLabel } from '../RollingLabel';
+import { hubs } from '../../lib/session/hub';
+import { liveActivity, liveBusy, type Activity } from '../../lib/session/activity';
 import './conversation.css';
 
 const PHASE_WORD = { active: 'Running', selected: 'On — the next message runs in it', paused: 'Paused' } as const;
@@ -52,6 +54,16 @@ export function ModeChip(props: { hostId: string; sessionId: string; cwd?: strin
   );
   const [open, setOpen] = createSignal(false);
   const [anchor, setAnchor] = createSignal<DOMRect | undefined>();
+  /** [status] the session's activity: the dot pulses only while it really works (a run, or
+   *  graph / swarm nodes and waking bg tasks it waits on); a dialog turns it to the accent. */
+  const activity = createMemo<Activity>(() => {
+    const card = hubs().peek(props.hostId)?.state.cards[props.sessionId];
+    if (card) return liveActivity(card, s().state).activity;
+    const st = s().state;
+    if (st.dialogs.length > 0) return 'needs-you';
+    return liveBusy(st.run) ? 'working' : st.run.backgroundOn?.length ? 'background' : 'idle';
+  });
+  const dot = () => (summary()?.phase === 'active' && (activity() === 'working' || activity() === 'needs-you') ? activity() : undefined);
 
   /** A starter rewrites the draft's leading command and keeps the words typed. */
   const start = (mode: ModeStarter) => {
@@ -77,7 +89,7 @@ export function ModeChip(props: { hostId: string; sessionId: string; cwd?: strin
   const aria = () =>
     opensGraph()
       ? `Working mode: ${label()}${summary()?.countText ? ` ${summary()!.countText}` : ''}. Open the graph`
-      : unsupported() ? `Working mode unknown: ${UNSUPPORTED_TEXT} Open the mode menu` : `Working mode: ${label()}${summary()?.phase === 'paused' ? ', paused' : ''}. Open the mode menu`;
+      : unsupported() ? `Working mode unknown: ${UNSUPPORTED_TEXT} Open the mode menu` : `Working mode: ${label()}${summary()?.phase === 'paused' ? ', paused' : dot() === 'needs-you' ? ', needs you' : dot() === 'working' ? ', working' : ''}. Open the mode menu`;
 
   return (
     <Show when={enabled()}>
@@ -86,6 +98,7 @@ export function ModeChip(props: { hostId: string; sessionId: string; cwd?: strin
         class="hdr-mode"
         data-mode={summary()?.mode ?? 'none'}
         data-phase={summary()?.phase ?? (unsupported() ? 'unsupported' : undefined)}
+        data-activity={summary() ? activity() : undefined}
         aria-label={aria()}
         aria-expanded={opensGraph() ? undefined : open()}
         aria-haspopup={opensGraph() ? undefined : 'menu'}
@@ -111,8 +124,8 @@ export function ModeChip(props: { hostId: string; sessionId: string; cwd?: strin
         <Show when={summary()?.phase !== 'paused' && summary()?.countText}>
           {(count) => <span class="hdr-mode-count">{count()}</span>}
         </Show>
-        <Show when={summary()?.phase === 'active'}>
-          <span class="hdr-mode-pulse" aria-hidden="true" />
+        <Show when={dot()}>
+          {(d) => <span class="hdr-mode-pulse" data-activity={d()} aria-hidden="true" />}
         </Show>
       </button>
       <Show when={opensGraph()}>

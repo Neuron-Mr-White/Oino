@@ -5,6 +5,8 @@
 .chat-glyph[data-state=needs-you] { background: rgb(240 168 24 / 14%); }
 .chat-glyph-dot { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 9999px; background: var(--color-amber); color: var(--color-face); font-size: 14px; font-weight: 800; line-height: 1; }
 .chat-glyph[data-state=crashed] { color: #F6A39D; }
+/* [status] quiet background work (no wake): a dashed ring, no spin — not "Working". */
+.chat-glyph[data-state=background] { color: var(--color-text-muted); }
 .chat-glyph-unread { position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 9999px; background: var(--color-shell); box-shadow: 0 0 0 2px var(--color-bg); }
 .chat-row-title[data-unread] { font-weight: 600; }
 .chat-row-sub[data-state=working] { color: var(--color-shell); }

@@ -164,6 +164,32 @@ describe('SessionList', () => {
     expect(idleRow.querySelector('.srow-glyph svg')).toBeNull();
   });
 
+  it('[status] activity states: waiting on subagents reads Working, quiet bg work is a marker, needs-you wins', async () => {
+    boot([
+      // A parent whose run ended while graph nodes / subagents run on (host `pending_work`).
+      card('wait', { run_state: 'working', pending_work: '2 subagents working' }),
+      // A bg task without wake: quiet, the age stays, no "Working".
+      card('bg', { background_work: 'bg: dev server' }),
+      // A dialog on a waiting parent: Needs you wins.
+      card('ask', { run_state: 'working', pending_work: 'subagent working', needs_you: true }),
+    ]);
+    await waitFor(() => expect(screen.getByTestId('srow-bg')).toBeTruthy());
+    const wait = screen.getByTestId('srow-wait');
+    expect(wait.getAttribute('data-state')).toBe('working');
+    expect(within(wait).getByText('Working')).toBeTruthy();
+    expect(wait.querySelector('.srow-word')!.getAttribute('title')).toBe('Working — waiting on 2 subagents working');
+    expect(wait.querySelector('.srow-spin')).toBeTruthy();
+    const bg = screen.getByTestId('srow-bg');
+    expect(bg.getAttribute('data-state')).toBe('background');
+    expect(bg.querySelector('.srow-word')).toBeNull();
+    expect(bg.querySelector('.srow-time')!.textContent).toBe('1m');
+    expect(bg.querySelector('.srow-glyph')!.getAttribute('title')).toBe('Running in the background: bg: dev server');
+    expect(bg.querySelector('.srow-spin')).toBeNull();
+    const ask = screen.getByTestId('srow-ask');
+    expect(ask.getAttribute('data-state')).toBe('needs-you');
+    expect(within(ask).getByText('Needs you')).toBeTruthy();
+  });
+
   it('links to /s/:host/:session and marks the routed session active', async () => {
     boot([card('a'), card('b')], '#/s/this-pc/a');
     await waitFor(() => expect(screen.getByTestId('srow-a').getAttribute('aria-current')).toBe('page'));

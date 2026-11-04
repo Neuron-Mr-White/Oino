@@ -8,7 +8,7 @@
  */
 import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { Archive, ArchiveRestore, Circle, CircleCheck, GitFork, MessageSquare, Pencil, Pin, PinOff, Trash2 } from 'lucide-solid';
+import { Archive, ArchiveRestore, Circle, CircleCheck, CircleDashed, GitFork, MessageSquare, Pencil, Pin, PinOff, Trash2 } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { hubs } from '../../lib/session/hub';
 import { isInternalSession } from '../../lib/session/internal';
@@ -64,6 +64,9 @@ function StatusGlyph(p: { state: RowState; unread?: boolean }) {
         </Match>
         <Match when={p.state === 'needs-you'}>
           <span class="chat-glyph-dot">!</span>
+        </Match>
+        <Match when={p.state === 'background'}>
+          <CircleDashed size={20} />
         </Match>
       </Switch>
       <Show when={p.unread && p.state !== 'needs-you'}>
@@ -150,6 +153,8 @@ export function ChatsList(p: { hostId: string; query: string; offline?: boolean;
             ? 'Needs you'
             : state() === 'crashed'
               ? 'Crashed'
+              : state() === 'background'
+                ? 'In the background'
               : card.message_count
                 ? `${card.message_count} message${card.message_count === 1 ? '' : 's'}`
                 : undefined;

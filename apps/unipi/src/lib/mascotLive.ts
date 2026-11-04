@@ -1,32 +1,44 @@
 /**
  * The mascot's live state (UNI-200): one reactive source for the floating
  * crab, the desktop header crab, the desktop mascot window and the Android
- * overlay — derived from the "needs you" store + every host's session list
+ * overlay — derived from the "needs you" store + every host's hub cards
  * (the same data the bell badge and tray already use; no new poll).
  */
 import { createMemo, createRoot, createSignal, on, createEffect, type Accessor } from 'solid-js';
 import { needsYou } from './needsYou';
-import { chatLists } from './session/list';
+import { hubs } from './session/hub';
+import { sessions } from './session/store';
+import { isInternalSession } from './session/internal';
+import { liveActivity } from './session/activity';
 import type { HostInfo } from './schemas';
 import { mascotState, type MascotInputs, type MascotState } from './unicrab';
 import { clockNow } from './clock';
 
 export type MascotLive = { state: Accessor<MascotState>; count: Accessor<number>; inputs: Accessor<MascotInputs>; poke: () => void };
 
-/** Sessions working across `hosts` (session cards in state `working`). */
+/**
+ * Sessions working across `hosts` ([status]: the tray count and the crab) — the hub cards each
+ * PC's sidebar shows, reconciled with open live streams (`lib/session/activity.ts`). A parent
+ * waiting on subagents / graph nodes / a waking bg task counts; quiet background work does not.
+ */
 export function runningAgents(hosts: readonly HostInfo[]): number {
   let running = 0;
   for (const host of hosts) {
-    for (const card of chatLists().get(host.id)?.data?.sessions ?? []) if (card.run_state === 'working' || card.pending_work) running += 1;
+    const cards = hubs().peek(host.id)?.state.cards;
+    if (!cards) continue;
+    for (const card of Object.values(cards)) {
+      if (isInternalSession(card.session_id)) continue;
+      if (liveActivity(card, sessions().peek(host.id, card.session_id)?.state).activity === 'working') running += 1;
+    }
   }
   return running;
 }
 
-/** Hosts whose last session list failed and that never answered. */
+/** Hosts whose session list failed and that never answered. */
 export function offlineHosts(hosts: readonly HostInfo[]): number {
   return hosts.filter((h) => {
-    const e = chatLists().get(h.id);
-    return !!e?.error && !e.data;
+    const hub = hubs().peek(h.id)?.state;
+    return !!hub && hub.error !== undefined && !hub.loaded;
   }).length;
 }
 

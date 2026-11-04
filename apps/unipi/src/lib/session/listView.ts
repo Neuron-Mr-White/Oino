@@ -116,7 +116,7 @@ export const isAutomation = (card: SessionCard): boolean => card.source === 'cro
 /** The facts a filter needs that the card alone does not carry (live state, cron outcome). */
 export type CardFacts = {
   /** Live row state (`liveRowState`). */
-  state: 'needs-you' | 'working' | 'crashed' | 'taken-over' | 'idle';
+  state: 'needs-you' | 'working' | 'crashed' | 'taken-over' | 'background' | 'idle';
   /** A cron run's outcome (`cron_runs` status). */
   cronStatus?: string;
   /** The open session's model, when it is open. */

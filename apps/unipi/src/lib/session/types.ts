@@ -75,7 +75,10 @@ export type RunInfo = {
   running: boolean;
   /** When the current run started (epoch ms); the "Working for" clock. */
   startedAt?: number;
+  /** Work the idle session waits on that will wake it (`waiting`; bg task with a wake, subagents, graph nodes). */
   waitingOn?: string[];
+  /** Quiet background work (a bg task without wake) — the "background" marker. */
+  backgroundOn?: string[];
   retry?: { attempt: number; maxAttempts: number; delayMs: number; error: string };
 };
 

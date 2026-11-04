@@ -129,6 +129,8 @@
 .srow-glyph[data-state='needs-you'] { color: var(--color-shell); }
 .srow-glyph[data-state='crashed'], .srow-glyph[data-state='taken-over'], .srow-glyph[data-state='failed'] { color: var(--color-wm-red); }
 .srow-glyph[data-state='timed-out'] { color: var(--color-wm-yellow); }
+/* [status] the quiet background marker (a bg task without wake): dim, static — not "Working". */
+.srow-glyph[data-state='background'] { color: var(--color-text-dim); opacity: 0.8; }
 .srow-spin { animation: srow-rotate 1.1s linear infinite; }
 @keyframes srow-rotate { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .srow-spin { animation: none; } }
@@ -200,7 +202,16 @@
 .srow-chip svg { flex: none; }
 .srow-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .srow-cwd, .srow-model { flex: 0 1 auto; }
-.srow-word { flex: none; font-weight: 600; color: var(--color-text-dim); }
+.srow-word {
+  /* O-01: the state word takes the age's place and reads like it — same size and weight as the
+   * other row meta; the colour (and the gutter icon) carries the state. */
+  flex: none;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: inherit;
+  color: var(--color-text-dim);
+}
+.srow[data-compact] .srow-word { line-height: 18px; }
 .srow-word[data-state='working'] { color: var(--color-claw); }
 .srow-word[data-state='needs-you'] { color: var(--color-shell); }
 .srow-word[data-state='crashed'], .srow-word[data-state='taken-over'], .srow-word[data-state='failed'] { color: var(--color-wm-red); }
@@ -543,7 +554,7 @@ html:not([data-shell='desktop']) .srow-confirm-yes { min-height: 40px; padding: 
 .sb-sessions[data-variant='page'] .srow-time { font-size: 12px; line-height: 16px; }
 .sb-sessions[data-variant='page'] .srow-sub { height: 16px; gap: 8px; font-size: 12.5px; line-height: 16px; }
 .sb-sessions[data-variant='page'] .srow-chips { gap: 8px; }
-.sb-sessions[data-variant='page'] .srow-word { font-size: 12.5px; }
+.sb-sessions[data-variant='page'] .srow-word { font-size: 12px; line-height: 16px; }
 .sb-sessions[data-variant='page'] .srow-chip { height: 16px; font-size: 12px; line-height: 16px; }
 .sb-sessions[data-variant='page'] .srow[data-compact] { min-height: 44px; padding-block: 6px; }
 .sb-sessions[data-variant='page'] .srow[data-compact] .srow-time { line-height: 20px; }
