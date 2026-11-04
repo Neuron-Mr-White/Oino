@@ -387,6 +387,12 @@ impl Agent {
         lock(&self.inner.state).messages.clone()
     }
 
+    /// Transcript length, without copying the transcript.
+    #[must_use]
+    pub fn message_count(&self) -> usize {
+        lock(&self.inner.state).messages.len()
+    }
+
     /// Replaces the transcript (copy-on-set).
     pub fn set_messages(&self, messages: Vec<AgentMessage>) {
         lock(&self.inner.state).messages = messages;

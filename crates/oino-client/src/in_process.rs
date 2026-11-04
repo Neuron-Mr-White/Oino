@@ -247,8 +247,10 @@ impl Shared {
             cwd: Some(session.work_cwd().display().to_string()),
             session_name: session.session_name(),
             auto_compaction_enabled,
-            message_count: session.messages().len(),
+            message_count: session.message_count(),
             pending_message_count: session.pending_message_count(),
+            waiting_on: session.waiting_on(),
+            background_on: session.background_on(),
         }
     }
 

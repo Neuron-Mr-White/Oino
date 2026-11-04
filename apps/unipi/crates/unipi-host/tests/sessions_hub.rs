@@ -57,6 +57,14 @@ struct Fixture {
 /// A host hub whose sessions are answered by a faux provider and can call `boom`, which
 /// panics inside the tool body.
 fn hub_with(responses: Vec<FauxResponse>) -> Fixture {
+    hub_with_extensions(responses, Vec::new())
+}
+
+/// [`hub_with`] plus `extra` extensions (a wait source, …).
+fn hub_with_extensions(
+    responses: Vec<FauxResponse>,
+    extra: Vec<Arc<dyn ExtensionInstance>>,
+) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let agent_dir = dir.path().join("agent");
     let sessions = dir.path().join("sessions");
@@ -76,10 +84,12 @@ fn hub_with(responses: Vec<FauxResponse>) -> Fixture {
         }
         panic!("tool body exploded");
     });
-    let loader = StaticLoader(vec![
+    let mut extensions = vec![
         Arc::new(FauxComponent(Arc::clone(&provider))) as Arc<dyn ExtensionInstance>,
         Arc::new(boom) as Arc<dyn ExtensionInstance>,
-    ]);
+    ];
+    extensions.extend(extra);
+    let loader = StaticLoader(extensions);
     let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
     models.set_runtime_api_key("faux", "test-key");
     let hub = SessionHub::create(HostHubOptions {
@@ -468,4 +478,72 @@ async fn open_before_first_write_wakes_the_created_session() {
         .expect("the record exists after the first entry");
     assert!(Path::new(&card.file).is_file(), "{}", card.file.display());
     assert_eq!(card.cwd, fixture._dir.path().display().to_string());
+}
+
+/// Waits (bounded) for a card matching `want` (state and the between-runs facts).
+async fn wait_card_where(
+    hub: &SessionHub,
+    session_id: &str,
+    what: &str,
+    want: impl Fn(&SessionCard) -> bool,
+) -> SessionCard {
+    let deadline = Instant::now() + Duration::from_secs(40);
+    loop {
+        if let Some(card) = hub.card(session_id).await.unwrap() {
+            if want(&card) {
+                return card;
+            }
+            assert!(Instant::now() < deadline, "{what}: last card {card:?}");
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// [status] owner 2026-11-04 "two of them are actually working": a parent whose run ended
+/// while work that will wake it runs on (background subagents, graph nodes, a waking bg task
+/// — core `waiting`) stays `Working` with `pending_work`; quiet background work (no wake) is
+/// an idle card with `background_work`; both clear when the work ends.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn waiting_parent_stays_working_and_quiet_background_is_a_marker() {
+    let wait = Arc::new(std::sync::Mutex::new(Some("2 subagents working".to_owned())));
+    let source = {
+        let wait = Arc::clone(&wait);
+        FakeExtension::new("waiter", Registration::default())
+            .on_wait(move |_| wait.lock().unwrap().clone())
+    };
+    let fixture = hub_with_extensions(
+        vec![FauxResponse::Text("started the graph".into())],
+        vec![Arc::new(source) as Arc<dyn ExtensionInstance>],
+    );
+    let session = create(&fixture.hub).await;
+    let id = session.session_id();
+    prompt(&session, "run the graph").await;
+    assert_eq!(wait_text(&session).await, "started the graph");
+    wait_idle(&session).await;
+    let card = wait_card_where(&fixture.hub, &id, "waiting parent", |c| {
+        c.pending_work.as_deref() == Some("2 subagents working")
+    })
+    .await;
+    assert!(card.state.is_working(), "{card:?}");
+    // Still working well after the supervisor's idle window (3 x 1 s).
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let card = fixture.hub.card(&id).await.unwrap().unwrap();
+    assert!(card.state.is_working(), "{card:?}");
+    assert_eq!(card.background_work, None);
+
+    // The subagents finished; a bg task without wake still runs: idle + quiet marker.
+    *wait.lock().unwrap() = Some("quiet: bg: dev server".to_owned());
+    let card = wait_card_where(&fixture.hub, &id, "quiet background", |c| {
+        c.state == HubState::Idle && c.background_work.as_deref() == Some("bg: dev server")
+    })
+    .await;
+    assert_eq!(card.pending_work, None);
+
+    // The bg task ended: plain idle.
+    *wait.lock().unwrap() = None;
+    let card = wait_card_where(&fixture.hub, &id, "all quiet", |c| {
+        c.state == HubState::Idle && c.background_work.is_none() && c.pending_work.is_none()
+    })
+    .await;
+    assert_eq!(card.state, HubState::Idle);
 }

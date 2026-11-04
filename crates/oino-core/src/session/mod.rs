@@ -802,6 +802,12 @@ impl AgentSession {
         self.inner.agent.messages()
     }
 
+    /// Transcript length, without copying the transcript (status probes poll it).
+    #[must_use]
+    pub fn message_count(&self) -> usize {
+        self.inner.agent.message_count()
+    }
+
     /// Session file, when persisted.
     #[must_use]
     pub fn session_file(&self) -> Option<PathBuf> {
@@ -1110,6 +1116,7 @@ impl AgentSession {
         self.inner.hub.publish(OinoEvent::RunState {
             state: RunState::Idle,
             waiting_on: None,
+            background_on: None,
         });
         self.set_idle_if_idle();
     }
@@ -1165,7 +1172,11 @@ impl AgentSession {
             cancels.auto_compaction = None;
             cancels.branch_summary = None;
         }
-        lock(&self.inner.arbiter).waiting_on.clear();
+        {
+            let mut arbiter = lock(&self.inner.arbiter);
+            arbiter.waiting_on.clear();
+            arbiter.background_on.clear();
+        }
         self.inner.agent.recover_orphaned_run();
     }
 

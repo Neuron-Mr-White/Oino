@@ -12,7 +12,7 @@
 //! | `<background-task-notification>` (followUp, wakes when `triggerOnCompletion`) | service `tasks.notification` renders the text the host delivers |
 //! | launch/completion cards | renderers for `bg_run`, `bg_logs`, `bg_kill` and the notification message |
 //! | work-tray "Background tasks" tab | `work-tray.tab` / `work-tray.action` services ([`pane`]) |
-//! | arbiter wait source `bg: <name> +N more` | `wait-source` export ([`text::pending_wake_reason`]) |
+//! | arbiter wait source `bg: <name> +N more` (`quiet: bg: …` for tasks without wake) | `wait-source` export ([`text::wait_reason`]) |
 //! | shared registry (`Symbol.for`) | sticky topic `unipi:bg:tasks` `{tasks: [BgTaskSnapshot]}` |
 //! | `pi.events` request/response/terminal API v1 | bus topics ([`api`]) |
 //! | settings `background-tasks` (master toggle) | namespace ([`settings`]); `enabled: false` registers nothing else |
@@ -1129,7 +1129,7 @@ impl Extension for Bg {
             if cx.is_child() {
                 return None;
             }
-            text::pending_wake_reason(&ext.snapshots(&cx))
+            text::wait_reason(&ext.snapshots(&cx))
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             // A nested session starting neither restores owner state nor clears the

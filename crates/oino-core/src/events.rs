@@ -348,6 +348,32 @@ pub enum ModelChangeSource {
     Extension,
 }
 
+/// A wait reason starting with this prefix is quiet: the work (a background task started
+/// without wake/notify) runs on but never wakes the session, so it does not hold the
+/// session `waiting`. Frontends show it as a quiet "background" marker
+/// (`background_on` of [`OinoEvent::RunState`], `get_state.backgroundOn`).
+pub const QUIET_WAIT_PREFIX: &str = "quiet:";
+
+/// Splits wait-source reasons into blocking (`waiting`) and quiet (background) ones; quiet
+/// reasons lose their [`QUIET_WAIT_PREFIX`] (and the space after it).
+#[must_use]
+pub fn split_wait_reasons(reasons: Vec<String>) -> (Vec<String>, Vec<String>) {
+    let mut blocking = Vec::new();
+    let mut quiet = Vec::new();
+    for reason in reasons {
+        match reason.strip_prefix(QUIET_WAIT_PREFIX) {
+            Some(rest) => {
+                let rest = rest.trim();
+                if !rest.is_empty() {
+                    quiet.push(rest.to_owned());
+                }
+            }
+            None => blocking.push(reason),
+        }
+    }
+    (blocking, quiet)
+}
+
 /// Coarse run state for frontends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -414,6 +440,10 @@ pub enum OinoEvent {
         /// Wait reasons for `waiting`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         waiting_on: Option<Vec<String>>,
+        /// Quiet background work (wait reasons with [`QUIET_WAIT_PREFIX`], prefix
+        /// stripped): it runs on but will not wake the session. Never holds it `waiting`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        background_on: Option<Vec<String>>,
     },
     /// The active tools changed.
     ToolsChanged {
@@ -694,6 +724,28 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&evicted).unwrap(),
             json!({"type":"session_evicted","sessionId":"s1"})
+        );
+    }
+
+    #[test]
+    fn quiet_wait_reasons_split_off_and_the_run_state_event_carries_them() {
+        let (blocking, quiet) = split_wait_reasons(vec![
+            "2 subagents working".into(),
+            "quiet: bg: dev server".into(),
+            "quiet:".into(),
+            "bg: build".into(),
+        ]);
+        assert_eq!(blocking, ["2 subagents working", "bg: build"]);
+        assert_eq!(quiet, ["bg: dev server"]);
+        let event: ClientEvent = OinoEvent::RunState {
+            state: RunState::Idle,
+            waiting_on: None,
+            background_on: Some(quiet),
+        }
+        .into();
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            json!({"type":"run_state","state":"idle","backgroundOn":["bg: dev server"]})
         );
     }
 }

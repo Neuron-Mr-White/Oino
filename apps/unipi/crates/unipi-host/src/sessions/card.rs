@@ -92,6 +92,13 @@ pub struct SessionCard {
     /// Last activity the host knows (epoch ms; the row's relative time).
     #[serde(default)]
     pub last_activity: u64,
+    /// Work the session waits on between runs and that will wake it (background tasks
+    /// with a wake, background subagents, graph nodes): the card stays `Working`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_work: Option<String>,
+    /// Quiet background work (a background task without wake) on an idle session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_work: Option<String>,
 }
 
 impl SessionCard {
@@ -191,6 +198,8 @@ mod tests {
             cron_job_name: None,
             changes: None,
             last_activity: updated_at,
+            pending_work: None,
+            background_work: None,
         }
     }
 

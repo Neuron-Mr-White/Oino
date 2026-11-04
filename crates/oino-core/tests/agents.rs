@@ -567,6 +567,74 @@ async fn arbiter_wait_sources_hold_the_session_waiting() {
     assert_eq!(session.run_state(), RunState::Idle);
 }
 
+/// [status] A quiet wait reason (`quiet:` — a background task without wake) never holds the
+/// session `waiting` and never blocks the nudge; it is reported as `backgroundOn` (get_state,
+/// GetRunState, the `run_state` event) until the work ends.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn quiet_wait_reasons_are_background_not_waiting() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = FauxProvider::new(vec![FauxResponse::Text("done".into())]);
+    let busy = Arc::new(Mutex::new(Some("quiet: bg: dev server".to_owned())));
+    let source = {
+        let busy = Arc::clone(&busy);
+        FakeExtension::new(
+            "quiet",
+            oino_core::extensions::api::Registration::default(),
+        )
+        .on_wait(move |_| busy.lock().unwrap().clone())
+    };
+    let services = services(
+        dir.path(),
+        provider,
+        vec![Arc::new(source) as Arc<dyn ExtensionInstance>],
+        JsonObject::new(),
+    )
+    .await;
+    let rt = runtime(&services, SessionSource::InMemory).await;
+    let session = rt.session();
+    let mut events = session.subscribe();
+    session
+        .prompt("start".into(), PromptOptions::default())
+        .await
+        .unwrap();
+    idle(&session).await;
+    assert_eq!(session.run_state(), RunState::Idle);
+    assert!(session.waiting_on().is_empty());
+    assert_eq!(session.background_on(), vec!["bg: dev server"]);
+    let state = services
+        .host
+        .call("quiet", &cx(&session, CallKind::Event), HostOp::GetRunState)
+        .await
+        .unwrap();
+    assert_eq!(
+        state,
+        json!({"state": "idle", "backgroundOn": ["bg: dev server"]})
+    );
+    // Announced once idle, then cleared when the work ends.
+    let mut announced = false;
+    let mut cleared = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    while !cleared && tokio::time::Instant::now() < deadline {
+        if let Ok(Some(ClientEvent::Oino(OinoEvent::RunState {
+            state,
+            background_on,
+            waiting_on,
+        }))) = tokio::time::timeout(Duration::from_secs(1), events.next()).await
+        {
+            assert_eq!(state, RunState::Idle);
+            assert!(waiting_on.is_none());
+            if background_on.as_deref() == Some(&["bg: dev server".to_owned()][..]) {
+                announced = true;
+                *busy.lock().unwrap() = None;
+            } else if announced && background_on.is_none() {
+                cleared = true;
+            }
+        }
+    }
+    assert!(announced && cleared, "announced {announced} cleared {cleared}");
+    assert!(session.background_on().is_empty());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn arbiter_is_disabled_in_children() {
     let dir = tempfile::tempdir().unwrap();

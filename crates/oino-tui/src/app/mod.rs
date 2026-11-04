@@ -748,7 +748,9 @@ impl App {
                     );
                     self.send(Tag::ContextUsage, OinoCommand::GetContextUsage);
                 }
-                OinoEvent::RunState { state, waiting_on } => {
+                OinoEvent::RunState {
+                    state, waiting_on, ..
+                } => {
                     self.session.run_state = Some(state);
                     self.session.waiting_on = waiting_on.unwrap_or_default();
                 }

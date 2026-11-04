@@ -446,6 +446,47 @@ struct State {
     supervising: HashSet<String>,
     /// Sessions with a dialog waiting for the user (the card's `needs_you`).
     needs_you: HashSet<String>,
+    /// What supervised sessions wait on between runs (the cards' `pending_work` /
+    /// `background_work`). One entry per supervised session at most: removed when its
+    /// supervisor ends.
+    activity: HashMap<String, Activity>,
+}
+
+/// The between-runs facts of one supervised session (core `get_state` `waitingOn` /
+/// `backgroundOn`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Activity {
+    /// Work that will wake the session (it stays `Working` meanwhile).
+    pending: Vec<String>,
+    /// Quiet background work (no wake).
+    background: Vec<String>,
+}
+
+/// Longest `pending_work` / `background_work` text on a card.
+const ACTIVITY_TEXT_MAX: usize = 120;
+
+impl Activity {
+    fn text(list: &[String]) -> Option<String> {
+        if list.is_empty() {
+            return None;
+        }
+        let joined = list.join(" · ");
+        Some(if joined.chars().count() > ACTIVITY_TEXT_MAX {
+            let mut cut: String = joined.chars().take(ACTIVITY_TEXT_MAX - 1).collect();
+            cut.push('…');
+            cut
+        } else {
+            joined
+        })
+    }
+
+    fn pending_text(&self) -> Option<String> {
+        Self::text(&self.pending)
+    }
+
+    fn background_text(&self) -> Option<String> {
+        Self::text(&self.background)
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -1099,6 +1140,7 @@ impl Inner {
     fn card_from(&self, state: &State, record: &CoreHubSession) -> SessionCard {
         let info = &record.info;
         let cron = self.cron.owner_of(&info.id, &info.path);
+        let activity = state.activity.get(&info.id);
         self.meta.onto(SessionCard {
             session_id: info.id.clone(),
             file: info.path.clone(),
@@ -1121,6 +1163,9 @@ impl Inner {
             cron_job_name: cron.and_then(|c| c.job_name),
             changes: None,
             last_activity: epoch_ms(info.modified),
+            // Live facts of a supervised session (a record's runtime is gone: none).
+            pending_work: activity.and_then(|a| a.pending_text()),
+            background_work: activity.and_then(|a| a.background_text()),
         })
     }
 
@@ -1174,6 +1219,8 @@ impl Inner {
             cron_job_name: None,
             changes: None,
             last_activity: now,
+            pending_work: None,
+            background_work: None,
         };
         if let Ok(Some(data)) = backend
             .send(RpcCommand::Agent(AgentCommand::GetState))
@@ -1191,7 +1238,13 @@ impl Inner {
                 }
             }
         }
-        card.state = Self::state_of(&lock(&self.state), &card.session_id, CoreHubState::Live);
+        {
+            let state = lock(&self.state);
+            card.state = Self::state_of(&state, &card.session_id, CoreHubState::Live);
+            let activity = state.activity.get(&card.session_id);
+            card.pending_work = activity.and_then(Activity::pending_text);
+            card.background_work = activity.and_then(Activity::background_text);
+        }
         self.meta.onto(card)
     }
 
@@ -1636,6 +1689,8 @@ impl Inner {
                     cron_job_name: None,
                     changes: None,
                     last_activity: updated_at,
+                    pending_work: None,
+                    background_work: None,
                 };
                 self.meta.onto(card)
             })
@@ -1693,6 +1748,8 @@ impl Inner {
             cron_job_name: None,
             changes: None,
             last_activity: epoch_ms(entry.modified),
+            pending_work: None,
+            background_work: None,
         });
         let card = self.meta.onto(card);
         self.emit(HubEvent::SessionChanged { card: card.clone() });
@@ -1930,16 +1987,44 @@ fn unique_destination(dir: &Path, name: &str) -> PathBuf {
 impl Inner {
     /// Starts the run supervisor for `backend` unless one is already running (§4.4).
     ///
-    /// The supervisor subscribes only while a run is in flight (the run already keeps the
-    /// session busy), so it never pins an idle session against core's eviction.
+    /// The supervisor subscribes only while a run is in flight or the session waits on work
+    /// that will wake it (the session is busy then anyway), so it never pins an idle session
+    /// against core's eviction. Quiet background work alone is followed without a
+    /// subscription ([`watch_background`]).
     fn ensure_supervisor(self: &Arc<Self>, backend: Arc<dyn SessionBackend>) {
         let id = backend.session_id();
-        {
+        let newly = {
             let mut state = lock(&self.state);
-            if !state.supervising.insert(id.clone()) {
+            let newly = state.supervising.insert(id.clone());
+            if !newly
+                && matches!(
+                    state.states.get(&id),
+                    Some(HubState::Crashed { .. } | HubState::TakenOver { .. })
+                )
+            {
                 return;
             }
-            state.states.insert(id.clone(), HubState::Working);
+            // A supervisor following quiet background work picks the run up on its next
+            // probe; the card says `Working` at once.
+            let was = state.states.insert(id.clone(), HubState::Working);
+            if !newly {
+                if was.as_ref().is_some_and(HubState::is_working) {
+                    return;
+                }
+                if let Some(activity) = state.activity.get_mut(&id) {
+                    activity.background.clear();
+                }
+            }
+            newly
+        };
+        if !newly {
+            let weak = Arc::downgrade(self);
+            tokio::spawn(async move {
+                if let Some(inner) = weak.upgrade() {
+                    inner.changed(&id).await;
+                }
+            });
+            return;
         }
         // Subscribe before the caller's command is sent, so the first events of the run (a
         // crash included) can never be missed between spawn and subscription.
@@ -1949,23 +2034,104 @@ impl Inner {
             if let Some(inner) = weak.upgrade() {
                 inner.changed(&id).await;
             }
-            let caught = std::panic::AssertUnwindSafe(supervise(&weak, &backend, events))
-                .catch_unwind()
-                .await;
-            let Some(inner) = weak.upgrade() else {
-                return;
-            };
-            match caught {
-                // The stream ended (evicted, taken over, closed) or the run finished.
-                Ok(final_id) => inner.finish_supervisor(&final_id, None).await,
-                // A panic in the host's own supervision is contained to that session.
-                Err(payload) => {
-                    let error = crash::panic_message(&*payload);
-                    tracing::warn!(session_id = %id, %error, "session supervisor panicked");
-                    inner.finish_supervisor(&id, Some(error)).await;
+            let mut events = Some(events);
+            let mut id = id;
+            loop {
+                let stream = events.take().unwrap_or_else(|| backend.events());
+                let caught = std::panic::AssertUnwindSafe(supervise(&weak, &backend, stream))
+                    .catch_unwind()
+                    .await;
+                let Some(inner) = weak.upgrade() else {
+                    return;
+                };
+                match caught {
+                    // Idle, but quiet background work runs on: follow it unsubscribed, and
+                    // supervise again when a run starts.
+                    Ok(end) if end.background => {
+                        id = end.session_id;
+                        inner.enter_background(&id).await;
+                        drop(inner);
+                        if watch_background(&weak, &backend, &id).await {
+                            if let Some(inner) = weak.upgrade() {
+                                inner.resume_working(&id).await;
+                            }
+                            continue;
+                        }
+                        if let Some(inner) = weak.upgrade() {
+                            inner.finish_supervisor(&id, None).await;
+                        }
+                    }
+                    // The stream ended (evicted, taken over, closed) or the run finished.
+                    Ok(end) => inner.finish_supervisor(&end.session_id, None).await,
+                    // A panic in the host's own supervision is contained to that session.
+                    Err(payload) => {
+                        let error = crash::panic_message(&*payload);
+                        tracing::warn!(session_id = %id, %error, "session supervisor panicked");
+                        inner.finish_supervisor(&id, Some(error)).await;
+                    }
                 }
+                return;
             }
         });
+    }
+
+    /// The supervisor saw new between-runs facts: update the card when they changed.
+    async fn set_activity(&self, session_id: &str, activity: Activity) {
+        let changed = {
+            let mut state = lock(&self.state);
+            if !state.supervising.contains(session_id) {
+                return;
+            }
+            let old = state.activity.get(session_id);
+            if old.map_or(activity == Activity::default(), |old| *old == activity) {
+                false
+            } else {
+                state.activity.insert(session_id.to_owned(), activity);
+                true
+            }
+        };
+        if changed {
+            self.changed(session_id).await;
+        }
+    }
+
+    /// A run ended with only quiet background work left: the card goes idle (with its
+    /// `background_work`), and an unfocused session is `unread` (Z-86).
+    async fn enter_background(&self, session_id: &str) {
+        let ended_run = {
+            let mut state = lock(&self.state);
+            let working = matches!(state.states.get(session_id), Some(HubState::Working));
+            if working {
+                state.states.remove(session_id);
+            }
+            if let Some(activity) = state.activity.get_mut(session_id) {
+                activity.pending.clear();
+            }
+            working
+        };
+        if ended_run {
+            self.mark_unread_unfocused(session_id);
+        }
+        self.changed(session_id).await;
+    }
+
+    /// A run started on a session followed for its background work: `Working` again.
+    async fn resume_working(&self, session_id: &str) {
+        {
+            let mut state = lock(&self.state);
+            if !matches!(
+                state.states.get(session_id),
+                Some(HubState::Crashed { .. } | HubState::TakenOver { .. })
+            ) {
+                state
+                    .states
+                    .insert(session_id.to_owned(), HubState::Working);
+            }
+            if let Some(activity) = state.activity.get_mut(session_id) {
+                activity.background.clear();
+            }
+        }
+        self.changed(session_id).await;
     }
 
     /// Records a host state and updates the card (§4.4: `crashed`/`taken_over` notice).
@@ -2007,6 +2173,9 @@ impl Inner {
         if state.supervising.remove(old) {
             state.supervising.insert(new.to_owned());
         }
+        if let Some(activity) = state.activity.remove(old) {
+            state.activity.insert(new.to_owned(), activity);
+        }
     }
 
     /// Ends the supervision of `session_id`: idle again, or `crashed` when the supervisor
@@ -2019,6 +2188,7 @@ impl Inner {
             let mut state = lock(&self.state);
             ended_run = matches!(state.states.get(session_id), Some(HubState::Working));
             state.supervising.remove(session_id);
+            state.activity.remove(session_id);
             if let Some(error) = panic {
                 state
                     .states
@@ -2037,17 +2207,31 @@ impl Inner {
     }
 }
 
-/// Follows one running session until it is idle, crashes, is evicted or is taken over; the
-/// returned id is the session's id at that point (it may have been re-keyed by a fork).
+/// How [`supervise`] ended.
+struct SuperviseEnd {
+    /// The session's id at that point (it may have been re-keyed by a fork).
+    session_id: String,
+    /// Idle, with quiet background work still running ([`watch_background`] follows it).
+    background: bool,
+}
+
+/// Follows one running session until it is idle (nothing it waits on left), crashes, is
+/// evicted or is taken over. While the session waits on work that will wake it (core
+/// `waiting`: background tasks with a wake, background subagents, graph nodes) it stays
+/// supervised and its card `Working`, with the reasons as `pending_work`.
 async fn supervise(
     hub: &Weak<Inner>,
     backend: &Arc<dyn SessionBackend>,
     mut events: futures_util::stream::BoxStream<'static, ClientEvent>,
-) -> String {
+) -> SuperviseEnd {
     let mut session_id = backend.session_id();
     let mut tick = tokio::time::interval(SUPERVISE_POLL);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut idle_polls = 0;
+    let end = |session_id: String, background: bool| SuperviseEnd {
+        session_id,
+        background,
+    };
     loop {
         tokio::select! {
             event = events.next() => {
@@ -2071,21 +2255,40 @@ async fn supervise(
                             hub.mark_taken_over(&session_id, &takeover_from(&by))
                                 .await;
                         }
-                        return session_id;
+                        return end(session_id, false);
+                    }
+                    // The waiting reasons changed (core publishes every change): the card
+                    // follows at once instead of on the next probe.
+                    Some(ClientEvent::Oino(OinoEvent::RunState {
+                        waiting_on,
+                        background_on,
+                        ..
+                    })) => {
+                        if let Some(hub) = hub.upgrade() {
+                            let activity = Activity {
+                                pending: waiting_on.unwrap_or_default(),
+                                background: background_on.unwrap_or_default(),
+                            };
+                            hub.set_activity(&session_id, activity).await;
+                        }
                     }
                     Some(ClientEvent::Oino(OinoEvent::SessionEvicted { .. })) | None => {
-                        return session_id;
+                        return end(session_id, false);
                     }
                     Some(_) => {}
                 }
             }
             _ = tick.tick() => {
-                if is_busy(backend).await {
+                let probe = probe(backend).await;
+                if let Some(hub) = hub.upgrade() {
+                    hub.set_activity(&session_id, probe.activity()).await;
+                }
+                if probe.busy() {
                     idle_polls = 0;
                 } else {
                     idle_polls += 1;
                     if idle_polls >= SUPERVISE_IDLE_POLLS {
-                        return session_id;
+                        return end(session_id, !probe.background.is_empty());
                     }
                 }
             }
@@ -2093,16 +2296,94 @@ async fn supervise(
     }
 }
 
-/// Is a run (or compaction) in flight in `backend`? A disposed/evicted backend is not busy.
-async fn is_busy(backend: &Arc<dyn SessionBackend>) -> bool {
+/// How often [`watch_background`] re-asks a session with only quiet background work.
+const BACKGROUND_POLL: Duration = Duration::from_secs(5);
+
+/// Follows an idle session's quiet background work without subscribing (the session stays
+/// evictable; `get_state` does not touch its idle clock). `true` when a run started (or
+/// the session waits again): supervise it; `false` when the work ended or the session
+/// went away.
+async fn watch_background(
+    hub: &Weak<Inner>,
+    backend: &Arc<dyn SessionBackend>,
+    session_id: &str,
+) -> bool {
+    loop {
+        tokio::time::sleep(BACKGROUND_POLL).await;
+        let probe = probe(backend).await;
+        if probe.gone {
+            return false;
+        }
+        if probe.busy() {
+            return true;
+        }
+        if probe.background.is_empty() {
+            return false;
+        }
+        let Some(inner) = hub.upgrade() else {
+            return false;
+        };
+        inner.set_activity(session_id, probe.activity()).await;
+    }
+}
+
+/// One `get_state` probe of a supervised session.
+#[derive(Default)]
+struct Probe {
+    /// A run (or compaction) is in flight.
+    running: bool,
+    /// Work that will wake the session (core `waiting`).
+    waiting: Vec<String>,
+    /// Quiet background work.
+    background: Vec<String>,
+    /// The backend is closed (evicted, disposed) or answered garbage.
+    gone: bool,
+}
+
+impl Probe {
+    /// Running or waiting on work that will wake it: keep supervising.
+    fn busy(&self) -> bool {
+        self.running || !self.waiting.is_empty()
+    }
+
+    /// The card facts: a running session reports neither (`Working` says it all).
+    fn activity(&self) -> Activity {
+        if self.running {
+            return Activity::default();
+        }
+        Activity {
+            pending: self.waiting.clone(),
+            background: if self.waiting.is_empty() {
+                self.background.clone()
+            } else {
+                Vec::new()
+            },
+        }
+    }
+}
+
+/// Asks `backend` for its run facts. A disposed/evicted backend is gone (not busy).
+async fn probe(backend: &Arc<dyn SessionBackend>) -> Probe {
     match backend
         .send(RpcCommand::Agent(AgentCommand::GetState))
         .await
     {
-        Ok(Some(data)) => serde_json::from_value::<RpcSessionState>(data)
-            .map(|state| state.is_streaming || state.is_compacting)
-            .unwrap_or(false),
-        _ => false,
+        Ok(Some(data)) => match serde_json::from_value::<RpcSessionState>(data) {
+            Ok(state) => Probe {
+                running: state.is_streaming || state.is_compacting,
+                waiting: state.waiting_on,
+                background: state.background_on,
+                gone: false,
+            },
+            Err(_) => Probe {
+                gone: true,
+                ..Probe::default()
+            },
+        },
+        _ => Probe {
+            gone: true,
+            ..Probe::default()
+        },
     }
 }
 
@@ -2386,6 +2667,8 @@ impl Inner {
             cron_job_name: cron.and_then(|c| c.job_name),
             changes: None,
             last_activity: modified,
+            pending_work: None,
+            background_work: None,
         }))
     }
 
@@ -2430,6 +2713,8 @@ impl Inner {
                     cron_job_name: None,
                     changes: None,
                     last_activity: modified,
+                    pending_work: None,
+                    background_work: None,
                 });
                 rows.push(QueryRow {
                     card,

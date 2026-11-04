@@ -257,6 +257,14 @@ pub struct SessionCard {
     /// Last activity the host knows (epoch ms); the row's relative time (Z-10).
     #[serde(default)]
     pub last_activity: u64,
+    /// Work the session waits on between runs that will wake it (background tasks with a
+    /// wake, background subagents, graph nodes); `run_state` stays `working` meanwhile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_work: Option<String>,
+    /// Quiet background work (a background task without wake) on an idle session: the
+    /// list's "background" marker, not "Working".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_work: Option<String>,
 }
 
 /// The patch of `session_meta_set` (app spec §3.14): only the fields present change.
@@ -769,6 +777,8 @@ mod tests {
             cron_job_name: None,
             changes: Some(CardChanges { add: 12, del: 4 }),
             last_activity: 1_700_000_000_000,
+            pending_work: Some("2 subagents working".into()),
+            background_work: None,
         };
         let changed = HubEvent::SessionChanged { card };
         let value = serde_json::to_value(&changed).unwrap();
@@ -778,6 +788,8 @@ mod tests {
         assert_eq!(value["card"]["pinned"], true);
         assert_eq!(value["card"]["title_locked"], true);
         assert_eq!(value["card"]["changes"], json!({"add": 12, "del": 4}));
+        assert_eq!(value["card"]["pending_work"], "2 subagents working");
+        assert!(value["card"].get("background_work").is_none());
         assert_eq!(value["card"]["last_activity"], 1_700_000_000_000u64);
         assert!(value["card"].get("needs_you").is_none(), "false is omitted");
         assert!(value["card"].get("unread").is_none(), "false is omitted");

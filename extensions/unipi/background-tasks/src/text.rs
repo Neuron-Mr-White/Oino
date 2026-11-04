@@ -457,16 +457,43 @@ pub fn logs_text(content: &str, total: u64, tail: bool, output_path: &str) -> (S
     }
 }
 
-/// unipi `pendingWakeReason`: `bg: <first> [+N more]` over running tasks that wake the agent.
+/// unipi `pendingWakeReason`: `bg: <first> [+N more]` over running tasks that wake the agent
+/// (a terminal notification AND an automatic follow-up turn; a trigger without the
+/// notification has no effect, see [`completion_delivery_guidance`]).
 #[must_use]
 pub fn pending_wake_reason(tasks: &[Snapshot]) -> Option<String> {
-    let wake: Vec<&Snapshot> = tasks
+    reason(tasks, true)
+}
+
+/// Quiet background work: `bg: <first> [+N more]` over running tasks that will NOT wake the
+/// agent. The arbiter never waits on it; frontends show a quiet "background" marker.
+#[must_use]
+pub fn pending_quiet_reason(tasks: &[Snapshot]) -> Option<String> {
+    reason(tasks, false)
+}
+
+/// The wait-source answer: the wake reason when a waking task runs, else the quiet one
+/// (prefixed `quiet:`, the core convention for non-blocking reasons), else none.
+#[must_use]
+pub fn wait_reason(tasks: &[Snapshot]) -> Option<String> {
+    pending_wake_reason(tasks)
+        .or_else(|| pending_quiet_reason(tasks).map(|quiet| format!("{QUIET_WAIT_PREFIX} {quiet}")))
+}
+
+/// Core's quiet wait-reason prefix (`oino_core::events::QUIET_WAIT_PREFIX`).
+pub const QUIET_WAIT_PREFIX: &str = "quiet:";
+
+fn reason(tasks: &[Snapshot], wake: bool) -> Option<String> {
+    let matching: Vec<&Snapshot> = tasks
         .iter()
-        .filter(|t| t.status == Status::Running && t.trigger_on_completion)
+        .filter(|t| {
+            t.status == Status::Running
+                && (t.notify_on_completion && t.trigger_on_completion) == wake
+        })
         .collect();
-    let first = wake.first()?;
-    let more = if wake.len() > 1 {
-        format!(" +{} more", wake.len() - 1)
+    let first = matching.first()?;
+    let more = if matching.len() > 1 {
+        format!(" +{} more", matching.len() - 1)
     } else {
         String::new()
     };
@@ -538,6 +565,42 @@ pub fn tray_plural(n: usize, word: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wait_reason_wakes_only_with_notify_and_trigger_else_quiet() {
+        let task = |name: &str, notify: bool, trigger: bool, running: bool| Snapshot {
+            name: Some(name.into()),
+            command: "sleep 9".into(),
+            status: if running {
+                Status::Running
+            } else {
+                Status::Completed
+            },
+            notify_on_completion: notify,
+            trigger_on_completion: trigger,
+            ..Snapshot::default()
+        };
+        assert_eq!(wait_reason(&[]), None);
+        assert_eq!(wait_reason(&[task("done", true, true, false)]), None);
+        // Wake work wins over quiet work.
+        assert_eq!(
+            wait_reason(&[
+                task("dev", false, false, true),
+                task("build", true, true, true)
+            ])
+            .as_deref(),
+            Some("bg: build")
+        );
+        // Without the notification the trigger has no effect: quiet.
+        assert_eq!(
+            wait_reason(&[
+                task("dev", false, true, true),
+                task("srv", true, false, true)
+            ])
+            .as_deref(),
+            Some("quiet: bg: dev +1 more")
+        );
+    }
 
     #[test]
     fn parses_bg_names_aliases_quotes_and_empty_commands() {

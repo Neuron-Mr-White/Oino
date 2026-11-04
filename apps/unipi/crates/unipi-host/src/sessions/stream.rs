@@ -517,8 +517,10 @@ async fn is_busy(backend: &Arc<dyn SessionBackend>) -> bool {
         .send(RpcCommand::Agent(AgentCommand::GetState))
         .await
     {
+        // Waiting on work that will wake the session counts: the woken run's dialogs and
+        // settle notices must still reach the card and the phone.
         Ok(Some(data)) => serde_json::from_value::<RpcSessionState>(data)
-            .map(|state| state.is_streaming || state.is_compacting)
+            .map(|state| state.is_streaming || state.is_compacting || !state.waiting_on.is_empty())
             .unwrap_or(false),
         _ => false,
     }
@@ -634,6 +636,8 @@ fn wire_card(card: &HostCard) -> SessionCard {
         cron_job_name: card.cron_job_name.clone(),
         changes: card.changes,
         last_activity: card.last_activity,
+        pending_work: card.pending_work.clone(),
+        background_work: card.background_work.clone(),
     }
 }
 

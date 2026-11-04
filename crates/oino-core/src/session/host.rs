@@ -537,6 +537,10 @@ impl AgentSession {
                 if !waiting.is_empty() {
                     value["waitingOn"] = json!(waiting);
                 }
+                let background = self.background_on();
+                if !background.is_empty() {
+                    value["backgroundOn"] = json!(background);
+                }
                 Ok(value)
             }
             HostOp::Shutdown => {

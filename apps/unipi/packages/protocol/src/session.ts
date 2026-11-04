@@ -98,6 +98,11 @@ export const SessionCardSchema = z
     changes: CardChangesSchema.optional(),
     /** Last activity the host knows (epoch ms); the row's relative time. */
     last_activity: z.number().optional(),
+    /** Work the session waits on between runs that will wake it (bg task with a wake, background
+     *  subagents, graph nodes); `run_state` stays `working` meanwhile. */
+    pending_work: z.string().optional(),
+    /** Quiet background work (a bg task without wake) on an idle session: a quiet marker, not "Working". */
+    background_work: z.string().optional(),
   })
   .passthrough();
 export type SessionCard = z.infer<typeof SessionCardSchema>;

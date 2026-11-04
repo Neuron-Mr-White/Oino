@@ -11,7 +11,7 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use super::{ActivityOutcome, AgentSession, Inner, IsolatedTask, lock};
-use crate::events::{OinoEvent, RunState};
+use crate::events::{OinoEvent, RunState, split_wait_reasons};
 
 /// Which boundary is being built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -333,11 +333,14 @@ impl AgentSession {
             return false;
         }
         let runner = self.runner();
-        let reasons = runner.arbiter_wait_reasons().await;
+        let (reasons, quiet) = split_wait_reasons(runner.arbiter_wait_reasons().await);
         if !reasons.is_empty() {
-            self.set_waiting(reasons);
+            self.set_waiting(reasons, quiet);
             return false;
         }
+        // Quiet background work never holds the run; it is announced once the session
+        // settled (the poll's first tick), so no `idle` is published mid-run.
+        self.set_background(quiet);
         let Some(nudge) = runner.arbiter_nudge().await else {
             return false;
         };
@@ -367,15 +370,25 @@ impl AgentSession {
         lock(&self.inner.arbiter).waiting_on.clone()
     }
 
-    fn set_waiting(&self, reasons: Vec<String>) {
+    /// Quiet background work reported at the last settle and kept fresh while idle (wait
+    /// reasons with [`crate::events::QUIET_WAIT_PREFIX`], prefix stripped; empty when none).
+    #[must_use]
+    pub fn background_on(&self) -> Vec<String> {
+        lock(&self.inner.arbiter).background_on.clone()
+    }
+
+    fn set_waiting(&self, reasons: Vec<String>, quiet: Vec<String>) {
         let start_poll = {
             let mut state = lock(&self.inner.arbiter);
             state.waiting_on.clone_from(&reasons);
+            state.background_on.clone_from(&quiet);
+            state.unannounced = false;
             !std::mem::replace(&mut state.polling, true)
         };
         self.inner.hub.publish(OinoEvent::RunState {
             state: RunState::Waiting,
             waiting_on: Some(reasons),
+            background_on: non_empty(quiet),
         });
         if start_poll {
             let inner = Arc::downgrade(&self.inner);
@@ -383,62 +396,121 @@ impl AgentSession {
         }
     }
 
-    /// Leaves `waiting` (a run started or the wait sources went quiet).
-    pub(crate) fn clear_waiting(&self, next: RunState) {
-        let was_waiting = {
+    /// Records quiet background work at a settle that does not wait; the poll announces it
+    /// (and keeps it fresh) once the session is idle.
+    fn set_background(&self, quiet: Vec<String>) {
+        if quiet.is_empty() {
+            return;
+        }
+        let start_poll = {
             let mut state = lock(&self.inner.arbiter);
-            !std::mem::take(&mut state.waiting_on).is_empty()
+            state.background_on = quiet;
+            state.unannounced = true;
+            !std::mem::replace(&mut state.polling, true)
         };
-        if was_waiting {
+        if start_poll {
+            let inner = Arc::downgrade(&self.inner);
+            self.spawn_isolated(IsolatedTask::ArbiterPoll, poll_wait_sources(inner));
+        }
+    }
+
+    /// Leaves `waiting` (a run started or the wait sources went quiet). A run starting
+    /// drops the background marker too: the next settle reports it afresh.
+    pub(crate) fn clear_waiting(&self, next: RunState) {
+        let (was_waiting, had_background) = {
+            let mut state = lock(&self.inner.arbiter);
+            let waiting = !std::mem::take(&mut state.waiting_on).is_empty();
+            if next != RunState::Idle {
+                state.unannounced = false;
+            }
+            let background =
+                next != RunState::Idle && !std::mem::take(&mut state.background_on).is_empty();
+            (waiting, background)
+        };
+        if was_waiting || had_background {
+            let background_on = if next == RunState::Idle {
+                non_empty(self.background_on())
+            } else {
+                None
+            };
             self.inner.hub.publish(OinoEvent::RunState {
                 state: next,
                 waiting_on: None,
+                background_on,
             });
         }
     }
+}
+
+fn non_empty(list: Vec<String>) -> Option<Vec<String>> {
+    (!list.is_empty()).then_some(list)
 }
 
 /// Arbiter bookkeeping of a session.
 #[derive(Debug, Default)]
 pub(crate) struct ArbiterState {
     pub(crate) waiting_on: Vec<String>,
+    /// Quiet background work ([`AgentSession::background_on`]).
+    pub(crate) background_on: Vec<String>,
+    /// `background_on` was recorded at a settle and not published yet.
+    unannounced: bool,
     polling: bool,
 }
 
 /// How often wait sources are re-asked while the session waits.
 const WAIT_POLL: Duration = Duration::from_secs(2);
 
-/// Re-asks the wait sources while the session is idle and waiting; leaves `waiting` when
-/// they report nothing.
+/// How often they are re-asked while only quiet background work runs (nothing will wake
+/// the session; the marker may lag a little).
+const QUIET_POLL: Duration = Duration::from_secs(5);
+
+/// Re-asks the wait sources while the session is idle and waiting (or has quiet background
+/// work); leaves `waiting` when they report nothing blocking and stops once nothing at
+/// all is reported.
 async fn poll_wait_sources(inner: Weak<Inner>) {
     loop {
-        tokio::time::sleep(WAIT_POLL).await;
+        let quiet_only = inner.upgrade().is_none_or(|inner| {
+            let state = lock(&inner.arbiter);
+            state.waiting_on.is_empty() && !state.unannounced
+        });
+        tokio::time::sleep(if quiet_only { QUIET_POLL } else { WAIT_POLL }).await;
         let Some(session) = inner.upgrade().map(AgentSession::from_inner) else {
             return;
         };
-        if session.waiting_on().is_empty() || !session.is_idle() {
+        let nothing = {
+            let state = lock(&session.inner.arbiter);
+            state.waiting_on.is_empty() && state.background_on.is_empty()
+        };
+        if nothing || !session.is_idle() {
             break;
         }
-        let reasons = session.runner().arbiter_wait_reasons().await;
-        if reasons.is_empty() {
-            session.clear_waiting(RunState::Idle);
-            break;
-        }
+        let (reasons, quiet) = split_wait_reasons(session.runner().arbiter_wait_reasons().await);
         let changed = {
             let mut state = lock(&session.inner.arbiter);
-            if state.waiting_on.is_empty() {
-                false
-            } else {
-                let changed = state.waiting_on != reasons;
-                state.waiting_on.clone_from(&reasons);
-                changed
+            if state.waiting_on.is_empty() && state.background_on.is_empty() {
+                // A run started meanwhile and cleared it: that run settles afresh.
+                break;
             }
+            let changed = state.waiting_on != reasons
+                || state.background_on != quiet
+                || std::mem::take(&mut state.unannounced);
+            state.waiting_on.clone_from(&reasons);
+            state.background_on.clone_from(&quiet);
+            changed
         };
         if changed {
             session.inner.hub.publish(OinoEvent::RunState {
-                state: RunState::Waiting,
-                waiting_on: Some(reasons),
+                state: if reasons.is_empty() {
+                    RunState::Idle
+                } else {
+                    RunState::Waiting
+                },
+                waiting_on: non_empty(reasons.clone()),
+                background_on: non_empty(quiet.clone()),
             });
+        }
+        if reasons.is_empty() && quiet.is_empty() {
+            break;
         }
     }
     if let Some(inner) = inner.upgrade() {

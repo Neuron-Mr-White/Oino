@@ -978,6 +978,13 @@ pub struct RpcSessionState {
     pub message_count: usize,
     /// Queued texts.
     pub pending_message_count: usize,
+    /// Oino: work the session waits on while idle (`waiting`: background tasks with a
+    /// wake, background subagents, graph nodes); it wakes the session when done.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub waiting_on: Vec<String>,
+    /// Oino: quiet background work (a background task without wake) still running.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub background_on: Vec<String>,
 }
 
 /// The rpc slash command record.
