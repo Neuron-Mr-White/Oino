@@ -43,6 +43,24 @@ const bgBody = {
   ],
 };
 
+/** The background-tasks extension's snapshots (`unipi:bg:tasks`, camelCase `BgTaskSnapshot`). */
+const bgTasks = () => {
+  const now = Date.now();
+  return [
+    { id: 'bg-1', name: 'cargo test', command: 'cargo test --workspace --all-features', status: 'running', startTime: now - 132_000, bytesWritten: 1_258_000, isAgent: false, notifyOnCompletion: true, triggerOnCompletion: true, outputTail: ['   Compiling unipi-host v0.4.0', 'test runner::spawns ... ok'] },
+    { id: 'bg-2', name: 'npm run build', command: 'npm run build', status: 'completed', startTime: now - 900_000, endTime: now - 840_000, exitCode: 0, bytesWritten: 48_200, isAgent: false, notifyOnCompletion: true, triggerOnCompletion: true, outputTail: ['built in 41.2s'] },
+    { id: 'bg-3', name: 'lint', command: 'cargo clippy --workspace -- -D warnings', status: 'failed', startTime: now - 1_800_000, endTime: now - 1_790_000, exitCode: 101, bytesWritten: 6_100, isAgent: false, notifyOnCompletion: true, triggerOnCompletion: false, outputTail: ['error: could not compile `unipi-host`'] },
+  ];
+};
+
+/** A fake growing log for `bg.output`. */
+const bgLog = (id: string) => {
+  const lines = ['\x1b[1m$ ' + (bgTasks().find((t) => t.id === id)?.command ?? '') + '\x1b[0m'];
+  for (let i = 0; i < 60; i++) lines.push(`   \x1b[32mCompiling\x1b[0m crate-${i} v0.${i}.0`);
+  lines.push('test runner::spawns ... \x1b[32mok\x1b[0m', 'test runner::stops ... \x1b[32mok\x1b[0m');
+  return lines.join('\n') + '\n';
+};
+
 const dreamBody = {
   t: 'List',
   onActivate: 'dream:open',
@@ -89,6 +107,12 @@ function serviceCall(cmd: RpcCommand): unknown {
     if (target === 'unipi.dream') {
       return [{ id: 'dream', label: 'Dream', order: 30, counts: { total: 1, running: 0 }, visible: true, body: dreamBody, owner: 'unipi.dream' }];
     }
+  } else if (name === 'bg.output' && target === 'unipi.background-tasks') {
+    const payload = (cmd.payload ?? {}) as { id?: string; since?: number };
+    const log = bgLog(String(payload.id));
+    const task = bgTasks().find((t) => t.id === payload.id);
+    const at = typeof payload.since === 'number' && payload.since <= log.length ? payload.since : undefined;
+    return { text: at === undefined ? log : log.slice(at), size: log.length, reset: at === undefined, task };
   } else if (name === 'subagents.list' && target === 'unipi.subagents') {
     return runRecords();
   } else if ((name === 'subagents.cancel' || name === 'subagents.background') && target === 'unipi.subagents') {
@@ -119,6 +143,7 @@ export const modalRunning: MockScenario = {
           // the "Send to background" row action).
           snapshot: {
             ...base.snapshot,
+            topics: [{ topic: 'unipi:bg:tasks', data: { tasks: bgTasks() }, sticky: true, publisher: 'unipi.background-tasks' }],
             commands: [{ name: 'bg-detach', description: 'Move the running bash call to a background task', source: 'extension:unipi.watchdog' }],
           },
           cmd: {

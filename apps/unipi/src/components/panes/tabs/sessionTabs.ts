@@ -26,7 +26,7 @@ export type SessionTabBase = { hostId: string; sessionId: string; cwd?: string }
 /** Which of the phone's session-tab surfaces is open (§3.9: sheets for tree /
  * side chat / subagent; the diff viewer is a full-screen layer). */
 export type PhoneSessionTab = {
-  kind: 'diff' | 'tree' | 'btw' | 'subagent';
+  kind: 'diff' | 'tree' | 'btw' | 'subagent' | 'bgtask';
   base: SessionTabBase;
   params: Record<string, unknown>;
   title: string;
@@ -115,5 +115,14 @@ export function openSubagentTab(base: SessionTabBase, agent: { agentId: string; 
     kind: 'subagent',
     params: { hostId: base.hostId, sessionId: base.sessionId, agentId: agent.agentId, ...(agent.name ? { name: agent.name } : {}) },
     title: agent.name ?? 'Subagent',
+  });
+}
+
+/** A background task's live output (Running tab rows, the timeline's bg tool rows). */
+export function openBgTaskTab(base: SessionTabBase, task: { taskId: string; name?: string }): void {
+  openSessionTab(base, {
+    kind: 'bgtask',
+    params: { hostId: base.hostId, sessionId: base.sessionId, taskId: task.taskId, ...(task.name ? { name: task.name } : {}) },
+    title: task.name ?? 'Task',
   });
 }

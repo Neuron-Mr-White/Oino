@@ -64,6 +64,7 @@ export const BUILTIN_KINDS: PaneKindDef[] = [
   { kind: 'diff', icon: FileDiff, title: (p) => leaf(p.path, 'Diff'), singleton: (p) => str(p.path, ''), scope: 'session' },
   { kind: 'preview', icon: Image, title: (p) => leaf(p.path, 'Preview'), singleton: (p) => str(p.path, ''), scope: 'project' },
   { kind: 'subagent', icon: Bot, title: (p) => str(p.name, 'Subagent'), singleton: (p) => str(p.agentId, ''), scope: 'session' },
+  { kind: 'bgtask', icon: SquareTerminal, title: (p) => str(p.name, 'Task'), singleton: (p) => str(p.taskId, ''), scope: 'session' },
   { kind: 'browser', icon: Globe, title: (p) => str(p.title, 'Browser'), singleton: false, scope: 'project', reserved: 'unipi.browser/browser', launcher: { label: 'Browser', order: 50 } },
   { kind: 'terminal', icon: SquareTerminal, title: (p) => str(p.title, leaf(p.cwd, 'Terminal')), singleton: false, scope: 'project', noRecent: true, areas: ['bottom', 'side'], reserved: 'host/terminal', launcher: { label: 'Terminal', order: 60 } },
   { kind: 'ext', icon: Puzzle, title: (p) => str(p.title, 'Extension'), singleton: (p) => str(p.entryId, ''), scope: 'project', areas: ['side', 'bottom'] },

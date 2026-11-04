@@ -7,6 +7,7 @@
  * frontend's own light row shows: `details.unipiHarness` source · title,
  * else the entry's title/text/command.
  */
+import { openBgTaskTab } from '../../panes/tabs/sessionTabs';
 import { Show } from 'solid-js';
 import { Sparkles } from 'lucide-solid';
 import type { SessionEntry } from '../../../lib/session/types';
@@ -43,7 +44,7 @@ export function nativeCardLabel(entry: SessionEntry): { source: string; title: s
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 
 /** Parses `<background-task-notification>` XML / details into a clean native completion card (D-06: no raw temp path or 3-col WASM row). */
-function parseBgNotification(entry: SessionEntry): { name: string; status: 'completed' | 'failed' | 'killed' | 'running'; meta: string; error?: string } | undefined {
+function parseBgNotification(entry: SessionEntry): { name: string; status: 'completed' | 'failed' | 'killed' | 'running'; meta: string; id?: string; error?: string } | undefined {
   if (entry.customType !== 'background-task-notification') return undefined;
   const rawContent = (entry as { content?: unknown }).content ?? entry.message?.content;
   const text = typeof rawContent === 'string' ? rawContent : '';
@@ -64,7 +65,7 @@ function parseBgNotification(entry: SessionEntry): { name: string; status: 'comp
   else if (exit && exit !== 'null') metaParts.push(`exit ${exit}`);
   else if (status === 'failed') metaParts.push('failed');
   if (id && id !== name) metaParts.push(id);
-  return { name, status, meta: metaParts.join(' · '), ...(error ? { error } : {}) };
+  return { name, status, meta: metaParts.join(' · '), ...(id ? { id } : {}), ...(error ? { error } : {}) };
 }
 
 export function RendererCard(props: { entry: SessionEntry; ctx: TimelineCtx }) {
@@ -88,7 +89,7 @@ export function RendererCard(props: { entry: SessionEntry; ctx: TimelineCtx }) {
         when={!bgNotif()}
         fallback={
           <div class="tl-cardwrap" data-custom-type={key() || undefined} data-testid="tl-card">
-            <BgNotificationCard info={bgNotif()!} />
+            <BgNotificationCard info={bgNotif()!} ctx={props.ctx} />
           </div>
         }
       >
@@ -121,11 +122,16 @@ export function RendererCard(props: { entry: SessionEntry; ctx: TimelineCtx }) {
   );
 }
 
-function BgNotificationCard(props: { info: NonNullable<ReturnType<typeof parseBgNotification>> }) {
+function BgNotificationCard(props: { info: NonNullable<ReturnType<typeof parseBgNotification>>; ctx: TimelineCtx }) {
+  const open = () => props.info.id && openBgTaskTab({ hostId: props.ctx.session.hostId, sessionId: props.ctx.session.sessionId() }, { taskId: props.info.id, name: props.info.name });
   const badge = () => (props.info.status === 'failed' ? 'Failed' : props.info.status === 'killed' ? 'Stopped' : props.info.status === 'running' ? 'Background' : 'Done');
   return (
     <div class="tool-bg tl-bg-card" data-status={props.info.status} data-testid="tl-bg-notification">
-      <div class="tool-bg-head" data-border={props.info.error ? '' : undefined}>
+      <div
+        class="tool-bg-head"
+        data-border={props.info.error ? '' : undefined}
+        {...(props.info.id ? { role: 'button' as const, tabindex: 0, title: 'Open live output', 'data-openable': '', onClick: open, onKeyDown: (e: KeyboardEvent) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open()) } : {})}
+      >
         <span class="tool-bg-badge" data-status={props.info.status}>
           {badge()}
         </span>

@@ -810,3 +810,6 @@ html[data-shell=phone] .tl-event-source { font-size: 13px; }
   .tl-event-bodywrap, .tl-event-bodywrap[data-leaving] { animation: none; }
   .tl-event-chev { transition: none; }
 }
+.tool-bg [data-openable] { cursor: pointer; }
+.tool-bg [data-openable]:hover { background: var(--color-surface-2); }
+.tool-bg [data-openable]:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }

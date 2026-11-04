@@ -61,7 +61,7 @@ export function errorLine(error: string): string {
 }
 
 /** Live = can be stopped (running or idle). */
-export const isLive = (r: RunRow): boolean => r.status === 'running' || r.status === 'idle';
+export const isLive = (r: Pick<RunRow, 'status'>): boolean => r.status === 'running' || r.status === 'idle';
 
 /**
  * One row per run, newest first. `seenAt(agentId)` dates agents the records
@@ -124,13 +124,13 @@ export const RUN_FILTERS: ReadonlyArray<{ id: RunFilter; label: string }> = [
   { id: 'cancelled', label: 'Cancelled' },
 ];
 
-export function matchesFilter(r: RunRow, f: RunFilter): boolean {
+export function matchesFilter(r: Pick<RunRow, 'status'>, f: RunFilter): boolean {
   if (f === 'all') return true;
   if (f === 'running') return isLive(r);
   return r.status === f;
 }
 
-export function filterCounts(rows: readonly RunRow[]): Record<RunFilter, number> {
+export function filterCounts(rows: readonly Pick<RunRow, 'status'>[]): Record<RunFilter, number> {
   const c: Record<RunFilter, number> = { all: rows.length, running: 0, done: 0, failed: 0, cancelled: 0 };
   for (const r of rows) {
     if (isLive(r)) c.running += 1;

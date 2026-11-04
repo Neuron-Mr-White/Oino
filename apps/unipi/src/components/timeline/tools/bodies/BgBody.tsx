@@ -10,6 +10,29 @@ import { formatDuration } from '../../../../lib/chat/model';
 import type { ToolRun } from '../../../../lib/session/turns';
 import type { TimelineCtx } from '../../context';
 import { useFullOutput } from './fullOutput';
+import { openBgTaskTab } from '../../../panes/tabs/sessionTabs';
+
+/** Opens the task's live output in the side pane (a head click / Enter). */
+function openTask(ctx: TimelineCtx, task: { id?: string; name?: string; command?: string }): void {
+  if (!task.id) return;
+  openBgTaskTab({ hostId: ctx.session.hostId, sessionId: ctx.session.sessionId() }, { taskId: task.id, ...((task.name ?? task.command) ? { name: task.name ?? task.command } : {}) });
+}
+const openProps = (ctx: TimelineCtx, task: { id?: string; name?: string; command?: string }) =>
+  task.id
+    ? ({
+        role: 'button' as const,
+        tabindex: 0,
+        title: 'Open live output',
+        'data-openable': '',
+        onClick: () => openTask(ctx, task),
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openTask(ctx, task);
+          }
+        },
+      })
+    : {};
 
 const BG_TOOLS = new Set(['bg_run', 'bg_logs', 'bg_kill', 'bg_status']);
 const OUT_LOGS = 6000;
@@ -127,19 +150,19 @@ export function BgToolBody(props: { tool: ToolRun; ctx: TimelineCtx }) {
   return (
     <Show
       when={lower() !== 'bg_status'}
-      fallback={<BgStatusBody tool={t()} details={details()} />}
+      fallback={<BgStatusBody tool={t()} details={details()} ctx={props.ctx} />}
     >
       <Show
         when={lower() !== 'bg_logs'}
         fallback={<BgLogsBody tool={t()} details={details()} ctx={props.ctx} />}
       >
-        <BgLaunchOrKillBody tool={t()} details={details()} />
+        <BgLaunchOrKillBody tool={t()} details={details()} ctx={props.ctx} />
       </Show>
     </Show>
   );
 }
 
-function BgLaunchOrKillBody(props: { tool: ToolRun; details: Record<string, unknown> }) {
+function BgLaunchOrKillBody(props: { tool: ToolRun; details: Record<string, unknown>; ctx: TimelineCtx }) {
   const lower = () => props.tool.name.trim().toLowerCase();
   const task = () => parseTask(props.details.task, props.tool.args, lower() === 'bg_kill' && props.tool.state !== 'error' ? 'stopped' : props.tool.state);
   const status = () => (props.tool.state === 'error' ? 'failed' : lower() === 'bg_kill' ? 'killed' : (task().status ?? 'running'));
@@ -155,7 +178,7 @@ function BgLaunchOrKillBody(props: { tool: ToolRun; details: Record<string, unkn
 
   return (
     <div class="tool-bg" data-status={status()} data-testid="tool-bg">
-      <div class="tool-bg-head" data-border={task().command || hasOut() ? '' : undefined}>
+      <div class="tool-bg-head" data-border={task().command || hasOut() ? '' : undefined} {...openProps(props.ctx, task())}>
         <span class="tool-bg-badge" data-status={status()}>
           {BADGE_LABEL[status()]}
         </span>
@@ -204,7 +227,7 @@ function BgLogsBody(props: { tool: ToolRun; details: Record<string, unknown>; ct
 
   return (
     <div class="tool-bg" data-status={status()} data-testid="tool-bg">
-      <div class="tool-bg-head" data-border={shown() ? '' : undefined}>
+      <div class="tool-bg-head" data-border={shown() ? '' : undefined} {...openProps(props.ctx, task())}>
         <span class="tool-bg-badge" data-status={status()}>
           {BADGE_LABEL[status()]}
         </span>
@@ -240,7 +263,7 @@ function BgLogsBody(props: { tool: ToolRun; details: Record<string, unknown>; ct
   );
 }
 
-function BgStatusBody(props: { tool: ToolRun; details: Record<string, unknown> }) {
+function BgStatusBody(props: { tool: ToolRun; details: Record<string, unknown>; ctx: TimelineCtx }) {
   const tasks = () => {
     const raw = Array.isArray(props.details.tasks) ? props.details.tasks : [];
     return raw.map((item) => parseTask(item, {}, 'ok'));
@@ -258,7 +281,7 @@ function BgStatusBody(props: { tool: ToolRun; details: Record<string, unknown> }
             {(item) => {
               const st = () => item.status ?? 'running';
               return (
-                <div class="tool-bg-item">
+                <div class="tool-bg-item" {...openProps(props.ctx, item)}>
                   <span class="tool-bg-badge" data-status={st()}>
                     {BADGE_LABEL[st()]}
                   </span>

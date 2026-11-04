@@ -10,6 +10,7 @@ import './DiffTab';
 import './TreeTab';
 import './BtwTab';
 import './SubagentTab';
+import './BgTaskTab';
 // P1-05: the port-forward tab registers with the other pane views (SidePane imports it too).
 import '../ForwardTab';
 
@@ -18,5 +19,5 @@ export { BtwTab } from './BtwTab';
 export { DiffTab, editLine, editsOfArgs, findToolCall, pathOfArgs, renderSplitHtml, splitRows, type DiffEdit, type ToolCallSite } from './DiffTab';
 export { SubagentTab, SubagentTranscript, fetchAgentMessages, fetchAgents, SUBAGENT_POLL_MS } from './SubagentTab';
 export { TreeTab } from './TreeTab';
-export { closePhoneSessionTab, openBtwTab, openDiffTab, openSessionTab, openSubagentTab, openTreeTab, phoneSessionTab, seedPhoneSessionTab, tabBaseOf, type PhoneSessionTab, type SessionTabBase } from './sessionTabs';
+export { closePhoneSessionTab, openBgTaskTab, openBtwTab, openDiffTab, openSessionTab, openSubagentTab, openTreeTab, phoneSessionTab, seedPhoneSessionTab, tabBaseOf, type PhoneSessionTab, type SessionTabBase } from './sessionTabs';
 export { agentOfEntry, agentOfStepData, AGENT_CARD_TYPES, AGENT_STEP_TYPES, type AgentRef } from './agentEntry';

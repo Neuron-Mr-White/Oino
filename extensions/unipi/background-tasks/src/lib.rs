@@ -1086,6 +1086,17 @@ fn register_ui(cx: &mut Init<Bg>) {
         let req: TabRequest = serde_json::from_value(payload).unwrap_or_default();
         Ok(json!([ext.tab(&cx, &req)]))
     });
+    // Structured live output for the app's task tab: bytes from `since` on (a poll cursor).
+    cx.service("bg.output", |ext, payload, _caller, cx| async move {
+        let id = payload.get("id").and_then(Value::as_str).unwrap_or_default();
+        let since = payload.get("since").and_then(Value::as_u64);
+        let host = ext.resolve(&cx, id).map_err(|e| Error::msg(e.to_string()))?;
+        let cwd = cx.cwd().to_string_lossy().into_owned();
+        let task = ext.snapshot(cx.session_id(), &host, &cwd);
+        let mut out = output_since(&ext.output(&host.id), since);
+        out["task"] = json!(task);
+        Ok(out)
+    });
     cx.service(
         point::WORK_TRAY_ACTION,
         |ext, payload, _caller, cx| async move {
@@ -1125,10 +1136,9 @@ impl Extension for Bg {
                 Ok(json!(text::notification_text(&snap)))
             },
         );
+        // Children too: a child has no arbiter, but its running tasks keep it from
+        // hibernating (core E-HIBERNATE asks its wait sources), which would kill them.
         cx.wait_source(|ext, cx| async move {
-            if cx.is_child() {
-                return None;
-            }
             text::wait_reason(&ext.snapshots(&cx))
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
@@ -1178,9 +1188,31 @@ impl Extension for Bg {
 #[cfg(target_arch = "wasm32")]
 oino_extension::export_extension!(Bg);
 
+/// `{text, size, reset}`: the log from byte `since` (a poll cursor); `reset` when the cursor is
+/// past the end or not given, in which case `text` is the whole (capped) log.
+fn output_since(full: &str, since: Option<u64>) -> Value {
+    let bytes = full.as_bytes();
+    let size = bytes.len() as u64;
+    match since {
+        Some(at) if at <= size => {
+            let text = String::from_utf8_lossy(&bytes[at as usize..]).into_owned();
+            json!({"text": text, "size": size, "reset": false})
+        }
+        _ => json!({"text": full, "size": size, "reset": true}),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_since_returns_only_new_bytes() {
+        assert_eq!(output_since("abc\ndef\n", None), json!({"text": "abc\ndef\n", "size": 8, "reset": true}));
+        assert_eq!(output_since("abc\ndef\n", Some(4)), json!({"text": "def\n", "size": 8, "reset": false}));
+        assert_eq!(output_since("abc", Some(3)), json!({"text": "", "size": 3, "reset": false}));
+        assert_eq!(output_since("abc", Some(9)), json!({"text": "abc", "size": 3, "reset": true}));
+    }
 
     #[test]
     fn tool_schemas_match_unipi() {

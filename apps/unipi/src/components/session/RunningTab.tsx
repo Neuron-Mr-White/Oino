@@ -22,15 +22,17 @@
  */
 import { useClock as sharedClock } from '../../lib/clock';
 import { createEffect, createMemo, createResource, createSignal, For, Show, type Accessor, type JSX } from 'solid-js';
-import { ArrowDownToLine, Ban, Bot, Check, CircleCheck, Layers, LoaderCircle, Moon, PanelRightOpen, RefreshCw, Sparkles, Square, SquareTerminal, X } from 'lucide-solid';
+import { ArrowDownToLine, Bot, CircleCheck, Layers, LoaderCircle, RefreshCw, Sparkles, SquareTerminal, Terminal } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import { EntryContext, type EntryActions, type UiTarget } from '../../ui/actions';
 import { NodeView } from '../../ui/NodeView';
 import { useVirtual, VirtualWindow } from '../../ui/virtual';
 import { formatDurationMs, liveSource, parseAgents, parseExtensions, parseRunningBash, parseSubagentRuns, parseTrayTabs, serviceCall, type AgentInfo, type SubagentRun, type TrayTab } from './modalData';
-import { runningCounts, runningTotal, runRowsOf, SUBAGENTS_LIST_TOPIC, visibleTrayTabsOf, type RunningData } from '../../lib/status/running';
+import { BG_TASKS_TOPIC, runningCounts, runningTotal, runRowsOf, SUBAGENTS_LIST_TOPIC, visibleTrayTabsOf, type RunningData } from '../../lib/status/running';
 import { filterCounts, isLive, matchesFilter, profileChip, ROW_STATUS_LABEL, RUN_FILTERS, rowDurationMs, shortModel, statParts, SUBAGENTS_EXT, type RunFilter, type RunRow, type RunRowStatus } from '../../lib/status/subagentRows';
-import { openSubagentTab } from '../panes/tabs/sessionTabs';
+import { openBgTaskTab, openSubagentTab } from '../panes/tabs/sessionTabs';
+import { FilterChips, RunStatusIcon, WorkRow, type RowStat } from './RunRows';
+import { BG_EXT, BG_TAB, bgExitText, formatBytes, parseBgTasks, type BgRow } from '../../lib/status/bgTasks';
 import { setSessionModalTarget } from './modalTarget';
 
 export { agentSeenAt } from '../../lib/status/running';
@@ -65,7 +67,7 @@ export function canDetachBash(s: SessionHandle, calls: number): boolean {
  * subagents extension is asked for its records (`subagents.list`) instead of its
  * tray pane — the pane is TUI text and building it reads every child transcript.
  */
-export async function fetchRunning(s: SessionHandle): Promise<{ bash: ReturnType<typeof parseRunningBash>; agents: AgentInfo[]; runs?: SubagentRun[]; sidekick?: { label: string; detail: string }; tabs: TrayTab[] }> {
+export async function fetchRunning(s: SessionHandle): Promise<{ bash: ReturnType<typeof parseRunningBash>; agents: AgentInfo[]; runs?: SubagentRun[]; bg?: BgRow[]; sidekick?: { label: string; detail: string }; tabs: TrayTab[] }> {
   const [bash, agents, extensions] = await Promise.all([
     s.cmd<unknown>({ type: '_oino/running_bash' }).catch(() => undefined),
     s.cmd<unknown>({ type: '_oino/agents' }).catch(() => undefined),
@@ -165,12 +167,13 @@ export function useRunningData(s: () => SessionHandle): { data: Accessor<Running
   });
   // Subscribe the records topic once per (re)connection (the Capsule does too; idempotent).
   createEffect(() => {
-    if (s().state.conn === 'live') s().subscribeTopics([SUBAGENTS_LIST_TOPIC]);
+    if (s().state.conn === 'live') s().subscribeTopics([SUBAGENTS_LIST_TOPIC, BG_TASKS_TOPIC]);
   });
   const merged = createMemo(() => {
     const d = data.latest;
     const topic = parseSubagentRuns(s().state.topics[SUBAGENTS_LIST_TOPIC]?.data);
-    return d && topic ? { ...d, runs: topic } : d;
+    const bg = parseBgTasks(s().state.topics[BG_TASKS_TOPIC]?.data);
+    return d ? { ...d, ...(topic ? { runs: topic } : {}), ...(bg ? { bg } : {}) } : d;
   });
   return { data: merged, refetch: () => void refetch() };
 }
@@ -203,28 +206,7 @@ function Section(props: { icon: JSX.Element; title: string; count?: number; tool
   );
 }
 
-/** The run's status icon — the timeline AgentCard's set (spinner / check / x / ban; idle = moon). */
-export function RunStatusIcon(props: { status: RunRowStatus }) {
-  return (
-    <span class="sm-run-icon" data-status={props.status} title={ROW_STATUS_LABEL[props.status]} aria-label={ROW_STATUS_LABEL[props.status]} role="img">
-      <Show when={props.status === 'running'}>
-        <LoaderCircle size={15} class="sm-spin" />
-      </Show>
-      <Show when={props.status === 'done'}>
-        <Check size={15} />
-      </Show>
-      <Show when={props.status === 'failed'}>
-        <X size={15} />
-      </Show>
-      <Show when={props.status === 'cancelled'}>
-        <Ban size={15} />
-      </Show>
-      <Show when={props.status === 'idle'}>
-        <Moon size={15} />
-      </Show>
-    </span>
-  );
-}
+export { RunStatusIcon };
 
 /** Rows past which the Subagents list windows (a big graph run). */
 export const RUNS_VIRTUAL_AT = 30;
@@ -243,50 +225,32 @@ function RunRowView(props: { row: RunRow; now: number; actions: RunActions }) {
   const r = () => props.row;
   const dur = () => rowDurationMs(r(), props.now);
   const chip = () => profileChip(r().profile);
+  const sub = (): RowStat[] => [
+    ...statParts(r()),
+    ...(r().status === 'running' && r().background ? [{ key: 'bg', text: 'In background' }] : []),
+    ...(r().status === 'failed' && r().error ? [{ key: 'error', text: r().error!, title: r().error, tone: 'error' as const }] : []),
+  ];
   return (
-    <div class="sm-run" data-status={r().status} data-testid="sm-run-row" data-run={r().key} role="listitem">
-      <RunStatusIcon status={r().status} />
-      <div class="sm-run-main">
-        <div class="sm-run-line">
-          <span class="sm-run-title" title={r().title}>{r().title}</span>
-          <Show when={chip()}>
-            <span class="sm-run-chip" title={r().profile}>{chip()}</span>
-          </Show>
-          <Show when={r().model}>
-            <span class="sm-run-model" title={r().model}>{shortModel(r().model)}</span>
-          </Show>
-        </div>
-        <div class="sm-run-sub">
-          <For each={statParts(r())}>{(p) => <span class="sm-run-stat" data-stat={p.key} title={p.title}>{p.text}</span>}</For>
-          <Show when={r().status === 'running' && r().background}>
-            <span class="sm-run-stat">In background</span>
-          </Show>
-          <Show when={r().status === 'failed' && r().error}>
-            <span class="sm-run-stat sm-run-err" title={r().error}>{r().error}</span>
-          </Show>
-        </div>
-      </div>
-      <Show when={dur() !== undefined}>
-        <span class="sm-elapsed" title={isLive(r()) ? 'Running for' : 'Took'}>{formatDurationMs(dur()!)}</span>
-      </Show>
-      <span class="sm-row-actions sm-run-actions">
+    <WorkRow
+      testId="sm-run-row"
+      dataRun={r().key}
+      status={r().status}
+      title={r().title}
+      chips={chip() ? [{ text: chip()!, title: r().profile }] : []}
+      {...(r().model ? { model: { text: shortModel(r().model), title: r().model } } : {})}
+      sub={sub()}
+      {...(dur() !== undefined ? { elapsed: { text: formatDurationMs(dur()!), title: isLive(r()) ? 'Running for' : 'Took' } } : {})}
+      actions={
         <Show when={r().status === 'running' && !r().background && r().kind === 'record'}>
-          <button type="button" onClick={() => props.actions.toBackground(r())} aria-label="To background" title="Keep it running without waiting for it">
+          <button type="button" onClick={(e) => { e.stopPropagation(); props.actions.toBackground(r()); }} aria-label="To background" title="Keep it running without waiting for it">
             <ArrowDownToLine size={14} />
             <span class="sm-btn-label">To background</span>
           </button>
         </Show>
-        <Show when={isLive(r())}>
-          <button type="button" data-tone="danger" onClick={() => props.actions.stop(r())} aria-label="Stop" title="Stop this run">
-            <Square size={13} />
-            <span class="sm-btn-label">Stop</span>
-          </button>
-        </Show>
-        <button type="button" class="sm-icon-btn" onClick={() => props.actions.open(r())} aria-label="Open transcript" title="Open transcript">
-          <PanelRightOpen size={15} />
-        </button>
-      </span>
-    </div>
+      }
+      {...(isLive(r()) ? { stop: { onStop: () => props.actions.stop(r()), title: 'Stop this run' } } : {})}
+      open={{ onOpen: () => props.actions.open(r()), label: 'Open transcript' }}
+    />
   );
 }
 
@@ -323,7 +287,6 @@ function SubagentsSection(props: { s: SessionHandle; rows: RunRow[]; now: number
   const [filter, setFilter] = createSignal<RunFilter>('all');
   const counts = createMemo(() => filterCounts(props.rows));
   const shown = createMemo(() => props.rows.filter((r) => matchesFilter(r, filter())));
-  const chips = () => RUN_FILTERS.filter((f) => f.id !== 'cancelled' || counts().cancelled > 0 || filter() === 'cancelled');
   const live = () => counts().running;
   const anyForeground = () => props.rows.some((r) => r.status === 'running' && !r.background && r.kind === 'record');
   const s = () => props.s;
@@ -363,24 +326,105 @@ function SubagentsSection(props: { s: SessionHandle; rows: RunRow[]; now: number
       testId="sm-sec-agents"
       tool={
         <Show when={anyForeground()}>
-          <button type="button" class="sm-sec-tool" onClick={allToBackground} title="Keep every foreground run going without waiting (Alt+B)">
+          <button type="button" class="sm-sec-tool sm-sec-text" onClick={allToBackground} title="Keep every foreground run going without waiting (Alt+B)">
             All to background
           </button>
         </Show>
       }
     >
-      <div class="sm-chips" role="toolbar" aria-label="Filter runs by status">
-        <For each={chips()}>
-          {(f) => (
-            <button type="button" class="sm-chip" aria-pressed={filter() === f.id} data-filter={f.id} data-testid={`sm-filter-${f.id}`} onClick={() => setFilter(filter() === f.id && f.id !== 'all' ? 'all' : f.id)}>
-              {f.label}
-              <span class="sm-chip-n">{counts()[f.id]}</span>
-            </button>
-          )}
-        </For>
-      </div>
+      <FilterChips counts={counts()} filter={filter()} onFilter={setFilter} label="Filter runs by status" />
       <Show when={shown().length > 0} fallback={<div class="sm-runs-none">No {RUN_FILTERS.find((f) => f.id === filter())?.label.toLowerCase()} runs</div>}>
         <RunList rows={shown()} now={props.now} actions={actions} />
+      </Show>
+    </Section>
+  );
+}
+
+
+/** Tasks the user dismissed (`bg:dismiss*`): the extension forgets them in its tray only, the
+ * `unipi:bg:tasks` topic still lists them — so the view hides them itself. */
+const [dismissed, setDismissed] = createSignal<ReadonlySet<string>>(new Set());
+const dismissKey = (s: SessionHandle, id: string) => `${s.hostId}:${s.sessionId()}:${id}`;
+
+/** The BG tab's identity for `work-tray.action` (the owner routes `bg:<verb>[:<id>]`). */
+const BG_TRAY: TrayTab = { id: BG_TAB, label: 'Background tasks', order: 10, counts: { total: 0, running: 0 }, owner: BG_EXT };
+
+/** Background tasks: the same row, filter chips and actions as Subagents — shell tasks of the chat. */
+function BackgroundSection(props: { s: SessionHandle; rows: BgRow[]; now: number; refetch: () => void }) {
+  const s = () => props.s;
+  const [filter, setFilter] = createSignal<RunFilter>('all');
+  const [confirmAll, setConfirmAll] = createSignal(false);
+  const rows = createMemo(() => props.rows.filter((r) => !dismissed().has(dismissKey(s(), r.id))));
+  const counts = createMemo(() => filterCounts(rows()));
+  const shown = createMemo(() => rows().filter((r) => matchesFilter(r, filter())));
+  const finished = () => rows().filter((r) => !isLive(r));
+  const act = (actionId: string) => trayAction(s(), BG_TRAY, actionId, null, props.refetch);
+  const open = (r: BgRow) => {
+    const cwd = String(s().state.info?.cwd ?? '') || undefined;
+    setSessionModalTarget(undefined);
+    openBgTaskTab({ hostId: s().hostId, sessionId: s().sessionId(), ...(cwd ? { cwd } : {}) }, { taskId: r.id, name: r.title });
+  };
+  // The extension arms "stop all" with a first press and runs it on the second.
+  const stopAll = () => {
+    if (!confirmAll()) {
+      setConfirmAll(true);
+      setTimeout(() => setConfirmAll(false), 4000);
+      return;
+    }
+    setConfirmAll(false);
+    act('stopall');
+    act('stopall');
+  };
+  const dismissFinished = () => {
+    const ids = finished().map((r) => dismissKey(s(), r.id));
+    setDismissed((cur) => new Set([...cur, ...ids]));
+    act('dismissall');
+  };
+  return (
+    <Section
+      icon={<Terminal size={14} />}
+      title="Background tasks"
+      count={counts().running}
+      testId="sm-sec-bg"
+      tool={
+        <>
+          <Show when={counts().running > 0}>
+            <button type="button" class="sm-sec-tool sm-sec-text" data-confirm={confirmAll() ? '' : undefined} onClick={stopAll} title="Stop every running task" data-testid="sm-bg-stopall">
+              {confirmAll() ? 'Confirm stop all' : counts().running > 1 ? 'Stop all' : 'Stop'}
+            </button>
+          </Show>
+          <Show when={finished().length > 0}>
+            <button type="button" class="sm-sec-tool sm-sec-text" onClick={dismissFinished} title="Remove finished tasks from this list" data-testid="sm-bg-dismiss">
+              Dismiss finished
+            </button>
+          </Show>
+        </>
+      }
+    >
+      <FilterChips counts={counts()} filter={filter()} onFilter={setFilter} label="Filter tasks by status" testPrefix="sm-bg-filter" />
+      <Show when={shown().length > 0} fallback={<div class="sm-runs-none">No {RUN_FILTERS.find((f) => f.id === filter())?.label.toLowerCase()} tasks</div>}>
+        <div class="sm-runs" role="list" aria-label="Background tasks">
+          <For each={shown()}>
+            {(r) => {
+              const dur = () => (r.startedAt ? Math.max(0, (isLive(r) ? props.now : (r.endedAt ?? props.now)) - r.startedAt) : undefined);
+              const trailing = () => [bgExitText(r), r.bytes > 0 ? formatBytes(r.bytes) : undefined].filter(Boolean).join(' · ');
+              return (
+                <WorkRow
+                  testId="sm-bg-row"
+                  dataRun={r.key}
+                  status={r.status}
+                  title={r.title}
+                  chips={[{ text: r.isAgent ? 'Agent' : 'Shell', key: 'kind' }, ...(r.wakes && r.status === 'running' ? [{ text: 'wakes agent', key: 'wakes', title: 'A terminal notification wakes the agent' }] : [])]}
+                  subText={r.command && r.command !== r.title ? r.command : (r.error ?? '')}
+                  {...(dur() !== undefined ? { elapsed: { text: formatDurationMs(dur()!), title: isLive(r) ? 'Running for' : 'Took' } } : {})}
+                  trailing={trailing()}
+                  {...(r.status === 'running' ? { stop: { onStop: () => act(`stop:${r.id}`), title: 'Stop this task' } } : {})}
+                  open={{ onOpen: () => open(r), label: 'Open live output' }}
+                />
+              );
+            }}
+          </For>
+        </div>
       </Show>
     </Section>
   );
@@ -395,8 +439,10 @@ export function RunningTab(props: { s: SessionHandle; running?: { data: Accessor
   const refetch = () => (props.running ?? own!).refetch();
   const runs = createMemo(() => runRowsOf(data()));
   const bash = () => data()?.bash ?? [];
-  const tabs = () => visibleTrayTabsOf(data()?.tabs ?? []);
-  const nothing = () => !!data() && runs().length === 0 && bash().length === 0 && !data()?.sidekick && tabs().length === 0;
+  const bgRows = () => data()?.bg;
+  // The native Background section stands in for the extension's tray tree (same tasks, one look).
+  const tabs = () => visibleTrayTabsOf(data()?.tabs ?? []).filter((t) => !(bgRows() && t.id === BG_TAB && t.owner === BG_EXT));
+  const nothing = () => !!data() && runs().length === 0 && (bgRows()?.length ?? 0) === 0 && bash().length === 0 && !data()?.sidekick && tabs().length === 0;
 
   return (
     <div class="sm-running" data-testid="sm-running">
@@ -465,6 +511,10 @@ export function RunningTab(props: { s: SessionHandle; running?: { data: Accessor
 
       <Show when={runs().length > 0}>
         <SubagentsSection s={s()} rows={runs()} now={now()} refetch={refetch} />
+      </Show>
+
+      <Show when={(bgRows()?.length ?? 0) > 0}>
+        <BackgroundSection s={s()} rows={bgRows()!} now={now()} refetch={refetch} />
       </Show>
 
       <Show when={data()?.sidekick}>

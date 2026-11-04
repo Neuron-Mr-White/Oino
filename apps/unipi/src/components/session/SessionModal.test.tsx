@@ -96,7 +96,9 @@ describe('Running tab', () => {
     expect(await screen.findByText('cargo test -p unipi-watchdog')).toBeTruthy();
     expect(await screen.findByText('explore the layout code')).toBeTruthy();
     expect(await screen.findByText(/Handoff running/)).toBeTruthy();
-    expect((await screen.findByTestId('sm-tray-bg')).textContent).toContain('Background tasks');
+    // Background tasks are the native section (topic rows), not the extension's tray tree.
+    expect((await screen.findByTestId('sm-sec-bg')).textContent).toContain('Background tasks');
+    expect(screen.queryByTestId('sm-tray-bg')).toBeNull();
     expect(screen.getByTestId('sm-tray-dream').textContent).toContain('Dream');
     // The subagents producer's TUI pane is never listed: one row per run, no 'RUN ' badge text.
     expect(screen.queryByTestId('sm-tray-subagents')).toBeNull();
@@ -178,12 +180,11 @@ describe('Running tab', () => {
       expect(cmd?.args).toMatchObject({ shortcutId: 'unipi.subagents.foreground' });
     });
 
-    // Tray tree action (bg Stop) → `work-tray.action` with the owner target
-    // and the `<tab>:` prefix stripped.
-    fireEvent.click(await screen.findByText('Re-run'));
+    // Bg row Stop → `work-tray.action` with the owner target and the `<tab>:` prefix stripped.
+    fireEvent.click((await screen.findByTestId('sm-sec-bg')).querySelector('[data-testid="sm-bg-row"] button[data-tone="danger"]')!);
     await waitFor(() => {
       const cmd = world.log.filter((l) => l.op === '_oino/service_call').at(-1);
-      expect(cmd?.args).toMatchObject({ type: '_oino/service_call', target: 'unipi.background-tasks', name: 'work-tray.action', payload: { tab: 'bg', actionId: 'rerun:bg-2', value: null } });
+      expect(cmd?.args).toMatchObject({ type: '_oino/service_call', target: 'unipi.background-tasks', name: 'work-tray.action', payload: { tab: 'bg', actionId: 'stop:bg-1', value: null } });
     });
   });
 
