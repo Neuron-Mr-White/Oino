@@ -3451,6 +3451,15 @@ impl Extension for Lh {
             Some(json!({"id": goal::digest_hex(stash.text.as_bytes()), "priority": 100, "customType": "unipi:lh-continue", "content": stash.text, "display": true,
                 "details": {"oinoProvenance": {"extensionId": EXTENSION_ID, "source": "Long-horizon", "title": stash.title, "delivery": "boundary"}}}))
         });
+        // Graph work in flight wakes the lead at its checkpoints: the lead waits (Working)
+        // while it runs, between waves and across a restart resume too.
+        cx.wait_source(|ext, cx| async move {
+            if cx.is_child() {
+                return None;
+            }
+            ext.load();
+            ext.state.borrow().graph.wait_reason(cx.session_id())
+        });
         cx.on_nudge_delivered(|ext, _id, _cx| {
             let mut st = ext.state.borrow_mut();
             st.stash = None;

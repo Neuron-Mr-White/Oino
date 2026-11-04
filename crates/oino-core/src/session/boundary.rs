@@ -383,6 +383,30 @@ impl AgentSession {
         lock(&self.inner.arbiter).background_on.clone()
     }
 
+    /// Asks the wait sources once while the session is idle and not already waiting: work
+    /// that runs on without a settle of this runtime (a session bound after a restart or a
+    /// reopen, whose graph nodes / background subagents / waking bg tasks go on) makes it
+    /// `waiting` (or marks quiet background work) at once, and the poll keeps it fresh.
+    pub(crate) async fn refresh_wait_sources(&self) {
+        let skip = |session: &Self| {
+            let state = lock(&session.inner.arbiter);
+            !session.is_idle() || state.polling || !state.waiting_on.is_empty()
+        };
+        if skip(self) {
+            return;
+        }
+        let (reasons, quiet) = split_wait_reasons(self.runner().arbiter_wait_reasons().await);
+        // A run started meanwhile settles afresh.
+        if skip(self) {
+            return;
+        }
+        if reasons.is_empty() {
+            self.set_background(quiet);
+        } else {
+            self.set_waiting(reasons, quiet);
+        }
+    }
+
     fn set_waiting(&self, reasons: Vec<String>, quiet: Vec<String>) {
         let start_poll = {
             let mut state = lock(&self.inner.arbiter);

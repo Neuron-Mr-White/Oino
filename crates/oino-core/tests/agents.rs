@@ -599,6 +599,32 @@ async fn a_failed_run_still_waits_on_wake_work() {
     assert_eq!(session.waiting_on(), vec!["subagent working"]);
 }
 
+/// [status] A session bound while work that will wake it runs on (reopened after an app
+/// restart: graph nodes resuming, background subagents) is `waiting` before any run of
+/// this runtime settles (owner 2026-11-04: a lead idle after `yield_agent_graph` with
+/// '1 running' graph work showed no Working after a restart).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bound_session_waits_on_running_work_without_a_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = FauxProvider::new(vec![]);
+    let source = FakeExtension::new(
+        "waiter",
+        oino_core::extensions::api::Registration::default(),
+    )
+    .on_wait(|_| Some("graph: 1 running".to_owned()));
+    let services = services(
+        dir.path(),
+        provider,
+        vec![Arc::new(source) as Arc<dyn ExtensionInstance>],
+        JsonObject::new(),
+    )
+    .await;
+    let rt = runtime(&services, SessionSource::InMemory).await;
+    let session = rt.session();
+    assert_eq!(session.run_state(), RunState::Waiting);
+    assert_eq!(session.waiting_on(), vec!["graph: 1 running"]);
+}
+
 /// [status] A quiet wait reason (`quiet:` — a background task without wake) never holds the
 /// session `waiting` and never blocks the nudge; it is reported as `backgroundOn` (get_state,
 /// GetRunState, the `run_state` event) until the work ends.
@@ -650,8 +676,12 @@ async fn quiet_wait_reasons_are_background_not_waiting() {
             waiting_on,
         }))) = tokio::time::timeout(Duration::from_secs(1), events.next()).await
         {
-            assert_eq!(state, RunState::Idle);
+            // The bind already marked the work; the run starting cleared it (`running`).
+            assert_ne!(state, RunState::Waiting);
             assert!(waiting_on.is_none());
+            if state != RunState::Idle {
+                continue;
+            }
             if background_on.as_deref() == Some(&["bg: dev server".to_owned()][..]) {
                 announced = true;
                 *busy.lock().unwrap() = None;

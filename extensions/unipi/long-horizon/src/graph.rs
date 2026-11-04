@@ -1852,6 +1852,30 @@ impl GraphFile {
             .is_some_and(|g| g.owner_session.as_deref().is_none_or(|o| o == session))
     }
 
+    /// Arbiter wait reason of `session`'s open graph: running work, or queued work whose
+    /// inputs are ready (the next wave, a scheduled retry, a restart resume), produces a
+    /// checkpoint that wakes the lead — so the lead is `waiting`, not idle, even between
+    /// waves (owner 2026-11-04: a graph with "1 running" listed its idle lead idle).
+    #[must_use]
+    pub fn wait_reason(&self, session: &str) -> Option<String> {
+        if !self.owned_by(session) {
+            return None;
+        }
+        let g = self.open()?;
+        let running = g.work.iter().filter(|w| w.status == "running").count();
+        let ready = g
+            .work
+            .iter()
+            .filter(|w| w.status == "queued" && self.input_state(g, w) == InputState::Ready)
+            .count();
+        match (running, ready) {
+            (0, 0) => None,
+            (0, n) => Some(format!("graph: {n} starting")),
+            (n, 0) => Some(format!("graph: {n} running")),
+            (n, m) => Some(format!("graph: {n} running, {m} starting")),
+        }
+    }
+
     /// Host restart: running work was interrupted. Each resumes its own operator after
     /// [`RESTART_RESUME_DELAY_MS`] (by `host`, at most [`MAX_RESTART_RESUMES`] times per
     /// item), else it is `errored`. Returns the scheduled `(work id, delay ms)`.
@@ -2757,6 +2781,29 @@ mod tests {
             resume: vec![],
             fail: vec![],
         }
+    }
+
+    #[test]
+    fn wait_reason_covers_running_and_ready_work_between_waves() {
+        let mut f = GraphFile::default();
+        assert_eq!(f.wait_reason("lead"), None);
+        f.update(&upd(vec![add("a", &[]), add("b", &["r-a"])]), "g1", 1)
+            .unwrap();
+        f.set_owner("lead");
+        assert_eq!(f.wait_reason("lead").as_deref(), Some("graph: 1 starting"));
+        assert_eq!(f.wait_reason("other"), None);
+        f.started("a", Ok("op1".into()), 0);
+        assert_eq!(f.wait_reason("lead").as_deref(), Some("graph: 1 running"));
+        f.settle("op1", "completed", "found X", None, 3, 0, false);
+        // Between waves: `a` settled, `b` not started yet — still waiting.
+        assert_eq!(f.wait_reason("lead").as_deref(), Some("graph: 1 starting"));
+        f.started("b", Ok("op2".into()), 0);
+        // A restart interrupts `b`: it resumes shortly, still waiting.
+        f.interrupted(10);
+        assert_eq!(f.wait_reason("lead").as_deref(), Some("graph: 1 starting"));
+        f.started("b", Ok("op2".into()), 20);
+        f.settle("op2", "completed", "done", None, 1, 30, false);
+        assert_eq!(f.wait_reason("lead"), None);
     }
 
     #[test]

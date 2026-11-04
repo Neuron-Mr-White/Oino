@@ -547,3 +547,48 @@ async fn waiting_parent_stays_working_and_quiet_background_is_a_marker() {
     .await;
     assert_eq!(card.state, HubState::Idle);
 }
+
+/// [status] owner 2026-11-04: a lead idle after `yield_agent_graph` whose graph work runs on
+/// showed no Working once its runtime was gone (app restart, eviction) and the chat was
+/// reopened — nothing settled in the new runtime, so nothing asked the wait sources and
+/// nobody supervised it. Reopening such a session is `Working` with `pending_work` at once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn reopened_session_with_running_graph_work_is_working() {
+    let wait = Arc::new(std::sync::Mutex::new(None::<String>));
+    let source = {
+        let wait = Arc::clone(&wait);
+        FakeExtension::new("waiter", Registration::default())
+            .on_wait(move |_| wait.lock().unwrap().clone())
+    };
+    let fixture = hub_with_extensions(
+        vec![FauxResponse::Text("yielded to the graph".into())],
+        vec![Arc::new(source) as Arc<dyn ExtensionInstance>],
+    );
+    let session = create(&fixture.hub).await;
+    let id = session.session_id();
+    prompt(&session, "run the graph").await;
+    assert_eq!(wait_text(&session).await, "yielded to the graph");
+    wait_idle(&session).await;
+    wait_card_where(&fixture.hub, &id, "idle lead", |c| c.state == HubState::Idle).await;
+    drop(session);
+    fixture.hub.close(&id).await.unwrap();
+    assert!(!fixture.hub.is_live(&id).await);
+
+    // Graph work resumes when the lead binds again.
+    *wait.lock().unwrap() = Some("graph: 1 running".to_owned());
+    let reopened = fixture.hub.open(&id).await.unwrap();
+    let card = wait_card_where(&fixture.hub, &id, "reopened waiting lead", |c| {
+        c.state.is_working() && c.pending_work.as_deref() == Some("graph: 1 running")
+    })
+    .await;
+    assert!(card.state.is_working(), "{card:?}");
+    // Still Working past the supervisor's idle window, then idle once the work ends.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert!(fixture.hub.card(&id).await.unwrap().unwrap().state.is_working());
+    *wait.lock().unwrap() = None;
+    wait_card_where(&fixture.hub, &id, "graph done", |c| {
+        c.state == HubState::Idle && c.pending_work.is_none()
+    })
+    .await;
+    drop(reopened);
+}

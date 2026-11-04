@@ -530,6 +530,9 @@ impl AgentSession {
         if !runner.shortcuts().is_empty() {
             self.publish_shortcuts();
         }
+        // A reopened session (app restart, eviction, reopen) whose background subagents,
+        // graph nodes or waking bg tasks run on is `waiting` before any run settles.
+        self.refresh_wait_sources().await;
     }
 
     /// Package resources (manifest `resources` of every loaded extension, package

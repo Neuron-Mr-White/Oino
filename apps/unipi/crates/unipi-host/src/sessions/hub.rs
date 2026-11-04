@@ -1545,6 +1545,13 @@ impl Inner {
             // No record: the live runtime's own cwd (its header is not written yet).
             None => self.cwd.clone(),
         };
+        // A session that (re)opens waiting on work that will wake it — graph nodes resuming
+        // after a restart, background subagents, a waking bg task (core asks its wait
+        // sources when it binds) — is supervised and `Working` at once, not only after its
+        // next run.
+        if !lock(&self.state).supervising.contains(&id) && probe(&backend).await.busy() {
+            self.ensure_supervisor(Arc::clone(&backend));
+        }
         let card = self.card_for(&backend, &cwd).await;
         self.emit(HubEvent::SessionChanged { card: card.clone() });
         Ok(HubSession::new(
