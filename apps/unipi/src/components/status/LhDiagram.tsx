@@ -23,13 +23,17 @@ export function fitView(w: number, h: number, vw: number, vh: number, pad = 12):
   return { z, x: (vw - w * z) / 2, y: Math.max(pad, (vh - h * z) / 2) };
 }
 
-/** The opening view: fit the WIDTH (nodes stay readable, never below 0.55), anchored at the top; a tall
- *  graph is then panned / zoomed, "Fit" shows all of it. Pure. */
+/** Smallest opening zoom: below it the node text stops being readable, so the user pans instead. */
+export const OPEN_MIN_Z = 0.6;
+
+/** The opening view: the whole graph when that stays readable (≥ {@link OPEN_MIN_Z}); else width-fit
+ *  (never below the minimum) anchored top-left so the first nodes are whole and the rest is a pan away
+ *  ("Fit" still shows all of it). Pure. */
 export function openView(w: number, h: number, vw: number, vh: number, pad = 12): View {
   const all = fitView(w, h, vw, vh, pad);
-  if (all.z >= 0.55) return all;
-  const z = Math.max(0.55, Math.min(1, (vw - pad * 2) / Math.max(1, w)));
-  return { z, x: Math.max(pad, (vw - w * z) / 2), y: pad };
+  if (all.z >= OPEN_MIN_Z) return all;
+  const z = Math.max(OPEN_MIN_Z, Math.min(1, (vw - pad * 2) / Math.max(1, w)));
+  return { z, x: w * z + pad * 2 <= vw ? (vw - w * z) / 2 : pad, y: pad };
 }
 
 /** Zoom by `factor` keeping the viewport point (`px`,`py`) fixed. Pure. */
@@ -190,6 +194,20 @@ function Canvas(props: Props & { layout: Layout; full?: boolean; onFull?: () => 
 
   return (
     <div class="lh-dia" data-testid="lh-diagram" data-full={props.full ? '' : undefined}>
+    <div class="lh-dia-bar" onPointerDown={(e) => e.stopPropagation()}>
+      <span class="lh-dia-hint">Drag to pan · scroll to zoom</span>
+      <div class="lh-dia-tools">
+          <button type="button" class="lh-icon-btn" aria-label="Zoom in" title="Zoom in" data-testid="lh-dia-zoom-in" onClick={() => zoomBy(1.25)}><Plus size={14} /></button>
+          <button type="button" class="lh-icon-btn" aria-label="Zoom out" title="Zoom out" data-testid="lh-dia-zoom-out" onClick={() => zoomBy(0.8)}><Minus size={14} /></button>
+          <button type="button" class="lh-icon-btn" aria-label="Fit the graph" title="Fit to view" data-testid="lh-dia-fit" onClick={fit}><ScanSearch size={14} /></button>
+          <Show when={!props.full}>
+            <button type="button" class="lh-icon-btn" aria-label="Open in full window" title="Full window" data-testid="lh-dia-full-open" onClick={() => props.onFull?.()}><Expand size={14} /></button>
+          </Show>
+        </div>
+        <Show when={props.full}>
+          <button type="button" class="lh-icon-btn lh-dia-close" aria-label="Close full window (Esc)" title="Close (Esc)" data-testid="lh-dia-full-close" onClick={() => props.onClose?.()}><X size={16} /></button>
+        </Show>
+    </div>
       <div
         ref={host}
         class="lh-dia-view"
@@ -261,17 +279,6 @@ function Canvas(props: Props & { layout: Layout; full?: boolean; onFull?: () => 
             }}
           </For>
         </div>
-        <div class="lh-dia-tools" onPointerDown={(e) => e.stopPropagation()}>
-          <button type="button" class="lh-icon-btn" aria-label="Zoom in" title="Zoom in" data-testid="lh-dia-zoom-in" onClick={() => zoomBy(1.25)}><Plus size={14} /></button>
-          <button type="button" class="lh-icon-btn" aria-label="Zoom out" title="Zoom out" data-testid="lh-dia-zoom-out" onClick={() => zoomBy(0.8)}><Minus size={14} /></button>
-          <button type="button" class="lh-icon-btn" aria-label="Fit the graph" title="Fit to view" data-testid="lh-dia-fit" onClick={fit}><ScanSearch size={14} /></button>
-          <Show when={!props.full}>
-            <button type="button" class="lh-icon-btn" aria-label="Open in full window" title="Full window" data-testid="lh-dia-full-open" onClick={() => props.onFull?.()}><Expand size={14} /></button>
-          </Show>
-        </div>
-        <Show when={props.full}>
-          <button type="button" class="lh-dia-close" aria-label="Close full window (Esc)" title="Close (Esc)" data-testid="lh-dia-full-close" onClick={() => props.onClose?.()} onPointerDown={(e) => e.stopPropagation()}><X size={16} /></button>
-        </Show>
         <Show when={props.work.length === 0}>
           <p class="lh-dia-empty status-empty">Nothing to draw.</p>
         </Show>

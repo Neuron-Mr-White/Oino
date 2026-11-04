@@ -9,6 +9,7 @@
  */
 import { createEffect, createResource, createSignal, Show } from 'solid-js';
 import { type SessionHandle } from '../../lib/session/store';
+import { NumberStepper } from '../../ui/NumberStepper';
 import { serviceCall, liveSource } from './modalData';
 
 export type Caps = {
@@ -21,9 +22,9 @@ export type Caps = {
 
 export type CapsReply = { caps: Caps; pinned: boolean } | undefined;
 
-export const LIMIT_FIELDS: Array<{ key: keyof Omit<Caps, 'summaryTurn'>; label: string; placeholder: string }> = [
+export const LIMIT_FIELDS: Array<{ key: keyof Omit<Caps, 'summaryTurn'>; label: string; placeholder: string; step?: number }> = [
   { key: 'maxTurns', label: 'Max turns', placeholder: 'e.g. 40' },
-  { key: 'maxCostUsd', label: 'Max cost (USD)', placeholder: 'e.g. 2.50' },
+  { key: 'maxCostUsd', label: 'Max cost (USD)', placeholder: 'e.g. 2.50', step: 0.5 },
   { key: 'maxWallMinutes', label: 'Max wall (min)', placeholder: 'e.g. 30' },
   { key: 'maxConsecutiveToolErrors', label: 'Max tool errors', placeholder: 'e.g. 5' },
 ];
@@ -118,15 +119,16 @@ export function LimitsSection(props: { s: SessionHandle }) {
           {LIMIT_FIELDS.map((f) => (
             <div class="sm-limit">
               <label for={`sm-limit-${f.key}`}>{f.label}</label>
-              <input
-                id={`sm-limit-${f.key}`}
-                type="number"
-                min="1"
-                step="any"
-                inputmode="decimal"
-                placeholder={f.placeholder}
-                value={form()[f.key] ?? ''}
-                onInput={(e) => setForm((cur) => ({ ...cur, [f.key]: e.currentTarget.value }))}
+              <NumberStepper
+                inputId={`sm-limit-${f.key}`}
+                label={f.label}
+                min={1}
+                step={f.step ?? 1}
+                integer={f.step === undefined}
+                placeholder={f.placeholder.replace('e.g. ', '')}
+                fallback={Number(f.placeholder.replace('e.g. ', ''))}
+                value={Number(form()[f.key]) > 0 ? Number(form()[f.key]) : undefined}
+                onChange={(v) => setForm((cur) => ({ ...cur, [f.key]: v === undefined ? '' : String(v) }))}
               />
             </div>
           ))}

@@ -21,7 +21,7 @@ import type { SessionHandle } from '../../lib/session/store';
 import { hubs } from '../../lib/session/hub';
 import { RouterContext, useNavigate } from '@solidjs/router';
 import { ChevronRight } from 'lucide-solid';
-import { formatCount, formatDurationMs, formatUsd, liveSource, sessionCostView, sessionModelUsage, sessionSpanMs, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
+import { formatCount, formatDurationMs, formatUsd, liveSource, sessionCostView, sessionModelUsage, sessionSpanMs, statsSpanMs, parseExtensions, parseSessionStats, serviceCall, type CommandInfo, type ExtensionInfo, type SessionStats } from './modalData';
 import { LimitsSection } from './LimitsSection';
 import { closeSessionModal, type InfoPage } from './SessionModal';
 
@@ -85,8 +85,9 @@ function SessionPage(props: { s: SessionHandle; stats: SessionStats | undefined 
   const state = () => s().state;
   const model = () => state().model;
   const stats = () => props.stats;
-  const models = createMemo(() => sessionModelUsage(state().entries));
-  const span = createMemo(() => sessionSpanMs(state().entries));
+  // Whole-session host totals (same source as cost/tokens); only an older host without them falls back to the loaded window.
+  const models = createMemo(() => stats()?.models ?? (stats() ? sessionModelUsage(state().entries) : []));
+  const span = createMemo(() => (stats()?.firstAt !== undefined ? statsSpanMs(stats()) : stats() ? sessionSpanMs(state().entries) : undefined));
   const mix = () => {
     const t = stats()?.tokens;
     return t ? ([['In', t.input, 'var(--color-wm-cyan)'], ['Out', t.output, 'var(--color-claw)'], ['Cache read', t.cacheRead, 'var(--color-wm-green)'], ['Cache write', t.cacheWrite, 'var(--color-amber)']] as const) : [];

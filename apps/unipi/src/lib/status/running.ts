@@ -108,7 +108,8 @@ const runningCountIn = (v: unknown): number => {
 
 /** Running bg tasks + running subagents from the session's sticky topics. */
 export function topicRunningCount(topics: Record<string, TopicValue>, sessionId?: string): number {
-  return (runningCountIn(bgTopicData(topics, sessionId)) > 0 ? 1 : 0) + (runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data) > 0 ? 1 : 0);
+  // Tasks + runs, not sources: the number must equal the Running list's rows.
+  return runningCountIn(bgTopicData(topics, sessionId)) + runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data);
 }
 
 /** G-08: live running-only label from the session's sticky topics (survives app restarts even when `unipi.core`'s strip doesn't fire). */

@@ -13,9 +13,10 @@ import { Dynamic } from 'solid-js/web';
 import { Select as KSelect } from '@kobalte/core/select';
 import {
   ArrowLeft, ArrowUpDown, Braces, Check, ChevronsUpDown, ChevronRight, Cpu, FileJson, Hash, Info,
-  KeyRound, List as ListIcon, ListChecks, ListFilter, Minus, Plus, TextCursorInput, ToggleLeft, Zap,
+  KeyRound, List as ListIcon, ListChecks, ListFilter, TextCursorInput, ToggleLeft, Zap,
 } from 'lucide-solid';
 import { SwitchField } from '../../components/Switch';
+import { NumberStepper } from '../NumberStepper';
 import type { Field, FieldType, Json } from './types';
 import { fieldAnchor, fieldScope, pageAnchor, storesValue } from './types';
 import { fieldEnabled, lookup, type Diagnostic, type WriteLayer } from './semantics';
@@ -302,86 +303,22 @@ function ScalarControl(props: {
   );
 }
 
-/** `number`: one control — the value (text-aligned, unit inside) with optional −/+ steppers. */
+/** `number`: the app's one {@link NumberStepper}, driven by the field's min / max / step / unit. */
 export function NumberControl(props: { field: Field; value: number | undefined; disabled: boolean; set: (value: Json | undefined) => void }) {
-  const step = () => props.field.step ?? 1;
-  const min = () => props.field.min ?? Number.NEGATIVE_INFINITY;
-  const max = () => props.field.max ?? Number.POSITIVE_INFINITY;
-  const clamp = (value: number) => {
-    const rounded = Math.round(value * 100) / 100;
-    return Math.min(max(), Math.max(min(), props.field.integer ? Math.round(rounded) : rounded));
-  };
-  const base = () => props.value ?? (typeof props.field.default === 'number' ? props.field.default : 0);
-  const [draft, setDraft] = createSignal<string | undefined>();
-  const shown = () => draft() ?? (props.value === undefined ? '' : String(props.value));
-  const commit = (text: string) => {
-    setDraft(undefined);
-    const trimmed = text.trim();
-    if (trimmed === '') {
-      if (props.value !== undefined) props.set(undefined);
-      return;
-    }
-    const parsed = Number(trimmed);
-    if (Number.isFinite(parsed)) props.set(clamp(parsed));
-  };
-  const nudge = (direction: 1 | -1) => {
-    setDraft(undefined);
-    props.set(clamp(base() + direction * step()));
-  };
   return (
-    <div class="settings-number" role="group" aria-label={props.field.label} data-disabled={props.disabled ? '' : undefined}>
-      <span class="settings-number-box">
-        <input
-          type="text"
-          inputmode={props.field.integer ? 'numeric' : 'decimal'}
-          class="settings-number-input"
-          aria-label={`${props.field.label} value`}
-          role="spinbutton"
-          aria-valuenow={props.value}
-          aria-valuemin={props.field.min}
-          aria-valuemax={props.field.max}
-          autocomplete="off"
-          spellcheck={false}
-          disabled={props.disabled}
-          placeholder={typeof props.field.default === 'number' ? String(props.field.default) : 'default'}
-          value={shown()}
-          data-testid={`set-${props.field.key}`}
-          onInput={(e) => setDraft(e.currentTarget.value)}
-          onBlur={(e) => draft() !== undefined && commit(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowUp') { e.preventDefault(); nudge(1); }
-            else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-1); }
-            else if (e.key === 'Enter') commit(e.currentTarget.value);
-            else if (e.key === 'Escape') setDraft(undefined);
-          }}
-        />
-        <Show when={props.field.unit}>
-          <span class="settings-unit">{props.field.unit}</span>
-        </Show>
-      </span>
-      <span class="settings-number-steps">
-        <button
-          type="button"
-          class="settings-number-step"
-          aria-label={`Decrease ${props.field.label}`}
-          tabindex={-1}
-          disabled={props.disabled || (props.value !== undefined && props.value <= min())}
-          onClick={() => nudge(-1)}
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          type="button"
-          class="settings-number-step"
-          aria-label={`Increase ${props.field.label}`}
-          tabindex={-1}
-          disabled={props.disabled || (props.value !== undefined && props.value >= max())}
-          onClick={() => nudge(1)}
-        >
-          <Plus size={14} />
-        </button>
-      </span>
-    </div>
+    <NumberStepper
+      label={props.field.label}
+      value={props.value}
+      onChange={props.set}
+      {...(props.field.min !== undefined ? { min: props.field.min } : {})}
+      {...(props.field.max !== undefined ? { max: props.field.max } : {})}
+      {...(props.field.step !== undefined ? { step: props.field.step } : {})}
+      {...(props.field.integer ? { integer: true } : {})}
+      {...(props.field.unit ? { unit: props.field.unit } : {})}
+      {...(typeof props.field.default === 'number' ? { fallback: props.field.default } : {})}
+      disabled={props.disabled}
+      testId={`set-${props.field.key}`}
+    />
   );
 }
 

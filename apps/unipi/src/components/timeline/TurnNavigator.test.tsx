@@ -135,9 +135,9 @@ describe('navigatorItems', () => {
 });
 
 describe('TurnNavigator', () => {
-  it('renders nothing below 720 px, nor with a single query', async () => {
+  it('renders nothing below 560 px, nor with a single query', async () => {
     const { s } = await open(6);
-    const narrow = render(() => <TurnNavigator turns={s.turns} width={() => 600} onJump={() => {}} />);
+    const narrow = render(() => <TurnNavigator turns={s.turns} width={() => 500} onJump={() => {}} />);
     expect(narrow.container.querySelector('.tl-nav')).toBeNull();
     cleanup();
     const single = render(() => <TurnNavigator turns={() => s.turns().slice(0, 1)} width={() => 1400} onJump={() => {}} />);

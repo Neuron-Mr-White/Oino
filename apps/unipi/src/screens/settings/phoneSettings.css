@@ -38,7 +38,6 @@ html[data-shell=phone] .settings-phone .settings-namespace-row .text-\[15px\] { 
 html[data-shell=phone] .settings-phone .settings-namespace-row .text-xs { font-size: 14px; line-height: 20px; }
 
 /* 48 px targets (PH-22): steppers, segmented options, inputs ≥ 16 px (no zoom on focus). */
-html[data-shell=phone] .settings-phone .settings-stepper button { width: 48px; height: 48px; }
 html[data-shell=phone] .settings-phone [role=radiogroup] > [role=radio] { min-height: 44px; padding-inline: 14px; font-size: 14px; }
 html[data-shell=phone] .settings-phone input:not([type=checkbox]):not([type=radio]),
 html[data-shell=phone] .settings-phone select,

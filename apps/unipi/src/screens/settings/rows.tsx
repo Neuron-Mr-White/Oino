@@ -4,7 +4,8 @@
  * the old one-file Settings screen; DESIGN.md §3.10 settings group).
  */
 import { For, Show, createContext, useContext, type JSX } from 'solid-js';
-import { Info, Minus, Plus } from 'lucide-solid';
+import { Info } from 'lucide-solid';
+import { NumberStepper } from '../../ui/NumberStepper';
 
 /** Which section the two-column layout shows (undefined = all, phone). */
 export const SectionNav = createContext<{ active: () => string | undefined }>();
@@ -64,23 +65,18 @@ export function Stepper(props: {
   format?: (v: number) => string;
   onChange: (v: number) => void;
 }) {
-  const fmt = props.format ?? ((v: number) => String(v));
-  const dec = () => props.onChange(Math.max(props.min, round(props.value - props.step)));
-  const inc = () => props.onChange(Math.min(props.max, round(props.value + props.step)));
-  function round(v: number) {
-    // Avoid float drift (e.g. 1.2 - 0.1 = 1.0999999...).
-    return Math.round(v * 100) / 100;
-  }
   return (
-    <div class="settings-stepper" role="group" aria-label={props.label}>
-      <button type="button" class="rounded-input bg-surface-2 w-8 h-8 flex items-center justify-center" onClick={dec} aria-label={`Decrease ${props.label}`}>
-        <Minus size={14} />
-      </button>
-      <span class="w-12 text-center text-sm tabular-nums">{fmt(props.value)}{props.suffix}</span>
-      <button type="button" class="rounded-input bg-surface-2 w-8 h-8 flex items-center justify-center" onClick={inc} aria-label={`Increase ${props.label}`}>
-        <Plus size={14} />
-      </button>
-    </div>
+    <NumberStepper
+      label={props.label}
+      value={props.value}
+      min={props.min}
+      max={props.max}
+      step={props.step}
+      required
+      {...(props.suffix ? { unit: props.suffix } : {})}
+      {...(props.format ? { format: props.format } : {})}
+      onChange={(v) => v !== undefined && props.onChange(v)}
+    />
   );
 }
 

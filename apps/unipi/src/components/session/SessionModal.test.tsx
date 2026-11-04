@@ -248,8 +248,9 @@ describe('reserved entry (/info)', () => {
 describe('Limits (G-16)', () => {
   it('saves pins through caps.set and reflects them', async () => {
     const { world } = await boot('modal-limits');
-    const input = await screen.findByLabelText('Max turns');
+    const input = await screen.findByLabelText('Max turns value');
     fireEvent.input(input, { target: { value: '25' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     fireEvent.click(screen.getByTestId('sm-limits-save'));
     await waitFor(() => {
       const cmd = world.log.filter((l) => l.op === '_oino/service_call').at(-1);

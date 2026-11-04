@@ -16,8 +16,8 @@ import { textOf, type Part } from '../../lib/chat/model';
 import type { Turn } from '../../lib/session/turns';
 import { excerpt } from '../../lib/timeline/actions';
 
-/** Hidden below this conversation width (phone). */
-export const NAV_MIN_WIDTH = 720;
+/** Hidden below this conversation width (phone); a side pane open next to the chat still leaves the rail. */
+export const NAV_MIN_WIDTH = 560;
 /** Preferred tick pitch and the densest pitch before ticks are bucketed. */
 const PITCH = 10;
 const MIN_PITCH = 3;

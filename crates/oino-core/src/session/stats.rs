@@ -69,6 +69,35 @@ pub struct SessionStats {
     /// Context usage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_usage: Option<ContextUsage>,
+    /// Assistant replies per model over the whole session file (largest first).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<ModelStats>,
+    /// First entry time (Unix ms) of the whole session file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_at: Option<i64>,
+    /// Last entry time (Unix ms) of the whole session file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_at: Option<i64>,
+}
+
+/// One model's share of a session.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelStats {
+    /// Model id as the reply reported it.
+    pub model: String,
+    /// Assistant replies.
+    pub turns: u64,
+    /// Input tokens.
+    pub input: u64,
+    /// Output tokens.
+    pub output: u64,
+    /// Cache read tokens.
+    pub cache_read: u64,
+    /// Cache write tokens.
+    pub cache_write: u64,
+    /// Cost (USD).
+    pub cost: f64,
 }
 
 #[allow(
@@ -107,9 +136,16 @@ impl AgentSession {
             cost: 0.0,
             unpriced_tokens: 0,
             context_usage: None,
+            models: Vec::new(),
+            first_at: None,
+            last_at: None,
         };
         let entries = self.entries();
         for entry in &entries {
+            if let Some(ms) = entry.timestamp.to_ms() {
+                stats.first_at = Some(stats.first_at.map_or(ms, |t| t.min(ms)));
+                stats.last_at = Some(stats.last_at.map_or(ms, |t| t.max(ms)));
+            }
             match &entry.kind {
                 EntryKind::Usage { usage, .. } => add(&mut stats, usage),
                 EntryKind::BranchSummary(summary) => {
@@ -140,6 +176,22 @@ impl AgentSession {
                                 .filter(|b| matches!(b, AssistantContent::ToolCall(_)))
                                 .count() as u64;
                             add(&mut stats, &assistant.usage);
+                            let at = stats.models.iter().position(|m| m.model == assistant.model);
+                            let row = if let Some(i) = at {
+                                &mut stats.models[i]
+                            } else {
+                                stats.models.push(ModelStats {
+                                    model: assistant.model.clone(),
+                                    ..ModelStats::default()
+                                });
+                                stats.models.last_mut().expect("just pushed")
+                            };
+                            row.turns += 1;
+                            row.input += assistant.usage.input;
+                            row.output += assistant.usage.output;
+                            row.cache_read += assistant.usage.cache_read;
+                            row.cache_write += assistant.usage.cache_write;
+                            row.cost += assistant.usage.cost.total;
                         }
                         _ => {}
                     }
@@ -151,6 +203,9 @@ impl AgentSession {
             + stats.tokens.output
             + stats.tokens.cache_read
             + stats.tokens.cache_write;
+        stats.models.sort_by_key(|m| {
+            std::cmp::Reverse(m.input + m.output + m.cache_read + m.cache_write)
+        });
         stats.context_usage = self.context_usage();
         stats
     }
@@ -308,6 +363,9 @@ mod tests {
             cost: 0.0,
             unpriced_tokens: 0,
             context_usage: None,
+            models: Vec::new(),
+            first_at: None,
+            last_at: None,
         };
         add(&mut stats, &usage(100, 20, 0.0));
         add(&mut stats, &usage(5, 5, 1.25));

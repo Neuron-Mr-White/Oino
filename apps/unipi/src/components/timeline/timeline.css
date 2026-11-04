@@ -155,7 +155,7 @@ html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 40px; }
 /* the rail + scroller wrapper (the rail must not scroll with the timeline) */
 .tl-outer { position: relative; flex: 1; min-height: 0; display: flex; }
 
-/* turn rail: thin vertical rail of horizontal ticks, fisheye on hover (≥ 720 px) */
+/* turn rail: thin vertical rail of horizontal ticks, fisheye on hover (≥ 560 px) */
 .tl-nav {
   position: absolute;
   left: 8px;
@@ -166,6 +166,9 @@ html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 40px; }
   padding: 8px 0;
 }
 .tl-nav-ticks { position: relative; width: 30px; }
+/* The rail owns a gutter: the scroller pads in only as far as the centred 760 px column leaves the rail
+   (8 + 30 px) less than 8 px of air — never drawn over bubbles / cards, at any width. */
+.tl-outer:has(> .tl-nav) > .tl { padding-inline: max(0px, calc(26px - max(0px, (100% - 760px) / 2))); box-sizing: border-box; }
 .tl-nav-tick {
   position: absolute;
   left: 0;

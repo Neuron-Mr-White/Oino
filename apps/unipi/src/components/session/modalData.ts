@@ -30,6 +30,11 @@ export type SessionStats = {
   /** Tokens (child runs included) spent on models whose provider reports no price: `cost` leaves them out. */
   unpricedTokens: number;
   contextUsage?: ContextUsage | null;
+  /** Whole-session replies per model (host totals, same source as `cost`). */
+  models?: SessionModelUse[];
+  /** First/last entry time (Unix ms) of the whole session file. */
+  firstAt?: number;
+  lastAt?: number;
 };
 
 export type RunningBash = { toolCallId: string; command: string; startedAt: number; pid?: number };
@@ -118,6 +123,16 @@ export function parseSessionStats(v: unknown): SessionStats | undefined {
     cost: num(o.cost),
     unpricedTokens: num(o.unpricedTokens),
     contextUsage: parseContextUsage(o.contextUsage),
+    models: Array.isArray(o.models)
+      ? o.models.flatMap((m): SessionModelUse[] => {
+          if (!m || typeof m !== 'object') return [];
+          const r = m as Record<string, unknown>;
+          const input = num(r.input), output = num(r.output), cacheRead = num(r.cacheRead), cacheWrite = num(r.cacheWrite);
+          return [{ model: str(r.model).replace(/^.*\//, '') || 'unknown', turns: num(r.turns), input, output, cacheRead, cacheWrite, tokens: input + output + cacheRead + cacheWrite, cost: num(r.cost) }];
+        })
+      : undefined,
+    firstAt: typeof o.firstAt === 'number' ? o.firstAt : undefined,
+    lastAt: typeof o.lastAt === 'number' ? o.lastAt : undefined,
   };
 }
 
@@ -317,4 +332,9 @@ export function sessionSpanMs(entries: ReadonlyArray<{ timestamp?: string }>): n
     }
   }
   return hi > lo ? hi - lo : undefined;
+}
+
+/** Whole-session span from host stats (ms), or undefined with < 2 stamps. Pure. */
+export function statsSpanMs(stats: Pick<SessionStats, 'firstAt' | 'lastAt'> | undefined): number | undefined {
+  return stats?.firstAt !== undefined && stats.lastAt !== undefined && stats.lastAt > stats.firstAt ? stats.lastAt - stats.firstAt : undefined;
 }

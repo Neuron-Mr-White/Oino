@@ -65,7 +65,7 @@ pub(crate) use model::branch_refs as model_branch_refs;
 pub use model::{CycleDirection, CycleModelResult};
 pub use prompt::{InputSource, PromptDisposition, PromptOptions, StreamingBehavior};
 pub use queue::{QueueEdit, QueueKind};
-pub use stats::{ContextUsage, SessionStats, TokenTotals};
+pub use stats::{ContextUsage, ModelStats, SessionStats, TokenTotals};
 pub use tools::{BUILTIN_PATH_PREFIX, ToolEntry, ToolInfo, ToolSource};
 pub use tree::{ForkMessage, NavigateTreeOptions, NavigateTreeResult};
 

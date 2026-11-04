@@ -12,6 +12,7 @@
 .status-sections { display: flex; flex-direction: column; gap: 10px; padding: 10px var(--page-gutter) 18px; }
 
 .status-section { border-radius: 14px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 60%); padding: 10px 12px 12px; }
+.status-section.status-running { background: none; box-shadow: none; padding: 0; border-radius: 0; }
 .status-section-head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
 .status-section-title { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-dim); }
 .status-section-title > svg { flex: none; }
@@ -80,8 +81,8 @@ button.status-empty { padding: 0; border: 0; background: none; text-align: left;
 .status-row-more:hover { color: var(--color-text-muted); }
 
 /* ── The collapsed-pane capsule (top-right of the timeline) ───────────── */
-.status-capsule { position: absolute; top: 64px; right: 14px; z-index: 12; pointer-events: auto; display: inline-flex; align-items: stretch; max-width: min(60vw, 420px); border-radius: 9999px; background: var(--color-surface-2); box-shadow: 0 6px 22px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(46 40 37 / 80%); overflow: hidden; }
-.status-capsule-btn { appearance: none; border: 0; background: transparent; font: inherit; cursor: pointer; min-width: 0; }
+.status-capsule { position: relative; flex: none; align-self: flex-end; margin: 6px 14px 2px 14px; z-index: 12; pointer-events: auto; display: inline-flex; align-items: stretch; max-width: min(60vw, 420px); border-radius: 9999px; background: var(--color-surface-2); box-shadow: 0 6px 22px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(46 40 37 / 80%); overflow: hidden; }
+.status-capsule-btn { min-height: 28px; appearance: none; border: 0; background: transparent; font: inherit; cursor: pointer; min-width: 0; }
 .status-capsule-btn:hover { background: var(--color-surface-3); }
 .status-capsule-btn:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
 .cap-seg { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 6px 11px; font-size: 12px; line-height: 16px; color: var(--color-text-muted); white-space: nowrap; }
@@ -96,14 +97,12 @@ button.status-empty { padding: 0; border: 0; background: none; text-align: left;
 .cap-running { color: var(--color-wm-green); }
 .cap-pulse { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-claw); animation: status-pulse 1.4s ease-in-out infinite; }
 
-html[data-shell=phone] .status-capsule { top: 60px; right: 10px; }
+html[data-shell=phone] .status-capsule { margin-right: 10px; }
 html[data-shell=phone] .status-capsule-btn { min-height: 40px; }
 html[data-shell=phone] .cap-lh-label { display: none; }
 
-/* A banner (conn loss, taken over, host crash) fills the row under the
-   header — the capsule would cover its action button (§3.9 review, A29). */
-.conv:has(.tl-banner) .status-capsule { top: 118px; }
-html[data-shell=phone] .conv:has(.tl-banner) .status-capsule { top: 114px; }
+/* The capsule sits in the conversation's flow (right-aligned row under the header): it reserves its own
+   space instead of floating over chat bubbles / card chevrons. */
 
 /* P1-04: graph / swarm inspector — DAG + node rows with their worker sessions. */
 .lh-graph { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }

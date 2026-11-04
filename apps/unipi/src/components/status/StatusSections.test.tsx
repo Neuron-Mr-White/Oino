@@ -109,34 +109,16 @@ describe('Plan & todos section', () => {
   });
 });
 
-describe('Running summary ≡ Session modal', () => {
-  it("the counts equal the modal's over the same data (shared selector)", async () => {
+describe('Running section ≡ Session modal', () => {
+  it("renders the modal's shared Running view (one row component, no monospace summary rows)", async () => {
     const world = await boot('status-running');
     render(() => <StatusSections section="running" hostId="this-pc" sessionId="s001" />);
-    await waitFor(() => expect(screen.getByTestId('running-counts').textContent).not.toBe('nothing'));
-    // the summary's DOM says what the shared selector says for the same session
-    const s = sessions().ensure('this-pc', 's001');
-    const counts = runningCounts(await fetchRunning(s));
-    const text = screen.getByTestId('running-counts').textContent ?? '';
-    expect(text).toContain(`${counts.bash} shell`);
-    expect(text).toContain(`${counts.agents} agents`);
-    expect(text).toContain(`${counts.tray} tray`);
-    expect(text).toContain(String(runningTotal(counts)));
-    // and the rows are the modal's first rows (+ the sidekick counts into the total)
-    const rows = screen.getAllByTestId('running-row');
-    expect(rows[0]!.textContent).toContain('cargo test -p unipi-host');
-    expect(rows).toHaveLength(3);
-    expect(screen.getByTestId('running-more').textContent).toContain(`+${runningTotal(counts) - 3} more`);
+    await waitFor(() => expect(screen.getByTestId('sm-running')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByTestId('sm-running-loading')).toBeNull());
+    expect(screen.queryByTestId('running-row')).toBeNull();
     expect(world.log.some((l) => l.op === '_oino/running_bash')).toBe(true);
-  });
-
-  it('"Open in Session" opens the Session modal on Running', async () => {
-    await boot('status-running');
-    render(() => <StatusSections section="running" hostId="this-pc" sessionId="s001" />);
-    await waitFor(() => expect(screen.getByTestId('running-open')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('running-open'));
-    expect(sessionModal()?.tab).toBe('running');
-    expect(sessionModal()?.sessionId).toBe('s001');
+    // every Subagents / Background row is the shared WorkRow
+    for (const r of [...screen.queryAllByTestId('sm-run-row'), ...screen.queryAllByTestId('sm-bg-row')]) expect(r.classList.contains('sm-run')).toBe(true);
   });
 });
 

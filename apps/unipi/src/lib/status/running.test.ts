@@ -47,6 +47,7 @@ describe('topicRunningCount (the capsule)', () => {
   it('counts running bg tasks and subagent records', () => {
     expect(topicRunningCount(topics({ tasks: [{ status: 'running' }, { status: 'completed' }] }))).toBe(1);
     expect(topicRunningCount({ 'unipi:subagents:list': { data: { records: [{ status: 'running' }] }, sticky: true, publisher: '' } })).toBe(1);
+    expect(topicRunningCount(topics({ tasks: [{ status: 'running' }, { status: 'running' }] }))).toBe(2);
     expect(topicRunningCount({})).toBe(0);
     expect(topicRunningCount(topics({ tasks: [{ status: 'completed' }] }))).toBe(0);
     expect(topicRunningCount(topics(undefined))).toBe(0);

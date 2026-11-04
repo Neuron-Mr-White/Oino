@@ -58,6 +58,8 @@ export function SubagentsPage() {
             sectionId="sec-subagents"
             blurb="Agent profiles the main chat can delegate to, and how many run at once."
             openers={{ 'agents.profiles': openProfiles }}
+            // "Manage agents…" opened the same page as the Agent profiles row below: one entry.
+            hideFields={['manageAgents']}
           />
         }
       >

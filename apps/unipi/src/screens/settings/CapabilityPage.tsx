@@ -38,6 +38,8 @@ export type CapabilityPageProps = {
   extraManage?: JSX.Element;
   /** Manage rows Settings answers natively (action id → opener), e.g. Agent profiles. */
   openers?: Record<string, () => void>;
+  /** Form fields the page already offers natively (one entry per destination): dropped from the form. */
+  hideFields?: string[];
 };
 
 export function CapabilityPage(props: CapabilityPageProps) {
@@ -69,7 +71,7 @@ export function CapabilityPage(props: CapabilityPageProps) {
   return (
     <Section title={props.title} id={props.sectionId} icon={<props.icon size={14} />} intro={props.blurb}>
       <Show when={namespace()} fallback={<Row label="Settings" description="This host does not report this extension’s settings yet." />}>
-        {(ns) => <NamespaceForm namespace={ns()} bare flat testId={`cap-${props.page}-form`} />}
+        {(ns) => <NamespaceForm namespace={withoutFields(ns(), props.hideFields)} bare flat testId={`cap-${props.page}-form`} />}
       </Show>
       <div class="settings-in-card-label">Manage</div>
       <For each={offOwners()}>
@@ -151,4 +153,10 @@ export function ManageRow(props: { action: ManageAction; hostId: string; off?: b
       </Show>
     </div>
   );
+}
+
+/** The namespace minus `keys` (and sections left empty). */
+function withoutFields(ns: Namespace, keys: string[] | undefined): Namespace {
+  if (!keys?.length) return ns;
+  return { ...ns, sections: ns.sections.map((sec) => ({ ...sec, fields: sec.fields.filter((f) => !keys.includes(f.key)) })).filter((sec) => sec.fields.length > 0) };
 }

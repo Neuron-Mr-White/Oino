@@ -147,8 +147,8 @@
 .lh-dia-fo { position: absolute; }
 .lh-dia-full { position: fixed; inset: 0; z-index: 400; display: flex; flex-direction: column; background: var(--color-surface-1); padding: 12px; }
 .lh-dia-full .lh-dia { flex: 1 1 auto; min-height: 0; }
-.lh-dia-full .lh-dia-view { height: 100%; }
-.lh-dia-close { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--color-surface-2); color: var(--color-text-muted); box-shadow: 0 0 0 1px var(--color-line); }
+.lh-dia-full .lh-dia-view { flex: 1 1 auto; min-height: 0; }
+.lh-dia-close { flex: none; display: grid; place-items: center; width: 30px; height: 30px; min-height: 30px; border-radius: 10px; background: var(--color-surface-2); color: var(--color-text-muted); box-shadow: 0 0 0 1px var(--color-line); }
 .lh-dia-close:hover { background: var(--color-surface-3); color: var(--color-text); }
 .lh-dia-close:focus-visible { outline: 2px solid var(--color-wm-cyan); outline-offset: 1px; }
 .lh-dia-node { box-sizing: border-box; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; gap: 3px; padding: 7px 9px; border-radius: 10px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); cursor: pointer; overflow: hidden; }
@@ -161,10 +161,14 @@
 .lh-dia-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
 .lh-dia-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--color-text); }
 .lh-dia-chips { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
-.lh-dia-chips .lh-chip { height: 17px; line-height: 17px; font-size: 10.5px; padding: 0 6px; flex: 0 1 auto; min-width: 0; }
+.lh-dia-chips .lh-chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: 17px; line-height: 17px; font-size: 10.5px; padding: 0 6px; flex: 0 1 auto; min-width: 0; }
 .lh-dia-foot { display: flex; min-height: 14px; }
 .lh-dia-foot .lh-metrics { margin-left: 0; gap: 8px; }
-.lh-dia-tools { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--color-surface-2); box-shadow: 0 0 0 1px var(--color-line); }
+/* The zoom controls own a strip above the canvas — never an overlay on nodes / edges. */
+.lh-dia { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.lh-dia-bar { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 30px; }
+.lh-dia-hint { margin-right: auto; font-size: 11.5px; color: var(--color-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lh-dia-tools { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--color-surface-2); box-shadow: 0 0 0 1px var(--color-line); }
 .lh-dia-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; }
 
 html[data-shell=phone] .lh-row { padding-block: 11px; }

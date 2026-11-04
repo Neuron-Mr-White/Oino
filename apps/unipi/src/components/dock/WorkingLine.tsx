@@ -20,6 +20,9 @@ import { revealAskCard, type AskCall } from './AskPendingChip';
 import type { SessionHandle } from '../../lib/session/store';
 import './workingLine.css';
 
+/** When each session's working line first appeared (an episode without a host start time counts from here). */
+const appearedBySession = new Map<string, number>();
+
 function askText(calls: readonly AskCall[]): string | undefined {
   const first = calls[0];
   if (!first) return undefined;
@@ -55,11 +58,21 @@ export function WorkingLine(props: { session: SessionHandle; askCalls: readonly 
   // A working episode without a host start time counts from when the line appeared. `active`
   // is a memo so only a hidden → shown change restarts it: every host state push replaces the
   // run object (a new model), which used to reset the clock to 0s every ~2 s while waiting.
-  let appeared = Date.now();
+  // The start is kept per session at module level (not in the component): a layout change (side
+  // pane open/close, resize) remounts this line, and a local start reset the clock to 0s.
+  const key = props.session.key;
   const active = createMemo(() => !!model());
-  createEffect(on(active, (on_) => on_ && (appeared = Date.now())));
+  const appearedAt = (): number => {
+    let at = appearedBySession.get(key);
+    if (at === undefined) {
+      at = Date.now();
+      appearedBySession.set(key, at);
+    }
+    return at;
+  };
+  createEffect(on(active, (on_) => (on_ ? void appearedAt() : void appearedBySession.delete(key))));
   const now = useClock(() => working() && !!model());
-  const elapsed = () => formatDuration(Math.max(0, now() - (m()?.since ?? appeared)));
+  const elapsed = () => formatDuration(Math.max(0, now() - (m()?.since ?? appearedAt())));
   const open = () => openSessionModal({ hostId: props.session.hostId, sessionId: props.session.sessionId(), tab: 'running' });
   return (
     <Show when={presence.mounted()}>

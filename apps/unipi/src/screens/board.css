@@ -544,11 +544,6 @@
 .kb-setting .sheet-textarea { background: var(--color-surface-1); }
 .kb-command { display: block; padding: 8px 10px; border-radius: 10px; background: var(--color-surface-1); color: var(--color-gold); font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
 .kb-skeleton { height: 180px; border-radius: 16px; }
-.num-stepper { display: flex; align-items: center; border-radius: 12px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-line); }
-.num-stepper button { display: grid; place-items: center; width: 42px; height: 42px; min-height: 42px; border-radius: 12px; background: transparent; color: var(--color-text); }
-.num-stepper button:disabled { opacity: .3; }
-.num-stepper input { width: 42px; height: 42px; padding: 0; border: 0; background: transparent; color: var(--color-text); text-align: center; font-size: 16px; font-variant-numeric: tabular-nums; outline: none; -moz-appearance: textfield; appearance: textfield; }
-.num-stepper input::-webkit-outer-spin-button, .num-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* reader + image viewer */
 .reader-title { margin: 0; font-size: 16px; font-weight: 600; }
