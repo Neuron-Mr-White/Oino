@@ -96,6 +96,7 @@ export function LhView(props: { s: SessionHandle; counts: string; onToast?: (tex
   const [nonce, setNonce] = createSignal(0);
   const [open, setOpen] = createSignal<string | undefined>(undefined);
   const [retrying, setRetrying] = createSignal<string | undefined>(undefined);
+  const [stopping, setStopping] = createSignal<string | undefined>(undefined);
   const [unsupported, setUnsupported] = createSignal(false);
   const readOnly = () => viewing() !== undefined;
   const live = () => !readOnly() && page() === 'run';
@@ -165,6 +166,20 @@ export function LhView(props: { s: SessionHandle; counts: string; onToast?: (tex
       void props.s.cmd({ type: 'prompt', message: `/${g()?.mode ?? 'graph'} retry ${w.workId}` }).then(() => props.onToast?.(`Retrying ${w.workId}`)).catch(() => props.onToast?.('Could not retry'));
     } finally {
       setRetrying(undefined);
+      setNonce((n) => n + 1);
+    }
+  };
+  const stop = async (w: LhWork) => {
+    if (stopping()) return;
+    setStopping(w.workId);
+    try {
+      const reply = await serviceCall<unknown>(props.s, GRAPH_SERVICE, { op: 'stop_operator', workId: w.workId }, LH_EXTENSION_ID);
+      const refused = refusalText(reply);
+      props.onToast?.(refused ?? `Stopping the ${w.workId} worker`);
+    } catch {
+      props.onToast?.('Could not stop the worker');
+    } finally {
+      setStopping(undefined);
       setNonce((n) => n + 1);
     }
   };
@@ -283,6 +298,8 @@ export function LhView(props: { s: SessionHandle; counts: string; onToast?: (tex
                             onToggle={() => setOpen((c) => (c === w.workId ? undefined : w.workId))}
                             onRetry={readOnly() ? undefined : retry}
                             retrying={retrying() === w.workId}
+                            onStop={readOnly() ? undefined : stop}
+                            stopping={stopping() === w.workId}
                             onOpenSession={live() && workerOf(w) ? openSession : undefined}
                           >
                             {detail(w)}
@@ -299,7 +316,7 @@ export function LhView(props: { s: SessionHandle; counts: string; onToast?: (tex
                   <Show when={visible().find((w) => w.workId === open())}>
                     {(w) => (
                       <ul class="lh-rows lh-rows-detail">
-                        <NodeRow work={w()} now={now()} open onToggle={() => setOpen(undefined)} onRetry={readOnly() ? undefined : retry} retrying={retrying() === w().workId} onOpenSession={live() && workerOf(w()) ? openSession : undefined} selected>
+                        <NodeRow work={w()} now={now()} open onToggle={() => setOpen(undefined)} onRetry={readOnly() ? undefined : retry} retrying={retrying() === w().workId} onStop={readOnly() ? undefined : stop} stopping={stopping() === w().workId} onOpenSession={live() && workerOf(w()) ? openSession : undefined} selected>
                           {detail(w())}
                         </NodeRow>
                       </ul>

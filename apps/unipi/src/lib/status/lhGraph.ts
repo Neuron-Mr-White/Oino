@@ -64,6 +64,14 @@ export type LhWork = {
   nextRetryAt?: number;
   /** USD, when the host reports it (not in the v1 schema; shown only when present). */
   cost?: number;
+  /**
+   * The graph moved on from this step (stopped / replaced / settled) but its worker still
+   * runs: the host reports it as `running` with `orphaned`, `stoppedAs` (the graph's own
+   * status) and `canStop` (the `stop_operator` op).
+   */
+  orphaned?: boolean;
+  stoppedAs?: string;
+  canStop?: boolean;
 };
 
 export type LhGraphCounts = Record<LhStatus, number>;
@@ -139,6 +147,12 @@ function parseWork(raw: unknown): LhWork | undefined {
   if (retryAt) w.nextRetryAt = retryAt;
   const cost = num(o.cost);
   if (cost !== undefined && cost >= 0) w.cost = cost;
+  if (o.orphaned === true) {
+    w.orphaned = true;
+    w.canStop = o.canStop !== false;
+    const was = str(o.stoppedAs);
+    if (was) w.stoppedAs = was;
+  }
   return w;
 }
 

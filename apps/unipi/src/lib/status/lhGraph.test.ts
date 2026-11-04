@@ -42,6 +42,21 @@ describe('parse', () => {
     expect(g.work).toHaveLength(1);
     expect(g.work[0]!.canRetry).toBe(true);
   });
+  it('an orphaned step (graph moved on, worker still runs) parses as running + stoppable and survives Show errors off', () => {
+    const g = parseSnapshot({
+      ok: true,
+      graph: {
+        graphId: 'g', mode: 'graph', task: 't', counts: { running: 2 },
+        work: [
+          { workId: 'wl-fix-2', status: 'running', orphaned: true, canStop: true, stoppedAs: 'superseded', stopReason: 'idle 86 min', operatorId: 'd2a0e81f' },
+          { workId: 'wl-fix-verify', status: 'running', operatorId: 'e81e6c43' },
+        ],
+      },
+    })!;
+    expect(g.work[0]).toMatchObject({ status: 'running', orphaned: true, canStop: true, stoppedAs: 'superseded' });
+    expect(g.work[1].orphaned).toBeUndefined();
+    expect(visibleWork(g.work, false).map((w) => w.workId)).toEqual(['wl-fix-2', 'wl-fix-verify']);
+  });
   it('history rows', () => {
     expect(parseHistory({ ok: true, graphs: [{ graphId: 'a', task: 'A', counts: {} }, {}] })).toHaveLength(1);
     expect(parseHistory(undefined)).toEqual([]);

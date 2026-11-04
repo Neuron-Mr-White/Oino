@@ -110,6 +110,9 @@ export function NodeRow(props: {
   onToggle: () => void;
   onRetry?: (w: LhWork) => void;
   retrying?: boolean;
+  /** Stops the still-running worker of an orphaned step (`stop_operator`). */
+  onStop?: (w: LhWork) => void;
+  stopping?: boolean;
   onOpenSession?: (w: LhWork) => void;
   selected?: boolean;
   children?: JSX.Element;
@@ -131,6 +134,22 @@ export function NodeRow(props: {
             Retry
           </button>
         </Show>
+        <Show when={w().orphaned && w().canStop && props.onStop}>
+          <button
+            type="button"
+            class="lh-retry"
+            disabled={props.stopping}
+            onClick={() => props.onStop!(w())}
+            data-testid="lh-node-stop"
+            aria-label={`Stop the ${w().workId} worker`}
+            title={`The graph ${w().stoppedAs === 'superseded' ? 'replaced' : (w().stoppedAs ?? 'stopped')} this step but its worker is still running`}
+          >
+            <Show when={props.stopping} fallback={<Square size={12} />}>
+              <Loader2 size={12} class="lh-spin" />
+            </Show>
+            Stop
+          </button>
+        </Show>
         <Show when={props.onOpenSession}>
           <button type="button" class="lh-icon-btn" aria-label={`Open the ${w().workId} worker session`} title="Open session" data-testid="lh-node-open" onClick={() => props.onOpenSession!(w())}>
             <ExternalLink size={13} />
@@ -144,6 +163,11 @@ export function NodeRow(props: {
       </div>
       <Show when={w().instruction}>
         <p class="lh-row-text" data-open={props.open ? '' : undefined} data-testid="lh-node-text">{w().instruction}</p>
+      </Show>
+      <Show when={w().orphaned}>
+        <p class="lh-row-error" data-testid="lh-node-orphaned">
+          {`Still running: the graph ${w().stoppedAs === 'superseded' ? 'replaced' : (w().stoppedAs ?? 'stopped')} this step${w().stopReason ? ` (${w().stopReason})` : ''}, but its worker has not ended.`}
+        </p>
       </Show>
       <Show when={w().status === 'errored' && w().error}>
         {(e) => <p class="lh-row-error" data-testid="lh-node-error">{props.open ? e() : e().split('\n')[0]}</p>}
