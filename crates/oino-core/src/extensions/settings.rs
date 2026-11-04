@@ -808,6 +808,20 @@ impl ExtensionSettings {
         });
     }
 
+    /// Another services set of the same agent dir (a hub serves one set per project) wrote
+    /// `keys` of `namespace`: re-reads the settings files, then notifies like a local write so
+    /// the owning extension re-reads its values (no restart, no `/reload`).
+    pub fn reload_external(&self, namespace: &str, keys: Vec<String>, scope: SettingsScope) {
+        self.manager().reload();
+        let owner = self.read().get(namespace).map(|n| n.owner.clone());
+        let _ = self.changes.send(SettingsChange {
+            namespace: namespace.into(),
+            keys,
+            scope,
+            extension_id: owner,
+        });
+    }
+
     /// Change notifications (frontends refresh the hub; the services forward them to owners).
     #[must_use]
     pub fn subscribe(&self) -> broadcast::Receiver<SettingsChange> {

@@ -87,11 +87,67 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
         HostCmd::RemoveExtension { id } => return remove_extension(hub, id).await,
         _ => {}
     }
-    let services = hub
-        .core_services()
-        .await
-        .map_err(|error| failed(error.to_string()))?;
-    dispatch(hub, &services, cmd).await
+    let services = match settings_cwd(&cmd)? {
+        Some(cwd) => hub.core_services_for(&cwd).await,
+        None => hub.core_services().await,
+    }
+    .map_err(|error| failed(error.to_string()))?;
+    let global_write = global_settings_write(&cmd);
+    let reply = dispatch(hub, &services, cmd).await?;
+    if let Some((namespace, key)) = global_write {
+        // One services set per project, each with its own copy of the settings files:
+        // replay a global write into the others so their extensions apply it from the
+        // next turn (no host restart).
+        for other in hub.core_services_sets().await {
+            if !Arc::ptr_eq(&other, &services) {
+                other.extension_settings.reload_external(
+                    &namespace,
+                    vec![key.clone()],
+                    SettingsScope::Global,
+                );
+            }
+        }
+    }
+    Ok(reply)
+}
+
+/// The `cwd` of an extension-settings command (`None` = the primary cwd's services).
+fn settings_cwd(cmd: &HostCmd) -> Result<Option<std::path::PathBuf>, AppErrorDto> {
+    let cwd = match cmd {
+        HostCmd::GetExtensionSettings { cwd, .. }
+        | HostCmd::SetExtensionSetting { cwd, .. }
+        | HostCmd::UnsetExtensionSetting { cwd, .. } => cwd.as_deref(),
+        _ => None,
+    };
+    let Some(cwd) = cwd.map(str::trim).filter(|c| !c.is_empty()) else {
+        return Ok(None);
+    };
+    let path = std::path::PathBuf::from(cwd);
+    if !path.is_absolute() || !path.is_dir() {
+        return Err(invalid(format!(
+            "not a project folder on this computer: {cwd}"
+        )));
+    }
+    Ok(Some(path))
+}
+
+/// `(namespace, key)` of a global extension-settings write.
+fn global_settings_write(cmd: &HostCmd) -> Option<(String, String)> {
+    match cmd {
+        HostCmd::SetExtensionSetting {
+            namespace,
+            key,
+            scope,
+            ..
+        }
+        | HostCmd::UnsetExtensionSetting {
+            namespace,
+            key,
+            scope,
+            ..
+        } if scope == "global" => Some((namespace.clone(), key.clone())),
+        _ => None,
+    }
 }
 
 /// E-18/F-09: the permission mode is never written into a repo. The workflow extension no
@@ -183,7 +239,9 @@ async fn dispatch(
     let registry = &services.extension_settings;
     match cmd {
         HostCmd::GetSettingsSchema => Ok(json!({ "namespaces": registry.schema() })),
-        HostCmd::GetExtensionSettings { namespace, layer } => {
+        HostCmd::GetExtensionSettings {
+            namespace, layer, ..
+        } => {
             if registry.namespace(&namespace).is_none() {
                 return Err(failed(format!(
                     "Unknown settings namespace: {namespace}"
@@ -200,6 +258,7 @@ async fn dispatch(
             key,
             value,
             scope,
+            ..
         } => {
             let value = value.filter(|value| !value.is_null());
             registry
@@ -217,6 +276,7 @@ async fn dispatch(
             namespace,
             key,
             scope,
+            ..
         } => {
             registry
                 .set(&namespace, &key, None, scope_of(&scope)?)
@@ -663,6 +723,7 @@ mod tests {
             key: "mode".into(),
             value: Some(json!("ask")),
             scope: "project".into(),
+            cwd: None,
         };
         assert!(refused_into_repo(&banned).is_err());
         // The global default (the "make default" write path) is fine.
@@ -671,6 +732,7 @@ mod tests {
             key: "defaultMode".into(),
             value: Some(json!("ask")),
             scope: "global".into(),
+            cwd: None,
         };
         assert!(refused_into_repo(&ok).is_ok());
         let ok = HostCmd::SetSetting {
@@ -683,6 +745,7 @@ mod tests {
             namespace: "permission".into(),
             key: "mode".into(),
             scope: "project".into(),
+            cwd: None,
         };
         assert!(refused_into_repo(&ok).is_ok());
     }

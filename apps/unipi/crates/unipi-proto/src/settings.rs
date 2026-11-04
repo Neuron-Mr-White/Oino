@@ -195,6 +195,11 @@ pub enum HostCmd {
         /// `effective` (default) | `global` | `project`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         layer: Option<String>,
+        /// The project whose services answer (its `.oino/settings.json` is the `project`
+        /// layer); omitted = the host's primary cwd. Global writes reach every live
+        /// services set either way.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
     },
     /// `_oino/set_extension_setting`: write (or, with `null`, unset) one key.
     SetExtensionSetting {
@@ -204,12 +209,22 @@ pub enum HostCmd {
         value: Option<Value>,
         /// `global` | `project`.
         scope: String,
+        /// The project whose services answer (its `.oino/settings.json` is the `project`
+        /// layer); omitted = the host's primary cwd. Global writes reach every live
+        /// services set either way.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
     },
     /// `_oino/unset_extension_setting`: delete one key (back to the default).
     UnsetExtensionSetting {
         namespace: String,
         key: String,
         scope: String,
+        /// The project whose services answer (its `.oino/settings.json` is the `project`
+        /// layer); omitted = the host's primary cwd. Global writes reach every live
+        /// services set either way.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
     },
     /// `_oino/extensions`: loaded + disabled extensions → `{extensions: […]}`.
     Extensions,

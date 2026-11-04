@@ -628,6 +628,12 @@ impl SessionHub {
         self.inner.core.services().await.map_err(HubError::Client)
     }
 
+    /// Every cached core services set (one per project): a hub-level global settings
+    /// write is replayed into the others (`host_cmd`).
+    pub async fn core_services_sets(&self) -> Vec<Arc<oino_core::services::Services>> {
+        self.inner.core.services_sets().await
+    }
+
     /// Warms (or returns) the cached services of `cwd` with no session runtime — the
     /// background pre-warm of the recent projects, so a `session_open` there does not
     /// pay extension loading on the click path.

@@ -707,6 +707,17 @@ impl SessionHub {
         self.services_for(&mut state, &cwd).await
     }
 
+    /// Every cached services set (one per project cwd, busy or idle-warm) — a hub-level
+    /// global settings write reaches the other sets through these.
+    pub async fn services_sets(&self) -> Vec<Arc<Services>> {
+        let state = self.inner.state.lock().await;
+        state
+            .services
+            .iter()
+            .map(|entry| Arc::clone(&entry.services))
+            .collect()
+    }
+
     /// The effective `maxServices` of this hub: the setting, or the [`HubLimits`] override.
     #[must_use]
     pub fn max_services(&self) -> usize {

@@ -228,6 +228,7 @@ async fn schema_and_errors_match_the_session_commands() {
         HostCmd::GetExtensionSettings {
             namespace: "nope".into(),
             layer: None,
+            cwd: None,
         },
     )
     .await
@@ -242,6 +243,7 @@ async fn schema_and_errors_match_the_session_commands() {
             key: "k".into(),
             value: None,
             scope: "somewhere".into(),
+            cwd: None,
         },
     )
     .await
@@ -487,4 +489,55 @@ async fn install_and_remove_extension_through_host_cmd() {
         .await
         .unwrap_err();
     assert!(missing.contains("not installed"), "{missing}");
+}
+
+/// agent-disable: a global extension-settings write through the primary set reaches a
+/// project's already-warm services set (its own settings copy) at once; a bogus `cwd` is
+/// refused.
+#[tokio::test]
+async fn global_extension_setting_reaches_every_services_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("proj");
+    std::fs::create_dir_all(&project).unwrap();
+    let hub = hub(&dir);
+    // Warm the project's set first: it caches the settings files from now on.
+    let other = hub.core_services_for(&project).await.unwrap();
+    let disabled = |services: &oino_core::services::Services| {
+        services
+            .extension_settings
+            .merged_settings()
+            .get("extensionSettings")
+            .and_then(|e| e.get("subagents"))
+            .and_then(|s| s.get("disabled"))
+            .cloned()
+    };
+    assert_eq!(disabled(&other), None);
+    run_on(
+        &hub,
+        HostCmd::SetExtensionSetting {
+            namespace: "subagents".into(),
+            key: "disabled".into(),
+            value: Some(serde_json::json!(["subagent_general"])),
+            scope: "global".into(),
+            cwd: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        disabled(&other),
+        Some(serde_json::json!(["subagent_general"]))
+    );
+    let bad = run_on(
+        &hub,
+        HostCmd::UnsetExtensionSetting {
+            namespace: "subagents".into(),
+            key: "disabled".into(),
+            scope: "global".into(),
+            cwd: Some("relative/dir".into()),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(bad.contains("not a project folder"), "{bad}");
 }
