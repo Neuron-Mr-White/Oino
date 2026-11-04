@@ -104,6 +104,39 @@ describe('AgentsGroup + AgentCard', () => {
     expect(cards[0]!.querySelector('.tl-agent-status')!.getAttribute('data-status')).toBe('running');
   });
 
+  it('a card with nothing but a status shows the icon inline after the title — no sub row (owner-fix-5)', () => {
+    // A done run with no profile chip, no duration and no counters: the sub line would
+    // hold only the status icon, which used to sit alone on its own line.
+    const es = [
+      user(),
+      entry({ type: 'message', message: { role: 'assistant', stopReason: 'toolUse', content: [{ type: 'toolCall', id: 's1', name: 'run_subagent', arguments: { title: 'Solo done', task: 't' } }] } }),
+      entry({ type: 'message', message: { role: 'toolResult', toolCallId: 's1', toolName: 'run_subagent', content: [{ type: 'text', text: 'ok' }], details: { id: 's1', title: 'Solo done', status: 'completed', phase: 'done' } } }),
+    ];
+    const ctx = fakeCtx([]);
+    const r = render(() => <WorkNodes nodes={nodesOf(es, {})} ctx={ctx} live />);
+    const card = r.getByTestId('tl-agent');
+    // No sub row at all…
+    expect(card.querySelector('.tl-agent-sub')).toBeNull();
+    // …and the status icon is inside the title row, right after the title.
+    const line = card.querySelector('.tl-agent-titleline');
+    expect(line).toBeTruthy();
+    expect(line!.querySelector('.tl-agent-title')!.textContent).toBe('Solo done');
+    expect(line!.querySelector('.tl-agent-status')).toBeTruthy();
+  });
+
+  it('a card with a chip or counters keeps the two-line head', () => {
+    const { es, live } = parallel();
+    const ctx = fakeCtx([]);
+    const r = render(() => <WorkNodes nodes={nodesOf(es, live)} ctx={ctx} live />);
+    const cards = r.getAllByTestId('tl-agent');
+    for (const card of cards) {
+      const sub = card.querySelector('.tl-agent-sub');
+      expect(sub).toBeTruthy();
+      expect(sub!.querySelector('.tl-agent-status')).toBeTruthy();
+      expect(card.querySelector('.tl-agent-titleline')).toBeNull();
+    }
+  });
+
   it('expanding a card shows only its own steps, grouped like the parent tools', () => {
     const { es, live } = parallel();
     const ctx = fakeCtx([]);

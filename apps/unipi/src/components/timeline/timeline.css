@@ -721,6 +721,10 @@ html[data-shell=phone] .tl-agent-toggle { min-height: 42px; }
 .tl-agent-title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-text); font-weight: 550; }
 .tl-agent-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 2px 0; }
 .tl-agent-main > .tl-agent-title { flex: none; max-width: 100%; }
+/* A sub line that would hold nothing but the status icon is not rendered: the icon sits
+   inline after the title instead (owner-fix-5 — no spinner alone on its own row). */
+.tl-agent-titleline { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.tl-agent-titleline > .tl-agent-status { flex: none; }
 .tl-agent-sub { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .tl-agent-sub > .tl-agent-meta { margin-left: 0; }
 .tl-agent-sub > .tl-agent-chip { max-width: 55%; }

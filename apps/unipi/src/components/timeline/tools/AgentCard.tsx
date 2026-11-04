@@ -100,6 +100,8 @@ export function AgentCard(props: {
   };
   const chip = () => run().profileLabel ?? (run().profile ? `${run().profile}` : undefined);
   const counters = () => runCounters(run());
+  /** False when the sub line would hold nothing but the status icon (no chip/elapsed/counters). */
+  const subHasMore = () => !!chip() || !!elapsed() || !!counters();
   const canOpen = () => !!run().agentId || !!props.openTranscript;
   const openTranscript = (ev?: MouseEvent) => {
     ev?.stopPropagation();
@@ -143,6 +145,19 @@ export function AgentCard(props: {
           {/* Two lines: the title gets the whole first line; profile/model + status/time/counters
               sit under it (one line truncated the title to a few words). */}
           <span class="tl-agent-main">
+          <Show
+            when={subHasMore()}
+            fallback={
+              /* Nothing else on the sub line: the status icon sits inline right
+                after the title instead of alone on its own row (owner-fix-5). */
+              <span class="tl-agent-titleline">
+                <span class="tl-agent-title" classList={{ shimmer: running() }}>
+                  {run().title}
+                </span>
+                <AgentStatusIcon status={run().status} />
+              </span>
+            }
+          >
           <span class="tl-agent-title" classList={{ shimmer: running() }}>
             {run().title}
           </span>
@@ -167,6 +182,7 @@ export function AgentCard(props: {
             </Show>
           </span>
           </span>
+          </Show>
           </span>
           <Show when={!deep()}>
             <ChevronRight size={15} class="proc-chev" />
