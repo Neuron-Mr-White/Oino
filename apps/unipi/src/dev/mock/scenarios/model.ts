@@ -199,6 +199,26 @@ export const thinkingChip: MockScenario = {
   setup: seedRoute,
 };
 
+/** The composer's model capsule (context ring + model name) with a long model
+ *  name, so the captures show how much of it the free toolbar width keeps. */
+export const composerCapsule: MockScenario = {
+  name: 'composer-capsule',
+  hosts: [
+    host(
+      makeSession({
+        model: { provider: 'fireworks', id: 'accounts/fireworks/models/deepseek-v3p2-exp', name: 'DeepSeek V3.2 Exp Reasoner (Fireworks)' },
+        commands: [
+          ...MODE_COMMANDS,
+          { name: 'permission', description: 'Permission mode (ask/auto/full)', source: 'extension' },
+          { name: 'plan', description: 'Plan mode on/off/view/approve', source: 'extension' },
+        ],
+        cmd: { ...CONTEXT_CMD, '_oino/extensions': () => ({ extensions: [WORKFLOW_EXTENSION] }) },
+      }),
+    ),
+  ],
+  setup: seedRoute,
+};
+
 const GRAPH_COUNTS = { queued: 1, running: 2, blocked: 0, completed: 3, failed: 0, stopped: 0, cancelled: 0, superseded: 0 };
 
 export const modeChip: MockScenario = {

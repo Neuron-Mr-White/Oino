@@ -18,7 +18,7 @@ import { Composer } from '../composer/Composer';
 import { createMockHost, type MockScenario, type MockWorld } from '../../dev/mock/host';
 import { SCENARIOS } from '../../dev/mock/scenarios';
 import { sessionModal, setSessionModalTarget } from '../session/modalTarget';
-import { ModelChip } from './ModelChip';
+import { ModelCapsule, ModelChip } from './ModelChip';
 import { ThinkingChip } from './ThinkingChip';
 import { ContextRing } from './ContextRing';
 import { closeModelPicker, modelPickerTarget } from './target';
@@ -136,6 +136,57 @@ describe('ThinkingChip (Z-71)', () => {
     await waitFor(() => expect(s.state.model?.id).toBe('glm-4.5-air'));
     await tick();
     expect(screen.queryByTestId('thinking-chip')).toBeNull();
+  });
+});
+
+describe('ModelCapsule (owner 2026-11-04)', () => {
+  it('puts the context ring before the model name, in one capsule', async () => {
+    await open('thinking-chip');
+    const s = sessions().ensure(HOST, SESSION);
+    render(() => <ModelCapsule session={s} />);
+    const capsule = screen.getByTestId('model-capsule');
+    const ring = screen.getByTestId('context-ring');
+    const chip = screen.getByTestId('model-chip');
+    expect(capsule.contains(ring) && capsule.contains(chip)).toBe(true);
+    expect(ring.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The ring stands where the chip icon was: no second glyph before the name.
+    expect(chip.querySelector('.tb-ic')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toBe('Claude Sonnet 4.5'));
+    // Each part keeps its own target.
+    fireEvent.click(chip);
+    expect(modelPickerTarget()).toMatchObject({ hostId: HOST, sessionId: SESSION });
+    closeModelPicker();
+    fireEvent.click(ring);
+    expect(sessionModal()).toMatchObject({ hostId: HOST, sessionId: SESSION, tab: 'context' });
+  });
+
+  it('shows the open state while its dialog is up', async () => {
+    await open('thinking-chip');
+    const s = sessions().ensure(HOST, SESSION);
+    render(() => <ModelCapsule session={s} />);
+    const ring = screen.getByTestId('context-ring');
+    const chip = screen.getByTestId('model-chip');
+    expect(ring.getAttribute('aria-expanded')).toBe('false');
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(ring);
+    expect(ring.getAttribute('aria-expanded')).toBe('true');
+    setSessionModalTarget({ hostId: HOST, sessionId: SESSION, tab: 'info' });
+    expect(ring.getAttribute('aria-expanded')).toBe('false');
+    setSessionModalTarget(undefined);
+    fireEvent.click(chip);
+    expect(chip.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('is the composer\'s flexible model slot; the end group keeps only Send', async () => {
+    await open('thinking-chip');
+    const s = sessions().ensure(HOST, SESSION);
+    const view = render(() => <Composer session={s} />);
+    await waitFor(() => expect(screen.getByTestId('model-capsule')).toBeTruthy());
+    const slot = view.container.querySelector('.tb-slot[data-slot="model"]') as HTMLElement;
+    expect(slot.contains(screen.getByTestId('context-ring'))).toBe(true);
+    expect(slot.hasAttribute('data-flex')).toBe(true);
+    expect(Number(slot.dataset.tbMin)).toBeGreaterThan(0);
+    expect(view.container.querySelector('.tb-end-group [data-testid="context-ring"]')).toBeNull();
   });
 });
 

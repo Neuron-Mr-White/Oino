@@ -12,9 +12,13 @@
  * per-control flags (`data-c-permission`, `data-c-plan`, `data-c-think`,
  * `data-c-model`), which the stylesheet uses to fold a chip into its icon
  * form; `useToolbarStep()` is there for chips that need more than CSS.
+ *
+ * The model capsule (owner 2026-11-04) is the one flexible slot: it takes the
+ * row's free width up to its cap, shrinks (ellipsis) to a floor on narrow
+ * rows, and only then do the other chips fold.
  */
 import { createContext, createEffect, createSignal, onCleanup, onMount, Show, untrack, useContext, type Accessor, type JSX } from 'solid-js';
-import { compressionStep, type ToolbarItem as ToolbarItemSize, type ToolbarSlot } from '../../lib/composer/compression';
+import { compressionStep, MAX_STEP, type ToolbarItem as ToolbarItemSize, type ToolbarSlot } from '../../lib/composer/compression';
 
 /** Gap between toolbar items (ZCode keeps 12 px between groups; ours is 8). */
 export const TOOLBAR_GAP = 8;
@@ -26,10 +30,18 @@ export function useToolbarStep(): Accessor<number> {
   return useContext(StepContext);
 }
 
-/** Wraps one compressible control so the bar can measure and fold it. */
-export function ToolbarSlot(props: { slot: ToolbarSlot; children: JSX.Element }) {
+/** Wraps one compressible control so the bar can measure and fold it.
+ *  `min` makes it flexible (it shrinks to that floor before anything folds,
+ *  see `ToolbarItem.min`). */
+export function ToolbarSlot(props: { slot: ToolbarSlot; children: JSX.Element; min?: number }) {
   return (
-    <div class="tb-slot" data-tb-item data-slot={props.slot}>
+    <div
+      class="tb-slot"
+      data-tb-item
+      data-slot={props.slot}
+      data-flex={props.min != null ? '' : undefined}
+      data-tb-min={props.min}
+    >
       {props.children}
     </div>
   );
@@ -68,20 +80,40 @@ export function Toolbar(props: {
       // Measure the full layout: undo our own folds first (synchronous, so
       // nothing is painted in between).
       if (applied !== 0) setStep(0);
-      const items: ToolbarItemSize[] = [...el.querySelectorAll<HTMLElement>('[data-tb-item]')].map((item) => {
+      // A flexible slot is read at its natural width (`data-measuring` stops
+      // its shrinking for these synchronous reads; nothing paints in between).
+      el.dataset.measuring = '';
+      const nodes = [...el.querySelectorAll<HTMLElement>('[data-tb-item]')];
+      const full = nodes.map((item) => item.getBoundingClientRect().width);
+      // The folded widths are read too (the last step folds every slot): a
+      // fold's real size — the capsule's ring + chevron, the phone's permission
+      // chip that keeps its word — beats a 30 px guess.
+      const hasSlot = nodes.some((item) => item.dataset.slot);
+      if (hasSlot) setStep(MAX_STEP);
+      const folded = hasSlot ? nodes.map((item) => item.getBoundingClientRect().width) : full;
+      const items: ToolbarItemSize[] = nodes.map((item, i) => {
         const slot = item.dataset.slot as ToolbarSlot | undefined;
-        return { ...(slot ? { slot } : {}), width: item.getBoundingClientRect().width };
+        const min = Number(item.dataset.tbMin);
+        const width = full[i] ?? 0;
+        const compact = folded[i] ?? 0;
+        return {
+          ...(slot ? { slot } : {}),
+          width,
+          ...(min > 0 ? { min } : {}),
+          ...(slot && slot !== 'think' && compact > 0 && compact < width ? { compact } : {}),
+        };
       });
+      delete el.dataset.measuring;
       const available = el.clientWidth;
-      const next = compressionStep(available, items, TOOLBAR_GAP);
+      // The row's real gap (the phone shell's is 4 px, the desktop's 8).
+      const gap = Number.parseFloat(getComputedStyle(el).columnGap);
+      const next = compressionStep(available, items, Number.isFinite(gap) && gap >= 0 ? gap : TOOLBAR_GAP);
       const nextSignature = `${available}|${items.map((i) => `${i.slot ?? ''}:${Math.round(i.width)}`).join(',')}`;
-      if (nextSignature !== signature || next !== applied) {
-        signature = nextSignature;
-        setStep(next);
-      } else if (applied !== 0) {
-        setStep(applied);
-      }
+      const changed = nextSignature !== signature || next !== applied;
+      signature = nextSignature;
+      setStep(changed ? next : applied);
     } finally {
+      delete el.dataset.measuring;
       measuring = false;
     }
   };

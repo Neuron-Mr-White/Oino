@@ -5,7 +5,7 @@
  * steps.
  */
 import { describe, expect, it } from 'vitest';
-import { COMPACT, compressionStep, MAX_STEP, slotWidth, THINK_LITE, widthAtStep, type ToolbarItem } from './compression';
+import { COMPACT, compressionStep, itemWidth, MAX_STEP, slotWidth, THINK_LITE, widthAtStep, type ToolbarItem } from './compression';
 
 /** A typical full width toolbar: + , permission, plan, spacer-fixed, think, model, context, send. */
 const items: ToolbarItem[] = [
@@ -76,5 +76,37 @@ describe('seven-step toolbar compression (Z-64)', () => {
     const plain = [{ width: 32 }, { width: 40 }];
     expect(compressionStep(72 + GAP, plain, GAP)).toBe(0);
     expect(compressionStep(0, plain, GAP)).toBe(0);
+  });
+});
+
+/** Owner 2026-11-04: the model capsule (context ring · name) is the flexible slot. */
+describe('the flexible model capsule', () => {
+  const capsule: ToolbarItem = { slot: 'model', width: 300, min: 148, compact: 54 };
+  const row: ToolbarItem[] = [{ width: 32 }, { slot: 'permission', width: 84 }, { slot: 'plan', width: 76 }, { slot: 'think', width: 92 }, capsule, { width: 52 }];
+
+  it('counts at its floor until it folds, then at its measured folded width', () => {
+    expect(itemWidth(capsule, 0)).toBe(148);
+    expect(itemWidth(capsule, 6)).toBe(148);
+    expect(itemWidth(capsule, 7)).toBe(54);
+    // A short name under the floor counts at its own width.
+    expect(itemWidth({ ...capsule, width: 110 }, 0)).toBe(110);
+  });
+
+  it('gives up name length before any other chip folds', () => {
+    const floorRow = widthAtStep(0, row, GAP);
+    // Far less than the natural row, but the floor still fits: nothing folds.
+    expect(floorRow).toBeLessThan(32 + 84 + 76 + 92 + 300 + 52);
+    expect(compressionStep(floorRow, row, GAP)).toBe(0);
+    expect(compressionStep(floorRow - 1, row, GAP)).toBe(2);
+  });
+
+  it('a folded slot uses its measured width, not the 30 px guess', () => {
+    const phone: ToolbarItem[] = [{ width: 48 }, { slot: 'permission', width: 72, compact: 65 }, capsule, { width: 86 }];
+    expect(widthAtStep(2, phone, 4)).toBe(48 + 65 + 148 + 86 + 3 * 4);
+  });
+
+  it('an empty slot (not offered) adds no gap', () => {
+    const withEmpty: ToolbarItem[] = [{ width: 48 }, { slot: 'permission', width: 0 }, capsule, { width: 86 }];
+    expect(widthAtStep(0, withEmpty, 4)).toBe(48 + 148 + 86 + 2 * 4);
   });
 });

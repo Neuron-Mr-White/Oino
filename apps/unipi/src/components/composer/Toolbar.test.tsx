@@ -138,4 +138,28 @@ describe('toolbar compression (Z-64)', () => {
     expect(bar.dataset.step).toBe('2');
     expect(bar.dataset.cThink).toBeUndefined();
   });
+
+  it('a flexible model slot (min) shrinks to its floor before anything folds (owner 2026-11-04)', () => {
+    const view = render(() => (
+      <Toolbar lead={<span data-w="28">+</span>} end={<span data-w="40">send</span>}>
+        <ToolbarSlot slot="permission">
+          <div data-w="84">permission</div>
+        </ToolbarSlot>
+        <ToolbarSlot slot="model" min={148}>
+          <div data-w="300">capsule</div>
+        </ToolbarSlot>
+      </Toolbar>
+    ));
+    const bar = view.container.querySelector('.comp-bar') as HTMLElement;
+    const slot = view.container.querySelector('[data-slot="model"]') as HTMLElement;
+    expect(slot.hasAttribute('data-flex')).toBe(true);
+    // Natural row: 28+84+300+40 + 3 gaps = 476. Floor row: 28+84+148+40+24 = 324.
+    bar.dataset.cw = '324';
+    fireEvent(window, new Event('resize'));
+    expect(bar.dataset.step).toBe('0');
+    expect(bar.hasAttribute('data-measuring')).toBe(false);
+    bar.dataset.cw = '323';
+    fireEvent(window, new Event('resize'));
+    expect(bar.dataset.step).toBe('2');
+  });
 });

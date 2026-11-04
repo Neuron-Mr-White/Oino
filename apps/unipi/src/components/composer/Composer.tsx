@@ -121,9 +121,8 @@ import { PastedTextChip } from './PastedTextChip';
 import { ImageEditor } from './ImageEditor';
 import { PermissionControl, PlanToggle } from './PermissionControl';
 import { Toolbar, ToolbarSlot } from './Toolbar';
-import { ModelChip } from '../model/ModelChip';
+import { CAPSULE_MIN, CAPSULE_MIN_PHONE, ModelCapsule } from '../model/ModelChip';
 import { ThinkingChip } from '../model/ThinkingChip';
-import { ContextRing } from '../model/ContextRing';
 import { openModelPicker } from '../model/target';
 import { thinkGlow } from './thinkGlow';
 import './composer.css';
@@ -1228,9 +1227,6 @@ export function Composer(props: ComposerProps) {
           }
           end={
             <span class="tb-end-group">
-              <Show when={!props.draft}>
-                <ContextRing session={props.session} />
-              </Show>
               <SendButton
                 running={running()}
                 disabled={props.readOnly}
@@ -1257,7 +1253,11 @@ export function Composer(props: ComposerProps) {
               <ThinkingChip session={props.session} disabled={props.readOnly} />
             </ToolbarSlot>
           </Show>
-          <ToolbarSlot slot="model">{props.modelSlot ?? <ModelChip session={props.session} disabled={props.readOnly} />}</ToolbarSlot>
+          {/* Owner 2026-11-04: the flexible slot — ring · model in one capsule, wide up to
+              its cap, down to a floor before the other chips fold. */}
+          <ToolbarSlot slot="model" min={props.phone ? CAPSULE_MIN_PHONE : CAPSULE_MIN}>
+            {props.modelSlot ?? <ModelCapsule session={props.session} disabled={props.readOnly} />}
+          </ToolbarSlot>
         </Toolbar>
       </div>
       <Show when={props.phone}>

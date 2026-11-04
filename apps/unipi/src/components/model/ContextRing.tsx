@@ -4,13 +4,17 @@
  * desktop for 500 ms — opens the Session modal on its Context tab (D-7),
  * which owns the token breakdown, the cache-hit rate and compaction.
  *
+ * Owner 2026-11-04: it sits first in the model capsule (`ModelCapsule`),
+ * before the model name; `aria-expanded` gives it the capsule's open state
+ * while its Context tab is showing.
+ *
  * QA#8: the ring must be visible at 0 % — the track is always drawn and the
  * arc keeps a 2 % floor, so an empty context is a ring, not a hole.
  */
 import { createEffect, createResource, onCleanup, Show } from 'solid-js';
 import type { SessionHandle } from '../../lib/session/store';
 import { liveSource, parseContextUsage, type ContextUsage } from '../session/modalData';
-import { openSessionModal } from '../session/modalTarget';
+import { openSessionModal, sessionModal } from '../session/modalTarget';
 
 /** The ring's diameter (the toolbar row is 36 px). */
 const SIZE = 22;
@@ -74,6 +78,11 @@ export function ContextRing(props: { session: SessionHandle }) {
       class="ctx-ring"
       aria-label={`${label()}. Open the context breakdown`}
       title={`${label()} — click for the breakdown`}
+      aria-haspopup="dialog"
+      aria-expanded={(() => {
+        const t = sessionModal();
+        return !!t && t.tab === 'context' && t.hostId === s().hostId && t.sessionId === s().sessionId();
+      })()}
       onClick={open}
       onMouseEnter={hover}
       onMouseLeave={cancelHover}
