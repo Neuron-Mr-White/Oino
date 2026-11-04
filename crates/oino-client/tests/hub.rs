@@ -662,3 +662,53 @@ async fn idle_services_set_is_disposed_and_rebuilt_on_demand() {
     );
     prompt(&backend, "again").await;
 }
+
+/// owner-fix-6 P1-3: the `maxServices` LRU retired the session a `session_open` had just
+/// woken (no stream attached yet, so it read as idle) to make room for the next services
+/// request 11 ms later (the host's hub-level `_oino/*` commands load the primary cwd's
+/// set): the chat answered "could not start: backend closed" until the app reloaded. A
+/// session woken (or used) moments ago is never the victim while the cap may grow by one.
+#[tokio::test]
+async fn services_cap_never_retires_a_session_it_just_woke() {
+    let (dir, hub, _loads, _provider) = hub_with(
+        Some(r#"{"extensionSettings":{"hub":{"maxServices":1}}}"#),
+        Vec::new(),
+        Vec::new(),
+        ToolSelection::Default,
+    );
+    // A chat in another project than the hub's primary cwd: its own services set.
+    let project = dir.path().join("project-a");
+    std::fs::create_dir_all(&project).unwrap();
+    let sessions = dir.path().join("sessions");
+    let mut manager =
+        SessionManager::create(&project, &sessions, CreateOptions::default()).unwrap();
+    manager.append_model_change("faux", "faux-1").unwrap();
+    manager
+        .append_message(AgentMessage::User(oino_ai::UserMessage {
+            content: oino_ai::UserContentField::Text("seed".into()),
+            timestamp: 1,
+        }))
+        .unwrap();
+    let mut assistant = oino_ai::AssistantMessage::empty("faux", "faux", "faux-1", 2);
+    assistant.content = vec![oino_ai::AssistantContent::text("seed answer")];
+    manager
+        .append_message(AgentMessage::Assistant(assistant))
+        .unwrap();
+    let id = manager.session_id().to_owned();
+    drop(manager);
+
+    // The open wakes it (one services set: the cap) — the stream has not attached yet.
+    let backend = hub.open(&id).await.unwrap();
+    // A services request for the primary cwd right after (a hub-level command).
+    hub.services().await.unwrap();
+    // The just-woken session is still live and answers.
+    let state = backend
+        .send(RpcCommand::Agent(AgentCommand::GetState))
+        .await;
+    assert!(state.is_ok(), "the woken session was retired: {state:?}");
+    assert_eq!(
+        hub.find(&id).await.unwrap().state,
+        HubSessionState::Live,
+        "still live"
+    );
+}

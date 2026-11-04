@@ -758,13 +758,34 @@ impl SessionHub {
             return Ok(Arc::clone(&entry.services));
         }
         if state.services.len() >= self.inner.config.max_services {
-            let victim = state
-                .services
-                .iter()
-                .enumerate()
-                .filter(|(_, entry)| services_set_idle(state, &entry.key))
-                .min_by_key(|(_, entry)| entry.last_used)
-                .map(|(index, _)| index);
+            // owner-fix-6 P1-3: a session woken (or used) moments ago has no stream
+            // attached yet and read as idle, so the next services request (a hub-level
+            // command 11 ms later) retired the chat the user had just opened. Victims go
+            // in tiers: sets without live sessions, then idle sets whose sessions are past
+            // the grace; at the cap the cache grows by one instead; only past it does an
+            // idle set inside the grace go (least recently used: never the newest wake).
+            let now = Instant::now();
+            let pick = |filter: &dyn Fn(&ServicesEntry) -> bool| {
+                state
+                    .services
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| filter(entry))
+                    .min_by_key(|(_, entry)| entry.last_used)
+                    .map(|(index, _)| index)
+            };
+            let victim = pick(&|entry| !state.live.values().any(|live| live.services == entry.key))
+                .or_else(|| {
+                    pick(&|entry| {
+                        services_set_idle(state, &entry.key)
+                            && services_set_rested(state, &entry.key, now)
+                    })
+                })
+                .or_else(|| {
+                    (state.services.len() > self.inner.config.max_services)
+                        .then(|| pick(&|entry| services_set_idle(state, &entry.key)))
+                        .flatten()
+                });
             match victim {
                 Some(index) => {
                     let entry = state.services.remove(index);
@@ -974,6 +995,20 @@ fn services_set_idle(state: &State, key: &ServicesKey) -> bool {
                     .any(|request| oino_core::ui::is_dialog(&request.method))
             }
         })
+}
+
+/// How long a woken or used session is never a `maxServices` victim while the cache may
+/// still grow by one (owner-fix-6 P1-3: the open's stream attaches moments after the wake).
+const EVICT_GRACE: Duration = Duration::from_secs(30);
+
+/// Whether every live session on `key`'s services was last active at least
+/// [`EVICT_GRACE`] ago (woken, a command, an event).
+fn services_set_rested(state: &State, key: &ServicesKey, now: Instant) -> bool {
+    state
+        .live
+        .values()
+        .filter(|live| &live.services == key)
+        .all(|live| now.duration_since(*lock(&live.last_active)) >= EVICT_GRACE)
 }
 
 /// Shuts a disposed services set's extensions down (E-LAZY: "extension shutdown, instances
