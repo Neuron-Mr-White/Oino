@@ -150,7 +150,7 @@ class H(BaseHTTPRequestHandler):
             calls = [("edit", {"path": f"{DEMO}/src/main.rs", "edits": [{"oldText": "Hello", "newText": "Hello, phone"}]}),
                      ("write", {"path": f"{DEMO}/NOTES.md", "content": "# Notes\n\n- added by QA\n"})]
             text = "I'll make the change."
-        elif "ask" in low and "ask_user" in tools:
+        elif re.search(r"\bask\b", low) and "ask_user" in tools:  # a word: the memory nudge says "task"
             # The tool's own shape ({questions: [...]}; [ask-user]): "ask two" asks two at once.
             db = {"question": "Which database should I use for the cache?", "header": "Database",
                   "options": [{"label": "SQLite", "description": "One file, no server"},
