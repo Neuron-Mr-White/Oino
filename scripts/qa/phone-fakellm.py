@@ -14,6 +14,7 @@ Prompt keywords pick a script:
   "edit"   -> edit/write tool calls (diff rows)
   "grow"   -> one bash call whose output streams for ~12 s (chat-scroll: output inside a tool row)
   "graphwork" -> update_agent_graph add_work (2 slow scans, 1 quick probe, 1 erroring probe, 1 dependent summary)
+  "graphstop <id>" -> update_agent_graph stop <id> (orphaned-worker check: the stopped worker stays visible until it ends)
   "subagents" -> run_subagent x4 in the background (2 slow, 1 quick, 1 failing) + bg_run x1
                  (running-tab QA); the children's tasks use the "slow"/"quick"/"error" scripts
   "quietbg" -> bg_run without notify/wake (the quiet background marker, [status])
@@ -118,6 +119,11 @@ class H(BaseHTTPRequestHandler):
             # a graph checkpoint: let the scheduled work continue
             calls = [("yield_agent_graph", {"reason": "waiting on the scans"})]
             text = "Waiting on the running work."
+        elif "graphstop" in low and "update_agent_graph" in tools:
+            # [owner-fix-3] stop running graph work: "graphstop <work id>" (the orphaned-worker check)
+            m = re.search(r"graphstop\s+(\S+)", low)
+            calls = [("update_agent_graph", {"operation": "stop", "stop": [{"target_id": m.group(1) if m else "", "reason": "obsolete (QA stop)"}]})]
+            text = "Stopping that work."
         elif "graphwork" in low and "update_agent_graph" in tools:
             # [owner-fix-3] a long-horizon graph whose workers stay running (Working row, Graph/Running tabs)
             sfx = f"-{int(time.time()) % 100000}"  # graphs are per project: fresh ids each run
