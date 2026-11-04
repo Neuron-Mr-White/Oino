@@ -79,6 +79,9 @@ const IDLE_POLL: Duration = Duration::from_secs(1);
 const CMD_TIMEOUT: Duration = Duration::from_secs(30);
 /// `_oino/render` answers fast or not at all: the timeline falls back to `null`.
 const RENDER_TIMEOUT: Duration = Duration::from_secs(2);
+/// [chat-tree] `_oino/navigate_tree` with `summarize` runs the branch summariser (a model
+/// call) before it answers; the app waits the same budget.
+const NAVIGATE_TIMEOUT: Duration = Duration::from_secs(300);
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -1841,8 +1844,11 @@ fn dispatch(
     replies: mpsc::Sender<SessionReply>,
 ) {
     let tap_service = Arc::downgrade(service);
+    let navigate = command.kind() == "_oino/navigate_tree";
     let limit = if command.kind() == "_oino/render" {
         RENDER_TIMEOUT
+    } else if navigate {
+        NAVIGATE_TIMEOUT
     } else {
         CMD_TIMEOUT
     };
@@ -1874,6 +1880,9 @@ fn dispatch(
                             enrich_models_reply(readiness.as_ref(), data);
                         }
                     }
+                    if navigate && !navigate_cancelled(data.as_ref()) {
+                        publish_branch_moved(&session, &feed).await;
+                    }
                     SessionReply::ok(id, data)
                 }
                 Ok(Err(error)) => SessionReply::failed(
@@ -1891,6 +1900,36 @@ fn dispatch(
             };
         let _ = replies.send(reply).await;
     });
+}
+
+/// A `navigate_tree` reply that did not move the leaf (an extension or the user cancelled).
+fn navigate_cancelled(data: Option<&Value>) -> bool {
+    data.and_then(|data| data.get("cancelled"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// [chat-tree] `_oino/navigate_tree` moved the leaf: the current branch every client shows is
+/// stale. Core tells only extensions (`session_tree`), so the host numbers a
+/// `{type: "session_tree", leafId}` event for every subscriber of the session (another
+/// window or the phone reloads its branch page). It goes out before the command's reply
+/// (§7.3 ordering). The leaf comes from a one-entry branch page (never the whole history).
+async fn publish_branch_moved(session: &HubSession, feed: &Feed) {
+    let leaf = session
+        .send(RpcCommand::Oino(
+            oino_client::protocol::OinoCommand::EntriesPage {
+                before: None,
+                limit: Some(1),
+                ids: None,
+            },
+        ))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|reply| reply.get("leafId").cloned())
+        .unwrap_or(Value::Null);
+    feed.publish(json!({"type": "session_tree", "leafId": leaf}))
+        .await;
 }
 
 /// The identity of a streamed text/thinking delta: same message, same block, same kind

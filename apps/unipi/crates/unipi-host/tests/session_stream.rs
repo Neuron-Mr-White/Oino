@@ -667,3 +667,151 @@ async fn extension_ui_response_reaches_the_session_backend() {
     }
     client.close().await;
 }
+
+/// The `id`s of a full snapshot's assistant / user messages, in branch order.
+fn message_ids(snapshot: &SessionSnapshot, role: &str) -> Vec<String> {
+    snapshot
+        .entries
+        .as_ref()
+        .expect("a full snapshot has entries")
+        .iter()
+        .filter(|entry| entry["type"] == "message" && entry["message"]["role"] == role)
+        .map(|entry| entry["id"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+/// Reads until the correlated reply `id` arrives; returns the events before it and the reply.
+async fn until_reply(client: &mut Client, id: &str) -> (Vec<Value>, Value) {
+    let mut events = Vec::new();
+    loop {
+        let value = client.json().await;
+        match value.get("type").and_then(Value::as_str) {
+            Some("events") => {
+                for item in value["items"].as_array().unwrap() {
+                    events.push(item["event"].clone());
+                }
+            }
+            Some("ok" | "err") if value["id"] == id => return (events, value),
+            _ => {}
+        }
+    }
+}
+
+/// [chat-tree] "Return here" / the tree view: `_oino/navigate_tree` moves the leaf, every
+/// client of the session hears `session_tree{leafId}` (the requester before its reply), and
+/// the branch page the app then reloads ends at the new leaf. Navigating to a user message
+/// lands on its parent and hands its text back (pi `navigateTree`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn navigate_tree_moves_the_branch_for_every_client() {
+    let fixture = fixture().await;
+    let id = fixture.session_id.clone();
+    let target = || -> unipi_proto::SessionTarget { id.clone().try_into().unwrap() };
+    let mut a = Client::open(
+        &fixture.service,
+        Request::SessionOpen {
+            session: target(),
+            since_seq: None,
+        },
+    );
+    let _ = a.snapshot().await;
+    a.send(&Control::SessionCmd {
+        id: Some(json!("p2")),
+        cmd: json!({"type": "prompt", "message": "second question"}),
+    })
+    .await;
+    let _ = read_events_until(&mut a, |_, event| settled(event)).await;
+    wait_idle(&fixture.hub, &id).await;
+
+    let mut b = Client::open(
+        &fixture.service,
+        Request::SessionOpen {
+            session: target(),
+            since_seq: None,
+        },
+    );
+    let full = b.snapshot().await;
+    let answers = message_ids(&full, "assistant");
+    let users = message_ids(&full, "user");
+    assert_eq!(answers.len(), 2, "two answered turns: {:?}", full.entries);
+    assert_eq!(full.leaf_id, Some(json!(answers[1])));
+
+    // 1. Return to the first answer.
+    a.send(&Control::SessionCmd {
+        id: Some(json!("nav1")),
+        cmd: json!({"type": "_oino/navigate_tree", "targetId": answers[0]}),
+    })
+    .await;
+    let (events, reply) = until_reply(&mut a, "nav1").await;
+    assert_eq!(reply["type"], "ok", "{reply}");
+    assert_eq!(reply["data"]["cancelled"], false);
+    let moved: Vec<&Value> = events
+        .iter()
+        .filter(|event| event["type"] == "session_tree")
+        .collect();
+    assert_eq!(
+        moved.len(),
+        1,
+        "the requester hears it before the reply: {events:?}"
+    );
+    assert_eq!(moved[0]["leafId"], json!(answers[0]));
+    let (_, heard, _) = read_events_until(&mut b, |_, event| event["type"] == "session_tree").await;
+    assert_eq!(
+        heard.last().unwrap().event["leafId"],
+        json!(answers[0]),
+        "the other client hears it too"
+    );
+
+    // 2. The branch page the app reloads ends at the new leaf.
+    a.send(&Control::SessionCmd {
+        id: Some(json!("page")),
+        cmd: json!({"type": "get_entries", "limit": 50}),
+    })
+    .await;
+    let (_, page) = until_reply(&mut a, "page").await;
+    assert_eq!(page["data"]["leafId"], json!(answers[0]));
+    let ids: Vec<&str> = page["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids.last().copied(), Some(answers[0].as_str()));
+    assert!(
+        !ids.contains(&users[1].as_str()),
+        "the later turn left the branch"
+    );
+
+    // 3. A user message: the leaf is its parent, its text comes back for the composer.
+    a.send(&Control::SessionCmd {
+        id: Some(json!("nav2")),
+        cmd: json!({"type": "_oino/navigate_tree", "targetId": users[1]}),
+    })
+    .await;
+    let (events, reply) = until_reply(&mut a, "nav2").await;
+    assert_eq!(reply["type"], "ok", "{reply}");
+    assert_eq!(reply["data"]["editorText"], "second question");
+    let moved = events
+        .iter()
+        .find(|event| event["type"] == "session_tree")
+        .expect("session_tree");
+    assert_eq!(
+        moved["leafId"],
+        json!(answers[0]),
+        "the parent of the second question"
+    );
+
+    // 4. An unknown entry fails and moves nothing.
+    a.send(&Control::SessionCmd {
+        id: Some(json!("nav3")),
+        cmd: json!({"type": "_oino/navigate_tree", "targetId": "no-such-entry"}),
+    })
+    .await;
+    let (events, reply) = until_reply(&mut a, "nav3").await;
+    assert_eq!(
+        reply["type"], "err",
+        "an unknown entry is an error: {reply}"
+    );
+    assert!(events.iter().all(|event| event["type"] != "session_tree"));
+    a.close().await;
+    b.close().await;
+}
