@@ -3283,10 +3283,14 @@ impl Extension for Lh {
             cx.command(
                 Command::<Self>::new(mode.as_str())
                     .description(tools::mode_description(mode.as_str()))
-                    .argument_hint(if mode == Mode::Ralph {
-                        "start <name> | stop | status | resume | clear | <prompt>"
-                    } else {
-                        "<prompt> | status | stop | resume | clear"
+                    .argument_hint(match mode {
+                        Mode::Ralph => {
+                            "start <name> | stop | status | continue | resume | clear | <prompt>"
+                        }
+                        Mode::Goal => "<prompt> | status | continue | stop | resume | clear",
+                        _ => {
+                            "<prompt> | status | history | retry <work id> | stop | resume | clear"
+                        }
                     })
                     .run(move |ext, args, cx| async move {
                         ext.mode_command(mode, &args, &cx).await;
