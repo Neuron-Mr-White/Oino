@@ -69,7 +69,8 @@ pub struct SessionStats {
     /// Context usage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_usage: Option<ContextUsage>,
-    /// Assistant replies per model over the whole session file (largest first).
+    /// Usage per model over the whole session file (largest first): every source the
+    /// totals count, so the rows sum to `cost` and `tokens`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub models: Vec<ModelStats>,
     /// First entry time (Unix ms) of the whole session file.
@@ -86,7 +87,7 @@ pub struct SessionStats {
 pub struct ModelStats {
     /// Model id as the reply reported it.
     pub model: String,
-    /// Assistant replies.
+    /// Main assistant replies (child runs: `childTurns`).
     pub turns: u64,
     /// Input tokens.
     pub input: u64,
@@ -96,8 +97,23 @@ pub struct ModelStats {
     pub cache_read: u64,
     /// Cache write tokens.
     pub cache_write: u64,
-    /// Cost (USD).
+    /// Cost (USD) — every source: main replies and `childCost`.
     pub cost: f64,
+    /// Child runs' replies on this model (subagents, graph workers, memory saves, naming:
+    /// the parent's `usage` entries), not in `turns`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub child_turns: u64,
+    /// The part of `cost` those child runs spent (USD).
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub child_cost: f64,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if signature"
+)]
+fn is_zero_f64(n: &f64) -> bool {
+    *n == 0.0
 }
 
 #[allow(
@@ -120,92 +136,131 @@ fn add(stats: &mut SessionStats, usage: &Usage) {
     }
 }
 
+/// The row of `model` (pushed on first use).
+fn model_row<'a>(models: &'a mut Vec<ModelStats>, model: &str) -> &'a mut ModelStats {
+    let at = models.iter().position(|m| m.model == model);
+    if let Some(i) = at {
+        &mut models[i]
+    } else {
+        models.push(ModelStats {
+            model: model.to_owned(),
+            ..ModelStats::default()
+        });
+        models.last_mut().expect("just pushed")
+    }
+}
+
+fn add_row(row: &mut ModelStats, usage: &Usage) {
+    row.input += usage.input;
+    row.output += usage.output;
+    row.cache_read += usage.cache_read;
+    row.cache_write += usage.cache_write;
+    row.cost += usage.cost.total;
+}
+
+/// The stats of a session's entries (no file/id/context usage). Every usage source lands in
+/// the totals **and** in a per-model row, so the rows sum to `cost`/`tokens` (owner-fix-6
+/// P1-4: rows came from main assistant replies only — $15 of rows against a $133 Cost):
+/// assistant replies by their model; `usage` entries (subagents and graph workers
+/// `child:<label>`, memory saves, session naming, cache warms) by their recorded model,
+/// also counted in the row's `childTurns`/`childCost`; compaction, branch-summary and
+/// nested-tool usage (no model recorded) by the model active at that point of the file.
+fn stats_of(entries: &[SessionEntry]) -> SessionStats {
+    let mut stats = SessionStats {
+        session_file: None,
+        session_id: String::new(),
+        user_messages: 0,
+        assistant_messages: 0,
+        tool_calls: 0,
+        tool_results: 0,
+        total_messages: 0,
+        tokens: TokenTotals::default(),
+        cost: 0.0,
+        unpriced_tokens: 0,
+        context_usage: None,
+        models: Vec::new(),
+        first_at: None,
+        last_at: None,
+    };
+    // The model a modelless usage is attributed to: the last `model_change` or reply.
+    let mut active: Option<String> = None;
+    let unattributed = |stats: &mut SessionStats, active: Option<&str>, usage: &Usage| {
+        add(stats, usage);
+        add_row(
+            model_row(&mut stats.models, active.unwrap_or("unknown")),
+            usage,
+        );
+    };
+    for entry in entries {
+        if let Some(ms) = entry.timestamp.to_ms() {
+            stats.first_at = Some(stats.first_at.map_or(ms, |t| t.min(ms)));
+            stats.last_at = Some(stats.last_at.map_or(ms, |t| t.max(ms)));
+        }
+        match &entry.kind {
+            EntryKind::ModelChange { model_id, .. } => active = Some(model_id.clone()),
+            EntryKind::Usage { model, usage, .. } => {
+                add(&mut stats, usage);
+                let row = model_row(&mut stats.models, model);
+                add_row(row, usage);
+                row.child_turns += 1;
+                row.child_cost += usage.cost.total;
+            }
+            EntryKind::BranchSummary(summary) => {
+                if let Some(usage) = &summary.usage {
+                    unattributed(&mut stats, active.as_deref(), usage);
+                }
+            }
+            EntryKind::Compaction(compaction) => {
+                if let Some(usage) = &compaction.usage {
+                    unattributed(&mut stats, active.as_deref(), usage);
+                }
+            }
+            EntryKind::Message { message } => {
+                stats.total_messages += 1;
+                match message {
+                    AgentMessage::User(_) => stats.user_messages += 1,
+                    AgentMessage::ToolResult(result) => {
+                        stats.tool_results += 1;
+                        if let Some(usage) = &result.usage {
+                            unattributed(&mut stats, active.as_deref(), usage);
+                        }
+                    }
+                    AgentMessage::Assistant(assistant) => {
+                        stats.assistant_messages += 1;
+                        stats.tool_calls += assistant
+                            .content
+                            .iter()
+                            .filter(|b| matches!(b, AssistantContent::ToolCall(_)))
+                            .count() as u64;
+                        add(&mut stats, &assistant.usage);
+                        let row = model_row(&mut stats.models, &assistant.model);
+                        row.turns += 1;
+                        add_row(row, &assistant.usage);
+                        active = Some(assistant.model.clone());
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    stats.tokens.total = stats.tokens.input
+        + stats.tokens.output
+        + stats.tokens.cache_read
+        + stats.tokens.cache_write;
+    stats
+        .models
+        .sort_by_key(|m| std::cmp::Reverse(m.input + m.output + m.cache_read + m.cache_write));
+    stats
+}
+
 impl AgentSession {
     /// Session stats (all entries, including compacted history and `usage` entries).
     #[must_use]
     pub fn session_stats(&self) -> SessionStats {
-        let mut stats = SessionStats {
-            session_file: self.session_file().map(|p| p.display().to_string()),
-            session_id: self.session_id(),
-            user_messages: 0,
-            assistant_messages: 0,
-            tool_calls: 0,
-            tool_results: 0,
-            total_messages: 0,
-            tokens: TokenTotals::default(),
-            cost: 0.0,
-            unpriced_tokens: 0,
-            context_usage: None,
-            models: Vec::new(),
-            first_at: None,
-            last_at: None,
-        };
-        let entries = self.entries();
-        for entry in &entries {
-            if let Some(ms) = entry.timestamp.to_ms() {
-                stats.first_at = Some(stats.first_at.map_or(ms, |t| t.min(ms)));
-                stats.last_at = Some(stats.last_at.map_or(ms, |t| t.max(ms)));
-            }
-            match &entry.kind {
-                EntryKind::Usage { usage, .. } => add(&mut stats, usage),
-                EntryKind::BranchSummary(summary) => {
-                    if let Some(usage) = &summary.usage {
-                        add(&mut stats, usage);
-                    }
-                }
-                EntryKind::Compaction(compaction) => {
-                    if let Some(usage) = &compaction.usage {
-                        add(&mut stats, usage);
-                    }
-                }
-                EntryKind::Message { message } => {
-                    stats.total_messages += 1;
-                    match message {
-                        AgentMessage::User(_) => stats.user_messages += 1,
-                        AgentMessage::ToolResult(result) => {
-                            stats.tool_results += 1;
-                            if let Some(usage) = &result.usage {
-                                add(&mut stats, usage);
-                            }
-                        }
-                        AgentMessage::Assistant(assistant) => {
-                            stats.assistant_messages += 1;
-                            stats.tool_calls += assistant
-                                .content
-                                .iter()
-                                .filter(|b| matches!(b, AssistantContent::ToolCall(_)))
-                                .count() as u64;
-                            add(&mut stats, &assistant.usage);
-                            let at = stats.models.iter().position(|m| m.model == assistant.model);
-                            let row = if let Some(i) = at {
-                                &mut stats.models[i]
-                            } else {
-                                stats.models.push(ModelStats {
-                                    model: assistant.model.clone(),
-                                    ..ModelStats::default()
-                                });
-                                stats.models.last_mut().expect("just pushed")
-                            };
-                            row.turns += 1;
-                            row.input += assistant.usage.input;
-                            row.output += assistant.usage.output;
-                            row.cache_read += assistant.usage.cache_read;
-                            row.cache_write += assistant.usage.cache_write;
-                            row.cost += assistant.usage.cost.total;
-                        }
-                        _ => {}
-                    }
-                }
-                _ => {}
-            }
-        }
-        stats.tokens.total = stats.tokens.input
-            + stats.tokens.output
-            + stats.tokens.cache_read
-            + stats.tokens.cache_write;
-        stats.models.sort_by_key(|m| {
-            std::cmp::Reverse(m.input + m.output + m.cache_read + m.cache_write)
-        });
+        let mut stats = stats_of(&self.entries());
+        stats.session_file = self.session_file().map(|p| p.display().to_string());
+        stats.session_id = self.session_id();
         stats.context_usage = self.context_usage();
         stats
     }
@@ -382,5 +437,58 @@ mod tests {
                 .get("unpricedTokens")
                 .is_none()
         );
+    }
+
+    /// owner-fix-6 P1-4: Session Info's per-model rows left out subagent usage ($15 of
+    /// rows against a $133 Cost): rows come from every source the totals count, child runs
+    /// (`usage{kind:"child:…"}`) included and flagged per row, so the rows sum to Cost.
+    #[test]
+    fn model_rows_include_child_usage_and_sum_to_the_cost() {
+        let mut manager = oino_session::SessionManager::in_memory(
+            std::path::Path::new("/tmp"),
+            oino_session::CreateOptions::default(),
+            Vec::new(),
+        );
+        manager.append_model_change("p", "opus").unwrap();
+        manager
+            .append_message(AgentMessage::User(oino_ai::UserMessage {
+                content: oino_ai::UserContentField::Text("go".into()),
+                timestamp: 1,
+            }))
+            .unwrap();
+        let mut reply = oino_ai::AssistantMessage::empty("p", "p", "opus", 2);
+        reply.usage = usage(100, 10, 15.0);
+        manager
+            .append_message(AgentMessage::Assistant(reply))
+            .unwrap();
+        manager
+            .append_usage("child:audit", "p", "sonnet", usage(400, 40, 100.0), None)
+            .unwrap();
+        manager
+            .append_usage("child:scan", "p", "opus", usage(50, 5, 18.0), None)
+            .unwrap();
+        let stats = stats_of(manager.entries());
+        assert!((stats.cost - 133.0).abs() < 1e-9, "{}", stats.cost);
+        let rows: f64 = stats.models.iter().map(|m| m.cost).sum();
+        assert!(
+            (rows - stats.cost).abs() < 1e-9,
+            "rows {rows} vs cost {}",
+            stats.cost
+        );
+        let tokens: u64 = stats
+            .models
+            .iter()
+            .map(|m| m.input + m.output + m.cache_read + m.cache_write)
+            .sum();
+        assert_eq!(tokens, stats.tokens.total);
+        let sonnet = stats.models.iter().find(|m| m.model == "sonnet").unwrap();
+        assert_eq!((sonnet.turns, sonnet.child_turns), (0, 1));
+        assert!((sonnet.child_cost - 100.0).abs() < 1e-9);
+        let opus = stats.models.iter().find(|m| m.model == "opus").unwrap();
+        assert_eq!((opus.turns, opus.child_turns), (1, 1));
+        assert!((opus.cost - 33.0).abs() < 1e-9 && (opus.child_cost - 18.0).abs() < 1e-9);
+        let value = serde_json::to_value(opus).unwrap();
+        assert_eq!(value["childTurns"], 1);
+        assert_eq!(value["childCost"], 18.0);
     }
 }
