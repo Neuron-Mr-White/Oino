@@ -567,6 +567,38 @@ async fn arbiter_wait_sources_hold_the_session_waiting() {
     assert_eq!(session.run_state(), RunState::Idle);
 }
 
+/// [status] A run that ends on a provider error still waits on pending work that will wake
+/// the session (owner QA: a lead whose last reply failed while background subagents ran on
+/// was listed idle).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_run_still_waits_on_wake_work() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = FauxProvider::new(vec![FauxResponse::Error(
+        "invalid request: bad schema".into(),
+    )]);
+    let source = FakeExtension::new(
+        "waiter",
+        oino_core::extensions::api::Registration::default(),
+    )
+    .on_wait(|_| Some("subagent working".to_owned()));
+    let services = services(
+        dir.path(),
+        provider,
+        vec![Arc::new(source) as Arc<dyn ExtensionInstance>],
+        JsonObject::new(),
+    )
+    .await;
+    let rt = runtime(&services, SessionSource::InMemory).await;
+    let session = rt.session();
+    session
+        .prompt("start".into(), PromptOptions::default())
+        .await
+        .unwrap();
+    idle(&session).await;
+    assert_eq!(session.run_state(), RunState::Waiting);
+    assert_eq!(session.waiting_on(), vec!["subagent working"]);
+}
+
 /// [status] A quiet wait reason (`quiet:` — a background task without wake) never holds the
 /// session `waiting` and never blocks the nudge; it is reported as `backgroundOn` (get_state,
 /// GetRunState, the `run_state` event) until the work ends.
@@ -577,11 +609,8 @@ async fn quiet_wait_reasons_are_background_not_waiting() {
     let busy = Arc::new(Mutex::new(Some("quiet: bg: dev server".to_owned())));
     let source = {
         let busy = Arc::clone(&busy);
-        FakeExtension::new(
-            "quiet",
-            oino_core::extensions::api::Registration::default(),
-        )
-        .on_wait(move |_| busy.lock().unwrap().clone())
+        FakeExtension::new("quiet", oino_core::extensions::api::Registration::default())
+            .on_wait(move |_| busy.lock().unwrap().clone())
     };
     let services = services(
         dir.path(),
@@ -631,7 +660,10 @@ async fn quiet_wait_reasons_are_background_not_waiting() {
             }
         }
     }
-    assert!(announced && cleared, "announced {announced} cleared {cleared}");
+    assert!(
+        announced && cleared,
+        "announced {announced} cleared {cleared}"
+    );
     assert!(session.background_on().is_empty());
 }
 

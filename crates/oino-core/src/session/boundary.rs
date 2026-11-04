@@ -325,8 +325,7 @@ impl AgentSession {
             let book = lock(&self.inner.book);
             (book.last_outcome, !book.pending_custom.is_empty())
         };
-        if outcome != ActivityOutcome::Completed
-            || pending_custom
+        if pending_custom
             || self.inner.agent.has_queued_messages()
             || self.pending_message_count() > 0
         {
@@ -335,7 +334,14 @@ impl AgentSession {
         let runner = self.runner();
         let (reasons, quiet) = split_wait_reasons(runner.arbiter_wait_reasons().await);
         if !reasons.is_empty() {
+            // A run that ended on an error still waits: the pending work (a background
+            // subagent, a graph node, a waking bg task) wakes the session all the same.
             self.set_waiting(reasons, quiet);
+            return false;
+        }
+        if outcome != ActivityOutcome::Completed {
+            // No nudge after a failed run; quiet background work is still reported.
+            self.set_background(quiet);
             return false;
         }
         // Quiet background work never holds the run; it is announced once the session
