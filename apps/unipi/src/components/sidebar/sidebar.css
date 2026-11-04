@@ -111,6 +111,15 @@
 .srow[aria-current='page']:hover { background: rgb(240 48 24 / 18%); }
 .srow[aria-current='page']:active { background: rgb(240 48 24 / 22%); }
 .srow[aria-current='page'] .srow-title { color: var(--color-text); font-weight: 560; }
+/* An archived chat's selection must not read like an error (owner-fix-5): archived rows
+   (the Archived filter lists the trash inline) pick a neutral selected state. */
+.srow[data-archived][aria-current='page'] {
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.srow[data-archived][aria-current='page']:hover,
+.srow[data-archived][aria-current='page']:active { background: var(--color-surface-3); }
 
 .srow-glyph {
   /* [ux-sessions] a fixed gutter: empty for a normal chat, the kind / state icon otherwise. */
@@ -387,9 +396,11 @@
   transition: background-color 140ms ease-out;
 }
 .sb-archived-row:hover { background: var(--color-surface-2); }
+/* Owner-fix-5: a selected Archived row must not read like an error — neutral. */
 .sb-archived-row[aria-current='page'] {
-  background: rgb(240 48 24 / 13%);
-  box-shadow: inset 0 0 0 1px rgb(240 48 24 / 24%);
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-line);
 }
 .sb-archived-open {
   flex: 1 1 0%;

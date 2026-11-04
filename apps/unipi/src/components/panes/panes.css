@@ -17,7 +17,7 @@
 .conv-sub > svg { flex: none; }
 .conv-sub > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* A No-workspace chat's folder line opens "Move to a workspace…" / "Reveal scratch folder". */
-.conv-sub-btn { min-height: 0; max-width: 100%; padding: 0 4px; margin-left: -4px; border: 0; border-radius: 4px; background: none; font: inherit; cursor: pointer; text-align: left; }
+.conv-sub-btn { min-height: 0; height: auto; max-width: 100%; padding: 0 4px; margin-left: -4px; border: 0; border-radius: 4px; background: none; font-family: inherit; font-size: 12px; line-height: 16px; cursor: pointer; text-align: left; }
 .conv-sub-btn:hover, .conv-sub-btn[aria-expanded="true"] { color: var(--color-text); background: var(--color-hover, rgba(127, 127, 127, 0.12)); }
 .conv-sub-btn:focus-visible { outline: 2px solid var(--color-accent, currentColor); outline-offset: 1px; }
 .conv-head-tools { flex: none; display: flex; align-items: center; gap: 2px; }
