@@ -1,33 +1,36 @@
 /**
- * The conversation timeline (WP-A6, §3.6 D-8): a `@tanstack/solid-virtual`
- * list over **settled turns** (item key = `turnId`) + the live tail outside
- * it, a single bottom-lock follow state, scroll memory, LRU height cache,
- * and the sticky bottom dock (Z-66) the later WPs fill.
+ * The conversation timeline (WP-A6, §3.6 D-8; [chat-load] redesign — the full render
+ * order is written down in oino-internal docs/dev/v2/design/chat-render-pipeline.md).
  *
- * Scroll rules (ZCode `chat-scroll-bottom-pinning.md`):
- * - content grows while locked → pin to the bottom in the same frame;
- * - user intent (wheel/touch/key/scrollbar) + > 48 px off the bottom → detach;
- * - back within 48 px or the jump button → re-lock; new arrivals while
- *   detached set the unread dot (Z-24) — only new content at the end (a new
- *   turn, the live tail growing, output inside a tail accordion), never row
- *   re-measures, older pages, image decodes or the reader's own toggles;
- * - any tail growth follows while locked, including output inside an
- *   expanded, height-capped accordion (`lib/timeline/innerFollow`);
- * - a user-expanded OLDER accordion keeps its header where it was (anchor),
- *   detaching instead of yanking when the block pushes the tail away;
- * - width changes while locked → measure-then-pin synchronously;
- * - the live tail migrates into the list with its height pre-seeded.
+ * - **Open**: until the tail chunk is whole (the store loads whole turns only, see
+ *   `lib/session/chunks`) and fills two screens, the view shows the last-known turns
+ *   (snapshot cache) or the skeleton; then the live turns replace it in ONE update, pinned
+ *   to the bottom (or at the remembered anchor turn).
+ * - **Rows**: settled turns render in normal document flow inside one list; only a window
+ *   (viewport ± one screen) is mounted, the rest is the list's top / bottom padding, sized
+ *   from the per-session height model (`lib/timeline/rowModel`: measured heights, else a
+ *   per-kind estimate that never moves). Rows are keyed by turn id. In flow, rows cannot
+ *   overlap and a row's growth pushes the ones below it like any page.
+ * - **One writer**: every `scrollTop` write goes through the bottom lock (`lock.set`), from
+ *   one function, `settle()`: pinned → keep the bottom; detached → keep the ANCHOR (the
+ *   first visible turn, or the header the reader just toggled) at the same viewport offset.
+ *   It runs synchronously after every change that can move rows (window shift, measured
+ *   heights from the one ResizeObserver, an older chunk, the tail growing) — in the same
+ *   frame, before paint; nothing else scrolls the timeline.
+ * - **Bottom lock**: any reader gesture up detaches it at once; only the reader's own scroll
+ *   back to the bottom or the jump button re-attaches it.
+ * - **Older chunks**: only when the reader is near the top, not bottom-locked, not mid-flick
+ *   (scroll idle), one chunk in flight, and one chunk per reader input; the "load earlier"
+ *   row above the list has a fixed height, so it never moves anything.
  *
- * `Timeline` is keyed per session by `Conversation`; scroll memory +
- * height cache live and die with it.
+ * `Timeline` is keyed per session by `Conversation`; scroll memory lives per pane+session,
+ * the height model per session (bounded LRU).
  */
-import { createEffect, createMemo, createSignal, Index, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import { createVirtualizer } from '@tanstack/solid-virtual';
-import { measureElement as defaultMeasure, observeElementOffset, observeElementRect, type Virtualizer } from '@tanstack/virtual-core';
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { LoaderCircle, RefreshCw, TriangleAlert } from 'lucide-solid';
-import { BOTTOM_PX, createBottomLock, distanceToBottom } from '../../lib/timeline/bottomLock';
+import { createBottomLock, distanceToBottom, SCROLL_IDLE_MS } from '../../lib/timeline/bottomLock';
 import { createInnerFollow, INNER_SCROLLERS } from '../../lib/timeline/innerFollow';
-import { TurnHeightCache, DEFAULT_TURN_HEIGHT } from '../../lib/timeline/heightCache';
+import { indexAt, prefixOffsets, sessionHeights, windowOf } from '../../lib/timeline/rowModel';
 import { readScrollMemory, writeScrollMemory, scrollMemoryKey } from '../../lib/timeline/scrollMemory';
 import { readTimelineSnapshot, writeTimelineSnapshot } from '../../lib/timeline/snapshotCache';
 import { EmptyState } from '../EmptyState';
@@ -66,122 +69,454 @@ function perf(name: string, start: number): void {
   (window.__UNIPI_PERF__ ??= []).push({ name, ms });
 }
 
+/** Open: older chunks loaded before the first paint at most (whole head turn / two screens). */
+export const OPEN_FILL_MAX = 3;
+/** Open: the view shows what it has after this long, whatever the fill did. */
+const OPEN_TIMEOUT_MS = 4_000;
+/** Rows mounted at most (a window of tiny rows on a tall screen). */
+const WINDOW_MAX = 120;
+/** Rows of the first window before any geometry exists. */
+const INITIAL_ROWS = 12;
+
+const sameTurns = (a: readonly Turn[], b: readonly Turn[]) => a.length === b.length && a.every((t, i) => t === b[i]);
+const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
+
+type Anchor = { id: string; top: number } | { el: HTMLElement; top: number };
+type Target = { id: string; align: 'start' | 'center'; offset?: number };
+
 export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10: the `header` slot band (scrolls with the transcript). */ header?: JSX.Element; /** U10: the `overlay` slot host (below the dock, §6.4). */ overlay?: JSX.Element; /** Z-87: the new-chat empty state (supplied by `Conversation`, which knows the host). */ empty?: JSX.Element }) {
   const session = () => props.ctx.session;
   const liveTurns = () => session().turns();
   const cachedTurns = createMemo(() => readTimelineSnapshot(session().key));
-  const turns = createMemo(() => {
-    const live = liveTurns();
-    if (live.length > 0 || session().state.conn === 'live') return live;
-    return cachedTurns() ?? live;
-  });
+  const heights = sessionHeights(session().key);
+  const lock = createBottomLock();
+  const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>();
+  const [overflowing, setOverflowing] = createSignal(false);
+  const t0 = performance.now();
+  let contentEl: HTMLDivElement | undefined;
+  let listEl: HTMLDivElement | undefined;
+  let tailEl: HTMLDivElement | undefined;
+
+  // owner5 #6: while this chat is on screen, its command reports are rows here.
+  createEffect(() => onCleanup(showReportsInTimeline(session().key)));
+
+  // ── open phase: last-known turns / skeleton until the tail chunk is whole ──────
+  const [ready, setReady] = createSignal(false);
+  const turns = createMemo(() => (ready() ? liveTurns() : (cachedTurns() ?? [])));
   createEffect(() => {
+    if (!ready()) return;
     const live = liveTurns();
     if (live.length > 0) writeTimelineSnapshot(session().key, live);
   });
-  // owner5 #6: while this chat is on screen, its command reports are rows here.
-  createEffect(() => onCleanup(showReportsInTimeline(session().key)));
-  /** The running turn (outside the list); everything before it is virtualized. */
+  /** The running turn (outside the list); everything before it is the list. */
   const liveTurn = () => {
     const t = turns();
     const last = t[t.length - 1];
     return last?.live ? last : undefined;
   };
-  const settled = () => {
-    const t = turns();
-    return t.length && t[t.length - 1]!.live ? t.slice(0, -1) : t;
+  const settled = createMemo(
+    () => {
+      const t = turns();
+      return t.length && t[t.length - 1]!.live ? t.slice(0, -1) : t;
+    },
+    [],
+    { equals: sameTurns },
+  );
+  const history = () => session().state.history;
+  /** The first loaded turn is the newer part of a turn split by a page (only past the chunk cap or on a branch reload). */
+  const headPartial = () => !!history()?.hasMore && settled()[0]?.kind === 'preamble';
+
+  // ── row model + window ──────────────────────────────────────────────────────
+  const index = createMemo(() => new Map(settled().map((t, i) => [t.turnId, i])));
+  const [heightsRev, setHeightsRev] = createSignal(0);
+  const offsets = createMemo(() => {
+    heightsRev();
+    return prefixOffsets(settled(), heights);
+  });
+  const [win, setWin] = createSignal<{ first?: string; last?: string }>({});
+  const range = createMemo<[number, number]>(
+    () => {
+      const n = settled().length;
+      if (!n) return [0, 0];
+      const w = win();
+      const a = w.first !== undefined ? index().get(w.first) : undefined;
+      const b = w.last !== undefined ? index().get(w.last) : undefined;
+      if (a === undefined || b === undefined || b < a) return [Math.max(0, n - INITIAL_ROWS), n];
+      return [a, b + 1];
+    },
+    [0, 0],
+    { equals: (x, y) => x[0] === y[0] && x[1] === y[1] },
+  );
+  const rowIds = createMemo(
+    () => {
+      const [a, b] = range();
+      return settled()
+        .slice(a, b)
+        .map((t) => t.turnId);
+    },
+    [],
+    { equals: sameIds },
+  );
+  const padTop = () => offsets()[range()[0]] ?? 0;
+  const padBottom = () => {
+    const o = offsets();
+    return Math.max(0, (o[o.length - 1] ?? 0) - (o[range()[1]] ?? 0));
+  };
+  const rowNodes = new Map<string, HTMLDivElement>();
+
+  const listTop = () => listEl?.offsetTop ?? 0;
+  /**
+   * The mounted rows' real heights into the model BEFORE the window moves: a row whose
+   * content changed since the last ResizeObserver report would otherwise leave the list at
+   * a stale height when it unmounts (the padding takes its place) and the view would jump.
+   */
+  const syncMounted = () => {
+    let changed = false;
+    for (const id of rowIds()) {
+      const node = rowNodes.get(id);
+      const i = index().get(id);
+      const turn = i === undefined ? undefined : settled()[i];
+      if (node?.isConnected && turn && heights.set(turn, node.getBoundingClientRect().height)) changed = true;
+    }
+    if (changed) {
+      debug.measures++;
+      setHeightsRev((n) => n + 1);
+    }
+  };
+  /** Mounts the rows around the viewport (± one screen). Returns whether the window changed. */
+  const computeWindow = (): boolean => {
+    const el = scrollEl();
+    const n = settled().length;
+    if (!el || !listEl || !n) return false;
+    syncMounted();
+    const vh = el.clientHeight || 600;
+    const over = Math.max(400, vh);
+    const y = el.scrollTop - listTop();
+    // A list shorter than the window itself mounts whole (no window to move).
+    let [a, b] = (offsets()[n] ?? 0) <= vh + 2 * over ? [0, n] : windowOf(offsets(), y - over, y + vh + over);
+    if (b - a > WINDOW_MAX) {
+      const mid = Math.min(n - 1, indexAt(offsets(), y));
+      a = Math.max(0, mid - WINDOW_MAX / 2);
+      b = Math.min(n, a + WINDOW_MAX);
+    }
+    const first = settled()[a]!.turnId;
+    const last = settled()[b - 1]!.turnId;
+    const w = win();
+    if (w.first === first && w.last === last) return false;
+    setWin({ first, last });
+    note('window', `${a}-${b}`, el.scrollTop);
+    return true;
   };
 
-  const heights = new TurnHeightCache();
-  const lock = createBottomLock();
-  const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>();
-  const [overflowing, setOverflowing] = createSignal(false);
-  const t0 = performance.now();
-
-  // The virtualizer lives in `VirtualTurns`, created only once the scroller
-  // element exists (its `_willUpdate` binds the scroll/rect observers —
-  // constructing it before the ref lands leaves them on a null element).
-  const [virt, setVirt] = createSignal<Virtualizer<HTMLDivElement, HTMLDivElement> | undefined>();
-
-  // ── scroll container wiring ──────────────────────────────────────
-  let contentEl: HTMLDivElement | undefined;
-  let tailEl: HTMLDivElement | undefined;
-  /**
-   * The reader's own accordion toggle (click on an `aria-expanded` control,
-   * bubble fold, files toggle): its header's viewport top is the anchor for
-   * the resizes that follow, and none of them is "new content".
-   */
-  let toggle: { el: HTMLElement; top: number; until: number; inTail: boolean } | undefined;
-  const TOGGLE_MS = 600;
-  const toggling = () => !!toggle && performance.now() < toggle.until && toggle.el.isConnected;
-  /** An image in the tail just decoded: its growth is layout, not news. */
-  let imageUntil = 0;
+  // ── the anchor + the one scroll writer ──────────────────────────────────────
+  let anchor: Anchor | undefined;
+  let target: Target | undefined;
+  /** The header of the reader's own toggle: the anchor until the reader scrolls. */
+  let toggled: HTMLElement | undefined;
+  const debug = { settles: 0, restores: 0, maxRestore: 0, loads: 0, trims: 0, measures: 0 };
+  /** DEV only: the last 48 scroll-relevant steps, for the stability rig's jump reports. */
+  const trace: Array<[number, string, string | number, number]> = [];
+  const note = (what: string, a: string | number, b: number) => {
+    if (!import.meta.env.DEV) return;
+    trace.push([Math.round(performance.now()), what, a, Math.round(b)]);
+    if (trace.length > 48) trace.shift();
+  };
+  const viewTop = (el: HTMLElement) => el.getBoundingClientRect().top;
+  const capture = () => {
+    const el = scrollEl();
+    if (!el) return;
+    const top = viewTop(el);
+    if (toggled?.isConnected) {
+      anchor = { el: toggled, top: toggled.getBoundingClientRect().top - top };
+      return;
+    }
+    toggled = undefined;
+    for (const id of rowIds()) {
+      const node = rowNodes.get(id);
+      if (!node) continue;
+      const r = node.getBoundingClientRect();
+      if (r.bottom > top + 1) {
+        anchor = { id, top: r.top - top };
+        note('capture', id, anchor.top);
+        return;
+      }
+    }
+    anchor = undefined;
+  };
+  const anchorNode = (a: Anchor) => ('el' in a ? a.el : rowNodes.get(a.id));
+  const restore = () => {
+    const el = scrollEl();
+    if (!el || !anchor) return;
+    const node = anchorNode(anchor);
+    if (!node?.isConnected) return;
+    const moved = node.getBoundingClientRect().top - viewTop(el) - anchor.top;
+    if (Math.abs(moved) < 0.5) return;
+    debug.restores++;
+    note('restore', 'id' in anchor ? anchor.id : 'el', moved);
+    debug.maxRestore = Math.max(debug.maxRestore, Math.abs(moved));
+    lock.set(el, el.scrollTop + moved);
+  };
+  const placeTarget = (t: Target) => {
+    const el = scrollEl();
+    const i = index().get(t.id);
+    if (!el || i === undefined) return;
+    if (!rowNodes.has(t.id)) {
+      const s = settled();
+      setWin({ first: s[Math.max(0, i - 2)]!.turnId, last: s[Math.min(s.length - 1, i + 6)]!.turnId });
+    }
+    const node = rowNodes.get(t.id);
+    if (!node) return;
+    const r = node.getBoundingClientRect();
+    const want = t.align === 'center' ? Math.max(0, (el.clientHeight - r.height) / 2) : (t.offset ?? 0);
+    lock.set(el, el.scrollTop + (r.top - viewTop(el)) - want);
+    anchor = { id: t.id, top: want };
+  };
   const syncOverflow = () => {
     const el = scrollEl();
     if (el) setOverflowing(el.scrollHeight - el.clientHeight > 4);
   };
+  /**
+   * The one place that scrolls: pin (locked) or keep the anchor (detached), mount the
+   * window for the new position, repeat until the window is stable (bounded).
+   */
+  const settle = () => {
+    settleQueued = false;
+    const el = scrollEl();
+    if (!el) return;
+    debug.settles++;
+    for (let i = 0; i < 4; i++) {
+      const t = target;
+      target = undefined;
+      if (t) placeTarget(t);
+      else if (lock.locked()) lock.pin(el);
+      else restore();
+      if (!computeWindow()) break;
+    }
+    lock.reconcile(el);
+    if (!lock.locked()) capture();
+    syncOverflow();
+    updateActive();
+  };
+  let settleQueued = false;
+  /** From reactive code (store effects): the DOM is updated, settle right after (same task, before paint). */
+  const scheduleSettle = () => {
+    if (settleQueued) return;
+    settleQueued = true;
+    queueMicrotask(settle);
+  };
 
+  // ── open: fill, then reveal in one update ────────────────────────────────────
+  const memKey = () => scrollMemoryKey('main', props.ctx.hostId, props.ctx.sessionId());
+  const saved = readScrollMemory(memKey());
+  // onCleanup must not read props.ctx: the parent's memos are already disposed
+  // when this component is cleaned up (Solid cleanNode crash on route change).
+  let lastMemKey = memKey();
+  createEffect(() => {
+    lastMemKey = memKey();
+  });
+  let fills = 0;
+  const finishOpen = () => {
+    if (ready()) return;
+    setReady(true);
+    const at = saved && 'anchor' in saved && saved.anchor ? saved.anchor : undefined;
+    if (at && index().has(at.turnId)) {
+      lock.detach();
+      target = { id: at.turnId, align: 'start', offset: at.offset };
+    }
+    queueMicrotask(() => {
+      settle();
+      requestAnimationFrame(() => requestAnimationFrame(() => perf('tl:first-paint', t0)));
+    });
+  };
+  createEffect(() => {
+    if (ready()) return;
+    const st = session().state;
+    const live = liveTurns();
+    if (st.conn !== 'live') {
+      // A handle that already holds turns (reconnecting) shows them as they are.
+      if (live.length > 0) finishOpen();
+      return;
+    }
+    const h = st.history;
+    if (h?.loading) return;
+    const fill = () => {
+      if (!h?.hasMore || h.error || fills >= OPEN_FILL_MAX || !session().loadEarlier) return false;
+      const t = live.length && live[live.length - 1]!.live ? live.slice(0, -1) : live;
+      if (t[0]?.kind === 'preamble') return true;
+      const vh = scrollEl()?.clientHeight || 800;
+      return prefixOffsets(t, heights)[t.length]! < 2 * vh;
+    };
+    if (fill()) {
+      fills++;
+      void session().loadEarlier!();
+      if (session().state.history?.loading) return;
+    }
+    finishOpen();
+  });
+  onMount(() => {
+    const timer = setTimeout(() => session().state.conn === 'live' && finishOpen(), OPEN_TIMEOUT_MS);
+    onCleanup(() => clearTimeout(timer));
+  });
+  onCleanup(() => {
+    const el = scrollEl();
+    if (!el || !ready()) return;
+    // The anchor is current (every settle and reader scroll keeps it); the rows may already be gone.
+    if (lock.locked()) writeScrollMemory(lastMemKey, { bottomLocked: true });
+    else {
+      writeScrollMemory(lastMemKey, anchor && 'id' in anchor ? { scrollTop: el.scrollTop, anchor: { turnId: anchor.id, offset: anchor.top } } : { scrollTop: el.scrollTop });
+    }
+  });
+
+  // ── older chunks: near the top, detached, idle, one per reader input ─────────
+  let readerSinceLoad = false;
+  /** The last reader input event (wheel / touch / key / scrollbar press). */
+  let lastInput = Number.NEGATIVE_INFINITY;
+  let lastTop = 0;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const canLoad = () => {
+    const h = history();
+    return !!h?.hasMore && !h.loading && !h.error && session().state.conn === 'live' && !!session().loadEarlier && ready();
+  };
+  const maybeLoadEarlier = () => {
+    const el = scrollEl();
+    if (!el || !canLoad()) return;
+    if (headPartial()) {
+      debug.loads++;
+      void session().loadEarlier!();
+      return;
+    }
+    if (!readerSinceLoad) return;
+    const fits = el.scrollHeight - el.clientHeight <= 4;
+    if (lock.locked() && !fits) return;
+    if (lock.scrolling()) return queueIdleCheck();
+    if (!fits && el.scrollTop - listTop() > 1.5 * el.clientHeight) return;
+    readerSinceLoad = false;
+    debug.loads++;
+    void session().loadEarlier!();
+  };
+  const queueIdleCheck = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleTimer = undefined;
+      maybeLoadEarlier();
+    }, SCROLL_IDLE_MS + 20);
+  };
+  onCleanup(() => idleTimer && clearTimeout(idleTimer));
+  // A split head (branch reload, chunk cap) is completed at once, above the reader.
+  createEffect(() => {
+    if (ready() && headPartial() && !history()?.loading) queueMicrotask(maybeLoadEarlier);
+  });
+
+  // perf-app: back at the bottom of a chat read far up, the old chunks go (bounded parsed
+  // state per chat; they load again on the way up). Only while locked — chunks only load
+  // while detached, so trim and load can never feed each other.
+  const maybeTrim = () => {
+    if (!ready() || !lock.locked() || history()?.loading || session().state.entries.length <= LOADED_MAX) return;
+    if (session().trimLoaded?.(LOADED_MAX / 2)) debug.trims++;
+  };
+  if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
+    (window as unknown as Record<string, unknown>).__TL_PAGING__ = () => ({ ...debug, rows: rowIds().length, locked: lock.locked(), ready: ready() });
+    (window as unknown as Record<string, unknown>).__TL_TRACE__ = () => trace.slice();
+  }
+
+  // ── wiring: reader input, scroll, observers ─────────────────────────────────
+  /** The reader's own accordion toggle: its header holds still while the block below it grows. */
+  const onContentClick = (e: MouseEvent) => {
+    const hit = (e.target as HTMLElement | null)?.closest?.('[aria-expanded], [data-testid="tl-bubble-fold"], [data-testid="turn-files-toggle"]') as HTMLElement | null | undefined;
+    if (!hit || tailEl?.contains(hit) || !scrollEl()) return;
+    lock.detach();
+    toggled = hit;
+    capture();
+  };
   onMount(() => {
     const el = scrollEl();
     if (!el) return;
-    const intent = () => lock.intent();
+    const reader = () => {
+      lastInput = performance.now();
+      readerSinceLoad = true;
+      toggled = undefined;
+      target = undefined;
+    };
+    const up = () => {
+      reader();
+      capture();
+      lock.gestureUp(el);
+      queueIdleCheck();
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) up();
+      else reader();
+    };
+    let touchY: number | undefined;
+    const onTouchStart = (e: TouchEvent) => {
+      touchY = e.touches[0]?.clientY;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY;
+      if (y === undefined || touchY === undefined) return;
+      if (y > touchY + 2) up();
+      else reader();
+      touchY = y;
+    };
     const onPointerDown = (e: PointerEvent) => {
-      // Scrollbar track/thumb press on the scroll container itself counts as user scroll intent;
-      // clicking buttons/accordions inside `.tl-content` or `.tl-dock` must not fake a scroll.
-      if (e.target === el) lock.intent();
+      // Scrollbar track/thumb press on the scroll container itself is a reader gesture;
+      // clicking buttons/accordions inside `.tl-content` or `.tl-dock` is not.
+      if (e.target === el) up();
     };
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable="true"]')) return;
-      // Keys that scroll the container count as user intent.
-      if (['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' '].includes(e.key)) intent();
+      if (['PageUp', 'ArrowUp', 'Home'].includes(e.key)) up();
+      else if (['PageDown', 'ArrowDown', 'End', ' '].includes(e.key)) reader();
     };
-    el.addEventListener('wheel', intent, { passive: true });
-    el.addEventListener('touchstart', intent, { passive: true });
+    el.addEventListener('wheel', onWheel, { passive: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
     el.addEventListener('pointerdown', onPointerDown, { passive: true });
     el.addEventListener('keydown', onKey);
     onCleanup(() => {
-      el.removeEventListener('wheel', intent);
-      el.removeEventListener('touchstart', intent);
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('keydown', onKey);
     });
 
-    // Store-driven changes (entries, live tail, outbox, new turns): same-
-    // frame pin while locked. Only entries appended at the END (or a new
-    // outbox message) are news for the unread dot: older pages prepend (the
-    // last entry stays), a trim drops the top, branch navigation moves the leaf.
+    // Store-driven changes (entries, live tail, outbox, new turns, older chunks): settle
+    // after the DOM update. Only entries appended at the END (or a new outbox message) are
+    // news for the unread dot: older chunks prepend (the last entry stays), a trim drops
+    // the top, branch navigation moves the leaf.
     let seenLen = -1;
     let seenLast: string | undefined;
     let seenOutbox = 0;
     createEffect(() => {
       session().state.entriesRev;
       liveTurn();
-      settled().length;
+      settled();
+      history()?.hasMore;
       const entries = session().state.entries;
       const len = entries.length;
       const last = entries[len - 1]?.id;
       const outbox = session().state.outbox.length;
-      if (!restore.done) return;
+      if (!ready()) return;
       if (seenLen >= 0 && ((len > seenLen && last !== seenLast) || outbox > seenOutbox)) lock.arrived();
       seenLen = len;
       seenLast = last;
       seenOutbox = outbox;
-      // The reader's own older-accordion toggle holds its anchor (the RO below).
-      if (!(toggling() && !toggle!.inTail)) lock.grew(el);
-      syncOverflow();
+      scheduleSettle();
     });
 
-    // Output inside an expanded, height-capped tail accordion: the box
-    // follows its own bottom (the timeline does not grow once it is capped,
-    // so this is the only signal) — and it is news while detached.
+    // Output inside an expanded, height-capped tail accordion: the box follows its own
+    // bottom (the timeline does not grow once it is capped, so this is the only signal) —
+    // and it is news while detached.
     const inner = createInnerFollow();
     let sweepQueued = false;
     const sweepInner = () => {
       sweepQueued = false;
-      if (!tailEl || !restore.done) return;
-      const grew = inner.sweep(tailEl.querySelectorAll<HTMLElement>(INNER_SCROLLERS));
-      if (grew && !toggling()) lock.arrived();
+      if (!tailEl || !ready()) return;
+      if (inner.sweep(tailEl.querySelectorAll<HTMLElement>(INNER_SCROLLERS))) lock.arrived();
     };
+    /** An image in the tail just decoded: its growth is layout, not news. */
+    let imageUntil = 0;
     if (tailEl && typeof MutationObserver !== 'undefined') {
       const mo = new MutationObserver(() => {
         if (sweepQueued) return;
@@ -200,52 +535,25 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     }
 
     if (typeof ResizeObserver !== 'undefined') {
-      // Content height changes (stream, folds, row measures, images, dock):
-      // pin while locked — never the unread dot (geometry is not news). The
-      // reader's own toggle of an OLDER accordion keeps its header where it
-      // was instead (anchor), and detaches when the block pushes the tail
-      // out of reach; a toggle inside the tail follows like any tail growth.
-      const grow = new ResizeObserver(() => {
-        if (!restore.done) return;
-        if (toggling() && !toggle!.inTail) {
-          virt()?.measure();
-          const moved = toggle!.el.getBoundingClientRect().top - toggle!.top;
-          if (Math.abs(moved) >= 1) el.scrollTop += moved;
-          if (lock.locked() && distanceToBottom(el) > BOTTOM_PX) lock.detach();
-          lock.reconcile(el);
-          syncOverflow();
-          return;
-        }
-        lock.grew(el);
-        syncOverflow();
-      });
+      // Any content height change (rows measured, the tail streaming, a fold, the earlier
+      // row): settle in the same frame — pin while locked, else keep the anchor.
+      const grow = new ResizeObserver(() => settle());
       if (contentEl) grow.observe(contentEl);
-      // The live tail growing (stream, new tool rows, a subagent card) is
-      // the "new output" the dot reports; width changes reflow it (layout).
+      // The live tail growing (stream, new tool rows, a subagent card) is the "new output"
+      // the dot reports; width changes reflow it (layout).
       let tailH = -1;
       let tailW = -1;
       const tail = new ResizeObserver(() => {
         if (!tailEl) return;
         const h = tailEl.offsetHeight;
         const w = tailEl.offsetWidth;
-        const news = restore.done && tailH >= 0 && w === tailW && h > tailH + 0.5 && !toggling() && performance.now() > imageUntil;
+        const news = ready() && tailH >= 0 && w === tailW && h > tailH + 0.5 && performance.now() > imageUntil;
         tailH = h;
         tailW = w;
         if (news) lock.arrived();
       });
       if (tailEl) tail.observe(tailEl);
-      // Viewport changes: synchronous measure-then-pin while locked (the
-      // ZCode width-transition batch); re-check overflow either way.
-      let lastW = el.clientWidth;
-      const view = new ResizeObserver(() => {
-        if (el.clientWidth !== lastW) {
-          lastW = el.clientWidth;
-          virt()?.measure();
-        }
-        if (lock.locked()) lock.pin(el);
-        lock.reconcile(el);
-        syncOverflow();
-      });
+      const view = new ResizeObserver(() => settle());
       view.observe(el);
       onCleanup(() => {
         grow.disconnect();
@@ -254,180 +562,74 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       });
     }
   });
+  /** Row heights: one observer for the window's rows, applied as one batch per frame. */
+  const rowRO =
+    typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver((entries) => {
+          let changed = false;
+          for (const e of entries) {
+            const node = e.target as HTMLDivElement;
+            const id = node.dataset.turn;
+            const i = id === undefined ? undefined : index().get(id);
+            const turn = i === undefined ? undefined : settled()[i];
+            if (!turn || !node.isConnected) continue;
+            const h = e.borderBoxSize?.[0]?.blockSize ?? node.offsetHeight;
+            if (heights.set(turn, h)) changed = true;
+          }
+          if (changed) {
+            debug.measures++;
+            setHeightsRev((n) => n + 1);
+          }
+          note('ro', entries.length, changed ? 1 : 0);
+          settle();
+        })
+      : undefined;
+  onCleanup(() => rowRO?.disconnect());
+
+  const onScroll = () => {
+    const el = scrollEl();
+    if (!el) return;
+    const top = el.scrollTop;
+    const moved = top - lastTop;
+    lastTop = top;
+    note('scroll', moved, top);
+    if (lock.onScroll(el)) {
+      // The browser clamped the offset (content below shrank — a fold closed near the end):
+      // geometry, not the reader. The anchor follows it; it is no reason to load anything.
+      const clamp = moved < 0 && distanceToBottom(el) <= 1 && performance.now() - lastInput > 600;
+      if (!clamp) {
+        // The reader moved: the anchor is wherever they are now.
+        readerSinceLoad = true;
+        toggled = undefined;
+        target = undefined;
+      }
+      capture();
+      settle();
+      if (!clamp) queueIdleCheck();
+      if (lock.locked() && !clamp) maybeTrim();
+    } else {
+      syncOverflow();
+      updateActive();
+    }
+  };
 
   // ── live tail → list migration: pre-seed its measured height ─────
   createEffect(
     on(liveTurn, (cur, prev) => {
-      if (prev && !cur) heights.set(prev.turnId, tailEl?.offsetHeight || heights.estimate(prev.turnId));
+      if (prev && !cur && heights.get(prev.turnId) === undefined && tailEl?.offsetHeight) heights.set(prev, tailEl.offsetHeight);
     }),
   );
-
-  // ── anchor preservation on branch/history changes (entriesRev) ────
-  createEffect(
-    on(
-      () => session().state.entriesRev,
-      () => {
-        const el = scrollEl();
-        if (!el || !restore.done || lock.locked()) return;
-        const items = virt()?.getVirtualItems() ?? [];
-        const first = items.find((i) => i.end > el.scrollTop) ?? items[0];
-        const anchor = first ? { key: String(first.key), delta: el.scrollTop - first.start } : undefined;
-        if (anchor) anchorPending = true;
-        queueMicrotask(() => {
-          anchorPending = false;
-          if (!anchor || lock.locked()) return;
-          const idx = settled().findIndex((t) => t.turnId === anchor.key);
-          if (idx < 0) return;
-          virt()?.scrollToIndex(idx, { align: 'start' });
-          el.scrollTop += anchor.delta;
-        });
-      },
-    ),
-  );
-
-  // ── scroll memory: restore once content exists ────────────────────
-  const memKey = () => scrollMemoryKey('main', props.ctx.hostId, props.ctx.sessionId());
-  const saved = readScrollMemory(memKey());
-  // onCleanup must not read props.ctx: the parent's memos are already disposed
-  // when this component is cleaned up (Solid cleanNode crash on route change).
-  let lastMemKey = memKey();
-  createEffect(() => {
-    lastMemKey = memKey();
-  });
-  /** render-loop guards (see maybeLoadEarlier / maybeTrim). */
-  const AUTO_EARLIER_PAGES = 4;
-  let autoBudget = AUTO_EARLIER_PAGES;
-  let intentSinceLoad = false;
-  let anchorPending = false;
-  let earlierQueued = false;
-  let earlierLoads = 0;
-  let earlierTrims = 0;
-  let trimOff = false;
-  const restore: { pos: 'bottom' | number; done: boolean } = { pos: saved && 'scrollTop' in saved ? saved.scrollTop : 'bottom', done: false };
-  let userScrolled = false;
-  const origIntent = lock.intent;
-  lock.intent = () => {
-    userScrolled = true;
-    // render-loop: every real reader input gives the automatic "load earlier" a fresh
-    // budget and is what allows a later trim (never our own pin / restore scrolls).
-    autoBudget = AUTO_EARLIER_PAGES;
-    intentSinceLoad = true;
-    origIntent();
-    // A wheel over a page that cannot scroll fires no scroll event: check here too (per frame).
-    maybeLoadEarlier();
-  };
-  if (typeof restore.pos === 'number') lock.detach();
-  const applyRestore = () => {
-    const el = scrollEl();
-    if (!el) return;
-    if (restore.pos === 'bottom') lock.jump(el);
-    else {
-      el.scrollTop = Math.min(restore.pos, Math.max(0, el.scrollHeight - el.clientHeight));
-      lock.reconcile(el);
-    }
-  };
-  createEffect(() => {
-    const el = scrollEl();
-    if (restore.done || !el || settled().length === 0) return;
-    restore.done = true;
-    // Layout write now, then one correction after the first measure frame —
-    // which yields if the user already scrolled (ZCode rule).
-    applyRestore();
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (!userScrolled) applyRestore();
-        perf('tl:first-paint', t0);
-      }),
-    );
-  });
-  // Fallback first-paint mark for empty sessions.
-  onMount(() => {
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (!restore.done) perf('tl:first-paint', t0);
-      }),
-    );
-  });
-  onCleanup(() => {
-    const el = scrollEl();
-    if (!el) return;
-    writeScrollMemory(lastMemKey, lock.locked() ? { bottomLocked: true } : { scrollTop: el.scrollTop });
-  });
-
-  // ── perf-open: older history pages in near the top ("load earlier") ──
-  const history = () => session().state.history;
-  const canLoadEarlier = () => {
-    const h = history();
-    return !!h?.hasMore && !h.loading && !h.error && session().state.conn === 'live' && !!session().loadEarlier;
-  };
-  /** Within this many px of the top, the next older page loads by itself. */
-  const EARLIER_MARGIN = 800;
-  /**
-   * render-loop: the automatic "load earlier" (short page / near the top) runs at most this
-   * many pages per reader input. A chat whose newest pages draw almost nothing (one giant
-   * turn of collapsed subagent steps) used to page in everything, cross LOADED_MAX, get
-   * trimmed by the next pin-to-bottom scroll and page everything in again — forever
-   * (owner 2026-11-04: flicker, overlapping rows, a frozen app). The row's button and the
-   * reader's own scrolling page in the rest.
-   */
-  const maybeLoadEarlier = () => {
-    // At most one check per frame, whatever fires it (scroll events, store effects).
-    if (earlierQueued) return;
-    earlierQueued = true;
-    requestAnimationFrame(() => {
-      earlierQueued = false;
-      const el = scrollEl();
-      // Never while a page is in flight (canLoadEarlier) or an anchor restore is pending.
-      if (!el || !restore.done || anchorPending || autoBudget <= 0 || !canLoadEarlier()) return;
-      // A short page (no scrollbar yet) or a reader near the top: fetch the next one.
-      if (el.scrollHeight - el.clientHeight <= 4 || el.scrollTop < EARLIER_MARGIN) {
-        autoBudget--;
-        intentSinceLoad = false;
-        earlierLoads++;
-        void session().loadEarlier?.();
-      }
-    });
-  };
-  createEffect(() => {
-    history()?.hasMore;
-    history()?.loading;
-    settled().length;
-    queueMicrotask(maybeLoadEarlier);
-  });
-
-  // perf-app: a reader back at the bottom of a chat read far up gives the old pages back
-  // (bounded parsed state per chat; they load again on the way up). render-loop: only after
-  // the reader's own scrolling since the last page load — a pin or restore scroll never
-  // trims — and a trim leaves the automatic loader without budget until the next input,
-  // so trim and load can never feed each other.
-  const maybeTrim = () => {
-    if (trimOff || !restore.done || !intentSinceLoad || anchorPending || !lock.locked() || session().state.entries.length <= LOADED_MAX) return;
-    if (session().trimLoaded?.(LOADED_MAX / 2)) {
-      autoBudget = 0;
-      intentSinceLoad = false;
-      earlierTrims++;
-      // Latch: a trim that leaves a page the reader is still near the top of would only be
-      // paged back in — no more trims in this view (the chat is short when drawn anyway).
-      requestAnimationFrame(() => {
-        const el = scrollEl();
-        if (el && el.scrollHeight - el.clientHeight < 2 * EARLIER_MARGIN) trimOff = true;
-      });
-    }
-  };
-  if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
-    (window as unknown as Record<string, unknown>).__TL_PAGING__ = () => ({ loads: earlierLoads, trims: earlierTrims, budget: autoBudget, trimOff });
-  }
 
   // chat-vanish: with no turns every non-live state draws something — a reconnect is a
   // skeleton (under its banner), a stream that ended or gave up is the error card with
   // Retry. `closed` without an error (an evicted handle) and `lost` used to draw nothing.
-  const loading = () => (session().state.conn === 'connecting' || session().state.conn === 'reconnecting') && turns().length === 0;
   const openFailed = () => {
     const st = session().state;
     if (turns().length > 0 || st.banner?.kind === 'taken_over') return false;
     return st.conn === 'lost' || st.conn === 'closed';
   };
-  const empty = () => session().state.conn === 'live' && turns().length === 0 && !session().state.outbox.length;
+  const loading = () => turns().length === 0 && !openFailed() && (!ready() || session().state.conn === 'connecting' || session().state.conn === 'reconnecting');
+  const empty = () => ready() && session().state.conn === 'live' && turns().length === 0 && !session().state.outbox.length;
   const retryOpen = () => (props.ctx.heal ? props.ctx.heal('manual') : session().retry());
 
   // ── self-heal (chat-vanish): blank while the host is live → reopen / remount, logged ──
@@ -442,7 +644,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       takenOver: st.banner?.kind === 'taken_over',
       archived: s.key.startsWith('archived:'),
       settled: settled().length,
-      rows: virt()?.getVirtualItems().length ?? (scrollEl() ? 0 : 1),
+      rows: scrollEl() ? rowIds().length : 1,
     });
   });
   const budget = healBudget();
@@ -454,11 +656,8 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
         timer = undefined;
         if (verdict() !== reason) return;
         if (!budget.allow()) return; // the error card's Retry from here on
-        if (reason === 'no_rows') {
-          // A 0-height window (hidden pane, a resize mid-layout): measure again first.
-          virt()?.measure();
-          scrollEl()?.dispatchEvent(new Event('scroll'));
-        }
+        // A 0-height window (hidden pane, a resize mid-layout): lay out again first.
+        if (reason === 'no_rows') settle();
         props.ctx.heal!(reason);
         timer = setTimeout(check, HEAL_AFTER_MS);
       };
@@ -469,33 +668,29 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
 
   // ── navigator (Z-25): the query at the top of the viewport is active ─
   const [activeTurn, setActiveTurn] = createSignal<string>();
-  const updateActive = () => {
+  function updateActive() {
     const el = scrollEl();
     if (!el) return;
-    const first = (virt()?.getVirtualItems() ?? []).find((item) => item.end > el.scrollTop + 2);
-    const turn = first ? settled()[first.index] : undefined;
-    const live = liveTurn();
-    setActiveTurn(turn?.turnId ?? live?.turnId);
-  };
-  createEffect(() => {
-    settled().length;
-    liveTurn();
-    queueMicrotask(updateActive);
-  });
+    const o = offsets();
+    const n = settled().length;
+    const y = el.scrollTop - listTop() + 2;
+    const i = n && y < (o[n] ?? 0) ? indexAt(o, Math.max(0, y)) : n;
+    setActiveTurn(settled()[i]?.turnId ?? liveTurn()?.turnId);
+  }
 
   /** Navigator jump: mount the turn, land it at the top of the viewport, detach (Z-25). */
   const jumpToTurn = (turnId: string) => {
     const el = scrollEl();
     if (!el) return;
-    // A positional jump is the reader's intent: the restore correction must
-    // not pull the view back to the bottom in the next frame.
-    userScrolled = true;
     lock.detach();
     lock.seen();
-    const index = settled().findIndex((turn) => turn.turnId === turnId);
-    if (index >= 0) virt()?.scrollToIndex(index, { align: 'start' });
-    else if (tailEl) el.scrollTop = tailEl.offsetTop;
-    updateActive();
+    toggled = undefined;
+    if (index().has(turnId)) target = { id: turnId, align: 'start' };
+    else if (tailEl) {
+      lock.set(el, tailEl.offsetTop);
+      capture();
+    }
+    settle();
   };
 
   // ── find in chat (WP-A18, Z-79) ─────────────────────────────────
@@ -506,7 +701,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     setFindAdapter({ jumpToTurn });
     onCleanup(() => setFindAdapter(undefined));
   });
-  // Rows mount/unmount under the virtualizer: re-highlight what is mounted.
+  // Rows mount/unmount with the window: re-highlight what is mounted.
   // Re-applying is idempotent (text inside `mark.find-hit` is skipped), so the
   // pass that our own marks trigger adds nothing and the loop stops there.
   const [findDomRev, setFindDomRev] = createSignal(0);
@@ -519,55 +714,42 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     onCleanup(() => mo.disconnect());
   });
   /** Marks `target` active; `scroll` off when only new rows mounted. */
-  const showTarget = (root: HTMLElement, index: FindIndex, active: number, scroll: boolean) => {
-    const target = locateMatch(index, active);
-    if (!target) return;
-    if (activateFindMark(root, target.turnId, target.occurrence, scroll)) return;
-    // The turn is outside the virtual window: mount + centre it, then mark.
-    if (!scroll) return;
-    const at = settled().findIndex((t) => t.turnId === target.turnId);
-    if (at < 0) return;
-    const el = scrollEl();
-    if (el) {
-      userScrolled = true;
-      lock.detach();
-    }
-    virt()?.scrollToIndex(at, { align: 'center' });
-    const retry = () => {
-      // jsdom (and smooth-scroll setups) deliver no scroll event for a
-      // programmatic offset: dispatch it, then force the virtualizer to
-      // recompute its window from the new offset.
-      scrollEl()?.dispatchEvent(new Event('scroll'));
-      virt()?.measure();
-      const fresh = findIdx();
-      clearFindHighlights(root);
-      applyFindHighlights(root, fresh.query);
-      const again = locateMatch(fresh, findState().active);
-      if (again) activateFindMark(root, again.turnId, again.occurrence, true);
-    };
-    queueMicrotask(retry);
-    requestAnimationFrame(() => queueMicrotask(retry));
+  const showTarget = (root: HTMLElement, idx: FindIndex, active: number, scroll: boolean) => {
+    const hit = locateMatch(idx, active);
+    if (!hit) return;
+    if (activateFindMark(root, hit.turnId, hit.occurrence, scroll)) return;
+    // The turn is outside the window: mount + centre it, then mark.
+    if (!scroll || !index().has(hit.turnId)) return;
+    lock.detach();
+    toggled = undefined;
+    target = { id: hit.turnId, align: 'center' };
+    settle();
+    const fresh = findIdx();
+    clearFindHighlights(root);
+    applyFindHighlights(root, fresh.query);
+    const again = locateMatch(fresh, findState().active);
+    if (again) activateFindMark(root, again.turnId, again.occurrence, true);
   };
   // The query/open/active changed: redo the highlights from scratch.
   createEffect(() => {
     const root = contentEl;
     const s = findState();
-    const index = findIdx();
+    const idx = findIdx();
     if (!root) return;
     clearFindHighlights(root);
-    if (!s.open || !index.query) return;
-    applyFindHighlights(root, index.query);
-    showTarget(root, index, s.active, true);
+    if (!s.open || !idx.query) return;
+    applyFindHighlights(root, idx.query);
+    queueMicrotask(() => showTarget(root, idx, s.active, true));
   });
-  // New rows mounted under the marks (virtualizer): highlight just those.
+  // New rows mounted under the marks: highlight just those.
   createEffect(() => {
     findDomRev();
     const root = contentEl;
     const s = findState();
-    const index = findIdx();
-    if (!root || !s.open || !index.query) return;
-    applyFindHighlights(root, index.query);
-    showTarget(root, index, s.active, false);
+    const idx = findIdx();
+    if (!root || !s.open || !idx.query) return;
+    applyFindHighlights(root, idx.query);
+    showTarget(root, idx, s.active, false);
   });
   // Leaving the conversation closes find (one surface, scoped to the chat).
   onCleanup(() => closeFind());
@@ -578,90 +760,90 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       <TurnNavigator turns={turns} width={props.ctx.columnWidth} activeId={activeTurn} onJump={jumpToTurn} />
       <SelectionQuote root={scrollEl} sessionKey={() => props.ctx.session.key} />
       <TurnMenus ctx={props.ctx} />
-      <div
-        class="tl"
-        ref={setScrollEl}
-        data-testid="tl"
-        onScroll={() => {
-          const el = scrollEl();
-          if (el) {
-            lock.onScroll(el);
-            syncOverflow();
-            updateActive();
-            if (el.scrollTop < EARLIER_MARGIN) maybeLoadEarlier();
-            else maybeTrim();
-          }
-        }}
-      >
-      <div
-        class="tl-content"
-        ref={contentEl}
-        onClick={(e) => {
-          const hit = (e.target as HTMLElement | null)?.closest?.('[aria-expanded], [data-testid="tl-bubble-fold"], [data-testid="turn-files-toggle"]') as HTMLElement | null | undefined;
-          // The toggle's own click handler already ran (delegation walks up
-          // from the target); its header has not moved — the content below it did.
-          if (hit) toggle = { el: hit, top: hit.getBoundingClientRect().top, until: performance.now() + TOGGLE_MS, inTail: !!tailEl?.contains(hit) };
-        }}
-      >
-        {props.header}
-        <Show when={loading()}>
-          <ChatSkeleton />
-        </Show>
-        <Show when={openFailed()}>
-          <div class="tl-empty" data-testid="tl-open-failed">
-            <EmptyState
-              compact
-              tone="error"
-              icon={<TriangleAlert size={20} />}
-              title="Couldn't open this session"
-              body={session().state.connError?.message || (session().state.conn === 'lost' ? 'Lost the connection to this chat.' : 'The connection to this chat closed.')}
-              testId="tl-open-failed-card"
-              action={
-                <button type="button" class="btn btn-secondary btn-sm" data-testid="tl-open-retry" onClick={retryOpen}>
-                  <RefreshCw size={14} /> Retry
-                </button>
-              }
-            />
+      <div class="tl" ref={setScrollEl} data-testid="tl" data-ready={ready() ? '' : undefined} onScroll={onScroll}>
+        <div class="tl-content" ref={contentEl} onClick={onContentClick}>
+          {props.header}
+          <Show when={loading()}>
+            <ChatSkeleton />
+          </Show>
+          <Show when={openFailed()}>
+            <div class="tl-empty" data-testid="tl-open-failed">
+              <EmptyState
+                compact
+                tone="error"
+                icon={<TriangleAlert size={20} />}
+                title="Couldn't open this session"
+                body={session().state.connError?.message || (session().state.conn === 'lost' ? 'Lost the connection to this chat.' : 'The connection to this chat closed.')}
+                testId="tl-open-failed-card"
+                action={
+                  <button type="button" class="btn btn-secondary btn-sm" data-testid="tl-open-retry" onClick={retryOpen}>
+                    <RefreshCw size={14} /> Retry
+                  </button>
+                }
+              />
+            </div>
+          </Show>
+          <Show when={empty()}>
+            <div class="tl-empty" data-testid="tl-empty">
+              {props.empty ?? <p>Say hi — the first message starts the session.</p>}
+            </div>
+          </Show>
+          <Show when={ready() && history()?.hasMore && turns().length > 0}>
+            <EarlierRow loading={!!history()?.loading} error={history()?.error} onLoad={() => void session().loadEarlier?.()} />
+          </Show>
+          <div class="tl-list" ref={listEl} data-testid="tl-list" style={{ 'padding-top': `${padTop()}px`, 'padding-bottom': `${padBottom()}px` }}>
+            <For each={rowIds()}>
+              {(id) => {
+                const at = () => index().get(id);
+                const turn = () => {
+                  const i = at();
+                  return i === undefined ? undefined : settled()[i];
+                };
+                return (
+                  <div
+                    class="tl-vrow"
+                    data-turn={id}
+                    data-index={at()}
+                    ref={(node) => {
+                      rowNodes.set(id, node);
+                      rowRO?.observe(node);
+                      onCleanup(() => {
+                        rowRO?.unobserve(node);
+                        if (rowNodes.get(id) === node) rowNodes.delete(id);
+                      });
+                    }}
+                  >
+                    <Show when={turn()}>{(t) => <TurnRow turn={t()} ctx={props.ctx} last={!liveTurn() && at() === settled().length - 1} />}</Show>
+                  </div>
+                );
+              }}
+            </For>
           </div>
-        </Show>
-        <Show when={empty()}>
-          <div class="tl-empty" data-testid="tl-empty">
-            {props.empty ?? <p>Say hi — the first message starts the session.</p>}
+          <div ref={tailEl} class="tl-tail-wrap">
+            <Show when={ready()}>
+              <LiveTail live={liveTurn()} ctx={props.ctx} />
+            </Show>
+            <CommandReports sessionKey={session().key} />
           </div>
-        </Show>
-        <Show when={history()?.hasMore && turns().length > 0}>
-          <EarlierRow
-            loading={!!history()?.loading}
-            error={history()?.error}
-            onLoad={() => void session().loadEarlier?.()}
-          />
-        </Show>
-        <Show when={scrollEl()} keyed>
-          {(el) => <VirtualTurns scroller={el} ctx={props.ctx} settled={settled} live={() => !!liveTurn()} heights={heights} onVirt={setVirt} />}
-        </Show>
-        <div ref={tailEl} class="tl-tail-wrap">
-          <LiveTail live={liveTurn()} ctx={props.ctx} />
-          <CommandReports sessionKey={session().key} />
         </div>
-      </div>
-      <div class="tl-dock" data-testid="tl-dock">
-        <Show when={actionNotice()}>
-          <div class="tl-notice" role="status" data-testid="tl-notice">
-            {actionNotice()}
+        <div class="tl-dock" data-testid="tl-dock">
+          <Show when={actionNotice()}>
+            <div class="tl-notice" role="status" data-testid="tl-notice">
+              {actionNotice()}
+            </div>
+          </Show>
+          <JumpButton show={lock.detached() && overflowing()} unread={lock.unread()} onJump={() => scrollEl() && (lock.jump(scrollEl()!), settle())} />
+          {props.dock}
+          <div class="tl-overlay-host" data-testid="tl-overlay-host">
+            {props.overlay}
           </div>
-        </Show>
-        <JumpButton show={lock.detached() && overflowing()} unread={lock.unread()} onJump={() => scrollEl() && lock.jump(scrollEl()!)} />
-        {props.dock}
-        <div class="tl-overlay-host" data-testid="tl-overlay-host">
-          {props.overlay}
         </div>
-      </div>
       </div>
     </div>
   );
 }
 
-/** The "load earlier" row above the oldest loaded turn (auto-fetched near the top). */
+/** The "load earlier" row above the oldest loaded turn (fixed height: it never moves the rows). */
 function EarlierRow(props: { loading: boolean; error?: string; onLoad: () => void }) {
   return (
     <div class="tl-earlier" data-testid="tl-earlier" aria-live="polite">
@@ -679,158 +861,6 @@ function EarlierRow(props: { loading: boolean; error?: string; onLoad: () => voi
           </Show>
         </button>
       </Show>
-    </div>
-  );
-}
-
-/**
- * Measures one row under its *current* key, always. `measureElement` alone
- * is not enough when a row's key changes while the list scrolls (the bottom
- * lock pins on every growth): the virtualizer skips measuring while
- * `isScrolling`, and the ResizeObserver already watching the node does not
- * report again when its size did not change — the new key kept its estimate
- * (72 px for a settled `/graph` turn of 334 px) and the next turn and the
- * live tail drew over it. `resizeItem` writes the size regardless.
- */
-export function measureRow(
-  virt: Pick<Virtualizer<HTMLDivElement, HTMLDivElement>, 'measureElement' | 'resizeItem'>,
-  node: HTMLElement,
-): void {
-  if (!node.isConnected) return;
-  virt.measureElement(node as HTMLDivElement);
-  const index = Number(node.dataset.index);
-  // 0 = not laid out (hidden pane, jsdom): leave the estimate.
-  if (Number.isInteger(index) && index >= 0 && node.offsetHeight > 0) virt.resizeItem(index, node.offsetHeight);
-}
-
-/**
- * The virtualized settled turns. Only mounts once the `.tl` scroller
- * exists, so `createVirtualizer`'s mount binds real scroll/rect observers
- * (the element is a prop, not a signal read after the fact).
- */
-function VirtualTurns(props: {
-  scroller: HTMLDivElement;
-  ctx: TimelineCtx;
-  settled: () => Turn[];
-  live: () => boolean;
-  heights: TurnHeightCache;
-  onVirt: (v: Virtualizer<HTMLDivElement, HTMLDivElement> | undefined) => void;
-}) {
-  const virt = createVirtualizer<HTMLDivElement, HTMLDivElement>({
-    get count() {
-      return props.settled().length;
-    },
-    getScrollElement: () => props.scroller,
-    // `_willUpdate` derives `targetWindow` from `ownerDocument.defaultView`;
-    // in envs where that's null (some test jsdoms) the stock observers
-    // silently bail — give them a usable window instead.
-    observeElementRect: (inst, cb) => {
-      const se = inst.scrollElement as HTMLElement | null;
-      inst.targetWindow ??= se?.ownerDocument?.defaultView ?? (typeof window !== 'undefined' ? window : null);
-      return observeElementRect(inst, cb);
-    },
-    observeElementOffset: (inst, cb) => {
-      const se = inst.scrollElement as HTMLElement | null;
-      inst.targetWindow ??= se?.ownerDocument?.defaultView ?? (typeof window !== 'undefined' ? window : null);
-      return observeElementOffset(inst, cb);
-    },
-    estimateSize: (i) => props.heights.estimate(props.settled()[i]?.turnId, DEFAULT_TURN_HEIGHT),
-    getItemKey: (i) => props.settled()[i]?.turnId ?? `i${i}`,
-    overscan: 4,
-    initialRect: { width: 800, height: 600 },
-    measureElement: (el, entry, instance) => {
-      const h = defaultMeasure(el, entry, instance);
-      const id = (el as HTMLElement).dataset?.turn;
-      if (id) props.heights.set(id, h);
-      return h;
-    },
-  });
-  props.onVirt(virt);
-  onCleanup(() => props.onVirt(undefined));
-
-  // render-loop: re-measures of slots whose key changed are batched — one flush per
-  // microtask burst, at most MEASURE_CAP rows, the rest in the next frame — so a window
-  // shift that re-keys every slot cannot turn into a measure → resize → re-key storm.
-  // The set holds mounted slot nodes only (bounded by the window).
-  const MEASURE_CAP = 48;
-  const toMeasure = new Set<HTMLDivElement>();
-  let measureQueued = false;
-  const flushMeasures = () => {
-    measureQueued = false;
-    let n = 0;
-    for (const node of toMeasure) {
-      toMeasure.delete(node);
-      measureRow(virt, node);
-      const id = node.dataset.turn;
-      if (id && node.isConnected && node.offsetHeight > 0) props.heights.set(id, node.offsetHeight);
-      if (++n >= MEASURE_CAP) break;
-    }
-    if (toMeasure.size) {
-      measureQueued = true;
-      requestAnimationFrame(flushMeasures);
-    }
-  };
-  const queueMeasure = (node: HTMLDivElement | undefined) => {
-    if (!node) return;
-    toMeasure.add(node);
-    if (!measureQueued) {
-      measureQueued = true;
-      queueMicrotask(flushMeasures);
-    }
-  };
-  onCleanup(() => toMeasure.clear());
-
-  // render-loop: our own size watch over the slot nodes. virtual-core keeps one node per
-  // KEY (elementsCache) and unobserves a key's previous node when that key shows up on
-  // another node — but <Index> slots are positional, so when an older page re-keys slot 0
-  // (the partial first turn is `pre:<first loaded id>`) and the old key moves to slot 1,
-  // virtual-core unobserves slot 0's node, which now holds another turn. Its later growth
-  // (cards rendering, folds) was never reported: the row kept a stale height and the next
-  // turns were drawn on top of it at stale offsets (rig, WebKitGTK: row 449 px measured as
-  // 187). One observer per list, the window's slots only (bounded), changes applied once
-  // per frame through the same batched measure.
-  const slotRO =
-    typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver((entries) => {
-          for (const e of entries) queueMeasure(e.target as HTMLDivElement);
-        })
-      : undefined;
-  onCleanup(() => slotRO?.disconnect());
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__TL_VIRT__ = virt;
-
-  return (
-    <div class="tl-virtual" style={{ height: `${virt.getTotalSize()}px`, position: 'relative' }}>
-      <Index each={virt.getVirtualItems()}>
-        {(item) => {
-          const turn = () => props.settled()[item().index];
-          let node: HTMLDivElement | undefined;
-          // The slot is reused for another turn — or the same turn's key moved
-          // (a live turn settles under its real entry id): re-measure even when
-          // the height happens to match, so the new key's row is real.
-          createEffect(
-            on(
-              () => item().key,
-              () => queueMeasure(node),
-            ),
-          );
-          return (
-            <div
-              class="tl-vrow"
-              data-index={item().index}
-              data-turn={turn()?.turnId}
-              ref={(el) => {
-                node = el;
-                virt.measureElement(el);
-                slotRO?.observe(el);
-                onCleanup(() => slotRO?.unobserve(el));
-              }}
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item().start}px)` }}
-            >
-              <Show when={turn()}>{(t) => <TurnRow turn={t()} ctx={props.ctx} last={!props.live() && item().index === props.settled().length - 1} />}</Show>
-            </div>
-          );
-        }}
-      </Index>
     </div>
   );
 }

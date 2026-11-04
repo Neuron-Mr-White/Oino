@@ -12,7 +12,8 @@
 /** Max remembered positions (ZCode's cap). */
 export const SCROLL_MEMORY_MAX = 200;
 
-export type ScrollMemoryEntry = { bottomLocked: true } | { scrollTop: number };
+/** [chat-load] `anchor`: the first visible turn and how far the viewport top was below its top. */
+export type ScrollMemoryEntry = { bottomLocked: true } | { scrollTop: number; anchor?: { turnId: string; offset: number } };
 
 const memory = new Map<string, ScrollMemoryEntry>();
 

@@ -17,6 +17,7 @@ import { clearScrollMemory } from '../../lib/timeline/scrollMemory';
 import { commandNames, type TimelineCtx } from './context';
 import { navigatorItems, TurnNavigator } from './TurnNavigator';
 import { Timeline } from './Timeline';
+import { installFlowLayout } from './flowLayout.testutil';
 import roundtrip from '../../lib/session/fixtures/roundtrip.json';
 
 const rt = roundtrip as unknown as { fresh: SessionSnapshot };
@@ -144,30 +145,26 @@ describe('TurnNavigator', () => {
   });
 
   it('a click lands the turn at the top of the viewport and detaches (jump pill)', async () => {
-    const { s } = await open(40);
-    const r = render(() => <Timeline ctx={ctx(s, 1400)} dock={dock} />);
-    const tl = r.getByTestId('tl');
-    const nav = await waitFor(() => r.getByTestId('tl-nav'));
-    expect(nav.querySelectorAll('[data-testid=tl-nav-bar]').length).toBe(40);
-    expect(nav.querySelector('[data-testid=tl-nav-bar]')!.getAttribute('title')).toContain('Question 0');
-    // scroll to the bottom first so the jump is a real move
-    tl.scrollTop = tl.scrollHeight;
-    fireEvent.scroll(tl);
-
-    const bar = nav.querySelector('[data-turn=u10]') as HTMLElement;
-    fireEvent.click(bar);
-    // jsdom: a programmatic scroll fires no scroll event (a browser does)
-    fireEvent.scroll(tl);
-    // The row is positioned at its content offset; landing it at the top of
-    // the viewport means scrollTop equals that offset.
-    const offset = await waitFor(() => {
-      const row = tl.querySelector('.tl-vrow[data-turn=u10]') as HTMLElement | null;
+    const L = installFlowLayout({ rowHeight: () => 100 });
+    try {
+      const { s } = await open(40);
+      const r = render(() => <Timeline ctx={ctx(s, 1400)} dock={dock} />);
+      const tl = r.getByTestId('tl');
+      await L.frames();
+      const nav = await waitFor(() => r.getByTestId('tl-nav'));
+      expect(nav.querySelectorAll('[data-testid=tl-nav-bar]').length).toBe(40);
+      expect(nav.querySelector('[data-testid=tl-nav-bar]')!.getAttribute('title')).toContain('Question 0');
+      expect(tl.scrollTop).toBe(tl.scrollHeight - tl.clientHeight);
+      fireEvent.click(nav.querySelector('[data-turn=u10]') as HTMLElement);
+      await L.frames();
+      // The row (not mounted before: far above the bottom window) is mounted and sits at the top of the viewport.
+      const row = L.rows(tl).find((x) => x.id === 'u10');
       expect(row).toBeTruthy();
-      return Number(/translateY\(([\d.]+)px\)/.exec(row!.style.transform)![1]);
-    });
-    expect(tl.scrollTop).toBe(offset);
-    expect(tl.scrollTop).toBeGreaterThan(0);
-    fireEvent.scroll(tl);
-    await waitFor(() => expect(r.getByTestId('tl-jump')).toBeTruthy());
+      expect(Math.abs(row!.top)).toBeLessThanOrEqual(0.5);
+      expect(tl.scrollTop).toBeGreaterThan(0);
+      await waitFor(() => expect(r.getByTestId('tl-jump')).toBeTruthy());
+    } finally {
+      L.restore();
+    }
   });
 });

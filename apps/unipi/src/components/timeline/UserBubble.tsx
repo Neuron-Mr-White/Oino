@@ -179,6 +179,8 @@ export function UserBubble(props: {
   foldKey?: { sessionId: string; key: string };
 }) {
   const [localExpanded, setLocalExpanded] = createSignal(false);
+  /** The fold animates only on the reader's own toggle — never on the first paint. */
+  const [animate, setAnimate] = createSignal(false);
   const expanded = () => (props.foldKey ? expansionOpen(props.foldKey.sessionId, props.foldKey.key, false) : localExpanded());
   const setExpanded = (open: boolean) => (props.foldKey ? setExpansion(props.foldKey.sessionId, props.foldKey.key, open) : setLocalExpanded(open));
   const [folds, setFolds] = createSignal(false);
@@ -238,6 +240,9 @@ export function UserBubble(props: {
   createEffect(() => {
     const el = bodyEl();
     if (!el) return;
+    // [chat-load] measured before the first paint (the row is in the document by now), so a
+    // long bubble is drawn folded from its first frame instead of full height, then shrinking.
+    measure();
     requestAnimationFrame(measure);
     if (typeof ResizeObserver === 'undefined') return;
     let frame = 0;
@@ -255,7 +260,7 @@ export function UserBubble(props: {
   const bodyStyle = () =>
     !folds()
       ? undefined
-      : { 'max-height': expanded() ? `${fullHeight()}px` : `${FOLD_PX}px`, transition: `max-height ${FOLD_MS}ms ease-out` };
+      : { 'max-height': expanded() ? `${fullHeight()}px` : `${FOLD_PX}px`, ...(animate() ? { transition: `max-height ${FOLD_MS}ms ease-out` } : {}) };
 
   return (
     <div
@@ -280,7 +285,7 @@ export function UserBubble(props: {
             aria-expanded={expanded()}
             aria-label={expanded() ? 'Collapse message' : 'Expand message'}
             title={expanded() ? 'Collapse message' : 'Show the whole message'}
-            onClick={() => setExpanded(!expanded())}
+            onClick={() => (setAnimate(true), setExpanded(!expanded()))}
           >
             <Show when={expanded()} fallback={<ChevronDown size={15} />}>
               <ChevronUp size={15} />

@@ -1,133 +1,134 @@
-// @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
-import { BOTTOM_PX, createBottomLock, distanceToBottom } from './bottomLock';
+import { describe, expect, it } from 'vitest';
+import { createRoot } from 'solid-js';
+import { BOTTOM_PX, createBottomLock, distanceToBottom, SCROLL_IDLE_MS, type Scroller } from './bottomLock';
 
-/** A fake scroller: metrics the DOM element would report. */
-function scroller(opts: { height: number; client: number; top?: number }) {
-  return { scrollHeight: opts.height, clientHeight: opts.client, scrollTop: opts.top ?? 0 };
+/** A scroller whose writes clamp like the DOM. */
+function scroller(scrollHeight = 2000, clientHeight = 500): Scroller & { h: number } {
+  let top = 0;
+  const el = {
+    h: scrollHeight,
+    get scrollTop() {
+      return top;
+    },
+    set scrollTop(v: number) {
+      top = Math.max(0, Math.min(v, el.h - clientHeight));
+    },
+    get scrollHeight() {
+      return el.h;
+    },
+    clientHeight,
+  };
+  return el;
 }
 
-describe('bottom lock (Z-23/Z-24)', () => {
-  it('starts locked; a user scroll up > 48 px detaches', () => {
-    const lock = createBottomLock();
-    const el = scroller({ height: 2000, client: 400 });
-    lock.intent();
-    el.scrollTop = 1000; // distance 600
-    lock.onScroll(el);
-    expect(lock.detached()).toBe(true);
-  });
+const make = (now = { t: 0 }) => createRoot(() => createBottomLock(() => now.t));
 
-  it('stays locked for a small user scroll (≤ 48 px)', () => {
-    const lock = createBottomLock();
-    const el = scroller({ height: 2000, client: 400 });
-    el.scrollTop = el.scrollHeight - el.clientHeight - 30;
-    lock.intent();
-    lock.onScroll(el);
+describe('bottom lock ([chat-load] rules)', () => {
+  it('starts locked; jump pins to the bottom and clears the dot', () => {
+    const lock = make();
+    const el = scroller();
     expect(lock.locked()).toBe(true);
-  });
-
-  it('layout-driven scrolls never detach (user intent beats layout)', () => {
-    const lock = createBottomLock();
-    const el = scroller({ height: 2000, client: 400 });
-    el.scrollTop = 500; // virtualizer compensation, no intent
-    lock.onScroll(el);
-    expect(lock.locked()).toBe(true);
-  });
-
-  it('user intent expires: a scroll long after the input is layout', () => {
-    vi.useFakeTimers();
-    try {
-      const lock = createBottomLock();
-      const el = scroller({ height: 2000, client: 400 });
-      lock.intent();
-      vi.advanceTimersByTime(1000);
-      el.scrollTop = 100;
-      lock.onScroll(el);
-      expect(lock.locked()).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('a user scroll back within 48 px re-locks and clears unread', () => {
-    const lock = createBottomLock();
-    const el = scroller({ height: 2000, client: 400 });
-    lock.intent();
-    el.scrollTop = 800;
-    lock.onScroll(el);
-    expect(lock.detached()).toBe(true);
-    lock.arrived(); // new content while detached → unread dot
-    expect(lock.unread()).toBe(true);
-    lock.intent();
-    el.scrollTop = el.scrollHeight - el.clientHeight - 20;
-    lock.onScroll(el);
-    expect(lock.locked()).toBe(true);
-    expect(lock.unread()).toBe(false);
-  });
-
-  it('grew() pins the bottom in the same frame while locked', () => {
-    const lock = createBottomLock();
-    const el = scroller({ height: 2000, client: 400 });
-    el.scrollTop = 100;
-    lock.grew(el);
-    expect(el.scrollTop).toBe(el.scrollHeight - el.clientHeight);
-  });
-
-  it('grew() while detached keeps position and never flags unread (geometry is not news)', () => {
-    const lock = createBottomLock();
-    const el = scroller({ height: 2000, client: 400 });
-    lock.detach();
-    el.scrollTop = 700;
-    lock.grew(el);
-    expect(el.scrollTop).toBe(700);
-    expect(lock.unread()).toBe(false);
-  });
-
-  it('arrived() flags unread only while detached', () => {
-    const lock = createBottomLock();
-    lock.arrived();
-    expect(lock.unread()).toBe(false);
-    lock.detach();
-    lock.arrived();
-    expect(lock.unread()).toBe(true);
-  });
-
-  it('jump() locks, pins instantly and clears the dot', () => {
-    const lock = createBottomLock();
-    const el = scroller({ height: 2000, client: 400 });
-    lock.detach();
-    lock.arrived();
     lock.jump(el);
-    expect(lock.locked()).toBe(true);
-    expect(lock.unread()).toBe(false);
-    expect(el.scrollTop).toBe(el.scrollHeight - el.clientHeight);
+    expect(el.scrollTop).toBe(1500);
+    expect(distanceToBottom(el)).toBe(0);
   });
 
-  it('a view that cannot overflow is always lockable', () => {
-    const lock = createBottomLock();
+  it('any reader gesture up detaches at once, before any scroll event', () => {
+    const lock = make();
+    const el = scroller();
+    lock.jump(el);
+    lock.gestureUp(el);
+    expect(lock.locked()).toBe(false);
+  });
+
+  it('a reader scroll that moved up detaches, even 10 px (no 48 px dead zone)', () => {
+    const lock = make();
+    const el = scroller();
+    lock.jump(el);
+    el.scrollTop = 1490; // not our write
+    expect(lock.onScroll(el)).toBe(true);
+    expect(lock.locked()).toBe(false);
+  });
+
+  it('our own writes are never the reader: pinning / anchor writes keep the state', () => {
+    const lock = make();
+    const el = scroller();
+    lock.jump(el);
+    el.h = 2600;
+    lock.grew(el);
+    expect(lock.onScroll(el)).toBe(false);
+    expect(lock.locked()).toBe(true);
     lock.detach();
-    const el = scroller({ height: 300, client: 400 });
+    lock.set(el, 200);
+    expect(lock.onScroll(el)).toBe(false);
+    expect(lock.locked()).toBe(false);
+  });
+
+  it('nothing re-attaches but the reader reaching the bottom (scrolling down) or the jump', () => {
+    const lock = make();
+    const el = scroller();
+    lock.jump(el);
+    lock.gestureUp(el);
+    el.scrollTop = 900;
+    lock.onScroll(el);
+    // Layout: content shrinks / grows, our anchor writes — still detached.
+    lock.set(el, 950);
+    lock.onScroll(el);
+    el.h = 1900;
+    lock.grew(el);
+    expect(lock.locked()).toBe(false);
+    // The reader scrolls down to within BOTTOM_PX.
+    el.scrollTop = el.h - el.clientHeight - (BOTTOM_PX - 2);
+    lock.onScroll(el);
+    expect(lock.locked()).toBe(true);
+  });
+
+  it('a clamp after content shrank (scrollTop pulled to the new bottom) is not a detach', () => {
+    const lock = make();
+    const el = scroller();
+    lock.jump(el);
+    el.h = 1200; // clamps 1500 → 700
+    el.scrollTop = el.scrollTop;
+    expect(lock.onScroll(el)).toBe(true);
+    expect(lock.locked()).toBe(true);
+  });
+
+  it('grew() pins while locked and keeps position while detached; geometry never flags unread', () => {
+    const lock = make();
+    const el = scroller();
+    lock.jump(el);
+    el.h = 2400;
+    lock.grew(el);
+    expect(el.scrollTop).toBe(1900);
+    lock.detach();
+    el.h = 3000;
+    lock.grew(el);
+    expect(el.scrollTop).toBe(1900);
+    expect(lock.unread()).toBe(false);
+    lock.arrived();
+    expect(lock.unread()).toBe(true);
+    lock.jump(el);
+    expect(lock.unread()).toBe(false);
+  });
+
+  it('a view that cannot scroll is locked and shows from the top (F-12)', () => {
+    const lock = make();
+    const el = scroller(400, 500);
+    lock.detach();
     lock.reconcile(el);
     expect(lock.locked()).toBe(true);
+    expect(el.scrollTop).toBe(0);
   });
 
-  it('reaching the bottom re-engages even without fresh intent', () => {
-    const lock = createBottomLock();
-    const el = scroller({ height: 2000, client: 400 });
-    lock.detach();
-    lock.arrived();
-    expect(lock.unread()).toBe(true);
-    el.scrollTop = el.scrollHeight - el.clientHeight; // user landed on the bottom
+  it('scrolling() is true right after a reader scroll (flick / inertia) and false once idle', () => {
+    const now = { t: 1000 };
+    const lock = make(now);
+    const el = scroller();
+    lock.jump(el);
+    el.scrollTop = 1000;
     lock.onScroll(el);
-    expect(lock.locked()).toBe(true);
-    expect(lock.unread()).toBe(false);
-  });
-
-  it('distanceToBottom', () => {
-    expect(distanceToBottom(scroller({ height: 1000, client: 400, top: 500 }))).toBe(100);
-  });
-
-  it('the threshold is ZCode’s 48 px', () => {
-    expect(BOTTOM_PX).toBe(48);
+    expect(lock.scrolling()).toBe(true);
+    now.t += SCROLL_IDLE_MS + 1;
+    expect(lock.scrolling()).toBe(false);
   });
 });

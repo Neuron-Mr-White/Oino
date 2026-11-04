@@ -1,29 +1,26 @@
 /**
- * Bottom lock (app spec §3.6 Z-23/Z-24, WP-A6; ZCode
- * `chat-scroll-bottom-pinning.md`): the single follow state of a timeline.
- * `locked` is the user's *intent*, not the instantaneous geometry — layout
- * work (stream growth, folds, measureElement, virtualizer compensation)
- * never detaches and never re-locks on its own.
+ * Bottom lock (app spec §3.6 Z-23/Z-24; [chat-load] rules, design
+ * oino-internal docs/dev/v2/design/chat-render-pipeline.md §New.d): the single follow
+ * state of a timeline, and the ONLY writer of the scroller's `scrollTop` (every write goes
+ * through `set`, so a scroll event can tell the reader's scrolling from ours).
  *
- *   wheel / touch / keyboard / scrollbar intent + distance > 48 px  → DETACHED
- *   user scroll back within 48 px of the bottom, or a jump          → LOCKED
- *   content not overflowing                                          → lockable (nothing to lose)
- *   jump button                                                      → detached AND overflowing only
+ *   any reader scroll gesture up (wheel / touch / key / scrollbar), or a reader scroll
+ *   that moved the view up                                          → DETACHED at once
+ *   the reader's own scroll reaching the bottom, or the jump button  → LOCKED
+ *   a view that cannot scroll                                        → locked (nothing to keep)
+ *   nothing else re-attaches: no layout change, no row measure, no older chunk.
  *
- * While locked the timeline writes the new bottom `scrollTop` in the same
- * frame the content grew. The unread dot is NOT geometry: it is set only by
- * `arrived()` — new entries or tail growth after the detach moment. Row
- * re-measures (virtualization), image decodes, older pages loading and
- * user-expanded accordions change heights without new content.
+ * While locked the timeline pins the bottom in the frame the content grew. The unread dot
+ * is NOT geometry: only `arrived()` (new entries / tail growth after the detach) sets it.
  */
 import { createSignal } from 'solid-js';
 
-/** How far from the bottom still counts as "at the bottom" (ZCode's 48 px). */
-export const BOTTOM_PX = 48;
+/** Within this many px of the bottom a reader's downward scroll re-attaches. */
+export const BOTTOM_PX = 8;
 /** Real overflow needed before detaching is meaningful (sub-pixel noise). */
 const OVERFLOW_PX = 4;
-/** How long after a user input a scroll event still counts as theirs. */
-const INTENT_MS = 450;
+/** A reader scroll this recent means the view is moving (flick / inertia): no chunk loads. */
+export const SCROLL_IDLE_MS = 160;
 
 /** What the scroller needs to expose (the DOM element satisfies it). */
 export type Scroller = {
@@ -36,72 +33,82 @@ export function distanceToBottom(el: Scroller): number {
   return el.scrollHeight - el.clientHeight - el.scrollTop;
 }
 
+const overflows = (el: Scroller) => el.scrollHeight - el.clientHeight > OVERFLOW_PX;
+
 export type BottomLock = {
   /** Currently following the tail. */
   readonly locked: () => boolean;
   readonly detached: () => boolean;
   /** New content arrived while detached (the jump button's dot, Z-24). */
   readonly unread: () => boolean;
-  /** Marks a user scroll input (wheel/touch/key/scrollbar): the next scroll events are theirs. */
-  intent(): void;
-  /** The scroll handler: resolves intent vs layout, updates `locked`/`unread`. */
-  onScroll(el: Scroller): void;
-  /** Content height changed (stream, fold, measure, image): pin when locked; never flags unread. */
+  /** The one programmatic write (`scrollTop = top`); remembered so its scroll event is ours. */
+  set(el: Scroller, top: number): void;
+  /** A reader gesture that scrolls UP (wheel up, touch drag down, PageUp/↑/Home, scrollbar grab). */
+  gestureUp(el: Scroller): void;
+  /** The scroll handler: `true` when the event was the reader's (not one of our writes). */
+  onScroll(el: Scroller): boolean;
+  /** The reader scrolled within the last `SCROLL_IDLE_MS` (flick / inertia in progress). */
+  scrolling(): boolean;
+  /** Content height changed: pin when locked; never flags unread. */
   grew(el: Scroller): void;
   /** New content arrived at the end (entries / tail growth): the unread dot while detached. */
   arrived(): void;
-  /** Content shrank or the viewport grew: re-check geometry (never unlocks by itself). */
+  /** A view that cannot scroll holds no reading position: lock (and show it from the top). */
   reconcile(el: Scroller): void;
   /** The jump button / send / session-open pin: lock + jump to the bottom instantly. */
   jump(el: Scroller): void;
   /** Keeps the bottom while locked (same frame as the growth). */
   pin(el: Scroller): void;
-  /** Locks without scrolling (initial state, restore). */
-  lock(): void;
-  /** Detaches without scrolling (positional jumps: find, navigator, fork). */
+  /** Detaches without scrolling (positional jumps: find, navigator, a reader's toggle). */
   detach(): void;
   /** Clears the unread dot. */
   seen(): void;
 };
 
-export function createBottomLock(): BottomLock {
+export function createBottomLock(now: () => number = () => performance.now()): BottomLock {
   const [locked, setLocked] = createSignal(true);
   const [unread, setUnread] = createSignal(false);
-  let intentUntil = 0;
-  const intends = () => Date.now() <= intentUntil;
+  /** The value our last write left (`NaN` = none pending). */
+  let ours = Number.NaN;
+  let prevTop = 0;
+  let lastReader = Number.NEGATIVE_INFINITY;
 
-  const pin = (el: Scroller) => {
-    el.scrollTop = el.scrollHeight - el.clientHeight;
+  const set = (el: Scroller, top: number) => {
+    el.scrollTop = top;
+    ours = el.scrollTop;
+    prevTop = ours;
+  };
+  const pin = (el: Scroller) => set(el, Math.max(0, el.scrollHeight - el.clientHeight));
+  const attach = () => {
+    setLocked(true);
+    setUnread(false);
   };
 
   return {
     locked,
     detached: () => !locked(),
     unread,
-    intent() {
-      intentUntil = Date.now() + INTENT_MS;
+    set,
+    gestureUp(el) {
+      lastReader = now();
+      if (overflows(el)) setLocked(false);
     },
     onScroll(el) {
+      const top = el.scrollTop;
+      if (Math.abs(top - ours) < 1) {
+        prevTop = top;
+        return false;
+      }
+      ours = Number.NaN;
+      lastReader = now();
       const d = distanceToBottom(el);
-      if (intends()) {
-        // A real user scroll: intent beats layout.
-        if (d > BOTTOM_PX && el.scrollHeight - el.clientHeight > OVERFLOW_PX) setLocked(false);
-        else if (d <= BOTTOM_PX) {
-          setLocked(true);
-          setUnread(false);
-        }
-        return;
-      }
-      // No user input behind this event: geometry bookkeeping only.
-      // Reaching the bottom re-engages (e.g. the user's own scroll already
-      // settled), and a non-overflowing view has nothing to preserve.
-      if (d <= BOTTOM_PX || el.scrollHeight - el.clientHeight <= OVERFLOW_PX) {
-        if (!locked()) {
-          setLocked(true);
-          setUnread(false);
-        }
-      }
+      const up = top < prevTop - 0.5;
+      prevTop = top;
+      if (up && d > 1 && overflows(el)) setLocked(false);
+      else if (!up && d <= BOTTOM_PX && !locked()) attach();
+      return true;
     },
+    scrolling: () => now() - lastReader < SCROLL_IDLE_MS,
     grew(el) {
       if (locked()) pin(el);
     },
@@ -109,22 +116,16 @@ export function createBottomLock(): BottomLock {
       if (!locked()) setUnread(true);
     },
     reconcile(el) {
-      // A view that cannot scroll cannot hold a reading position (ZCode rule).
-      if (el.scrollHeight - el.clientHeight <= OVERFLOW_PX) {
-        setLocked(true);
-        setUnread(false);
-        // F-12: content that fits shows from the top — a stale offset left the first bubble cut off above empty space.
-        if (el.scrollTop > 0) el.scrollTop = 0;
-      }
+      if (overflows(el)) return;
+      if (!locked()) attach();
+      // F-12: content that fits shows from the top — a stale offset left the first bubble cut off above empty space.
+      if (el.scrollTop > 0) set(el, 0);
     },
     jump(el) {
-      intentUntil = 0;
-      setLocked(true);
-      setUnread(false);
+      attach();
       pin(el);
     },
     pin,
-    lock: () => setLocked(true),
     detach: () => setLocked(false),
     seen: () => setUnread(false),
   };

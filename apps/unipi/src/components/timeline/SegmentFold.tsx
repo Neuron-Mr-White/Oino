@@ -2,9 +2,9 @@
  * Segment fold (WP-A6, Z-21/Z-54/Z-56): a work segment's header —
  * "Working for 12s" live, "Worked for 1m 3s · read 4 files, edited 2"
  * settled (unipi wording from `foldDetail`), "Stopped" without a duration
- * when interrupted. Forced open while running / stopped / error; otherwise
- * the user's toggle is remembered in the expansion store across
- * virtual-scroll remounts.
+ * when interrupted. Forced open while running; a settled stopped / error
+ * segment opens by default when its work is small ([chat-load]); the user's
+ * toggle is remembered in the expansion store across window remounts.
  *
  * The fold body is lazy: work DOM only exists while open. WP-A8 moved the
  * work-item renderers to `tools/` (rows, groups, thinking, bodies) and
@@ -39,10 +39,20 @@ export function splitWorkingMessage(msg: string | undefined): { head?: string; h
   return { ...(head ? { head } : {}), ...(hint ? { hint } : {}) };
 }
 
+/**
+ * [chat-load] A settled stopped / failed segment opens by default only while its work is
+ * this small; a long one (a giant subagent turn) shows its collapsed summary — drawn from
+ * the turn's own data, in the first paint — and its body mounts when the reader opens it.
+ */
+export const STOPPED_OPEN_MAX = 8;
+
 export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
   const fold = () => props.segment.fold!;
-  const open = () => fold().forcedOpen || expansionOpen(props.ctx.sessionId(), `fold:${props.segment.id}`, false);
-  const toggle = () => !fold().forcedOpen && toggleExpansion(props.ctx.sessionId(), `fold:${props.segment.id}`, false);
+  // Only a running segment is forced open (its live work is the view); settled ones toggle.
+  const forced = () => fold().state === 'running';
+  const byDefault = () => fold().state !== 'done' && props.segment.nodes.length <= STOPPED_OPEN_MAX;
+  const open = () => forced() || expansionOpen(props.ctx.sessionId(), `fold:${props.segment.id}`, byDefault());
+  const toggle = () => !forced() && toggleExpansion(props.ctx.sessionId(), `fold:${props.segment.id}`, byDefault());
   const running = () => fold().state === 'running';
   const now = useNow(running);
   // §3.2 `setWorkingMessage`, split ([ui-subagents]): "Subagent running · Ctrl+B to run in
@@ -88,7 +98,7 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
             {keyHint()}
           </span>
         </Show>
-        <Show when={!fold().forcedOpen}>
+        <Show when={!forced()}>
           <ChevronRight size={15} class="proc-chev" />
         </Show>
       </button>

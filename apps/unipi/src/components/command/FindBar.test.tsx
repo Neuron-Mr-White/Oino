@@ -17,6 +17,8 @@ import { sessionRefChat } from '../../lib/timeline/refChat';
 import { clearScrollMemory } from '../../lib/timeline/scrollMemory';
 import { commandNames, type TimelineCtx } from '../timeline/context';
 import { Timeline } from '../timeline/Timeline';
+import { installFlowLayout, type FlowLayout } from '../timeline/flowLayout.testutil';
+import { clearSessionHeights } from '../../lib/timeline/rowModel';
 import { closeFind, findState, gotoFindMatch, openFind, setFindQuery } from '../../lib/find';
 import roundtrip from '../../lib/session/fixtures/roundtrip.json';
 
@@ -30,32 +32,13 @@ let clientOf: () => HostClient = () => {
   throw new Error('clientOf not set');
 };
 
-/* ── geometry stubs like Timeline.test ───────────────────────────── */
+/* ── geometry: the timeline's flow layout (600 px viewport, 100 px rows) ── */
+let layout: FlowLayout | undefined;
 beforeEach(() => {
   localStorage.clear();
   clearScrollMemory();
-  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-    configurable: true,
-    get() {
-      return this.classList?.contains('tl') ? 600 : 40;
-    },
-  });
-  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: () => 400 });
-  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
-    configurable: true,
-    get() {
-      return this.classList?.contains('tl') ? 600 : 0;
-    },
-  });
-  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
-    configurable: true,
-    get() {
-      return this.classList?.contains('tl') ? this.childElementCount * 2400 : 0;
-    },
-  });
-  HTMLElement.prototype.scrollTo = function scrollTo(this: HTMLElement, arg?: number | ScrollToOptions) {
-    if (typeof arg === 'object' && arg && typeof arg.top === 'number') this.scrollTop = arg.top;
-  } as typeof HTMLElement.prototype.scrollTo;
+  clearSessionHeights();
+  layout = installFlowLayout({ rowHeight: () => 100 });
 });
 
 let disposers: Array<() => void> = [];
@@ -64,6 +47,7 @@ afterEach(() => {
   disposers.forEach((d) => d());
   disposers = [];
   cleanup();
+  layout?.restore();
 });
 
 function snapshot(turns: number, mark = (i: number) => `Question ${i}`): SessionSnapshot {
@@ -132,18 +116,20 @@ describe('FindBar (Z-79)', () => {
   });
 
   it('a match in an unmounted turn scrolls into view, then highlights (acceptance)', async () => {
-    // 60 turns, only the first fit the stubbed window; the match lives in turn 50.
+    // 60 turns, only the bottom window mounts; the match lives in turn 10, far above it.
     await mount(60);
+    await layout!.frames();
     openFind();
     await waitFor(() => expect(document.querySelector('[data-testid="find-bar"]')).toBeInTheDocument());
     const mounted = document.querySelectorAll('[data-turn]').length;
     expect(mounted).toBeGreaterThan(0);
-    expect(document.querySelector('[data-turn="u50"]')).toBeNull(); // not mounted
-    fireEvent.input(document.querySelector<HTMLInputElement>('.cfind-input')!, { target: { value: 'Question 50' } });
+    expect(document.querySelector('[data-turn="u10"]')).toBeNull(); // not mounted
+    fireEvent.input(document.querySelector<HTMLInputElement>('.cfind-input')!, { target: { value: 'Question 10' } });
     await waitFor(() => expect(document.querySelector('[data-testid="find-count"]')!.textContent).toBe('1/1'));
     await waitFor(
       () => {
-        const row = document.querySelector('[data-turn="u50"]');
+        void layout!.frame();
+        const row = document.querySelector('[data-turn="u10"]');
         if (!row) throw new Error('row not mounted');
         if (!row.querySelector('mark.find-hit[data-active]')) throw new Error(`no active mark; html=${row.innerHTML.slice(0, 160)}`);
       },
