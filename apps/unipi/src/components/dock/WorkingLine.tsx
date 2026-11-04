@@ -43,9 +43,12 @@ export function WorkingLine(props: { session: SessionHandle; askCalls: readonly 
   const presence = createPresence(() => !!model());
   const m = () => model() ?? shown();
   const working = () => m()?.kind === 'working';
-  // A working episode without a host start time counts from when the line appeared.
+  // A working episode without a host start time counts from when the line appeared. `active`
+  // is a memo so only a hidden → shown change restarts it: every host state push replaces the
+  // run object (a new model), which used to reset the clock to 0s every ~2 s while waiting.
   let appeared = Date.now();
-  createEffect(on(() => !!model(), (on_) => on_ && (appeared = Date.now())));
+  const active = createMemo(() => !!model());
+  createEffect(on(active, (on_) => on_ && (appeared = Date.now())));
   const now = useClock(() => working() && !!model());
   const elapsed = () => formatDuration(Math.max(0, now() - (m()?.since ?? appeared)));
   const open = () => openSessionModal({ hostId: props.session.hostId, sessionId: props.session.sessionId(), tab: 'running' });
