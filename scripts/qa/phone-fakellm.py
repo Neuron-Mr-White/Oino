@@ -6,8 +6,9 @@ Listens on 127.0.0.1:11434: models.json overrides the keyless `ollama` provider 
 Prompt keywords pick a script:
   "tools"  -> bash + read tool calls, then a text summary
   "image"  -> read of /root/qa/home/projects/demo-app/shot.png (image tool result), then text
-  "ask"    -> ask_user tool call (if the tool is offered), else text
+  "ask"    -> ask_user tool call (if the tool is offered), else text; "ask two" asks 2 questions
   "error"  -> HTTP 500
+  "quiz"   -> a text reply that asks two questions (no tool)
   "long"   -> very long markdown answer (scrolling)
   "edit"   -> edit/write tool calls (diff rows)
   "grow"   -> one bash call whose output streams for ~12 s (chat-scroll: output inside a tool row)
@@ -149,8 +150,18 @@ class H(BaseHTTPRequestHandler):
                      ("write", {"path": f"{DEMO}/NOTES.md", "content": "# Notes\n\n- added by QA\n"})]
             text = "I'll make the change."
         elif "ask" in low and "ask_user" in tools:
-            calls = [("ask_user", {"question": "Which database should I use?", "options": ["SQLite", "Postgres", "Keep files"]})]
-            text = "One question first."
+            # The tool's own shape ({questions: [...]}; [ask-user]): "ask two" asks two at once.
+            db = {"question": "Which database should I use for the cache?", "header": "Database",
+                  "options": [{"label": "SQLite", "description": "One file, no server"},
+                              {"label": "Postgres", "description": "Shared, needs a server"},
+                              {"label": "Keep files", "description": "What we have now"}]}
+            extras = {"question": "Which extras should the first version have?", "header": "Extras", "multi_select": True,
+                      "options": [{"label": "Auth"}, {"label": "Rate limits"}, {"label": "Metrics"}]}
+            calls = [("ask_user", {"questions": [db, extras] if "two" in low else [db]})]
+            text = "Before I wire the cache I need your call on the storage."
+        elif "quiz" in low:
+            # A plain reply that asks (the utility /answer hint's trigger; [ask-user] QA).
+            text = "I can do that. Which storage should the cache use?\n\n- SQLite\n- Postgres\n\nAnd should it expire entries after a day?"
         elif "long" in low:
             text = "\n\n".join(f"### Section {i}\n" + ("Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 6) + f"\n\n```sh\ncargo run --example s{i}\n```" for i in range(1, 25))
             slow = 0.005
