@@ -77,7 +77,7 @@ export function TreeTab(props: PaneTabProps) {
     let leafId: string | null = null;
     for (let i = 0; i < 200; i++) {
       const page = await within(
-        s.cmd<{ entries?: SessionEntry[]; leafId?: string | null; hasMore?: boolean }>({ type: 'get_entries', limit: PAGE, ...(before ? { before } : {}) }),
+        s.cmd<{ entries?: SessionEntry[]; leafId?: string | null; hasMore?: boolean; cursor?: string | null }>({ type: 'get_entries', limit: PAGE, ...(before ? { before } : {}) }),
         STEP_TIMEOUT_MS,
       );
       const got = Array.isArray(page?.entries) ? page.entries : [];
