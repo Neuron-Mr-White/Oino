@@ -2083,7 +2083,7 @@ mod tests {
             registry.produce("a", "closePanel", &close).unwrap(),
             ProduceOutcome::Deleted("a/panel-1".to_owned())
         );
-        assert_eq!(registry.ids(), ["a/widget:w"]);
+        assert_eq!(registry.ids(), ["a/widget:w", "a/widget:hint"]);
     }
 
     #[test]
