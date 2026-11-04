@@ -25,7 +25,6 @@ import { STARTER_HINT, STARTER_ORDER, withStarter, type ModeStarter } from '../.
 import { MODE_DESCRIPTION, type LhModeChoice } from '../status/lhMode';
 import { useLhEnabled } from '../status/LhSection';
 import { chipOpensGraph, openGraphView } from '../status/GraphView';
-import { ChevronDown } from 'lucide-solid';
 import { AnchoredMenu, MenuSeparator } from '../board/AnchoredMenu';
 import { ModeIcon } from '../chat/ModeChip';
 import { RollingLabel } from '../RollingLabel';

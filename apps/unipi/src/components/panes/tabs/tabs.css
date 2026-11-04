@@ -134,7 +134,7 @@
 .btab-empty { margin: 6px 0 0; font-size: 13px; line-height: 19px; color: var(--color-text-dim); }
 
 /* ── subagent (Z-42): the child transcript ───────────────────────────── */
-.stab { display: flex; flex-direction: column; min-height: 100%; }
+.stab { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .stab-head {
   position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
   min-height: 40px; padding: 4px 10px 4px 14px; box-sizing: border-box;
@@ -148,7 +148,9 @@
 .stab-stop { display: inline-flex; align-items: center; gap: 5px; height: 28px; min-height: 28px; padding: 0 10px; border-radius: 8px; background: var(--color-surface-2); color: var(--color-text); font-size: 12px; font-weight: 600; }
 .stab-stop:hover { background: rgb(240 60 50 / 16%); color: var(--color-wm-red); }
 .stab-meta { margin: 0; padding: 4px 14px 6px; font-size: 11.5px; color: var(--color-text-dim); }
-.stab-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px var(--page-gutter) calc(12px + env(safe-area-inset-bottom)); }
+.stab-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.stab-body > .stab-note, .stab-body > .stab-error { margin: 0; padding: 10px var(--page-gutter); }
+.stab-tl { flex: 1 1 auto; min-height: 0; }
 .stab-msgs { display: flex; flex-direction: column; gap: 8px; }
 .stab-msg { min-width: 0; }
 .stab-msg[data-role='user'] { border-radius: 12px; background: var(--color-surface-2); padding: 8px 11px; }
@@ -209,3 +211,4 @@ html:not([data-shell='desktop']) .stab-sheet .stab-head { justify-content: flex-
 /* Phone spec §2.12: the z scale owns sheet stacking on the phone shell (scrim under sheet). */
 html[data-shell=phone] body > div:has(> .sheet.stab-sheet) > .sheet-overlay { z-index: var(--z-scrim, 60); }
 html[data-shell=phone] .sheet.stab-sheet { z-index: var(--z-sheet, 61); }
+.ttab-note .btn { margin-top: 8px; }

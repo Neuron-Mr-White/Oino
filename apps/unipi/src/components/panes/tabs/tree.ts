@@ -206,6 +206,52 @@ export function buildTreeNodes(
   return out;
 }
 
+/**
+ * The flat entries (`get_entries`: `{entries, leafId}`) → the same node list as
+ * `buildTreeNodes`, with no nesting. A long chat is one chain thousands of
+ * nodes deep, which the nested `get_tree` reply cannot carry (JSON parsers cap
+ * nesting depth, so the reply never arrived); parent links rebuild the tree.
+ * Label entries (`targetId` + `label`) set the target's label, the last one wins.
+ */
+export function buildTreeNodesFromEntries(entries: SessionEntry[], leafId: string | null | undefined): TreeNode[] {
+  const out: TreeNode[] = [];
+  const ids = new Set<string>();
+  for (const e of entries) if (e && typeof e.id === 'string') ids.add(e.id);
+  const labels = new Map<string, string>();
+  for (const e of entries) {
+    if (!e || e.type !== 'label') continue;
+    const target = (e as { targetId?: unknown }).targetId;
+    if (typeof target !== 'string') continue;
+    const label = (e as { label?: unknown }).label;
+    if (typeof label === 'string' && label.trim()) labels.set(target, label.trim());
+    else labels.delete(target);
+  }
+  for (const entry of entries) {
+    if (!entry || typeof entry.id !== 'string') continue;
+    const parent = typeof entry.parentId === 'string' && entry.parentId !== entry.id && ids.has(entry.parentId) ? entry.parentId : null;
+    const label = labels.get(entry.id);
+    out.push({
+      id: entry.id,
+      parentId: parent,
+      kind: kindOfEntry(entry),
+      preview: previewOfEntry(entry),
+      ...(typeof entry.timestamp === 'string' ? { timestamp: entry.timestamp } : {}),
+      ...(label ? { label } : {}),
+      onPath: false,
+      current: entry.id === leafId,
+    });
+  }
+  const byId = new Map(out.map((n) => [n.id, n]));
+  const path = new Set<string>();
+  let cur = leafId ? byId.get(leafId) : undefined;
+  while (cur && !path.has(cur.id)) {
+    path.add(cur.id);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  for (const n of out) n.onPath = path.has(n.id);
+  return out;
+}
+
 /** pi /tree filter modes (tree-selector.js filterMode). */
 export type TreeFilter = 'default' | 'no-tools' | 'user-only' | 'labeled-only' | 'all';
 export const TREE_FILTERS: Array<{ id: TreeFilter; label: string }> = [

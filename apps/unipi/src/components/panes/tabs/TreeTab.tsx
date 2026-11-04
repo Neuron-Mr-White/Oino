@@ -5,7 +5,7 @@
  * and the jump restoring the message into the composer. A sheet on the phone
  * (§3.9); the same component renders in both.
  */
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Check, CornerDownRight, GitBranch, ListTree } from 'lucide-solid';
 import { AnchoredMenu, MenuRow } from '../../board/AnchoredMenu';
 import { sessions, type NavigateReply, type SessionHandle } from '../../../lib/session/store';
@@ -13,7 +13,7 @@ import type { SessionEntry } from '../../../lib/session/types';
 import { focusComposer, restoreComposer } from '../../../lib/composer/drafts';
 import { setPaneComponent, type PaneTabProps } from '../../../lib/panes/kinds';
 import { tabBaseOf } from './sessionTabs';
-import { buildTreeNodes, filterTree, flattenTree, readTreeFilter, rememberTreeFilter, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode, type TreeFilter } from './tree';
+import { buildTreeNodes, buildTreeNodesFromEntries, filterTree, flattenTree, readTreeFilter, rememberTreeFilter, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode, type TreeFilter } from './tree';
 import './tabs.css';
 
 type WireNode = { entry: SessionEntry; children?: WireNode[]; label?: unknown };
@@ -39,18 +39,75 @@ export function TreeTab(props: PaneTabProps) {
   const [rowMenu, setRowMenu] = createSignal<{ node: TreeNode; anchor: DOMRect } | null>(null);
   let listEl: HTMLDivElement | undefined;
 
+  // A request that never answers must not leave "Loading…" up forever: every step has a deadline,
+  // and the last one's failure is shown with a Retry.
+  const LOAD_TIMEOUT_MS = 45_000;
+  const STEP_TIMEOUT_MS = 10_000;
+  const PAGE = 500;
+  const within = <T,>(work: Promise<T>, ms: number): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('The host took too long to answer.')), ms);
+      work.then(
+        (v) => (clearTimeout(t), resolve(v)),
+        (e) => (clearTimeout(t), reject(e)),
+      );
+    });
+  let loadSeq = 0;
+  /**
+   * `get_tree` nests one level per entry: on a chat thousands of entries long the reply is one
+   * chain thousands deep, which the host's JSON layer refuses (recursion limit) or never finishes
+   * — the tab then loaded forever. So: the nested tree while it works, else the flat entries
+   * (parent links rebuild the tree), else the current branch page by page.
+   */
+  const load = async (s: SessionHandle): Promise<TreeNode[]> => {
+    try {
+      const reply = await within(s.cmd<TreeReply>({ type: 'get_tree' }), STEP_TIMEOUT_MS);
+      return buildTreeNodes(Array.isArray(reply?.tree) ? reply.tree : [], reply?.leafId ?? null);
+    } catch {
+      // fall through to the flat entries
+    }
+    try {
+      const flat = await within(s.cmd<{ entries?: SessionEntry[]; leafId?: string | null }>({ type: 'get_entries' }), STEP_TIMEOUT_MS * 2);
+      if (Array.isArray(flat?.entries)) return buildTreeNodesFromEntries(flat.entries, flat.leafId ?? null);
+    } catch {
+      // fall through to the paged branch
+    }
+    const all: SessionEntry[] = [];
+    let before: string | undefined;
+    let leafId: string | null = null;
+    for (let i = 0; i < 200; i++) {
+      const page = await within(
+        s.cmd<{ entries?: SessionEntry[]; leafId?: string | null; hasMore?: boolean }>({ type: 'get_entries', limit: PAGE, ...(before ? { before } : {}) }),
+        STEP_TIMEOUT_MS,
+      );
+      const got = Array.isArray(page?.entries) ? page.entries : [];
+      if (i === 0) leafId = page?.leafId ?? null;
+      all.unshift(...got);
+      if (!page?.hasMore || got.length === 0) break;
+      before = page.cursor ?? got[0]!.id;
+    }
+    return buildTreeNodesFromEntries(all, leafId);
+  };
   const refresh = async () => {
     const s = handle();
     if (!s) return;
+    const mine = ++loadSeq;
     try {
-      const reply = await s.cmd<TreeReply>({ type: 'get_tree' });
-      setNodes(buildTreeNodes(Array.isArray(reply?.tree) ? reply.tree : [], reply?.leafId ?? null));
+      const next = await within(load(s), LOAD_TIMEOUT_MS);
+      if (mine !== loadSeq) return;
+      setNodes(next);
       setError(undefined);
     } catch (e) {
+      if (mine !== loadSeq) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (mine === loadSeq) setLoading(false);
     }
+  };
+  const retry = () => {
+    setLoading(true);
+    setError(undefined);
+    void refresh();
   };
   // Reload when the stream comes live (a tab can open while the session is
   // still connecting; `cmd` rejects before that) and on a reopen.
@@ -58,7 +115,16 @@ export function TreeTab(props: PaneTabProps) {
   // the phone): `branchRev` bumps once per jump, never per streamed message.
   createEffect(() => {
     const s = handle();
-    if (s?.state.conn !== 'live') return;
+    if (s?.state.conn !== 'live') {
+      // Never connected: say so instead of loading forever.
+      const t = setTimeout(() => {
+        if (!loading()) return;
+        setError('The chat is not connected to its host.');
+        setLoading(false);
+      }, 15_000);
+      onCleanup(() => clearTimeout(t));
+      return;
+    }
     void s.state.branchRev;
     void refresh();
   });
@@ -118,9 +184,15 @@ export function TreeTab(props: PaneTabProps) {
           <Show
             when={rows().length > 0}
             fallback={
-              <p class="ttab-note">
-                {error() ? `Couldn't load the tree: ${error()}` : nodes().length === 0 ? 'This session has no entries yet' : 'Nothing matches this filter'}
-              </p>
+              <Show
+                when={error()}
+                fallback={<p class="ttab-note">{nodes().length === 0 ? 'This session has no entries yet' : 'Nothing matches this filter'}</p>}
+              >
+                <div class="ttab-note" role="alert" data-testid="tree-error">
+                  <p>Couldn't load the tree: {error()}</p>
+                  <button type="button" class="btn" onClick={retry}>Retry</button>
+                </div>
+              </Show>
             }
           >
             <For each={rows()}>

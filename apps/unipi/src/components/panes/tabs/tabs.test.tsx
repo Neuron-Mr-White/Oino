@@ -338,6 +338,22 @@ describe('side chat tab (Z-31)', () => {
   });
 });
 
+describe('tree tab — failing host', () => {
+  it('shows an error with Retry instead of loading forever', async () => {
+    await openHandle();
+    const handle = sessions().ensure(HOST, S);
+    await waitFor(() => expect(handle.state.conn).toBe('live'));
+    const real = handle.cmd.bind(handle);
+    let fail = true;
+    (handle as { cmd: unknown }).cmd = (c: { type: string }) => (fail && (c.type === 'get_tree' || c.type === 'get_entries') ? Promise.reject(new Error('boom')) : real(c as never));
+    withRouter(() => <TreeTab {...tab('tree', {})} />);
+    await waitFor(() => expect(screen.getByTestId('tree-error').textContent).toContain('boom'));
+    fail = false;
+    screen.getByText('Retry').click();
+    await waitFor(() => expect(screen.getByText('Fix the failing test')).toBeTruthy());
+  });
+});
+
 describe('subagent tab (Z-42)', () => {
   it('shows the child transcript, its state, and follows new messages', async () => {
     await openHandle();

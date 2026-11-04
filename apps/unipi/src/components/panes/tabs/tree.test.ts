@@ -5,7 +5,7 @@
  * side-pane tab now), plus the `get_tree` reply → nodes build.
  */
 import { describe, expect, it } from 'vitest';
-import { buildTreeNodes, filterTree, flattenTree, kindOfEntry, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode } from './tree';
+import { buildTreeNodes, buildTreeNodesFromEntries, filterTree, flattenTree, kindOfEntry, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode } from './tree';
 import type { SessionEntry } from '../../../lib/session/types';
 
 describe('flattenTree (UNI-186, pi /tree layout)', () => {
@@ -164,5 +164,30 @@ describe('buildTreeNodes (get_tree reply → rows)', () => {
       ['m1', 'Model → DeepSeek Flash', 'Model'],
       ['c1', 'Memory · session context', 'Note'],
     ]);
+  });
+});
+
+describe('buildTreeNodesFromEntries (long chats)', () => {
+  const msg = (i: number, parent: number | null, role = 'user', text = `m${i}`): SessionEntry => ({
+    type: 'message',
+    id: `e${i}`,
+    parentId: parent === null ? null : `e${parent}`,
+    message: { role, content: [{ type: 'text', text }] } as never,
+  });
+
+  it('rebuilds the tree from parent links, labels and the current path', () => {
+    const entries = [msg(0, null), msg(1, 0, 'assistant'), msg(2, 1), msg(3, 1, 'assistant', 'other branch'), { type: 'label', id: 'l', parentId: 'e3', targetId: 'e0', label: 'start' } as SessionEntry];
+    const nodes = buildTreeNodesFromEntries(entries, 'e2');
+    expect(nodes.find((n) => n.id === 'e3')!.onPath).toBe(false);
+    expect(nodes.find((n) => n.id === 'e1')!.onPath).toBe(true);
+    expect(nodes.find((n) => n.id === 'e2')!.current).toBe(true);
+    expect(nodes.find((n) => n.id === 'e0')!.label).toBe('start');
+  });
+
+  it('handles a chain thousands of entries deep (what get_tree could not carry)', () => {
+    const entries = Array.from({ length: 20000 }, (_, i) => msg(i, i === 0 ? null : i - 1, i % 2 ? 'assistant' : 'user'));
+    const nodes = buildTreeNodesFromEntries(entries, 'e19999');
+    expect(nodes).toHaveLength(20000);
+    expect(flattenTree(filterTree(nodes, 'default'))).toHaveLength(20000);
   });
 });

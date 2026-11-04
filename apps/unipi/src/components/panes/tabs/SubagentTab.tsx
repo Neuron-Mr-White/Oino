@@ -12,12 +12,11 @@
  */
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { Bot, Square } from 'lucide-solid';
-import { renderBlocks } from '../../../lib/chat/markdown';
 import { textOf } from '../../../lib/chat/model';
 import { sessions, type SessionHandle } from '../../../lib/session/store';
 import type { AgentMessage, Part } from '../../../lib/session/types';
 import { setPaneComponent, type PaneTabProps } from '../../../lib/panes/kinds';
-import { MdBlock } from '../../chat/MdBlock';
+import { SubagentTimeline } from './SubagentTimeline';
 import { tabBaseOf } from './sessionTabs';
 import './tabs.css';
 
@@ -77,101 +76,12 @@ export async function fetchRecordTranscript(s: SessionHandle, id: string): Promi
   return messagesFromTranscript(reply);
 }
 
-/** The text of a message's content (a string, or its text parts joined). */
-const messageText = (m: AgentMessage): string => textOf(m.content as string | Part[] | undefined);
-
-/** The tool result of a child's call, matched by `toolCallId`. */
-function resultOf(messages: readonly AgentMessage[], callId: string): { text: string; isError?: boolean } | undefined {
-  for (const m of messages) {
-    if (m.role !== 'toolResult' || m.toolCallId !== callId) continue;
-    return { text: messageText(m), ...(m.isError ? { isError: true } : {}) };
-  }
-  return undefined;
-}
-
-const callArgs = (part: Part): string => {
-  const args = obj(part.arguments) ?? obj(part.args) ?? {};
-  const pick = str(args.path) ?? str(args.command) ?? str(args.pattern) ?? str(args.query) ?? str(args.task) ?? str(args.prompt);
-  return pick ?? '';
-};
-
-const tail = (text: string, n: number): string => {
-  const t = text.trim();
-  return t.length > n ? `…${t.slice(-n)}` : t;
-};
-
-/** The child transcript column (shared by the desktop tab and the phone sheet). */
-export function SubagentTranscript(props: { messages: readonly AgentMessage[] }) {
-  return (
-    <div class="stab-msgs">
-      <For each={props.messages}>
-        {(m) => {
-          if (m.role === 'toolResult') return null; // rendered inside its call
-          if (m.role === 'user') {
-            return (
-              <div class="stab-msg" data-role="user" data-testid="stab-user">
-                <span class="stab-role">Task</span>
-                <p class="stab-text">{messageText(m)}</p>
-              </div>
-            );
-          }
-          if (m.role === 'bashExecution') {
-            return <pre class="stab-out" data-testid="stab-bash">{messageText(m)}</pre>;
-          }
-          if (m.role !== 'assistant') {
-            const label = str(obj(m.details)?.title) ?? str(m.customType) ?? m.role;
-            return (
-              <div class="stab-msg" data-role="note">
-                <span class="stab-role">{label}</span>
-              </div>
-            );
-          }
-          const parts = Array.isArray(m.content) ? (m.content as Part[]) : [];
-          return (
-            <div class="stab-msg" data-role="assistant" data-testid="stab-assistant">
-              <For each={parts}>
-                {(p) => {
-                  if (p.type === 'thinking') {
-                    const t = String((p as { thinking?: unknown }).thinking ?? '');
-                    return (
-                      <details class="stab-think">
-                        <summary>Thought</summary>
-                        <p class="stab-think-text">{t.trim()}</p>
-                      </details>
-                    );
-                  }
-                  if (p.type === 'toolCall') {
-                    const id = str(p.id) ?? '';
-                    const name = str(p.name) ?? 'tool';
-                    const res = resultOf(props.messages, id);
-                    return (
-                      <div class="stab-tool" data-state={res?.isError ? 'error' : res ? 'ok' : 'running'} data-testid="stab-tool">
-                        <span class="stab-tool-name">{name}</span>
-                        <span class="stab-tool-subject truncate">{callArgs(p)}</span>
-                        <Show when={res}>
-                          <pre class="stab-out" data-error={res!.isError ? '' : undefined}>{tail(res!.text, 1200)}</pre>
-                        </Show>
-                      </div>
-                    );
-                  }
-                  if (p.type === 'text') {
-                    const text = String((p as { text?: unknown }).text ?? '');
-                    if (!text.trim()) return null;
-                    return (
-                      <div class="stab-prose md">
-                        <For each={renderBlocks(text, false)}>{(html) => <MdBlock html={html} />}</For>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              </For>
-            </div>
-          );
-        }}
-      </For>
-    </div>
-  );
+/**
+ * The child transcript (shared by the desktop tab and the phone sheet): the main chat's own
+ * timeline components over the child's messages, read only, bottom-locked.
+ */
+export function SubagentTranscript(props: { session: SessionHandle; agentId: string; cwd?: string; messages: readonly AgentMessage[]; running: boolean }) {
+  return <SubagentTimeline session={props.session} agentId={props.agentId} cwd={props.cwd} messages={props.messages} running={props.running} />;
 }
 
 export function SubagentTab(props: PaneTabProps) {
@@ -273,7 +183,9 @@ export function SubagentTab(props: PaneTabProps) {
               </p>
             }
           >
-            <SubagentTranscript messages={messages()} />
+            <Show when={handle()}>
+              {(h) => <SubagentTranscript session={h()} agentId={agentId()} cwd={typeof props.tab.params?.cwd === 'string' ? (props.tab.params.cwd as string) : undefined} messages={messages()} running={running()} />}
+            </Show>
           </Show>
         </Show>
       </div>

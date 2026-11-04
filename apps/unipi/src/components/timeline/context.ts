@@ -33,6 +33,8 @@ export type TimelineCtx = {
   /** The cron scheduler started this chat (card `source: "cron"`): its first user
    * message is the job's prompt, marked "Scheduled run". Absent ⇒ a user chat. */
   cronRun?: () => boolean;
+  /** A transcript the reader cannot act on (a subagent's): no edit / retry / return-here / quote actions. */
+  readOnly?: boolean;
   /** chat-vanish: the host answers (the self-heal only acts then). Absent ⇒ assumed online. */
   hostOnline?: () => boolean;
   /** chat-vanish: re-open the stream / re-mount the list for `cause`, and log why. */

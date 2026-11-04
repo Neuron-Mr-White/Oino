@@ -57,7 +57,7 @@ export function TurnRow(props: { turn: Turn; ctx: TimelineCtx; last?: boolean })
     });
   };
   const onEdit = (entry: SessionEntry | undefined) =>
-    entry && !t().live ? (anchor: DOMRect) => void requestEdit(props.ctx, t(), entry, anchor) : undefined;
+    entry && !t().live && !props.ctx.readOnly ? (anchor: DOMRect) => void requestEdit(props.ctx, t(), entry, anchor) : undefined;
   return (
     <div class="tl-turn" data-kind={t().kind} data-live={t().live ? '' : undefined} data-testid={`tl-turn-${t().turnId}`}>
       <Show
@@ -80,7 +80,9 @@ export function TurnRow(props: { turn: Turn; ctx: TimelineCtx; last?: boolean })
             />
           )}
         </ByKey>
-        <TurnActions turn={t()} ctx={props.ctx} last={props.last} />
+        <Show when={!props.ctx.readOnly}>
+          <TurnActions turn={t()} ctx={props.ctx} last={props.last} />
+        </Show>
         {/* U10: `turnFooter` renderer entries render inside the turn's row (§6.7). */}
         <TurnFooters ctx={props.ctx} turn={t()} />
       </Show>
@@ -122,7 +124,7 @@ function TurnHead(props: {
           commands={props.ctx.commands}
           menu={props.userMenu(t().user)}
           onEdit={props.onEdit(t().user)}
-          actions={t().user ? <UserMessageActions ctx={props.ctx} turn={t()} entry={t().user!} /> : undefined}
+          actions={t().user && !props.ctx.readOnly ? <UserMessageActions ctx={props.ctx} turn={t()} entry={t().user!} /> : undefined}
           composerKey={props.ctx.session.key}
           foldKey={{ sessionId: props.ctx.sessionId(), key: `bubble:${t().user?.id ?? t().turnId}` }}
         />
@@ -154,7 +156,7 @@ function SegmentView(props: {
           commands={props.ctx.commands}
           menu={props.userMenu(seg().steer)}
           onEdit={props.onEdit(seg().steer)}
-          actions={seg().steer ? <UserMessageActions ctx={props.ctx} turn={props.turn} entry={seg().steer!} /> : undefined}
+          actions={seg().steer && !props.ctx.readOnly ? <UserMessageActions ctx={props.ctx} turn={props.turn} entry={seg().steer!} /> : undefined}
           composerKey={props.ctx.session.key}
           foldKey={{ sessionId: props.ctx.sessionId(), key: `bubble:${seg().steer?.id ?? seg().id}` }}
         />
