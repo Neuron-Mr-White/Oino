@@ -550,6 +550,9 @@ fn open_private(path: &Path, truncate: bool) -> std::io::Result<File> {
     options.open(path)
 }
 
+/// Per-process sequence for [`write_atomic`] temp names.
+static WRITE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Writes `content` to a sibling temp file and renames it over `path`, keeping an existing
 /// file's permissions.
 pub(crate) fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
@@ -560,7 +563,12 @@ pub(crate) fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
         .file_name()
         .map(std::ffi::OsStr::to_os_string)
         .unwrap_or_default();
-    temp_name.push(format!(".tmp-{}", std::process::id()));
+    // Per call, not only per process: the host refreshes several providers' model caches
+    // (and sessions) concurrently, and two writers of the same file sharing one temp name
+    // made the second rename fail with ENOENT ("storing models failed: model cache …:
+    // No such file or directory", owner host.log 2026-11-03).
+    let seq = WRITE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    temp_name.push(format!(".tmp-{}-{seq}", std::process::id()));
     let temp = path.with_file_name(temp_name);
     {
         let mut file = open_private(&temp, true)?;
@@ -587,6 +595,33 @@ mod tests {
         );
         std::fs::create_dir_all(&root).unwrap();
         tempfile::tempdir_in(root).unwrap()
+    }
+
+    #[test]
+    fn concurrent_atomic_writes_of_one_file_all_succeed() {
+        // Owner host.log 2026-11-03: concurrent model-cache refreshes shared one temp
+        // name per process and the losing rename failed with ENOENT.
+        let dir = temp_dir();
+        let path = dir.path().join("models").join("p.json");
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    (0..25)
+                        .map(|n| write_atomic(&path, &format!("{{\"w\":{i},\"n\":{n}}}")))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        for h in handles {
+            for r in h.join().unwrap() {
+                r.unwrap();
+            }
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("{\"w\":"));
+        let leftovers = std::fs::read_dir(path.parent().unwrap()).unwrap().count();
+        assert_eq!(leftovers, 1, "no temp files left behind");
     }
 
     #[test]
