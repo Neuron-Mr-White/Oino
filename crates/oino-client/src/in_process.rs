@@ -492,7 +492,9 @@ impl Shared {
                 data(json!({ "entries": entries, "leafId": leaf }))
             }
             AgentCommand::GetTree => {
-                let (tree, leaf) = session.with_manager(|m| (m.tree(), m.leaf_id().cloned()));
+                // The flat wire form: nesting the tree here recursed one serde
+                // frame per entry and overflowed this small worker stack.
+                let (tree, leaf) = session.with_manager(|m| (m.tree_flat(), m.leaf_id().cloned()));
                 data(json!({ "tree": tree, "leafId": leaf }))
             }
             AgentCommand::GetLastAssistantText => {

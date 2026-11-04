@@ -61,7 +61,8 @@ pub use error::SessionLockError;
 pub use manager::{
     BranchSummaryDraft, CompactionDraft, CreateOptions, INTERRUPTED_TOOL_TEXT, LeaseInfo,
     MigratedSession, ProgressSink, RESUME_REPAIR_TYPE, ReadonlySession, RepairReport, SessionInfo,
-    SessionLease, SessionManager, SessionTreeNode, TOOL_DISPATCH_TYPE, TakeoverRequest,
+    SessionLease, SessionManager, SessionTreeFlatNode, SessionTreeNode, TOOL_DISPATCH_TYPE,
+    TakeoverRequest,
     clear_takeover_request, lock_file_path, lock_metadata_path, read_takeover_request,
     takeover_path, write_takeover_request,
 };

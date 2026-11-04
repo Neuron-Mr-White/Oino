@@ -23,15 +23,29 @@ pub struct TreeNode {
     pub label: Option<String>,
     /// When the label was set (ISO).
     pub label_timestamp: Option<String>,
+    /// Parent id from the reply's nesting (overrides `entry.parentId` during
+    /// parsing; never set afterwards).
+    reply_parent: Option<String>,
+}
+
+impl Drop for TreeNode {
+    fn drop(&mut self) {
+        // Iterative like the session side: a linear chain thousands deep must
+        // not recurse one frame per entry on the way out either.
+        let mut stack = std::mem::take(&mut self.children);
+        while let Some(mut node) = stack.pop() {
+            stack.append(&mut node.children);
+        }
+    }
 }
 
 impl TreeNode {
-    /// Parses one `get_tree` node.
-    #[must_use]
-    pub fn from_json(value: &JsonValue) -> Option<Self> {
-        // Iterative to survive very deep linear sessions.
+    /// Parses one node of a `get_tree` reply (no children; links come from
+    /// `entry.parentId` or the nested reply's parent). Part of the iterative
+    /// reply builder below.
+    fn from_reply_node(value: &JsonValue, parent: Option<String>) -> Option<Self> {
         let entry: SessionEntry = serde_json::from_value(value.get("entry")?.clone()).ok()?;
-        let mut node = Self {
+        Some(Self {
             entry,
             children: Vec::new(),
             label: value
@@ -42,11 +56,8 @@ impl TreeNode {
                 .get("labelTimestamp")
                 .and_then(JsonValue::as_str)
                 .map(str::to_owned),
-        };
-        if let Some(children) = value.get("children").and_then(JsonValue::as_array) {
-            node.children = children.iter().filter_map(Self::from_json).collect();
-        }
-        Some(node)
+            reply_parent: parent,
+        })
     }
 }
 
@@ -233,15 +244,106 @@ fn clip(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
 }
 
+/// Builds the roots from a `get_tree` reply's `tree` list. Accepts both wire
+/// forms — the flat list (nodes linked by `entry.parentId`) and the older
+/// nested one (`children` arrays). Everything runs on explicit stacks: a
+/// linear chain thousands of entries deep must not recurse.
+fn build_roots(values: &[JsonValue]) -> Vec<TreeNode> {
+    // 1. Flatten pre-order (explicit stack), carrying the parent id of nested
+    //    children; flat nodes keep `entry.parentId` as the parent link.
+    let mut nodes: Vec<TreeNode> = Vec::with_capacity(values.len());
+    let mut stack: Vec<(&JsonValue, Option<String>)> =
+        values.iter().rev().map(|value| (value, None)).collect();
+    while let Some((value, parent)) = stack.pop() {
+        let Some(node) = TreeNode::from_reply_node(value, parent) else {
+            continue;
+        };
+        if let Some(children) = value.get("children").and_then(JsonValue::as_array) {
+            let parent = Some(node.entry.id.as_str().to_owned());
+            for child in children.iter().rev() {
+                stack.push((child, parent.clone()));
+            }
+        }
+        nodes.push(node);
+    }
+    // 2. Assemble (post-order, explicit stacks) by the same rules as the
+    //    host's builder: children by timestamp (stable), unknown, self and
+    //    missing parents become roots.
+    let position: HashMap<&str, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.entry.id.as_str(), index))
+        .collect();
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+    let mut roots = Vec::new();
+    for (index, node) in nodes.iter().enumerate() {
+        let inherited: Option<String> = node.reply_parent.clone().or_else(|| {
+            node.entry
+                .parent_id
+                .as_ref()
+                .map(oino_session::EntryId::as_str)
+                .map(str::to_owned)
+        });
+        match inherited
+            .as_deref()
+            .filter(|parent| *parent != node.entry.id.as_str())
+            .and_then(|parent| position.get(parent))
+        {
+            Some(&parent_index) if parent_index != index => children[parent_index].push(index),
+            _ => roots.push(index),
+        }
+    }
+    let millis: Vec<i64> = nodes
+        .iter()
+        .map(|node| node.entry.timestamp.to_ms().unwrap_or(0))
+        .collect();
+    for list in &mut children {
+        list.sort_by_key(|&index| millis[index]);
+    }
+    let mut order = Vec::with_capacity(nodes.len());
+    let mut pending: Vec<usize> = roots.clone();
+    let mut visited = vec![false; nodes.len()];
+    while let Some(index) = pending.pop() {
+        if std::mem::replace(&mut visited[index], true) {
+            continue;
+        }
+        order.push(index);
+        pending.extend(children[index].iter().copied());
+    }
+    let mut built: Vec<Option<TreeNode>> = (0..nodes.len()).map(|_| None).collect();
+    for &index in order.iter().rev() {
+        let node = &nodes[index];
+        let kids = children[index]
+            .iter()
+            .filter_map(|&child| built[child].take())
+            .collect();
+        built[index] = Some(TreeNode {
+            entry: node.entry.clone(),
+            children: kids,
+            label: node.label.clone(),
+            label_timestamp: node.label_timestamp.clone(),
+            reply_parent: None,
+        });
+    }
+    roots
+        .into_iter()
+        .filter_map(|index| built[index].take())
+        .collect()
+}
+
 impl TreeModel {
-    /// Builds the model from `get_tree` data (`{tree, leafId}`).
+    /// Builds the model from `get_tree` data (`{tree, leafId}`); the `tree`
+    /// list is either the flat wire form (nodes linked by `entry.parentId`)
+    /// or the older nested one (`children` arrays).
     #[must_use]
     pub fn from_json(data: &JsonValue, home: Option<String>) -> Self {
-        let roots: Vec<TreeNode> = data
-            .get("tree")
-            .and_then(JsonValue::as_array)
-            .map(|nodes| nodes.iter().filter_map(TreeNode::from_json).collect())
-            .unwrap_or_default();
+        const NO_ROOTS: [JsonValue; 0] = [];
+        let roots = build_roots(
+            data.get("tree")
+                .and_then(JsonValue::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or(&NO_ROOTS),
+        );
         let leaf = data
             .get("leafId")
             .and_then(JsonValue::as_str)
@@ -1094,5 +1196,56 @@ mod tests {
         assert_eq!(model.len(), 5);
         model.cycle_filter(true);
         assert_eq!(model.filter, FilterMode::NoTools);
+    }
+
+    /// Runs `work` on a 256 KiB stack — the reply now arrives flat, but the
+    /// parsers it replaced recursed one frame per entry and overflowed small
+    /// stacks on long chats.
+    fn on_small_stack<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(work)
+            .unwrap()
+            .join()
+            .unwrap()
+    }
+
+    /// A 5000-entry linear chat in the flat wire form (`get_tree` from the
+    /// host): parse must not recurse.
+    #[test]
+    fn deep_flat_reply_parses_on_a_small_stack() {
+        let tree: Vec<JsonValue> = (0..5000usize)
+            .map(|i| {
+                let parent = i.checked_sub(1).map(|p| format!("e{p}"));
+                json!({"entry": user(&format!("e{i}"), parent.as_deref(), "m")})
+            })
+            .collect();
+        let data = json!({"leafId": "e4999", "tree": tree});
+        let model = on_small_stack(move || TreeModel::from_json(&data, None));
+        assert_eq!(model.len(), 5000);
+        let rows = model.rows(0, model.len());
+        assert_eq!(rows[0].entry_id, "e0");
+        assert_eq!(rows[1].prefix, ""); // a linear chain stays at one indent
+        assert_eq!(model.selected_entry().unwrap().id.as_str(), "e4999");
+    }
+
+    /// The same branched chat as `flattens_like_pi`, in the flat wire form:
+    /// identical rows.
+    #[test]
+    fn flat_reply_matches_the_nested_reply() {
+        let tree = json!({"leafId":"d","tree":[
+            {"entry":user("a",None,"one")},
+            {"entry":user("b",Some("a"),"two")},
+            {"entry":user("c",Some("b"),"three")},
+            {"entry":user("d",Some("c"),"four")},
+            {"entry":user("e",Some("b"),"alt"),"label":"keep"}
+        ]});
+        let model = on_small_stack(move || TreeModel::from_json(&tree, None));
+        let rows = model.rows(0, model.len());
+        let ids: Vec<&str> = rows.iter().map(|r| r.entry_id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b", "c", "d", "e"]); // branch of the leaf first, children by timestamp
+        assert_eq!(rows[2].prefix, "├⊟ ");
+        assert_eq!(rows[4].label.as_deref(), Some("keep"));
+        assert_eq!(model.selected_entry().unwrap().id.as_str(), "d");
     }
 }

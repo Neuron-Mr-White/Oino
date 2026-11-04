@@ -38,7 +38,7 @@ pub use offsets::{
     PageRequest, forget_offsets, offsets_dir, page_start,
 };
 pub use repair::{INTERRUPTED_TOOL_TEXT, RESUME_REPAIR_TYPE, RepairReport, TOOL_DISPATCH_TYPE};
-pub use tree::SessionTreeNode;
+pub use tree::{SessionTreeFlatNode, SessionTreeNode};
 
 use crate::context::{
     EntryIndex, SessionContext, SessionProjection, build_context_entries, build_session_context,
@@ -120,6 +120,8 @@ pub trait ReadonlySession {
     fn entries(&self) -> &[SessionEntry];
     /// Tree view.
     fn tree(&self) -> Vec<SessionTreeNode>;
+    /// Flat wire form of the tree view (`get_tree`).
+    fn tree_flat(&self) -> Vec<SessionTreeFlatNode>;
     /// Context-selected entries at the leaf.
     fn build_context_entries(&self) -> Vec<SessionEntry>;
     /// Projection at the leaf.
@@ -1041,6 +1043,14 @@ impl SessionManager {
         tree::build(self.index.entries(), &self.labels)
     }
 
+    /// Flat wire form of [`SessionManager::tree`] (`get_tree`): every entry with
+    /// its current label, in file order. Serialization stays flat so a deep
+    /// session cannot overflow the stack that renders the reply.
+    #[must_use]
+    pub fn tree_flat(&self) -> Vec<SessionTreeFlatNode> {
+        tree::build_flat(self.index.entries(), &self.labels)
+    }
+
     /// Builds context entries at the leaf.
     #[must_use]
     pub fn build_context_entries(&self) -> Vec<SessionEntry> {
@@ -1272,6 +1282,9 @@ impl ReadonlySession for SessionManager {
     }
     fn tree(&self) -> Vec<SessionTreeNode> {
         Self::tree(self)
+    }
+    fn tree_flat(&self) -> Vec<SessionTreeFlatNode> {
+        Self::tree_flat(self)
     }
     fn build_context_entries(&self) -> Vec<SessionEntry> {
         Self::build_context_entries(self)

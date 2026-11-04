@@ -42,17 +42,13 @@ const S = 's-tabs';
 const SCOPE = { hostId: HOST, projectKey: CWD };
 
 const part = (text: string) => ({ type: 'text', text });
-const tree = () => [
-  {
-    entry: { type: 'message', id: 'u1', parentId: null, message: { role: 'user', content: [part('Fix the failing test')] } } as SessionEntry,
-    children: [
-      {
-        entry: { type: 'message', id: 'a1', parentId: 'u1', message: { role: 'assistant', content: [part('Ran the suite')] } } as SessionEntry,
-        children: [{ entry: { type: 'message', id: 'u2', parentId: 'a1', message: { role: 'user', content: [part('Also check cli')] } } as SessionEntry }],
-      },
-      { entry: { type: 'message', id: 'b1', parentId: 'u1', message: { role: 'assistant', content: [part('Tried the other branch')] } } as SessionEntry },
-    ],
-  },
+
+/** The chat in the flat wire form the host sends ([tree-flat]): nodes linked by `entry.parentId`. */
+const flatTree = () => [
+  { entry: { type: 'message', id: 'u1', parentId: null, message: { role: 'user', content: [part('Fix the failing test')] } } as SessionEntry },
+  { entry: { type: 'message', id: 'a1', parentId: 'u1', message: { role: 'assistant', content: [part('Ran the suite')] } } as SessionEntry },
+  { entry: { type: 'message', id: 'u2', parentId: 'a1', message: { role: 'user', content: [part('Also check cli')] } } as SessionEntry },
+  { entry: { type: 'message', id: 'b1', parentId: 'u1', message: { role: 'assistant', content: [part('Tried the other branch')] } } as SessionEntry },
 ];
 
 const ENTRIES: SessionEntry[] = [
@@ -76,7 +72,8 @@ let messages = [{ role: 'user', content: [part('Map the status topics')] }, { ro
 
 function session(): MockSession {
   const cmd: NonNullable<MockSession['cmd']> = {
-    get_tree: () => ({ tree: tree(), leafId: 'u2' }),
+    // The host's flat wire form ([tree-flat]); the nested one is covered by tree.test.ts.
+    get_tree: () => ({ tree: flatTree(), leafId: 'u2' }),
     // [chat-tree] The branch page a tree jump reloads.
     get_entries: () => ({ entries: ENTRIES, leafId: 'r1', total: ENTRIES.length, hasMore: false }),
     '_oino/navigate_tree': (c) => ({ editorText: `> Fix the failing test\n> go to ${String((c as { targetId?: string }).targetId)}` }),
@@ -351,6 +348,37 @@ describe('tree tab — failing host', () => {
     fail = false;
     screen.getByText('Retry').click();
     await waitFor(() => expect(screen.getByText('Fix the failing test')).toBeTruthy());
+  });
+
+  it('shows a plain-object rejection message, never [object Object]', async () => {
+    await openHandle();
+    const handle = sessions().ensure(HOST, S);
+    await waitFor(() => expect(handle.state.conn).toBe('live'));
+    const real = handle.cmd.bind(handle);
+    (handle as { cmd: unknown }).cmd = (c: { type: string }) =>
+      c.type === 'get_tree' || c.type === 'get_entries'
+        ? Promise.reject({ code: 'E_TIMEOUT', message: 'The session did not answer in time' })
+        : real(c as never);
+    withRouter(() => <TreeTab {...tab('tree', {})} />);
+    const note = await screen.findByTestId('tree-error');
+    expect(note.textContent).toContain('The session did not answer in time');
+    expect(note.textContent).not.toContain('[object Object]');
+  });
+
+  it('past a long chat it mounts only the rows in view (windowed)', async () => {
+    await openHandle();
+    const handle = sessions().ensure(HOST, S);
+    await waitFor(() => expect(handle.state.conn).toBe('live'));
+    const long = Array.from({ length: 400 }, (_, i) => ({
+      entry: { type: 'message', id: `e${i}`, parentId: i === 0 ? null : `e${i - 1}`, message: { role: 'user', content: [part(`turn ${i}`)] } } as SessionEntry,
+    }));
+    const real = handle.cmd.bind(handle);
+    (handle as { cmd: unknown }).cmd = (c: { type: string }) => (c.type === 'get_tree' ? Promise.resolve({ tree: long, leafId: 'e399' }) : real(c as never));
+    withRouter(() => <TreeTab {...tab('tree', {})} />);
+    await waitFor(() => expect(document.querySelectorAll('.ui-virtual-row').length).toBeGreaterThan(0));
+    expect(document.querySelectorAll('.ui-virtual-row').length).toBeLessThan(400);
+    // The spacer claims the full 400 rows (40 px each); only a window is mounted.
+    expect(document.querySelector('.ui-virtual')?.getAttribute('style')).toContain('16000px');
   });
 });
 

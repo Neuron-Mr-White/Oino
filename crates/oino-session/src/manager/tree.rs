@@ -1,9 +1,11 @@
 //! Tree view of a session, built and dropped without recursion so very deep
-//! linear sessions cannot overflow the stack.
+//! linear sessions cannot overflow the stack. The wire form is flat
+//! ([`SessionTreeFlatNode`]): the old nested serialization recursed one level
+//! per entry and overflowed small worker stacks on long chats.
 
 use std::collections::HashMap;
 
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 
 use crate::entry::{EntryId, IsoTimestamp, SessionEntry};
 
@@ -29,20 +31,22 @@ impl Drop for SessionTreeNode {
     }
 }
 
-impl Serialize for SessionTreeNode {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("entry", &self.entry)?;
-        map.serialize_entry("children", &self.children)?;
-        if let Some(label) = &self.label {
-            map.serialize_entry("label", label)?;
-        }
-        if let Some(timestamp) = &self.label_timestamp {
-            map.serialize_entry("labelTimestamp", timestamp)?;
-        }
-        map.end()
-    }
+/// One node of [`super::SessionManager::tree_flat`]: the wire form of the
+/// session tree (`get_tree`, `SessionQuery::Tree`). A flat `{entry, label?}`
+/// list in file order — `entry.id` and `entry.parentId` link the nodes, the
+/// client nests — so serialization never nests and cannot recurse one frame
+/// per entry on a deep chain.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTreeFlatNode {
+    /// The entry.
+    pub entry: SessionEntry,
+    /// Current label of this entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// When the label was set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label_timestamp: Option<IsoTimestamp>,
 }
 
 pub(super) fn build(
@@ -103,5 +107,24 @@ pub(super) fn build(
     roots
         .into_iter()
         .filter_map(|index| built[index].take())
+        .collect()
+}
+
+/// The flat wire form of [`build`]: every entry with its current label, in
+/// file order. One pass, no nesting, no recursion.
+pub(super) fn build_flat(
+    entries: &[SessionEntry],
+    labels: &HashMap<EntryId, (String, IsoTimestamp)>,
+) -> Vec<SessionTreeFlatNode> {
+    entries
+        .iter()
+        .map(|entry| {
+            let label = labels.get(&entry.id);
+            SessionTreeFlatNode {
+                entry: entry.clone(),
+                label: label.map(|(text, _)| text.clone()),
+                label_timestamp: label.map(|(_, ts)| ts.clone()),
+            }
+        })
         .collect()
 }

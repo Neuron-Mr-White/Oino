@@ -843,7 +843,7 @@ impl AgentSession {
             SessionQuery::Entries => to_json(manager.entries()),
             SessionQuery::Branch => to_json(manager.branch(None)),
             SessionQuery::Entry { id } => to_json(manager.entry(&EntryId::new(id.clone()))),
-            SessionQuery::Tree => to_json(manager.tree()),
+            SessionQuery::Tree => to_json(manager.tree_flat()),
             SessionQuery::Projection => to_json(manager.build_session_projection()),
             SessionQuery::ContextEntries => to_json(manager.build_context_entries()),
             SessionQuery::Label { id } => to_json(manager.label(&EntryId::new(id.clone()))),

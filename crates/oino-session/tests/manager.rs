@@ -148,6 +148,70 @@ fn deep_trees_do_not_overflow() {
     assert_eq!(sm.branch(None).len(), 20_000);
 }
 
+/// Runs `work` on a 256 KiB stack: the `GetTree` worker's. The old nested
+/// tree serialization recursed one serde frame per entry and overflowed it
+/// on long chats (3918 entries); the flat wire form must not.
+fn on_a_256kib_stack<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(work)
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
+#[test]
+fn deep_linear_tree_serializes_on_a_small_stack() {
+    let mut sm = SessionManager::in_memory(Path::new(CWD), CreateOptions::default(), Vec::new());
+    for i in 0..5000 {
+        sm.append_custom_entry("tick", Some(serde_json::json!(i)))
+            .unwrap();
+    }
+    let root = sm.entries()[0].id.clone();
+    sm.append_label_change(&root, Some("root")).unwrap();
+    let flat = sm.tree_flat();
+    assert_eq!(flat.len(), 5001); // the chain plus its label entry
+    assert_eq!(flat[1].entry.parent_id.as_ref(), Some(&flat[0].entry.id));
+    assert_eq!(flat[0].label.as_deref(), Some("root"));
+    // The exact GetTree shape: `json!` (to_value) and the string.
+    let (value, text) = on_a_256kib_stack(move || {
+        let value = serde_json::to_value(&flat).unwrap();
+        let text = serde_json::to_string(&flat).unwrap();
+        (value, text)
+    });
+    assert_eq!(value.as_array().map(Vec::len), Some(5001));
+    assert!(text.contains("\"label\":\"root\""));
+    assert_eq!(text.matches("\"entry\":").count(), 5001);
+}
+
+#[test]
+fn branched_tree_serializes_on_a_small_stack() {
+    let mut sm = SessionManager::in_memory(Path::new(CWD), CreateOptions::default(), Vec::new());
+    let mut chain = Vec::new();
+    for i in 0..2500 {
+        chain.push(
+            sm.append_custom_entry("tick", Some(serde_json::json!(i)))
+                .unwrap(),
+        );
+    }
+    // A side branch off every chain entry: 5000 entries, forks throughout,
+    // 2500 deep.
+    for id in &chain {
+        sm.set_leaf(id).unwrap();
+        sm.append_custom_entry("tick", Some(serde_json::json!("side")))
+            .unwrap();
+    }
+    let flat = sm.tree_flat();
+    assert_eq!(flat.len(), 5000);
+    let (value, text) = on_a_256kib_stack(move || {
+        let value = serde_json::to_value(&flat).unwrap();
+        let text = serde_json::to_string(&flat).unwrap();
+        (value, text)
+    });
+    assert_eq!(value.as_array().map(Vec::len), Some(5000));
+    assert_eq!(text.matches("\"entry\":").count(), 5000);
+}
+
 #[test]
 fn compaction_stores_system_checkpoint() {
     let mut sm = SessionManager::in_memory(Path::new(CWD), CreateOptions::default(), Vec::new());

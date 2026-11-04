@@ -9,6 +9,7 @@
 import { textOf, type Part } from '../../../lib/chat/model';
 import { modelDisplayName } from '../../../lib/model/displayName';
 import type { SessionEntry } from '../../../lib/session/types';
+import { toAppError } from '@unipi/protocol';
 
 /** One tree node as the rows see it (the unipi 1.0 `TreeNode` shape). */
 export type TreeNode = {
@@ -166,35 +167,52 @@ function previewOfEntry(entry: SessionEntry): string {
 }
 
 /**
- * The `get_tree` reply (`{tree: [{entry, children, label?}], leafId}`) → the
- * flat node list: children by timestamp, `onPath` = on the leaf's branch,
- * `current` = the leaf.
+ * The `get_tree` reply → the flat node list. The reply's `tree` list is either
+ * the flat wire form (`{entry, label?}` linked by `entry.parentId`, the host
+ * since [tree-flat] — the old nested serialization recursed one level per
+ * entry and overflowed the host worker's stack) or the older nested one
+ * (`children` arrays). One explicit-stack walk for both — a linear chain
+ * thousands deep must not recurse here either. Children by timestamp,
+ * `onPath` = on the leaf's branch, `current` = the leaf.
  */
 export function buildTreeNodes(
   tree: Array<{ entry: SessionEntry; children?: unknown[]; label?: unknown }>,
   leafId: string | null | undefined,
 ): TreeNode[] {
   const out: TreeNode[] = [];
-  const walk = (nodes: Array<{ entry: SessionEntry; children?: unknown[]; label?: unknown }>, parentId: string | null) => {
-    for (const n of nodes) {
-      const entry = n.entry;
-      if (!entry || typeof entry.id !== 'string') continue;
-      const preview = previewOfEntry(entry);
-      out.push({
-        id: entry.id,
-        parentId,
-        kind: kindOfEntry(entry),
-        preview,
-        ...(typeof entry.timestamp === 'string' ? { timestamp: entry.timestamp } : {}),
-        ...(typeof n.label === 'string' && n.label ? { label: n.label } : {}),
-        onPath: false,
-        current: entry.id === leafId,
-      });
-      const kids = Array.isArray(n.children) ? (n.children as Array<{ entry: SessionEntry; children?: unknown[]; label?: unknown }>) : [];
-      if (kids.length) walk(kids, entry.id);
-    }
-  };
-  walk(tree, null);
+  const ids = new Set<string>();
+  for (const n of tree) {
+    const id = n?.entry?.id;
+    if (typeof id === 'string') ids.add(id);
+  }
+  const nested = tree.some((n) => Array.isArray(n?.children));
+  type Item = { node: (typeof tree)[number]; parentId: string | null };
+  const stack: Item[] = [];
+  for (let i = tree.length - 1; i >= 0; i--) stack.push({ node: tree[i]!, parentId: null });
+  while (stack.length) {
+    const { node, parentId } = stack.pop()!;
+    const entry = node?.entry;
+    if (!entry || typeof entry.id !== 'string') continue;
+    ids.add(entry.id);
+    const raw = nested
+      ? parentId
+      : typeof entry.parentId === 'string' && entry.parentId !== entry.id
+        ? entry.parentId
+        : null;
+    const parent = raw !== null && ids.has(raw) ? raw : null;
+    out.push({
+      id: entry.id,
+      parentId: parent,
+      kind: kindOfEntry(entry),
+      preview: previewOfEntry(entry),
+      ...(typeof entry.timestamp === 'string' ? { timestamp: entry.timestamp } : {}),
+      ...(typeof node.label === 'string' && node.label ? { label: node.label } : {}),
+      onPath: false,
+      current: entry.id === leafId,
+    });
+    const kids = nested && Array.isArray(node.children) ? (node.children as Array<{ entry: SessionEntry; children?: unknown[]; label?: unknown }>) : [];
+    for (let i = kids.length - 1; i >= 0; i--) stack.push({ node: kids[i]!, parentId: entry.id });
+  }
   const byId = new Map(out.map((n) => [n.id, n]));
   let cur = leafId ? byId.get(leafId) : undefined;
   const path = new Set<string>();
@@ -277,6 +295,19 @@ export function rememberTreeFilter(mode: TreeFilter): void {
   } catch {
     // ignore
   }
+}
+
+/**
+ * A real message for whatever a promise rejected with — `stream.cmd` rejects
+ * plain `{code, message}` objects, which `String()` renders as
+ * `[object Object]`.
+ */
+export function errorText(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  const message = (error as { message?: unknown } | null | undefined)?.message;
+  if (typeof message === 'string' && message.trim()) return message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return toAppError(error).message || 'The host could not answer.';
 }
 
 /**

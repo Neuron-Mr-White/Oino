@@ -5,7 +5,7 @@
  * side-pane tab now), plus the `get_tree` reply → nodes build.
  */
 import { describe, expect, it } from 'vitest';
-import { buildTreeNodes, buildTreeNodesFromEntries, filterTree, flattenTree, kindOfEntry, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode } from './tree';
+import { buildTreeNodes, buildTreeNodesFromEntries, errorText, filterTree, flattenTree, kindOfEntry, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode } from './tree';
 import type { SessionEntry } from '../../../lib/session/types';
 
 describe('flattenTree (UNI-186, pi /tree layout)', () => {
@@ -189,5 +189,53 @@ describe('buildTreeNodesFromEntries (long chats)', () => {
     const nodes = buildTreeNodesFromEntries(entries, 'e19999');
     expect(nodes).toHaveLength(20000);
     expect(flattenTree(filterTree(nodes, 'default'))).toHaveLength(20000);
+  });
+});
+
+describe('buildTreeNodes — the flat wire form ([tree-flat])', () => {
+  const msg = (i: number, parent: number | null, text = `m${i}`): SessionEntry => ({
+    type: 'message',
+    id: `e${i}`,
+    parentId: parent === null ? null : `e${parent}`,
+    message: { role: 'user', content: [{ type: 'text', text }] } as never,
+  });
+
+  it('links the nodes by entry.parentId and carries the reply labels', () => {
+    const tree = [
+      { entry: msg(0, null, 'fix the test') },
+      { entry: msg(1, 0, 'on it'), label: 'answer' },
+      { entry: msg(2, 1, 'continue') },
+      { entry: msg(3, 0, 'other branch') },
+    ];
+    const nodes = buildTreeNodes(tree as never, 'e2');
+    expect(nodes.map((n) => n.id)).toEqual(['e0', 'e1', 'e2', 'e3']);
+    expect(nodes.map((n) => n.parentId)).toEqual([null, 'e0', 'e1', 'e0']);
+    expect(nodes.map((n) => n.onPath)).toEqual([true, true, true, false]);
+    expect(nodes.map((n) => n.current)).toEqual([false, false, true, false]);
+    expect(nodes.find((n) => n.id === 'e1')!.label).toBe('answer');
+    expect(nodes[0]!.preview).toBe('fix the test');
+  });
+
+  it('a 5000-entry linear chain builds and flattens without recursing', () => {
+    const tree = Array.from({ length: 5000 }, (_, i) => ({ entry: msg(i, i === 0 ? null : i - 1, i % 2 ? 'reply' : 'turn') }));
+    const nodes = buildTreeNodes(tree as never, 'e4999');
+    expect(nodes).toHaveLength(5000);
+    const rows = flattenTree(filterTree(nodes, 'default'));
+    expect(rows).toHaveLength(5000);
+    expect(rows[0]!.depth).toBe(0);
+    expect(rows[4999]!.node.current).toBe(true);
+  });
+});
+
+describe('errorText', () => {
+  it('unwraps plain {code, message} rejections instead of [object Object]', () => {
+    expect(errorText({ code: 'E_TIMEOUT', message: 'The session did not answer in time' })).toBe('The session did not answer in time');
+  });
+
+  it('keeps Error messages and falls back readable for anything else', () => {
+    expect(errorText(new Error('boom'))).toBe('boom');
+    expect(errorText('nope')).toBe('nope');
+    expect(errorText({})).not.toContain('[object Object]');
+    expect(errorText(undefined)).not.toContain('[object Object]');
   });
 });

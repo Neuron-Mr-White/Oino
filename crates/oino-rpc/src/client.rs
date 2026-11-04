@@ -101,7 +101,7 @@ pub struct ClearedQueues {
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntriesOutcome {
-    /// Entries (`get_entries`) or tree nodes (`get_tree`), as JSON.
+    /// Entries (`get_entries`) or flat tree nodes (`get_tree`), as JSON.
     #[serde(alias = "tree")]
     pub entries: Vec<JsonValue>,
     /// Current leaf.
@@ -633,7 +633,7 @@ impl RpcClient {
         self.typed(AgentCommand::GetEntries { since }).await
     }
 
-    /// `get_tree` (nodes as JSON in [`EntriesOutcome::entries`]).
+    /// `get_tree` (flat nodes as JSON in [`EntriesOutcome::entries`]).
     ///
     /// # Errors
     ///

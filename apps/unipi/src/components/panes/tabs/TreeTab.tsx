@@ -13,11 +13,12 @@ import type { SessionEntry } from '../../../lib/session/types';
 import { focusComposer, restoreComposer } from '../../../lib/composer/drafts';
 import { setPaneComponent, type PaneTabProps } from '../../../lib/panes/kinds';
 import { tabBaseOf } from './sessionTabs';
-import { buildTreeNodes, buildTreeNodesFromEntries, filterTree, flattenTree, readTreeFilter, rememberTreeFilter, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode, type TreeFilter } from './tree';
+import { VirtualWindow, useVirtual } from '../../../ui/virtual';
+import { buildTreeNodes, buildTreeNodesFromEntries, errorText, filterTree, flattenTree, readTreeFilter, rememberTreeFilter, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode, type TreeFilter, type TreeRow } from './tree';
 import './tabs.css';
 
-type WireNode = { entry: SessionEntry; children?: WireNode[]; label?: unknown };
-type TreeReply = { tree?: WireNode[]; leafId?: string | null };
+ type WireNode = { entry: SessionEntry; children?: WireNode[]; label?: unknown; labelTimestamp?: unknown };
+ type TreeReply = { tree?: WireNode[]; leafId?: string | null };
 
 /**
  * `navigate_tree`: moves the leaf; `summarize` writes the branch summary. [chat-tree] Through
@@ -37,8 +38,13 @@ export function TreeTab(props: PaneTabProps) {
   const [filter, setFilter] = createSignal<TreeFilter>(readTreeFilter());
   const [summarize, setSummarize] = createSignal(true);
   const [rowMenu, setRowMenu] = createSignal<{ node: TreeNode; anchor: DOMRect } | null>(null);
+  const [scroller, setScroller] = createSignal<HTMLElement>();
   let listEl: HTMLDivElement | undefined;
 
+  /** Rows past this mount only the ones in view (a long chat is thousands of rows). */
+  const TREE_VIRTUAL_AT = 200;
+  /** Fixed row height (px): `.ttab-row` is min-height 40 with two truncating lines. */
+  const TREE_ROW_H = 40;
   // A request that never answers must not leave "Loading…" up forever: every step has a deadline,
   // and the last one's failure is shown with a Retry.
   const LOAD_TIMEOUT_MS = 45_000;
@@ -55,10 +61,10 @@ export function TreeTab(props: PaneTabProps) {
     });
   let loadSeq = 0;
   /**
-   * `get_tree` nests one level per entry: on a chat thousands of entries long the reply is one
-   * chain thousands deep, which the host's JSON layer refuses (recursion limit) or never finishes
-   * — the tab then loaded forever. So: the nested tree while it works, else the flat entries
-   * (parent links rebuild the tree), else the current branch page by page.
+   * `get_tree` carries the flat `{entry, label?}` list (host [tree-flat]; the
+   * nested reply it once sent recursed one serde level per entry and crashed
+   * the host worker on long chats). The nested form is still accepted (older
+   * hosts); the flat entries and the paged branch stay as fallbacks.
    */
   const load = async (s: SessionHandle): Promise<TreeNode[]> => {
     // The flat entries are asked at once, beside get_tree: on a long real chat get_tree never
@@ -105,7 +111,7 @@ export function TreeTab(props: PaneTabProps) {
       setError(undefined);
     } catch (e) {
       if (mine !== loadSeq) return;
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       if (mine === loadSeq) setLoading(false);
     }
@@ -136,9 +142,15 @@ export function TreeTab(props: PaneTabProps) {
   });
 
   const rows = createMemo(() => flattenTree(filterTree(nodes(), filter())));
+  const windowed = () => rows().length > TREE_VIRTUAL_AT;
+  const virt = useVirtual({ count: () => (windowed() ? rows().length : 0), scroller, estimate: () => TREE_ROW_H, key: (i) => rows()[i]?.node.id ?? i, fixed: true, overscan: 8 });
   createEffect(() => {
     if (loading() || !listEl) return;
-    queueMicrotask(() => listEl?.querySelector<HTMLElement>('[data-current]')?.scrollIntoView?.({ block: 'center' }));
+    queueMicrotask(() => {
+      const index = rows().findIndex((row) => row.node.current);
+      if (windowed() && index >= 0) virt.scrollToIndex(index, { align: 'center' });
+      else listEl?.querySelector<HTMLElement>('[data-current]')?.scrollIntoView?.({ block: 'center' });
+    });
   });
 
   /** The jump itself: move the leaf, restore the message into the composer (Z-18). */
@@ -158,7 +170,7 @@ export function TreeTab(props: PaneTabProps) {
       // The branch reload bumps `branchRev`, which refreshes the tree (a bare handle: here).
       if (!s.navigate) await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     }
   };
 
@@ -166,6 +178,42 @@ export function TreeTab(props: PaneTabProps) {
     // On the current branch (not the leaf) the row asks: go there, or branch.
     if (node.onPath && !node.current) return setRowMenu({ node, anchor });
     void goTo(node, summarize());
+  };
+
+  /** One tree row (shared by the plain list and the windowed one). */
+  const rowView = (row: TreeRow) => {
+    const node = row.node;
+    const cells = row.cells.slice(-TREE_MAX_DEPTH);
+    return (
+      <button
+        type="button"
+        class="ttab-row"
+        data-on-path={node.onPath ? '' : undefined}
+        data-current={node.current ? '' : undefined}
+        data-depth={row.depth}
+        aria-current={node.current ? 'true' : undefined}
+        onClick={(e) => onRow(node, (e.currentTarget as HTMLElement).getBoundingClientRect())}
+      >
+        <Show when={cells.length > 0}>
+          <span class="ttab-gutter shrink-0" aria-hidden="true">
+            <For each={cells}>{(cell) => <span class="ttab-cell" data-cell={cell || undefined} />}</For>
+          </span>
+        </Show>
+        <span class="min-w-0 flex-1 text-left">
+          <span class="block truncate">{node.preview || treeKindLabel(node.kind)}</span>
+          <span class="block truncate ttab-sub">
+            {treeKindLabel(node.kind)}
+            {node.label ? ` · ${node.label}` : ''}
+          </span>
+        </span>
+        <Show when={row.depth > TREE_MAX_DEPTH}>
+          <span class="ttab-deep" title={`${row.depth} branches deep`}>↳{row.depth}</span>
+        </Show>
+        <Show when={node.current}>
+          <Check size={16} class="ttab-current shrink-0" />
+        </Show>
+      </button>
+    );
   };
 
   // Back is the phone surface's job (`SessionTabLayer`); the desktop tab has
@@ -201,42 +249,13 @@ export function TreeTab(props: PaneTabProps) {
               </Show>
             }
           >
-            <For each={rows()}>
-              {(row) => {
-                const node = row.node;
-                const cells = row.cells.slice(-TREE_MAX_DEPTH);
-                return (
-                  <button
-                    type="button"
-                    class="ttab-row"
-                    data-on-path={node.onPath ? '' : undefined}
-                    data-current={node.current ? '' : undefined}
-                    data-depth={row.depth}
-                    aria-current={node.current ? 'true' : undefined}
-                    onClick={(e) => onRow(node, (e.currentTarget as HTMLElement).getBoundingClientRect())}
-                  >
-                    <Show when={cells.length > 0}>
-                      <span class="ttab-gutter shrink-0" aria-hidden="true">
-                        <For each={cells}>{(cell) => <span class="ttab-cell" data-cell={cell || undefined} />}</For>
-                      </span>
-                    </Show>
-                    <span class="min-w-0 flex-1 text-left">
-                      <span class="block truncate">{node.preview || treeKindLabel(node.kind)}</span>
-                      <span class="block truncate ttab-sub">
-                        {treeKindLabel(node.kind)}
-                        {node.label ? ` · ${node.label}` : ''}
-                      </span>
-                    </span>
-                    <Show when={row.depth > TREE_MAX_DEPTH}>
-                      <span class="ttab-deep" title={`${row.depth} branches deep`}>↳{row.depth}</span>
-                    </Show>
-                    <Show when={node.current}>
-                      <Check size={16} class="ttab-current shrink-0" />
-                    </Show>
-                  </button>
-                );
-              }}
-            </For>
+            <Show when={windowed()} fallback={<For each={rows()}>{(row) => rowView(row)}</For>}>
+              {/* A long chat is thousands of rows: its own scroll box mounts
+                  only the rows in view (§13.4, as the Running tab). */}
+              <div class="ttab-list-scroll" ref={setScroller}>
+                <VirtualWindow virt={virt} fixed>{(i) => rowView(rows()[i]!)}</VirtualWindow>
+              </div>
+            </Show>
           </Show>
         </Show>
       </div>
