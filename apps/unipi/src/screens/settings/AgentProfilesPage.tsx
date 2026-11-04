@@ -5,6 +5,12 @@
  * thinking level, tools, system prompt. Save writes the subagents
  * extension's own Markdown format through the host's fs ops
  * (`lib/settings/agentProfiles.ts`); nothing goes through a chat.
+ *
+ * agent-disable: every profile (built-ins too) has an Enabled switch — in its
+ * row, before the lock / chevron, and in its detail sheet. A disabled profile
+ * stays listed (dimmed, a "Disabled" chip) and is no longer offered to the
+ * agent. The list is `subagents.disabled` (global; the project's own list
+ * when it has one); the last enabled profile can't be switched off.
  */
 import { For, Show, createMemo, createResource, createSignal } from 'solid-js';
 import { Bot, ChevronRight, Copy, Lock, Plus, Trash2 } from 'lucide-solid';
@@ -14,8 +20,17 @@ import { isHomeCwd } from '../../lib/session/selectors';
 import {
   KNOWN_TOOLS,
   THINKING_LEVELS,
+  clearProjectDisabled,
+  defaultProfileId,
   deleteProfile,
+  effectiveDisabled,
+  loadDisabled,
   loadProfiles,
+  offeredIds,
+  saveDisabled,
+  toggleDisabled,
+  DEFAULT_PROFILE,
+  type DisabledState,
   profileDirs,
   promptTemplate,
   saveProfile,
@@ -28,6 +43,7 @@ import { BoardSheet } from '../../components/board/BoardSheet';
 import { ModelPickerField } from '../../ui/settings/ModelPickerField';
 import { EnumSelect } from '../../ui/settings/fields';
 import { SettingsBackButton } from './ExtensionsSection';
+import { SwitchField } from '../../components/Switch';
 import { settingsHostId } from '../../settings/target';
 import { desktopShell } from '../../lib/layout';
 
@@ -58,7 +74,10 @@ type Editing = { profile?: AgentProfile; draft: AgentDraft; scope: Exclude<Profi
 
 export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }) {
   const hostId = () => props.hostId ?? settingsHostId();
-  const [dirs] = createResource(async () => profileDirs(await oinoDir(), recentProject(hostId())));
+  const project = recentProject(hostId());
+  const [dirs] = createResource(async () => profileDirs(await oinoDir(), project));
+  const [disabledState, { mutate: setDisabledState }] = createResource(() => hostId(), (h) => loadDisabled(h, project));
+  const [toggleError, setToggleError] = createSignal<string | undefined>();
   const [data, { refetch }] = createResource(
     () => dirs(),
     (d) => loadProfiles(hostId(), d),
@@ -67,6 +86,36 @@ export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }
   const profiles = () => data.latest?.profiles ?? [];
   const group = (source: ProfileSource) => profiles().filter((p) => p.source === source);
   const customIds = () => profiles().filter((p) => p.source !== 'builtin').map((p) => p.id);
+  const ids = () => profiles().map((p) => p.id);
+  const disabled = () => (disabledState.latest ? effectiveDisabled(disabledState.latest) : []);
+  const isOn = (id: string) => offeredIds(ids(), disabled()).includes(id);
+  /** The one profile still on: its switch can't go off. */
+  const lastOn = (id: string) => isOn(id) && offeredIds(ids(), disabled()).length === 1;
+  const defaultId = () => defaultProfileId(ids(), disabled());
+  const setEnabled = async (id: string, enabled: boolean) => {
+    const state = disabledState.latest;
+    if (!state) return;
+    const next = toggleDisabled(ids(), effectiveDisabled(state), id, enabled);
+    if (!next.ok) {
+      setToggleError(next.error);
+      return;
+    }
+    setToggleError(undefined);
+    const optimistic: DisabledState = state.project !== undefined && state.cwd ? { ...state, project: next.list } : { ...state, global: next.list };
+    setDisabledState(optimistic);
+    const saved = await saveDisabled(hostId(), state, next.list);
+    if (!saved.ok) {
+      setDisabledState(state);
+      setToggleError(`Not saved — ${saved.error}`);
+    }
+  };
+  const useGlobalList = async () => {
+    const state = disabledState.latest;
+    if (!state) return;
+    const saved = await clearProjectDisabled(hostId(), state);
+    if (saved.ok) setDisabledState({ global: state.global, ...(state.cwd ? { cwd: state.cwd } : {}) });
+    else setToggleError(`Not saved — ${saved.error}`);
+  };
 
   const open = (profile: AgentProfile) =>
     setEditing({
@@ -96,12 +145,26 @@ export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }
         <span class="settings-namespace-icon"><Bot size={16} /></span>
         <div class="min-w-0 flex-1">
           <h2 class="settings-subpage-title">Agent profiles</h2>
-          <p class="settings-subpage-desc">The agents the main chat can delegate to. Built-ins are read-only — duplicate one to change it.</p>
+          <p class="settings-subpage-desc">The agents the main chat can delegate to. Switch one off to hide it from the agent; built-ins are otherwise read-only — duplicate one to change it.</p>
         </div>
         <button type="button" class="btn-secondary settings-btn inline-flex items-center gap-1" onClick={create} data-testid="agent-new">
           <Plus size={14} /> New agent
         </button>
       </div>
+      <Show when={disabledState.latest?.project !== undefined && disabledState.latest?.cwd}>
+        <div class="settings-off-row" role="status" data-testid="agent-project-list">
+          <span class="min-w-0">{folderName(disabledState.latest!.cwd!)} has its own list of enabled profiles.</span>
+          <button type="button" class="settings-link" onClick={() => void useGlobalList()}>Use the global list</button>
+        </div>
+      </Show>
+      <Show when={profiles().length > 0 && defaultId() && defaultId() !== DEFAULT_PROFILE}>
+        <div class="settings-off-row" role="status" data-testid="agent-default-note">
+          <span class="min-w-0">{DEFAULT_PROFILE} is disabled: work that names no profile runs <span class="font-mono">{defaultId()}</span>.</span>
+        </div>
+      </Show>
+      <Show when={toggleError()}>
+        <p class="settings-field-error px-1 mb-3" role="alert" data-testid="agent-toggle-error">{toggleError()}</p>
+      </Show>
       <Show when={(data.latest?.warnings.length ?? 0) > 0}>
         <div class="settings-off-row" role="status">
           <span class="min-w-0">{data.latest!.warnings.join(' · ')}</span>
@@ -113,7 +176,7 @@ export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }
             <div class="settings-group rounded-card bg-surface-1 mb-4" data-testid={`agent-group-${source}`}>
               <div class="settings-in-card-label settings-in-card-label-first">
                 {SOURCE_LABEL[source]}
-                <Show when={source === 'project' && dirs.latest?.project}> · {folderName(dirs.latest!.project!)}</Show>
+                <Show when={source === 'project' && dirs.latest?.project}> · {folderName(dirs.latest!.project!.replace(/[\\/]\.oino[\\/]agents$/, ''))}</Show>
               </div>
               <Show when={data.loading && !data.latest}>
                 <p class="settings-cmd-wait px-4 py-3">Loading…</p>
@@ -122,16 +185,32 @@ export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }
                 <Show when={group(source).length > 0} fallback={<p class="settings-cmd-wait px-4 py-3">No {SOURCE_LABEL[source].toLowerCase()} agents yet.</p>}>
                   <For each={group(source)}>
                     {(profile) => (
-                      <button type="button" class="settings-namespace-row" onClick={() => open(profile)} data-testid={`agent-${profile.id}`}>
-                        <span class="min-w-0 flex-1">
-                          <span class="block text-[15px] text-text truncate font-mono">{profile.id}</span>
-                          <span class="block text-xs text-text-dim truncate">{profile.description}</span>
+                      <div class="settings-namespace-row agent-row" data-off={isOn(profile.id) ? undefined : ''} data-testid={`agent-row-${profile.id}`}>
+                        <button type="button" class="agent-row-open" onClick={() => open(profile)} data-testid={`agent-${profile.id}`}>
+                          <span class="min-w-0 flex-1 agent-row-text">
+                            <span class="block text-[15px] text-text truncate font-mono">{profile.id}</span>
+                            <span class="block text-xs text-text-dim truncate">{profile.description}</span>
+                          </span>
+                          <Show when={!isOn(profile.id)}>
+                            <span class="agent-off-chip" data-testid={`agent-off-${profile.id}`}>Disabled</span>
+                          </Show>
+                          <span class="settings-ns-badge">{profile.model ? profile.model.split('/').pop() : 'inherit'} · {toolsSummary(profile)}</span>
+                        </button>
+                        <span class="agent-row-switch" title={lastOn(profile.id) ? 'At least one profile must stay enabled' : undefined}>
+                          <SwitchField
+                            label={`${profile.id} enabled`}
+                            checked={isOn(profile.id)}
+                            disabled={!disabledState.latest || lastOn(profile.id)}
+                            onChange={(on) => void setEnabled(profile.id, on)}
+                            testId={`agent-switch-${profile.id}`}
+                          />
                         </span>
-                        <span class="settings-ns-badge">{profile.model ? profile.model.split('/').pop() : 'inherit'} · {toolsSummary(profile)}</span>
-                        <Show when={profile.source === 'builtin'} fallback={<ChevronRight size={15} class="text-text-dim shrink-0" />}>
-                          <Lock size={13} class="text-text-dim shrink-0" aria-label="Read-only" />
-                        </Show>
-                      </button>
+                        <button type="button" class="agent-row-end" onClick={() => open(profile)} aria-label={profile.source === 'builtin' ? `${profile.id} (read-only)` : `Edit ${profile.id}`} tabIndex={-1}>
+                          <Show when={profile.source === 'builtin'} fallback={<ChevronRight size={15} class="text-text-dim shrink-0" />}>
+                            <Lock size={13} class="text-text-dim shrink-0" aria-label="Read-only" />
+                          </Show>
+                        </button>
+                      </div>
                     )}
                   </For>
                 </Show>
@@ -153,6 +232,9 @@ export function AgentProfilesPage(props: { hostId?: string; onBack: () => void }
               void refetch();
             }}
             onDuplicate={(p) => duplicate(p)}
+            enabled={ed().profile ? isOn(ed().profile!.id) : undefined}
+            lastOn={ed().profile ? lastOn(ed().profile!.id) : false}
+            onEnabled={(on) => ed().profile && void setEnabled(ed().profile!.id, on)}
           />
         )}
       </Show>
@@ -168,6 +250,10 @@ function ProfileEditor(props: {
   onClose: () => void;
   onSaved: () => void;
   onDuplicate: (profile: AgentProfile) => void;
+  /** The saved profile's switch (`undefined` for a new agent). */
+  enabled?: boolean;
+  lastOn: boolean;
+  onEnabled: (on: boolean) => void;
 }) {
   const ro = () => props.editing.readOnly;
   const isNew = () => !props.editing.profile;
@@ -268,6 +354,17 @@ function ProfileEditor(props: {
       }
     >
       <div class="agent-editor">
+        <Show when={props.enabled !== undefined}>
+          <div class="agent-enabled" data-off={props.enabled ? undefined : ''} data-testid="agent-enabled">
+            <span class="min-w-0 flex-1">
+              <span class="block text-[14px] text-text">Enabled</span>
+              <span class="block text-xs text-text-dim">
+                {props.lastOn ? 'The only enabled profile — at least one must stay on.' : props.enabled ? 'Offered to the agent.' : 'Hidden from the agent until you turn it back on.'}
+              </span>
+            </span>
+            <SwitchField label="Enabled" checked={props.enabled ?? true} disabled={props.lastOn} onChange={props.onEnabled} testId="agent-enabled-switch" />
+          </div>
+        </Show>
         <Show when={ro()}>
           <p class="settings-cmd-wait"><Lock size={13} class="inline" /> Built-in profile — read-only. Duplicate it to make your own.</p>
         </Show>

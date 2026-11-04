@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentMarkdown, builtinProfiles, parseAgent, parseFrontMatter, profileDirs, validateName } from './agentProfiles';
+import { agentMarkdown, builtinProfiles, defaultProfileId, effectiveDisabled, offeredIds, parseAgent, parseFrontMatter, profileDirs, toggleDisabled, validateName } from './agentProfiles';
 
 describe('agent profiles (owner5 #17, the subagents extension format)', () => {
   it('parses front matter like the extension: scalars, quoted, inline and block lists', () => {
@@ -23,5 +23,18 @@ describe('agent profiles (owner5 #17, the subagents extension format)', () => {
     expect(validateName('ok-name_1', [])).toBeUndefined();
     expect(builtinProfiles().map((p) => p.id)).toEqual(['subagent_explore', 'subagent_general']);
     expect(profileDirs('/home/me/.oino/', '/w/app')).toEqual({ global: '/home/me/.oino/state/unipi.subagents/global/profiles', project: '/w/app/.oino/agents' });
+  });
+
+  it('agent-disable: offered / default / toggle mirror profiles.rs', () => {
+    const ids = ['subagent_explore', 'subagent_general', 'rev'];
+    expect(offeredIds(ids, ['subagent_general', 'ghost'])).toEqual(['subagent_explore', 'rev']);
+    expect(offeredIds(ids, ids)).toEqual(['subagent_explore']);
+    expect(defaultProfileId(ids, [])).toBe('subagent_general');
+    expect(defaultProfileId(ids, ['subagent_general'])).toBe('subagent_explore');
+    expect(effectiveDisabled({ global: ['a'] })).toEqual(['a']);
+    expect(effectiveDisabled({ global: ['a'], project: [] })).toEqual([]);
+    expect(toggleDisabled(ids, ['ghost'], 'rev', false)).toEqual({ ok: true, list: ['rev'] });
+    expect(toggleDisabled(ids, ['rev'], 'rev', true)).toEqual({ ok: true, list: [] });
+    expect(toggleDisabled(ids, ['subagent_explore', 'rev'], 'subagent_general', false)).toEqual({ ok: false, error: 'At least one profile must stay enabled.' });
   });
 });

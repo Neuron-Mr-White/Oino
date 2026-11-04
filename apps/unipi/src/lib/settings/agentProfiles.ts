@@ -9,11 +9,16 @@
  *   with YAML front matter (`name`, `description`, `model`,
  *   `tools`/`allowed-tools`, `thinking`, `max-nesting`); the body is the
  *   appended system prompt;
+ * - any profile can be switched off: `subagents.disabled: [names]` (global,
+ *   a project value overrides), written through the settings write path;
  * - global agents live in the extension's `/ext-global/profiles/`
  *   (`<oino dir>/state/unipi.subagents/global/profiles` on the host), project
  *   agents in `<project>/.oino/agents/` (project wins over global).
  */
+import { z } from 'zod';
 import { fsDelete, fsList, fsMkdir, fsRead, fsWrite } from '../fs';
+import { hostCmd } from '../../settings/hostCmd';
+import type { HostResult } from '../host';
 
 export type ProfileSource = 'builtin' | 'global' | 'project';
 
@@ -250,4 +255,96 @@ export async function deleteProfile(hostId: string, profile: AgentProfile): Prom
   if (!profile.path) return { ok: false, error: 'Built-in profiles can’t be deleted.' };
   const result = await fsDelete(hostId, profile.path, true).catch((e: unknown) => ({ ok: false as const, error: { message: String(e) } }));
   return result.ok ? { ok: true, path: profile.path } : { ok: false, error: result.error.message };
+}
+
+// ── Enabled / disabled (agent-disable) ──────────────────────────────────────
+
+/** The subagents settings namespace and its disabled-profiles key (`profiles.rs`). */
+export const SUBAGENTS_NAMESPACE = 'subagents';
+export const DISABLED_KEY = 'disabled';
+/** The profile a call without one runs while it is enabled (`DEFAULT_PROFILE`). */
+export const DEFAULT_PROFILE = 'subagent_general';
+
+/** Where the disabled list lives: the global list, and the project's when it overrides. */
+export type DisabledState = {
+  global: string[];
+  /** The project's own list (`undefined` = the project follows the global list). */
+  project?: string[];
+  /** The project folder the project list belongs to. */
+  cwd?: string;
+};
+
+/** The list in force (the project's when it has one). */
+export const effectiveDisabled = (state: DisabledState): string[] => state.project ?? state.global;
+
+/** Mirrors `profiles::offered`: never empty while there are profiles (all off keeps the first). */
+export function offeredIds(ids: readonly string[], disabled: readonly string[]): string[] {
+  const on = ids.filter((id) => !disabled.includes(id));
+  return on.length > 0 ? on : ids.slice(0, 1);
+}
+
+/** Mirrors `profiles::default_profile`: `subagent_general` while on, else the first enabled. */
+export function defaultProfileId(ids: readonly string[], disabled: readonly string[]): string | undefined {
+  const on = offeredIds(ids, disabled);
+  return on.includes(DEFAULT_PROFILE) ? DEFAULT_PROFILE : on[0];
+}
+
+export type ToggleResult = { ok: true; list: string[] } | { ok: false; error: string };
+
+/** The disabled list with `id` switched; refuses to switch off the last enabled profile. */
+export function toggleDisabled(ids: readonly string[], disabled: readonly string[], id: string, enabled: boolean): ToggleResult {
+  // Names of profiles that no longer exist are dropped on the way.
+  const next = disabled.filter((d) => d !== id && ids.includes(d));
+  if (!enabled) {
+    next.push(id);
+    if (ids.every((p) => next.includes(p))) return { ok: false, error: 'At least one profile must stay enabled.' };
+  }
+  return { ok: true, list: next };
+}
+
+const ValuesReply = z.object({ values: z.unknown() });
+const listOf = (values: unknown): string[] | undefined => {
+  const raw = typeof values === 'object' && values !== null ? (values as Record<string, unknown>)[DISABLED_KEY] : undefined;
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : undefined;
+};
+
+/** Reads the global list and, for `project`, the project's own list. */
+export async function loadDisabled(hostId: string, project?: string): Promise<DisabledState> {
+  const read = (layer: 'global' | 'project') =>
+    hostCmd({ kind: 'get_extension_settings', namespace: SUBAGENTS_NAMESPACE, layer, ...(project ? { cwd: project } : {}) }, ValuesReply, hostId).catch(() => undefined);
+  const [global, local] = await Promise.all([read('global'), project ? read('project') : Promise.resolve(undefined)]);
+  const projectList = local?.ok ? listOf(local.value.values) : undefined;
+  return {
+    global: (global?.ok ? listOf(global.value.values) : undefined) ?? [],
+    ...(projectList ? { project: projectList } : {}),
+    ...(project ? { cwd: project } : {}),
+  };
+}
+
+export type WriteResult = { ok: true } | { ok: false; error: string };
+
+const writeError = (e: unknown): WriteResult => ({ ok: false, error: String((e as { message?: string })?.message ?? e) });
+const asWrite = (r: HostResult<null> | WriteResult): WriteResult =>
+  r.ok ? { ok: true } : { ok: false, error: typeof r.error === 'string' ? r.error : r.error.message || `Not saved (${r.error.code})` };
+
+/**
+ * Stores `list` where the list in force lives: the project's when it overrides,
+ * else the global one (an empty global list is unset, back to the default).
+ */
+export async function saveDisabled(hostId: string, state: DisabledState, list: string[]): Promise<WriteResult> {
+  const project = state.project !== undefined && state.cwd;
+  const cmd = project
+    ? ({ kind: 'set_extension_setting', namespace: SUBAGENTS_NAMESPACE, key: DISABLED_KEY, value: list, scope: 'project', cwd: state.cwd } as const)
+    : list.length === 0
+      ? ({ kind: 'unset_extension_setting', namespace: SUBAGENTS_NAMESPACE, key: DISABLED_KEY, scope: 'global' } as const)
+      : ({ kind: 'set_extension_setting', namespace: SUBAGENTS_NAMESPACE, key: DISABLED_KEY, value: list, scope: 'global' } as const);
+  return asWrite(await hostCmd(cmd, z.null(), hostId).catch(writeError));
+}
+
+/** Drops the project's own list: the project follows the global list again. */
+export async function clearProjectDisabled(hostId: string, state: DisabledState): Promise<WriteResult> {
+  if (!state.cwd) return { ok: true };
+  return asWrite(
+    await hostCmd({ kind: 'unset_extension_setting', namespace: SUBAGENTS_NAMESPACE, key: DISABLED_KEY, scope: 'project', cwd: state.cwd }, z.null(), hostId).catch(writeError),
+  );
 }

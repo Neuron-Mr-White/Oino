@@ -52,9 +52,11 @@ export type HostCmdOp =
   | { kind: 'get_settings'; key?: string }
   | { kind: 'set_setting'; key: string; value?: unknown; scope: 'global' | 'project' }
   | { kind: 'get_settings_schema' }
-  | { kind: 'get_extension_settings'; namespace: string; layer?: 'effective' | 'global' | 'project' }
-  | { kind: 'set_extension_setting'; namespace: string; key: string; value?: unknown; scope: 'global' | 'project' }
-  | { kind: 'unset_extension_setting'; namespace: string; key: string; scope: 'global' | 'project' }
+  /* `cwd`: the project whose services answer (its `.oino/settings.json` is the project
+     layer); omitted = the host's primary cwd. Older hosts ignore it. */
+  | { kind: 'get_extension_settings'; namespace: string; layer?: 'effective' | 'global' | 'project'; cwd?: string }
+  | { kind: 'set_extension_setting'; namespace: string; key: string; value?: unknown; scope: 'global' | 'project'; cwd?: string }
+  | { kind: 'unset_extension_setting'; namespace: string; key: string; scope: 'global' | 'project'; cwd?: string }
   | { kind: 'extensions' }
   | { kind: 'set_extension_enabled'; id: string; enabled: boolean }
   | { kind: 'install_extension'; path: string; replace?: boolean }

@@ -197,6 +197,44 @@ describe('Settings › Subagents › Agent profiles (owner5 #17)', () => {
     expect(location.hash).toBe('#/settings/subagents');
     expect(world.log.some((entry) => entry.kind === 'cmd' && (entry.args as { message?: string }).message === '/agents')).toBe(false);
   });
+
+  it('agent-disable: every profile has an Enabled switch; off = dimmed + Disabled chip, saved as subagents.disabled; the last one stays on', async () => {
+    const world = createMockHost(capMcpNoChat);
+    setHostClientFactory(world.client);
+    const writes = () =>
+      world.log
+        .filter((e) => e.kind === 'request' && e.op === 'host_cmd')
+        .map((e) => (e.args as { cmd: { kind: string; key?: string; value?: unknown; scope?: string } }).cmd)
+        .filter((c) => c.kind === 'set_extension_setting' || c.kind === 'unset_extension_setting');
+    const r = renderAt('subagents');
+    await waitFor(() => expect(r.getByTestId('manage-agents.profiles')).toBeTruthy());
+    r.getByTestId('manage-agents.profiles').click();
+    const sw = (id: string) => r.getByTestId(`agent-switch-${id}`).querySelector('input') as HTMLInputElement;
+    await waitFor(() => expect(sw('subagent_general').disabled).toBe(false));
+    expect(sw('subagent_general').checked).toBe(true);
+    expect(r.queryByTestId('agent-off-subagent_general')).toBeNull();
+    // Off: the built-in stays listed, dimmed with a chip; the default note names the fallback.
+    fireEvent.click(sw('subagent_general'));
+    await waitFor(() => expect(r.getByTestId('agent-off-subagent_general').textContent).toBe('Disabled'));
+    expect(r.getByTestId('agent-row-subagent_general').hasAttribute('data-off')).toBe(true);
+    expect(r.getByTestId('agent-default-note').textContent).toContain('runs subagent_explore');
+    await waitFor(() => expect(writes().at(-1)).toMatchObject({ kind: 'set_extension_setting', key: 'disabled', value: ['subagent_general'], scope: 'global' }));
+    // The last enabled profile can't be switched off (row and detail sheet).
+    await waitFor(() => expect(sw('subagent_explore').disabled).toBe(true));
+    r.getByTestId('agent-subagent_explore').click();
+    const q = (id: string) => document.querySelector(`[data-testid=${id}]`) as HTMLElement | null;
+    await waitFor(() => expect(q('agent-enabled')?.textContent).toContain('at least one must stay on'));
+    expect((q('agent-enabled-switch')!.querySelector('input') as HTMLInputElement).disabled).toBe(true);
+    // Back on from the detail sheet of the disabled one: the global list is unset again.
+    [...document.querySelectorAll('[data-testid=agent-editor] button')].find((b) => b.textContent === 'Close')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await waitFor(() => expect(q('agent-editor')).toBeNull());
+    r.getByTestId('agent-subagent_general').click();
+    await waitFor(() => expect(q('agent-enabled')?.textContent).toContain('Hidden from the agent'));
+    fireEvent.click(q('agent-enabled-switch')!.querySelector('input')!);
+    await waitFor(() => expect(writes().at(-1)).toMatchObject({ kind: 'unset_extension_setting', key: 'disabled', scope: 'global' }));
+    await waitFor(() => expect(r.queryByTestId('agent-off-subagent_general')).toBeNull());
+    expect(r.queryByTestId('agent-default-note')).toBeNull();
+  });
 });
 
 describe('Settings › Providers (G-15 /login, /logout)', () => {
