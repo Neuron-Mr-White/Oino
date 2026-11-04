@@ -698,6 +698,11 @@ pub struct Graph {
     /// Events dropped from the front of `events`.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub events_dropped: u32,
+    /// The lead session that opened the graph: only its own session start (a restart,
+    /// reload or resume) treats running work as interrupted — another chat starting in
+    /// the same workspace must not requeue live workers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_session: Option<String>,
 }
 
 /// `graph.json`.
@@ -1328,6 +1333,7 @@ impl GraphFile {
                 abandoned: None,
                 events: Vec::new(),
                 events_dropped: 0,
+                owner_session: None,
             };
             g.log(now, "opened", By::Lead, &g.task.clone());
             self.current = Some(g);
@@ -1829,6 +1835,21 @@ impl GraphFile {
         w.failure_class = Some("start".into());
         mark_errored(w, now, format!("could not start: {error}"));
         false
+    }
+
+    /// Records the lead session that owns the open graph.
+    pub fn set_owner(&mut self, session: &str) {
+        if let Some(g) = self.open_mut() {
+            g.owner_session = Some(session.to_owned());
+        }
+    }
+
+    /// Whether a session start of `session` restarts the open graph's owner (no owner
+    /// recorded = an older graph.json: treat as the owner).
+    #[must_use]
+    pub fn owned_by(&self, session: &str) -> bool {
+        self.open()
+            .is_some_and(|g| g.owner_session.as_deref().is_none_or(|o| o == session))
     }
 
     /// Host restart: running work was interrupted. Each resumes its own operator after
@@ -3519,6 +3540,14 @@ mod tests {
             f.checkpoint(&mut reported, 901).unwrap().0,
             "needs_attention"
         );
+        // Only the owner's own session start interrupts (another chat in the workspace
+        // must not requeue live workers).
+        let mut o = GraphFile::default();
+        o.update(&upd(vec![add("x", &[])]), "g", 0).unwrap();
+        assert!(o.owned_by("anyone"), "no owner recorded (older graph.json)");
+        o.set_owner("lead-1");
+        assert!(o.owned_by("lead-1"));
+        assert!(!o.owned_by("chat-2"));
         // A queued start lost to the restart is runnable (the bind arms a start).
         let mut f = GraphFile::default();
         f.update(&upd(vec![add("x", &[])]), "g", 0).unwrap();

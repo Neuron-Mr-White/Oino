@@ -1581,7 +1581,13 @@ impl Lh {
                 "Set operation (add_work, stop, continue, fail or finish) and the matching field.",
             );
         };
-        let available = match Self::profiles().await {
+        // The profile list is only needed to schedule or run work: stop / fail / finish
+        // also work while subagents are down.
+        let available = match if matches!(op, "add_work" | "continue") {
+            Self::profiles().await
+        } else {
+            Ok(Vec::new())
+        } {
             Ok(p) => p,
             // The retry also timed out: subagents exist but are still starting up —
             // this is transient, not a config problem.
@@ -1730,6 +1736,9 @@ impl Lh {
                 None,
             )
             .await;
+        }
+        if r.opened && !cx.cx.is_child() {
+            self.state.borrow_mut().graph.set_owner(cx.cx.session_id());
         }
         if r.opened {
             let task = self
@@ -3207,7 +3216,9 @@ impl Lh {
         let errored_now = {
             let mut st = self.state.borrow_mut();
             let before: Vec<String> = st.graph.errored().into_iter().map(|e| e.0).collect();
-            st.graph.interrupted(timers::now_ms());
+            if st.graph.owned_by(cx.session_id()) {
+                st.graph.interrupted(timers::now_ms());
+            }
             st.graph
                 .errored()
                 .into_iter()
@@ -3245,7 +3256,6 @@ impl Lh {
         if !errored_now.is_empty() {
             timers::set(GRAPH_WAKE_TIMER, Duration::from_millis(400), false);
         }
-        let _ = cx;
         if let Some(t) = redeliver {
             self.send(&t, "Recovery").await;
         }
